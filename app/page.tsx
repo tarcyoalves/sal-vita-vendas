@@ -1,5 +1,3 @@
-import Link from 'next/link'
-
 export default function Home() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center p-4">
@@ -8,25 +6,18 @@ export default function Home() {
         <p className="text-blue-100 mb-8">Sistema de Gestão de Vendas e Performance</p>
         
         <div className="space-y-4">
-          <Link
-            href="/login"
-            className="block w-full bg-white text-blue-900 py-3 rounded-lg font-semibold hover:bg-blue-50 transition"
-          >
+          <button className="w-full bg-white text-blue-900 py-3 rounded-lg font-semibold hover:bg-blue-50 transition">
             Fazer Login
-          </Link>
+          </button>
           
-          <Link
-            href="/signup"
-            className="block w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-500 transition"
-          >
+          <button className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-500 transition">
             Criar Conta
-          </Link>
+          </button>
         </div>
 
         <p className="text-blue-200 text-sm mt-8">
-          Credenciais de teste:<br/>
-          Email: comercial@salvitarn.com.br<br/>
-          Senha: SalVita2024!
+          Bem-vindo ao Sal Vita!<br/>
+          Sistema em desenvolvimento
         </p>
       </div>
     </main>
