@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  password  String
+  name      String?
+  role      String     @default("user")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  seller    Seller?
+  notifications Notification[]
+}
+
+model Seller {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  email     String
+  phone     String     @default("")
+  status    String     @default("active")
+  dailyGoal Int        @default(50)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  reminders CallReminder[]
+  metrics   DailyMetric[]
+}
+
+model CallReminder {
+  id            String     @id @default(cuid())
+  sellerId      String
+  seller        Seller     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  clientName    String
+  clientPhone   String
+  scheduledDate DateTime   @db.Date
+  scheduledTime String
+  notes         String     @default("")
+  status        String     @default("pending")
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  result        CallResult?
+
+  @@index([sellerId, scheduledDate])
+  @@index([status])
+}
+
+model CallResult {
+  id          String     @id @default(cuid())
+  reminderId  String     @unique
+  reminder    CallReminder @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  resultType  String
+  notes       String     @default("")
+  completedAt DateTime   @default(now())
+  createdAt   DateTime   @default(now())
+}
+
+model DailyMetric {
+  id                 String     @id @default(cuid())
+  sellerId           String
+  seller             Seller     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  metricsDate        DateTime   @db.Date
+  totalCalls         Int        @default(0)
+  completedCalls     Int        @default(0)
+  convertedCalls     Int        @default(0)
+  conversionRate     Float      @default(0)
+  remindersCompleted Int        @default(0)
+  remindersPending   Int        @default(0)
+  createdAt          DateTime   @default(now())
+
+  @@unique([sellerId, metricsDate])
+  @@index([metricsDate])
+}
+
+model Notification {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  content   String
+  type      String
+  read      Boolean    @default(false)
+  createdAt DateTime   @default(now())
+
+  @@index([userId, read])
+  @@index([createdAt])
+}
