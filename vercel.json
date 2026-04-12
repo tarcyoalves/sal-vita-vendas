@@ -1,14 +1,6 @@
 {
   "buildCommand": "pnpm build",
-  "outputDirectory": "dist",
+  "outputDirectory": "client/dist",
   "framework": "vite",
-  "env": {
-    "DATABASE_URL": "@database_url",
-    "GROQ_API_KEY": "@groq_api_key",
-    "GEMINI_API_KEY": "@gemini_api_key",
-    "JWT_SECRET": "@jwt_secret",
-    "VITE_APP_ID": "@vite_app_id",
-    "VITE_API_URL": "@vite_api_url",
-    "VITE_OAUTH_PORTAL_URL": "@vite_oauth_portal_url"
-  }
+  "installCommand": "pnpm install --frozen-lockfile"
 }

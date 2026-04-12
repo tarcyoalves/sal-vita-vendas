@@ -4,15 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"pnpm run dev:server\" \"pnpm run dev:client\"",
-    "dev:server": "tsx watch server/index.ts",
-    "dev:client": "vite client",
-    "build": "pnpm run build:client && pnpm run build:server",
-    "build:client": "vite build client",
-    "build:server": "echo 'Server build not required for tsx'",
-    "start": "node server/index.ts",
-    "check": "tsc --noEmit",
-    "db:push": "drizzle-kit push"
+    "dev": "vite client",
+    "build": "vite build client",
+    "preview": "vite preview",
+    "check": "tsc --noEmit"
   },
   "dependencies": {
     "@google/generative-ai": "^0.17.1",
