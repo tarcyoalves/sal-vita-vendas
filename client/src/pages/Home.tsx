@@ -1,8 +1,8 @@
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useAuth } from './_core/hooks/useAuth";
 import { useLocation } from "wouter";
 import { useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { getLoginUrl } from "@/const";
+import { Button } from './components/ui/button";
+import { getLoginUrl } from './const";
 
 export default function Home() {
   const { user, loading, isAuthenticated } = useAuth();
