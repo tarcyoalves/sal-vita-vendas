@@ -1,0 +1,1 @@
+ALTER TABLE `tasks` ADD `assignedTo` varchar(255);

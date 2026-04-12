@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1775656990675,
+      "tag": "0000_abandoned_star_brand",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1775739332331,
+      "tag": "0001_broken_virginia_dare",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1775741210757,
+      "tag": "0002_narrow_blue_blade",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1775748646403,
+      "tag": "0003_shallow_the_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1775759322687,
+      "tag": "0004_vengeful_donald_blake",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1775760323316,
+      "tag": "0005_famous_quentin_quire",
+      "breakpoints": true
+    }
+  ]
+}
