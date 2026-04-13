@@ -1,7 +1,7 @@
-import { useAuth } from './_core/hooks/useAuth';
-import { trpc } from './lib/trpc';
-import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
-import { Button } from './components/ui/button';
+import { useAuth } from '../_core/hooks/useAuth';
+import { trpc } from '../lib/trpc';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Button } from '../components/ui/button';
 import { useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";

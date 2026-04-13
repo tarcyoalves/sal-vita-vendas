@@ -1,7 +1,7 @@
-import { useAuth } from './_core/hooks/useAuth';
-import { trpc } from './lib/trpc';
-import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
-import { Button } from './components/ui/button';
+import { useAuth } from '../_core/hooks/useAuth';
+import { trpc } from '../lib/trpc';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Button } from '../components/ui/button';
 import { useState, useMemo, useCallback } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from './components/ui/dialog';
+} from '../components/ui/dialog';
 
 interface Task {
   id: number;

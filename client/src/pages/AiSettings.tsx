@@ -1,9 +1,9 @@
-import { useAuth } from './_core/hooks/useAuth';
-import { Button } from './components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
+import { useAuth } from '../_core/hooks/useAuth';
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { trpc } from './lib/trpc';
+import { trpc } from '../lib/trpc';
 
 interface AIProvider {
   id: string;
