@@ -7,7 +7,8 @@
     "dev": "vite client",
     "build": "vite build client",
     "preview": "vite preview",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "start": "NODE_ENV=production tsx server/_core/index.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.17.1",
