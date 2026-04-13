@@ -1,4 +1,4 @@
-import { trpc } from "../../lib/trpc";
+import { trpc } from "../lib/trpc";
 import { TRPCClientError } from "@trpc/client";
 import { useCallback, useEffect, useMemo } from "react";
 import { useLocation } from "wouter";
