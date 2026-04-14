@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: sal-vita-backend
+    runtime: node
+    buildCommand: npm install
+    startCommand: node node_modules/tsx/dist/cli.mjs server/index.ts
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: PORT
+        value: "3000"

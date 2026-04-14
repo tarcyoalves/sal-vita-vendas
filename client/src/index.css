@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #1d4ed8;
+  --primary-foreground: #eff6ff;
+  --sidebar-primary: #2563eb;
+  --sidebar-primary-foreground: #eff6ff;
+  --chart-1: #93c5fd;
+  --chart-2: #3b82f6;
+  --chart-3: #2563eb;
+  --chart-4: #1d4ed8;
+  --chart-5: #1e40af;
+  --radius: 0.65rem;
+  --background: #ffffff;
+  --foreground: #374151;
+  --card: #ffffff;
+  --card-foreground: #374151;
+  --popover: #ffffff;
+  --popover-foreground: #374151;
+  --secondary: #f3f4f6;
+  --secondary-foreground: #4b5563;
+  --muted: #f9fafb;
+  --muted-foreground: #6b7280;
+  --accent: #f9fafb;
+  --accent-foreground: #111827;
+  --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
+  --border: #e5e7eb;
+  --input: #e5e7eb;
+  --ring: #3b82f6;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #374151;
+  --sidebar-accent: #f9fafb;
+  --sidebar-accent-foreground: #111827;
+  --sidebar-border: #e5e7eb;
+  --sidebar-ring: #3b82f6;
+}
+
+.dark {
+  --primary: #1d4ed8;
+  --primary-foreground: #eff6ff;
+  --sidebar-primary: #3b82f6;
+  --sidebar-primary-foreground: #eff6ff;
+  --background: #111827;
+  --foreground: #e5e7eb;
+  --card: #1f2937;
+  --card-foreground: #e5e7eb;
+  --popover: #1f2937;
+  --popover-foreground: #e5e7eb;
+  --secondary: #1f2937;
+  --secondary-foreground: #9ca3af;
+  --muted: #374151;
+  --muted-foreground: #9ca3af;
+  --accent: #374151;
+  --accent-foreground: #f9fafb;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.15);
+  --ring: #3b82f6;
+  --chart-1: #93c5fd;
+  --chart-2: #3b82f6;
+  --chart-3: #2563eb;
+  --chart-4: #1d4ed8;
+  --chart-5: #1e40af;
+  --sidebar: #1f2937;
+  --sidebar-foreground: #e5e7eb;
+  --sidebar-accent: #374151;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-ring: #3b82f6;
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.container {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+  .container {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    padding-left: 2rem;
+    padding-right: 2rem;
+    max-width: 1280px;
+  }
+}

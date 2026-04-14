@@ -1,0 +1,14 @@
+{
+  "buildCommand": "npm install && node node_modules/vite/bin/vite.js build client -c vite.config.ts",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://sal-vita-backend.onrender.com/api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
