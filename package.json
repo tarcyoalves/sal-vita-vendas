@@ -2,7 +2,6 @@
   "name": "sal-vita-vendas",
   "version": "1.0.0",
   "private": true,
-  "type": "module",
   "scripts": {
     "dev": "vite client -c vite.config.ts",
     "server": "tsx watch server/index.ts",
