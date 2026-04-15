@@ -1,14 +1,25 @@
 {
+  "version": 2,
   "buildCommand": "npm install && node node_modules/vite/bin/vite.js build client -c vite.config.ts",
   "outputDirectory": "client/dist",
-  "rewrites": [
+  "functions": {
+    "api/index.ts": {
+      "runtime": "nodejs20.x",
+      "maxDuration": 30
+    }
+  },
+  "routes": [
     {
-      "source": "/api/:path*",
-      "destination": "https://sal-vita-backend.onrender.com/api/:path*"
+      "src": "/api/(.*)",
+      "dest": "/api/index.ts"
     },
     {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|ico|svg|webp|woff|woff2|ttf|eot|map))",
+      "dest": "/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }
