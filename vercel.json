@@ -1,6 +1,6 @@
 {
   "buildCommand": "npm install && node node_modules/vite/bin/vite.js build client -c vite.config.ts",
-  "outputDirectory": "dist",
+  "outputDirectory": "client/dist",
   "rewrites": [
     {
       "source": "/api/:path*",
