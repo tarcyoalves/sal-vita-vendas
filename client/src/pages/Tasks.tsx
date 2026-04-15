@@ -73,30 +73,42 @@ export default function Tasks() {
     assignedTo: "",
   });
 
-  // Browser notifications for due reminders
+  // Browser notifications for due reminders — checks every 30s
   useEffect(() => {
-    if (!tasks.length) return;
-    const setup = async () => {
-      if (!('Notification' in window)) return;
-      if (Notification.permission === 'default') {
-        await Notification.requestPermission();
-      }
+    if (!('Notification' in window)) return;
+    Notification.requestPermission();
+
+    const STORAGE_KEY = 'sv_notified';
+    const getFired = (): Set<string> => new Set(JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '[]'));
+    const markFired = (key: string) => {
+      const s = getFired(); s.add(key); sessionStorage.setItem(STORAGE_KEY, JSON.stringify([...s]));
+    };
+
+    const check = () => {
       if (Notification.permission !== 'granted') return;
       const now = new Date();
-      tasks.forEach((task: Task) => {
+      const fired = getFired();
+      (tasks as Task[]).forEach((task) => {
         if (!task.reminderEnabled || !task.reminderDate || task.status !== 'pending') return;
-        const diff = new Date(task.reminderDate).getTime() - now.getTime();
-        if (diff > 0 && diff <= 60000) {
-          setTimeout(() => {
-            new Notification(`🔔 Lembrete: ${task.title}`, { body: task.notes || 'Tarefa pendente', icon: '/favicon.ico' });
-            toast.info(`🔔 Lembrete: ${task.title}`);
-          }, diff);
-        } else if (diff <= 0 && diff > -300000) {
-          new Notification(`⏰ Tarefa vencida: ${task.title}`, { body: task.notes || 'Prazo passou', icon: '/favicon.ico' });
+        const rd = new Date(task.reminderDate);
+        const diff = rd.getTime() - now.getTime();
+        const key = `${task.id}-${rd.getTime()}`;
+        if (fired.has(key)) return;
+        // Fire if within ±5 minutes window
+        if (diff <= 300000 && diff > -300000) {
+          const isOverdue = diff <= 0;
+          const title = isOverdue ? `⏰ Atrasada: ${task.title}` : `🔔 Lembrete: ${task.title}`;
+          const body = task.notes?.trim() || (isOverdue ? 'Prazo ultrapassado!' : 'Tarefa pendente');
+          new Notification(title, { body, icon: '/favicon.ico' });
+          toast.info(title);
+          markFired(key);
         }
       });
     };
-    setup();
+
+    check(); // run immediately
+    const id = setInterval(check, 30000);
+    return () => clearInterval(id);
   }, [tasks]);
 
   const handleLogout = async () => {
@@ -347,11 +359,17 @@ export default function Tasks() {
                     <p className="font-medium text-sm truncate">{task.title}</p>
                     {isAdmin && task.assignedTo && <p className="text-xs text-gray-500">👤 {task.assignedTo}</p>}
                   </div>
-                  {task.reminderDate && task.reminderEnabled && (
-                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full whitespace-nowrap">
-                      🔔 {new Date(task.reminderDate).toLocaleDateString("pt-BR")} {new Date(task.reminderDate).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  )}
+                  {task.reminderDate && task.reminderEnabled && (() => {
+                    const rd = new Date(task.reminderDate);
+                    const now = new Date();
+                    const isOverdue = rd < now && task.status === 'pending';
+                    const isToday = rd.toDateString() === now.toDateString();
+                    return (
+                      <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap font-medium ${isOverdue ? 'bg-red-100 text-red-700' : isToday ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                        {isOverdue ? '🚨 ATRASADO' : isToday ? '⚠️ HOJE' : '🔔'} {rd.toLocaleDateString("pt-BR")} {rd.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    );
+                  })()}
                 </div>
                 {expandedTask === task.id && (
                   <div className="p-3 bg-gray-50 border-t space-y-2">
