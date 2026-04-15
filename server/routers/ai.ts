@@ -12,6 +12,35 @@ function getGroqClient() {
 }
 
 export const aiRouter = router({
+  testConnection: protectedProcedure
+    .input(z.object({
+      provider: z.string(),
+      model: z.string(),
+      apiKey: z.string().min(1),
+    }))
+    .mutation(async ({ input }) => {
+      const baseURLs: Record<string, string> = {
+        groq: 'https://api.groq.com/openai/v1',
+        openai: 'https://api.openai.com/v1',
+        gemini: 'https://generativelanguage.googleapis.com/v1beta/openai',
+        grok: 'https://api.x.ai/v1',
+        claude: 'https://api.anthropic.com/v1',
+      };
+      const baseURL = baseURLs[input.provider] ?? baseURLs.openai;
+      try {
+        const client = new OpenAI({ apiKey: input.apiKey, baseURL });
+        await client.chat.completions.create({
+          model: input.model,
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 5,
+        });
+        return { success: true, message: 'Conexão bem-sucedida!' };
+      } catch (err: any) {
+        const msg = err?.message ?? 'Erro desconhecido';
+        return { success: false, message: msg };
+      }
+    }),
+
   chat: protectedProcedure
     .input(z.object({ message: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {

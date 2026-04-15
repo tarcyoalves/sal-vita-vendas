@@ -176,7 +176,7 @@ export default function AiSettings() {
             <img
               src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/logoSALVITA_grande_3761478e.png"
               alt="Sal Vita"
-              className="h-32 cursor-pointer"
+              className="h-10 cursor-pointer"
             />
           </a>
           <h1 className="text-2xl font-bold text-blue-900">⚙️ Configurações de IA</h1>
