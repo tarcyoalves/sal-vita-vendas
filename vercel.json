@@ -1,16 +1,16 @@
 {
   "version": 2,
-  "buildCommand": "npm install && node node_modules/vite/bin/vite.js build client -c vite.config.ts",
+  "buildCommand": "npm install && node node_modules/vite/bin/vite.js build client -c vite.config.ts && node_modules/.bin/esbuild api/index.ts --bundle --platform=node --target=node20 --outfile=api/bundle.js --external:pg-native --external:fsevents",
   "outputDirectory": "client/dist",
   "functions": {
-    "api/index.ts": {
+    "api/bundle.js": {
       "maxDuration": 30
     }
   },
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/api/index.ts"
+      "dest": "/api/bundle.js"
     },
     {
       "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|ico|svg|webp|woff|woff2|ttf|eot|map))",
