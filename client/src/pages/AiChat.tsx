@@ -56,6 +56,15 @@ export default function AiChat() {
     toast.success("Histórico limpo");
   };
 
+  const getApiConfig = () => {
+    try {
+      const configs = JSON.parse(localStorage.getItem('aiConfigs') || '{}');
+      const entry = Object.values(configs as Record<string, any>).find((c: any) => c.status === 'configured');
+      if (entry) return { apiKey: (entry as any).apiKey, provider: (entry as any).provider, model: (entry as any).model };
+    } catch { /* ignore */ }
+    return null;
+  };
+
   const handleSendMessage = async () => {
     if (!input.trim() || isLoading) return;
     const userMessage: Message = { role: "user", content: input, timestamp: new Date() };
@@ -64,7 +73,8 @@ export default function AiChat() {
     setInput("");
     setIsLoading(true);
     try {
-      const response = await chatMutation.mutateAsync({ message: currentInput });
+      const cfg = getApiConfig();
+      const response = await chatMutation.mutateAsync({ message: currentInput, apiKey: cfg?.apiKey, provider: cfg?.provider, model: cfg?.model });
       setMessages(prev => [...prev, { role: "assistant", content: response.reply, timestamp: new Date() }]);
     } catch (error: any) {
       const errMsg = error?.message ?? "Erro ao processar mensagem";

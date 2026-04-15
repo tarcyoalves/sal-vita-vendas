@@ -15,6 +15,7 @@ import AiSettings from "./pages/AiSettings";
 import Tasks from "./pages/Tasks";
 import Attendants from "./pages/Attendants";
 import KnowledgeBase from "./pages/KnowledgeBase";
+import FloatingChat from "./components/FloatingChat";
 
 function Router() {
   return (
@@ -53,6 +54,7 @@ function App() {
         <TooltipProvider>
           <Toaster />
           <Router />
+          <FloatingChat />
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

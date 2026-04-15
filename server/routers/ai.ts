@@ -94,9 +94,28 @@ export const aiRouter = router({
     }),
 
   chat: protectedProcedure
-    .input(z.object({ message: z.string().min(1) }))
+    .input(z.object({
+      message: z.string().min(1),
+      apiKey: z.string().optional(),
+      provider: z.string().optional(),
+      model: z.string().optional(),
+    }))
     .mutation(async ({ input, ctx }) => {
-      const groq = getGroqClient();
+      // Use key from client (localStorage) if no server env key
+      const baseURLs: Record<string, string> = {
+        groq: 'https://api.groq.com/openai/v1',
+        openai: 'https://api.openai.com/v1',
+        gemini: 'https://generativelanguage.googleapis.com/v1beta/openai',
+        grok: 'https://api.x.ai/v1',
+        claude: 'https://api.anthropic.com/v1',
+      };
+      let groq = getGroqClient();
+      let chatModel = 'llama3-8b-8192';
+      if (!groq && input.apiKey) {
+        const baseURL = baseURLs[input.provider ?? 'groq'] ?? baseURLs.groq;
+        groq = new OpenAI({ apiKey: input.apiKey, baseURL });
+        chatModel = input.model ?? (input.provider === 'openai' ? 'gpt-3.5-turbo' : input.provider === 'gemini' ? 'gemini-1.5-flash' : 'llama3-8b-8192');
+      }
 
       await db.insert(chatMessages).values({ userId: ctx.user.id, content: input.message, role: 'user' });
 
@@ -134,7 +153,7 @@ REGRAS:
 - Quando sugerir prioridades, cite os números reais`;
 
       const completion = await groq.chat.completions.create({
-        model: 'llama3-8b-8192',
+        model: chatModel,
         messages: [{ role: 'system', content: systemPrompt }, ...messages],
         max_tokens: 800,
         temperature: 0.7,
