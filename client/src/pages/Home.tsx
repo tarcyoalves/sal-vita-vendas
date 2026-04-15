@@ -19,7 +19,7 @@ export default function Home() {
       if (user.role === 'admin') {
         setLocation('/admin/dashboard');
       } else {
-        setLocation('/vendor/reminders');
+        setLocation('/tasks');
       }
     }
   }, [loading, isAuthenticated, user, setLocation]);

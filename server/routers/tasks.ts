@@ -5,8 +5,12 @@ import { db } from '../db';
 import { tasks } from '../db/schema';
 
 export const tasksRouter = router({
-  list: protectedProcedure.query(async () => {
-    return db.select().from(tasks).orderBy(tasks.createdAt);
+  list: protectedProcedure.query(async ({ ctx }) => {
+    // Admins see all tasks; vendors see only their own
+    if (ctx.user.role === 'admin') {
+      return db.select().from(tasks).orderBy(tasks.createdAt);
+    }
+    return db.select().from(tasks).where(eq(tasks.userId, ctx.user.id)).orderBy(tasks.createdAt);
   }),
 
   create: protectedProcedure

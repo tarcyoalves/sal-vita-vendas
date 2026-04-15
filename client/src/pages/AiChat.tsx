@@ -1,6 +1,5 @@
 import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -19,106 +18,58 @@ export default function AiChat() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
+
   const logoutMutation = trpc.auth.logout.useMutation();
   const chatMutation = trpc.ai.chat.useMutation();
-  const { data: chatHistory = [] } = trpc.chatHistory.getHistory.useQuery();
-  const saveChatMutation = trpc.chatHistory.saveMessage.useMutation();
-  const { data: tasks = [] } = trpc.tasks.list.useQuery();
-  const { data: attendants = [] } = trpc.sellers.list.useQuery();
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  const { data: chatHistory = [] } = trpc.ai.history.useQuery();
+  const clearHistoryMutation = trpc.ai.clearHistory.useMutation();
 
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Carregar histórico
   useEffect(() => {
-    if (chatHistory && chatHistory.length > 0) {
-      const loadedMessages = chatHistory.map((msg: any) => ({
-        role: msg.role,
-        content: msg.message,
+    if (chatHistory.length > 0) {
+      setMessages(chatHistory.map((msg: any) => ({
+        role: msg.role as "user" | "assistant",
+        content: msg.content,
         timestamp: new Date(msg.createdAt),
-      }));
-      setMessages(loadedMessages);
+      })));
     } else {
-      setMessages([
-        {
-          role: "assistant",
-          content: "Olá! Sou seu assistente de IA. Posso ajudar com análises de performance, recomendações e estratégias. Como posso ajudar?",
-          timestamp: new Date(),
-        },
-      ]);
+      setMessages([{
+        role: "assistant",
+        content: "Olá! Sou seu assistente de IA da Sal Vita. Posso ajudar com dicas de vendas, análise de desempenho e estratégias. Como posso ajudar?",
+        timestamp: new Date(),
+      }]);
     }
-  }, [chatHistory]);
+  }, [chatHistory.length]);
 
   const handleLogout = async () => {
     await logoutMutation.mutateAsync();
     setLocation("/");
   };
 
+  const handleClearHistory = async () => {
+    if (!confirm("Limpar todo o histórico do chat?")) return;
+    await clearHistoryMutation.mutateAsync();
+    setMessages([{ role: "assistant", content: "Histórico limpo. Como posso ajudar?", timestamp: new Date() }]);
+    toast.success("Histórico limpo");
+  };
+
   const handleSendMessage = async () => {
-    if (!input.trim()) return;
-
-    const userMessage: Message = {
-      role: "user",
-      content: input,
-      timestamp: new Date(),
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
+    if (!input.trim() || isLoading) return;
+    const userMessage: Message = { role: "user", content: input, timestamp: new Date() };
+    setMessages(prev => [...prev, userMessage]);
+    const currentInput = input;
     setInput("");
     setIsLoading(true);
-
     try {
-      const configs = JSON.parse(localStorage.getItem("aiConfigs") || "{}");
-      const groqConfig = configs.groq;
-
-      if (!groqConfig || !groqConfig.apiKey) {
-        toast.error("Configure uma chave de IA primeiro");
-        setIsLoading(false);
-        return;
-      }
-
-      // Salvar mensagem do usuário
-      await saveChatMutation.mutateAsync({
-        role: "user",
-        message: input,
-      });
-
-      // Enviar para IA
-      const response = await chatMutation.mutateAsync({
-        message: input,
-        provider: "groq",
-        apiKey: groqConfig.apiKey,
-        model: groqConfig.model || "llama-3.1-8b-instant",
-        conversationHistory: messages.map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-        })),
-      });
-
-      const responseText = typeof response === "string" ? response : JSON.stringify(response);
-
-      const assistantMessage: Message = {
-        role: "assistant",
-        content: responseText,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-
-      // Salvar resposta
-      await saveChatMutation.mutateAsync({
-        role: "assistant",
-        message: responseText,
-      });
-    } catch (error) {
-      toast.error("Erro ao processar mensagem");
-      console.error(error);
+      const response = await chatMutation.mutateAsync({ message: currentInput });
+      setMessages(prev => [...prev, { role: "assistant", content: response.reply, timestamp: new Date() }]);
+    } catch (error: any) {
+      const errMsg = error?.message ?? "Erro ao processar mensagem";
+      toast.error(errMsg);
+      setMessages(prev => [...prev, { role: "assistant", content: `❌ ${errMsg}`, timestamp: new Date() }]);
     } finally {
       setIsLoading(false);
     }
@@ -126,82 +77,48 @@ export default function AiChat() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Header */}
       <div className="bg-white border-b p-4 flex justify-between items-center sticky top-0 z-10">
-        <div className="flex items-center gap-4">
-          <a href="/" className="hover:opacity-80">
-            <img
-              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/logoSALVITA_grande_3761478e.png"
-              alt="Sal Vita"
-              className="h-32 cursor-pointer"
-            />
+        <div className="flex items-center gap-3">
+          <a href={user?.role === 'admin' ? "/admin/dashboard" : "/tasks"} className="hover:opacity-80">
+            <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/logoSALVITA_grande_3761478e.png" alt="Sal Vita" className="h-10 cursor-pointer" />
           </a>
-          <h1 className="text-2xl font-bold text-blue-900">💬 Chat com IA</h1>
+          <h1 className="text-xl font-bold text-blue-900">💬 Chat com IA</h1>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <a href="/admin/dashboard"><Button variant="outline" size="sm">📊 Dashboard</Button></a>
-          <a href="/ai-settings"><Button variant="outline" size="sm">⚙️ Config IA</Button></a>
-          <a href="/"><Button variant="outline" size="sm">🏠 Início</Button></a>
+        <div className="flex gap-2">
+          {user?.role === 'admin' && <a href="/ai-settings"><Button variant="outline" size="sm">⚙️ Config IA</Button></a>}
+          <Button variant="outline" size="sm" onClick={handleClearHistory}>🗑️ Limpar</Button>
           <Button variant="destructive" size="sm" onClick={handleLogout}>Sair</Button>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col p-4 max-w-4xl mx-auto w-full">
-        {/* Messages Container */}
-        <div className="flex-1 overflow-y-auto mb-4 bg-white rounded-lg border p-4 space-y-4">
-          {messages.length === 0 ? (
-            <div className="text-center text-gray-500 py-8">
-              Nenhuma mensagem ainda. Comece a conversar!
+      <div className="flex-1 flex flex-col p-4 max-w-3xl mx-auto w-full">
+        <div className="flex-1 overflow-y-auto mb-4 bg-white rounded-xl border p-4 space-y-4 min-h-96 max-h-[60vh]">
+          {messages.map((msg, idx) => (
+            <div key={idx} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-xs lg:max-w-lg px-4 py-3 rounded-2xl text-sm ${msg.role === "user" ? "bg-blue-600 text-white rounded-br-sm" : "bg-gray-100 text-gray-900 rounded-bl-sm"}`}>
+                <p className="whitespace-pre-wrap">{msg.content}</p>
+                <span className="text-xs opacity-60 mt-1 block text-right">{msg.timestamp.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+              </div>
             </div>
-          ) : (
-            messages.map((msg, idx) => (
-              <div
-                key={idx}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                    msg.role === "user"
-                      ? "bg-blue-500 text-white"
-                      : "bg-gray-200 text-gray-900"
-                  }`}
-                >
-                  <p className="text-sm">{msg.content}</p>
-                  <span className="text-xs opacity-70 mt-1 block">
-                    {msg.timestamp.toLocaleTimeString("pt-BR")}
-                  </span>
+          ))}
+          {isLoading && (
+            <div className="flex justify-start">
+              <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-3">
+                <div className="flex gap-1">
+                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                 </div>
               </div>
-            ))
+            </div>
           )}
           <div ref={messagesEndRef} />
         </div>
-
-        {/* Input Area */}
         <div className="flex gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && !isLoading && handleSendMessage()}
-            placeholder="Digite sua mensagem..."
-            className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            disabled={isLoading}
-          />
-          <Button
-            onClick={handleSendMessage}
-            disabled={isLoading || !input.trim()}
-            size="sm"
-          >
-            {isLoading ? "⏳" : "📤"}
-          </Button>
+          <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()} placeholder="Digite sua mensagem..." className="flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" disabled={isLoading} />
+          <Button onClick={handleSendMessage} disabled={isLoading || !input.trim()} className="px-5 rounded-xl bg-blue-600 hover:bg-blue-700">{isLoading ? "⏳" : "📤"}</Button>
         </div>
-
-        {/* System Info */}
-        <div className="mt-4 text-xs text-gray-600 bg-blue-50 p-3 rounded-lg">
-          <p>📋 Tarefas: {tasks.length} | 👥 Atendentes: {attendants.length}</p>
-        </div>
+        <p className="text-xs text-center text-gray-400 mt-2">Powered by Groq · Llama 3</p>
       </div>
     </div>
   );
