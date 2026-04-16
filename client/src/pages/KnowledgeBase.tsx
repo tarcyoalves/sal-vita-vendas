@@ -1,9 +1,7 @@
-import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { useState } from "react";
-import { useLocation } from "wouter";
 import { toast } from "sonner";
 
 interface KnowledgeDoc {
@@ -18,8 +16,6 @@ interface KnowledgeDoc {
 }
 
 export default function KnowledgeBase() {
-  const { user } = useAuth();
-  const [, setLocation] = useLocation();
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     title: "",
@@ -30,12 +26,6 @@ export default function KnowledgeBase() {
   const { data: docs = [], isLoading, refetch } = trpc.knowledge.list.useQuery();
   const createMutation = trpc.knowledge.create.useMutation();
   const deleteMutation = trpc.knowledge.delete.useMutation();
-  const logoutMutation = trpc.auth.logout.useMutation();
-
-  const handleLogout = async () => {
-    await logoutMutation.mutateAsync();
-    setLocation("/");
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,29 +64,7 @@ export default function KnowledgeBase() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b p-4 flex justify-between items-center sticky top-0 z-10">
-        <div className="flex items-center gap-4">
-          <a href="/" className="hover:opacity-80">
-            <img
-              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/logoSALVITA_grande_3761478e.png"
-              alt="Sal Vita"
-              className="h-32 cursor-pointer"
-            />
-          </a>
-          <h1 className="text-3xl font-bold text-blue-900">📚 Base de Conhecimento</h1>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <a href="/admin/dashboard"><Button variant="outline">📊 Dashboard</Button></a>
-          <a href="/ai-chat"><Button variant="outline">💬 Chat</Button></a>
-          <a href="/"><Button variant="outline">🏠 Início</Button></a>
-          <Button variant="destructive" onClick={handleLogout}>Sair</Button>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-6 max-w-6xl mx-auto">
         <div className="mb-6 flex justify-between items-center">
           <p className="text-gray-600">
             Adicione documentos, políticas e informações sobre sua empresa para que a IA tenha mais contexto.
@@ -228,7 +196,6 @@ export default function KnowledgeBase() {
             <p>💡 <strong>Contexto do negócio:</strong> Mercado, concorrência, oportunidades</p>
           </CardContent>
         </Card>
-      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
-import { router, protectedProcedure } from '../trpc';
+import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { sellers, users } from '../db/schema';
 import { hashPassword } from '../auth';
@@ -61,5 +61,20 @@ export const sellersRouter = router({
       }
       await db.delete(sellers).where(eq(sellers.id, input.id));
       return { ok: true };
+    }),
+
+  update: adminProcedure
+    .input(z.object({
+      id: z.number(),
+      name: z.string().optional(),
+      phone: z.string().optional(),
+      department: z.string().optional(),
+      dailyGoal: z.number().optional(),
+      status: z.enum(['active', 'inactive']).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      const [updated] = await db.update(sellers).set(data).where(eq(sellers.id, id)).returning();
+      return updated;
     }),
 });

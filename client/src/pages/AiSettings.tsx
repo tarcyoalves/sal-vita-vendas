@@ -2,7 +2,6 @@ import { useAuth } from '../_core/hooks/useAuth';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { useState } from "react";
-import { useLocation } from "wouter";
 import { trpc } from '../lib/trpc';
 
 interface AIProvider {
@@ -68,7 +67,6 @@ const AI_PROVIDERS: AIProvider[] = [
 
 export default function AiSettings() {
   const { user } = useAuth();
-  const [, setLocation] = useLocation();
   const [selectedProvider, setSelectedProvider] = useState<string>("openai");
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
@@ -76,13 +74,7 @@ export default function AiSettings() {
   const [error, setError] = useState("");
   const [testing, setTesting] = useState(false);
   const [testStatus, setTestStatus] = useState<Record<string, AIConfig>>({});
-  const logoutMutation = trpc.auth.logout.useMutation();
   const testConnectionMutation = trpc.ai.testConnection.useMutation();
-
-  const handleLogout = async () => {
-    await logoutMutation.mutateAsync();
-    setLocation("/");
-  };
 
   const currentProvider = AI_PROVIDERS.find((p) => p.id === selectedProvider);
 
@@ -168,36 +160,7 @@ export default function AiSettings() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b sticky top-0 z-10">
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0">
-            <a href="/" className="hover:opacity-80 transition flex-shrink-0">
-              <img
-                src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/logoSALVITA_grande_3761478e.png"
-                alt="Sal Vita"
-                className="h-8 cursor-pointer"
-              />
-            </a>
-            <h1 className="text-base sm:text-2xl font-bold text-blue-900 truncate">⚙️ Config IA</h1>
-          </div>
-          <div className="flex gap-1 sm:gap-2 flex-shrink-0">
-            <a href="/ai-chat">
-              <Button variant="outline" size="sm"><span className="hidden sm:inline">💬 Chat IA</span><span className="sm:hidden">💬</span></Button>
-            </a>
-            <a href="/">
-              <Button variant="outline" size="sm"><span className="hidden sm:inline">🏠 Início</span><span className="sm:hidden">🏠</span></Button>
-            </a>
-            <Button variant="destructive" size="sm" onClick={handleLogout}>
-              <span className="hidden sm:inline">Sair</span><span className="sm:hidden">✕</span>
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
         {/* Status Messages */}
         {saved && (
           <div className="bg-green-50 border border-green-200 text-green-700 p-4 rounded-lg flex items-center gap-2">
@@ -383,7 +346,6 @@ export default function AiSettings() {
             </p>
           </CardContent>
         </Card>
-      </div>
     </div>
   );
 }

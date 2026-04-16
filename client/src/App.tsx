@@ -16,23 +16,48 @@ import Tasks from "./pages/Tasks";
 import Attendants from "./pages/Attendants";
 import KnowledgeBase from "./pages/KnowledgeBase";
 import FloatingChat from "./components/FloatingChat";
+import AppShell from "./components/AppShell";
 
 function Router() {
   return (
     <Switch>
       <Route path={"/"} component={Home} />
-      <Route path={"/admin/dashboard"} component={AdminDashboard} />
-      <Route path={"/admin/ai-analysis"} component={AiAnalysis} />
-      <Route path={"/vendor/reminders"} component={VendorReminders} />
-      <Route path={"/history"} component={CallHistory} />
-      <Route path={"/admin/clients"} component={ClientsManagement} />
-       <Route path="/tasks" component={Tasks} />
-      <Route path="/attendants" component={Attendants} />
-      <Route path="/atendentes" component={Attendants} />
-      <Route path="/knowledge-base" component={KnowledgeBase} />
-      <Route path="/representatives" component={Attendants} />
-      <Route path={"/ai-chat"} component={AiChat} />
-      <Route path={"/ai-settings"} component={AiSettings} />
+      <Route path={"/admin/dashboard"}>
+        <AppShell><AdminDashboard /></AppShell>
+      </Route>
+      <Route path={"/admin/ai-analysis"}>
+        <AppShell><AiAnalysis /></AppShell>
+      </Route>
+      <Route path={"/vendor/reminders"}>
+        <AppShell><VendorReminders /></AppShell>
+      </Route>
+      <Route path={"/history"}>
+        <AppShell><CallHistory /></AppShell>
+      </Route>
+      <Route path={"/admin/clients"}>
+        <AppShell><ClientsManagement /></AppShell>
+      </Route>
+      <Route path="/tasks">
+        <AppShell><Tasks /></AppShell>
+      </Route>
+      <Route path="/attendants">
+        <AppShell><Attendants /></AppShell>
+      </Route>
+      <Route path="/atendentes">
+        <AppShell><Attendants /></AppShell>
+      </Route>
+      <Route path="/knowledge-base">
+        <AppShell><KnowledgeBase /></AppShell>
+      </Route>
+      <Route path="/representatives">
+        <AppShell><Attendants /></AppShell>
+      </Route>
+      <Route path={"/ai-chat"}>
+        <AppShell><AiChat /></AppShell>
+      </Route>
+      <Route path={"/ai-settings"}>
+        <AppShell><AiSettings /></AppShell>
+      </Route>
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>

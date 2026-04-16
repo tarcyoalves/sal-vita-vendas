@@ -2,7 +2,6 @@ import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { Button } from '../components/ui/button';
 import { useState, useRef, useEffect } from "react";
-import { useLocation } from "wouter";
 import { toast } from "sonner";
 
 interface Message {
@@ -13,13 +12,11 @@ interface Message {
 
 export default function AiChat() {
   const { user } = useAuth();
-  const [, setLocation] = useLocation();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const logoutMutation = trpc.auth.logout.useMutation();
   const chatMutation = trpc.ai.chat.useMutation();
   const { data: chatHistory = [] } = trpc.ai.history.useQuery();
   const clearHistoryMutation = trpc.ai.clearHistory.useMutation();
@@ -43,11 +40,6 @@ export default function AiChat() {
       }]);
     }
   }, [chatHistory.length]);
-
-  const handleLogout = async () => {
-    await logoutMutation.mutateAsync();
-    setLocation("/");
-  };
 
   const handleClearHistory = async () => {
     if (!confirm("Limpar todo o histórico do chat?")) return;
@@ -86,19 +78,9 @@ export default function AiChat() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <div className="bg-white border-b p-4 flex justify-between items-center sticky top-0 z-10">
-        <div className="flex items-center gap-3">
-          <a href={user?.role === 'admin' ? "/admin/dashboard" : "/tasks"} className="hover:opacity-80">
-            <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/logoSALVITA_grande_3761478e.png" alt="Sal Vita" className="h-10 cursor-pointer" />
-          </a>
-          <h1 className="text-xl font-bold text-blue-900">💬 Chat com IA</h1>
-        </div>
-        <div className="flex gap-2">
-          {user?.role === 'admin' && <a href="/ai-settings"><Button variant="outline" size="sm">⚙️ Config IA</Button></a>}
-          <Button variant="outline" size="sm" onClick={handleClearHistory}>🗑️ Limpar</Button>
-          <Button variant="destructive" size="sm" onClick={handleLogout}>Sair</Button>
-        </div>
+    <div className="flex flex-col h-full">
+      <div className="flex justify-end p-3 border-b bg-white">
+        <Button variant="outline" size="sm" onClick={handleClearHistory}>🗑️ Limpar histórico</Button>
       </div>
 
       <div className="flex-1 flex flex-col p-4 max-w-3xl mx-auto w-full">

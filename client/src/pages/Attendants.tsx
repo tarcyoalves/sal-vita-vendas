@@ -3,8 +3,14 @@ import { trpc } from '../lib/trpc';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { useState } from "react";
-import { useLocation } from "wouter";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '../components/ui/dialog';
 
 interface Attendant {
   id: number;
@@ -25,14 +31,21 @@ interface CreatedResult extends Attendant {
 
 export default function Attendants() {
   const { user } = useAuth();
-  const [, setLocation] = useLocation();
   const [showForm, setShowForm] = useState(false);
   const [createdInfo, setCreatedInfo] = useState<{ name: string; email: string; password: string } | null>(null);
+  const [editingAttendant, setEditingAttendant] = useState<Attendant | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    name: "",
+    phone: "",
+    department: "",
+    dailyGoal: 10,
+    status: "active" as "active" | "inactive",
+  });
 
   const { data: attendants = [], isLoading, refetch } = trpc.sellers.list.useQuery();
   const createMutation = trpc.sellers.create.useMutation();
+  const updateMutation = trpc.sellers.update.useMutation();
   const deleteMutation = trpc.sellers.delete.useMutation();
-  const logoutMutation = trpc.auth.logout.useMutation();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -43,9 +56,35 @@ export default function Attendants() {
     status: "active" as "active" | "inactive",
   });
 
-  const handleLogout = async () => {
-    await logoutMutation.mutateAsync();
-    setLocation("/");
+  const handleEditOpen = (attendant: Attendant) => {
+    setEditingAttendant(attendant);
+    setEditFormData({
+      name: attendant.name,
+      phone: attendant.phone ?? "",
+      department: attendant.department ?? "",
+      dailyGoal: attendant.dailyGoal ?? 10,
+      status: attendant.status ?? "active",
+    });
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAttendant) return;
+    try {
+      await updateMutation.mutateAsync({
+        id: editingAttendant.id,
+        name: editFormData.name,
+        phone: editFormData.phone || undefined,
+        department: editFormData.department || undefined,
+        dailyGoal: editFormData.dailyGoal,
+        status: editFormData.status,
+      });
+      toast.success("Atendente atualizado!");
+      setEditingAttendant(null);
+      refetch();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Erro ao atualizar atendente");
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -92,35 +131,7 @@ export default function Attendants() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b sticky top-0 z-10">
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0">
-            <a href="/admin/dashboard" className="hover:opacity-80 flex-shrink-0">
-              <img
-                src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/logoSALVITA_grande_3761478e.png"
-                alt="Sal Vita"
-                className="h-8 cursor-pointer"
-              />
-            </a>
-            <h1 className="text-base sm:text-2xl font-bold text-blue-900 truncate">👥 Atendentes</h1>
-          </div>
-          <div className="flex gap-1 sm:gap-2 flex-shrink-0">
-            <a href="/admin/dashboard">
-              <Button variant="outline" size="sm"><span className="hidden sm:inline">📊 Dashboard</span><span className="sm:hidden">📊</span></Button>
-            </a>
-            <a href="/tasks">
-              <Button variant="outline" size="sm"><span className="hidden sm:inline">📋 Tarefas</span><span className="sm:hidden">📋</span></Button>
-            </a>
-            <Button variant="destructive" size="sm" onClick={handleLogout}>
-              <span className="hidden sm:inline">Sair</span><span className="sm:hidden">✕</span>
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <div className="p-6 space-y-4">
+    <div className="p-6 space-y-4">
 
         {/* Password reveal modal */}
         {createdInfo && (
@@ -232,16 +243,62 @@ export default function Attendants() {
                         {attendant.status === "active" ? "✅ Ativo" : "❌ Inativo"}
                       </span>
                     </div>
-                    <Button size="sm" variant="destructive" className="w-full" onClick={() => handleDelete(attendant.id, attendant.name)}>
-                      🗑️ Remover Atendente
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => handleEditOpen(attendant)}>
+                        ✏️ Editar
+                      </Button>
+                      <Button size="sm" variant="destructive" className="flex-1" onClick={() => handleDelete(attendant.id, attendant.name)}>
+                        🗑️ Remover
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
         )}
-      </div>
+
+        {/* Edit Attendant Modal */}
+        <Dialog open={!!editingAttendant} onOpenChange={(open) => { if (!open) setEditingAttendant(null); }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader><DialogTitle>✏️ Editar Atendente</DialogTitle></DialogHeader>
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Nome *</label>
+                  <input type="text" value={editFormData.name} onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })} placeholder="Nome completo" className="w-full px-3 py-2 border rounded-lg" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Telefone</label>
+                  <input type="tel" value={editFormData.phone} onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })} placeholder="(11) 99999-9999" className="w-full px-3 py-2 border rounded-lg" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Departamento</label>
+                  <input type="text" value={editFormData.department} onChange={(e) => setEditFormData({ ...editFormData, department: e.target.value })} placeholder="Ex: Vendas" className="w-full px-3 py-2 border rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Meta Diária</label>
+                  <input type="number" value={editFormData.dailyGoal} onChange={(e) => setEditFormData({ ...editFormData, dailyGoal: parseInt(e.target.value) })} className="w-full px-3 py-2 border rounded-lg" min="1" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Status</label>
+                <select value={editFormData.status} onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value as "active" | "inactive" })} className="w-full px-3 py-2 border rounded-lg">
+                  <option value="active">Ativo</option>
+                  <option value="inactive">Inativo</option>
+                </select>
+              </div>
+              <DialogFooter className="flex gap-2 pt-2">
+                <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700" disabled={updateMutation.isPending}>
+                  {updateMutation.isPending ? "Salvando..." : "✅ Salvar"}
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setEditingAttendant(null)}>Cancelar</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
     </div>
   );
 }

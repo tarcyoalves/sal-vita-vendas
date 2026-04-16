@@ -3,7 +3,6 @@ import { trpc } from '../lib/trpc';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { useLocation } from "wouter";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -31,7 +30,6 @@ interface Task {
 
 export default function Tasks() {
   const { user } = useAuth();
-  const [, setLocation] = useLocation();
   const isAdmin = user?.role === 'admin';
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -49,7 +47,6 @@ export default function Tasks() {
   const createMutation = trpc.tasks.create.useMutation();
   const updateMutation = trpc.tasks.update.useMutation();
   const deleteMutation = trpc.tasks.delete.useMutation();
-  const logoutMutation = trpc.auth.logout.useMutation();
 
   const [formData, setFormData] = useState<{
     clientId: number;
@@ -110,11 +107,6 @@ export default function Tasks() {
     const id = setInterval(check, 30000);
     return () => clearInterval(id);
   }, [tasks]);
-
-  const handleLogout = async () => {
-    await logoutMutation.mutateAsync();
-    setLocation("/");
-  };
 
   const resetForm = useCallback(() => {
     setFormData({ clientId: 0, title: "", description: "", notes: "", reminderDate: "", reminderTime: "09:00", reminderEnabled: true, priority: "medium", assignedTo: "" });
@@ -214,38 +206,7 @@ export default function Tasks() {
   if (!user) return <div className="p-4 text-center">Carregando...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b sticky top-0 z-10">
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0">
-            <a href={isAdmin ? "/admin/dashboard" : "/"} className="hover:opacity-80 flex-shrink-0">
-              <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/logoSALVITA_grande_3761478e.png" alt="Sal Vita" className="h-8 cursor-pointer" />
-            </a>
-            <div className="min-w-0">
-              <h1 className="text-base sm:text-xl font-bold text-blue-900 truncate">📋 {isAdmin ? "Tarefas" : "Minhas Tarefas"}</h1>
-              {!isAdmin && <p className="text-xs text-gray-500 truncate">{user.name}</p>}
-            </div>
-          </div>
-          <div className="flex gap-1 sm:gap-2 flex-shrink-0">
-            {isAdmin && (
-              <a href="/admin/dashboard">
-                <Button variant="outline" size="sm"><span className="hidden sm:inline">📊 Dashboard</span><span className="sm:hidden">📊</span></Button>
-              </a>
-            )}
-            {isAdmin && (
-              <a href="/attendants">
-                <Button variant="outline" size="sm"><span className="hidden sm:inline">👥 Atendentes</span><span className="sm:hidden">👥</span></Button>
-              </a>
-            )}
-            <Button variant="destructive" size="sm" onClick={handleLogout}>
-              <span className="hidden sm:inline">Sair</span><span className="sm:hidden">✕</span>
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <div className="p-6 space-y-4">
+    <div className="p-6 space-y-4">
         <input type="text" placeholder="🔍 Pesquisar tarefas..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full px-4 py-2 border rounded-lg" />
 
         <div className="flex justify-between items-center flex-wrap gap-2">
@@ -400,7 +361,6 @@ export default function Tasks() {
             ))}
           </div>
         )}
-      </div>
     </div>
   );
 }
