@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "check": "tsc --noEmit",
     "db:push": "drizzle-kit push",
-    "db:seed": "tsx server/seed.ts"
+    "db:seed": "tsx server/seed.ts",
+    "db:update-admin": "tsx server/update-admin.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.17.1",

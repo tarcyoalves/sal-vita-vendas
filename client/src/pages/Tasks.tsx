@@ -73,12 +73,36 @@ export default function Tasks() {
   // Browser notifications for due reminders — checks every 30s
   useEffect(() => {
     if (!('Notification' in window)) return;
-    Notification.requestPermission();
+    if (Notification.permission === 'default') {
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          toast.success('🔔 Notificações ativadas! Você receberá lembretes de tarefas.');
+        } else {
+          toast.warning('⚠️ Notificações bloqueadas. Ative nas configurações do navegador para receber lembretes.', { duration: 8000 });
+        }
+      });
+    }
 
     const STORAGE_KEY = 'sv_notified';
     const getFired = (): Set<string> => new Set(JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '[]'));
     const markFired = (key: string) => {
       const s = getFired(); s.add(key); sessionStorage.setItem(STORAGE_KEY, JSON.stringify([...s]));
+    };
+
+    const playBeep = () => {
+      try {
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 1);
+      } catch (_) {}
     };
 
     const check = () => {
@@ -97,8 +121,9 @@ export default function Tasks() {
           const title = isOverdue ? `⏰ Atrasada: ${task.title}` : `🔔 Lembrete: ${task.title}`;
           const body = task.notes?.trim() || (isOverdue ? 'Prazo ultrapassado!' : 'Tarefa pendente');
           new Notification(title, { body, icon: '/favicon.ico' });
-          toast.info(title);
+          toast.warning(title, { duration: 8000 });
           markFired(key);
+          playBeep();
         }
       });
     };
@@ -350,9 +375,6 @@ export default function Tasks() {
                     <p className="text-xs text-gray-500">Criada: {new Date(task.createdAt).toLocaleDateString("pt-BR")}</p>
                     <div className="flex gap-2 flex-wrap">
                       <Button size="sm" variant="outline" onClick={() => handleEdit(task)}>✏️ Editar</Button>
-                      {task.status !== 'completed' && (
-                        <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={async () => { await updateMutation.mutateAsync({ id: task.id, status: 'completed' }); refetch(); toast.success("✅ Tarefa concluída!"); }}>✅ Concluir</Button>
-                      )}
                       <Button size="sm" variant="destructive" onClick={() => handleDelete(task.id)}>🗑️ Deletar</Button>
                     </div>
                   </div>

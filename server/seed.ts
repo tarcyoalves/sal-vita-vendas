@@ -8,15 +8,15 @@ async function seed() {
   console.log('🌱 Criando usuários iniciais...');
 
   // Admin
-  const [existing] = await db.select().from(users).where(eq(users.email, 'admin@salvita.com'));
+  const [existing] = await db.select().from(users).where(eq(users.email, 'tarcyo.alves@gmail.com'));
   if (!existing) {
     await db.insert(users).values({
-      name: 'Administrador',
-      email: 'admin@salvita.com',
+      name: 'Tarcyo Alves',
+      email: 'tarcyo.alves@gmail.com',
       passwordHash: hashPassword('admin123'),
       role: 'admin',
     });
-    console.log('✅ Admin criado: admin@salvita.com / admin123');
+    console.log('✅ Admin criado: tarcyo.alves@gmail.com / admin123');
   } else {
     console.log('ℹ️  Admin já existe');
   }
