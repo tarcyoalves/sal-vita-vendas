@@ -45,23 +45,34 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b p-4 flex justify-between items-center sticky top-0 z-10">
-        <div className="flex items-center gap-4">
-          <a href="/admin/dashboard" className="hover:opacity-80 transition">
-            <img
-              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/logoSALVITA_grande_3761478e.png"
-              alt="Sal Vita"
-              className="h-10 cursor-pointer"
-            />
-          </a>
-          <h1 className="text-2xl font-bold text-blue-900">📊 Dashboard Admin</h1>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <a href="/attendants"><Button variant="outline" size="sm">👥 Atendentes</Button></a>
-          <a href="/tasks"><Button variant="outline" size="sm">📋 Tarefas</Button></a>
-          <a href="/ai-chat"><Button variant="outline" size="sm">💬 Chat IA</Button></a>
-          <a href="/ai-settings"><Button variant="outline" size="sm">⚙️ Config IA</Button></a>
-          <Button variant="destructive" size="sm" onClick={handleLogout}>Sair</Button>
+      <div className="bg-white border-b sticky top-0 z-10">
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            <a href="/admin/dashboard" className="hover:opacity-80 transition flex-shrink-0">
+              <img
+                src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/logoSALVITA_grande_3761478e.png"
+                alt="Sal Vita"
+                className="h-8 cursor-pointer"
+              />
+            </a>
+            <h1 className="text-base sm:text-xl font-bold text-blue-900 truncate">📊 Dashboard</h1>
+          </div>
+          {/* Desktop nav */}
+          <div className="hidden sm:flex gap-2 flex-shrink-0">
+            <a href="/attendants"><Button variant="outline" size="sm">👥 Atendentes</Button></a>
+            <a href="/tasks"><Button variant="outline" size="sm">📋 Tarefas</Button></a>
+            <a href="/ai-chat"><Button variant="outline" size="sm">💬 Chat IA</Button></a>
+            <a href="/ai-settings"><Button variant="outline" size="sm">⚙️ Config IA</Button></a>
+            <Button variant="destructive" size="sm" onClick={handleLogout}>Sair</Button>
+          </div>
+          {/* Mobile nav — icon-only */}
+          <div className="flex sm:hidden gap-1 flex-shrink-0">
+            <a href="/attendants"><Button variant="outline" size="sm" className="px-2">👥</Button></a>
+            <a href="/tasks"><Button variant="outline" size="sm" className="px-2">📋</Button></a>
+            <a href="/ai-chat"><Button variant="outline" size="sm" className="px-2">💬</Button></a>
+            <a href="/ai-settings"><Button variant="outline" size="sm" className="px-2">⚙️</Button></a>
+            <Button variant="destructive" size="sm" className="px-2" onClick={handleLogout}>✕</Button>
+          </div>
         </div>
       </div>
 

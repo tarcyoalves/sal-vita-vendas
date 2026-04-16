@@ -216,20 +216,32 @@ export default function Tasks() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b p-4 flex justify-between items-center sticky top-0 z-10">
-        <div className="flex items-center gap-3">
-          <a href={isAdmin ? "/admin/dashboard" : "/"} className="hover:opacity-80">
-            <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/logoSALVITA_grande_3761478e.png" alt="Sal Vita" className="h-10 cursor-pointer" />
-          </a>
-          <div>
-            <h1 className="text-xl font-bold text-blue-900">📋 {isAdmin ? "Tarefas" : "Minhas Tarefas"}</h1>
-            {!isAdmin && <p className="text-xs text-gray-500">{user.name}</p>}
+      <div className="bg-white border-b sticky top-0 z-10">
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            <a href={isAdmin ? "/admin/dashboard" : "/"} className="hover:opacity-80 flex-shrink-0">
+              <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/logoSALVITA_grande_3761478e.png" alt="Sal Vita" className="h-8 cursor-pointer" />
+            </a>
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-xl font-bold text-blue-900 truncate">📋 {isAdmin ? "Tarefas" : "Minhas Tarefas"}</h1>
+              {!isAdmin && <p className="text-xs text-gray-500 truncate">{user.name}</p>}
+            </div>
           </div>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {isAdmin && <a href="/admin/dashboard"><Button variant="outline" size="sm">📊 Dashboard</Button></a>}
-          {isAdmin && <a href="/attendants"><Button variant="outline" size="sm">👥 Atendentes</Button></a>}
-          <Button variant="destructive" size="sm" onClick={handleLogout}>Sair</Button>
+          <div className="flex gap-1 sm:gap-2 flex-shrink-0">
+            {isAdmin && (
+              <a href="/admin/dashboard">
+                <Button variant="outline" size="sm"><span className="hidden sm:inline">📊 Dashboard</span><span className="sm:hidden">📊</span></Button>
+              </a>
+            )}
+            {isAdmin && (
+              <a href="/attendants">
+                <Button variant="outline" size="sm"><span className="hidden sm:inline">👥 Atendentes</span><span className="sm:hidden">👥</span></Button>
+              </a>
+            )}
+            <Button variant="destructive" size="sm" onClick={handleLogout}>
+              <span className="hidden sm:inline">Sair</span><span className="sm:hidden">✕</span>
+            </Button>
+          </div>
         </div>
       </div>
 

@@ -94,21 +94,29 @@ export default function Attendants() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b p-4 flex justify-between items-center sticky top-0 z-10">
-        <div className="flex items-center gap-4">
-          <a href="/admin/dashboard" className="hover:opacity-80">
-            <img
-              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/logoSALVITA_grande_3761478e.png"
-              alt="Sal Vita"
-              className="h-10 cursor-pointer"
-            />
-          </a>
-          <h1 className="text-2xl font-bold text-blue-900">👥 Atendentes</h1>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <a href="/admin/dashboard"><Button variant="outline" size="sm">📊 Dashboard</Button></a>
-          <a href="/tasks"><Button variant="outline" size="sm">📋 Tarefas</Button></a>
-          <Button variant="destructive" size="sm" onClick={handleLogout}>Sair</Button>
+      <div className="bg-white border-b sticky top-0 z-10">
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            <a href="/admin/dashboard" className="hover:opacity-80 flex-shrink-0">
+              <img
+                src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/logoSALVITA_grande_3761478e.png"
+                alt="Sal Vita"
+                className="h-8 cursor-pointer"
+              />
+            </a>
+            <h1 className="text-base sm:text-2xl font-bold text-blue-900 truncate">👥 Atendentes</h1>
+          </div>
+          <div className="flex gap-1 sm:gap-2 flex-shrink-0">
+            <a href="/admin/dashboard">
+              <Button variant="outline" size="sm"><span className="hidden sm:inline">📊 Dashboard</span><span className="sm:hidden">📊</span></Button>
+            </a>
+            <a href="/tasks">
+              <Button variant="outline" size="sm"><span className="hidden sm:inline">📋 Tarefas</span><span className="sm:hidden">📋</span></Button>
+            </a>
+            <Button variant="destructive" size="sm" onClick={handleLogout}>
+              <span className="hidden sm:inline">Sair</span><span className="sm:hidden">✕</span>
+            </Button>
+          </div>
         </div>
       </div>
 
