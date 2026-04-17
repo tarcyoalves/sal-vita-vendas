@@ -281,7 +281,6 @@ export default function Tasks() {
               </select>
             )}
           </div>
-          </div>
           <div className="flex gap-2 flex-wrap">
             {isAdmin && selectedTasks.size > 0 && (
               <>
