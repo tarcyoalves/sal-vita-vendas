@@ -156,9 +156,8 @@ export default function Tasks() {
     try {
       let reminderDateTime: Date | undefined;
       if (formData.reminderDate && formData.reminderTime) {
-        const [hours, minutes] = formData.reminderTime.split(":").map(Number);
-        reminderDateTime = new Date(formData.reminderDate);
-        reminderDateTime.setHours(hours, minutes, 0, 0);
+        // Parse as local time — "YYYY-MM-DDThh:mm:00" without Z is always local
+        reminderDateTime = new Date(`${formData.reminderDate}T${formData.reminderTime}:00`);
       }
       if (editingTask) {
         await updateMutation.mutateAsync({ id: editingTask.id, title: formData.title, description: formData.description, notes: formData.notes, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
@@ -180,8 +179,14 @@ export default function Tasks() {
 
   const handleEdit = useCallback((task: Task) => {
     setEditingTask(task);
-    const reminderDate = task.reminderDate ? new Date(task.reminderDate).toISOString().split('T')[0] : "";
-    const reminderTime = task.reminderDate ? new Date(task.reminderDate).toTimeString().slice(0, 5) : "09:00";
+    // Use local time components — toISOString() returns UTC which shifts date back 1 day in UTC-3
+    const d = task.reminderDate ? new Date(task.reminderDate) : null;
+    const reminderDate = d
+      ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      : "";
+    const reminderTime = d
+      ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+      : "09:00";
     setFormData({ clientId: task.clientId, title: task.title, description: task.description || "", notes: task.notes || "", reminderDate, reminderTime, reminderEnabled: task.reminderEnabled ?? true, priority: (task.priority as "low" | "medium" | "high") || "medium", assignedTo: task.assignedTo || "" });
     setIsModalOpen(true);
   }, []);
