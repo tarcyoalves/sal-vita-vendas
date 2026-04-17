@@ -101,38 +101,50 @@ export const aiRouter = router({
       model: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      // Use key from client (localStorage) if no server env key
-      const baseURLs: Record<string, string> = {
-        groq: 'https://api.groq.com/openai/v1',
-        openai: 'https://api.openai.com/v1',
-        gemini: 'https://generativelanguage.googleapis.com/v1beta/openai',
-        grok: 'https://api.x.ai/v1',
-        claude: 'https://api.anthropic.com/v1',
-      };
-      let groq = getGroqClient();
-      let chatModel = 'llama-3.1-8b-instant';
-      if (!groq && input.apiKey) {
-        const baseURL = baseURLs[input.provider ?? 'groq'] ?? baseURLs.groq;
-        groq = new OpenAI({ apiKey: input.apiKey, baseURL });
-        chatModel = input.model ?? (input.provider === 'openai' ? 'gpt-3.5-turbo' : input.provider === 'gemini' ? 'gemini-1.5-flash' : 'llama-3.1-8b-instant');
-      }
+      try {
+        const baseURLs: Record<string, string> = {
+          groq: 'https://api.groq.com/openai/v1',
+          openai: 'https://api.openai.com/v1',
+          gemini: 'https://generativelanguage.googleapis.com/v1beta/openai',
+          grok: 'https://api.x.ai/v1',
+          claude: 'https://api.anthropic.com/v1',
+        };
 
-      await db.insert(chatMessages).values({ userId: ctx.user.id, content: input.message, role: 'user' });
+        let groq = getGroqClient();
+        let chatModel = 'llama-3.1-8b-instant';
 
-      if (!groq) {
-        const reply = 'IA não configurada. Configure GROQ_API_KEY para ativar o assistente.';
-        await db.insert(chatMessages).values({ userId: ctx.user.id, content: reply, role: 'assistant' });
-        return { reply };
-      }
+        console.log('[AI_CHAT] start userId:', ctx.user.id, 'role:', ctx.user.role, 'hasEnvKey:', !!process.env.GROQ_API_KEY);
 
-      const [history, userContext] = await Promise.all([
-        db.select().from(chatMessages).where(eq(chatMessages.userId, ctx.user.id)).orderBy(desc(chatMessages.createdAt)).limit(8),
-        buildUserContext(ctx.user.id, ctx.user.role),
-      ]);
+        if (!groq && input.apiKey) {
+          const baseURL = baseURLs[input.provider ?? 'groq'] ?? baseURLs.groq;
+          groq = new OpenAI({ apiKey: input.apiKey, baseURL });
+          chatModel = input.model ?? (input.provider === 'openai' ? 'gpt-3.5-turbo' : input.provider === 'gemini' ? 'gemini-1.5-flash' : 'llama-3.1-8b-instant');
+        }
 
-      const messages = history.reverse().map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+        console.log('[AI_CHAT] inserting user message...');
+        await db.insert(chatMessages).values({ userId: ctx.user.id, content: input.message, role: 'user' });
+        console.log('[AI_CHAT] user message OK');
 
-      const systemPrompt = `Você é um assistente especializado em vendas da empresa Sal Vita — Sal do Brasil.
+        if (!groq) {
+          const reply = 'IA não configurada. Configure GROQ_API_KEY para ativar o assistente.';
+          await db.insert(chatMessages).values({ userId: ctx.user.id, content: reply, role: 'assistant' });
+          return { reply };
+        }
+
+        console.log('[AI_CHAT] fetching history...');
+        const history = await db.select().from(chatMessages)
+          .where(eq(chatMessages.userId, ctx.user.id))
+          .orderBy(desc(chatMessages.createdAt))
+          .limit(8);
+        console.log('[AI_CHAT] history OK rows:', history.length);
+
+        console.log('[AI_CHAT] building context...');
+        const userContext = await buildUserContext(ctx.user.id, ctx.user.role);
+        console.log('[AI_CHAT] context OK len:', userContext.length);
+
+        const messages = history.reverse().map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
+        const systemPrompt = `Você é um assistente especializado em vendas da empresa Sal Vita — Sal do Brasil.
 Seu objetivo é ajudar ${ctx.user.role === 'admin' ? 'o administrador' : 'o atendente'} a vender mais e melhor.
 
 ${userContext}
@@ -152,16 +164,23 @@ REGRAS:
 - Responda em português brasileiro
 - Quando sugerir prioridades, cite os números reais`;
 
-      const completion = await groq.chat.completions.create({
-        model: chatModel,
-        messages: [{ role: 'system', content: systemPrompt }, ...messages],
-        max_tokens: 800,
-        temperature: 0.7,
-      });
+        console.log('[AI_CHAT] calling groq model:', chatModel);
+        const completion = await groq.chat.completions.create({
+          model: chatModel,
+          messages: [{ role: 'system', content: systemPrompt }, ...messages],
+          max_tokens: 800,
+          temperature: 0.7,
+        });
+        console.log('[AI_CHAT] groq OK');
 
-      const reply = completion.choices[0]?.message?.content ?? 'Sem resposta da IA.';
-      await db.insert(chatMessages).values({ userId: ctx.user.id, content: reply, role: 'assistant' });
-      return { reply };
+        const reply = completion.choices[0]?.message?.content ?? 'Sem resposta da IA.';
+        await db.insert(chatMessages).values({ userId: ctx.user.id, content: reply, role: 'assistant' });
+        return { reply };
+
+      } catch (err: any) {
+        console.error('[AI_CHAT_ERROR]', err?.message, '| status:', err?.status, '| stack:', err?.stack?.slice(0, 400));
+        throw new Error(err?.message ?? 'Erro interno na IA');
+      }
     }),
 
   analyzeAttendants: protectedProcedure.mutation(async ({ ctx }) => {
