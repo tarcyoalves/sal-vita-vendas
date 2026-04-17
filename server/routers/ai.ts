@@ -110,11 +110,11 @@ export const aiRouter = router({
         claude: 'https://api.anthropic.com/v1',
       };
       let groq = getGroqClient();
-      let chatModel = 'llama3-8b-8192';
+      let chatModel = 'llama-3.1-8b-instant';
       if (!groq && input.apiKey) {
         const baseURL = baseURLs[input.provider ?? 'groq'] ?? baseURLs.groq;
         groq = new OpenAI({ apiKey: input.apiKey, baseURL });
-        chatModel = input.model ?? (input.provider === 'openai' ? 'gpt-3.5-turbo' : input.provider === 'gemini' ? 'gemini-1.5-flash' : 'llama3-8b-8192');
+        chatModel = input.model ?? (input.provider === 'openai' ? 'gpt-3.5-turbo' : input.provider === 'gemini' ? 'gemini-1.5-flash' : 'llama-3.1-8b-instant');
       }
 
       await db.insert(chatMessages).values({ userId: ctx.user.id, content: input.message, role: 'user' });
@@ -229,7 +229,7 @@ REGRAS:
     ).join('\n');
 
     const completion = await groq.chat.completions.create({
-      model: 'llama3-8b-8192',
+      model: 'llama-3.1-8b-instant',
       messages: [{
         role: 'system',
         content: 'Você é um analista de RH especializado em gestão de equipes de vendas. Analise os dados e identifique problemas de desempenho, padrões suspeitos e recomende ações. Seja direto e use emojis. Responda em português brasileiro.',
