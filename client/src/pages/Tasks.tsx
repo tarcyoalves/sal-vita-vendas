@@ -33,6 +33,7 @@ export default function Tasks() {
   const isAdmin = user?.role === 'admin';
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterAssignee, setFilterAssignee] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [importedTasks, setImportedTasks] = useState<any[]>([]);
   const [selectedRepresentative, setSelectedRepresentative] = useState("");
@@ -196,12 +197,19 @@ export default function Tasks() {
   const filteredTasks = useMemo(() => {
     let result = tasks;
     if (filterStatus !== "all") result = result.filter((t: Task) => t.status === filterStatus);
+    if (isAdmin && filterAssignee !== "all") {
+      if (filterAssignee === "__none__") {
+        result = result.filter((t: Task) => !t.assignedTo || t.assignedTo.trim() === "");
+      } else {
+        result = result.filter((t: Task) => t.assignedTo === filterAssignee);
+      }
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter((t: Task) => t.title.toLowerCase().includes(q) || t.notes?.toLowerCase().includes(q) || t.assignedTo?.toLowerCase().includes(q));
     }
     return result;
-  }, [tasks, filterStatus, searchQuery]);
+  }, [tasks, filterStatus, filterAssignee, isAdmin, searchQuery]);
 
   const handleSelectTask = useCallback((id: number) => {
     const s = new Set(selectedTasks);
@@ -252,12 +260,28 @@ export default function Tasks() {
         <input type="text" placeholder="🔍 Pesquisar tarefas..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full px-4 py-2 border rounded-lg" />
 
         <div className="flex justify-between items-center flex-wrap gap-2">
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-4 py-2 border rounded-lg">
-            <option value="all">Todas</option>
-            <option value="pending">Pendentes</option>
-            <option value="completed">Concluídas</option>
-            <option value="cancelled">Canceladas</option>
-          </select>
+          <div className="flex gap-2 flex-wrap">
+            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-4 py-2 border rounded-lg">
+              <option value="all">Todas</option>
+              <option value="pending">Pendentes</option>
+              <option value="completed">Concluídas</option>
+              <option value="cancelled">Canceladas</option>
+            </select>
+            {isAdmin && (
+              <select
+                value={filterAssignee}
+                onChange={(e) => setFilterAssignee(e.target.value)}
+                className="px-4 py-2 border rounded-lg"
+              >
+                <option value="all">👥 Todos atendentes</option>
+                <option value="__none__">🔑 Administrador</option>
+                {(attendants as any[]).map((a: any) => (
+                  <option key={a.id} value={a.name}>👤 {a.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
+          </div>
           <div className="flex gap-2 flex-wrap">
             {isAdmin && selectedTasks.size > 0 && (
               <>
