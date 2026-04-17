@@ -106,7 +106,6 @@ export default function Tasks() {
     };
 
     const check = () => {
-      if (Notification.permission !== 'granted') return;
       const now = new Date();
       const fired = getFired();
       (tasks as Task[]).forEach((task) => {
@@ -120,10 +119,14 @@ export default function Tasks() {
           const isOverdue = diff <= 0;
           const title = isOverdue ? `⏰ Atrasada: ${task.title}` : `🔔 Lembrete: ${task.title}`;
           const body = task.notes?.trim() || (isOverdue ? 'Prazo ultrapassado!' : 'Tarefa pendente');
-          new Notification(title, { body, icon: '/favicon.ico' });
-          toast.warning(title, { duration: 8000 });
-          markFired(key);
+          // Toast + beep always fire — no permission required
+          toast.warning(title, { duration: 10000 });
           playBeep();
+          markFired(key);
+          // Browser notification only if permission was granted
+          if (Notification.permission === 'granted') {
+            try { new Notification(title, { body, icon: '/favicon.ico' }); } catch (_) {}
+          }
         }
       });
     };

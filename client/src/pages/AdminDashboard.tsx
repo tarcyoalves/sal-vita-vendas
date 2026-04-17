@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 
 export default function AdminDashboard() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [, setLocation] = useLocation();
   const { data: sellers, isLoading } = trpc.sellers.list.useQuery();
   const { data: tasks = [] } = trpc.tasks.list.useQuery();
@@ -38,9 +38,15 @@ export default function AdminDashboard() {
     }
   };
 
-  if (!user || user.role !== "admin") {
-    return <div className="p-4">Acesso negado</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    );
   }
+
+  if (!user || user.role !== "admin") return null;
 
   const pending = (tasks as any[]).filter(t => t.status === 'pending');
   const completed = (tasks as any[]).filter(t => t.status === 'completed');

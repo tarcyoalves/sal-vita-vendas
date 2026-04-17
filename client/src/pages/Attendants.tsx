@@ -30,7 +30,7 @@ interface CreatedResult extends Attendant {
 }
 
 export default function Attendants() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [createdInfo, setCreatedInfo] = useState<{ name: string; email: string; password: string } | null>(null);
   const [editingAttendant, setEditingAttendant] = useState<Attendant | null>(null);
@@ -126,9 +126,15 @@ export default function Attendants() {
     }
   };
 
-  if (!user || user.role !== "admin") {
-    return <div className="p-4">Acesso negado</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    );
   }
+
+  if (!user || user.role !== "admin") return null;
 
   return (
     <div className="p-6 space-y-4">
