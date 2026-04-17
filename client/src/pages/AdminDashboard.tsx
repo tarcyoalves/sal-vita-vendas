@@ -13,6 +13,7 @@ import {
   MessageSquare,
   Settings,
   Scan,
+  Bell,
 } from "lucide-react";
 
 export default function AdminDashboard() {
@@ -24,6 +25,8 @@ export default function AdminDashboard() {
   const [monitorReport, setMonitorReport] = useState<any[] | null>(null);
   const [monitorSummary, setMonitorSummary] = useState<string | null>(null);
   const [monitorLoading, setMonitorLoading] = useState(false);
+  const [filterSeller, setFilterSeller] = useState<string>("all");
+  const [showAllReminders, setShowAllReminders] = useState(false);
 
   const handleRunMonitor = async () => {
     setMonitorLoading(true);
@@ -208,6 +211,121 @@ export default function AdminDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Reminders panel */}
+      {(() => {
+        const now = new Date();
+        const today = now.toDateString();
+
+        // All tasks that have reminders set
+        const allReminders = (tasks as any[]).filter(t =>
+          t.reminderDate && t.reminderEnabled !== false && t.status === 'pending'
+        );
+
+        // Apply seller filter
+        const filtered = filterSeller === 'all'
+          ? allReminders
+          : filterSeller === 'admin'
+            ? allReminders.filter(t => !t.assignedTo || t.assignedTo.trim() === '')
+            : allReminders.filter(t => t.assignedTo === filterSeller);
+
+        // Sort: overdue first, then by soonest date
+        const sorted = [...filtered].sort((a, b) => {
+          const da = new Date(a.reminderDate).getTime();
+          const db2 = new Date(b.reminderDate).getTime();
+          const aOver = da < now.getTime();
+          const bOver = db2 < now.getTime();
+          if (aOver && !bOver) return -1;
+          if (!aOver && bOver) return 1;
+          return da - db2;
+        });
+
+        const display = showAllReminders ? sorted : sorted.slice(0, 8);
+        const overdueCount = allReminders.filter(t => new Date(t.reminderDate) < now).length;
+
+        return (
+          <Card className="border-blue-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-base">
+                <span className="flex items-center gap-2">
+                  <Bell size={18} className="text-blue-600" />
+                  Lembretes
+                  {overdueCount > 0 && (
+                    <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                      {overdueCount} atrasado{overdueCount > 1 ? 's' : ''}
+                    </span>
+                  )}
+                </span>
+                {/* Seller filter */}
+                <select
+                  value={filterSeller}
+                  onChange={e => { setFilterSeller(e.target.value); setShowAllReminders(false); }}
+                  className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 w-full sm:w-auto"
+                >
+                  <option value="all">👥 Todos</option>
+                  <option value="admin">🔑 Administrador</option>
+                  {(sellers ?? []).map((s: any) => (
+                    <option key={s.id} value={s.name}>👤 {s.name}</option>
+                  ))}
+                </select>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {display.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">
+                  <Bell size={32} className="mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">Nenhum lembrete pendente{filterSeller !== 'all' ? ' para este filtro' : ''}.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {display.map((task: any) => {
+                    const rd = new Date(task.reminderDate);
+                    const isOverdue = rd < now;
+                    const isToday = rd.toDateString() === today;
+                    const badgeClass = isOverdue
+                      ? 'bg-red-100 text-red-700 border-red-200'
+                      : isToday
+                        ? 'bg-orange-100 text-orange-700 border-orange-200'
+                        : 'bg-blue-50 text-blue-700 border-blue-200';
+                    const badgeLabel = isOverdue ? '🚨 ATRASADO' : isToday ? '⚠️ HOJE' : '🔔 Agendado';
+
+                    return (
+                      <div key={task.id} className={`flex items-start gap-3 p-3 rounded-xl border ${isOverdue ? 'bg-red-50 border-red-100' : isToday ? 'bg-orange-50 border-orange-100' : 'bg-white border-gray-100'}`}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 mb-0.5">
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${badgeClass}`}>
+                              {badgeLabel}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              {rd.toLocaleDateString('pt-BR')} às {rd.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <p className="font-medium text-sm text-gray-800 truncate">{task.title}</p>
+                          {task.assignedTo && (
+                            <p className="text-xs text-gray-400 mt-0.5">👤 {task.assignedTo}</p>
+                          )}
+                          {task.notes && (
+                            <p className="text-xs text-gray-400 mt-0.5 truncate">📝 {task.notes}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {sorted.length > 8 && (
+                    <button
+                      onClick={() => setShowAllReminders(!showAllReminders)}
+                      className="w-full text-sm text-blue-600 hover:text-blue-800 py-2 font-medium"
+                    >
+                      {showAllReminders ? '▲ Mostrar menos' : `▼ Ver mais ${sorted.length - 8} lembretes`}
+                    </button>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Monitor IA */}
       <Card className="border-purple-200">
