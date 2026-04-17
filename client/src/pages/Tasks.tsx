@@ -107,26 +107,35 @@ export default function Tasks() {
 
     const check = () => {
       const now = new Date();
+      const today = now.toDateString();
       const fired = getFired();
       (tasks as Task[]).forEach((task) => {
-        if (!task.reminderEnabled || !task.reminderDate || task.status !== 'pending') return;
+        // treat null/undefined as enabled — only skip if explicitly false
+        if (task.reminderEnabled === false || !task.reminderDate || task.status !== 'pending') return;
         const rd = new Date(task.reminderDate);
         const diff = rd.getTime() - now.getTime();
-        const key = `${task.id}-${rd.getTime()}`;
+        const isOverdue = diff <= 0;
+
+        // overdue: fire once per day so user is reminded each session
+        // upcoming: fire once permanently
+        const key = isOverdue
+          ? `${task.id}-overdue-${today}`
+          : `${task.id}-${rd.getTime()}`;
+
         if (fired.has(key)) return;
-        // Fire if within ±5 minutes window
-        if (diff <= 300000 && diff > -300000) {
-          const isOverdue = diff <= 0;
-          const title = isOverdue ? `⏰ Atrasada: ${task.title}` : `🔔 Lembrete: ${task.title}`;
-          const body = task.notes?.trim() || (isOverdue ? 'Prazo ultrapassado!' : 'Tarefa pendente');
-          // Toast + beep always fire — no permission required
-          toast.warning(title, { duration: 10000 });
-          playBeep();
-          markFired(key);
-          // Browser notification only if permission was granted
-          if (Notification.permission === 'granted') {
-            try { new Notification(title, { body, icon: '/favicon.ico' }); } catch (_) {}
-          }
+
+        // Fire for: any overdue task OR upcoming within next 5 min
+        if (!isOverdue && diff > 300000) return;
+
+        const title = isOverdue ? `⏰ Atrasada: ${task.title}` : `🔔 Lembrete: ${task.title}`;
+        const body = task.notes?.trim() || (isOverdue ? 'Prazo ultrapassado!' : 'Tarefa pendente');
+
+        toast.warning(title, { duration: 10000 });
+        playBeep();
+        markFired(key);
+
+        if (Notification.permission === 'granted') {
+          try { new Notification(title, { body, icon: '/favicon.ico' }); } catch (_) {}
         }
       });
     };
