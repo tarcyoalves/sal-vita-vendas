@@ -68,4 +68,22 @@ export const tasksRouter = router({
       await db.delete(tasks).where(eq(tasks.id, input.id));
       return { ok: true };
     }),
+
+  reminders: protectedProcedure.query(async ({ ctx }) => {
+    // Admins see all reminders; users see only their own
+    if (ctx.user.role === 'admin') {
+      const result = await db.select().from(tasks).where(tasks.reminderDate.isNotNull());
+      return result.sort((a, b) => {
+        const dateA = a.reminderDate ? new Date(a.reminderDate).getTime() : 0;
+        const dateB = b.reminderDate ? new Date(b.reminderDate).getTime() : 0;
+        return dateA - dateB;
+      });
+    }
+    const result = await db.select().from(tasks).where(eq(tasks.userId, ctx.user.id));
+    return result.filter(t => t.reminderDate).sort((a, b) => {
+      const dateA = a.reminderDate ? new Date(a.reminderDate).getTime() : 0;
+      const dateB = b.reminderDate ? new Date(b.reminderDate).getTime() : 0;
+      return dateA - dateB;
+    });
+  }),
 });

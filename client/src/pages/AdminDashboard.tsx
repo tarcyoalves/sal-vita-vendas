@@ -20,10 +20,12 @@ export default function AdminDashboard() {
   const [, setLocation] = useLocation();
   const { data: sellers, isLoading } = trpc.sellers.list.useQuery();
   const { data: tasks = [] } = trpc.tasks.list.useQuery();
+  const { data: reminders = [] } = trpc.tasks.reminders.useQuery();
   const analyzeAttendantsMutation = trpc.ai.analyzeAttendants.useMutation();
   const [monitorReport, setMonitorReport] = useState<any[] | null>(null);
   const [monitorSummary, setMonitorSummary] = useState<string | null>(null);
   const [monitorLoading, setMonitorLoading] = useState(false);
+  const [reminderFilter, setReminderFilter] = useState<string>("all");
 
   const handleRunMonitor = async () => {
     setMonitorLoading(true);
@@ -56,6 +58,21 @@ export default function AdminDashboard() {
     return new Date(t.reminderDate) < new Date();
   });
   const completionRate = tasks.length > 0 ? Math.round((completed.length / tasks.length) * 100) : 0;
+
+  // Filter reminders based on selection
+  const filteredReminders = (reminders as any[]).filter(r => {
+    if (reminderFilter === "all") return true;
+    if (reminderFilter === "__admin__") return !r.assignedTo || r.assignedTo.trim() === "";
+    return r.assignedTo === reminderFilter;
+  }).sort((a, b) => {
+    const dateA = new Date(a.reminderDate).getTime();
+    const dateB = new Date(b.reminderDate).getTime();
+    return dateA - dateB;
+  });
+
+  const now = new Date();
+  const upcomingReminders = filteredReminders.filter(r => new Date(r.reminderDate) > now && r.status === 'pending');
+  const overdueReminders = filteredReminders.filter(r => new Date(r.reminderDate) <= now && r.status === 'pending');
 
   const kpis = [
     {
@@ -285,6 +302,72 @@ export default function AdminDashboard() {
               <p className="font-semibold text-purple-800 mb-2 text-sm">📋 Parecer Executivo da IA</p>
               <p className="text-sm text-gray-700 whitespace-pre-wrap">{monitorSummary}</p>
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Reminders Overview */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center justify-between text-base">
+            <span className="flex items-center gap-2">
+              <ClipboardList size={18} className="text-gray-600" />
+              Lembretes
+            </span>
+            <select
+              value={reminderFilter}
+              onChange={(e) => setReminderFilter(e.target.value)}
+              className="px-3 py-1 border rounded-lg text-xs font-normal bg-white"
+            >
+              <option value="all">👁️ Todos</option>
+              <option value="__admin__">🔑 Administrador</option>
+              {(sellers as any[]).map((s: any) => (
+                <option key={s.id} value={s.name}>👤 {s.name}</option>
+              ))}
+            </select>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {filteredReminders.length === 0 ? (
+            <div className="text-center py-6 text-gray-400">
+              <ClipboardList size={32} className="mx-auto mb-2 opacity-30" />
+              <p className="text-sm">Nenhum lembrete</p>
+            </div>
+          ) : (
+            <>
+              {overdueReminders.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-red-600 mb-2">🚨 ATRASADOS ({overdueReminders.length})</p>
+                  <div className="space-y-2">
+                    {overdueReminders.slice(0, 5).map((reminder: any) => (
+                      <div key={reminder.id} className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <div className="flex items-start justify-between mb-1">
+                          <p className="font-medium text-sm text-red-900">{reminder.title}</p>
+                          <span className="text-xs text-red-700">{new Date(reminder.reminderDate).toLocaleDateString("pt-BR")}</span>
+                        </div>
+                        {reminder.assignedTo && <p className="text-xs text-red-600">👤 {reminder.assignedTo}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {upcomingReminders.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-blue-600 mb-2">🔔 PRÓXIMOS ({upcomingReminders.length})</p>
+                  <div className="space-y-2">
+                    {upcomingReminders.slice(0, 5).map((reminder: any) => (
+                      <div key={reminder.id} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div className="flex items-start justify-between mb-1">
+                          <p className="font-medium text-sm text-blue-900">{reminder.title}</p>
+                          <span className="text-xs text-blue-700">{new Date(reminder.reminderDate).toLocaleDateString("pt-BR")} {new Date(reminder.reminderDate).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+                        </div>
+                        {reminder.assignedTo && <p className="text-xs text-blue-600">👤 {reminder.assignedTo}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
