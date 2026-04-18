@@ -17,6 +17,7 @@ interface Attendant {
   status: "active" | "inactive" | null;
   createdAt: Date;
   updatedAt: Date;
+  userRole?: "admin" | "user" | null;
 }
 
 export default function Attendants() {
@@ -27,6 +28,7 @@ export default function Attendants() {
   
   const { data: attendants = [], isLoading, refetch } = trpc.sellers.list.useQuery();
   const createMutation = trpc.sellers.create.useMutation();
+  const updateRoleMutation = trpc.users.updateRole.useMutation();
   const logoutMutation = trpc.auth.logout.useMutation();
 
   const [formData, setFormData] = useState({
@@ -86,6 +88,22 @@ export default function Attendants() {
 
   const handleDelete = async (id: number) => {
     toast.info("Exclusão de atendentes em desenvolvimento");
+  };
+
+  const handleToggleRole = async (attendant: Attendant) => {
+    if (!attendant.userId) {
+      toast.error("Atendente não possui usuário vinculado");
+      return;
+    }
+    const newRole = attendant.userRole === "admin" ? "user" : "admin";
+    const label = newRole === "admin" ? "promovido a admin" : "rebaixado para atendente";
+    try {
+      await updateRoleMutation.mutateAsync({ userId: attendant.userId, role: newRole });
+      toast.success(`${attendant.name} foi ${label}!`);
+      refetch();
+    } catch {
+      toast.error("Erro ao alterar permissão");
+    }
   };
 
   const handleEdit = (attendant: Attendant) => {
@@ -268,14 +286,28 @@ export default function Attendants() {
                       <p className={`font-medium ${attendant.status === "active" ? "text-green-600" : "text-red-600"}`}>
                         {attendant.status === "active" ? "✅ Ativo" : "❌ Inativo"}
                       </p>
+                      <p className={`font-medium text-xs ${attendant.userRole === "admin" ? "text-purple-600" : "text-gray-500"}`}>
+                        {attendant.userRole === "admin" ? "👑 Admin" : "👤 Atendente"}
+                      </p>
                     </div>
 
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => handleEdit(attendant)} className="flex-1">
-                        ✏️ Editar
-                      </Button>
-                      <Button size="sm" variant="destructive" onClick={() => handleDelete(attendant.id)} className="flex-1">
-                        🗑️ Deletar
+                    <div className="flex gap-2 flex-col">
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => handleEdit(attendant)} className="flex-1">
+                          ✏️ Editar
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={() => handleDelete(attendant.id)} className="flex-1">
+                          🗑️ Deletar
+                        </Button>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant={attendant.userRole === "admin" ? "outline" : "default"}
+                        onClick={() => handleToggleRole(attendant)}
+                        disabled={updateRoleMutation.isPending}
+                        className="w-full"
+                      >
+                        {attendant.userRole === "admin" ? "⬇️ Rebaixar para Atendente" : "👑 Promover a Admin"}
                       </Button>
                     </div>
                   </div>

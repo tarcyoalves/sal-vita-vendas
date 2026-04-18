@@ -37,7 +37,7 @@ export const appRouter = router({
 
   sellers: router({
     list: adminProcedure.query(async () => {
-      return db.getSellers();
+      return db.getSellersWithUserRole();
     }),
     create: adminProcedure.input(z.object({
       name: z.string(),
@@ -51,10 +51,19 @@ export const appRouter = router({
     }),
   }),
 
+  users: router({
+    updateRole: adminProcedure.input(z.object({
+      userId: z.number(),
+      role: z.enum(["admin", "user"]),
+    })).mutation(async ({ input }) => {
+      return db.updateUserRole(input.userId, input.role);
+    }),
+  }),
+
   reminders: router({
     list: protectedProcedure.query(async ({ ctx }) => {
       if (ctx.user?.role === "admin") {
-        return db.getDb().then(d => d?.select().from(require("../drizzle/schema").callReminders));
+        return db.getAllCallRemindersWithSeller();
       }
       const sellers = await db.getSellersByUserId(ctx.user!.id);
       if (sellers.length === 0) return [];
@@ -124,6 +133,13 @@ export const appRouter = router({
   notifications: router({
     list: protectedProcedure.query(async ({ ctx }) => {
       return db.getNotifications(ctx.user!.id);
+    }),
+    markRead: protectedProcedure.input(z.object({
+      id: z.number().optional(),
+      all: z.boolean().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      if (input.all) return db.markAllNotificationsRead(ctx.user!.id);
+      if (input.id) return db.markNotificationRead(input.id);
     }),
   }),
 });

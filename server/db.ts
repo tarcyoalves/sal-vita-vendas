@@ -82,6 +82,27 @@ export async function getCallReminders(sellerId: number) {
   return db.select().from(callReminders).where(eq(callReminders.sellerId, sellerId));
 }
 
+export async function getAllCallRemindersWithSeller() {
+  const db = await getDb();
+  return db
+    .select({
+      id: callReminders.id,
+      sellerId: callReminders.sellerId,
+      sellerName: sellers.name,
+      clientName: callReminders.clientName,
+      clientPhone: callReminders.clientPhone,
+      clientEmail: callReminders.clientEmail,
+      scheduledDate: callReminders.scheduledDate,
+      notes: callReminders.notes,
+      status: callReminders.status,
+      priority: callReminders.priority,
+      createdAt: callReminders.createdAt,
+      updatedAt: callReminders.updatedAt,
+    })
+    .from(callReminders)
+    .leftJoin(sellers, eq(callReminders.sellerId, sellers.id));
+}
+
 export async function createCallReminder(data: typeof callReminders.$inferInsert) {
   const db = await getDb();
   return db.insert(callReminders).values(data);
@@ -132,9 +153,49 @@ export async function createAiAnalysis(data: typeof aiAnalysis.$inferInsert) {
   return db.insert(aiAnalysis).values(data);
 }
 
+export async function getAllUsers() {
+  const db = await getDb();
+  return db.select().from(users);
+}
+
+export async function updateUserRole(userId: number, role: "admin" | "user") {
+  const db = await getDb();
+  return db.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, userId));
+}
+
+export async function getSellersWithUserRole() {
+  const db = await getDb();
+  return db
+    .select({
+      id: sellers.id,
+      userId: sellers.userId,
+      name: sellers.name,
+      email: sellers.email,
+      phone: sellers.phone,
+      department: sellers.department,
+      dailyGoal: sellers.dailyGoal,
+      status: sellers.status,
+      createdAt: sellers.createdAt,
+      updatedAt: sellers.updatedAt,
+      userRole: users.role,
+    })
+    .from(sellers)
+    .leftJoin(users, eq(sellers.userId, users.id));
+}
+
 export async function getNotifications(userId: number) {
   const db = await getDb();
   return db.select().from(notifications).where(eq(notifications.userId, userId));
+}
+
+export async function markNotificationRead(id: number) {
+  const db = await getDb();
+  return db.update(notifications).set({ isRead: true }).where(eq(notifications.id, id));
+}
+
+export async function markAllNotificationsRead(userId: number) {
+  const db = await getDb();
+  return db.update(notifications).set({ isRead: true }).where(eq(notifications.userId, userId));
 }
 
 export async function createNotification(data: typeof notifications.$inferInsert) {

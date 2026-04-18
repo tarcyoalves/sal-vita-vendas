@@ -4,6 +4,8 @@ import NotFound from './pages/NotFound';
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { useAuth } from './_core/hooks/useAuth';
+import { useNotifications } from './_core/hooks/useNotifications';
 import Home from "./pages/Home";
 import AdminDashboard from "./pages/AdminDashboard";
 import VendorReminders from "./pages/VendorReminders";
@@ -43,6 +45,12 @@ function Router() {
 //   to keep consistent foreground/background color across components
 // - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
 
+function NotificationManager() {
+  const { isAuthenticated } = useAuth();
+  useNotifications(isAuthenticated);
+  return null;
+}
+
 function App() {
   return (
     <ErrorBoundary>
@@ -52,6 +60,7 @@ function App() {
       >
         <TooltipProvider>
           <Toaster />
+          <NotificationManager />
           <Router />
         </TooltipProvider>
       </ThemeProvider>
