@@ -2,5 +2,5 @@
   "buildCommand": "pnpm build",
   "outputDirectory": "client/dist",
   "framework": "vite",
-  "installCommand": "pnpm install --frozen-lockfile"
+  "installCommand": "pnpm install --no-frozen-lockfile"
 }
