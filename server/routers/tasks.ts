@@ -25,6 +25,7 @@ export const tasksRouter = router({
       assignedTo: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
+      const assignedTo = input.assignedTo || (ctx.user.role !== 'admin' ? ctx.user.name : undefined);
       const [created] = await db.insert(tasks).values({
         userId: ctx.user.id,
         clientId: input.clientId,
@@ -34,7 +35,7 @@ export const tasksRouter = router({
         reminderDate: input.reminderDate,
         reminderEnabled: input.reminderEnabled,
         priority: input.priority,
-        assignedTo: input.assignedTo,
+        assignedTo,
         status: 'pending',
       }).returning();
       return created;

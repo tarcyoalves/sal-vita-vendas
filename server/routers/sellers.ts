@@ -77,4 +77,36 @@ export const sellersRouter = router({
       const [updated] = await db.update(sellers).set(data).where(eq(sellers.id, id)).returning();
       return updated;
     }),
+
+  updateRole: adminProcedure
+    .input(z.object({
+      sellerId: z.number(),
+      role: z.enum(['admin', 'user']),
+    }))
+    .mutation(async ({ input }) => {
+      const [seller] = await db.select().from(sellers).where(eq(sellers.id, input.sellerId));
+      if (!seller) throw new Error('Atendente não encontrado');
+      const [updated] = await db.update(users).set({ role: input.role }).where(eq(users.id, seller.userId)).returning();
+      return updated;
+    }),
+
+  listWithRole: adminProcedure.query(async () => {
+    return db
+      .select({
+        id: sellers.id,
+        userId: sellers.userId,
+        name: sellers.name,
+        email: sellers.email,
+        phone: sellers.phone,
+        department: sellers.department,
+        dailyGoal: sellers.dailyGoal,
+        status: sellers.status,
+        createdAt: sellers.createdAt,
+        updatedAt: sellers.updatedAt,
+        userRole: users.role,
+      })
+      .from(sellers)
+      .leftJoin(users, eq(sellers.userId, users.id))
+      .orderBy(sellers.name);
+  }),
 });

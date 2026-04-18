@@ -17,6 +17,8 @@ import Attendants from "./pages/Attendants";
 import KnowledgeBase from "./pages/KnowledgeBase";
 import FloatingChat from "./components/FloatingChat";
 import AppShell from "./components/AppShell";
+import { useAuth } from "./_core/hooks/useAuth";
+import { useReminderNotifications } from "./_core/hooks/useReminderNotifications";
 
 function Router() {
   return (
@@ -69,6 +71,12 @@ function Router() {
 //   to keep consistent foreground/background color across components
 // - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
 
+function NotificationManager() {
+  const { isAuthenticated } = useAuth();
+  useReminderNotifications(isAuthenticated);
+  return null;
+}
+
 function App() {
   return (
     <ErrorBoundary>
@@ -78,6 +86,7 @@ function App() {
       >
         <TooltipProvider>
           <Toaster />
+          <NotificationManager />
           <Router />
           <FloatingChat />
         </TooltipProvider>

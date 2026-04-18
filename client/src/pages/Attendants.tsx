@@ -23,6 +23,7 @@ interface Attendant {
   status: "active" | "inactive" | null;
   createdAt: Date;
   updatedAt: Date;
+  userRole?: string | null;
 }
 
 interface CreatedResult extends Attendant {
@@ -42,10 +43,11 @@ export default function Attendants() {
     status: "active" as "active" | "inactive",
   });
 
-  const { data: attendants = [], isLoading, refetch } = trpc.sellers.list.useQuery();
+  const { data: attendants = [], isLoading, refetch } = trpc.sellers.listWithRole.useQuery();
   const createMutation = trpc.sellers.create.useMutation();
   const updateMutation = trpc.sellers.update.useMutation();
   const deleteMutation = trpc.sellers.delete.useMutation();
+  const updateRoleMutation = trpc.sellers.updateRole.useMutation();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -112,6 +114,18 @@ export default function Attendants() {
       refetch();
     } catch (error: any) {
       toast.error(error?.message ?? "Erro ao criar atendente");
+    }
+  };
+
+  const handleToggleRole = async (attendant: Attendant) => {
+    const newRole = attendant.userRole === 'admin' ? 'user' : 'admin';
+    const label = newRole === 'admin' ? 'promovido a Admin' : 'rebaixado para Atendente';
+    try {
+      await updateRoleMutation.mutateAsync({ sellerId: attendant.id, role: newRole });
+      toast.success(`${attendant.name} foi ${label}!`);
+      refetch();
+    } catch {
+      toast.error('Erro ao alterar permissão');
     }
   };
 
@@ -245,16 +259,32 @@ export default function Attendants() {
                       {attendant.phone && <p>📱 {attendant.phone}</p>}
                       {attendant.department && <p>🏢 {attendant.department}</p>}
                       <p>🎯 Meta: {attendant.dailyGoal} tarefas/dia</p>
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${attendant.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                        {attendant.status === "active" ? "✅ Ativo" : "❌ Inativo"}
-                      </span>
+                      <div className="flex gap-2 flex-wrap">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${attendant.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                          {attendant.status === "active" ? "✅ Ativo" : "❌ Inativo"}
+                        </span>
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${attendant.userRole === "admin" ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>
+                          {attendant.userRole === "admin" ? "👑 Admin" : "👤 Atendente"}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" className="flex-1" onClick={() => handleEditOpen(attendant)}>
-                        ✏️ Editar
-                      </Button>
-                      <Button size="sm" variant="destructive" className="flex-1" onClick={() => handleDelete(attendant.id, attendant.name)}>
-                        🗑️ Remover
+                    <div className="flex flex-col gap-2">
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" className="flex-1" onClick={() => handleEditOpen(attendant)}>
+                          ✏️ Editar
+                        </Button>
+                        <Button size="sm" variant="destructive" className="flex-1" onClick={() => handleDelete(attendant.id, attendant.name)}>
+                          🗑️ Remover
+                        </Button>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant={attendant.userRole === "admin" ? "outline" : "default"}
+                        className="w-full"
+                        onClick={() => handleToggleRole(attendant)}
+                        disabled={updateRoleMutation.isPending}
+                      >
+                        {attendant.userRole === "admin" ? "⬇️ Rebaixar para Atendente" : "👑 Promover a Admin"}
                       </Button>
                     </div>
                   </div>
