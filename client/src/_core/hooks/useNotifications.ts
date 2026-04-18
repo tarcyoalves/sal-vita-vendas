@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { trpc } from "../lib/trpc";
+import { trpc } from "../../lib/trpc";
 import { toast } from "sonner";
 
 export function useNotifications(enabled: boolean) {
