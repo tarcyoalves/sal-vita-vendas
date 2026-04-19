@@ -95,7 +95,10 @@ function parseImportLine(line: string): { title: string; description: string; no
     }
   }
 
-  return { title: title || raw, description: [city, state].filter(Boolean).join(' - '), notes: noteLines.join('\n') };
+  const titleEmail = emails[0] ?? '';
+  const titlePhone = mobiles[0] ?? landlines[0] ?? '';
+  const fullTitle = [title || raw, titleEmail, titlePhone, city, state].filter(Boolean).join(' - ');
+  return { title: fullTitle, description: [city, state].filter(Boolean).join(' - '), notes: noteLines.join('\n') };
 }
 
 export default function Tasks() {
@@ -293,8 +296,9 @@ export default function Tasks() {
           });
 
           parsed = Array.from(clientMap.values()).map(({ cnpj, nome, cidade, uf, produtos }) => {
-            const title = [cnpj, nome, cidade, uf].filter(Boolean).join(' - ');
             const prodLines = [...produtos].map(p => `Produto: ${p}`).join('\n');
+            // Title: CNPJ - NOME - CIDADE - UF (email/fone added when available from source)
+            const title = [cnpj, nome, cidade, uf].filter(Boolean).join(' - ');
             const notes = [
               `${[cnpj, nome, cidade, uf].filter(Boolean).join(' - ')}`,
               prodLines,
