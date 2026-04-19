@@ -269,8 +269,10 @@ export default function Tasks() {
           };
           const colCNPJ = findCol('cnpj');
           const colNome = findCol('cliente nome', 'nome');
-          const colMun = findCol('municipio', 'municipio');
-          const colUF = findCol(' uf', 'uf');
+          const colMun  = findCol('municipio', 'cidade', 'municipio', 'city');
+          const colUF   = findCol('uf', ' uf');
+          const colFone = findCol('fone', 'telefone', 'whatsapp', 'celular', 'tel', 'contato');
+          const colEmail = findCol('email', 'e-mail');
           // 'produto' column — skip 'produto id'
           const colProduto = (() => {
             for (let i = 0; i < header.length; i++) {
@@ -279,32 +281,57 @@ export default function Tasks() {
             return -1;
           })();
 
+          // If no header recognized, try positional detection (CNPJ pattern in col 0 or 1)
+          const firstDataRow = lines[1]?.split(';').map(c => c.trim()) ?? [];
+          const cnpjPattern = /\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}/;
+          const phonePattern = /\(?\d{2}\)?[\s.]*\d{4,5}[-\s]?\d{4}/;
+          let posMode = false;
+          let posCNPJ = -1, posNome = -1, posFone = -1, posCity = -1, posUF = -1;
+          if (colCNPJ < 0 && firstDataRow.some(c => cnpjPattern.test(c))) {
+            posMode = true;
+            posCNPJ = firstDataRow.findIndex(c => cnpjPattern.test(c));
+            posNome = posCNPJ + 1;
+            // find phone by pattern
+            posFone = firstDataRow.findIndex(c => phonePattern.test(c));
+            // UF = last 2-letter uppercase field
+            posUF = [...firstDataRow].reverse().findIndex(c => /^[A-Z]{2}$/.test(c));
+            if (posUF >= 0) posUF = firstDataRow.length - 1 - posUF;
+            // city = column before UF that is text
+            posCity = posUF > 0 ? posUF - 1 : -1;
+          }
+
           // Group rows by CNPJ → one task per unique client
-          const clientMap = new Map<string, { cnpj: string; nome: string; cidade: string; uf: string; produtos: Set<string> }>();
+          const clientMap = new Map<string, { cnpj: string; nome: string; cidade: string; uf: string; fone: string; email: string; produtos: Set<string> }>();
           lines.slice(1).forEach(line => {
             if (!line.trim()) return;
             const cols = line.split(';').map(c => c.trim().replace(/^["']+|["']+$/g, '').trim());
-            const cnpj  = (colCNPJ  >= 0 ? cols[colCNPJ]  : '').trim();
-            const nome   = (colNome  >= 0 ? cols[colNome]  : '').trim();
-            const cidade = (colMun   >= 0 ? cols[colMun]   : '').trim();
-            const uf     = (colUF    >= 0 ? cols[colUF]    : '').trim();
-            const produto= (colProduto >= 0 ? cols[colProduto] : '').trim();
+            const get = (hIdx: number, pIdx: number) => ((posMode ? pIdx : hIdx) >= 0 ? cols[(posMode ? pIdx : hIdx)] ?? '' : '').trim();
+            const cnpj  = get(colCNPJ, posCNPJ);
+            const nome  = get(colNome, posNome);
+            const cidade= get(colMun,  posCity);
+            const uf    = get(colUF,   posUF);
+            const fone  = get(colFone, posFone);
+            const email = colEmail >= 0 ? (cols[colEmail] ?? '').trim() : '';
+            const produto = colProduto >= 0 ? (cols[colProduto] ?? '').trim() : '';
             if (!nome && !cnpj) return;
             const key = cnpj || nome;
-            if (!clientMap.has(key)) clientMap.set(key, { cnpj, nome, cidade, uf, produtos: new Set() });
-            if (produto) clientMap.get(key)!.produtos.add(produto);
+            if (!clientMap.has(key)) clientMap.set(key, { cnpj, nome, cidade, uf, fone, email, produtos: new Set() });
+            const entry = clientMap.get(key)!;
+            // update fone/email if found in later rows (some CSVs have it in first occurrence only)
+            if (fone && !entry.fone) entry.fone = fone;
+            if (email && !entry.email) entry.email = email;
+            if (produto) entry.produtos.add(produto);
           });
 
-          parsed = Array.from(clientMap.values()).map(({ cnpj, nome, cidade, uf, produtos }) => {
+          parsed = Array.from(clientMap.values()).map(({ cnpj, nome, cidade, uf, fone, email, produtos }) => {
             const prodLines = [...produtos].map(p => `Produto: ${p}`).join('\n');
-            // Title: CNPJ - NOME - CIDADE - UF (email/fone added when available from source)
-            const title = [cnpj, nome, cidade, uf].filter(Boolean).join(' - ');
+            const title = [cnpj, nome, fone, email, cidade, uf].filter(Boolean).join(' - ');
             const notes = [
               `${[cnpj, nome, cidade, uf].filter(Boolean).join(' - ')}`,
               prodLines,
-              'EMAIL:',
-              'WHATSAPP:',
-              'FONE:',
+              `EMAIL: ${email}`,
+              `WHATSAPP: ${fone}`,
+              `FONE: ${fone}`,
             ].filter(Boolean).join('\n');
             return { title, description: [cidade, uf].filter(Boolean).join(' - '), notes };
           }).filter(t => t.title);
