@@ -470,35 +470,35 @@ export default function Tasks() {
 
       {/* Task Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingTask ? "✏️ Editar Tarefa" : "➕ Nova Tarefa"}</DialogTitle></DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+        <DialogContent className="max-w-2xl max-h-[95vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-base">{editingTask ? "✏️ Editar Tarefa" : "➕ Nova Tarefa"}</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-3">
             <div>
-              <label className="block text-sm font-medium mb-1">Título *</label>
-              <input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} placeholder="Título da tarefa" className="w-full px-3 py-2 border rounded-lg" required />
+              <label className="block text-xs font-medium mb-1 text-gray-600">Título *</label>
+              <input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} placeholder="Título da tarefa" className="w-full px-3 py-1.5 border rounded-lg text-sm" required />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Anotações</label>
-              <textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Anotações, telefone, email..." className="w-full px-3 py-2 border rounded-lg h-48" />
+              <label className="block text-xs font-medium mb-1 text-gray-600">Anotações</label>
+              <textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Anotações, telefone, email..." className="w-full px-3 py-2 border rounded-lg text-sm" style={{ height: '260px', resize: 'vertical' }} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-sm font-medium mb-1">🗓️ Data do lembrete</label>
-                <input type="date" value={formData.reminderDate} onChange={(e) => setFormData({ ...formData, reminderDate: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
+                <label className="block text-xs font-medium mb-1 text-gray-600">🗓️ Data</label>
+                <input type="date" value={formData.reminderDate} onChange={(e) => setFormData({ ...formData, reminderDate: e.target.value })} className="w-full px-2 py-1.5 border rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">⏰ Hora</label>
-                <input type="time" value={formData.reminderTime} onChange={(e) => setFormData({ ...formData, reminderTime: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
+                <label className="block text-xs font-medium mb-1 text-gray-600">⏰ Hora</label>
+                <input type="time" value={formData.reminderTime} onChange={(e) => setFormData({ ...formData, reminderTime: e.target.value })} className="w-full px-2 py-1.5 border rounded-lg text-sm" />
               </div>
             </div>
-            <div className="flex items-center gap-2 bg-blue-50 p-2 rounded-lg">
-              <input type="checkbox" id="reminderEnabled" checked={formData.reminderEnabled} onChange={(e) => setFormData({ ...formData, reminderEnabled: e.target.checked })} className="w-4 h-4" />
-              <label htmlFor="reminderEnabled" className="text-sm font-medium text-blue-800">🔔 Ativar notificação no navegador</label>
+            <div className="flex items-center gap-2 bg-blue-50 px-2 py-1.5 rounded-lg">
+              <input type="checkbox" id="reminderEnabled" checked={formData.reminderEnabled} onChange={(e) => setFormData({ ...formData, reminderEnabled: e.target.checked })} className="w-3.5 h-3.5" />
+              <label htmlFor="reminderEnabled" className="text-xs font-medium text-blue-800">🔔 Ativar notificação no navegador</label>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-sm font-medium mb-1">Prioridade</label>
-                <select value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })} className="w-full px-3 py-2 border rounded-lg">
+                <label className="block text-xs font-medium mb-1 text-gray-600">Prioridade</label>
+                <select value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })} className="w-full px-2 py-1.5 border rounded-lg text-sm">
                   <option value="low">🟦 Baixa</option>
                   <option value="medium">🟨 Média</option>
                   <option value="high">🟥 Alta</option>
@@ -506,18 +506,18 @@ export default function Tasks() {
               </div>
               {isAdmin && (
                 <div>
-                  <label className="block text-sm font-medium mb-1">👤 Designar para</label>
-                  <select value={formData.assignedTo} onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })} className="w-full px-3 py-2 border rounded-lg">
+                  <label className="block text-xs font-medium mb-1 text-gray-600">👤 Designar para</label>
+                  <select value={formData.assignedTo} onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })} className="w-full px-2 py-1.5 border rounded-lg text-sm">
                     <option value="">Nenhum</option>
                     {attendants.map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
                   </select>
                 </div>
               )}
             </div>
-            <DialogFooter className="flex gap-2 pt-2">
-              <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700">{editingTask ? "Atualizar" : "Criar Tarefa"}</Button>
-              {editingTask && <Button type="button" variant="destructive" onClick={() => handleDelete(editingTask.id)}>🗑️</Button>}
-              <Button type="button" variant="outline" onClick={() => { setIsModalOpen(false); resetForm(); }}>Cancelar</Button>
+            <DialogFooter className="flex gap-2 pt-1">
+              <Button type="submit" size="sm" className="flex-1 bg-blue-600 hover:bg-blue-700">{editingTask ? "Atualizar" : "Criar Tarefa"}</Button>
+              {editingTask && <Button type="button" size="sm" variant="destructive" onClick={() => handleDelete(editingTask.id)}>🗑️</Button>}
+              <Button type="button" size="sm" variant="outline" onClick={() => { setIsModalOpen(false); resetForm(); }}>Cancelar</Button>
             </DialogFooter>
           </form>
         </DialogContent>
