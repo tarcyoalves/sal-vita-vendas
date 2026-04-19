@@ -160,6 +160,25 @@ export default function Tasks() {
     } catch { toast.error("Erro ao deletar tarefas"); }
   };
 
+  const filteredTasks = useMemo(() => {
+    let result = tasks as Task[];
+    if (filterStatus !== "all") result = result.filter(t => t.status === filterStatus);
+    if (isAdmin && filterAssignee !== "all") {
+      if (filterAssignee === "__none__") result = result.filter(t => !t.assignedTo || t.assignedTo.trim() === "");
+      else result = result.filter(t => t.assignedTo === filterAssignee);
+    }
+    if (filterContact === "whatsapp") {
+      result = result.filter(t => hasPhone(`${t.title} ${t.notes ?? ''}`));
+    } else if (filterContact === "email") {
+      result = result.filter(t => hasEmail(`${t.title} ${t.notes ?? ''}`));
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(t => t.title.toLowerCase().includes(q) || t.notes?.toLowerCase().includes(q) || t.assignedTo?.toLowerCase().includes(q));
+    }
+    return result;
+  }, [tasks, filterStatus, filterAssignee, filterContact, isAdmin, searchQuery]);
+
   const handleEdit = useCallback((task: Task) => {
     setEditingTask(task);
     const d = task.reminderDate ? new Date(task.reminderDate) : null;
@@ -270,25 +289,6 @@ export default function Tasks() {
       setLoadingSuggestion(false);
     }
   };
-
-  const filteredTasks = useMemo(() => {
-    let result = tasks as Task[];
-    if (filterStatus !== "all") result = result.filter(t => t.status === filterStatus);
-    if (isAdmin && filterAssignee !== "all") {
-      if (filterAssignee === "__none__") result = result.filter(t => !t.assignedTo || t.assignedTo.trim() === "");
-      else result = result.filter(t => t.assignedTo === filterAssignee);
-    }
-    if (filterContact === "whatsapp") {
-      result = result.filter(t => hasPhone(`${t.title} ${t.notes ?? ''}`));
-    } else if (filterContact === "email") {
-      result = result.filter(t => hasEmail(`${t.title} ${t.notes ?? ''}`));
-    }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(t => t.title.toLowerCase().includes(q) || t.notes?.toLowerCase().includes(q) || t.assignedTo?.toLowerCase().includes(q));
-    }
-    return result;
-  }, [tasks, filterStatus, filterAssignee, filterContact, isAdmin, searchQuery]);
 
   const priorityEmoji: Record<string, string> = { low: "🟦", medium: "🟨", high: "🟥" };
   const statusEmoji: Record<string, string> = { pending: "⏳", completed: "✅", cancelled: "❌" };
