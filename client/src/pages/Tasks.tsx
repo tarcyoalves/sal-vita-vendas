@@ -254,39 +254,55 @@ export default function Tasks() {
         let parsed: { title: string; description: string; notes: string }[];
 
         if (isSemiCSV) {
-          // Smart semicolon CSV: detect column roles by content pattern
-          const eRx = /[\w.+-]+@[\w-]+\.[a-z]{2,}/i;
-          const pRx = /\(?\d{2}\)?[\s.]*\d{4,5}[-\s]?\d{4}/;
-          const stRx = /^[A-Z]{2}$/;
-          const startRow = (!pRx.test(lines[0]) && !eRx.test(lines[0])) ? 1 : 0;
-          parsed = lines.slice(startRow).map(l => {
-            const cols = l.split(';').map(c => c.trim());
-            const allPhones: string[] = [];
-            const allEmails: string[] = [];
-            cols.forEach(col => {
-              const em = col.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
-              if (em) allEmails.push(em[0]);
-              const pm = col.match(/\(?\d{2}\)?[\s.]*\d{4,5}[-\s]?\d{4}/g);
-              if (pm) allPhones.push(...pm.map(p => p.trim()).filter(p => p.replace(/\D/g,'').length >= 10));
-            });
-            // Name = longest text column that isn't a phone/email/state/pure-number
-            const textCols = cols.filter(c => c.length > 2 && !pRx.test(c) && !eRx.test(c) && !stRx.test(c) && !/^\d+$/.test(c));
-            const name = textCols.reduce((a, b) => b.length > a.length ? b : a, textCols[0] ?? '');
-            const state = cols.find(c => stRx.test(c)) ?? '';
-            const stateIdx = cols.indexOf(state);
-            let city = '';
-            for (let i = stateIdx - 1; i >= 0; i--) {
-              if (!pRx.test(cols[i]) && !eRx.test(cols[i]) && !/^\d+$/.test(cols[i]) && cols[i].length > 1 && !stRx.test(cols[i])) {
-                city = cols[i]; break;
-              }
+          // Parse header to find column indices by name (handles all CSV variants)
+          const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+          const header = lines[0].split(';').map(normalize);
+          const findCol = (...names: string[]) => {
+            for (const name of names) {
+              const idx = header.findIndex(h => h.includes(name));
+              if (idx >= 0) return idx;
             }
-            const mobiles = [...new Set(allPhones)].filter(p => p.replace(/\D/g,'').length >= 11);
-            const landlines = [...new Set(allPhones)].filter(p => p.replace(/\D/g,'').length === 10);
-            const noteLines: string[] = [];
-            if (mobiles.length) noteLines.push(`📱 WhatsApp: ${mobiles.join(', ')}`);
-            if (landlines.length) noteLines.push(`📞 Tel: ${landlines.join(', ')}`);
-            if (allEmails.length) noteLines.push(`📧 Email: ${[...new Set(allEmails)].join(', ')}`);
-            return { title: name || cols[0], description: [city, state].filter(Boolean).join(' - '), notes: noteLines.join('\n') };
+            return -1;
+          };
+          const colCNPJ = findCol('cnpj');
+          const colNome = findCol('cliente nome', 'nome');
+          const colMun = findCol('municipio', 'municipio');
+          const colUF = findCol(' uf', 'uf');
+          // 'produto' column — skip 'produto id'
+          const colProduto = (() => {
+            for (let i = 0; i < header.length; i++) {
+              if (header[i] === 'produto' || (header[i].startsWith('produto') && !header[i].includes('id'))) return i;
+            }
+            return -1;
+          })();
+
+          // Group rows by CNPJ → one task per unique client
+          const clientMap = new Map<string, { cnpj: string; nome: string; cidade: string; uf: string; produtos: Set<string> }>();
+          lines.slice(1).forEach(line => {
+            if (!line.trim()) return;
+            const cols = line.split(';').map(c => c.trim().replace(/^["']+|["']+$/g, '').trim());
+            const cnpj  = (colCNPJ  >= 0 ? cols[colCNPJ]  : '').trim();
+            const nome   = (colNome  >= 0 ? cols[colNome]  : '').trim();
+            const cidade = (colMun   >= 0 ? cols[colMun]   : '').trim();
+            const uf     = (colUF    >= 0 ? cols[colUF]    : '').trim();
+            const produto= (colProduto >= 0 ? cols[colProduto] : '').trim();
+            if (!nome && !cnpj) return;
+            const key = cnpj || nome;
+            if (!clientMap.has(key)) clientMap.set(key, { cnpj, nome, cidade, uf, produtos: new Set() });
+            if (produto) clientMap.get(key)!.produtos.add(produto);
+          });
+
+          parsed = Array.from(clientMap.values()).map(({ cnpj, nome, cidade, uf, produtos }) => {
+            const title = [cnpj, nome, cidade, uf].filter(Boolean).join(' - ');
+            const prodLines = [...produtos].map(p => `Produto: ${p}`).join('\n');
+            const notes = [
+              `${[cnpj, nome, cidade, uf].filter(Boolean).join(' - ')}`,
+              prodLines,
+              'EMAIL:',
+              'WHATSAPP:',
+              'FONE:',
+            ].filter(Boolean).join('\n');
+            return { title, description: [cidade, uf].filter(Boolean).join(' - '), notes };
           }).filter(t => t.title);
         } else {
           // Dash-separated format
