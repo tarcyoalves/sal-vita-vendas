@@ -328,7 +328,7 @@ export default function Tasks() {
             const prodLines = [...produtos].map(p => `Produto: ${p}`).join('\n');
             const title = [cnpj, nome, fone, email, cidade, uf].filter(Boolean).join(' - ');
             const notes = [
-              `${[cnpj, nome, cidade, uf].filter(Boolean).join(' - ')}`,
+              title,
               prodLines,
               `EMAIL: ${email}`,
               `WHATSAPP: ${fone}`,
@@ -479,7 +479,7 @@ export default function Tasks() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Anotações</label>
-              <textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Anotações, telefone, email..." className="w-full px-3 py-2 border rounded-lg h-20" />
+              <textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Anotações, telefone, email..." className="w-full px-3 py-2 border rounded-lg h-48" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -568,7 +568,7 @@ export default function Tasks() {
               </div>
               {expandedTask === task.id && (
                 <div className="p-3 bg-gray-50 border-t space-y-2">
-                  {task.notes && <div className="text-sm bg-yellow-50 p-2 rounded border border-yellow-200"><strong>📝 Anotações:</strong><p className="whitespace-pre-wrap mt-1">{task.notes}</p></div>}
+                  {task.notes && <div className="text-sm bg-yellow-50 p-3 rounded border border-yellow-200"><strong>📝 Anotações:</strong><p className="whitespace-pre-wrap mt-2 leading-relaxed">{task.notes}</p></div>}
                   <p className="text-xs text-gray-500">Criada: {new Date(task.createdAt).toLocaleDateString("pt-BR")}</p>
                   {aiSuggestion?.taskId === task.id && (
                     <div className="text-sm bg-purple-50 p-2 rounded border border-purple-200">
