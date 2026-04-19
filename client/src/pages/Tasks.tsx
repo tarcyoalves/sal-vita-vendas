@@ -36,38 +36,66 @@ function hasEmail(text: string): boolean {
   return /[\w.+-]+@[\w-]+\.[a-z]{2,}/i.test(text);
 }
 
-// Smart CSV parser: handles semicolon CSV and dash-separated formats
+// Parser for dash-separated customer records
+// Handles: NOME - EMPRESA - (DD)NNNN-NNNN - email - CIDADE - UF
 function parseImportLine(line: string): { title: string; description: string; notes: string } | null {
-  const clean = line.replace(/^[-\s]+/, '').trim();
-  if (!clean || clean.length < 3) return null;
+  const raw = line.replace(/^[-\s]+/, '').trim();
+  if (!raw || raw.length < 3) return null;
 
-  const emailRegex = /[\w.+-]+@[\w-]+\.[a-z]{2,}/gi;
-  const phoneRegex = /\(?\d{2}\)?\s*\d{4,5}[-.\s]?\d{3,4}/g;
+  const emailRx = /[\w.+-]+@[\w-]+\.[a-z]{2,}/gi;
+  const emails = [...new Set(raw.match(emailRx) ?? [])];
 
-  const emails = Array.from(new Set(clean.match(emailRegex) ?? []));
-  const phones = Array.from(new Set(clean.match(phoneRegex) ?? []));
+  // Remove CPF/CNPJ/RG before phone matching to avoid false positives
+  const noDocs = raw
+    .replace(/\d{3}\.\d{3}\.\d{3}-\d{2}/g, ' ')
+    .replace(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g, ' ')
+    .replace(/\d{1,2}\.\d{3}\.\d{3}-[\dXx]{1,2}/g, ' ');
 
-  // Build notes with whatsapp/email extracted
+  // Match phones: (DD)NNNN-NNNN, DD.NNNN-NNNN, DD NNNNN-NNNN
+  const phoneRxG = /\(?\d{2}\)?[\s.]*\d{4,5}[-\s]?\d{4}/g;
+  const phones = [...new Set(
+    (noDocs.match(phoneRxG) ?? []).map(p => p.trim()).filter(p => p.replace(/\D/g, '').length >= 10)
+  )];
+  // 11+ digits after DDD = mobile/WhatsApp; 10 = landline
+  const mobiles = phones.filter(p => p.replace(/\D/g, '').length >= 11);
+  const landlines = phones.filter(p => p.replace(/\D/g, '').length === 10);
+
   const noteLines: string[] = [];
-  if (phones.length > 0) {
-    // Last phone is likely mobile/whatsapp
-    noteLines.push(`📱 WhatsApp: ${phones[phones.length - 1].trim()}`);
-    if (phones.length > 1) noteLines.push(`📞 Tel: ${phones.slice(0, -1).map(p => p.trim()).join(', ')}`);
+  if (mobiles.length) noteLines.push(`📱 WhatsApp: ${mobiles.join(', ')}`);
+  if (landlines.length) noteLines.push(`📞 Tel: ${landlines.join(', ')}`);
+  if (emails.length) noteLines.push(`📧 Email: ${emails.join(', ')}`);
+
+  // Title = text before the first phone or email in the line
+  const firstPhone = /\(?\d{2}\)?[\s.]*\d{4,5}[-\s]?\d{4}/.exec(noDocs);
+  const firstEmail = /[\w.+-]+@[\w-]+\.[a-z]{2,}/i.exec(raw);
+  const firstIdx = Math.min(firstPhone?.index ?? Infinity, firstEmail?.index ?? Infinity);
+  const title = (firstIdx < Infinity
+    ? raw.slice(0, firstIdx).replace(/[\s;-]+$/, '').split(' - ')[0]
+    : raw.split(' - ')[0]
+  ).trim();
+
+  // Normalize multi-space dashes, then split for city/state detection
+  const norm = raw.replace(/\s{2,}-\s*/g, ' - ').replace(/\s*-\s{2,}/g, ' - ');
+  const parts = norm.split(/\s+-\s+|-\s+(?=[A-ZÁÉÍÓÚÃÂÊÔÀÜ])/).map(p => p.trim()).filter(p => p.length > 1);
+
+  const isPhonePart = (s: string) => /\d{4,5}[-.\s]\d{4}/.test(s);
+  const isStatePart = (s: string) => /^[A-Z]{2}$/.test(s);
+
+  let state = '', city = '';
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (isStatePart(parts[i])) {
+      state = parts[i];
+      for (let j = i - 1; j >= 0; j--) {
+        if (!isPhonePart(parts[j]) && !isStatePart(parts[j]) && !/^\d/.test(parts[j]) && parts[j].length > 2) {
+          city = parts[j];
+          break;
+        }
+      }
+      break;
+    }
   }
-  if (emails.length > 0) noteLines.push(`📧 Email: ${emails.join(', ')}`);
 
-  // Split by " - " to find parts
-  const parts = clean.split(/\s+-\s+/).map(p => p.trim()).filter(Boolean);
-  const name = parts[0] ?? clean;
-
-  // Last 2 parts often: city - state (2 uppercase letters)
-  const stateMatch = parts[parts.length - 1]?.match(/^[A-Z]{2}$/);
-  const state = stateMatch ? parts[parts.length - 1] : '';
-  const city = state && parts.length >= 2 ? parts[parts.length - 2] : '';
-  const descParts = [city, state].filter(Boolean);
-  const description = descParts.join(' - ');
-
-  return { title: name, description, notes: noteLines.join('\n') };
+  return { title: title || raw, description: [city, state].filter(Boolean).join(' - '), notes: noteLines.join('\n') };
 }
 
 export default function Tasks() {
@@ -226,20 +254,39 @@ export default function Tasks() {
         let parsed: { title: string; description: string; notes: string }[];
 
         if (isSemiCSV) {
-          // Traditional semicolon CSV (skip header)
-          parsed = lines.slice(1).map(l => {
-            const p = l.split(';');
-            const name = p[3]?.trim() || p[0]?.trim() || '';
-            const phone = p[5]?.trim() || '';
-            const city = p[6]?.trim() || '';
-            const state = p[7]?.trim() || '';
-            const contact = p[4]?.trim() || '';
-            const email = p[8]?.trim() || '';
-            const notes: string[] = [];
-            if (phone) notes.push(`📱 WhatsApp: ${phone}`);
-            if (contact && contact !== phone) notes.push(`📞 Tel: ${contact}`);
-            if (email) notes.push(`📧 Email: ${email}`);
-            return { title: name, description: [city, state].filter(Boolean).join(' - '), notes: notes.join('\n') };
+          // Smart semicolon CSV: detect column roles by content pattern
+          const eRx = /[\w.+-]+@[\w-]+\.[a-z]{2,}/i;
+          const pRx = /\(?\d{2}\)?[\s.]*\d{4,5}[-\s]?\d{4}/;
+          const stRx = /^[A-Z]{2}$/;
+          const startRow = (!pRx.test(lines[0]) && !eRx.test(lines[0])) ? 1 : 0;
+          parsed = lines.slice(startRow).map(l => {
+            const cols = l.split(';').map(c => c.trim());
+            const allPhones: string[] = [];
+            const allEmails: string[] = [];
+            cols.forEach(col => {
+              const em = col.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
+              if (em) allEmails.push(em[0]);
+              const pm = col.match(/\(?\d{2}\)?[\s.]*\d{4,5}[-\s]?\d{4}/g);
+              if (pm) allPhones.push(...pm.map(p => p.trim()).filter(p => p.replace(/\D/g,'').length >= 10));
+            });
+            // Name = longest text column that isn't a phone/email/state/pure-number
+            const textCols = cols.filter(c => c.length > 2 && !pRx.test(c) && !eRx.test(c) && !stRx.test(c) && !/^\d+$/.test(c));
+            const name = textCols.reduce((a, b) => b.length > a.length ? b : a, textCols[0] ?? '');
+            const state = cols.find(c => stRx.test(c)) ?? '';
+            const stateIdx = cols.indexOf(state);
+            let city = '';
+            for (let i = stateIdx - 1; i >= 0; i--) {
+              if (!pRx.test(cols[i]) && !eRx.test(cols[i]) && !/^\d+$/.test(cols[i]) && cols[i].length > 1 && !stRx.test(cols[i])) {
+                city = cols[i]; break;
+              }
+            }
+            const mobiles = [...new Set(allPhones)].filter(p => p.replace(/\D/g,'').length >= 11);
+            const landlines = [...new Set(allPhones)].filter(p => p.replace(/\D/g,'').length === 10);
+            const noteLines: string[] = [];
+            if (mobiles.length) noteLines.push(`📱 WhatsApp: ${mobiles.join(', ')}`);
+            if (landlines.length) noteLines.push(`📞 Tel: ${landlines.join(', ')}`);
+            if (allEmails.length) noteLines.push(`📧 Email: ${[...new Set(allEmails)].join(', ')}`);
+            return { title: name || cols[0], description: [city, state].filter(Boolean).join(' - '), notes: noteLines.join('\n') };
           }).filter(t => t.title);
         } else {
           // Dash-separated format
