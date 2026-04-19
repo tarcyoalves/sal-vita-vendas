@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { router, protectedProcedure } from '../trpc';
 import { db } from '../db';
 import { tasks } from '../db/schema';
@@ -68,6 +68,13 @@ export const tasksRouter = router({
     .mutation(async ({ input }) => {
       await db.delete(tasks).where(eq(tasks.id, input.id));
       return { ok: true };
+    }),
+
+  deleteMany: protectedProcedure
+    .input(z.object({ ids: z.array(z.number()).min(1) }))
+    .mutation(async ({ input }) => {
+      await db.delete(tasks).where(inArray(tasks.id, input.ids));
+      return { ok: true, count: input.ids.length };
     }),
 
   reminders: protectedProcedure.query(async ({ ctx }) => {

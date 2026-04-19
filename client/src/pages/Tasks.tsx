@@ -28,26 +28,74 @@ interface Task {
   updatedAt: Date;
 }
 
+// Extracts phones and emails from a string (for filtering)
+function hasPhone(text: string): boolean {
+  return /\(?\d{2}\)?\s*\d{4,5}[-.\s]?\d{4}/.test(text);
+}
+function hasEmail(text: string): boolean {
+  return /[\w.+-]+@[\w-]+\.[a-z]{2,}/i.test(text);
+}
+
+// Smart CSV parser: handles semicolon CSV and dash-separated formats
+function parseImportLine(line: string): { title: string; description: string; notes: string } | null {
+  const clean = line.replace(/^[-\s]+/, '').trim();
+  if (!clean || clean.length < 3) return null;
+
+  const emailRegex = /[\w.+-]+@[\w-]+\.[a-z]{2,}/gi;
+  const phoneRegex = /\(?\d{2}\)?\s*\d{4,5}[-.\s]?\d{3,4}/g;
+
+  const emails = Array.from(new Set(clean.match(emailRegex) ?? []));
+  const phones = Array.from(new Set(clean.match(phoneRegex) ?? []));
+
+  // Build notes with whatsapp/email extracted
+  const noteLines: string[] = [];
+  if (phones.length > 0) {
+    // Last phone is likely mobile/whatsapp
+    noteLines.push(`📱 WhatsApp: ${phones[phones.length - 1].trim()}`);
+    if (phones.length > 1) noteLines.push(`📞 Tel: ${phones.slice(0, -1).map(p => p.trim()).join(', ')}`);
+  }
+  if (emails.length > 0) noteLines.push(`📧 Email: ${emails.join(', ')}`);
+
+  // Split by " - " to find parts
+  const parts = clean.split(/\s+-\s+/).map(p => p.trim()).filter(Boolean);
+  const name = parts[0] ?? clean;
+
+  // Last 2 parts often: city - state (2 uppercase letters)
+  const stateMatch = parts[parts.length - 1]?.match(/^[A-Z]{2}$/);
+  const state = stateMatch ? parts[parts.length - 1] : '';
+  const city = state && parts.length >= 2 ? parts[parts.length - 2] : '';
+  const descParts = [city, state].filter(Boolean);
+  const description = descParts.join(' - ');
+
+  return { title: name, description, notes: noteLines.join('\n') };
+}
+
 export default function Tasks() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterAssignee, setFilterAssignee] = useState<string>("all");
+  const [filterContact, setFilterContact] = useState<"all" | "whatsapp" | "email">("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [importedTasks, setImportedTasks] = useState<any[]>([]);
+  const [importedTasks, setImportedTasks] = useState<{ title: string; description: string; notes: string }[]>([]);
   const [selectedRepresentative, setSelectedRepresentative] = useState("");
   const [selectedTasks, setSelectedTasks] = useState<Set<number>>(new Set());
   const [expandedTask, setExpandedTask] = useState<number | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [bulkRepresentative, setBulkRepresentative] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState<{ taskId: number; text: string } | null>(null);
+  const [loadingSuggestion, setLoadingSuggestion] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
 
   const { data: tasks = [], isLoading, refetch } = trpc.tasks.list.useQuery();
   const { data: attendants = [] } = trpc.sellers.list.useQuery();
   const createMutation = trpc.tasks.create.useMutation();
   const updateMutation = trpc.tasks.update.useMutation();
   const deleteMutation = trpc.tasks.delete.useMutation();
+  const deleteManyMutation = trpc.tasks.deleteMany.useMutation();
+  const suggestMutation = trpc.ai.suggestSalesApproach.useMutation();
 
   const [formData, setFormData] = useState<{
     clientId: number;
@@ -71,20 +119,18 @@ export default function Tasks() {
     assignedTo: "",
   });
 
-  // Browser notifications for due reminders — checks every 30s
+  // Notification system: 2-stage keys so saving doesn't fire the actual notification
   useEffect(() => {
     if (!('Notification' in window)) return;
     if (Notification.permission === 'default') {
       Notification.requestPermission().then(permission => {
         if (permission === 'granted') {
-          toast.success('🔔 Notificações ativadas! Você receberá lembretes de tarefas.');
-        } else {
-          toast.warning('⚠️ Notificações bloqueadas. Ative nas configurações do navegador para receber lembretes.', { duration: 8000 });
+          toast.success('🔔 Notificações ativadas!');
         }
       });
     }
 
-    const STORAGE_KEY = 'sv_notified';
+    const STORAGE_KEY = 'sv_notified_v2';
     const getFired = (): Set<string> => new Set(JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '[]'));
     const markFired = (key: string) => {
       const s = getFired(); s.add(key); sessionStorage.setItem(STORAGE_KEY, JSON.stringify([...s]));
@@ -95,14 +141,11 @@ export default function Tasks() {
         const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'sine'; osc.frequency.setValueAtTime(880, ctx.currentTime);
         gain.gain.setValueAtTime(0.3, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 1);
+        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 1);
       } catch (_) {}
     };
 
@@ -110,38 +153,48 @@ export default function Tasks() {
       const now = new Date();
       const today = now.toDateString();
       const fired = getFired();
+
       (tasks as Task[]).forEach((task) => {
-        // treat null/undefined as enabled — only skip if explicitly false
         if (task.reminderEnabled === false || !task.reminderDate || task.status !== 'pending') return;
         const rd = new Date(task.reminderDate);
-        const diff = rd.getTime() - now.getTime();
-        const isOverdue = diff <= 0;
+        const diff = rd.getTime() - now.getTime(); // negative = overdue
 
-        // overdue: fire once per day so user is reminded each session
-        // upcoming: fire once permanently
-        const key = isOverdue
-          ? `${task.id}-overdue-${today}`
-          : `${task.id}-${rd.getTime()}`;
+        const overdueKey = `${task.id}-overdue-${today}`;
+        const warnKey = `${task.id}-warn-${rd.getTime()}`;   // 5-min ahead warning
+        const fireKey = `${task.id}-fire-${rd.getTime()}`;    // actual time notification
 
-        if (fired.has(key)) return;
+        // Overdue: fire once per session-day
+        if (diff < 0 && !fired.has(overdueKey)) {
+          markFired(overdueKey);
+          toast.warning(`🚨 Atrasada: ${task.title}`, { duration: 10000 });
+          playBeep();
+          if (Notification.permission === 'granted') {
+            try { new Notification(`🚨 Atrasada: ${task.title}`, { body: task.notes?.trim() || 'Prazo ultrapassado!', icon: '/favicon.ico' }); } catch (_) {}
+          }
+          return;
+        }
 
-        // Fire for: any overdue task OR upcoming within next 5 min
-        if (!isOverdue && diff > 300000) return;
+        // 5-min warning (separate key — does NOT block the actual notification)
+        if (diff > 60000 && diff <= 300000 && !fired.has(warnKey)) {
+          markFired(warnKey);
+          const mins = Math.round(diff / 60000);
+          toast.info(`⏰ Lembrete em ${mins} min: ${task.title}`, { duration: 6000 });
+          return;
+        }
 
-        const title = isOverdue ? `⏰ Atrasada: ${task.title}` : `🔔 Lembrete: ${task.title}`;
-        const body = task.notes?.trim() || (isOverdue ? 'Prazo ultrapassado!' : 'Tarefa pendente');
-
-        toast.warning(title, { duration: 10000 });
-        playBeep();
-        markFired(key);
-
-        if (Notification.permission === 'granted') {
-          try { new Notification(title, { body, icon: '/favicon.ico' }); } catch (_) {}
+        // Actual notification: within 1 minute of the scheduled time
+        if (diff >= -30000 && diff <= 60000 && !fired.has(fireKey)) {
+          markFired(fireKey);
+          toast.warning(`🔔 Agora: ${task.title}`, { duration: 12000 });
+          playBeep();
+          if (Notification.permission === 'granted') {
+            try { new Notification(`🔔 Lembrete: ${task.title}`, { body: task.notes?.trim() || 'Tarefa pendente', icon: '/favicon.ico' }); } catch (_) {}
+          }
         }
       });
     };
 
-    check(); // run immediately
+    check();
     const id = setInterval(check, 30000);
     return () => clearInterval(id);
   }, [tasks]);
@@ -157,7 +210,6 @@ export default function Tasks() {
     try {
       let reminderDateTime: Date | undefined;
       if (formData.reminderDate && formData.reminderTime) {
-        // Parse as local time — "YYYY-MM-DDThh:mm:00" without Z is always local
         reminderDateTime = new Date(`${formData.reminderDate}T${formData.reminderTime}:00`);
       }
       if (editingTask) {
@@ -178,9 +230,18 @@ export default function Tasks() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (!confirm(`Deletar ${selectedTasks.size} tarefa(s) selecionada(s)?`)) return;
+    try {
+      await deleteManyMutation.mutateAsync({ ids: Array.from(selectedTasks) });
+      toast.success(`${selectedTasks.size} tarefa(s) deletada(s)!`);
+      setSelectedTasks(new Set());
+      refetch();
+    } catch { toast.error("Erro ao deletar tarefas"); }
+  };
+
   const handleEdit = useCallback((task: Task) => {
     setEditingTask(task);
-    // Use local time components — toISOString() returns UTC which shifts date back 1 day in UTC-3
     const d = task.reminderDate ? new Date(task.reminderDate) : null;
     const reminderDate = d
       ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -194,23 +255,6 @@ export default function Tasks() {
 
   const handleOpenNewTask = useCallback(() => { resetForm(); setIsModalOpen(true); }, [resetForm]);
 
-  const filteredTasks = useMemo(() => {
-    let result = tasks;
-    if (filterStatus !== "all") result = result.filter((t: Task) => t.status === filterStatus);
-    if (isAdmin && filterAssignee !== "all") {
-      if (filterAssignee === "__none__") {
-        result = result.filter((t: Task) => !t.assignedTo || t.assignedTo.trim() === "");
-      } else {
-        result = result.filter((t: Task) => t.assignedTo === filterAssignee);
-      }
-    }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter((t: Task) => t.title.toLowerCase().includes(q) || t.notes?.toLowerCase().includes(q) || t.assignedTo?.toLowerCase().includes(q));
-    }
-    return result;
-  }, [tasks, filterStatus, filterAssignee, isAdmin, searchQuery]);
-
   const handleSelectTask = useCallback((id: number) => {
     const s = new Set(selectedTasks);
     s.has(id) ? s.delete(id) : s.add(id);
@@ -222,7 +266,7 @@ export default function Tasks() {
   }, [selectedTasks.size, filteredTasks]);
 
   const handleBulkAssign = async () => {
-    if (!bulkRepresentative.trim()) { toast.error("Digite o nome do representante"); return; }
+    if (!bulkRepresentative.trim()) { toast.error("Selecione um atendente"); return; }
     try {
       for (const id of Array.from(selectedTasks)) await updateMutation.mutateAsync({ id, assignedTo: bulkRepresentative });
       toast.success(`${selectedTasks.size} tarefas designadas!`); setSelectedTasks(new Set()); setBulkRepresentative(""); refetch();
@@ -234,21 +278,97 @@ export default function Tasks() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const lines = (ev.target?.result as string).split("\n").slice(1);
-        const imported = lines.filter(l => l.trim()).map(l => { const p = l.split(";"); return { name: p[3]?.trim(), phone: p[5]?.trim(), city: p[6]?.trim(), state: p[7]?.trim(), contact: p[4]?.trim(), email: p[8]?.trim() }; });
-        setImportedTasks(imported); setShowImport(true); toast.success(`${imported.length} clientes carregados`);
-      } catch { toast.error("Erro ao processar CSV"); }
+        const text = ev.target?.result as string;
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+
+        // Detect format: semicolon CSV vs dash-separated text
+        const isSemiCSV = lines[0]?.includes(';');
+
+        let parsed: { title: string; description: string; notes: string }[];
+
+        if (isSemiCSV) {
+          // Traditional semicolon CSV (skip header)
+          parsed = lines.slice(1).map(l => {
+            const p = l.split(';');
+            const name = p[3]?.trim() || p[0]?.trim() || '';
+            const phone = p[5]?.trim() || '';
+            const city = p[6]?.trim() || '';
+            const state = p[7]?.trim() || '';
+            const contact = p[4]?.trim() || '';
+            const email = p[8]?.trim() || '';
+            const notes: string[] = [];
+            if (phone) notes.push(`📱 WhatsApp: ${phone}`);
+            if (contact && contact !== phone) notes.push(`📞 Tel: ${contact}`);
+            if (email) notes.push(`📧 Email: ${email}`);
+            return { title: name, description: [city, state].filter(Boolean).join(' - '), notes: notes.join('\n') };
+          }).filter(t => t.title);
+        } else {
+          // Dash-separated format
+          parsed = lines.map(parseImportLine).filter(Boolean) as { title: string; description: string; notes: string }[];
+        }
+
+        if (parsed.length === 0) { toast.error("Nenhum dado válido encontrado no arquivo"); return; }
+        setImportedTasks(parsed);
+        setShowImport(true);
+        toast.success(`${parsed.length} registros carregados — selecione o atendente para importar`);
+      } catch { toast.error("Erro ao processar arquivo"); }
     };
-    reader.readAsText(file);
+    reader.readAsText(file, 'UTF-8');
   };
 
   const handleImportTasks = async () => {
-    if (!selectedRepresentative) { toast.error("Selecione um representante"); return; }
+    if (!selectedRepresentative) { toast.error("Selecione um atendente"); return; }
+    setImportLoading(true);
+    let success = 0;
     try {
-      for (const t of importedTasks) await createMutation.mutateAsync({ clientId: 0, title: `${t.name} - ${t.phone}`, description: `${t.city} - ${t.state}`, notes: `Contato: ${t.contact}\nEmail: ${t.email}`, reminderEnabled: true, priority: "medium", assignedTo: selectedRepresentative });
-      toast.success(`${importedTasks.length} tarefas importadas!`); setImportedTasks([]); setShowImport(false); setSelectedRepresentative(""); refetch();
-    } catch { toast.error("Erro ao importar"); }
+      for (const t of importedTasks) {
+        await createMutation.mutateAsync({ clientId: 0, title: t.title, description: t.description, notes: t.notes, reminderEnabled: true, priority: "medium", assignedTo: selectedRepresentative });
+        success++;
+      }
+      toast.success(`✅ ${success} tarefas importadas com sucesso para ${selectedRepresentative}!`, { duration: 8000 });
+      setImportedTasks([]);
+      setShowImport(false);
+      setSelectedRepresentative("");
+      refetch();
+    } catch (err: any) {
+      toast.error(`Importadas ${success}/${importedTasks.length}. Erro: ${err?.message ?? 'tente novamente'}`);
+    } finally {
+      setImportLoading(false);
+    }
   };
+
+  const handleAiSuggest = async (task: Task) => {
+    if (loadingSuggestion) return;
+    setLoadingSuggestion(true);
+    setAiSuggestion(null);
+    try {
+      const result = await suggestMutation.mutateAsync({ title: task.title, notes: task.notes || '' });
+      setAiSuggestion({ taskId: task.id, text: result.suggestion });
+    } catch {
+      toast.error("Erro ao gerar sugestão");
+    } finally {
+      setLoadingSuggestion(false);
+    }
+  };
+
+  const filteredTasks = useMemo(() => {
+    let result = tasks as Task[];
+    if (filterStatus !== "all") result = result.filter(t => t.status === filterStatus);
+    if (isAdmin && filterAssignee !== "all") {
+      if (filterAssignee === "__none__") result = result.filter(t => !t.assignedTo || t.assignedTo.trim() === "");
+      else result = result.filter(t => t.assignedTo === filterAssignee);
+    }
+    if (filterContact === "whatsapp") {
+      result = result.filter(t => hasPhone(`${t.title} ${t.notes ?? ''}`));
+    } else if (filterContact === "email") {
+      result = result.filter(t => hasEmail(`${t.title} ${t.notes ?? ''}`));
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(t => t.title.toLowerCase().includes(q) || t.notes?.toLowerCase().includes(q) || t.assignedTo?.toLowerCase().includes(q));
+    }
+    return result;
+  }, [tasks, filterStatus, filterAssignee, filterContact, isAdmin, searchQuery]);
 
   const priorityEmoji: Record<string, string> = { low: "🟦", medium: "🟨", high: "🟥" };
   const statusEmoji: Record<string, string> = { pending: "⏳", completed: "✅", cancelled: "❌" };
@@ -257,172 +377,203 @@ export default function Tasks() {
 
   return (
     <div className="p-6 space-y-4">
-        <input type="text" placeholder="🔍 Pesquisar tarefas..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full px-4 py-2 border rounded-lg" />
+      <input type="text" placeholder="🔍 Pesquisar tarefas..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full px-4 py-2 border rounded-lg" />
 
-        <div className="flex justify-between items-center flex-wrap gap-2">
-          <div className="flex gap-2 flex-wrap">
-            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-4 py-2 border rounded-lg">
-              <option value="all">Todas</option>
-              <option value="pending">Pendentes</option>
-              <option value="completed">Concluídas</option>
-              <option value="cancelled">Canceladas</option>
+      <div className="flex justify-between items-center flex-wrap gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
+            <option value="all">Todas</option>
+            <option value="pending">Pendentes</option>
+            <option value="completed">Concluídas</option>
+            <option value="cancelled">Canceladas</option>
+          </select>
+          {isAdmin && (
+            <select value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
+              <option value="all">👥 Todos</option>
+              <option value="__none__">🔑 Admin</option>
+              {(attendants as any[]).map((a: any) => <option key={a.id} value={a.name}>👤 {a.name}</option>)}
             </select>
-            {isAdmin && (
-              <select
-                value={filterAssignee}
-                onChange={(e) => setFilterAssignee(e.target.value)}
-                className="px-4 py-2 border rounded-lg"
-              >
-                <option value="all">👥 Todos atendentes</option>
-                <option value="__none__">🔑 Administrador</option>
-                {(attendants as any[]).map((a: any) => (
-                  <option key={a.id} value={a.name}>👤 {a.name}</option>
-                ))}
+          )}
+          <button
+            onClick={() => setFilterContact(filterContact === "whatsapp" ? "all" : "whatsapp")}
+            className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterContact === "whatsapp" ? "bg-green-500 text-white border-green-500" : "bg-white text-gray-700 hover:bg-green-50"}`}
+          >
+            📱 WhatsApp
+          </button>
+          <button
+            onClick={() => setFilterContact(filterContact === "email" ? "all" : "email")}
+            className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterContact === "email" ? "bg-blue-500 text-white border-blue-500" : "bg-white text-gray-700 hover:bg-blue-50"}`}
+          >
+            📧 Email
+          </button>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {isAdmin && selectedTasks.size > 0 && (
+            <>
+              <select value={bulkRepresentative} onChange={(e) => setBulkRepresentative(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
+                <option value="">Atendente...</option>
+                {attendants.map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
               </select>
-            )}
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            {isAdmin && selectedTasks.size > 0 && (
+              <Button size="sm" onClick={handleBulkAssign} variant="outline">👤 Designar ({selectedTasks.size})</Button>
+              <Button size="sm" variant="destructive" onClick={handleBulkDelete}>🗑️ Deletar ({selectedTasks.size})</Button>
+            </>
+          )}
+          {isAdmin && <Button onClick={() => setShowImport(!showImport)} variant="outline" size="sm">📤 CSV</Button>}
+          <Button onClick={handleOpenNewTask} size="sm">➕ Nova</Button>
+        </div>
+      </div>
+
+      {isAdmin && showImport && (
+        <Card className="border-blue-300 bg-blue-50">
+          <CardHeader><CardTitle className="text-base">Importar CSV ou lista de clientes</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-gray-600">Suporta CSV com ponto-e-vírgula e listas com traço (nome - telefone - email - cidade - estado).</p>
+            <input type="file" accept=".csv,.txt" onChange={handleCSVImport} className="w-full px-3 py-2 border rounded-lg bg-white" />
+            {importedTasks.length > 0 && (
               <>
-                <select value={bulkRepresentative} onChange={(e) => setBulkRepresentative(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
+                <div className="bg-white rounded-lg border p-3 max-h-40 overflow-y-auto space-y-1">
+                  {importedTasks.slice(0, 10).map((t, i) => (
+                    <div key={i} className="text-xs text-gray-700 border-b pb-1">
+                      <span className="font-medium">{t.title}</span>
+                      {t.notes && <span className="text-gray-500 ml-1">— {t.notes.split('\n')[0]}</span>}
+                    </div>
+                  ))}
+                  {importedTasks.length > 10 && <p className="text-xs text-gray-500">... e mais {importedTasks.length - 10}</p>}
+                </div>
+                <select value={selectedRepresentative} onChange={(e) => setSelectedRepresentative(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
                   <option value="">Selecionar atendente...</option>
                   {attendants.map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
                 </select>
-                <Button size="sm" onClick={handleBulkAssign}>👤 Designar ({selectedTasks.size})</Button>
+                <Button onClick={handleImportTasks} className="w-full" disabled={importLoading}>
+                  {importLoading ? `Importando...` : `✅ Importar ${importedTasks.length} tarefas`}
+                </Button>
               </>
             )}
-            {isAdmin && <Button onClick={() => setShowImport(!showImport)} variant="outline" size="sm">📤 Importar CSV</Button>}
-            <Button onClick={handleOpenNewTask} size="sm">➕ Nova Tarefa</Button>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
+      )}
 
-        {isAdmin && showImport && (
-          <Card className="border-blue-300 bg-blue-50">
-            <CardHeader><CardTitle className="text-base">Importar CSV</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <input type="file" accept=".csv" onChange={handleCSVImport} className="w-full px-3 py-2 border rounded-lg" />
-              {importedTasks.length > 0 && (
-                <>
-                  <select value={selectedRepresentative} onChange={(e) => setSelectedRepresentative(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
-                    <option value="">Selecionar atendente...</option>
+      {/* Task Modal */}
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{editingTask ? "✏️ Editar Tarefa" : "➕ Nova Tarefa"}</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Título *</label>
+              <input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} placeholder="Título da tarefa" className="w-full px-3 py-2 border rounded-lg" required />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Anotações</label>
+              <textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Anotações, telefone, email..." className="w-full px-3 py-2 border rounded-lg h-20" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium mb-1">🗓️ Data do lembrete</label>
+                <input type="date" value={formData.reminderDate} onChange={(e) => setFormData({ ...formData, reminderDate: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">⏰ Hora</label>
+                <input type="time" value={formData.reminderTime} onChange={(e) => setFormData({ ...formData, reminderTime: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 bg-blue-50 p-2 rounded-lg">
+              <input type="checkbox" id="reminderEnabled" checked={formData.reminderEnabled} onChange={(e) => setFormData({ ...formData, reminderEnabled: e.target.checked })} className="w-4 h-4" />
+              <label htmlFor="reminderEnabled" className="text-sm font-medium text-blue-800">🔔 Ativar notificação no navegador</label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium mb-1">Prioridade</label>
+                <select value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })} className="w-full px-3 py-2 border rounded-lg">
+                  <option value="low">🟦 Baixa</option>
+                  <option value="medium">🟨 Média</option>
+                  <option value="high">🟥 Alta</option>
+                </select>
+              </div>
+              {isAdmin && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">👤 Designar para</label>
+                  <select value={formData.assignedTo} onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })} className="w-full px-3 py-2 border rounded-lg">
+                    <option value="">Nenhum</option>
                     {attendants.map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
                   </select>
-                  <Button onClick={handleImportTasks} className="w-full">✅ Importar {importedTasks.length} tarefas</Button>
-                </>
+                </div>
               )}
-            </CardContent>
-          </Card>
-        )}
+            </div>
+            <DialogFooter className="flex gap-2 pt-2">
+              <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700">{editingTask ? "Atualizar" : "Criar Tarefa"}</Button>
+              {editingTask && <Button type="button" variant="destructive" onClick={() => handleDelete(editingTask.id)}>🗑️</Button>}
+              <Button type="button" variant="outline" onClick={() => { setIsModalOpen(false); resetForm(); }}>Cancelar</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-        {/* Task Modal */}
-        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-            <DialogHeader><DialogTitle>{editingTask ? "✏️ Editar Tarefa" : "➕ Nova Tarefa"}</DialogTitle></DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Título *</label>
-                <input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} placeholder="Título da tarefa" className="w-full px-3 py-2 border rounded-lg" required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Anotações</label>
-                <textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Anotações..." className="w-full px-3 py-2 border rounded-lg h-20" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium mb-1">🗓️ Data do lembrete</label>
-                  <input type="date" value={formData.reminderDate} onChange={(e) => setFormData({ ...formData, reminderDate: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">⏰ Hora</label>
-                  <input type="time" value={formData.reminderTime} onChange={(e) => setFormData({ ...formData, reminderTime: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
-                </div>
-              </div>
-              <div className="flex items-center gap-2 bg-blue-50 p-2 rounded-lg">
-                <input type="checkbox" id="reminderEnabled" checked={formData.reminderEnabled} onChange={(e) => setFormData({ ...formData, reminderEnabled: e.target.checked })} className="w-4 h-4" />
-                <label htmlFor="reminderEnabled" className="text-sm font-medium text-blue-800">🔔 Ativar notificação no navegador</label>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Prioridade</label>
-                  <select value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })} className="w-full px-3 py-2 border rounded-lg">
-                    <option value="low">🟦 Baixa</option>
-                    <option value="medium">🟨 Média</option>
-                    <option value="high">🟥 Alta</option>
-                  </select>
-                </div>
-                {isAdmin && (
-                  <div>
-                    <label className="block text-sm font-medium mb-1">👤 Designar para</label>
-                    <select value={formData.assignedTo} onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })} className="w-full px-3 py-2 border rounded-lg">
-                      <option value="">Nenhum</option>
-                      {attendants.map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
-                    </select>
-                  </div>
-                )}
-              </div>
-              <DialogFooter className="flex gap-2 pt-2">
-                <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700">{editingTask ? "Atualizar" : "Criar Tarefa"}</Button>
-                {editingTask && <Button type="button" variant="destructive" onClick={() => handleDelete(editingTask.id)}>🗑️</Button>}
-                <Button type="button" variant="outline" onClick={() => { setIsModalOpen(false); resetForm(); }}>Cancelar</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-
-        {/* Tasks List */}
-        {isLoading ? (
-          <p className="text-center text-gray-500 py-8">Carregando...</p>
-        ) : filteredTasks.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500 text-lg">Nenhuma tarefa encontrada</p>
-            <Button onClick={handleOpenNewTask} className="mt-4">➕ Criar primeira tarefa</Button>
+      {/* Tasks List */}
+      {isLoading ? (
+        <p className="text-center text-gray-500 py-8">Carregando...</p>
+      ) : filteredTasks.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-gray-500 text-lg">Nenhuma tarefa encontrada</p>
+          <Button onClick={handleOpenNewTask} className="mt-4">➕ Criar primeira tarefa</Button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 p-2 bg-gray-100 rounded">
+            <input type="checkbox" checked={selectedTasks.size === filteredTasks.length && filteredTasks.length > 0} onChange={handleSelectAll} className="w-4 h-4 cursor-pointer" />
+            <span className="text-sm font-medium text-gray-700">Selecionar tudo ({filteredTasks.length})</span>
+            {selectedTasks.size > 0 && <span className="text-sm text-blue-600 font-medium ml-2">{selectedTasks.size} selecionada(s)</span>}
           </div>
-        ) : (
-          <div className="space-y-2">
-            {isAdmin && (
-              <div className="flex items-center gap-2 p-2 bg-gray-100 rounded">
-                <input type="checkbox" checked={selectedTasks.size === filteredTasks.length && filteredTasks.length > 0} onChange={handleSelectAll} className="w-4 h-4 cursor-pointer" />
-                <span className="text-sm font-medium">Selecionar Tudo ({filteredTasks.length})</span>
-              </div>
-            )}
-            {filteredTasks.map((task: Task) => (
-              <div key={task.id} className="border rounded-lg overflow-hidden shadow-sm">
-                <div className="flex items-center gap-3 p-3 bg-white hover:bg-gray-50 transition cursor-pointer" onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)}>
-                  {isAdmin && <input type="checkbox" checked={selectedTasks.has(task.id)} onChange={() => handleSelectTask(task.id)} onClick={(e) => e.stopPropagation()} className="w-4 h-4 cursor-pointer" />}
-                  <div className="flex gap-1">
-                    <span>{statusEmoji[task.status || 'pending']}</span>
-                    <span>{priorityEmoji[task.priority || 'medium']}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{task.title}</p>
+          {filteredTasks.map((task: Task) => (
+            <div key={task.id} className="border rounded-lg overflow-hidden shadow-sm">
+              <div className="flex items-center gap-3 p-3 bg-white hover:bg-gray-50 transition cursor-pointer" onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)}>
+                <input type="checkbox" checked={selectedTasks.has(task.id)} onChange={() => handleSelectTask(task.id)} onClick={(e) => e.stopPropagation()} className="w-4 h-4 cursor-pointer" />
+                <div className="flex gap-1">
+                  <span>{statusEmoji[task.status || 'pending']}</span>
+                  <span>{priorityEmoji[task.priority || 'medium']}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm truncate">{task.title}</p>
+                  <div className="flex gap-2 items-center flex-wrap">
                     {isAdmin && task.assignedTo && <p className="text-xs text-gray-500">👤 {task.assignedTo}</p>}
+                    {hasPhone(`${task.title} ${task.notes ?? ''}`) && <span className="text-xs text-green-600">📱</span>}
+                    {hasEmail(`${task.title} ${task.notes ?? ''}`) && <span className="text-xs text-blue-600">📧</span>}
                   </div>
-                  {task.reminderDate && task.reminderEnabled && (() => {
-                    const rd = new Date(task.reminderDate);
-                    const now = new Date();
-                    const isOverdue = rd < now && task.status === 'pending';
-                    const isToday = rd.toDateString() === now.toDateString();
-                    return (
-                      <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap font-medium ${isOverdue ? 'bg-red-100 text-red-700' : isToday ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                        {isOverdue ? '🚨 ATRASADO' : isToday ? '⚠️ HOJE' : '🔔'} {rd.toLocaleDateString("pt-BR")} {rd.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                    );
-                  })()}
                 </div>
-                {expandedTask === task.id && (
-                  <div className="p-3 bg-gray-50 border-t space-y-2">
-                    {task.notes && <div className="text-sm bg-yellow-50 p-2 rounded border border-yellow-200"><strong>📝 Anotações:</strong><p className="whitespace-pre-wrap mt-1">{task.notes}</p></div>}
-                    <p className="text-xs text-gray-500">Criada: {new Date(task.createdAt).toLocaleDateString("pt-BR")}</p>
-                    <div className="flex gap-2 flex-wrap">
-                      <Button size="sm" variant="outline" onClick={() => handleEdit(task)}>✏️ Editar</Button>
-                      <Button size="sm" variant="destructive" onClick={() => handleDelete(task.id)}>🗑️ Deletar</Button>
-                    </div>
-                  </div>
-                )}
+                {task.reminderDate && task.reminderEnabled && (() => {
+                  const rd = new Date(task.reminderDate);
+                  const now = new Date();
+                  const isOverdue = rd < now && task.status === 'pending';
+                  const isToday = rd.toDateString() === now.toDateString();
+                  return (
+                    <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap font-medium ${isOverdue ? 'bg-red-100 text-red-700' : isToday ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                      {isOverdue ? '🚨' : isToday ? '⚠️' : '🔔'} {rd.toLocaleDateString("pt-BR")} {rd.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  );
+                })()}
               </div>
-            ))}
-          </div>
-        )}
+              {expandedTask === task.id && (
+                <div className="p-3 bg-gray-50 border-t space-y-2">
+                  {task.notes && <div className="text-sm bg-yellow-50 p-2 rounded border border-yellow-200"><strong>📝 Anotações:</strong><p className="whitespace-pre-wrap mt-1">{task.notes}</p></div>}
+                  <p className="text-xs text-gray-500">Criada: {new Date(task.createdAt).toLocaleDateString("pt-BR")}</p>
+                  {aiSuggestion?.taskId === task.id && (
+                    <div className="text-sm bg-purple-50 p-2 rounded border border-purple-200">
+                      <strong>🤖 Sugestão de abordagem:</strong>
+                      <p className="mt-1 text-gray-700">{aiSuggestion.text}</p>
+                    </div>
+                  )}
+                  <div className="flex gap-2 flex-wrap">
+                    <Button size="sm" variant="outline" onClick={() => handleEdit(task)}>✏️ Editar</Button>
+                    <Button size="sm" variant="destructive" onClick={() => handleDelete(task.id)}>🗑️ Deletar</Button>
+                    <Button size="sm" variant="outline" className="text-purple-700 border-purple-300 hover:bg-purple-50" onClick={() => handleAiSuggest(task)} disabled={loadingSuggestion}>
+                      {loadingSuggestion && aiSuggestion === null ? "⏳ Gerando..." : "🤖 Sugestão IA"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

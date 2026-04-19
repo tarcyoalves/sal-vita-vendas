@@ -248,6 +248,22 @@ REGRAS:
     }
   }),
 
+  suggestSalesApproach: protectedProcedure
+    .input(z.object({ title: z.string().min(1), notes: z.string() }))
+    .mutation(async ({ input }) => {
+      const apiKey = process.env.GROQ_API_KEY;
+      if (!apiKey) return { suggestion: 'IA não configurada (GROQ_API_KEY ausente).' };
+      try {
+        const suggestion = await callLLM(apiKey, BASE_URLS.groq, 'llama-3.1-8b-instant', [
+          { role: 'system', content: 'Vendas B2B de sal. Sugira 1 abordagem prática em 2-3 frases. Direto, sem introdução. Português BR.' },
+          { role: 'user', content: `Cliente: ${input.title}\nObservações: ${input.notes || 'sem observações'}` },
+        ], 150, 0.7);
+        return { suggestion };
+      } catch (err: any) {
+        return { suggestion: 'Erro ao gerar sugestão: ' + (err?.message ?? 'tente novamente') };
+      }
+    }),
+
   history: protectedProcedure.query(async ({ ctx }) => {
     return db.select().from(chatMessages)
       .where(eq(chatMessages.userId, ctx.user.id))
