@@ -251,15 +251,16 @@ export default function Tasks() {
         const text = ev.target?.result as string;
         const lines = text.split(/\r?\n/).filter(l => l.trim());
 
-        // Detect format: semicolon CSV vs dash-separated text
-        const isSemiCSV = lines[0]?.includes(';');
+        // Detect separator: tab, semicolon, or dash-separated text
+        const sep = lines[0]?.includes('\t') ? '\t' : lines[0]?.includes(';') ? ';' : null;
+        const isStructured = sep !== null;
 
         let parsed: { title: string; description: string; notes: string }[];
 
-        if (isSemiCSV) {
-          // Parse header to find column indices by name (handles all CSV variants)
+        if (isStructured) {
+          // Parse header to find column indices by name (handles all CSV/TSV variants)
           const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
-          const header = lines[0].split(';').map(normalize);
+          const header = lines[0].split(sep!).map(normalize);
           const findCol = (...names: string[]) => {
             for (const name of names) {
               const idx = header.findIndex(h => h.includes(name));
@@ -304,7 +305,7 @@ export default function Tasks() {
           const clientMap = new Map<string, { cnpj: string; nome: string; cidade: string; uf: string; fone: string; email: string; produtos: Set<string> }>();
           lines.slice(1).forEach(line => {
             if (!line.trim()) return;
-            const cols = line.split(';').map(c => c.trim().replace(/^["']+|["']+$/g, '').trim());
+            const cols = line.split(sep!).map(c => c.trim().replace(/^["']+|["']+$/g, '').trim());
             const get = (hIdx: number, pIdx: number) => ((posMode ? pIdx : hIdx) >= 0 ? cols[(posMode ? pIdx : hIdx)] ?? '' : '').trim();
             const cnpj  = get(colCNPJ, posCNPJ);
             const nome  = get(colNome, posNome);
