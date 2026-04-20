@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git merge-base *)",
+      "Bash(npx tsc --noEmit *)"
+    ]
+  }
+}
