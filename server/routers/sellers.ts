@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
-import { sellers, users } from '../db/schema';
+import { sellers, users, tasks } from '../db/schema';
 import { hashPassword } from '../auth';
 
 function generatePassword(length = 8): string {
@@ -54,10 +54,14 @@ export const sellersRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
-      // Also remove the linked user account
       const [seller] = await db.select().from(sellers).where(eq(sellers.id, input.id));
-      if (seller && seller.userId > 0) {
-        await db.delete(users).where(eq(users.id, seller.userId));
+      if (seller) {
+        // Preserve tasks: set assignedTo to null instead of deleting them
+        await db.update(tasks).set({ assignedTo: null }).where(eq(tasks.assignedTo, seller.name));
+        // Delete user account
+        if (seller.userId > 0) {
+          await db.delete(users).where(eq(users.id, seller.userId));
+        }
       }
       await db.delete(sellers).where(eq(sellers.id, input.id));
       return { ok: true };

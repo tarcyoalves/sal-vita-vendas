@@ -444,9 +444,7 @@ export default function Tasks() {
         <div className="flex gap-2 flex-wrap">
           <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
             <option value="all">Todas</option>
-            <option value="pending">Pendentes</option>
-            <option value="completed">Concluídas</option>
-            <option value="cancelled">Canceladas</option>
+            <option value="pending">Ativas</option>
           </select>
           {isAdmin && (
             <select value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">

@@ -70,8 +70,20 @@ export const chatMessages = pgTable('chat_messages', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+export const knowledgeDocuments = pgTable('knowledge_documents', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull(),
+  title: text('title').notNull(),
+  content: text('content').notNull(),
+  category: text('category'),
+  fileUrl: text('file_url'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Seller = typeof sellers.$inferSelect;
 export type Client = typeof clients.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type Reminder = typeof reminders.$inferSelect;
+export type KnowledgeDocument = typeof knowledgeDocuments.$inferSelect;

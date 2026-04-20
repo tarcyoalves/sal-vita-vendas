@@ -24,7 +24,6 @@ export default function VendorReminders() {
   }
 
   const pendingReminders = reminders?.filter(r => r.status === "pending") || [];
-  const completedReminders = reminders?.filter(r => r.status === "completed") || [];
 
   return (
     <div className="p-4 md:p-6 space-y-4 md:space-y-6">
@@ -57,35 +56,13 @@ export default function VendorReminders() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4">
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Pendentes</CardTitle>
+            <CardTitle className="text-lg">Lembretes Pendentes</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-bold text-orange-600">{pendingReminders.length}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Completos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold text-green-600">{completedReminders.length}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Taxa de Conclusão</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold text-blue-600">
-              {reminders && reminders.length > 0 
-                ? Math.round((completedReminders.length / reminders.length) * 100) 
-                : 0}%
-            </p>
           </CardContent>
         </Card>
       </div>
@@ -110,7 +87,6 @@ export default function VendorReminders() {
                         Agendado para: {format(new Date(reminder.scheduledDate), "dd/MM/yyyy HH:mm", { locale: ptBR })}
                       </p>
                     </div>
-                    <Button variant="outline" size="sm">Marcar Concluído</Button>
                   </div>
                 </div>
               ))}
@@ -121,25 +97,6 @@ export default function VendorReminders() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Lembretes Completos</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {completedReminders.length > 0 ? (
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {completedReminders.map((reminder) => (
-                <div key={reminder.id} className="p-3 border rounded-lg bg-green-50 text-sm">
-                  <p className="font-semibold">{reminder.clientName}</p>
-                  <p className="text-gray-600">{format(new Date(reminder.updatedAt), "dd/MM/yyyy", { locale: ptBR })}</p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-gray-600">Nenhum lembrete completo</p>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

@@ -321,7 +321,7 @@ export default function AdminDashboard() {
             >
               <option value="all">👁️ Todos</option>
               <option value="__admin__">🔑 Administrador</option>
-              {(sellers as any[]).map((s: any) => (
+              {(sellers ?? []).map((s: any) => (
                 <option key={s.id} value={s.name}>👤 {s.name}</option>
               ))}
             </select>
