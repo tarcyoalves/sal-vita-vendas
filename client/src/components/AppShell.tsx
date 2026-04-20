@@ -235,12 +235,13 @@ export default function AppShell({ children }: AppShellProps) {
         {/* Topbar */}
         <header className="h-14 bg-white border-b flex items-center px-4 gap-4 flex-shrink-0">
           <button
-            className="md:hidden p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            className="md:hidden p-2.5 rounded-lg hover:bg-gray-100 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
             onClick={() => setSidebarOpen(true)}
+            aria-label="Abrir menu"
           >
             <Menu size={20} className="text-gray-600" />
           </button>
-          <h1 className="text-base font-semibold text-gray-800">{pageTitle}</h1>
+          <h1 className="text-base font-semibold text-gray-800 truncate">{pageTitle}</h1>
         </header>
 
         {/* Page content */}

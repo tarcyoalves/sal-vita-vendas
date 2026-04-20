@@ -56,26 +56,26 @@ export default function ClientsManagement() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center mb-6 pb-4 border-b">
-        <div className="flex items-center gap-4">
-          <a href="/" className="hover:opacity-80 transition">
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 pb-4 border-b">
+        <div className="flex items-center gap-3">
+          <a href="/" className="hover:opacity-80 transition flex-shrink-0">
             <img
               src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/sal_vita_logo_d22b1eb4.webp"
               alt="Sal Vita"
-              className="h-12 cursor-pointer"
+              className="h-8 md:h-12 cursor-pointer"
             />
           </a>
-          <h1 className="text-3xl font-bold text-blue-900">Gestão de Clientes</h1>
+          <h1 className="text-xl md:text-3xl font-bold text-blue-900">Gestão de Clientes</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <a href="/">
-            <Button variant="outline">🏠 Início</Button>
+            <Button variant="outline" size="sm">🏠 Início</Button>
           </a>
-          <Button onClick={() => setShowImportForm(!showImportForm)}>
-            {showImportForm ? "Cancelar" : "📥 Importar CSV/Excel"}
+          <Button size="sm" onClick={() => setShowImportForm(!showImportForm)}>
+            {showImportForm ? "Cancelar" : "📥 Importar CSV"}
           </Button>
-          <Button variant="destructive" onClick={handleLogout}>
+          <Button size="sm" variant="destructive" onClick={handleLogout}>
             Sair
           </Button>
         </div>
@@ -141,7 +141,7 @@ export default function ClientsManagement() {
         <CardHeader>
           <CardTitle>Filtros</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-3 gap-4">
+        <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <input
             type="text"
             placeholder="Buscar por nome..."
@@ -181,27 +181,25 @@ export default function ClientsManagement() {
             <p>Carregando...</p>
           ) : clients && clients.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm min-w-[480px]">
                 <thead className="bg-gray-100">
                   <tr>
-                    <th className="p-2 text-left">CNPJ</th>
+                    <th className="p-2 text-left hidden md:table-cell">CNPJ</th>
                     <th className="p-2 text-left">Nome</th>
                     <th className="p-2 text-left">Telefone</th>
-                    <th className="p-2 text-left">Cidade</th>
-                    <th className="p-2 text-left">UF</th>
-                    <th className="p-2 text-left">Email</th>
+                    <th className="p-2 text-left hidden sm:table-cell">Cidade/UF</th>
+                    <th className="p-2 text-left hidden lg:table-cell">Email</th>
                     <th className="p-2 text-left">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {clients.map((client) => (
                     <tr key={client.id} className="border-b hover:bg-gray-50">
-                      <td className="p-2">{client.cnpj || "--"}</td>
+                      <td className="p-2 hidden md:table-cell text-gray-500 text-xs">{client.cnpj || "--"}</td>
                       <td className="p-2 font-medium">{client.name}</td>
                       <td className="p-2">{client.phone}</td>
-                      <td className="p-2">{client.city}</td>
-                      <td className="p-2">{client.state}</td>
-                      <td className="p-2 text-blue-600">{client.email || "--"}</td>
+                      <td className="p-2 hidden sm:table-cell text-gray-500">{[client.city, client.state].filter(Boolean).join(' - ') || '--'}</td>
+                      <td className="p-2 hidden lg:table-cell text-blue-600 text-xs">{client.email || "--"}</td>
                       <td className="p-2">
                         <span
                           className={`px-2 py-1 rounded text-xs font-medium ${

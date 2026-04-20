@@ -117,10 +117,10 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
 
       {/* Welcome banner */}
-      <div className="bg-gradient-to-r from-slate-800 to-slate-700 rounded-2xl p-5 text-white flex items-center justify-between">
+      <div className="bg-gradient-to-r from-slate-800 to-slate-700 rounded-2xl p-4 md:p-5 text-white flex items-center justify-between gap-2">
         <div>
           <h2 className="text-xl font-bold">Olá, {user.name?.split(' ')[0]} 👋</h2>
           <p className="text-slate-300 text-sm mt-0.5">

@@ -64,12 +64,12 @@ export default function KnowledgeBase() {
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-        <div className="mb-6 flex justify-between items-center">
-          <p className="text-gray-600">
+    <div className="p-4 md:p-6 max-w-6xl mx-auto">
+        <div className="mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
+          <p className="text-gray-600 text-sm">
             Adicione documentos, políticas e informações sobre sua empresa para que a IA tenha mais contexto.
           </p>
-          <Button onClick={() => setShowForm(!showForm)}>
+          <Button size="sm" onClick={() => setShowForm(!showForm)} className="flex-shrink-0">
             {showForm ? "❌ Cancelar" : "➕ Novo Documento"}
           </Button>
         </div>

@@ -151,7 +151,7 @@ export default function Attendants() {
   if (!user || user.role !== "admin") return null;
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-4 md:p-6 space-y-4">
 
         {/* Password reveal modal */}
         {createdInfo && (
@@ -194,17 +194,17 @@ export default function Attendants() {
           <Card>
             <CardContent className="pt-6">
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium mb-1">Nome *</label>
                     <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Nome completo" className="w-full px-3 py-2 border rounded-lg" required />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">Email * (usado para login)</label>
+                    <label className="block text-sm font-medium mb-1">Email * (login)</label>
                     <input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="email@example.com" className="w-full px-3 py-2 border rounded-lg" required />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium mb-1">Telefone</label>
                     <input type="tel" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} placeholder="(11) 99999-9999" className="w-full px-3 py-2 border rounded-lg" />
@@ -214,7 +214,7 @@ export default function Attendants() {
                     <input type="text" value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} placeholder="Ex: Vendas" className="w-full px-3 py-2 border rounded-lg" />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium mb-1">Meta Diária</label>
                     <input type="number" value={formData.dailyGoal} onChange={(e) => setFormData({ ...formData, dailyGoal: parseInt(e.target.value) })} className="w-full px-3 py-2 border rounded-lg" min="1" />

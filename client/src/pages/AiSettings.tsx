@@ -160,7 +160,7 @@ export default function AiSettings() {
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-4 md:space-y-6">
         {/* Status Messages */}
         {saved && (
           <div className="bg-green-50 border border-green-200 text-green-700 p-4 rounded-lg flex items-center gap-2">
