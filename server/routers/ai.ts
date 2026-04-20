@@ -223,6 +223,21 @@ ${overdue.slice(0, 5).map(t => `- "${t.title.slice(0, 60)}" (${t.assignedTo ?? '
 
 
 export const aiRouter = router({
+  bulkReschedule: protectedProcedure
+    .input(z.object({
+      sellerName: z.string().min(1),
+      tasksPerDay: z.number().min(1).max(200).default(50),
+      startHour: z.number().min(6).max(12).default(8),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      if (ctx.user.role !== 'admin') throw new Error('Apenas admins podem reagendar em massa');
+      return executeTool('reschedule_tasks', {
+        attendant_name: input.sellerName,
+        tasks_per_day: input.tasksPerDay,
+        start_hour: input.startHour,
+      });
+    }),
+
   testConnection: protectedProcedure
     .input(z.object({
       provider: z.string(),

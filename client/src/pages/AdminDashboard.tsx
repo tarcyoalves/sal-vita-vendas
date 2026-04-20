@@ -13,7 +13,9 @@ import {
   MessageSquare,
   Settings,
   Scan,
+  BarChart2,
 } from "lucide-react";
+import AttendantDetailModal from '../components/AttendantDetailModal';
 
 export default function AdminDashboard() {
   const { user, loading } = useAuth();
@@ -26,6 +28,7 @@ export default function AdminDashboard() {
   const [monitorSummary, setMonitorSummary] = useState<string | null>(null);
   const [monitorLoading, setMonitorLoading] = useState(false);
   const [reminderFilter, setReminderFilter] = useState<string>("all");
+  const [selectedSeller, setSelectedSeller] = useState<any | null>(null);
 
   const handleRunMonitor = async () => {
     setMonitorLoading(true);
@@ -189,10 +192,18 @@ export default function AdminDashboard() {
                       <div className="w-9 h-9 rounded-full bg-slate-700 text-white flex items-center justify-center text-sm font-bold flex-shrink-0">
                         {seller.name.charAt(0).toUpperCase()}
                       </div>
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="font-semibold text-sm text-gray-800 truncate">{seller.name}</p>
                         <p className="text-xs text-gray-400 truncate">{seller.email}</p>
                       </div>
+                      <button
+                        onClick={() => setSelectedSeller(seller)}
+                        className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                        title="Análise detalhada"
+                      >
+                        <BarChart2 size={12} />
+                        Analisar
+                      </button>
                     </div>
                     <div className="flex items-center gap-2 mb-1">
                       <div className="flex-1 bg-gray-100 rounded-full h-1.5">
@@ -391,6 +402,16 @@ export default function AdminDashboard() {
           ))}
         </div>
       </div>
+
+      {/* Attendant Detail Modal */}
+      {selectedSeller && (
+        <AttendantDetailModal
+          seller={selectedSeller}
+          allTasks={tasks as any[]}
+          allSellers={sellers as any[]}
+          onClose={() => setSelectedSeller(null)}
+        />
+      )}
 
     </div>
   );
