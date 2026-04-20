@@ -634,17 +634,23 @@ export default function Tasks() {
                   </div>
                 </div>
                 {task.reminderDate && task.reminderEnabled && (() => {
-                  const rd = new Date(task.reminderDate);
-                  const now = new Date();
-                  const isOverdue = rd < now && task.status === 'pending';
-                  const isToday = rd.toDateString() === now.toDateString();
-                  return (
-                    <div className={`text-xs px-1.5 py-1 rounded-lg text-center flex-shrink-0 font-medium leading-tight ${isOverdue ? 'bg-red-100 text-red-700' : isToday ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                      <div>{isOverdue ? '🚨' : isToday ? '⚠️' : '🔔'}</div>
-                      <div>{rd.toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit' })}</div>
-                      <div>{rd.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>
-                    </div>
-                  );
+                  try {
+                    const rd = new Date(task.reminderDate);
+                    if (isNaN(rd.getTime())) return null;
+                    const now = new Date();
+                    const isOverdue = rd < now && task.status === 'pending';
+                    const isToday = rd.toDateString() === now.toDateString();
+                    const p = (n: number) => String(n).padStart(2, '0');
+                    const dateStr = `${p(rd.getDate())}/${p(rd.getMonth() + 1)}`;
+                    const timeStr = `${p(rd.getHours())}:${p(rd.getMinutes())}`;
+                    return (
+                      <div className={`text-xs px-1.5 py-1 rounded-lg text-center flex-shrink-0 font-medium leading-tight ${isOverdue ? 'bg-red-100 text-red-700' : isToday ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                        <div>{isOverdue ? '🚨' : isToday ? '⚠️' : '🔔'}</div>
+                        <div>{dateStr}</div>
+                        <div>{timeStr}</div>
+                      </div>
+                    );
+                  } catch { return null; }
                 })()}
               </div>
               {expandedTask === task.id && (

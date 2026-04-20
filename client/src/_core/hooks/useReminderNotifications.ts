@@ -16,9 +16,11 @@ function playBeep() {
 }
 
 const STORAGE_KEY = 'sv_notified_v3';
-const getFired = () => new Set<string>(JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '[]'));
+const getFired = (): Set<string> => {
+  try { return new Set<string>(JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '[]')); } catch { return new Set(); }
+};
 const markFired = (key: string) => {
-  const s = getFired(); s.add(key); sessionStorage.setItem(STORAGE_KEY, JSON.stringify([...s]));
+  try { const s = getFired(); s.add(key); sessionStorage.setItem(STORAGE_KEY, JSON.stringify([...s])); } catch {}
 };
 
 export function useReminderNotifications(enabled: boolean) {
@@ -39,49 +41,55 @@ export function useReminderNotifications(enabled: boolean) {
     if (!reminders || !enabled) return;
 
     const check = () => {
-      const now = new Date();
-      const today = now.toDateString();
-      const fired = getFired();
+      try {
+        const now = new Date();
+        const today = now.toDateString();
+        const fired = getFired();
 
-      (reminders as any[]).forEach((r) => {
-        if (!r.reminderDate || r.reminderEnabled === false || r.status !== "pending") return;
-        const rd = new Date(r.reminderDate);
-        const diff = rd.getTime() - now.getTime();
+        (reminders as any[]).forEach((r) => {
+          try {
+            if (!r.reminderDate || r.reminderEnabled === false || r.status !== "pending") return;
+            const rd = new Date(r.reminderDate);
+            if (isNaN(rd.getTime())) return;
+            const diff = rd.getTime() - now.getTime();
 
-        const overdueKey = `${r.id}-overdue-${today}`;
-        const warnKey    = `${r.id}-warn-${rd.getTime()}`;
-        const fireKey    = `${r.id}-fire-${rd.getTime()}`;
+            const overdueKey = `${r.id}-overdue-${today}`;
+            const warnKey    = `${r.id}-warn-${rd.getTime()}`;
+            const fireKey    = `${r.id}-fire-${rd.getTime()}`;
 
-        // Atrasada: dispara uma vez por dia
-        if (diff < -60000 && !fired.has(overdueKey)) {
-          markFired(overdueKey);
-          toast.warning(`🚨 Atrasada: ${r.title}`, { duration: 10000 });
-          playBeep();
-          if (Notification.permission === 'granted') {
-            try { new Notification(`🚨 Atrasada: ${r.title}`, { body: 'Prazo ultrapassado!', icon: '/favicon.ico' }); } catch (_) {}
-          }
-          return;
-        }
+            // Atrasada: dispara uma vez por dia
+            if (diff < -60000 && !fired.has(overdueKey)) {
+              markFired(overdueKey);
+              toast.warning(`🚨 Atrasada: ${r.title}`, { duration: 10000 });
+              playBeep();
+              if ("Notification" in window && Notification.permission === 'granted') {
+                try { new Notification(`🚨 Atrasada: ${r.title}`, { body: 'Prazo ultrapassado!', icon: '/favicon.ico' }); } catch (_) {}
+              }
+              return;
+            }
 
-        // Aviso 5 min antes
-        if (diff > 60000 && diff <= 300000 && !fired.has(warnKey)) {
-          markFired(warnKey);
-          const mins = Math.round(diff / 60000);
-          toast.info(`⏰ Lembrete em ${mins} min: ${r.title}`, { duration: 6000 });
-          return;
-        }
+            // Aviso 5 min antes
+            if (diff > 60000 && diff <= 300000 && !fired.has(warnKey)) {
+              markFired(warnKey);
+              const mins = Math.round(diff / 60000);
+              toast.info(`⏰ Lembrete em ${mins} min: ${r.title}`, { duration: 6000 });
+              return;
+            }
 
-        // No horário: janela de ±2 minutos para não perder
-        if (diff >= -120000 && diff <= 60000 && !fired.has(fireKey)) {
-          markFired(fireKey);
-          const time = rd.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-          toast.warning(`🔔 Lembrete: ${r.title}`, { description: `Agendado para ${time}`, duration: 15000 });
-          playBeep();
-          if (Notification.permission === 'granted') {
-            try { new Notification(`🔔 Lembrete: ${r.title}`, { body: r.notes?.trim() || `Agendado para ${time}`, icon: '/favicon.ico', tag: `reminder-${r.id}` }); } catch (_) {}
-          }
-        }
-      });
+            // No horário: janela de ±2 minutos para não perder
+            if (diff >= -120000 && diff <= 60000 && !fired.has(fireKey)) {
+              markFired(fireKey);
+              const p = (n: number) => String(n).padStart(2, '0');
+              const time = `${p(rd.getHours())}:${p(rd.getMinutes())}`;
+              toast.warning(`🔔 Lembrete: ${r.title}`, { description: `Agendado para ${time}`, duration: 15000 });
+              playBeep();
+              if ("Notification" in window && Notification.permission === 'granted') {
+                try { new Notification(`🔔 Lembrete: ${r.title}`, { body: r.notes?.trim() || `Agendado para ${time}`, icon: '/favicon.ico', tag: `reminder-${r.id}` }); } catch (_) {}
+              }
+            }
+          } catch (_) {}
+        });
+      } catch (_) {}
     };
 
     check();
