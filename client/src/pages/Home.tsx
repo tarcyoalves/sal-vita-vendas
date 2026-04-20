@@ -53,10 +53,9 @@ export default function Home() {
       <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
         <div className="text-center mb-8">
           <img
-            src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/logoSALVITA_grande_3761478e.png"
+            src="/sal-vita-logo.svg"
             alt="Sal Vita"
             className="h-24 mx-auto mb-4 object-contain"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
           />
           <h1 className="text-2xl font-bold text-blue-900">Sistema de Vendas</h1>
           <p className="text-gray-500 text-sm mt-1">Faça login para continuar</p>
