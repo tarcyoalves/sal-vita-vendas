@@ -61,7 +61,7 @@ export default function ClientsManagement() {
         <div className="flex items-center gap-3">
           <a href="/" className="hover:opacity-80 transition flex-shrink-0">
             <img
-              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/sal_vita_logo_d22b1eb4.webp"
+              src="/sal-vita-logo.svg"
               alt="Sal Vita"
               className="h-8 md:h-12 cursor-pointer"
             />

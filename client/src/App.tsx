@@ -72,8 +72,8 @@ function Router() {
 // - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
 
 function NotificationManager() {
-  const { isAuthenticated } = useAuth();
-  useReminderNotifications(isAuthenticated);
+  const { isAuthenticated, user } = useAuth();
+  useReminderNotifications(isAuthenticated, user?.name ?? '', user?.role === 'admin');
   return null;
 }
 

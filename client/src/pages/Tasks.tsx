@@ -451,7 +451,8 @@ export default function Tasks() {
           {isAdmin && (
             <select value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
               <option value="all">👥 Todos</option>
-              <option value="__none__">🔑 Admin</option>
+              <option value="__none__">🔑 Sem atendente</option>
+              {user?.name && <option value={user.name}>👑 {user.name}</option>}
               {(attendants as any[]).map((a: any) => <option key={a.id} value={a.name}>👤 {a.name}</option>)}
             </select>
           )}
@@ -479,6 +480,7 @@ export default function Tasks() {
             <>
               <select value={bulkRepresentative} onChange={(e) => setBulkRepresentative(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
                 <option value="">Atendente...</option>
+                {user?.name && <option value={user.name}>👑 {user.name}</option>}
                 {attendants.map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
               </select>
               <Button size="sm" onClick={handleBulkAssign} variant="outline">👤 Designar ({selectedTasks.size})</Button>
@@ -509,6 +511,7 @@ export default function Tasks() {
                 </div>
                 <select value={selectedRepresentative} onChange={(e) => setSelectedRepresentative(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
                   <option value="">Selecionar atendente...</option>
+                  {user?.name && <option value={user.name}>👑 {user.name}</option>}
                   {attendants.map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
                 </select>
                 <Button onClick={handleImportTasks} className="w-full" disabled={importLoading}>
@@ -561,6 +564,7 @@ export default function Tasks() {
                   <label className="block text-xs font-medium mb-1 text-gray-600">👤 Designar para</label>
                   <select value={formData.assignedTo} onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })} className="w-full px-2 py-1.5 border rounded-lg text-sm">
                     <option value="">Nenhum</option>
+                    {user?.name && <option value={user.name}>👑 {user.name}</option>}
                     {attendants.map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
                   </select>
                 </div>

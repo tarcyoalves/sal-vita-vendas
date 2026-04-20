@@ -30,7 +30,7 @@ export default function VendorReminders() {
     <div className="p-4 md:p-6 space-y-4 md:space-y-6">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 pb-4 border-b">
         <div className="flex items-center gap-3">
-          <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/sal_vita_logo_d22b1eb4.webp" alt="Sal Vita" className="h-8 md:h-12" />
+          <img src="/sal-vita-logo.svg" alt="Sal Vita" className="h-8 md:h-12" />
           <h1 className="text-xl md:text-3xl font-bold text-blue-900">Meus Lembretes</h1>
         </div>
         <div className="flex gap-2 flex-wrap">

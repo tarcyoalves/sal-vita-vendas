@@ -23,7 +23,7 @@ const markFired = (key: string) => {
   try { const s = getFired(); s.add(key); sessionStorage.setItem(STORAGE_KEY, JSON.stringify([...s])); } catch {}
 };
 
-export function useReminderNotifications(enabled: boolean) {
+export function useReminderNotifications(enabled: boolean, userName: string = '', isAdmin: boolean = false) {
   const { data: reminders } = trpc.tasks.reminders.useQuery(undefined, {
     enabled,
     refetchInterval: 15_000,
@@ -39,6 +39,10 @@ export function useReminderNotifications(enabled: boolean) {
 
   useEffect(() => {
     if (!reminders || !enabled) return;
+    // Admin only gets alerts for tasks assigned to themselves
+    const alertable = isAdmin
+      ? (reminders as any[]).filter(r => r.assignedTo === userName)
+      : reminders as any[];
 
     const check = () => {
       try {
@@ -46,7 +50,7 @@ export function useReminderNotifications(enabled: boolean) {
         const today = now.toDateString();
         const fired = getFired();
 
-        (reminders as any[]).forEach((r) => {
+        alertable.forEach((r) => {
           try {
             if (!r.reminderDate || r.reminderEnabled === false || r.status !== "pending") return;
             const rd = new Date(r.reminderDate);
@@ -95,5 +99,5 @@ export function useReminderNotifications(enabled: boolean) {
     check();
     const id = setInterval(check, 15000);
     return () => clearInterval(id);
-  }, [reminders, enabled]);
+  }, [reminders, enabled, userName, isAdmin]);
 }

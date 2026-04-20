@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+  <defs>
+    <clipPath id="oval-c">
+      <ellipse cx="200" cy="145" rx="186" ry="132"/>
+    </clipPath>
+  </defs>
+  <ellipse cx="200" cy="145" rx="186" ry="132" fill="white"/>
+  <ellipse cx="200" cy="145" rx="186" ry="132" fill="none" stroke="#0C3680" stroke-width="11"/>
+  <path d="M14 210 Q75 155 138 190 Q172 210 200 180 Q228 152 265 178 Q310 208 386 195 L386 277 Q200 277 14 277 Z" fill="#0C3680" clip-path="url(#oval-c)"/>
+  <text x="200" y="178" text-anchor="middle" font-family="'Brush Script MT','Segoe Script','Dancing Script',cursive" font-size="105" fill="#0C3680" font-style="italic" font-weight="bold">Sal Vita</text>
+</svg>

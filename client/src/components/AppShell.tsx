@@ -110,7 +110,7 @@ export default function AppShell({ children }: AppShellProps) {
       {/* Logo */}
       <div className="h-16 flex items-center px-5 border-b border-slate-700 flex-shrink-0">
         <img
-          src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/logoSALVITA_grande_3761478e.png"
+          src="/sal-vita-logo.svg"
           alt="Sal Vita"
           className="h-8 cursor-pointer brightness-0 invert"
           onClick={() => setLocation(role === "admin" ? "/admin/dashboard" : "/tasks")}
