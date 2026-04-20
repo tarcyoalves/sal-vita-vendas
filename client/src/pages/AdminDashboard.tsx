@@ -18,7 +18,7 @@ import {
 export default function AdminDashboard() {
   const { user, loading } = useAuth();
   const [, setLocation] = useLocation();
-  const { data: sellers, isLoading } = trpc.sellers.list.useQuery();
+  const { data: sellers = [], isLoading } = trpc.sellers.list.useQuery();
   const { data: tasks = [] } = trpc.tasks.list.useQuery();
   const { data: reminders = [] } = trpc.tasks.reminders.useQuery();
   const analyzeAttendantsMutation = trpc.ai.analyzeAttendants.useMutation();
@@ -92,16 +92,16 @@ export default function AdminDashboard() {
       border: "border-orange-100",
     },
     {
-      label: "Concluídas",
-      value: completed.length,
+      label: "Com lembrete",
+      value: (tasks as any[]).filter(t => t.reminderDate && t.reminderEnabled).length,
       icon: <CheckCircle2 size={22} />,
       color: "text-green-600",
       bg: "bg-green-50",
       border: "border-green-100",
     },
     {
-      label: "Taxa de Conclusão",
-      value: `${completionRate}%`,
+      label: "Atrasados",
+      value: overdue.length,
       icon: <TrendingUp size={22} />,
       color: "text-purple-600",
       bg: "bg-purple-50",
@@ -130,7 +130,7 @@ export default function AdminDashboard() {
           </p>
         </div>
         <div className="hidden md:flex items-center gap-2 text-slate-400 text-sm">
-          <span>{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+          <span>{(() => { try { return new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }); } catch { const d = new Date(); return `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`; } })()}</span>
         </div>
       </div>
 
@@ -176,12 +176,11 @@ export default function AdminDashboard() {
           ) : sellers && sellers.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {sellers.map((seller) => {
-                const sellerTasks = (tasks as any[]).filter(t => t.userId === seller.userId);
-                const done = sellerTasks.filter(t => t.status === 'completed').length;
-                const rate = sellerTasks.length > 0 ? Math.round((done / sellerTasks.length) * 100) : 0;
+                const sellerTasks = (tasks as any[]).filter(t => t.assignedTo === seller.name || t.userId === seller.userId);
+                const withReminder = sellerTasks.filter(t => t.reminderDate && t.reminderEnabled).length;
+                const rate = sellerTasks.length > 0 ? Math.round((withReminder / sellerTasks.length) * 100) : 0;
                 const sellerOverdue = sellerTasks.filter(t => {
-                  if (t.status === 'completed') return false;
-                  if (!t.reminderDate) return false;
+                  if (!t.reminderDate || !t.reminderEnabled) return false;
                   return new Date(t.reminderDate) < new Date();
                 }).length;
                 return (
@@ -205,7 +204,7 @@ export default function AdminDashboard() {
                       <span className="text-xs font-semibold text-gray-700 w-8 text-right">{rate}%</span>
                     </div>
                     <div className="flex items-center justify-between text-xs text-gray-400">
-                      <span>{done}/{sellerTasks.length} concluídas</span>
+                      <span>{withReminder}/{sellerTasks.length} com lembrete</span>
                       {sellerOverdue > 0 && (
                         <span className="text-red-500 font-medium">⚠️ {sellerOverdue} atrasada{sellerOverdue > 1 ? 's' : ''}</span>
                       )}
@@ -343,7 +342,7 @@ export default function AdminDashboard() {
                       <div key={reminder.id} className="p-3 bg-red-50 border border-red-200 rounded-lg">
                         <div className="flex items-start justify-between mb-1">
                           <p className="font-medium text-sm text-red-900">{reminder.title}</p>
-                          <span className="text-xs text-red-700">{new Date(reminder.reminderDate).toLocaleDateString("pt-BR")}</span>
+                          <span className="text-xs text-red-700">{(() => { try { const d=new Date(reminder.reminderDate); const p=(n:number)=>String(n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)}`; } catch { return ''; } })()}</span>
                         </div>
                         {reminder.assignedTo && <p className="text-xs text-red-600">👤 {reminder.assignedTo}</p>}
                       </div>
@@ -359,7 +358,7 @@ export default function AdminDashboard() {
                       <div key={reminder.id} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                         <div className="flex items-start justify-between mb-1">
                           <p className="font-medium text-sm text-blue-900">{reminder.title}</p>
-                          <span className="text-xs text-blue-700">{new Date(reminder.reminderDate).toLocaleDateString("pt-BR")} {new Date(reminder.reminderDate).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+                          <span className="text-xs text-blue-700">{(() => { try { const d=new Date(reminder.reminderDate); const p=(n:number)=>String(n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)} ${p(d.getHours())}:${p(d.getMinutes())}`; } catch { return ''; } })()}</span>
                         </div>
                         {reminder.assignedTo && <p className="text-xs text-blue-600">👤 {reminder.assignedTo}</p>}
                       </div>

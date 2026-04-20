@@ -98,6 +98,34 @@ export function useReminderNotifications(enabled: boolean, userName: string = ''
 
     check();
     const id = setInterval(check, 15000);
-    return () => clearInterval(id);
+
+    // Motivational push tip every 60 min
+    const motivationId = setInterval(() => {
+      try {
+        if (!alertable.length) return;
+        const now = new Date();
+        const pending = alertable.filter(r => r.reminderEnabled !== false);
+        const overdue = pending.filter(r => r.reminderDate && new Date(r.reminderDate) < now);
+        const upcoming = pending.filter(r => r.reminderDate && new Date(r.reminderDate) >= now);
+        const tips = [
+          `💡 Você tem ${pending.length} lembretes ativos. Mantenha o ritmo!`,
+          `⏰ ${upcoming.length} lembretes agendados. Não deixe o cliente esperar!`,
+          `🏆 Consistência é o segredo! Continue acompanhando seus clientes.`,
+          `📞 Contato regular faz a diferença. Seus clientes contam com você!`,
+        ];
+        if (overdue.length > 0) {
+          const msg = `🚨 ${overdue.length} lembrete${overdue.length > 1 ? 's' : ''} em atraso! Contate seus clientes agora.`;
+          toast.warning(msg, { duration: 8000 });
+          if ("Notification" in window && Notification.permission === 'granted') {
+            try { new Notification('Sal Vita', { body: msg, icon: '/sal-vita-logo.svg' }); } catch (_) {}
+          }
+        } else if (upcoming.length > 0) {
+          const tip = tips[Math.floor(Math.random() * tips.length)];
+          toast.info(tip, { duration: 6000 });
+        }
+      } catch (_) {}
+    }, 60 * 60 * 1000);
+
+    return () => { clearInterval(id); clearInterval(motivationId); };
   }, [reminders, enabled, userName, isAdmin]);
 }

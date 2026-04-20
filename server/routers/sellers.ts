@@ -78,6 +78,13 @@ export const sellersRouter = router({
     }))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
+      // If name is changing, update tasks.assignedTo to match new name
+      if (data.name) {
+        const [existing] = await db.select().from(sellers).where(eq(sellers.id, id));
+        if (existing && existing.name !== data.name) {
+          await db.update(tasks).set({ assignedTo: data.name }).where(eq(tasks.assignedTo, existing.name));
+        }
+      }
       const [updated] = await db.update(sellers).set(data).where(eq(sellers.id, id)).returning();
       return updated;
     }),

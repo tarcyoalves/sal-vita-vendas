@@ -7,8 +7,12 @@ import { hashPassword, verifyPassword, signToken } from '../auth';
 import { COOKIE_NAME, ONE_YEAR_MS } from '../../shared/const';
 
 export const authRouter = router({
-  me: publicProcedure.query(({ ctx }) => {
-    return ctx.user ?? null;
+  me: publicProcedure.query(async ({ ctx }) => {
+    if (!ctx.user) return null;
+    // Always read role from DB so promotions take effect without re-login
+    const [dbUser] = await db.select().from(users).where(eq(users.id, ctx.user.id));
+    if (!dbUser) return null;
+    return { id: dbUser.id, email: dbUser.email, name: dbUser.name, role: dbUser.role };
   }),
 
   login: publicProcedure

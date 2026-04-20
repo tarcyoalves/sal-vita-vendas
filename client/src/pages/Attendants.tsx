@@ -122,7 +122,7 @@ export default function Attendants() {
     const label = newRole === 'admin' ? 'promovido a Admin' : 'rebaixado para Atendente';
     try {
       await updateRoleMutation.mutateAsync({ sellerId: attendant.id, role: newRole });
-      toast.success(`${attendant.name} foi ${label}!`);
+      toast.success(`${attendant.name} foi ${label}! Peça para ele atualizar a página (F5).`, { duration: 6000 });
       refetch();
     } catch {
       toast.error('Erro ao alterar permissão');
