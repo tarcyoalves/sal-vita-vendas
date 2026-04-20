@@ -185,69 +185,97 @@ REGRAS:
     const allTasks = await db.select().from(tasks);
 
     const report = allSellers.map(seller => {
-      const st = allTasks.filter(t => t.userId === seller.userId);
+      // All tasks assigned to this attendant (by name or userId)
+      const st = allTasks.filter(t =>
+        t.assignedTo === seller.name || t.userId === seller.userId
+      );
       const total = st.length;
-      const completed = st.filter(t => t.status === 'completed');
-      const pending = st.filter(t => t.status === 'pending');
-      const overdue = pending.filter(t => t.reminderDate && new Date(t.reminderDate) < now);
-      const completedNoNotes = completed.filter(t => !t.notes || t.notes.trim().length < 5);
+
+      // Active reminders (enabled with a date set)
+      const withReminder = st.filter(t => t.reminderDate && t.reminderEnabled !== false);
+
+      // Overdue: reminder date passed and task was never rescheduled (still old date)
+      const overdue = withReminder.filter(t => new Date(t.reminderDate!) < now);
+
+      // No notes: task has no meaningful notes written (< 15 chars)
+      const noNotes = st.filter(t => !t.notes || t.notes.trim().length < 15);
+
+      // Disabled reminders: attendant manually turned off the reminder
+      const disabledReminders = st.filter(t => t.reminderEnabled === false);
+
+      // No reminder date: task exists but no date was ever set
+      const noReminderDate = st.filter(t => !t.reminderDate);
+
+      // Never updated: task was imported/created but notes/date never touched
+      // (updatedAt is within 2 minutes of createdAt)
       const neverUpdated = st.filter(t => {
-        const age = now.getTime() - new Date(t.createdAt).getTime();
-        const updated = new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime();
-        return age > 3 * 86400000 && updated < 60000;
-      });
-      const veryFastCompleted = completed.filter(t => {
-        const duration = new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime();
-        return duration < 120000 && (!t.notes || t.notes.trim().length < 10);
+        const diff = new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime();
+        return diff < 2 * 60 * 1000;
       });
 
-      const disabledReminders = pending.filter(t => t.reminderEnabled === false);
-      const noReminderDate = pending.filter(t => !t.reminderDate);
-
-      const completionRate = total > 0 ? Math.round((completed.length / total) * 100) : 0;
-      const suspicionScore = (completedNoNotes.length * 2) + (neverUpdated.length * 3) + (veryFastCompleted.length * 4) + (overdue.length * 1) + (disabledReminders.length * 3);
+      // Suspicion score (recurring model — no completion metric)
+      let suspicionScore = 0;
+      suspicionScore += overdue.length * 2;
+      suspicionScore += noNotes.length * 3;
+      suspicionScore += disabledReminders.length * 4;
+      suspicionScore += noReminderDate.length * 1;
+      suspicionScore += neverUpdated.length * 2;
 
       let status: '🟢 Normal' | '🟡 Atenção' | '🔴 Suspeito';
-      if (suspicionScore >= 8) status = '🔴 Suspeito';
-      else if (suspicionScore >= 3) status = '🟡 Atenção';
+      if (suspicionScore >= 10) status = '🔴 Suspeito';
+      else if (suspicionScore >= 4) status = '🟡 Atenção';
       else status = '🟢 Normal';
+
+      const activeRate = total > 0 ? Math.round((withReminder.length / total) * 100) : 0;
+
+      const flags = [
+        overdue.length > 0        ? `${overdue.length} lembrete(s) vencido(s) sem reatualização` : null,
+        noNotes.length > 0        ? `${noNotes.length} cliente(s) sem anotação de contato` : null,
+        disabledReminders.length > 0 ? `${disabledReminders.length} lembrete(s) DESATIVADO(s) manualmente` : null,
+        noReminderDate.length > 0 ? `${noReminderDate.length} cliente(s) sem data de lembrete configurada` : null,
+        neverUpdated.length > 0   ? `${neverUpdated.length} tarefa(s) nunca atualizadas desde a importação` : null,
+      ].filter(Boolean) as string[];
 
       return {
         sellerId: seller.id,
         name: seller.name,
         email: seller.email,
         total,
-        completed: completed.length,
-        pending: pending.length,
+        withReminder: withReminder.length,
         overdue: overdue.length,
-        completionRate,
-        completedNoNotes: completedNoNotes.length,
-        neverUpdated: neverUpdated.length,
-        veryFastCompleted: veryFastCompleted.length,
+        noNotes: noNotes.length,
         disabledReminders: disabledReminders.length,
         noReminderDate: noReminderDate.length,
+        neverUpdated: neverUpdated.length,
+        activeRate,
         suspicionScore,
         status,
-        flags: [
-          overdue.length > 0 ? `${overdue.length} tarefa(s) atrasada(s)` : null,
-          completedNoNotes.length > 0 ? `${completedNoNotes.length} concluída(s) sem anotação` : null,
-          neverUpdated.length > 0 ? `${neverUpdated.length} tarefa(s) nunca atualizada(s)` : null,
-          veryFastCompleted.length > 0 ? `${veryFastCompleted.length} concluída(s) em < 2min sem notas` : null,
-          disabledReminders.length > 0 ? `${disabledReminders.length} lembrete(s) DESATIVADO(s) manualmente` : null,
-          noReminderDate.length > 0 ? `${noReminderDate.length} tarefa(s) sem data de lembrete` : null,
-        ].filter(Boolean) as string[],
+        flags,
       };
     });
 
     const reportText = report.map(r =>
-      `${r.name}: ${r.total} tarefas, ${r.completionRate}% concluídas, ${r.overdue} atrasadas, lembretes_desativados=${r.disabledReminders}, sem_data_lembrete=${r.noReminderDate}, status=${r.status}, flags=${r.flags.join('; ') || 'nenhuma'}`
+      `${r.name}: ${r.total} clientes, ${r.withReminder} com lembrete ativo, ${r.overdue} vencidos, sem_anotação=${r.noNotes}, desativados=${r.disabledReminders}, sem_data=${r.noReminderDate}, nunca_atualizado=${r.neverUpdated}, status=${r.status}, flags=${r.flags.join('; ') || 'nenhuma'}`
     ).join('\n');
 
     try {
       const summary = await callLLM(apiKey, BASE_URLS.groq, 'llama-3.1-8b-instant', [
-        { role: 'system', content: 'Você é um analista de RH especializado em gestão de equipes de vendas. Analise os dados e identifique problemas de desempenho, padrões suspeitos e recomende ações. ATENÇÃO ESPECIAL: lembretes desativados manualmente são comportamento suspeito — o atendente pode estar tentando evitar cobranças. Seja direto e use emojis. Responda em português brasileiro.' },
-        { role: 'user', content: `Analise os dados de desempenho dos atendentes e dê um parecer executivo:\n\n${reportText}\n\nIdentifique: quem está performando bem, quem precisa de atenção, comportamentos suspeitos (especialmente lembretes desativados), e recomendações de ação.` },
-      ], 700, 0.5);
+        {
+          role: 'system',
+          content: `Você é um analista de desempenho de equipes de vendas B2B recorrentes.
+CONTEXTO: Neste sistema NÃO existe conclusão de tarefas. As tarefas são clientes recorrentes que precisam de contato contínuo. O ciclo correto é: atender o cliente → anotar o contato nas notas → reagendar o próximo lembrete.
+SINAIS DE MAU DESEMPENHO:
+- Lembrete vencido sem reatualização = cliente não foi contatado
+- Sem anotação = contato não foi documentado (suspeito de não ter sido feito)
+- Lembrete desativado manualmente = tentativa de esconder inadimplência no atendimento
+- Tarefa nunca atualizada = cliente ignorado desde a importação
+Seja direto, use emojis, responda em português brasileiro.`,
+        },
+        {
+          role: 'user',
+          content: `Analise o desempenho dos atendentes considerando que o modelo é RECORRENTE (sem conclusão):\n\n${reportText}\n\nIdentifique: quem está fazendo contato regularmente, quem está negligenciando clientes, comportamentos suspeitos e recomendações concretas de ação imediata.`,
+        },
+      ], 800, 0.5);
       return { report, summary };
     } catch (err: any) {
       console.error('[ANALYZE_ERROR]', err?.message);

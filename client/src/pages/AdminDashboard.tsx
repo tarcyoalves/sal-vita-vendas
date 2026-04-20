@@ -263,25 +263,29 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {monitorReport.map((r: any) => (
                 <div key={r.sellerId} className={`p-4 rounded-xl border-2 ${r.status === '🔴 Suspeito' ? 'border-red-300 bg-red-50' : r.status === '🟡 Atenção' ? 'border-yellow-300 bg-yellow-50' : 'border-green-300 bg-green-50'}`}>
-                  <div className="flex justify-between items-start mb-2">
+                  <div className="flex justify-between items-start mb-3">
                     <div>
                       <p className="font-bold text-gray-800">{r.name}</p>
                       <p className="text-xs text-gray-500">{r.email}</p>
                     </div>
                     <span className="text-sm font-bold">{r.status}</span>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 text-center my-2">
+                  <div className="grid grid-cols-4 gap-1.5 text-center mb-2">
                     <div className="bg-white rounded-lg p-1.5">
-                      <p className="text-base font-bold text-blue-600">{r.completionRate}%</p>
-                      <p className="text-xs text-gray-500">Conclusão</p>
+                      <p className="text-base font-bold text-blue-600">{r.total}</p>
+                      <p className="text-xs text-gray-500">Clientes</p>
                     </div>
                     <div className="bg-white rounded-lg p-1.5">
-                      <p className="text-base font-bold text-orange-500">{r.overdue}</p>
-                      <p className="text-xs text-gray-500">Atrasadas</p>
+                      <p className={`text-base font-bold ${r.overdue > 0 ? 'text-red-600' : 'text-gray-500'}`}>{r.overdue}</p>
+                      <p className="text-xs text-gray-500">Vencidos</p>
                     </div>
                     <div className="bg-white rounded-lg p-1.5">
-                      <p className="text-base font-bold text-gray-700">{r.total}</p>
-                      <p className="text-xs text-gray-500">Total</p>
+                      <p className={`text-base font-bold ${r.noNotes > 0 ? 'text-orange-500' : 'text-gray-500'}`}>{r.noNotes}</p>
+                      <p className="text-xs text-gray-500">Sem nota</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-1.5">
+                      <p className={`text-base font-bold ${r.disabledReminders > 0 ? 'text-red-700' : 'text-gray-500'}`}>{r.disabledReminders}</p>
+                      <p className="text-xs text-gray-500">Desativados</p>
                     </div>
                   </div>
                   {r.flags.length > 0 && (
