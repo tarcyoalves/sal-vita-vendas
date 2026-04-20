@@ -201,8 +201,11 @@ REGRAS:
         return duration < 120000 && (!t.notes || t.notes.trim().length < 10);
       });
 
+      const disabledReminders = pending.filter(t => t.reminderEnabled === false);
+      const noReminderDate = pending.filter(t => !t.reminderDate);
+
       const completionRate = total > 0 ? Math.round((completed.length / total) * 100) : 0;
-      const suspicionScore = (completedNoNotes.length * 2) + (neverUpdated.length * 3) + (veryFastCompleted.length * 4) + (overdue.length * 1);
+      const suspicionScore = (completedNoNotes.length * 2) + (neverUpdated.length * 3) + (veryFastCompleted.length * 4) + (overdue.length * 1) + (disabledReminders.length * 3);
 
       let status: '🟢 Normal' | '🟡 Atenção' | '🔴 Suspeito';
       if (suspicionScore >= 8) status = '🔴 Suspeito';
@@ -221,6 +224,8 @@ REGRAS:
         completedNoNotes: completedNoNotes.length,
         neverUpdated: neverUpdated.length,
         veryFastCompleted: veryFastCompleted.length,
+        disabledReminders: disabledReminders.length,
+        noReminderDate: noReminderDate.length,
         suspicionScore,
         status,
         flags: [
@@ -228,19 +233,21 @@ REGRAS:
           completedNoNotes.length > 0 ? `${completedNoNotes.length} concluída(s) sem anotação` : null,
           neverUpdated.length > 0 ? `${neverUpdated.length} tarefa(s) nunca atualizada(s)` : null,
           veryFastCompleted.length > 0 ? `${veryFastCompleted.length} concluída(s) em < 2min sem notas` : null,
+          disabledReminders.length > 0 ? `${disabledReminders.length} lembrete(s) DESATIVADO(s) manualmente` : null,
+          noReminderDate.length > 0 ? `${noReminderDate.length} tarefa(s) sem data de lembrete` : null,
         ].filter(Boolean) as string[],
       };
     });
 
     const reportText = report.map(r =>
-      `${r.name}: ${r.total} tarefas, ${r.completionRate}% concluídas, ${r.overdue} atrasadas, status=${r.status}, flags=${r.flags.join('; ') || 'nenhuma'}`
+      `${r.name}: ${r.total} tarefas, ${r.completionRate}% concluídas, ${r.overdue} atrasadas, lembretes_desativados=${r.disabledReminders}, sem_data_lembrete=${r.noReminderDate}, status=${r.status}, flags=${r.flags.join('; ') || 'nenhuma'}`
     ).join('\n');
 
     try {
       const summary = await callLLM(apiKey, BASE_URLS.groq, 'llama-3.1-8b-instant', [
-        { role: 'system', content: 'Você é um analista de RH especializado em gestão de equipes de vendas. Analise os dados e identifique problemas de desempenho, padrões suspeitos e recomende ações. Seja direto e use emojis. Responda em português brasileiro.' },
-        { role: 'user', content: `Analise os dados de desempenho dos atendentes e dê um parecer executivo:\n\n${reportText}\n\nIdentifique: quem está performando bem, quem precisa de atenção, comportamentos suspeitos e recomendações de ação.` },
-      ], 600, 0.5);
+        { role: 'system', content: 'Você é um analista de RH especializado em gestão de equipes de vendas. Analise os dados e identifique problemas de desempenho, padrões suspeitos e recomende ações. ATENÇÃO ESPECIAL: lembretes desativados manualmente são comportamento suspeito — o atendente pode estar tentando evitar cobranças. Seja direto e use emojis. Responda em português brasileiro.' },
+        { role: 'user', content: `Analise os dados de desempenho dos atendentes e dê um parecer executivo:\n\n${reportText}\n\nIdentifique: quem está performando bem, quem precisa de atenção, comportamentos suspeitos (especialmente lembretes desativados), e recomendações de ação.` },
+      ], 700, 0.5);
       return { report, summary };
     } catch (err: any) {
       console.error('[ANALYZE_ERROR]', err?.message);

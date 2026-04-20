@@ -108,6 +108,8 @@ export default function Tasks() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterAssignee, setFilterAssignee] = useState<string>("all");
   const [filterContact, setFilterContact] = useState<"all" | "whatsapp" | "email">("all");
+  const [filterReminder, setFilterReminder] = useState<"all" | "active" | "inactive">("all");
+  const [reminderTab, setReminderTab] = useState<"all" | "today" | "yesterday" | "lastWeek" | "lastMonth">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [importedTasks, setImportedTasks] = useState<{ title: string; description: string; notes: string }[]>([]);
   const [selectedRepresentative, setSelectedRepresentative] = useState("");
@@ -192,7 +194,28 @@ export default function Tasks() {
   };
 
   const filteredTasks = useMemo(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today.getTime() - 86400000);
+    const lastWeekStart = new Date(today.getTime() - 7 * 86400000);
+    const lastMonthStart = new Date(today.getTime() - 30 * 86400000);
+
     let result = tasks as Task[];
+
+    // Reminder tab filter
+    if (reminderTab !== "all") {
+      result = result.filter(t => {
+        if (!t.reminderDate) return false;
+        const rd = new Date(t.reminderDate);
+        const rdDay = new Date(rd.getFullYear(), rd.getMonth(), rd.getDate());
+        if (reminderTab === "today") return rdDay.getTime() === today.getTime();
+        if (reminderTab === "yesterday") return rdDay.getTime() === yesterday.getTime();
+        if (reminderTab === "lastWeek") return rdDay >= lastWeekStart && rdDay < yesterday;
+        if (reminderTab === "lastMonth") return rdDay >= lastMonthStart && rdDay < lastWeekStart;
+        return false;
+      });
+    }
+
     if (filterStatus !== "all") result = result.filter(t => t.status === filterStatus);
     if (isAdmin && filterAssignee !== "all") {
       if (filterAssignee === "__none__") result = result.filter(t => !t.assignedTo || t.assignedTo.trim() === "");
@@ -203,12 +226,34 @@ export default function Tasks() {
     } else if (filterContact === "email") {
       result = result.filter(t => hasEmail(`${t.title} ${t.notes ?? ''}`));
     }
+    if (filterReminder === "active") {
+      result = result.filter(t => t.reminderEnabled !== false && t.reminderDate);
+    } else if (filterReminder === "inactive") {
+      result = result.filter(t => t.reminderEnabled === false || !t.reminderDate);
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(t => t.title.toLowerCase().includes(q) || t.notes?.toLowerCase().includes(q) || t.assignedTo?.toLowerCase().includes(q));
     }
-    return result;
-  }, [tasks, filterStatus, filterAssignee, filterContact, isAdmin, searchQuery]);
+
+    // Sort: upcoming reminders first (soonest), then overdue (most recent), then no reminder
+    return [...result].sort((a, b) => {
+      const nowMs = now.getTime();
+      const aDate = a.reminderDate && a.reminderEnabled !== false ? new Date(a.reminderDate).getTime() : null;
+      const bDate = b.reminderDate && b.reminderEnabled !== false ? new Date(b.reminderDate).getTime() : null;
+      const aUpcoming = aDate !== null && aDate >= nowMs;
+      const bUpcoming = bDate !== null && bDate >= nowMs;
+      const aOverdue = aDate !== null && aDate < nowMs;
+      const bOverdue = bDate !== null && bDate < nowMs;
+      if (aUpcoming && !bUpcoming) return -1;
+      if (!aUpcoming && bUpcoming) return 1;
+      if (aUpcoming && bUpcoming) return aDate! - bDate!;
+      if (aOverdue && !bOverdue) return -1;
+      if (!aOverdue && bOverdue) return 1;
+      if (aOverdue && bOverdue) return bDate! - aDate!;
+      return 0;
+    });
+  }, [tasks, filterStatus, filterAssignee, filterContact, filterReminder, reminderTab, isAdmin, searchQuery]);
 
   const handleEdit = useCallback((task: Task) => {
     setEditingTask(task);
@@ -355,8 +400,9 @@ export default function Tasks() {
     setImportLoading(true);
     let success = 0;
     try {
+      const importReminderDate = new Date(Date.now() + 5 * 60 * 1000); // hoje + 5 min
       for (const t of importedTasks) {
-        await createMutation.mutateAsync({ clientId: 0, title: t.title, description: t.description, notes: t.notes, reminderEnabled: true, priority: "medium", assignedTo: selectedRepresentative });
+        await createMutation.mutateAsync({ clientId: 0, title: t.title, description: t.description, notes: t.notes, reminderDate: importReminderDate, reminderEnabled: true, priority: "medium", assignedTo: selectedRepresentative });
         success++;
       }
       toast.success(`✅ ${success} tarefas importadas com sucesso para ${selectedRepresentative}!`, { duration: 8000 });
@@ -420,6 +466,12 @@ export default function Tasks() {
             className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterContact === "email" ? "bg-blue-500 text-white border-blue-500" : "bg-white text-gray-700 hover:bg-blue-50"}`}
           >
             📧 Email
+          </button>
+          <button
+            onClick={() => setFilterReminder(filterReminder === "active" ? "all" : filterReminder === "all" ? "inactive" : "all")}
+            className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterReminder === "active" ? "bg-orange-500 text-white border-orange-500" : filterReminder === "inactive" ? "bg-gray-500 text-white border-gray-500" : "bg-white text-gray-700 hover:bg-orange-50"}`}
+          >
+            {filterReminder === "inactive" ? "🔕 Sem lembrete" : "🔔 Lembrete"}
           </button>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -522,6 +574,29 @@ export default function Tasks() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Reminder Tabs */}
+      <div className="flex gap-1 overflow-x-auto pb-1">
+        {[
+          { key: "all", label: "📋 Todas" },
+          { key: "today", label: "🔔 Hoje" },
+          { key: "yesterday", label: "📅 Ontem" },
+          { key: "lastWeek", label: "📆 Semana passada" },
+          { key: "lastMonth", label: "🗓️ Mês passado" },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setReminderTab(tab.key as any)}
+            className={`px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap border transition ${
+              reminderTab === tab.key
+                ? "bg-blue-600 text-white border-blue-600"
+                : "bg-white text-gray-600 border-gray-200 hover:bg-blue-50"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
       {/* Tasks List */}
       {isLoading ? (
