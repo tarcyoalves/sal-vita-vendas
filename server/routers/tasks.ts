@@ -1,16 +1,19 @@
 import { z } from 'zod';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, or, isNotNull } from 'drizzle-orm';
 import { router, protectedProcedure } from '../trpc';
 import { db } from '../db';
 import { tasks } from '../db/schema';
 
 export const tasksRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
-    // Admins see all tasks; vendors see only their own
     if (ctx.user.role === 'admin') {
       return db.select().from(tasks).orderBy(tasks.createdAt);
     }
-    return db.select().from(tasks).where(eq(tasks.userId, ctx.user.id)).orderBy(tasks.createdAt);
+    // Show tasks the user created OR tasks assigned to them by name
+    const userName = ctx.user.name ?? '';
+    return db.select().from(tasks)
+      .where(or(eq(tasks.userId, ctx.user.id), eq(tasks.assignedTo, userName)))
+      .orderBy(tasks.createdAt);
   }),
 
   create: protectedProcedure
@@ -78,16 +81,18 @@ export const tasksRouter = router({
     }),
 
   reminders: protectedProcedure.query(async ({ ctx }) => {
-    // Admins see all reminders; users see only their own
     if (ctx.user.role === 'admin') {
-      const result = await db.select().from(tasks).where(tasks.reminderDate.isNotNull());
+      const result = await db.select().from(tasks).where(isNotNull(tasks.reminderDate));
       return result.sort((a, b) => {
         const dateA = a.reminderDate ? new Date(a.reminderDate).getTime() : 0;
         const dateB = b.reminderDate ? new Date(b.reminderDate).getTime() : 0;
         return dateA - dateB;
       });
     }
-    const result = await db.select().from(tasks).where(eq(tasks.userId, ctx.user.id));
+    // Include tasks created by user OR assigned to them by name
+    const userName = ctx.user.name ?? '';
+    const result = await db.select().from(tasks)
+      .where(or(eq(tasks.userId, ctx.user.id), eq(tasks.assignedTo, userName)));
     return result.filter(t => t.reminderDate).sort((a, b) => {
       const dateA = a.reminderDate ? new Date(a.reminderDate).getTime() : 0;
       const dateB = b.reminderDate ? new Date(b.reminderDate).getTime() : 0;
