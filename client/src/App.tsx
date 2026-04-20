@@ -15,6 +15,7 @@ import AiSettings from "./pages/AiSettings";
 import Tasks from "./pages/Tasks";
 import Attendants from "./pages/Attendants";
 import KnowledgeBase from "./pages/KnowledgeBase";
+import AttendantProgress from "./pages/AttendantProgress";
 import FloatingChat from "./components/FloatingChat";
 import AppShell from "./components/AppShell";
 import { useAuth } from "./_core/hooks/useAuth";
@@ -59,6 +60,9 @@ function Router() {
       </Route>
       <Route path={"/ai-settings"}>
         <AppShell><AiSettings /></AppShell>
+      </Route>
+      <Route path="/meu-progresso">
+        <AppShell><AttendantProgress /></AppShell>
       </Route>
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />

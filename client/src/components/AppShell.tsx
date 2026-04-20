@@ -12,6 +12,7 @@ import {
   Menu,
   ChevronDown,
   ChevronRight,
+  TrendingUp,
 } from "lucide-react";
 import { useAuth } from "../_core/hooks/useAuth";
 import { trpc } from "../lib/trpc";
@@ -60,6 +61,12 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["user"],
   },
   {
+    label: "Meu Progresso",
+    path: "/meu-progresso",
+    icon: <TrendingUp size={18} />,
+    roles: ["user"],
+  },
+  {
     label: "Chat IA",
     path: "/ai-chat",
     icon: <MessageSquare size={18} />,
@@ -75,6 +82,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/ai-settings": "Configurações IA",
   "/knowledge-base": "Base de Conhecimento",
   "/history": "Histórico",
+  "/meu-progresso": "Meu Progresso",
 };
 
 interface AppShellProps {
