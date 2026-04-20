@@ -2,84 +2,225 @@ import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc';
 import { db } from '../db';
 import { chatMessages, tasks, clients, sellers } from '../db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, or } from 'drizzle-orm';
 
-// Direct fetch to any OpenAI-compatible API — avoids SDK bundling issues in Vercel
-async function callLLM(apiKey: string, baseURL: string, model: string, messages: { role: string; content: string }[], maxTokens = 800, temperature = 0.7): Promise<string> {
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const BASE_URLS: Record<string, string> = {
+  groq:    'https://api.groq.com/openai/v1',
+  openai:  'https://api.openai.com/v1',
+  gemini:  'https://generativelanguage.googleapis.com/v1beta/openai',
+  anthropic: 'https://api.anthropic.com/v1',
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function nextBusinessDay(d: Date): Date {
+  const next = new Date(d.getTime() + 86400000);
+  while (next.getDay() === 0 || next.getDay() === 6) next.setTime(next.getTime() + 86400000);
+  return next;
+}
+
+function addMinutes(d: Date, mins: number): Date {
+  return new Date(d.getTime() + mins * 60000);
+}
+
+async function callLLMWithTools(
+  apiKey: string, baseURL: string, model: string,
+  messages: any[], tools: any[], maxTokens = 1000
+): Promise<string> {
+  const loop = async (msgs: any[]): Promise<string> => {
+    const body: any = { model, messages: msgs, max_tokens: maxTokens, temperature: 0.4 };
+    if (tools.length) body.tools = tools;
+
+    const res = await fetch(`${baseURL}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => '');
+      throw new Error(`LLM API ${res.status}: ${t.slice(0, 200)}`);
+    }
+    const data = await res.json() as any;
+    const msg = data?.choices?.[0]?.message;
+    if (!msg) return 'Sem resposta da IA.';
+
+    // If tool calls requested, execute them and loop
+    if (msg.tool_calls?.length) {
+      const newMsgs = [...msgs, msg];
+      for (const tc of msg.tool_calls) {
+        const args = JSON.parse(tc.function.arguments ?? '{}');
+        const result = await executeTool(tc.function.name, args);
+        newMsgs.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result) });
+      }
+      return loop(newMsgs);
+    }
+    return msg.content ?? 'Sem resposta.';
+  };
+  return loop(messages);
+}
+
+async function callLLM(apiKey: string, baseURL: string, model: string, messages: any[], maxTokens = 800, temperature = 0.7): Promise<string> {
   const res = await fetch(`${baseURL}/chat/completions`, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature }),
   });
-
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`LLM API error ${res.status}: ${text.slice(0, 200)}`);
   }
-
   const data = await res.json() as any;
   return data?.choices?.[0]?.message?.content ?? 'Sem resposta da IA.';
 }
 
+// ── Tool definitions (OpenAI-compatible) ─────────────────────────────────────
+
+const TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'list_tasks',
+      description: 'Lista os lembretes/tarefas de um atendente. Use para ver o que precisa ser reagendado.',
+      parameters: {
+        type: 'object',
+        properties: {
+          attendant_name: { type: 'string', description: 'Nome do atendente (ex: "Analice")' },
+        },
+        required: ['attendant_name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'reschedule_tasks',
+      description: 'Redistribui os lembretes vencidos (atrasados) de um atendente ao longo dos próximos dias úteis, com um limite por dia. Use quando o usuário pedir para reagendar ou distribuir lembretes.',
+      parameters: {
+        type: 'object',
+        properties: {
+          attendant_name: { type: 'string', description: 'Nome exato do atendente' },
+          tasks_per_day: { type: 'number', description: 'Quantos lembretes por dia útil (padrão: 50)' },
+          start_hour: { type: 'number', description: 'Hora inicial do dia para o primeiro lembrete (padrão: 8)' },
+        },
+        required: ['attendant_name'],
+      },
+    },
+  },
+];
+
+async function executeTool(name: string, args: any): Promise<any> {
+  if (name === 'list_tasks') {
+    const name_ = String(args.attendant_name ?? '');
+    const seller = (await db.select().from(sellers)).find(
+      s => s.name.toLowerCase().includes(name_.toLowerCase())
+    );
+    if (!seller) return { error: `Atendente "${name_}" não encontrado.` };
+    const st = await db.select().from(tasks).where(
+      or(eq(tasks.assignedTo, seller.name), eq(tasks.userId, seller.userId))
+    );
+    const now = new Date();
+    const overdue = st.filter(t => t.reminderDate && new Date(t.reminderDate) < now);
+    const upcoming = st.filter(t => t.reminderDate && new Date(t.reminderDate) >= now);
+    return {
+      attendant: seller.name,
+      total: st.length,
+      overdue: overdue.length,
+      upcoming: upcoming.length,
+      sample_overdue: overdue.slice(0, 5).map(t => ({ id: t.id, title: t.title.slice(0, 60), date: t.reminderDate })),
+    };
+  }
+
+  if (name === 'reschedule_tasks') {
+    const name_ = String(args.attendant_name ?? '');
+    const perDay = Number(args.tasks_per_day ?? 50);
+    const startHour = Number(args.start_hour ?? 8);
+
+    const allSellers = await db.select().from(sellers);
+    const seller = allSellers.find(s => s.name.toLowerCase().includes(name_.toLowerCase()));
+    if (!seller) return { error: `Atendente "${name_}" não encontrado.` };
+
+    const now = new Date();
+    const allTasks = await db.select().from(tasks).where(
+      or(eq(tasks.assignedTo, seller.name), eq(tasks.userId, seller.userId))
+    );
+
+    // Only reschedule overdue tasks (reminder in the past)
+    const overdue = allTasks.filter(t =>
+      t.reminderDate && new Date(t.reminderDate) < now && t.reminderEnabled !== false
+    );
+    if (overdue.length === 0) return { message: `Nenhum lembrete vencido para ${seller.name}.` };
+
+    // Distribute: start from tomorrow, skip weekends
+    let currentDay = nextBusinessDay(now);
+    let countToday = 0;
+    let updated = 0;
+    const minutesBetween = Math.floor((9 * 60) / Math.max(perDay, 1)); // spread 8h→17h
+
+    for (const task of overdue) {
+      if (countToday >= perDay) {
+        currentDay = nextBusinessDay(currentDay);
+        countToday = 0;
+      }
+      const reminderDate = new Date(currentDay);
+      reminderDate.setHours(startHour, 0, 0, 0);
+      const offsetMins = countToday * minutesBetween;
+      const final = addMinutes(reminderDate, offsetMins);
+
+      await db.update(tasks)
+        .set({ reminderDate: final, reminderEnabled: true, updatedAt: now })
+        .where(eq(tasks.id, task.id));
+
+      countToday++;
+      updated++;
+    }
+
+    const daysNeeded = Math.ceil(overdue.length / perDay);
+    return {
+      success: true,
+      rescheduled: updated,
+      attendant: seller.name,
+      days_used: daysNeeded,
+      first_day: currentDay.toLocaleDateString('pt-BR'),
+      message: `✅ ${updated} lembretes de ${seller.name} redistribuídos em ${daysNeeded} dia(s) útil(eis) — ${perDay} por dia a partir de amanhã.`,
+    };
+  }
+
+  return { error: `Ferramenta desconhecida: ${name}` };
+}
+
+// ── Context builder ───────────────────────────────────────────────────────────
+
 async function buildUserContext(userId: number, role: string): Promise<string> {
   const now = new Date();
-
   const userTasks = role === 'admin'
     ? await db.select().from(tasks)
     : await db.select().from(tasks).where(eq(tasks.userId, userId));
 
-  const pending = userTasks.filter(t => t.status === 'pending');
-  const completed = userTasks.filter(t => t.status === 'completed');
-  const overdue = pending.filter(t => t.reminderDate && new Date(t.reminderDate) < now);
-  const highPriority = pending.filter(t => t.priority === 'high');
-
-  const allClients = await db.select().from(clients);
-  const activeClients = allClients.filter(c => c.status === 'active');
-  const potentialClients = allClients.filter(c => c.status === 'potential');
-  const coldLeads = allClients.filter(c => c.status === 'inactive');
+  const withReminder = userTasks.filter(t => t.reminderDate && t.reminderEnabled !== false);
+  const overdue = withReminder.filter(t => new Date(t.reminderDate!) < now);
+  const highPriority = userTasks.filter(t => t.priority === 'high');
 
   let context = `
 === DADOS REAIS DO SISTEMA (${now.toLocaleDateString('pt-BR')}) ===
-TAREFAS:
-- Total: ${userTasks.length} | Pendentes: ${pending.length} | Concluídas: ${completed.length}
-- Atrasadas: ${overdue.length} | Alta prioridade: ${highPriority.length}
-- Taxa de conclusão: ${userTasks.length > 0 ? Math.round((completed.length / userTasks.length) * 100) : 0}%
-
-CLIENTES:
-- Total: ${allClients.length} | Ativos: ${activeClients.length} | Potenciais: ${potentialClients.length} | Leads Frios: ${coldLeads.length}
-- Taxa de conversão estimada: ${allClients.length > 0 ? Math.round((activeClients.length / allClients.length) * 100) : 0}%
-
-TAREFAS ATRASADAS:
-${overdue.slice(0, 5).map(t => `- "${t.title}" (criada ${Math.floor((now.getTime() - new Date(t.createdAt).getTime()) / 86400000)} dias atrás)`).join('\n') || '- Nenhuma tarefa atrasada'}
-
-ALTA PRIORIDADE:
-${highPriority.slice(0, 3).map(t => `- "${t.title}" para ${t.assignedTo || 'não atribuído'}`).join('\n') || '- Nenhuma tarefa de alta prioridade'}
+LEMBRETES: Total=${userTasks.length} | Com lembrete ativo=${withReminder.length} | Vencidos=${overdue.length} | Alta prioridade=${highPriority.length}
+VENCIDOS RECENTES:
+${overdue.slice(0, 5).map(t => `- "${t.title.slice(0, 60)}" (${t.assignedTo ?? 'sem atendente'})`).join('\n') || '- Nenhum vencido'}
 `;
 
   if (role === 'admin') {
     const allSellers = await db.select().from(sellers);
-    context += `\nATENDENTES: ${allSellers.length} cadastrados\n`;
-    for (const seller of allSellers.slice(0, 5)) {
-      const st = userTasks.filter(t => t.userId === seller.userId);
-      const done = st.filter(t => t.status === 'completed').length;
-      const late = st.filter(t => t.status === 'pending' && t.reminderDate && new Date(t.reminderDate) < now).length;
-      context += `- ${seller.name}: ${st.length} tarefas, ${done} concluídas, ${late} atrasadas\n`;
+    context += `\nATENDENTES (${allSellers.length}):\n`;
+    for (const s of allSellers) {
+      const st = userTasks.filter(t => t.assignedTo === s.name || t.userId === s.userId);
+      const late = st.filter(t => t.reminderDate && new Date(t.reminderDate) < now).length;
+      context += `- ${s.name}: ${st.length} clientes, ${late} vencidos\n`;
     }
   }
-
   return context;
 }
 
-const BASE_URLS: Record<string, string> = {
-  groq: 'https://api.groq.com/openai/v1',
-  openai: 'https://api.openai.com/v1',
-  gemini: 'https://generativelanguage.googleapis.com/v1beta/openai',
-  grok: 'https://api.x.ai/v1',
-  claude: 'https://api.anthropic.com/v1',
-};
 
 export const aiRouter = router({
   testConnection: protectedProcedure
@@ -136,33 +277,49 @@ export const aiRouter = router({
         const userContext = await buildUserContext(ctx.user.id, ctx.user.role);
         console.log('[AI_CHAT] context built');
 
-        const systemPrompt = `Você é um assistente especializado em vendas da empresa Sal Vita — Sal do Brasil.
-Seu objetivo é ajudar ${ctx.user.role === 'admin' ? 'o administrador' : 'o atendente'} a vender mais e melhor.
+        const isAdmin = ctx.user.role === 'admin';
+
+        const systemPrompt = isAdmin
+          ? `Você é um assistente de gestão de equipes de vendas da empresa Sal Vita — Sal do Brasil.
+Você tem acesso a ferramentas que permitem EXECUTAR ações reais no sistema (não apenas descrever).
+
+${userContext}
+
+FERRAMENTAS DISPONÍVEIS (use quando o usuário pedir):
+- list_tasks: listar lembretes/status de um atendente
+- reschedule_tasks: REDISTRIBUIR lembretes vencidos de um atendente em dias úteis futuros
+
+INSTRUÇÕES CRÍTICAS:
+- Quando o usuário pedir para "reagendar", "redistribuir", "reorganizar" lembretes de algum atendente → USE a ferramenta reschedule_tasks imediatamente. NÃO apenas descreva — EXECUTE.
+- Quando precisar ver os dados de um atendente antes de agir → USE list_tasks primeiro.
+- Após executar uma ferramenta, informe o resultado real retornado por ela.
+- Use os dados reais do contexto acima nas análises.
+- Seja direto, use emojis, responda em português brasileiro.`
+          : `Você é um assistente de suporte ao atendente da empresa Sal Vita — Sal do Brasil.
+Seu papel é INFORMATIVO apenas — você não pode executar ações no sistema.
 
 ${userContext}
 
 SUAS FUNÇÕES:
-1. Analisar performance com base nos dados reais acima
-2. Recomendar próximas ações prioritárias
-3. Criar planos semanais/diários
-4. Identificar padrões e dar insights
-5. Fornecer dicas de vendas contextualizadas
-6. Alertar sobre tarefas atrasadas
+1. Analisar sua própria performance com base nos dados acima
+2. Sugerir prioridades para o dia/semana
+3. Dicas de abordagem com clientes de sal B2B
+4. Alertar sobre lembretes vencidos
 
 REGRAS:
-- Use SEMPRE os dados reais fornecidos acima nas respostas
-- Seja direto, objetivo e prático
-- Use emojis para facilitar leitura
-- Responda em português brasileiro
-- Quando sugerir prioridades, cite os números reais`;
+- Apenas informações e dicas — sem execução de ações
+- Use os dados reais do contexto
+- Seja objetivo, use emojis, responda em português brasileiro`;
 
         const messages = [
           { role: 'system', content: systemPrompt },
           ...history.reverse().map(m => ({ role: m.role, content: m.content })),
         ];
 
-        console.log('[AI_CHAT] calling LLM...');
-        const reply = await callLLM(apiKey, baseURL, model, messages);
+        console.log('[AI_CHAT] calling LLM, isAdmin:', isAdmin);
+        const reply = isAdmin
+          ? await callLLMWithTools(apiKey, baseURL, model, messages, TOOLS, 1200)
+          : await callLLM(apiKey, baseURL, model, messages, 800, 0.6);
         console.log('[AI_CHAT] LLM OK, reply len:', reply.length);
 
         await db.insert(chatMessages).values({ userId: ctx.user.id, content: reply, role: 'assistant' });
