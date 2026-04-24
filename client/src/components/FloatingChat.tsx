@@ -77,7 +77,7 @@ export default function FloatingChat() {
       {/* Floating bubble */}
       <button
         onClick={() => setOpen(o => !o)}
-        className="fixed bottom-4 right-4 z-50 w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-2xl flex items-center justify-center text-2xl transition-all active:scale-95"
+        className="fixed bottom-[88px] right-4 md:bottom-4 z-50 w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-2xl flex items-center justify-center text-2xl transition-all active:scale-95"
         title={open ? 'Fechar chat' : 'Abrir chat IA'}
         aria-label="Chat com IA"
       >
@@ -88,7 +88,7 @@ export default function FloatingChat() {
       {open && (
         <div
           className="fixed bottom-24 right-5 z-50 bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col"
-          style={{ width: 'min(380px, calc(100vw - 16px))', height: 'min(520px, calc(100vh - 110px))' }}
+          style={{ width: 'min(380px, calc(100vw - 16px))', height: 'min(520px, calc(100vh - 170px))' }}
         >
           {/* Header */}
           <div className="bg-blue-600 text-white px-4 py-3 rounded-t-2xl flex items-center justify-between flex-shrink-0">
