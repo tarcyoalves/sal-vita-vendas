@@ -124,6 +124,34 @@ export default function AppShell({ children }: AppShellProps) {
   const [pwdLoading, setPwdLoading] = useState(false);
   const changePasswordMutation = trpc.auth.changePassword.useMutation();
 
+  // Startup blocking modal (role=user only)
+  const { data: currentSession, isLoading: sessionLoading, refetch: refetchSession } =
+    trpc.workSessions.current.useQuery(undefined, { enabled: !!user && role === "user" });
+  const { data: sellerProfile } = trpc.sellers.myProfile.useQuery(undefined, {
+    enabled: !!user && role === "user",
+  });
+  const startWorkMut = trpc.workSessions.start.useMutation();
+  const [startingWork, setStartingWork] = useState(false);
+
+  const goalHours = sellerProfile?.workHoursGoal ?? 8;
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+  const needsStartup =
+    role === "user" && !sessionLoading && (!currentSession || currentSession.status === "ended");
+
+  const handleStartWork = async () => {
+    setStartingWork(true);
+    try {
+      await startWorkMut.mutateAsync({ dailyGoalHours: goalHours });
+      await refetchSession();
+      toast.success("▶ Trabalho iniciado!");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao iniciar trabalho");
+    } finally {
+      setStartingWork(false);
+    }
+  };
+
   const handleLogout = async () => {
     await logoutMutation.mutateAsync();
     setLocation("/");
@@ -368,6 +396,40 @@ export default function AppShell({ children }: AppShellProps) {
 
       {/* Work session timer — only for attendants, above bottom nav on mobile */}
       {role === "user" && <ActiveTimer />}
+
+      {/* ── Startup blocking modal (attendants) ── */}
+      {needsStartup && (
+        <div className="fixed inset-0 z-[200] bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm text-center">
+            <img
+              src="/sal-vita-logo.svg"
+              alt="Sal Vita"
+              className="mx-auto mb-5 object-contain"
+              style={{ height: "72px" }}
+            />
+            <h2 className="text-xl font-bold text-gray-800 mb-1">
+              {greeting}, {user?.name?.split(" ")[0]}!
+            </h2>
+            <p className="text-gray-500 text-sm mb-8">
+              Registre sua entrada para começar a usar o sistema.
+            </p>
+            <button
+              onClick={handleStartWork}
+              disabled={startingWork}
+              className="w-full py-4 bg-green-600 hover:bg-green-700 text-white text-lg font-bold rounded-xl transition disabled:opacity-50 shadow-lg flex items-center justify-center gap-2"
+            >
+              {startingWork ? (
+                <>
+                  <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
+                  Iniciando...
+                </>
+              ) : (
+                "▶ Iniciar Trabalho"
+              )}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Change Password Modal ── */}
       {showChangePwd && (
