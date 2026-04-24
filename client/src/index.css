@@ -3,39 +3,40 @@
 @tailwind utilities;
 
 :root {
-  --primary: #1d4ed8;
-  --primary-foreground: #eff6ff;
-  --sidebar-primary: #2563eb;
-  --sidebar-primary-foreground: #eff6ff;
-  --chart-1: #93c5fd;
-  --chart-2: #3b82f6;
-  --chart-3: #2563eb;
-  --chart-4: #1d4ed8;
-  --chart-5: #1e40af;
+  /* Sal Vita brand navy #0C3680 */
+  --primary: #0C3680;
+  --primary-foreground: #ffffff;
+  --sidebar-primary: #0C3680;
+  --sidebar-primary-foreground: #ffffff;
+  --chart-1: #7aadff;
+  --chart-2: #3b7dd8;
+  --chart-3: #1a52b0;
+  --chart-4: #0C3680;
+  --chart-5: #091f4d;
   --radius: 0.65rem;
-  --background: #ffffff;
-  --foreground: #374151;
+  --background: #f5f7fb;
+  --foreground: #1e293b;
   --card: #ffffff;
-  --card-foreground: #374151;
+  --card-foreground: #1e293b;
   --popover: #ffffff;
-  --popover-foreground: #374151;
-  --secondary: #f3f4f6;
-  --secondary-foreground: #4b5563;
-  --muted: #f9fafb;
-  --muted-foreground: #6b7280;
-  --accent: #f9fafb;
-  --accent-foreground: #111827;
+  --popover-foreground: #1e293b;
+  --secondary: #eef2ff;
+  --secondary-foreground: #0C3680;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #eef2ff;
+  --accent-foreground: #0C3680;
   --destructive: #b91c1c;
   --destructive-foreground: #ffffff;
-  --border: #e5e7eb;
-  --input: #e5e7eb;
-  --ring: #3b82f6;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #374151;
-  --sidebar-accent: #f9fafb;
-  --sidebar-accent-foreground: #111827;
-  --sidebar-border: #e5e7eb;
-  --sidebar-ring: #3b82f6;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #0C3680;
+  --sidebar: #0C3680;
+  --sidebar-foreground: #ffffff;
+  --sidebar-accent: rgba(255,255,255,0.12);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255,255,255,0.1);
+  --sidebar-ring: #7aadff;
 }
 
 .dark {
