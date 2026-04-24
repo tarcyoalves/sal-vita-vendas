@@ -45,11 +45,24 @@ export default function Attendants() {
     status: "active" as "active" | "inactive",
   });
 
+  const [resetInfo, setResetInfo] = useState<{ name: string; email: string; password: string } | null>(null);
+
   const { data: attendants = [], isLoading, refetch } = trpc.sellers.listWithRole.useQuery();
   const createMutation = trpc.sellers.create.useMutation();
   const updateMutation = trpc.sellers.update.useMutation();
   const deleteMutation = trpc.sellers.delete.useMutation();
   const updateRoleMutation = trpc.sellers.updateRole.useMutation();
+  const resetPasswordMutation = trpc.auth.adminResetPassword.useMutation();
+
+  const handleResetPassword = async (attendant: Attendant) => {
+    if (!confirm(`Resetar a senha de "${attendant.name}"? Uma nova senha será gerada.`)) return;
+    try {
+      const result = await resetPasswordMutation.mutateAsync({ userId: attendant.userId });
+      setResetInfo({ name: result.name, email: result.email, password: result.generatedPassword });
+    } catch (error: any) {
+      toast.error(error?.message ?? "Erro ao resetar senha");
+    }
+  };
 
   const [formData, setFormData] = useState({
     name: "",
@@ -158,6 +171,34 @@ export default function Attendants() {
 
   return (
     <div className="p-4 md:p-6 space-y-4">
+
+        {/* Reset password modal */}
+        {resetInfo && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
+              <h2 className="text-2xl font-bold text-orange-600 mb-2">🔑 Senha Resetada!</h2>
+              <p className="text-gray-600 mb-6">Anote a nova senha — ela não será exibida novamente.</p>
+              <div className="bg-gray-50 rounded-xl p-4 space-y-3 border">
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Nome</p>
+                  <p className="font-semibold text-gray-800">{resetInfo.name}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Email (login)</p>
+                  <p className="font-mono text-blue-700">{resetInfo.email}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Nova senha gerada</p>
+                  <p className="font-mono text-lg font-bold text-orange-700 bg-orange-50 px-3 py-2 rounded-lg border border-orange-200 select-all tracking-widest">{resetInfo.password}</p>
+                </div>
+              </div>
+              <p className="text-xs text-orange-600 mt-3">⚠️ Copie a senha agora. Ela não será exibida novamente.</p>
+              <Button className="w-full mt-4 bg-orange-600 hover:bg-orange-700" onClick={() => setResetInfo(null)}>
+                ✅ Entendido, já copiei a senha
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Password reveal modal */}
         {createdInfo && (
@@ -292,6 +333,15 @@ export default function Attendants() {
                           🗑️ Remover
                         </Button>
                       </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full border-orange-300 text-orange-700 hover:bg-orange-50"
+                        onClick={() => handleResetPassword(attendant)}
+                        disabled={resetPasswordMutation.isPending}
+                      >
+                        🔑 Resetar Senha
+                      </Button>
                       <Button
                         size="sm"
                         variant={attendant.userRole === "admin" ? "outline" : "default"}

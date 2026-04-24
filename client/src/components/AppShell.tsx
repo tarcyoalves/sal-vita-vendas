@@ -13,10 +13,12 @@ import {
   ChevronDown,
   ChevronRight,
   TrendingUp,
+  KeyRound,
 } from "lucide-react";
 import { useAuth } from "../_core/hooks/useAuth";
 import { trpc } from "../lib/trpc";
 import ActiveTimer from "./ActiveTimer";
+import { toast } from "sonner";
 
 interface NavItem {
   label: string;
@@ -117,9 +119,33 @@ export default function AppShell({ children }: AppShellProps) {
   const visibleItems = NAV_ITEMS.filter((item) => item.roles.includes(role));
   const bottomNavItems = role === "admin" ? BOTTOM_NAV_ADMIN : BOTTOM_NAV_USER;
 
+  const [showChangePwd, setShowChangePwd] = useState(false);
+  const [pwdForm, setPwdForm] = useState({ current: "", next: "", confirm: "" });
+  const [pwdLoading, setPwdLoading] = useState(false);
+  const changePasswordMutation = trpc.auth.changePassword.useMutation();
+
   const handleLogout = async () => {
     await logoutMutation.mutateAsync();
     setLocation("/");
+  };
+
+  const handleChangePwd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pwdForm.next !== pwdForm.confirm) {
+      toast.error("As novas senhas não coincidem");
+      return;
+    }
+    setPwdLoading(true);
+    try {
+      await changePasswordMutation.mutateAsync({ currentPassword: pwdForm.current, newPassword: pwdForm.next });
+      toast.success("Senha alterada com sucesso!");
+      setShowChangePwd(false);
+      setPwdForm({ current: "", next: "", confirm: "" });
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao alterar senha");
+    } finally {
+      setPwdLoading(false);
+    }
   };
 
   const isActive = (path?: string) => path === location;
@@ -224,6 +250,13 @@ export default function AppShell({ children }: AppShellProps) {
             <p className="text-xs text-slate-400 truncate">{user?.email ?? ""}</p>
           </div>
         </div>
+        <button
+          onClick={() => setShowChangePwd(true)}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors mb-1"
+        >
+          <KeyRound size={15} />
+          <span>Alterar Senha</span>
+        </button>
         <button
           onClick={handleLogout}
           className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
@@ -335,6 +368,73 @@ export default function AppShell({ children }: AppShellProps) {
 
       {/* Work session timer — only for attendants, above bottom nav on mobile */}
       {role === "user" && <ActiveTimer />}
+
+      {/* ── Change Password Modal ── */}
+      {showChangePwd && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="p-6 border-b">
+              <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <KeyRound size={18} className="text-blue-600" />
+                Alterar Senha
+              </h2>
+              <p className="text-sm text-gray-500 mt-0.5">{user?.name} · {user?.email}</p>
+            </div>
+            <form onSubmit={handleChangePwd} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Senha atual</label>
+                <input
+                  type="password"
+                  value={pwdForm.current}
+                  onChange={e => setPwdForm(f => ({ ...f, current: e.target.value }))}
+                  placeholder="••••••••"
+                  required
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nova senha</label>
+                <input
+                  type="password"
+                  value={pwdForm.next}
+                  onChange={e => setPwdForm(f => ({ ...f, next: e.target.value }))}
+                  placeholder="Mínimo 6 caracteres"
+                  required
+                  minLength={6}
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar nova senha</label>
+                <input
+                  type="password"
+                  value={pwdForm.confirm}
+                  onChange={e => setPwdForm(f => ({ ...f, confirm: e.target.value }))}
+                  placeholder="••••••••"
+                  required
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={pwdLoading}
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition disabled:opacity-50"
+                >
+                  {pwdLoading ? "Salvando..." : "✅ Salvar"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowChangePwd(false); setPwdForm({ current: "", next: "", confirm: "" }); }}
+                  className="flex-1 py-2.5 border text-sm rounded-lg text-gray-600 hover:bg-gray-50 transition"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
