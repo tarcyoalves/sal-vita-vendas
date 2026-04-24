@@ -75,6 +75,21 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
+// Flat items for the mobile bottom nav (max 5 visible)
+const BOTTOM_NAV_ADMIN = [
+  { label: "Dashboard", path: "/admin/dashboard", icon: <LayoutDashboard size={22} /> },
+  { label: "Tarefas",   path: "/tasks",            icon: <CheckSquare size={22} /> },
+  { label: "Atendentes",path: "/attendants",        icon: <Users size={22} /> },
+  { label: "Chat IA",   path: "/ai-chat",           icon: <MessageSquare size={22} /> },
+  { label: "Config IA", path: "/ai-settings",       icon: <Settings size={22} /> },
+];
+
+const BOTTOM_NAV_USER = [
+  { label: "Tarefas",   path: "/tasks",         icon: <CheckSquare size={22} /> },
+  { label: "Progresso", path: "/meu-progresso", icon: <TrendingUp size={22} /> },
+  { label: "Chat IA",   path: "/ai-chat",       icon: <MessageSquare size={22} /> },
+];
+
 const PAGE_TITLES: Record<string, string> = {
   "/admin/dashboard": "Dashboard",
   "/tasks": "Tarefas",
@@ -101,6 +116,7 @@ export default function AppShell({ children }: AppShellProps) {
 
   const role = (user?.role ?? "user") as "admin" | "user";
   const visibleItems = NAV_ITEMS.filter((item) => item.roles.includes(role));
+  const bottomNavItems = role === "admin" ? BOTTOM_NAV_ADMIN : BOTTOM_NAV_USER;
 
   const handleLogout = async () => {
     await logoutMutation.mutateAsync();
@@ -116,12 +132,12 @@ export default function AppShell({ children }: AppShellProps) {
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
-      {/* Logo — h-8 original → h-[42px] (+30%) */}
+      {/* Logo */}
       <div className="h-[72px] flex items-center px-5 border-b border-slate-700 flex-shrink-0">
         <img
           src="/sal-vita-logo.svg"
           alt="Sal Vita"
-          style={{ height: '42px' }}
+          style={{ height: "42px" }}
           className="cursor-pointer brightness-0 invert"
           onClick={() => setLocation(role === "admin" ? "/admin/dashboard" : "/tasks")}
         />
@@ -227,13 +243,10 @@ export default function AppShell({ children }: AppShellProps) {
         <SidebarContent />
       </aside>
 
-      {/* Mobile Sidebar Overlay */}
+      {/* Mobile Sidebar Overlay (kept as fallback, no longer triggered by topbar) */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 flex md:hidden">
-          <div
-            className="fixed inset-0 bg-black/50"
-            onClick={() => setSidebarOpen(false)}
-          />
+          <div className="fixed inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
           <aside className="relative z-50 flex flex-col w-60 bg-slate-900">
             <SidebarContent />
           </aside>
@@ -244,24 +257,69 @@ export default function AppShell({ children }: AppShellProps) {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Topbar */}
         <header className="h-14 bg-white border-b flex items-center px-4 gap-4 flex-shrink-0">
+          {/* Mobile: show logo instead of hamburger */}
           <button
-            className="md:hidden p-2.5 rounded-lg hover:bg-gray-100 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
-            onClick={() => setSidebarOpen(true)}
-            aria-label="Abrir menu"
+            className="md:hidden"
+            onClick={() => setLocation(role === "admin" ? "/admin/dashboard" : "/tasks")}
           >
-            <Menu size={20} className="text-gray-600" />
+            <img
+              src="/sal-vita-logo.svg"
+              alt="Sal Vita"
+              style={{ height: "32px" }}
+              className="object-contain"
+            />
           </button>
-          <h1 className="text-base font-semibold text-gray-800 truncate">{pageTitle}</h1>
+          <h1 className="text-base font-semibold text-gray-800 truncate flex-1">{pageTitle}</h1>
+          {/* Mobile: logout button in topbar */}
+          <button
+            className="md:hidden p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+            onClick={handleLogout}
+            aria-label="Sair"
+          >
+            <LogOut size={18} />
+          </button>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto">
+        {/* Page content — bottom padding on mobile to avoid bottom nav overlap */}
+        <main className="flex-1 overflow-y-auto pb-20 md:pb-0">
           {children}
         </main>
       </div>
 
-      {/* Work session timer — fixed bottom-right, only for attendants */}
-      {role === 'user' && <ActiveTimer />}
+      {/* ── Mobile Bottom Nav ── */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-200 safe-area-pb"
+           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <div className="flex items-center justify-around px-2 pt-2 pb-1">
+          {bottomNavItems.map((item) => {
+            const active = location === item.path;
+            return (
+              <button
+                key={item.path}
+                onClick={() => setLocation(item.path)}
+                className="flex flex-col items-center gap-0.5 flex-1 py-1 transition-all"
+              >
+                <span
+                  className={`flex items-center justify-center w-12 h-10 rounded-2xl transition-all ${
+                    active ? "bg-blue-600 text-white shadow-md" : "text-gray-400 hover:text-gray-700"
+                  }`}
+                >
+                  {item.icon}
+                </span>
+                <span
+                  className={`text-[10px] font-medium leading-tight ${
+                    active ? "text-blue-600" : "text-gray-400"
+                  }`}
+                >
+                  {item.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      {/* Work session timer — only for attendants, above bottom nav on mobile */}
+      {role === "user" && <ActiveTimer />}
     </div>
   );
 }
