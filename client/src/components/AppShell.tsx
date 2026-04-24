@@ -75,13 +75,12 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
-// Flat items for the mobile bottom nav (max 5 visible)
+// Flat items for the mobile bottom nav — último slot é sempre "Mais" (abre sidebar)
 const BOTTOM_NAV_ADMIN = [
-  { label: "Dashboard", path: "/admin/dashboard", icon: <LayoutDashboard size={22} /> },
-  { label: "Tarefas",   path: "/tasks",            icon: <CheckSquare size={22} /> },
-  { label: "Atendentes",path: "/attendants",        icon: <Users size={22} /> },
-  { label: "Chat IA",   path: "/ai-chat",           icon: <MessageSquare size={22} /> },
-  { label: "Config IA", path: "/ai-settings",       icon: <Settings size={22} /> },
+  { label: "Dashboard",  path: "/admin/dashboard", icon: <LayoutDashboard size={22} /> },
+  { label: "Tarefas",    path: "/tasks",            icon: <CheckSquare size={22} /> },
+  { label: "Atendentes", path: "/attendants",       icon: <Users size={22} /> },
+  { label: "Chat IA",    path: "/ai-chat",          icon: <MessageSquare size={22} /> },
 ];
 
 const BOTTOM_NAV_USER = [
@@ -287,9 +286,12 @@ export default function AppShell({ children }: AppShellProps) {
       </div>
 
       {/* ── Mobile Bottom Nav ── */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-200 safe-area-pb"
-           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      <nav
+        className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-200"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
         <div className="flex items-center justify-around px-2 pt-2 pb-1">
+          {/* Nav items */}
           {bottomNavItems.map((item) => {
             const active = location === item.path;
             return (
@@ -300,21 +302,34 @@ export default function AppShell({ children }: AppShellProps) {
               >
                 <span
                   className={`flex items-center justify-center w-12 h-10 rounded-2xl transition-all ${
-                    active ? "bg-blue-600 text-white shadow-md" : "text-gray-400 hover:text-gray-700"
+                    active ? "bg-blue-600 text-white shadow-md" : "text-gray-400"
                   }`}
                 >
                   {item.icon}
                 </span>
-                <span
-                  className={`text-[10px] font-medium leading-tight ${
-                    active ? "text-blue-600" : "text-gray-400"
-                  }`}
-                >
+                <span className={`text-[10px] font-medium leading-tight ${active ? "text-blue-600" : "text-gray-400"}`}>
                   {item.label}
                 </span>
               </button>
             );
           })}
+
+          {/* "Mais" — abre o sidebar completo com todos os sub-menus */}
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="flex flex-col items-center gap-0.5 flex-1 py-1 transition-all"
+          >
+            <span
+              className={`flex items-center justify-center w-12 h-10 rounded-2xl transition-all ${
+                sidebarOpen ? "bg-blue-600 text-white shadow-md" : "text-gray-400"
+              }`}
+            >
+              <Menu size={22} />
+            </span>
+            <span className={`text-[10px] font-medium leading-tight ${sidebarOpen ? "text-blue-600" : "text-gray-400"}`}>
+              Mais
+            </span>
+          </button>
         </div>
       </nav>
 

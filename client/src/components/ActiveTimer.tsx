@@ -93,7 +93,7 @@ export default function ActiveTimer() {
   // No session or ended — show "Iniciar Trabalho" button
   if (!session || session.status === 'ended') {
     return (
-      <div className="fixed bottom-20 right-4 md:bottom-4 z-50">
+      <div className="fixed bottom-[88px] right-4 md:bottom-4 z-50">
         {showConfirm ? (
           <div className="bg-white rounded-2xl shadow-xl border p-4 w-52">
             <p className="text-sm font-semibold text-gray-700 mb-1">Iniciar Trabalho</p>
@@ -135,7 +135,7 @@ export default function ActiveTimer() {
   const barColor = pct >= 100 ? 'bg-green-500' : pct >= 75 ? 'bg-blue-500' : pct >= 50 ? 'bg-blue-400' : 'bg-slate-400';
 
   return (
-    <div className="fixed bottom-20 right-4 md:bottom-4 z-50">
+    <div className="fixed bottom-[88px] right-4 md:bottom-4 z-50">
       <div className={`bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl border ${isActive ? 'border-green-200' : 'border-yellow-200'} p-4 w-52`}>
 
         {/* Status dot + label */}
