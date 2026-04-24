@@ -69,4 +69,20 @@ export const authRouter = router({
         .where(eq(users.id, input.userId));
       return { name: user.name, email: user.email, generatedPassword: generated };
     }),
+
+  // Emergency recovery for admin who lost their own password
+  emergencyReset: publicProcedure
+    .input(z.object({ email: z.string().email(), secret: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      const envSecret = process.env.ADMIN_RESET_SECRET;
+      if (!envSecret || input.secret !== envSecret) throw new Error('Chave de recuperação inválida');
+      const [user] = await db.select().from(users).where(eq(users.email, input.email));
+      if (!user) throw new Error('Email não encontrado');
+      if (user.role !== 'admin') throw new Error('Apenas admins podem usar recuperação de emergência');
+      const generated = generatePassword();
+      await db.update(users)
+        .set({ passwordHash: hashPassword(generated) })
+        .where(eq(users.id, user.id));
+      return { name: user.name, generatedPassword: generated };
+    }),
 });
