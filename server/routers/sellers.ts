@@ -22,6 +22,7 @@ export const sellersRouter = router({
       phone: z.string().optional(),
       department: z.string().optional(),
       dailyGoal: z.number().optional().default(10),
+      workHoursGoal: z.number().min(1).max(24).optional().default(8),
       status: z.enum(['active', 'inactive']).optional().default('active'),
     }))
     .mutation(async ({ input }) => {
@@ -74,6 +75,7 @@ export const sellersRouter = router({
       phone: z.string().optional(),
       department: z.string().optional(),
       dailyGoal: z.number().optional(),
+      workHoursGoal: z.number().min(1).max(24).optional(),
       status: z.enum(['active', 'inactive']).optional(),
     }))
     .mutation(async ({ input }) => {
@@ -111,6 +113,7 @@ export const sellersRouter = router({
         phone: sellers.phone,
         department: sellers.department,
         dailyGoal: sellers.dailyGoal,
+        workHoursGoal: sellers.workHoursGoal,
         status: sellers.status,
         createdAt: sellers.createdAt,
         updatedAt: sellers.updatedAt,
@@ -119,5 +122,10 @@ export const sellersRouter = router({
       .from(sellers)
       .leftJoin(users, eq(sellers.userId, users.id))
       .orderBy(sellers.name);
+  }),
+
+  myProfile: protectedProcedure.query(async ({ ctx }) => {
+    const [seller] = await db.select().from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
+    return seller ?? null;
   }),
 });

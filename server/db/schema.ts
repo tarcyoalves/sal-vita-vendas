@@ -17,6 +17,7 @@ export const sellers = pgTable('sellers', {
   phone: text('phone'),
   department: text('department'),
   dailyGoal: integer('daily_goal').default(10),
+  workHoursGoal: integer('work_hours_goal').default(8).notNull(),
   status: text('status').notNull().default('active'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

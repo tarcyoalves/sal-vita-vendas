@@ -19,6 +19,10 @@ export async function ensureTablesExist() {
     `;
 
     await sql`
+      ALTER TABLE sellers ADD COLUMN IF NOT EXISTS work_hours_goal INTEGER NOT NULL DEFAULT 8
+    `;
+
+    await sql`
       CREATE TABLE IF NOT EXISTS work_sessions (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,

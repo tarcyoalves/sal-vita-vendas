@@ -20,7 +20,8 @@ interface Attendant {
   phone?: string | null;
   department?: string | null;
   dailyGoal: number | null;
-  status: "active" | "inactive" | null;
+  workHoursGoal: number | null;
+  status: string | null;
   createdAt: Date;
   updatedAt: Date;
   userRole?: string | null;
@@ -40,6 +41,7 @@ export default function Attendants() {
     phone: "",
     department: "",
     dailyGoal: 10,
+    workHoursGoal: 8,
     status: "active" as "active" | "inactive",
   });
 
@@ -55,6 +57,7 @@ export default function Attendants() {
     phone: "",
     department: "",
     dailyGoal: 10,
+    workHoursGoal: 8,
     status: "active" as "active" | "inactive",
   });
 
@@ -65,7 +68,8 @@ export default function Attendants() {
       phone: attendant.phone ?? "",
       department: attendant.department ?? "",
       dailyGoal: attendant.dailyGoal ?? 10,
-      status: attendant.status ?? "active",
+      workHoursGoal: attendant.workHoursGoal ?? 8,
+      status: (attendant.status ?? "active") as "active" | "inactive",
     });
   };
 
@@ -79,6 +83,7 @@ export default function Attendants() {
         phone: editFormData.phone || undefined,
         department: editFormData.department || undefined,
         dailyGoal: editFormData.dailyGoal,
+        workHoursGoal: editFormData.workHoursGoal,
         status: editFormData.status,
       });
       toast.success("Atendente atualizado!");
@@ -102,6 +107,7 @@ export default function Attendants() {
         phone: formData.phone || undefined,
         department: formData.department || undefined,
         dailyGoal: formData.dailyGoal,
+        workHoursGoal: formData.workHoursGoal,
         status: formData.status,
       }) as CreatedResult;
 
@@ -109,7 +115,7 @@ export default function Attendants() {
         setCreatedInfo({ name: result.name, email: result.email, password: result.generatedPassword });
       }
 
-      setFormData({ name: "", email: "", phone: "", department: "", dailyGoal: 10, status: "active" });
+      setFormData({ name: "", email: "", phone: "", department: "", dailyGoal: 10, workHoursGoal: 8, status: "active" });
       setShowForm(false);
       refetch();
     } catch (error: any) {
@@ -185,7 +191,7 @@ export default function Attendants() {
           <h2 className="text-lg font-semibold text-gray-700">
             {attendants.length} atendente{attendants.length !== 1 ? 's' : ''} cadastrado{attendants.length !== 1 ? 's' : ''}
           </h2>
-          <Button onClick={() => { setFormData({ name: "", email: "", phone: "", department: "", dailyGoal: 10, status: "active" }); setShowForm(!showForm); }}>
+          <Button onClick={() => { setFormData({ name: "", email: "", phone: "", department: "", dailyGoal: 10, workHoursGoal: 8, status: "active" }); setShowForm(!showForm); }}>
             {showForm ? "❌ Cancelar" : "➕ Novo Atendente"}
           </Button>
         </div>
@@ -214,10 +220,18 @@ export default function Attendants() {
                     <input type="text" value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} placeholder="Ex: Vendas" className="w-full px-3 py-2 border rounded-lg" />
                   </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-sm font-medium mb-1">Meta Diária</label>
+                    <label className="block text-sm font-medium mb-1">Meta Diária (tarefas)</label>
                     <input type="number" value={formData.dailyGoal} onChange={(e) => setFormData({ ...formData, dailyGoal: parseInt(e.target.value) })} className="w-full px-3 py-2 border rounded-lg" min="1" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Expediente</label>
+                    <select value={formData.workHoursGoal} onChange={(e) => setFormData({ ...formData, workHoursGoal: parseInt(e.target.value) })} className="w-full px-3 py-2 border rounded-lg">
+                      <option value={4}>4h — Meio período</option>
+                      <option value={6}>6h — Período parcial</option>
+                      <option value={8}>8h — Período integral</option>
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1">Status</label>
@@ -259,6 +273,7 @@ export default function Attendants() {
                       {attendant.phone && <p>📱 {attendant.phone}</p>}
                       {attendant.department && <p>🏢 {attendant.department}</p>}
                       <p>🎯 Meta: {attendant.dailyGoal} tarefas/dia</p>
+                      <p>🕐 Expediente: {attendant.workHoursGoal ?? 8}h</p>
                       <div className="flex gap-2 flex-wrap">
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${attendant.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                           {attendant.status === "active" ? "✅ Ativo" : "❌ Inativo"}
@@ -315,16 +330,26 @@ export default function Attendants() {
                   <input type="text" value={editFormData.department} onChange={(e) => setEditFormData({ ...editFormData, department: e.target.value })} placeholder="Ex: Vendas" className="w-full px-3 py-2 border rounded-lg" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Meta Diária</label>
+                  <label className="block text-sm font-medium mb-1">Meta Diária (tarefas)</label>
                   <input type="number" value={editFormData.dailyGoal} onChange={(e) => setEditFormData({ ...editFormData, dailyGoal: parseInt(e.target.value) })} className="w-full px-3 py-2 border rounded-lg" min="1" />
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Status</label>
-                <select value={editFormData.status} onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value as "active" | "inactive" })} className="w-full px-3 py-2 border rounded-lg">
-                  <option value="active">Ativo</option>
-                  <option value="inactive">Inativo</option>
-                </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Expediente</label>
+                  <select value={editFormData.workHoursGoal} onChange={(e) => setEditFormData({ ...editFormData, workHoursGoal: parseInt(e.target.value) })} className="w-full px-3 py-2 border rounded-lg">
+                    <option value={4}>4h — Meio período</option>
+                    <option value={6}>6h — Período parcial</option>
+                    <option value={8}>8h — Período integral</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Status</label>
+                  <select value={editFormData.status} onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value as "active" | "inactive" })} className="w-full px-3 py-2 border rounded-lg">
+                    <option value="active">Ativo</option>
+                    <option value="inactive">Inativo</option>
+                  </select>
+                </div>
               </div>
               <DialogFooter className="flex gap-2 pt-2">
                 <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700" disabled={updateMutation.isPending}>

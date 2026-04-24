@@ -27,8 +27,11 @@ function elapsedMs(session: any): number {
 export default function ActiveTimer() {
   const { user } = useAuth();
   const [tick, setTick] = useState(0);
-  const [showStart, setShowStart] = useState(false);
-  const [goalHours, setGoalHours] = useState(8);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const { data: profile } = trpc.sellers.myProfile.useQuery(undefined, {
+    enabled: !!user,
+  });
 
   const { data: session, refetch } = trpc.workSessions.current.useQuery(undefined, {
     enabled: !!user,
@@ -55,54 +58,46 @@ export default function ActiveTimer() {
     if (elapsed >= goal && elapsed < goal + 2000) {
       toast.success(`🏁 Meta de ${session.dailyGoalHours}h atingida! Excelente trabalho!`, { duration: 10000 });
     }
-    // Warn 30 min before end
     if (elapsed >= goal - 30 * 60 * 1000 && elapsed < goal - 29 * 60 * 1000) {
       toast.info(`⏰ Faltam 30 minutos para atingir sua meta de ${session.dailyGoalHours}h.`, { duration: 8000 });
     }
   }, [tick]);
 
+  const goalHours = profile?.workHoursGoal ?? 8;
+
   const handle = useCallback(async (action: 'start' | 'pause' | 'resume' | 'end') => {
     try {
       if (action === 'start') {
         await startMut.mutateAsync({ dailyGoalHours: goalHours });
-        setShowStart(false);
-        toast.success('▶ Ponto iniciado!');
+        setShowConfirm(false);
+        toast.success('▶ Trabalho iniciado!');
       } else if (action === 'pause') {
         await pauseMut.mutateAsync();
-        toast.info('⏸ Ponto pausado.');
+        toast.info('⏸ Pausado.');
       } else if (action === 'resume') {
         await resumeMut.mutateAsync();
-        toast.success('▶ Ponto retomado!');
+        toast.success('▶ Retomado!');
       } else if (action === 'end') {
-        if (!confirm('Finalizar o ponto agora?')) return;
+        if (!confirm('Finalizar o trabalho agora?')) return;
         await endMut.mutateAsync();
-        toast.success('⏹ Ponto finalizado!');
+        toast.success('⏹ Trabalho finalizado!');
       }
       refetch();
     } catch (e: any) {
-      toast.error(e?.message ?? 'Erro no ponto');
+      toast.error(e?.message ?? 'Erro no registro');
     }
   }, [goalHours]);
 
   if (!user) return null;
 
-  // No session or ended — show "Iniciar" button only
+  // No session or ended — show "Iniciar Trabalho" button
   if (!session || session.status === 'ended') {
     return (
       <div className="fixed bottom-4 right-4 z-50">
-        {showStart ? (
-          <div className="bg-white rounded-2xl shadow-xl border p-4 w-56">
-            <p className="text-sm font-semibold text-gray-700 mb-2">Iniciar Ponto</p>
-            <label className="text-xs text-gray-500">Meta de horas</label>
-            <select
-              value={goalHours}
-              onChange={e => setGoalHours(Number(e.target.value))}
-              className="w-full mt-1 mb-3 px-2 py-1.5 border rounded-lg text-sm"
-            >
-              <option value={4}>4h — Meio período</option>
-              <option value={6}>6h — Período parcial</option>
-              <option value={8}>8h — Período integral</option>
-            </select>
+        {showConfirm ? (
+          <div className="bg-white rounded-2xl shadow-xl border p-4 w-52">
+            <p className="text-sm font-semibold text-gray-700 mb-1">Iniciar Trabalho</p>
+            <p className="text-xs text-gray-500 mb-3">Expediente: <span className="font-semibold text-slate-700">{goalHours}h</span></p>
             <div className="flex gap-2">
               <button
                 onClick={() => handle('start')}
@@ -111,7 +106,7 @@ export default function ActiveTimer() {
                 ▶ Iniciar
               </button>
               <button
-                onClick={() => setShowStart(false)}
+                onClick={() => setShowConfirm(false)}
                 className="px-3 py-1.5 border rounded-lg text-sm text-gray-500 hover:bg-gray-50"
               >
                 ✕
@@ -120,11 +115,11 @@ export default function ActiveTimer() {
           </div>
         ) : (
           <button
-            onClick={() => setShowStart(true)}
+            onClick={() => setShowConfirm(true)}
             className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2.5 rounded-full shadow-lg text-sm font-medium transition-all"
           >
             <Clock size={15} />
-            Iniciar Ponto
+            Iniciar Trabalho
           </button>
         )}
       </div>
@@ -188,7 +183,7 @@ export default function ActiveTimer() {
           )}
           <button
             onClick={() => handle('end')}
-            title="Finalizar ponto"
+            title="Finalizar trabalho"
             className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition"
           >
             <Square size={15} />
