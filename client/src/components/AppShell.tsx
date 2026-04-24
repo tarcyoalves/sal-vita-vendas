@@ -137,7 +137,7 @@ export default function AppShell({ children }: AppShellProps) {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
   const needsStartup =
-    role === "user" && !sessionLoading && (!currentSession || currentSession.status === "ended");
+    !!user && role === "user" && !sessionLoading && (!currentSession || currentSession.status === "ended");
 
   const handleStartWork = async () => {
     setStartingWork(true);
