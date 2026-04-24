@@ -99,32 +99,49 @@ export function useReminderNotifications(enabled: boolean, userName: string = ''
     check();
     const id = setInterval(check, 15000);
 
-    // Motivational push tip every 60 min
+    // Motivational + productivity push tip every 30 min
     const motivationId = setInterval(() => {
       try {
         if (!alertable.length) return;
         const now = new Date();
+        const h = now.getHours();
         const pending = alertable.filter(r => r.reminderEnabled !== false);
         const overdue = pending.filter(r => r.reminderDate && new Date(r.reminderDate) < now);
         const upcoming = pending.filter(r => r.reminderDate && new Date(r.reminderDate) >= now);
-        const tips = [
-          `💡 Você tem ${pending.length} lembretes ativos. Mantenha o ritmo!`,
-          `⏰ ${upcoming.length} lembretes agendados. Não deixe o cliente esperar!`,
-          `🏆 Consistência é o segredo! Continue acompanhando seus clientes.`,
-          `📞 Contato regular faz a diferença. Seus clientes contam com você!`,
-        ];
+        const todayUpcoming = upcoming.filter(r => {
+          const d = new Date(r.reminderDate);
+          return d.toDateString() === now.toDateString();
+        });
+
+        // Priority: overdue alert first
         if (overdue.length > 0) {
           const msg = `🚨 ${overdue.length} lembrete${overdue.length > 1 ? 's' : ''} em atraso! Contate seus clientes agora.`;
-          toast.warning(msg, { duration: 8000 });
+          toast.warning(msg, { duration: 10000 });
           if ("Notification" in window && Notification.permission === 'granted') {
-            try { new Notification('Sal Vita', { body: msg, icon: '/sal-vita-logo.svg' }); } catch (_) {}
+            try { new Notification('⚠️ Sal Vita — Atenção', { body: msg, icon: '/favicon.ico' }); } catch (_) {}
           }
-        } else if (upcoming.length > 0) {
-          const tip = tips[Math.floor(Math.random() * tips.length)];
-          toast.info(tip, { duration: 6000 });
+          return;
+        }
+
+        // Time-based tips
+        const tips = [
+          ...(h >= 8 && h < 10   ? [`☀️ Bom dia! Você tem ${todayUpcoming.length} lembretes hoje. Comece pelos mais urgentes!`] : []),
+          ...(h >= 12 && h < 13  ? [`🍽️ Hora do almoço chegando! Você ainda tem ${todayUpcoming.length} lembretes para hoje.`] : []),
+          ...(h >= 14 && h < 15  ? [`💪 Tarde produtiva! ${upcoming.length} lembretes agendados — mantenha o ritmo.`] : []),
+          ...(h >= 17 && h < 18  ? [`🏁 Última hora! Finalize os ${todayUpcoming.length} lembretes de hoje antes de encerrar.`] : []),
+          `💡 Você tem ${upcoming.length} lembretes agendados. Contato regular fideliza o cliente!`,
+          `📞 ${pending.length} clientes ativos no seu portfólio. Qual vai contatar agora?`,
+          `🏆 Atendentes que reagendam no prazo vendem mais. Seus lembretes estão em dia?`,
+          `⏰ ${todayUpcoming.length} lembretes restantes hoje. Foco nos mais próximos!`,
+          `📈 Consistência é o segredo das metas. Clientes bem atendidos compram mais.`,
+        ];
+        const tip = tips[Math.floor(Math.random() * tips.length)];
+        toast.info(tip, { duration: 7000 });
+        if ("Notification" in window && Notification.permission === 'granted') {
+          try { new Notification('💡 Sal Vita', { body: tip, icon: '/favicon.ico' }); } catch (_) {}
         }
       } catch (_) {}
-    }, 60 * 60 * 1000);
+    }, 30 * 60 * 1000);
 
     return () => { clearInterval(id); clearInterval(motivationId); };
   }, [reminders, enabled, userName, isAdmin]);

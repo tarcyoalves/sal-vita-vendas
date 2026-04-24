@@ -208,6 +208,8 @@ export default function Tasks() {
         if (!t.reminderDate) return false;
         const rd = new Date(t.reminderDate);
         const rdDay = new Date(rd.getFullYear(), rd.getMonth(), rd.getDate());
+        if (reminderTab === "overdue") return rd < now && t.reminderEnabled !== false;
+        if (reminderTab === "upcoming") return rd >= now && t.reminderEnabled !== false;
         if (reminderTab === "today") return rdDay.getTime() === today.getTime();
         if (reminderTab === "yesterday") return rdDay.getTime() === yesterday.getTime();
         if (reminderTab === "lastWeek") return rdDay >= lastWeekStart && rdDay < yesterday;
@@ -580,19 +582,21 @@ export default function Tasks() {
       {/* Reminder Tabs */}
       <div className="flex gap-1 overflow-x-auto pb-1">
         {[
-          { key: "all", label: "📋 Todas" },
-          { key: "today", label: "🔔 Hoje" },
-          { key: "yesterday", label: "📅 Ontem" },
-          { key: "lastWeek", label: "📆 Semana passada" },
-          { key: "lastMonth", label: "🗓️ Mês passado" },
+          { key: "all",       label: "📋 Todas",           cls: "bg-blue-600 border-blue-600" },
+          { key: "overdue",   label: "🚨 Atrasados",        cls: "bg-red-600 border-red-600" },
+          { key: "upcoming",  label: "📅 Agendados",        cls: "bg-green-600 border-green-600" },
+          { key: "today",     label: "🔔 Hoje",             cls: "bg-blue-600 border-blue-600" },
+          { key: "yesterday", label: "📆 Ontem",            cls: "bg-blue-600 border-blue-600" },
+          { key: "lastWeek",  label: "📆 Semana passada",   cls: "bg-blue-600 border-blue-600" },
+          { key: "lastMonth", label: "🗓️ Mês passado",      cls: "bg-blue-600 border-blue-600" },
         ].map(tab => (
           <button
             key={tab.key}
             onClick={() => setReminderTab(tab.key as any)}
             className={`px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap border transition ${
               reminderTab === tab.key
-                ? "bg-blue-600 text-white border-blue-600"
-                : "bg-white text-gray-600 border-gray-200 hover:bg-blue-50"
+                ? `${tab.cls} text-white`
+                : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
             }`}
           >
             {tab.label}
