@@ -6,6 +6,7 @@ import { sellersRouter } from './sellers';
 import { clientsRouter } from './clients';
 import { aiRouter } from './ai';
 import { knowledgeRouter } from './knowledge';
+import { workSessionsRouter } from './workSessions';
 
 export const appRouter = router({
   auth: authRouter,
@@ -15,6 +16,7 @@ export const appRouter = router({
   clients: clientsRouter,
   ai: aiRouter,
   knowledge: knowledgeRouter,
+  workSessions: workSessionsRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -15,7 +15,7 @@ export const sellersRouter = router({
     return db.select().from(sellers).orderBy(sellers.name);
   }),
 
-  create: protectedProcedure
+  create: adminProcedure
     .input(z.object({
       name: z.string().min(1),
       email: z.string().email(),
@@ -51,7 +51,7 @@ export const sellersRouter = router({
       return { ...created, generatedPassword };
     }),
 
-  delete: protectedProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const [seller] = await db.select().from(sellers).where(eq(sellers.id, input.id));

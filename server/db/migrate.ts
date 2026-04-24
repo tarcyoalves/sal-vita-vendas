@@ -18,6 +18,21 @@ export async function ensureTablesExist() {
       )
     `;
 
+    await sql`
+      CREATE TABLE IF NOT EXISTS work_sessions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        ended_at TIMESTAMP,
+        paused_at TIMESTAMP,
+        total_paused_ms INTEGER DEFAULT 0 NOT NULL,
+        status TEXT DEFAULT 'active' NOT NULL,
+        daily_goal_hours INTEGER DEFAULT 8 NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+
     console.log('✅ Database tables ensured');
   } catch (err) {
     console.error('❌ Migration error:', err);

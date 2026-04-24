@@ -11,8 +11,16 @@ const app = express();
 // Run DB migrations on startup (idempotent - IF NOT EXISTS)
 ensureTablesExist();
 
+const ALLOWED_ORIGINS = [
+  'https://sal-vita-vendas.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:4173',
+  ...(process.env.ALLOWED_ORIGIN ? [process.env.ALLOWED_ORIGIN] : []),
+];
+
 app.use(cors({
-  origin: true,
+  origin: (origin, cb) => cb(null, !origin || ALLOWED_ORIGINS.includes(origin)),
   credentials: true,
 }));
 

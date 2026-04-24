@@ -81,6 +81,19 @@ export const knowledgeDocuments = pgTable('knowledge_documents', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+export const workSessions = pgTable('work_sessions', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull(),
+  startedAt: timestamp('started_at').defaultNow().notNull(),
+  endedAt: timestamp('ended_at'),
+  pausedAt: timestamp('paused_at'),
+  totalPausedMs: integer('total_paused_ms').default(0).notNull(),
+  status: text('status').notNull().default('active'), // active | paused | ended
+  dailyGoalHours: integer('daily_goal_hours').default(8).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Seller = typeof sellers.$inferSelect;
 export type Client = typeof clients.$inferSelect;

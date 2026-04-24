@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../_core/hooks/useAuth";
 import { trpc } from "../lib/trpc";
+import ActiveTimer from "./ActiveTimer";
 
 interface NavItem {
   label: string;
@@ -257,6 +258,9 @@ export default function AppShell({ children }: AppShellProps) {
           {children}
         </main>
       </div>
+
+      {/* Work session timer — fixed bottom-right, only for attendants */}
+      {role === 'user' && <ActiveTimer />}
     </div>
   );
 }

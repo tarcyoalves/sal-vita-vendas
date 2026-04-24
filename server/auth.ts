@@ -1,7 +1,10 @@
 import { randomBytes, pbkdf2Sync } from 'crypto';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'sal-vita-secret-2024';
+const JWT_SECRET = process.env.JWT_SECRET || (() => {
+  console.error('WARNING: JWT_SECRET not set — sessions will be lost on restart. Set this env var in production!');
+  return `sal-vita-${Date.now()}-${Math.random()}`;
+})();
 
 export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString('hex');
