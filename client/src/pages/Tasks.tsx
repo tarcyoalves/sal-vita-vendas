@@ -2,7 +2,7 @@ import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -122,6 +122,9 @@ export default function Tasks() {
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
 
+  const [showNotesWarning, setShowNotesWarning] = useState(false);
+  const notesRef = useRef<HTMLTextAreaElement | null>(null);
+
   const { data: tasks = [], isLoading, refetch } = trpc.tasks.list.useQuery();
   const { data: attendants = [] } = trpc.sellers.list.useQuery();
   const createMutation = trpc.tasks.create.useMutation();
@@ -157,9 +160,7 @@ export default function Tasks() {
     setEditingTask(null);
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.title.trim()) { toast.error("Título é obrigatório"); return; }
+  const doSave = async () => {
     try {
       let reminderDateTime: Date | undefined;
       if (formData.reminderDate && formData.reminderTime) {
@@ -172,8 +173,19 @@ export default function Tasks() {
         await createMutation.mutateAsync({ clientId: formData.clientId || 0, title: formData.title, description: formData.description, notes: formData.notes, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
         toast.success("Tarefa criada! Lembrete ativado ✅");
       }
+      setShowNotesWarning(false);
       resetForm(); setIsModalOpen(false); refetch();
     } catch { toast.error("Erro ao salvar tarefa"); }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.title.trim()) { toast.error("Título é obrigatório"); return; }
+    if (!formData.notes.trim() || formData.notes.trim().length < 15) {
+      setShowNotesWarning(true);
+      return;
+    }
+    await doSave();
   };
 
   const handleDelete = async (id: number) => {
@@ -534,7 +546,7 @@ export default function Tasks() {
             </div>
             <div>
               <label className="block text-xs font-medium mb-1 text-gray-600">Anotações</label>
-              <textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Anotações, telefone, email..." className="w-full px-3 py-2 border rounded-lg text-sm" style={{ height: 'clamp(120px, 30vh, 260px)', resize: 'vertical' }} />
+              <textarea ref={notesRef} value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Anotações, telefone, email..." className="w-full px-3 py-2 border rounded-lg text-sm" style={{ height: 'clamp(120px, 30vh, 260px)', resize: 'vertical' }} />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -680,6 +692,36 @@ export default function Tasks() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Notes warning modal */}
+      {showNotesWarning && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+            <div className="text-5xl mb-3">📝</div>
+            <h3 className="text-lg font-bold text-gray-800 mb-2">Você anotou o que conversou?</h3>
+            <p className="text-sm text-gray-500 mb-6">
+              Boas anotações identificam oportunidades e mantêm o histórico do cliente atualizado para toda a equipe.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => {
+                  setShowNotesWarning(false);
+                  setTimeout(() => notesRef.current?.focus(), 150);
+                }}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition"
+              >
+                ← Voltar e Anotar
+              </button>
+              <button
+                onClick={doSave}
+                className="w-full py-2.5 border border-gray-300 text-gray-500 hover:bg-gray-50 rounded-xl text-sm transition"
+              >
+                Salvar sem anotação
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
