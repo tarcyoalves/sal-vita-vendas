@@ -124,6 +124,8 @@ export default function Tasks() {
 
   const [showNotesWarning, setShowNotesWarning] = useState(false);
   const notesRef = useRef<HTMLTextAreaElement | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
 
   const { data: tasks = [], isLoading, refetch } = trpc.tasks.list.useQuery();
   const { data: attendants = [] } = trpc.sellers.list.useQuery();
@@ -181,10 +183,8 @@ export default function Tasks() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim()) { toast.error("Título é obrigatório"); return; }
-    // Always ask on edit (recurring contact — previous notes ≠ current contact documented)
-    // On new task, only ask if notes are empty
     if (editingTask || !formData.notes.trim()) {
-      setIsModalOpen(false); // close Dialog first so its overlay doesn't block the warning
+      setIsModalOpen(false);
       setShowNotesWarning(true);
       return;
     }
@@ -192,20 +192,31 @@ export default function Tasks() {
   };
 
   const handleDelete = async (id: number) => {
-    if (confirm("Deletar tarefa?")) {
-      try { await deleteMutation.mutateAsync({ id }); toast.success("Tarefa deletada"); setIsModalOpen(false); resetForm(); refetch(); }
-      catch { toast.error("Erro ao deletar"); }
-    }
+    setDeleteConfirm(id);
+    setIsModalOpen(false);
   };
 
-  const handleBulkDelete = async () => {
-    if (!confirm(`Deletar ${selectedTasks.size} tarefa(s) selecionada(s)?`)) return;
+  const confirmDelete = async () => {
+    if (deleteConfirm === null) return;
+    try {
+      await deleteMutation.mutateAsync({ id: deleteConfirm });
+      toast.success("Tarefa deletada");
+      resetForm();
+      refetch();
+    } catch { toast.error("Erro ao deletar"); }
+    finally { setDeleteConfirm(null); }
+  };
+
+  const handleBulkDelete = () => setBulkDeleteConfirm(true);
+
+  const confirmBulkDelete = async () => {
     try {
       await deleteManyMutation.mutateAsync({ ids: Array.from(selectedTasks) });
       toast.success(`${selectedTasks.size} tarefa(s) deletada(s)!`);
       setSelectedTasks(new Set());
       refetch();
     } catch { toast.error("Erro ao deletar tarefas"); }
+    finally { setBulkDeleteConfirm(false); }
   };
 
   const filteredTasks = useMemo(() => {
@@ -695,6 +706,35 @@ export default function Tasks() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {(deleteConfirm !== null || bulkDeleteConfirm) && (
+        <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-xs w-full p-6 text-center">
+            <div className="text-4xl mb-3">🗑️</div>
+            <h3 className="text-base font-bold text-gray-800 mb-2">Confirmar exclusão</h3>
+            <p className="text-sm text-gray-500 mb-5">
+              {bulkDeleteConfirm
+                ? `Deletar ${selectedTasks.size} tarefa(s) selecionada(s)?`
+                : "Tem certeza que deseja deletar esta tarefa?"}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setDeleteConfirm(null); setBulkDeleteConfirm(false); }}
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={bulkDeleteConfirm ? confirmBulkDelete : confirmDelete}
+                className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold transition"
+              >
+                Deletar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

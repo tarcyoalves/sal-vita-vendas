@@ -5,6 +5,7 @@ import { Button } from '../components/ui/button';
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
+import { Users } from "lucide-react";
 
 export default function ClientsManagement() {
   const { user } = useAuth();
@@ -31,7 +32,7 @@ export default function ClientsManagement() {
 
   const handleImport = async () => {
     if (!selectedSeller) {
-      alert("Selecione um vendedor");
+      toast.error("Selecione um vendedor");
       return;
     }
 
@@ -41,13 +42,11 @@ export default function ClientsManagement() {
         sellerId: selectedSeller,
       });
 
-      alert(
-        `Importação concluída!\n✅ ${result.success} leads importados\n⚠️ ${result.duplicates} duplicatas encontradas`
-      );
+      toast.success(`Importação concluída! ✅ ${result.success} leads importados${result.duplicates > 0 ? ` · ⚠️ ${result.duplicates} duplicatas` : ''}`);
       setCsvContent("");
       setShowImportForm(false);
     } catch (error) {
-      alert(`Erro na importação: ${String(error)}`);
+      toast.error(`Erro na importação: ${String(error)}`);
     }
   };
 
@@ -210,7 +209,7 @@ export default function ClientsManagement() {
                               : "bg-gray-100 text-gray-800"
                           }`}
                         >
-                          {client.status}
+                          {client.status === "active" ? "Ativo" : client.status === "prospect" ? "Prospecto" : client.status === "inactive" ? "Inativo" : client.status}
                         </span>
                       </td>
                     </tr>
@@ -219,7 +218,12 @@ export default function ClientsManagement() {
               </table>
             </div>
           ) : (
-            <p className="text-gray-600">Nenhum cliente cadastrado</p>
+            <div className="text-center py-10">
+              <Users className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500 font-medium">Nenhum cliente cadastrado</p>
+              <p className="text-sm text-gray-400 mt-1">Importe uma lista via CSV para começar.</p>
+              <Button size="sm" className="mt-4" onClick={() => setShowImportForm(true)}>📥 Importar CSV</Button>
+            </div>
           )}
         </CardContent>
       </Card>
