@@ -2,7 +2,7 @@ import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -122,6 +122,11 @@ export default function Tasks() {
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
 
+  const [showNotesWarning, setShowNotesWarning] = useState(false);
+  const notesRef = useRef<HTMLTextAreaElement | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+
   const { data: tasks = [], isLoading, refetch } = trpc.tasks.list.useQuery();
   const { data: attendants = [] } = trpc.sellers.list.useQuery();
   const createMutation = trpc.tasks.create.useMutation();
@@ -157,9 +162,7 @@ export default function Tasks() {
     setEditingTask(null);
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.title.trim()) { toast.error("Título é obrigatório"); return; }
+  const doSave = async () => {
     try {
       let reminderDateTime: Date | undefined;
       if (formData.reminderDate && formData.reminderTime) {
@@ -172,25 +175,48 @@ export default function Tasks() {
         await createMutation.mutateAsync({ clientId: formData.clientId || 0, title: formData.title, description: formData.description, notes: formData.notes, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
         toast.success("Tarefa criada! Lembrete ativado ✅");
       }
+      setShowNotesWarning(false);
       resetForm(); setIsModalOpen(false); refetch();
     } catch { toast.error("Erro ao salvar tarefa"); }
   };
 
-  const handleDelete = async (id: number) => {
-    if (confirm("Deletar tarefa?")) {
-      try { await deleteMutation.mutateAsync({ id }); toast.success("Tarefa deletada"); setIsModalOpen(false); resetForm(); refetch(); }
-      catch { toast.error("Erro ao deletar"); }
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.title.trim()) { toast.error("Título é obrigatório"); return; }
+    if (editingTask || !formData.notes.trim()) {
+      setIsModalOpen(false);
+      setShowNotesWarning(true);
+      return;
     }
+    await doSave();
   };
 
-  const handleBulkDelete = async () => {
-    if (!confirm(`Deletar ${selectedTasks.size} tarefa(s) selecionada(s)?`)) return;
+  const handleDelete = async (id: number) => {
+    setDeleteConfirm(id);
+    setIsModalOpen(false);
+  };
+
+  const confirmDelete = async () => {
+    if (deleteConfirm === null) return;
+    try {
+      await deleteMutation.mutateAsync({ id: deleteConfirm });
+      toast.success("Tarefa deletada");
+      resetForm();
+      refetch();
+    } catch { toast.error("Erro ao deletar"); }
+    finally { setDeleteConfirm(null); }
+  };
+
+  const handleBulkDelete = () => setBulkDeleteConfirm(true);
+
+  const confirmBulkDelete = async () => {
     try {
       await deleteManyMutation.mutateAsync({ ids: Array.from(selectedTasks) });
       toast.success(`${selectedTasks.size} tarefa(s) deletada(s)!`);
       setSelectedTasks(new Set());
       refetch();
     } catch { toast.error("Erro ao deletar tarefas"); }
+    finally { setBulkDeleteConfirm(false); }
   };
 
   const filteredTasks = useMemo(() => {
@@ -534,7 +560,7 @@ export default function Tasks() {
             </div>
             <div>
               <label className="block text-xs font-medium mb-1 text-gray-600">Anotações</label>
-              <textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Anotações, telefone, email..." className="w-full px-3 py-2 border rounded-lg text-sm" style={{ height: 'clamp(120px, 30vh, 260px)', resize: 'vertical' }} />
+              <textarea ref={notesRef} value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Anotações, telefone, email..." className="w-full px-3 py-2 border rounded-lg text-sm" style={{ height: 'clamp(120px, 30vh, 260px)', resize: 'vertical' }} />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -680,6 +706,102 @@ export default function Tasks() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {(deleteConfirm !== null || bulkDeleteConfirm) && (
+        <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-xs w-full p-6 text-center">
+            <div className="text-4xl mb-3">🗑️</div>
+            <h3 className="text-base font-bold text-gray-800 mb-2">Confirmar exclusão</h3>
+            <p className="text-sm text-gray-500 mb-5">
+              {bulkDeleteConfirm
+                ? `Deletar ${selectedTasks.size} tarefa(s) selecionada(s)?`
+                : "Tem certeza que deseja deletar esta tarefa?"}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setDeleteConfirm(null); setBulkDeleteConfirm(false); }}
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={bulkDeleteConfirm ? confirmBulkDelete : confirmDelete}
+                className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold transition"
+              >
+                Deletar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notes warning modal */}
+      {showNotesWarning && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-y-auto max-h-[92vh]">
+            {/* Drag handle (mobile) */}
+            <div className="flex justify-center pt-3 pb-1 sm:hidden">
+              <div className="w-10 h-1 bg-gray-300 rounded-full" />
+            </div>
+
+            <div className="px-6 pt-4 pb-6 space-y-5">
+              {/* Header */}
+              <div className="text-center">
+                <div className="text-4xl mb-2">📋</div>
+                <h3 className="text-lg font-bold text-gray-800">Anotou as informações importantes?</h3>
+                <p className="text-xs text-gray-400 mt-1">Contato recorrente — cada conversa deve ser documentada.</p>
+              </div>
+
+              {/* Checklist */}
+              <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 space-y-3">
+                <p className="text-[11px] font-semibold text-blue-600 uppercase tracking-wider">Lembre de registrar:</p>
+                <div className="flex items-start gap-3">
+                  <span className="text-xl mt-0.5">🧂</span>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">Tipo de sal</p>
+                    <p className="text-xs text-gray-500">Refinado, grosso, marinho, industrial…</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-xl mt-0.5">📦</span>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">Volume e frequência</p>
+                    <p className="text-xs text-gray-500">Ex.: 1.200 sacos/mês de 25kg, pedido trimestral / mensal…</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-xl mt-0.5">🏷️</span>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">Marca atual</p>
+                    <p className="text-xs text-gray-500">Qual fornecedor está usando hoje?</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Buttons */}
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => {
+                    setShowNotesWarning(false);
+                    setIsModalOpen(true); // reopen Dialog so user can edit notes
+                    setTimeout(() => notesRef.current?.focus(), 200);
+                  }}
+                  className="w-full py-4 bg-blue-600 active:bg-blue-800 hover:bg-blue-700 text-white text-base font-bold rounded-2xl transition-all active:scale-[0.98] shadow-md"
+                >
+                  Voltar e Anotar
+                </button>
+                <button
+                  onClick={doSave}
+                  className="w-full py-3.5 bg-green-50 active:bg-green-100 hover:bg-green-100 text-green-700 text-sm font-semibold rounded-2xl border border-green-200 transition-all active:scale-[0.98]"
+                >
+                  Já documentei — Salvar
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
