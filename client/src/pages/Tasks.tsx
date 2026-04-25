@@ -699,55 +699,65 @@ export default function Tasks() {
 
       {/* Notes warning modal */}
       {showNotesWarning && (
-        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
-            <div className="text-center mb-4">
-              <div className="text-4xl mb-2">📋</div>
-              <h3 className="text-lg font-bold text-gray-800">Anotou as informações importantes?</h3>
-              <p className="text-xs text-gray-400 mt-1">Como é um contato recorrente, cada conversa deve ser documentada.</p>
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-y-auto max-h-[92vh]">
+            {/* Drag handle (mobile) */}
+            <div className="flex justify-center pt-3 pb-1 sm:hidden">
+              <div className="w-10 h-1 bg-gray-300 rounded-full" />
             </div>
 
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5 space-y-2.5">
-              <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">Informações importantes a registrar:</p>
-              <div className="flex items-start gap-2">
-                <span className="text-lg leading-none">🧂</span>
-                <div>
-                  <p className="text-sm font-medium text-gray-800">Tipo de sal que o cliente usa</p>
-                  <p className="text-xs text-gray-500">Refinado, grosso, marinho, industrial…</p>
-                </div>
+            <div className="px-6 pt-4 pb-6 space-y-5">
+              {/* Header */}
+              <div className="text-center">
+                <div className="text-4xl mb-2">📋</div>
+                <h3 className="text-lg font-bold text-gray-800">Anotou as informações importantes?</h3>
+                <p className="text-xs text-gray-400 mt-1">Contato recorrente — cada conversa deve ser documentada.</p>
               </div>
-              <div className="flex items-start gap-2">
-                <span className="text-lg leading-none">📦</span>
-                <div>
-                  <p className="text-sm font-medium text-gray-800">Volume mensal / quantidade que compra</p>
-                  <p className="text-xs text-gray-500">Ex.: 1.200 sacos/mês de 25kg, pedido trimestral / mensal…</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-lg leading-none">🏷️</span>
-                <div>
-                  <p className="text-sm font-medium text-gray-800">Marca atual (se souber)</p>
-                  <p className="text-xs text-gray-500">Qual fornecedor está usando hoje?</p>
-                </div>
-              </div>
-            </div>
 
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={() => {
-                  setShowNotesWarning(false);
-                  setTimeout(() => notesRef.current?.focus(), 150);
-                }}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition"
-              >
-                ← Voltar e Anotar agora
-              </button>
-              <button
-                onClick={doSave}
-                className="w-full py-2.5 border border-gray-300 text-gray-500 hover:bg-gray-50 rounded-xl text-sm transition"
-              >
-                ✅ Já documentei, salvar
-              </button>
+              {/* Checklist */}
+              <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 space-y-3">
+                <p className="text-[11px] font-semibold text-blue-600 uppercase tracking-wider">Lembre de registrar:</p>
+                <div className="flex items-start gap-3">
+                  <span className="text-xl mt-0.5">🧂</span>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">Tipo de sal</p>
+                    <p className="text-xs text-gray-500">Refinado, grosso, marinho, industrial…</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-xl mt-0.5">📦</span>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">Volume e frequência</p>
+                    <p className="text-xs text-gray-500">Ex.: 1.200 sacos/mês de 25kg, pedido trimestral / mensal…</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-xl mt-0.5">🏷️</span>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">Marca atual</p>
+                    <p className="text-xs text-gray-500">Qual fornecedor está usando hoje?</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Buttons */}
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => {
+                    setShowNotesWarning(false);
+                    setTimeout(() => notesRef.current?.focus(), 150);
+                  }}
+                  className="w-full py-4 bg-blue-600 active:bg-blue-800 hover:bg-blue-700 text-white text-base font-bold rounded-2xl transition-all active:scale-[0.98] shadow-md"
+                >
+                  Voltar e Anotar
+                </button>
+                <button
+                  onClick={doSave}
+                  className="w-full py-3.5 bg-green-50 active:bg-green-100 hover:bg-green-100 text-green-700 text-sm font-semibold rounded-2xl border border-green-200 transition-all active:scale-[0.98]"
+                >
+                  Já documentei — Salvar
+                </button>
+              </div>
             </div>
           </div>
         </div>
