@@ -184,6 +184,7 @@ export default function Tasks() {
     // Always ask on edit (recurring contact — previous notes ≠ current contact documented)
     // On new task, only ask if notes are empty
     if (editingTask || !formData.notes.trim()) {
+      setIsModalOpen(false); // close Dialog first so its overlay doesn't block the warning
       setShowNotesWarning(true);
       return;
     }
@@ -745,7 +746,8 @@ export default function Tasks() {
                 <button
                   onClick={() => {
                     setShowNotesWarning(false);
-                    setTimeout(() => notesRef.current?.focus(), 150);
+                    setIsModalOpen(true); // reopen Dialog so user can edit notes
+                    setTimeout(() => notesRef.current?.focus(), 200);
                   }}
                   className="w-full py-4 bg-blue-600 active:bg-blue-800 hover:bg-blue-700 text-white text-base font-bold rounded-2xl transition-all active:scale-[0.98] shadow-md"
                 >
