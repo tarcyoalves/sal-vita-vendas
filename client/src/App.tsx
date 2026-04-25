@@ -16,6 +16,7 @@ import Tasks from "./pages/Tasks";
 import Attendants from "./pages/Attendants";
 import KnowledgeBase from "./pages/KnowledgeBase";
 import AttendantProgress from "./pages/AttendantProgress";
+import TvDashboard from "./pages/TvDashboard";
 import FloatingChat from "./components/FloatingChat";
 import AppShell from "./components/AppShell";
 import { useAuth } from "./_core/hooks/useAuth";
@@ -64,6 +65,7 @@ function Router() {
       <Route path="/meu-progresso">
         <AppShell><AttendantProgress /></AppShell>
       </Route>
+      <Route path="/tv" component={TvDashboard} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
