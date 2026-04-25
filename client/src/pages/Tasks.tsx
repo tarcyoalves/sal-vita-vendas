@@ -181,7 +181,9 @@ export default function Tasks() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim()) { toast.error("Título é obrigatório"); return; }
-    if (!formData.notes.trim() || formData.notes.trim().length < 15) {
+    // Always ask on edit (recurring contact — previous notes ≠ current contact documented)
+    // On new task, only ask if notes are empty
+    if (editingTask || !formData.notes.trim()) {
       setShowNotesWarning(true);
       return;
     }
@@ -698,12 +700,38 @@ export default function Tasks() {
       {/* Notes warning modal */}
       {showNotesWarning && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
-            <div className="text-5xl mb-3">📝</div>
-            <h3 className="text-lg font-bold text-gray-800 mb-2">Você anotou o que conversou?</h3>
-            <p className="text-sm text-gray-500 mb-6">
-              Boas anotações identificam oportunidades e mantêm o histórico do cliente atualizado para toda a equipe.
-            </p>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="text-center mb-4">
+              <div className="text-4xl mb-2">📋</div>
+              <h3 className="text-lg font-bold text-gray-800">Registrou esta conversa?</h3>
+              <p className="text-xs text-gray-400 mt-1">Como é um contato recorrente, cada conversa deve ser documentada.</p>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5 space-y-2.5">
+              <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">Informações importantes a registrar:</p>
+              <div className="flex items-start gap-2">
+                <span className="text-lg leading-none">🧂</span>
+                <div>
+                  <p className="text-sm font-medium text-gray-800">Tipo de sal que o cliente usa</p>
+                  <p className="text-xs text-gray-500">Refinado, grosso, marinho, industrial…</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-lg leading-none">📦</span>
+                <div>
+                  <p className="text-sm font-medium text-gray-800">Volume mensal / quantidade que compra</p>
+                  <p className="text-xs text-gray-500">Ex.: 2 sacos/mês, 50kg, pedido trimestral…</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-lg leading-none">🏷️</span>
+                <div>
+                  <p className="text-sm font-medium text-gray-800">Marca atual (se souber)</p>
+                  <p className="text-xs text-gray-500">Qual fornecedor está usando hoje?</p>
+                </div>
+              </div>
+            </div>
+
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => {
@@ -712,13 +740,13 @@ export default function Tasks() {
                 }}
                 className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition"
               >
-                ← Voltar e Anotar
+                ← Voltar e Anotar agora
               </button>
               <button
                 onClick={doSave}
                 className="w-full py-2.5 border border-gray-300 text-gray-500 hover:bg-gray-50 rounded-xl text-sm transition"
               >
-                Salvar sem anotação
+                ✅ Já documentei, salvar
               </button>
             </div>
           </div>
