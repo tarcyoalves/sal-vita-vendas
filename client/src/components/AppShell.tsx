@@ -14,6 +14,7 @@ import {
   ChevronRight,
   TrendingUp,
   KeyRound,
+  Tv,
 } from "lucide-react";
 import { useAuth } from "../_core/hooks/useAuth";
 import { trpc } from "../lib/trpc";
@@ -25,7 +26,8 @@ interface NavItem {
   path?: string;
   icon: React.ReactNode;
   roles: ("admin" | "user")[];
-  children?: { label: string; path: string; icon: React.ReactNode }[];
+  children?: { label: string; path: string; icon: React.ReactNode; external?: boolean }[];
+  external?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -55,6 +57,7 @@ const NAV_ITEMS: NavItem[] = [
       { label: "Chat IA", path: "/ai-chat", icon: <MessageSquare size={16} /> },
       { label: "Configurações", path: "/ai-settings", icon: <Settings size={16} /> },
       { label: "Base de Conhecimento", path: "/knowledge-base", icon: <BookOpen size={16} /> },
+      { label: "Painel TV", path: "/tv", icon: <Tv size={16} />, external: true },
     ],
   },
   {
@@ -230,12 +233,17 @@ export default function AppShell({ children }: AppShellProps) {
                                 : "text-slate-400 hover:bg-slate-800 hover:text-white"
                             }`}
                             onClick={() => {
-                              setLocation(child.path);
-                              setSidebarOpen(false);
+                              if (child.external) {
+                                window.open(child.path, '_blank');
+                              } else {
+                                setLocation(child.path);
+                                setSidebarOpen(false);
+                              }
                             }}
                           >
                             <span className="flex-shrink-0">{child.icon}</span>
-                            <span>{child.label}</span>
+                            <span className="flex-1 text-left">{child.label}</span>
+                            {child.external && <span className="text-[10px] text-slate-500">↗</span>}
                           </button>
                         </li>
                       ))}
