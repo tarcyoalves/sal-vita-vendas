@@ -703,7 +703,7 @@ export default function Tasks() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
             <div className="text-center mb-4">
               <div className="text-4xl mb-2">📋</div>
-              <h3 className="text-lg font-bold text-gray-800">Registrou esta conversa?</h3>
+              <h3 className="text-lg font-bold text-gray-800">Anotou as informações importantes?</h3>
               <p className="text-xs text-gray-400 mt-1">Como é um contato recorrente, cada conversa deve ser documentada.</p>
             </div>
 
@@ -720,7 +720,7 @@ export default function Tasks() {
                 <span className="text-lg leading-none">📦</span>
                 <div>
                   <p className="text-sm font-medium text-gray-800">Volume mensal / quantidade que compra</p>
-                  <p className="text-xs text-gray-500">Ex.: 2 sacos/mês, 50kg, pedido trimestral…</p>
+                  <p className="text-xs text-gray-500">Ex.: 1.200 sacos/mês de 25kg, pedido trimestral / mensal…</p>
                 </div>
               </div>
               <div className="flex items-start gap-2">
