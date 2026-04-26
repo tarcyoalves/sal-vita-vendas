@@ -48,11 +48,17 @@ export default function AiChat() {
     toast.success("Histórico limpo");
   };
 
-  const getApiConfig = () => {
+  const getApiConfig = (preferProvider?: string) => {
     try {
-      const configs = JSON.parse(localStorage.getItem('aiConfigs') || '{}');
-      const entry = Object.values(configs as Record<string, any>).find((c: any) => c.status === 'configured');
-      if (entry) return { apiKey: (entry as any).apiKey, provider: (entry as any).provider, model: (entry as any).model };
+      const configs = JSON.parse(localStorage.getItem('aiConfigs') || '{}') as Record<string, any>;
+      // Gemini is the leader — always prefer it when configured
+      const order = preferProvider
+        ? [preferProvider, 'gemini', 'groq']
+        : ['gemini', 'groq'];
+      for (const id of order) {
+        const c = configs[id];
+        if (c?.status === 'configured') return { apiKey: c.apiKey, provider: c.provider, model: c.model };
+      }
     } catch { /* ignore */ }
     return null;
   };

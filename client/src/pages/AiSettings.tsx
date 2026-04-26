@@ -24,35 +24,19 @@ interface AIConfig {
 
 const AI_PROVIDERS: AIProvider[] = [
   {
-    id: "groq",
-    name: "Groq",
-    icon: "🚀",
-    description: "Llama 3.3 70B — Grátis, ultra rápido. Recomendado!",
-    defaultModel: "llama-3.3-70b-versatile",
-    requiresKey: true,
-  },
-  {
     id: "gemini",
     name: "Google Gemini",
     icon: "✨",
-    description: "Gemini 2.5 Flash — Grátis, contexto enorme",
+    description: "Gemini 2.5 Flash — Líder de análise, contexto enorme",
     defaultModel: "gemini-2.5-flash",
     requiresKey: true,
   },
   {
-    id: "openai",
-    name: "OpenAI",
-    icon: "🤖",
-    description: "GPT-3.5-turbo — Pago, confiável",
-    defaultModel: "gpt-3.5-turbo",
-    requiresKey: true,
-  },
-  {
-    id: "anthropic",
-    name: "Anthropic Claude",
-    icon: "🧠",
-    description: "Claude Haiku — Pago, preciso",
-    defaultModel: "claude-3-haiku-20240307",
+    id: "groq",
+    name: "Groq",
+    icon: "🚀",
+    description: "Llama 3.3 70B — Suporte rápido, ferramentas",
+    defaultModel: "llama-3.3-70b-versatile",
     requiresKey: true,
   },
 ];
@@ -346,8 +330,8 @@ export default function AiSettings() {
             <CardTitle className="text-yellow-900">ℹ️ Como funciona</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-yellow-800 space-y-2">
-            <p>• Configure Groq + Gemini para ter duas IAs disponíveis</p>
-            <p>• O chat usa a primeira IA configurada (✅ OK)</p>
+            <p>• Configure Gemini (líder) + Groq (suporte) para análises mais completas</p>
+            <p>• Gemini tem prioridade — usa contexto maior para análises profundas</p>
             <p>• Clique "Salvar e Testar" para validar antes de usar</p>
             <p>• Se der erro 404 no Gemini: chave errada ou modelo não existe</p>
           </CardContent>

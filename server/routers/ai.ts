@@ -270,14 +270,14 @@ export const aiRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       try {
-        // User-supplied config (from localStorage via AiSettings) takes priority over env vars
-        const provider = input.provider ?? (process.env.GROQ_API_KEY ? 'groq' : process.env.GEMINI_API_KEY ? 'gemini' : 'groq');
+        // User key takes priority. Gemini is the leader — preferred over Groq when no explicit provider given
+        const provider = input.provider ?? (process.env.GEMINI_API_KEY ? 'gemini' : process.env.GROQ_API_KEY ? 'groq' : 'gemini');
         const envKey = provider === 'gemini' ? process.env.GEMINI_API_KEY
           : provider === 'groq' ? process.env.GROQ_API_KEY
           : undefined;
         const apiKey = input.apiKey || envKey || '';
-        const baseURL = BASE_URLS[provider] ?? BASE_URLS.groq;
-        const model = input.model ?? DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile';
+        const baseURL = BASE_URLS[provider] ?? BASE_URLS.gemini;
+        const model = input.model ?? DEFAULT_MODELS[provider] ?? 'gemini-2.5-flash';
 
         console.log('[AI_CHAT] uid:', ctx.user.id, 'provider:', provider, 'model:', model, 'hasKey:', !!apiKey);
 
@@ -353,12 +353,21 @@ REGRAS:
       }
     }),
 
-  analyzeAttendants: protectedProcedure.mutation(async ({ ctx }) => {
+  analyzeAttendants: protectedProcedure
+    .input(z.object({
+      apiKey: z.string().optional(),
+      provider: z.string().optional(),
+      model: z.string().optional(),
+    }).optional())
+    .mutation(async ({ input, ctx }) => {
     if (ctx.user.role !== 'admin') throw new Error('Apenas admins podem usar este recurso');
 
-    const apiKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
-    const analyzeProvider = process.env.GROQ_API_KEY ? 'groq' : 'gemini';
-    if (!apiKey) return { report: [], summary: 'IA não configurada. Adicione GROQ_API_KEY ou GEMINI_API_KEY nas variáveis de ambiente.' };
+    // Gemini as leader — prefer user key, then env, Gemini over Groq
+    const analyzeProvider = input?.provider ?? (process.env.GEMINI_API_KEY ? 'gemini' : process.env.GROQ_API_KEY ? 'groq' : 'gemini');
+    const envKey = analyzeProvider === 'gemini' ? process.env.GEMINI_API_KEY : process.env.GROQ_API_KEY;
+    const apiKey = input?.apiKey || envKey || '';
+    const analyzeModel = input?.model ?? DEFAULT_MODELS[analyzeProvider] ?? 'gemini-2.5-flash';
+    if (!apiKey) return { report: [], summary: 'IA não configurada. Vá em Configurações → IA e configure Gemini ou Groq.' };
 
     const now = new Date();
     const allSellers = await db.select().from(sellers);
@@ -439,23 +448,34 @@ REGRAS:
     ).join('\n');
 
     try {
-      const summary = await callLLM(apiKey, BASE_URLS[analyzeProvider], DEFAULT_MODELS[analyzeProvider], [
+      const summary = await callLLM(apiKey, BASE_URLS[analyzeProvider], analyzeModel, [
         {
           role: 'system',
-          content: `Você é um analista de desempenho de equipes de vendas B2B recorrentes.
-CONTEXTO: Neste sistema NÃO existe conclusão de tarefas. As tarefas são clientes recorrentes que precisam de contato contínuo. O ciclo correto é: atender o cliente → anotar o contato nas notas → reagendar o próximo lembrete.
-SINAIS DE MAU DESEMPENHO:
-- Lembrete vencido sem reatualização = cliente não foi contatado
-- Sem anotação = contato não foi documentado (suspeito de não ter sido feito)
-- Lembrete desativado manualmente = tentativa de esconder inadimplência no atendimento
-- Tarefa nunca atualizada = cliente ignorado desde a importação
-Seja direto, use emojis, responda em português brasileiro.`,
+          content: `Você é um analista sênior de desempenho de equipes de vendas B2B da empresa Sal Vita — Sal do Brasil.
+
+MODELO DE NEGÓCIO: Vendas recorrentes de sal para clientes industriais/alimentícios. NÃO existe "conclusão" de tarefa — cada cliente precisa de contato contínuo e periódico. O ciclo correto é: atender → anotar → reagendar próximo lembrete.
+
+INTERPRETAÇÃO DOS DADOS:
+- lembrete vencido sem atualização = cliente não recebeu contato → risco de perda
+- sem anotação (<15 chars) = contato não documentado → suspeita de omissão
+- lembrete desativado manualmente = atendente tentou esconder inadimplência
+- tarefa nunca atualizada = cliente ignorado desde importação
+- taxa de lembretes ativos baixa = carteira sendo negligenciada
+
+SEU PAPEL:
+1. Classificar cada atendente: 🟢 Ativo / 🟡 Atenção / 🔴 Crítico
+2. Identificar padrões de negligência vs. engajamento real
+3. Calcular risco de churn por atendente (clientes sem contato)
+4. Dar recomendações concretas e acionáveis imediatamente
+5. Destacar quem merece reconhecimento e quem precisa de intervenção
+
+FORMATO: Use seções claras, emojis, tabela comparativa se possível. Português BR. Seja direto, sem rodeios.`,
         },
         {
           role: 'user',
-          content: `Analise o desempenho dos atendentes considerando que o modelo é RECORRENTE (sem conclusão):\n\n${reportText}\n\nIdentifique: quem está fazendo contato regularmente, quem está negligenciando clientes, comportamentos suspeitos e recomendações concretas de ação imediata.`,
+          content: `DADOS DOS ATENDENTES (modelo recorrente, sem conclusão de tarefas):\n\n${reportText}\n\nFaça análise completa: ranking de desempenho, comportamentos críticos detectados, risco de churn por atendente, e plano de ação prioritário para os próximos 7 dias.`,
         },
-      ], 800, 0.5);
+      ], 1500, 0.4);
       return { report, summary };
     } catch (err: any) {
       console.error('[ANALYZE_ERROR]', err?.message);
