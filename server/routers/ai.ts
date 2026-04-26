@@ -270,22 +270,22 @@ export const aiRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       try {
-        // Resolve which API key + endpoint to use
-        const envKey = process.env.GROQ_API_KEY;
-        const apiKey = envKey || input.apiKey || '';
-        const provider = envKey ? 'groq' : (input.provider ?? 'groq');
+        // User-supplied config (from localStorage via AiSettings) takes priority over env vars
+        const provider = input.provider ?? (process.env.GROQ_API_KEY ? 'groq' : process.env.GEMINI_API_KEY ? 'gemini' : 'groq');
+        const envKey = provider === 'gemini' ? process.env.GEMINI_API_KEY
+          : provider === 'groq' ? process.env.GROQ_API_KEY
+          : undefined;
+        const apiKey = input.apiKey || envKey || '';
         const baseURL = BASE_URLS[provider] ?? BASE_URLS.groq;
-        const model = envKey
-          ? 'llama-3.3-70b-versatile'
-          : (input.model ?? DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile');
+        const model = input.model ?? DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile';
 
-        console.log('[AI_CHAT] start uid:', ctx.user.id, 'provider:', provider, 'model:', model, 'hasKey:', !!apiKey);
+        console.log('[AI_CHAT] uid:', ctx.user.id, 'provider:', provider, 'model:', model, 'hasKey:', !!apiKey);
 
         await db.insert(chatMessages).values({ userId: ctx.user.id, content: input.message, role: 'user' });
         console.log('[AI_CHAT] msg saved');
 
         if (!apiKey) {
-          const reply = 'IA não configurada. Configure GROQ_API_KEY para ativar o assistente.';
+          const reply = 'IA não configurada. Vá em Configurações → IA e adicione uma chave do Groq ou Gemini (ambos gratuitos).';
           await db.insert(chatMessages).values({ userId: ctx.user.id, content: reply, role: 'assistant' });
           return { reply };
         }
@@ -356,8 +356,9 @@ REGRAS:
   analyzeAttendants: protectedProcedure.mutation(async ({ ctx }) => {
     if (ctx.user.role !== 'admin') throw new Error('Apenas admins podem usar este recurso');
 
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) return { report: [], summary: 'IA não configurada.' };
+    const apiKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
+    const analyzeProvider = process.env.GROQ_API_KEY ? 'groq' : 'gemini';
+    if (!apiKey) return { report: [], summary: 'IA não configurada. Adicione GROQ_API_KEY ou GEMINI_API_KEY nas variáveis de ambiente.' };
 
     const now = new Date();
     const allSellers = await db.select().from(sellers);
@@ -438,7 +439,7 @@ REGRAS:
     ).join('\n');
 
     try {
-      const summary = await callLLM(apiKey, BASE_URLS.groq, 'llama-3.1-8b-instant', [
+      const summary = await callLLM(apiKey, BASE_URLS[analyzeProvider], DEFAULT_MODELS[analyzeProvider], [
         {
           role: 'system',
           content: `Você é um analista de desempenho de equipes de vendas B2B recorrentes.
@@ -465,10 +466,11 @@ Seja direto, use emojis, responda em português brasileiro.`,
   suggestSalesApproach: protectedProcedure
     .input(z.object({ title: z.string().min(1), notes: z.string() }))
     .mutation(async ({ input }) => {
-      const apiKey = process.env.GROQ_API_KEY;
-      if (!apiKey) return { suggestion: 'IA não configurada (GROQ_API_KEY ausente).' };
+      const apiKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
+      const suggestProvider = process.env.GROQ_API_KEY ? 'groq' : 'gemini';
+      if (!apiKey) return { suggestion: 'IA não configurada.' };
       try {
-        const suggestion = await callLLM(apiKey, BASE_URLS.groq, 'llama-3.1-8b-instant', [
+        const suggestion = await callLLM(apiKey, BASE_URLS[suggestProvider], DEFAULT_MODELS[suggestProvider], [
           { role: 'system', content: 'Vendas B2B de sal. Sugira 1 abordagem prática em 2-3 frases. Direto, sem introdução. Português BR.' },
           { role: 'user', content: `Cliente: ${input.title}\nObservações: ${input.notes || 'sem observações'}` },
         ], 150, 0.7);
