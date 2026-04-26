@@ -43,13 +43,30 @@ const AI_PROVIDERS: AIProvider[] = [
 
 export default function AiSettings() {
   const { user } = useAuth();
-  const [selectedProvider, setSelectedProvider] = useState<string>("openai");
+  const [selectedProvider, setSelectedProvider] = useState<string>("gemini");
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
   const [testing, setTesting] = useState(false);
-  const [testStatus, setTestStatus] = useState<Record<string, AIConfig>>({});
+  const [testStatus, setTestStatus] = useState<Record<string, AIConfig>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("aiConfigs") || "{}");
+      const status: Record<string, AIConfig> = {};
+      for (const [id, cfg] of Object.entries(saved as Record<string, any>)) {
+        if (cfg?.status === "configured") {
+          status[id] = {
+            provider: id,
+            model: cfg.model ?? "",
+            apiKey: (cfg.apiKey ?? "").substring(0, 10) + "***",
+            status: "configured",
+            lastTested: cfg.lastTested,
+          };
+        }
+      }
+      return status;
+    } catch { return {}; }
+  });
   const testConnectionMutation = trpc.ai.testConnection.useMutation();
 
   const currentProvider = AI_PROVIDERS.find((p) => p.id === selectedProvider);
@@ -272,25 +289,34 @@ export default function AiSettings() {
                   >
                     <div>
                       <p className="font-medium">
-                        {AI_PROVIDERS.find((p) => p.id === config.provider)?.name}
+                        {AI_PROVIDERS.find((p) => p.id === config.provider)?.name ?? config.provider}
+                        {config.provider === "gemini" && <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">👑 Líder</span>}
                       </p>
                       <p className="text-sm text-gray-600">{config.model}</p>
                     </div>
-                    <div className="text-right">
+                    <div className="flex items-center gap-3">
                       {config.status === "configured" && (
                         <div className="flex items-center gap-2">
                           <span className="text-green-600 font-medium">✅ OK</span>
                           <span className="text-xs text-gray-500">
-                            {new Date(config.lastTested || "").toLocaleString("pt-BR")}
+                            {config.lastTested ? new Date(config.lastTested).toLocaleString("pt-BR") : ""}
                           </span>
                         </div>
                       )}
                       {config.status === "error" && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-red-600 font-medium">❌ Erro</span>
-                          <span className="text-xs text-red-500">{config.errorMessage}</span>
-                        </div>
+                        <span className="text-red-600 font-medium">❌ Erro</span>
                       )}
+                      <button
+                        onClick={() => {
+                          const aiConfigs = JSON.parse(localStorage.getItem("aiConfigs") || "{}");
+                          delete aiConfigs[config.provider];
+                          localStorage.setItem("aiConfigs", JSON.stringify(aiConfigs));
+                          setTestStatus(prev => { const n = { ...prev }; delete n[config.provider]; return n; });
+                        }}
+                        className="text-xs text-red-400 hover:text-red-600"
+                      >
+                        🗑️ Remover
+                      </button>
                     </div>
                   </div>
                 ))
