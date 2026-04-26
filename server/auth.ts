@@ -32,3 +32,10 @@ export function getCookieFromRequest(cookieHeader: string | undefined, name: str
   const match = cookieHeader.split(';').find(c => c.trim().startsWith(name + '='));
   return match ? decodeURIComponent(match.split('=').slice(1).join('=').trim()) : undefined;
 }
+
+// Fixed dummy hash used for timing-safe login — prevents user enumeration via response time
+export const DUMMY_HASH = (() => {
+  const salt = 'a'.repeat(32);
+  const hash = pbkdf2Sync('__dummy__', salt, 10000, 64, 'sha512').toString('hex');
+  return `${salt}:${hash}`;
+})();

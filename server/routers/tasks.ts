@@ -59,9 +59,10 @@ export const tasksRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
+      const userName = ctx.user.name ?? '';
       const where = ctx.user.role === 'admin'
         ? eq(tasks.id, id)
-        : and(eq(tasks.id, id), eq(tasks.userId, ctx.user.id));
+        : and(eq(tasks.id, id), or(eq(tasks.userId, ctx.user.id), eq(tasks.assignedTo, userName)));
       const [updated] = await db
         .update(tasks)
         .set({ ...data, updatedAt: new Date() })
@@ -74,9 +75,10 @@ export const tasksRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
+      const userName = ctx.user.name ?? '';
       const where = ctx.user.role === 'admin'
         ? eq(tasks.id, input.id)
-        : and(eq(tasks.id, input.id), eq(tasks.userId, ctx.user.id));
+        : and(eq(tasks.id, input.id), or(eq(tasks.userId, ctx.user.id), eq(tasks.assignedTo, userName)));
       await db.delete(tasks).where(where);
       return { ok: true };
     }),
@@ -84,9 +86,10 @@ export const tasksRouter = router({
   deleteMany: protectedProcedure
     .input(z.object({ ids: z.array(z.number()).min(1) }))
     .mutation(async ({ input, ctx }) => {
+      const userName = ctx.user.name ?? '';
       const where = ctx.user.role === 'admin'
         ? inArray(tasks.id, input.ids)
-        : and(inArray(tasks.id, input.ids), eq(tasks.userId, ctx.user.id));
+        : and(inArray(tasks.id, input.ids), or(eq(tasks.userId, ctx.user.id), eq(tasks.assignedTo, userName)));
       await db.delete(tasks).where(where);
       return { ok: true, count: input.ids.length };
     }),

@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { router, publicProcedure, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { users, sellers } from '../db/schema';
-import { hashPassword, verifyPassword, signToken } from '../auth';
+import { hashPassword, verifyPassword, signToken, DUMMY_HASH } from '../auth';
 import { COOKIE_NAME, ONE_YEAR_MS } from '../../shared/const';
 
 function generatePassword(length = 8): string {
@@ -23,13 +23,15 @@ export const authRouter = router({
     .input(z.object({ email: z.string().email(), password: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       const [user] = await db.select().from(users).where(eq(users.email, input.email));
-      if (!user || !verifyPassword(input.password, user.passwordHash)) {
+      const valid = user ? verifyPassword(input.password, user.passwordHash) : (verifyPassword(input.password, DUMMY_HASH), false);
+      if (!valid) {
         throw new Error('Email ou senha inválidos');
       }
       const token = signToken({ id: user.id, email: user.email, name: user.name, role: user.role });
+      const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
       ctx.res.setHeader(
         'Set-Cookie',
-        `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${ONE_YEAR_MS / 1000}; SameSite=Lax`,
+        `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly${secure}; Path=/; Max-Age=${30 * 24 * 60 * 60}; SameSite=Lax`,
       );
       return { id: user.id, name: user.name, email: user.email, role: user.role };
     }),
