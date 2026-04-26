@@ -469,27 +469,35 @@ SEU PAPEL:
 4. Dar recomendações concretas e acionáveis imediatamente
 5. Destacar quem merece reconhecimento e quem precisa de intervenção
 
-FORMATO OBRIGATÓRIO (use markdown, não encurte):
+FORMATO OBRIGATÓRIO (markdown completo — NÃO PARE antes de terminar todas as 4 seções):
 
 ## 🏆 Ranking de Desempenho
-[tabela com todos os atendentes: Nome | Clientes | Vencidos | Sem nota | Status]
+[tabela markdown com todos os atendentes: Nome | Clientes | Vencidos | Sem nota | Status]
 
 ## 🔴 Alertas Críticos
-[por atendente, problemas graves com números exatos]
+[CADA atendente com problema: nome, números exatos, impacto em churn, gravidade]
 
 ## 📊 Risco de Churn por Atendente
-[clientes em risco por atendente com estimativa]
+[CADA atendente: clientes em risco (número), percentual da carteira, nível de urgência]
 
 ## ✅ Plano de Ação — Próximos 7 dias
-[ações por atendente, do mais urgente ao menos urgente]
+[CADA atendente: ações específicas e prioritárias, da mais urgente à menos urgente]
 
-Português BR. NÃO resuma nem encurte. Inclua TODOS os atendentes.`,
+## 🌟 Reconhecimentos
+[atendentes com desempenho positivo, métricas concretas]
+
+REGRAS ABSOLUTAS:
+- Inclua TODOS os ${allSellers.length} atendentes em TODAS as seções
+- Use números exatos dos dados fornecidos
+- NÃO encurte, NÃO resuma, NÃO pule atendentes
+- Complete TODAS as 5 seções antes de parar
+- Português BR`,
         },
         {
           role: 'user',
-          content: `DADOS COMPLETOS:\n\n${reportText}\n\nAnalise todos os atendentes acima. Não pule nenhum. Resposta completa.`,
+          content: `DADOS COMPLETOS (${allSellers.length} atendentes):\n\n${reportText}\n\nGere análise COMPLETA com todas as 5 seções. Inclua TODOS os atendentes. Não encurte.`,
         },
-      ], 3000, 0.3);
+      ], 8000, 0.3);
       return { report, summary };
     } catch (err: any) {
       console.error('[ANALYZE_ERROR]', err?.message);
