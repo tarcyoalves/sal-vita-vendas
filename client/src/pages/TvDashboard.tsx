@@ -236,11 +236,11 @@ export default function TvDashboard() {
 
   return (
     <div
-      className="min-h-screen flex flex-col"
+      className="min-h-screen"
       style={{ background: '#EEF1F8', fontFamily: "'Inter', sans-serif" }}
     >
       {/* ══ HEADER ══════════════════════════════════════════ */}
-      <header className="flex items-center justify-between px-4 md:px-6 py-2.5 md:py-3 bg-white border-b border-slate-200 shadow-sm flex-shrink-0">
+      <header className="sticky top-0 z-20 flex items-center justify-between px-4 md:px-6 py-2.5 md:py-3 bg-white border-b border-slate-200 shadow-sm">
         <div className="flex items-center gap-2 md:gap-4">
           <img src="/sal-vita-logo.svg" alt="Sal Vita" className="h-7 md:h-9" />
           <div className="hidden md:block h-6 w-px bg-slate-200" />
@@ -254,7 +254,7 @@ export default function TvDashboard() {
       </header>
 
       {/* ══ KPI STRIP ═══════════════════════════════════════ */}
-      <div className="grid grid-cols-2 md:flex gap-2 md:gap-3 px-3 md:px-5 py-2.5 md:py-3 flex-shrink-0">
+      <div className="grid grid-cols-2 md:flex gap-2 md:gap-3 px-3 md:px-5 py-2.5 md:py-3">
         <div className="md:flex-1">
           <KpiCard icon="👥" label="Online agora" value={`${data.kpis.onlineNow}/${data.kpis.totalSellers}`} color="#16a34a" sub="atendentes ativos" />
         </div>
@@ -275,7 +275,7 @@ export default function TvDashboard() {
       </div>
 
       {/* ══ MAIN CONTENT ════════════════════════════════════ */}
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-3 px-3 md:px-5 pb-20">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 px-3 md:px-5 py-3 pb-14">
 
         {/* ── LEFT — 7 cols ─────────────────────────────── */}
         <div className="md:col-span-7 flex flex-col gap-3">
