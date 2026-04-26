@@ -3,6 +3,7 @@ import { trpc } from '../lib/trpc';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { useState } from "react";
+import ReactMarkdown from 'react-markdown';
 import { useLocation } from "wouter";
 import {
   Users,
@@ -325,8 +326,15 @@ export default function AdminDashboard() {
 
           {monitorSummary && (
             <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
-              <p className="font-semibold text-purple-800 mb-2 text-sm">📋 Parecer Executivo da IA</p>
-              <p className="text-sm text-gray-700 whitespace-pre-wrap">{monitorSummary}</p>
+              <p className="font-semibold text-purple-800 mb-3 text-sm">📋 Parecer Executivo da IA</p>
+              <div className="text-sm text-gray-700 prose prose-sm max-w-none
+                prose-headings:text-purple-900 prose-headings:font-bold prose-headings:mt-3 prose-headings:mb-1
+                prose-h2:text-base prose-h3:text-sm
+                prose-strong:text-gray-900
+                prose-li:my-0 prose-ul:my-1 prose-ol:my-1
+                prose-p:my-1">
+                <ReactMarkdown>{monitorSummary}</ReactMarkdown>
+              </div>
             </div>
           )}
         </CardContent>

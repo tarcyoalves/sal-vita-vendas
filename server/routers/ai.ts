@@ -469,13 +469,27 @@ SEU PAPEL:
 4. Dar recomendações concretas e acionáveis imediatamente
 5. Destacar quem merece reconhecimento e quem precisa de intervenção
 
-FORMATO: Use seções claras, emojis, tabela comparativa se possível. Português BR. Seja direto, sem rodeios.`,
+FORMATO OBRIGATÓRIO (use markdown, não encurte):
+
+## 🏆 Ranking de Desempenho
+[tabela com todos os atendentes: Nome | Clientes | Vencidos | Sem nota | Status]
+
+## 🔴 Alertas Críticos
+[por atendente, problemas graves com números exatos]
+
+## 📊 Risco de Churn por Atendente
+[clientes em risco por atendente com estimativa]
+
+## ✅ Plano de Ação — Próximos 7 dias
+[ações por atendente, do mais urgente ao menos urgente]
+
+Português BR. NÃO resuma nem encurte. Inclua TODOS os atendentes.`,
         },
         {
           role: 'user',
-          content: `DADOS DOS ATENDENTES (modelo recorrente, sem conclusão de tarefas):\n\n${reportText}\n\nFaça análise completa: ranking de desempenho, comportamentos críticos detectados, risco de churn por atendente, e plano de ação prioritário para os próximos 7 dias.`,
+          content: `DADOS COMPLETOS:\n\n${reportText}\n\nAnalise todos os atendentes acima. Não pule nenhum. Resposta completa.`,
         },
-      ], 1500, 0.4);
+      ], 3000, 0.3);
       return { report, summary };
     } catch (err: any) {
       console.error('[ANALYZE_ERROR]', err?.message);
