@@ -3,8 +3,6 @@ import { trpc } from '../lib/trpc';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { useState } from "react";
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { useLocation } from "wouter";
 import {
   Users,
@@ -19,87 +17,129 @@ import {
 } from "lucide-react";
 import AttendantDetailModal from '../components/AttendantDetailModal';
 
-const SECTION_STYLES: Record<string, { bg: string; border: string; header: string; dot: string }> = {
-  '🏆': { bg: 'bg-amber-50',  border: 'border-amber-200',  header: 'text-amber-900',  dot: 'bg-amber-500'  },
-  '🔴': { bg: 'bg-red-50',    border: 'border-red-200',    header: 'text-red-900',    dot: 'bg-red-500'    },
-  '📊': { bg: 'bg-blue-50',   border: 'border-blue-200',   header: 'text-blue-900',   dot: 'bg-blue-500'   },
-  '✅': { bg: 'bg-green-50',  border: 'border-green-200',  header: 'text-green-900',  dot: 'bg-green-500'  },
-  '🌟': { bg: 'bg-purple-50', border: 'border-purple-200', header: 'text-purple-900', dot: 'bg-purple-500' },
-};
+// ── AI Analysis Report ───────────────────────────────────────────────────────
+// Uses inline styles (not Tailwind dynamic classes) + manual table parser
+// (avoids remark-gfm ESM issues and Tailwind JIT missing dynamic strings)
 
-function getStyle(heading: string) {
-  for (const [emoji, style] of Object.entries(SECTION_STYLES)) {
-    if (heading.includes(emoji)) return style;
+type SectionTheme = { bg: string; border: string; headerBg: string; headerText: string; dot: string };
+
+function getSectionTheme(h: string): SectionTheme {
+  if (h.includes('🏆')) return { bg:'#fffbeb', border:'#f59e0b', headerBg:'#fef3c7', headerText:'#92400e', dot:'#f59e0b' };
+  if (h.includes('🔴')) return { bg:'#fef2f2', border:'#ef4444', headerBg:'#fee2e2', headerText:'#991b1b', dot:'#ef4444' };
+  if (h.includes('📊')) return { bg:'#eff6ff', border:'#3b82f6', headerBg:'#dbeafe', headerText:'#1e40af', dot:'#3b82f6' };
+  if (h.includes('✅')) return { bg:'#f0fdf4', border:'#22c55e', headerBg:'#dcfce7', headerText:'#166534', dot:'#22c55e' };
+  if (h.includes('🌟')) return { bg:'#faf5ff', border:'#8b5cf6', headerBg:'#ede9fe', headerText:'#5b21b6', dot:'#8b5cf6' };
+  return { bg:'#f8fafc', border:'#94a3b8', headerBg:'#f1f5f9', headerText:'#1e293b', dot:'#64748b' };
+}
+
+function renderInline(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*(?:[^*]|\*(?!\*))+\*\*)/g);
+  if (parts.length === 1) return text;
+  return <>{parts.map((p, i) =>
+    p.startsWith('**') && p.endsWith('**')
+      ? <strong key={i} style={{ fontWeight:700, color:'#111827' }}>{p.slice(2,-2)}</strong>
+      : <span key={i}>{p}</span>
+  )}</>;
+}
+
+function MdSection({ body }: { body: string }) {
+  const lines = body.split('\n');
+  const nodes: React.ReactNode[] = [];
+  let i = 0, k = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const t = line.trim();
+    if (!t) { i++; continue; }
+
+    // Markdown table
+    if (t.startsWith('|')) {
+      const tl: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith('|')) { tl.push(lines[i]); i++; }
+      if (tl.length >= 2) {
+        const splitRow = (l: string) => l.split('|').slice(1,-1).map(c => c.trim());
+        const headers = splitRow(tl[0]);
+        const rows = tl.slice(2).map(splitRow).filter(r => r.some(c => c && !/^[:\-\s]+$/.test(c)));
+        nodes.push(
+          <div key={k++} style={{ overflowX:'auto', margin:'10px 0', borderRadius:'8px', border:'1px solid #e5e7eb' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px' }}>
+              <thead>
+                <tr style={{ background:'#f3f4f6' }}>
+                  {headers.map((h,j) => <th key={j} style={{ padding:'8px 12px', textAlign:'left', fontWeight:600, color:'#4b5563', borderBottom:'2px solid #e5e7eb', whiteSpace:'nowrap' }}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row,ri) => (
+                  <tr key={ri} style={{ background: ri%2===0 ? '#fff' : '#f9fafb' }}>
+                    {row.map((cell,ci) => <td key={ci} style={{ padding:'8px 12px', color:'#374151', borderBottom:'1px solid #f3f4f6', verticalAlign:'top' }}>{cell}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+      continue;
+    }
+
+    // ### attendant sub-heading
+    if (t.startsWith('### ')) {
+      nodes.push(<p key={k++} style={{ fontWeight:700, fontSize:'13px', color:'#1f2937', marginTop:'14px', marginBottom:'4px', paddingTop:'10px', borderTop:'1px solid #f3f4f6' }}>{t.slice(4)}</p>);
+      i++; continue;
+    }
+    // #### small heading
+    if (t.startsWith('#### ')) {
+      nodes.push(<p key={k++} style={{ fontWeight:600, fontSize:'11px', color:'#6b7280', textTransform:'uppercase', letterSpacing:'0.06em', marginTop:'10px', marginBottom:'2px' }}>{t.slice(5)}</p>);
+      i++; continue;
+    }
+    // List item
+    if (/^[-*•]\s/.test(t) || /^\d+\.\s/.test(t)) {
+      const txt = t.replace(/^[-*•]\s/,'').replace(/^\d+\.\s/,'');
+      nodes.push(
+        <div key={k++} style={{ display:'flex', gap:'8px', marginBottom:'5px', paddingLeft:'2px' }}>
+          <span style={{ color:'#9ca3af', flexShrink:0, fontSize:'12px', marginTop:'3px' }}>▸</span>
+          <span style={{ fontSize:'13px', color:'#374151', lineHeight:'1.55' }}>{renderInline(txt)}</span>
+        </div>
+      );
+      i++; continue;
+    }
+    // Paragraph
+    nodes.push(<p key={k++} style={{ fontSize:'13px', color:'#374151', lineHeight:'1.6', marginBottom:'4px' }}>{renderInline(t)}</p>);
+    i++;
   }
-  return { bg: 'bg-gray-50', border: 'border-gray-200', header: 'text-gray-800', dot: 'bg-gray-400' };
+  return <>{nodes}</>;
 }
 
 function AiAnalysisReport({ markdown }: { markdown: string }) {
-  // Split into sections by ## heading
   const raw = markdown.split(/(?=^## )/m).filter(Boolean);
-
-  // First chunk before any ## heading = intro paragraph
-  const introParts = raw[0]?.startsWith('## ') ? [] : [raw[0]];
+  const intro = raw[0]?.startsWith('## ') ? null : raw[0];
   const sections = raw.filter(s => s.startsWith('## '));
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 px-1">
-        <div className="w-2 h-2 rounded-full bg-purple-500" />
-        <p className="font-semibold text-purple-800 text-sm">📋 Parecer Executivo da IA</p>
+    <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+        <div style={{ width:8, height:8, borderRadius:'50%', background:'#8b5cf6', flexShrink:0 }} />
+        <p style={{ fontWeight:600, color:'#6d28d9', fontSize:'13px', margin:0 }}>📋 Parecer Executivo da IA</p>
       </div>
 
-      {/* Intro text if present */}
-      {introParts.length > 0 && introParts[0] && (
-        <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-600 leading-relaxed">
-          {introParts[0].trim()}
+      {intro && (
+        <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:'10px', padding:'12px 16px', fontSize:'13px', color:'#475569', lineHeight:'1.6' }}>
+          {intro.trim()}
         </div>
       )}
 
       {sections.map((section, i) => {
         const lines = section.trim().split('\n');
-        const headingLine = lines[0].replace(/^##\s*/, '');
+        const heading = lines[0].replace(/^##\s*/,'');
         const body = lines.slice(1).join('\n').trim();
-        const style = getStyle(headingLine);
-
+        const th = getSectionTheme(heading);
         return (
-          <div key={i} className={`${style.bg} ${style.border} border rounded-xl overflow-hidden`}>
-            <div className={`flex items-center gap-2 px-4 py-2.5 border-b ${style.border}`}>
-              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${style.dot}`} />
-              <h3 className={`font-bold text-sm ${style.header}`}>{headingLine}</h3>
+          <div key={i} style={{ background:th.bg, border:`1.5px solid ${th.border}`, borderRadius:'12px', overflow:'hidden' }}>
+            <div style={{ background:th.headerBg, padding:'10px 16px', borderBottom:`1px solid ${th.border}`, display:'flex', alignItems:'center', gap:'8px' }}>
+              <div style={{ width:8, height:8, borderRadius:'50%', background:th.dot, flexShrink:0 }} />
+              <h3 style={{ fontWeight:700, fontSize:'13px', color:th.headerText, margin:0 }}>{heading}</h3>
             </div>
-            <div className="px-4 py-3">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  table: ({ children }) => (
-                    <div className="overflow-x-auto my-2 rounded-lg border border-gray-200">
-                      <table className="w-full text-xs border-collapse">{children}</table>
-                    </div>
-                  ),
-                  thead: ({ children }) => <thead className="bg-gray-100">{children}</thead>,
-                  th: ({ children }) => (
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700 border-b border-gray-200">{children}</th>
-                  ),
-                  td: ({ children }) => (
-                    <td className="px-3 py-2 text-gray-700 border-b border-gray-100 last:border-b-0">{children}</td>
-                  ),
-                  tr: ({ children }) => <tr className="even:bg-gray-50">{children}</tr>,
-                  h3: ({ children }) => (
-                    <p className="font-bold text-sm text-gray-800 mt-3 mb-1 first:mt-0">{children}</p>
-                  ),
-                  h4: ({ children }) => (
-                    <p className="font-semibold text-xs text-gray-600 uppercase tracking-wide mt-2 mb-0.5">{children}</p>
-                  ),
-                  p: ({ children }) => <p className="text-sm text-gray-700 my-1 leading-relaxed">{children}</p>,
-                  ul: ({ children }) => <ul className="my-1 space-y-0.5 pl-4">{children}</ul>,
-                  ol: ({ children }) => <ol className="my-1 space-y-0.5 pl-4 list-decimal">{children}</ol>,
-                  li: ({ children }) => <li className="text-sm text-gray-700 leading-relaxed list-disc">{children}</li>,
-                  strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
-                }}
-              >
-                {body}
-              </ReactMarkdown>
+            <div style={{ padding:'14px 16px' }}>
+              <MdSection body={body} />
             </div>
           </div>
         );
