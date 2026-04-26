@@ -236,7 +236,7 @@ export default function TvDashboard() {
 
   return (
     <div
-      className="min-h-screen md:h-screen flex flex-col md:overflow-hidden"
+      className="min-h-screen flex flex-col"
       style={{ background: '#EEF1F8', fontFamily: "'Inter', sans-serif" }}
     >
       {/* ══ HEADER ══════════════════════════════════════════ */}
@@ -275,10 +275,10 @@ export default function TvDashboard() {
       </div>
 
       {/* ══ MAIN CONTENT ════════════════════════════════════ */}
-      <div className="flex-1 flex flex-col md:grid md:grid-cols-12 gap-3 px-3 md:px-5 pb-4 md:min-h-0 overflow-y-auto md:overflow-hidden">
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-3 px-3 md:px-5 pb-20">
 
         {/* ── LEFT — 7 cols ─────────────────────────────── */}
-        <div className="md:col-span-7 flex flex-col gap-3 md:min-h-0">
+        <div className="md:col-span-7 flex flex-col gap-3">
 
           {/* Weekly chart */}
           <div className="bg-white rounded-2xl p-4 md:p-5 shadow-sm border border-slate-100 flex flex-col" style={{ borderTop: '3px solid #2563eb' }}>
@@ -353,7 +353,7 @@ export default function TvDashboard() {
         </div>
 
         {/* ── RIGHT — 5 cols ────────────────────────────── */}
-        <div className="md:col-span-5 flex flex-col gap-3 md:min-h-0">
+        <div className="md:col-span-5 flex flex-col gap-3">
 
           {/* Hot clients */}
           <div className="bg-white rounded-2xl p-4 md:p-5 shadow-sm border border-slate-100 flex flex-col" style={{ borderTop: '3px solid #f59e0b' }}>
@@ -439,7 +439,7 @@ export default function TvDashboard() {
       </div>
 
       {/* ══ FOOTER (desktop only, fixed) ════════════════════ */}
-      <footer className="hidden md:flex items-center justify-between px-6 py-2 bg-white border-t border-slate-200 text-[11px] text-slate-400 flex-shrink-0">
+      <footer className="hidden md:flex items-center justify-between px-6 py-2 bg-white border-t border-slate-200 text-[11px] text-slate-400 sticky bottom-0 z-10">
         <span className="font-semibold text-slate-500">Sal Vita — Painel de Gestão</span>
         <span>atualizado às {lastUpdated}</span>
         <span>© {CURRENT_YEAR} Sal Vita</span>
