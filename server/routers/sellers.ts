@@ -36,38 +36,32 @@ export const sellersRouter = router({
       const generatedPassword = generatePassword();
       const passwordHash = hashPassword(generatedPassword);
 
-      const result = await db.transaction(async (tx) => {
-        const [newUser] = await tx.insert(users).values({
-          name: input.name,
-          email: input.email,
-          passwordHash,
-          role: 'user',
-        }).returning();
+      const [newUser] = await db.insert(users).values({
+        name: input.name,
+        email: input.email,
+        passwordHash,
+        role: 'user',
+      }).returning();
 
-        const [created] = await tx.insert(sellers).values({
-          ...input,
-          userId: newUser.id,
-        }).returning();
+      const [created] = await db.insert(sellers).values({
+        ...input,
+        userId: newUser.id,
+      }).returning();
 
-        return { ...created, generatedPassword };
-      });
-
-      return result;
+      return { ...created, generatedPassword };
     }),
 
   delete: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
-      await db.transaction(async (tx) => {
-        const [seller] = await tx.select().from(sellers).where(eq(sellers.id, input.id));
-        if (seller) {
-          await tx.update(tasks).set({ assignedTo: null }).where(eq(tasks.assignedTo, seller.name));
-          if (seller.userId > 0) {
-            await tx.delete(users).where(eq(users.id, seller.userId));
-          }
+      const [seller] = await db.select().from(sellers).where(eq(sellers.id, input.id));
+      if (seller) {
+        await db.update(tasks).set({ assignedTo: null }).where(eq(tasks.assignedTo, seller.name));
+        if (seller.userId > 0) {
+          await db.delete(users).where(eq(users.id, seller.userId));
         }
-        await tx.delete(sellers).where(eq(sellers.id, input.id));
-      });
+      }
+      await db.delete(sellers).where(eq(sellers.id, input.id));
       return { ok: true };
     }),
 
