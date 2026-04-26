@@ -270,14 +270,14 @@ export const aiRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       try {
-        // User key takes priority. Gemini is the leader — preferred over Groq when no explicit provider given
-        const provider = input.provider ?? (process.env.GEMINI_API_KEY ? 'gemini' : process.env.GROQ_API_KEY ? 'groq' : 'gemini');
-        const envKey = provider === 'gemini' ? process.env.GEMINI_API_KEY
-          : provider === 'groq' ? process.env.GROQ_API_KEY
+        // User key takes priority. Groq is the leader — more generous free tier
+        const provider = input.provider ?? (process.env.GROQ_API_KEY ? 'groq' : process.env.GEMINI_API_KEY ? 'gemini' : 'groq');
+        const envKey = provider === 'groq' ? process.env.GROQ_API_KEY
+          : provider === 'gemini' ? process.env.GEMINI_API_KEY
           : undefined;
         const apiKey = input.apiKey || envKey || '';
-        const baseURL = BASE_URLS[provider] ?? BASE_URLS.gemini;
-        const model = input.model ?? DEFAULT_MODELS[provider] ?? 'gemini-2.5-flash';
+        const baseURL = BASE_URLS[provider] ?? BASE_URLS.groq;
+        const model = input.model ?? DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile';
 
         console.log('[AI_CHAT] uid:', ctx.user.id, 'provider:', provider, 'model:', model, 'hasKey:', !!apiKey);
 
@@ -362,12 +362,12 @@ REGRAS:
     .mutation(async ({ input, ctx }) => {
     if (ctx.user.role !== 'admin') throw new Error('Apenas admins podem usar este recurso');
 
-    // Gemini as leader — prefer user key, then env, Gemini over Groq
-    const analyzeProvider = input?.provider ?? (process.env.GEMINI_API_KEY ? 'gemini' : process.env.GROQ_API_KEY ? 'groq' : 'gemini');
-    const envKey = analyzeProvider === 'gemini' ? process.env.GEMINI_API_KEY : process.env.GROQ_API_KEY;
+    // Groq as leader — more generous free tier (14k req/day vs ~500 Gemini)
+    const analyzeProvider = input?.provider ?? (process.env.GROQ_API_KEY ? 'groq' : process.env.GEMINI_API_KEY ? 'gemini' : 'groq');
+    const envKey = analyzeProvider === 'groq' ? process.env.GROQ_API_KEY : process.env.GEMINI_API_KEY;
     const apiKey = input?.apiKey || envKey || '';
-    const analyzeModel = input?.model ?? DEFAULT_MODELS[analyzeProvider] ?? 'gemini-2.5-flash';
-    if (!apiKey) return { report: [], summary: 'IA não configurada. Vá em Configurações → IA e configure Gemini ou Groq.' };
+    const analyzeModel = input?.model ?? DEFAULT_MODELS[analyzeProvider] ?? 'llama-3.3-70b-versatile';
+    if (!apiKey) return { report: [], summary: 'IA não configurada. Vá em Configurações → IA e configure Groq (recomendado) ou Gemini.' };
 
     const now = new Date();
     const allSellers = await db.select().from(sellers);

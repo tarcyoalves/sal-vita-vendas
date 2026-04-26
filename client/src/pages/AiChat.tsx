@@ -53,8 +53,8 @@ export default function AiChat() {
       const configs = JSON.parse(localStorage.getItem('aiConfigs') || '{}') as Record<string, any>;
       // Gemini is the leader — always prefer it when configured
       const order = preferProvider
-        ? [preferProvider, 'gemini', 'groq']
-        : ['gemini', 'groq'];
+        ? [preferProvider, 'groq', 'gemini']
+        : ['groq', 'gemini'];
       for (const id of order) {
         const c = configs[id];
         if (c?.status === 'configured') return { apiKey: c.apiKey, provider: c.provider, model: c.model };

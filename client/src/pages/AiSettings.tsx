@@ -24,26 +24,26 @@ interface AIConfig {
 
 const AI_PROVIDERS: AIProvider[] = [
   {
-    id: "gemini",
-    name: "Google Gemini",
-    icon: "✨",
-    description: "Gemini 2.5 Flash — Líder de análise, contexto enorme",
-    defaultModel: "gemini-2.5-flash",
-    requiresKey: true,
-  },
-  {
     id: "groq",
     name: "Groq",
     icon: "🚀",
-    description: "Llama 3.3 70B — Suporte rápido, ferramentas",
+    description: "Llama 3.3 70B — Líder, 14.400 req/dia grátis, confiável",
     defaultModel: "llama-3.3-70b-versatile",
+    requiresKey: true,
+  },
+  {
+    id: "gemini",
+    name: "Google Gemini",
+    icon: "✨",
+    description: "Gemini 2.5 Flash — Backup opcional, contexto grande",
+    defaultModel: "gemini-2.5-flash",
     requiresKey: true,
   },
 ];
 
 export default function AiSettings() {
   const { user } = useAuth();
-  const [selectedProvider, setSelectedProvider] = useState<string>("gemini");
+  const [selectedProvider, setSelectedProvider] = useState<string>("groq");
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -356,8 +356,8 @@ export default function AiSettings() {
             <CardTitle className="text-yellow-900">ℹ️ Como funciona</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-yellow-800 space-y-2">
-            <p>• Configure Gemini (líder) + Groq (suporte) para análises mais completas</p>
-            <p>• Gemini tem prioridade — usa contexto maior para análises profundas</p>
+            <p>• Configure Groq (líder) + Gemini (backup) para máxima disponibilidade</p>
+            <p>• Groq tem prioridade — 14.400 req/dia grátis, sem risco de quota</p>
             <p>• Clique "Salvar e Testar" para validar antes de usar</p>
             <p>• Se der erro 404 no Gemini: chave errada ou modelo não existe</p>
           </CardContent>

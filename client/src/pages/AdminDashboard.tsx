@@ -34,7 +34,7 @@ export default function AdminDashboard() {
   const getAiConfig = () => {
     try {
       const configs = JSON.parse(localStorage.getItem('aiConfigs') || '{}') as Record<string, any>;
-      for (const id of ['gemini', 'groq']) {
+      for (const id of ['groq', 'gemini']) {
         const c = configs[id];
         if (c?.status === 'configured') return { apiKey: c.apiKey, provider: c.provider, model: c.model };
       }
