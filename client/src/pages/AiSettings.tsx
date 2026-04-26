@@ -35,8 +35,8 @@ const AI_PROVIDERS: AIProvider[] = [
     id: "gemini",
     name: "Google Gemini",
     icon: "✨",
-    description: "Gemini 2.0 Flash — Grátis, contexto enorme",
-    defaultModel: "gemini-2.0-flash",
+    description: "Gemini 2.5 Flash — Grátis, contexto enorme",
+    defaultModel: "gemini-2.5-flash",
     requiresKey: true,
   },
   {
@@ -333,7 +333,7 @@ export default function AiSettings() {
               <p className="mt-1">1. Acesse <span className="font-mono font-bold">aistudio.google.com</span></p>
               <p>2. Login com conta Google</p>
               <p>3. Clique em <strong>Get API Key → Create API key</strong></p>
-              <p>4. Cole aqui — modelo: <span className="font-mono">gemini-2.0-flash</span></p>
+              <p>4. Cole aqui — modelo: <span className="font-mono">gemini-2.5-flash</span></p>
             </div>
             <p className="text-xs text-green-700">• Ambos têm tier gratuito generoso para uso diário</p>
             <p className="text-xs text-green-700">• Chaves ficam salvas no seu navegador (localStorage)</p>

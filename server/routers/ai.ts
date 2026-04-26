@@ -16,7 +16,7 @@ const BASE_URLS: Record<string, string> = {
 const DEFAULT_MODELS: Record<string, string> = {
   groq:    'llama-3.3-70b-versatile',
   openai:  'gpt-3.5-turbo',
-  gemini:  'gemini-2.0-flash',
+  gemini:  'gemini-2.5-flash',
   anthropic: 'claude-3-haiku-20240307',
 };
 
