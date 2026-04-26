@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { useState } from "react";
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useLocation } from "wouter";
 import {
   Users,
@@ -17,6 +18,95 @@ import {
   BarChart2,
 } from "lucide-react";
 import AttendantDetailModal from '../components/AttendantDetailModal';
+
+const SECTION_STYLES: Record<string, { bg: string; border: string; header: string; dot: string }> = {
+  '🏆': { bg: 'bg-amber-50',  border: 'border-amber-200',  header: 'text-amber-900',  dot: 'bg-amber-500'  },
+  '🔴': { bg: 'bg-red-50',    border: 'border-red-200',    header: 'text-red-900',    dot: 'bg-red-500'    },
+  '📊': { bg: 'bg-blue-50',   border: 'border-blue-200',   header: 'text-blue-900',   dot: 'bg-blue-500'   },
+  '✅': { bg: 'bg-green-50',  border: 'border-green-200',  header: 'text-green-900',  dot: 'bg-green-500'  },
+  '🌟': { bg: 'bg-purple-50', border: 'border-purple-200', header: 'text-purple-900', dot: 'bg-purple-500' },
+};
+
+function getStyle(heading: string) {
+  for (const [emoji, style] of Object.entries(SECTION_STYLES)) {
+    if (heading.includes(emoji)) return style;
+  }
+  return { bg: 'bg-gray-50', border: 'border-gray-200', header: 'text-gray-800', dot: 'bg-gray-400' };
+}
+
+function AiAnalysisReport({ markdown }: { markdown: string }) {
+  // Split into sections by ## heading
+  const raw = markdown.split(/(?=^## )/m).filter(Boolean);
+
+  // First chunk before any ## heading = intro paragraph
+  const introParts = raw[0]?.startsWith('## ') ? [] : [raw[0]];
+  const sections = raw.filter(s => s.startsWith('## '));
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 px-1">
+        <div className="w-2 h-2 rounded-full bg-purple-500" />
+        <p className="font-semibold text-purple-800 text-sm">📋 Parecer Executivo da IA</p>
+      </div>
+
+      {/* Intro text if present */}
+      {introParts.length > 0 && introParts[0] && (
+        <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-600 leading-relaxed">
+          {introParts[0].trim()}
+        </div>
+      )}
+
+      {sections.map((section, i) => {
+        const lines = section.trim().split('\n');
+        const headingLine = lines[0].replace(/^##\s*/, '');
+        const body = lines.slice(1).join('\n').trim();
+        const style = getStyle(headingLine);
+
+        return (
+          <div key={i} className={`${style.bg} ${style.border} border rounded-xl overflow-hidden`}>
+            <div className={`flex items-center gap-2 px-4 py-2.5 border-b ${style.border}`}>
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${style.dot}`} />
+              <h3 className={`font-bold text-sm ${style.header}`}>{headingLine}</h3>
+            </div>
+            <div className="px-4 py-3">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  table: ({ children }) => (
+                    <div className="overflow-x-auto my-2 rounded-lg border border-gray-200">
+                      <table className="w-full text-xs border-collapse">{children}</table>
+                    </div>
+                  ),
+                  thead: ({ children }) => <thead className="bg-gray-100">{children}</thead>,
+                  th: ({ children }) => (
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700 border-b border-gray-200">{children}</th>
+                  ),
+                  td: ({ children }) => (
+                    <td className="px-3 py-2 text-gray-700 border-b border-gray-100 last:border-b-0">{children}</td>
+                  ),
+                  tr: ({ children }) => <tr className="even:bg-gray-50">{children}</tr>,
+                  h3: ({ children }) => (
+                    <p className="font-bold text-sm text-gray-800 mt-3 mb-1 first:mt-0">{children}</p>
+                  ),
+                  h4: ({ children }) => (
+                    <p className="font-semibold text-xs text-gray-600 uppercase tracking-wide mt-2 mb-0.5">{children}</p>
+                  ),
+                  p: ({ children }) => <p className="text-sm text-gray-700 my-1 leading-relaxed">{children}</p>,
+                  ul: ({ children }) => <ul className="my-1 space-y-0.5 pl-4">{children}</ul>,
+                  ol: ({ children }) => <ol className="my-1 space-y-0.5 pl-4 list-decimal">{children}</ol>,
+                  li: ({ children }) => <li className="text-sm text-gray-700 leading-relaxed list-disc">{children}</li>,
+                  strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
+                }}
+              >
+                {body}
+              </ReactMarkdown>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function AdminDashboard() {
   const { user, loading } = useAuth();
@@ -325,17 +415,7 @@ export default function AdminDashboard() {
           )}
 
           {monitorSummary && (
-            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
-              <p className="font-semibold text-purple-800 mb-3 text-sm">📋 Parecer Executivo da IA</p>
-              <div className="text-sm text-gray-700 prose prose-sm max-w-none
-                prose-headings:text-purple-900 prose-headings:font-bold prose-headings:mt-3 prose-headings:mb-1
-                prose-h2:text-base prose-h3:text-sm
-                prose-strong:text-gray-900
-                prose-li:my-0 prose-ul:my-1 prose-ol:my-1
-                prose-p:my-1">
-                <ReactMarkdown>{monitorSummary}</ReactMarkdown>
-              </div>
-            </div>
+            <AiAnalysisReport markdown={monitorSummary} />
           )}
         </CardContent>
       </Card>
