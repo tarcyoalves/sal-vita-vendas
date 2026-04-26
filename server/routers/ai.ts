@@ -13,6 +13,13 @@ const BASE_URLS: Record<string, string> = {
   anthropic: 'https://api.anthropic.com/v1',
 };
 
+const DEFAULT_MODELS: Record<string, string> = {
+  groq:    'llama-3.3-70b-versatile',
+  openai:  'gpt-3.5-turbo',
+  gemini:  'gemini-2.0-flash',
+  anthropic: 'claude-3-haiku-20240307',
+};
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function nextBusinessDay(d: Date): Date {
@@ -269,8 +276,8 @@ export const aiRouter = router({
         const provider = envKey ? 'groq' : (input.provider ?? 'groq');
         const baseURL = BASE_URLS[provider] ?? BASE_URLS.groq;
         const model = envKey
-          ? 'llama-3.1-8b-instant'
-          : (input.model ?? (provider === 'openai' ? 'gpt-3.5-turbo' : provider === 'gemini' ? 'gemini-1.5-flash' : 'llama-3.1-8b-instant'));
+          ? 'llama-3.3-70b-versatile'
+          : (input.model ?? DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile');
 
         console.log('[AI_CHAT] start uid:', ctx.user.id, 'provider:', provider, 'model:', model, 'hasKey:', !!apiKey);
 

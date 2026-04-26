@@ -24,43 +24,35 @@ interface AIConfig {
 
 const AI_PROVIDERS: AIProvider[] = [
   {
-    id: "openai",
-    name: "OpenAI",
-    icon: "🤖",
-    description: "GPT-3.5-turbo - Rápido e confiável",
-    defaultModel: "gpt-3.5-turbo",
-    requiresKey: true,
-  },
-  {
     id: "groq",
     name: "Groq",
     icon: "🚀",
-    description: "Llama 3.1 8B - Rápido e eficiente",
-    defaultModel: "llama-3.1-8b-instant",
+    description: "Llama 3.3 70B — Grátis, ultra rápido. Recomendado!",
+    defaultModel: "llama-3.3-70b-versatile",
     requiresKey: true,
   },
   {
     id: "gemini",
     name: "Google Gemini",
     icon: "✨",
-    description: "Gemini 1.5 Flash - Rápido e eficiente",
-    defaultModel: "gemini-1.5-flash",
+    description: "Gemini 2.0 Flash — Grátis, contexto enorme",
+    defaultModel: "gemini-2.0-flash",
     requiresKey: true,
   },
   {
-    id: "grok",
-    name: "Grok (xAI)",
-    icon: "⚡",
-    description: "Grok-1 - Rápido e poderoso",
-    defaultModel: "grok-1",
+    id: "openai",
+    name: "OpenAI",
+    icon: "🤖",
+    description: "GPT-3.5-turbo — Pago, confiável",
+    defaultModel: "gpt-3.5-turbo",
     requiresKey: true,
   },
   {
-    id: "claude",
+    id: "anthropic",
     name: "Anthropic Claude",
     icon: "🧠",
-    description: "Claude 3 Sonnet - Preciso e criativo",
-    defaultModel: "claude-3-sonnet",
+    description: "Claude Haiku — Pago, preciso",
+    defaultModel: "claude-3-haiku-20240307",
     requiresKey: true,
   },
 ];
@@ -323,27 +315,41 @@ export default function AiSettings() {
           </CardContent>
         </Card>
 
+        {/* Free API Keys Guide */}
+        <Card className="bg-green-50 border-green-200">
+          <CardHeader>
+            <CardTitle className="text-green-900">🎁 Como pegar chaves grátis</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-green-800 space-y-3">
+            <div className="p-3 bg-white rounded-lg border border-green-200">
+              <p className="font-bold">🚀 Groq (recomendado)</p>
+              <p className="mt-1">1. Acesse <span className="font-mono font-bold">console.groq.com</span></p>
+              <p>2. Crie conta grátis</p>
+              <p>3. Clique em <strong>API Keys → Create API Key</strong></p>
+              <p>4. Cole aqui — modelo: <span className="font-mono">llama-3.3-70b-versatile</span></p>
+            </div>
+            <div className="p-3 bg-white rounded-lg border border-green-200">
+              <p className="font-bold">✨ Google Gemini</p>
+              <p className="mt-1">1. Acesse <span className="font-mono font-bold">aistudio.google.com</span></p>
+              <p>2. Login com conta Google</p>
+              <p>3. Clique em <strong>Get API Key → Create API key</strong></p>
+              <p>4. Cole aqui — modelo: <span className="font-mono">gemini-2.0-flash</span></p>
+            </div>
+            <p className="text-xs text-green-700">• Ambos têm tier gratuito generoso para uso diário</p>
+            <p className="text-xs text-green-700">• Chaves ficam salvas no seu navegador (localStorage)</p>
+          </CardContent>
+        </Card>
+
         {/* Info Box */}
         <Card className="bg-yellow-50 border-yellow-200">
           <CardHeader>
-            <CardTitle className="text-yellow-900">ℹ️ Informações Importantes</CardTitle>
+            <CardTitle className="text-yellow-900">ℹ️ Como funciona</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-yellow-800 space-y-2">
-            <p>
-              • Cada IA tem sua própria chave armazenada separadamente
-            </p>
-            <p>
-              • O modelo padrão é selecionado automaticamente para cada IA
-            </p>
-            <p>
-              • Clique em "Salvar e Testar" para validar a chave automaticamente
-            </p>
-            <p>
-              • Você pode usar múltiplas IAs simultaneamente
-            </p>
-            <p>
-              • Recomendado: Groq (mais barato) + OpenAI (mais preciso)
-            </p>
+            <p>• Configure Groq + Gemini para ter duas IAs disponíveis</p>
+            <p>• O chat usa a primeira IA configurada (✅ OK)</p>
+            <p>• Clique "Salvar e Testar" para validar antes de usar</p>
+            <p>• Se der erro 404 no Gemini: chave errada ou modelo não existe</p>
           </CardContent>
         </Card>
     </div>
