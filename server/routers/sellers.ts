@@ -36,35 +36,38 @@ export const sellersRouter = router({
       const generatedPassword = generatePassword();
       const passwordHash = hashPassword(generatedPassword);
 
-      const [newUser] = await db.insert(users).values({
-        name: input.name,
-        email: input.email,
-        passwordHash,
-        role: 'user',
-      }).returning();
+      const result = await db.transaction(async (tx) => {
+        const [newUser] = await tx.insert(users).values({
+          name: input.name,
+          email: input.email,
+          passwordHash,
+          role: 'user',
+        }).returning();
 
-      // Create seller linked to user account
-      const [created] = await db.insert(sellers).values({
-        ...input,
-        userId: newUser.id,
-      }).returning();
+        const [created] = await tx.insert(sellers).values({
+          ...input,
+          userId: newUser.id,
+        }).returning();
 
-      return { ...created, generatedPassword };
+        return { ...created, generatedPassword };
+      });
+
+      return result;
     }),
 
   delete: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
-      const [seller] = await db.select().from(sellers).where(eq(sellers.id, input.id));
-      if (seller) {
-        // Preserve tasks: set assignedTo to null instead of deleting them
-        await db.update(tasks).set({ assignedTo: null }).where(eq(tasks.assignedTo, seller.name));
-        // Delete user account
-        if (seller.userId > 0) {
-          await db.delete(users).where(eq(users.id, seller.userId));
+      await db.transaction(async (tx) => {
+        const [seller] = await tx.select().from(sellers).where(eq(sellers.id, input.id));
+        if (seller) {
+          await tx.update(tasks).set({ assignedTo: null }).where(eq(tasks.assignedTo, seller.name));
+          if (seller.userId > 0) {
+            await tx.delete(users).where(eq(users.id, seller.userId));
+          }
         }
-      }
-      await db.delete(sellers).where(eq(sellers.id, input.id));
+        await tx.delete(sellers).where(eq(sellers.id, input.id));
+      });
       return { ok: true };
     }),
 

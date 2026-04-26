@@ -1,4 +1,4 @@
-import { router, publicProcedure } from '../trpc';
+import { router, protectedProcedure } from '../trpc';
 import { db } from '../db';
 import { sellers, tasks, workSessions, clients } from '../db/schema';
 import { eq, or, sql } from 'drizzle-orm';
@@ -11,7 +11,7 @@ const HOT_KEYWORDS = [
 ];
 
 export const tvRouter = router({
-  dashboard: publicProcedure.query(async () => {
+  dashboard: protectedProcedure.query(async () => {
     const now = new Date();
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);

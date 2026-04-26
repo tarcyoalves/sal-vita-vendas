@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import { eq, inArray, or, isNotNull } from 'drizzle-orm';
+import { eq, inArray, or, isNotNull, and } from 'drizzle-orm';
 import { router, protectedProcedure } from '../trpc';
+import { TRPCError } from '@trpc/server';
 import { db } from '../db';
 import { tasks } from '../db/schema';
 
@@ -56,27 +57,37 @@ export const tasksRouter = router({
       assignedTo: z.string().optional(),
       status: z.enum(['pending', 'completed', 'cancelled']).optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
+      const where = ctx.user.role === 'admin'
+        ? eq(tasks.id, id)
+        : and(eq(tasks.id, id), eq(tasks.userId, ctx.user.id));
       const [updated] = await db
         .update(tasks)
         .set({ ...data, updatedAt: new Date() })
-        .where(eq(tasks.id, id))
+        .where(where)
         .returning();
+      if (!updated) throw new TRPCError({ code: 'FORBIDDEN', message: 'Tarefa não encontrada ou sem permissão' });
       return updated;
     }),
 
   delete: protectedProcedure
     .input(z.object({ id: z.number() }))
-    .mutation(async ({ input }) => {
-      await db.delete(tasks).where(eq(tasks.id, input.id));
+    .mutation(async ({ input, ctx }) => {
+      const where = ctx.user.role === 'admin'
+        ? eq(tasks.id, input.id)
+        : and(eq(tasks.id, input.id), eq(tasks.userId, ctx.user.id));
+      await db.delete(tasks).where(where);
       return { ok: true };
     }),
 
   deleteMany: protectedProcedure
     .input(z.object({ ids: z.array(z.number()).min(1) }))
-    .mutation(async ({ input }) => {
-      await db.delete(tasks).where(inArray(tasks.id, input.ids));
+    .mutation(async ({ input, ctx }) => {
+      const where = ctx.user.role === 'admin'
+        ? inArray(tasks.id, input.ids)
+        : and(inArray(tasks.id, input.ids), eq(tasks.userId, ctx.user.id));
+      await db.delete(tasks).where(where);
       return { ok: true, count: input.ids.length };
     }),
 

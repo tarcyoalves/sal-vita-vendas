@@ -40,5 +40,6 @@ export async function ensureTablesExist() {
     console.log('✅ Database tables ensured');
   } catch (err) {
     console.error('❌ Migration error:', err);
+    throw err;
   }
 }

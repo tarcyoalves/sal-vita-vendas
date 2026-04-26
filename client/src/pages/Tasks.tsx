@@ -183,7 +183,7 @@ export default function Tasks() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim()) { toast.error("Título é obrigatório"); return; }
-    if (editingTask || !formData.notes.trim()) {
+    if (!editingTask && !formData.notes.trim()) {
       setIsModalOpen(false);
       setShowNotesWarning(true);
       return;
