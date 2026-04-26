@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { router, protectedProcedure } from '../trpc';
 import { db } from '../db';
 import { knowledgeDocuments } from '../db/schema';
@@ -27,8 +27,10 @@ export const knowledgeRouter = router({
 
   delete: protectedProcedure
     .input(z.object({ id: z.number() }))
-    .mutation(async ({ input }) => {
-      await db.delete(knowledgeDocuments).where(eq(knowledgeDocuments.id, input.id));
+    .mutation(async ({ input, ctx }) => {
+      await db.delete(knowledgeDocuments).where(
+        and(eq(knowledgeDocuments.id, input.id), eq(knowledgeDocuments.userId, ctx.user.id))
+      );
       return { ok: true };
     }),
 });
