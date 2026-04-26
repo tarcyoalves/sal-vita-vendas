@@ -1,7 +1,7 @@
 import { router, protectedProcedure } from '../trpc';
 import { db } from '../db';
 import { sellers, tasks, workSessions, clients } from '../db/schema';
-import { eq, or, sql } from 'drizzle-orm';
+import { eq, or, and, gte, sql } from 'drizzle-orm';
 
 const HOT_KEYWORDS = [
   'orçamento', 'orcamento', 'interessad', 'confirmar', 'confirmo',
@@ -26,7 +26,10 @@ export const tvRouter = router({
       }).from(tasks),
       db.select({ userId: workSessions.userId, status: workSessions.status })
         .from(workSessions)
-        .where(or(eq(workSessions.status, 'active'), eq(workSessions.status, 'paused'))),
+        .where(and(
+          or(eq(workSessions.status, 'active'), eq(workSessions.status, 'paused')),
+          gte(workSessions.startedAt, todayStart),
+        )),
       db.select({ count: sql<number>`count(*)::int` }).from(clients),
     ]);
 

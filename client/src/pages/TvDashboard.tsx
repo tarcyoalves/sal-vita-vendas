@@ -281,7 +281,7 @@ export default function TvDashboard() {
         <div className="md:col-span-7 flex flex-col gap-3 md:min-h-0">
 
           {/* Weekly chart */}
-          <div className="bg-white rounded-2xl p-4 md:p-5 shadow-sm border border-slate-100 flex flex-col md:flex-1 md:min-h-0" style={{ borderTop: '3px solid #2563eb' }}>
+          <div className="bg-white rounded-2xl p-4 md:p-5 shadow-sm border border-slate-100 flex flex-col" style={{ borderTop: '3px solid #2563eb' }}>
             <div className="flex items-start justify-between mb-3 md:mb-4 flex-shrink-0 flex-wrap gap-2">
               <div>
                 <h2 className="text-xs md:text-sm font-bold text-slate-700 uppercase tracking-wide">Atividade — Últimas 4 Semanas</h2>
@@ -297,7 +297,7 @@ export default function TvDashboard() {
                 ))}
               </div>
             </div>
-            <div className="h-48 md:h-auto md:flex-1 md:min-h-0">
+            <div className="h-48 md:h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData} margin={{ top: 8, right: 12, left: -20, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -356,7 +356,7 @@ export default function TvDashboard() {
         <div className="md:col-span-5 flex flex-col gap-3 md:min-h-0">
 
           {/* Hot clients */}
-          <div className="bg-white rounded-2xl p-4 md:p-5 shadow-sm border border-slate-100 flex flex-col md:flex-1 md:min-h-0" style={{ borderTop: '3px solid #f59e0b' }}>
+          <div className="bg-white rounded-2xl p-4 md:p-5 shadow-sm border border-slate-100 flex flex-col" style={{ borderTop: '3px solid #f59e0b' }}>
             <div className="flex-shrink-0 mb-3 md:mb-4">
               <h2 className="text-xs md:text-sm font-bold text-slate-700 uppercase tracking-wide">🔥 Clientes Potenciais</h2>
               <p className="text-[11px] text-slate-400 mt-0.5 hidden md:block">pontuados por palavras-chave nas anotações</p>
@@ -367,7 +367,7 @@ export default function TvDashboard() {
                 <p className="text-sm text-slate-400 text-center leading-relaxed">Sem clientes pontuados.<br />Atualize as anotações.</p>
               </div>
             ) : (
-              <div className="md:flex-1 md:overflow-y-auto md:min-h-0 space-y-3 md:pr-1">
+              <div className="md:max-h-[320px] md:overflow-y-auto space-y-3 md:pr-1">
                 {data.hotClients.map((c, i) => (
                   <div key={i} className={`flex gap-3 items-start pb-3 ${i < data.hotClients.length - 1 ? 'border-b border-slate-100' : ''}`}>
                     <ScoreBadge score={c.score} />
@@ -395,25 +395,21 @@ export default function TvDashboard() {
             <div className="flex items-start justify-between mb-3 gap-3">
               <h2 className="text-xs md:text-sm font-bold text-slate-700 uppercase tracking-wide">⚡ Alertas e Ações</h2>
               {alertPieData.length > 0 && (
-                <div className="flex-shrink-0" style={{ width: 80, height: 80 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={alertPieData} dataKey="value" cx="50%" cy="50%"
-                        innerRadius={18} outerRadius={36} paddingAngle={2}
-                        label={false} labelLine={false}
-                      >
-                        {alertPieData.map((entry, idx) => (
-                          <Cell key={idx} fill={ALERT_COLORS[entry.type] ?? '#94a3b8'} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(value: any, _name: any, props: any) =>
-                          [value, ALERT_LABELS[props.payload.type] ?? props.payload.type]
-                        }
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
+                <PieChart width={80} height={80} className="flex-shrink-0">
+                  <Pie data={alertPieData} dataKey="value" cx="50%" cy="50%"
+                    innerRadius={18} outerRadius={36} paddingAngle={2}
+                    label={false} labelLine={false}
+                  >
+                    {alertPieData.map((entry, idx) => (
+                      <Cell key={idx} fill={ALERT_COLORS[entry.type] ?? '#94a3b8'} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: any, _name: any, props: any) =>
+                      [value, ALERT_LABELS[props.payload.type] ?? props.payload.type]
+                    }
+                  />
+                </PieChart>
               )}
             </div>
             {data.alerts.length === 0 ? (
