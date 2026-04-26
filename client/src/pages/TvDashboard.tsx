@@ -170,6 +170,22 @@ export default function TvDashboard() {
     retry: 3,
   });
 
+  useEffect(() => {
+    if (!('wakeLock' in navigator)) return;
+    let lock: WakeLockSentinel | null = null;
+    const acquire = () => {
+      (navigator as any).wakeLock.request('screen')
+        .then((l: WakeLockSentinel) => { lock = l; })
+        .catch(() => {});
+    };
+    acquire();
+    document.addEventListener('visibilitychange', acquire);
+    return () => {
+      lock?.release();
+      document.removeEventListener('visibilitychange', acquire);
+    };
+  }, []);
+
   const chartData = useMemo(() => {
     if (!data) return [];
     const numWeeks = data.sellerStats[0]?.weeklyContacts.length ?? 4;
