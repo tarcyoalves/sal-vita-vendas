@@ -2,9 +2,9 @@ import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { router, publicProcedure, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
-import { users, sellers } from '../db/schema';
+import { users } from '../db/schema';
 import { hashPassword, verifyPassword, signToken, DUMMY_HASH } from '../auth';
-import { COOKIE_NAME, ONE_YEAR_MS } from '../../shared/const';
+import { COOKIE_NAME } from '../../shared/const';
 
 function generatePassword(length = 8): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
