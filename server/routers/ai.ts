@@ -366,7 +366,9 @@ REGRAS:
     const analyzeProvider = input?.provider ?? (process.env.GROQ_API_KEY ? 'groq' : process.env.GEMINI_API_KEY ? 'gemini' : 'groq');
     const envKey = analyzeProvider === 'groq' ? process.env.GROQ_API_KEY : process.env.GEMINI_API_KEY;
     const apiKey = input?.apiKey || envKey || '';
-    const analyzeModel = input?.model ?? DEFAULT_MODELS[analyzeProvider] ?? 'llama-3.3-70b-versatile';
+    // Always use server-side model for analysis — client's saved model may be llama-3.1-8b-instant
+    // which has 6k TPM limit, too low for the analysis prompt (~9k tokens)
+    const analyzeModel = DEFAULT_MODELS[analyzeProvider] ?? 'llama-3.3-70b-versatile';
     if (!apiKey) return { report: [], summary: 'IA não configurada. Vá em Configurações → IA e configure Groq (recomendado) ou Gemini.' };
 
     const now = new Date();
