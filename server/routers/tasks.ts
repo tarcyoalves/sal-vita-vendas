@@ -20,9 +20,9 @@ export const tasksRouter = router({
   create: protectedProcedure
     .input(z.object({
       clientId: z.number().optional().default(0),
-      title: z.string().min(1),
-      description: z.string().optional(),
-      notes: z.string().optional(),
+      title: z.string().min(1).max(500),
+      description: z.string().max(2000).optional(),
+      notes: z.string().max(5000).optional(),
       reminderDate: z.date().optional(),
       reminderEnabled: z.boolean().optional().default(true),
       priority: z.enum(['low', 'medium', 'high']).optional().default('medium'),
@@ -48,9 +48,9 @@ export const tasksRouter = router({
   update: protectedProcedure
     .input(z.object({
       id: z.number(),
-      title: z.string().optional(),
-      description: z.string().optional(),
-      notes: z.string().optional(),
+      title: z.string().max(500).optional(),
+      description: z.string().max(2000).optional(),
+      notes: z.string().max(5000).optional(),
       reminderDate: z.date().optional().nullable(),
       reminderEnabled: z.boolean().optional(),
       priority: z.enum(['low', 'medium', 'high']).optional(),

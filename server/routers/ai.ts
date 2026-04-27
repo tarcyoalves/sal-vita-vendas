@@ -263,7 +263,7 @@ export const aiRouter = router({
 
   chat: protectedProcedure
     .input(z.object({
-      message: z.string().min(1),
+      message: z.string().min(1).max(4000),
       apiKey: z.string().optional(),
       provider: z.string().optional(),
       model: z.string().optional(),
