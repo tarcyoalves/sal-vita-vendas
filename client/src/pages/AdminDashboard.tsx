@@ -14,6 +14,8 @@ import {
   Settings,
   Scan,
   BarChart2,
+  Timer,
+  Activity,
 } from "lucide-react";
 import AttendantDetailModal from '../components/AttendantDetailModal';
 
@@ -155,6 +157,7 @@ export default function AdminDashboard() {
   const { data: tasks = [] } = trpc.tasks.list.useQuery();
   const { data: reminders = [] } = trpc.tasks.reminders.useQuery();
   const analyzeAttendantsMutation = trpc.ai.analyzeAttendants.useMutation();
+  const { data: sessionData = [] } = trpc.workSessions.allActiveToday.useQuery(undefined, { refetchInterval: 60_000 });
   const [monitorReport, setMonitorReport] = useState<any[] | null>(null);
   const [monitorSummary, setMonitorSummary] = useState<string | null>(null);
   const [monitorLoading, setMonitorLoading] = useState(false);
@@ -457,6 +460,86 @@ export default function AdminDashboard() {
           {monitorSummary && (
             <AiAnalysisReport markdown={monitorSummary} />
           )}
+        </CardContent>
+      </Card>
+
+      {/* Work Sessions */}
+      <Card className="border-cyan-200">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center justify-between text-base">
+            <span className="flex items-center gap-2">
+              <Timer size={18} className="text-cyan-600" />
+              Sessões de Trabalho Hoje
+            </span>
+            <span className="text-xs text-gray-400 font-normal">atualiza a cada 60s</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {(sessionData as any[]).map((row: any) => {
+              const s = row.session;
+              const idleMin = Math.floor((row.idleSinceMs ?? 0) / 60000);
+              const isIdle = s?.status === 'active' && idleMin >= 30;
+              const isPaused = s?.status === 'paused';
+              const workedH = s ? Math.floor(s.workedMs / 3600000) : 0;
+              const workedM = s ? Math.floor((s.workedMs % 3600000) / 60000) : 0;
+              const startTime = s ? (() => {
+                const d = new Date(s.startedAt);
+                return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+              })() : null;
+              const lastAct = row.lastActivityDate ? (() => {
+                const min = Math.floor((Date.now() - new Date(row.lastActivityDate).getTime()) / 60000);
+                return min < 1 ? '<1min' : min < 60 ? `${min}min` : `${Math.floor(min/60)}h`;
+              })() : null;
+
+              return (
+                <div key={row.sellerId} className={`flex items-center gap-3 p-3 rounded-xl border ${
+                  isIdle ? 'border-amber-200 bg-amber-50' :
+                  isPaused ? 'border-yellow-200 bg-yellow-50' :
+                  s ? 'border-green-200 bg-green-50' : 'border-gray-100 bg-gray-50'
+                }`}>
+                  {/* Status dot */}
+                  <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                    isIdle ? 'bg-amber-400' : isPaused ? 'bg-yellow-400' : s ? 'bg-green-500 animate-pulse' : 'bg-gray-300'
+                  }`} />
+
+                  {/* Name */}
+                  <div className="w-28 flex-shrink-0">
+                    <p className="text-sm font-semibold text-gray-800 truncate">{row.name}</p>
+                  </div>
+
+                  {/* Status label */}
+                  <div className="w-24 flex-shrink-0">
+                    {!s && <span className="text-xs text-gray-400">Sem sessão</span>}
+                    {s?.status === 'active' && !isIdle && <span className="text-xs font-semibold text-green-700 flex items-center gap-1"><Activity size={11} /> Ativo</span>}
+                    {isIdle && <span className="text-xs font-semibold text-amber-700">⚠ Ocioso {idleMin}min</span>}
+                    {isPaused && <span className="text-xs font-semibold text-yellow-700">⏸ Pausado</span>}
+                  </div>
+
+                  {/* Metrics */}
+                  <div className="flex items-center gap-4 flex-1 text-xs text-gray-600 flex-wrap">
+                    {startTime && (
+                      <span title="Horário de início">🕐 <strong>{startTime}</strong></span>
+                    )}
+                    {s && (
+                      <span title="Tempo trabalhado (descontando pausas)">
+                        ⏱ <strong>{workedH > 0 ? `${workedH}h ` : ''}{workedM}min</strong>
+                      </span>
+                    )}
+                    <span title="Contatos/tarefas tocados hoje">
+                      📞 <strong>{row.contactsToday}</strong> contatos
+                    </span>
+                    {lastAct && (
+                      <span title="Última tarefa atualizada">🕒 último: <strong>{lastAct} atrás</strong></span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            {(sessionData as any[]).length === 0 && (
+              <p className="text-sm text-gray-400 text-center py-4">Nenhum atendente com sessão hoje.</p>
+            )}
+          </div>
         </CardContent>
       </Card>
 

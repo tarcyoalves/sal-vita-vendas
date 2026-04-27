@@ -115,6 +115,22 @@ function TrendBadge({ t }: { t: 'up' | 'down' | 'stable' }) {
   return <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full">→ estável</span>;
 }
 
+/* ─── Hover Tooltip ──────────────────────────────────────── */
+function Tip({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="relative group/tip inline-flex">
+      {children}
+      <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50
+        opacity-0 group-hover/tip:opacity-100 transition-opacity duration-150 whitespace-nowrap">
+        <div className="bg-slate-800 text-white text-[11px] font-medium px-2.5 py-1.5 rounded-lg shadow-xl">
+          {label}
+        </div>
+        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
+      </div>
+    </div>
+  );
+}
+
 /* ─── Score Badge with SVG circular ring ─────────────────── */
 function ScoreBadge({ score }: { score: number }) {
   const dash = (Math.min(score, 100) / 100) * RING_CIRC;
@@ -353,14 +369,22 @@ export default function TvDashboard() {
                       <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${s.pct}%`, background: bar }} />
                     </div>
                     <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0 text-[11px] md:text-xs font-mono">
-                      <span className="font-bold w-5 text-right" style={{ color: bar }}>{s.contactsToday}</span>
+                      <Tip label="Contatos realizados hoje">
+                        <span className="font-bold w-5 text-right cursor-default" style={{ color: bar }}>{s.contactsToday}</span>
+                      </Tip>
                       <span className="text-slate-300 hidden md:inline">·</span>
-                      <span className="text-slate-500 hidden md:inline">{s.weekTotal} <span className="text-slate-300 text-[10px]">4sem</span></span>
+                      <Tip label="Total de contatos nas últimas 4 semanas">
+                        <span className="text-slate-500 hidden md:inline cursor-default">{s.weekTotal} <span className="text-slate-300 text-[10px]">4sem</span></span>
+                      </Tip>
                       {s.overdueCount > 0 && (
-                        <span className="bg-amber-50 text-amber-700 border border-amber-200 rounded px-1 py-0.5 text-[10px] font-semibold">{s.overdueCount}⚠</span>
+                        <Tip label={`${s.overdueCount} lembretes vencidos sem reagendamento`}>
+                          <span className="bg-amber-50 text-amber-700 border border-amber-200 rounded px-1 py-0.5 text-[10px] font-semibold cursor-default">{s.overdueCount}⚠</span>
+                        </Tip>
                       )}
                     </div>
-                    <ScoreBadge score={s.compositeScore} />
+                    <Tip label={`Score composto: contatos hoje (40%) + últimas 4sem (30%) + sem atrasos (20%) + online (10%)`}>
+                      <span className="cursor-default"><ScoreBadge score={s.compositeScore} /></span>
+                    </Tip>
                   </div>
                 );
               })}
