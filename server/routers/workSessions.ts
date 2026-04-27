@@ -126,8 +126,8 @@ export const workSessionsRouter = router({
       db.select({
         userId: tasks.userId,
         assignedTo: tasks.assignedTo,
-        updatedAt: tasks.updatedAt,
-      }).from(tasks).where(gte(tasks.updatedAt, todayStart)),
+        lastContactedAt: tasks.lastContactedAt,
+      }).from(tasks).where(gte(tasks.lastContactedAt, todayStart)),
     ]);
 
     return allSellers.map(seller => {
@@ -140,7 +140,7 @@ export const workSessionsRouter = router({
       );
       const contactsToday = mine.length;
       const lastActivityDate = mine.length > 0
-        ? new Date(Math.max(...mine.map(t => new Date(t.updatedAt).getTime())))
+        ? new Date(Math.max(...mine.map(t => new Date(t.lastContactedAt!).getTime())))
         : null;
 
       // Worked time = total elapsed - pauses

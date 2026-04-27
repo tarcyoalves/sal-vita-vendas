@@ -50,6 +50,11 @@ export async function ensureTablesExist() {
     await sql`CREATE INDEX IF NOT EXISTS sellers_status_idx ON sellers(status)`;
     await sql`CREATE INDEX IF NOT EXISTS sellers_user_id_idx ON sellers(user_id)`;
 
+    // last_contacted_at: tracks when attendant actually edited a task with notes
+    // (different from updatedAt which changes on any touch incl. bulk reschedule)
+    await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_contacted_at TIMESTAMP`;
+    await sql`CREATE INDEX IF NOT EXISTS tasks_last_contacted_at_idx ON tasks(last_contacted_at)`;
+
     // Row Level Security — defense-in-depth
     // Table owner (service role) bypasses RLS automatically; other roles are blocked
     await sql`ALTER TABLE users               ENABLE ROW LEVEL SECURITY`;

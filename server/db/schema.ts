@@ -47,6 +47,7 @@ export const tasks = pgTable('tasks', {
   status: text('status').notNull().default('pending'),
   priority: text('priority').notNull().default('medium'),
   assignedTo: text('assigned_to'),
+  lastContactedAt: timestamp('last_contacted_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
