@@ -50,7 +50,18 @@ export async function ensureTablesExist() {
     await sql`CREATE INDEX IF NOT EXISTS sellers_status_idx ON sellers(status)`;
     await sql`CREATE INDEX IF NOT EXISTS sellers_user_id_idx ON sellers(user_id)`;
 
-    console.log('✅ Database tables and indexes ensured');
+    // Row Level Security — defense-in-depth
+    // Table owner (service role) bypasses RLS automatically; other roles are blocked
+    await sql`ALTER TABLE users               ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE sellers             ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE tasks               ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE clients             ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE reminders           ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE chat_messages       ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE knowledge_documents ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE work_sessions       ENABLE ROW LEVEL SECURITY`;
+
+    console.log('✅ Database tables, indexes, and RLS ensured');
   } catch (err) {
     console.error('❌ Migration error:', err);
     throw err;
