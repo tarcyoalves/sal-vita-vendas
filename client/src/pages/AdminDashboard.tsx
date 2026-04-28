@@ -14,8 +14,144 @@ import {
   Settings,
   Scan,
   BarChart2,
+  Timer,
+  Activity,
+  ChevronDown,
+  ChevronRight,
+  FileText,
 } from "lucide-react";
 import AttendantDetailModal from '../components/AttendantDetailModal';
+
+// ── AI Analysis Report ───────────────────────────────────────────────────────
+// Uses inline styles (not Tailwind dynamic classes) + manual table parser
+// (avoids remark-gfm ESM issues and Tailwind JIT missing dynamic strings)
+
+type SectionTheme = { bg: string; border: string; headerBg: string; headerText: string; dot: string };
+
+function getSectionTheme(h: string): SectionTheme {
+  if (h.includes('🏆')) return { bg:'#fffbeb', border:'#f59e0b', headerBg:'#fef3c7', headerText:'#92400e', dot:'#f59e0b' };
+  if (h.includes('🔴')) return { bg:'#fef2f2', border:'#ef4444', headerBg:'#fee2e2', headerText:'#991b1b', dot:'#ef4444' };
+  if (h.includes('📊')) return { bg:'#eff6ff', border:'#3b82f6', headerBg:'#dbeafe', headerText:'#1e40af', dot:'#3b82f6' };
+  if (h.includes('✅')) return { bg:'#f0fdf4', border:'#22c55e', headerBg:'#dcfce7', headerText:'#166534', dot:'#22c55e' };
+  if (h.includes('🌟')) return { bg:'#faf5ff', border:'#8b5cf6', headerBg:'#ede9fe', headerText:'#5b21b6', dot:'#8b5cf6' };
+  return { bg:'#f8fafc', border:'#94a3b8', headerBg:'#f1f5f9', headerText:'#1e293b', dot:'#64748b' };
+}
+
+function renderInline(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*(?:[^*]|\*(?!\*))+\*\*)/g);
+  if (parts.length === 1) return text;
+  return <>{parts.map((p, i) =>
+    p.startsWith('**') && p.endsWith('**')
+      ? <strong key={i} style={{ fontWeight:700, color:'#111827' }}>{p.slice(2,-2)}</strong>
+      : <span key={i}>{p}</span>
+  )}</>;
+}
+
+function MdSection({ body }: { body: string }) {
+  const lines = body.split('\n');
+  const nodes: React.ReactNode[] = [];
+  let i = 0, k = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const t = line.trim();
+    if (!t) { i++; continue; }
+
+    // Markdown table
+    if (t.startsWith('|')) {
+      const tl: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith('|')) { tl.push(lines[i]); i++; }
+      if (tl.length >= 2) {
+        const splitRow = (l: string) => l.split('|').slice(1,-1).map(c => c.trim());
+        const headers = splitRow(tl[0]);
+        const rows = tl.slice(2).map(splitRow).filter(r => r.some(c => c && !/^[:\-\s]+$/.test(c)));
+        nodes.push(
+          <div key={k++} style={{ overflowX:'auto', margin:'10px 0', borderRadius:'8px', border:'1px solid #e5e7eb' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px' }}>
+              <thead>
+                <tr style={{ background:'#f3f4f6' }}>
+                  {headers.map((h,j) => <th key={j} style={{ padding:'8px 12px', textAlign:'left', fontWeight:600, color:'#4b5563', borderBottom:'2px solid #e5e7eb', whiteSpace:'nowrap' }}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row,ri) => (
+                  <tr key={ri} style={{ background: ri%2===0 ? '#fff' : '#f9fafb' }}>
+                    {row.map((cell,ci) => <td key={ci} style={{ padding:'8px 12px', color:'#374151', borderBottom:'1px solid #f3f4f6', verticalAlign:'top' }}>{cell}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+      continue;
+    }
+
+    // ### attendant sub-heading
+    if (t.startsWith('### ')) {
+      nodes.push(<p key={k++} style={{ fontWeight:700, fontSize:'13px', color:'#1f2937', marginTop:'14px', marginBottom:'4px', paddingTop:'10px', borderTop:'1px solid #f3f4f6' }}>{t.slice(4)}</p>);
+      i++; continue;
+    }
+    // #### small heading
+    if (t.startsWith('#### ')) {
+      nodes.push(<p key={k++} style={{ fontWeight:600, fontSize:'11px', color:'#6b7280', textTransform:'uppercase', letterSpacing:'0.06em', marginTop:'10px', marginBottom:'2px' }}>{t.slice(5)}</p>);
+      i++; continue;
+    }
+    // List item
+    if (/^[-*•]\s/.test(t) || /^\d+\.\s/.test(t)) {
+      const txt = t.replace(/^[-*•]\s/,'').replace(/^\d+\.\s/,'');
+      nodes.push(
+        <div key={k++} style={{ display:'flex', gap:'8px', marginBottom:'5px', paddingLeft:'2px' }}>
+          <span style={{ color:'#9ca3af', flexShrink:0, fontSize:'12px', marginTop:'3px' }}>▸</span>
+          <span style={{ fontSize:'13px', color:'#374151', lineHeight:'1.55' }}>{renderInline(txt)}</span>
+        </div>
+      );
+      i++; continue;
+    }
+    // Paragraph
+    nodes.push(<p key={k++} style={{ fontSize:'13px', color:'#374151', lineHeight:'1.6', marginBottom:'4px' }}>{renderInline(t)}</p>);
+    i++;
+  }
+  return <>{nodes}</>;
+}
+
+function AiAnalysisReport({ markdown }: { markdown: string }) {
+  const raw = markdown.split(/(?=^## )/m).filter(Boolean);
+  const intro = raw[0]?.startsWith('## ') ? null : raw[0];
+  const sections = raw.filter(s => s.startsWith('## '));
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+        <div style={{ width:8, height:8, borderRadius:'50%', background:'#8b5cf6', flexShrink:0 }} />
+        <p style={{ fontWeight:600, color:'#6d28d9', fontSize:'13px', margin:0 }}>📋 Parecer Executivo da IA</p>
+      </div>
+
+      {intro && (
+        <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:'10px', padding:'12px 16px', fontSize:'13px', color:'#475569', lineHeight:'1.6' }}>
+          {intro.trim()}
+        </div>
+      )}
+
+      {sections.map((section, i) => {
+        const lines = section.trim().split('\n');
+        const heading = lines[0].replace(/^##\s*/,'');
+        const body = lines.slice(1).join('\n').trim();
+        const th = getSectionTheme(heading);
+        return (
+          <div key={i} style={{ background:th.bg, border:`1.5px solid ${th.border}`, borderRadius:'12px', overflow:'hidden' }}>
+            <div style={{ background:th.headerBg, padding:'10px 16px', borderBottom:`1px solid ${th.border}`, display:'flex', alignItems:'center', gap:'8px' }}>
+              <div style={{ width:8, height:8, borderRadius:'50%', background:th.dot, flexShrink:0 }} />
+              <h3 style={{ fontWeight:700, fontSize:'13px', color:th.headerText, margin:0 }}>{heading}</h3>
+            </div>
+            <div style={{ padding:'14px 16px' }}>
+              <MdSection body={body} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function AdminDashboard() {
   const { user, loading } = useAuth();
@@ -24,16 +160,35 @@ export default function AdminDashboard() {
   const { data: tasks = [] } = trpc.tasks.list.useQuery();
   const { data: reminders = [] } = trpc.tasks.reminders.useQuery();
   const analyzeAttendantsMutation = trpc.ai.analyzeAttendants.useMutation();
+  const { data: sessionData = [] } = trpc.workSessions.allActiveToday.useQuery(undefined, { refetchInterval: 60_000 });
+  const [expandedSessions, setExpandedSessions] = useState<Set<number>>(new Set());
+  const toggleSession = (id: number) => setExpandedSessions(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
   const [monitorReport, setMonitorReport] = useState<any[] | null>(null);
   const [monitorSummary, setMonitorSummary] = useState<string | null>(null);
   const [monitorLoading, setMonitorLoading] = useState(false);
   const [reminderFilter, setReminderFilter] = useState<string>("all");
   const [selectedSeller, setSelectedSeller] = useState<any | null>(null);
 
+  const getAiConfig = () => {
+    try {
+      const configs = JSON.parse(localStorage.getItem('aiConfigs') || '{}') as Record<string, any>;
+      for (const id of ['groq', 'gemini']) {
+        const c = configs[id];
+        if (c?.status === 'configured') return { apiKey: c.apiKey, provider: c.provider, model: c.model };
+      }
+    } catch { /* ignore */ }
+    return undefined;
+  };
+
   const handleRunMonitor = async () => {
     setMonitorLoading(true);
     try {
-      const result = await analyzeAttendantsMutation.mutateAsync();
+      const aiCfg = getAiConfig();
+      const result = await analyzeAttendantsMutation.mutateAsync(aiCfg);
       setMonitorReport(result.report);
       setMonitorSummary(result.summary);
     } catch (e: any) {
@@ -312,11 +467,141 @@ export default function AdminDashboard() {
           )}
 
           {monitorSummary && (
-            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
-              <p className="font-semibold text-purple-800 mb-2 text-sm">📋 Parecer Executivo da IA</p>
-              <p className="text-sm text-gray-700 whitespace-pre-wrap">{monitorSummary}</p>
-            </div>
+            <AiAnalysisReport markdown={monitorSummary} />
           )}
+        </CardContent>
+      </Card>
+
+      {/* Work Sessions */}
+      <Card className="border-cyan-200">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center justify-between text-base">
+            <span className="flex items-center gap-2">
+              <Timer size={18} className="text-cyan-600" />
+              Sessões de Trabalho Hoje
+            </span>
+            <span className="text-xs text-gray-400 font-normal">atualiza a cada 60s · clique para detalhar</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {(sessionData as any[]).map((row: any) => {
+              const s = row.session;
+              const idleMin = Math.floor((row.idleSinceMs ?? 0) / 60000);
+              const isIdle = s?.status === 'active' && idleMin >= 30;
+              const isPaused = s?.status === 'paused';
+              const workedH = s ? Math.floor(s.workedMs / 3600000) : 0;
+              const workedM = s ? Math.floor((s.workedMs % 3600000) / 60000) : 0;
+              const startTime = s ? (() => {
+                const d = new Date(s.startedAt);
+                return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+              })() : null;
+              const fmtAgo = (date: any) => {
+                const min = Math.floor((Date.now() - new Date(date).getTime()) / 60000);
+                if (min < 1) return '<1min atrás';
+                if (min < 60) return `${min}min atrás`;
+                const h = Math.floor(min / 60);
+                if (h < 24) return `${h}h atrás`;
+                return `${Math.floor(h / 24)}d atrás`;
+              };
+              const lastAct = row.lastActivityDate ? fmtAgo(row.lastActivityDate) : null;
+              const lastOnline = row.lastOnlineAt ? fmtAgo(row.lastOnlineAt) : null;
+              const isExpanded = expandedSessions.has(row.sellerId);
+              const hasDetail = (row.recentTasks?.length > 0) || lastOnline;
+
+              return (
+                <div key={row.sellerId} className={`rounded-xl border overflow-hidden ${
+                  isIdle ? 'border-amber-200' :
+                  isPaused ? 'border-yellow-200' :
+                  s ? 'border-green-200' : 'border-gray-100'
+                }`}>
+                  {/* Main row */}
+                  <div
+                    className={`flex items-center gap-3 p-3 cursor-pointer select-none ${
+                      isIdle ? 'bg-amber-50 hover:bg-amber-100' :
+                      isPaused ? 'bg-yellow-50 hover:bg-yellow-100' :
+                      s ? 'bg-green-50 hover:bg-green-100' : 'bg-gray-50 hover:bg-gray-100'
+                    } transition-colors`}
+                    onClick={() => hasDetail && toggleSession(row.sellerId)}
+                  >
+                    {/* Status dot */}
+                    <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                      isIdle ? 'bg-amber-400' : isPaused ? 'bg-yellow-400' : s ? 'bg-green-500 animate-pulse' : 'bg-gray-300'
+                    }`} />
+
+                    {/* Name */}
+                    <div className="w-28 flex-shrink-0">
+                      <p className="text-sm font-semibold text-gray-800 truncate">{row.name}</p>
+                    </div>
+
+                    {/* Status label */}
+                    <div className="w-28 flex-shrink-0">
+                      {!s && <span className="text-xs text-gray-400">Sem sessão hoje</span>}
+                      {s?.status === 'active' && !isIdle && <span className="text-xs font-semibold text-green-700 flex items-center gap-1"><Activity size={11} /> Ativo</span>}
+                      {isIdle && <span className="text-xs font-semibold text-amber-700">⚠ Ocioso {idleMin}min</span>}
+                      {isPaused && <span className="text-xs font-semibold text-yellow-700">⏸ Pausado</span>}
+                    </div>
+
+                    {/* Metrics */}
+                    <div className="flex items-center gap-4 flex-1 text-xs text-gray-600 flex-wrap">
+                      {startTime && <span title="Entrada">🕐 <strong>{startTime}</strong></span>}
+                      {s && (
+                        <span title="Tempo trabalhado">
+                          ⏱ <strong>{workedH > 0 ? `${workedH}h ` : ''}{workedM}min</strong>
+                        </span>
+                      )}
+                      <span title="Tarefas com anotação hoje">
+                        📞 <strong>{row.contactsToday}</strong> contatos
+                      </span>
+                      {lastAct && <span title="Última edição de tarefa">🕒 <strong>{lastAct}</strong></span>}
+                      {!s && lastOnline && (
+                        <span className="text-gray-400" title="Último acesso registrado">
+                          🔌 último acesso: <strong>{lastOnline}</strong>
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Expand chevron */}
+                    {hasDetail && (
+                      <div className="text-gray-400 flex-shrink-0">
+                        {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Expanded detail — recent tasks */}
+                  {isExpanded && (
+                    <div className="border-t border-dashed px-4 py-3 bg-white">
+                      {row.recentTasks?.length > 0 ? (
+                        <div className="space-y-1.5">
+                          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                            Tarefas editadas hoje
+                          </p>
+                          {row.recentTasks.map((t: any, i: number) => (
+                            <div key={i} className="flex items-start gap-2 text-xs text-gray-700">
+                              <FileText size={12} className="text-cyan-500 mt-0.5 flex-shrink-0" />
+                              <span className="flex-1 truncate font-medium">{t.title}</span>
+                              <span className="text-gray-400 flex-shrink-0 tabular-nums">
+                                {fmtAgo(t.lastContactedAt)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-400 italic">
+                          Nenhuma tarefa editada hoje.
+                          {lastOnline && <> Último acesso: <strong>{lastOnline}</strong>.</>}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {(sessionData as any[]).length === 0 && (
+              <p className="text-sm text-gray-400 text-center py-4">Nenhum atendente cadastrado.</p>
+            )}
+          </div>
         </CardContent>
       </Card>
 

@@ -116,27 +116,41 @@ export const workSessionsRouter = router({
       .limit(30);
   }),
 
-  // Admin: all seller sessions started today + last-activity metrics
+  // Admin: all seller sessions today + recent task activity + last-online history
   allActiveToday: adminProcedure.query(async () => {
     const now = new Date();
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
 
-    const [allSellers, todaySessions, todayTasks] = await Promise.all([
+    const [allSellers, todaySessions, todayTasks, allRecentSessions] = await Promise.all([
       db.select().from(sellers).where(eq(sellers.status, 'active')),
       db.select().from(workSessions)
         .where(gte(workSessions.startedAt, todayStart))
         .orderBy(desc(workSessions.startedAt)),
+      // Today's edited tasks — include title so we can show what they worked on
       db.select({
         userId: tasks.userId,
         assignedTo: tasks.assignedTo,
+        title: tasks.title,
         lastContactedAt: tasks.lastContactedAt,
-      }).from(tasks).where(gte(tasks.lastContactedAt, todayStart)),
+      }).from(tasks).where(gte(tasks.lastContactedAt, todayStart))
+        .orderBy(desc(tasks.lastContactedAt)),
+      // Most recent session per seller across all days — for "last online" info
+      db.select({
+        userId: workSessions.userId,
+        startedAt: workSessions.startedAt,
+        endedAt: workSessions.endedAt,
+        status: workSessions.status,
+      }).from(workSessions)
+        .orderBy(desc(workSessions.startedAt))
+        .limit(500),
     ]);
 
     return allSellers.map(seller => {
+      // Most recent session today
       const session = todaySessions.find(s => s.userId === seller.userId) ?? null;
 
+      // Tasks touched today by this seller
       const mine = todayTasks.filter(
         t => t.userId === seller.userId || t.assignedTo === seller.name
       );
@@ -145,6 +159,21 @@ export const workSessionsRouter = router({
         ? new Date(Math.max(...mine.map(t => new Date(t.lastContactedAt!).getTime())))
         : null;
 
+      // Last 5 tasks edited today — for activity detail
+      const recentTasks = mine.slice(0, 5).map(t => ({
+        title: t.title.split(' - ')[0].slice(0, 60),
+        lastContactedAt: t.lastContactedAt,
+      }));
+
+      // Last online from any past session (for sellers with no today session)
+      const lastOnlineSession = !session
+        ? allRecentSessions.find(s => s.userId === seller.userId) ?? null
+        : null;
+      const lastOnlineAt = lastOnlineSession
+        ? (lastOnlineSession.endedAt ?? lastOnlineSession.startedAt)
+        : null;
+
+      // Worked time = total elapsed - pauses
       let workedMs = 0;
       let idleSinceMs = 0;
       if (session) {
@@ -156,6 +185,7 @@ export const workSessionsRouter = router({
         }
         workedMs = Math.max(0, elapsed - pausedTotal);
 
+        // Idle = active session but last activity > 30 min ago
         if (session.status === 'active' && lastActivityDate) {
           idleSinceMs = now.getTime() - lastActivityDate.getTime();
         } else if (session.status === 'active' && contactsToday === 0) {
@@ -176,6 +206,8 @@ export const workSessionsRouter = router({
         contactsToday,
         lastActivityDate,
         idleSinceMs,
+        recentTasks,
+        lastOnlineAt,
       };
     });
   }),

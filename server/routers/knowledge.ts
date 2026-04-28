@@ -11,9 +11,9 @@ export const knowledgeRouter = router({
 
   create: protectedProcedure
     .input(z.object({
-      title: z.string().min(1),
-      content: z.string().min(1),
-      category: z.string().optional(),
+      title: z.string().min(1).max(500),
+      content: z.string().min(1).max(100_000),
+      category: z.string().max(100).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       const [created] = await db.insert(knowledgeDocuments).values({

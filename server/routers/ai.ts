@@ -13,6 +13,13 @@ const BASE_URLS: Record<string, string> = {
   anthropic: 'https://api.anthropic.com/v1',
 };
 
+const DEFAULT_MODELS: Record<string, string> = {
+  groq:    'llama-3.3-70b-versatile',
+  openai:  'gpt-3.5-turbo',
+  gemini:  'gemini-2.5-flash',
+  anthropic: 'claude-3-haiku-20240307',
+};
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function nextBusinessDay(d: Date): Date {
@@ -256,29 +263,29 @@ export const aiRouter = router({
 
   chat: protectedProcedure
     .input(z.object({
-      message: z.string().min(1),
+      message: z.string().min(1).max(4000),
       apiKey: z.string().optional(),
       provider: z.string().optional(),
       model: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       try {
-        // Resolve which API key + endpoint to use
-        const envKey = process.env.GROQ_API_KEY;
-        const apiKey = envKey || input.apiKey || '';
-        const provider = envKey ? 'groq' : (input.provider ?? 'groq');
+        // User key takes priority. Groq is the leader — more generous free tier
+        const provider = input.provider ?? (process.env.GROQ_API_KEY ? 'groq' : process.env.GEMINI_API_KEY ? 'gemini' : 'groq');
+        const envKey = provider === 'groq' ? process.env.GROQ_API_KEY
+          : provider === 'gemini' ? process.env.GEMINI_API_KEY
+          : undefined;
+        const apiKey = input.apiKey || envKey || '';
         const baseURL = BASE_URLS[provider] ?? BASE_URLS.groq;
-        const model = envKey
-          ? 'llama-3.1-8b-instant'
-          : (input.model ?? (provider === 'openai' ? 'gpt-3.5-turbo' : provider === 'gemini' ? 'gemini-1.5-flash' : 'llama-3.1-8b-instant'));
+        const model = input.model ?? DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile';
 
-        console.log('[AI_CHAT] start uid:', ctx.user.id, 'provider:', provider, 'model:', model, 'hasKey:', !!apiKey);
+        console.log('[AI_CHAT] uid:', ctx.user.id, 'provider:', provider, 'model:', model, 'hasKey:', !!apiKey);
 
         await db.insert(chatMessages).values({ userId: ctx.user.id, content: input.message, role: 'user' });
         console.log('[AI_CHAT] msg saved');
 
         if (!apiKey) {
-          const reply = 'IA não configurada. Configure GROQ_API_KEY para ativar o assistente.';
+          const reply = 'IA não configurada. Vá em Configurações → IA e adicione uma chave do Groq ou Gemini (ambos gratuitos).';
           await db.insert(chatMessages).values({ userId: ctx.user.id, content: reply, role: 'assistant' });
           return { reply };
         }
@@ -346,11 +353,23 @@ REGRAS:
       }
     }),
 
-  analyzeAttendants: protectedProcedure.mutation(async ({ ctx }) => {
+  analyzeAttendants: protectedProcedure
+    .input(z.object({
+      apiKey: z.string().optional(),
+      provider: z.string().optional(),
+      model: z.string().optional(),
+    }).optional())
+    .mutation(async ({ input, ctx }) => {
     if (ctx.user.role !== 'admin') throw new Error('Apenas admins podem usar este recurso');
 
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) return { report: [], summary: 'IA não configurada.' };
+    // Groq as leader — more generous free tier (14k req/day vs ~500 Gemini)
+    const analyzeProvider = input?.provider ?? (process.env.GROQ_API_KEY ? 'groq' : process.env.GEMINI_API_KEY ? 'gemini' : 'groq');
+    const envKey = analyzeProvider === 'groq' ? process.env.GROQ_API_KEY : process.env.GEMINI_API_KEY;
+    const apiKey = input?.apiKey || envKey || '';
+    // Always use server-side model for analysis — client's saved model may be llama-3.1-8b-instant
+    // which has 6k TPM limit, too low for the analysis prompt (~9k tokens)
+    const analyzeModel = DEFAULT_MODELS[analyzeProvider] ?? 'llama-3.3-70b-versatile';
+    if (!apiKey) return { report: [], summary: 'IA não configurada. Vá em Configurações → IA e configure Groq (recomendado) ou Gemini.' };
 
     const now = new Date();
     const allSellers = await db.select().from(sellers);
@@ -431,23 +450,56 @@ REGRAS:
     ).join('\n');
 
     try {
-      const summary = await callLLM(apiKey, BASE_URLS.groq, 'llama-3.1-8b-instant', [
+      const summary = await callLLM(apiKey, BASE_URLS[analyzeProvider], analyzeModel, [
         {
           role: 'system',
-          content: `Você é um analista de desempenho de equipes de vendas B2B recorrentes.
-CONTEXTO: Neste sistema NÃO existe conclusão de tarefas. As tarefas são clientes recorrentes que precisam de contato contínuo. O ciclo correto é: atender o cliente → anotar o contato nas notas → reagendar o próximo lembrete.
-SINAIS DE MAU DESEMPENHO:
-- Lembrete vencido sem reatualização = cliente não foi contatado
-- Sem anotação = contato não foi documentado (suspeito de não ter sido feito)
-- Lembrete desativado manualmente = tentativa de esconder inadimplência no atendimento
-- Tarefa nunca atualizada = cliente ignorado desde a importação
-Seja direto, use emojis, responda em português brasileiro.`,
+          content: `Você é um analista sênior de desempenho de equipes de vendas B2B da empresa Sal Vita — Sal do Brasil.
+
+MODELO DE NEGÓCIO: Vendas recorrentes de sal para clientes industriais/alimentícios. NÃO existe "conclusão" de tarefa — cada cliente precisa de contato contínuo e periódico. O ciclo correto é: atender → anotar → reagendar próximo lembrete.
+
+INTERPRETAÇÃO DOS DADOS:
+- lembrete vencido sem atualização = cliente não recebeu contato → risco de perda
+- sem anotação (<15 chars) = contato não documentado → suspeita de omissão
+- lembrete desativado manualmente = atendente tentou esconder inadimplência
+- tarefa nunca atualizada = cliente ignorado desde importação
+- taxa de lembretes ativos baixa = carteira sendo negligenciada
+
+SEU PAPEL:
+1. Classificar cada atendente: 🟢 Ativo / 🟡 Atenção / 🔴 Crítico
+2. Identificar padrões de negligência vs. engajamento real
+3. Calcular risco de churn por atendente (clientes sem contato)
+4. Dar recomendações concretas e acionáveis imediatamente
+5. Destacar quem merece reconhecimento e quem precisa de intervenção
+
+FORMATO OBRIGATÓRIO (markdown completo — NÃO PARE antes de terminar todas as 4 seções):
+
+## 🏆 Ranking de Desempenho
+[tabela markdown com todos os atendentes: Nome | Clientes | Vencidos | Sem nota | Status]
+
+## 🔴 Alertas Críticos
+[CADA atendente com problema: nome, números exatos, impacto em churn, gravidade]
+
+## 📊 Risco de Churn por Atendente
+[CADA atendente: clientes em risco (número), percentual da carteira, nível de urgência]
+
+## ✅ Plano de Ação — Próximos 7 dias
+[CADA atendente: ações específicas e prioritárias, da mais urgente à menos urgente]
+
+## 🌟 Reconhecimentos
+[atendentes com desempenho positivo, métricas concretas]
+
+REGRAS ABSOLUTAS:
+- Inclua TODOS os ${allSellers.length} atendentes em TODAS as seções
+- Use números exatos dos dados fornecidos
+- NÃO encurte, NÃO resuma, NÃO pule atendentes
+- Complete TODAS as 5 seções antes de parar
+- Português BR`,
         },
         {
           role: 'user',
-          content: `Analise o desempenho dos atendentes considerando que o modelo é RECORRENTE (sem conclusão):\n\n${reportText}\n\nIdentifique: quem está fazendo contato regularmente, quem está negligenciando clientes, comportamentos suspeitos e recomendações concretas de ação imediata.`,
+          content: `DADOS COMPLETOS (${allSellers.length} atendentes):\n\n${reportText}\n\nGere análise COMPLETA com todas as 5 seções. Inclua TODOS os atendentes. Não encurte.`,
         },
-      ], 800, 0.5);
+      ], 8000, 0.3);
       return { report, summary };
     } catch (err: any) {
       console.error('[ANALYZE_ERROR]', err?.message);
@@ -458,10 +510,11 @@ Seja direto, use emojis, responda em português brasileiro.`,
   suggestSalesApproach: protectedProcedure
     .input(z.object({ title: z.string().min(1), notes: z.string() }))
     .mutation(async ({ input }) => {
-      const apiKey = process.env.GROQ_API_KEY;
-      if (!apiKey) return { suggestion: 'IA não configurada (GROQ_API_KEY ausente).' };
+      const apiKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
+      const suggestProvider = process.env.GROQ_API_KEY ? 'groq' : 'gemini';
+      if (!apiKey) return { suggestion: 'IA não configurada.' };
       try {
-        const suggestion = await callLLM(apiKey, BASE_URLS.groq, 'llama-3.1-8b-instant', [
+        const suggestion = await callLLM(apiKey, BASE_URLS[suggestProvider], DEFAULT_MODELS[suggestProvider], [
           { role: 'system', content: 'Vendas B2B de sal. Sugira 1 abordagem prática em 2-3 frases. Direto, sem introdução. Português BR.' },
           { role: 'user', content: `Cliente: ${input.title}\nObservações: ${input.notes || 'sem observações'}` },
         ], 150, 0.7);

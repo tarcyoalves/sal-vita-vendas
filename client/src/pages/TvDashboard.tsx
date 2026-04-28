@@ -115,6 +115,22 @@ function TrendBadge({ t }: { t: 'up' | 'down' | 'stable' }) {
   return <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full">→ estável</span>;
 }
 
+/* ─── Hover Tooltip ──────────────────────────────────────── */
+function Tip({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="relative group/tip inline-flex">
+      {children}
+      <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50
+        opacity-0 group-hover/tip:opacity-100 transition-opacity duration-150 whitespace-nowrap">
+        <div className="bg-slate-800 text-white text-[11px] font-medium px-2.5 py-1.5 rounded-lg shadow-xl">
+          {label}
+        </div>
+        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
+      </div>
+    </div>
+  );
+}
+
 /* ─── Score Badge with SVG circular ring ─────────────────── */
 function ScoreBadge({ score }: { score: number }) {
   const dash = (Math.min(score, 100) / 100) * RING_CIRC;
@@ -169,6 +185,22 @@ export default function TvDashboard() {
     refetchInterval: 30_000,
     retry: 3,
   });
+
+  useEffect(() => {
+    if (!('wakeLock' in navigator)) return;
+    let lock: WakeLockSentinel | null = null;
+    const acquire = () => {
+      (navigator as any).wakeLock.request('screen')
+        .then((l: WakeLockSentinel) => { lock = l; })
+        .catch(() => {});
+    };
+    acquire();
+    document.addEventListener('visibilitychange', acquire);
+    return () => {
+      lock?.release();
+      document.removeEventListener('visibilitychange', acquire);
+    };
+  }, []);
 
   const chartData = useMemo(() => {
     if (!data) return [];
@@ -236,11 +268,11 @@ export default function TvDashboard() {
 
   return (
     <div
-      className="min-h-screen md:h-screen flex flex-col md:overflow-hidden"
+      className="min-h-screen"
       style={{ background: '#EEF1F8', fontFamily: "'Inter', sans-serif" }}
     >
       {/* ══ HEADER ══════════════════════════════════════════ */}
-      <header className="flex items-center justify-between px-4 md:px-6 py-2.5 md:py-3 bg-white border-b border-slate-200 shadow-sm flex-shrink-0">
+      <header className="sticky top-0 z-20 flex items-center justify-between px-4 md:px-6 py-2.5 md:py-3 bg-white border-b border-slate-200 shadow-sm">
         <div className="flex items-center gap-2 md:gap-4">
           <img src="/sal-vita-logo.svg" alt="Sal Vita" className="h-7 md:h-9" />
           <div className="hidden md:block h-6 w-px bg-slate-200" />
@@ -254,7 +286,7 @@ export default function TvDashboard() {
       </header>
 
       {/* ══ KPI STRIP ═══════════════════════════════════════ */}
-      <div className="grid grid-cols-2 md:flex gap-2 md:gap-3 px-3 md:px-5 py-2.5 md:py-3 flex-shrink-0">
+      <div className="grid grid-cols-2 md:flex gap-2 md:gap-3 px-3 md:px-5 py-2.5 md:py-3">
         <div className="md:flex-1">
           <KpiCard icon="👥" label="Online agora" value={`${data.kpis.onlineNow}/${data.kpis.totalSellers}`} color="#16a34a" sub="atendentes ativos" />
         </div>
@@ -275,13 +307,13 @@ export default function TvDashboard() {
       </div>
 
       {/* ══ MAIN CONTENT ════════════════════════════════════ */}
-      <div className="flex-1 flex flex-col md:grid md:grid-cols-12 gap-3 px-3 md:px-5 pb-4 md:min-h-0 overflow-y-auto md:overflow-hidden">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 px-3 md:px-5 py-3 pb-14">
 
         {/* ── LEFT — 7 cols ─────────────────────────────── */}
-        <div className="md:col-span-7 flex flex-col gap-3 md:min-h-0">
+        <div className="md:col-span-7 flex flex-col gap-3">
 
           {/* Weekly chart */}
-          <div className="bg-white rounded-2xl p-4 md:p-5 shadow-sm border border-slate-100 flex flex-col md:flex-1 md:min-h-0" style={{ borderTop: '3px solid #2563eb' }}>
+          <div className="bg-white rounded-2xl p-4 md:p-5 shadow-sm border border-slate-100 flex flex-col" style={{ borderTop: '3px solid #2563eb' }}>
             <div className="flex items-start justify-between mb-3 md:mb-4 flex-shrink-0 flex-wrap gap-2">
               <div>
                 <h2 className="text-xs md:text-sm font-bold text-slate-700 uppercase tracking-wide">Atividade — Últimas 4 Semanas</h2>
@@ -297,7 +329,7 @@ export default function TvDashboard() {
                 ))}
               </div>
             </div>
-            <div className="h-48 md:h-auto md:flex-1 md:min-h-0">
+            <div className="h-48 md:h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData} margin={{ top: 8, right: 12, left: -20, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -337,14 +369,22 @@ export default function TvDashboard() {
                       <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${s.pct}%`, background: bar }} />
                     </div>
                     <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0 text-[11px] md:text-xs font-mono">
-                      <span className="font-bold w-5 text-right" style={{ color: bar }}>{s.contactsToday}</span>
+                      <Tip label="Contatos realizados hoje">
+                        <span className="font-bold w-5 text-right cursor-default" style={{ color: bar }}>{s.contactsToday}</span>
+                      </Tip>
                       <span className="text-slate-300 hidden md:inline">·</span>
-                      <span className="text-slate-500 hidden md:inline">{s.weekTotal} <span className="text-slate-300 text-[10px]">4sem</span></span>
+                      <Tip label="Total de contatos nas últimas 4 semanas">
+                        <span className="text-slate-500 hidden md:inline cursor-default">{s.weekTotal} <span className="text-slate-300 text-[10px]">4sem</span></span>
+                      </Tip>
                       {s.overdueCount > 0 && (
-                        <span className="bg-amber-50 text-amber-700 border border-amber-200 rounded px-1 py-0.5 text-[10px] font-semibold">{s.overdueCount}⚠</span>
+                        <Tip label={`${s.overdueCount} lembretes vencidos sem reagendamento`}>
+                          <span className="bg-amber-50 text-amber-700 border border-amber-200 rounded px-1 py-0.5 text-[10px] font-semibold cursor-default">{s.overdueCount}⚠</span>
+                        </Tip>
                       )}
                     </div>
-                    <ScoreBadge score={s.compositeScore} />
+                    <Tip label={`Score composto: contatos hoje (40%) + últimas 4sem (30%) + sem atrasos (20%) + online (10%)`}>
+                      <span className="cursor-default"><ScoreBadge score={s.compositeScore} /></span>
+                    </Tip>
                   </div>
                 );
               })}
@@ -353,10 +393,10 @@ export default function TvDashboard() {
         </div>
 
         {/* ── RIGHT — 5 cols ────────────────────────────── */}
-        <div className="md:col-span-5 flex flex-col gap-3 md:min-h-0">
+        <div className="md:col-span-5 flex flex-col gap-3">
 
           {/* Hot clients */}
-          <div className="bg-white rounded-2xl p-4 md:p-5 shadow-sm border border-slate-100 flex flex-col md:flex-1 md:min-h-0" style={{ borderTop: '3px solid #f59e0b' }}>
+          <div className="bg-white rounded-2xl p-4 md:p-5 shadow-sm border border-slate-100 flex flex-col" style={{ borderTop: '3px solid #f59e0b' }}>
             <div className="flex-shrink-0 mb-3 md:mb-4">
               <h2 className="text-xs md:text-sm font-bold text-slate-700 uppercase tracking-wide">🔥 Clientes Potenciais</h2>
               <p className="text-[11px] text-slate-400 mt-0.5 hidden md:block">pontuados por palavras-chave nas anotações</p>
@@ -367,7 +407,7 @@ export default function TvDashboard() {
                 <p className="text-sm text-slate-400 text-center leading-relaxed">Sem clientes pontuados.<br />Atualize as anotações.</p>
               </div>
             ) : (
-              <div className="md:flex-1 md:overflow-y-auto md:min-h-0 space-y-3 md:pr-1">
+              <div className="md:max-h-[320px] md:overflow-y-auto space-y-3 md:pr-1">
                 {data.hotClients.map((c, i) => (
                   <div key={i} className={`flex gap-3 items-start pb-3 ${i < data.hotClients.length - 1 ? 'border-b border-slate-100' : ''}`}>
                     <ScoreBadge score={c.score} />
@@ -395,25 +435,21 @@ export default function TvDashboard() {
             <div className="flex items-start justify-between mb-3 gap-3">
               <h2 className="text-xs md:text-sm font-bold text-slate-700 uppercase tracking-wide">⚡ Alertas e Ações</h2>
               {alertPieData.length > 0 && (
-                <div className="flex-shrink-0" style={{ width: 80, height: 80 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={alertPieData} dataKey="value" cx="50%" cy="50%"
-                        innerRadius={18} outerRadius={36} paddingAngle={2}
-                        label={false} labelLine={false}
-                      >
-                        {alertPieData.map((entry, idx) => (
-                          <Cell key={idx} fill={ALERT_COLORS[entry.type] ?? '#94a3b8'} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(value: any, _name: any, props: any) =>
-                          [value, ALERT_LABELS[props.payload.type] ?? props.payload.type]
-                        }
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
+                <PieChart width={80} height={80} className="flex-shrink-0">
+                  <Pie data={alertPieData} dataKey="value" cx="50%" cy="50%"
+                    innerRadius={18} outerRadius={36} paddingAngle={2}
+                    label={false} labelLine={false}
+                  >
+                    {alertPieData.map((entry, idx) => (
+                      <Cell key={idx} fill={ALERT_COLORS[entry.type] ?? '#94a3b8'} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: any, _name: any, props: any) =>
+                      [value, ALERT_LABELS[props.payload.type] ?? props.payload.type]
+                    }
+                  />
+                </PieChart>
               )}
             </div>
             {data.alerts.length === 0 ? (
@@ -443,7 +479,7 @@ export default function TvDashboard() {
       </div>
 
       {/* ══ FOOTER (desktop only, fixed) ════════════════════ */}
-      <footer className="hidden md:flex items-center justify-between px-6 py-2 bg-white border-t border-slate-200 text-[11px] text-slate-400 flex-shrink-0">
+      <footer className="hidden md:flex items-center justify-between px-6 py-2 bg-white border-t border-slate-200 text-[11px] text-slate-400 sticky bottom-0 z-10">
         <span className="font-semibold text-slate-500">Sal Vita — Painel de Gestão</span>
         <span>atualizado às {lastUpdated}</span>
         <span>© {CURRENT_YEAR} Sal Vita</span>
