@@ -110,7 +110,7 @@ interface AppShellProps {
 }
 
 export default function AppShell({ children }: AppShellProps) {
-  const { user } = useAuth();
+  const { user, refresh: refreshUser } = useAuth();
   const [location, setLocation] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [iaExpanded, setIaExpanded] = useState(
@@ -139,19 +139,67 @@ export default function AppShell({ children }: AppShellProps) {
   const goalHours = sellerProfile?.workHoursGoal ?? 8;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+
+  // sessionStorage clears on tab close → forces modal on every new tab/browser open
+  const isSessionAcked = (sessionId?: number) => {
+    try { return sessionId != null && sessionStorage.getItem('wsAck') === String(sessionId); }
+    catch { return false; }
+  };
+  const ackSession = (sessionId: number) => {
+    try { sessionStorage.setItem('wsAck', String(sessionId)); } catch {}
+  };
+
+  const todayStr = new Date().toDateString();
+  const hasLiveSession = !!currentSession && (currentSession.status === 'active' || currentSession.status === 'paused');
+  const sessionIsToday = hasLiveSession && new Date(currentSession!.startedAt).toDateString() === todayStr;
+  const sessionIsStale = hasLiveSession && !sessionIsToday;
+  // Show retomar when session is from today but tab was closed (ack not in sessionStorage)
+  const showRetomar = sessionIsToday && !isSessionAcked(currentSession?.id);
   const needsStartup =
-    !!user && role === "user" && !sessionLoading && (!currentSession || currentSession.status === "ended");
+    !!user && role === "user" && !sessionLoading && (
+      !currentSession || currentSession.status === "ended" || sessionIsStale || showRetomar
+    );
 
   const handleStartWork = async () => {
     setStartingWork(true);
     try {
-      await startWorkMut.mutateAsync({ dailyGoalHours: goalHours });
+      const session = await startWorkMut.mutateAsync({ dailyGoalHours: goalHours });
+      ackSession(session.id);
       await refetchSession();
       toast.success("▶ Trabalho iniciado!");
     } catch (e: any) {
       toast.error(e?.message ?? "Erro ao iniciar trabalho");
     } finally {
       setStartingWork(false);
+    }
+  };
+
+  const handleRetomar = () => {
+    if (currentSession) ackSession(currentSession.id);
+    toast.success("▶ Bem-vindo de volta!");
+  };
+
+  // Force password change on first access
+  const forceChangePwdMut = trpc.auth.forceChangePassword.useMutation();
+  const [forcePwdForm, setForcePwdForm] = useState({ next: "", confirm: "" });
+  const [forcePwdLoading, setForcePwdLoading] = useState(false);
+
+  const handleForceChangePwd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (forcePwdForm.next !== forcePwdForm.confirm) {
+      toast.error("As senhas não coincidem");
+      return;
+    }
+    setForcePwdLoading(true);
+    try {
+      await forceChangePwdMut.mutateAsync({ newPassword: forcePwdForm.next });
+      await refreshUser();
+      toast.success("✅ Senha definida! Bem-vindo ao sistema.");
+      setForcePwdForm({ next: "", confirm: "" });
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao definir senha");
+    } finally {
+      setForcePwdLoading(false);
     }
   };
 
@@ -405,8 +453,62 @@ export default function AppShell({ children }: AppShellProps) {
       {/* Work session timer — only for attendants, above bottom nav on mobile */}
       {role === "user" && <ActiveTimer />}
 
+      {/* ── Force password change modal (first access) — blocks everything ── */}
+      {!!user && user.mustChangePassword && (
+        <div className="fixed inset-0 z-[300] bg-gradient-to-br from-slate-900 to-slate-700 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm">
+            <img
+              src="/sal-vita-logo.svg"
+              alt="Sal Vita"
+              className="mx-auto mb-5 object-contain"
+              style={{ height: "56px" }}
+            />
+            <h2 className="text-xl font-bold text-gray-800 mb-1 text-center">
+              Bem-vindo, {user?.name?.split(" ")[0]}!
+            </h2>
+            <p className="text-gray-500 text-sm mb-6 text-center">
+              Este é seu primeiro acesso. Defina uma senha pessoal para continuar.
+            </p>
+            <form onSubmit={handleForceChangePwd} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nova senha</label>
+                <input
+                  type="password"
+                  value={forcePwdForm.next}
+                  onChange={e => setForcePwdForm(f => ({ ...f, next: e.target.value }))}
+                  placeholder="Mínimo 6 caracteres"
+                  required
+                  minLength={6}
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar senha</label>
+                <input
+                  type="password"
+                  value={forcePwdForm.confirm}
+                  onChange={e => setForcePwdForm(f => ({ ...f, confirm: e.target.value }))}
+                  placeholder="Repita a senha"
+                  required
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={forcePwdLoading}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
+              >
+                {forcePwdLoading ? (
+                  <><span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Salvando...</>
+                ) : "🔑 Definir Minha Senha"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* ── Startup blocking modal (attendants) ── */}
-      {needsStartup && (
+      {needsStartup && !user?.mustChangePassword && (
         <div className="fixed inset-0 z-[200] bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm text-center">
             <img
@@ -415,26 +517,52 @@ export default function AppShell({ children }: AppShellProps) {
               className="mx-auto mb-5 object-contain"
               style={{ height: "72px" }}
             />
-            <h2 className="text-xl font-bold text-gray-800 mb-1">
-              {greeting}, {user?.name?.split(" ")[0]}!
-            </h2>
-            <p className="text-gray-500 text-sm mb-8">
-              Registre sua entrada para começar a usar o sistema.
-            </p>
-            <button
-              onClick={handleStartWork}
-              disabled={startingWork}
-              className="w-full py-4 bg-green-600 hover:bg-green-700 text-white text-lg font-bold rounded-xl transition disabled:opacity-50 shadow-lg flex items-center justify-center gap-2"
-            >
-              {startingWork ? (
-                <>
-                  <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
-                  Iniciando...
-                </>
-              ) : (
-                "▶ Iniciar Trabalho"
-              )}
-            </button>
+            {showRetomar ? (
+              <>
+                <h2 className="text-xl font-bold text-gray-800 mb-1">
+                  Bem-vindo de volta, {user?.name?.split(" ")[0]}!
+                </h2>
+                <p className="text-gray-500 text-sm mb-8">
+                  Você tem trabalho em andamento hoje. Deseja retomar?
+                </p>
+                <button
+                  onClick={handleRetomar}
+                  className="w-full py-4 bg-green-600 hover:bg-green-700 text-white text-lg font-bold rounded-xl transition shadow-lg flex items-center justify-center gap-2 mb-3"
+                >
+                  ▶ Retomar Trabalho
+                </button>
+                <button
+                  onClick={handleStartWork}
+                  disabled={startingWork}
+                  className="w-full py-3 border border-gray-300 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition disabled:opacity-50"
+                >
+                  {startingWork ? "Iniciando..." : "Iniciar sessão nova"}
+                </button>
+              </>
+            ) : (
+              <>
+                <h2 className="text-xl font-bold text-gray-800 mb-1">
+                  {greeting}, {user?.name?.split(" ")[0]}!
+                </h2>
+                <p className="text-gray-500 text-sm mb-8">
+                  Registre sua entrada para começar a usar o sistema.
+                </p>
+                <button
+                  onClick={handleStartWork}
+                  disabled={startingWork}
+                  className="w-full py-4 bg-green-600 hover:bg-green-700 text-white text-lg font-bold rounded-xl transition disabled:opacity-50 shadow-lg flex items-center justify-center gap-2"
+                >
+                  {startingWork ? (
+                    <>
+                      <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
+                      Iniciando...
+                    </>
+                  ) : (
+                    "▶ Iniciar Trabalho"
+                  )}
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

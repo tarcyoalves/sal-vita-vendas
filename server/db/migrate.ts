@@ -50,7 +50,26 @@ export async function ensureTablesExist() {
     await sql`CREATE INDEX IF NOT EXISTS sellers_status_idx ON sellers(status)`;
     await sql`CREATE INDEX IF NOT EXISTS sellers_user_id_idx ON sellers(user_id)`;
 
-    console.log('✅ Database tables and indexes ensured');
+    // last_contacted_at: tracks when attendant actually edited a task with notes
+    // (different from updatedAt which changes on any touch incl. bulk reschedule)
+    await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_contacted_at TIMESTAMP`;
+    await sql`CREATE INDEX IF NOT EXISTS tasks_last_contacted_at_idx ON tasks(last_contacted_at)`;
+
+    // must_change_password: force attendant to set own password on first login
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT false NOT NULL`;
+
+    // Row Level Security — defense-in-depth
+    // Table owner (service role) bypasses RLS automatically; other roles are blocked
+    await sql`ALTER TABLE users               ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE sellers             ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE tasks               ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE clients             ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE reminders           ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE chat_messages       ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE knowledge_documents ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE work_sessions       ENABLE ROW LEVEL SECURITY`;
+
+    console.log('✅ Database tables, indexes, and RLS ensured');
   } catch (err) {
     console.error('❌ Migration error:', err);
     throw err;

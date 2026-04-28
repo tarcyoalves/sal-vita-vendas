@@ -6,6 +6,7 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   role: text('role').notNull().default('user'), // 'admin' | 'user'
+  mustChangePassword: boolean('must_change_password').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -47,6 +48,7 @@ export const tasks = pgTable('tasks', {
   status: text('status').notNull().default('pending'),
   priority: text('priority').notNull().default('medium'),
   assignedTo: text('assigned_to'),
+  lastContactedAt: timestamp('last_contacted_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

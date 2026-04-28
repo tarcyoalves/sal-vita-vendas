@@ -1,7 +1,7 @@
 import { router, protectedProcedure } from '../trpc';
 import { db } from '../db';
 import { sellers, tasks, workSessions, clients } from '../db/schema';
-import { eq, or, sql } from 'drizzle-orm';
+import { eq, or, and, gte, sql } from 'drizzle-orm';
 
 const HOT_KEYWORDS = [
   'orçamento', 'orcamento', 'interessad', 'confirmar', 'confirmo',
@@ -22,11 +22,15 @@ export const tvRouter = router({
         id: tasks.id, title: tasks.title, notes: tasks.notes,
         assignedTo: tasks.assignedTo, status: tasks.status,
         reminderDate: tasks.reminderDate, updatedAt: tasks.updatedAt,
+        lastContactedAt: tasks.lastContactedAt,
         userId: tasks.userId,
       }).from(tasks),
       db.select({ userId: workSessions.userId, status: workSessions.status })
         .from(workSessions)
-        .where(or(eq(workSessions.status, 'active'), eq(workSessions.status, 'paused'))),
+        .where(and(
+          or(eq(workSessions.status, 'active'), eq(workSessions.status, 'paused')),
+          gte(workSessions.startedAt, todayStart),
+        )),
       db.select({ count: sql<number>`count(*)::int` }).from(clients),
     ]);
 
@@ -44,9 +48,11 @@ export const tvRouter = router({
 
       const weeklyContacts = weeks.map(w => ({
         week: w.label,
+        // Real contacts: tasks where attendant actually wrote notes (lastContactedAt set)
         contacts: mine.filter(t => {
-          const u = new Date(t.updatedAt);
-          return u >= w.start && u < w.end;
+          if (!t.lastContactedAt) return false;
+          const lc = new Date(t.lastContactedAt);
+          return lc >= w.start && lc < w.end;
         }).length,
       }));
 
@@ -55,7 +61,10 @@ export const tvRouter = router({
       const trend: 'up' | 'down' | 'stable' =
         lastW > prevW ? 'up' : lastW < prevW ? 'down' : 'stable';
 
-      const contactsToday = mine.filter(t => new Date(t.updatedAt) >= todayStart).length;
+      // Real contacts today: only tasks the attendant manually edited with notes
+      const contactsToday = mine.filter(
+        t => t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart
+      ).length;
       const overdueCount = mine.filter(
         t => t.reminderDate && new Date(t.reminderDate) < now && t.status === 'pending'
       ).length;
@@ -111,7 +120,9 @@ export const tvRouter = router({
     const totalOverdue = allTasks.filter(
       t => t.reminderDate && new Date(t.reminderDate) < now && t.status === 'pending'
     ).length;
-    const contactsToday = allTasks.filter(t => new Date(t.updatedAt) >= todayStart).length;
+    const contactsToday = allTasks.filter(
+      t => t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart
+    ).length;
 
     return {
       kpis: {

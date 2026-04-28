@@ -20,9 +20,9 @@ export const tasksRouter = router({
   create: protectedProcedure
     .input(z.object({
       clientId: z.number().optional().default(0),
-      title: z.string().min(1),
-      description: z.string().optional(),
-      notes: z.string().optional(),
+      title: z.string().min(1).max(500),
+      description: z.string().max(2000).optional(),
+      notes: z.string().max(5000).optional(),
       reminderDate: z.date().optional(),
       reminderEnabled: z.boolean().optional().default(true),
       priority: z.enum(['low', 'medium', 'high']).optional().default('medium'),
@@ -48,9 +48,9 @@ export const tasksRouter = router({
   update: protectedProcedure
     .input(z.object({
       id: z.number(),
-      title: z.string().optional(),
-      description: z.string().optional(),
-      notes: z.string().optional(),
+      title: z.string().max(500).optional(),
+      description: z.string().max(2000).optional(),
+      notes: z.string().max(5000).optional(),
       reminderDate: z.date().optional().nullable(),
       reminderEnabled: z.boolean().optional(),
       priority: z.enum(['low', 'medium', 'high']).optional(),
@@ -63,9 +63,15 @@ export const tasksRouter = router({
       const where = ctx.user.role === 'admin'
         ? eq(tasks.id, id)
         : and(eq(tasks.id, id), or(eq(tasks.userId, ctx.user.id), eq(tasks.assignedTo, userName)));
+      // Mark real contact: attendant manually saved notes (>15 chars = real annotation)
+      const now = new Date();
+      const setData: Record<string, any> = { ...data, updatedAt: now };
+      if (data.notes && data.notes.trim().length > 15) {
+        setData.lastContactedAt = now;
+      }
       const [updated] = await db
         .update(tasks)
-        .set({ ...data, updatedAt: new Date() })
+        .set(setData)
         .where(where)
         .returning();
       if (!updated) throw new TRPCError({ code: 'FORBIDDEN', message: 'Tarefa não encontrada ou sem permissão' });

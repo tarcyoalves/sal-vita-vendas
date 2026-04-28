@@ -42,6 +42,7 @@ export const sellersRouter = router({
           email: input.email,
           passwordHash,
           role: 'user',
+          mustChangePassword: true,
         }).returning();
 
         const [created] = await tx.insert(sellers).values({
