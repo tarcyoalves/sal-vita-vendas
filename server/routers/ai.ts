@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc';
 import { db } from '../db';
-import { chatMessages, tasks, clients, sellers } from '../db/schema';
-import { eq, desc, or } from 'drizzle-orm';
+import { chatMessages, tasks, clients, sellers, workSessions } from '../db/schema';
+import { eq, desc, or, gte, and } from 'drizzle-orm';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -102,6 +102,20 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'list_sessions',
+      description: 'Retorna histórico de acesso/sessões de trabalho de um atendente: quando entrou, quanto tempo trabalhou, tempo ocioso, última atividade. Use quando perguntarem sobre presença, acesso, horas trabalhadas ou atividade.',
+      parameters: {
+        type: 'object',
+        properties: {
+          attendant_name: { type: 'string', description: 'Nome do atendente (ex: "Analice"). Use "todos" para ver todos.' },
+        },
+        required: ['attendant_name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'reschedule_tasks',
       description: 'Redistribui os lembretes vencidos (atrasados) de um atendente ao longo dos próximos dias úteis, com um limite por dia. Use quando o usuário pedir para reagendar ou distribuir lembretes.',
       parameters: {
@@ -137,6 +151,56 @@ async function executeTool(name: string, args: any): Promise<any> {
       upcoming: upcoming.length,
       sample_overdue: overdue.slice(0, 5).map(t => ({ id: t.id, title: t.title.slice(0, 60), date: t.reminderDate })),
     };
+  }
+
+  if (name === 'list_sessions') {
+    const nameArg = String(args.attendant_name ?? '').toLowerCase();
+    const now = new Date();
+    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
+
+    const allSellers = await db.select().from(sellers);
+    const targets = nameArg === 'todos'
+      ? allSellers
+      : allSellers.filter(s => s.name.toLowerCase().includes(nameArg));
+    if (targets.length === 0) return { error: `Atendente "${args.attendant_name}" não encontrado.` };
+
+    const recentSessions = await db.select().from(workSessions)
+      .where(gte(workSessions.startedAt, sevenDaysAgo))
+      .orderBy(desc(workSessions.startedAt));
+
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const fmtTime = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    const fmtDate = (d: Date) => `${pad2(d.getDate())}/${pad2(d.getMonth()+1)}`;
+    const fmtMs = (ms: number) => {
+      const h = Math.floor(ms / 3600000);
+      const m = Math.floor((ms % 3600000) / 60000);
+      return h > 0 ? `${h}h${pad2(m)}min` : `${m}min`;
+    };
+
+    const results = targets.map(seller => {
+      const mine = recentSessions.filter(s => s.userId === seller.userId);
+      const sessionDetails = mine.slice(0, 7).map(s => {
+        const start = new Date(s.startedAt);
+        const end = s.endedAt ? new Date(s.endedAt) : (s.status !== 'ended' ? now : null);
+        const elapsed = end ? end.getTime() - start.getTime() : 0;
+        let pausedMs = s.totalPausedMs ?? 0;
+        if (s.status === 'paused' && s.pausedAt) pausedMs += now.getTime() - new Date(s.pausedAt).getTime();
+        const workedMs = Math.max(0, elapsed - pausedMs);
+        return {
+          data: fmtDate(start),
+          entrada: fmtTime(start),
+          saida: end && s.status === 'ended' ? fmtTime(end) : s.status === 'paused' ? 'pausado' : 'ativo agora',
+          tempo_trabalhado: fmtMs(workedMs),
+          pausas: fmtMs(pausedMs),
+          status: s.status,
+        };
+      });
+      const todaySess = mine.find(s => new Date(s.startedAt) >= todayStart);
+      return { atendente: seller.name, hoje: todaySess ? 'sim' : 'não acessou hoje', sessoes_7dias: sessionDetails };
+    });
+
+    return { sessions: results };
   }
 
   if (name === 'reschedule_tasks') {
@@ -201,6 +265,8 @@ async function executeTool(name: string, args: any): Promise<any> {
 
 async function buildUserContext(userId: number, role: string): Promise<string> {
   const now = new Date();
+  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+
   const userTasks = role === 'admin'
     ? await db.select().from(tasks)
     : await db.select().from(tasks).where(eq(tasks.userId, userId));
@@ -210,7 +276,7 @@ async function buildUserContext(userId: number, role: string): Promise<string> {
   const highPriority = userTasks.filter(t => t.priority === 'high');
 
   let context = `
-=== DADOS REAIS DO SISTEMA (${now.toLocaleDateString('pt-BR')}) ===
+=== DADOS REAIS DO SISTEMA (${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}) ===
 LEMBRETES: Total=${userTasks.length} | Com lembrete ativo=${withReminder.length} | Vencidos=${overdue.length} | Alta prioridade=${highPriority.length}
 VENCIDOS RECENTES:
 ${overdue.slice(0, 5).map(t => `- "${t.title.slice(0, 60)}" (${t.assignedTo ?? 'sem atendente'})`).join('\n') || '- Nenhum vencido'}
@@ -218,11 +284,38 @@ ${overdue.slice(0, 5).map(t => `- "${t.title.slice(0, 60)}" (${t.assignedTo ?? '
 
   if (role === 'admin') {
     const allSellers = await db.select().from(sellers);
-    context += `\nATENDENTES (${allSellers.length}):\n`;
+    const todaySessions = await db.select().from(workSessions)
+      .where(gte(workSessions.startedAt, todayStart));
+
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const fmtMs = (ms: number) => {
+      const h = Math.floor(ms / 3600000);
+      const m = Math.floor((ms % 3600000) / 60000);
+      return h > 0 ? `${h}h${pad2(m)}min` : `${m}min`;
+    };
+
+    context += `\nATENDENTES — TAREFAS E ACESSO HOJE (${allSellers.length}):\n`;
     for (const s of allSellers) {
       const st = userTasks.filter(t => t.assignedTo === s.name || t.userId === s.userId);
       const late = st.filter(t => t.reminderDate && new Date(t.reminderDate) < now).length;
-      context += `- ${s.name}: ${st.length} clientes, ${late} vencidos\n`;
+      const contatos = st.filter(t => t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart).length;
+
+      const sess = todaySessions.filter(ws => ws.userId === s.userId)
+        .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())[0];
+
+      let sessionInfo = 'não acessou hoje';
+      if (sess) {
+        const start = new Date(sess.startedAt);
+        const end = sess.endedAt ? new Date(sess.endedAt) : now;
+        const elapsed = end.getTime() - start.getTime();
+        let pausedMs = sess.totalPausedMs ?? 0;
+        if (sess.status === 'paused' && sess.pausedAt) pausedMs += now.getTime() - new Date(sess.pausedAt).getTime();
+        const workedMs = Math.max(0, elapsed - pausedMs);
+        const entrada = `${pad2(start.getHours())}:${pad2(start.getMinutes())}`;
+        sessionInfo = `entrada=${entrada}, trabalhado=${fmtMs(workedMs)}, pausas=${fmtMs(pausedMs)}, status=${sess.status}`;
+      }
+
+      context += `- ${s.name}: ${st.length} clientes, ${late} vencidos, contatos_hoje=${contatos} | sessão: ${sessionInfo}\n`;
     }
   }
   return context;
@@ -309,13 +402,15 @@ ${userContext}
 
 FERRAMENTAS DISPONÍVEIS (use quando o usuário pedir):
 - list_tasks: listar lembretes/status de um atendente
+- list_sessions: ver histórico de acesso/sessões de trabalho — quando entrou, quanto trabalhou, pausas, últimos 7 dias. Use "todos" para ver todos.
 - reschedule_tasks: REDISTRIBUIR lembretes vencidos de um atendente em dias úteis futuros
 
 INSTRUÇÕES CRÍTICAS:
 - Quando o usuário pedir para "reagendar", "redistribuir", "reorganizar" lembretes de algum atendente → USE a ferramenta reschedule_tasks imediatamente. NÃO apenas descreva — EXECUTE.
-- Quando precisar ver os dados de um atendente antes de agir → USE list_tasks primeiro.
+- Quando perguntarem sobre acesso, presença, horas trabalhadas, tempo ativo, ociosidade → USE list_sessions.
+- Quando precisar ver os dados de tarefas de um atendente → USE list_tasks primeiro.
 - Após executar uma ferramenta, informe o resultado real retornado por ela.
-- Use os dados reais do contexto acima nas análises.
+- Use os dados reais do contexto acima nas análises. O contexto já inclui dados de sessão de HOJE.
 - Seja direto, use emojis, responda em português brasileiro.`
           : `Você é um assistente de suporte ao atendente da empresa Sal Vita — Sal do Brasil.
 Seu papel é INFORMATIVO apenas — você não pode executar ações no sistema.
@@ -372,8 +467,48 @@ REGRAS:
     if (!apiKey) return { report: [], summary: 'IA não configurada. Vá em Configurações → IA e configure Groq (recomendado) ou Gemini.' };
 
     const now = new Date();
+    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
+
     const allSellers = await db.select().from(sellers);
     const allTasks = await db.select().from(tasks);
+    const recentSessions = await db.select().from(workSessions)
+      .where(gte(workSessions.startedAt, sevenDaysAgo))
+      .orderBy(desc(workSessions.startedAt));
+
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const fmtMs = (ms: number) => {
+      const h = Math.floor(ms / 3600000);
+      const m = Math.floor((ms % 3600000) / 60000);
+      return h > 0 ? `${h}h${pad2(m)}min` : `${m}min`;
+    };
+
+    // Build session summary per seller
+    const sessionSummary = (sellerId: number) => {
+      const mine = recentSessions.filter(s => s.userId === sellerId);
+      const todaySess = mine.find(s => new Date(s.startedAt) >= todayStart);
+      const daysActive7 = new Set(mine.map(s => new Date(s.startedAt).toDateString())).size;
+      const totalWorkedMs7 = mine.reduce((acc, s) => {
+        const end = s.endedAt ? new Date(s.endedAt) : (s.status !== 'ended' ? now : new Date(s.startedAt));
+        const elapsed = end.getTime() - new Date(s.startedAt).getTime();
+        const paused = (s.totalPausedMs ?? 0) + (s.status === 'paused' && s.pausedAt ? now.getTime() - new Date(s.pausedAt).getTime() : 0);
+        return acc + Math.max(0, elapsed - paused);
+      }, 0);
+      const lastAccess = mine[0] ? new Date(mine[0].startedAt).toLocaleString('pt-BR') : 'nunca';
+
+      let todayInfo = 'não acessou hoje';
+      if (todaySess) {
+        const start = new Date(todaySess.startedAt);
+        const end = todaySess.endedAt ? new Date(todaySess.endedAt) : now;
+        const elapsed = end.getTime() - start.getTime();
+        let pausedMs = todaySess.totalPausedMs ?? 0;
+        if (todaySess.status === 'paused' && todaySess.pausedAt) pausedMs += now.getTime() - new Date(todaySess.pausedAt).getTime();
+        const workedMs = Math.max(0, elapsed - pausedMs);
+        todayInfo = `entrada=${pad2(start.getHours())}:${pad2(start.getMinutes())}, trabalhado=${fmtMs(workedMs)}, status=${todaySess.status}`;
+      }
+
+      return { todayInfo, daysActive7, totalWorkedMs7Fmt: fmtMs(totalWorkedMs7), lastAccess };
+    };
 
     const report = allSellers.map(seller => {
       // All tasks assigned to this attendant (by name or userId)
@@ -427,6 +562,8 @@ REGRAS:
         neverUpdated.length > 0   ? `${neverUpdated.length} tarefa(s) nunca atualizadas desde a importação` : null,
       ].filter(Boolean) as string[];
 
+      const sess = sessionSummary(seller.userId);
+
       return {
         sellerId: seller.id,
         name: seller.name,
@@ -442,11 +579,15 @@ REGRAS:
         suspicionScore,
         status,
         flags,
+        sessaoHoje: sess.todayInfo,
+        diasAtivos7: sess.daysActive7,
+        totalTrabalhado7dias: sess.totalWorkedMs7Fmt,
+        ultimoAcesso: sess.lastAccess,
       };
     });
 
     const reportText = report.map(r =>
-      `${r.name}: ${r.total} clientes, ${r.withReminder} com lembrete ativo, ${r.overdue} vencidos, sem_anotação=${r.noNotes}, desativados=${r.disabledReminders}, sem_data=${r.noReminderDate}, nunca_atualizado=${r.neverUpdated}, status=${r.status}, flags=${r.flags.join('; ') || 'nenhuma'}`
+      `${r.name}: ${r.total} clientes, ${r.withReminder} com lembrete ativo, ${r.overdue} vencidos, sem_anotação=${r.noNotes}, desativados=${r.disabledReminders}, sem_data=${r.noReminderDate}, nunca_atualizado=${r.neverUpdated}, status=${r.status}, flags=${r.flags.join('; ') || 'nenhuma'} | ACESSO: hoje=[${r.sessaoHoje}], dias_ativos_7d=${r.diasAtivos7}, total_trabalhado_7d=${r.totalTrabalhado7dias}, ultimo_acesso=${r.ultimoAcesso}`
     ).join('\n');
 
     try {
