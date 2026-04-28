@@ -25,10 +25,14 @@ export const workSessionsRouter = router({
   start: protectedProcedure
     .input(z.object({ dailyGoalHours: z.number().min(1).max(24).default(8) }))
     .mutation(async ({ input, ctx }) => {
-      // End any stale active sessions
+      const now = new Date();
+      // End any stale active or paused sessions
       await db.update(workSessions)
-        .set({ status: 'ended', endedAt: new Date(), updatedAt: new Date() })
-        .where(and(eq(workSessions.userId, ctx.user.id), eq(workSessions.status, 'active')));
+        .set({ status: 'ended', endedAt: now, updatedAt: now })
+        .where(and(
+          eq(workSessions.userId, ctx.user.id),
+          or(eq(workSessions.status, 'active'), eq(workSessions.status, 'paused')),
+        ));
 
       const [session] = await db.insert(workSessions).values({
         userId: ctx.user.id,
@@ -112,35 +116,61 @@ export const workSessionsRouter = router({
       .limit(30);
   }),
 
-  // Admin: all seller sessions started today + last-activity metrics
+  // Admin: all seller sessions today + recent task activity + last-online history
   allActiveToday: adminProcedure.query(async () => {
     const now = new Date();
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
 
-    const [allSellers, todaySessions, todayTasks] = await Promise.all([
+    const [allSellers, todaySessions, todayTasks, allRecentSessions] = await Promise.all([
       db.select().from(sellers).where(eq(sellers.status, 'active')),
       db.select().from(workSessions)
         .where(gte(workSessions.startedAt, todayStart))
         .orderBy(desc(workSessions.startedAt)),
+      // Today's edited tasks — include title so we can show what they worked on
       db.select({
         userId: tasks.userId,
         assignedTo: tasks.assignedTo,
+        title: tasks.title,
         lastContactedAt: tasks.lastContactedAt,
-      }).from(tasks).where(gte(tasks.lastContactedAt, todayStart)),
+      }).from(tasks).where(gte(tasks.lastContactedAt, todayStart))
+        .orderBy(desc(tasks.lastContactedAt)),
+      // Most recent session per seller across all days — for "last online" info
+      db.select({
+        userId: workSessions.userId,
+        startedAt: workSessions.startedAt,
+        endedAt: workSessions.endedAt,
+        status: workSessions.status,
+      }).from(workSessions)
+        .orderBy(desc(workSessions.startedAt))
+        .limit(500),
     ]);
 
     return allSellers.map(seller => {
       // Most recent session today
       const session = todaySessions.find(s => s.userId === seller.userId) ?? null;
 
-      // Last task touched today
+      // Tasks touched today by this seller
       const mine = todayTasks.filter(
         t => t.userId === seller.userId || t.assignedTo === seller.name
       );
       const contactsToday = mine.length;
       const lastActivityDate = mine.length > 0
         ? new Date(Math.max(...mine.map(t => new Date(t.lastContactedAt!).getTime())))
+        : null;
+
+      // Last 5 tasks edited today — for activity detail
+      const recentTasks = mine.slice(0, 5).map(t => ({
+        title: t.title.split(' - ')[0].slice(0, 60),
+        lastContactedAt: t.lastContactedAt,
+      }));
+
+      // Last online from any past session (for sellers with no today session)
+      const lastOnlineSession = !session
+        ? allRecentSessions.find(s => s.userId === seller.userId) ?? null
+        : null;
+      const lastOnlineAt = lastOnlineSession
+        ? (lastOnlineSession.endedAt ?? lastOnlineSession.startedAt)
         : null;
 
       // Worked time = total elapsed - pauses
@@ -176,6 +206,8 @@ export const workSessionsRouter = router({
         contactsToday,
         lastActivityDate,
         idleSinceMs,
+        recentTasks,
+        lastOnlineAt,
       };
     });
   }),

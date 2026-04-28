@@ -16,7 +16,13 @@ export const authRouter = router({
     if (!ctx.user) return null;
     const [dbUser] = await db.select().from(users).where(eq(users.id, ctx.user.id));
     if (!dbUser) return null;
-    return { id: dbUser.id, email: dbUser.email, name: dbUser.name, role: dbUser.role };
+    return {
+      id: dbUser.id,
+      email: dbUser.email,
+      name: dbUser.name,
+      role: dbUser.role,
+      mustChangePassword: dbUser.mustChangePassword,
+    };
   }),
 
   login: publicProcedure
@@ -54,12 +60,25 @@ export const authRouter = router({
         throw new Error('Senha atual incorreta');
       }
       await db.update(users)
-        .set({ passwordHash: hashPassword(input.newPassword) })
+        .set({ passwordHash: hashPassword(input.newPassword), mustChangePassword: false })
         .where(eq(users.id, ctx.user.id));
       return { ok: true };
     }),
 
-  // Admin resets any user's password (by userId) — returns generated password
+  // First-access forced password change — no current password needed (user just authenticated)
+  forceChangePassword: protectedProcedure
+    .input(z.object({ newPassword: z.string().min(6, 'Mínimo 6 caracteres') }))
+    .mutation(async ({ input, ctx }) => {
+      const [user] = await db.select().from(users).where(eq(users.id, ctx.user.id));
+      if (!user) throw new Error('Usuário não encontrado');
+      if (!user.mustChangePassword) throw new Error('Operação não permitida');
+      await db.update(users)
+        .set({ passwordHash: hashPassword(input.newPassword), mustChangePassword: false })
+        .where(eq(users.id, ctx.user.id));
+      return { ok: true };
+    }),
+
+  // Admin resets any user's password (by userId) — returns generated password, forces change on next login
   adminResetPassword: adminProcedure
     .input(z.object({ userId: z.number() }))
     .mutation(async ({ input }) => {
@@ -67,7 +86,7 @@ export const authRouter = router({
       if (!user) throw new Error('Usuário não encontrado');
       const generated = generatePassword();
       await db.update(users)
-        .set({ passwordHash: hashPassword(generated) })
+        .set({ passwordHash: hashPassword(generated), mustChangePassword: true })
         .where(eq(users.id, input.userId));
       return { name: user.name, email: user.email, generatedPassword: generated };
     }),

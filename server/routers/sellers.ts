@@ -36,19 +36,24 @@ export const sellersRouter = router({
       const generatedPassword = generatePassword();
       const passwordHash = hashPassword(generatedPassword);
 
-      const [newUser] = await db.insert(users).values({
-        name: input.name,
-        email: input.email,
-        passwordHash,
-        role: 'user',
-      }).returning();
+      const result = await db.transaction(async (tx) => {
+        const [newUser] = await tx.insert(users).values({
+          name: input.name,
+          email: input.email,
+          passwordHash,
+          role: 'user',
+          mustChangePassword: true,
+        }).returning();
 
-      const [created] = await db.insert(sellers).values({
-        ...input,
-        userId: newUser.id,
-      }).returning();
+        const [created] = await tx.insert(sellers).values({
+          ...input,
+          userId: newUser.id,
+        }).returning();
 
-      return { ...created, generatedPassword };
+        return { ...created, generatedPassword };
+      });
+
+      return result;
     }),
 
   delete: adminProcedure

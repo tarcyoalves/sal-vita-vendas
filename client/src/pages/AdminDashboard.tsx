@@ -16,6 +16,9 @@ import {
   BarChart2,
   Timer,
   Activity,
+  ChevronDown,
+  ChevronRight,
+  FileText,
 } from "lucide-react";
 import AttendantDetailModal from '../components/AttendantDetailModal';
 
@@ -158,6 +161,12 @@ export default function AdminDashboard() {
   const { data: reminders = [] } = trpc.tasks.reminders.useQuery();
   const analyzeAttendantsMutation = trpc.ai.analyzeAttendants.useMutation();
   const { data: sessionData = [] } = trpc.workSessions.allActiveToday.useQuery(undefined, { refetchInterval: 60_000 });
+  const [expandedSessions, setExpandedSessions] = useState<Set<number>>(new Set());
+  const toggleSession = (id: number) => setExpandedSessions(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
   const [monitorReport, setMonitorReport] = useState<any[] | null>(null);
   const [monitorSummary, setMonitorSummary] = useState<string | null>(null);
   const [monitorLoading, setMonitorLoading] = useState(false);
@@ -471,7 +480,7 @@ export default function AdminDashboard() {
               <Timer size={18} className="text-cyan-600" />
               Sessões de Trabalho Hoje
             </span>
-            <span className="text-xs text-gray-400 font-normal">atualiza a cada 60s</span>
+            <span className="text-xs text-gray-400 font-normal">atualiza a cada 60s · clique para detalhar</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -487,57 +496,110 @@ export default function AdminDashboard() {
                 const d = new Date(s.startedAt);
                 return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
               })() : null;
-              const lastAct = row.lastActivityDate ? (() => {
-                const min = Math.floor((Date.now() - new Date(row.lastActivityDate).getTime()) / 60000);
-                return min < 1 ? '<1min' : min < 60 ? `${min}min` : `${Math.floor(min/60)}h`;
-              })() : null;
+              const fmtAgo = (date: any) => {
+                const min = Math.floor((Date.now() - new Date(date).getTime()) / 60000);
+                if (min < 1) return '<1min atrás';
+                if (min < 60) return `${min}min atrás`;
+                const h = Math.floor(min / 60);
+                if (h < 24) return `${h}h atrás`;
+                return `${Math.floor(h / 24)}d atrás`;
+              };
+              const lastAct = row.lastActivityDate ? fmtAgo(row.lastActivityDate) : null;
+              const lastOnline = row.lastOnlineAt ? fmtAgo(row.lastOnlineAt) : null;
+              const isExpanded = expandedSessions.has(row.sellerId);
+              const hasDetail = (row.recentTasks?.length > 0) || lastOnline;
 
               return (
-                <div key={row.sellerId} className={`flex items-center gap-3 p-3 rounded-xl border ${
-                  isIdle ? 'border-amber-200 bg-amber-50' :
-                  isPaused ? 'border-yellow-200 bg-yellow-50' :
-                  s ? 'border-green-200 bg-green-50' : 'border-gray-100 bg-gray-50'
+                <div key={row.sellerId} className={`rounded-xl border overflow-hidden ${
+                  isIdle ? 'border-amber-200' :
+                  isPaused ? 'border-yellow-200' :
+                  s ? 'border-green-200' : 'border-gray-100'
                 }`}>
-                  {/* Status dot */}
-                  <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                    isIdle ? 'bg-amber-400' : isPaused ? 'bg-yellow-400' : s ? 'bg-green-500 animate-pulse' : 'bg-gray-300'
-                  }`} />
+                  {/* Main row */}
+                  <div
+                    className={`flex items-center gap-3 p-3 cursor-pointer select-none ${
+                      isIdle ? 'bg-amber-50 hover:bg-amber-100' :
+                      isPaused ? 'bg-yellow-50 hover:bg-yellow-100' :
+                      s ? 'bg-green-50 hover:bg-green-100' : 'bg-gray-50 hover:bg-gray-100'
+                    } transition-colors`}
+                    onClick={() => hasDetail && toggleSession(row.sellerId)}
+                  >
+                    {/* Status dot */}
+                    <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                      isIdle ? 'bg-amber-400' : isPaused ? 'bg-yellow-400' : s ? 'bg-green-500 animate-pulse' : 'bg-gray-300'
+                    }`} />
 
-                  {/* Name */}
-                  <div className="w-28 flex-shrink-0">
-                    <p className="text-sm font-semibold text-gray-800 truncate">{row.name}</p>
-                  </div>
+                    {/* Name */}
+                    <div className="w-28 flex-shrink-0">
+                      <p className="text-sm font-semibold text-gray-800 truncate">{row.name}</p>
+                    </div>
 
-                  {/* Status label */}
-                  <div className="w-24 flex-shrink-0">
-                    {!s && <span className="text-xs text-gray-400">Sem sessão</span>}
-                    {s?.status === 'active' && !isIdle && <span className="text-xs font-semibold text-green-700 flex items-center gap-1"><Activity size={11} /> Ativo</span>}
-                    {isIdle && <span className="text-xs font-semibold text-amber-700">⚠ Ocioso {idleMin}min</span>}
-                    {isPaused && <span className="text-xs font-semibold text-yellow-700">⏸ Pausado</span>}
-                  </div>
+                    {/* Status label */}
+                    <div className="w-28 flex-shrink-0">
+                      {!s && <span className="text-xs text-gray-400">Sem sessão hoje</span>}
+                      {s?.status === 'active' && !isIdle && <span className="text-xs font-semibold text-green-700 flex items-center gap-1"><Activity size={11} /> Ativo</span>}
+                      {isIdle && <span className="text-xs font-semibold text-amber-700">⚠ Ocioso {idleMin}min</span>}
+                      {isPaused && <span className="text-xs font-semibold text-yellow-700">⏸ Pausado</span>}
+                    </div>
 
-                  {/* Metrics */}
-                  <div className="flex items-center gap-4 flex-1 text-xs text-gray-600 flex-wrap">
-                    {startTime && (
-                      <span title="Horário de início">🕐 <strong>{startTime}</strong></span>
-                    )}
-                    {s && (
-                      <span title="Tempo trabalhado (descontando pausas)">
-                        ⏱ <strong>{workedH > 0 ? `${workedH}h ` : ''}{workedM}min</strong>
+                    {/* Metrics */}
+                    <div className="flex items-center gap-4 flex-1 text-xs text-gray-600 flex-wrap">
+                      {startTime && <span title="Entrada">🕐 <strong>{startTime}</strong></span>}
+                      {s && (
+                        <span title="Tempo trabalhado">
+                          ⏱ <strong>{workedH > 0 ? `${workedH}h ` : ''}{workedM}min</strong>
+                        </span>
+                      )}
+                      <span title="Tarefas com anotação hoje">
+                        📞 <strong>{row.contactsToday}</strong> contatos
                       </span>
-                    )}
-                    <span title="Contatos/tarefas tocados hoje">
-                      📞 <strong>{row.contactsToday}</strong> contatos
-                    </span>
-                    {lastAct && (
-                      <span title="Última tarefa atualizada">🕒 último: <strong>{lastAct} atrás</strong></span>
+                      {lastAct && <span title="Última edição de tarefa">🕒 <strong>{lastAct}</strong></span>}
+                      {!s && lastOnline && (
+                        <span className="text-gray-400" title="Último acesso registrado">
+                          🔌 último acesso: <strong>{lastOnline}</strong>
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Expand chevron */}
+                    {hasDetail && (
+                      <div className="text-gray-400 flex-shrink-0">
+                        {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                      </div>
                     )}
                   </div>
+
+                  {/* Expanded detail — recent tasks */}
+                  {isExpanded && (
+                    <div className="border-t border-dashed px-4 py-3 bg-white">
+                      {row.recentTasks?.length > 0 ? (
+                        <div className="space-y-1.5">
+                          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                            Tarefas editadas hoje
+                          </p>
+                          {row.recentTasks.map((t: any, i: number) => (
+                            <div key={i} className="flex items-start gap-2 text-xs text-gray-700">
+                              <FileText size={12} className="text-cyan-500 mt-0.5 flex-shrink-0" />
+                              <span className="flex-1 truncate font-medium">{t.title}</span>
+                              <span className="text-gray-400 flex-shrink-0 tabular-nums">
+                                {fmtAgo(t.lastContactedAt)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-400 italic">
+                          Nenhuma tarefa editada hoje.
+                          {lastOnline && <> Último acesso: <strong>{lastOnline}</strong>.</>}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
             {(sessionData as any[]).length === 0 && (
-              <p className="text-sm text-gray-400 text-center py-4">Nenhum atendente com sessão hoje.</p>
+              <p className="text-sm text-gray-400 text-center py-4">Nenhum atendente cadastrado.</p>
             )}
           </div>
         </CardContent>
