@@ -141,30 +141,36 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b bg-slate-800 rounded-t-2xl">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold flex-shrink-0">
+        <div className="flex items-center justify-between px-4 py-3 border-b bg-slate-800 rounded-t-2xl gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold flex-shrink-0 text-sm">
               {seller.name.charAt(0).toUpperCase()}
             </div>
-            <div>
-              <p className="font-semibold text-white">{seller.name}</p>
-              <p className="text-xs text-slate-400">{seller.email} · {m.total} clientes</p>
+            <div className="min-w-0">
+              <p className="font-semibold text-white text-sm truncate">{seller.name}</p>
+              <p className="text-xs text-slate-400 truncate">{m.total} clientes</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             {m.overdue.length > 0 && (
               <Button
                 size="sm"
                 disabled={rescheduleLoading}
                 onClick={handleReschedule}
-                className="bg-orange-500 hover:bg-orange-600 text-white text-xs gap-1.5"
+                className="bg-orange-500 hover:bg-orange-600 text-white text-xs gap-1 px-2"
               >
                 {rescheduleLoading
-                  ? <><span className="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full inline-block" /> Reagendando...</>
-                  : <><RefreshCw size={13} /> Reagendar Vencidos</>}
+                  ? <span className="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full inline-block" />
+                  : <RefreshCw size={13} />}
+                <span className="hidden sm:inline">
+                  {rescheduleLoading ? 'Reagendando...' : 'Reagendar Vencidos'}
+                </span>
               </Button>
             )}
-            <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700">
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 flex-shrink-0"
+            >
               <X size={18} />
             </button>
           </div>
@@ -177,14 +183,15 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
         )}
 
         {/* Tabs */}
-        <div className="flex gap-1 px-5 pt-3 pb-0 border-b bg-gray-50">
+        <div className="flex gap-0.5 px-3 pt-2 pb-0 border-b bg-gray-50 overflow-x-auto scrollbar-none">
           {tabs.map(t => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 transition-colors ${tab === t.key ? 'border-blue-600 text-blue-700 bg-white' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+              className={`flex items-center gap-1 px-2.5 py-2 text-xs font-medium rounded-t-lg border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${tab === t.key ? 'border-blue-600 text-blue-700 bg-white' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
-              {t.icon}{t.label}
+              {t.icon}
+              <span>{t.label}</span>
             </button>
           ))}
         </div>
@@ -365,7 +372,7 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
                       <span className={`text-sm font-semibold flex-1 ${isMine ? 'text-blue-800' : 'text-gray-700'}`}>{s.name} {isMine && '← você'}</span>
                       <span className={`text-xs font-bold ${s.overdue > 0 ? 'text-red-600' : 'text-green-600'}`}>{s.overdue} vencidos</span>
                     </div>
-                    <div className="grid grid-cols-4 gap-2 text-center">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                       {[
                         { l: 'Clientes', v: s.total },
                         { l: 'C/ lembrete', v: s.withReminder },
