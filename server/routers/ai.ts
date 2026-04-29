@@ -294,11 +294,13 @@ ${overdue.slice(0, 5).map(t => `- "${t.title.slice(0, 60)}" (${t.assignedTo ?? '
       return h > 0 ? `${h}h${pad2(m)}min` : `${m}min`;
     };
 
+    const thirtyDaysAgoCtx = new Date(now.getTime() - 30 * 86400000);
     context += `\nATENDENTES — TAREFAS E ACESSO HOJE (${allSellers.length}):\n`;
     for (const s of allSellers) {
       const st = userTasks.filter(t => t.assignedTo === s.name || t.userId === s.userId);
       const late = st.filter(t => t.reminderDate && new Date(t.reminderDate) < now).length;
       const contatos = st.filter(t => t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart).length;
+      const ghosts = st.filter(t => !t.lastContactedAt || new Date(t.lastContactedAt) < thirtyDaysAgoCtx).length;
 
       const sess = todaySessions.filter(ws => ws.userId === s.userId)
         .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())[0];
@@ -315,7 +317,7 @@ ${overdue.slice(0, 5).map(t => `- "${t.title.slice(0, 60)}" (${t.assignedTo ?? '
         sessionInfo = `entrada=${entrada}, trabalhado=${fmtMs(workedMs)}, pausas=${fmtMs(pausedMs)}, status=${sess.status}`;
       }
 
-      context += `- ${s.name}: ${st.length} clientes, ${late} vencidos, contatos_hoje=${contatos} | sessão: ${sessionInfo}\n`;
+      context += `- ${s.name}: ${st.length} clientes, ${late} vencidos, contatos_hoje=${contatos}, ghost_30d=${ghosts} | sessão: ${sessionInfo}\n`;
     }
   }
   return context;
@@ -510,6 +512,8 @@ REGRAS:
       return { todayInfo, daysActive7, totalWorkedMs7Fmt: fmtMs(totalWorkedMs7), lastAccess };
     };
 
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
+
     const report = allSellers.map(seller => {
       // All tasks assigned to this attendant (by name or userId)
       const st = allTasks.filter(t =>
@@ -539,6 +543,39 @@ REGRAS:
         return diff < 2 * 60 * 1000;
       });
 
+      // Ghost clients: no real contact in 30+ days (lastContactedAt null or stale)
+      const ghostClients = st.filter(t =>
+        !t.lastContactedAt || new Date(t.lastContactedAt) < thirtyDaysAgo
+      );
+
+      // Note quality: average chars in notes for tasks that have notes
+      const notedTasks = st.filter(t => t.notes && t.notes.trim().length > 0);
+      const avgNoteLen = notedTasks.length > 0
+        ? Math.round(notedTasks.reduce((acc, t) => acc + t.notes!.trim().length, 0) / notedTasks.length)
+        : 0;
+
+      // Burst detection: ≥5 contacts logged within any 10-min window → fraud signal
+      const contactedSorted = st
+        .filter(t => t.lastContactedAt)
+        .sort((a, b) => new Date(a.lastContactedAt!).getTime() - new Date(b.lastContactedAt!).getTime());
+      let burstMax = 0;
+      for (let i = 0; i < contactedSorted.length; i++) {
+        const base = new Date(contactedSorted[i].lastContactedAt!).getTime();
+        const inWindow = contactedSorted.filter(t => {
+          const d = new Date(t.lastContactedAt!).getTime() - base;
+          return d >= 0 && d <= 600000;
+        }).length;
+        if (inWindow > burstMax) burstMax = inWindow;
+      }
+      const hasBurst = burstMax >= 5;
+
+      // Rescheduled without real contact: updatedAt recent but lastContactedAt old/null
+      const reschedNoContact = st.filter(t =>
+        new Date(t.updatedAt) > sevenDaysAgo
+        && (!t.lastContactedAt || new Date(t.lastContactedAt) < sevenDaysAgo)
+        && t.reminderDate
+      );
+
       // Suspicion score (recurring model — no completion metric)
       let suspicionScore = 0;
       suspicionScore += overdue.length * 2;
@@ -546,6 +583,10 @@ REGRAS:
       suspicionScore += disabledReminders.length * 4;
       suspicionScore += noReminderDate.length * 1;
       suspicionScore += neverUpdated.length * 2;
+      suspicionScore += ghostClients.length * 2;
+      suspicionScore += hasBurst ? 20 : 0;
+      suspicionScore += reschedNoContact.length * 3;
+      if (avgNoteLen < 20 && notedTasks.length > 5) suspicionScore += 5;
 
       let status: '🟢 Normal' | '🟡 Atenção' | '🔴 Suspeito';
       if (suspicionScore >= 10) status = '🔴 Suspeito';
@@ -555,11 +596,15 @@ REGRAS:
       const activeRate = total > 0 ? Math.round((withReminder.length / total) * 100) : 0;
 
       const flags = [
-        overdue.length > 0        ? `${overdue.length} lembrete(s) vencido(s) sem reatualização` : null,
-        noNotes.length > 0        ? `${noNotes.length} cliente(s) sem anotação de contato` : null,
+        overdue.length > 0           ? `${overdue.length} lembrete(s) vencido(s) sem reatualização` : null,
+        noNotes.length > 0           ? `${noNotes.length} cliente(s) sem anotação de contato` : null,
         disabledReminders.length > 0 ? `${disabledReminders.length} lembrete(s) DESATIVADO(s) manualmente` : null,
-        noReminderDate.length > 0 ? `${noReminderDate.length} cliente(s) sem data de lembrete configurada` : null,
-        neverUpdated.length > 0   ? `${neverUpdated.length} tarefa(s) nunca atualizadas desde a importação` : null,
+        noReminderDate.length > 0    ? `${noReminderDate.length} cliente(s) sem data de lembrete configurada` : null,
+        neverUpdated.length > 0      ? `${neverUpdated.length} tarefa(s) nunca atualizadas desde a importação` : null,
+        ghostClients.length > 0      ? `${ghostClients.length} cliente(s) sem contato há 30+ dias (risco churn)` : null,
+        hasBurst                     ? `⚠️ ALERTA FRAUDE: ${burstMax} contatos em <10min (burst detectado)` : null,
+        reschedNoContact.length > 0  ? `${reschedNoContact.length} tarefa(s) reagendadas sem contato real (simulação suspeita)` : null,
+        avgNoteLen < 20 && notedTasks.length > 5 ? `Qualidade de anotações baixa (média ${avgNoteLen} chars)` : null,
       ].filter(Boolean) as string[];
 
       const sess = sessionSummary(seller.userId);
@@ -575,6 +620,11 @@ REGRAS:
         disabledReminders: disabledReminders.length,
         noReminderDate: noReminderDate.length,
         neverUpdated: neverUpdated.length,
+        ghostCount: ghostClients.length,
+        avgNoteLen,
+        hasBurst,
+        burstMax,
+        reschedNoContact: reschedNoContact.length,
         activeRate,
         suspicionScore,
         status,
@@ -587,7 +637,7 @@ REGRAS:
     });
 
     const reportText = report.map(r =>
-      `${r.name}: ${r.total} clientes, ${r.withReminder} com lembrete ativo, ${r.overdue} vencidos, sem_anotação=${r.noNotes}, desativados=${r.disabledReminders}, sem_data=${r.noReminderDate}, nunca_atualizado=${r.neverUpdated}, status=${r.status}, flags=${r.flags.join('; ') || 'nenhuma'} | ACESSO: hoje=[${r.sessaoHoje}], dias_ativos_7d=${r.diasAtivos7}, total_trabalhado_7d=${r.totalTrabalhado7dias}, ultimo_acesso=${r.ultimoAcesso}`
+      `${r.name}: ${r.total} clientes, ${r.withReminder} com lembrete ativo, ${r.overdue} vencidos, sem_anotação=${r.noNotes}, desativados=${r.disabledReminders}, sem_data=${r.noReminderDate}, nunca_atualizado=${r.neverUpdated}, status=${r.status} | CHURN: ghost_clientes=${r.ghostCount} (sem contato 30d+), reagendado_sem_contato=${r.reschedNoContact} | FRAUDE: burst=${r.hasBurst ? `SIM(${r.burstMax} em 10min)` : 'não'} | QUALIDADE: media_nota=${r.avgNoteLen}chars | ACESSO: hoje=[${r.sessaoHoje}], dias_ativos_7d=${r.diasAtivos7}, total_trabalhado_7d=${r.totalTrabalhado7dias}, ultimo_acesso=${r.ultimoAcesso} | flags=${r.flags.join('; ') || 'nenhuma'}`
     ).join('\n');
 
     try {
@@ -604,6 +654,11 @@ INTERPRETAÇÃO DOS DADOS:
 - lembrete desativado manualmente = atendente tentou esconder inadimplência
 - tarefa nunca atualizada = cliente ignorado desde importação
 - taxa de lembretes ativos baixa = carteira sendo negligenciada
+- ghost_clientes = clientes sem NENHUM contato real nos últimos 30+ dias → risco churn alto
+- burst=SIM (N em 10min) = possível fraude: clientes "marcados" em massa em poucos minutos, sem contato real
+- reagendado_sem_contato = tarefa atualizada recentemente mas sem contato registrado → simulação de atividade
+- media_nota baixa (<20 chars) = anotações superficiais/vazias → atendente não documenta contatos reais
+- dias_ativos_7d / total_trabalhado_7d = presença e dedicação real no sistema nos últimos 7 dias
 
 SEU PAPEL:
 1. Classificar cada atendente: 🟢 Ativo / 🟡 Atenção / 🔴 Crítico

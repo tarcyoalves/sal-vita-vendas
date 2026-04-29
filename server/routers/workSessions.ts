@@ -121,8 +121,9 @@ export const workSessionsRouter = router({
     const now = new Date();
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
 
-    const [allSellers, todaySessions, todayTasks, allRecentSessions] = await Promise.all([
+    const [allSellers, todaySessions, todayTasks, allRecentSessions, allTasksForMonitor] = await Promise.all([
       db.select().from(sellers).where(eq(sellers.status, 'active')),
       db.select().from(workSessions)
         .where(gte(workSessions.startedAt, todayStart))
@@ -144,6 +145,12 @@ export const workSessionsRouter = router({
       }).from(workSessions)
         .orderBy(desc(workSessions.startedAt))
         .limit(500),
+      // Monitoring: need lastContactedAt for ghost + burst detection
+      db.select({
+        userId: tasks.userId,
+        assignedTo: tasks.assignedTo,
+        lastContactedAt: tasks.lastContactedAt,
+      }).from(tasks),
     ]);
 
     return allSellers.map(seller => {
@@ -193,6 +200,28 @@ export const workSessionsRouter = router({
         }
       }
 
+      // Monitoring: ghost count (no real contact in 30+ days)
+      const sellerTasks = allTasksForMonitor.filter(
+        t => t.userId === seller.userId || t.assignedTo === seller.name
+      );
+      const ghostCount = sellerTasks.filter(
+        t => !t.lastContactedAt || new Date(t.lastContactedAt) < thirtyDaysAgo
+      ).length;
+
+      // Monitoring: burst detection (≥5 contacts in any 10-min window)
+      const contactedSorted = sellerTasks
+        .filter(t => t.lastContactedAt)
+        .sort((a, b) => new Date(a.lastContactedAt!).getTime() - new Date(b.lastContactedAt!).getTime());
+      let burstMax = 0;
+      for (let i = 0; i < contactedSorted.length; i++) {
+        const base = new Date(contactedSorted[i].lastContactedAt!).getTime();
+        const inWin = contactedSorted.filter(t => {
+          const d = new Date(t.lastContactedAt!).getTime() - base;
+          return d >= 0 && d <= 600000;
+        }).length;
+        if (inWin > burstMax) burstMax = inWin;
+      }
+
       return {
         sellerId: seller.id,
         name: seller.name,
@@ -208,6 +237,9 @@ export const workSessionsRouter = router({
         idleSinceMs,
         recentTasks,
         lastOnlineAt,
+        ghostCount,
+        burstAlert: burstMax >= 5,
+        burstMax,
       };
     });
   }),

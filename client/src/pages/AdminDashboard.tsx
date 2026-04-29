@@ -559,6 +559,16 @@ export default function AdminDashboard() {
                           🔌 último acesso: <strong>{lastOnline}</strong>
                         </span>
                       )}
+                      {row.ghostCount > 0 && (
+                        <span className="px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-semibold" title={`${row.ghostCount} clientes sem contato há 30+ dias`}>
+                          👻 {row.ghostCount}
+                        </span>
+                      )}
+                      {row.burstAlert && (
+                        <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-bold animate-pulse" title={`Alerta de fraude: ${row.burstMax} contatos em <10min`}>
+                          ⚡ Burst
+                        </span>
+                      )}
                     </div>
 
                     {/* Expand chevron */}

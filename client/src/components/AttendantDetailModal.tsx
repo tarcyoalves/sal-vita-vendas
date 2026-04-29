@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { X, AlertCircle, CheckCircle2, Calendar, Clock, TrendingUp, BarChart2, Users, RefreshCw } from 'lucide-react';
+import { X, AlertCircle, CheckCircle2, Calendar, Clock, TrendingUp, BarChart2, Users, RefreshCw, Shield, Ghost, Zap, FileSearch } from 'lucide-react';
 import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { trpc } from '../lib/trpc';
@@ -15,6 +15,7 @@ interface Task {
   status?: string | null;
   updatedAt: Date | string;
   createdAt: Date | string;
+  lastContactedAt?: Date | string | null;
 }
 
 interface Seller {
@@ -37,7 +38,7 @@ const fmtTime = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const dayKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const todayKey = () => dayKey(new Date());
 
-type Tab = 'resumo' | 'agenda' | 'historico' | 'comparacao';
+type Tab = 'resumo' | 'agenda' | 'historico' | 'comparacao' | 'monitoramento';
 
 export default function AttendantDetailModal({ seller, allTasks, allSellers, onClose }: Props) {
   const [tab, setTab] = useState<Tab>('resumo');
@@ -79,6 +80,47 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
       } catch { return false; }
     });
 
+    // ── Monitoring signals ──────────────────────────────────────────────────
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
+
+    // Ghost clients: no real contact in 30+ days
+    const ghostClients = myTasks.filter(t =>
+      !t.lastContactedAt || new Date(t.lastContactedAt as string) < thirtyDaysAgo
+    );
+
+    // Note quality
+    const notedTasks = myTasks.filter(t => t.notes && t.notes.trim().length > 0);
+    const avgNoteLen = notedTasks.length > 0
+      ? Math.round(notedTasks.reduce((acc, t) => acc + t.notes!.trim().length, 0) / notedTasks.length)
+      : 0;
+
+    // Burst detection: ≥5 contacts within any 10-min window
+    const contactedSorted = myTasks
+      .filter(t => t.lastContactedAt)
+      .sort((a, b) => new Date(a.lastContactedAt as string).getTime() - new Date(b.lastContactedAt as string).getTime());
+    let burstMax = 0;
+    for (let i = 0; i < contactedSorted.length; i++) {
+      const base = new Date(contactedSorted[i].lastContactedAt as string).getTime();
+      const inWin = contactedSorted.filter(t => {
+        const d = new Date(t.lastContactedAt as string).getTime() - base;
+        return d >= 0 && d <= 600000;
+      }).length;
+      if (inWin > burstMax) burstMax = inWin;
+    }
+    const hasBurst = burstMax >= 5;
+
+    // Rescheduled without real contact in last 7 days
+    const reschedNoContact = myTasks.filter(t => {
+      try {
+        return (
+          new Date(t.updatedAt as string) > sevenDaysAgo
+          && (!t.lastContactedAt || new Date(t.lastContactedAt as string) < sevenDaysAgo)
+          && !!t.reminderDate
+        );
+      } catch { return false; }
+    });
+
     // 30-day heatmap: count tasks with reminderDate on each day
     const days30 = Array.from({ length: 30 }, (_, i) => {
       const d = new Date(todayStart.getTime() - (29 - i) * 86400000);
@@ -109,6 +151,7 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
       noNotes, disabledReminders, updatedToday, rescheduledToday, neverUpdated,
       days30, maxDay, teamStats,
       total: myTasks.length,
+      ghostClients, avgNoteLen, hasBurst, burstMax, reschedNoContact,
     };
   }, [allTasks, allSellers, seller]);
 
@@ -129,11 +172,12 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
     }
   };
 
-  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
-    { key: 'resumo',    label: 'Resumo',    icon: <BarChart2 size={14} /> },
-    { key: 'agenda',    label: 'Agenda',    icon: <Clock size={14} /> },
-    { key: 'historico', label: 'Histórico', icon: <Calendar size={14} /> },
-    { key: 'comparacao',label: 'Comparação',icon: <Users size={14} /> },
+  const tabs: { key: Tab; label: string; icon: React.ReactNode; alert?: boolean }[] = [
+    { key: 'resumo',        label: 'Resumo',        icon: <BarChart2 size={14} /> },
+    { key: 'agenda',        label: 'Agenda',        icon: <Clock size={14} /> },
+    { key: 'historico',     label: 'Histórico',     icon: <Calendar size={14} /> },
+    { key: 'comparacao',    label: 'Comparação',    icon: <Users size={14} /> },
+    { key: 'monitoramento', label: 'Monitor',       icon: <Shield size={14} />, alert: m.hasBurst || m.ghostClients.length > 0 },
   ];
 
   return (
@@ -188,10 +232,11 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`flex items-center gap-1 px-2.5 py-2 text-xs font-medium rounded-t-lg border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${tab === t.key ? 'border-blue-600 text-blue-700 bg-white' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+              className={`relative flex items-center gap-1 px-2.5 py-2 text-xs font-medium rounded-t-lg border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${tab === t.key ? 'border-blue-600 text-blue-700 bg-white' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
               {t.icon}
               <span>{t.label}</span>
+              {t.alert && <span className="absolute top-1 right-0.5 w-1.5 h-1.5 rounded-full bg-red-500" />}
             </button>
           ))}
         </div>
@@ -355,6 +400,98 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* ── MONITORAMENTO ── */}
+          {tab === 'monitoramento' && (
+            <div className="space-y-4">
+
+              {/* Fraud burst alert */}
+              {m.hasBurst && (
+                <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-300 rounded-xl">
+                  <Zap size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-bold text-red-700">⚠️ Alerta de Fraude — Burst Detectado</p>
+                    <p className="text-xs text-red-600 mt-0.5">
+                      {m.burstMax} clientes "contatados" em menos de 10 minutos. Isso é estatisticamente improvável para contatos reais — provável marcação em massa.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Summary cards */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className={`p-3 rounded-xl border ${m.ghostClients.length > 0 ? 'bg-orange-50 border-orange-200' : 'bg-green-50 border-green-200'}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Ghost size={14} className={m.ghostClients.length > 0 ? 'text-orange-500' : 'text-green-500'} />
+                    <span className="text-xs font-semibold text-gray-600">Clientes Fantasma</span>
+                  </div>
+                  <p className={`text-2xl font-bold ${m.ghostClients.length > 0 ? 'text-orange-600' : 'text-green-600'}`}>{m.ghostClients.length}</p>
+                  <p className="text-xs text-gray-400">sem contato real em 30+ dias</p>
+                </div>
+
+                <div className={`p-3 rounded-xl border ${m.reschedNoContact.length > 0 ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <FileSearch size={14} className={m.reschedNoContact.length > 0 ? 'text-yellow-600' : 'text-green-500'} />
+                    <span className="text-xs font-semibold text-gray-600">Reagend. sem Contato</span>
+                  </div>
+                  <p className={`text-2xl font-bold ${m.reschedNoContact.length > 0 ? 'text-yellow-600' : 'text-green-600'}`}>{m.reschedNoContact.length}</p>
+                  <p className="text-xs text-gray-400">atualizados sem contato real (7d)</p>
+                </div>
+              </div>
+
+              {/* Note quality */}
+              <div className="p-3 bg-gray-50 rounded-xl border">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-gray-600">Qualidade das Anotações</span>
+                  <span className={`text-xs font-bold ${m.avgNoteLen < 20 ? 'text-orange-600' : m.avgNoteLen < 60 ? 'text-yellow-600' : 'text-green-600'}`}>
+                    {m.avgNoteLen} chars/nota
+                  </span>
+                </div>
+                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${m.avgNoteLen < 20 ? 'bg-red-400' : m.avgNoteLen < 60 ? 'bg-yellow-400' : 'bg-green-400'}`}
+                    style={{ width: `${Math.min(100, Math.round((m.avgNoteLen / 150) * 100))}%` }}
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  {m.avgNoteLen < 20 ? 'Muito curtas — sem detalhe de contato' : m.avgNoteLen < 60 ? 'Razoável — pode melhorar' : 'Bom nível de detalhamento'}
+                </p>
+              </div>
+
+              {/* Ghost clients list */}
+              {m.ghostClients.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-orange-600 uppercase tracking-wider mb-2">
+                    Clientes Fantasma — últimos contatados (primeiros 10)
+                  </p>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {m.ghostClients.slice(0, 10).map(t => {
+                      const lc = t.lastContactedAt ? new Date(t.lastContactedAt as string) : null;
+                      const daysAgo = lc ? Math.floor((Date.now() - lc.getTime()) / 86400000) : null;
+                      return (
+                        <div key={t.id} className="flex items-center justify-between px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-xs">
+                          <span className="truncate flex-1 mr-3 text-orange-800">{t.title}</span>
+                          <span className="flex-shrink-0 text-orange-500 font-medium">
+                            {lc ? `${daysAgo}d atrás` : 'nunca contatado'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {m.ghostClients.length > 10 && (
+                    <p className="text-xs text-gray-400 mt-1 text-center">+ {m.ghostClients.length - 10} outros clientes fantasma</p>
+                  )}
+                </div>
+              )}
+
+              {!m.hasBurst && m.ghostClients.length === 0 && m.reschedNoContact.length === 0 && m.avgNoteLen >= 60 && (
+                <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-sm text-green-700">
+                  <CheckCircle2 size={16} />
+                  Sem alertas de monitoramento — padrão de atividade saudável!
+                </div>
+              )}
             </div>
           )}
 
