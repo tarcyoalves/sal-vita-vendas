@@ -1,3 +1,14 @@
+## Modelo por Fase
+
+**IMPORTANTE: Para este projeto, use modelos diferentes conforme a fase:**
+
+- **Planejamento**: Use sempre o subagente `Plan` com `model: "opus"` ao planejar implementações, arquitetura ou refactorings complexos.
+- **Execução**: O modelo padrão é Sonnet (definido em `.claude/settings.json`). Use-o para implementar o plano.
+
+Exemplo de uso correto:
+1. Recebeu tarefa complexa → chame `Agent(subagent_type="Plan", model="opus", ...)` para planejar
+2. Com o plano em mãos → execute com Sonnet
+
 <!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph
 
