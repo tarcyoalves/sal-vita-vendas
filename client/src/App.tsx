@@ -1,9 +1,10 @@
 import { Toaster } from './components/ui/sonner';
 import { TooltipProvider } from './components/ui/tooltip';
 import NotFound from './pages/NotFound';
-import { Route, Switch } from "wouter";
+import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import LandingPage from "./pages/LandingPage";
 import Home from "./pages/Home";
 import AdminDashboard from "./pages/AdminDashboard";
 import VendorReminders from "./pages/VendorReminders";
@@ -25,7 +26,8 @@ import { useReminderNotifications } from "./_core/hooks/useReminderNotifications
 function Router() {
   return (
     <Switch>
-      <Route path={"/"} component={Home} />
+      <Route path={"/"} component={LandingPage} />
+      <Route path={"/entrar"} component={Home} />
       <Route path={"/admin/dashboard"}>
         <AppShell><AdminDashboard /></AppShell>
       </Route>
@@ -83,6 +85,18 @@ function NotificationManager() {
   return null;
 }
 
+function AppContent() {
+  const [location] = useLocation();
+  return (
+    <>
+      <Toaster />
+      <NotificationManager />
+      <Router />
+      {location !== '/' && <FloatingChat />}
+    </>
+  );
+}
+
 function App() {
   return (
     <ErrorBoundary>
@@ -91,10 +105,7 @@ function App() {
         // switchable
       >
         <TooltipProvider>
-          <Toaster />
-          <NotificationManager />
-          <Router />
-          <FloatingChat />
+          <AppContent />
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>
