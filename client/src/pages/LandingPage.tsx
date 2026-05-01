@@ -79,22 +79,25 @@ function GoldLine() {
 }
 
 /* ─── full-bleed photo section wrapper ─────────────────────────────────── */
-/* Replace photoSrc with the real licensed photo URL for each section.     */
-/* picsum.photos serves real photography from Unsplash contributors and    */
-/* works in browsers without referrer restrictions (for prototyping).       */
-function PhotoBg({ seed, children, overlay = `${deep}CC` }: {
-  seed: string;
+/* photoId = Unsplash photo ID (from unsplash.com/photos/{slug}-{ID})      */
+/* source.unsplash.com/{ID}/WxH redirects to the specific licensed photo.  */
+/* For production: replace with your own licensed artisanal photography.   */
+function PhotoBg({ photoId, fallbackGradient, children, overlay = `${deep}CC` }: {
+  photoId: string;
+  fallbackGradient?: string;
   children: React.ReactNode;
   overlay?: string;
 }) {
   const [imgErr, setImgErr] = useState(false);
   return (
-    <div style={{ position: 'relative', overflow: 'hidden' }}>
-      {/* Real photo — loads in the browser; replace with licensed production photo */}
+    <div style={{
+      position: 'relative', overflow: 'hidden',
+      background: imgErr ? (fallbackGradient ?? `linear-gradient(135deg,${deep},${navy})`) : undefined,
+    }}>
       {!imgErr && (
         <img
           className="lp-photo-bg"
-          src={`https://picsum.photos/seed/${seed}/1920/1080`}
+          src={`https://source.unsplash.com/${photoId}/1920x1080`}
           alt=""
           loading="lazy"
           onError={() => setImgErr(true)}
@@ -206,7 +209,7 @@ function Qty({ val, set }: { val:number; set:(n:number)=>void }) {
 }
 
 /* ─── food photo card ───────────────────────────────────────────────────── */
-function FoodCard({ seed, n, l, d }: { seed:string; n:string; l:string; d:string }) {
+function FoodCard({ photoId, n, l, d, fallback }: { photoId:string; n:string; l:string; d:string; fallback:string }) {
   const [err, setErr] = useState(false);
   return (
     <div style={{
@@ -217,11 +220,12 @@ function FoodCard({ seed, n, l, d }: { seed:string; n:string; l:string; d:string
       overflow: 'hidden',
       position: 'relative',
       minHeight: 340,
+      background: err ? fallback : deep,
     }}>
       {!err && (
         <img
-          src={`https://picsum.photos/seed/${seed}/600/800`}
-          alt=""
+          src={`https://source.unsplash.com/${photoId}/600x800`}
+          alt={l}
           loading="lazy"
           onError={() => setErr(true)}
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
@@ -280,10 +284,11 @@ export default function LandingPage() {
         <a href="#comprar" className="lp-btn-gold" style={{ padding:'9px 22px', fontSize:13 }}>Comprar agora</a>
       </header>
 
-      {/* ── HERO — full-bleed photo background ── */}
-      {/* Replace picsum URL with licensed salina/coastal photo for production */}
+      {/* ── HERO — aerial salt flat near ocean: source.unsplash.com/cF5vzFQ_OEk ── */}
+      {/* For production: replace with licensed coastal salina photo of your choice */}
       <PhotoBg
-        seed="sv-coastal-salt"
+        photoId="cF5vzFQ_OEk"
+        fallbackGradient={`radial-gradient(ellipse at 65% 45%, ${mid}, ${navy}, ${deep})`}
         overlay={`linear-gradient(105deg, ${deep}F5 0%, ${deep}CC 40%, ${navy}88 70%, ${mid}44 100%)`}
       >
         <div className="lp-hero-grid" style={{ width:'100%', maxWidth:1320, margin:'0 auto', padding:'130px 48px 90px', gap:56 }}>
@@ -361,11 +366,12 @@ export default function LandingPage() {
       {/* Replace picsum seed with a licensed salina/artisanal harvest photo */}
       <section id="origem">
         <div className="lp-origin-grid">
-          {/* photo left */}
+          {/* photo left — aerial view of salt flat near ocean */}
+          {/* source.unsplash.com/AZFNCj3jhdk — "An aerial view of a large salt flat near the ocean" */}
           <div style={{ minHeight:520, position:'relative', overflow:'hidden' }}>
             <img
               className="lp-photo-bg"
-              src="https://picsum.photos/seed/sv-salina-origin/900/1100"
+              src="https://source.unsplash.com/AZFNCj3jhdk/900x1100"
               alt="Salinas de Mossoró, RN"
               loading="lazy"
             />
@@ -397,11 +403,12 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── PRODUTO EM DESTAQUE — photo bg section ── */}
-      {/* Replace picsum seed with licensed salt crystal/product photo */}
+      {/* ── PRODUTO EM DESTAQUE — pile of sea salt crystals background ── */}
+      {/* source.unsplash.com/r-gupb4r0ZM — "A pile of sea salt next to a small piece of stone" */}
       <section id="produto">
         <PhotoBg
-          seed="sv-crystal-texture"
+          photoId="r-gupb4r0ZM"
+          fallbackGradient={`linear-gradient(155deg,${mid},${deep})`}
           overlay={`linear-gradient(155deg, ${deep}EE 0%, ${mid}DD 100%)`}
         >
           <div style={{ maxWidth:1280, margin:'0 auto', padding:'96px 48px', display:'flex', gap:80, alignItems:'center', flexWrap:'wrap' }}>
@@ -461,18 +468,20 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── GALERIA VISUAL — 3 photo panels with food/product scenes ── */}
-      {/* Replace picsum seeds with licensed gourmet/product photography     */}
+      {/* ── GALERIA VISUAL — 3 gourmet food photo panels ── */}
       <section style={{ background:deep }}>
         <div className="lp-gallery-grid" style={{ gap:2 }}>
           {[
-            { seed:'sv-gal-bbq',  label:'Finalização de carnes', sub:'O cristal estala no calor' },
-            { seed:'sv-gal-fish', label:'Frutos do mar', sub:'Salga a seco antes de grelhar' },
-            { seed:'sv-gal-veg',  label:'Vegetais e saladas', sub:'Quebre com os dedos, ao vivo' },
+            /* m1YOztVo6MA — "A close up of a grill with meat and lemons" */
+            { photoId:'m1YOztVo6MA', label:'Finalização de carnes', sub:'O cristal estala no calor' },
+            /* N8-bMqUMS8g — "Grilled fish with vegetable salad on white ceramic plate" */
+            { photoId:'N8-bMqUMS8g', label:'Frutos do mar', sub:'Salga a seco antes de grelhar' },
+            /* LN19x--Aacw — "A person holding a bowl of salad with lettuce and tomatoes" */
+            { photoId:'LN19x--Aacw', label:'Vegetais e saladas', sub:'Quebre com os dedos, ao vivo' },
           ].map((p,i)=>(
-            <motion.div key={p.seed} {...up(i*.1)} style={{ position:'relative', overflow:'hidden', minHeight:380 }}>
+            <motion.div key={p.photoId} {...up(i*.1)} style={{ position:'relative', overflow:'hidden', minHeight:380 }}>
               <img
-                src={`https://picsum.photos/seed/${p.seed}/700/900`}
+                src={`https://source.unsplash.com/${p.photoId}/700x900`}
                 alt={p.label}
                 loading="lazy"
                 style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', transition:'transform .5s ease' }}
@@ -499,14 +508,20 @@ export default function LandingPage() {
         </motion.h2>
         <div className="lp-ritual-scroll" style={{ display:'flex', gap:18, overflowX:'auto', scrollSnapType:'x mandatory', paddingRight:48, paddingBottom:8 }}>
           {[
-            { seed:'sv-r-churrasco', n:'01', l:'Churrasco',   d:'Finalize a carne fora do fogo com os cristais maiores. Eles estalam.' },
-            { seed:'sv-r-salada',    n:'02', l:'Saladas',     d:'Quebre o cristal com os dedos sobre tomates maduros e azeite.' },
-            { seed:'sv-r-peixe',     n:'03', l:'Grelhados',   d:'Pulverize antes de selar o peixe; a crosta forma textura própria.' },
-            { seed:'sv-r-massa',     n:'04', l:'Massas',      d:'Uma pitada na água do cozimento, outra na finalização.' },
-            { seed:'sv-r-final',     n:'05', l:'Finalização', d:'Sobre ovo mole, abacate, manteiga gelada, chocolate amargo.' },
-            { seed:'sv-r-daily',     n:'06', l:'Dia a dia',   d:'Substitua o sal refinado. O feijão vai te contar a diferença.' },
+            /* iceGP331_sY — "A steak is cooking on a bbq grill" */
+            { photoId:'iceGP331_sY',    fallback:`linear-gradient(135deg,#3D1A0A,#8B3A12)`, n:'01', l:'Churrasco',   d:'Finalize a carne fora do fogo com os cristais maiores. Eles estalam.' },
+            /* LN19x--Aacw — "Bowl of salad with lettuce and tomatoes" */
+            { photoId:'LN19x--Aacw',    fallback:`linear-gradient(135deg,#1A3D0A,#2D6B10)`, n:'02', l:'Saladas',     d:'Quebre o cristal com os dedos sobre tomates maduros e azeite.' },
+            /* 3_M4NxDo89A — "Fish being grilled" */
+            { photoId:'3_M4NxDo89A',    fallback:`linear-gradient(135deg,#0A2A3D,#0F4A6B)`, n:'03', l:'Grelhados',   d:'Pulverize antes de selar o peixe; a crosta forma textura própria.' },
+            /* QuFm328PV88 — "Bowl of pasta" */
+            { photoId:'QuFm328PV88',    fallback:`linear-gradient(135deg,#3D2A0A,#7A5215)`, n:'04', l:'Massas',      d:'Uma pitada na água do cozimento, outra na finalização.' },
+            /* pFpPRuR4pd4 — "Brown and black stones" (himalaya salt close-up) */
+            { photoId:'pFpPRuR4pd4',    fallback:`linear-gradient(135deg,#2A0A3D,#5515AA)`, n:'05', l:'Finalização', d:'Sobre ovo mole, abacate, manteiga gelada, chocolate amargo.' },
+            /* r-gupb4r0ZM — "Pile of sea salt next to a stone" */
+            { photoId:'r-gupb4r0ZM',    fallback:`linear-gradient(135deg,${navy},${mid})`,   n:'06', l:'Dia a dia',   d:'Substitua o sal refinado. O feijão vai te contar a diferença.' },
           ].map(c=>(
-            <FoodCard key={c.seed} seed={c.seed} n={c.n} l={c.l} d={c.d} />
+            <FoodCard key={c.photoId} photoId={c.photoId} fallback={c.fallback} n={c.n} l={c.l} d={c.d} />
           ))}
         </div>
       </section>
@@ -529,10 +544,12 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── COMPRAR ── */}
+      {/* ── COMPRAR — sea salt crystals background ── */}
+      {/* source.unsplash.com/r-gupb4r0ZM — pile of sea salt */}
       <section id="comprar">
         <PhotoBg
-          seed="sv-purchase-bg"
+          photoId="r-gupb4r0ZM"
+          fallbackGradient={`linear-gradient(155deg,${mid},${deep})`}
           overlay={`linear-gradient(155deg, ${mid}EE 0%, ${deep}EE 100%)`}
         >
           <div style={{ maxWidth:1280, margin:'0 auto', padding:'96px 48px' }}>
@@ -612,10 +629,11 @@ export default function LandingPage() {
         </PhotoBg>
       </section>
 
-      {/* ── FRASE FINAL — full-bleed photo background ── */}
-      {/* Replace picsum seed with licensed coastal/ocean photo for production */}
+      {/* ── FRASE FINAL — clear tropical beach background ── */}
+      {/* source.unsplash.com/x7ZjDBtAMRI — "A beach with clear blue water and white clouds" */}
       <PhotoBg
-        seed="sv-final-ocean"
+        photoId="x7ZjDBtAMRI"
+        fallbackGradient={deep}
         overlay={`linear-gradient(to bottom, ${deep}DD 0%, ${deep}CC 60%, ${deep}F5 100%)`}
       >
         <div style={{ padding:'120px 48px', textAlign:'center' }}>
