@@ -18,26 +18,57 @@ const up = (d = 0) => ({
   transition: { duration: 0.8, delay: d, ease: [0.16, 1, 0.3, 1] as const },
 });
 
-/* ─── CSS keyframes injected once ───────────────────────────────────────── */
+/* ─── CSS injected once ─────────────────────────────────────────────────── */
 const STYLES = `
-  @keyframes float  { 0%,100%{transform:translateY(0)}  50%{transform:translateY(-14px)} }
-  @keyframes sparkle{ 0%,100%{opacity:0;transform:scale(0)} 50%{opacity:.45;transform:scale(1)} }
-  @keyframes shimmer{ 0%{background-position:200% center} 100%{background-position:-200% center} }
+  @keyframes float  { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-14px)} }
+  @keyframes shimmer{ 0%{opacity:.4} 50%{opacity:.8} 100%{opacity:.4} }
   .lp-float { animation: float 7s ease-in-out infinite; }
-  .lp-nav-links a { color:rgba(244,239,230,.6); font:13px/1 'Inter Tight',sans-serif;
-    letter-spacing:.04em; text-decoration:none; transition:color .2s; }
+  .lp-nav-links a {
+    color:rgba(244,239,230,.6); font:13px/1 'Inter Tight',sans-serif;
+    letter-spacing:.04em; text-decoration:none; transition:color .2s;
+  }
   .lp-nav-links a:hover { color:${cream}; }
-  .lp-btn-gold { background:${gold}; color:${deep}; border:none; font:700 15px/1 'Inter Tight',sans-serif;
-    padding:15px 36px; border-radius:10px; cursor:pointer; text-decoration:none;
-    display:inline-block; transition:background .2s; }
+  .lp-btn-gold {
+    background:${gold}; color:${deep}; border:none;
+    font:700 15px/1 'Inter Tight',sans-serif; padding:15px 36px;
+    border-radius:10px; cursor:pointer; text-decoration:none;
+    display:inline-block; transition:background .2s;
+  }
   .lp-btn-gold:hover { background:${goldLt}; }
-  .lp-btn-outline { border:1px solid rgba(244,239,230,.22); color:rgba(244,239,230,.65);
-    font:500 14px/1 'Inter Tight',sans-serif; padding:15px 32px; border-radius:10px;
-    cursor:pointer; text-decoration:none; display:inline-block; transition:all .2s;background:none; }
+  .lp-btn-outline {
+    border:1px solid rgba(244,239,230,.22); color:rgba(244,239,230,.65);
+    font:500 14px/1 'Inter Tight',sans-serif; padding:15px 32px;
+    border-radius:10px; cursor:pointer; text-decoration:none;
+    display:inline-block; transition:all .2s; background:none;
+  }
   .lp-btn-outline:hover { border-color:rgba(244,239,230,.5); color:${cream}; }
+  .lp-photo-bg {
+    position:absolute; inset:0; width:100%; height:100%;
+    object-fit:cover; object-position:center;
+  }
+  /* Responsive grid helpers */
+  @media(min-width:900px){
+    .lp-hero-grid   { display:grid; grid-template-columns:1fr 1fr; align-items:center; }
+    .lp-origin-grid { display:grid; grid-template-columns:1fr 1fr; }
+    .lp-purchase-grid{ display:grid; grid-template-columns:1fr 1fr; }
+    .lp-flavor-grid  { display:grid; grid-template-columns:repeat(3,1fr); }
+    .lp-gallery-grid { display:grid; grid-template-columns:repeat(3,1fr); }
+    .lp-stats-row    { display:flex; }
+    .lp-nav-links    { display:flex !important; }
+    .lp-hero-img     { display:flex !important; }
+  }
+  @media(max-width:900px){
+    .lp-hero-grid,.lp-origin-grid,.lp-purchase-grid,.lp-flavor-grid,.lp-gallery-grid{display:block;}
+    .lp-stats-row    { display:flex; flex-wrap:wrap; gap:32px; }
+    .lp-nav-links,.lp-hero-img { display:none; }
+    .lp-ritual-scroll { padding-right:24px !important; }
+  }
+  @media(max-width:768px){
+    .lp-stats-row { justify-content:center; }
+  }
 `;
 
-/* ─── reusable GoldLine ─────────────────────────────────────────────────── */
+/* ─── gold divider ──────────────────────────────────────────────────────── */
 function GoldLine() {
   return (
     <motion.div {...up()} style={{
@@ -47,10 +78,42 @@ function GoldLine() {
   );
 }
 
-/* ─── product image + elegant fallback ─────────────────────────────────── */
+/* ─── full-bleed photo section wrapper ─────────────────────────────────── */
+/* Replace photoSrc with the real licensed photo URL for each section.     */
+/* picsum.photos serves real photography from Unsplash contributors and    */
+/* works in browsers without referrer restrictions (for prototyping).       */
+function PhotoBg({ seed, children, overlay = `${deep}CC` }: {
+  seed: string;
+  children: React.ReactNode;
+  overlay?: string;
+}) {
+  const [imgErr, setImgErr] = useState(false);
+  return (
+    <div style={{ position: 'relative', overflow: 'hidden' }}>
+      {/* Real photo — loads in the browser; replace with licensed production photo */}
+      {!imgErr && (
+        <img
+          className="lp-photo-bg"
+          src={`https://picsum.photos/seed/${seed}/1920/1080`}
+          alt=""
+          loading="lazy"
+          onError={() => setImgErr(true)}
+        />
+      )}
+      {/* Dark gradient overlay — ensures text legibility regardless of photo */}
+      <div style={{ position: 'absolute', inset: 0, background: overlay }} />
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/* ─── product bag / embalagem ───────────────────────────────────────────── */
+/* Add client/public/embalagem.png to show the real product photo.         */
 function Bag({ size = 400 }: { size?: number }) {
   const [err, setErr] = useState(false);
-  return err ? (
+  if (err) return (
     <div style={{
       width: size, maxWidth: '100%', aspectRatio: '3/4',
       background: `linear-gradient(160deg,${brand},${mid},${navy})`,
@@ -67,11 +130,9 @@ function Bag({ size = 400 }: { size?: number }) {
       <div style={{ border: `1px solid ${gold}44`, borderRadius: 60, padding: '8px 18px' }}>
         <span style={{ fontFamily: 'Fraunces,serif', fontSize: 22, color: goldLt }}>1 kg</span>
       </div>
-      <p style={{ fontFamily: 'Inter Tight,sans-serif', fontSize: 10, color: `${cream}44`, textAlign: 'center', margin: 0 }}>
-        Adicione client/public/embalagem.png
-      </p>
     </div>
-  ) : (
+  );
+  return (
     <img src="/embalagem.png" alt="Sal Vita Premium 1kg" onError={() => setErr(true)}
       style={{ width: size, maxWidth: '100%', filter: `drop-shadow(0 40px 80px ${deep}cc) drop-shadow(0 0 40px ${gold}22)`, display: 'block' }} />
   );
@@ -144,6 +205,40 @@ function Qty({ val, set }: { val:number; set:(n:number)=>void }) {
   );
 }
 
+/* ─── food photo card ───────────────────────────────────────────────────── */
+function FoodCard({ seed, n, l, d }: { seed:string; n:string; l:string; d:string }) {
+  const [err, setErr] = useState(false);
+  return (
+    <div style={{
+      flexShrink: 0,
+      width: 'clamp(240px,27vw,295px)',
+      scrollSnapAlign: 'start',
+      borderRadius: 14,
+      overflow: 'hidden',
+      position: 'relative',
+      minHeight: 340,
+    }}>
+      {!err && (
+        <img
+          src={`https://picsum.photos/seed/${seed}/600/800`}
+          alt=""
+          loading="lazy"
+          onError={() => setErr(true)}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+      )}
+      <div style={{ position: 'absolute', inset: 0, background: err
+        ? `linear-gradient(135deg,#2a1a0a,#5a3010)`
+        : `linear-gradient(to top, ${deep}F2 0%, ${deep}99 50%, transparent 100%)` }} />
+      <div style={{ position: 'relative', padding: '28px 24px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+        <p style={{ fontFamily:'Fraunces,serif', fontSize:44, fontWeight:300, color:'transparent', WebkitTextStroke:`1px ${gold}66`, lineHeight:1, margin:'0 0 12px' }}>{n}</p>
+        <p style={{ fontFamily:'Inter Tight,sans-serif', fontWeight:600, fontSize:15, color:cream, margin:'0 0 6px' }}>{l}</p>
+        <p style={{ fontFamily:'Cormorant Garamond,serif', fontStyle:'italic', fontSize:14, color:`${cream}99`, lineHeight:1.5, margin:0 }}>{d}</p>
+      </div>
+    </div>
+  );
+}
+
 /* ─── page ──────────────────────────────────────────────────────────────── */
 export default function LandingPage() {
   const [solid, setSolid] = useState(false);
@@ -163,15 +258,15 @@ export default function LandingPage() {
     <>
       <style>{STYLES}</style>
 
-      {/* NAV */}
+      {/* ── NAV ── */}
       <header style={{
-        position:'fixed', top:0, left:0, right:0, zIndex:200,
-        padding:'14px 48px',
+        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 200,
+        padding: '14px 48px',
         background: solid ? `${deep}f2` : 'transparent',
         backdropFilter: solid ? 'blur(16px)' : 'none',
         borderBottom: solid ? `1px solid ${gold}22` : 'none',
-        transition:'all .35s',
-        display:'flex', alignItems:'center', justifyContent:'space-between',
+        transition: 'all .35s',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <a href="/" style={{ display:'flex', alignItems:'center', gap:10, textDecoration:'none' }}>
           <img src="/sal-vita-logo.svg" alt="Sal Vita" style={{ height:38, filter:'brightness(0) invert(1)', opacity:.9 }} />
@@ -185,20 +280,13 @@ export default function LandingPage() {
         <a href="#comprar" className="lp-btn-gold" style={{ padding:'9px 22px', fontSize:13 }}>Comprar agora</a>
       </header>
 
-      {/* HERO */}
-      <section style={{
-        minHeight:'100vh', position:'relative', overflow:'hidden',
-        background:`radial-gradient(ellipse at 65% 45%, ${mid} 0%, ${navy} 50%, ${deep} 100%)`,
-        display:'flex', alignItems:'center',
-      }}>
-        {/* grain */}
-        <div style={{ position:'absolute', inset:0, opacity:.35, pointerEvents:'none', backgroundImage:`url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.08'/%3E%3C/svg%3E")`, backgroundSize:'200px', mixBlendMode:'overlay' }} />
-        {/* wave accent */}
-        <svg style={{ position:'absolute', bottom:0, left:0, right:0, width:'100%', pointerEvents:'none' }} viewBox="0 0 1440 80" preserveAspectRatio="none" fill="none">
-          <path d="M0,40 C240,80 480,0 720,40 C960,80 1200,0 1440,40 L1440,80 L0,80Z" fill={`${deep}88`} />
-        </svg>
-
-        <div className="lp-hero-grid" style={{ width:'100%', maxWidth:1320, margin:'0 auto', padding:'130px 48px 90px', gap:56, position:'relative', zIndex:1 }}>
+      {/* ── HERO — full-bleed photo background ── */}
+      {/* Replace picsum URL with licensed salina/coastal photo for production */}
+      <PhotoBg
+        seed="sv-coastal-salt"
+        overlay={`linear-gradient(105deg, ${deep}F5 0%, ${deep}CC 40%, ${navy}88 70%, ${mid}44 100%)`}
+      >
+        <div className="lp-hero-grid" style={{ width:'100%', maxWidth:1320, margin:'0 auto', padding:'130px 48px 90px', gap:56 }}>
           {/* copy */}
           <div>
             <motion.div {...up()}>
@@ -231,7 +319,7 @@ export default function LandingPage() {
             </motion.div>
           </div>
 
-          {/* product */}
+          {/* product float */}
           <motion.div className="lp-hero-img" {...up(.1)} style={{ display:'flex', justifyContent:'center', position:'relative' }}>
             <div style={{ position:'absolute', inset:-40, background:`radial-gradient(circle, ${brand}55 0%, ${gold}18 45%, transparent 70%)`, pointerEvents:'none' }} />
             <div className="lp-float">
@@ -241,16 +329,16 @@ export default function LandingPage() {
         </div>
 
         {/* scroll hint */}
-        <div style={{ position:'absolute', bottom:28, left:'50%', transform:'translateX(-50%)', display:'flex', flexDirection:'column', alignItems:'center', gap:8 }}>
+        <div style={{ position:'relative', zIndex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:8, paddingBottom:28 }}>
           <svg width="20" height="32" viewBox="0 0 20 32">
             <rect x="1" y="1" width="18" height="30" rx="9" stroke={`${cream}44`} strokeWidth="1.5" fill="none" />
             <rect x="8" y="6" width="4" height="10" rx="2" fill={gold} style={{ animation:'float 2.2s ease-in-out infinite', transformOrigin:'center 11px' }} />
           </svg>
           <span style={{ fontFamily:'JetBrains Mono,monospace', fontSize:9, letterSpacing:'.2em', color:`${cream}44`, textTransform:'uppercase' }}>ROLAR</span>
         </div>
-      </section>
+      </PhotoBg>
 
-      {/* STATS BAR */}
+      {/* ── STATS BAR ── */}
       <section style={{ background:cream, padding:'64px 48px' }}>
         <div style={{ maxWidth:1100, margin:'0 auto' }}>
           <div className="lp-stats-row" style={{ justifyContent:'space-around', textAlign:'center' }}>
@@ -269,35 +357,24 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ORIGEM */}
-      <section id="origem" style={{ background:navy }}>
+      {/* ── ORIGEM — photo left panel, text right ── */}
+      {/* Replace picsum seed with a licensed salina/artisanal harvest photo */}
+      <section id="origem">
         <div className="lp-origin-grid">
-          {/* visual left — CSS salina art */}
-          <div style={{ minHeight:480, position:'relative', overflow:'hidden',
-            background:`linear-gradient(180deg, #6BA8C8 0%, #A8D2E8 38%, #D8EBF4 47%, ${cream} 49%, #E0D8C8 62%, #C8BCA4 80%, #B4A888 100%)` }}>
-            {/* salt mounds */}
-            {[
-              { left:'8%',  bottom:'22%', w:90,  h:40  },
-              { left:'18%', bottom:'25%', w:130, h:55  },
-              { left:'32%', bottom:'21%', w:70,  h:32  },
-              { right:'6%', bottom:'22%', w:100, h:44  },
-              { right:'18%',bottom:'24%', w:140, h:58  },
-              { right:'32%',bottom:'20%', w:80,  h:36  },
-            ].map((m,i)=>(
-              <div key={i} style={{ position:'absolute', ...m, background:`${cream}ee`, borderRadius:'50% 50% 0 0', boxShadow:`0 -4px 20px ${cream}88` }} />
-            ))}
-            {/* horizon line */}
-            <div style={{ position:'absolute', top:'48%', left:0, right:0, height:2, background:`linear-gradient(90deg,transparent,${gold}88,rgba(255,220,80,.9),${gold}88,transparent)` }} />
-            {/* sky glow */}
-            <div style={{ position:'absolute', top:'6%', left:'50%', transform:'translateX(-50%)', width:160, height:120, background:'radial-gradient(ellipse,rgba(255,215,80,.55),rgba(255,200,50,.15),transparent 70%)', filter:'blur(6px)' }} />
-            {/* reflection bands */}
-            {[54,60,68,77,87].map((t,i)=>(
-              <div key={i} style={{ position:'absolute', top:`${t}%`, left:0, right:0, height:1, background:`${gold}${['44','33','22','18','11'][i]}` }} />
-            ))}
-            {/* grain */}
-            <div style={{ position:'absolute', inset:0, opacity:.5, mixBlendMode:'overlay', backgroundImage:`url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.07'/%3E%3C/svg%3E")`, backgroundSize:'200px' }} />
-            {/* coords */}
-            <span style={{ position:'absolute', bottom:18, right:18, fontFamily:'JetBrains Mono,monospace', fontSize:11, color:`${navy}88`, background:`${cream}cc`, padding:'4px 8px', borderRadius:4 }}>5°11′S 37°20′W · Mossoró</span>
+          {/* photo left */}
+          <div style={{ minHeight:520, position:'relative', overflow:'hidden' }}>
+            <img
+              className="lp-photo-bg"
+              src="https://picsum.photos/seed/sv-salina-origin/900/1100"
+              alt="Salinas de Mossoró, RN"
+              loading="lazy"
+            />
+            <div style={{ position:'absolute', inset:0, background:`linear-gradient(to right, transparent 70%, ${navy}FF)` }} />
+            {/* coordinates badge */}
+            <div style={{ position:'absolute', bottom:24, left:24, background:`${deep}CC`, backdropFilter:'blur(8px)', border:`1px solid ${gold}33`, borderRadius:8, padding:'8px 14px' }}>
+              <p style={{ fontFamily:'JetBrains Mono,monospace', fontSize:11, color:gold, margin:0 }}>5°11′S 37°20′W</p>
+              <p style={{ fontFamily:'Inter Tight,sans-serif', fontSize:10, color:`${cream}66`, margin:'2px 0 0', letterSpacing:'.1em' }}>MOSSORÓ · RN · BRASIL</p>
+            </div>
           </div>
 
           {/* text right */}
@@ -320,43 +397,48 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* PRODUTO EM DESTAQUE */}
-      <section id="produto" style={{ background:`linear-gradient(155deg,${mid},${deep})`, padding:'96px 48px', position:'relative', overflow:'hidden' }}>
-        <div style={{ position:'absolute', inset:0, opacity:.25, mixBlendMode:'overlay', backgroundImage:`url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.07'/%3E%3C/svg%3E")`, backgroundSize:'200px' }} />
-        <div style={{ maxWidth:1280, margin:'0 auto', display:'flex', gap:80, alignItems:'center', flexWrap:'wrap', position:'relative' }}>
-          <motion.div {...up()} style={{ flex:'0 0 auto' }}>
-            <Bag size={360} />
-          </motion.div>
-          <div style={{ flex:1, minWidth:280 }}>
-            <motion.p {...up()} style={{ fontFamily:'Inter Tight,sans-serif', fontSize:11, letterSpacing:'.2em', color:gold, textTransform:'uppercase', margin:'0 0 14px' }}>SAL VITA PREMIUM · 1 KG</motion.p>
-            <motion.h2 {...up(.08)} style={{ fontFamily:'Fraunces,serif', fontStyle:'italic', fontSize:'clamp(28px,4vw,52px)', fontWeight:300, color:cream, lineHeight:1.1, margin:'0 0 28px' }}>
-              Muito mais sabor,<br /><em style={{ color:gold }}>em cada pitada.</em>
-            </motion.h2>
-            <div style={{ display:'flex', flexDirection:'column', gap:18, marginBottom:36 }}>
-              {[
-                ['◈','Cristal irregular','Quebra em momentos diferentes — camadas de sabor onde o refinado entrega só uma nota.'],
-                ['◉','+80 minerais','Assinatura mineral que o sal de cozinha comum perdeu há décadas.'],
-                ['◌','Use menos','Cada grão libera mais sabor. A mão fica mais leve.'],
-                ['◍','Sem aditivos','Não branqueado, não refinado. Direto da salina para a sua cozinha.'],
-              ].map(([icon,title,body],i)=>(
-                <motion.div key={title} {...up(i*.08)} style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
-                  <span style={{ fontFamily:'Fraunces,serif', fontSize:22, color:gold, lineHeight:1, marginTop:2 }}>{icon}</span>
-                  <div>
-                    <p style={{ fontFamily:'Inter Tight,sans-serif', fontWeight:600, fontSize:14, color:cream, margin:'0 0 3px' }}>{title}</p>
-                    <p style={{ fontFamily:'Cormorant Garamond,serif', fontStyle:'italic', fontSize:16, color:`${cream}77`, margin:0, lineHeight:1.5 }}>{body}</p>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-            <GoldLine />
-            <motion.div {...up(.4)} style={{ marginTop:28 }}>
-              <a href="#comprar" className="lp-btn-gold">Ver preços e opções</a>
+      {/* ── PRODUTO EM DESTAQUE — photo bg section ── */}
+      {/* Replace picsum seed with licensed salt crystal/product photo */}
+      <section id="produto">
+        <PhotoBg
+          seed="sv-crystal-texture"
+          overlay={`linear-gradient(155deg, ${deep}EE 0%, ${mid}DD 100%)`}
+        >
+          <div style={{ maxWidth:1280, margin:'0 auto', padding:'96px 48px', display:'flex', gap:80, alignItems:'center', flexWrap:'wrap' }}>
+            <motion.div {...up()} style={{ flex:'0 0 auto' }}>
+              <Bag size={360} />
             </motion.div>
+            <div style={{ flex:1, minWidth:280 }}>
+              <motion.p {...up()} style={{ fontFamily:'Inter Tight,sans-serif', fontSize:11, letterSpacing:'.2em', color:gold, textTransform:'uppercase', margin:'0 0 14px' }}>SAL VITA PREMIUM · 1 KG</motion.p>
+              <motion.h2 {...up(.08)} style={{ fontFamily:'Fraunces,serif', fontStyle:'italic', fontSize:'clamp(28px,4vw,52px)', fontWeight:300, color:cream, lineHeight:1.1, margin:'0 0 28px' }}>
+                Muito mais sabor,<br /><em style={{ color:gold }}>em cada pitada.</em>
+              </motion.h2>
+              <div style={{ display:'flex', flexDirection:'column', gap:18, marginBottom:36 }}>
+                {[
+                  ['◈','Cristal irregular','Quebra em momentos diferentes — camadas de sabor onde o refinado entrega só uma nota.'],
+                  ['◉','+80 minerais','Assinatura mineral que o sal de cozinha comum perdeu há décadas.'],
+                  ['◌','Use menos','Cada grão libera mais sabor. A mão fica mais leve.'],
+                  ['◍','Sem aditivos','Não branqueado, não refinado. Direto da salina para a sua cozinha.'],
+                ].map(([icon,title,body],i)=>(
+                  <motion.div key={title} {...up(i*.08)} style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
+                    <span style={{ fontFamily:'Fraunces,serif', fontSize:22, color:gold, lineHeight:1, marginTop:2 }}>{icon}</span>
+                    <div>
+                      <p style={{ fontFamily:'Inter Tight,sans-serif', fontWeight:600, fontSize:14, color:cream, margin:'0 0 3px' }}>{title}</p>
+                      <p style={{ fontFamily:'Cormorant Garamond,serif', fontStyle:'italic', fontSize:16, color:`${cream}77`, margin:0, lineHeight:1.5 }}>{body}</p>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+              <GoldLine />
+              <motion.div {...up(.4)} style={{ marginTop:28 }}>
+                <a href="#comprar" className="lp-btn-gold">Ver preços e opções</a>
+              </motion.div>
+            </div>
           </div>
-        </div>
+        </PhotoBg>
       </section>
 
-      {/* 3 RAZÕES */}
+      {/* ── 3 RAZÕES ── */}
       <section style={{ background:cream, padding:'96px 48px' }}>
         <div style={{ maxWidth:1280, margin:'0 auto' }}>
           <motion.p {...up()} style={{ fontFamily:'Inter Tight,sans-serif', fontSize:11, letterSpacing:'.2em', color:gold, textTransform:'uppercase', margin:'0 0 10px' }}>DIFERENÇA SENSORIAL</motion.p>
@@ -379,31 +461,57 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* RITUAL */}
+      {/* ── GALERIA VISUAL — 3 photo panels with food/product scenes ── */}
+      {/* Replace picsum seeds with licensed gourmet/product photography     */}
+      <section style={{ background:deep }}>
+        <div className="lp-gallery-grid" style={{ gap:2 }}>
+          {[
+            { seed:'sv-gal-bbq',  label:'Finalização de carnes', sub:'O cristal estala no calor' },
+            { seed:'sv-gal-fish', label:'Frutos do mar', sub:'Salga a seco antes de grelhar' },
+            { seed:'sv-gal-veg',  label:'Vegetais e saladas', sub:'Quebre com os dedos, ao vivo' },
+          ].map((p,i)=>(
+            <motion.div key={p.seed} {...up(i*.1)} style={{ position:'relative', overflow:'hidden', minHeight:380 }}>
+              <img
+                src={`https://picsum.photos/seed/${p.seed}/700/900`}
+                alt={p.label}
+                loading="lazy"
+                style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', transition:'transform .5s ease' }}
+                onMouseEnter={e=>(e.currentTarget.style.transform='scale(1.04)')}
+                onMouseLeave={e=>(e.currentTarget.style.transform='scale(1)')}
+              />
+              <div style={{ position:'absolute', inset:0, background:`linear-gradient(to top, ${deep}F0 0%, transparent 55%)` }} />
+              <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'28px 24px' }}>
+                <p style={{ fontFamily:'Inter Tight,sans-serif', fontWeight:600, fontSize:15, color:cream, margin:'0 0 4px' }}>{p.label}</p>
+                <p style={{ fontFamily:'Cormorant Garamond,serif', fontStyle:'italic', fontSize:14, color:`${cream}88`, margin:0 }}>{p.sub}</p>
+              </div>
+              {/* gold top border accent */}
+              <div style={{ position:'absolute', top:0, left:0, right:0, height:3, background:gold, opacity:.6 }} />
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── RITUAL — scrollable food cards with photos ── */}
       <section id="usos" style={{ background:navy, padding:'96px 0 96px 48px' }}>
         <motion.p {...up()} style={{ fontFamily:'Inter Tight,sans-serif', fontSize:11, letterSpacing:'.2em', color:gold, textTransform:'uppercase', margin:'0 0 10px', paddingRight:48 }}>RITUAL DE USO</motion.p>
         <motion.h2 {...up(.08)} style={{ fontFamily:'Fraunces,serif', fontStyle:'italic', fontSize:'clamp(28px,4vw,50px)', fontWeight:300, color:cream, margin:'0 0 40px', paddingRight:48 }}>
           Seis lugares onde ele faz diferença.
         </motion.h2>
-        <div className="lp-ritual-scroll" style={{ display:'flex', gap:18, overflowX:'auto', scrollSnapType:'x mandatory', paddingRight:48 }}>
+        <div className="lp-ritual-scroll" style={{ display:'flex', gap:18, overflowX:'auto', scrollSnapType:'x mandatory', paddingRight:48, paddingBottom:8 }}>
           {[
-            { n:'01', l:'Churrasco',   d:'Finalize a carne fora do fogo com os cristais maiores. Eles estalam.', bg:`linear-gradient(135deg,#3D1A0A,#7A3515)` },
-            { n:'02', l:'Saladas',     d:'Quebre o cristal com os dedos sobre tomates maduros e azeite.', bg:`linear-gradient(135deg,#1A3D0A,#2D6B10)` },
-            { n:'03', l:'Grelhados',   d:'Pulverize antes de selar o peixe; a crosta forma textura própria.', bg:`linear-gradient(135deg,#0A2A3D,#0F4A6B)` },
-            { n:'04', l:'Massas',      d:'Uma pitada na água do cozimento, outra na finalização.', bg:`linear-gradient(135deg,#3D2A0A,#7A5215)` },
-            { n:'05', l:'Finalização', d:'Sobre ovo mole, abacate, manteiga gelada, chocolate amargo.', bg:`linear-gradient(135deg,#2A0A3D,#5515AA)` },
-            { n:'06', l:'Dia a dia',   d:'Substitua o sal refinado. O feijão e o arroz vão te contar a diferença.', bg:`linear-gradient(135deg,${navy},${mid})` },
+            { seed:'sv-r-churrasco', n:'01', l:'Churrasco',   d:'Finalize a carne fora do fogo com os cristais maiores. Eles estalam.' },
+            { seed:'sv-r-salada',    n:'02', l:'Saladas',     d:'Quebre o cristal com os dedos sobre tomates maduros e azeite.' },
+            { seed:'sv-r-peixe',     n:'03', l:'Grelhados',   d:'Pulverize antes de selar o peixe; a crosta forma textura própria.' },
+            { seed:'sv-r-massa',     n:'04', l:'Massas',      d:'Uma pitada na água do cozimento, outra na finalização.' },
+            { seed:'sv-r-final',     n:'05', l:'Finalização', d:'Sobre ovo mole, abacate, manteiga gelada, chocolate amargo.' },
+            { seed:'sv-r-daily',     n:'06', l:'Dia a dia',   d:'Substitua o sal refinado. O feijão vai te contar a diferença.' },
           ].map(c=>(
-            <div key={c.n} style={{ flexShrink:0, width:'clamp(240px,27vw,295px)', scrollSnapAlign:'start', background:c.bg, border:`1px solid ${gold}22`, borderRadius:14, padding:'32px 28px', borderTop:`3px solid ${gold}` }}>
-              <p style={{ fontFamily:'Fraunces,serif', fontSize:56, fontWeight:300, color:'transparent', WebkitTextStroke:`1px ${gold}55`, lineHeight:1, margin:'0 0 16px' }}>{c.n}</p>
-              <p style={{ fontFamily:'Inter Tight,sans-serif', fontWeight:600, fontSize:15, color:cream, margin:'0 0 8px' }}>{c.l}</p>
-              <p style={{ fontFamily:'Cormorant Garamond,serif', fontStyle:'italic', fontSize:15, color:`${cream}88`, lineHeight:1.6, margin:0 }}>{c.d}</p>
-            </div>
+            <FoodCard key={c.seed} seed={c.seed} n={c.n} l={c.l} d={c.d} />
           ))}
         </div>
       </section>
 
-      {/* HONESTIDADE */}
+      {/* ── HONESTIDADE ── */}
       <section style={{ background:cream, padding:'96px 48px' }}>
         <div style={{ maxWidth:780, margin:'0 auto', textAlign:'center', position:'relative' }}>
           <div style={{ position:'absolute', top:-16, left:'50%', transform:'translateX(-50%)', fontFamily:'Fraunces,serif', fontSize:160, color:navy, opacity:.04, lineHeight:1, userSelect:'none' }}>"</div>
@@ -421,102 +529,111 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* COMPRAR */}
-      <section id="comprar" style={{ background:`linear-gradient(155deg,${mid},${deep})`, padding:'96px 48px', position:'relative', overflow:'hidden' }}>
-        <div style={{ position:'absolute', inset:0, opacity:.2, mixBlendMode:'overlay', backgroundImage:`url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.07'/%3E%3C/svg%3E")`, backgroundSize:'200px' }} />
-        <div style={{ maxWidth:1280, margin:'0 auto', position:'relative' }}>
-          <div style={{ textAlign:'center', marginBottom:60 }}>
-            <motion.p {...up()} style={{ fontFamily:'Inter Tight,sans-serif', fontSize:11, letterSpacing:'.2em', color:gold, textTransform:'uppercase', margin:'0 0 10px' }}>ESCOLHA SEU RITUAL</motion.p>
-            <motion.h2 {...up(.08)} style={{ fontFamily:'Fraunces,serif', fontStyle:'italic', fontSize:'clamp(26px,4vw,50px)', fontWeight:300, color:cream, lineHeight:1.15, margin:'0 0 14px' }}>
-              Você não está comprando um pacote de sal.
-            </motion.h2>
-            <motion.p {...up(.14)} style={{ fontFamily:'Cormorant Garamond,serif', fontStyle:'italic', fontSize:18, color:`${cream}88`, maxWidth:620, margin:'0 auto' }}>
-              Está comprando 365 dias de sol, vento e oceano — colhidos nas salinas, entregues na sua porta.
-            </motion.p>
-          </div>
+      {/* ── COMPRAR ── */}
+      <section id="comprar">
+        <PhotoBg
+          seed="sv-purchase-bg"
+          overlay={`linear-gradient(155deg, ${mid}EE 0%, ${deep}EE 100%)`}
+        >
+          <div style={{ maxWidth:1280, margin:'0 auto', padding:'96px 48px' }}>
+            <div style={{ textAlign:'center', marginBottom:60 }}>
+              <motion.p {...up()} style={{ fontFamily:'Inter Tight,sans-serif', fontSize:11, letterSpacing:'.2em', color:gold, textTransform:'uppercase', margin:'0 0 10px' }}>ESCOLHA SEU RITUAL</motion.p>
+              <motion.h2 {...up(.08)} style={{ fontFamily:'Fraunces,serif', fontStyle:'italic', fontSize:'clamp(26px,4vw,50px)', fontWeight:300, color:cream, lineHeight:1.15, margin:'0 0 14px' }}>
+                Você não está comprando um pacote de sal.
+              </motion.h2>
+              <motion.p {...up(.14)} style={{ fontFamily:'Cormorant Garamond,serif', fontStyle:'italic', fontSize:18, color:`${cream}88`, maxWidth:620, margin:'0 auto' }}>
+                Está comprando 365 dias de sol, vento e oceano — colhidos nas salinas, entregues na sua porta.
+              </motion.p>
+            </div>
 
-          <div className="lp-purchase-grid" style={{ gap:22 }}>
-            {/* 1kg */}
-            <motion.div {...up()} style={{ border:`1px solid ${gold}33`, borderRadius:18, padding:'40px 34px', background:`${navy}88` }}>
-              <div style={{ display:'flex', gap:20, alignItems:'center', marginBottom:24 }}>
-                <Bag size={72} />
-                <div>
-                  <p style={{ fontFamily:'Inter Tight,sans-serif', fontSize:11, letterSpacing:'.15em', color:`${cream}55`, textTransform:'uppercase', margin:'0 0 6px' }}>Cristal · 1 kg</p>
-                  <p style={{ fontFamily:'Fraunces,serif', fontSize:48, fontWeight:300, color:cream, margin:0, lineHeight:1 }}>R$&nbsp;29,90</p>
-                  <p style={{ fontFamily:'Cormorant Garamond,serif', fontStyle:'italic', fontSize:14, color:`${cream}55`, margin:'4px 0 0' }}>Para começar a conversa.</p>
+            <div className="lp-purchase-grid" style={{ gap:22 }}>
+              {/* 1kg */}
+              <motion.div {...up()} style={{ border:`1px solid ${gold}33`, borderRadius:18, padding:'40px 34px', background:`${navy}88`, backdropFilter:'blur(8px)' }}>
+                <div style={{ display:'flex', gap:20, alignItems:'center', marginBottom:24 }}>
+                  <Bag size={72} />
+                  <div>
+                    <p style={{ fontFamily:'Inter Tight,sans-serif', fontSize:11, letterSpacing:'.15em', color:`${cream}55`, textTransform:'uppercase', margin:'0 0 6px' }}>Cristal · 1 kg</p>
+                    <p style={{ fontFamily:'Fraunces,serif', fontSize:48, fontWeight:300, color:cream, margin:0, lineHeight:1 }}>R$&nbsp;29,90</p>
+                    <p style={{ fontFamily:'Cormorant Garamond,serif', fontStyle:'italic', fontSize:14, color:`${cream}55`, margin:'4px 0 0' }}>Para começar a conversa.</p>
+                  </div>
                 </div>
-              </div>
-              <GoldLine />
-              <ul style={{ listStyle:'none', padding:0, margin:'20px 0', display:'flex', flexDirection:'column', gap:8 }}>
-                {['Embalagem premium azul e dourado','Rendimento médio de 2–3 meses','Fechamento hermético'].map(f=>(
-                  <li key={f} style={{ fontFamily:'Inter Tight,sans-serif', fontSize:13, color:`${cream}88` }}><span style={{ color:gold, marginRight:8 }}>──</span>{f}</li>
-                ))}
-              </ul>
-              <GoldLine />
-              <div style={{ marginTop:22, display:'flex', flexDirection:'column', gap:12 }}>
-                <Qty val={q1} set={setQ1} />
-                <p style={{ fontFamily:'Inter Tight,sans-serif', fontSize:13, color:`${cream}88`, margin:0 }}>Total: <strong style={{ color:cream }}>{p1}</strong></p>
-                <button className="lp-btn-outline" style={{ textAlign:'center' }}
-                  onMouseEnter={e=>{const el=e.currentTarget;el.style.background=gold;el.style.color=deep;el.style.borderColor=gold;}}
-                  onMouseLeave={e=>{const el=e.currentTarget;el.style.background='none';el.style.color='rgba(244,239,230,.65)';el.style.borderColor='rgba(244,239,230,.22)';}}>
-                  Levar {q1} {q1===1?'embalagem':'embalagens'}
-                </button>
-              </div>
-            </motion.div>
+                <GoldLine />
+                <ul style={{ listStyle:'none', padding:0, margin:'20px 0', display:'flex', flexDirection:'column', gap:8 }}>
+                  {['Embalagem premium azul e dourado','Rendimento médio de 2–3 meses','Fechamento hermético'].map(f=>(
+                    <li key={f} style={{ fontFamily:'Inter Tight,sans-serif', fontSize:13, color:`${cream}88` }}><span style={{ color:gold, marginRight:8 }}>──</span>{f}</li>
+                  ))}
+                </ul>
+                <GoldLine />
+                <div style={{ marginTop:22, display:'flex', flexDirection:'column', gap:12 }}>
+                  <Qty val={q1} set={setQ1} />
+                  <p style={{ fontFamily:'Inter Tight,sans-serif', fontSize:13, color:`${cream}88`, margin:0 }}>Total: <strong style={{ color:cream }}>{p1}</strong></p>
+                  <button className="lp-btn-outline" style={{ textAlign:'center' }}
+                    onMouseEnter={e=>{const el=e.currentTarget;el.style.background=gold;el.style.color=deep;el.style.borderColor=gold;}}
+                    onMouseLeave={e=>{const el=e.currentTarget;el.style.background='none';el.style.color='rgba(244,239,230,.65)';el.style.borderColor='rgba(244,239,230,.22)';}}>
+                    Levar {q1} {q1===1?'embalagem':'embalagens'}
+                  </button>
+                </div>
+              </motion.div>
 
-            {/* 10kg */}
-            <motion.div {...up(.1)} style={{ border:`1px solid ${gold}`, borderRadius:18, padding:'40px 34px', background:`linear-gradient(155deg,${mid},${navy})`, position:'relative', overflow:'hidden', boxShadow:`0 0 60px ${gold}18` }}>
-              <div style={{ position:'absolute', top:-60, right:-60, width:200, height:200, background:`radial-gradient(circle,${gold}22,transparent 70%)` }} />
-              <div style={{ position:'absolute', top:0, left:'50%', transform:'translateX(-50%)', background:gold, color:deep, padding:'4px 20px', fontFamily:'Inter Tight,sans-serif', fontSize:10, fontWeight:700, letterSpacing:'.12em', textTransform:'uppercase', borderRadius:'0 0 10px 10px' }}>MELHOR ESCOLHA</div>
-              <div style={{ display:'flex', gap:20, alignItems:'center', marginBottom:20, marginTop:14 }}>
-                <Bag size={78} />
-                <div>
-                  <p style={{ fontFamily:'Inter Tight,sans-serif', fontSize:11, letterSpacing:'.15em', color:`${cream}55`, textTransform:'uppercase', margin:'0 0 6px' }}>Caixa Cristal · 10 kg</p>
-                  <p style={{ fontFamily:'Fraunces,serif', fontSize:48, fontWeight:300, color:goldLt, margin:0, lineHeight:1 }}>R$&nbsp;149,00</p>
-                  <p style={{ fontFamily:'Cormorant Garamond,serif', fontStyle:'italic', fontSize:14, color:`${cream}55`, margin:'4px 0 0' }}>Para quem já não volta atrás.</p>
+              {/* 10kg */}
+              <motion.div {...up(.1)} style={{ border:`1px solid ${gold}`, borderRadius:18, padding:'40px 34px', background:`${navy}99`, backdropFilter:'blur(8px)', position:'relative', overflow:'hidden', boxShadow:`0 0 60px ${gold}18` }}>
+                <div style={{ position:'absolute', top:-60, right:-60, width:200, height:200, background:`radial-gradient(circle,${gold}22,transparent 70%)` }} />
+                <div style={{ position:'absolute', top:0, left:'50%', transform:'translateX(-50%)', background:gold, color:deep, padding:'4px 20px', fontFamily:'Inter Tight,sans-serif', fontSize:10, fontWeight:700, letterSpacing:'.12em', textTransform:'uppercase', borderRadius:'0 0 10px 10px' }}>MELHOR ESCOLHA</div>
+                <div style={{ display:'flex', gap:20, alignItems:'center', marginBottom:20, marginTop:14 }}>
+                  <Bag size={78} />
+                  <div>
+                    <p style={{ fontFamily:'Inter Tight,sans-serif', fontSize:11, letterSpacing:'.15em', color:`${cream}55`, textTransform:'uppercase', margin:'0 0 6px' }}>Caixa Cristal · 10 kg</p>
+                    <p style={{ fontFamily:'Fraunces,serif', fontSize:48, fontWeight:300, color:goldLt, margin:0, lineHeight:1 }}>R$&nbsp;149,00</p>
+                    <p style={{ fontFamily:'Cormorant Garamond,serif', fontStyle:'italic', fontSize:14, color:`${cream}55`, margin:'4px 0 0' }}>Para quem já não volta atrás.</p>
+                  </div>
                 </div>
-              </div>
-              <div style={{ border:`1px solid ${gold}33`, background:`${gold}18`, borderRadius:10, padding:'10px 14px', marginBottom:20 }}>
-                <p style={{ fontFamily:'Inter Tight,sans-serif', fontSize:13, color:goldLt, margin:'0 0 3px', fontWeight:600 }}>R$ 14,90/kg — metade do preço avulso</p>
-                <p style={{ fontFamily:'Inter Tight,sans-serif', fontSize:11, color:`${gold}aa`, margin:0 }}>Economia de R$ 150,00 vs. 10 unidades</p>
-              </div>
-              <GoldLine />
-              <ul style={{ listStyle:'none', padding:0, margin:'20px 0', display:'flex', flexDirection:'column', gap:8 }}>
-                {['Caixa colecionável azul abismo','Estoque para o ano inteiro','Frete otimizado por volume','Garantia de origem Mossoró'].map(f=>(
-                  <li key={f} style={{ fontFamily:'Inter Tight,sans-serif', fontSize:13, color:`${cream}88` }}><span style={{ color:gold, marginRight:8 }}>──</span>{f}</li>
-                ))}
-              </ul>
-              <GoldLine />
-              <div style={{ marginTop:22, display:'flex', flexDirection:'column', gap:12 }}>
-                <Qty val={q10} set={setQ10} />
-                <p style={{ fontFamily:'Inter Tight,sans-serif', fontSize:13, color:`${cream}88`, margin:0 }}>Total: <strong style={{ color:cream }}>{p10}</strong></p>
-                <button className="lp-btn-gold" style={{ textAlign:'center' }}>
-                  Reservar {q10>1?`${q10} caixas`:'minha caixa'}
-                </button>
-              </div>
-              <Frete />
-            </motion.div>
+                <div style={{ border:`1px solid ${gold}33`, background:`${gold}18`, borderRadius:10, padding:'10px 14px', marginBottom:20 }}>
+                  <p style={{ fontFamily:'Inter Tight,sans-serif', fontSize:13, color:goldLt, margin:'0 0 3px', fontWeight:600 }}>R$ 14,90/kg — metade do preço avulso</p>
+                  <p style={{ fontFamily:'Inter Tight,sans-serif', fontSize:11, color:`${gold}aa`, margin:0 }}>Economia de R$ 150,00 vs. 10 unidades</p>
+                </div>
+                <GoldLine />
+                <ul style={{ listStyle:'none', padding:0, margin:'20px 0', display:'flex', flexDirection:'column', gap:8 }}>
+                  {['Caixa colecionável azul abismo','Estoque para o ano inteiro','Frete otimizado por volume','Garantia de origem Mossoró'].map(f=>(
+                    <li key={f} style={{ fontFamily:'Inter Tight,sans-serif', fontSize:13, color:`${cream}88` }}><span style={{ color:gold, marginRight:8 }}>──</span>{f}</li>
+                  ))}
+                </ul>
+                <GoldLine />
+                <div style={{ marginTop:22, display:'flex', flexDirection:'column', gap:12 }}>
+                  <Qty val={q10} set={setQ10} />
+                  <p style={{ fontFamily:'Inter Tight,sans-serif', fontSize:13, color:`${cream}88`, margin:0 }}>Total: <strong style={{ color:cream }}>{p10}</strong></p>
+                  <button className="lp-btn-gold" style={{ textAlign:'center' }}>
+                    Reservar {q10>1?`${q10} caixas`:'minha caixa'}
+                  </button>
+                </div>
+                <Frete />
+              </motion.div>
+            </div>
           </div>
+        </PhotoBg>
+      </section>
+
+      {/* ── FRASE FINAL — full-bleed photo background ── */}
+      {/* Replace picsum seed with licensed coastal/ocean photo for production */}
+      <PhotoBg
+        seed="sv-final-ocean"
+        overlay={`linear-gradient(to bottom, ${deep}DD 0%, ${deep}CC 60%, ${deep}F5 100%)`}
+      >
+        <div style={{ padding:'120px 48px', textAlign:'center' }}>
+          {[10,25,40,55,70,85,15,35,60,80].map((l,i)=>(
+            <div key={i} style={{ position:'absolute', left:`${l}%`, top:`${[20,60,30,70,25,55,80,40,15,65][i]}%`, width:3, height:3, borderRadius:'50%', background:gold, opacity:[.3,.2,.4,.15,.35,.25,.2,.3,.15,.25][i] }} />
+          ))}
+          <motion.div {...up()} style={{ position:'relative', zIndex:1 }}>
+            <img src="/sal-vita-logo.svg" alt="" style={{ height:56, filter:'brightness(0) invert(1)', opacity:.2, display:'block', margin:'0 auto 32px' }} />
+            <p style={{ fontFamily:'JetBrains Mono,monospace', fontSize:11, letterSpacing:'.2em', color:`${gold}77`, textTransform:'uppercase', margin:'0 0 40px' }}>SAL VITA PREMIUM · MOSSORÓ, BRASIL</p>
+            <h2 style={{ fontFamily:'Fraunces,serif', fontStyle:'italic', fontSize:'clamp(34px,6vw,70px)', fontWeight:300, color:cream, lineHeight:1.15, margin:'0 0 48px' }}>
+              O mar levou um ano.<br /><em style={{ color:gold }}>Você leva um instante.</em>
+            </h2>
+            <a href="#comprar" className="lp-btn-gold" style={{ padding:'18px 52px', fontSize:16 }}>Trazer o mar para a mesa</a>
+          </motion.div>
         </div>
-      </section>
+      </PhotoBg>
 
-      {/* FRASE FINAL */}
-      <section style={{ background:deep, padding:'120px 48px', textAlign:'center', position:'relative', overflow:'hidden' }}>
-        {/* static decorative dots */}
-        {[10,25,40,55,70,85,15,35,60,80].map((l,i)=>(
-          <div key={i} style={{ position:'absolute', left:`${l}%`, top:`${[20,60,30,70,25,55,80,40,15,65][i]}%`, width:3, height:3, borderRadius:'50%', background:gold, opacity:[.3,.2,.4,.15,.35,.25,.2,.3,.15,.25][i] }} />
-        ))}
-        <motion.div {...up()} style={{ position:'relative', zIndex:1 }}>
-          <img src="/sal-vita-logo.svg" alt="" style={{ height:56, filter:'brightness(0) invert(1)', opacity:.15, display:'block', margin:'0 auto 32px' }} />
-          <p style={{ fontFamily:'JetBrains Mono,monospace', fontSize:11, letterSpacing:'.2em', color:`${gold}77`, textTransform:'uppercase', margin:'0 0 40px' }}>SAL VITA PREMIUM · MOSSORÓ, BRASIL</p>
-          <h2 style={{ fontFamily:'Fraunces,serif', fontStyle:'italic', fontSize:'clamp(34px,6vw,70px)', fontWeight:300, color:cream, lineHeight:1.15, margin:'0 0 48px' }}>
-            O mar levou um ano.<br /><em style={{ color:gold }}>Você leva um instante.</em>
-          </h2>
-          <a href="#comprar" className="lp-btn-gold" style={{ padding:'18px 52px', fontSize:16 }}>Trazer o mar para a mesa</a>
-        </motion.div>
-      </section>
-
-      {/* FOOTER */}
+      {/* ── FOOTER ── */}
       <footer style={{ background:deep, borderTop:`1px solid ${gold}18`, padding:'24px 48px', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 }}>
         <img src="/sal-vita-logo.svg" alt="Sal Vita" style={{ height:26, filter:'brightness(0) invert(1)', opacity:.28 }} />
         <p style={{ fontFamily:'Inter Tight,sans-serif', fontSize:11, letterSpacing:'.12em', textTransform:'uppercase', color:`${cream}27`, margin:0 }}>
