@@ -104,3 +104,75 @@ body {
     max-width: 1280px;
   }
 }
+
+/* ── Landing Page: Responsive Layouts ──────────────────────── */
+.lp-hero-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.lp-origin-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.lp-flavor-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+.lp-purchase-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+}
+.lp-stats-row {
+  display: flex;
+  gap: 48px;
+}
+.lp-nav-links {
+  display: flex;
+  gap: 32px;
+  align-items: center;
+}
+.lp-hero-img {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+@media (max-width: 900px) {
+  .lp-hero-grid {
+    grid-template-columns: 1fr;
+  }
+  .lp-hero-img {
+    padding-top: 0 !important;
+    max-height: 360px;
+    overflow: hidden;
+  }
+  .lp-purchase-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .lp-origin-grid {
+    grid-template-columns: 1fr;
+  }
+  .lp-flavor-grid {
+    grid-template-columns: 1fr;
+    gap: 48px !important;
+  }
+  .lp-nav-links {
+    display: none;
+  }
+  .lp-stats-row {
+    flex-wrap: wrap;
+    gap: 24px;
+  }
+}
+
+/* Ritual horizontal scroll: hide native scrollbar */
+.lp-ritual-scroll::-webkit-scrollbar {
+  display: none;
+}
+.lp-ritual-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
