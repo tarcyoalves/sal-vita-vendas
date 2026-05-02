@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 /* ─── tokens ─────────────────────────────────────────────────────────────── */
@@ -9,6 +9,35 @@ const gold   = '#C9A04A';
 const goldLt = '#E8C77A';
 const cream  = '#F4EFE6';
 const brand  = '#1B3D8F';
+
+/* ─── Wikipedia photo hook ──────────────────────────────────────────────── */
+const wikiCache: Record<string, string> = {};
+function useWikiImg(article: string): string | null {
+  const [src, setSrc] = useState<string | null>(wikiCache[article] ?? null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    if (wikiCache[article]) { setSrc(wikiCache[article]); return; }
+    const ctrl = new AbortController();
+    fetch(
+      `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(article)}`,
+      { signal: ctrl.signal }
+    )
+      .then(r => r.json())
+      .then(d => {
+        if (!mounted.current) return;
+        const raw = d.originalimage?.source ?? d.thumbnail?.source ?? null;
+        if (raw) {
+          const big = raw.replace(/\/\d+px-/, '/1400px-');
+          wikiCache[article] = big;
+          setSrc(big);
+        }
+      })
+      .catch(() => {});
+    return () => { mounted.current = false; ctrl.abort(); };
+  }, [article]);
+  return src;
+}
 
 /* ─── one-time entrance variant ─────────────────────────────────────────── */
 const up = (d = 0) => ({
@@ -79,31 +108,29 @@ function GoldLine() {
 }
 
 /* ─── full-bleed photo section wrapper ─────────────────────────────────── */
-/* photoId = Unsplash photo ID (from unsplash.com/photos/{slug}-{ID})      */
-/* source.unsplash.com/{ID}/WxH redirects to the specific licensed photo.  */
-/* For production: replace with your own licensed artisanal photography.   */
-function PhotoBg({ photoId, fallbackGradient, children, overlay = `${deep}CC` }: {
-  photoId: string;
+function PhotoBg({ wikiArticle, fallbackGradient, children, overlay = `${deep}CC` }: {
+  wikiArticle: string;
   fallbackGradient?: string;
   children: React.ReactNode;
   overlay?: string;
 }) {
-  const [imgErr, setImgErr] = useState(false);
+  const src = useWikiImg(wikiArticle);
   return (
     <div style={{
       position: 'relative', overflow: 'hidden',
-      background: imgErr ? (fallbackGradient ?? `linear-gradient(135deg,${deep},${navy})`) : undefined,
+      background: fallbackGradient ?? `linear-gradient(135deg,${deep},${navy})`,
     }}>
-      {!imgErr && (
+      {src && (
         <img
           className="lp-photo-bg"
-          src={`https://source.unsplash.com/${photoId}/1920x1080`}
+          src={src}
           alt=""
-          loading="lazy"
-          onError={() => setImgErr(true)}
+          style={{
+            position: 'absolute', inset: 0, width: '100%', height: '100%',
+            objectFit: 'cover', objectPosition: 'center',
+          }}
         />
       )}
-      {/* Dark gradient overlay — ensures text legibility regardless of photo */}
       <div style={{ position: 'absolute', inset: 0, background: overlay }} />
       <div style={{ position: 'relative', zIndex: 1 }}>
         {children}
@@ -113,7 +140,6 @@ function PhotoBg({ photoId, fallbackGradient, children, overlay = `${deep}CC` }:
 }
 
 /* ─── product bag / embalagem ───────────────────────────────────────────── */
-/* Add client/public/embalagem.png to show the real product photo.         */
 function Bag({ size = 400 }: { size?: number }) {
   const [err, setErr] = useState(false);
   if (err) return (
@@ -208,9 +234,9 @@ function Qty({ val, set }: { val:number; set:(n:number)=>void }) {
   );
 }
 
-/* ─── food photo card ───────────────────────────────────────────────────── */
-function FoodCard({ photoId, n, l, d, fallback }: { photoId:string; n:string; l:string; d:string; fallback:string }) {
-  const [err, setErr] = useState(false);
+/* ─── food photo card (ritual scroll) ──────────────────────────────────── */
+function FoodCard({ wikiArticle, n, l, d, fallback }: { wikiArticle:string; n:string; l:string; d:string; fallback:string }) {
+  const src = useWikiImg(wikiArticle);
   return (
     <div style={{
       flexShrink: 0,
@@ -220,24 +246,60 @@ function FoodCard({ photoId, n, l, d, fallback }: { photoId:string; n:string; l:
       overflow: 'hidden',
       position: 'relative',
       minHeight: 340,
-      background: err ? fallback : deep,
+      background: fallback,
     }}>
-      {!err && (
+      {src && (
         <img
-          src={`https://source.unsplash.com/${photoId}/600x800`}
+          src={src}
           alt={l}
-          loading="lazy"
-          onError={() => setErr(true)}
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
         />
       )}
-      <div style={{ position: 'absolute', inset: 0, background: err
-        ? `linear-gradient(135deg,#2a1a0a,#5a3010)`
-        : `linear-gradient(to top, ${deep}F2 0%, ${deep}99 50%, transparent 100%)` }} />
+      <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(to top, ${deep}F2 0%, ${deep}99 50%, transparent 100%)` }} />
       <div style={{ position: 'relative', padding: '28px 24px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
         <p style={{ fontFamily:'Fraunces,serif', fontSize:44, fontWeight:300, color:'transparent', WebkitTextStroke:`1px ${gold}66`, lineHeight:1, margin:'0 0 12px' }}>{n}</p>
         <p style={{ fontFamily:'Inter Tight,sans-serif', fontWeight:600, fontSize:15, color:cream, margin:'0 0 6px' }}>{l}</p>
         <p style={{ fontFamily:'Cormorant Garamond,serif', fontStyle:'italic', fontSize:14, color:`${cream}99`, lineHeight:1.5, margin:0 }}>{d}</p>
+      </div>
+    </div>
+  );
+}
+
+/* ─── gallery panel (3-up grid) ─────────────────────────────────────────── */
+function GalleryPanel({ wiki, label, sub, fb, delay }: { wiki:string; label:string; sub:string; fb:string; delay:number }) {
+  const src = useWikiImg(wiki);
+  return (
+    <motion.div {...up(delay)} style={{ position:'relative', overflow:'hidden', minHeight:380, background:fb }}>
+      {src && (
+        <img
+          src={src}
+          alt={label}
+          style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', transition:'transform .5s ease' }}
+          onMouseEnter={e=>(e.currentTarget.style.transform='scale(1.04)')}
+          onMouseLeave={e=>(e.currentTarget.style.transform='scale(1)')}
+        />
+      )}
+      <div style={{ position:'absolute', inset:0, background:`linear-gradient(to top, ${deep}F0 0%, transparent 55%)` }} />
+      <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'28px 24px' }}>
+        <p style={{ fontFamily:'Inter Tight,sans-serif', fontWeight:600, fontSize:15, color:cream, margin:'0 0 4px' }}>{label}</p>
+        <p style={{ fontFamily:'Cormorant Garamond,serif', fontStyle:'italic', fontSize:14, color:`${cream}88`, margin:0 }}>{sub}</p>
+      </div>
+      <div style={{ position:'absolute', top:0, left:0, right:0, height:3, background:gold, opacity:.6 }} />
+    </motion.div>
+  );
+}
+
+/* ─── origem photo panel ────────────────────────────────────────────────── */
+function OrigemPhoto() {
+  const src = useWikiImg('Salt evaporation pond');
+  return (
+    <div style={{ minHeight:520, position:'relative', overflow:'hidden',
+      background:`linear-gradient(180deg,#B8D4E8,#D4EAF4 40%,#E8F4FA 48%,#F0EAD8 50%,#D8C8A0 70%,#C0A870 100%)` }}>
+      {src && <img src={src} alt="Salinas" style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} />}
+      <div style={{ position:'absolute', inset:0, background:`linear-gradient(to right, transparent 70%, ${navy}FF)` }} />
+      <div style={{ position:'absolute', bottom:24, left:24, background:`${deep}CC`, backdropFilter:'blur(8px)', border:`1px solid ${gold}33`, borderRadius:8, padding:'8px 14px' }}>
+        <p style={{ fontFamily:'JetBrains Mono,monospace', fontSize:11, color:gold, margin:0 }}>5°11′S 37°20′W</p>
+        <p style={{ fontFamily:'Inter Tight,sans-serif', fontSize:10, color:`${cream}66`, margin:'2px 0 0', letterSpacing:'.1em' }}>MOSSORÓ · RN · BRASIL</p>
       </div>
     </div>
   );
@@ -284,15 +346,13 @@ export default function LandingPage() {
         <a href="#comprar" className="lp-btn-gold" style={{ padding:'9px 22px', fontSize:13 }}>Comprar agora</a>
       </header>
 
-      {/* ── HERO — aerial salt flat near ocean: source.unsplash.com/cF5vzFQ_OEk ── */}
-      {/* For production: replace with licensed coastal salina photo of your choice */}
+      {/* ── HERO ── */}
       <PhotoBg
-        photoId="cF5vzFQ_OEk"
+        wikiArticle="Salar de Uyuni"
         fallbackGradient={`radial-gradient(ellipse at 65% 45%, ${mid}, ${navy}, ${deep})`}
         overlay={`linear-gradient(105deg, ${deep}F5 0%, ${deep}CC 40%, ${navy}88 70%, ${mid}44 100%)`}
       >
         <div className="lp-hero-grid" style={{ width:'100%', maxWidth:1320, margin:'0 auto', padding:'130px 48px 90px', gap:56 }}>
-          {/* copy */}
           <div>
             <motion.div {...up()}>
               <span style={{ display:'inline-flex', alignItems:'center', gap:8, border:`1px solid ${gold}44`, borderRadius:40, padding:'6px 16px', marginBottom:28 }}>
@@ -324,7 +384,6 @@ export default function LandingPage() {
             </motion.div>
           </div>
 
-          {/* product float */}
           <motion.div className="lp-hero-img" {...up(.1)} style={{ display:'flex', justifyContent:'center', position:'relative' }}>
             <div style={{ position:'absolute', inset:-40, background:`radial-gradient(circle, ${brand}55 0%, ${gold}18 45%, transparent 70%)`, pointerEvents:'none' }} />
             <div className="lp-float">
@@ -333,7 +392,6 @@ export default function LandingPage() {
           </motion.div>
         </div>
 
-        {/* scroll hint */}
         <div style={{ position:'relative', zIndex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:8, paddingBottom:28 }}>
           <svg width="20" height="32" viewBox="0 0 20 32">
             <rect x="1" y="1" width="18" height="30" rx="9" stroke={`${cream}44`} strokeWidth="1.5" fill="none" />
@@ -362,28 +420,10 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── ORIGEM — photo left panel, text right ── */}
-      {/* Replace picsum seed with a licensed salina/artisanal harvest photo */}
+      {/* ── ORIGEM ── */}
       <section id="origem">
         <div className="lp-origin-grid">
-          {/* photo left — aerial view of salt flat near ocean */}
-          {/* source.unsplash.com/AZFNCj3jhdk — "An aerial view of a large salt flat near the ocean" */}
-          <div style={{ minHeight:520, position:'relative', overflow:'hidden' }}>
-            <img
-              className="lp-photo-bg"
-              src="https://source.unsplash.com/AZFNCj3jhdk/900x1100"
-              alt="Salinas de Mossoró, RN"
-              loading="lazy"
-            />
-            <div style={{ position:'absolute', inset:0, background:`linear-gradient(to right, transparent 70%, ${navy}FF)` }} />
-            {/* coordinates badge */}
-            <div style={{ position:'absolute', bottom:24, left:24, background:`${deep}CC`, backdropFilter:'blur(8px)', border:`1px solid ${gold}33`, borderRadius:8, padding:'8px 14px' }}>
-              <p style={{ fontFamily:'JetBrains Mono,monospace', fontSize:11, color:gold, margin:0 }}>5°11′S 37°20′W</p>
-              <p style={{ fontFamily:'Inter Tight,sans-serif', fontSize:10, color:`${cream}66`, margin:'2px 0 0', letterSpacing:'.1em' }}>MOSSORÓ · RN · BRASIL</p>
-            </div>
-          </div>
-
-          {/* text right */}
+          <OrigemPhoto />
           <div style={{ background:navy, padding:'72px 56px', display:'flex', flexDirection:'column', justifyContent:'center' }}>
             <motion.p {...up()} style={{ fontFamily:'Inter Tight,sans-serif', fontSize:11, letterSpacing:'.2em', color:gold, textTransform:'uppercase', margin:'0 0 18px' }}>── TERRITÓRIO DE ORIGEM</motion.p>
             <motion.h2 {...up(.1)} style={{ fontFamily:'Fraunces,serif', fontSize:'clamp(28px,4vw,50px)', fontWeight:300, color:cream, lineHeight:1.1, margin:'0 0 22px' }}>
@@ -403,11 +443,10 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── PRODUTO EM DESTAQUE — pile of sea salt crystals background ── */}
-      {/* source.unsplash.com/r-gupb4r0ZM — "A pile of sea salt next to a small piece of stone" */}
+      {/* ── PRODUTO ── */}
       <section id="produto">
         <PhotoBg
-          photoId="r-gupb4r0ZM"
+          wikiArticle="Sea salt"
           fallbackGradient={`linear-gradient(155deg,${mid},${deep})`}
           overlay={`linear-gradient(155deg, ${deep}EE 0%, ${mid}DD 100%)`}
         >
@@ -468,39 +507,20 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── GALERIA VISUAL — 3 gourmet food photo panels ── */}
+      {/* ── GALERIA VISUAL ── */}
       <section style={{ background:deep }}>
         <div className="lp-gallery-grid" style={{ gap:2 }}>
           {[
-            /* m1YOztVo6MA — "A close up of a grill with meat and lemons" */
-            { photoId:'m1YOztVo6MA', label:'Finalização de carnes', sub:'O cristal estala no calor' },
-            /* N8-bMqUMS8g — "Grilled fish with vegetable salad on white ceramic plate" */
-            { photoId:'N8-bMqUMS8g', label:'Frutos do mar', sub:'Salga a seco antes de grelhar' },
-            /* LN19x--Aacw — "A person holding a bowl of salad with lettuce and tomatoes" */
-            { photoId:'LN19x--Aacw', label:'Vegetais e saladas', sub:'Quebre com os dedos, ao vivo' },
+            { wiki:'Barbecue',   label:'Finalização de carnes', sub:'O cristal estala no calor',     fb:`linear-gradient(135deg,#3D1A0A,#8B3A12)` },
+            { wiki:'Grilled fish', label:'Frutos do mar',       sub:'Salga a seco antes de grelhar', fb:`linear-gradient(135deg,#0A2A3D,#0F4A6B)` },
+            { wiki:'Greek salad', label:'Vegetais e saladas',   sub:'Quebre com os dedos, ao vivo',  fb:`linear-gradient(135deg,#1A3D0A,#2D6B10)` },
           ].map((p,i)=>(
-            <motion.div key={p.photoId} {...up(i*.1)} style={{ position:'relative', overflow:'hidden', minHeight:380 }}>
-              <img
-                src={`https://source.unsplash.com/${p.photoId}/700x900`}
-                alt={p.label}
-                loading="lazy"
-                style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', transition:'transform .5s ease' }}
-                onMouseEnter={e=>(e.currentTarget.style.transform='scale(1.04)')}
-                onMouseLeave={e=>(e.currentTarget.style.transform='scale(1)')}
-              />
-              <div style={{ position:'absolute', inset:0, background:`linear-gradient(to top, ${deep}F0 0%, transparent 55%)` }} />
-              <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'28px 24px' }}>
-                <p style={{ fontFamily:'Inter Tight,sans-serif', fontWeight:600, fontSize:15, color:cream, margin:'0 0 4px' }}>{p.label}</p>
-                <p style={{ fontFamily:'Cormorant Garamond,serif', fontStyle:'italic', fontSize:14, color:`${cream}88`, margin:0 }}>{p.sub}</p>
-              </div>
-              {/* gold top border accent */}
-              <div style={{ position:'absolute', top:0, left:0, right:0, height:3, background:gold, opacity:.6 }} />
-            </motion.div>
+            <GalleryPanel key={p.wiki} wiki={p.wiki} label={p.label} sub={p.sub} fb={p.fb} delay={i*.1} />
           ))}
         </div>
       </section>
 
-      {/* ── RITUAL — scrollable food cards with photos ── */}
+      {/* ── RITUAL ── */}
       <section id="usos" style={{ background:navy, padding:'96px 0 96px 48px' }}>
         <motion.p {...up()} style={{ fontFamily:'Inter Tight,sans-serif', fontSize:11, letterSpacing:'.2em', color:gold, textTransform:'uppercase', margin:'0 0 10px', paddingRight:48 }}>RITUAL DE USO</motion.p>
         <motion.h2 {...up(.08)} style={{ fontFamily:'Fraunces,serif', fontStyle:'italic', fontSize:'clamp(28px,4vw,50px)', fontWeight:300, color:cream, margin:'0 0 40px', paddingRight:48 }}>
@@ -508,20 +528,14 @@ export default function LandingPage() {
         </motion.h2>
         <div className="lp-ritual-scroll" style={{ display:'flex', gap:18, overflowX:'auto', scrollSnapType:'x mandatory', paddingRight:48, paddingBottom:8 }}>
           {[
-            /* iceGP331_sY — "A steak is cooking on a bbq grill" */
-            { photoId:'iceGP331_sY',    fallback:`linear-gradient(135deg,#3D1A0A,#8B3A12)`, n:'01', l:'Churrasco',   d:'Finalize a carne fora do fogo com os cristais maiores. Eles estalam.' },
-            /* LN19x--Aacw — "Bowl of salad with lettuce and tomatoes" */
-            { photoId:'LN19x--Aacw',    fallback:`linear-gradient(135deg,#1A3D0A,#2D6B10)`, n:'02', l:'Saladas',     d:'Quebre o cristal com os dedos sobre tomates maduros e azeite.' },
-            /* 3_M4NxDo89A — "Fish being grilled" */
-            { photoId:'3_M4NxDo89A',    fallback:`linear-gradient(135deg,#0A2A3D,#0F4A6B)`, n:'03', l:'Grelhados',   d:'Pulverize antes de selar o peixe; a crosta forma textura própria.' },
-            /* QuFm328PV88 — "Bowl of pasta" */
-            { photoId:'QuFm328PV88',    fallback:`linear-gradient(135deg,#3D2A0A,#7A5215)`, n:'04', l:'Massas',      d:'Uma pitada na água do cozimento, outra na finalização.' },
-            /* pFpPRuR4pd4 — "Brown and black stones" (himalaya salt close-up) */
-            { photoId:'pFpPRuR4pd4',    fallback:`linear-gradient(135deg,#2A0A3D,#5515AA)`, n:'05', l:'Finalização', d:'Sobre ovo mole, abacate, manteiga gelada, chocolate amargo.' },
-            /* r-gupb4r0ZM — "Pile of sea salt next to a stone" */
-            { photoId:'r-gupb4r0ZM',    fallback:`linear-gradient(135deg,${navy},${mid})`,   n:'06', l:'Dia a dia',   d:'Substitua o sal refinado. O feijão vai te contar a diferença.' },
+            { wikiArticle:'Barbecue',       fallback:`linear-gradient(135deg,#3D1A0A,#8B3A12)`, n:'01', l:'Churrasco',   d:'Finalize a carne fora do fogo com os cristais maiores. Eles estalam.' },
+            { wikiArticle:'Greek salad',    fallback:`linear-gradient(135deg,#1A3D0A,#2D6B10)`, n:'02', l:'Saladas',     d:'Quebre o cristal com os dedos sobre tomates maduros e azeite.' },
+            { wikiArticle:'Grilled fish',   fallback:`linear-gradient(135deg,#0A2A3D,#0F4A6B)`, n:'03', l:'Grelhados',   d:'Pulverize antes de selar o peixe; a crosta forma textura própria.' },
+            { wikiArticle:'Pasta',          fallback:`linear-gradient(135deg,#3D2A0A,#7A5215)`, n:'04', l:'Massas',      d:'Uma pitada na água do cozimento, outra na finalização.' },
+            { wikiArticle:'Fleur de sel',   fallback:`linear-gradient(135deg,#2A0A3D,#5515AA)`, n:'05', l:'Finalização', d:'Sobre ovo mole, abacate, manteiga gelada, chocolate amargo.' },
+            { wikiArticle:'Sodium chloride',fallback:`linear-gradient(135deg,${navy},${mid})`,  n:'06', l:'Dia a dia',   d:'Substitua o sal refinado. O feijão vai te contar a diferença.' },
           ].map(c=>(
-            <FoodCard key={c.photoId} photoId={c.photoId} fallback={c.fallback} n={c.n} l={c.l} d={c.d} />
+            <FoodCard key={c.wikiArticle} wikiArticle={c.wikiArticle} fallback={c.fallback} n={c.n} l={c.l} d={c.d} />
           ))}
         </div>
       </section>
@@ -544,11 +558,10 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── COMPRAR — sea salt crystals background ── */}
-      {/* source.unsplash.com/r-gupb4r0ZM — pile of sea salt */}
+      {/* ── COMPRAR ── */}
       <section id="comprar">
         <PhotoBg
-          photoId="r-gupb4r0ZM"
+          wikiArticle="Sea salt"
           fallbackGradient={`linear-gradient(155deg,${mid},${deep})`}
           overlay={`linear-gradient(155deg, ${mid}EE 0%, ${deep}EE 100%)`}
         >
@@ -629,10 +642,9 @@ export default function LandingPage() {
         </PhotoBg>
       </section>
 
-      {/* ── FRASE FINAL — clear tropical beach background ── */}
-      {/* source.unsplash.com/x7ZjDBtAMRI — "A beach with clear blue water and white clouds" */}
+      {/* ── FRASE FINAL ── */}
       <PhotoBg
-        photoId="x7ZjDBtAMRI"
+        wikiArticle="Jericoacoara"
         fallbackGradient={deep}
         overlay={`linear-gradient(to bottom, ${deep}DD 0%, ${deep}CC 60%, ${deep}F5 100%)`}
       >
