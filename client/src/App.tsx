@@ -21,10 +21,12 @@ import FloatingChat from "./components/FloatingChat";
 import AppShell from "./components/AppShell";
 import { useAuth } from "./_core/hooks/useAuth";
 import { useReminderNotifications } from "./_core/hooks/useReminderNotifications";
+import SalVitaLanding from "./pages/SalVitaLanding";
 
 function Router() {
   return (
     <Switch>
+      <Route path={"/sal-vita"} component={SalVitaLanding} />
       <Route path={"/"} component={Home} />
       <Route path={"/admin/dashboard"}>
         <AppShell><AdminDashboard /></AppShell>
