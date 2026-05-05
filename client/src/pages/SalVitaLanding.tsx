@@ -118,6 +118,14 @@ const FOOD_USES = [
   { emoji: '🍞', label: 'Pães e Panificação', desc: 'Ativa o glúten, melhora a crosta' },
 ];
 
+/* ─── Image assets (hosted on salvitarn.com.br) ─────────── */
+const IMG = {
+  produto:      'http://salvitarn.com.br/wp-content/uploads/2026/05/WhatsApp-Image-2026-05-04-at-09.02.12.jpeg',
+  salina:       'http://salvitarn.com.br/wp-content/uploads/2026/04/WhatsApp-Image-2026-03-24-at-16.42.07.jpeg',
+  cristalizador:'http://salvitarn.com.br/wp-content/uploads/2025/12/cristalizador-de-sal-scaled.jpg',
+  morrosSal:    'http://salvitarn.com.br/wp-content/uploads/2025/10/missao01.webp',
+};
+
 /* ─── WhatsApp ──────────────────────────────────────────── */
 const WA_NUMBER = '5584999999999'; // ← substitua pelo número real
 
@@ -329,7 +337,7 @@ export default function SalVitaLanding() {
           <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             {/* Logo */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <img src="/embalagem.png" alt="Sal Vita Premium" style={{ height: 36, width: 36, objectFit: 'contain', borderRadius: 4 }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+              <img src={IMG.produto} alt="Sal Vita Premium" style={{ height: 36, width: 36, objectFit: 'contain', borderRadius: 4 }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
               <div>
                 <span style={{ fontFamily: "'Cormorant Garamond',Georgia,serif", fontSize: '1.4rem', fontWeight: 700, letterSpacing: '.06em', color: '#f4f0e8' }}>SAL VITA</span>
                 <span style={{ fontFamily: 'Outfit,sans-serif', fontSize: '.6rem', fontWeight: 600, letterSpacing: '.22em', color: '#c8a040', marginLeft: 5, verticalAlign: 'top', marginTop: 5, display: 'inline-block' }}>PREMIUM</span>
@@ -420,7 +428,7 @@ export default function SalVitaLanding() {
               <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
                 <div className="product-float" style={{ position: 'relative' }}>
                   <img
-                    src="/embalagem.png"
+                    src={IMG.produto}
                     alt="SAL VITA PREMIUM — Sal Integral de Mossoró 1kg"
                     style={{ width: '100%', maxWidth: 360, height: 'auto', filter: 'drop-shadow(0 30px 60px rgba(0,0,0,.7)) drop-shadow(0 0 40px rgba(26,58,122,.4))' }}
                     onError={(e) => {
@@ -471,6 +479,27 @@ export default function SalVitaLanding() {
           </div>
         </div>
 
+        {/* ═══════ SALINA PHOTO SECTION ═══════ */}
+        <section style={{ position: 'relative', height: 480, overflow: 'hidden' }}>
+          <img
+            src={IMG.morrosSal}
+            alt="Morros de sal nas salinas de Mossoró, Rio Grande do Norte"
+            style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 60%', display: 'block' }}
+          />
+          {/* Overlay gradients */}
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, #0a1628 0%, rgba(4,8,14,0) 25%, rgba(4,8,14,0) 65%, #0a1628 100%)' }} />
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, rgba(4,8,14,0.55) 0%, transparent 50%, rgba(4,8,14,0.4) 100%)' }} />
+          {/* Caption */}
+          <div style={{ position: 'absolute', bottom: 48, left: '50%', transform: 'translateX(-50%)', textAlign: 'center', width: '100%', padding: '0 24px' }}>
+            <p style={{ fontFamily: "'Cormorant Garamond',Georgia,serif", fontSize: 'clamp(1.5rem,4vw,2.8rem)', fontWeight: 300, fontStyle: 'italic', color: '#f4f0e8', textShadow: '0 2px 20px rgba(0,0,0,0.7)', marginBottom: 8 }}>
+              Das maiores salinas do Brasil
+            </p>
+            <p style={{ fontSize: '.8rem', fontWeight: 600, letterSpacing: '.24em', color: '#c8a040', textTransform: 'uppercase', textShadow: '0 1px 8px rgba(0,0,0,0.8)' }}>
+              Mossoró · Rio Grande do Norte
+            </p>
+          </div>
+        </section>
+
         {/* ═══════ STORY / PRODUTO ═══════ */}
         <section id="produto" style={{ background: '#0a1628', padding: '100px 24px' }}>
           <div style={{ maxWidth: 1200, margin: '0 auto' }}>
@@ -500,22 +529,24 @@ export default function SalVitaLanding() {
 
               {/* Right: big mineral badge + product info */}
               <div id="story-right" data-reveal className={`reveal reveal-d2${vis('story-right') ? ' visible' : ''}`} style={{ display: 'flex', justifyContent: 'center' }}>
-                <div style={{ position: 'relative', maxWidth: 340, width: '100%' }}>
-                  <div className="glass" style={{ padding: '40px 32px', textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
-                    {/* Big mineral number */}
-                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '5rem', fontWeight: 700, lineHeight: 1, marginBottom: 0 }}>
+                <div style={{ position: 'relative', maxWidth: 420, width: '100%', borderRadius: 20, overflow: 'hidden', boxShadow: '0 32px 72px rgba(0,0,0,.55)' }}>
+                  {/* Salina background photo */}
+                  <img
+                    src={IMG.salina}
+                    alt="Salinas de Mossoró — cristalização do sal marinho"
+                    style={{ width: '100%', height: 380, objectFit: 'cover', objectPosition: 'center', display: 'block' }}
+                  />
+                  {/* Overlay with mineral info */}
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(4,8,14,.95) 0%, rgba(4,8,14,.5) 50%, rgba(4,8,14,.15) 100%)' }} />
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '28px 28px 32px' }}>
+                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '3.8rem', fontWeight: 700, lineHeight: 1 }}>
                       <span className="shimmer-gold">+80</span>
                     </div>
-                    <p style={{ fontFamily: 'Outfit,sans-serif', fontSize: '.8rem', fontWeight: 700, letterSpacing: '.2em', color: 'rgba(244,240,232,.6)', textTransform: 'uppercase', marginBottom: 24 }}>Minerais Naturais Preservados</p>
-                    <div style={{ width: '100%', height: 1, background: 'rgba(200,160,64,.25)', marginBottom: 24 }} />
-                    {/* Mineral list */}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-                      {['Magnésio', 'Cálcio', 'Potássio', 'Ferro', 'Iodo', 'Zinco', 'Manganês', 'Sódio + outros'].map((m) => (
-                        <span key={m} style={{ background: 'rgba(200,160,64,.1)', border: '1px solid rgba(200,160,64,.25)', borderRadius: 999, padding: '4px 12px', fontSize: '.75rem', color: 'rgba(244,240,232,.7)' }}>{m}</span>
+                    <p style={{ fontSize: '.75rem', fontWeight: 700, letterSpacing: '.2em', color: 'rgba(244,240,232,.65)', textTransform: 'uppercase', marginBottom: 14 }}>Minerais Naturais Preservados</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {['Magnésio', 'Cálcio', 'Potássio', 'Ferro', 'Iodo', 'Zinco', 'Manganês', '+ outros'].map((m) => (
+                        <span key={m} style={{ background: 'rgba(200,160,64,.15)', border: '1px solid rgba(200,160,64,.3)', borderRadius: 999, padding: '3px 10px', fontSize: '.72rem', color: 'rgba(244,240,232,.8)' }}>{m}</span>
                       ))}
-                    </div>
-                    <div style={{ marginTop: 24, padding: '12px 16px', background: 'rgba(13,80,80,.25)', borderRadius: 10, border: '1px solid rgba(13,80,80,.4)', fontSize: '.82rem', color: 'rgba(244,240,232,.65)', lineHeight: 1.6 }}>
-                      Sal comum refinado perde a maioria desses minerais no processo industrial.
                     </div>
                   </div>
                 </div>
@@ -553,6 +584,28 @@ export default function SalVitaLanding() {
                   <p style={{ color: 'rgba(244,240,232,.55)', lineHeight: 1.7, fontSize: '.88rem' }}>{b.desc}</p>
                 </div>
               ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ═══════ CRISTALIZADOR — FULL BLEED PHOTO ═══════ */}
+        <section style={{ position: 'relative', height: 420, overflow: 'hidden' }}>
+          <img
+            src={IMG.cristalizador}
+            alt="Cristalizador de sal nas salinas de Mossoró"
+            style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 40%', display: 'block' }}
+          />
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, #04080e 0%, rgba(4,8,14,0.1) 20%, rgba(4,8,14,0.1) 70%, #0a1628 100%)' }} />
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px' }}>
+            <div style={{ textAlign: 'center', maxWidth: 680 }}>
+              <p style={{ fontFamily: "'Cormorant Garamond',Georgia,serif", fontSize: 'clamp(1.6rem,4vw,3rem)', fontWeight: 600, fontStyle: 'italic', color: '#f4f0e8', textShadow: '0 2px 24px rgba(0,0,0,0.8)', lineHeight: 1.3, marginBottom: 16 }}>
+                "Colhido sob o sol nordestino,<br />cristalizado pelo vento do sertão."
+              </p>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ width: 40, height: 1, background: '#c8a040' }} />
+                <span style={{ fontSize: '.72rem', fontWeight: 600, letterSpacing: '.24em', color: '#c8a040', textTransform: 'uppercase' }}>Processo de Cristalização Natural</span>
+                <span style={{ width: 40, height: 1, background: '#c8a040' }} />
+              </div>
             </div>
           </div>
         </section>
@@ -742,7 +795,7 @@ export default function SalVitaLanding() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 40, marginBottom: 48 }}>
               <div>
                 <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <img src="/embalagem.png" alt="" style={{ height: 40, objectFit: 'contain' }} onError={(e) => (e.currentTarget.style.display = 'none')} />
+                  <img src={IMG.produto} alt="" style={{ height: 40, objectFit: 'contain' }} onError={(e) => (e.currentTarget.style.display = 'none')} />
                   <div>
                     <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.4rem', fontWeight: 700, color: '#f4f0e8' }}>SAL VITA</span>
                     <span style={{ fontFamily: 'Outfit,sans-serif', fontSize: '.58rem', fontWeight: 600, letterSpacing: '.2em', color: '#c8a040', marginLeft: 5 }}>PREMIUM</span>
