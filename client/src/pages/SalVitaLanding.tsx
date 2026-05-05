@@ -737,7 +737,7 @@ export default function SalVitaLanding() {
                 <thead style={{background:'var(--brand)'}}>
                   <tr>
                     <th style={{padding:'14px 18px',textAlign:'left',color:'rgba(255,255,255,.7)',fontWeight:500,fontSize:'.75rem',letterSpacing:'.12em',textTransform:'uppercase'}}>Característica</th>
-                    {['SAL VITA PREMIUM','Maranata Origens','Smart / BR Spices'].map((b,bi)=>(
+                    {['SAL VITA PREMIUM','Sal Marinho Artesanal','Sal de Mesa Comum'].map((b,bi)=>(
                       <th key={b} style={{padding:'14px 18px',textAlign:'center',fontFamily:bi===0?"'Cormorant Garamond',serif":'inherit',fontWeight:bi===0?700:500,fontSize:bi===0?'1rem':'.82rem',color:bi===0?'white':'rgba(255,255,255,.55)'}}>{b}</th>
                     ))}
                   </tr>
