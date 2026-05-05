@@ -296,7 +296,7 @@ export default function SalVitaLanding() {
           .hero-badges{justify-content:center!important;}
           .hero-btns{justify-content:center!important;}
           .hero-img-wrap{order:-1;}
-          .prod-float{width:300px!important;height:300px!important;}
+          .prod-float{width:220px!important;height:220px!important;}
           .prod-float img{width:90%!important;height:90%!important;}
 
           /* Sections */
