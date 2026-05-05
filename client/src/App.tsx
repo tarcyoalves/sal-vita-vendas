@@ -85,7 +85,12 @@ function NotificationManager() {
   return null;
 }
 
+const PUBLIC_PATHS = ['/sal-vita'];
+
 function App() {
+  const path = typeof window !== 'undefined' ? window.location.pathname : '';
+  const isPublic = PUBLIC_PATHS.some(p => path.startsWith(p));
+
   return (
     <ErrorBoundary>
       <ThemeProvider
@@ -94,9 +99,9 @@ function App() {
       >
         <TooltipProvider>
           <Toaster />
-          <NotificationManager />
+          {!isPublic && <NotificationManager />}
           <Router />
-          <FloatingChat />
+          {!isPublic && <FloatingChat />}
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>
