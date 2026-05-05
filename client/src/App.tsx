@@ -1,8 +1,7 @@
 import { Toaster } from './components/ui/sonner';
 import { TooltipProvider } from './components/ui/tooltip';
 import NotFound from './pages/NotFound';
-import { Route, Switch, useLocation } from "wouter";
-import { useEffect } from "react";
+import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
@@ -24,18 +23,11 @@ import { useAuth } from "./_core/hooks/useAuth";
 import { useReminderNotifications } from "./_core/hooks/useReminderNotifications";
 import SalVitaLanding from "./pages/SalVitaLanding";
 
-function RedirectToLanding() {
-  const [, setLocation] = useLocation();
-  useEffect(() => { setLocation('/sal-vita'); }, []);
-  return null;
-}
-
 function Router() {
   return (
     <Switch>
       <Route path={"/sal-vita"} component={SalVitaLanding} />
-      <Route path={"/admin/login"} component={Home} />
-      <Route path={"/"} component={RedirectToLanding} />
+      <Route path={"/"} component={Home} />
       <Route path={"/admin/dashboard"}>
         <AppShell><AdminDashboard /></AppShell>
       </Route>
@@ -137,7 +129,7 @@ function NotificationManager() {
   return null;
 }
 
-const PUBLIC_PATHS = ['/sal-vita', '/'];
+const PUBLIC_PATHS = ['/sal-vita'];
 
 function App() {
   const path = typeof window !== 'undefined' ? window.location.pathname : '';
