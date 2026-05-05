@@ -15,8 +15,11 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (typeof window === "undefined") return;
 
   const isUnauthorized = error.message === UNAUTHED_ERR_MSG;
-
   if (!isUnauthorized) return;
+
+  // Public pages should never trigger a login redirect
+  const publicPaths = ['/sal-vita'];
+  if (publicPaths.some(p => window.location.pathname.startsWith(p))) return;
 
   window.location.href = getLoginUrl();
 };

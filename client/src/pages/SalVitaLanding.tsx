@@ -151,6 +151,8 @@ export default function SalVitaLanding() {
   return (
     <>
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Great+Vibes&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600;1,700&family=Outfit:wght@300;400;500;600;700&display=swap');
+
         /* ── Tokens — Premium Dark ── */
         :root {
           --brand:   #0b1d3a;
@@ -339,6 +341,96 @@ export default function SalVitaLanding() {
 
         /* ── drag handle (modal) ── */
         .mb-drag{display:none;width:40px;height:4px;background:rgba(26,58,138,.15);border-radius:2px;margin:0 auto 16px;}
+
+        /* ══ BENEFITS — dark premium grid ══ */
+        .ben-dark-section{
+          background:linear-gradient(170deg,#050e1d 0%,#0b1d3a 50%,#071628 100%);
+          position:relative;overflow:hidden;
+        }
+        .ben-dot-grid{
+          position:absolute;inset:0;
+          background-image:radial-gradient(rgba(201,162,39,.07) 1px,transparent 1px);
+          background-size:36px 36px;
+          pointer-events:none;
+        }
+        .ben-glow{
+          position:absolute;top:50%;left:50%;
+          width:700px;height:700px;
+          transform:translate(-50%,-50%);
+          background:radial-gradient(ellipse,rgba(201,162,39,.07) 0%,transparent 65%);
+          pointer-events:none;
+        }
+        .ben-table-grid{
+          display:grid;
+          grid-template-columns:repeat(3,1fr);
+          border:1px solid rgba(201,162,39,.18);
+          border-radius:20px;
+          overflow:hidden;
+        }
+        .ben-cell{
+          padding:48px 40px;
+          background:rgba(255,255,255,.025);
+          transition:background .35s;
+          position:relative;
+        }
+        .ben-cell:hover{background:rgba(201,162,39,.06);}
+        .ben-cell-border-r{border-right:1px solid rgba(201,162,39,.18);}
+        .ben-cell-border-b{border-bottom:1px solid rgba(201,162,39,.18);}
+        .ben-icon-wrap{
+          width:52px;height:52px;border-radius:50%;
+          border:1px solid rgba(201,162,39,.45);
+          background:rgba(201,162,39,.1);
+          display:flex;align-items:center;justify-content:center;
+          margin-bottom:28px;
+        }
+        .ben-num{
+          position:absolute;top:20px;right:24px;
+          font-family:'Cormorant Garamond',serif;
+          font-size:3.5rem;font-weight:700;
+          color:rgba(201,162,39,.08);
+          line-height:1;pointer-events:none;
+          user-select:none;
+        }
+        @media(max-width:900px){.ben-table-grid{grid-template-columns:repeat(2,1fr)!important;}}
+        @media(max-width:600px){.ben-table-grid{grid-template-columns:1fr!important;}
+          .ben-cell{padding:32px 24px!important;}
+          .ben-cell-border-r{border-right:none!important;border-bottom:1px solid rgba(201,162,39,.18)!important;}
+        }
+
+        /* ══ COMO USAR — warm editorial ══ */
+        .use-editorial-section{background:#faf5ef;}
+        .use-row{
+          display:flex;align-items:flex-start;gap:24px;
+          padding:32px 0;
+          border-bottom:1px solid rgba(11,29,58,.08);
+          transition:background .25s;
+          border-radius:8px;
+        }
+        .use-row:last-child{border-bottom:none;}
+        .use-big-num{
+          font-family:'Cormorant Garamond',serif;
+          font-size:4.5rem;font-weight:700;
+          color:rgba(201,162,39,.18);
+          line-height:1;min-width:72px;
+          text-align:right;flex-shrink:0;
+          padding-top:4px;
+        }
+        .use-icon-box{
+          width:56px;height:56px;border-radius:14px;
+          background:var(--brand);
+          display:flex;align-items:center;justify-content:center;
+          flex-shrink:0;font-size:1.7rem;
+          box-shadow:0 6px 20px rgba(11,29,58,.25);
+        }
+        .use-2col{
+          display:grid;
+          grid-template-columns:1fr 1fr;
+          gap:0 64px;
+        }
+        @media(max-width:768px){
+          .use-2col{grid-template-columns:1fr!important;gap:0!important;}
+          .use-big-num{font-size:3rem!important;min-width:48px!important;}
+        }
       `}</style>
 
       <div className="lp">
@@ -406,8 +498,8 @@ export default function SalVitaLanding() {
               <h1 className="hero-title" style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:'clamp(3.2rem,8vw,6.5rem)',fontWeight:700,lineHeight:1.0,color:'white',marginBottom:8,textShadow:'0 2px 40px rgba(0,0,0,.3)'}}>
                 SAL VITA
               </h1>
-              <div style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:'clamp(1.2rem,3vw,2.2rem)',fontWeight:300,fontStyle:'italic',letterSpacing:'.28em',marginBottom:6}}>
-                <span className="shim-blue">PREMIUM</span>
+              <div style={{fontFamily:"'Great Vibes',cursive",fontSize:'clamp(2.4rem,6vw,4.8rem)',lineHeight:1,marginBottom:0,marginTop:-8}}>
+                <span className="shim-blue">Premium</span>
               </div>
               {/* Gold divider */}
               <div style={{width:64,height:1.5,background:'linear-gradient(90deg,var(--gold),var(--goldlt),transparent)',marginBottom:28,marginTop:10}}/>
@@ -556,25 +648,31 @@ export default function SalVitaLanding() {
         </section>
 
         {/* ══════ BENEFITS ══════ */}
-        <section id="beneficios" className="s-sky s-pad" style={{padding:'100px 24px'}}>
-          <div style={{maxWidth:1200,margin:'0 auto'}}>
-            <div id="ben-h" data-reveal className={`rev${v('ben-h')?' on':''}`} style={{textAlign:'center',marginBottom:60}}>
-              <p className="eyebrow" style={{color:'var(--brand)'}}>Por que escolher</p>
-              <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(2rem,5vw,3.5rem)',fontWeight:700,color:'var(--text)'}}>Feito para quem valoriza o que come</h2>
+        <section id="beneficios" className="ben-dark-section" style={{padding:'110px 24px'}}>
+          <div className="ben-dot-grid"/>
+          <div className="ben-glow"/>
+          <div style={{maxWidth:1200,margin:'0 auto',position:'relative',zIndex:1}}>
+            <div id="ben-h" data-reveal className={`rev${v('ben-h')?' on':''}`} style={{textAlign:'center',marginBottom:72}}>
+              <span style={{display:'inline-block',fontSize:'.7rem',fontWeight:700,letterSpacing:'.32em',color:'var(--gold)',textTransform:'uppercase',marginBottom:16}}>Por que escolher</span>
+              <div style={{width:40,height:1,background:'rgba(201,162,39,.45)',margin:'0 auto 24px'}}/>
+              <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(2.2rem,5vw,4rem)',fontWeight:700,color:'white',lineHeight:1.1}}>
+                Feito para quem<br/>valoriza o que come
+              </h2>
             </div>
-            <div id="ben-g" data-reveal className={`rev ben-grid${v('ben-g')?' on':''}`} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(272px,1fr))',gap:18}}>
+            <div id="ben-g" data-reveal className={`rev ben-table-grid${v('ben-g')?' on':''}`}>
               {[
-                {e:'⭐',t:'+80 Minerais Naturais',d:'Magnésio, cálcio, potássio, ferro, iodo e mais 75 minerais do oceano Atlântico, todos preservados.'},
-                {e:'🌿',t:'Sal Não Refinado',d:'Processamento mínimo — lavado e seco ao sol. Nenhum mineral retirado, nenhum aditivo adicionado além do essencial.'},
-                {e:'🔒',t:'Zip Lock Premium',d:'Fechamento duplo de alta espessura. Abre e fecha centenas de vezes sem perder a vedação. Chega de sal empedrado.'},
-                {e:'🪟',t:'Janela Transparente',d:'Circular na frente da embalagem. Você vê o sal a qualquer momento, sem precisar abrir.'},
-                {e:'☀️',t:'Seco ao Sol Natural',d:'Secagem 100% natural sob o sol do Nordeste. Sem calor industrial, sem processos que alterem a composição mineral do sal.'},
-                {e:'🌊',t:'100% Mossoró RN',d:'Das salinas que produzem 95% do sal marinho brasileiro. Apoio direto à economia do Nordeste.'},
+                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,t:'+80 Minerais Naturais',d:'Magnésio, cálcio, potássio, ferro, iodo e mais 75 minerais do oceano Atlântico, todos preservados.'},
+                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,t:'Sal Não Refinado',d:'Processamento mínimo — lavado e seco ao sol. Nenhum mineral retirado, nenhum aditivo adicionado além do essencial.'},
+                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>,t:'Zip Lock Premium',d:'Fechamento duplo de alta espessura. Abre e fecha centenas de vezes sem perder a vedação. Chega de sal empedrado.'},
+                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>,t:'Janela Transparente',d:'Circular na frente da embalagem. Você vê o sal a qualquer momento, sem precisar abrir.'},
+                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>,t:'Seco ao Sol Natural',d:'Secagem 100% natural sob o sol do Nordeste. Sem calor industrial, sem processos que alterem a composição mineral do sal.'},
+                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><path d="M2 12c1.5-3 4-4.5 6-4.5s4.5 3 6 3 4.5-1.5 6-4.5"/><path d="M2 18c1.5-3 4-4.5 6-4.5s4.5 3 6 3 4.5-1.5 6-4.5"/></svg>,t:'100% Mossoró RN',d:'Das salinas que produzem 95% do sal marinho brasileiro. Apoio direto à economia do Nordeste.'},
               ].map((b,i)=>(
-                <div key={b.t} className="card-light" style={{padding:'28px 24px',transitionDelay:`${i*.07}s`}}>
-                  <div style={{fontSize:'2rem',marginBottom:14}}>{b.e}</div>
-                  <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.3rem',fontWeight:700,color:'var(--brand)',marginBottom:10}}>{b.t}</h3>
-                  <p style={{color:'var(--mid)',lineHeight:1.7,fontSize:'.88rem'}}>{b.d}</p>
+                <div key={b.t} className={`ben-cell${i%3!==2?' ben-cell-border-r':''}${i<3?' ben-cell-border-b':''}`} style={{transitionDelay:`${i*.08}s`}}>
+                  <span className="ben-num">{String(i+1).padStart(2,'0')}</span>
+                  <div className="ben-icon-wrap">{b.svg}</div>
+                  <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.35rem',fontWeight:700,color:'white',marginBottom:12,lineHeight:1.2}}>{b.t}</h3>
+                  <p style={{color:'rgba(255,255,255,.48)',lineHeight:1.75,fontSize:'.875rem'}}>{b.d}</p>
                 </div>
               ))}
             </div>
@@ -584,7 +682,7 @@ export default function SalVitaLanding() {
         {/* ══════ CRISTALIZADOR — full bleed ══════ */}
         <section className="crista-section" style={{position:'relative',height:420,overflow:'hidden'}}>
           <img src={IMG.cristalizador} alt="Processo de cristalização do sal nas salinas de Mossoró" style={{width:'100%',height:'100%',objectFit:'cover',objectPosition:'center 40%',display:'block'}}/>
-          <div style={{position:'absolute',inset:0,background:'linear-gradient(to bottom,white 0%,rgba(255,255,255,0) 15%,rgba(7,22,40,.55) 60%,white 100%)'}}/>
+          <div style={{position:'absolute',inset:0,background:'linear-gradient(to bottom,#071628 0%,rgba(7,22,40,0) 18%,rgba(7,22,40,.55) 60%,#faf5ef 100%)'}}/>
           <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 24px'}}>
             <div style={{textAlign:'center',maxWidth:700}}>
               <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(1.5rem,4vw,2.8rem)',fontWeight:600,fontStyle:'italic',color:'white',textShadow:'0 2px 24px rgba(0,0,0,.8)',lineHeight:1.3,marginBottom:20}}>
@@ -600,24 +698,26 @@ export default function SalVitaLanding() {
         </section>
 
         {/* ══════ COMO USAR ══════ */}
-        <section id="como-usar" className="s-white s-pad" style={{padding:'100px 24px'}}>
-          <div style={{maxWidth:1200,margin:'0 auto'}}>
-            <div id="use-h" data-reveal className={`rev${v('use-h')?' on':''}`} style={{textAlign:'center',marginBottom:60}}>
-              <p className="eyebrow" style={{color:'var(--brand)'}}>Use sem moderação</p>
-              <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(2rem,5vw,3.5rem)',fontWeight:700,color:'var(--text)',marginBottom:14}}>
+        <section id="como-usar" className="use-editorial-section" style={{padding:'110px 24px'}}>
+          <div style={{maxWidth:1100,margin:'0 auto'}}>
+            <div id="use-h" data-reveal className={`rev${v('use-h')?' on':''}`} style={{textAlign:'center',marginBottom:80}}>
+              <span style={{display:'inline-block',fontSize:'.7rem',fontWeight:700,letterSpacing:'.32em',color:'var(--brand)',textTransform:'uppercase',opacity:.55,marginBottom:16}}>Use sem moderação</span>
+              <div style={{width:40,height:2,background:'linear-gradient(90deg,var(--gold),var(--goldlt))',margin:'0 auto 22px'}}/>
+              <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(2rem,5vw,3.8rem)',fontWeight:700,color:'var(--text)',marginBottom:18,lineHeight:1.1}}>
                 O sal que combina com tudo
               </h2>
-              <p style={{color:'var(--muted)',fontSize:'1.05rem',maxWidth:520,margin:'0 auto'}}>
+              <p style={{color:'var(--muted)',fontSize:'1rem',maxWidth:460,margin:'0 auto',lineHeight:1.7}}>
                 Com +80 minerais naturais, cada pitada entrega sabor mais rico — do preparo à finalização.
               </p>
             </div>
-            <div id="use-g" data-reveal className={`rev use-grid${v('use-g')?' on':''}`} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:18}}>
+            <div id="use-g" data-reveal className={`rev use-2col${v('use-g')?' on':''}`}>
               {USES.map((u,i)=>(
-                <div key={u.t} className="card-light" style={{padding:'26px 22px',display:'flex',gap:18,alignItems:'flex-start',transitionDelay:`${i*.07}s`}}>
-                  <div style={{width:60,height:60,borderRadius:'50%',background:'var(--sky)',border:'1px solid rgba(26,58,138,.1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1.8rem',flexShrink:0}}>{u.e}</div>
-                  <div>
-                    <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.15rem',fontWeight:700,color:'var(--brand)',marginBottom:6}}>{u.t}</h3>
-                    <p style={{color:'var(--muted)',fontSize:'.85rem',lineHeight:1.6}}>{u.d}</p>
+                <div key={u.t} className="use-row" style={{transitionDelay:`${i*.09}s`}}>
+                  <span className="use-big-num">{String(i+1).padStart(2,'0')}</span>
+                  <div className="use-icon-box">{u.e}</div>
+                  <div style={{paddingTop:6}}>
+                    <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.25rem',fontWeight:700,color:'var(--brand)',marginBottom:5,lineHeight:1.2}}>{u.t}</h3>
+                    <p style={{color:'var(--muted)',fontSize:'.85rem',lineHeight:1.65}}>{u.d}</p>
                   </div>
                 </div>
               ))}
