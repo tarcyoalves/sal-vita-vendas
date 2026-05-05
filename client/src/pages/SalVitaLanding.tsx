@@ -314,7 +314,7 @@ export default function SalVitaLanding() {
           .footer-grid{grid-template-columns:1fr!important;gap:28px!important;}
 
           /* Tables */
-          .comp-wrap{font-size:.78rem!important;}
+          .comp-wrap{font-size:.88rem!important;}
           .comp-wrap th,.comp-wrap td{padding:10px 10px!important;}
 
           /* Modal — bottom sheet */
@@ -336,11 +336,24 @@ export default function SalVitaLanding() {
           .pc-hi,.pc-lo{padding:28px 22px!important;}
 
           /* Marquee text */
-          .mq-inner span{font-size:.72rem!important;letter-spacing:.1em!important;}
+          .mq-inner span{font-size:.82rem!important;letter-spacing:.1em!important;}
         }
 
         /* ── drag handle (modal) ── */
         .mb-drag{display:none;width:40px;height:4px;background:rgba(26,58,138,.15);border-radius:2px;margin:0 auto 16px;}
+
+        /* ── Typography scale-up — mínimo legível em todas as seções ── */
+        .eyebrow{font-size:.85rem!important;}
+        .ben-cell p{font-size:1rem!important;color:rgba(255,255,255,.62)!important;line-height:1.75!important;}
+        .ben-cell h3{font-size:1.45rem!important;}
+        .use-row p{font-size:1rem!important;}
+        .use-row h3{font-size:1.3rem!important;}
+        .faq-ans p{font-size:1rem!important;line-height:1.8!important;}
+        .mq-inner span{font-size:.88rem!important;}
+        .footer-grid p,.footer-grid li,.footer-grid a{font-size:.95rem!important;}
+        .comp-wrap{font-size:.95rem!important;}
+        .comp-wrap th{font-size:.82rem!important;}
+        .sopt{font-size:1rem!important;}
 
         /* ══ BENEFITS — dark premium grid ══ */
         .ben-dark-section{
@@ -441,11 +454,11 @@ export default function SalVitaLanding() {
             <Logo size={44} white={!scrolled&&!mobileMenu?false:false}/>
             <div className="nav-menu" style={{display:'flex',gap:28,alignItems:'center'}}>
               {['Produto','Benefícios','Como Usar','Preço'].map(l=>(
-                <a key={l} href={`#${l.toLowerCase().replace('í','i').replace('ç','c')}`} style={{color:'rgba(255,255,255,.7)',fontSize:'.78rem',fontWeight:500,letterSpacing:'.12em',textDecoration:'none',textTransform:'uppercase',transition:'color .2s'}}
+                <a key={l} href={`#${l.toLowerCase().replace('í','i').replace('ç','c')}`} style={{color:'rgba(255,255,255,.7)',fontSize:'.9rem',fontWeight:500,letterSpacing:'.12em',textDecoration:'none',textTransform:'uppercase',transition:'color .2s'}}
                   onMouseEnter={e=>e.currentTarget.style.color='var(--gold)'}
                   onMouseLeave={e=>e.currentTarget.style.color='rgba(255,255,255,.7)'}>{l}</a>
               ))}
-              <button onClick={()=>openBuy(products[0])} style={{background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:8,padding:'10px 22px',fontSize:'.78rem',fontWeight:800,letterSpacing:'.08em',textTransform:'uppercase',cursor:'pointer',transition:'background .2s,transform .15s'}}
+              <button onClick={()=>openBuy(products[0])} style={{background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:8,padding:'10px 22px',fontSize:'.88rem',fontWeight:800,letterSpacing:'.08em',textTransform:'uppercase',cursor:'pointer',transition:'background .2s,transform .15s'}}
                 onMouseEnter={e=>{e.currentTarget.style.background='var(--goldlt)';e.currentTarget.style.transform='scale(1.04)';}}
                 onMouseLeave={e=>{e.currentTarget.style.background='var(--gold)';e.currentTarget.style.transform='scale(1)';}}>Comprar</button>
             </div>
@@ -492,7 +505,7 @@ export default function SalVitaLanding() {
               {/* Provenance badge */}
               <div style={{display:'inline-flex',alignItems:'center',gap:10,marginBottom:24,background:'rgba(201,162,39,.12)',border:'1px solid rgba(201,162,39,.3)',borderRadius:999,padding:'7px 18px'}}>
                 <span style={{width:6,height:6,borderRadius:'50%',background:'var(--gold)',flexShrink:0,boxShadow:'0 0 8px var(--gold)'}}/>
-                <span style={{fontSize:'.68rem',fontWeight:700,letterSpacing:'.24em',color:'var(--gold)',textTransform:'uppercase'}}>Salinas de Mossoró · RN · Brasil</span>
+                <span style={{fontSize:'.84rem',fontWeight:700,letterSpacing:'.18em',color:'var(--gold)',textTransform:'uppercase'}}>Salinas de Mossoró · RN · Brasil</span>
               </div>
 
               <h1 className="hero-title" style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:'clamp(3.2rem,8vw,6.5rem)',fontWeight:700,lineHeight:1.0,color:'white',marginBottom:8,textShadow:'0 2px 40px rgba(0,0,0,.3)'}}>
@@ -510,7 +523,7 @@ export default function SalVitaLanding() {
               {/* Badges */}
               <div className="hero-badges" style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:44}}>
                 {[{e:'✦',t:'+80 Minerais'},{e:'✦',t:'Não Refinado'},{e:'✦',t:'100% Mossoró'},{e:'✦',t:'Zip Lock Premium'}].map(b=>(
-                  <span key={b.t} style={{background:'rgba(255,255,255,.07)',border:'1px solid rgba(255,255,255,.15)',borderRadius:999,padding:'7px 16px',fontSize:'.78rem',fontWeight:500,color:'rgba(255,255,255,.8)',display:'flex',alignItems:'center',gap:7,letterSpacing:'.04em'}}>
+                  <span key={b.t} style={{background:'rgba(255,255,255,.07)',border:'1px solid rgba(255,255,255,.15)',borderRadius:999,padding:'7px 16px',fontSize:'.9rem',fontWeight:500,color:'rgba(255,255,255,.8)',display:'flex',alignItems:'center',gap:7,letterSpacing:'.04em'}}>
                     <span style={{color:'var(--gold)',fontSize:'.6rem'}}>{b.e}</span> {b.t}
                   </span>
                 ))}
@@ -595,7 +608,7 @@ export default function SalVitaLanding() {
             </p>
             <div style={{display:'inline-flex',alignItems:'center',gap:10}}>
               <span style={{width:28,height:1,background:'rgba(201,162,39,.7)'}}/>
-              <p style={{fontSize:'.68rem',fontWeight:700,letterSpacing:'.26em',color:'var(--gold)',textTransform:'uppercase',textShadow:'0 1px 8px rgba(0,0,0,.5)'}}>
+              <p style={{fontSize:'.84rem',fontWeight:700,letterSpacing:'.18em',color:'var(--gold)',textTransform:'uppercase',textShadow:'0 1px 8px rgba(0,0,0,.5)'}}>
                 Mossoró · Rio Grande do Norte · Brasil
               </p>
               <span style={{width:28,height:1,background:'rgba(201,162,39,.7)'}}/>
@@ -622,7 +635,7 @@ export default function SalVitaLanding() {
                 {[['+80','Minerais naturais'],['95%','do sal BR vem do RN'],['Não','Refinado']].map(([n,l])=>(
                   <div key={n}>
                     <div className="shim-blue" style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'2.4rem',fontWeight:700}}>{n}</div>
-                    <div style={{fontSize:'.73rem',color:'var(--muted)',letterSpacing:'.06em',marginTop:4}}>{l}</div>
+                    <div style={{fontSize:'.87rem',color:'var(--muted)',letterSpacing:'.06em',marginTop:4}}>{l}</div>
                   </div>
                 ))}
               </div>
@@ -635,10 +648,10 @@ export default function SalVitaLanding() {
                 <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(15,31,64,.9) 0%,rgba(15,31,64,.4) 55%,rgba(15,31,64,.05) 100%)'}}/>
                 <div style={{position:'absolute',bottom:0,left:0,right:0,padding:'24px 28px 28px'}}>
                   <div className="shim-blue" style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'3.5rem',fontWeight:700,lineHeight:1}}>+80</div>
-                  <p style={{fontSize:'.72rem',fontWeight:700,letterSpacing:'.18em',color:'rgba(255,255,255,.65)',textTransform:'uppercase',marginBottom:12}}>Minerais Naturais Preservados</p>
+                  <p style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.14em',color:'rgba(255,255,255,.65)',textTransform:'uppercase',marginBottom:12}}>Minerais Naturais Preservados</p>
                   <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
                     {['Magnésio','Cálcio','Potássio','Ferro','Iodo','Zinco','Manganês','+ outros'].map(m=>(
-                      <span key={m} style={{background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.25)',borderRadius:999,padding:'3px 10px',fontSize:'.7rem',color:'rgba(255,255,255,.85)'}}>{m}</span>
+                      <span key={m} style={{background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.25)',borderRadius:999,padding:'3px 10px',fontSize:'.84rem',color:'rgba(255,255,255,.85)'}}>{m}</span>
                     ))}
                   </div>
                 </div>
@@ -653,7 +666,7 @@ export default function SalVitaLanding() {
           <div className="ben-glow"/>
           <div style={{maxWidth:1200,margin:'0 auto',position:'relative',zIndex:1}}>
             <div id="ben-h" data-reveal className={`rev${v('ben-h')?' on':''}`} style={{textAlign:'center',marginBottom:72}}>
-              <span style={{display:'inline-block',fontSize:'.7rem',fontWeight:700,letterSpacing:'.32em',color:'var(--gold)',textTransform:'uppercase',marginBottom:16}}>Por que escolher</span>
+              <span style={{display:'inline-block',fontSize:'.84rem',fontWeight:700,letterSpacing:'.24em',color:'var(--gold)',textTransform:'uppercase',marginBottom:16}}>Por que escolher</span>
               <div style={{width:40,height:1,background:'rgba(201,162,39,.45)',margin:'0 auto 24px'}}/>
               <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(2.2rem,5vw,4rem)',fontWeight:700,color:'white',lineHeight:1.1}}>
                 Feito para quem<br/>valoriza o que come
@@ -690,7 +703,7 @@ export default function SalVitaLanding() {
               </p>
               <div style={{display:'inline-flex',alignItems:'center',gap:12}}>
                 <span style={{width:40,height:1,background:'rgba(201,162,39,.7)'}}/>
-                <span style={{fontSize:'.68rem',fontWeight:700,letterSpacing:'.24em',color:'var(--gold)',textTransform:'uppercase'}}>Processo de Cristalização Natural</span>
+                <span style={{fontSize:'.84rem',fontWeight:700,letterSpacing:'.18em',color:'var(--gold)',textTransform:'uppercase'}}>Processo de Cristalização Natural</span>
                 <span style={{width:40,height:1,background:'rgba(201,162,39,.7)'}}/>
               </div>
             </div>
@@ -701,7 +714,7 @@ export default function SalVitaLanding() {
         <section id="como-usar" className="use-editorial-section" style={{padding:'110px 24px'}}>
           <div style={{maxWidth:1100,margin:'0 auto'}}>
             <div id="use-h" data-reveal className={`rev${v('use-h')?' on':''}`} style={{textAlign:'center',marginBottom:80}}>
-              <span style={{display:'inline-block',fontSize:'.7rem',fontWeight:700,letterSpacing:'.32em',color:'var(--brand)',textTransform:'uppercase',opacity:.55,marginBottom:16}}>Use sem moderação</span>
+              <span style={{display:'inline-block',fontSize:'.84rem',fontWeight:700,letterSpacing:'.24em',color:'var(--brand)',textTransform:'uppercase',opacity:.55,marginBottom:16}}>Use sem moderação</span>
               <div style={{width:40,height:2,background:'linear-gradient(90deg,var(--gold),var(--goldlt))',margin:'0 auto 22px'}}/>
               <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(2rem,5vw,3.8rem)',fontWeight:700,color:'var(--text)',marginBottom:18,lineHeight:1.1}}>
                 O sal que combina com tudo
@@ -774,7 +787,7 @@ export default function SalVitaLanding() {
         <section id="preco" className="s-brand" style={{padding:'100px 24px'}}>
           <div style={{maxWidth:1100,margin:'0 auto'}}>
             <div id="price-h" data-reveal className={`rev${v('price-h')?' on':''}`} style={{textAlign:'center',marginBottom:64}}>
-              <p style={{fontSize:'.72rem',fontWeight:700,letterSpacing:'.28em',textTransform:'uppercase',color:'rgba(255,255,255,.55)',marginBottom:12}}>Escolha seu pack</p>
+              <p style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.2em',textTransform:'uppercase',color:'rgba(255,255,255,.55)',marginBottom:12}}>Escolha seu pack</p>
               <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(2rem,5vw,3.5rem)',fontWeight:700,color:'white',marginBottom:10}}>
                 Preço justo. Qualidade real.
               </h2>
@@ -786,24 +799,24 @@ export default function SalVitaLanding() {
                 <div key={p.id} className={p.highlight?'pc-hi':'pc-lo'} style={{borderRadius:24,padding:'36px 32px',position:'relative',overflow:'hidden',transition:'transform .3s'}}
                   onMouseEnter={e=>e.currentTarget.style.transform='translateY(-6px)'}
                   onMouseLeave={e=>e.currentTarget.style.transform='translateY(0)'}>
-                  <div style={{position:'absolute',top:0,right:0,background:p.highlight?'rgba(255,255,255,.18)':'var(--gold)',color:p.highlight?'white':'var(--navy)',padding:'6px 18px',borderRadius:'0 24px 0 12px',fontSize:'.7rem',fontWeight:800,letterSpacing:'.1em',textTransform:'uppercase'}}>{p.tag}</div>
-                  <p style={{fontSize:'.7rem',fontWeight:600,letterSpacing:'.2em',color:p.highlight?'rgba(255,255,255,.45)':'var(--muted)',textTransform:'uppercase',marginBottom:6}}>{p.subtitle}</p>
+                  <div style={{position:'absolute',top:0,right:0,background:p.highlight?'rgba(255,255,255,.18)':'var(--gold)',color:p.highlight?'white':'var(--navy)',padding:'6px 18px',borderRadius:'0 24px 0 12px',fontSize:'.82rem',fontWeight:800,letterSpacing:'.08em',textTransform:'uppercase'}}>{p.tag}</div>
+                  <p style={{fontSize:'.85rem',fontWeight:600,letterSpacing:'.16em',color:p.highlight?'rgba(255,255,255,.45)':'var(--muted)',textTransform:'uppercase',marginBottom:6}}>{p.subtitle}</p>
                   <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.6rem',fontWeight:700,color:p.highlight?'white':'var(--text)',marginBottom:4}}>{p.name}</h3>
-                  <p style={{fontSize:'.82rem',color:p.highlight?'rgba(255,255,255,.45)':'var(--muted)',marginBottom:18}}>{p.weight}</p>
-                  {p.savings&&<div style={{background:'rgba(201,162,39,.12)',border:'1px solid rgba(201,162,39,.3)',borderRadius:8,padding:'7px 14px',fontSize:'.78rem',color:p.highlight?'var(--goldlt)':'var(--golddk)',fontWeight:700,marginBottom:14,display:'inline-block'}}>{p.savings} vs comprar avulso</div>}
+                  <p style={{fontSize:'.95rem',color:p.highlight?'rgba(255,255,255,.45)':'var(--muted)',marginBottom:18}}>{p.weight}</p>
+                  {p.savings&&<div style={{background:'rgba(201,162,39,.12)',border:'1px solid rgba(201,162,39,.3)',borderRadius:8,padding:'7px 14px',fontSize:'.9rem',color:p.highlight?'var(--goldlt)':'var(--golddk)',fontWeight:700,marginBottom:14,display:'inline-block'}}>{p.savings} vs comprar avulso</div>}
                   <div style={{marginBottom:6}}>
                     <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'3.2rem',fontWeight:700,color:p.highlight?'white':'var(--brand)',lineHeight:1}}>R$ {p.price.toFixed(2).replace('.',',')}</span>
                   </div>
-                  <p style={{fontSize:'.78rem',color:p.highlight?'rgba(255,255,255,.5)':'var(--muted)',marginBottom:28}}>R$ {p.pricePerKg.toFixed(2).replace('.',',')}/kg</p>
+                  <p style={{fontSize:'.92rem',color:p.highlight?'rgba(255,255,255,.5)':'var(--muted)',marginBottom:28}}>R$ {p.pricePerKg.toFixed(2).replace('.',',')}/kg</p>
                   <ul style={{listStyle:'none',padding:0,marginBottom:28}}>
                     {['Sal Marinho Não Refinado','+80 Minerais Naturais','Zip lock dupla vedação','Janela de visualização','Seco ao Sol Natural','100% Mossoró RN'].map(f=>(
                       <li key={f} style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
                         <span style={{color:p.highlight?'var(--goldlt)':'var(--gold)',fontSize:'.85rem'}}>✦</span>
-                        <span style={{fontSize:'.87rem',color:p.highlight?'rgba(255,255,255,.75)':'var(--mid)'}}>{f}</span>
+                        <span style={{fontSize:'1rem',color:p.highlight?'rgba(255,255,255,.75)':'var(--mid)'}}>{f}</span>
                       </li>
                     ))}
                   </ul>
-                  <button className="pulse" onClick={()=>openBuy(p)} style={{width:'100%',background:p.highlight?'white':'var(--gold)',color:p.highlight?'var(--navy)':'var(--navy)',border:'none',borderRadius:12,padding:'16px',fontSize:'.93rem',fontWeight:800,letterSpacing:'.08em',textTransform:'uppercase',cursor:'pointer',transition:'background .2s,transform .15s'}}
+                  <button className="pulse" onClick={()=>openBuy(p)} style={{width:'100%',background:p.highlight?'white':'var(--gold)',color:p.highlight?'var(--navy)':'var(--navy)',border:'none',borderRadius:12,padding:'16px',fontSize:'1rem',fontWeight:800,letterSpacing:'.08em',textTransform:'uppercase',cursor:'pointer',transition:'background .2s,transform .15s'}}
                     onMouseEnter={e=>{e.currentTarget.style.background=p.highlight?'var(--goldlt)':'var(--goldlt)';e.currentTarget.style.transform='scale(1.02)';}}
                     onMouseLeave={e=>{e.currentTarget.style.background=p.highlight?'white':'var(--gold)';e.currentTarget.style.transform='scale(1)';}}>
                     Comprar {p.weight==='1kg'?'1kg':'Caixa 10kg'}
@@ -812,7 +825,7 @@ export default function SalVitaLanding() {
               ))}
             </div>
 
-            <p style={{textAlign:'center',marginTop:28,fontSize:'.8rem',color:'rgba(255,255,255,.35)',letterSpacing:'.06em'}}>
+            <p style={{textAlign:'center',marginTop:28,fontSize:'.92rem',color:'rgba(255,255,255,.35)',letterSpacing:'.06em'}}>
               🔒 Compra segura · Rastreamento incluso · Nota fiscal emitida
             </p>
           </div>
@@ -829,7 +842,7 @@ export default function SalVitaLanding() {
               {FAQS.map((faq,i)=>(
                 <div key={i} className="faq-border">
                   <button onClick={()=>setOpenFaq(openFaq===i?null:i)} style={{width:'100%',background:'none',border:'none',padding:'22px 0',display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',gap:16}}>
-                    <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.15rem',fontWeight:700,color:'var(--text)',textAlign:'left'}}>{faq.q}</span>
+                    <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.22rem',fontWeight:700,color:'var(--text)',textAlign:'left'}}>{faq.q}</span>
                     <span style={{color:'var(--brand)',fontSize:'1.4rem',flexShrink:0,transform:openFaq===i?'rotate(45deg)':'rotate(0)',transition:'transform .3s',display:'inline-block'}}>+</span>
                   </button>
                   <div className={`faq-ans${openFaq===i?' open':' closed'}`}>
@@ -850,7 +863,7 @@ export default function SalVitaLanding() {
                 <p style={{color:'rgba(255,255,255,.38)',fontSize:'.83rem',lineHeight:1.7}}>Sal Marinho Integral Não Refinado. Das salinas de Mossoró, Rio Grande do Norte, para a sua mesa.</p>
               </div>
               <div>
-                <h4 style={{fontSize:'.68rem',fontWeight:700,letterSpacing:'.2em',color:'rgba(255,255,255,.4)',textTransform:'uppercase',marginBottom:16}}>Produto</h4>
+                <h4 style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.16em',color:'rgba(255,255,255,.4)',textTransform:'uppercase',marginBottom:16}}>Produto</h4>
                 <ul style={{listStyle:'none',padding:0}}>
                   {['1kg — R$ 29,90','Caixa 10kg — R$ 149,90','Frete grátis acima R$ 150','+80 Minerais Naturais','Não Refinado'].map(i=>(
                     <li key={i} style={{color:'rgba(255,255,255,.38)',fontSize:'.83rem',marginBottom:8}}>{i}</li>
@@ -858,7 +871,7 @@ export default function SalVitaLanding() {
                 </ul>
               </div>
               <div>
-                <h4 style={{fontSize:'.68rem',fontWeight:700,letterSpacing:'.2em',color:'rgba(255,255,255,.4)',textTransform:'uppercase',marginBottom:16}}>Canais de Venda</h4>
+                <h4 style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.16em',color:'rgba(255,255,255,.4)',textTransform:'uppercase',marginBottom:16}}>Canais de Venda</h4>
                 <ul style={{listStyle:'none',padding:0}}>
                   {[{l:'💬 WhatsApp',h:`https://wa.me/${WA}`},{l:'🛒 Mercado Livre',h:'#'},{l:'🛍️ Shopee',h:'#'},{l:'📦 Amazon',h:'#'}].map(lk=>(
                     <li key={lk.l} style={{marginBottom:8}}>
@@ -870,7 +883,7 @@ export default function SalVitaLanding() {
                 </ul>
               </div>
               <div>
-                <h4 style={{fontSize:'.68rem',fontWeight:700,letterSpacing:'.2em',color:'rgba(255,255,255,.4)',textTransform:'uppercase',marginBottom:16}}>Fale Conosco</h4>
+                <h4 style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.16em',color:'rgba(255,255,255,.4)',textTransform:'uppercase',marginBottom:16}}>Fale Conosco</h4>
                 <a href={`https://wa.me/${WA}`} target="_blank" rel="noopener noreferrer" style={{display:'inline-flex',alignItems:'center',gap:10,background:'#128C7E',color:'white',padding:'12px 20px',borderRadius:10,fontSize:'.83rem',fontWeight:600,textDecoration:'none',transition:'background .2s,transform .2s'}}
                   onMouseEnter={e=>{e.currentTarget.style.background='#25D366';e.currentTarget.style.transform='scale(1.04)';}}
                   onMouseLeave={e=>{e.currentTarget.style.background='#128C7E';e.currentTarget.style.transform='scale(1)';}}>
@@ -880,8 +893,8 @@ export default function SalVitaLanding() {
               </div>
             </div>
             <div style={{borderTop:'1px solid rgba(255,255,255,.07)',paddingTop:24,display:'flex',flexWrap:'wrap',justifyContent:'space-between',gap:10}}>
-              <p style={{color:'rgba(255,255,255,.22)',fontSize:'.76rem'}}>© 2025 SAL VITA PREMIUM · Mossoró, Rio Grande do Norte · CNPJ: XX.XXX.XXX/XXXX-XX</p>
-              <p style={{color:'rgba(255,255,255,.22)',fontSize:'.76rem'}}>Produto registrado MAPA · Aditivos aprovados ANVISA</p>
+              <p style={{color:'rgba(255,255,255,.22)',fontSize:'.9rem'}}>© 2025 SAL VITA PREMIUM · Mossoró, Rio Grande do Norte · CNPJ: XX.XXX.XXX/XXXX-XX</p>
+              <p style={{color:'rgba(255,255,255,.22)',fontSize:'.9rem'}}>Produto registrado MAPA · Aditivos aprovados ANVISA</p>
             </div>
           </div>
         </footer>
@@ -909,24 +922,24 @@ export default function SalVitaLanding() {
             <div className="mb-drag"/>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:22}}>
               <div>
-                <p style={{fontSize:'.68rem',fontWeight:700,letterSpacing:'.2em',color:'var(--brand)',textTransform:'uppercase',marginBottom:4}}>Calcule o Frete</p>
+                <p style={{fontSize:'.84rem',fontWeight:700,letterSpacing:'.16em',color:'var(--brand)',textTransform:'uppercase',marginBottom:4}}>Calcule o Frete</p>
                 <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.55rem',fontWeight:700,color:'var(--text)'}}>{selProd.name}</h3>
-                <p style={{color:'var(--muted)',fontSize:'.82rem'}}>{selProd.weight}</p>
+                <p style={{color:'var(--muted)',fontSize:'.95rem'}}>{selProd.weight}</p>
               </div>
               <button onClick={closeBuy} style={{background:'var(--sky)',border:'none',borderRadius:8,width:36,height:36,color:'var(--mid)',fontSize:'1.3rem',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>×</button>
             </div>
             <div style={{background:'var(--sky)',borderRadius:12,padding:'16px 20px',marginBottom:20,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               <div>
-                <p style={{fontSize:'.78rem',color:'var(--muted)',marginBottom:2}}>Subtotal</p>
+                <p style={{fontSize:'.9rem',color:'var(--muted)',marginBottom:2}}>Subtotal</p>
                 <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.9rem',fontWeight:700,color:'var(--brand)'}}>R$ {selProd.price.toFixed(2).replace('.',',')}</p>
               </div>
               <div style={{textAlign:'right'}}>
-                <p style={{fontSize:'.73rem',color:'var(--muted)'}}>Peso aprox.</p>
+                <p style={{fontSize:'.87rem',color:'var(--muted)'}}>Peso aprox.</p>
                 <p style={{fontSize:'.93rem',color:'var(--mid)',fontWeight:500}}>{selProd.weightKg}kg</p>
               </div>
             </div>
             <div style={{marginBottom:18}}>
-              <label style={{display:'block',fontSize:'.76rem',fontWeight:700,letterSpacing:'.12em',color:'var(--mid)',textTransform:'uppercase',marginBottom:8}}>Seu CEP de entrega</label>
+              <label style={{display:'block',fontSize:'.9rem',fontWeight:700,letterSpacing:'.1em',color:'var(--mid)',textTransform:'uppercase',marginBottom:8}}>Seu CEP de entrega</label>
               <div style={{display:'flex',gap:10}}>
                 <input type="text" value={cep} onChange={e=>{setCep(e.target.value.replace(/\D/g,'').slice(0,8));setCepErr('');}} onKeyDown={e=>e.key==='Enter'&&lookupCep()} placeholder="00000-000" maxLength={8}
                   style={{flex:1,background:'var(--offwhite)',border:cepErr?'2px solid #ef4444':'2px solid transparent',borderRadius:10,padding:'13px 16px',color:'var(--text)',fontSize:'1rem',fontFamily:'Outfit,sans-serif',letterSpacing:'.1em',outline:'none',transition:'border-color .2s'}}
@@ -937,7 +950,7 @@ export default function SalVitaLanding() {
                   onMouseLeave={e=>e.currentTarget.style.background='var(--brand)'}>{loadingCep?'⟳':'Calcular'}</button>
               </div>
               {cepErr&&<p style={{color:'#ef4444',fontSize:'.78rem',marginTop:6}}>{cepErr}</p>}
-              <a href="https://buscacepinter.correios.com.br/" target="_blank" rel="noopener noreferrer" style={{fontSize:'.73rem',color:'var(--muted)',textDecoration:'none',display:'inline-block',marginTop:6}}>Não sei meu CEP →</a>
+              <a href="https://buscacepinter.correios.com.br/" target="_blank" rel="noopener noreferrer" style={{fontSize:'.87rem',color:'var(--muted)',textDecoration:'none',display:'inline-block',marginTop:6}}>Não sei meu CEP →</a>
             </div>
 
             {cepData&&(
@@ -946,7 +959,7 @@ export default function SalVitaLanding() {
                   <span style={{color:'#16a34a'}}>✓</span>
                   <p style={{fontSize:'.84rem',color:'#166534'}}>{cepData.localidade} — {cepData.uf}{cepData.bairro?` · ${cepData.bairro}`:''}</p>
                 </div>
-                <p style={{fontSize:'.7rem',fontWeight:700,letterSpacing:'.14em',color:'var(--muted)',textTransform:'uppercase',marginBottom:10}}>Opções via Correios (estimativa):</p>
+                <p style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',marginBottom:10}}>Opções via Correios (estimativa):</p>
                 <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:18}}>
                   {shipping.map(opt=>(
                     <div key={opt.service} className={`sopt${selShip?.service===opt.service?' sel':''}`} onClick={()=>setSelShip(opt)}>
@@ -955,7 +968,7 @@ export default function SalVitaLanding() {
                           <span style={{fontSize:'1.4rem'}}>{opt.icon}</span>
                           <div>
                             <p style={{fontWeight:700,color:'var(--text)',fontSize:'.93rem'}}>{opt.service}</p>
-                            <p style={{fontSize:'.76rem',color:'var(--muted)'}}>{opt.description} · {opt.days}</p>
+                            <p style={{fontSize:'.88rem',color:'var(--muted)'}}>{opt.description} · {opt.days}</p>
                           </div>
                         </div>
                         <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.3rem',fontWeight:700,color:'var(--brand)'}}>R$ {opt.price.toFixed(2).replace('.',',')}</p>
@@ -967,8 +980,8 @@ export default function SalVitaLanding() {
                   <div style={{background:'var(--sky)',borderRadius:12,padding:'15px 18px',marginBottom:18,borderTop:'3px solid var(--brand)'}}>
                     {[['Produto',selProd.price],[`Frete (${selShip.service})`,selShip.price]].map(([l,val])=>(
                       <div key={String(l)} style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
-                        <span style={{fontSize:'.83rem',color:'var(--muted)'}}>{l}</span>
-                        <span style={{fontSize:'.83rem',color:'var(--mid)'}}>R$ {Number(val).toFixed(2).replace('.',',')}</span>
+                        <span style={{fontSize:'.95rem',color:'var(--muted)'}}>{l}</span>
+                        <span style={{fontSize:'.95rem',color:'var(--mid)'}}>R$ {Number(val).toFixed(2).replace('.',',')}</span>
                       </div>
                     ))}
                     <div style={{display:'flex',justifyContent:'space-between',paddingTop:10,borderTop:'1px solid rgba(26,58,138,.12)',marginTop:4}}>
@@ -989,15 +1002,15 @@ export default function SalVitaLanding() {
                 Finalizar via WhatsApp
               </a>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                <a href="#" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,background:'#fffbeb',border:'1px solid #fde68a',color:'#92400e',borderRadius:10,padding:'12px',fontSize:'.78rem',fontWeight:600,textDecoration:'none',transition:'background .2s'}}
+                <a href="#" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,background:'#fffbeb',border:'1px solid #fde68a',color:'#92400e',borderRadius:10,padding:'12px',fontSize:'.9rem',fontWeight:600,textDecoration:'none',transition:'background .2s'}}
                   onMouseEnter={e=>e.currentTarget.style.background='#fef3c7'}
                   onMouseLeave={e=>e.currentTarget.style.background='#fffbeb'}>🛒 Mercado Livre</a>
-                <a href="#" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,background:'#fff1f0',border:'1px solid #fca5a5',color:'#991b1b',borderRadius:10,padding:'12px',fontSize:'.78rem',fontWeight:600,textDecoration:'none',transition:'background .2s'}}
+                <a href="#" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,background:'#fff1f0',border:'1px solid #fca5a5',color:'#991b1b',borderRadius:10,padding:'12px',fontSize:'.9rem',fontWeight:600,textDecoration:'none',transition:'background .2s'}}
                   onMouseEnter={e=>e.currentTarget.style.background='#fee2e2'}
                   onMouseLeave={e=>e.currentTarget.style.background='#fff1f0'}>🛍️ Shopee</a>
               </div>
             </div>
-            <p style={{marginTop:14,fontSize:'.7rem',color:'var(--muted)',textAlign:'center',lineHeight:1.5}}>* Frete estimado via Correios. Valor final calculado na plataforma de venda.</p>
+            <p style={{marginTop:14,fontSize:'.84rem',color:'var(--muted)',textAlign:'center',lineHeight:1.5}}>* Frete estimado via Correios. Valor final calculado na plataforma de venda.</p>
           </div>
         </div>
       )}
