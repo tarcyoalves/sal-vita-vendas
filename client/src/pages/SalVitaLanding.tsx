@@ -729,33 +729,39 @@ export default function SalVitaLanding() {
         <section className="s-sky" style={{padding:'80px 24px'}}>
           <div style={{maxWidth:900,margin:'0 auto'}}>
             <div id="comp-h" data-reveal className={`rev${v('comp-h')?' on':''}`} style={{textAlign:'center',marginBottom:48}}>
-              <p className="eyebrow" style={{color:'var(--brand)'}}>Comparativo</p>
-              <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(1.8rem,4vw,3rem)',fontWeight:700,color:'var(--text)'}}>Por que SAL VITA PREMIUM?</h2>
+              <p className="eyebrow" style={{color:'var(--brand)'}}>Sal Integral vs Refinado</p>
+              <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(1.8rem,4vw,3rem)',fontWeight:700,color:'var(--text)'}}>O que o refinamento retira do seu sal?</h2>
+              <p style={{color:'var(--muted)',marginTop:12,fontSize:'.95rem',maxWidth:560,margin:'12px auto 0'}}>O processamento industrial elimina minerais essenciais e adiciona químicos para branquear e evitar umidade.</p>
             </div>
             <div id="comp-t" data-reveal className={`rev comp-wrap${v('comp-t')?' on':''}`} style={{overflowX:'auto',borderRadius:16,boxShadow:'0 4px 32px rgba(26,58,138,.08)',background:'white'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.88rem'}}>
                 <thead style={{background:'var(--brand)'}}>
                   <tr>
                     <th style={{padding:'14px 18px',textAlign:'left',color:'rgba(255,255,255,.7)',fontWeight:500,fontSize:'.75rem',letterSpacing:'.12em',textTransform:'uppercase'}}>Característica</th>
-                    {['SAL VITA PREMIUM','Sal Marinho Artesanal','Sal de Mesa Comum'].map((b,bi)=>(
+                    {['SAL VITA PREMIUM','Sal Marinho Comum','Sal Refinado Industrial'].map((b,bi)=>(
                       <th key={b} style={{padding:'14px 18px',textAlign:'center',fontFamily:bi===0?"'Cormorant Garamond',serif":'inherit',fontWeight:bi===0?700:500,fontSize:bi===0?'1rem':'.82rem',color:bi===0?'white':'rgba(255,255,255,.55)'}}>{b}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {[
-                    ['Não Refinado',            '✓','✓','✗'],
-                    ['+80 Minerais naturais',   '✓','✓','✗'],
-                    ['Zip lock premium',        '✓','✗','✗'],
-                    ['Janela de visualização',  '✓','✗','✗'],
-                    ['Não empedra',             '✓','✗','parcial'],
-                    ['Origem Mossoró',          '✓','✓','✗'],
-                    ['Com iodo',                '✓','✓','✓'],
+                    ['Minerais naturais preservados', '✓ +80 minerais','parcial','✗ removidos'],
+                    ['Sem aditivos químicos',         '✓','parcial','✗ antiumectantes'],
+                    ['Sabor rico e natural',          '✓ intenso','médio','✗ neutro/artificial'],
+                    ['Não refinado / integral',       '✓','parcial','✗'],
+                    ['Não empedra naturalmente',      '✓','✗','✗ (usa aditivo)'],
+                    ['Iodo presente naturalmente',    '✓ natural','parcial','adicionado'],
+                    ['Embalagem com zip lock',        '✓ dupla vedação','✗','✗'],
+                    ['Origem rastreável',             '✓ Mossoró RN','variada','variada'],
                   ].map(([f,a,b,c],ri)=>(
                     <tr key={f} style={{background:ri%2===0?'var(--offwhite)':'white'}}>
-                      <td style={{padding:'13px 18px',color:'var(--mid)',borderBottom:'1px solid rgba(26,58,138,.05)'}}>{f}</td>
+                      <td style={{padding:'13px 18px',color:'var(--mid)',borderBottom:'1px solid rgba(26,58,138,.05)',fontWeight:500}}>{f}</td>
                       {[a,b,c].map((val,ci)=>(
-                        <td key={ci} style={{padding:'13px 18px',textAlign:'center',borderBottom:'1px solid rgba(26,58,138,.05)',color:val==='✓'?'#16a34a':val==='✗'?'rgba(0,0,0,.2)':'var(--mid)',fontWeight:ci===0&&val!=='✓'&&val!=='✗'?700:400,fontSize:val==='✓'||val==='✗'?'1.1rem':'.88rem'}}>{val}</td>
+                        <td key={ci} style={{padding:'13px 18px',textAlign:'center',borderBottom:'1px solid rgba(26,58,138,.05)',
+                          color:val.startsWith('✓')?'#16a34a':val.startsWith('✗')?'#dc2626':'var(--mid)',
+                          fontWeight:ci===0?600:400,
+                          fontSize:'.85rem'
+                        }}>{val}</td>
                       ))}
                     </tr>
                   ))}
