@@ -746,11 +746,10 @@ export default function SalVitaLanding() {
                 <tbody>
                   {[
                     ['Minerais naturais preservados', '✓ +80 minerais','parcial','✗ removidos'],
-                    ['Sem aditivos químicos',         '✓','parcial','✗ antiumectantes'],
-                    ['Sabor rico e natural',          '✓ intenso','médio','✗ neutro/artificial'],
+                    ['Sem aditivos químicos',         '✓','parcial','✗'],
+                    ['Sabor rico e natural',          '✓ intenso','médio','✗ neutro'],
                     ['Não refinado / integral',       '✓','parcial','✗'],
-                    ['Não empedra naturalmente',      '✓','✗','✗ (usa aditivo)'],
-                    ['Iodo presente naturalmente',    '✓ natural','parcial','adicionado'],
+                    ['Não empedra naturalmente',      '✓','✗','✗'],
                     ['Embalagem com zip lock',        '✓ dupla vedação','✗','✗'],
                     ['Origem rastreável',             '✓ Mossoró RN','variada','variada'],
                   ].map(([f,a,b,c],ri)=>(
