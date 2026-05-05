@@ -263,8 +263,8 @@ export default function SalVitaLanding() {
         /* ── separator label ── */
         .eyebrow{font-size:.72rem;font-weight:700;letter-spacing:.28em;text-transform:uppercase;margin-bottom:12px;}
 
-        /* ── product img — removes white bg via multiply ── */
-        .prod-img{mix-blend-mode:multiply;background:transparent;}
+        /* ── product img — multiply on pure-white container makes JPEG white bg vanish ── */
+        .prod-img{mix-blend-mode:multiply;background:transparent;display:block;}
 
         /* ── hamburger ── */
         .ham{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:8px;border-radius:8px;}
@@ -289,8 +289,8 @@ export default function SalVitaLanding() {
           .hero-badges{justify-content:center!important;}
           .hero-btns{justify-content:center!important;}
           .hero-img-wrap{order:-1;}
-          .prod-float img{width:220px!important;}
-          .prod-float{padding:20px!important;}
+          .prod-float{width:280px!important;height:280px!important;}
+          .prod-float img{width:90%!important;height:90%!important;}
 
           /* Sections */
           .s-pad{padding:64px 20px!important;}
@@ -433,24 +433,38 @@ export default function SalVitaLanding() {
 
             {/* Product image */}
             <div className="hero-img-wrap" style={{display:'flex',justifyContent:'center',alignItems:'center',position:'relative'}}>
-              {/* Gold ring glow behind product */}
-              <div style={{position:'absolute',inset:0,borderRadius:'50%',background:'radial-gradient(circle,rgba(201,162,39,.18) 0%,transparent 70%)',filter:'blur(20px)',transform:'scale(1.15)'}}/>
-              <div className="prod-float" style={{position:'relative',background:'linear-gradient(135deg,#e8f4ff,#d0e8ff)',borderRadius:'50%',padding:32,boxShadow:'0 40px 100px rgba(0,0,0,.5),0 0 0 1px rgba(201,162,39,.2)'}}>
+              {/* Outer gold glow ring */}
+              <div style={{position:'absolute',width:500,height:500,borderRadius:'50%',background:'radial-gradient(circle,rgba(201,162,39,.22) 0%,transparent 68%)',filter:'blur(24px)',pointerEvents:'none'}}/>
+              {/* Gold ring border */}
+              <div style={{position:'absolute',width:446,height:446,borderRadius:'50%',border:'1.5px solid rgba(201,162,39,.35)',pointerEvents:'none',zIndex:3}}/>
+              {/*
+                Container: pure WHITE background + overflow:hidden (clips JPEG rectangle corners)
+                mix-blend-mode:multiply on img makes white JPEG bg invisible against white container
+              */}
+              <div className="prod-float" style={{
+                position:'relative',zIndex:2,
+                width:420,height:420,borderRadius:'50%',
+                background:'#ffffff',
+                overflow:'hidden',
+                display:'flex',alignItems:'center',justifyContent:'center',
+                boxShadow:'0 50px 120px rgba(0,0,0,.6), 0 0 0 8px rgba(201,162,39,.12)',
+              }}>
                 <img src={IMG.produto} alt="SAL VITA PREMIUM — Sal Integral de Mossoró 1kg" className="prod-img"
-                  style={{width:300,height:'auto',maxWidth:'100%',filter:'drop-shadow(0 24px 48px rgba(0,0,0,.4))'}}
+                  style={{width:'92%',height:'92%',objectFit:'contain'}}
                   onError={e=>{
                     e.currentTarget.style.display='none';
                     (e.currentTarget.nextElementSibling as HTMLElement).style.display='flex';
                   }}
                 />
-                <div style={{display:'none',width:260,height:320,background:'linear-gradient(160deg,#0b1d3a,#071628)',borderRadius:20,flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,padding:28,border:'1px solid rgba(201,162,39,.2)'}}>
-                  <Logo size={50}/>
-                  <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.4rem',fontWeight:700,color:'white',marginTop:12}}>SAL VITA PREMIUM</div>
+                <div style={{display:'none',width:'100%',height:'100%',background:'linear-gradient(160deg,#0b1d3a,#071628)',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,padding:28}}>
+                  <Logo size={56}/>
+                  <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.5rem',fontWeight:700,color:'white',marginTop:12,textAlign:'center'}}>SAL VITA PREMIUM</div>
                   <div style={{fontSize:'.75rem',color:'rgba(255,255,255,.5)'}}>Sal Integral · 1kg · Mossoró RN</div>
                   <div style={{marginTop:16,background:'rgba(201,162,39,.15)',border:'1px solid rgba(201,162,39,.4)',borderRadius:8,padding:'6px 14px',fontSize:'.75rem',color:'var(--gold)',fontWeight:700}}>+80 Minerais Naturais</div>
                 </div>
               </div>
-              <div style={{position:'absolute',bottom:-24,left:'50%',transform:'translateX(-50%)',width:200,height:32,background:'rgba(0,0,0,.35)',borderRadius:'50%',filter:'blur(22px)'}}/>
+              {/* Ground shadow */}
+              <div style={{position:'absolute',bottom:-30,left:'50%',transform:'translateX(-50%)',width:280,height:36,background:'rgba(0,0,0,.45)',borderRadius:'50%',filter:'blur(28px)'}}/>
             </div>
           </div>
 
