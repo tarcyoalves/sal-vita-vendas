@@ -665,29 +665,6 @@ export default function SalVitaLanding() {
           </div>
         </section>
 
-        {/* ══════ FAQ ══════ */}
-        <section className="s-white" style={{padding:'100px 24px'}}>
-          <div style={{maxWidth:760,margin:'0 auto'}}>
-            <div id="faq-h" data-reveal className={`rev${v('faq-h')?' on':''}`} style={{textAlign:'center',marginBottom:52}}>
-              <p className="eyebrow" style={{color:'var(--brand)'}}>Tire suas dúvidas</p>
-              <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(2rem,5vw,3rem)',fontWeight:700,color:'var(--text)'}}>Perguntas Frequentes</h2>
-            </div>
-            <div id="faq-l" data-reveal className={`rev${v('faq-l')?' on':''}`}>
-              {FAQS.map((faq,i)=>(
-                <div key={i} className="faq-border">
-                  <button onClick={()=>setOpenFaq(openFaq===i?null:i)} style={{width:'100%',background:'none',border:'none',padding:'22px 0',display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',gap:16}}>
-                    <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.15rem',fontWeight:700,color:'var(--text)',textAlign:'left'}}>{faq.q}</span>
-                    <span style={{color:'var(--brand)',fontSize:'1.4rem',flexShrink:0,transform:openFaq===i?'rotate(45deg)':'rotate(0)',transition:'transform .3s',display:'inline-block'}}>+</span>
-                  </button>
-                  <div className={`faq-ans${openFaq===i?' open':' closed'}`}>
-                    <p style={{padding:'0 0 24px',color:'var(--mid)',lineHeight:1.75,fontSize:'.93rem'}}>{faq.a}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
         {/* ══════ PRICING — value built, now reveal prices ══════ */}
         <section id="preco" className="s-brand" style={{padding:'100px 24px'}}>
           <div style={{maxWidth:1100,margin:'0 auto'}}>
@@ -733,6 +710,29 @@ export default function SalVitaLanding() {
             <p style={{textAlign:'center',marginTop:28,fontSize:'.8rem',color:'rgba(255,255,255,.35)',letterSpacing:'.06em'}}>
               🔒 Compra segura · Rastreamento incluso · Nota fiscal emitida
             </p>
+          </div>
+        </section>
+
+        {/* ══════ FAQ ══════ */}
+        <section className="s-white" style={{padding:'100px 24px'}}>
+          <div style={{maxWidth:760,margin:'0 auto'}}>
+            <div id="faq-h" data-reveal className={`rev${v('faq-h')?' on':''}`} style={{textAlign:'center',marginBottom:52}}>
+              <p className="eyebrow" style={{color:'var(--brand)'}}>Tire suas dúvidas</p>
+              <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(2rem,5vw,3rem)',fontWeight:700,color:'var(--text)'}}>Perguntas Frequentes</h2>
+            </div>
+            <div id="faq-l" data-reveal className={`rev${v('faq-l')?' on':''}`}>
+              {FAQS.map((faq,i)=>(
+                <div key={i} className="faq-border">
+                  <button onClick={()=>setOpenFaq(openFaq===i?null:i)} style={{width:'100%',background:'none',border:'none',padding:'22px 0',display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',gap:16}}>
+                    <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.15rem',fontWeight:700,color:'var(--text)',textAlign:'left'}}>{faq.q}</span>
+                    <span style={{color:'var(--brand)',fontSize:'1.4rem',flexShrink:0,transform:openFaq===i?'rotate(45deg)':'rotate(0)',transition:'transform .3s',display:'inline-block'}}>+</span>
+                  </button>
+                  <div className={`faq-ans${openFaq===i?' open':' closed'}`}>
+                    <p style={{padding:'0 0 24px',color:'var(--mid)',lineHeight:1.75,fontSize:'.93rem'}}>{faq.a}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 
