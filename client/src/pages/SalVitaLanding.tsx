@@ -207,9 +207,8 @@ export default function SalVitaLanding() {
         }
         .pulse{animation:pulseGold 2.6s ease-in-out infinite;}
 
-        /* ── product float ── */
-        @keyframes floatProd {0%,100%{transform:translateY(0) rotate(-1deg);}50%{transform:translateY(-16px) rotate(1.2deg);}}
-        .prod-float{animation:floatProd 5.5s ease-in-out infinite;}
+        /* ── product float — removed, static display ── */
+        .prod-float{}
 
         /* ── reveal ── */
         .rev{opacity:0;transform:translateY(30px);transition:opacity .7s ease,transform .7s ease;}
@@ -245,10 +244,18 @@ export default function SalVitaLanding() {
         .wa{position:fixed;bottom:28px;right:28px;z-index:8000;width:58px;height:58px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 24px rgba(37,211,102,.4);text-decoration:none;transition:transform .2s,box-shadow .2s;}
         .wa:hover{transform:scale(1.12);box-shadow:0 6px 32px rgba(37,211,102,.6);}
 
-        /* ── hero — premium dark ── */
+        /* ── hero — imagem de fundo com overlay escuro ── */
         .hero-bg{
-          background: linear-gradient(150deg, #07131f 0%, #0b1d3a 45%, #0e2448 100%);
+          background-image: url('http://salvitarn.com.br/wp-content/uploads/2026/05/Gemini_Generated_Image_z4b5rlz4b5rlz4b5.png');
+          background-size: cover;
+          background-position: center center;
+          background-repeat: no-repeat;
           position:relative; overflow:hidden;
+        }
+        .hero-overlay{
+          position:absolute;inset:0;
+          background:linear-gradient(150deg,rgba(7,19,31,.82) 0%,rgba(11,29,58,.75) 50%,rgba(7,19,31,.70) 100%);
+          pointer-events:none;
         }
         /* gold line above sections */
         .gold-line{width:56px;height:2px;background:linear-gradient(90deg,var(--gold),var(--goldlt));margin:0 auto 20px;}
@@ -289,7 +296,7 @@ export default function SalVitaLanding() {
           .hero-badges{justify-content:center!important;}
           .hero-btns{justify-content:center!important;}
           .hero-img-wrap{order:-1;}
-          .prod-float{width:280px!important;height:280px!important;}
+          .prod-float{width:300px!important;height:300px!important;}
           .prod-float img{width:90%!important;height:90%!important;}
 
           /* Sections */
@@ -375,16 +382,16 @@ export default function SalVitaLanding() {
           </div>
         </div>
 
-        {/* ══════ HERO — PREMIUM DARK ══════ */}
+        {/* ══════ HERO — IMAGEM DE FUNDO ══════ */}
         <section className="hero-bg" style={{minHeight:'100vh',display:'flex',alignItems:'center',paddingTop:80,position:'relative',overflow:'hidden'}}>
-          {/* Gold shimmer orbs */}
-          <div style={{position:'absolute',top:'15%',right:'8%',width:420,height:420,borderRadius:'50%',background:'radial-gradient(circle,rgba(201,162,39,.12) 0%,transparent 65%)',pointerEvents:'none'}}/>
-          <div style={{position:'absolute',bottom:'10%',left:'5%',width:320,height:320,borderRadius:'50%',background:'radial-gradient(circle,rgba(201,162,39,.08) 0%,transparent 65%)',pointerEvents:'none'}}/>
-          {/* Fine grid overlay */}
-          <div style={{position:'absolute',inset:0,backgroundImage:'linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px)',backgroundSize:'60px 60px',pointerEvents:'none'}}/>
+          {/* Dark overlay sobre a imagem de fundo */}
+          <div className="hero-overlay"/>
+          {/* Gold orbs */}
+          <div style={{position:'absolute',top:'15%',right:'8%',width:420,height:420,borderRadius:'50%',background:'radial-gradient(circle,rgba(201,162,39,.10) 0%,transparent 65%)',pointerEvents:'none'}}/>
+          <div style={{position:'absolute',bottom:'10%',left:'5%',width:320,height:320,borderRadius:'50%',background:'radial-gradient(circle,rgba(201,162,39,.07) 0%,transparent 65%)',pointerEvents:'none'}}/>
           {/* Floating salt particles */}
           {PARTICLES.map(p=>(
-            <span key={p.id} className="salt-p" style={{left:p.left,bottom:0,width:p.size,height:p.size,opacity:p.opacity*1.4,animationDuration:p.dur,animationDelay:p.delay}}/>
+            <span key={p.id} className="salt-p" style={{left:p.left,bottom:0,width:p.size,height:p.size,opacity:p.opacity*1.2,animationDuration:p.dur,animationDelay:p.delay}}/>
           ))}
 
           <div className="hero-grid" style={{maxWidth:1200,margin:'0 auto',padding:'80px 24px 100px',width:'100%',display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))',gap:60,alignItems:'center',position:'relative',zIndex:2}}>
@@ -434,20 +441,16 @@ export default function SalVitaLanding() {
             {/* Product image */}
             <div className="hero-img-wrap" style={{display:'flex',justifyContent:'center',alignItems:'center',position:'relative'}}>
               {/* Outer gold glow ring */}
-              <div style={{position:'absolute',width:500,height:500,borderRadius:'50%',background:'radial-gradient(circle,rgba(201,162,39,.22) 0%,transparent 68%)',filter:'blur(24px)',pointerEvents:'none'}}/>
+              <div style={{position:'absolute',width:560,height:560,borderRadius:'50%',background:'radial-gradient(circle,rgba(201,162,39,.2) 0%,transparent 68%)',filter:'blur(28px)',pointerEvents:'none'}}/>
               {/* Gold ring border */}
-              <div style={{position:'absolute',width:446,height:446,borderRadius:'50%',border:'1.5px solid rgba(201,162,39,.35)',pointerEvents:'none',zIndex:3}}/>
-              {/*
-                Container: pure WHITE background + overflow:hidden (clips JPEG rectangle corners)
-                mix-blend-mode:multiply on img makes white JPEG bg invisible against white container
-              */}
+              <div style={{position:'absolute',width:508,height:508,borderRadius:'50%',border:'1.5px solid rgba(201,162,39,.4)',pointerEvents:'none',zIndex:3}}/>
               <div className="prod-float" style={{
                 position:'relative',zIndex:2,
-                width:420,height:420,borderRadius:'50%',
+                width:480,height:480,borderRadius:'50%',
                 background:'#ffffff',
                 overflow:'hidden',
                 display:'flex',alignItems:'center',justifyContent:'center',
-                boxShadow:'0 50px 120px rgba(0,0,0,.6), 0 0 0 8px rgba(201,162,39,.12)',
+                boxShadow:'0 50px 130px rgba(0,0,0,.65), 0 0 0 10px rgba(201,162,39,.10)',
               }}>
                 <img src={IMG.produto} alt="SAL VITA PREMIUM — Sal Integral de Mossoró 1kg" className="prod-img"
                   style={{width:'92%',height:'92%',objectFit:'contain'}}
