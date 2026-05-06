@@ -313,7 +313,7 @@ export default function SalVitaLanding() {
           /* Sections */
           .s-pad{padding:64px 20px!important;}
           .story-grid{grid-template-columns:1fr!important;gap:32px!important;}
-          .panorama{height:340px!important;}
+          .panorama{min-height:320px!important;}
           .crista-section{height:320px!important;}
 
           /* Benefits / Uses / Pricing grids */
@@ -660,13 +660,20 @@ export default function SalVitaLanding() {
         </div>
 
         {/* ══════ PANORAMA — MORROS DE SAL ══════ */}
-        <section className="panorama" style={{position:'relative',height:560,overflow:'hidden'}}>
-          <img src={IMG.morrosSal} alt="Morros de sal nas salinas de Mossoró, Rio Grande do Norte" style={{width:'100%',height:'100%',objectFit:'cover',objectPosition:'center 55%',display:'block',imageRendering:'auto'}} loading="eager" fetchPriority="low"/>
-          {/* overlay sutil apenas nas bordas para blend com seções adjacentes */}
-          <div style={{position:'absolute',inset:0,background:'linear-gradient(to bottom,white 0%,transparent 12%,transparent 80%,white 100%)'}}/>
-          <div style={{position:'absolute',inset:0,background:'rgba(7,22,40,.12)'}}/>
-          <div style={{position:'absolute',bottom:52,left:'50%',transform:'translateX(-50%)',textAlign:'center',width:'100%',padding:'0 24px'}}>
-            <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(1.4rem,4vw,2.6rem)',fontWeight:400,fontStyle:'italic',color:'white',textShadow:'0 2px 20px rgba(0,0,0,.7)',marginBottom:10}}>
+        <section className="panorama" style={{
+          position:'relative',
+          minHeight:560,
+          backgroundImage:`url('${IMG.morrosSal}')`,
+          backgroundSize:'cover',
+          backgroundPosition:'center 55%',
+          backgroundRepeat:'no-repeat',
+        }}>
+          {/* fade sutil só nas bordas verticais para blend com seções adjacentes */}
+          <div style={{position:'absolute',inset:0,background:'linear-gradient(to bottom,white 0%,transparent 10%,transparent 85%,white 100%)'}}/>
+          {/* sombra leve no rodapé para legibilidade do texto — sem escurecer a foto */}
+          <div style={{position:'absolute',bottom:0,left:0,right:0,height:'45%',background:'linear-gradient(to bottom,transparent,rgba(0,0,0,.38))'}}/>
+          <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-end',minHeight:560,paddingBottom:52,padding:'0 24px 52px'}}>
+            <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(1.4rem,4vw,2.6rem)',fontWeight:400,fontStyle:'italic',color:'white',textShadow:'0 2px 20px rgba(0,0,0,.7)',marginBottom:10,textAlign:'center'}}>
               Das maiores salinas do Brasil para a sua mesa
             </p>
             <div style={{display:'inline-flex',alignItems:'center',gap:10}}>
