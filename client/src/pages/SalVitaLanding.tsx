@@ -2,10 +2,10 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 
 /* ─── Image assets ───────────────────────────────────────── */
 const IMG = {
-  produto:       'http://salvitarn.com.br/wp-content/uploads/2026/05/WhatsApp-Image-2026-05-04-at-09.02.12.jpeg',
-  salina:        'http://salvitarn.com.br/wp-content/uploads/2026/04/WhatsApp-Image-2026-03-24-at-16.42.07.jpeg',
-  cristalizador: 'http://salvitarn.com.br/wp-content/uploads/2025/12/cristalizador-de-sal-scaled.jpg',
-  morrosSal:     'http://salvitarn.com.br/wp-content/uploads/2025/10/missao01.webp',
+  produto:       'https://salvitarn.com.br/wp-content/uploads/2026/05/WhatsApp-Image-2026-05-04-at-09.02.12.jpeg',
+  salina:        'https://salvitarn.com.br/wp-content/uploads/2026/04/WhatsApp-Image-2026-03-24-at-16.42.07.jpeg',
+  cristalizador: 'https://salvitarn.com.br/wp-content/uploads/2025/12/cristalizador-de-sal-scaled.jpg',
+  morrosSal:     'https://salvitarn.com.br/wp-content/uploads/2025/10/missao01.webp',
 };
 
 /* ─── Shipping ───────────────────────────────────────────── */
@@ -257,7 +257,7 @@ export default function SalVitaLanding() {
 
         /* ── hero — imagem de fundo com overlay escuro ── */
         .hero-bg{
-          background-image: url('http://salvitarn.com.br/wp-content/uploads/2026/05/Gemini_Generated_Image_z4b5rlz4b5rlz4b5.png');
+          background-image: url('https://salvitarn.com.br/wp-content/uploads/2026/05/Gemini_Generated_Image_z4b5rlz4b5rlz4b5.png');
           background-size: cover;
           background-position: center center;
           background-repeat: no-repeat;
@@ -660,19 +660,22 @@ export default function SalVitaLanding() {
         </div>
 
         {/* ══════ PANORAMA — MORROS DE SAL ══════ */}
-        <section className="panorama" style={{
-          position:'relative',
-          minHeight:560,
-          backgroundImage:`url('${IMG.morrosSal}')`,
-          backgroundSize:'cover',
-          backgroundPosition:'center 55%',
-          backgroundRepeat:'no-repeat',
-        }}>
-          {/* fade sutil só nas bordas verticais para blend com seções adjacentes */}
-          <div style={{position:'absolute',inset:0,background:'linear-gradient(to bottom,white 0%,transparent 10%,transparent 85%,white 100%)'}}/>
-          {/* sombra leve no rodapé para legibilidade do texto — sem escurecer a foto */}
-          <div style={{position:'absolute',bottom:0,left:0,right:0,height:'45%',background:'linear-gradient(to bottom,transparent,rgba(0,0,0,.38))'}}/>
-          <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-end',minHeight:560,paddingBottom:52,padding:'0 24px 52px'}}>
+        <section className="panorama" style={{position:'relative',minHeight:440,overflow:'hidden'}}>
+          {/* Camada de imagem isolada para aplicar filtro de nitidez sem afetar texto */}
+          <div style={{
+            position:'absolute',inset:0,
+            backgroundImage:`url('${IMG.morrosSal}')`,
+            backgroundSize:'cover',
+            backgroundPosition:'center 45%',
+            backgroundRepeat:'no-repeat',
+            filter:'contrast(1.12) saturate(1.15) brightness(1.04)',
+            transform:'scale(1.01)',
+          }}/>
+          {/* fade sutil só nas bordas verticais */}
+          <div style={{position:'absolute',inset:0,background:'linear-gradient(to bottom,white 0%,transparent 10%,transparent 82%,white 100%)'}}/>
+          {/* sombra leve no rodapé para legibilidade do texto */}
+          <div style={{position:'absolute',bottom:0,left:0,right:0,height:'40%',background:'linear-gradient(to bottom,transparent,rgba(0,0,0,.42))'}}/>
+          <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-end',minHeight:440,padding:'0 24px 48px'}}>
             <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(1.4rem,4vw,2.6rem)',fontWeight:400,fontStyle:'italic',color:'white',textShadow:'0 2px 20px rgba(0,0,0,.7)',marginBottom:10,textAlign:'center'}}>
               Das maiores salinas do Brasil para a sua mesa
             </p>
