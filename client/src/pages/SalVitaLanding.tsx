@@ -313,7 +313,7 @@ export default function SalVitaLanding() {
           /* Sections */
           .s-pad{padding:64px 20px!important;}
           .story-grid{grid-template-columns:1fr!important;gap:32px!important;}
-          .panorama{min-height:320px!important;}
+          .panorama{min-height:460px!important;}
           .crista-section{height:320px!important;}
 
           /* Benefits / Uses / Pricing grids */
@@ -660,31 +660,30 @@ export default function SalVitaLanding() {
         </div>
 
         {/* ══════ PANORAMA — MORROS DE SAL ══════ */}
-        <section className="panorama" style={{position:'relative',minHeight:440,overflow:'hidden'}}>
-          {/* Camada de imagem isolada para aplicar filtro de nitidez sem afetar texto */}
+        <section className="panorama" style={{position:'relative',minHeight:600,overflow:'hidden'}}>
+          {/* imagem em alta resolução */}
           <div style={{
             position:'absolute',inset:0,
             backgroundImage:`url('${IMG.morrosSal}')`,
             backgroundSize:'cover',
-            backgroundPosition:'center 45%',
+            backgroundPosition:'center 40%',
             backgroundRepeat:'no-repeat',
-            filter:'contrast(1.12) saturate(1.15) brightness(1.04)',
-            transform:'scale(1.01)',
+            filter:'contrast(1.1) saturate(1.12) brightness(1.02)',
           }}/>
-          {/* fade sutil só nas bordas verticais */}
-          <div style={{position:'absolute',inset:0,background:'linear-gradient(to bottom,white 0%,transparent 10%,transparent 82%,white 100%)'}}/>
-          {/* sombra leve no rodapé para legibilidade do texto */}
-          <div style={{position:'absolute',bottom:0,left:0,right:0,height:'40%',background:'linear-gradient(to bottom,transparent,rgba(0,0,0,.42))'}}/>
-          <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-end',minHeight:440,padding:'0 24px 48px'}}>
-            <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(1.4rem,4vw,2.6rem)',fontWeight:400,fontStyle:'italic',color:'white',textShadow:'0 2px 20px rgba(0,0,0,.7)',marginBottom:10,textAlign:'center'}}>
+          {/* fade fino só no topo e base para blend suave */}
+          <div style={{position:'absolute',inset:0,background:'linear-gradient(to bottom,white 0%,transparent 7%,transparent 78%,white 100%)'}}/>
+          {/* sombra escura na base onde fica o texto */}
+          <div style={{position:'absolute',bottom:0,left:0,right:0,height:'35%',background:'linear-gradient(to bottom,transparent,rgba(0,0,0,.55))'}}/>
+          <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-end',minHeight:600,padding:'0 24px 52px'}}>
+            <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(1.6rem,4vw,2.8rem)',fontWeight:400,fontStyle:'italic',color:'white',textShadow:'0 2px 24px rgba(0,0,0,.85)',marginBottom:14,textAlign:'center'}}>
               Das maiores salinas do Brasil para a sua mesa
             </p>
-            <div style={{display:'inline-flex',alignItems:'center',gap:10}}>
-              <span style={{width:28,height:1,background:'rgba(201,162,39,.7)'}}/>
-              <p style={{fontSize:'.84rem',fontWeight:700,letterSpacing:'.18em',color:'var(--gold)',textTransform:'uppercase',textShadow:'0 1px 8px rgba(0,0,0,.5)'}}>
+            <div style={{display:'inline-flex',alignItems:'center',gap:12,background:'rgba(0,0,0,.38)',backdropFilter:'blur(4px)',borderRadius:40,padding:'7px 20px',border:'1px solid rgba(201,162,39,.35)'}}>
+              <span style={{width:22,height:1,background:'rgba(201,162,39,.9)'}}/>
+              <p style={{fontSize:'.86rem',fontWeight:700,letterSpacing:'.2em',color:'#f5d060',textTransform:'uppercase',margin:0}}>
                 Mossoró · Rio Grande do Norte · Brasil
               </p>
-              <span style={{width:28,height:1,background:'rgba(201,162,39,.7)'}}/>
+              <span style={{width:22,height:1,background:'rgba(201,162,39,.9)'}}/>
             </div>
           </div>
         </section>
