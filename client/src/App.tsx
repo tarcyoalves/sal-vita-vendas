@@ -73,50 +73,6 @@ function Router() {
     </Switch>
   );
 }
-        <AppShell><AdminDashboard /></AppShell>
-      </Route>
-      <Route path={"/admin/ai-analysis"}>
-        <AppShell><AiAnalysis /></AppShell>
-      </Route>
-      <Route path={"/vendor/reminders"}>
-        <AppShell><VendorReminders /></AppShell>
-      </Route>
-      <Route path={"/history"}>
-        <AppShell><CallHistory /></AppShell>
-      </Route>
-      <Route path={"/admin/clients"}>
-        <AppShell><ClientsManagement /></AppShell>
-      </Route>
-      <Route path="/tasks">
-        <AppShell><Tasks /></AppShell>
-      </Route>
-      <Route path="/attendants">
-        <AppShell><Attendants /></AppShell>
-      </Route>
-      <Route path="/atendentes">
-        <AppShell><Attendants /></AppShell>
-      </Route>
-      <Route path="/knowledge-base">
-        <AppShell><KnowledgeBase /></AppShell>
-      </Route>
-      <Route path="/representatives">
-        <AppShell><Attendants /></AppShell>
-      </Route>
-      <Route path={"/ai-chat"}>
-        <AppShell><AiChat /></AppShell>
-      </Route>
-      <Route path={"/ai-settings"}>
-        <AppShell><AiSettings /></AppShell>
-      </Route>
-      <Route path="/meu-progresso">
-        <AppShell><AttendantProgress /></AppShell>
-      </Route>
-      <Route path="/tv" component={TvDashboard} />
-      <Route path={"/404"} component={NotFound} />
-      <Route component={NotFound} />
-    </Switch>
-  );
-}
 
 // NOTE: About Theme
 // - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
