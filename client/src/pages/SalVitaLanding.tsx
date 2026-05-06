@@ -36,7 +36,7 @@ function calcShipping(uf:string, kg:number) {
 }
 
 /* ─── WhatsApp ───────────────────────────────────────────── */
-const WA = '5584999999999'; // ← coloque o número real aqui
+const WA = '558421408212';
 
 function waLink(name:string, weight:string, price:number, ship?:{service:string;price:number;days:string}) {
   const msg = ship
@@ -1010,6 +1010,12 @@ export default function SalVitaLanding() {
               <div>
                 <div style={{marginBottom:16}}><Logo size={48} white/></div>
                 <p style={{color:'rgba(255,255,255,.38)',fontSize:'.83rem',lineHeight:1.7}}>Sal Marinho Integral Não Refinado. Das salinas de Mossoró, Rio Grande do Norte, para a sua mesa.</p>
+                <p style={{color:'rgba(255,255,255,.28)',fontSize:'.78rem',lineHeight:1.75,marginTop:12}}>
+                  Av. Industrial Dehuel Vieira Diniz, 505<br/>
+                  Monsenhor Américo · Mossoró / RN<br/>
+                  CEP 59.613-690<br/>
+                  CNPJ 51.422.900/0001-68
+                </p>
               </div>
               <div>
                 <h4 style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.16em',color:'rgba(255,255,255,.4)',textTransform:'uppercase',marginBottom:16}}>Produto</h4>
@@ -1033,6 +1039,17 @@ export default function SalVitaLanding() {
               </div>
               <div>
                 <h4 style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.16em',color:'rgba(255,255,255,.4)',textTransform:'uppercase',marginBottom:16}}>Fale Conosco</h4>
+                <ul style={{listStyle:'none',padding:0,marginBottom:16}}>
+                  <li style={{color:'rgba(255,255,255,.55)',fontSize:'.83rem',marginBottom:8}}>
+                    <a href={`https://wa.me/${WA}`} target="_blank" rel="noopener noreferrer" style={{color:'rgba(255,255,255,.55)',textDecoration:'none'}}>📞 (84) 2140-8212</a>
+                  </li>
+                  <li style={{color:'rgba(255,255,255,.55)',fontSize:'.83rem',marginBottom:8}}>
+                    <a href="mailto:contato@salvitarn.com.br" style={{color:'rgba(255,255,255,.55)',textDecoration:'none'}}>✉️ contato@salvitarn.com.br</a>
+                  </li>
+                  <li style={{color:'rgba(255,255,255,.55)',fontSize:'.83rem',marginBottom:16}}>
+                    <a href="https://instagram.com/salvitarn" target="_blank" rel="noopener noreferrer" style={{color:'rgba(255,255,255,.55)',textDecoration:'none'}}>📷 @salvitarn</a>
+                  </li>
+                </ul>
                 <a href={`https://wa.me/${WA}`} target="_blank" rel="noopener noreferrer" style={{display:'inline-flex',alignItems:'center',gap:10,background:'#128C7E',color:'white',padding:'12px 20px',borderRadius:10,fontSize:'.83rem',fontWeight:600,textDecoration:'none',transition:'background .2s,transform .2s'}}
                   onMouseEnter={e=>{e.currentTarget.style.background='#25D366';e.currentTarget.style.transform='scale(1.04)';}}
                   onMouseLeave={e=>{e.currentTarget.style.background='#128C7E';e.currentTarget.style.transform='scale(1)';}}>
@@ -1042,7 +1059,7 @@ export default function SalVitaLanding() {
               </div>
             </div>
             <div style={{borderTop:'1px solid rgba(255,255,255,.07)',paddingTop:24,display:'flex',flexWrap:'wrap',justifyContent:'space-between',gap:10}}>
-              <p style={{color:'rgba(255,255,255,.22)',fontSize:'.9rem'}}>© 2025 SAL VITA PREMIUM · Mossoró, Rio Grande do Norte · CNPJ: XX.XXX.XXX/XXXX-XX</p>
+              <p style={{color:'rgba(255,255,255,.22)',fontSize:'.9rem'}}>© 2026 SAL VITA · Mossoró, Rio Grande do Norte · CNPJ: 51.422.900/0001-68</p>
               <p style={{color:'rgba(255,255,255,.22)',fontSize:'.9rem'}}>Produto registrado MAPA · Aditivos aprovados ANVISA</p>
             </div>
           </div>
