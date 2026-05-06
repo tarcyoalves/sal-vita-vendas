@@ -5,7 +5,7 @@ const IMG = {
   produto:       'https://salvitarn.com.br/wp-content/uploads/2026/05/WhatsApp-Image-2026-05-04-at-09.02.12.jpeg',
   salina:        'https://salvitarn.com.br/wp-content/uploads/2026/04/WhatsApp-Image-2026-03-24-at-16.42.07.jpeg',
   cristalizador: 'https://salvitarn.com.br/wp-content/uploads/2025/12/cristalizador-de-sal-scaled.jpg',
-  morrosSal:     'https://salvitarn.com.br/wp-content/uploads/2025/10/missao01.webp',
+  morrosSal:     'https://salvitarn.com.br/wp-content/uploads/2026/05/morro-sal2-scaled.jpg',
 };
 
 /* ─── Shipping ───────────────────────────────────────────── */
