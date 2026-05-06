@@ -313,8 +313,8 @@ export default function SalVitaLanding() {
           /* Sections */
           .s-pad{padding:64px 20px!important;}
           .story-grid{grid-template-columns:1fr!important;gap:32px!important;}
-          .panorama{height:260px!important;}
-          .crista-section{height:280px!important;}
+          .panorama{height:340px!important;}
+          .crista-section{height:320px!important;}
 
           /* Benefits / Uses / Pricing grids */
           .ben-grid{grid-template-columns:1fr!important;}
@@ -660,10 +660,11 @@ export default function SalVitaLanding() {
         </div>
 
         {/* ══════ PANORAMA — MORROS DE SAL ══════ */}
-        <section className="panorama" style={{position:'relative',height:460,overflow:'hidden'}}>
-          <img src={IMG.morrosSal} alt="Morros de sal nas salinas de Mossoró, Rio Grande do Norte" style={{width:'100%',height:'100%',objectFit:'cover',objectPosition:'center 60%',display:'block'}}/>
-          <div style={{position:'absolute',inset:0,background:'linear-gradient(to bottom,white 0%,rgba(255,255,255,0) 18%,rgba(255,255,255,0) 72%,white 100%)'}}/>
-          <div style={{position:'absolute',inset:0,background:'rgba(7,22,40,.3)'}}/>
+        <section className="panorama" style={{position:'relative',height:560,overflow:'hidden'}}>
+          <img src={IMG.morrosSal} alt="Morros de sal nas salinas de Mossoró, Rio Grande do Norte" style={{width:'100%',height:'100%',objectFit:'cover',objectPosition:'center 55%',display:'block',imageRendering:'auto'}} loading="eager" fetchPriority="low"/>
+          {/* overlay sutil apenas nas bordas para blend com seções adjacentes */}
+          <div style={{position:'absolute',inset:0,background:'linear-gradient(to bottom,white 0%,transparent 12%,transparent 80%,white 100%)'}}/>
+          <div style={{position:'absolute',inset:0,background:'rgba(7,22,40,.12)'}}/>
           <div style={{position:'absolute',bottom:52,left:'50%',transform:'translateX(-50%)',textAlign:'center',width:'100%',padding:'0 24px'}}>
             <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(1.4rem,4vw,2.6rem)',fontWeight:400,fontStyle:'italic',color:'white',textShadow:'0 2px 20px rgba(0,0,0,.7)',marginBottom:10}}>
               Das maiores salinas do Brasil para a sua mesa
@@ -706,8 +707,9 @@ export default function SalVitaLanding() {
             {/* Right: salina photo card */}
             <div id="story-right" data-reveal className={`rev d2${v('story-right')?' on':''}`} style={{display:'flex',justifyContent:'center'}}>
               <div style={{position:'relative',maxWidth:400,width:'100%',borderRadius:22,overflow:'hidden',boxShadow:'0 24px 64px rgba(26,58,138,.18)'}}>
-                <img src={IMG.salina} alt="Salinas de Mossoró" style={{width:'100%',height:360,objectFit:'cover',objectPosition:'center',display:'block'}}/>
-                <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(15,31,64,.9) 0%,rgba(15,31,64,.4) 55%,rgba(15,31,64,.05) 100%)'}}/>
+                <img src={IMG.salina} alt="Salinas de Mossoró" style={{width:'100%',height:400,objectFit:'cover',objectPosition:'center',display:'block'}} loading="lazy"/>
+                {/* gradient apenas no rodapé para legibilidade do texto */}
+                <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(15,31,64,.88) 0%,rgba(15,31,64,.25) 45%,transparent 100%)'}}/>
                 <div style={{position:'absolute',bottom:0,left:0,right:0,padding:'24px 28px 28px'}}>
                   <div className="shim-blue" style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'3.5rem',fontWeight:700,lineHeight:1}}>+80</div>
                   <p style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.14em',color:'rgba(255,255,255,.65)',textTransform:'uppercase',marginBottom:12}}>Minerais Naturais Preservados</p>
@@ -755,9 +757,10 @@ export default function SalVitaLanding() {
         </section>
 
         {/* ══════ CRISTALIZADOR — full bleed ══════ */}
-        <section className="crista-section" style={{position:'relative',height:420,overflow:'hidden'}}>
-          <img src={IMG.cristalizador} alt="Processo de cristalização do sal nas salinas de Mossoró" style={{width:'100%',height:'100%',objectFit:'cover',objectPosition:'center 40%',display:'block'}}/>
-          <div style={{position:'absolute',inset:0,background:'linear-gradient(to bottom,#071628 0%,rgba(7,22,40,0) 18%,rgba(7,22,40,.55) 60%,#faf5ef 100%)'}}/>
+        <section className="crista-section" style={{position:'relative',height:500,overflow:'hidden'}}>
+          <img src={IMG.cristalizador} alt="Processo de cristalização do sal nas salinas de Mossoró" style={{width:'100%',height:'100%',objectFit:'cover',objectPosition:'center 40%',display:'block'}} loading="lazy"/>
+          {/* overlay mais leve — preserva detalhes visuais da cristalização */}
+          <div style={{position:'absolute',inset:0,background:'linear-gradient(to bottom,#071628 0%,rgba(7,22,40,0) 14%,rgba(7,22,40,.35) 65%,#faf5ef 100%)'}}/>
           <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 24px'}}>
             <div style={{textAlign:'center',maxWidth:700}}>
               <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(1.5rem,4vw,2.8rem)',fontWeight:600,fontStyle:'italic',color:'white',textShadow:'0 2px 24px rgba(0,0,0,.8)',lineHeight:1.3,marginBottom:20}}>
