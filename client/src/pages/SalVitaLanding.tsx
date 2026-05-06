@@ -626,6 +626,26 @@ export default function SalVitaLanding() {
           </div>
         </section>
 
+        {/* ══════ PROVA SOCIAL — trust bar ══════ */}
+        <div style={{background:'white',borderBottom:'1px solid rgba(11,29,58,.07)',padding:'14px 24px'}}>
+          <div style={{maxWidth:1100,margin:'0 auto',display:'flex',flexWrap:'wrap',gap:10,alignItems:'center',justifyContent:'center'}}>
+            {[
+              {icon:'⭐',val:'+120',label:'clientes satisfeitos'},
+              {icon:'★',val:'5.0',label:'avaliação média'},
+              {icon:'🚚',val:'Todo BR',label:'entregamos para todo o Brasil'},
+              {icon:'📄',val:'NF',label:'nota fiscal emitida'},
+              {icon:'🔒',val:'Seguro',label:'pagamento 100% seguro'},
+              {icon:'📦',val:'Rastreio',label:'envio com rastreamento'},
+            ].map(({icon,val,label})=>(
+              <div key={label} style={{display:'flex',alignItems:'center',gap:7,padding:'6px 14px',background:'var(--offwhite)',borderRadius:999,border:'1px solid rgba(11,29,58,.07)'}}>
+                <span style={{fontSize:'1rem'}}>{icon}</span>
+                <span style={{fontWeight:700,color:'var(--brand)',fontSize:'.88rem'}}>{val}</span>
+                <span style={{color:'var(--muted)',fontSize:'.82rem'}}>{label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* ══════ MARQUEE — gold on dark ══════ */}
         <div style={{background:'linear-gradient(90deg,#071628,#0b1d3a,#071628)',overflow:'hidden',padding:'14px 0',borderTop:'1px solid rgba(201,162,39,.2)',borderBottom:'1px solid rgba(201,162,39,.2)'}}>
           <div className="mq-inner">
@@ -881,31 +901,70 @@ export default function SalVitaLanding() {
                   <p style={{fontSize:'.85rem',fontWeight:600,letterSpacing:'.16em',color:p.highlight?'rgba(255,255,255,.45)':'var(--muted)',textTransform:'uppercase',marginBottom:6}}>{p.subtitle}</p>
                   <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.6rem',fontWeight:700,color:p.highlight?'white':'var(--text)',marginBottom:4}}>{p.name}</h3>
                   <p style={{fontSize:'.95rem',color:p.highlight?'rgba(255,255,255,.45)':'var(--muted)',marginBottom:18}}>{p.weight}</p>
+                  {p.highlight&&<div style={{background:'rgba(255,255,255,.12)',borderRadius:8,padding:'6px 12px',fontSize:'.82rem',color:'rgba(255,255,255,.7)',fontWeight:600,marginBottom:8,display:'inline-flex',alignItems:'center',gap:6}}>🔥 Estoque limitado por lote · Frete grátis incluído</div>}
                   {p.savings&&<div style={{background:'rgba(201,162,39,.12)',border:'1px solid rgba(201,162,39,.3)',borderRadius:8,padding:'7px 14px',fontSize:'.9rem',color:p.highlight?'var(--goldlt)':'var(--golddk)',fontWeight:700,marginBottom:14,display:'inline-block'}}>{p.savings} vs comprar avulso</div>}
                   <div style={{marginBottom:6}}>
                     <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'3.2rem',fontWeight:700,color:p.highlight?'white':'var(--brand)',lineHeight:1}}>R$ {p.price.toFixed(2).replace('.',',')}</span>
                   </div>
                   <p style={{fontSize:'.92rem',color:p.highlight?'rgba(255,255,255,.5)':'var(--muted)',marginBottom:28}}>R$ {p.pricePerKg.toFixed(2).replace('.',',')}/kg</p>
                   <ul style={{listStyle:'none',padding:0,marginBottom:28}}>
-                    {['Sal Marinho Não Refinado','+80 Minerais Naturais','Zip lock dupla vedação','Janela de visualização','Seco ao Sol Natural','100% Mossoró RN'].map(f=>(
+                    {(p.highlight
+                      ? ['10 embalagens zip lock de 1kg','R$ 14,99/kg — o menor preço','Frete grátis para todo o Brasil','+80 Minerais Naturais',  'Ideal para família, churrasco e cozinha','100% Mossoró RN']
+                      : ['Sal Marinho Não Refinado','+80 Minerais Naturais','Zip lock dupla vedação','Janela de visualização','Seco ao Sol Natural','100% Mossoró RN']
+                    ).map(f=>(
                       <li key={f} style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
                         <span style={{color:p.highlight?'var(--goldlt)':'var(--gold)',fontSize:'.85rem'}}>✦</span>
                         <span style={{fontSize:'1rem',color:p.highlight?'rgba(255,255,255,.75)':'var(--mid)'}}>{f}</span>
                       </li>
                     ))}
                   </ul>
-                  <button className="pulse" onClick={()=>openBuy(p)} style={{width:'100%',background:p.highlight?'white':'var(--gold)',color:p.highlight?'var(--navy)':'var(--navy)',border:'none',borderRadius:12,padding:'16px',fontSize:'1rem',fontWeight:800,letterSpacing:'.08em',textTransform:'uppercase',cursor:'pointer',transition:'background .2s,transform .15s'}}
+                  <button className="pulse" onClick={()=>openBuy(p)} style={{width:'100%',background:p.highlight?'white':'var(--gold)',color:p.highlight?'var(--navy)':'var(--navy)',border:'none',borderRadius:12,padding:'16px',fontSize:'1rem',fontWeight:800,letterSpacing:'.06em',textTransform:'uppercase',cursor:'pointer',transition:'background .2s,transform .15s'}}
                     onMouseEnter={e=>{e.currentTarget.style.background=p.highlight?'var(--goldlt)':'var(--goldlt)';e.currentTarget.style.transform='scale(1.02)';}}
                     onMouseLeave={e=>{e.currentTarget.style.background=p.highlight?'white':'var(--gold)';e.currentTarget.style.transform='scale(1)';}}>
-                    Comprar {p.weight==='1kg'?'1kg':'Caixa 10kg'}
+                    {p.weight==='1kg'?'Quero experimentar 1kg':'Quero economizar na caixa 10kg'}
                   </button>
                 </div>
               ))}
             </div>
 
-            <p style={{textAlign:'center',marginTop:28,fontSize:'.92rem',color:'rgba(255,255,255,.35)',letterSpacing:'.06em'}}>
-              🔒 Compra segura · Rastreamento incluso · Nota fiscal emitida
-            </p>
+            {/* Credibilidade perto do preço */}
+            <div style={{marginTop:40,display:'flex',flexWrap:'wrap',justifyContent:'center',gap:12}}>
+              {[
+                {icon:'🚚',t:'Frete grátis',s:'acima de R$ 150'},
+                {icon:'📄',t:'Nota Fiscal',s:'emitida em todos os pedidos'},
+                {icon:'🔒',t:'Pagamento Seguro',s:'PIX, cartão ou boleto'},
+                {icon:'📦',t:'Envio em até 2 dias úteis',s:'com rastreamento'},
+                {icon:'↩️',t:'Troca garantida',s:'em caso de avaria'},
+              ].map(({icon,t,s})=>(
+                <div key={t} style={{display:'flex',alignItems:'center',gap:10,background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.1)',borderRadius:12,padding:'12px 16px',minWidth:180}}>
+                  <span style={{fontSize:'1.4rem',flexShrink:0}}>{icon}</span>
+                  <div>
+                    <p style={{color:'white',fontWeight:700,fontSize:'.9rem',lineHeight:1.2}}>{t}</p>
+                    <p style={{color:'rgba(255,255,255,.45)',fontSize:'.8rem',marginTop:2}}>{s}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Mini objections */}
+            <div style={{marginTop:32,background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.1)',borderRadius:16,padding:'24px 28px',maxWidth:680,margin:'32px auto 0'}}>
+              <p style={{fontSize:'.82rem',fontWeight:700,letterSpacing:'.18em',color:'rgba(255,255,255,.4)',textTransform:'uppercase',marginBottom:16}}>Dúvidas rápidas</p>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px 32px'}}>
+                {[
+                  ['É iodado?','Sim — iodo natural do oceano Atlântico'],
+                  ['Empedra?','Não — cristais naturais não endurecem'],
+                  ['Granulometria?','Média/grossa, ideal para todo uso'],
+                  ['Quanto dura 1kg?','1–2 meses para família de 4 pessoas'],
+                  ['Serve para churrasco?','Perfeito — realça o sabor da carne'],
+                  ['Tem nota fiscal?','Sim, emitida em todos os pedidos'],
+                ].map(([q,a])=>(
+                  <div key={q} style={{paddingBottom:8,borderBottom:'1px solid rgba(255,255,255,.07)'}}>
+                    <p style={{color:'rgba(255,255,255,.6)',fontSize:'.82rem',marginBottom:2}}>{q}</p>
+                    <p style={{color:'white',fontSize:'.9rem',fontWeight:500}}>{a}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </section>
 
