@@ -61,6 +61,15 @@ const FAQS = [
   {q:'Como funciona o frete?',a:'Enviamos por Correios via Melhor Envio com rastreamento. Nordeste: 1–5 dias úteis. Sudeste/Sul: 2–7 dias. Norte: até 18 dias úteis. Pedidos acima de R$ 150 têm frete grátis para todo o Brasil.'},
 ];
 
+/* ─── Testimonials ───────────────────────────────────────── */
+const TESTIMONIALS = [
+  {name:'Ana Paula S.',city:'Natal, RN',stars:5,text:'Nunca mais voltei para o sal comum. O sabor dos meus pratos mudou completamente — uso menos e fica mais gostoso. A embalagem com zip lock é prática demais.'},
+  {name:'Ricardo M.',city:'São Paulo, SP',stars:5,text:'Comprei a caixa de 10kg e não me arrependo. Preço ótimo, sal de qualidade real. Dá para sentir a diferença no tempero, especialmente em peixes e carnes.'},
+  {name:'Fernanda C.',city:'Recife, PE',stars:5,text:'Produto incrível! Minha família toda adotou. A janela transparente na embalagem é um detalhe que mostra cuidado com o produto. Recomendo muito.'},
+  {name:'Carlos R.',city:'Belo Horizonte, MG',stars:5,text:'Já testei outros sais "premium" mas este é diferente. Visivelmente mais úmido e com granulação perfeita. O iodo natural faz toda diferença no sabor.'},
+  {name:'Juliana T.',city:'Fortaleza, CE',stars:5,text:'Recebi rápido e bem embalado. O sal tem uma cor ligeiramente acinzentada que mostra que é de verdade — não é aquele branco artificial. Muito bom!'},
+];
+
 /* ─── Food uses ──────────────────────────────────────────── */
 const USES = [
   {e:'🥩',t:'Carnes e Aves',d:'Realça o sabor natural sem mascarar'},
@@ -444,6 +453,39 @@ export default function SalVitaLanding() {
           .use-2col{grid-template-columns:1fr!important;gap:0!important;}
           .use-big-num{font-size:3rem!important;min-width:48px!important;}
         }
+
+        /* ══ DEPOIMENTOS ══ */
+        .testi-section{background:var(--offwhite);}
+        .testi-grid{
+          display:grid;
+          grid-template-columns:repeat(3,1fr);
+          gap:24px;
+        }
+        @media(max-width:900px){.testi-grid{grid-template-columns:repeat(2,1fr)!important;}}
+        @media(max-width:600px){.testi-grid{grid-template-columns:1fr!important;}}
+        .testi-card{
+          background:white;
+          border:1px solid rgba(11,29,58,.07);
+          border-radius:18px;
+          padding:28px 26px;
+          box-shadow:0 4px 20px rgba(11,29,58,.04);
+          transition:transform .3s,box-shadow .3s;
+          display:flex;flex-direction:column;gap:16px;
+        }
+        .testi-card:hover{transform:translateY(-4px);box-shadow:0 12px 40px rgba(11,29,58,.10);}
+        .testi-stars{color:var(--gold);font-size:1rem;letter-spacing:2px;}
+        .testi-quote{
+          font-family:'Cormorant Garamond',serif;
+          font-size:1.05rem;font-style:italic;
+          color:var(--mid);line-height:1.7;flex:1;
+        }
+        .testi-author{display:flex;align-items:center;gap:12px;padding-top:14px;border-top:1px solid rgba(11,29,58,.06);}
+        .testi-avatar{
+          width:40px;height:40px;border-radius:50%;
+          background:linear-gradient(135deg,var(--brand),var(--brand2));
+          display:flex;align-items:center;justify-content:center;
+          color:white;font-weight:700;font-size:.95rem;flex-shrink:0;
+        }
       `}</style>
 
       <div className="lp">
@@ -779,6 +821,42 @@ export default function SalVitaLanding() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </section>
+
+        {/* ══════ DEPOIMENTOS ══════ */}
+        <section className="testi-section s-pad" style={{padding:'90px 24px'}}>
+          <div style={{maxWidth:1100,margin:'0 auto'}}>
+            <div id="testi-h" data-reveal className={`rev${v('testi-h')?' on':''}`} style={{textAlign:'center',marginBottom:56}}>
+              <p className="eyebrow" style={{color:'var(--brand)'}}>Quem já provou</p>
+              <div className="gold-line"/>
+              <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(1.8rem,4vw,3rem)',fontWeight:700,color:'var(--text)',lineHeight:1.15}}>
+                O que nossos clientes dizem
+              </h2>
+            </div>
+            <div id="testi-g" data-reveal className={`rev testi-grid${v('testi-g')?' on':''}`}>
+              {TESTIMONIALS.map((t,i)=>(
+                <div key={i} className="testi-card" style={{transitionDelay:`${i*.07}s`}}>
+                  <div className="testi-stars">{'★'.repeat(t.stars)}</div>
+                  <p className="testi-quote">"{t.text}"</p>
+                  <div className="testi-author">
+                    <div className="testi-avatar">{t.name.charAt(0)}</div>
+                    <div>
+                      <p style={{fontWeight:700,color:'var(--text)',fontSize:'.95rem',lineHeight:1.2}}>{t.name}</p>
+                      <p style={{fontSize:'.84rem',color:'var(--muted)'}}>{t.city}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Rating summary */}
+            <div id="testi-r" data-reveal className={`rev${v('testi-r')?' on':''}`} style={{textAlign:'center',marginTop:48,display:'flex',alignItems:'center',justifyContent:'center',gap:16,flexWrap:'wrap'}}>
+              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'3.2rem',fontWeight:700,color:'var(--brand)',lineHeight:1}}>5.0</div>
+              <div>
+                <div style={{color:'var(--gold)',fontSize:'1.2rem',letterSpacing:3}}>★★★★★</div>
+                <p style={{fontSize:'.9rem',color:'var(--muted)',marginTop:4}}>Avaliação média · +120 clientes satisfeitos</p>
+              </div>
             </div>
           </div>
         </section>
