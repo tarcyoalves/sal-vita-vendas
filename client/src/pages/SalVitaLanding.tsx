@@ -345,6 +345,17 @@ export default function SalVitaLanding() {
 
           /* Marquee text */
           .mq-inner span{font-size:.82rem!important;letter-spacing:.1em!important;}
+
+          /* Trust bar — 2 colunas no mobile */
+          .trust-inner{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important;}
+          .trust-inner>div{justify-content:flex-start!important;}
+
+          /* Stats (origem) — 3 colunas compactas */
+          .story-stats{gap:20px!important;}
+          .story-stats>div{min-width:0!important;}
+
+          /* Cards de credibilidade perto do preço — 2 colunas */
+          .cred-wrap{display:grid!important;grid-template-columns:1fr 1fr!important;gap:10px!important;}
         }
 
         /* ── drag handle (modal) ── */
@@ -627,7 +638,7 @@ export default function SalVitaLanding() {
 
         {/* ══════ PROVA SOCIAL — trust bar ══════ */}
         <div style={{background:'white',borderBottom:'1px solid rgba(11,29,58,.07)',padding:'14px 24px'}}>
-          <div style={{maxWidth:1100,margin:'0 auto',display:'flex',flexWrap:'wrap',gap:10,alignItems:'center',justifyContent:'center'}}>
+          <div className="trust-inner" style={{maxWidth:1100,margin:'0 auto',display:'flex',flexWrap:'wrap',gap:10,alignItems:'center',justifyContent:'center'}}>
             {[
               {icon:'⭐',val:'+120',label:'clientes satisfeitos'},
               {icon:'★',val:'5.0',label:'avaliação média'},
@@ -702,8 +713,8 @@ export default function SalVitaLanding() {
               <p style={{color:'var(--mid)',lineHeight:1.8,fontSize:'1.05rem',marginBottom:36}}>
                 O SAL VITA PREMIUM é <strong style={{color:'var(--brand)'}}>Não Refinado</strong> — preserva seus +80 minerais naturais intactos, entregando muito mais sabor em cada pitada.
               </p>
-              <div style={{display:'flex',gap:40,flexWrap:'wrap'}}>
-                {[['+80','Minerais naturais'],['95%','do sal BR vem do RN'],['Não','Refinado']].map(([n,l])=>(
+              <div className="story-stats" style={{display:'flex',gap:40,flexWrap:'wrap'}}>
+                {[['+80','Minerais naturais'],['95%','do sal BR vem do RN'],['Não Refinado','do oceano Atlântico']].map(([n,l])=>(
                   <div key={n}>
                     <div className="shim-blue" style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'2.4rem',fontWeight:700}}>{n}</div>
                     <div style={{fontSize:'.87rem',color:'var(--muted)',letterSpacing:'.06em',marginTop:4}}>{l}</div>
@@ -939,7 +950,7 @@ export default function SalVitaLanding() {
             </div>
 
             {/* Credibilidade perto do preço */}
-            <div style={{marginTop:40,display:'flex',flexWrap:'wrap',justifyContent:'center',gap:12}}>
+            <div className="cred-wrap" style={{marginTop:40,display:'flex',flexWrap:'wrap',justifyContent:'center',gap:12}}>
               {[
                 {icon:'🚚',t:'Frete grátis',s:'acima de R$ 150'},
                 {icon:'📄',t:'Nota Fiscal',s:'emitida em todos os pedidos'},
