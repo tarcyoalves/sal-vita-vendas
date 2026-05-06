@@ -302,13 +302,12 @@ export default function SalVitaLanding() {
 
           /* Hero */
           .hero-title{font-size:clamp(2.6rem,11vw,4.5rem)!important;}
-          .hero-grid{grid-template-columns:1fr!important;padding:60px 20px 100px!important;gap:32px!important;}
+          .hero-grid{grid-template-columns:1fr!important;padding:60px 20px 110px!important;gap:24px!important;}
           .hero-copy{text-align:center;}
           .hero-badges{justify-content:center!important;}
           .hero-btns{justify-content:center!important;}
           .hero-img-wrap{order:-1;}
-          .prod-float{width:220px!important;height:220px!important;}
-          .prod-float img{width:90%!important;height:90%!important;}
+          .prod-float{width:min(84vw,360px)!important;height:min(84vw,360px)!important;}
 
           /* Sections */
           .s-pad{padding:64px 20px!important;}
