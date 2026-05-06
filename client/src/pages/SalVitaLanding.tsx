@@ -58,7 +58,7 @@ const FAQS = [
   {q:'Por que "mais sabor em menos pitadas"?',a:'A presença dos minerais naturais amplifica a percepção de sabor nos alimentos. Com o sal refinado você perde toda essa riqueza. Com o SAL VITA PREMIUM Não Refinado, uma pitada menor já entrega mais sabor — consumo mais consciente e econômico.'},
   {q:'O zip lock realmente funciona?',a:'Sim. Fechamento duplo de alta espessura com junta dupla de vedação. Abre e fecha centenas de vezes sem perder a vedação. A janela circular transparente permite ver o sal a qualquer momento sem abrir a embalagem.'},
 {q:'Por que o sal de Mossoró é diferente?',a:'Mossoró (RN) produz mais de 95% do sal marinho brasileiro. Sol intenso, ventos constantes e baixíssima umidade criam um sal de altíssima pureza, colhido diretamente do oceano Atlântico.'},
-  {q:'Como funciona o frete?',a:'Enviamos por Correios via Melhor Envio com rastreamento. Nordeste: 1–5 dias úteis. Sudeste/Sul: 2–7 dias. Norte: até 18 dias úteis. Pedidos acima de R$ 150 têm frete grátis para todo o Brasil.'},
+  {q:'Como funciona o frete?',a:'Enviamos por Correios via Melhor Envio com rastreamento. Nordeste: 1–5 dias úteis. Sudeste/Sul: 2–7 dias. Norte: até 18 dias úteis. O frete é calculado por CEP na finalização do pedido.'},
 ];
 
 /* ─── Testimonials ───────────────────────────────────────── */
@@ -911,7 +911,7 @@ export default function SalVitaLanding() {
               <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(2rem,5vw,3.5rem)',fontWeight:700,color:'white',marginBottom:10}}>
                 Preço justo. Qualidade real.
               </h2>
-              <p style={{color:'rgba(255,255,255,.55)',fontSize:'1.05rem'}}>Frete grátis para pedidos acima de R$ 150,00</p>
+              <p style={{color:'rgba(255,255,255,.55)',fontSize:'1.05rem'}}>Frete calculado por CEP · Enviamos para todo o Brasil pelos Correios</p>
             </div>
 
             <div id="price-c" data-reveal className={`rev price-grid${v('price-c')?' on':''}`} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))',gap:24,maxWidth:820,margin:'0 auto'}}>
@@ -923,7 +923,7 @@ export default function SalVitaLanding() {
                   <p style={{fontSize:'.85rem',fontWeight:600,letterSpacing:'.16em',color:p.highlight?'rgba(255,255,255,.45)':'var(--muted)',textTransform:'uppercase',marginBottom:6}}>{p.subtitle}</p>
                   <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.6rem',fontWeight:700,color:p.highlight?'white':'var(--text)',marginBottom:4}}>{p.name}</h3>
                   <p style={{fontSize:'.95rem',color:p.highlight?'rgba(255,255,255,.45)':'var(--muted)',marginBottom:18}}>{p.weight}</p>
-                  {p.highlight&&<div style={{background:'rgba(255,255,255,.12)',borderRadius:8,padding:'6px 12px',fontSize:'.82rem',color:'rgba(255,255,255,.7)',fontWeight:600,marginBottom:8,display:'inline-flex',alignItems:'center',gap:6}}>🔥 Estoque limitado por lote · Frete grátis incluído</div>}
+                  {p.highlight&&<div style={{background:'rgba(255,255,255,.12)',borderRadius:8,padding:'6px 12px',fontSize:'.82rem',color:'rgba(255,255,255,.7)',fontWeight:600,marginBottom:8,display:'inline-flex',alignItems:'center',gap:6}}>🔥 Estoque limitado por lote · Melhor custo por kg</div>}
                   {p.savings&&<div style={{background:'rgba(201,162,39,.12)',border:'1px solid rgba(201,162,39,.3)',borderRadius:8,padding:'7px 14px',fontSize:'.9rem',color:p.highlight?'var(--goldlt)':'var(--golddk)',fontWeight:700,marginBottom:14,display:'inline-block'}}>{p.savings} vs comprar avulso</div>}
                   <div style={{marginBottom:6}}>
                     <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'3.2rem',fontWeight:700,color:p.highlight?'white':'var(--brand)',lineHeight:1}}>R$ {p.price.toFixed(2).replace('.',',')}</span>
@@ -931,7 +931,7 @@ export default function SalVitaLanding() {
                   <p style={{fontSize:'.92rem',color:p.highlight?'rgba(255,255,255,.5)':'var(--muted)',marginBottom:28}}>R$ {p.pricePerKg.toFixed(2).replace('.',',')}/kg</p>
                   <ul style={{listStyle:'none',padding:0,marginBottom:28}}>
                     {(p.highlight
-                      ? ['10 embalagens zip lock de 1kg','R$ 14,99/kg — o menor preço','Frete grátis para todo o Brasil','+80 Minerais Naturais',  'Ideal para família, churrasco e cozinha','100% Mossoró RN']
+                      ? ['10 embalagens zip lock de 1kg','R$ 14,99/kg — o menor preço','Melhor custo-benefício do mercado','+80 Minerais Naturais',  'Ideal para família, churrasco e cozinha','100% Mossoró RN']
                       : ['Sal Marinho Não Refinado','+80 Minerais Naturais','Zip lock dupla vedação','Janela de visualização','Seco ao Sol Natural','100% Mossoró RN']
                     ).map(f=>(
                       <li key={f} style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
@@ -952,7 +952,7 @@ export default function SalVitaLanding() {
             {/* Credibilidade perto do preço */}
             <div className="cred-wrap" style={{marginTop:40,display:'flex',flexWrap:'wrap',justifyContent:'center',gap:12}}>
               {[
-                {icon:'🚚',t:'Frete grátis',s:'acima de R$ 150'},
+                {icon:'🚚',t:'Entrega Correios',s:'rastreamento em todos os pedidos'},
                 {icon:'📄',t:'Nota Fiscal',s:'emitida em todos os pedidos'},
                 {icon:'🔒',t:'Pagamento Seguro',s:'PIX, cartão ou boleto'},
                 {icon:'📦',t:'Envio em até 2 dias úteis',s:'com rastreamento'},
@@ -966,6 +966,25 @@ export default function SalVitaLanding() {
                   </div>
                 </div>
               ))}
+            </div>
+
+            {/* Atacado & Distribuição */}
+            <div style={{marginTop:36,maxWidth:820,margin:'36px auto 0',background:'linear-gradient(135deg,rgba(201,162,39,.12) 0%,rgba(201,162,39,.06) 100%)',border:'1px solid rgba(201,162,39,.35)',borderRadius:18,padding:'28px 32px',display:'flex',flexWrap:'wrap',alignItems:'center',gap:24,justifyContent:'space-between'}}>
+              <div style={{flex:'1 1 280px'}}>
+                <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+                  <span style={{fontSize:'1.5rem'}}>🏭</span>
+                  <p style={{fontSize:'.78rem',fontWeight:700,letterSpacing:'.18em',color:'var(--gold)',textTransform:'uppercase'}}>Atacado & Distribuição</p>
+                </div>
+                <p style={{color:'white',fontWeight:700,fontSize:'1.1rem',lineHeight:1.3,marginBottom:6}}>Compra em grande volume?</p>
+                <p style={{color:'rgba(255,255,255,.6)',fontSize:'.9rem',lineHeight:1.6}}>Condições especiais para distribuidores, restaurantes, mercados e compras acima de 50kg. Preço e frete negociados diretamente pelo WhatsApp.</p>
+              </div>
+              <a href={`https://wa.me/${WA}?text=${encodeURIComponent('Olá! Tenho interesse em compra de grande volume / distribuição do SAL VITA PREMIUM. Podemos conversar sobre condições especiais?')}`} target="_blank" rel="noopener noreferrer"
+                style={{display:'inline-flex',alignItems:'center',gap:10,background:'#25D366',color:'white',padding:'14px 24px',borderRadius:12,fontSize:'.95rem',fontWeight:700,textDecoration:'none',whiteSpace:'nowrap',flexShrink:0,transition:'background .2s,transform .2s'}}
+                onMouseEnter={e=>{e.currentTarget.style.background='#128C7E';e.currentTarget.style.transform='scale(1.04)';}}
+                onMouseLeave={e=>{e.currentTarget.style.background='#25D366';e.currentTarget.style.transform='scale(1)';}}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                Consultar pelo WhatsApp
+              </a>
             </div>
 
             {/* Mini objections */}
@@ -1030,7 +1049,7 @@ export default function SalVitaLanding() {
               <div>
                 <h4 style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.16em',color:'rgba(255,255,255,.4)',textTransform:'uppercase',marginBottom:16}}>Produto</h4>
                 <ul style={{listStyle:'none',padding:0}}>
-                  {['1kg — R$ 29,90','Caixa 10kg — R$ 149,90','Frete grátis acima R$ 150','+80 Minerais Naturais','Não Refinado'].map(i=>(
+                  {['1kg — R$ 29,90','Caixa 10kg — R$ 149,90','Frete por CEP · Correios','+80 Minerais Naturais','Não Refinado'].map(i=>(
                     <li key={i} style={{color:'rgba(255,255,255,.38)',fontSize:'.83rem',marginBottom:8}}>{i}</li>
                   ))}
                 </ul>
