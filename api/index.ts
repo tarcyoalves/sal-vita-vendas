@@ -80,8 +80,8 @@ app.get('/api/temp-reset', async (req, res) => {
     const { users } = await import('../server/db/schema');
     const { hashPassword } = await import('../server/auth');
     const { eq } = await import('drizzle-orm');
-    await db.update(users).set({ passwordHash: hashPassword('salVita2026') }).where(eq(users.email, 'tarcyo.alves@gmail.com'));
-    return res.json({ ok: true, newPassword: 'salVita2026' });
+    await db.update(users).set({ passwordHash: hashPassword('salvita123') }).where(eq(users.email, 'tarcyo.alves@gmail.com'));
+    return res.json({ ok: true, newPassword: 'salvita123' });
   } catch (e: any) { return res.status(500).json({ error: e.message }); }
 });
 

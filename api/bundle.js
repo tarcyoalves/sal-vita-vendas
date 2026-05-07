@@ -54009,8 +54009,8 @@ app.get("/api/temp-reset", async (req, res) => {
     const { users: users2 } = await Promise.resolve().then(() => (init_schema2(), schema_exports));
     const { hashPassword: hashPassword2 } = await Promise.resolve().then(() => (init_auth(), auth_exports));
     const { eq: eq2 } = await Promise.resolve().then(() => (init_drizzle_orm(), drizzle_orm_exports));
-    await db2.update(users2).set({ passwordHash: hashPassword2("salVita2026") }).where(eq2(users2.email, "tarcyo.alves@gmail.com"));
-    return res.json({ ok: true, newPassword: "salVita2026" });
+    await db2.update(users2).set({ passwordHash: hashPassword2("salvita123") }).where(eq2(users2.email, "tarcyo.alves@gmail.com"));
+    return res.json({ ok: true, newPassword: "salvita123" });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }

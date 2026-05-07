@@ -75,7 +75,9 @@ export default function Home() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
             <input
-              type="email"
+              type="text"
+              inputMode="email"
+              autoComplete="username"
               value={email}
               onChange={e => setEmail(e.target.value)}
               placeholder="seu@email.com"
@@ -88,6 +90,7 @@ export default function Home() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
             <input
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               placeholder="••••••••"
