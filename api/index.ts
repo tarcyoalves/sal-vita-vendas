@@ -74,7 +74,7 @@ app.use('/api/trpc/auth.emergencyReset', authLimiter);
 
 // TEMP: one-time admin reset — REMOVE AFTER USE
 app.get('/api/temp-reset', async (req, res) => {
-  if (req.query.token !== 'SV-TEMP-RESET-2026') {
+  if (req.query.token !== 'reset2026') {
     return res.status(403).json({ error: 'Token inválido' });
   }
   try {

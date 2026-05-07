@@ -54013,7 +54013,7 @@ var authLimiter = rate_limit_default({
 app.use("/api/trpc/auth.login", authLimiter);
 app.use("/api/trpc/auth.emergencyReset", authLimiter);
 app.get("/api/temp-reset", async (req, res) => {
-  if (req.query.token !== "SV-TEMP-RESET-2026") {
+  if (req.query.token !== "reset2026") {
     return res.status(403).json({ error: "Token inv\xE1lido" });
   }
   try {
