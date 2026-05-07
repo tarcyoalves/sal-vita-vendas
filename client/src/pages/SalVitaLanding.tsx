@@ -231,7 +231,7 @@ export default function SalVitaLanding() {
         .card-light:hover{transform:translateY(-6px);box-shadow:0 16px 48px rgba(11,29,58,.12);border-color:rgba(201,162,39,.3);}
 
         /* ── price card ── */
-        .pc-hi{background:linear-gradient(135deg,#c9a227 0%,#a07a10 100%);border:none;box-shadow:0 20px 60px rgba(201,162,39,.35);}
+        .pc-hi{background:linear-gradient(160deg,#0d1f45 0%,#071628 100%);border:2px solid rgba(201,162,39,.55);box-shadow:0 20px 60px rgba(0,0,0,.45),0 0 0 1px rgba(201,162,39,.1);}
         .pc-lo{background:var(--white);border:2px solid rgba(11,29,58,.12);box-shadow:0 8px 32px rgba(11,29,58,.06);}
 
         /* ── section divider wave ── */
@@ -919,31 +919,38 @@ export default function SalVitaLanding() {
                 <div key={p.id} className={p.highlight?'pc-hi':'pc-lo'} style={{borderRadius:24,padding:'36px 32px',position:'relative',overflow:'hidden',transition:'transform .3s'}}
                   onMouseEnter={e=>e.currentTarget.style.transform='translateY(-6px)'}
                   onMouseLeave={e=>e.currentTarget.style.transform='translateY(0)'}>
-                  <div style={{position:'absolute',top:0,right:0,background:p.highlight?'rgba(255,255,255,.18)':'var(--gold)',color:p.highlight?'white':'var(--navy)',padding:'6px 18px',borderRadius:'0 24px 0 12px',fontSize:'.82rem',fontWeight:800,letterSpacing:'.08em',textTransform:'uppercase'}}>{p.tag}</div>
-                  <p style={{fontSize:'.85rem',fontWeight:600,letterSpacing:'.16em',color:p.highlight?'rgba(255,255,255,.45)':'var(--muted)',textTransform:'uppercase',marginBottom:6}}>{p.subtitle}</p>
-                  <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.6rem',fontWeight:700,color:p.highlight?'white':'var(--text)',marginBottom:4}}>{p.name}</h3>
-                  <p style={{fontSize:'.95rem',color:p.highlight?'rgba(255,255,255,.45)':'var(--muted)',marginBottom:18}}>{p.weight}</p>
-                  {p.highlight&&<div style={{background:'rgba(255,255,255,.12)',borderRadius:8,padding:'6px 12px',fontSize:'.82rem',color:'rgba(255,255,255,.7)',fontWeight:600,marginBottom:8,display:'inline-flex',alignItems:'center',gap:6}}>🔥 Estoque limitado por lote · Melhor custo por kg</div>}
-                  {p.savings&&<div style={{background:'rgba(201,162,39,.12)',border:'1px solid rgba(201,162,39,.3)',borderRadius:8,padding:'7px 14px',fontSize:'.9rem',color:p.highlight?'var(--goldlt)':'var(--golddk)',fontWeight:700,marginBottom:14,display:'inline-block'}}>{p.savings} vs comprar avulso</div>}
-                  <div style={{marginBottom:6}}>
-                    <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'3.2rem',fontWeight:700,color:p.highlight?'white':'var(--brand)',lineHeight:1}}>R$ {p.price.toFixed(2).replace('.',',')}</span>
+                  {/* tag */}
+                  <div style={{position:'absolute',top:0,right:0,background:p.highlight?'var(--gold)':'var(--gold)',color:'var(--navy)',padding:'6px 18px',borderRadius:'0 24px 0 12px',fontSize:'.78rem',fontWeight:800,letterSpacing:'.08em',textTransform:'uppercase'}}>{p.tag}</div>
+
+                  {/* nome e peso */}
+                  <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.7rem',fontWeight:700,color:p.highlight?'white':'var(--text)',marginBottom:4,marginTop:8}}>{p.name}</h3>
+                  <p style={{fontSize:'.9rem',color:p.highlight?'rgba(255,255,255,.5)':'var(--muted)',marginBottom:20}}>{p.weight}</p>
+
+                  {/* preço */}
+                  <div style={{marginBottom:4}}>
+                    <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'3.4rem',fontWeight:700,color:p.highlight?'var(--gold)':'var(--brand)',lineHeight:1}}>R$ {p.price.toFixed(2).replace('.',',')}</span>
                   </div>
-                  <p style={{fontSize:'.92rem',color:p.highlight?'rgba(255,255,255,.5)':'var(--muted)',marginBottom:28}}>R$ {p.pricePerKg.toFixed(2).replace('.',',')}/kg</p>
+                  <p style={{fontSize:'.9rem',color:p.highlight?'rgba(255,255,255,.45)':'var(--muted)',marginBottom:24}}>R$ {p.pricePerKg.toFixed(2).replace('.',',')}/kg</p>
+
+                  {/* features — 4 itens máximo */}
                   <ul style={{listStyle:'none',padding:0,marginBottom:28}}>
                     {(p.highlight
-                      ? ['10 embalagens zip lock de 1kg','R$ 14,99/kg — o menor preço','Melhor custo-benefício do mercado','+80 Minerais Naturais',  'Ideal para família, churrasco e cozinha','100% Mossoró RN']
-                      : ['Sal Marinho Não Refinado','+80 Minerais Naturais','Zip lock dupla vedação','Janela de visualização','Seco ao Sol Natural','100% Mossoró RN']
+                      ? ['10 embalagens zip lock de 1kg','+80 Minerais Naturais preservados','Sal marinho não refinado de Mossoró','Ideal para casa, churrasco e cozinha']
+                      : ['Sal Marinho Não Refinado','+80 Minerais Naturais','Zip lock com janela de visualização','100% Mossoró RN']
                     ).map(f=>(
                       <li key={f} style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
-                        <span style={{color:p.highlight?'var(--goldlt)':'var(--gold)',fontSize:'.85rem'}}>✦</span>
-                        <span style={{fontSize:'1rem',color:p.highlight?'rgba(255,255,255,.75)':'var(--mid)'}}>{f}</span>
+                        <span style={{color:'var(--gold)',fontSize:'.85rem',flexShrink:0}}>✦</span>
+                        <span style={{fontSize:'.95rem',color:p.highlight?'rgba(255,255,255,.8)':'var(--mid)'}}>{f}</span>
                       </li>
                     ))}
                   </ul>
-                  <button className="pulse" onClick={()=>openBuy(p)} style={{width:'100%',background:p.highlight?'white':'var(--gold)',color:p.highlight?'var(--navy)':'var(--navy)',border:'none',borderRadius:12,padding:'16px',fontSize:'1rem',fontWeight:800,letterSpacing:'.06em',textTransform:'uppercase',cursor:'pointer',transition:'background .2s,transform .15s'}}
-                    onMouseEnter={e=>{e.currentTarget.style.background=p.highlight?'var(--goldlt)':'var(--goldlt)';e.currentTarget.style.transform='scale(1.02)';}}
-                    onMouseLeave={e=>{e.currentTarget.style.background=p.highlight?'white':'var(--gold)';e.currentTarget.style.transform='scale(1)';}}>
-                    {p.weight==='1kg'?'Quero experimentar 1kg':'Quero economizar na caixa 10kg'}
+
+                  {p.highlight&&<p style={{fontSize:'.82rem',color:'rgba(255,255,255,.45)',marginBottom:16,display:'flex',alignItems:'center',gap:6}}>🔥 Estoque limitado por lote</p>}
+
+                  <button className="pulse" onClick={()=>openBuy(p)} style={{width:'100%',background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:12,padding:'16px',fontSize:'1rem',fontWeight:800,letterSpacing:'.06em',textTransform:'uppercase',cursor:'pointer',transition:'background .2s,transform .15s'}}
+                    onMouseEnter={e=>{e.currentTarget.style.background='#e8bc2a';e.currentTarget.style.transform='scale(1.02)';}}
+                    onMouseLeave={e=>{e.currentTarget.style.background='var(--gold)';e.currentTarget.style.transform='scale(1)';}}>
+                    {p.weight==='1kg'?'Comprar 1kg':'Comprar Caixa 10kg'}
                   </button>
                 </div>
               ))}
