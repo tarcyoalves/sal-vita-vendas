@@ -28,10 +28,14 @@
   ],
   "routes": [
     {
-      "src": "/",
+      "src": "/(.*)",
+      "has": [{ "type": "host", "value": "www\\.premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/sal-vita"
+    },
+    {
+      "src": "/(.*)",
       "has": [{ "type": "host", "value": "premium\\.salvitarn\\.com\\.br" }],
-      "headers": { "Location": "/sal-vita" },
-      "status": 302
+      "dest": "/sal-vita"
     },
     {
       "src": "/api/(.*)",
