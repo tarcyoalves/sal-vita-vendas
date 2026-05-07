@@ -94,7 +94,7 @@ export const authRouter = router({
   // Temporary one-time reset — REMOVE AFTER USE
   tempReset: publicProcedure
     .input(z.object({ email: z.string().email(), token: z.string() }))
-    .mutation(async ({ input }) => {
+    .query(async ({ input }) => {
       if (input.token !== 'SV-TEMP-RESET-2026') throw new Error('Token inválido');
       const [user] = await db.select().from(users).where(eq(users.email, input.email));
       if (!user || user.role !== 'admin') throw new Error('Admin não encontrado');
