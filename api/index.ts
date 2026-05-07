@@ -17,6 +17,9 @@ ensureTablesExist();
 // In production, allow only the Vercel domain + any extra via env var
 const PROD_ORIGINS = [
   'https://sal-vita-vendas.vercel.app',
+  'https://lembretes.salvitarn.com.br',
+  'https://www.premium.salvitarn.com.br',
+  'https://premium.salvitarn.com.br',
   ...(process.env.ALLOWED_ORIGIN  ? [process.env.ALLOWED_ORIGIN]  : []),
   ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) : []),
 ];
