@@ -28,6 +28,12 @@
   ],
   "routes": [
     {
+      "src": "/",
+      "has": [{ "type": "host", "value": "premium\\.salvitarn\\.com\\.br" }],
+      "headers": { "Location": "/sal-vita" },
+      "status": 302
+    },
+    {
       "src": "/api/(.*)",
       "dest": "/api/bundle.js"
     },
