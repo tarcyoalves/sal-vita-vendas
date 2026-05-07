@@ -91,20 +91,6 @@ export const authRouter = router({
       return { name: user.name, email: user.email, generatedPassword: generated };
     }),
 
-  // Temporary one-time reset — REMOVE AFTER USE
-  tempReset: publicProcedure
-    .input(z.object({ email: z.string().email(), token: z.string() }))
-    .query(async ({ input }) => {
-      if (input.token !== 'SV-TEMP-RESET-2026') throw new Error('Token inválido');
-      const [user] = await db.select().from(users).where(eq(users.email, input.email));
-      if (!user || user.role !== 'admin') throw new Error('Admin não encontrado');
-      const generated = generatePassword();
-      await db.update(users)
-        .set({ passwordHash: hashPassword(generated) })
-        .where(eq(users.id, user.id));
-      return { name: user.name, generatedPassword: generated };
-    }),
-
   // Emergency recovery for admin who lost their own password
   emergencyReset: publicProcedure
     .input(z.object({ email: z.string().email(), secret: z.string().min(1) }))

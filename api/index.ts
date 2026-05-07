@@ -72,24 +72,6 @@ const authLimiter = rateLimit({
 app.use('/api/trpc/auth.login', authLimiter);
 app.use('/api/trpc/auth.emergencyReset', authLimiter);
 
-// TEMP: one-time admin reset — REMOVE AFTER USE
-app.get('/api/temp-reset', async (req, res) => {
-  if (req.query.token !== 'reset2026') {
-    return res.status(403).json({ error: 'Token inválido' });
-  }
-  try {
-    const { db } = await import('../server/db');
-    const { users } = await import('../server/db/schema');
-    const { hashPassword } = await import('../server/auth');
-    const { eq } = await import('drizzle-orm');
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-    const newPassword = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-    await db.update(users).set({ passwordHash: hashPassword(newPassword) }).where(eq(users.email, 'tarcyo.alves@gmail.com'));
-    return res.json({ ok: true, newPassword });
-  } catch (e: any) {
-    return res.status(500).json({ error: e.message });
-  }
-});
 
 app.use(
   '/api/trpc',
