@@ -60,13 +60,15 @@ export default function Home() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 to-blue-700 p-4">
       <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
         <div className="text-center mb-8">
-          {/* h-24 original → h-[125px] (+30%) */}
-          <img
-            src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
-            alt="Sal Vita"
-            className="mx-auto mb-4 object-contain"
-            style={{ height: '125px' }}
-          />
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 378" style={{ height: "125px", width: "auto" }} className="mx-auto mb-4" aria-label="Sal Vita">
+            <defs><clipPath id="oval-login"><ellipse cx="250" cy="187" rx="228" ry="164"/></clipPath></defs>
+            <ellipse cx="250" cy="187" rx="228" ry="164" fill="white"/>
+            <path d="M 22 252 Q 95 182 178 222 Q 214 242 250 210 Q 286 178 338 208 Q 398 240 478 222 L 478 352 H 22 Z" fill="#0C3680" clipPath="url(#oval-login)"/>
+            <path d="M 210 240 Q 206 295 204 352" fill="none" stroke="white" strokeWidth="9" strokeLinecap="round" clipPath="url(#oval-login)"/>
+            <path d="M 336 210 Q 340 270 342 352" fill="none" stroke="white" strokeWidth="9" strokeLinecap="round" clipPath="url(#oval-login)"/>
+            <text x="250" y="196" textAnchor="middle" fontFamily="Pacifico, cursive" fontSize="90" fill="#0C3680">Sal Vita</text>
+            <ellipse cx="250" cy="187" rx="228" ry="164" fill="none" stroke="#0C3680" strokeWidth="15"/>
+          </svg>
           <h1 className="text-2xl font-bold text-blue-900">Sistema de Vendas</h1>
           <p className="text-gray-500 text-sm mt-1">Faça login para continuar</p>
         </div>
