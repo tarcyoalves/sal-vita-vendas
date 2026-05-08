@@ -375,22 +375,15 @@ export default function AppShell({ children }: AppShellProps) {
         <header className="bg-white border-b flex items-center px-4 gap-4 flex-shrink-0" style={{ paddingTop: "env(safe-area-inset-top)", minHeight: "calc(56px + env(safe-area-inset-top))" }}>
           {/* Mobile: show logo instead of hamburger */}
           <button
-            className="md:hidden"
+            className="md:hidden p-1 bg-slate-800 rounded-xl flex-shrink-0"
             onClick={() => setLocation(role === "admin" ? "/admin/dashboard" : "/tasks")}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 378" style={{ height: "32px", width: "auto" }} aria-label="Sal Vita">
-              <defs>
-                <clipPath id="oval-hdr">
-                  <ellipse cx="250" cy="187" rx="228" ry="164"/>
-                </clipPath>
-              </defs>
-              <ellipse cx="250" cy="187" rx="228" ry="164" fill="white"/>
-              <path d="M 22 252 Q 95 182 178 222 Q 214 242 250 210 Q 286 178 338 208 Q 398 240 478 222 L 478 352 H 22 Z" fill="#0C3680" clipPath="url(#oval-hdr)"/>
-              <path d="M 210 240 Q 206 295 204 352" fill="none" stroke="white" strokeWidth="9" strokeLinecap="round" clipPath="url(#oval-hdr)"/>
-              <path d="M 336 210 Q 340 270 342 352" fill="none" stroke="white" strokeWidth="9" strokeLinecap="round" clipPath="url(#oval-hdr)"/>
-              <text x="250" y="196" textAnchor="middle" fontFamily="Pacifico, cursive" fontSize="90" fill="#0C3680">Sal Vita</text>
-              <ellipse cx="250" cy="187" rx="228" ry="164" fill="none" stroke="#0C3680" strokeWidth="15"/>
-            </svg>
+            <img
+              src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
+              alt="Sal Vita"
+              style={{ height: "34px", width: "auto" }}
+              className="object-contain rounded-lg"
+            />
           </button>
           <h1 className="text-base font-semibold text-gray-800 truncate flex-1">{pageTitle}</h1>
           {/* Mobile: logout button in topbar */}
