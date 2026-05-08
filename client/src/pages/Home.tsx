@@ -62,7 +62,7 @@ export default function Home() {
         <div className="text-center mb-8">
           {/* h-24 original → h-[125px] (+30%) */}
           <img
-            src="/sal-vita-logo.svg"
+            src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
             alt="Sal Vita"
             className="mx-auto mb-4 object-contain"
             style={{ height: '125px' }}

@@ -239,7 +239,7 @@ export default function AppShell({ children }: AppShellProps) {
       {/* Logo */}
       <div className="h-[72px] flex items-center px-5 border-b border-slate-700 flex-shrink-0">
         <img
-          src="/sal-vita-logo.svg"
+          src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
           alt="Sal Vita"
           style={{ height: "42px" }}
           className="cursor-pointer brightness-0 invert"
@@ -379,7 +379,7 @@ export default function AppShell({ children }: AppShellProps) {
             onClick={() => setLocation(role === "admin" ? "/admin/dashboard" : "/tasks")}
           >
             <img
-              src="/sal-vita-logo.svg"
+              src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
               alt="Sal Vita"
               style={{ height: "32px" }}
               className="object-contain"
@@ -458,7 +458,7 @@ export default function AppShell({ children }: AppShellProps) {
         <div className="fixed inset-0 z-[300] bg-gradient-to-br from-slate-900 to-slate-700 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm">
             <img
-              src="/sal-vita-logo.svg"
+              src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
               alt="Sal Vita"
               className="mx-auto mb-5 object-contain"
               style={{ height: "56px" }}
@@ -512,7 +512,7 @@ export default function AppShell({ children }: AppShellProps) {
         <div className="fixed inset-0 z-[200] bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm text-center">
             <img
-              src="/sal-vita-logo.svg"
+              src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
               alt="Sal Vita"
               className="mx-auto mb-5 object-contain"
               style={{ height: "72px" }}
