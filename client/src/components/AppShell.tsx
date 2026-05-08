@@ -372,7 +372,7 @@ export default function AppShell({ children }: AppShellProps) {
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Topbar */}
-        <header className="h-14 bg-white border-b flex items-center px-4 gap-4 flex-shrink-0">
+        <header className="bg-white border-b flex items-center px-4 gap-4 flex-shrink-0" style={{ paddingTop: "env(safe-area-inset-top)", minHeight: "calc(56px + env(safe-area-inset-top))" }}>
           {/* Mobile: show logo instead of hamburger */}
           <button
             className="md:hidden"
