@@ -242,7 +242,7 @@ export default function AppShell({ children }: AppShellProps) {
           src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
           alt="Sal Vita"
           style={{ height: "42px" }}
-          className="cursor-pointer brightness-0 invert"
+          className="cursor-pointer rounded-lg object-contain"
           onClick={() => setLocation(role === "admin" ? "/admin/dashboard" : "/tasks")}
         />
       </div>
