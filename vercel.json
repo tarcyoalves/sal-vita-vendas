@@ -42,7 +42,7 @@
       "dest": "/api/bundle.js"
     },
     {
-      "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|ico|svg|webp|woff|woff2|ttf|eot|map))",
+      "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|ico|svg|webp|woff|woff2|ttf|eot|map|webmanifest|json|txt|xml))",
       "dest": "/$1"
     },
     {
