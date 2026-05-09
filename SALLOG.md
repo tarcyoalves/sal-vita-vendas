@@ -89,7 +89,7 @@ freightDocuments → id, freightId, driverId, fileUrl, uploadedAt
 | `SALLOG_DATABASE_URL` | Connection string Neon PostgreSQL (pode ser o mesmo banco do lembretes) |
 | `SALLOG_JWT_SECRET` | `0f9980016459885bd82218a2d5f969f63efee5001337079bfeceef9b96c45111db9d50fdbf0b8ca55a157e9221b0e403` |
 | `SALLOG_SETUP_SECRET` | `cb452a564ec2bea6d1a777cdf2a81e39d0a591105758b24d` |
-| `SALLOG_ALLOWED_ORIGINS` | `https://sallog.salvitarn.com.br` |
+| `SALLOG_ALLOWED_ORIGINS` | `https://fretefacil.salvitarn.com.br` |
 | `CLOUDINARY_CLOUD_NAME` | *(conta Cloudinary free — criar em cloudinary.com)* |
 | `CLOUDINARY_UPLOAD_PRESET` | `sallog_comprovantes` *(unsigned preset)* |
 
@@ -120,7 +120,7 @@ freightDocuments → id, freightId, driverId, fileUrl, uploadedAt
 | Componente | Status | URL |
 |-----------|--------|-----|
 | Projeto Vercel "sallog" | **PENDENTE — precisa criar** | - |
-| Domínio sallog.salvitarn.com.br | **PENDENTE — configurar após criar projeto** | - |
+| Domínio fretefacil.salvitarn.com.br | **PENDENTE — configurar após criar projeto** | - |
 | Banco de dados (tabelas sallog) | **PENDENTE — criado automaticamente no 1º boot** | - |
 | Admin web | Código pronto | - |
 | App mobile | Código pronto | - |
@@ -161,8 +161,8 @@ Após isso, o endpoint `/api/setup` fica desativado automaticamente.
 
 ## Após o deploy: configurar domínio
 
-1. Vercel → projeto sallog → Settings → Domains → adicionar `sallog.salvitarn.com.br`
-2. No DNS da Sal Vita: `CNAME sallog → cname.vercel-dns.com`
+1. Vercel → projeto sallog → Settings → Domains → adicionar `fretefacil.salvitarn.com.br`
+2. No DNS da Sal Vita: `CNAME fretefacil → cname.vercel-dns.com`
 
 ---
 
@@ -210,9 +210,9 @@ Motorista vê na carteira
 
 ## Próximos passos (por ordem)
 
-- [ ] **1. Criar projeto "sallog" no Vercel** (usuário faz — 5 cliques)
+- [ ] **1. Criar projeto "fretefacil" no Vercel** (usuário faz — 5 cliques)
 - [ ] **2. Rodar curl de setup** para criar admin Tarcyo
-- [ ] **3. Configurar domínio** sallog.salvitarn.com.br
+- [ ] **3. Configurar domínio** fretefacil.salvitarn.com.br
 - [ ] **4. Configurar Cloudinary** (conta free + upload preset unsigned)
 - [ ] **5. Atualizar URL da API** no sallog-app/lib/trpc.ts
 - [ ] **6. Testar o fluxo completo** (criar frete → interesse → associar → GPS → comprovante → pago)
