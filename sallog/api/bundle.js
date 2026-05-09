@@ -1,1 +1,1 @@
-placeholder_will_be_replaced
+// rebuilt by buildCommand
