@@ -1,0 +1,140 @@
+import { z } from 'zod';
+import { eq, and, inArray } from 'drizzle-orm';
+import { router, protectedProcedure, adminProcedure } from '../trpc';
+import { db } from '../db';
+import { freights, drivers, freightInterests } from '../db/schema';
+import { TRPCError } from '@trpc/server';
+
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  available: ['in_progress'],
+  in_progress: ['completed'],
+  completed: ['validated'],
+  validated: ['paid'],
+};
+
+export const freightsRouter = router({
+  list: protectedProcedure
+    .input(z.object({ status: z.string().optional(), scope: z.enum(['available', 'mine', 'all']).optional() }).optional())
+    .query(async ({ input, ctx }) => {
+      const rows = await db.select().from(freights);
+      const scope = input?.scope ?? 'all';
+
+      if (ctx.user.role === 'admin') {
+        if (input?.status) return rows.filter((r) => r.status === input.status);
+        return rows;
+      }
+
+      // driver
+      const [driver] = await db.select().from(drivers).where(eq(drivers.userId, ctx.user.id));
+      if (!driver) return [];
+
+      if (scope === 'available') return rows.filter((r) => r.status === 'available');
+      if (scope === 'mine') return rows.filter((r) => r.assignedDriverId === driver.id);
+      return rows.filter((r) => r.status === 'available' || r.assignedDriverId === driver.id);
+    }),
+
+  getById: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const [freight] = await db.select().from(freights).where(eq(freights.id, input.id));
+      if (!freight) return null;
+      if (ctx.user.role === 'admin') return freight;
+      const [driver] = await db.select().from(drivers).where(eq(drivers.userId, ctx.user.id));
+      if (!driver) throw new TRPCError({ code: 'FORBIDDEN' });
+      const isAssigned = freight.assignedDriverId === driver.id;
+      const [interest] = await db.select().from(freightInterests).where(and(eq(freightInterests.freightId, input.id), eq(freightInterests.driverId, driver.id)));
+      if (!isAssigned && !interest && freight.status !== 'available') throw new TRPCError({ code: 'FORBIDDEN' });
+      return freight;
+    }),
+
+  create: adminProcedure
+    .input(z.object({
+      title: z.string().min(3),
+      description: z.string().optional(),
+      cargoType: z.enum(['bigbag', 'sacaria', 'granel']),
+      originCity: z.string().min(2),
+      originState: z.string().length(2),
+      destinationCity: z.string().min(2),
+      destinationState: z.string().length(2),
+      distance: z.number().optional(),
+      value: z.number().int().min(0), // centavos
+      weight: z.number().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [row] = await db.insert(freights).values({ ...input, createdBy: ctx.user.id }).returning();
+      return row;
+    }),
+
+  update: adminProcedure
+    .input(z.object({
+      id: z.number(),
+      title: z.string().optional(),
+      description: z.string().optional(),
+      cargoType: z.enum(['bigbag', 'sacaria', 'granel']).optional(),
+      originCity: z.string().optional(),
+      originState: z.string().optional(),
+      destinationCity: z.string().optional(),
+      destinationState: z.string().optional(),
+      distance: z.number().optional(),
+      value: z.number().int().min(0).optional(),
+      weight: z.number().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      await db.update(freights).set({ ...data, updatedAt: new Date() }).where(eq(freights.id, id));
+      return { ok: true };
+    }),
+
+  assignDriver: adminProcedure
+    .input(z.object({ freightId: z.number(), driverId: z.number() }))
+    .mutation(async ({ input }) => {
+      const [driver] = await db.select().from(drivers).where(eq(drivers.id, input.driverId));
+      if (!driver || driver.status !== 'approved') throw new Error('Motorista não aprovado');
+      const [freight] = await db.select().from(freights).where(eq(freights.id, input.freightId));
+      if (!freight || freight.status !== 'available') throw new Error('Frete não disponível');
+      await db.update(freights).set({ assignedDriverId: input.driverId, status: 'in_progress', updatedAt: new Date() }).where(eq(freights.id, input.freightId));
+      return { ok: true };
+    }),
+
+  markCompleted: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const [driver] = await db.select().from(drivers).where(eq(drivers.userId, ctx.user.id));
+      if (!driver) throw new TRPCError({ code: 'FORBIDDEN' });
+      const [freight] = await db.select().from(freights).where(eq(freights.id, input.id));
+      if (!freight || freight.assignedDriverId !== driver.id) throw new TRPCError({ code: 'FORBIDDEN' });
+      if (freight.status !== 'in_progress') throw new Error('Frete não está em andamento');
+      await db.update(freights).set({ status: 'completed', updatedAt: new Date() }).where(eq(freights.id, input.id));
+      return { ok: true };
+    }),
+
+  validate: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const [freight] = await db.select().from(freights).where(eq(freights.id, input.id));
+      if (!freight || freight.status !== 'completed') throw new Error('Frete não está concluído');
+      await db.update(freights).set({ status: 'validated', validatedAt: new Date(), updatedAt: new Date() }).where(eq(freights.id, input.id));
+      return { ok: true };
+    }),
+
+  markPaid: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const [freight] = await db.select().from(freights).where(eq(freights.id, input.id));
+      if (!freight || freight.status !== 'validated') throw new Error('Frete não foi validado');
+      await db.update(freights).set({ status: 'paid', paidAt: new Date(), updatedAt: new Date() }).where(eq(freights.id, input.id));
+      return { ok: true };
+    }),
+
+  stats: adminProcedure.query(async () => {
+    const rows = await db.select().from(freights);
+    return {
+      available: rows.filter((r) => r.status === 'available').length,
+      in_progress: rows.filter((r) => r.status === 'in_progress').length,
+      completed: rows.filter((r) => r.status === 'completed').length,
+      validated: rows.filter((r) => r.status === 'validated').length,
+      paid: rows.filter((r) => r.status === 'paid').length,
+      total: rows.length,
+    };
+  }),
+});

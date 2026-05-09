@@ -15,6 +15,7 @@ import {
   TrendingUp,
   KeyRound,
   Tv,
+  Truck,
 } from "lucide-react";
 import { useAuth } from "../_core/hooks/useAuth";
 import { trpc } from "../lib/trpc";
@@ -48,6 +49,16 @@ const NAV_ITEMS: NavItem[] = [
     path: "/attendants",
     icon: <Users size={18} />,
     roles: ["admin"],
+  },
+  {
+    label: "SalLog",
+    icon: <Truck size={18} />,
+    roles: ["admin"],
+    children: [
+      { label: "Painel", path: "/sallog", icon: <LayoutDashboard size={16} /> },
+      { label: "Fretes", path: "/sallog/fretes", icon: <Truck size={16} /> },
+      { label: "Motoristas", path: "/sallog/motoristas", icon: <Users size={16} /> },
+    ],
   },
   {
     label: "Inteligência IA",

@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "SalLog",
+    "slug": "sallog-app",
+    "version": "1.0.0",
+    "scheme": "sallog",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0C3680"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "O SalLog usa sua localização para rastrear a entrega em tempo real.",
+        "NSCameraUsageDescription": "O SalLog usa a câmera para fotografar o comprovante de entrega.",
+        "NSPhotoLibraryUsageDescription": "O SalLog acessa a galeria para enviar comprovante de entrega."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0C3680"
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
+      "package": "com.salvita.sallog"
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": ["expo-router", "expo-location", "expo-camera"],
+    "extra": {
+      "apiUrl": "https://lembretes.salvitarn.com.br",
+      "cloudinaryCloudName": "",
+      "cloudinaryUploadPreset": "sallog_comprovantes",
+      "router": {}
+    }
+  }
+}

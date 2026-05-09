@@ -8,7 +8,12 @@ import { users } from './db/schema';
 import { eq } from 'drizzle-orm';
 
 export async function createContext({ req, res }: CreateExpressContextOptions) {
-  const token = getCookieFromRequest(req.headers.cookie, COOKIE_NAME);
+  // Accept cookie-based token (web) OR Authorization: Bearer <token> (mobile app)
+  const cookieToken = getCookieFromRequest(req.headers.cookie, COOKIE_NAME);
+  const authHeader = req.headers.authorization;
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const token = cookieToken || bearerToken;
+
   let user: { id: number; email: string; name: string; role: string } | null = null;
 
   if (token) {

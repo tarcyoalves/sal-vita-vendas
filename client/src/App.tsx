@@ -22,6 +22,11 @@ import AppShell from "./components/AppShell";
 import { useAuth } from "./_core/hooks/useAuth";
 import { useReminderNotifications } from "./_core/hooks/useReminderNotifications";
 import SalVitaLanding from "./pages/SalVitaLanding";
+import SalLogDashboard from "./pages/SalLogDashboard";
+import SalLogDrivers from "./pages/SalLogDrivers";
+import SalLogFreights from "./pages/SalLogFreights";
+import SalLogFreightNew from "./pages/SalLogFreightNew";
+import SalLogFreightDetail from "./pages/SalLogFreightDetail";
 
 function Router() {
   return (
@@ -68,6 +73,21 @@ function Router() {
         <AppShell><AttendantProgress /></AppShell>
       </Route>
       <Route path="/tv" component={TvDashboard} />
+      <Route path="/sallog">
+        <AppShell><SalLogDashboard /></AppShell>
+      </Route>
+      <Route path="/sallog/motoristas">
+        <AppShell><SalLogDrivers /></AppShell>
+      </Route>
+      <Route path="/sallog/fretes/novo">
+        <AppShell><SalLogFreightNew /></AppShell>
+      </Route>
+      <Route path="/sallog/fretes/:id">
+        {(p: { id: string }) => <AppShell><SalLogFreightDetail id={Number(p.id)} /></AppShell>}
+      </Route>
+      <Route path="/sallog/fretes">
+        <AppShell><SalLogFreights /></AppShell>
+      </Route>
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
