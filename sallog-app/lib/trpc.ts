@@ -4,14 +4,14 @@ import superjson from 'superjson';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 
-// Type-only import — does not pull in server code at runtime
-import type { AppRouter } from '../../server/routers';
+// Type-only import from the standalone SalLog API
+import type { AppRouter } from '../../sallog/api/routers';
 
 export const trpc = createTRPCReact<AppRouter>();
 
 const API_URL: string =
   (Constants.expoConfig?.extra?.apiUrl as string | undefined) ??
-  'https://lembretes.salvitarn.com.br';
+  'https://sallog.salvitarn.com.br'; // SalLog API — separate from lembretes/premium
 
 export function createTRPCClient() {
   return trpc.createClient({

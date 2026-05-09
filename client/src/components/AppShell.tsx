@@ -15,7 +15,6 @@ import {
   TrendingUp,
   KeyRound,
   Tv,
-  Truck,
 } from "lucide-react";
 import { useAuth } from "../_core/hooks/useAuth";
 import { trpc } from "../lib/trpc";
@@ -49,16 +48,6 @@ const NAV_ITEMS: NavItem[] = [
     path: "/attendants",
     icon: <Users size={18} />,
     roles: ["admin"],
-  },
-  {
-    label: "SalLog",
-    icon: <Truck size={18} />,
-    roles: ["admin"],
-    children: [
-      { label: "Painel", path: "/sallog", icon: <LayoutDashboard size={16} /> },
-      { label: "Fretes", path: "/sallog/fretes", icon: <Truck size={16} /> },
-      { label: "Motoristas", path: "/sallog/motoristas", icon: <Users size={16} /> },
-    ],
   },
   {
     label: "Inteligência IA",
@@ -250,10 +239,10 @@ export default function AppShell({ children }: AppShellProps) {
       {/* Logo */}
       <div className="h-[72px] flex items-center px-5 border-b border-slate-700 flex-shrink-0">
         <img
-          src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
+          src="/sal-vita-logo.svg"
           alt="Sal Vita"
           style={{ height: "42px" }}
-          className="cursor-pointer rounded-lg object-contain"
+          className="cursor-pointer brightness-0 invert"
           onClick={() => setLocation(role === "admin" ? "/admin/dashboard" : "/tasks")}
         />
       </div>
@@ -383,17 +372,17 @@ export default function AppShell({ children }: AppShellProps) {
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Topbar */}
-        <header className="bg-white border-b flex items-center px-4 gap-4 flex-shrink-0" style={{ paddingTop: "env(safe-area-inset-top)", minHeight: "calc(56px + env(safe-area-inset-top))" }}>
+        <header className="h-14 bg-white border-b flex items-center px-4 gap-4 flex-shrink-0">
           {/* Mobile: show logo instead of hamburger */}
           <button
-            className="md:hidden p-1 bg-slate-800 rounded-xl flex-shrink-0"
+            className="md:hidden"
             onClick={() => setLocation(role === "admin" ? "/admin/dashboard" : "/tasks")}
           >
             <img
-              src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
+              src="/sal-vita-logo.svg"
               alt="Sal Vita"
-              style={{ height: "34px", width: "auto" }}
-              className="object-contain rounded-lg"
+              style={{ height: "32px" }}
+              className="object-contain"
             />
           </button>
           <h1 className="text-base font-semibold text-gray-800 truncate flex-1">{pageTitle}</h1>
@@ -468,15 +457,12 @@ export default function AppShell({ children }: AppShellProps) {
       {!!user && user.mustChangePassword && (
         <div className="fixed inset-0 z-[300] bg-gradient-to-br from-slate-900 to-slate-700 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 378" style={{ height: "56px", width: "auto" }} className="mx-auto mb-5" aria-label="Sal Vita">
-              <defs><clipPath id="oval-m1"><ellipse cx="250" cy="187" rx="228" ry="164"/></clipPath></defs>
-              <ellipse cx="250" cy="187" rx="228" ry="164" fill="white"/>
-              <path d="M 22 252 Q 95 182 178 222 Q 214 242 250 210 Q 286 178 338 208 Q 398 240 478 222 L 478 352 H 22 Z" fill="#0C3680" clipPath="url(#oval-m1)"/>
-              <path d="M 210 240 Q 206 295 204 352" fill="none" stroke="white" strokeWidth="9" strokeLinecap="round" clipPath="url(#oval-m1)"/>
-              <path d="M 336 210 Q 340 270 342 352" fill="none" stroke="white" strokeWidth="9" strokeLinecap="round" clipPath="url(#oval-m1)"/>
-              <text x="250" y="196" textAnchor="middle" fontFamily="Pacifico, cursive" fontSize="90" fill="#0C3680">Sal Vita</text>
-              <ellipse cx="250" cy="187" rx="228" ry="164" fill="none" stroke="#0C3680" strokeWidth="15"/>
-            </svg>
+            <img
+              src="/sal-vita-logo.svg"
+              alt="Sal Vita"
+              className="mx-auto mb-5 object-contain"
+              style={{ height: "56px" }}
+            />
             <h2 className="text-xl font-bold text-gray-800 mb-1 text-center">
               Bem-vindo, {user?.name?.split(" ")[0]}!
             </h2>
@@ -525,15 +511,12 @@ export default function AppShell({ children }: AppShellProps) {
       {needsStartup && !user?.mustChangePassword && (
         <div className="fixed inset-0 z-[200] bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm text-center">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 378" style={{ height: "72px", width: "auto" }} className="mx-auto mb-5" aria-label="Sal Vita">
-              <defs><clipPath id="oval-m2"><ellipse cx="250" cy="187" rx="228" ry="164"/></clipPath></defs>
-              <ellipse cx="250" cy="187" rx="228" ry="164" fill="white"/>
-              <path d="M 22 252 Q 95 182 178 222 Q 214 242 250 210 Q 286 178 338 208 Q 398 240 478 222 L 478 352 H 22 Z" fill="#0C3680" clipPath="url(#oval-m2)"/>
-              <path d="M 210 240 Q 206 295 204 352" fill="none" stroke="white" strokeWidth="9" strokeLinecap="round" clipPath="url(#oval-m2)"/>
-              <path d="M 336 210 Q 340 270 342 352" fill="none" stroke="white" strokeWidth="9" strokeLinecap="round" clipPath="url(#oval-m2)"/>
-              <text x="250" y="196" textAnchor="middle" fontFamily="Pacifico, cursive" fontSize="90" fill="#0C3680">Sal Vita</text>
-              <ellipse cx="250" cy="187" rx="228" ry="164" fill="none" stroke="#0C3680" strokeWidth="15"/>
-            </svg>
+            <img
+              src="/sal-vita-logo.svg"
+              alt="Sal Vita"
+              className="mx-auto mb-5 object-contain"
+              style={{ height: "72px" }}
+            />
             {showRetomar ? (
               <>
                 <h2 className="text-xl font-bold text-gray-800 mb-1">

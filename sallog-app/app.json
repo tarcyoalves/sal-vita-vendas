@@ -41,7 +41,7 @@
     },
     "plugins": ["expo-router", "expo-location", "expo-camera"],
     "extra": {
-      "apiUrl": "https://lembretes.salvitarn.com.br",
+      "apiUrl": "https://sallog.salvitarn.com.br",
       "cloudinaryCloudName": "",
       "cloudinaryUploadPreset": "sallog_comprovantes",
       "router": {}

@@ -21,17 +21,10 @@ import FloatingChat from "./components/FloatingChat";
 import AppShell from "./components/AppShell";
 import { useAuth } from "./_core/hooks/useAuth";
 import { useReminderNotifications } from "./_core/hooks/useReminderNotifications";
-import SalVitaLanding from "./pages/SalVitaLanding";
-import SalLogDashboard from "./pages/SalLogDashboard";
-import SalLogDrivers from "./pages/SalLogDrivers";
-import SalLogFreights from "./pages/SalLogFreights";
-import SalLogFreightNew from "./pages/SalLogFreightNew";
-import SalLogFreightDetail from "./pages/SalLogFreightDetail";
 
 function Router() {
   return (
     <Switch>
-      <Route path={"/sal-vita"} component={SalVitaLanding} />
       <Route path={"/"} component={Home} />
       <Route path={"/admin/dashboard"}>
         <AppShell><AdminDashboard /></AppShell>
@@ -73,21 +66,6 @@ function Router() {
         <AppShell><AttendantProgress /></AppShell>
       </Route>
       <Route path="/tv" component={TvDashboard} />
-      <Route path="/sallog">
-        <AppShell><SalLogDashboard /></AppShell>
-      </Route>
-      <Route path="/sallog/motoristas">
-        <AppShell><SalLogDrivers /></AppShell>
-      </Route>
-      <Route path="/sallog/fretes/novo">
-        <AppShell><SalLogFreightNew /></AppShell>
-      </Route>
-      <Route path="/sallog/fretes/:id">
-        {(p: { id: string }) => <AppShell><SalLogFreightDetail id={Number(p.id)} /></AppShell>}
-      </Route>
-      <Route path="/sallog/fretes">
-        <AppShell><SalLogFreights /></AppShell>
-      </Route>
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
@@ -105,28 +83,7 @@ function NotificationManager() {
   return null;
 }
 
-const PUBLIC_PATHS = ['/sal-vita'];
-const PREMIUM_HOSTS = ['www.premium.salvitarn.com.br', 'premium.salvitarn.com.br'];
-
 function App() {
-  const host = typeof window !== 'undefined' ? window.location.hostname : '';
-  const path = typeof window !== 'undefined' ? window.location.pathname : '';
-  const isPremium = PREMIUM_HOSTS.includes(host);
-  const isPublic = isPremium || PUBLIC_PATHS.some(p => path.startsWith(p));
-
-  if (isPremium) {
-    return (
-      <ErrorBoundary>
-        <ThemeProvider defaultTheme="light">
-          <TooltipProvider>
-            <Toaster />
-            <SalVitaLanding />
-          </TooltipProvider>
-        </ThemeProvider>
-      </ErrorBoundary>
-    );
-  }
-
   return (
     <ErrorBoundary>
       <ThemeProvider
@@ -135,9 +92,9 @@ function App() {
       >
         <TooltipProvider>
           <Toaster />
-          {!isPublic && <NotificationManager />}
+          <NotificationManager />
           <Router />
-          {!isPublic && <FloatingChat />}
+          <FloatingChat />
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

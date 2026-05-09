@@ -1,0 +1,20 @@
+{
+  "buildCommand": "cd sallog && npm install && npm run build",
+  "outputDirectory": "sallog/admin/dist",
+  "functions": {
+    "sallog/api/bundle.js": { "memory": 512, "maxDuration": 30 }
+  },
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/sallog/api/bundle.js" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" }
+      ]
+    }
+  ]
+}
