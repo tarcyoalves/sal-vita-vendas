@@ -169,8 +169,20 @@ export default function Tasks() {
         reminderDateTime = new Date(`${formData.reminderDate}T${formData.reminderTime}:00`);
       }
       if (editingTask) {
-        await updateMutation.mutateAsync({ id: editingTask.id, title: formData.title, description: formData.description, notes: formData.notes, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
-        toast.success("Tarefa atualizada!");
+        const result = await updateMutation.mutateAsync({ id: editingTask.id, title: formData.title, description: formData.description, notes: formData.notes, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
+        // Show real-time fraud alerts returned by the server
+        const alerts = (result as any).fraudAlerts as Array<{ type: string; count: number; message: string }> | undefined;
+        if (alerts?.length) {
+          alerts.forEach(a => {
+            toast.error(`⚠️ ATENÇÃO: ${a.message}`, { duration: 20000 });
+            // Fire browser notification for high-severity bursts
+            if (a.type === 'burst_10min' && "Notification" in window && Notification.permission === 'granted') {
+              try { new Notification('⚠️ Sal Vita — Atividade Suspeita', { body: a.message, icon: '/favicon.ico' }); } catch (_) {}
+            }
+          });
+        } else {
+          toast.success("Tarefa atualizada!");
+        }
       } else {
         await createMutation.mutateAsync({ clientId: formData.clientId || 0, title: formData.title, description: formData.description, notes: formData.notes, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
         toast.success("Tarefa criada! Lembrete ativado ✅");

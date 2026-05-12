@@ -75,6 +75,42 @@ export const tasksRouter = router({
         .where(where)
         .returning();
       if (!updated) throw new TRPCError({ code: 'FORBIDDEN', message: 'Tarefa não encontrada ou sem permissão' });
+
+      // Real-time fraud detection — runs every time a contact is logged
+      if (setData.lastContactedAt && ctx.user.role !== 'admin') {
+        const tenMinAgo   = new Date(now.getTime() - 10 * 60_000);
+        const thirtyMinAgo = new Date(now.getTime() - 30 * 60_000);
+        const todayStart  = new Date(now); todayStart.setHours(0, 0, 0, 0);
+
+        const [burst10, burst30, todayAll] = await Promise.all([
+          db.select({ id: tasks.id }).from(tasks).where(
+            and(or(eq(tasks.userId, ctx.user.id), eq(tasks.assignedTo, userName)), gte(tasks.lastContactedAt, tenMinAgo))
+          ),
+          db.select({ id: tasks.id }).from(tasks).where(
+            and(or(eq(tasks.userId, ctx.user.id), eq(tasks.assignedTo, userName)), gte(tasks.lastContactedAt, thirtyMinAgo))
+          ),
+          db.select({ id: tasks.id }).from(tasks).where(
+            and(or(eq(tasks.userId, ctx.user.id), eq(tasks.assignedTo, userName)), gte(tasks.lastContactedAt, todayStart))
+          ),
+        ]);
+
+        const fraudAlerts: Array<{ type: string; count: number; window: string; message: string }> = [];
+        if (burst10.length >= 5) {
+          fraudAlerts.push({ type: 'burst_10min', count: burst10.length, window: '10min', message: `${burst10.length} contatos em menos de 10 minutos — isso é monitorado pelo gestor como possível simulação de atividade.` });
+        }
+        if (burst30.length >= 15) {
+          fraudAlerts.push({ type: 'burst_30min', count: burst30.length, window: '30min', message: `${burst30.length} contatos em menos de 30 minutos — ritmo acima do esperado.` });
+        }
+        if (todayAll.length >= 30 && todayAll.length % 10 === 0) {
+          // Fire every 10 contacts above 30, not every single save
+          fraudAlerts.push({ type: 'daily_high', count: todayAll.length, window: 'hoje', message: `${todayAll.length} contatos registrados hoje. Volume elevado — certifique-se de que todos foram contatos reais.` });
+        }
+
+        if (fraudAlerts.length > 0) {
+          return { ...updated, fraudAlerts };
+        }
+      }
+
       return updated;
     }),
 
