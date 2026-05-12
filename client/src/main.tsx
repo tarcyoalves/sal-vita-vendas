@@ -8,6 +8,26 @@ import App from "./App";
 import { getLoginUrl } from "./const";
 import "./index.css";
 
+// Sanitize stale aiConfigs in localStorage — small models (8b-instant) have
+// 6k TPM limits that break admin chat. Always enforce provider defaultModels.
+const PROVIDER_DEFAULT_MODELS: Record<string, string> = {
+  groq: 'llama-3.3-70b-versatile',
+  gemini: 'gemini-2.5-flash',
+  openai: 'gpt-3.5-turbo',
+};
+try {
+  const stored = JSON.parse(localStorage.getItem('aiConfigs') || '{}') as Record<string, any>;
+  let changed = false;
+  for (const [provider, cfg] of Object.entries(stored)) {
+    const correct = PROVIDER_DEFAULT_MODELS[provider];
+    if (correct && cfg?.model !== correct) {
+      stored[provider] = { ...cfg, model: correct };
+      changed = true;
+    }
+  }
+  if (changed) localStorage.setItem('aiConfigs', JSON.stringify(stored));
+} catch { /* ignore */ }
+
 const queryClient = new QueryClient();
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
