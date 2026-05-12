@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc';
 import { db } from '../db';
-import { chatMessages, tasks, clients, sellers, workSessions } from '../db/schema';
+import { chatMessages, tasks, clients, sellers, workSessions, knowledgeDocuments } from '../db/schema';
 import { eq, desc, or, gte, and } from 'drizzle-orm';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -177,6 +177,21 @@ IMPORTANTE: Quando usar qualquer filtro de hoje, passe também only_with_notes=f
   {
     type: 'function',
     function: {
+      name: 'search_knowledge',
+      description: 'Busca documentos na base de conhecimento da Sal Vita. Use quando precisar de regras do negócio, scripts de abordagem, políticas da empresa, como interpretar situações, o que fazer com clientes difíceis, ou qualquer orientação sobre como os atendentes devem trabalhar.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Termo ou assunto a buscar na base de conhecimento (ex: "como lidar com cliente sem retorno", "metas diárias", "script de abordagem")' },
+          category: { type: 'string', description: 'Categoria opcional para filtrar (ex: "processos", "scripts", "metas", "fraude")' },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'reschedule_tasks',
       description: 'Redistribui os lembretes vencidos (atrasados) de um atendente ao longo dos próximos dias úteis, com um limite por dia. Use quando o usuário pedir para reagendar ou distribuir lembretes.',
       parameters: {
@@ -298,6 +313,33 @@ async function executeTool(name: string, args: any): Promise<any> {
       nunca_editados: neverEditedCount,
       mostrando: items.length,
       lembretes: items,
+    };
+  }
+
+  if (name === 'search_knowledge') {
+    const query = String(args.query ?? '').toLowerCase();
+    const category = args.category ? String(args.category).toLowerCase() : null;
+
+    const all = await db.select().from(knowledgeDocuments);
+    const matched = all.filter(doc => {
+      const inContent = doc.content.toLowerCase().includes(query) || doc.title.toLowerCase().includes(query);
+      const inCategory = !category || (doc.category ?? '').toLowerCase().includes(category);
+      return inContent && inCategory;
+    }).slice(0, 5);
+
+    if (matched.length === 0) {
+      // Broad fallback: return all documents (up to 3) so AI has some context
+      const fallback = all.slice(0, 3).map(d => ({ titulo: d.title, categoria: d.category, conteudo: d.content.slice(0, 800) }));
+      return { encontrados: 0, mensagem: `Nenhum documento encontrado para "${query}". Documentos disponíveis:`, documentos: fallback };
+    }
+
+    return {
+      encontrados: matched.length,
+      documentos: matched.map(d => ({
+        titulo: d.title,
+        categoria: d.category,
+        conteudo: d.content.slice(0, 1500),
+      })),
     };
   }
 
@@ -649,12 +691,14 @@ export const aiRouter = router({
   · "lembretes agendados para hoje" (data = hoje) → today_reminders_only=true, only_with_notes=false
   · sem filtro de data → retorna os mais recentes
 - find_suspicious_notes: detecta fraudes — notas vazias, copy-paste, salvos sem editar
+- search_knowledge: busca na base de conhecimento da empresa — use quando precisar de regras do negócio, scripts, políticas, metas, ou orientações de como avaliar o trabalho dos atendentes
 - list_sessions: sessões/acesso do atendente
 - reschedule_tasks: redistribui lembretes vencidos
 REGRAS ABSOLUTAS:
 1. NUNCA diga "não consigo ver" — sempre chame read_notes
 2. Para perguntas de "hoje", use today_updated_only=true (atividade geral de hoje)
 3. Mostre os dados reais do banco, não invente respostas
+4. Quando precisar de contexto sobre processos da empresa, chame search_knowledge primeiro
 Seja direto; português BR; emojis.
 ${userContext}`
           : `Assistente Sal Vita — atendente. Apenas informativo, sem executar ações.
