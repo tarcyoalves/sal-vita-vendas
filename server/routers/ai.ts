@@ -193,13 +193,18 @@ IMPORTANTE: Quando usar qualquer filtro de hoje, passe também only_with_notes=f
     type: 'function',
     function: {
       name: 'reschedule_tasks',
-      description: 'Redistribui os lembretes vencidos (atrasados) de um atendente ao longo dos próximos dias úteis, com um limite por dia. Use quando o usuário pedir para reagendar ou distribuir lembretes.',
+      description: `Redistribui os lembretes vencidos (atrasados) de um atendente ao longo dos próximos dias úteis.
+
+REGRA OBRIGATÓRIA: SEMPRE chame com dry_run=true PRIMEIRO para mostrar ao usuário quantos lembretes seriam afetados e em quantos dias. Só execute com dry_run=false se o usuário confirmar explicitamente com "sim", "pode fazer", "confirmo" ou similar.
+
+Esta ação é IRREVERSÍVEL — os lembretes serão redistribuídos para datas futuras.`,
       parameters: {
         type: 'object',
         properties: {
           attendant_name: { type: 'string', description: 'Nome exato do atendente' },
           tasks_per_day: { type: 'number', description: 'Quantos lembretes por dia útil (padrão: 50)' },
           start_hour: { type: 'number', description: 'Hora inicial do dia para o primeiro lembrete (padrão: 8)' },
+          dry_run: { type: 'boolean', description: 'Se true (padrão), apenas mostra o que SERIA feito sem alterar o banco. SEMPRE use true primeiro.' },
         },
         required: ['attendant_name'],
       },
@@ -489,6 +494,8 @@ async function executeTool(name: string, args: any): Promise<any> {
     const name_ = String(args.attendant_name ?? '');
     const perDay = Number(args.tasks_per_day ?? 50);
     const startHour = Number(args.start_hour ?? 8);
+    // Default to dry_run=true for safety — only execute if explicitly false
+    const dryRun = args.dry_run !== false;
 
     const allSellers = await db.select().from(sellers);
     const seller = allSellers.find(s => s.name.toLowerCase().includes(name_.toLowerCase()));
@@ -505,8 +512,24 @@ async function executeTool(name: string, args: any): Promise<any> {
     );
     if (overdue.length === 0) return { message: `Nenhum lembrete vencido para ${seller.name}.` };
 
+    const daysNeeded = Math.ceil(overdue.length / perDay);
+    const firstDay = nextBusinessDay(now);
+
+    if (dryRun) {
+      return {
+        dry_run: true,
+        atendente: seller.name,
+        lembretes_vencidos: overdue.length,
+        dias_necessarios: daysNeeded,
+        por_dia: perDay,
+        primeiro_dia: firstDay.toLocaleDateString('pt-BR'),
+        aviso: `⚠️ SIMULAÇÃO — nenhuma alteração foi feita. Para executar, confirme com "pode reagendar" e o sistema chamará com dry_run=false.`,
+        exemplos: overdue.slice(0, 5).map(t => ({ cliente: t.title.slice(0, 50), venceu: t.reminderDate ? new Date(t.reminderDate).toLocaleDateString('pt-BR') : '?' })),
+      };
+    }
+
     // Distribute: start from tomorrow, skip weekends
-    let currentDay = nextBusinessDay(now);
+    let currentDay = firstDay;
     let countToday = 0;
     let updated = 0;
     const minutesBetween = Math.floor((9 * 60) / Math.max(perDay, 1));
@@ -529,13 +552,12 @@ async function executeTool(name: string, args: any): Promise<any> {
       updated++;
     }
 
-    const daysNeeded = Math.ceil(overdue.length / perDay);
     return {
       success: true,
       rescheduled: updated,
       attendant: seller.name,
       days_used: daysNeeded,
-      first_day: currentDay.toLocaleDateString('pt-BR'),
+      first_day: firstDay.toLocaleDateString('pt-BR'),
       message: `✅ ${updated} lembretes de ${seller.name} redistribuídos em ${daysNeeded} dia(s) útil(eis) — ${perDay} por dia a partir de amanhã.`,
     };
   }
@@ -612,6 +634,7 @@ export const aiRouter = router({
       sellerName: z.string().min(1),
       tasksPerDay: z.number().min(1).max(200).default(50),
       startHour: z.number().min(6).max(12).default(8),
+      dryRun: z.boolean().default(false),
     }))
     .mutation(async ({ input, ctx }) => {
       if (ctx.user.role !== 'admin') throw new Error('Apenas admins podem reagendar em massa');
@@ -619,6 +642,7 @@ export const aiRouter = router({
         attendant_name: input.sellerName,
         tasks_per_day: input.tasksPerDay,
         start_hour: input.startHour,
+        dry_run: input.dryRun,
       });
     }),
 
@@ -693,12 +717,13 @@ export const aiRouter = router({
 - find_suspicious_notes: detecta fraudes — notas vazias, copy-paste, salvos sem editar
 - search_knowledge: busca na base de conhecimento da empresa — use quando precisar de regras do negócio, scripts, políticas, metas, ou orientações de como avaliar o trabalho dos atendentes
 - list_sessions: sessões/acesso do atendente
-- reschedule_tasks: redistribui lembretes vencidos
+- reschedule_tasks: redistribui lembretes vencidos — DRY_RUN=TRUE SEMPRE PRIMEIRO, só execute com dry_run=false após confirmação explícita do usuário
 REGRAS ABSOLUTAS:
 1. NUNCA diga "não consigo ver" — sempre chame read_notes
 2. Para perguntas de "hoje", use today_updated_only=true (atividade geral de hoje)
 3. Mostre os dados reais do banco, não invente respostas
 4. Quando precisar de contexto sobre processos da empresa, chame search_knowledge primeiro
+5. reschedule_tasks é IRREVERSÍVEL — sempre dry_run=true primeiro para mostrar preview, só execute se usuário confirmar
 Seja direto; português BR; emojis.
 ${userContext}`
           : `Assistente Sal Vita — atendente. Apenas informativo, sem executar ações.
