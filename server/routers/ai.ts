@@ -121,13 +121,15 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'read_notes',
-      description: 'Lê o conteúdo completo das anotações/observações dos lembretes de um atendente. Use quando precisar saber o que o atendente está escrevendo em cada contato, verificar qualidade das anotações, ou identificar se está salvando sem editar.',
+      description: 'Lê o conteúdo completo das anotações/observações dos lembretes de um atendente. SEMPRE use esta ferramenta quando: o usuário perguntar o que os clientes falaram, o que foi dito em cada contato, as anotações do atendente, o que foi registrado, o que o atendente escreveu, ou qualquer variação de "o que cada um falou / disse / registrou".',
       parameters: {
         type: 'object',
         properties: {
           attendant_name: { type: 'string', description: 'Nome do atendente (ex: "Matheus")' },
           limit: { type: 'number', description: 'Quantos lembretes retornar (padrão: 30, máx: 100)' },
           only_with_notes: { type: 'boolean', description: 'Se true, retorna apenas lembretes que têm anotação. Se false, retorna todos incluindo sem anotação.' },
+          today_contacts_only: { type: 'boolean', description: 'Se true, filtra apenas contatos realizados hoje (lastContactedAt de hoje). Use quando o usuário perguntar sobre contatos de hoje.' },
+          today_reminders_only: { type: 'boolean', description: 'Se true, filtra apenas lembretes agendados para hoje (reminderDate de hoje). Use quando o usuário perguntar o que foi agendado hoje.' },
         },
         required: ['attendant_name'],
       },
@@ -205,6 +207,8 @@ async function executeTool(name: string, args: any): Promise<any> {
     const name_ = String(args.attendant_name ?? '');
     const limit = Math.min(Number(args.limit ?? 30), 100);
     const onlyWithNotes = args.only_with_notes !== false;
+    const todayContactsOnly = args.today_contacts_only === true;
+    const todayRemindersOnly = args.today_reminders_only === true;
 
     const seller = (await db.select().from(sellers)).find(
       s => s.name.toLowerCase().includes(name_.toLowerCase())
@@ -215,16 +219,31 @@ async function executeTool(name: string, args: any): Promise<any> {
       or(eq(tasks.assignedTo, seller.name), eq(tasks.userId, seller.userId))
     );
 
+    const now = new Date();
+    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+
     // Sort by most recently updated first
-    const sorted = allTasks.sort((a, b) =>
+    let sorted = allTasks.sort((a, b) =>
       new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     );
+
+    // Apply filters
+    if (todayContactsOnly) {
+      sorted = sorted.filter(t =>
+        t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart && new Date(t.lastContactedAt) <= todayEnd
+      );
+    }
+    if (todayRemindersOnly) {
+      sorted = sorted.filter(t =>
+        t.reminderDate && new Date(t.reminderDate) >= todayStart && new Date(t.reminderDate) <= todayEnd
+      );
+    }
 
     const filtered = onlyWithNotes
       ? sorted.filter(t => t.notes && t.notes.trim().length > 0)
       : sorted;
 
-    const now = new Date();
     const items = filtered.slice(0, limit).map(t => {
       const createdAt = new Date(t.createdAt);
       const updatedAt = new Date(t.updatedAt);
@@ -603,11 +622,12 @@ export const aiRouter = router({
         const systemPrompt = isAdmin
           ? `Gestor Sal Vita. Ferramentas disponíveis:
 - list_tasks: resumo de lembretes de um atendente (contagens, vencidos)
-- read_notes: lê o conteúdo completo das anotações de cada lembrete — USE quando pedirem para ler/ver o que o atendente escreve, verificar anotações, ou checar qualidade de registros
-- find_suspicious_notes: analisa padrões de fraude — notas vazias, copy-paste, salvos sem editar — USE quando suspeitar de trabalho fictício ou querer saber se está salvando sem editar
+- read_notes: lê o CONTEÚDO REAL das anotações de cada lembrete — CHAME IMEDIATAMENTE quando: "o que cada um falou", "o que foi dito", "o que ela/ele escreveu", "as observações", "o que foi registrado", "leia as notas", "o que anotou" ou qualquer pergunta sobre o conteúdo dos contatos. Passe today_contacts_only=true para filtrar contatos de hoje; today_reminders_only=true para lembretes de hoje.
+- find_suspicious_notes: analisa padrões de fraude — notas vazias, copy-paste, salvos sem editar — USE quando suspeitar de trabalho fictício
 - list_sessions: histórico de sessões/acesso do atendente
 - reschedule_tasks: redistribui lembretes vencidos
-Regras: use ferramentas quando pedido; execute reschedule quando pedirem reagendar; seja direto; português BR; emojis.
+REGRA CRÍTICA: Nunca responda "não consigo ver o conteúdo" — use read_notes para buscar os dados reais do banco.
+Regras gerais: use ferramentas proativamente; seja direto; português BR; emojis.
 ${userContext}`
           : `Assistente Sal Vita — atendente. Apenas informativo, sem executar ações.
 ${userContext}
