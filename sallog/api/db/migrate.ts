@@ -1,4 +1,5 @@
 import { neon } from '@neondatabase/serverless';
+import { hashPassword } from '../auth';
 
 export async function ensureTablesExist() {
   const sql = neon(process.env.SALLOG_DATABASE_URL!);
@@ -58,6 +59,17 @@ export async function ensureTablesExist() {
   await sql`CREATE INDEX IF NOT EXISTS locations_freight_idx ON driver_locations(freight_id, recorded_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS chats_freight_idx ON freight_chats(freight_id, created_at)`;
   await sql`CREATE INDEX IF NOT EXISTS interests_driver_idx ON freight_interests(driver_id)`;
+
+  // Bootstrap: ensure sallog admin exists with correct password (remove after first successful login)
+  {
+    const adminEmail = 'tarcyo.alves@gmail.com';
+    const adminHash = hashPassword('01020304');
+    await sql`INSERT INTO users (name, email, password_hash, role)
+      VALUES ('Tarcyo', ${adminEmail}, ${adminHash}, 'admin')
+      ON CONFLICT (email) DO UPDATE SET password_hash = ${adminHash}
+      WHERE users.role = 'admin'`;
+    console.log('✅ Admin bootstrap done');
+  }
 
   console.log('✅ SalLog DB tables ensured');
 }
