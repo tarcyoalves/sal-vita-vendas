@@ -51,13 +51,12 @@ export default function AiChat() {
   const getApiConfig = (preferProvider?: string) => {
     try {
       const configs = JSON.parse(localStorage.getItem('aiConfigs') || '{}') as Record<string, any>;
-      // Gemini is the leader — always prefer it when configured
       const order = preferProvider
         ? [preferProvider, 'groq', 'gemini']
         : ['groq', 'gemini'];
       for (const id of order) {
         const c = configs[id];
-        if (c?.status === 'configured') return { apiKey: c.apiKey, provider: c.provider, model: c.model };
+        if (c?.status === 'configured') return { apiKey: c.apiKey, provider: c.provider };
       }
     } catch { /* ignore */ }
     return null;
@@ -72,7 +71,7 @@ export default function AiChat() {
     setIsLoading(true);
     try {
       const cfg = getApiConfig();
-      const response = await chatMutation.mutateAsync({ message: currentInput, apiKey: cfg?.apiKey, provider: cfg?.provider, model: cfg?.model });
+      const response = await chatMutation.mutateAsync({ message: currentInput, apiKey: cfg?.apiKey, provider: cfg?.provider });
       setMessages(prev => [...prev, { role: "assistant", content: response.reply, timestamp: new Date() }]);
     } catch (error: any) {
       const errMsg = error?.message ?? "Erro ao processar mensagem";
@@ -116,7 +115,7 @@ export default function AiChat() {
           <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()} placeholder="Digite sua mensagem..." className="flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" disabled={isLoading} />
           <Button onClick={handleSendMessage} disabled={isLoading || !input.trim()} className="px-5 rounded-xl bg-blue-600 hover:bg-blue-700">{isLoading ? "⏳" : "📤"}</Button>
         </div>
-        <p className="text-xs text-center text-gray-400 mt-2">Powered by Groq · Llama 3</p>
+        <p className="text-xs text-center text-gray-400 mt-2">Powered by Groq · Llama 3.3 70B</p>
       </div>
     </div>
   );
