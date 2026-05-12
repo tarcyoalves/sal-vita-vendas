@@ -120,6 +120,36 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'read_notes',
+      description: 'Lê o conteúdo completo das anotações/observações dos lembretes de um atendente. Use quando precisar saber o que o atendente está escrevendo em cada contato, verificar qualidade das anotações, ou identificar se está salvando sem editar.',
+      parameters: {
+        type: 'object',
+        properties: {
+          attendant_name: { type: 'string', description: 'Nome do atendente (ex: "Matheus")' },
+          limit: { type: 'number', description: 'Quantos lembretes retornar (padrão: 30, máx: 100)' },
+          only_with_notes: { type: 'boolean', description: 'Se true, retorna apenas lembretes que têm anotação. Se false, retorna todos incluindo sem anotação.' },
+        },
+        required: ['attendant_name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'find_suspicious_notes',
+      description: 'Analisa as anotações de um atendente em busca de padrões suspeitos: notas vazias/genéricas, notas idênticas repetidas (copy-paste), clientes salvos sem editar nenhuma anotação, ou notas muito curtas que indicam falta de contato real. Use quando suspeitar de fraude ou trabalho fictício.',
+      parameters: {
+        type: 'object',
+        properties: {
+          attendant_name: { type: 'string', description: 'Nome do atendente (ex: "Matheus")' },
+        },
+        required: ['attendant_name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'list_sessions',
       description: 'Retorna histórico de acesso/sessões de trabalho de um atendente: quando entrou, quanto tempo trabalhou, tempo ocioso, última atividade. Use quando perguntarem sobre presença, acesso, horas trabalhadas ou atividade.',
       parameters: {
@@ -168,6 +198,158 @@ async function executeTool(name: string, args: any): Promise<any> {
       overdue: overdue.length,
       upcoming: upcoming.length,
       sample_overdue: overdue.slice(0, 5).map(t => ({ id: t.id, title: t.title.slice(0, 60), date: t.reminderDate })),
+    };
+  }
+
+  if (name === 'read_notes') {
+    const name_ = String(args.attendant_name ?? '');
+    const limit = Math.min(Number(args.limit ?? 30), 100);
+    const onlyWithNotes = args.only_with_notes !== false;
+
+    const seller = (await db.select().from(sellers)).find(
+      s => s.name.toLowerCase().includes(name_.toLowerCase())
+    );
+    if (!seller) return { error: `Atendente "${name_}" não encontrado.` };
+
+    const allTasks = await db.select().from(tasks).where(
+      or(eq(tasks.assignedTo, seller.name), eq(tasks.userId, seller.userId))
+    );
+
+    // Sort by most recently updated first
+    const sorted = allTasks.sort((a, b) =>
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    );
+
+    const filtered = onlyWithNotes
+      ? sorted.filter(t => t.notes && t.notes.trim().length > 0)
+      : sorted;
+
+    const now = new Date();
+    const items = filtered.slice(0, limit).map(t => {
+      const createdAt = new Date(t.createdAt);
+      const updatedAt = new Date(t.updatedAt);
+      const diffMs = updatedAt.getTime() - createdAt.getTime();
+      const neverEdited = diffMs < 2 * 60 * 1000;
+      return {
+        cliente: t.title,
+        anotacao: t.notes?.trim() || '(sem anotação)',
+        tamanho_nota: t.notes?.trim().length ?? 0,
+        ultimo_contato: t.lastContactedAt ? new Date(t.lastContactedAt).toLocaleString('pt-BR') : 'nunca',
+        lembrete: t.reminderDate ? new Date(t.reminderDate).toLocaleString('pt-BR') : 'sem data',
+        atualizado: updatedAt.toLocaleString('pt-BR'),
+        criado: createdAt.toLocaleString('pt-BR'),
+        nunca_editado: neverEdited,
+        vencido: t.reminderDate ? new Date(t.reminderDate) < now : false,
+      };
+    });
+
+    const totalSemNota = allTasks.filter(t => !t.notes || t.notes.trim().length < 5).length;
+    const totalComNota = allTasks.filter(t => t.notes && t.notes.trim().length >= 5).length;
+    const neverEditedCount = allTasks.filter(t => {
+      const diff = new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime();
+      return diff < 2 * 60 * 1000;
+    }).length;
+
+    return {
+      atendente: seller.name,
+      total_lembretes: allTasks.length,
+      total_sem_anotacao: totalSemNota,
+      total_com_anotacao: totalComNota,
+      nunca_editados: neverEditedCount,
+      mostrando: items.length,
+      lembretes: items,
+    };
+  }
+
+  if (name === 'find_suspicious_notes') {
+    const name_ = String(args.attendant_name ?? '');
+
+    const seller = (await db.select().from(sellers)).find(
+      s => s.name.toLowerCase().includes(name_.toLowerCase())
+    );
+    if (!seller) return { error: `Atendente "${name_}" não encontrado.` };
+
+    const allTasks = await db.select().from(tasks).where(
+      or(eq(tasks.assignedTo, seller.name), eq(tasks.userId, seller.userId))
+    );
+
+    const now = new Date();
+
+    // 1. Notas vazias ou muito curtas (< 10 chars)
+    const emptyNotes = allTasks.filter(t => !t.notes || t.notes.trim().length < 10);
+
+    // 2. Notas genéricas/padrão suspeitas
+    const genericPatterns = /^(ok|sim|não|nao|ligou|retornar|retorno|contato|tel|falar|ligar|aguardar|pendente|\.+|-+|ok\.?|certo|feito|done|ok ok)\.?$/i;
+    const genericNotes = allTasks.filter(t => t.notes && genericPatterns.test(t.notes.trim()));
+
+    // 3. Notas duplicadas (mesmo texto em 3+ clientes)
+    const noteFreq: Record<string, { count: number; clients: string[] }> = {};
+    for (const t of allTasks) {
+      if (!t.notes || t.notes.trim().length < 5) continue;
+      const key = t.notes.trim().toLowerCase().slice(0, 80);
+      if (!noteFreq[key]) noteFreq[key] = { count: 0, clients: [] };
+      noteFreq[key].count++;
+      noteFreq[key].clients.push(t.title.slice(0, 40));
+    }
+    const duplicates = Object.entries(noteFreq)
+      .filter(([, v]) => v.count >= 3)
+      .map(([note, v]) => ({ nota: note.slice(0, 80), repetida: v.count, exemplos_clientes: v.clients.slice(0, 5) }))
+      .sort((a, b) => b.repetida - a.repetida);
+
+    // 4. Salvos sem editar (updatedAt ≈ createdAt, diferença < 2 min)
+    const neverEdited = allTasks.filter(t => {
+      const diff = new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime();
+      return diff < 2 * 60 * 1000;
+    });
+
+    // 5. Contato marcado mas sem anotação de qualidade
+    const contactedNoNote = allTasks.filter(t =>
+      t.lastContactedAt && (!t.notes || t.notes.trim().length < 10)
+    );
+
+    // 6. Lembretes reagendados recentemente mas sem lastContactedAt
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
+    const rescheduledNoContact = allTasks.filter(t =>
+      new Date(t.updatedAt) > sevenDaysAgo
+      && (!t.lastContactedAt || new Date(t.lastContactedAt) < sevenDaysAgo)
+      && t.reminderDate
+    );
+
+    // Suspicion level
+    let suspicion = 'baixa';
+    const score = emptyNotes.length + genericNotes.length * 2 + duplicates.length * 5 + neverEdited.length + contactedNoNote.length * 2 + rescheduledNoContact.length * 3;
+    if (score > 50) suspicion = 'CRÍTICA';
+    else if (score > 20) suspicion = 'alta';
+    else if (score > 5) suspicion = 'média';
+
+    return {
+      atendente: seller.name,
+      total_lembretes: allTasks.length,
+      suspeita: suspicion,
+      score_fraude: score,
+      sem_anotacao_ou_muito_curta: {
+        quantidade: emptyNotes.length,
+        exemplos: emptyNotes.slice(0, 10).map(t => ({ cliente: t.title.slice(0, 50), anotacao: t.notes?.trim() || '(vazio)' })),
+      },
+      notas_genericas: {
+        quantidade: genericNotes.length,
+        exemplos: genericNotes.slice(0, 10).map(t => ({ cliente: t.title.slice(0, 50), anotacao: t.notes?.trim() })),
+      },
+      notas_duplicadas_copy_paste: {
+        grupos: duplicates.slice(0, 10),
+      },
+      salvos_sem_editar: {
+        quantidade: neverEdited.length,
+        exemplos: neverEdited.slice(0, 10).map(t => ({ cliente: t.title.slice(0, 50), anotacao: t.notes?.trim() || '(vazio)', criado: new Date(t.createdAt).toLocaleString('pt-BR') })),
+      },
+      contato_marcado_sem_nota: {
+        quantidade: contactedNoNote.length,
+        exemplos: contactedNoNote.slice(0, 5).map(t => ({ cliente: t.title.slice(0, 50), ultimo_contato: new Date(t.lastContactedAt!).toLocaleString('pt-BR') })),
+      },
+      reagendado_sem_contato_real: {
+        quantidade: rescheduledNoContact.length,
+        exemplos: rescheduledNoContact.slice(0, 5).map(t => ({ cliente: t.title.slice(0, 50), atualizado: new Date(t.updatedAt).toLocaleString('pt-BR') })),
+      },
     };
   }
 
@@ -419,7 +601,12 @@ export const aiRouter = router({
         console.log('[AI_CHAT] context built');
 
         const systemPrompt = isAdmin
-          ? `Gestor Sal Vita. Ferramentas disponíveis: list_tasks, list_sessions, reschedule_tasks.
+          ? `Gestor Sal Vita. Ferramentas disponíveis:
+- list_tasks: resumo de lembretes de um atendente (contagens, vencidos)
+- read_notes: lê o conteúdo completo das anotações de cada lembrete — USE quando pedirem para ler/ver o que o atendente escreve, verificar anotações, ou checar qualidade de registros
+- find_suspicious_notes: analisa padrões de fraude — notas vazias, copy-paste, salvos sem editar — USE quando suspeitar de trabalho fictício ou querer saber se está salvando sem editar
+- list_sessions: histórico de sessões/acesso do atendente
+- reschedule_tasks: redistribui lembretes vencidos
 Regras: use ferramentas quando pedido; execute reschedule quando pedirem reagendar; seja direto; português BR; emojis.
 ${userContext}`
           : `Assistente Sal Vita — atendente. Apenas informativo, sem executar ações.
