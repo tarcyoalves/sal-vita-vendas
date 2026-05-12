@@ -623,7 +623,12 @@ export const aiRouter = router({
           : undefined;
         const apiKey = input.apiKey || envKey || '';
         const baseURL = BASE_URLS[provider] ?? BASE_URLS.groq;
-        const model = input.model ?? DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile';
+        // Admin chat uses large context + tool calls — small models (llama-3.1-8b-instant, 6k TPM)
+        // will always hit rate limits. Force the 70b model for admin regardless of client settings.
+        const isAdmin = ctx.user.role === 'admin';
+        const model = isAdmin
+          ? DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile'
+          : (input.model ?? DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile');
 
         console.log('[AI_CHAT] uid:', ctx.user.id, 'provider:', provider, 'model:', model, 'hasKey:', !!apiKey);
 
@@ -648,8 +653,6 @@ export const aiRouter = router({
 
         const userContext = await buildUserContext(ctx.user.id, ctx.user.role);
         console.log('[AI_CHAT] context built');
-
-        const isAdmin = ctx.user.role === 'admin';
 
         const systemPrompt = isAdmin
           ? `Você é o sistema de inteligência interna da empresa Sal Vita — Sal do Brasil. Você é os OLHOS do gestor dentro do sistema.
