@@ -28766,13 +28766,29 @@ __export(auth_exports, {
 function hashPassword(password) {
   const salt = import_crypto.default.randomBytes(16).toString("hex");
   const hash = import_crypto.default.pbkdf2Sync(password, salt, ITERATIONS, KEYLEN, DIGEST).toString("hex");
-  return `${salt}:${hash}`;
+  return `${ITERATIONS}:${salt}:${hash}`;
 }
 function verifyPassword(password, stored) {
-  const [salt, hash] = stored.split(":");
-  if (!salt || !hash) return false;
-  const check = import_crypto.default.pbkdf2Sync(password, salt, ITERATIONS, KEYLEN, DIGEST).toString("hex");
-  return import_crypto.default.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(check, "hex"));
+  const parts = stored.split(":");
+  let iterations, salt, hash;
+  if (parts.length === 3) {
+    iterations = parseInt(parts[0], 10);
+    salt = parts[1];
+    hash = parts[2];
+  } else if (parts.length === 2) {
+    iterations = ITERATIONS;
+    salt = parts[0];
+    hash = parts[1];
+  } else {
+    return false;
+  }
+  if (!salt || !hash || isNaN(iterations)) return false;
+  const check = import_crypto.default.pbkdf2Sync(password, salt, iterations, KEYLEN, DIGEST).toString("hex");
+  try {
+    return import_crypto.default.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(check, "hex"));
+  } catch {
+    return false;
+  }
 }
 function signToken(payload) {
   return import_jsonwebtoken.default.sign(payload, JWT_SECRET, { expiresIn: "30d" });
@@ -49465,17 +49481,23 @@ app.post("/api/setup", async (req, res) => {
     }
     const { neon } = await Promise.resolve().then(() => (init_serverless(), serverless_exports));
     const sql3 = neon(process.env.SALLOG_DATABASE_URL);
-    const existing = await sql3`SELECT id FROM users WHERE role = 'admin' LIMIT 1`;
-    if (existing.length > 0) {
-      return res.status(409).json({ error: "Admin j\xE1 existe. Endpoint desativado." });
-    }
     const { hashPassword: hashPassword2 } = await Promise.resolve().then(() => (init_auth(), auth_exports));
     const hash = hashPassword2(password);
-    const [user] = await sql3`
-      INSERT INTO users (name, email, password_hash, role)
-      VALUES (${name}, ${email}, ${hash}, 'admin')
-      RETURNING id, name, email, role
-    `;
+    const existing = await sql3`SELECT id FROM users WHERE email = ${email} AND role = 'admin' LIMIT 1`;
+    let user;
+    if (existing.length > 0) {
+      [user] = await sql3`
+        UPDATE users SET password_hash = ${hash}, name = ${name}
+        WHERE email = ${email} AND role = 'admin'
+        RETURNING id, name, email, role
+      `;
+    } else {
+      [user] = await sql3`
+        INSERT INTO users (name, email, password_hash, role)
+        VALUES (${name}, ${email}, ${hash}, 'admin')
+        RETURNING id, name, email, role
+      `;
+    }
     return res.json({ ok: true, user });
   } catch (e) {
     return res.status(500).json({ error: e.message });
