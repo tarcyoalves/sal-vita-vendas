@@ -23,6 +23,10 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Ensure DB is initialized before handling any request (fixes race condition on cold start)
+const initPromise = ensureTablesExist().catch(console.error);
+app.use(async (_req, _res, next) => { await initPromise; next(); });
+
 app.use('/api/trpc', createExpressMiddleware({ router: appRouter, createContext }));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'sallog' }));
@@ -62,14 +66,5 @@ app.post('/api/setup', async (req, res) => {
     return res.status(500).json({ error: e.message });
   }
 });
-
-const PORT = parseInt(process.env.PORT ?? '3001');
-
-async function start() {
-  await ensureTablesExist();
-  app.listen(PORT, () => console.log(`SalLog API running on :${PORT}`));
-}
-
-start().catch(console.error);
 
 export default app;
