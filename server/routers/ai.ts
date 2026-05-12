@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc';
 import { db } from '../db';
-import { chatMessages, tasks, clients, sellers, workSessions } from '../db/schema';
-import { eq, desc, or, gte, and, isNull, lt } from 'drizzle-orm';
+import { chatMessages, tasks, clients, sellers, workSessions, knowledgeDocuments } from '../db/schema';
+import { eq, desc, or, gte, and } from 'drizzle-orm';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -21,10 +21,6 @@ const DEFAULT_MODELS: Record<string, string> = {
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-// In-memory context cache — avoids rebuilding full admin context on every chat call
-const contextCache = new Map<string, { data: string; expires: number }>();
-const CONTEXT_TTL = 5 * 60_000; // 5 minutes
 
 function nextBusinessDay(d: Date): Date {
   const next = new Date(d.getTime() + 86400000);
@@ -51,7 +47,9 @@ async function callLLMWithTools(
     });
     if (!res.ok) {
       const t = await res.text().catch(() => '');
-      throw new Error(`LLM API ${res.status}: ${t.slice(0, 200)}`);
+      const err = new Error(`LLM API ${res.status}: ${t.slice(0, 300)}`);
+      (err as any).status = res.status;
+      throw err;
     }
     const data = await res.json() as any;
     const msg = data?.choices?.[0]?.message;
@@ -80,10 +78,26 @@ async function callLLM(apiKey: string, baseURL: string, model: string, messages:
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`LLM API error ${res.status}: ${text.slice(0, 200)}`);
+    const err = new Error(`LLM API ${res.status}: ${text.slice(0, 300)}`);
+    (err as any).status = res.status;
+    throw err;
   }
   const data = await res.json() as any;
   return data?.choices?.[0]?.message?.content ?? 'Sem resposta da IA.';
+}
+
+function isRateLimit(err: any): boolean {
+  return err?.status === 429 || /429|rate.?limit|quota/i.test(err?.message ?? '');
+}
+
+function getFallbackConfig(primaryProvider: string): { apiKey: string; baseURL: string; model: string } | null {
+  if (primaryProvider !== 'groq' && process.env.GROQ_API_KEY) {
+    return { apiKey: process.env.GROQ_API_KEY, baseURL: BASE_URLS.groq, model: DEFAULT_MODELS.groq };
+  }
+  if (primaryProvider !== 'gemini' && process.env.GEMINI_API_KEY) {
+    return { apiKey: process.env.GEMINI_API_KEY, baseURL: BASE_URLS.gemini, model: DEFAULT_MODELS.gemini };
+  }
+  return null;
 }
 
 // ── Tool definitions (OpenAI-compatible) ─────────────────────────────────────
@@ -106,6 +120,49 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'read_notes',
+      description: `Lê o conteúdo completo das anotações/observações dos lembretes de um atendente.
+
+QUANDO USAR: sempre que o usuário perguntar sobre anotações, observações, o que foi dito, o que cada cliente falou, o que foi registrado, o que o atendente escreveu, o que aconteceu nos contatos, ou similares.
+
+QUAL FILTRO DE DATA USAR:
+- Pergunta sobre "anotações de hoje" / "o que anotou hoje" / "atividade de hoje" → use today_updated_only=true (mostra tudo que foi atualizado hoje)
+- Pergunta sobre "contatos feitos hoje" / "quem ele contatou hoje" → use today_contacts_only=true
+- Pergunta sobre "lembretes agendados para hoje" (data de lembrete = hoje) → use today_reminders_only=true
+- Sem filtro de data → retorna os mais recentes independente do dia
+
+IMPORTANTE: Quando usar qualquer filtro de hoje, passe também only_with_notes=false para ver TODOS os registros de hoje, mesmo os sem anotação.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          attendant_name: { type: 'string', description: 'Nome do atendente (ex: "Matheus")' },
+          limit: { type: 'number', description: 'Quantos lembretes retornar (padrão: 30, máx: 100)' },
+          only_with_notes: { type: 'boolean', description: 'Se true, retorna apenas lembretes com anotação. Se false (recomendado com filtros de hoje), retorna todos.' },
+          today_updated_only: { type: 'boolean', description: 'Se true, mostra apenas registros atualizados hoje. USE ESTE para "anotações de hoje", "o que anotou hoje", "atividade de hoje".' },
+          today_contacts_only: { type: 'boolean', description: 'Se true, filtra apenas contatos realizados hoje (lastContactedAt de hoje). Use para "quem ele contatou hoje".' },
+          today_reminders_only: { type: 'boolean', description: 'Se true, filtra apenas lembretes com data de lembrete = hoje (reminderDate). Use APENAS para "lembretes agendados para hoje".' },
+        },
+        required: ['attendant_name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'find_suspicious_notes',
+      description: 'Analisa as anotações de um atendente em busca de padrões suspeitos: notas vazias/genéricas, notas idênticas repetidas (copy-paste), clientes salvos sem editar nenhuma anotação, ou notas muito curtas que indicam falta de contato real. Use quando suspeitar de fraude ou trabalho fictício.',
+      parameters: {
+        type: 'object',
+        properties: {
+          attendant_name: { type: 'string', description: 'Nome do atendente (ex: "Matheus")' },
+        },
+        required: ['attendant_name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'list_sessions',
       description: 'Retorna histórico de acesso/sessões de trabalho de um atendente: quando entrou, quanto tempo trabalhou, tempo ocioso, última atividade. Use quando perguntarem sobre presença, acesso, horas trabalhadas ou atividade.',
       parameters: {
@@ -114,6 +171,21 @@ const TOOLS = [
           attendant_name: { type: 'string', description: 'Nome do atendente (ex: "Analice"). Use "todos" para ver todos.' },
         },
         required: ['attendant_name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_knowledge',
+      description: 'Busca documentos na base de conhecimento da Sal Vita. Use quando precisar de regras do negócio, scripts de abordagem, políticas da empresa, como interpretar situações, o que fazer com clientes difíceis, ou qualquer orientação sobre como os atendentes devem trabalhar.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Termo ou assunto a buscar na base de conhecimento (ex: "como lidar com cliente sem retorno", "metas diárias", "script de abordagem")' },
+          category: { type: 'string', description: 'Categoria opcional para filtrar (ex: "processos", "scripts", "metas", "fraude")' },
+        },
+        required: ['query'],
       },
     },
   },
@@ -131,41 +203,6 @@ const TOOLS = [
         },
         required: ['attendant_name'],
       },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_system_activity',
-      description: 'Retorna um log de atividade recente do sistema: tarefas editadas nas últimas horas, quem está online agora, lembretes desativados recentemente, alterações suspeitas. Use quando quiser saber o que está acontecendo no sistema agora.',
-      parameters: {
-        type: 'object',
-        properties: {
-          hours_back: { type: 'number', description: 'Quantas horas atrás verificar (padrão: 2)' },
-        },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'analyze_fraud_patterns',
-      description: 'Análise profunda de padrões suspeitos de um atendente: burst de contatos em janela de tempo, tarefas reagendadas sem contato real, lembretes desativados, qualidade de anotações. Use quando suspeitar de fraude ou manipulação.',
-      parameters: {
-        type: 'object',
-        properties: {
-          attendant_name: { type: 'string', description: 'Nome do atendente a analisar' },
-        },
-        required: ['attendant_name'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_all_sellers_summary',
-      description: 'Resumo rápido de TODOS os atendentes: status online, lembretes vencidos, última atividade, score de suspeita. Use para visão geral do time.',
-      parameters: { type: 'object', properties: {} },
     },
   },
 ];
@@ -189,6 +226,212 @@ async function executeTool(name: string, args: any): Promise<any> {
       overdue: overdue.length,
       upcoming: upcoming.length,
       sample_overdue: overdue.slice(0, 5).map(t => ({ id: t.id, title: t.title.slice(0, 60), date: t.reminderDate })),
+    };
+  }
+
+  if (name === 'read_notes') {
+    const name_ = String(args.attendant_name ?? '');
+    const limit = Math.min(Number(args.limit ?? 30), 100);
+    const todayUpdatedOnly = args.today_updated_only === true;
+    const todayContactsOnly = args.today_contacts_only === true;
+    const todayRemindersOnly = args.today_reminders_only === true;
+    // When using any today filter, default only_with_notes to false so all activity is visible
+    const usingTodayFilter = todayUpdatedOnly || todayContactsOnly || todayRemindersOnly;
+    const onlyWithNotes = args.only_with_notes !== undefined
+      ? args.only_with_notes === true
+      : !usingTodayFilter;
+
+    const seller = (await db.select().from(sellers)).find(
+      s => s.name.toLowerCase().includes(name_.toLowerCase())
+    );
+    if (!seller) return { error: `Atendente "${name_}" não encontrado.` };
+
+    const allTasks = await db.select().from(tasks).where(
+      or(eq(tasks.assignedTo, seller.name), eq(tasks.userId, seller.userId))
+    );
+
+    const now = new Date();
+    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+
+    // Sort by most recently updated first
+    let sorted = allTasks.sort((a, b) =>
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    );
+
+    // Apply filters — these are OR'd: any today activity qualifies
+    if (todayUpdatedOnly) {
+      sorted = sorted.filter(t =>
+        new Date(t.updatedAt) >= todayStart && new Date(t.updatedAt) <= todayEnd
+      );
+    }
+    if (todayContactsOnly) {
+      sorted = sorted.filter(t =>
+        t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart && new Date(t.lastContactedAt) <= todayEnd
+      );
+    }
+    if (todayRemindersOnly) {
+      sorted = sorted.filter(t =>
+        t.reminderDate && new Date(t.reminderDate) >= todayStart && new Date(t.reminderDate) <= todayEnd
+      );
+    }
+
+    const filtered = onlyWithNotes
+      ? sorted.filter(t => t.notes && t.notes.trim().length > 0)
+      : sorted;
+
+    const items = filtered.slice(0, limit).map(t => {
+      const createdAt = new Date(t.createdAt);
+      const updatedAt = new Date(t.updatedAt);
+      const diffMs = updatedAt.getTime() - createdAt.getTime();
+      const neverEdited = diffMs < 2 * 60 * 1000;
+      return {
+        cliente: t.title,
+        anotacao: t.notes?.trim() || '(sem anotação)',
+        tamanho_nota: t.notes?.trim().length ?? 0,
+        ultimo_contato: t.lastContactedAt ? new Date(t.lastContactedAt).toLocaleString('pt-BR') : 'nunca',
+        lembrete: t.reminderDate ? new Date(t.reminderDate).toLocaleString('pt-BR') : 'sem data',
+        atualizado: updatedAt.toLocaleString('pt-BR'),
+        criado: createdAt.toLocaleString('pt-BR'),
+        nunca_editado: neverEdited,
+        vencido: t.reminderDate ? new Date(t.reminderDate) < now : false,
+      };
+    });
+
+    const totalSemNota = allTasks.filter(t => !t.notes || t.notes.trim().length < 5).length;
+    const totalComNota = allTasks.filter(t => t.notes && t.notes.trim().length >= 5).length;
+    const neverEditedCount = allTasks.filter(t => {
+      const diff = new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime();
+      return diff < 2 * 60 * 1000;
+    }).length;
+
+    return {
+      atendente: seller.name,
+      total_lembretes: allTasks.length,
+      total_sem_anotacao: totalSemNota,
+      total_com_anotacao: totalComNota,
+      nunca_editados: neverEditedCount,
+      mostrando: items.length,
+      lembretes: items,
+    };
+  }
+
+  if (name === 'search_knowledge') {
+    const query = String(args.query ?? '').toLowerCase();
+    const category = args.category ? String(args.category).toLowerCase() : null;
+
+    const all = await db.select().from(knowledgeDocuments);
+    const matched = all.filter(doc => {
+      const inContent = doc.content.toLowerCase().includes(query) || doc.title.toLowerCase().includes(query);
+      const inCategory = !category || (doc.category ?? '').toLowerCase().includes(category);
+      return inContent && inCategory;
+    }).slice(0, 5);
+
+    if (matched.length === 0) {
+      // Broad fallback: return all documents (up to 3) so AI has some context
+      const fallback = all.slice(0, 3).map(d => ({ titulo: d.title, categoria: d.category, conteudo: d.content.slice(0, 800) }));
+      return { encontrados: 0, mensagem: `Nenhum documento encontrado para "${query}". Documentos disponíveis:`, documentos: fallback };
+    }
+
+    return {
+      encontrados: matched.length,
+      documentos: matched.map(d => ({
+        titulo: d.title,
+        categoria: d.category,
+        conteudo: d.content.slice(0, 1500),
+      })),
+    };
+  }
+
+  if (name === 'find_suspicious_notes') {
+    const name_ = String(args.attendant_name ?? '');
+
+    const seller = (await db.select().from(sellers)).find(
+      s => s.name.toLowerCase().includes(name_.toLowerCase())
+    );
+    if (!seller) return { error: `Atendente "${name_}" não encontrado.` };
+
+    const allTasks = await db.select().from(tasks).where(
+      or(eq(tasks.assignedTo, seller.name), eq(tasks.userId, seller.userId))
+    );
+
+    const now = new Date();
+
+    // 1. Notas vazias ou muito curtas (< 10 chars)
+    const emptyNotes = allTasks.filter(t => !t.notes || t.notes.trim().length < 10);
+
+    // 2. Notas genéricas/padrão suspeitas
+    const genericPatterns = /^(ok|sim|não|nao|ligou|retornar|retorno|contato|tel|falar|ligar|aguardar|pendente|\.+|-+|ok\.?|certo|feito|done|ok ok)\.?$/i;
+    const genericNotes = allTasks.filter(t => t.notes && genericPatterns.test(t.notes.trim()));
+
+    // 3. Notas duplicadas (mesmo texto em 3+ clientes)
+    const noteFreq: Record<string, { count: number; clients: string[] }> = {};
+    for (const t of allTasks) {
+      if (!t.notes || t.notes.trim().length < 5) continue;
+      const key = t.notes.trim().toLowerCase().slice(0, 80);
+      if (!noteFreq[key]) noteFreq[key] = { count: 0, clients: [] };
+      noteFreq[key].count++;
+      noteFreq[key].clients.push(t.title.slice(0, 40));
+    }
+    const duplicates = Object.entries(noteFreq)
+      .filter(([, v]) => v.count >= 3)
+      .map(([note, v]) => ({ nota: note.slice(0, 80), repetida: v.count, exemplos_clientes: v.clients.slice(0, 5) }))
+      .sort((a, b) => b.repetida - a.repetida);
+
+    // 4. Salvos sem editar (updatedAt ≈ createdAt, diferença < 2 min)
+    const neverEdited = allTasks.filter(t => {
+      const diff = new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime();
+      return diff < 2 * 60 * 1000;
+    });
+
+    // 5. Contato marcado mas sem anotação de qualidade
+    const contactedNoNote = allTasks.filter(t =>
+      t.lastContactedAt && (!t.notes || t.notes.trim().length < 10)
+    );
+
+    // 6. Lembretes reagendados recentemente mas sem lastContactedAt
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
+    const rescheduledNoContact = allTasks.filter(t =>
+      new Date(t.updatedAt) > sevenDaysAgo
+      && (!t.lastContactedAt || new Date(t.lastContactedAt) < sevenDaysAgo)
+      && t.reminderDate
+    );
+
+    // Suspicion level
+    let suspicion = 'baixa';
+    const score = emptyNotes.length + genericNotes.length * 2 + duplicates.length * 5 + neverEdited.length + contactedNoNote.length * 2 + rescheduledNoContact.length * 3;
+    if (score > 50) suspicion = 'CRÍTICA';
+    else if (score > 20) suspicion = 'alta';
+    else if (score > 5) suspicion = 'média';
+
+    return {
+      atendente: seller.name,
+      total_lembretes: allTasks.length,
+      suspeita: suspicion,
+      score_fraude: score,
+      sem_anotacao_ou_muito_curta: {
+        quantidade: emptyNotes.length,
+        exemplos: emptyNotes.slice(0, 10).map(t => ({ cliente: t.title.slice(0, 50), anotacao: t.notes?.trim() || '(vazio)' })),
+      },
+      notas_genericas: {
+        quantidade: genericNotes.length,
+        exemplos: genericNotes.slice(0, 10).map(t => ({ cliente: t.title.slice(0, 50), anotacao: t.notes?.trim() })),
+      },
+      notas_duplicadas_copy_paste: {
+        grupos: duplicates.slice(0, 10),
+      },
+      salvos_sem_editar: {
+        quantidade: neverEdited.length,
+        exemplos: neverEdited.slice(0, 10).map(t => ({ cliente: t.title.slice(0, 50), anotacao: t.notes?.trim() || '(vazio)', criado: new Date(t.createdAt).toLocaleString('pt-BR') })),
+      },
+      contato_marcado_sem_nota: {
+        quantidade: contactedNoNote.length,
+        exemplos: contactedNoNote.slice(0, 5).map(t => ({ cliente: t.title.slice(0, 50), ultimo_contato: new Date(t.lastContactedAt!).toLocaleString('pt-BR') })),
+      },
+      reagendado_sem_contato_real: {
+        quantidade: rescheduledNoContact.length,
+        exemplos: rescheduledNoContact.slice(0, 5).map(t => ({ cliente: t.title.slice(0, 50), atualizado: new Date(t.updatedAt).toLocaleString('pt-BR') })),
+      },
     };
   }
 
@@ -266,7 +509,7 @@ async function executeTool(name: string, args: any): Promise<any> {
     let currentDay = nextBusinessDay(now);
     let countToday = 0;
     let updated = 0;
-    const minutesBetween = Math.floor((9 * 60) / Math.max(perDay, 1)); // spread 8h→17h
+    const minutesBetween = Math.floor((9 * 60) / Math.max(perDay, 1));
 
     for (const task of overdue) {
       if (countToday >= perDay) {
@@ -297,195 +540,14 @@ async function executeTool(name: string, args: any): Promise<any> {
     };
   }
 
-  if (name === 'get_system_activity') {
-    const hoursBack = Number(args.hours_back ?? 2);
-    const since = new Date(Date.now() - hoursBack * 3600_000);
-    const now = new Date();
-
-    const [recentEdits, activeSessions, allSellers] = await Promise.all([
-      db.select().from(tasks).where(gte(tasks.updatedAt, since)).orderBy(desc(tasks.updatedAt)).limit(30),
-      db.select().from(workSessions).where(eq(workSessions.status, 'active')),
-      db.select().from(sellers),
-    ]);
-
-    const onlineNames = activeSessions.map(s => {
-      const seller = allSellers.find(sel => sel.userId === s.userId);
-      const started = new Date(s.startedAt);
-      const elapsed = now.getTime() - started.getTime();
-      const hrs = Math.floor(elapsed / 3600000);
-      const mins = Math.floor((elapsed % 3600000) / 60000);
-      return `${seller?.name ?? `userId:${s.userId}`} (online há ${hrs > 0 ? hrs + 'h' : ''}${mins}min)`;
-    });
-
-    const recentlyDisabled = recentEdits.filter(t => t.reminderEnabled === false);
-    const noNotesEdits = recentEdits.filter(t => !t.notes || t.notes.trim().length < 15);
-    const suspiciousEdits = recentEdits.filter(t => {
-      const diff = new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime();
-      return diff < 2 * 60_000; // edited in first 2 min = never really touched
-    });
-
-    return {
-      period: `últimas ${hoursBack}h`,
-      onlineNow: onlineNames.length > 0 ? onlineNames : ['nenhum atendente online'],
-      recentEditsCount: recentEdits.length,
-      recentlyDisabledReminders: recentlyDisabled.map(t => ({
-        id: t.id, title: t.title.slice(0, 60), assignedTo: t.assignedTo, updatedAt: t.updatedAt
-      })),
-      editsWithoutNotes: noNotesEdits.length,
-      suspiciousEdits: suspiciousEdits.length,
-      topEdits: recentEdits.slice(0, 10).map(t => ({
-        id: t.id,
-        title: t.title.slice(0, 50),
-        assignedTo: t.assignedTo,
-        hasNotes: !!t.notes && t.notes.trim().length > 15,
-        noteLen: t.notes?.trim().length ?? 0,
-        updatedAt: t.updatedAt,
-      })),
-    };
-  }
-
-  if (name === 'analyze_fraud_patterns') {
-    const name_ = String(args.attendant_name ?? '');
-    const now = new Date();
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
-
-    const allSellers = await db.select().from(sellers);
-    const seller = allSellers.find(s => s.name.toLowerCase().includes(name_.toLowerCase()));
-    if (!seller) return { error: `Atendente "${name_}" não encontrado` };
-
-    const st = await db.select().from(tasks).where(
-      or(eq(tasks.assignedTo, seller.name), eq(tasks.userId, seller.userId))
-    );
-
-    // Burst windows: check every 10, 30, 60-min window
-    const contactedSorted = st
-      .filter(t => t.lastContactedAt)
-      .sort((a, b) => new Date(a.lastContactedAt!).getTime() - new Date(b.lastContactedAt!).getTime());
-
-    const burstWindows: Array<{ window: string; count: number; start: Date }> = [];
-    for (const windowMs of [600_000, 1800_000, 3600_000]) {
-      let max = 0; let maxStart: Date | null = null;
-      for (const t of contactedSorted) {
-        const base = new Date(t.lastContactedAt!).getTime();
-        const inW = contactedSorted.filter(x => {
-          const d = new Date(x.lastContactedAt!).getTime() - base;
-          return d >= 0 && d <= windowMs;
-        }).length;
-        if (inW > max) { max = inW; maxStart = new Date(base); }
-      }
-      if (max >= 3) burstWindows.push({ window: `${windowMs/60000}min`, count: max, start: maxStart! });
-    }
-
-    const neverUpdated = st.filter(t => new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime() < 2 * 60_000);
-    const reschedNoContact = st.filter(t =>
-      new Date(t.updatedAt) > sevenDaysAgo &&
-      (!t.lastContactedAt || new Date(t.lastContactedAt) < sevenDaysAgo) &&
-      t.reminderDate
-    );
-    const disabledReminders = st.filter(t => t.reminderEnabled === false);
-    const ghostClients = st.filter(t => !t.lastContactedAt || new Date(t.lastContactedAt) < thirtyDaysAgo);
-    const noNotes = st.filter(t => !t.notes || t.notes.trim().length < 15);
-    const avgNoteLen = st.filter(t => t.notes && t.notes.trim().length > 0)
-      .reduce((acc, t, _, arr) => acc + t.notes!.trim().length / arr.length, 0);
-
-    let suspicionScore = 0;
-    suspicionScore += burstWindows.some(b => b.window === '10min' && b.count >= 5) ? 25 : 0;
-    suspicionScore += reschedNoContact.length * 3;
-    suspicionScore += disabledReminders.length * 4;
-    suspicionScore += neverUpdated.length * 2;
-    suspicionScore += noNotes.length * 2;
-    if (avgNoteLen < 20 && noNotes.length > 5) suspicionScore += 10;
-
-    return {
-      attendant: seller.name,
-      total: st.length,
-      suspicionScore,
-      verdict: suspicionScore >= 30 ? '🔴 ALTO RISCO — padrões fortes de fraude detectados'
-        : suspicionScore >= 15 ? '🟡 MÉDIO RISCO — comportamento suspeito, monitorar'
-        : '🟢 BAIXO RISCO — sem padrões críticos detectados',
-      burstDetection: burstWindows.length > 0 ? burstWindows : 'Nenhum burst detectado',
-      reschedNoContact: reschedNoContact.length,
-      disabledReminders: disabledReminders.length,
-      neverUpdated: neverUpdated.length,
-      ghostClients: ghostClients.length,
-      noNotes: noNotes.length,
-      avgNoteLength: Math.round(avgNoteLen),
-      topSuspiciousTasks: reschedNoContact.slice(0, 5).map(t => ({
-        id: t.id, title: t.title.slice(0, 60), updatedAt: t.updatedAt, lastContact: t.lastContactedAt
-      })),
-    };
-  }
-
-  if (name === 'get_all_sellers_summary') {
-    const now = new Date();
-    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
-    const pad2 = (n: number) => String(n).padStart(2, '0');
-
-    const [allSellers, allTasks, todaySessions] = await Promise.all([
-      db.select().from(sellers),
-      db.select().from(tasks),
-      db.select().from(workSessions).where(gte(workSessions.startedAt, todayStart)),
-    ]);
-
-    return allSellers.map(s => {
-      const st = allTasks.filter(t => t.assignedTo === s.name || t.userId === s.userId);
-      const overdue = st.filter(t => t.reminderDate && new Date(t.reminderDate) < now).length;
-      const ghost = st.filter(t => !t.lastContactedAt || new Date(t.lastContactedAt) < thirtyDaysAgo).length;
-      const disabled = st.filter(t => t.reminderEnabled === false).length;
-      const noNotes = st.filter(t => !t.notes || t.notes.trim().length < 15).length;
-
-      const sess = todaySessions
-        .filter(ws => ws.userId === s.userId)
-        .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())[0];
-
-      let sessionLine = 'não acessou hoje';
-      if (sess) {
-        const start = new Date(sess.startedAt);
-        const end = sess.endedAt ? new Date(sess.endedAt) : now;
-        const workedMs = Math.max(0, end.getTime() - start.getTime() - (sess.totalPausedMs ?? 0));
-        const hrs = Math.floor(workedMs / 3600000);
-        const mins = Math.floor((workedMs % 3600000) / 60000);
-        sessionLine = `entrada ${pad2(start.getHours())}:${pad2(start.getMinutes())}, ${hrs > 0 ? hrs + 'h' : ''}${mins}min, status=${sess.status}`;
-      }
-
-      let score = overdue * 2 + noNotes * 2 + disabled * 4 + ghost * 1;
-      return {
-        name: s.name,
-        total: st.length,
-        overdue,
-        ghost,
-        disabled,
-        noNotes,
-        score,
-        status: score >= 10 ? '🔴 Suspeito' : score >= 4 ? '🟡 Atenção' : '🟢 Normal',
-        session: sessionLine,
-      };
-    });
-  }
-
   return { error: `Ferramenta desconhecida: ${name}` };
 }
 
 // ── Context builder ───────────────────────────────────────────────────────────
 
 async function buildUserContext(userId: number, role: string): Promise<string> {
-  const cacheKey = `ctx:${role}:${userId}`;
-  const cached = contextCache.get(cacheKey);
-  if (cached && cached.expires > Date.now()) return cached.data;
-
   const now = new Date();
   const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
-  const twoHoursAgo = new Date(now.getTime() - 2 * 3600_000);
-  const oneDayAgo = new Date(now.getTime() - 86400_000);
-  const pad2 = (n: number) => String(n).padStart(2, '0');
-  const fmtMs = (ms: number) => {
-    const h = Math.floor(ms / 3600000);
-    const m = Math.floor((ms % 3600000) / 60000);
-    return h > 0 ? `${h}h${pad2(m)}min` : `${m}min`;
-  };
 
   const userTasks = role === 'admin'
     ? await db.select().from(tasks)
@@ -495,83 +557,52 @@ async function buildUserContext(userId: number, role: string): Promise<string> {
   const overdue = withReminder.filter(t => new Date(t.reminderDate!) < now);
   const highPriority = userTasks.filter(t => t.priority === 'high');
 
-  let context = `=== SISTEMA SAL VITA — SNAPSHOT (${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}) ===
-TOTAL: ${userTasks.length} tarefas | ${withReminder.length} com lembrete ativo | ${overdue.length} VENCIDAS | ${highPriority.length} alta prioridade
-VENCIDAS: ${overdue.slice(0, 5).map(t => `"${t.title.slice(0, 50)}"(${t.assignedTo ?? '-'})`).join(' | ') || 'nenhuma'}
+  let context = `
+=== DADOS REAIS DO SISTEMA (${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}) ===
+LEMBRETES: Total=${userTasks.length} | Com lembrete ativo=${withReminder.length} | Vencidos=${overdue.length} | Alta prioridade=${highPriority.length}
+VENCIDOS RECENTES:
+${overdue.slice(0, 5).map(t => `- "${t.title.slice(0, 60)}" (${t.assignedTo ?? 'sem atendente'})`).join('\n') || '- Nenhum vencido'}
 `;
 
   if (role === 'admin') {
-    const [allSellers, todaySessions, recentEdits, activeSessions] = await Promise.all([
-      db.select().from(sellers),
-      db.select().from(workSessions).where(gte(workSessions.startedAt, todayStart)),
-      db.select().from(tasks).where(gte(tasks.updatedAt, twoHoursAgo)).orderBy(desc(tasks.updatedAt)).limit(20),
-      db.select().from(workSessions).where(eq(workSessions.status, 'active')),
-    ]);
+    const allSellers = await db.select().from(sellers);
+    const todaySessions = await db.select().from(workSessions)
+      .where(gte(workSessions.startedAt, todayStart));
 
-    // Online now
-    const onlineNow = activeSessions.map(s => {
-      const sel = allSellers.find(x => x.userId === s.userId);
-      const mins = Math.floor((now.getTime() - new Date(s.startedAt).getTime()) / 60000);
-      return `${sel?.name ?? `uid:${s.userId}`}(${mins}min)`;
-    });
-    context += `\nONLINE AGORA (${onlineNow.length}): ${onlineNow.join(', ') || 'ninguém'}`;
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const fmtMs = (ms: number) => {
+      const h = Math.floor(ms / 3600000);
+      const m = Math.floor((ms % 3600000) / 60000);
+      return h > 0 ? `${h}h${pad2(m)}min` : `${m}min`;
+    };
 
-    // Suspicious recent activity
-    const recentlyDisabled = recentEdits.filter(t => t.reminderEnabled === false);
-    const editedNoNotes = recentEdits.filter(t => !t.notes || t.notes.trim().length < 15);
-    const editedNoContact = recentEdits.filter(t =>
-      !t.lastContactedAt || new Date(t.lastContactedAt) < oneDayAgo
-    );
-    context += `\nATIVIDADE ÚLTIMAS 2H: ${recentEdits.length} edições | ${recentlyDisabled.length} lembretes desativados | ${editedNoNotes.length} edições sem nota real | ${editedNoContact.length} editadas sem contato registrado`;
-    if (recentlyDisabled.length > 0) {
-      context += `\nLEMBRETES DESATIVADOS RECENTEMENTE: ${recentlyDisabled.slice(0, 5).map(t => `"${t.title.slice(0, 40)}"(${t.assignedTo ?? '-'})`).join(' | ')}`;
-    }
-
-    // Per-seller summary
-    context += `\n\nATENDENTES (${allSellers.length}):`;
+    const thirtyDaysAgoCtx = new Date(now.getTime() - 30 * 86400000);
+    context += `\nATENDENTES — TAREFAS E ACESSO HOJE (${allSellers.length}):\n`;
     for (const s of allSellers) {
       const st = userTasks.filter(t => t.assignedTo === s.name || t.userId === s.userId);
       const late = st.filter(t => t.reminderDate && new Date(t.reminderDate) < now).length;
-      const contactsToday = st.filter(t => t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart).length;
-      const ghost = st.filter(t => !t.lastContactedAt || new Date(t.lastContactedAt) < thirtyDaysAgo).length;
-      const disabled = st.filter(t => t.reminderEnabled === false).length;
-      const noNotes = st.filter(t => !t.notes || t.notes.trim().length < 15).length;
-      const neverUpdated = st.filter(t => new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime() < 2 * 60_000).length;
-
-      // Burst detection
-      const cSorted = st.filter(t => t.lastContactedAt)
-        .sort((a, b) => new Date(a.lastContactedAt!).getTime() - new Date(b.lastContactedAt!).getTime());
-      let burst = 0;
-      for (const t of cSorted) {
-        const base = new Date(t.lastContactedAt!).getTime();
-        const w = cSorted.filter(x => { const d = new Date(x.lastContactedAt!).getTime() - base; return d >= 0 && d <= 600_000; }).length;
-        if (w > burst) burst = w;
-      }
+      const contatos = st.filter(t => t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart).length;
+      const ghosts = st.filter(t => !t.lastContactedAt || new Date(t.lastContactedAt) < thirtyDaysAgoCtx).length;
 
       const sess = todaySessions.filter(ws => ws.userId === s.userId)
         .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())[0];
-      let sessLine = 'ausente';
+
+      let sessionInfo = 'não acessou hoje';
       if (sess) {
         const start = new Date(sess.startedAt);
         const end = sess.endedAt ? new Date(sess.endedAt) : now;
-        let pMs = sess.totalPausedMs ?? 0;
-        if (sess.status === 'paused' && sess.pausedAt) pMs += now.getTime() - new Date(sess.pausedAt).getTime();
-        sessLine = `entrada=${pad2(start.getHours())}:${pad2(start.getMinutes())},trabalhado=${fmtMs(Math.max(0, end.getTime()-start.getTime()-pMs))},status=${sess.status}`;
+        const elapsed = end.getTime() - start.getTime();
+        let pausedMs = sess.totalPausedMs ?? 0;
+        if (sess.status === 'paused' && sess.pausedAt) pausedMs += now.getTime() - new Date(sess.pausedAt).getTime();
+        const workedMs = Math.max(0, elapsed - pausedMs);
+        const entrada = `${pad2(start.getHours())}:${pad2(start.getMinutes())}`;
+        sessionInfo = `entrada=${entrada}, trabalhado=${fmtMs(workedMs)}, pausas=${fmtMs(pausedMs)}, status=${sess.status}`;
       }
 
-      const fraudFlags = [
-        burst >= 5 ? `⚠️BURST(${burst})` : null,
-        disabled > 0 ? `DESATIV(${disabled})` : null,
-        neverUpdated > 3 ? `NUNCA_EDIT(${neverUpdated})` : null,
-      ].filter(Boolean).join(' ');
-
-      context += `\n• ${s.name}: ${st.length}c, venc=${late}, hoje=${contactsToday}, ghost=${ghost}, semNota=${noNotes} | ${sessLine}${fraudFlags ? ` | 🚨${fraudFlags}` : ''}`;
+      context += `- ${s.name}: ${st.length} clientes, ${late} vencidos, contatos_hoje=${contatos}, ghost_30d=${ghosts} | sessão: ${sessionInfo}\n`;
     }
   }
-
-  const result = context;
-  contextCache.set(cacheKey, { data: result, expires: Date.now() + CONTEXT_TTL });
-  return result;
+  return context;
 }
 
 
@@ -623,9 +654,9 @@ export const aiRouter = router({
           : undefined;
         const apiKey = input.apiKey || envKey || '';
         const baseURL = BASE_URLS[provider] ?? BASE_URLS.groq;
+        const isAdmin = ctx.user.role === 'admin';
         // Admin chat uses large context + tool calls — small models (llama-3.1-8b-instant, 6k TPM)
         // will always hit rate limits. Force the 70b model for admin regardless of client settings.
-        const isAdmin = ctx.user.role === 'admin';
         const model = isAdmin
           ? DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile'
           : (input.model ?? DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile');
@@ -641,74 +672,66 @@ export const aiRouter = router({
           return { reply };
         }
 
+        // Keep history small to stay under TPM limits (4 turns = 8 messages)
         const history = await db.select().from(chatMessages)
           .where(eq(chatMessages.userId, ctx.user.id))
           .orderBy(desc(chatMessages.createdAt))
-          .limit(8);
+          .limit(4);
         console.log('[AI_CHAT] history:', history.length, 'rows');
-
-        // Force fresh context if user explicitly asks for current status
-        const needsFresh = /agora|atual|hoje|online|atividade|suspeito/i.test(input.message);
-        if (needsFresh) contextCache.delete(`ctx:${ctx.user.role}:${ctx.user.id}`);
 
         const userContext = await buildUserContext(ctx.user.id, ctx.user.role);
         console.log('[AI_CHAT] context built');
 
         const systemPrompt = isAdmin
-          ? `Você é o sistema de inteligência interna da empresa Sal Vita — Sal do Brasil. Você é os OLHOS do gestor dentro do sistema.
-Você tem acesso COMPLETO a todos os dados e pode EXECUTAR ações reais.
-
-${userContext}
-
-FERRAMENTAS DISPONÍVEIS — USE PROATIVAMENTE:
-- get_system_activity: O QUE ESTÁ ACONTECENDO AGORA — edições recentes, quem está online, lembretes desativados, atividade suspeita
-- get_all_sellers_summary: VISÃO GERAL de todos os atendentes com scores de suspeita em tempo real
-- analyze_fraud_patterns: ANÁLISE PROFUNDA de fraude/negligência de um atendente específico
-- list_tasks: listar lembretes/status de um atendente específico
-- list_sessions: histórico de sessões de trabalho (use "todos" para ver todos)
-- reschedule_tasks: REDISTRIBUIR lembretes vencidos de um atendente em dias úteis
-
-QUANDO USAR CADA FERRAMENTA:
-- Perguntou "o que está acontecendo?", "tem algo suspeito?", "quem está online?" → get_system_activity
-- Perguntou sobre o time geral, ranking, quem está pior → get_all_sellers_summary
-- Perguntou sobre fraude, simulação, comportamento suspeito de alguém específico → analyze_fraud_patterns
-- Pediu para reagendar, redistribuir lembretes → reschedule_tasks
-- Pediu histórico de acesso, horas trabalhadas → list_sessions
-- Pediu dados de tarefas de alguém → list_tasks
-
+          ? `Gestor Sal Vita. Ferramentas disponíveis:
+- list_tasks: resumo de lembretes (contagens, vencidos)
+- read_notes: lê o CONTEÚDO REAL das anotações — use IMEDIATAMENTE para qualquer pergunta sobre o que foi dito/anotado/registrado
+  · "anotações de hoje" / "o que anotou hoje" / "atividade de hoje" → today_updated_only=true, only_with_notes=false
+  · "contatos de hoje" / "quem contatou hoje" → today_contacts_only=true, only_with_notes=false
+  · "lembretes agendados para hoje" (data = hoje) → today_reminders_only=true, only_with_notes=false
+  · sem filtro de data → retorna os mais recentes
+- find_suspicious_notes: detecta fraudes — notas vazias, copy-paste, salvos sem editar
+- search_knowledge: busca na base de conhecimento da empresa — use quando precisar de regras do negócio, scripts, políticas, metas, ou orientações de como avaliar o trabalho dos atendentes
+- list_sessions: sessões/acesso do atendente
+- reschedule_tasks: redistribui lembretes vencidos
 REGRAS ABSOLUTAS:
-- Sempre que há dado disponível, USE a ferramenta — não responda "não tenho acesso"
-- Após executar ferramenta, reporte os DADOS REAIS retornados
-- Se algo estiver suspeito no contexto, ALERTE proativamente sem esperar ser perguntado
-- Use os dados de contexto acima que já estão atualizados
-- Seja direto, preciso, use emojis quando relevante, responda em português brasileiro
-- Se o contexto mostrar fraudes ou problemas graves, alerte IMEDIATAMENTE`
-          : `Você é um co-piloto de performance para atendentes da empresa Sal Vita — Sal do Brasil.
-Seu papel é INFORMATIVO — você não executa ações no sistema.
-
+1. NUNCA diga "não consigo ver" — sempre chame read_notes
+2. Para perguntas de "hoje", use today_updated_only=true (atividade geral de hoje)
+3. Mostre os dados reais do banco, não invente respostas
+4. Quando precisar de contexto sobre processos da empresa, chame search_knowledge primeiro
+Seja direto; português BR; emojis.
+${userContext}`
+          : `Assistente Sal Vita — atendente. Apenas informativo, sem executar ações.
 ${userContext}
-
-SUAS FUNÇÕES:
-1. Analisar sua própria performance com base nos dados acima
-2. Sugerir prioridades para o dia: quais clientes contatar primeiro
-3. Dicas de abordagem para clientes B2B de sal
-4. Alertar sobre lembretes vencidos e clientes em risco de churn
-5. Lembrar sobre a importância de registrar contatos e anotações
-
-REGRAS:
-- Use apenas os dados do contexto acima (são os seus dados)
-- Seja objetivo, motivador, use emojis, responda em português brasileiro
-- Não mencione outros atendentes — foque apenas na performance do usuário atual`;
+Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emojis, português BR.`;
 
         const messages = [
           { role: 'system', content: systemPrompt },
           ...history.reverse().map(m => ({ role: m.role, content: m.content })),
         ];
 
-        console.log('[AI_CHAT] calling LLM, isAdmin:', isAdmin);
-        const reply = isAdmin
-          ? await callLLMWithTools(apiKey, baseURL, model, messages, TOOLS, 1200)
-          : await callLLM(apiKey, baseURL, model, messages, 800, 0.6);
+        // Try primary provider, auto-fallback to the other on 429
+        console.log('[AI_CHAT] calling LLM, isAdmin:', isAdmin, 'provider:', provider);
+        let reply: string;
+        try {
+          reply = isAdmin
+            ? await callLLMWithTools(apiKey, baseURL, model, messages, TOOLS, 1000)
+            : await callLLM(apiKey, baseURL, model, messages, 700, 0.6);
+        } catch (primaryErr: any) {
+          if (isRateLimit(primaryErr)) {
+            const fb = getFallbackConfig(provider);
+            if (fb) {
+              console.log('[AI_CHAT] 429 on', provider, '— falling back to', fb.model);
+              reply = isAdmin
+                ? await callLLMWithTools(fb.apiKey, fb.baseURL, fb.model, messages, TOOLS, 1000)
+                : await callLLM(fb.apiKey, fb.baseURL, fb.model, messages, 700, 0.6);
+            } else {
+              throw primaryErr;
+            }
+          } else {
+            throw primaryErr;
+          }
+        }
         console.log('[AI_CHAT] LLM OK, reply len:', reply.length);
 
         await db.insert(chatMessages).values({ userId: ctx.user.id, content: reply, role: 'assistant' });
@@ -785,46 +808,26 @@ REGRAS:
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
 
     const report = allSellers.map(seller => {
-      // All tasks assigned to this attendant (by name or userId)
       const st = allTasks.filter(t =>
         t.assignedTo === seller.name || t.userId === seller.userId
       );
       const total = st.length;
-
-      // Active reminders (enabled with a date set)
       const withReminder = st.filter(t => t.reminderDate && t.reminderEnabled !== false);
-
-      // Overdue: reminder date passed and task was never rescheduled (still old date)
       const overdue = withReminder.filter(t => new Date(t.reminderDate!) < now);
-
-      // No notes: task has no meaningful notes written (< 15 chars)
       const noNotes = st.filter(t => !t.notes || t.notes.trim().length < 15);
-
-      // Disabled reminders: attendant manually turned off the reminder
       const disabledReminders = st.filter(t => t.reminderEnabled === false);
-
-      // No reminder date: task exists but no date was ever set
       const noReminderDate = st.filter(t => !t.reminderDate);
-
-      // Never updated: task was imported/created but notes/date never touched
-      // (updatedAt is within 2 minutes of createdAt)
       const neverUpdated = st.filter(t => {
         const diff = new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime();
         return diff < 2 * 60 * 1000;
       });
-
-      // Ghost clients: no real contact in 30+ days (lastContactedAt null or stale)
       const ghostClients = st.filter(t =>
         !t.lastContactedAt || new Date(t.lastContactedAt) < thirtyDaysAgo
       );
-
-      // Note quality: average chars in notes for tasks that have notes
       const notedTasks = st.filter(t => t.notes && t.notes.trim().length > 0);
       const avgNoteLen = notedTasks.length > 0
         ? Math.round(notedTasks.reduce((acc, t) => acc + t.notes!.trim().length, 0) / notedTasks.length)
         : 0;
-
-      // Burst detection: ≥5 contacts logged within any 10-min window → fraud signal
       const contactedSorted = st
         .filter(t => t.lastContactedAt)
         .sort((a, b) => new Date(a.lastContactedAt!).getTime() - new Date(b.lastContactedAt!).getTime());
@@ -838,15 +841,11 @@ REGRAS:
         if (inWindow > burstMax) burstMax = inWindow;
       }
       const hasBurst = burstMax >= 5;
-
-      // Rescheduled without real contact: updatedAt recent but lastContactedAt old/null
       const reschedNoContact = st.filter(t =>
         new Date(t.updatedAt) > sevenDaysAgo
         && (!t.lastContactedAt || new Date(t.lastContactedAt) < sevenDaysAgo)
         && t.reminderDate
       );
-
-      // Suspicion score (recurring model — no completion metric)
       let suspicionScore = 0;
       suspicionScore += overdue.length * 2;
       suspicionScore += noNotes.length * 3;

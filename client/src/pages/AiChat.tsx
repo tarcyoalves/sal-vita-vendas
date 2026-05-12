@@ -16,6 +16,7 @@ export default function AiChat() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const utils = trpc.useUtils();
 
   const chatMutation = trpc.ai.chat.useMutation();
   const { data: chatHistory = [] } = trpc.ai.history.useQuery();
@@ -26,6 +27,8 @@ export default function AiChat() {
   }, [messages]);
 
   useEffect(() => {
+    // Don't overwrite optimistic local state while a message is in flight
+    if (isLoading) return;
     if (chatHistory.length > 0) {
       setMessages(chatHistory.map((msg: any) => ({
         role: msg.role as "user" | "assistant",
@@ -39,7 +42,7 @@ export default function AiChat() {
         timestamp: new Date(),
       }]);
     }
-  }, [chatHistory.length]);
+  }, [chatHistory]);
 
   const handleClearHistory = async () => {
     if (!confirm("Limpar todo o histórico do chat?")) return;
@@ -56,7 +59,6 @@ export default function AiChat() {
         : ['groq', 'gemini'];
       for (const id of order) {
         const c = configs[id];
-        // model intentionally not returned — server selects based on user role and provider defaults
         if (c?.status === 'configured') return { apiKey: c.apiKey, provider: c.provider };
       }
     } catch { /* ignore */ }
@@ -74,6 +76,8 @@ export default function AiChat() {
       const cfg = getApiConfig();
       const response = await chatMutation.mutateAsync({ message: currentInput, apiKey: cfg?.apiKey, provider: cfg?.provider });
       setMessages(prev => [...prev, { role: "assistant", content: response.reply, timestamp: new Date() }]);
+      // Sync history with DB so navigating away and back restores the full conversation
+      utils.ai.history.invalidate();
     } catch (error: any) {
       const errMsg = error?.message ?? "Erro ao processar mensagem";
       toast.error(errMsg);
@@ -116,7 +120,7 @@ export default function AiChat() {
           <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()} placeholder="Digite sua mensagem..." className="flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" disabled={isLoading} />
           <Button onClick={handleSendMessage} disabled={isLoading || !input.trim()} className="px-5 rounded-xl bg-blue-600 hover:bg-blue-700">{isLoading ? "⏳" : "📤"}</Button>
         </div>
-        <p className="text-xs text-center text-gray-400 mt-2">Powered by Groq · Llama 3</p>
+        <p className="text-xs text-center text-gray-400 mt-2">Powered by Groq · Llama 3.3 70B</p>
       </div>
     </div>
   );
