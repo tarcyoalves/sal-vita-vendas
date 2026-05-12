@@ -49442,7 +49442,10 @@ var allowedOrigins = (process.env.SALLOG_ALLOWED_ORIGINS ?? "").split(",").filte
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use((0, import_cors.default)({
   origin: (origin, cb) => {
-    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== "production") return cb(null, true);
+    if (!origin) return cb(null, true);
+    if (process.env.NODE_ENV !== "production") return cb(null, true);
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+    if (/\.vercel\.app$/.test(origin)) return cb(null, true);
     cb(new Error("Not allowed by CORS"));
   },
   credentials: true
