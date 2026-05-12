@@ -51,13 +51,13 @@ export default function AiChat() {
   const getApiConfig = (preferProvider?: string) => {
     try {
       const configs = JSON.parse(localStorage.getItem('aiConfigs') || '{}') as Record<string, any>;
-      // Gemini is the leader — always prefer it when configured
       const order = preferProvider
         ? [preferProvider, 'groq', 'gemini']
         : ['groq', 'gemini'];
       for (const id of order) {
         const c = configs[id];
-        if (c?.status === 'configured') return { apiKey: c.apiKey, provider: c.provider, model: c.model };
+        // model intentionally not returned — server selects based on user role and provider defaults
+        if (c?.status === 'configured') return { apiKey: c.apiKey, provider: c.provider };
       }
     } catch { /* ignore */ }
     return null;
@@ -72,7 +72,7 @@ export default function AiChat() {
     setIsLoading(true);
     try {
       const cfg = getApiConfig();
-      const response = await chatMutation.mutateAsync({ message: currentInput, apiKey: cfg?.apiKey, provider: cfg?.provider, model: cfg?.model });
+      const response = await chatMutation.mutateAsync({ message: currentInput, apiKey: cfg?.apiKey, provider: cfg?.provider });
       setMessages(prev => [...prev, { role: "assistant", content: response.reply, timestamp: new Date() }]);
     } catch (error: any) {
       const errMsg = error?.message ?? "Erro ao processar mensagem";

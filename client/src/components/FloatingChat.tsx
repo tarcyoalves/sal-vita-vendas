@@ -5,11 +5,11 @@ import { toast } from 'sonner';
 
 interface Msg { role: 'user' | 'assistant'; content: string; ts: Date; }
 
-function getStoredApiConfig(): { apiKey: string; provider: string; model: string } | null {
+function getStoredApiConfig(): { apiKey: string; provider: string } | null {
   try {
     const configs = JSON.parse(localStorage.getItem('aiConfigs') || '{}');
     const entry = Object.values(configs as Record<string, any>).find((c: any) => c.status === 'configured');
-    if (entry) return { apiKey: (entry as any).apiKey, provider: (entry as any).provider, model: (entry as any).model };
+    if (entry) return { apiKey: (entry as any).apiKey, provider: (entry as any).provider };
   } catch { /* ignore */ }
   return null;
 }
@@ -55,7 +55,7 @@ export default function FloatingChat() {
         message: text,
         apiKey: cfg?.apiKey,
         provider: cfg?.provider,
-        model: cfg?.model,
+        // model intentionally omitted — server picks the correct model based on user role
       });
       setMsgs(prev => [...prev, { role: 'assistant', content: res.reply, ts: new Date() }]);
     } catch (e: any) {
