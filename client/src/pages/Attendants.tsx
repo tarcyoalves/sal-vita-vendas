@@ -48,6 +48,7 @@ export default function Attendants() {
   const [resetInfo, setResetInfo] = useState<{ name: string; email: string; password: string } | null>(null);
 
   const { data: attendants = [], isLoading, refetch } = trpc.sellers.listWithRole.useQuery();
+  const { data: fraudAlerts = [] } = trpc.tasks.fraudAlerts.useQuery(undefined, { refetchInterval: 60_000 });
   const createMutation = trpc.sellers.create.useMutation();
   const updateMutation = trpc.sellers.update.useMutation();
   const deleteMutation = trpc.sellers.delete.useMutation();
@@ -171,6 +172,19 @@ export default function Attendants() {
 
   return (
     <div className="p-4 md:p-6 space-y-4">
+
+        {/* Fraud alerts banner */}
+        {fraudAlerts.length > 0 && (
+          <div className="bg-red-50 border border-red-300 rounded-xl p-4 space-y-2">
+            <p className="font-semibold text-red-800 flex items-center gap-2">🚨 Alertas de comportamento suspeito detectados agora</p>
+            {fraudAlerts.map((alert, i) => (
+              <div key={i} className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${alert.severity === 'high' ? 'bg-red-100 text-red-800' : 'bg-orange-100 text-orange-800'}`}>
+                <span>{alert.severity === 'high' ? '🔴' : '🟠'}</span>
+                <strong>{alert.sellerName}</strong>: {alert.message}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Reset password modal */}
         {resetInfo && (
@@ -302,13 +316,19 @@ export default function Attendants() {
           <Card><CardContent className="pt-6 text-center text-gray-500">Nenhum atendente cadastrado</CardContent></Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {attendants.map((attendant: Attendant) => (
-              <Card key={attendant.id}>
+            {attendants.map((attendant: Attendant) => {
+              const alert = fraudAlerts.find(a => a.sellerName === attendant.name);
+              return (
+              <Card key={attendant.id} className={alert ? 'border-red-400' : ''}>
                 <CardContent className="pt-5">
                   <div className="space-y-3">
                     <div>
-                      <h3 className="font-semibold text-lg">{attendant.name}</h3>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-semibold text-lg">{attendant.name}</h3>
+                        {alert && <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${alert.severity === 'high' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>{alert.severity === 'high' ? '🔴 ALERTA' : '🟠 Suspeito'}</span>}
+                      </div>
                       <p className="text-sm text-gray-500">{attendant.email}</p>
+                      {alert && <p className="text-xs text-red-600 mt-1">⚠️ {alert.message}</p>}
                     </div>
                     <div className="space-y-1 text-sm text-gray-600">
                       {attendant.phone && <p>📱 {attendant.phone}</p>}
@@ -355,7 +375,8 @@ export default function Attendants() {
                   </div>
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         )}
 
