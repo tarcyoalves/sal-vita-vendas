@@ -47,7 +47,9 @@ async function callLLMWithTools(
     });
     if (!res.ok) {
       const t = await res.text().catch(() => '');
-      throw new Error(`LLM API ${res.status}: ${t.slice(0, 200)}`);
+      const err = new Error(`LLM API ${res.status}: ${t.slice(0, 300)}`);
+      (err as any).status = res.status;
+      throw err;
     }
     const data = await res.json() as any;
     const msg = data?.choices?.[0]?.message;
@@ -76,10 +78,26 @@ async function callLLM(apiKey: string, baseURL: string, model: string, messages:
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`LLM API error ${res.status}: ${text.slice(0, 200)}`);
+    const err = new Error(`LLM API ${res.status}: ${text.slice(0, 300)}`);
+    (err as any).status = res.status;
+    throw err;
   }
   const data = await res.json() as any;
   return data?.choices?.[0]?.message?.content ?? 'Sem resposta da IA.';
+}
+
+function isRateLimit(err: any): boolean {
+  return err?.status === 429 || /429|rate.?limit|quota/i.test(err?.message ?? '');
+}
+
+function getFallbackConfig(primaryProvider: string): { apiKey: string; baseURL: string; model: string } | null {
+  if (primaryProvider !== 'groq' && process.env.GROQ_API_KEY) {
+    return { apiKey: process.env.GROQ_API_KEY, baseURL: BASE_URLS.groq, model: DEFAULT_MODELS.groq };
+  }
+  if (primaryProvider !== 'gemini' && process.env.GEMINI_API_KEY) {
+    return { apiKey: process.env.GEMINI_API_KEY, baseURL: BASE_URLS.gemini, model: DEFAULT_MODELS.gemini };
+  }
+  return null;
 }
 
 // ── Tool definitions (OpenAI-compatible) ─────────────────────────────────────
@@ -227,7 +245,7 @@ async function executeTool(name: string, args: any): Promise<any> {
     let currentDay = nextBusinessDay(now);
     let countToday = 0;
     let updated = 0;
-    const minutesBetween = Math.floor((9 * 60) / Math.max(perDay, 1)); // spread 8h→17h
+    const minutesBetween = Math.floor((9 * 60) / Math.max(perDay, 1));
 
     for (const task of overdue) {
       if (countToday >= perDay) {
@@ -390,58 +408,51 @@ export const aiRouter = router({
           return { reply };
         }
 
+        // Keep history small to stay under TPM limits (4 turns = 8 messages)
         const history = await db.select().from(chatMessages)
           .where(eq(chatMessages.userId, ctx.user.id))
           .orderBy(desc(chatMessages.createdAt))
-          .limit(8);
+          .limit(4);
         console.log('[AI_CHAT] history:', history.length, 'rows');
 
         const userContext = await buildUserContext(ctx.user.id, ctx.user.role);
         console.log('[AI_CHAT] context built');
 
         const systemPrompt = isAdmin
-          ? `Você é um assistente de gestão de equipes de vendas da empresa Sal Vita — Sal do Brasil.
-Você tem acesso a ferramentas que permitem EXECUTAR ações reais no sistema (não apenas descrever).
-
+          ? `Gestor Sal Vita. Ferramentas disponíveis: list_tasks, list_sessions, reschedule_tasks.
+Regras: use ferramentas quando pedido; execute reschedule quando pedirem reagendar; seja direto; português BR; emojis.
+${userContext}`
+          : `Assistente Sal Vita — atendente. Apenas informativo, sem executar ações.
 ${userContext}
-
-FERRAMENTAS DISPONÍVEIS (use quando o usuário pedir):
-- list_tasks: listar lembretes/status de um atendente
-- list_sessions: ver histórico de acesso/sessões de trabalho — quando entrou, quanto trabalhou, pausas, últimos 7 dias. Use "todos" para ver todos.
-- reschedule_tasks: REDISTRIBUIR lembretes vencidos de um atendente em dias úteis futuros
-
-INSTRUÇÕES CRÍTICAS:
-- Quando o usuário pedir para "reagendar", "redistribuir", "reorganizar" lembretes de algum atendente → USE a ferramenta reschedule_tasks imediatamente. NÃO apenas descreva — EXECUTE.
-- Quando perguntarem sobre acesso, presença, horas trabalhadas, tempo ativo, ociosidade → USE list_sessions.
-- Quando precisar ver os dados de tarefas de um atendente → USE list_tasks primeiro.
-- Após executar uma ferramenta, informe o resultado real retornado por ela.
-- Use os dados reais do contexto acima nas análises. O contexto já inclui dados de sessão de HOJE.
-- Seja direto, use emojis, responda em português brasileiro.`
-          : `Você é um assistente de suporte ao atendente da empresa Sal Vita — Sal do Brasil.
-Seu papel é INFORMATIVO apenas — você não pode executar ações no sistema.
-
-${userContext}
-
-SUAS FUNÇÕES:
-1. Analisar sua própria performance com base nos dados acima
-2. Sugerir prioridades para o dia/semana
-3. Dicas de abordagem com clientes de sal B2B
-4. Alertar sobre lembretes vencidos
-
-REGRAS:
-- Apenas informações e dicas — sem execução de ações
-- Use os dados reais do contexto
-- Seja objetivo, use emojis, responda em português brasileiro`;
+Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emojis, português BR.`;
 
         const messages = [
           { role: 'system', content: systemPrompt },
           ...history.reverse().map(m => ({ role: m.role, content: m.content })),
         ];
 
-        console.log('[AI_CHAT] calling LLM, isAdmin:', isAdmin);
-        const reply = isAdmin
-          ? await callLLMWithTools(apiKey, baseURL, model, messages, TOOLS, 1200)
-          : await callLLM(apiKey, baseURL, model, messages, 800, 0.6);
+        // Try primary provider, auto-fallback to the other on 429
+        console.log('[AI_CHAT] calling LLM, isAdmin:', isAdmin, 'provider:', provider);
+        let reply: string;
+        try {
+          reply = isAdmin
+            ? await callLLMWithTools(apiKey, baseURL, model, messages, TOOLS, 1000)
+            : await callLLM(apiKey, baseURL, model, messages, 700, 0.6);
+        } catch (primaryErr: any) {
+          if (isRateLimit(primaryErr)) {
+            const fb = getFallbackConfig(provider);
+            if (fb) {
+              console.log('[AI_CHAT] 429 on', provider, '— falling back to', fb.model);
+              reply = isAdmin
+                ? await callLLMWithTools(fb.apiKey, fb.baseURL, fb.model, messages, TOOLS, 1000)
+                : await callLLM(fb.apiKey, fb.baseURL, fb.model, messages, 700, 0.6);
+            } else {
+              throw primaryErr;
+            }
+          } else {
+            throw primaryErr;
+          }
+        }
         console.log('[AI_CHAT] LLM OK, reply len:', reply.length);
 
         await db.insert(chatMessages).values({ userId: ctx.user.id, content: reply, role: 'assistant' });
@@ -518,46 +529,26 @@ REGRAS:
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
 
     const report = allSellers.map(seller => {
-      // All tasks assigned to this attendant (by name or userId)
       const st = allTasks.filter(t =>
         t.assignedTo === seller.name || t.userId === seller.userId
       );
       const total = st.length;
-
-      // Active reminders (enabled with a date set)
       const withReminder = st.filter(t => t.reminderDate && t.reminderEnabled !== false);
-
-      // Overdue: reminder date passed and task was never rescheduled (still old date)
       const overdue = withReminder.filter(t => new Date(t.reminderDate!) < now);
-
-      // No notes: task has no meaningful notes written (< 15 chars)
       const noNotes = st.filter(t => !t.notes || t.notes.trim().length < 15);
-
-      // Disabled reminders: attendant manually turned off the reminder
       const disabledReminders = st.filter(t => t.reminderEnabled === false);
-
-      // No reminder date: task exists but no date was ever set
       const noReminderDate = st.filter(t => !t.reminderDate);
-
-      // Never updated: task was imported/created but notes/date never touched
-      // (updatedAt is within 2 minutes of createdAt)
       const neverUpdated = st.filter(t => {
         const diff = new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime();
         return diff < 2 * 60 * 1000;
       });
-
-      // Ghost clients: no real contact in 30+ days (lastContactedAt null or stale)
       const ghostClients = st.filter(t =>
         !t.lastContactedAt || new Date(t.lastContactedAt) < thirtyDaysAgo
       );
-
-      // Note quality: average chars in notes for tasks that have notes
       const notedTasks = st.filter(t => t.notes && t.notes.trim().length > 0);
       const avgNoteLen = notedTasks.length > 0
         ? Math.round(notedTasks.reduce((acc, t) => acc + t.notes!.trim().length, 0) / notedTasks.length)
         : 0;
-
-      // Burst detection: ≥5 contacts logged within any 10-min window → fraud signal
       const contactedSorted = st
         .filter(t => t.lastContactedAt)
         .sort((a, b) => new Date(a.lastContactedAt!).getTime() - new Date(b.lastContactedAt!).getTime());
@@ -571,15 +562,11 @@ REGRAS:
         if (inWindow > burstMax) burstMax = inWindow;
       }
       const hasBurst = burstMax >= 5;
-
-      // Rescheduled without real contact: updatedAt recent but lastContactedAt old/null
       const reschedNoContact = st.filter(t =>
         new Date(t.updatedAt) > sevenDaysAgo
         && (!t.lastContactedAt || new Date(t.lastContactedAt) < sevenDaysAgo)
         && t.reminderDate
       );
-
-      // Suspicion score (recurring model — no completion metric)
       let suspicionScore = 0;
       suspicionScore += overdue.length * 2;
       suspicionScore += noNotes.length * 3;
