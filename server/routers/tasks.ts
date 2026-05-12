@@ -90,7 +90,7 @@ export const tasksRouter = router({
           .from(tasks)
           .where(and(eq(tasks.userId, ctx.user.id), isNotNull(tasks.lastContactedAt), gte(tasks.lastContactedAt, tenMinAgo)));
         burstCount = Number(burstRow?.cnt ?? 0);
-        burstWarning = burstCount >= 5;
+        burstWarning = burstCount >= 10;
       }
       return { ...updated, burstWarning, burstCount };
     }),
@@ -130,13 +130,13 @@ export const tasksRouter = router({
     ]);
     const alerts: { sellerName: string; type: string; message: string; severity: 'high' | 'medium'; count: number }[] = [];
     for (const row of burstRows) {
-      if (Number(row.cnt) >= 5) {
+      if (Number(row.cnt) >= 10) {
         const seller = allSellers.find(s => s.userId === row.userId);
         if (seller) alerts.push({ sellerName: seller.name, type: 'burst', message: `${row.cnt} contatos em menos de 10 minutos`, severity: 'high', count: Number(row.cnt) });
       }
     }
     for (const row of hourRows) {
-      if (Number(row.cnt) >= 20) {
+      if (Number(row.cnt) >= 45) {
         const seller = allSellers.find(s => s.userId === row.userId);
         if (seller && !alerts.some(a => a.sellerName === seller.name)) {
           alerts.push({ sellerName: seller.name, type: 'burst_hour', message: `${row.cnt} contatos em menos de 1 hora`, severity: 'medium', count: Number(row.cnt) });
