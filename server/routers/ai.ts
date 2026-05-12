@@ -121,15 +121,26 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'read_notes',
-      description: 'Lê o conteúdo completo das anotações/observações dos lembretes de um atendente. SEMPRE use esta ferramenta quando: o usuário perguntar o que os clientes falaram, o que foi dito em cada contato, as anotações do atendente, o que foi registrado, o que o atendente escreveu, ou qualquer variação de "o que cada um falou / disse / registrou".',
+      description: `Lê o conteúdo completo das anotações/observações dos lembretes de um atendente.
+
+QUANDO USAR: sempre que o usuário perguntar sobre anotações, observações, o que foi dito, o que cada cliente falou, o que foi registrado, o que o atendente escreveu, o que aconteceu nos contatos, ou similares.
+
+QUAL FILTRO DE DATA USAR:
+- Pergunta sobre "anotações de hoje" / "o que anotou hoje" / "atividade de hoje" → use today_updated_only=true (mostra tudo que foi atualizado hoje)
+- Pergunta sobre "contatos feitos hoje" / "quem ele contatou hoje" → use today_contacts_only=true
+- Pergunta sobre "lembretes agendados para hoje" (data de lembrete = hoje) → use today_reminders_only=true
+- Sem filtro de data → retorna os mais recentes independente do dia
+
+IMPORTANTE: Quando usar qualquer filtro de hoje, passe também only_with_notes=false para ver TODOS os registros de hoje, mesmo os sem anotação.`,
       parameters: {
         type: 'object',
         properties: {
           attendant_name: { type: 'string', description: 'Nome do atendente (ex: "Matheus")' },
           limit: { type: 'number', description: 'Quantos lembretes retornar (padrão: 30, máx: 100)' },
-          only_with_notes: { type: 'boolean', description: 'Se true, retorna apenas lembretes que têm anotação. Se false, retorna todos incluindo sem anotação.' },
-          today_contacts_only: { type: 'boolean', description: 'Se true, filtra apenas contatos realizados hoje (lastContactedAt de hoje). Use quando o usuário perguntar sobre contatos de hoje.' },
-          today_reminders_only: { type: 'boolean', description: 'Se true, filtra apenas lembretes agendados para hoje (reminderDate de hoje). Use quando o usuário perguntar o que foi agendado hoje.' },
+          only_with_notes: { type: 'boolean', description: 'Se true, retorna apenas lembretes com anotação. Se false (recomendado com filtros de hoje), retorna todos.' },
+          today_updated_only: { type: 'boolean', description: 'Se true, mostra apenas registros atualizados hoje. USE ESTE para "anotações de hoje", "o que anotou hoje", "atividade de hoje".' },
+          today_contacts_only: { type: 'boolean', description: 'Se true, filtra apenas contatos realizados hoje (lastContactedAt de hoje). Use para "quem ele contatou hoje".' },
+          today_reminders_only: { type: 'boolean', description: 'Se true, filtra apenas lembretes com data de lembrete = hoje (reminderDate). Use APENAS para "lembretes agendados para hoje".' },
         },
         required: ['attendant_name'],
       },
@@ -206,9 +217,14 @@ async function executeTool(name: string, args: any): Promise<any> {
   if (name === 'read_notes') {
     const name_ = String(args.attendant_name ?? '');
     const limit = Math.min(Number(args.limit ?? 30), 100);
-    const onlyWithNotes = args.only_with_notes !== false;
+    const todayUpdatedOnly = args.today_updated_only === true;
     const todayContactsOnly = args.today_contacts_only === true;
     const todayRemindersOnly = args.today_reminders_only === true;
+    // When using any today filter, default only_with_notes to false so all activity is visible
+    const usingTodayFilter = todayUpdatedOnly || todayContactsOnly || todayRemindersOnly;
+    const onlyWithNotes = args.only_with_notes !== undefined
+      ? args.only_with_notes === true
+      : !usingTodayFilter;
 
     const seller = (await db.select().from(sellers)).find(
       s => s.name.toLowerCase().includes(name_.toLowerCase())
@@ -228,7 +244,12 @@ async function executeTool(name: string, args: any): Promise<any> {
       new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     );
 
-    // Apply filters
+    // Apply filters — these are OR'd: any today activity qualifies
+    if (todayUpdatedOnly) {
+      sorted = sorted.filter(t =>
+        new Date(t.updatedAt) >= todayStart && new Date(t.updatedAt) <= todayEnd
+      );
+    }
     if (todayContactsOnly) {
       sorted = sorted.filter(t =>
         t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart && new Date(t.lastContactedAt) <= todayEnd
@@ -621,13 +642,20 @@ export const aiRouter = router({
 
         const systemPrompt = isAdmin
           ? `Gestor Sal Vita. Ferramentas disponíveis:
-- list_tasks: resumo de lembretes de um atendente (contagens, vencidos)
-- read_notes: lê o CONTEÚDO REAL das anotações de cada lembrete — CHAME IMEDIATAMENTE quando: "o que cada um falou", "o que foi dito", "o que ela/ele escreveu", "as observações", "o que foi registrado", "leia as notas", "o que anotou" ou qualquer pergunta sobre o conteúdo dos contatos. Passe today_contacts_only=true para filtrar contatos de hoje; today_reminders_only=true para lembretes de hoje.
-- find_suspicious_notes: analisa padrões de fraude — notas vazias, copy-paste, salvos sem editar — USE quando suspeitar de trabalho fictício
-- list_sessions: histórico de sessões/acesso do atendente
+- list_tasks: resumo de lembretes (contagens, vencidos)
+- read_notes: lê o CONTEÚDO REAL das anotações — use IMEDIATAMENTE para qualquer pergunta sobre o que foi dito/anotado/registrado
+  · "anotações de hoje" / "o que anotou hoje" / "atividade de hoje" → today_updated_only=true, only_with_notes=false
+  · "contatos de hoje" / "quem contatou hoje" → today_contacts_only=true, only_with_notes=false
+  · "lembretes agendados para hoje" (data = hoje) → today_reminders_only=true, only_with_notes=false
+  · sem filtro de data → retorna os mais recentes
+- find_suspicious_notes: detecta fraudes — notas vazias, copy-paste, salvos sem editar
+- list_sessions: sessões/acesso do atendente
 - reschedule_tasks: redistribui lembretes vencidos
-REGRA CRÍTICA: Nunca responda "não consigo ver o conteúdo" — use read_notes para buscar os dados reais do banco.
-Regras gerais: use ferramentas proativamente; seja direto; português BR; emojis.
+REGRAS ABSOLUTAS:
+1. NUNCA diga "não consigo ver" — sempre chame read_notes
+2. Para perguntas de "hoje", use today_updated_only=true (atividade geral de hoje)
+3. Mostre os dados reais do banco, não invente respostas
+Seja direto; português BR; emojis.
 ${userContext}`
           : `Assistente Sal Vita — atendente. Apenas informativo, sem executar ações.
 ${userContext}
