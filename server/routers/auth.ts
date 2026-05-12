@@ -96,10 +96,11 @@ export const authRouter = router({
     .input(z.object({ email: z.string().email(), secret: z.string().min(1) }))
     .mutation(async ({ input }) => {
       const envSecret = process.env.ADMIN_RESET_SECRET;
+      // Validate secret first — same error regardless of user existence (prevents enumeration)
       if (!envSecret || input.secret !== envSecret) throw new Error('Chave de recuperação inválida');
       const [user] = await db.select().from(users).where(eq(users.email, input.email));
-      if (!user) throw new Error('Email não encontrado');
-      if (user.role !== 'admin') throw new Error('Apenas admins podem usar recuperação de emergência');
+      // Unified error prevents user enumeration and role enumeration via response timing
+      if (!user || user.role !== 'admin') throw new Error('Chave de recuperação inválida');
       const generated = generatePassword();
       await db.update(users)
         .set({ passwordHash: hashPassword(generated) })

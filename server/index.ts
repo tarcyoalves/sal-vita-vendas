@@ -42,12 +42,26 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => {
     const body = req.body as Record<string, unknown>;
-    return (typeof body?.email === 'string' ? body.email : '') || req.ip || 'unknown';
+    const email = typeof body?.email === 'string' ? body.email.toLowerCase().trim() : '';
+    return email || req.ip || 'unknown';
   },
+});
+
+// Rate limiting for AI endpoints — prevent token depletion attacks
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: { error: 'Limite de requisições à IA atingido. Aguarde 1 minuto.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip || 'unknown',
 });
 
 app.use('/api/trpc/auth.login', authLimiter);
 app.use('/api/trpc/auth.emergencyReset', authLimiter);
+app.use('/api/trpc/ai.chat', aiLimiter);
+app.use('/api/trpc/ai.analyzeAttendants', aiLimiter);
+app.use('/api/trpc/ai.suggestSalesApproach', aiLimiter);
 
 app.use(
   '/api/trpc',
