@@ -27,7 +27,7 @@ app.use('/api/trpc', createExpressMiddleware({ router: appRouter, createContext 
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'sallog' }));
 
-// One-time setup: creates the first admin user. Disabled after first use.
+// Setup: creates or updates the admin user. Protected by SALLOG_SETUP_SECRET.
 app.post('/api/setup', async (req, res) => {
   try {
     const { name, email, password, secret } = req.body ?? {};
@@ -40,17 +40,23 @@ app.post('/api/setup', async (req, res) => {
     }
     const { neon } = await import('@neondatabase/serverless');
     const sql = neon(process.env.SALLOG_DATABASE_URL!);
-    const existing = await sql`SELECT id FROM users WHERE role = 'admin' LIMIT 1`;
-    if (existing.length > 0) {
-      return res.status(409).json({ error: 'Admin já existe. Endpoint desativado.' });
-    }
     const { hashPassword } = await import('./auth');
     const hash = hashPassword(password);
-    const [user] = await sql`
-      INSERT INTO users (name, email, password_hash, role)
-      VALUES (${name}, ${email}, ${hash}, 'admin')
-      RETURNING id, name, email, role
-    `;
+    const existing = await sql`SELECT id FROM users WHERE email = ${email} AND role = 'admin' LIMIT 1`;
+    let user;
+    if (existing.length > 0) {
+      [user] = await sql`
+        UPDATE users SET password_hash = ${hash}, name = ${name}
+        WHERE email = ${email} AND role = 'admin'
+        RETURNING id, name, email, role
+      `;
+    } else {
+      [user] = await sql`
+        INSERT INTO users (name, email, password_hash, role)
+        VALUES (${name}, ${email}, ${hash}, 'admin')
+        RETURNING id, name, email, role
+      `;
+    }
     return res.json({ ok: true, user });
   } catch (e: any) {
     return res.status(500).json({ error: e.message });
