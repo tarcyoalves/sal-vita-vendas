@@ -1,18 +1,19 @@
 import { z } from 'zod';
-import { eq, inArray, or, isNotNull, and, gte, count } from 'drizzle-orm';
+import { eq, inArray, or, isNotNull, and, gte, count, sql, SQL } from 'drizzle-orm';
 import { router, protectedProcedure } from '../trpc';
 import { TRPCError } from '@trpc/server';
 import { db } from '../db';
 import { tasks, sellers } from '../db/schema';
 
 // Build the assignedTo filter for a non-admin user.
-// Tasks can be assigned using either users.name or sellers.name — include both.
+// Uses case-insensitive comparison: tasks imported via CSV often have different
+// capitalization than the seller name stored in the DB (e.g. "MATHEUS" vs "Matheus").
 async function userTaskFilter(userId: number, userName: string) {
   const sellerRows = await db.select({ name: sellers.name }).from(sellers).where(eq(sellers.userId, userId));
   const sellerName = sellerRows[0]?.name;
-  const conditions: ReturnType<typeof eq>[] = [eq(tasks.userId, userId)];
-  if (userName) conditions.push(eq(tasks.assignedTo, userName));
-  if (sellerName && sellerName !== userName) conditions.push(eq(tasks.assignedTo, sellerName));
+  const conditions: SQL<unknown>[] = [eq(tasks.userId, userId)];
+  if (userName) conditions.push(sql`lower(${tasks.assignedTo}) = ${userName.toLowerCase()}`);
+  if (sellerName) conditions.push(sql`lower(${tasks.assignedTo}) = ${sellerName.toLowerCase()}`);
   return or(...conditions);
 }
 
