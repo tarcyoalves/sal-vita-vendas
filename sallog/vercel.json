@@ -1,10 +1,11 @@
 {
   "buildCommand": "npm install && npm run build",
   "outputDirectory": "admin/dist",
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/bundle.js" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ],
+  "functions": {
+    "api/bundle.js": {
+      "maxDuration": 30
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",
@@ -20,5 +21,13 @@
         { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }
       ]
     }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/bundle.js" },
+    {
+      "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|ico|svg|webp|woff|woff2|ttf|eot|map|json|txt|xml))",
+      "dest": "/$1"
+    },
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
