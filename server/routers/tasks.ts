@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { eq, inArray, or, isNotNull, and } from 'drizzle-orm';
+import { eq, inArray, or, isNotNull, and, gte, count } from 'drizzle-orm';
 import { router, protectedProcedure } from '../trpc';
 import { TRPCError } from '@trpc/server';
 import { db } from '../db';
@@ -82,7 +82,17 @@ export const tasksRouter = router({
         .where(ownerFilter)
         .returning();
       if (!updated) throw new TRPCError({ code: 'FORBIDDEN', message: 'Tarefa não encontrada ou sem permissão' });
-      return updated;
+      let burstWarning = false;
+      let burstCount = 0;
+      if (ctx.user.role !== 'admin' && setData.lastContactedAt) {
+        const tenMinAgo = new Date(now.getTime() - 10 * 60 * 1000);
+        const [burstRow] = await db.select({ cnt: count() })
+          .from(tasks)
+          .where(and(eq(tasks.userId, ctx.user.id), isNotNull(tasks.lastContactedAt), gte(tasks.lastContactedAt, tenMinAgo)));
+        burstCount = Number(burstRow?.cnt ?? 0);
+        burstWarning = burstCount >= 5;
+      }
+      return { ...updated, burstWarning, burstCount };
     }),
 
   delete: protectedProcedure
@@ -104,6 +114,37 @@ export const tasksRouter = router({
       await db.delete(tasks).where(ownerFilter);
       return { ok: true, count: input.ids.length };
     }),
+
+  fraudAlerts: protectedProcedure.query(async ({ ctx }) => {
+    if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const [burstRows, hourRows, allSellers] = await Promise.all([
+      db.select({ userId: tasks.userId, cnt: count() }).from(tasks)
+        .where(and(isNotNull(tasks.lastContactedAt), gte(tasks.lastContactedAt, tenMinAgo)))
+        .groupBy(tasks.userId),
+      db.select({ userId: tasks.userId, cnt: count() }).from(tasks)
+        .where(and(isNotNull(tasks.lastContactedAt), gte(tasks.lastContactedAt, oneHourAgo)))
+        .groupBy(tasks.userId),
+      db.select({ name: sellers.name, userId: sellers.userId }).from(sellers),
+    ]);
+    const alerts: { sellerName: string; type: string; message: string; severity: 'high' | 'medium'; count: number }[] = [];
+    for (const row of burstRows) {
+      if (Number(row.cnt) >= 5) {
+        const seller = allSellers.find(s => s.userId === row.userId);
+        if (seller) alerts.push({ sellerName: seller.name, type: 'burst', message: `${row.cnt} contatos em menos de 10 minutos`, severity: 'high', count: Number(row.cnt) });
+      }
+    }
+    for (const row of hourRows) {
+      if (Number(row.cnt) >= 20) {
+        const seller = allSellers.find(s => s.userId === row.userId);
+        if (seller && !alerts.some(a => a.sellerName === seller.name)) {
+          alerts.push({ sellerName: seller.name, type: 'burst_hour', message: `${row.cnt} contatos em menos de 1 hora`, severity: 'medium', count: Number(row.cnt) });
+        }
+      }
+    }
+    return alerts;
+  }),
 
   reminders: protectedProcedure.query(async ({ ctx }) => {
     if (ctx.user.role === 'admin') {

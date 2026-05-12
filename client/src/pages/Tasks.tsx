@@ -124,6 +124,7 @@ export default function Tasks() {
 
   const [showNotesWarning, setShowNotesWarning] = useState(false);
   const notesRef = useRef<HTMLTextAreaElement | null>(null);
+  const [showMonitorBanner, setShowMonitorBanner] = useState(() => sessionStorage.getItem('monitorBannerDismissed') !== '1');
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
 
@@ -169,8 +170,11 @@ export default function Tasks() {
         reminderDateTime = new Date(`${formData.reminderDate}T${formData.reminderTime}:00`);
       }
       if (editingTask) {
-        await updateMutation.mutateAsync({ id: editingTask.id, title: formData.title, description: formData.description, notes: formData.notes, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
+        const result = await updateMutation.mutateAsync({ id: editingTask.id, title: formData.title, description: formData.description, notes: formData.notes, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
         toast.success("Tarefa atualizada!");
+        if (!isAdmin && result.burstWarning) {
+          toast.warning(`⚠️ Atenção: ${result.burstCount} contatos registrados em menos de 10 minutos. Certifique-se de que cada anotação representa um contato real — a gestão monitora esse indicador.`, { duration: 12000 });
+        }
       } else {
         await createMutation.mutateAsync({ clientId: formData.clientId || 0, title: formData.title, description: formData.description, notes: formData.notes, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
         toast.success("Tarefa criada! Lembrete ativado ✅");
@@ -332,7 +336,7 @@ export default function Tasks() {
 
         if (isStructured) {
           // Parse header to find column indices by name (handles all CSV/TSV variants)
-          const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+          const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
           const header = lines[0].split(sep!).map(normalize);
           const findCol = (...names: string[]) => {
             for (const name of names) {
@@ -466,6 +470,15 @@ export default function Tasks() {
 
   return (
     <div className="p-3 md:p-6 space-y-3 md:space-y-4">
+      {!isAdmin && showMonitorBanner && (
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 text-sm text-amber-900">
+          <span className="text-lg flex-shrink-0 mt-0.5">🔍</span>
+          <div className="flex-1">
+            <strong>Trabalho monitorado</strong> — anotações, qualidade e velocidade dos contatos são acompanhados diariamente pela gestão.
+          </div>
+          <button onClick={() => { setShowMonitorBanner(false); sessionStorage.setItem('monitorBannerDismissed', '1'); }} className="text-amber-600 hover:text-amber-900 font-bold text-base leading-none flex-shrink-0 mt-0.5" title="Fechar">✕</button>
+        </div>
+      )}
       <input type="text" placeholder="🔍 Pesquisar tarefas..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full px-3 py-2.5 border rounded-lg text-sm" />
 
       <div className="flex justify-between items-center flex-wrap gap-2">
