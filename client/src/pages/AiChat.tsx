@@ -16,10 +16,11 @@ export default function AiChat() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const utils = trpc.useUtils();
+  const hasInitializedRef = useRef(false);
 
   const chatMutation = trpc.ai.chat.useMutation();
-  const { data: chatHistory = [] } = trpc.ai.history.useQuery();
+
+  const { data: chatHistory = [], isSuccess: historyLoaded } = trpc.ai.history.useQuery({ staleTime: Infinity });
   const clearHistoryMutation = trpc.ai.clearHistory.useMutation();
 
   useEffect(() => {
@@ -27,8 +28,8 @@ export default function AiChat() {
   }, [messages]);
 
   useEffect(() => {
-    // Don't overwrite optimistic local state while a message is in flight
-    if (isLoading) return;
+    if (!historyLoaded || hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
     if (chatHistory.length > 0) {
       setMessages(chatHistory.map((msg: any) => ({
         role: msg.role as "user" | "assistant",
@@ -42,7 +43,7 @@ export default function AiChat() {
         timestamp: new Date(),
       }]);
     }
-  }, [chatHistory]);
+  }, [chatHistory, historyLoaded]);
 
   const handleClearHistory = async () => {
     if (!confirm("Limpar todo o histórico do chat?")) return;
@@ -76,8 +77,6 @@ export default function AiChat() {
       const cfg = getApiConfig();
       const response = await chatMutation.mutateAsync({ message: currentInput, apiKey: cfg?.apiKey, provider: cfg?.provider });
       setMessages(prev => [...prev, { role: "assistant", content: response.reply, timestamp: new Date() }]);
-      // Sync history with DB so navigating away and back restores the full conversation
-      utils.ai.history.invalidate();
     } catch (error: any) {
       const errMsg = error?.message ?? "Erro ao processar mensagem";
       toast.error(errMsg);
