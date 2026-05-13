@@ -1,9 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
+import { useLocation } from 'wouter';
 import { trpc } from '../lib/trpc';
 import { useAuth } from '../_core/hooks/useAuth';
 import { toast } from 'sonner';
 
 interface Msg { role: 'user' | 'assistant'; content: string; ts: Date; }
+
+const WELCOME_MSG: Msg = {
+  role: 'assistant',
+  content: '👋 Olá! Sou a IA da Sal Vita.\nPosso ajudar com:\n📊 Análise de desempenho\n📋 Tarefas pendentes\n💡 Dicas de vendas\n\nComo posso ajudar?',
+  ts: new Date(),
+};
 
 function getStoredApiConfig(): { apiKey: string; provider: string } | null {
   try {
@@ -16,32 +23,43 @@ function getStoredApiConfig(): { apiKey: string; provider: string } | null {
 
 export default function FloatingChat() {
   const { user } = useAuth();
+  const [location] = useLocation();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [msgs, setMsgs] = useState<Msg[]>([]);
-  const [initialized, setInitialized] = useState(false);
+  const [msgs, setMsgs] = useState<Msg[]>([WELCOME_MSG]);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const utils = trpc.useUtils();
 
   const chatMutation = trpc.ai.chat.useMutation();
   const clearMutation = trpc.ai.clearHistory.useMutation();
-  const { data: history = [] } = trpc.ai.history.useQuery(undefined, { enabled: !!user });
+  // isLoading: historyLoading prevents initialized from being set before history arrives
+  const { data: history = [], isLoading: historyLoading } = trpc.ai.history.useQuery(undefined, { enabled: !!user });
 
+  // Sync from DB history whenever it changes — but only after the query completes
+  // and not while a message is in-flight (loading = true means optimistic state is live)
   useEffect(() => {
-    if (initialized) return;
+    if (historyLoading) return; // wait for the first real fetch to complete
+    if (loading) return;        // don't overwrite optimistic state mid-send
+
     if ((history as any[]).length > 0) {
-      setMsgs((history as any[]).map((m: any) => ({ role: m.role as 'user' | 'assistant', content: m.content, ts: new Date(m.createdAt) })));
+      setMsgs((history as any[]).map((m: any) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+        ts: new Date(m.createdAt),
+      })));
     } else {
-      setMsgs([{ role: 'assistant', content: '👋 Olá! Sou a IA da Sal Vita.\nPosso ajudar com:\n📊 Análise de desempenho\n📋 Tarefas pendentes\n💡 Dicas de vendas\n\nComo posso ajudar?', ts: new Date() }]);
+      setMsgs([WELCOME_MSG]);
     }
-    setInitialized(true);
-  }, [history, initialized]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history, historyLoading]); // `loading` intentionally omitted: timing is safe after mutation
 
   useEffect(() => {
     if (open) setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
   }, [msgs, open]);
 
-  if (!user) return null;
+  // Don't render the floating chat on the full-page AI chat (avoids duplicate UI)
+  if (!user || location === '/ai-chat') return null;
 
   const send = async () => {
     const text = input.trim();
@@ -57,6 +75,8 @@ export default function FloatingChat() {
         provider: cfg?.provider,
       });
       setMsgs(prev => [...prev, { role: 'assistant', content: res.reply, ts: new Date() }]);
+      // Sync history cache so full-page AiChat (and this chat on refocus) stay in sync
+      utils.ai.history.invalidate();
     } catch (e: any) {
       const err = e?.message ?? 'Erro ao contatar IA';
       toast.error(err);
@@ -69,6 +89,7 @@ export default function FloatingChat() {
   const clear = async () => {
     await clearMutation.mutateAsync();
     setMsgs([{ role: 'assistant', content: 'Histórico limpo! Como posso ajudar?', ts: new Date() }]);
+    utils.ai.history.invalidate();
   };
 
   return (

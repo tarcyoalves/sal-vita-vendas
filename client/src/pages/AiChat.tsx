@@ -19,7 +19,9 @@ export default function AiChat() {
   const utils = trpc.useUtils();
 
   const chatMutation = trpc.ai.chat.useMutation();
-  const { data: chatHistory = [] } = trpc.ai.history.useQuery();
+  // isLoading: historyLoading is used to prevent showing the welcome message
+  // before the real history arrives from the DB (avoids a flash on mount)
+  const { data: chatHistory = [], isLoading: historyLoading } = trpc.ai.history.useQuery();
   const clearHistoryMutation = trpc.ai.clearHistory.useMutation();
 
   useEffect(() => {
@@ -27,8 +29,8 @@ export default function AiChat() {
   }, [messages]);
 
   useEffect(() => {
-    // Don't overwrite optimistic local state while a message is in flight
-    if (isLoading) return;
+    if (historyLoading) return;  // wait for DB before deciding what to show
+    if (isLoading) return;       // don't overwrite optimistic state mid-send
     if (chatHistory.length > 0) {
       setMessages(chatHistory.map((msg: any) => ({
         role: msg.role as "user" | "assistant",
@@ -42,7 +44,8 @@ export default function AiChat() {
         timestamp: new Date(),
       }]);
     }
-  }, [chatHistory]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatHistory, historyLoading]); // `isLoading` intentionally omitted: timing is safe
 
   const handleClearHistory = async () => {
     if (!confirm("Limpar todo o histórico do chat?")) return;
