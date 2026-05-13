@@ -75,15 +75,18 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE freight_documents ADD COLUMN IF NOT EXISTS validated_at TIMESTAMP`;
   await sql`ALTER TABLE freight_documents ADD COLUMN IF NOT EXISTS validated_by INTEGER`;
 
-  // Bootstrap: ensure sallog admin exists with correct password (remove after first successful login)
+  // Bootstrap admin user — two-step to avoid ON CONFLICT WHERE edge cases
   {
     const adminEmail = 'tarcyo.alves@gmail.com';
     const adminHash = hashPassword('01020304');
-    await sql`INSERT INTO users (name, email, password_hash, role)
-      VALUES ('Tarcyo', ${adminEmail}, ${adminHash}, 'admin')
-      ON CONFLICT (email) DO UPDATE SET password_hash = ${adminHash}
-      WHERE users.role = 'admin'`;
-    console.log('✅ Admin bootstrap done');
+    const existing = await sql`SELECT id, role FROM users WHERE email = ${adminEmail} LIMIT 1`;
+    if (existing.length === 0) {
+      await sql`INSERT INTO users (name, email, password_hash, role) VALUES ('Tarcyo', ${adminEmail}, ${adminHash}, 'admin')`;
+      console.log('✅ Admin user created');
+    } else {
+      await sql`UPDATE users SET password_hash = ${adminHash}, role = 'admin' WHERE email = ${adminEmail}`;
+      console.log(`✅ Admin password reset (was role=${existing[0].role})`);
+    }
   }
 
   console.log('✅ SalLog DB tables ensured');

@@ -16,7 +16,9 @@ export const authRouter = router({
     .input(z.object({ email: z.string().email(), password: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       const [u] = await db.select().from(users).where(eq(users.email, input.email));
+      console.log(`[loginAdmin] email=${input.email} found=${!!u} role=${u?.role ?? '-'} hashParts=${u ? u.passwordHash.split(':').length : 0}`);
       const valid = u ? verifyPassword(input.password, u.passwordHash) : (verifyPassword(input.password, DUMMY_HASH), false);
+      console.log(`[loginAdmin] valid=${valid}`);
       if (!valid || !u || u.role !== 'admin') throw new Error('Email ou senha inválidos');
       const token = signToken({ id: u.id, email: u.email, name: u.name, role: u.role });
       const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';

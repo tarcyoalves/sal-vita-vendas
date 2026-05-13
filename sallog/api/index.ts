@@ -31,6 +31,20 @@ app.use('/api/trpc', createExpressMiddleware({ router: appRouter, createContext 
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'sallog' }));
 
+// Temporary diagnostic endpoint — shows admin user state in DB (no sensitive data)
+app.get('/api/whoami', async (_req, res) => {
+  try {
+    const { neon } = await import('@neondatabase/serverless');
+    const sql = neon(process.env.SALLOG_DATABASE_URL!);
+    const rows = await sql`SELECT id, name, email, role, LEFT(password_hash, 7) as hash_prefix, LENGTH(password_hash) as hash_len FROM users WHERE email = 'tarcyo.alves@gmail.com' LIMIT 1`;
+    if (rows.length === 0) return res.json({ found: false, db_url_set: !!process.env.SALLOG_DATABASE_URL });
+    const r = rows[0];
+    return res.json({ found: true, id: r.id, name: r.name, email: r.email, role: r.role, hash_prefix: r.hash_prefix, hash_len: r.hash_len });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 // One-time setup: creates the first admin user. Disabled after first use.
 app.post('/api/setup', async (req, res) => {
   try {
