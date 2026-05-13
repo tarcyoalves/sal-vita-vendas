@@ -17,9 +17,9 @@ export default function AiChat() {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasInitializedRef = useRef(false);
+  const utils = trpc.useUtils();
 
   const chatMutation = trpc.ai.chat.useMutation();
-
   const { data: chatHistory = [], isSuccess: historyLoaded } = trpc.ai.history.useQuery({ staleTime: Infinity });
   const clearHistoryMutation = trpc.ai.clearHistory.useMutation();
 
@@ -49,6 +49,7 @@ export default function AiChat() {
     if (!confirm("Limpar todo o histórico do chat?")) return;
     await clearHistoryMutation.mutateAsync();
     setMessages([{ role: "assistant", content: "Histórico limpo. Como posso ajudar?", timestamp: new Date() }]);
+    utils.ai.history.invalidate();
     toast.success("Histórico limpo");
   };
 

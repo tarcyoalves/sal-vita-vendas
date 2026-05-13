@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useLocation } from 'wouter';
 import { trpc } from '../lib/trpc';
 import { useAuth } from '../_core/hooks/useAuth';
 import { toast } from 'sonner';
@@ -16,32 +17,37 @@ function getStoredApiConfig(): { apiKey: string; provider: string } | null {
 
 export default function FloatingChat() {
   const { user } = useAuth();
+  const [location] = useLocation();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
-  const [initialized, setInitialized] = useState(false);
+  const hasInitializedRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const utils = trpc.useUtils();
 
   const chatMutation = trpc.ai.chat.useMutation();
   const clearMutation = trpc.ai.clearHistory.useMutation();
-  const { data: history = [] } = trpc.ai.history.useQuery(undefined, { enabled: !!user });
+  const { data: history = [], isSuccess: historyLoaded } = trpc.ai.history.useQuery(
+    undefined,
+    { enabled: !!user, staleTime: Infinity }
+  );
 
   useEffect(() => {
-    if (initialized) return;
+    if (!historyLoaded || hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
     if ((history as any[]).length > 0) {
       setMsgs((history as any[]).map((m: any) => ({ role: m.role as 'user' | 'assistant', content: m.content, ts: new Date(m.createdAt) })));
     } else {
       setMsgs([{ role: 'assistant', content: '👋 Olá! Sou a IA da Sal Vita.\nPosso ajudar com:\n📊 Análise de desempenho\n📋 Tarefas pendentes\n💡 Dicas de vendas\n\nComo posso ajudar?', ts: new Date() }]);
     }
-    setInitialized(true);
-  }, [history, initialized]);
+  }, [history, historyLoaded]);
 
   useEffect(() => {
     if (open) setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
   }, [msgs, open]);
 
-  if (!user) return null;
+  if (!user || location === '/ai-chat') return null;
 
   const send = async () => {
     const text = input.trim();
@@ -69,6 +75,7 @@ export default function FloatingChat() {
   const clear = async () => {
     await clearMutation.mutateAsync();
     setMsgs([{ role: 'assistant', content: 'Histórico limpo! Como posso ajudar?', ts: new Date() }]);
+    utils.ai.history.invalidate();
   };
 
   return (
