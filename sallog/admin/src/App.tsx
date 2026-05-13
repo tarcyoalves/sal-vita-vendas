@@ -33,9 +33,11 @@ const TITLES: Record<string, string> = {
 export default function App() {
   const [page, setPage] = useState<Page>({ name: 'login' });
   const [open, setOpen] = useState(false);
+
+  // All hooks must be called unconditionally before any early return
   const { data: me, isLoading } = trpc.auth.me.useQuery();
-  const logout = trpc.auth.logout.useMutation({ onSuccess: () => { setPage({ name: 'login' }); } });
-  const utils = trpc.useUtils();
+  const { data: pendingDrivers } = trpc.drivers.list.useQuery({}, { enabled: !!me });
+  const logout = trpc.auth.logout.useMutation({ onSuccess: () => setPage({ name: 'login' }) });
 
   useEffect(() => {
     if (!isLoading && me && page.name === 'login') setPage({ name: 'dashboard' });
@@ -43,6 +45,7 @@ export default function App() {
   }, [me, isLoading]);
 
   const nav = (p: Page) => { setPage(p); setOpen(false); };
+  const pendingCount = pendingDrivers?.filter((d) => d.status === 'pending').length ?? 0;
 
   if (isLoading) return (
     <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
@@ -54,10 +57,6 @@ export default function App() {
   );
 
   if (!me || page.name === 'login') return <Login onLogin={() => nav({ name: 'dashboard' })} />;
-
-  const { data: pendingDrivers } = trpc.drivers.list.useQuery({ status: 'pending' });
-  const pendingCount = pendingDrivers?.length ?? 0;
-  const activePage = NAV.find(n => n.n === page.name)?.n ?? null;
 
   return (
     <div className="app-layout">
@@ -113,11 +112,11 @@ export default function App() {
         </main>
       </div>
 
-      {/* Bottom Nav (mobile) */}
+      {/* Bottom Nav (mobile only) */}
       <nav className="bottom-nav">
         <div className="bottom-nav-inner">
           {NAV.map(({ n, label, icon }) => (
-            <button key={n} onClick={() => nav({ name: n })} className={`bn-btn ${activePage === n ? 'active' : ''}`}>
+            <button key={n} onClick={() => nav({ name: n })} className={`bn-btn ${page.name === n ? 'active' : ''}`}>
               <span className="bn-icon">{icon}</span>
               {label}
             </button>
