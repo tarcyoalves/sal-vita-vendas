@@ -10,53 +10,61 @@ interface Message {
   timestamp: Date;
 }
 
+const WELCOME: Message = {
+  role: "assistant",
+  content: "Olá! Sou seu assistente de IA da Sal Vita. Posso ajudar com dicas de vendas, análise de desempenho e estratégias. Como posso ajudar?",
+  timestamp: new Date(),
+};
+
 export default function AiChat() {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [historyReady, setHistoryReady] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const utils = trpc.useUtils();
 
   const chatMutation = trpc.ai.chat.useMutation();
-  const { data: chatHistory = [] } = trpc.ai.history.useQuery();
   const clearHistoryMutation = trpc.ai.clearHistory.useMutation();
+
+  // Fetch history imperatively once on mount — no reactive subscription means
+  // no background refetch can ever overwrite local state after user interaction.
+  useEffect(() => {
+    utils.ai.history.fetch().then((data) => {
+      const history = (data as any[]) ?? [];
+      setMessages(
+        history.length > 0
+          ? history.map((m: any) => ({
+              role: m.role as "user" | "assistant",
+              content: m.content,
+              timestamp: new Date(m.createdAt),
+            }))
+          : [WELCOME]
+      );
+    }).catch(() => {
+      setMessages([WELCOME]);
+    }).finally(() => {
+      setHistoryReady(true);
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  useEffect(() => {
-    // Don't overwrite optimistic local state while a message is in flight
-    if (isLoading) return;
-    if (chatHistory.length > 0) {
-      setMessages(chatHistory.map((msg: any) => ({
-        role: msg.role as "user" | "assistant",
-        content: msg.content,
-        timestamp: new Date(msg.createdAt),
-      })));
-    } else {
-      setMessages([{
-        role: "assistant",
-        content: "Olá! Sou seu assistente de IA da Sal Vita. Posso ajudar com dicas de vendas, análise de desempenho e estratégias. Como posso ajudar?",
-        timestamp: new Date(),
-      }]);
-    }
-  }, [chatHistory]);
-
   const handleClearHistory = async () => {
     if (!confirm("Limpar todo o histórico do chat?")) return;
     await clearHistoryMutation.mutateAsync();
     setMessages([{ role: "assistant", content: "Histórico limpo. Como posso ajudar?", timestamp: new Date() }]);
+    utils.ai.history.invalidate();
     toast.success("Histórico limpo");
   };
 
   const getApiConfig = (preferProvider?: string) => {
     try {
       const configs = JSON.parse(localStorage.getItem('aiConfigs') || '{}') as Record<string, any>;
-      const order = preferProvider
-        ? [preferProvider, 'groq', 'gemini']
-        : ['groq', 'gemini'];
+      const order = preferProvider ? [preferProvider, 'groq', 'gemini'] : ['groq', 'gemini'];
       for (const id of order) {
         const c = configs[id];
         if (c?.status === 'configured') return { apiKey: c.apiKey, provider: c.provider };
@@ -76,8 +84,6 @@ export default function AiChat() {
       const cfg = getApiConfig();
       const response = await chatMutation.mutateAsync({ message: currentInput, apiKey: cfg?.apiKey, provider: cfg?.provider });
       setMessages(prev => [...prev, { role: "assistant", content: response.reply, timestamp: new Date() }]);
-      // Sync history with DB so navigating away and back restores the full conversation
-      utils.ai.history.invalidate();
     } catch (error: any) {
       const errMsg = error?.message ?? "Erro ao processar mensagem";
       toast.error(errMsg);
@@ -95,14 +101,24 @@ export default function AiChat() {
 
       <div className="flex-1 flex flex-col p-4 max-w-3xl mx-auto w-full">
         <div className="flex-1 overflow-y-auto mb-4 bg-white rounded-xl border p-4 space-y-4 min-h-96 max-h-[60vh]">
-          {messages.map((msg, idx) => (
-            <div key={idx} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-xs lg:max-w-lg px-4 py-3 rounded-2xl text-sm ${msg.role === "user" ? "bg-blue-600 text-white rounded-br-sm" : "bg-gray-100 text-gray-900 rounded-bl-sm"}`}>
-                <p className="whitespace-pre-wrap">{msg.content}</p>
-                <span className="text-xs opacity-60 mt-1 block text-right">{msg.timestamp.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+          {!historyReady ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="flex gap-1">
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
               </div>
             </div>
-          ))}
+          ) : (
+            messages.map((msg, idx) => (
+              <div key={idx} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-xs lg:max-w-lg px-4 py-3 rounded-2xl text-sm ${msg.role === "user" ? "bg-blue-600 text-white rounded-br-sm" : "bg-gray-100 text-gray-900 rounded-bl-sm"}`}>
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                  <span className="text-xs opacity-60 mt-1 block text-right">{msg.timestamp.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+                </div>
+              </div>
+            ))
+          )}
           {isLoading && (
             <div className="flex justify-start">
               <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-3">
@@ -117,8 +133,22 @@ export default function AiChat() {
           <div ref={messagesEndRef} />
         </div>
         <div className="flex gap-2">
-          <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()} placeholder="Digite sua mensagem..." className="flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" disabled={isLoading} />
-          <Button onClick={handleSendMessage} disabled={isLoading || !input.trim()} className="px-5 rounded-xl bg-blue-600 hover:bg-blue-700">{isLoading ? "⏳" : "📤"}</Button>
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
+            placeholder="Digite sua mensagem..."
+            className="flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={isLoading || !historyReady}
+          />
+          <Button
+            onClick={handleSendMessage}
+            disabled={isLoading || !historyReady || !input.trim()}
+            className="px-5 rounded-xl bg-blue-600 hover:bg-blue-700"
+          >
+            {isLoading ? "⏳" : "📤"}
+          </Button>
         </div>
         <p className="text-xs text-center text-gray-400 mt-2">Powered by Groq · Llama 3.3 70B</p>
       </div>
