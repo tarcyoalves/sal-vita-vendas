@@ -10,40 +10,43 @@ interface Message {
   timestamp: Date;
 }
 
+const WELCOME_MSG: Message = {
+  role: "assistant",
+  content: "Olá! Sou seu assistente de IA da Sal Vita. Posso ajudar com dicas de vendas, análise de desempenho e estratégias. Como posso ajudar?",
+  timestamp: new Date(),
+};
+
 export default function AiChat() {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const hasInitializedRef = useRef(false);
   const utils = trpc.useUtils();
 
   const chatMutation = trpc.ai.chat.useMutation();
-  const { data: chatHistory = [], isSuccess: historyLoaded } = trpc.ai.history.useQuery({ staleTime: Infinity });
   const clearHistoryMutation = trpc.ai.clearHistory.useMutation();
+
+  // Load history once on mount — imperative fetch, no reactive subscription.
+  // This prevents TanStack Query background refetches from ever overwriting local state.
+  useEffect(() => {
+    utils.ai.history.fetch(undefined).then((data: any[]) => {
+      setMessages(data.length > 0
+        ? data.map((m: any) => ({
+            role: m.role as "user" | "assistant",
+            content: m.content,
+            timestamp: new Date(m.createdAt),
+          }))
+        : [WELCOME_MSG]
+      );
+    }).catch(() => {
+      setMessages([WELCOME_MSG]);
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
-  useEffect(() => {
-    if (!historyLoaded || hasInitializedRef.current) return;
-    hasInitializedRef.current = true;
-    if (chatHistory.length > 0) {
-      setMessages(chatHistory.map((msg: any) => ({
-        role: msg.role as "user" | "assistant",
-        content: msg.content,
-        timestamp: new Date(msg.createdAt),
-      })));
-    } else {
-      setMessages([{
-        role: "assistant",
-        content: "Olá! Sou seu assistente de IA da Sal Vita. Posso ajudar com dicas de vendas, análise de desempenho e estratégias. Como posso ajudar?",
-        timestamp: new Date(),
-      }]);
-    }
-  }, [chatHistory, historyLoaded]);
 
   const handleClearHistory = async () => {
     if (!confirm("Limpar todo o histórico do chat?")) return;
