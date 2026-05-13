@@ -241,7 +241,6 @@ async function executeTool(name: string, args: any): Promise<any> {
     const todayUpdatedOnly = args.today_updated_only === true;
     const todayContactsOnly = args.today_contacts_only === true;
     const todayRemindersOnly = args.today_reminders_only === true;
-    // When using any today filter, default only_with_notes to false so all activity is visible
     const usingTodayFilter = todayUpdatedOnly || todayContactsOnly || todayRemindersOnly;
     const onlyWithNotes = args.only_with_notes !== undefined
       ? args.only_with_notes === true
@@ -260,12 +259,10 @@ async function executeTool(name: string, args: any): Promise<any> {
     const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
 
-    // Sort by most recently updated first
     let sorted = allTasks.sort((a, b) =>
       new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     );
 
-    // Apply filters — these are OR'd: any today activity qualifies
     if (todayUpdatedOnly) {
       sorted = sorted.filter(t =>
         new Date(t.updatedAt) >= todayStart && new Date(t.updatedAt) <= todayEnd
@@ -334,7 +331,6 @@ async function executeTool(name: string, args: any): Promise<any> {
     }).slice(0, 5);
 
     if (matched.length === 0) {
-      // Broad fallback: return all documents (up to 3) so AI has some context
       const fallback = all.slice(0, 3).map(d => ({ titulo: d.title, categoria: d.category, conteudo: d.content.slice(0, 800) }));
       return { encontrados: 0, mensagem: `Nenhum documento encontrado para "${query}". Documentos disponíveis:`, documentos: fallback };
     }
@@ -363,14 +359,11 @@ async function executeTool(name: string, args: any): Promise<any> {
 
     const now = new Date();
 
-    // 1. Notas vazias ou muito curtas (< 10 chars)
     const emptyNotes = allTasks.filter(t => !t.notes || t.notes.trim().length < 10);
 
-    // 2. Notas genéricas/padrão suspeitas
     const genericPatterns = /^(ok|sim|não|nao|ligou|retornar|retorno|contato|tel|falar|ligar|aguardar|pendente|\.+|-+|ok\.?|certo|feito|done|ok ok)\.?$/i;
     const genericNotes = allTasks.filter(t => t.notes && genericPatterns.test(t.notes.trim()));
 
-    // 3. Notas duplicadas (mesmo texto em 3+ clientes)
     const noteFreq: Record<string, { count: number; clients: string[] }> = {};
     for (const t of allTasks) {
       if (!t.notes || t.notes.trim().length < 5) continue;
@@ -384,18 +377,15 @@ async function executeTool(name: string, args: any): Promise<any> {
       .map(([note, v]) => ({ nota: note.slice(0, 80), repetida: v.count, exemplos_clientes: v.clients.slice(0, 5) }))
       .sort((a, b) => b.repetida - a.repetida);
 
-    // 4. Salvos sem editar (updatedAt ≈ createdAt, diferença < 2 min)
     const neverEdited = allTasks.filter(t => {
       const diff = new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime();
       return diff < 2 * 60 * 1000;
     });
 
-    // 5. Contato marcado mas sem anotação de qualidade
     const contactedNoNote = allTasks.filter(t =>
       t.lastContactedAt && (!t.notes || t.notes.trim().length < 10)
     );
 
-    // 6. Lembretes reagendados recentemente mas sem lastContactedAt
     const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
     const rescheduledNoContact = allTasks.filter(t =>
       new Date(t.updatedAt) > sevenDaysAgo
@@ -403,7 +393,6 @@ async function executeTool(name: string, args: any): Promise<any> {
       && t.reminderDate
     );
 
-    // Suspicion level
     let suspicion = 'baixa';
     const score = emptyNotes.length + genericNotes.length * 2 + duplicates.length * 5 + neverEdited.length + contactedNoNote.length * 2 + rescheduledNoContact.length * 3;
     if (score > 50) suspicion = 'CRÍTICA';
@@ -495,7 +484,6 @@ async function executeTool(name: string, args: any): Promise<any> {
     const name_ = String(args.attendant_name ?? '');
     const perDay = Number(args.tasks_per_day ?? 50);
     const startHour = Number(args.start_hour ?? 8);
-    // Default to dry_run=true for safety — only execute if explicitly false
     const dryRun = args.dry_run !== false;
 
     const allSellers = await db.select().from(sellers);
@@ -507,7 +495,6 @@ async function executeTool(name: string, args: any): Promise<any> {
       or(eq(tasks.assignedTo, seller.name), eq(tasks.userId, seller.userId))
     );
 
-    // Only reschedule overdue tasks (reminder in the past)
     const overdue = allTasks.filter(t =>
       t.reminderDate && new Date(t.reminderDate) < now && t.reminderEnabled !== false
     );
@@ -529,7 +516,6 @@ async function executeTool(name: string, args: any): Promise<any> {
       };
     }
 
-    // Distribute: start from tomorrow, skip weekends
     let currentDay = firstDay;
     let countToday = 0;
     let updated = 0;
@@ -672,7 +658,6 @@ export const aiRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       try {
-        // User key takes priority. Groq is the leader — more generous free tier
         const provider = input.provider ?? (process.env.GROQ_API_KEY ? 'groq' : process.env.GEMINI_API_KEY ? 'gemini' : 'groq');
         const envKey = provider === 'groq' ? process.env.GROQ_API_KEY
           : provider === 'gemini' ? process.env.GEMINI_API_KEY
@@ -680,8 +665,6 @@ export const aiRouter = router({
         const apiKey = input.apiKey || envKey || '';
         const baseURL = BASE_URLS[provider] ?? BASE_URLS.groq;
         const isAdmin = ctx.user.role === 'admin';
-        // Admin chat uses large context + tool calls — small models (llama-3.1-8b-instant, 6k TPM)
-        // will always hit rate limits. Force the 70b model for admin regardless of client settings.
         const model = isAdmin
           ? DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile'
           : (input.model ?? DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile');
@@ -697,7 +680,6 @@ export const aiRouter = router({
           return { reply };
         }
 
-        // Keep history small to stay under TPM limits (4 turns = 8 messages)
         const history = await db.select().from(chatMessages)
           .where(eq(chatMessages.userId, ctx.user.id))
           .orderBy(desc(chatMessages.createdAt))
@@ -736,7 +718,6 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
           ...history.reverse().map(m => ({ role: m.role, content: m.content })),
         ];
 
-        // Try primary provider, auto-fallback to the other on 429
         console.log('[AI_CHAT] calling LLM, isAdmin:', isAdmin, 'provider:', provider);
         let reply: string;
         try {
@@ -755,7 +736,6 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
               throw primaryErr;
             }
           } else if (isAdmin && primaryErr.status === 400) {
-            // Tool call generation failed (Groq can't parse the function call) — retry without tools
             console.log('[AI_CHAT] tool_use 400, retrying without tools');
             reply = await callLLM(apiKey, baseURL, model, messages, 1000, 0.4);
           } else {
@@ -782,12 +762,9 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
     .mutation(async ({ input, ctx }) => {
     if (ctx.user.role !== 'admin') throw new Error('Apenas admins podem usar este recurso');
 
-    // Groq as leader — more generous free tier (14k req/day vs ~500 Gemini)
     const analyzeProvider = input?.provider ?? (process.env.GROQ_API_KEY ? 'groq' : process.env.GEMINI_API_KEY ? 'gemini' : 'groq');
     const envKey = analyzeProvider === 'groq' ? process.env.GROQ_API_KEY : process.env.GEMINI_API_KEY;
     const apiKey = input?.apiKey || envKey || '';
-    // Always use server-side model for analysis — client's saved model may be llama-3.1-8b-instant
-    // which has 6k TPM limit, too low for the analysis prompt (~9k tokens)
     const analyzeModel = DEFAULT_MODELS[analyzeProvider] ?? 'llama-3.3-70b-versatile';
     if (!apiKey) return { report: [], summary: 'IA não configurada. Vá em Configurações → IA e configure Groq (recomendado) ou Gemini.' };
 
@@ -808,7 +785,6 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
       return h > 0 ? `${h}h${pad2(m)}min` : `${m}min`;
     };
 
-    // Build session summary per seller
     const sessionSummary = (sellerId: number) => {
       const mine = recentSessions.filter(s => s.userId === sellerId);
       const todaySess = mine.find(s => new Date(s.startedAt) >= todayStart);
@@ -1020,10 +996,11 @@ REGRAS ABSOLUTAS:
     }),
 
   history: protectedProcedure.query(async ({ ctx }) => {
-    return db.select().from(chatMessages)
+    const rows = await db.select().from(chatMessages)
       .where(eq(chatMessages.userId, ctx.user.id))
-      .orderBy(chatMessages.createdAt)
+      .orderBy(desc(chatMessages.createdAt))
       .limit(50);
+    return rows.reverse();
   }),
 
   clearHistory: protectedProcedure.mutation(async ({ ctx }) => {
