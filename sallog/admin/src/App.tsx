@@ -8,58 +8,122 @@ import FreightNew from './pages/FreightNew';
 import FreightDetail from './pages/FreightDetail';
 import Financial from './pages/Financial';
 import MapPage from './pages/MapPage';
+import './index.css';
 
 type Page = { name: 'login' | 'dashboard' | 'drivers' | 'freights' | 'freight-new' | 'freight-detail' | 'financial' | 'map'; id?: number };
 
+const NAV = [
+  { n: 'dashboard' as const, label: 'Dashboard', icon: '📊' },
+  { n: 'freights' as const, label: 'Fretes', icon: '🚛' },
+  { n: 'drivers' as const, label: 'Motoristas', icon: '👤' },
+  { n: 'map' as const, label: 'Mapa', icon: '🗺️' },
+  { n: 'financial' as const, label: 'Financeiro', icon: '💰' },
+];
+
+const TITLES: Record<string, string> = {
+  dashboard: 'Dashboard',
+  freights: 'Fretes',
+  drivers: 'Motoristas',
+  'freight-new': 'Novo Frete',
+  'freight-detail': 'Detalhes do Frete',
+  financial: 'Financeiro',
+  map: 'Mapa de Operações',
+};
+
 export default function App() {
   const [page, setPage] = useState<Page>({ name: 'login' });
+  const [open, setOpen] = useState(false);
   const { data: me, isLoading } = trpc.auth.me.useQuery();
+  const logout = trpc.auth.logout.useMutation({ onSuccess: () => { setPage({ name: 'login' }); } });
+  const utils = trpc.useUtils();
 
   useEffect(() => {
     if (!isLoading && me && page.name === 'login') setPage({ name: 'dashboard' });
     if (!isLoading && !me && page.name !== 'login') setPage({ name: 'login' });
   }, [me, isLoading]);
 
-  const nav = (p: Page) => setPage(p);
+  const nav = (p: Page) => { setPage(p); setOpen(false); };
 
-  if (isLoading) return <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', color: '#0C3680', fontWeight: 700, fontSize: 18 }}>Carregando...</div>;
+  if (isLoading) return (
+    <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontFamily: "'Barlow Semi Condensed', sans-serif", fontSize: 26, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>🚛 SalLog</div>
+        <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Carregando...</div>
+      </div>
+    </div>
+  );
+
   if (!me || page.name === 'login') return <Login onLogin={() => nav({ name: 'dashboard' })} />;
 
+  const { data: pendingDrivers } = trpc.drivers.list.useQuery({ status: 'pending' });
+  const pendingCount = pendingDrivers?.length ?? 0;
+  const activePage = NAV.find(n => n.n === page.name)?.n ?? null;
+
   return (
-    <div style={{ display: 'flex', height: '100vh' }}>
+    <div className="app-layout">
+      {/* Mobile overlay */}
+      <div className={`sidebar-overlay ${open ? 'open' : ''}`} onClick={() => setOpen(false)} />
+
       {/* Sidebar */}
-      <aside style={{ width: 220, background: '#1e293b', color: '#fff', padding: '24px 0', display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
-        <div style={{ padding: '0 20px 20px', borderBottom: '1px solid #334155' }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: '#60a5fa' }}>🚛 SalLog</div>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Gestão Logística</div>
+      <aside className={`sidebar ${open ? 'open' : ''}`}>
+        <div className="sidebar-logo">
+          <div className="sidebar-logo-mark">🚛 SalLog</div>
+          <div className="sidebar-logo-sub">Gestão Logística</div>
         </div>
-        {[
-          { label: '📊 Dashboard', p: { name: 'dashboard' as const } },
-          { label: '🚛 Fretes', p: { name: 'freights' as const } },
-          { label: '👤 Motoristas', p: { name: 'drivers' as const } },
-          { label: '🗺️ Mapa', p: { name: 'map' as const } },
-          { label: '💰 Financeiro', p: { name: 'financial' as const } },
-        ].map(({ label, p }) => (
-          <button key={p.name} onClick={() => nav(p)} style={{ background: page.name === p.name ? '#334155' : 'transparent', border: 'none', color: page.name === p.name ? '#fff' : '#94a3b8', padding: '10px 20px', textAlign: 'left', cursor: 'pointer', fontSize: 14, fontWeight: page.name === p.name ? 600 : 400 }}>
-            {label}
-          </button>
-        ))}
-        <div style={{ marginTop: 'auto', padding: '16px 20px', borderTop: '1px solid #334155', fontSize: 12, color: '#64748b' }}>
-          <div style={{ fontWeight: 600, color: '#94a3b8' }}>{me.name}</div>
-          <div>{me.role}</div>
+
+        <nav className="sidebar-nav">
+          {NAV.map(({ n, label, icon }) => (
+            <button key={n} onClick={() => nav({ name: n })} className={`sidebar-btn ${page.name === n ? 'active' : ''}`}>
+              <span className="icon">{icon}</span>
+              {label}
+              {n === 'drivers' && pendingCount > 0 && <span className="sidebar-badge">{pendingCount}</span>}
+            </button>
+          ))}
+        </nav>
+
+        <div className="sidebar-footer">
+          <div className="sidebar-user">{me.name}</div>
+          <div className="sidebar-role">{me.role}</div>
+          <button className="sidebar-logout" onClick={() => logout.mutate()}>Sair da conta</button>
         </div>
       </aside>
 
-      {/* Content */}
-      <main style={{ flex: 1, overflow: 'auto' }}>
-        {page.name === 'dashboard' && <Dashboard nav={nav} />}
-        {page.name === 'drivers' && <Drivers />}
-        {page.name === 'freights' && <Freights nav={nav} />}
-        {page.name === 'freight-new' && <FreightNew nav={nav} />}
-        {page.name === 'freight-detail' && page.id && <FreightDetail id={page.id} nav={nav} />}
-        {page.name === 'map' && <MapPage nav={nav} />}
-        {page.name === 'financial' && <Financial nav={nav} />}
-      </main>
+      {/* Main */}
+      <div className="main-content">
+        <header className="topbar">
+          <button className="topbar-hamburger" onClick={() => setOpen(true)} aria-label="Menu">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M2 5h16M2 10h16M2 15h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+            </svg>
+          </button>
+          <div className="topbar-title">{TITLES[page.name] ?? 'SalLog'}</div>
+          {page.name === 'dashboard' && (
+            <button className="btn btn-primary btn-sm" onClick={() => nav({ name: 'freight-new' })}>+ Frete</button>
+          )}
+        </header>
+
+        <main className="page-content fade-in" key={page.name}>
+          {page.name === 'dashboard' && <Dashboard nav={nav} />}
+          {page.name === 'drivers' && <Drivers />}
+          {page.name === 'freights' && <Freights nav={nav} />}
+          {page.name === 'freight-new' && <FreightNew nav={nav} />}
+          {page.name === 'freight-detail' && page.id && <FreightDetail id={page.id} nav={nav} />}
+          {page.name === 'financial' && <Financial nav={nav} />}
+          {page.name === 'map' && <MapPage nav={nav} />}
+        </main>
+      </div>
+
+      {/* Bottom Nav (mobile) */}
+      <nav className="bottom-nav">
+        <div className="bottom-nav-inner">
+          {NAV.map(({ n, label, icon }) => (
+            <button key={n} onClick={() => nav({ name: n })} className={`bn-btn ${activePage === n ? 'active' : ''}`}>
+              <span className="bn-icon">{icon}</span>
+              {label}
+            </button>
+          ))}
+        </div>
+      </nav>
     </div>
   );
 }

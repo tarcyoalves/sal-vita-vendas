@@ -1,78 +1,88 @@
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
 import { trpc } from '../lib/trpc';
-
-const markerIcon = L.icon({ iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png', shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png', iconAnchor: [12, 41] });
-
-function fmtValue(cents: number) { return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
 
 type Page = { name: string; id?: number };
 
 export default function MapPage({ nav }: { nav: (p: Page) => void }) {
-  const { data: freights = [] } = trpc.freights.list.useQuery({ scope: 'all' }, { refetchInterval: 30000 });
-  const activeFreights = freights.filter((f) => f.status === 'in_progress');
-
-  // Get latest locations for all active freights
-  const locationQueries = activeFreights.map((f) => trpc.locations.latestByFreight.useQuery({ freightId: f.id }, { refetchInterval: 30000 }));
-
-  const markers = activeFreights
-    .map((f, i) => ({ freight: f, loc: locationQueries[i]?.data }))
-    .filter((item): item is typeof item & { loc: NonNullable<typeof item.loc> } => !!item.loc);
+  const { data: freights = [] } = trpc.freights.list.useQuery({ scope: 'all' });
+  const activeFreights = freights.filter(f => f.status === 'in_progress');
 
   return (
-    <div style={{ padding: 32, fontFamily: "'DM Sans', 'Inter', sans-serif" }}>
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#1e293b' }}>Mapa de Operações</h1>
-        <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 14 }}>
-          {activeFreights.length} frete(s) em andamento · {markers.length} com localização GPS
-        </p>
+    <div>
+      {/* Header */}
+      <div className="page-hdr">
+        <div>
+          <h1 className="page-ttl">Mapa de Operações</h1>
+          <p className="page-sub">{activeFreights.length} frete{activeFreights.length !== 1 ? 's' : ''} em trânsito</p>
+        </div>
       </div>
 
-      <div style={{ borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.10)', marginBottom: 24 }}>
-        <MapContainer center={[-5.1918, -37.3444]} zoom={6} style={{ height: 500 }}>
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='© <a href="https://openstreetmap.org">OpenStreetMap</a>' />
-          {markers.map(({ freight, loc }) => (
-            <Marker key={freight.id} position={[loc.lat, loc.lng]} icon={markerIcon}>
-              <Popup>
-                <div style={{ minWidth: 180 }}>
-                  <strong style={{ fontSize: 14 }}>{freight.title}</strong><br />
-                  <span style={{ color: '#64748b', fontSize: 12 }}>{freight.originCity} → {freight.destinationCity}</span><br />
-                  <strong style={{ color: '#0C3680', fontSize: 15 }}>{fmtValue(freight.value)}</strong><br />
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>Atualizado: {new Date(loc.recordedAt).toLocaleString('pt-BR')}</span><br />
-                  <button onClick={() => nav({ name: 'freight-detail', id: freight.id })} style={{ marginTop: 6, background: '#0C3680', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Ver Detalhes</button>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
-        </MapContainer>
+      {/* Map placeholder */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div style={{
+          height: 340,
+          borderRadius: 10,
+          background: 'linear-gradient(135deg, #e2e8f0 0%, #f1f5f9 100%)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--text-3)',
+          border: '1px dashed var(--border)',
+        }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>🗺️</div>
+          <div style={{ fontFamily: "'Barlow Semi Condensed', sans-serif", fontSize: 18, fontWeight: 600, color: 'var(--text-2)', marginBottom: 6 }}>
+            Mapa em tempo real
+          </div>
+          <div style={{ fontSize: 13, maxWidth: 280, textAlign: 'center', lineHeight: 1.5 }}>
+            Integração com rastreamento GPS dos motoristas em andamento
+          </div>
+        </div>
       </div>
 
+      {/* Active freights list */}
       {activeFreights.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 32, color: '#94a3b8', background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }}>🗺️</div>
-          <div style={{ fontSize: 15, fontWeight: 600 }}>Nenhum frete em andamento</div>
+        <div className="card">
+          <div className="empty">
+            <div className="empty-icon">🚛</div>
+            <div className="empty-text">Nenhum frete em andamento no momento</div>
+          </div>
         </div>
       ) : (
-        <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', fontWeight: 700, fontSize: 15 }}>Fretes em Andamento</div>
-          {activeFreights.map((f) => {
-            const hasLoc = markers.some((m) => m.freight.id === f.id);
-            return (
-              <div key={f.id} onClick={() => nav({ name: 'freight-detail', id: f.id })} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderBottom: '1px solid #f8fafc', cursor: 'pointer' }}>
-                <div>
-                  <div style={{ fontWeight: 600 }}>{f.title}</div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>{f.originCity} → {f.destinationCity}</div>
+        <div>
+          <div className="section-lbl" style={{ marginBottom: 12 }}>Fretes em Andamento</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {activeFreights.map(f => (
+              <div
+                key={f.id}
+                className="card"
+                onClick={() => nav({ name: 'freight-detail', id: f.id })}
+                style={{ cursor: 'pointer', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 14 }}
+              >
+                <div style={{
+                  width: 40, height: 40, borderRadius: 10,
+                  background: 'rgba(245,158,11,0.12)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 20, flexShrink: 0,
+                }}>🚛</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
+                    {f.originCity}/{f.originState} → {f.destinationCity}/{f.destinationState}
+                    {f.distance ? ` · ${f.distance}km` : ''}
+                  </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: 12, color: hasLoc ? '#16a34a' : '#f59e0b', fontWeight: 600 }}>
-                    {hasLoc ? '📍 GPS ativo' : '⏳ Sem sinal'}
-                  </span>
-                  <span style={{ fontWeight: 700 }}>{fmtValue(f.value)}</span>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>
+                    {(f.value / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </div>
+                  <div style={{ marginTop: 4 }}>
+                    <span className="badge" style={{ background: '#f59e0b20', color: '#f59e0b', fontSize: 10 }}>Em Andamento</span>
+                  </div>
                 </div>
+                <span style={{ color: 'var(--sky)', fontSize: 18 }}>›</span>
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
       )}
     </div>
