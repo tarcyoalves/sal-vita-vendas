@@ -6,8 +6,10 @@ import Drivers from './pages/Drivers';
 import Freights from './pages/Freights';
 import FreightNew from './pages/FreightNew';
 import FreightDetail from './pages/FreightDetail';
+import Financial from './pages/Financial';
+import MapPage from './pages/MapPage';
 
-type Page = { name: 'login' | 'dashboard' | 'drivers' | 'freights' | 'freight-new' | 'freight-detail'; id?: number };
+type Page = { name: 'login' | 'dashboard' | 'drivers' | 'freights' | 'freight-new' | 'freight-detail' | 'financial' | 'map'; id?: number };
 
 export default function App() {
   const [page, setPage] = useState<Page>({ name: 'login' });
@@ -35,6 +37,8 @@ export default function App() {
           { label: '📊 Dashboard', p: { name: 'dashboard' as const } },
           { label: '🚛 Fretes', p: { name: 'freights' as const } },
           { label: '👤 Motoristas', p: { name: 'drivers' as const } },
+          { label: '🗺️ Mapa', p: { name: 'map' as const } },
+          { label: '💰 Financeiro', p: { name: 'financial' as const } },
         ].map(({ label, p }) => (
           <button key={p.name} onClick={() => nav(p)} style={{ background: page.name === p.name ? '#334155' : 'transparent', border: 'none', color: page.name === p.name ? '#fff' : '#94a3b8', padding: '10px 20px', textAlign: 'left', cursor: 'pointer', fontSize: 14, fontWeight: page.name === p.name ? 600 : 400 }}>
             {label}
@@ -53,6 +57,8 @@ export default function App() {
         {page.name === 'freights' && <Freights nav={nav} />}
         {page.name === 'freight-new' && <FreightNew nav={nav} />}
         {page.name === 'freight-detail' && page.id && <FreightDetail id={page.id} nav={nav} />}
+        {page.name === 'map' && <MapPage nav={nav} />}
+        {page.name === 'financial' && <Financial nav={nav} />}
       </main>
     </div>
   );

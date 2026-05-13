@@ -17,6 +17,7 @@ export default function FreightNew({ nav }: { nav: (p: Page) => void }) {
     originCity: 'Mossoró', originState: 'RN',
     destinationCity: '', destinationState: 'SP',
     distance: '', valueReais: '', weight: '',
+    loadDate: '', direction: 'ida' as 'ida' | 'retorno' | 'ambos',
   });
   const [error, setError] = useState('');
   const set = (k: keyof typeof form, v: string) => setForm((p) => ({ ...p, [k]: v }));
@@ -42,6 +43,8 @@ export default function FreightNew({ nav }: { nav: (p: Page) => void }) {
       distance: form.distance ? parseFloat(form.distance) : undefined,
       value: Math.round(valueNum * 100),
       weight: form.weight ? parseFloat(form.weight) : undefined,
+      loadDate: form.loadDate || undefined,
+      direction: form.direction,
     });
   }
 
@@ -107,6 +110,22 @@ export default function FreightNew({ nav }: { nav: (p: Page) => void }) {
                 </select>
               </Field>
             </div>
+          </div>
+        </Section>
+
+        {/* Seção: Programação */}
+        <Section label="Programação">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <Field label="Data de Carregamento">
+              <input style={inp} type="date" value={form.loadDate} onChange={(e) => set('loadDate', e.target.value)} />
+            </Field>
+            <Field label="Sentido">
+              <select style={inp} value={form.direction} onChange={(e) => set('direction', e.target.value as 'ida' | 'retorno' | 'ambos')}>
+                <option value="ida">Ida</option>
+                <option value="retorno">Retorno</option>
+                <option value="ambos">Ambos (Ida + Retorno)</option>
+              </select>
+            </Field>
           </div>
         </Section>
 

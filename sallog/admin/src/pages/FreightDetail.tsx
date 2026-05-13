@@ -1,5 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
 import { trpc } from '../lib/trpc';
+
+// Fix leaflet default icon
+const markerIcon = L.icon({ iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png', shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png', iconAnchor: [12, 41] });
 
 type Page = { name: string; id?: number };
 
@@ -33,6 +39,7 @@ export default function FreightDetail({ id, nav }: { id: number; nav: (p: Page) 
   const validate  = trpc.freights.validate.useMutation({ onSuccess: () => utils.freights.getById.invalidate() });
   const markPaid  = trpc.freights.markPaid.useMutation({ onSuccess: () => utils.freights.getById.invalidate() });
   const sendChat  = trpc.freightChats.send.useMutation({ onSuccess: () => { utils.freightChats.list.invalidate(); setChatMsg(''); } });
+  const validateDoc = trpc.freightDocuments.validate.useMutation({ onSuccess: () => utils.freightDocuments.listByFreight.invalidate() });
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chat]);
 
@@ -116,12 +123,14 @@ export default function FreightDetail({ id, nav }: { id: number; nav: (p: Page) 
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12 }}>
             {[
               { label: 'Criado em', value: new Date(freight.createdAt).toLocaleDateString('pt-BR') },
               { label: 'Distância', value: freight.distance ? `${freight.distance} km` : '—' },
               { label: 'Validado em', value: freight.validatedAt ? new Date(freight.validatedAt).toLocaleDateString('pt-BR') : '—' },
               { label: 'Pago em', value: freight.paidAt ? new Date(freight.paidAt).toLocaleDateString('pt-BR') : '—' },
+              { label: 'Data Coleta', value: freight.loadDate ?? '—' },
+              { label: 'Sentido', value: freight.direction === 'ida' ? '→ Ida' : freight.direction === 'retorno' ? '← Retorno' : '↔ Ambos' },
             ].map(({ label, value }) => (
               <div key={label} style={{ background: '#f8fafc', borderRadius: 10, padding: '12px 16px' }}>
                 <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, marginBottom: 4 }}>{label}</div>
@@ -175,19 +184,27 @@ export default function FreightDetail({ id, nav }: { id: number; nav: (p: Page) 
               <div style={{ fontSize: 32, marginBottom: 8 }}>🗺️</div>
               Rastreamento disponível apenas durante viagem ativa
             </div>
-          ) : (
+          ) : latestLoc ? (
             <>
-              <div id="sallog-map" style={{ height: 380, borderRadius: 10, background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 14, border: '1px solid #e2e8f0' }}>
-                {latestLoc
-                  ? `📍 Última posição: ${latestLoc.lat.toFixed(4)}, ${latestLoc.lng.toFixed(4)}`
-                  : '⏳ Aguardando sinal GPS do motorista...'}
+              <MapContainer center={[latestLoc.lat, latestLoc.lng]} zoom={10} style={{ height: 380, borderRadius: 10 }} key={`${latestLoc.lat}-${latestLoc.lng}`}>
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='© <a href="https://openstreetmap.org">OpenStreetMap</a>' />
+                <Marker position={[latestLoc.lat, latestLoc.lng]} icon={markerIcon}>
+                  <Popup>
+                    <strong>{freight.title}</strong><br />
+                    {freight.originCity} → {freight.destinationCity}<br />
+                    Atualizado: {new Date(latestLoc.recordedAt).toLocaleString('pt-BR')}
+                  </Popup>
+                </Marker>
+              </MapContainer>
+              <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
+                📍 {latestLoc.lat.toFixed(5)}, {latestLoc.lng.toFixed(5)} · Atualizado {new Date(latestLoc.recordedAt).toLocaleString('pt-BR')}
               </div>
-              {latestLoc && (
-                <div style={{ marginTop: 10, fontSize: 12, color: '#94a3b8' }}>
-                  Atualizado em {new Date(latestLoc.recordedAt).toLocaleString('pt-BR')}
-                </div>
-              )}
             </>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8', fontSize: 14 }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>📡</div>
+              Aguardando sinal GPS do motorista...
+            </div>
           )}
         </div>
       )}
@@ -252,19 +269,34 @@ export default function FreightDetail({ id, nav }: { id: number; nav: (p: Page) 
       {/* Tab: Documents */}
       {tab === 'docs' && (
         <div style={card}>
-          <div style={sectionLabel}>Comprovantes de Entrega</div>
+          <div style={sectionLabel}>Comprovantes e Canhotos</div>
           {docs.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8', fontSize: 14 }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>📎</div>
-              Nenhum comprovante enviado pelo motorista
+              Nenhum documento enviado pelo motorista
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16 }}>
               {docs.map((d) => (
-                <a key={d.id} href={d.fileUrl} target="_blank" rel="noreferrer" style={{ display: 'block', textDecoration: 'none' }}>
-                  <img src={d.fileUrl} alt="Comprovante" style={{ width: '100%', aspectRatio: '4/3', objectFit: 'cover', borderRadius: 10, border: '2px solid #e2e8f0', display: 'block' }} />
-                  <div style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', marginTop: 4 }}>{new Date(d.uploadedAt).toLocaleDateString('pt-BR')}</div>
-                </a>
+                <div key={d.id} style={{ borderRadius: 12, overflow: 'hidden', border: `2px solid ${d.validated ? '#86efac' : '#e2e8f0'}`, background: d.validated ? '#f0fdf4' : '#fff' }}>
+                  <a href={d.fileUrl} target="_blank" rel="noreferrer">
+                    <img src={d.fileUrl} alt="Documento" style={{ width: '100%', aspectRatio: '4/3', objectFit: 'cover', display: 'block' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  </a>
+                  <div style={{ padding: '8px 10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, background: d.type === 'canhoto' ? '#fef3c7' : '#eff6ff', color: d.type === 'canhoto' ? '#d97706' : '#2563eb', padding: '2px 8px', borderRadius: 8 }}>
+                        {d.type === 'canhoto' ? '📋 Canhoto' : '📄 Comprovante'}
+                      </span>
+                      {d.validated && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700 }}>✓ Validado</span>}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 6 }}>{new Date(d.uploadedAt).toLocaleDateString('pt-BR')}</div>
+                    {!d.validated && (
+                      <button onClick={() => validateDoc.mutate({ id: d.id })} disabled={validateDoc.isPending} style={{ width: '100%', background: '#0C3680', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 0', fontWeight: 600, cursor: 'pointer', fontSize: 12 }}>
+                        ✅ Validar
+                      </button>
+                    )}
+                  </div>
+                </div>
               ))}
             </div>
           )}
