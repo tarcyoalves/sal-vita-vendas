@@ -6,6 +6,7 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   role: text('role').notNull().default('driver'), // 'admin' | 'driver'
+  status: text('status').notNull().default('active'), // 'active' | 'blocked'
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -16,6 +17,11 @@ export const drivers = pgTable('drivers', {
   plate: text('plate').notNull(),
   phone: text('phone').notNull(),
   status: text('status').notNull().default('pending'), // pending | approved | rejected
+  vehicleType: text('vehicle_type'),  // 'truck' | 'toco' | 'bitruck' | 'carreta' | 'outros'
+  pixKey: text('pix_key'),
+  score: real('score').default(0),
+  totalFreights: integer('total_freights').notNull().default(0),
+  isFavorite: boolean('is_favorite').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -35,6 +41,8 @@ export const freights = pgTable('freights', {
   status: text('status').notNull().default('available'), // available | in_progress | completed | validated | paid
   createdBy: integer('created_by').notNull(),
   assignedDriverId: integer('assigned_driver_id'),
+  loadDate: text('load_date'),       // ISO date string
+  direction: text('direction').notNull().default('ida'), // 'ida' | 'retorno' | 'ambos'
   validatedAt: timestamp('validated_at'),
   paidAt: timestamp('paid_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -47,6 +55,7 @@ export const freightInterests = pgTable(
     id: serial('id').primaryKey(),
     freightId: integer('freight_id').notNull(),
     driverId: integer('driver_id').notNull(),
+    status: text('status').notNull().default('pending'), // 'pending' | 'accepted' | 'rejected'
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (t) => ({ uniq: uniqueIndex('freight_interests_uniq').on(t.freightId, t.driverId) }),
@@ -75,6 +84,10 @@ export const freightDocuments = pgTable('freight_documents', {
   freightId: integer('freight_id').notNull(),
   driverId: integer('driver_id').notNull(),
   fileUrl: text('file_url').notNull(),
+  type: text('type').notNull().default('comprovante'), // 'comprovante' | 'canhoto'
+  validated: boolean('validated').notNull().default(false),
+  validatedAt: timestamp('validated_at'),
+  validatedBy: integer('validated_by'),
   uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
 });
 
