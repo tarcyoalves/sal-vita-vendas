@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { freights, drivers, freightInterests } from '../db/schema';
@@ -13,6 +13,7 @@ export const freightsRouter = router({
       if (ctx.user.role === 'admin') return input?.status ? rows.filter((r) => r.status === input.status) : rows;
       const [driver] = await db.select().from(drivers).where(eq(drivers.userId, ctx.user.id));
       if (!driver) return [];
+      if (driver.status !== 'approved') return [];
       const scope = input?.scope ?? 'all';
       if (scope === 'available') return rows.filter((r) => r.status === 'available');
       if (scope === 'mine') return rows.filter((r) => r.assignedDriverId === driver.id);
@@ -30,14 +31,14 @@ export const freightsRouter = router({
   }),
 
   create: adminProcedure
-    .input(z.object({ title: z.string().min(3), description: z.string().optional(), cargoType: z.enum(['bigbag', 'sacaria', 'granel']), originCity: z.string(), originState: z.string().length(2), destinationCity: z.string(), destinationState: z.string().length(2), distance: z.number().optional(), value: z.number().int().min(0), weight: z.number().optional() }))
+    .input(z.object({ title: z.string().min(3), description: z.string().optional(), cargoType: z.enum(['bigbag', 'sacaria', 'granel']), originCity: z.string(), originState: z.string().length(2), destinationCity: z.string(), destinationState: z.string().length(2), distance: z.number().optional(), value: z.number().int().min(0), weight: z.number().optional(), loadDate: z.string().optional(), direction: z.enum(['ida', 'retorno', 'ambos']).default('ida') }))
     .mutation(async ({ input, ctx }) => {
       const [row] = await db.insert(freights).values({ ...input, createdBy: ctx.user.id }).returning();
       return row;
     }),
 
   update: adminProcedure
-    .input(z.object({ id: z.number(), title: z.string().optional(), description: z.string().optional(), cargoType: z.enum(['bigbag', 'sacaria', 'granel']).optional(), originCity: z.string().optional(), originState: z.string().optional(), destinationCity: z.string().optional(), destinationState: z.string().optional(), distance: z.number().optional(), value: z.number().int().min(0).optional(), weight: z.number().optional() }))
+    .input(z.object({ id: z.number(), title: z.string().optional(), description: z.string().optional(), cargoType: z.enum(['bigbag', 'sacaria', 'granel']).optional(), originCity: z.string().optional(), originState: z.string().optional(), destinationCity: z.string().optional(), destinationState: z.string().optional(), distance: z.number().optional(), value: z.number().int().min(0).optional(), weight: z.number().optional(), loadDate: z.string().optional(), direction: z.enum(['ida', 'retorno', 'ambos']).optional() }))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
       await db.update(freights).set({ ...data, updatedAt: new Date() }).where(eq(freights.id, id));
@@ -52,6 +53,8 @@ export const freightsRouter = router({
       const [freight] = await db.select().from(freights).where(eq(freights.id, input.freightId));
       if (!freight || freight.status !== 'available') throw new Error('Frete não disponível');
       await db.update(freights).set({ assignedDriverId: input.driverId, status: 'in_progress', updatedAt: new Date() }).where(eq(freights.id, input.freightId));
+      await db.update(freightInterests).set({ status: 'accepted' }).where(and(eq(freightInterests.freightId, input.freightId), eq(freightInterests.driverId, input.driverId)));
+      await db.update(freightInterests).set({ status: 'rejected' }).where(and(eq(freightInterests.freightId, input.freightId), ne(freightInterests.driverId, input.driverId)));
       return { ok: true };
     }),
 

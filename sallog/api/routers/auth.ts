@@ -31,18 +31,19 @@ export const authRouter = router({
       const [u] = driver ? await db.select().from(users).where(eq(users.id, driver.userId)) : [];
       const valid = u ? verifyPassword(input.password, u.passwordHash) : (verifyPassword(input.password, DUMMY_HASH), false);
       if (!valid || !driver || !u) throw new Error('CPF ou senha inválidos');
+      if (driver.status !== 'approved') throw new Error('Cadastro aguardando aprovação do administrador');
       const token = signToken({ id: u.id, email: u.email, name: u.name, role: u.role });
       return { token, driver: { id: driver.id, cpf: driver.cpf, plate: driver.plate, phone: driver.phone, status: driver.status }, user: { id: u.id, name: u.name, role: u.role } };
     }),
 
   registerDriver: publicProcedure
-    .input(z.object({ name: z.string().min(2), cpf: z.string().min(11), plate: z.string().min(7), phone: z.string().min(10), password: z.string().min(6) }))
+    .input(z.object({ name: z.string().min(2), cpf: z.string().min(11), plate: z.string().min(7), phone: z.string().min(10), password: z.string().min(6), vehicleType: z.string().optional() }))
     .mutation(async ({ input }) => {
       const existing = await db.select().from(drivers).where(eq(drivers.cpf, input.cpf));
       if (existing.length > 0) throw new Error('CPF já cadastrado');
       const email = `${input.cpf.replace(/\D/g, '')}@motorista.sallog`;
       const [newUser] = await db.insert(users).values({ name: input.name, email, passwordHash: hashPassword(input.password), role: 'driver' }).returning();
-      const [newDriver] = await db.insert(drivers).values({ userId: newUser.id, cpf: input.cpf, plate: input.plate.toUpperCase(), phone: input.phone }).returning();
+      const [newDriver] = await db.insert(drivers).values({ userId: newUser.id, cpf: input.cpf, plate: input.plate.toUpperCase(), phone: input.phone, ...(input.vehicleType ? { vehicleType: input.vehicleType } : {}) }).returning();
       const token = signToken({ id: newUser.id, email: newUser.email, name: newUser.name, role: newUser.role });
       return { token, driver: { id: newDriver.id, cpf: newDriver.cpf, plate: newDriver.plate, phone: newDriver.phone, status: newDriver.status }, user: { id: newUser.id, name: newUser.name, role: newUser.role } };
     }),

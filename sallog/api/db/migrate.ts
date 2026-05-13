@@ -60,6 +60,21 @@ export async function ensureTablesExist() {
   await sql`CREATE INDEX IF NOT EXISTS chats_freight_idx ON freight_chats(freight_id, created_at)`;
   await sql`CREATE INDEX IF NOT EXISTS interests_driver_idx ON freight_interests(driver_id)`;
 
+  // Add new columns (idempotent)
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'`;
+  await sql`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS vehicle_type TEXT`;
+  await sql`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS pix_key TEXT`;
+  await sql`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS score REAL DEFAULT 0`;
+  await sql`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS total_freights INTEGER NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql`ALTER TABLE freights ADD COLUMN IF NOT EXISTS load_date TEXT`;
+  await sql`ALTER TABLE freights ADD COLUMN IF NOT EXISTS direction TEXT NOT NULL DEFAULT 'ida'`;
+  await sql`ALTER TABLE freight_interests ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending'`;
+  await sql`ALTER TABLE freight_documents ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'comprovante'`;
+  await sql`ALTER TABLE freight_documents ADD COLUMN IF NOT EXISTS validated BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql`ALTER TABLE freight_documents ADD COLUMN IF NOT EXISTS validated_at TIMESTAMP`;
+  await sql`ALTER TABLE freight_documents ADD COLUMN IF NOT EXISTS validated_by INTEGER`;
+
   // Bootstrap: ensure sallog admin exists with correct password (remove after first successful login)
   {
     const adminEmail = 'tarcyo.alves@gmail.com';
