@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Drivers from './pages/Drivers';
 import Freights from './pages/Freights';
 import FreightNew from './pages/FreightNew';
+import AiAssistant from './components/AiAssistant';
 import './index.css';
 
 const FreightDetail = lazy(() => import('./pages/FreightDetail'));
@@ -16,11 +17,11 @@ type Page = { name: 'login' | 'dashboard' | 'drivers' | 'freights' | 'freight-ne
 const LOGO = 'http://salvitarn.com.br/wp-content/uploads/2026/05/freteprime.png';
 
 const NAV = [
-  { n: 'dashboard' as const,  label: 'Dashboard',  icon: '📊' },
-  { n: 'freights'  as const,  label: 'Fretes',      icon: '🚛' },
-  { n: 'drivers'   as const,  label: 'Motoristas',  icon: '👤' },
-  { n: 'map'       as const,  label: 'Mapa',         icon: '🗺️' },
-  { n: 'financial' as const,  label: 'Financeiro',  icon: '💰' },
+  { n: 'dashboard' as const, label: 'Dashboard',  icon: '📊' },
+  { n: 'freights'  as const, label: 'Fretes',      icon: '🚛' },
+  { n: 'drivers'   as const, label: 'Motoristas',  icon: '👤' },
+  { n: 'map'       as const, label: 'Mapa',        icon: '🗺️' },
+  { n: 'financial' as const, label: 'Financeiro',  icon: '💰' },
 ];
 
 const TITLES: Record<string, string> = {
@@ -36,19 +37,19 @@ function initials(name: string) {
 function Spinner() {
   return (
     <div className="loading-center">
-      <div style={{ fontSize: 22, marginBottom: 6 }}>🚛</div>
-      <span style={{ color: 'var(--amber)', fontSize: 12, letterSpacing: 1 }}>CARREGANDO...</span>
+      <span style={{ fontSize: 22 }}>🚛</span>
+      <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Carregando...</span>
     </div>
   );
 }
 
 export default function App() {
-  const [page, setPage] = useState<Page>({ name: 'login' });
-  const [open, setOpen] = useState(false);
-  const [logoError, setLogoError] = useState(false);
+  const [page, setPage]       = useState<Page>({ name: 'login' });
+  const [open, setOpen]       = useState(false);
+  const [logoErr, setLogoErr] = useState(false);
 
   const { data: me, isLoading } = trpc.auth.me.useQuery();
-  const { data: driversList } = trpc.drivers.list.useQuery({}, { enabled: !!me });
+  const { data: driversList }   = trpc.drivers.list.useQuery({}, { enabled: !!me });
   const logout = trpc.auth.logout.useMutation({ onSuccess: () => setPage({ name: 'login' }) });
 
   useEffect(() => {
@@ -60,28 +61,27 @@ export default function App() {
   const pendingCount = driversList?.filter(d => d.status === 'pending').length ?? 0;
 
   if (isLoading) return (
-    <div style={{ display:'flex', height:'100vh', alignItems:'center', justifyContent:'center', background:'var(--bg)' }}>
-      <div style={{ textAlign:'center' }}>
-        {!logoError
-          ? <img src={LOGO} alt="FRETEPRIME" onError={() => setLogoError(true)}
-              style={{ height: 48, marginBottom: 16, display: 'block', margin: '0 auto 16px' }} />
-          : <div style={{ fontFamily:"'Barlow Semi Condensed',sans-serif", fontSize:28, fontWeight:700, color:'var(--amber)', letterSpacing:1, marginBottom:16 }}>FRETEPRIME</div>
+    <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
+      <div style={{ textAlign: 'center' }}>
+        {!logoErr
+          ? <img src={LOGO} alt="FRETEPRIME" onError={() => setLogoErr(true)}
+              style={{ height: 46, display: 'block', margin: '0 auto 14px' }} />
+          : <div style={{ fontFamily: "'Barlow Semi Condensed',sans-serif", fontSize: 26, fontWeight: 700, color: 'var(--navy)', marginBottom: 14 }}>FRETEPRIME</div>
         }
-        <div style={{ color:'var(--amber)', fontSize:11, letterSpacing:2, fontWeight:600 }}>CARREGANDO...</div>
+        <div style={{ color: 'var(--text-4)', fontSize: 11, letterSpacing: 1 }}>carregando...</div>
       </div>
     </div>
   );
 
-  if (!me || page.name === 'login') return <Login onLogin={() => nav({ name: 'dashboard' })} logo={LOGO} />;
+  if (!me || page.name === 'login') return <Login onLogin={() => nav({ name: 'dashboard' })} />;
 
   return (
     <div className="app-layout">
       <div className={`sidebar-overlay ${open ? 'open' : ''}`} onClick={() => setOpen(false)} />
 
       <aside className={`sidebar ${open ? 'open' : ''}`}>
-        {/* Logo */}
         <div className="sidebar-logo">
-          {logoError ? (
+          {logoErr ? (
             <div className="sidebar-logo-fallback">
               <div className="sidebar-logo-icon">🚛</div>
               <div>
@@ -90,8 +90,7 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <img src={LOGO} alt="FRETEPRIME" className="sidebar-logo-img"
-              onError={() => setLogoError(true)} />
+            <img src={LOGO} alt="FRETEPRIME" className="sidebar-logo-img" onError={() => setLogoErr(true)} />
           )}
         </div>
 
@@ -101,9 +100,7 @@ export default function App() {
               className={`sidebar-btn ${page.name === n ? 'active' : ''}`}>
               <span className="icon">{icon}</span>
               {label}
-              {n === 'drivers' && pendingCount > 0 && (
-                <span className="sidebar-badge">{pendingCount}</span>
-              )}
+              {n === 'drivers' && pendingCount > 0 && <span className="sidebar-badge">{pendingCount}</span>}
             </button>
           ))}
         </nav>
@@ -159,6 +156,9 @@ export default function App() {
           ))}
         </div>
       </nav>
+
+      {/* AI Assistant — always visible when logged in */}
+      <AiAssistant />
     </div>
   );
 }
