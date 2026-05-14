@@ -83,6 +83,33 @@ export const freightsRouter = router({
 
   stats: adminProcedure.query(async () => {
     const rows = await db.select().from(freights);
-    return { available: rows.filter((r) => r.status === 'available').length, in_progress: rows.filter((r) => r.status === 'in_progress').length, completed: rows.filter((r) => r.status === 'completed').length, validated: rows.filter((r) => r.status === 'validated').length, paid: rows.filter((r) => r.status === 'paid').length, total: rows.length };
+    const totalValueCents = rows.reduce((s, r) => s + (r.value ?? 0), 0);
+    const paidValueCents = rows.filter((r) => r.status === 'paid').reduce((s, r) => s + (r.value ?? 0), 0);
+    const pendingPaymentCents = rows.filter((r) => r.status === 'validated').reduce((s, r) => s + (r.value ?? 0), 0);
+    const inProgressValueCents = rows.filter((r) => r.status === 'in_progress').reduce((s, r) => s + (r.value ?? 0), 0);
+    // Monthly breakdown — last 6 months
+    const now = new Date();
+    const months: { month: string; valueCents: number; count: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const label = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('. ', '/').replace('.', '');
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      const bucket = rows.filter((r) => { const c = new Date(r.createdAt); return c.getFullYear() === y && c.getMonth() === m; });
+      months.push({ month: label, valueCents: bucket.reduce((s, r) => s + (r.value ?? 0), 0), count: bucket.length });
+    }
+    return {
+      available: rows.filter((r) => r.status === 'available').length,
+      in_progress: rows.filter((r) => r.status === 'in_progress').length,
+      completed: rows.filter((r) => r.status === 'completed').length,
+      validated: rows.filter((r) => r.status === 'validated').length,
+      paid: rows.filter((r) => r.status === 'paid').length,
+      total: rows.length,
+      totalValueCents,
+      paidValueCents,
+      pendingPaymentCents,
+      inProgressValueCents,
+      monthly: months,
+    };
   }),
 });

@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { drivers, users } from '../db/schema';
+import { hashPassword } from '../auth';
 
 export const driversRouter = router({
   list: adminProcedure
@@ -40,4 +41,31 @@ export const driversRouter = router({
     await db.update(drivers).set({ isFavorite: !driver.isFavorite, updatedAt: new Date() }).where(eq(drivers.id, input.id));
     return { ok: true, isFavorite: !driver.isFavorite };
   }),
+
+  createManual: adminProcedure
+    .input(z.object({
+      name: z.string().min(2),
+      cpf: z.string().min(11),
+      plate: z.string().min(7),
+      phone: z.string().min(10),
+      vehicleType: z.string().optional(),
+      pixKey: z.string().optional(),
+      password: z.string().min(6).default('frete123'),
+    }))
+    .mutation(async ({ input }) => {
+      const existing = await db.select().from(drivers).where(eq(drivers.cpf, input.cpf));
+      if (existing.length > 0) throw new Error('CPF já cadastrado');
+      const email = `${input.cpf.replace(/\D/g, '')}@motorista.sallog`;
+      const [newUser] = await db.insert(users).values({ name: input.name, email, passwordHash: hashPassword(input.password), role: 'driver' }).returning();
+      const [newDriver] = await db.insert(drivers).values({
+        userId: newUser.id,
+        cpf: input.cpf,
+        plate: input.plate.toUpperCase(),
+        phone: input.phone,
+        status: 'approved',
+        ...(input.vehicleType ? { vehicleType: input.vehicleType } : {}),
+        ...(input.pixKey ? { pixKey: input.pixKey } : {}),
+      }).returning();
+      return { id: newDriver.id, cpf: newDriver.cpf, plate: newDriver.plate, phone: newDriver.phone, status: newDriver.status, userName: newUser.name, userEmail: newUser.email };
+    }),
 });

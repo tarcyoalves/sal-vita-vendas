@@ -48,6 +48,19 @@ export const authRouter = router({
       return { token, driver: { id: newDriver.id, cpf: newDriver.cpf, plate: newDriver.plate, phone: newDriver.phone, status: newDriver.status }, user: { id: newUser.id, name: newUser.name, role: newUser.role } };
     }),
 
+  loginDriver: publicProcedure
+    .input(z.object({ cpf: z.string().min(1), password: z.string().min(1) }))
+    .mutation(async ({ input, ctx }) => {
+      const [driver] = await db.select().from(drivers).where(eq(drivers.cpf, input.cpf));
+      const [u] = driver ? await db.select().from(users).where(eq(users.id, driver.userId)) : [];
+      const valid = u ? verifyPassword(input.password, u.passwordHash) : (verifyPassword(input.password, DUMMY_HASH), false);
+      if (!valid || !driver || !u) throw new Error('CPF ou senha inválidos');
+      const token = signToken({ id: u.id, email: u.email, name: u.name, role: u.role });
+      const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+      ctx.res.setHeader('Set-Cookie', `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly${secure}; Path=/; Max-Age=${30 * 24 * 60 * 60}; SameSite=Lax`);
+      return { user: { id: u.id, name: u.name, email: u.email, role: u.role }, driver: { id: driver.id, cpf: driver.cpf, plate: driver.plate, phone: driver.phone, status: driver.status } };
+    }),
+
   logout: publicProcedure.mutation(({ ctx }) => {
     ctx.res.setHeader('Set-Cookie', `${COOKIE_NAME}=; HttpOnly; Path=/; Max-Age=0`);
     return { ok: true };

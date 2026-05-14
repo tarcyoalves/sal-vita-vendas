@@ -49222,6 +49222,16 @@ var authRouter = router({
     const token = signToken({ id: newUser.id, email: newUser.email, name: newUser.name, role: newUser.role });
     return { token, driver: { id: newDriver.id, cpf: newDriver.cpf, plate: newDriver.plate, phone: newDriver.phone, status: newDriver.status }, user: { id: newUser.id, name: newUser.name, role: newUser.role } };
   }),
+  loginDriver: publicProcedure.input(external_exports.object({ cpf: external_exports.string().min(1), password: external_exports.string().min(1) })).mutation(async ({ input, ctx }) => {
+    const [driver] = await db.select().from(drivers).where(eq(drivers.cpf, input.cpf));
+    const [u] = driver ? await db.select().from(users).where(eq(users.id, driver.userId)) : [];
+    const valid = u ? verifyPassword(input.password, u.passwordHash) : (verifyPassword(input.password, DUMMY_HASH), false);
+    if (!valid || !driver || !u) throw new Error("CPF ou senha inv\xE1lidos");
+    const token = signToken({ id: u.id, email: u.email, name: u.name, role: u.role });
+    const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+    ctx.res.setHeader("Set-Cookie", `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly${secure}; Path=/; Max-Age=${30 * 24 * 60 * 60}; SameSite=Lax`);
+    return { user: { id: u.id, name: u.name, email: u.email, role: u.role }, driver: { id: driver.id, cpf: driver.cpf, plate: driver.plate, phone: driver.phone, status: driver.status } };
+  }),
   logout: publicProcedure.mutation(({ ctx }) => {
     ctx.res.setHeader("Set-Cookie", `${COOKIE_NAME}=; HttpOnly; Path=/; Max-Age=0`);
     return { ok: true };
@@ -49229,6 +49239,7 @@ var authRouter = router({
 });
 
 // api/routers/drivers.ts
+init_auth();
 var driversRouter = router({
   list: adminProcedure.input(external_exports.object({ status: external_exports.string().optional() }).optional()).query(async ({ input }) => {
     const rows = await db.select({ id: drivers.id, userId: drivers.userId, cpf: drivers.cpf, plate: drivers.plate, phone: drivers.phone, status: drivers.status, vehicleType: drivers.vehicleType, pixKey: drivers.pixKey, score: drivers.score, totalFreights: drivers.totalFreights, isFavorite: drivers.isFavorite, createdAt: drivers.createdAt, userName: users.name, userEmail: users.email }).from(drivers).leftJoin(users, eq(drivers.userId, users.id));
@@ -49255,6 +49266,30 @@ var driversRouter = router({
     if (!driver) throw new Error("Motorista n\xE3o encontrado");
     await db.update(drivers).set({ isFavorite: !driver.isFavorite, updatedAt: /* @__PURE__ */ new Date() }).where(eq(drivers.id, input.id));
     return { ok: true, isFavorite: !driver.isFavorite };
+  }),
+  createManual: adminProcedure.input(external_exports.object({
+    name: external_exports.string().min(2),
+    cpf: external_exports.string().min(11),
+    plate: external_exports.string().min(7),
+    phone: external_exports.string().min(10),
+    vehicleType: external_exports.string().optional(),
+    pixKey: external_exports.string().optional(),
+    password: external_exports.string().min(6).default("frete123")
+  })).mutation(async ({ input }) => {
+    const existing = await db.select().from(drivers).where(eq(drivers.cpf, input.cpf));
+    if (existing.length > 0) throw new Error("CPF j\xE1 cadastrado");
+    const email = `${input.cpf.replace(/\D/g, "")}@motorista.sallog`;
+    const [newUser] = await db.insert(users).values({ name: input.name, email, passwordHash: hashPassword(input.password), role: "driver" }).returning();
+    const [newDriver] = await db.insert(drivers).values({
+      userId: newUser.id,
+      cpf: input.cpf,
+      plate: input.plate.toUpperCase(),
+      phone: input.phone,
+      status: "approved",
+      ...input.vehicleType ? { vehicleType: input.vehicleType } : {},
+      ...input.pixKey ? { pixKey: input.pixKey } : {}
+    }).returning();
+    return { id: newDriver.id, cpf: newDriver.cpf, plate: newDriver.plate, phone: newDriver.phone, status: newDriver.status, userName: newUser.name, userEmail: newUser.email };
   })
 });
 
@@ -49321,7 +49356,36 @@ var freightsRouter = router({
   }),
   stats: adminProcedure.query(async () => {
     const rows = await db.select().from(freights);
-    return { available: rows.filter((r) => r.status === "available").length, in_progress: rows.filter((r) => r.status === "in_progress").length, completed: rows.filter((r) => r.status === "completed").length, validated: rows.filter((r) => r.status === "validated").length, paid: rows.filter((r) => r.status === "paid").length, total: rows.length };
+    const totalValueCents = rows.reduce((s, r) => s + (r.value ?? 0), 0);
+    const paidValueCents = rows.filter((r) => r.status === "paid").reduce((s, r) => s + (r.value ?? 0), 0);
+    const pendingPaymentCents = rows.filter((r) => r.status === "validated").reduce((s, r) => s + (r.value ?? 0), 0);
+    const inProgressValueCents = rows.filter((r) => r.status === "in_progress").reduce((s, r) => s + (r.value ?? 0), 0);
+    const now = /* @__PURE__ */ new Date();
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const label = d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }).replace(". ", "/").replace(".", "");
+      const y2 = d.getFullYear();
+      const m2 = d.getMonth();
+      const bucket = rows.filter((r) => {
+        const c = new Date(r.createdAt);
+        return c.getFullYear() === y2 && c.getMonth() === m2;
+      });
+      months.push({ month: label, valueCents: bucket.reduce((s, r) => s + (r.value ?? 0), 0), count: bucket.length });
+    }
+    return {
+      available: rows.filter((r) => r.status === "available").length,
+      in_progress: rows.filter((r) => r.status === "in_progress").length,
+      completed: rows.filter((r) => r.status === "completed").length,
+      validated: rows.filter((r) => r.status === "validated").length,
+      paid: rows.filter((r) => r.status === "paid").length,
+      total: rows.length,
+      totalValueCents,
+      paidValueCents,
+      pendingPaymentCents,
+      inProgressValueCents,
+      monthly: months
+    };
   })
 });
 
