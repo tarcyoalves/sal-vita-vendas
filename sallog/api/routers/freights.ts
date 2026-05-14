@@ -31,7 +31,26 @@ export const freightsRouter = router({
   }),
 
   create: adminProcedure
-    .input(z.object({ title: z.string().min(3), description: z.string().optional(), cargoType: z.enum(['bigbag', 'sacaria', 'granel']), originCity: z.string(), originState: z.string().length(2), destinationCity: z.string(), destinationState: z.string().length(2), distance: z.number().optional(), value: z.number().int().min(0), weight: z.number().optional(), loadDate: z.string().optional(), direction: z.enum(['ida', 'retorno', 'ambos']).default('ida') }))
+    .input(z.object({
+      title: z.string().min(3),
+      description: z.string().optional(),
+      cargoType: z.enum(['bigbag', 'sacaria', 'granel']),
+      originCity: z.string(), originState: z.string().length(2),
+      destinationCity: z.string(), destinationState: z.string().length(2),
+      distance: z.number().optional(),
+      value: z.number().int().min(0),
+      weight: z.number().optional(),
+      loadDate: z.string().optional(),
+      deliveryDate: z.string().optional(),
+      direction: z.enum(['ida', 'retorno', 'ambos']).default('ida'),
+      freightType: z.enum(['completo', 'complemento']).default('completo'),
+      vehicleTypes: z.string().optional(), // JSON array
+      needsTarp: z.boolean().default(false),
+      needsTracker: z.boolean().default(false),
+      hasInsurance: z.boolean().default(true),
+      paymentMethod: z.string().optional(),
+      valueNegotiable: z.boolean().default(false),
+    }))
     .mutation(async ({ input, ctx }) => {
       const [row] = await db.insert(freights).values({ ...input, createdBy: ctx.user.id }).returning();
       return row;

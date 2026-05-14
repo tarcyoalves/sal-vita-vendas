@@ -41,8 +41,16 @@ export const freights = pgTable('freights', {
   status: text('status').notNull().default('available'), // available | in_progress | completed | validated | paid
   createdBy: integer('created_by').notNull(),
   assignedDriverId: integer('assigned_driver_id'),
-  loadDate: text('load_date'),       // ISO date string
+  loadDate: text('load_date'),       // ISO date string (pickup date)
+  deliveryDate: text('delivery_date'), // ISO date string
   direction: text('direction').notNull().default('ida'), // 'ida' | 'retorno' | 'ambos'
+  freightType: text('freight_type').notNull().default('completo'), // 'completo' | 'complemento'
+  vehicleTypes: text('vehicle_types'), // JSON array e.g. '["carreta","toco"]'
+  needsTarp: boolean('needs_tarp').notNull().default(false),
+  needsTracker: boolean('needs_tracker').notNull().default(false),
+  hasInsurance: boolean('has_insurance').notNull().default(true),
+  paymentMethod: text('payment_method'), // 'pix' | 'avista' | 'prazo30' | 'prazo60' | 'a-combinar'
+  valueNegotiable: boolean('value_negotiable').notNull().default(false),
   validatedAt: timestamp('validated_at'),
   paidAt: timestamp('paid_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),

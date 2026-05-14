@@ -74,6 +74,14 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE freight_documents ADD COLUMN IF NOT EXISTS validated BOOLEAN NOT NULL DEFAULT FALSE`;
   await sql`ALTER TABLE freight_documents ADD COLUMN IF NOT EXISTS validated_at TIMESTAMP`;
   await sql`ALTER TABLE freight_documents ADD COLUMN IF NOT EXISTS validated_by INTEGER`;
+  await sql`ALTER TABLE freights ADD COLUMN IF NOT EXISTS delivery_date TEXT`;
+  await sql`ALTER TABLE freights ADD COLUMN IF NOT EXISTS freight_type TEXT NOT NULL DEFAULT 'completo'`;
+  await sql`ALTER TABLE freights ADD COLUMN IF NOT EXISTS vehicle_types TEXT`;
+  await sql`ALTER TABLE freights ADD COLUMN IF NOT EXISTS needs_tarp BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql`ALTER TABLE freights ADD COLUMN IF NOT EXISTS needs_tracker BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql`ALTER TABLE freights ADD COLUMN IF NOT EXISTS has_insurance BOOLEAN NOT NULL DEFAULT TRUE`;
+  await sql`ALTER TABLE freights ADD COLUMN IF NOT EXISTS payment_method TEXT`;
+  await sql`ALTER TABLE freights ADD COLUMN IF NOT EXISTS value_negotiable BOOLEAN NOT NULL DEFAULT FALSE`;
 
   // Bootstrap admin user — two-step to avoid ON CONFLICT WHERE edge cases
   {
