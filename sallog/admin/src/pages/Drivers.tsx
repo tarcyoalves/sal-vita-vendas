@@ -1,40 +1,58 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { trpc } from '../lib/trpc';
 
-const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
+const STATUS_STYLE = {
   pending:  { bg: '#FFFBEB', color: '#D97706', label: 'Pendente' },
   approved: { bg: '#F0FDF4', color: '#16A34A', label: 'Aprovado' },
   rejected: { bg: '#FEF2F2', color: '#DC2626', label: 'Rejeitado' },
-};
+} as const;
 
-const VEHICLE: Record<string, string> = {
-  truck: 'Truck', toco: 'Toco', bitruck: 'Bitruck', carreta: 'Carreta', outros: 'Outros',
-};
+// Module-level map — O(1) lookup, never rebuilt
+const VEHICLE = new Map([
+  ['truck',    'Truck'],
+  ['toco',     'Toco'],
+  ['bitruck',  'Bitruck'],
+  ['carreta',  'Carreta'],
+  ['outros',   'Outros'],
+]);
+
+function vehicleLabel(type?: string | null) {
+  return type ? (VEHICLE.get(type) ?? type) : '—';
+}
 
 export default function Drivers() {
   const [tab, setTab] = useState('all');
   const [selected, setSelected] = useState<number | null>(null);
   const utils = trpc.useUtils();
   const { data: drivers = [], isLoading } = trpc.drivers.list.useQuery({});
-  const approve = trpc.drivers.approve.useMutation({ onSuccess: () => { utils.drivers.list.invalidate(); setSelected(null); } });
-  const reject  = trpc.drivers.reject.useMutation({  onSuccess: () => { utils.drivers.list.invalidate(); setSelected(null); } });
+  const approve   = trpc.drivers.approve.useMutation({ onSuccess: () => { utils.drivers.list.invalidate(); setSelected(null); } });
+  const reject    = trpc.drivers.reject.useMutation({  onSuccess: () => { utils.drivers.list.invalidate(); setSelected(null); } });
   const toggleFav = trpc.drivers.toggleFavorite.useMutation({ onSuccess: () => utils.drivers.list.invalidate() });
 
+  // js-combine-iterations: single pass for all counts + buckets
+  const { counts, buckets } = useMemo(() => {
+    const counts = { all: drivers.length, pending: 0, approved: 0, rejected: 0, favorites: 0 };
+    const buckets: Record<string, typeof drivers> = { pending: [], approved: [], rejected: [], favorites: [] };
+
+    for (const d of drivers) {
+      if (d.status === 'pending')  { counts.pending++;  buckets.pending.push(d); }
+      if (d.status === 'approved') { counts.approved++; buckets.approved.push(d); }
+      if (d.status === 'rejected') { counts.rejected++; buckets.rejected.push(d); }
+      if (d.isFavorite)            { counts.favorites++; buckets.favorites.push(d); }
+    }
+    return { counts, buckets };
+  }, [drivers]);
+
+  const filtered = tab === 'all' ? drivers : (buckets[tab] ?? []);
+  const sel = useMemo(() => drivers.find(d => d.id === selected), [drivers, selected]);
+
   const tabs = [
-    { key: 'all',       label: 'Todos',     count: drivers.length },
-    { key: 'pending',   label: 'Pendentes', count: drivers.filter(d => d.status === 'pending').length },
-    { key: 'approved',  label: 'Aprovados', count: drivers.filter(d => d.status === 'approved').length },
-    { key: 'rejected',  label: 'Rejeitados',count: drivers.filter(d => d.status === 'rejected').length },
-    { key: 'favorites', label: '⭐ Favoritos', count: drivers.filter(d => d.isFavorite).length },
+    { key: 'all',       label: 'Todos',       count: counts.all },
+    { key: 'pending',   label: 'Pendentes',   count: counts.pending },
+    { key: 'approved',  label: 'Aprovados',   count: counts.approved },
+    { key: 'rejected',  label: 'Rejeitados',  count: counts.rejected },
+    { key: 'favorites', label: '⭐ Favoritos', count: counts.favorites },
   ];
-
-  const filtered =
-    tab === 'favorites' ? drivers.filter(d => d.isFavorite) :
-    tab === 'all'       ? drivers :
-    drivers.filter(d => d.status === tab);
-
-  const sel = drivers.find(d => d.id === selected);
-  const pendingCount = drivers.filter(d => d.status === 'pending').length;
 
   return (
     <div>
@@ -43,14 +61,13 @@ export default function Drivers() {
           <h1 className="page-ttl">Motoristas</h1>
           <div className="page-sub">Gerencie sua base de motoristas parceiros</div>
         </div>
-        {pendingCount > 0 && (
+        {counts.pending > 0 && (
           <div className="alert alert-warning" style={{ margin: 0 }}>
-            ⚠️ {pendingCount} aguardando aprovação
+            ⚠️ {counts.pending} aguardando aprovação
           </div>
         )}
       </div>
 
-      {/* Tabs */}
       <div className="tabs">
         {tabs.map(t => (
           <button key={t.key} className={`tab ${tab === t.key ? 'on' : ''}`} onClick={() => setTab(t.key)}>
@@ -59,7 +76,6 @@ export default function Drivers() {
         ))}
       </div>
 
-      {/* Table */}
       <div className="tbl-wrap mobile-cards">
         {isLoading ? (
           <div className="loading-center">Carregando motoristas...</div>
@@ -81,7 +97,7 @@ export default function Drivers() {
             </thead>
             <tbody>
               {filtered.map((d) => {
-                const st = STATUS_STYLE[d.status];
+                const st = STATUS_STYLE[d.status as keyof typeof STATUS_STYLE] ?? STATUS_STYLE.pending;
                 return (
                   <tr key={d.id}>
                     <td data-label="Motorista">
@@ -97,7 +113,7 @@ export default function Drivers() {
                         {d.plate}
                       </span>
                     </td>
-                    <td data-label="Veículo" style={{ color: 'var(--text-2)' }}>{VEHICLE[d.vehicleType ?? ''] ?? d.vehicleType ?? '—'}</td>
+                    <td data-label="Veículo" style={{ color: 'var(--text-2)' }}>{vehicleLabel(d.vehicleType)}</td>
                     <td data-label="Telefone" style={{ color: 'var(--text-2)' }}>{d.phone}</td>
                     <td data-label="Status">
                       <span className="badge" style={{ background: st.bg, color: st.color }}>{st.label}</span>
@@ -109,11 +125,7 @@ export default function Drivers() {
                           <button onClick={() => setSelected(d.id)} className="btn btn-outline btn-sm">Revisar</button>
                         )}
                         {d.status === 'approved' && (
-                          <button
-                            onClick={() => toggleFav.mutate({ id: d.id })}
-                            className="btn btn-outline btn-sm"
-                            title={d.isFavorite ? 'Remover favorito' : 'Marcar como favorito'}
-                          >
+                          <button onClick={() => toggleFav.mutate({ id: d.id })} className="btn btn-outline btn-sm" title={d.isFavorite ? 'Remover favorito' : 'Marcar favorito'}>
                             {d.isFavorite ? '⭐' : '☆'}
                           </button>
                         )}
@@ -127,23 +139,20 @@ export default function Drivers() {
         )}
       </div>
 
-      {/* Review modal */}
       {selected && sel && (
         <div className="modal-backdrop" onClick={() => setSelected(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-title">Revisar Motorista</div>
-
             <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 16px', marginBottom: 18 }}>
               <div style={{ fontWeight: 600, fontSize: 15 }}>{sel.userName}</div>
               <div style={{ color: 'var(--text-3)', fontSize: 12, marginTop: 2 }}>{sel.userEmail}</div>
             </div>
-
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18 }}>
               {[
-                { label: 'CPF', value: sel.cpf },
-                { label: 'Placa', value: sel.plate },
+                { label: 'CPF',      value: sel.cpf },
+                { label: 'Placa',    value: sel.plate },
                 { label: 'Telefone', value: sel.phone },
-                { label: 'Veículo', value: VEHICLE[sel.vehicleType ?? ''] ?? sel.vehicleType ?? '—' },
+                { label: 'Veículo',  value: vehicleLabel(sel.vehicleType) },
                 ...(sel.pixKey ? [{ label: 'Chave PIX', value: sel.pixKey }] : []),
                 { label: 'Cadastro', value: new Date(sel.createdAt).toLocaleDateString('pt-BR') },
               ].map(({ label, value }) => (
@@ -153,26 +162,10 @@ export default function Drivers() {
                 </div>
               ))}
             </div>
-
             <hr className="divider" />
-
             <div style={{ display: 'flex', gap: 10 }}>
-              <button
-                onClick={() => reject.mutate({ id: selected })}
-                disabled={reject.isPending}
-                className="btn btn-danger"
-                style={{ flex: 1 }}
-              >
-                ✗ Rejeitar
-              </button>
-              <button
-                onClick={() => approve.mutate({ id: selected })}
-                disabled={approve.isPending}
-                className="btn btn-primary"
-                style={{ flex: 1 }}
-              >
-                ✓ Aprovar
-              </button>
+              <button onClick={() => reject.mutate({ id: selected })} disabled={reject.isPending} className="btn btn-danger" style={{ flex: 1 }}>✗ Rejeitar</button>
+              <button onClick={() => approve.mutate({ id: selected })} disabled={approve.isPending} className="btn btn-primary" style={{ flex: 1 }}>✓ Aprovar</button>
             </div>
           </div>
         </div>

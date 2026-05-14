@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { trpc } from '../lib/trpc';
 
 type Page = { name: string; id?: number };
@@ -7,6 +7,7 @@ function fmtBRL(cents: number) {
   return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+// Module-level constants — never rebuilt on render
 const STATUSES = [
   { key: 'all',         label: 'Todos',        color: '#374151', bg: '#F3F4F6' },
   { key: 'available',   label: 'Disponível',   color: '#2563EB', bg: '#EFF6FF' },
@@ -14,16 +15,30 @@ const STATUSES = [
   { key: 'completed',   label: 'Concluído',    color: '#EA580C', bg: '#FFF7ED' },
   { key: 'validated',   label: 'Validado',     color: '#7C3AED', bg: '#F5F3FF' },
   { key: 'paid',        label: 'Pago',         color: '#16A34A', bg: '#F0FDF4' },
-];
+] as const;
 
-const CARGO: Record<string, string> = { bigbag: 'Big Bag', sacaria: 'Sacaria', granel: 'Granel' };
+const STATUS_BY_KEY = new Map(STATUSES.map(s => [s.key, s]));
+
+const CARGO: Record<string, string> = { bigbag: 'Big Bag', sacaria: 'Sacária', granel: 'Granel' };
 
 export default function Freights({ nav }: { nav: (p: Page) => void }) {
   const [tab, setTab] = useState('all');
   const { data: freights = [], isLoading } = trpc.freights.list.useQuery({ scope: 'all' });
 
-  const filtered = tab === 'all' ? freights : freights.filter((f) => f.status === tab);
-  const sInfo = (key: string) => STATUSES.find((s) => s.key === key) ?? STATUSES[0];
+  // js-combine-iterations: single pass for counts + filtered list
+  const { filtered, counts } = useMemo(() => {
+    const counts: Record<string, number> = { all: freights.length };
+    const buckets: Record<string, typeof freights> = {};
+
+    for (const f of freights) {
+      counts[f.status] = (counts[f.status] ?? 0) + 1;
+      if (!buckets[f.status]) buckets[f.status] = [];
+      buckets[f.status].push(f);
+    }
+
+    const filtered = tab === 'all' ? freights : (buckets[tab] ?? []);
+    return { filtered, counts };
+  }, [freights, tab]);
 
   return (
     <div>
@@ -37,20 +52,19 @@ export default function Freights({ nav }: { nav: (p: Page) => void }) {
 
       {/* Status chips */}
       <div className="chips">
-        {STATUSES.map((s) => {
-          const count = s.key === 'all' ? freights.length : freights.filter((f) => f.status === s.key).length;
-          return (
-            <button
-              key={s.key}
-              onClick={() => setTab(s.key)}
-              className={`chip ${tab === s.key ? 'on' : ''}`}
-              style={tab === s.key ? { background: s.color, borderColor: s.color } : {}}
-            >
-              {s.label}
-              <span style={{ background: 'rgba(255,255,255,0.25)', borderRadius: 8, padding: '0 5px', fontSize: 10, fontWeight: 700 }}>{count}</span>
-            </button>
-          );
-        })}
+        {STATUSES.map((s) => (
+          <button
+            key={s.key}
+            onClick={() => setTab(s.key)}
+            className={`chip ${tab === s.key ? 'on' : ''}`}
+            style={tab === s.key ? { background: s.color, borderColor: s.color } : {}}
+          >
+            {s.label}
+            <span style={{ background: 'rgba(0,0,0,0.12)', borderRadius: 8, padding: '0 6px', fontSize: 10, fontWeight: 700 }}>
+              {counts[s.key] ?? 0}
+            </span>
+          </button>
+        ))}
       </div>
 
       {/* Table */}
@@ -74,14 +88,11 @@ export default function Freights({ nav }: { nav: (p: Page) => void }) {
             </thead>
             <tbody>
               {filtered.map((f) => {
-                const st = sInfo(f.status);
+                const st = STATUS_BY_KEY.get(f.status) ?? STATUSES[0];
                 return (
-                  <tr
-                    key={f.id}
-                    onClick={() => nav({ name: 'freight-detail', id: f.id })}
-                  >
+                  <tr key={f.id} onClick={() => nav({ name: 'freight-detail', id: f.id })}>
                     <td data-label="Título">
-                      <div style={{ fontWeight: 600, color: 'var(--text)' }}>{f.title}</div>
+                      <div style={{ fontWeight: 600 }}>{f.title}</div>
                       <div style={{ fontSize: 11, color: 'var(--text-4)' }}>#{f.id}</div>
                     </td>
                     <td data-label="Rota">
@@ -108,9 +119,7 @@ export default function Freights({ nav }: { nav: (p: Page) => void }) {
                         {fmtBRL(f.value)}
                       </span>
                     </td>
-                    <td data-label="Peso" style={{ color: 'var(--text-3)' }}>
-                      {f.weight ? `${f.weight}t` : '—'}
-                    </td>
+                    <td data-label="Peso" style={{ color: 'var(--text-3)' }}>{f.weight ? `${f.weight}t` : '—'}</td>
                     <td data-label="Status">
                       <span className="badge" style={{ background: st.bg, color: st.color }}>{st.label}</span>
                     </td>

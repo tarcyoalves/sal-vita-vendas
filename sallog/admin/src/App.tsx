@@ -1,23 +1,25 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { trpc } from './lib/trpc';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Drivers from './pages/Drivers';
 import Freights from './pages/Freights';
 import FreightNew from './pages/FreightNew';
-import FreightDetail from './pages/FreightDetail';
-import Financial from './pages/Financial';
-import MapPage from './pages/MapPage';
 import './index.css';
+
+// Heavy pages with Leaflet (~150 KB) loaded on demand
+const FreightDetail = lazy(() => import('./pages/FreightDetail'));
+const MapPage = lazy(() => import('./pages/MapPage'));
+const Financial = lazy(() => import('./pages/Financial'));
 
 type Page = { name: 'login' | 'dashboard' | 'drivers' | 'freights' | 'freight-new' | 'freight-detail' | 'financial' | 'map'; id?: number };
 
 const NAV = [
-  { n: 'dashboard' as const, label: 'Dashboard', icon: '📊' },
-  { n: 'freights' as const, label: 'Fretes', icon: '🚛' },
-  { n: 'drivers' as const, label: 'Motoristas', icon: '👤' },
-  { n: 'map' as const, label: 'Mapa', icon: '🗺️' },
-  { n: 'financial' as const, label: 'Financeiro', icon: '💰' },
+  { n: 'dashboard'  as const, label: 'Dashboard',  icon: '📊' },
+  { n: 'freights'   as const, label: 'Fretes',      icon: '🚛' },
+  { n: 'drivers'    as const, label: 'Motoristas',  icon: '👤' },
+  { n: 'map'        as const, label: 'Mapa',         icon: '🗺️' },
+  { n: 'financial'  as const, label: 'Financeiro',  icon: '💰' },
 ];
 
 const TITLES: Record<string, string> = {
@@ -32,6 +34,15 @@ const TITLES: Record<string, string> = {
 
 function initials(name: string) {
   return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+}
+
+function PageLoader() {
+  return (
+    <div className="loading-center">
+      <span style={{ fontSize: 22 }}>🚛</span>
+      <span>Carregando...</span>
+    </div>
+  );
 }
 
 export default function App() {
@@ -53,9 +64,9 @@ export default function App() {
   if (isLoading) return (
     <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ width: 44, height: 44, background: 'var(--navy)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, margin: '0 auto 14px' }}>🚛</div>
-        <div style={{ fontFamily: "'Barlow Semi Condensed', sans-serif", fontSize: 20, fontWeight: 700, color: 'var(--navy)' }}>SalLog</div>
-        <div style={{ color: 'var(--text-4)', fontSize: 12, marginTop: 4 }}>Carregando...</div>
+        <div style={{ width: 48, height: 48, background: 'var(--navy)', borderRadius: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, margin: '0 auto 14px' }}>🚛</div>
+        <div style={{ fontFamily: "'Barlow Semi Condensed', sans-serif", fontSize: 22, fontWeight: 700, color: 'var(--navy)', letterSpacing: '-0.3px' }}>FRETEPRIME</div>
+        <div style={{ color: 'var(--text-4)', fontSize: 12, marginTop: 3 }}>Carregando...</div>
       </div>
     </div>
   );
@@ -70,7 +81,7 @@ export default function App() {
         <div className="sidebar-logo">
           <div className="sidebar-logo-icon">🚛</div>
           <div className="sidebar-logo-text">
-            <div className="sidebar-logo-mark">SalLog</div>
+            <div className="sidebar-logo-mark">FRETEPRIME</div>
             <div className="sidebar-logo-sub">Gestão Logística</div>
           </div>
         </div>
@@ -112,20 +123,22 @@ export default function App() {
               <path d="M1.5 4.5h15M1.5 9h15M1.5 13.5h15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
             </svg>
           </button>
-          <div className="topbar-title">{TITLES[page.name] ?? 'SalLog'}</div>
+          <div className="topbar-title">{TITLES[page.name] ?? 'FRETEPRIME'}</div>
           {page.name === 'dashboard' && (
             <button className="btn btn-primary btn-sm" onClick={() => nav({ name: 'freight-new' })}>+ Novo Frete</button>
           )}
         </header>
 
         <main className="page-content fade-in" key={page.name}>
-          {page.name === 'dashboard' && <Dashboard nav={nav} />}
-          {page.name === 'drivers' && <Drivers />}
-          {page.name === 'freights' && <Freights nav={nav} />}
-          {page.name === 'freight-new' && <FreightNew nav={nav} />}
-          {page.name === 'freight-detail' && page.id && <FreightDetail id={page.id} nav={nav} />}
-          {page.name === 'financial' && <Financial nav={nav} />}
-          {page.name === 'map' && <MapPage nav={nav} />}
+          <Suspense fallback={<PageLoader />}>
+            {page.name === 'dashboard'      && <Dashboard nav={nav} />}
+            {page.name === 'drivers'        && <Drivers />}
+            {page.name === 'freights'       && <Freights nav={nav} />}
+            {page.name === 'freight-new'    && <FreightNew nav={nav} />}
+            {page.name === 'freight-detail' && page.id && <FreightDetail id={page.id} nav={nav} />}
+            {page.name === 'financial'      && <Financial nav={nav} />}
+            {page.name === 'map'            && <MapPage nav={nav} />}
+          </Suspense>
         </main>
       </div>
 

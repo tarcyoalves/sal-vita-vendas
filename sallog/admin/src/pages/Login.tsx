@@ -26,15 +26,15 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <div style={{
-            width: 52, height: 52,
+            width: 54, height: 54,
             background: '#0C3680',
-            borderRadius: 14,
+            borderRadius: 15,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 26,
+            fontSize: 28,
             margin: '0 auto 14px',
-            boxShadow: '0 4px 14px rgba(12,54,128,0.2)',
+            boxShadow: '0 4px 16px rgba(12,54,128,0.22)',
           }}>🚛</div>
-          <div style={{ fontFamily: "'Barlow Semi Condensed', sans-serif", fontSize: 24, fontWeight: 700, color: '#0C3680' }}>SalLog</div>
+          <div style={{ fontFamily: "'Barlow Semi Condensed', sans-serif", fontSize: 26, fontWeight: 700, color: '#0C3680', letterSpacing: '-0.5px' }}>FRETEPRIME</div>
           <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 3 }}>Painel Administrativo</div>
         </div>
 
@@ -44,16 +44,16 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
           border: '1px solid #E5E7EB',
           borderRadius: 14,
           padding: 28,
-          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
         }}>
-          <div style={{ marginBottom: 20 }}>
+          <div style={{ marginBottom: 18 }}>
             <label className="form-label">Email</label>
             <input
               className="form-input"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@salvita.com.br"
+              placeholder="admin@freteprime.com.br"
               autoComplete="email"
             />
           </div>
@@ -88,7 +88,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
         </div>
 
         <p style={{ textAlign: 'center', fontSize: 11, color: '#D1D5DB', marginTop: 20 }}>
-          Sal Vita © 2026 · SalLog v2
+          FretePrime © 2026
         </p>
       </div>
     </div>
