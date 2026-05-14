@@ -30,13 +30,16 @@ const TITLES: Record<string, string> = {
   map: 'Mapa de Operações',
 };
 
+function initials(name: string) {
+  return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+}
+
 export default function App() {
   const [page, setPage] = useState<Page>({ name: 'login' });
   const [open, setOpen] = useState(false);
 
-  // All hooks must be called unconditionally before any early return
   const { data: me, isLoading } = trpc.auth.me.useQuery();
-  const { data: pendingDrivers } = trpc.drivers.list.useQuery({}, { enabled: !!me });
+  const { data: driversList } = trpc.drivers.list.useQuery({}, { enabled: !!me });
   const logout = trpc.auth.logout.useMutation({ onSuccess: () => setPage({ name: 'login' }) });
 
   useEffect(() => {
@@ -45,13 +48,14 @@ export default function App() {
   }, [me, isLoading]);
 
   const nav = (p: Page) => { setPage(p); setOpen(false); };
-  const pendingCount = pendingDrivers?.filter((d) => d.status === 'pending').length ?? 0;
+  const pendingCount = driversList?.filter((d) => d.status === 'pending').length ?? 0;
 
   if (isLoading) return (
     <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontFamily: "'Barlow Semi Condensed', sans-serif", fontSize: 26, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>🚛 SalLog</div>
-        <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Carregando...</div>
+        <div style={{ width: 44, height: 44, background: 'var(--navy)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, margin: '0 auto 14px' }}>🚛</div>
+        <div style={{ fontFamily: "'Barlow Semi Condensed', sans-serif", fontSize: 20, fontWeight: 700, color: 'var(--navy)' }}>SalLog</div>
+        <div style={{ color: 'var(--text-4)', fontSize: 12, marginTop: 4 }}>Carregando...</div>
       </div>
     </div>
   );
@@ -60,44 +64,57 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      {/* Mobile overlay */}
       <div className={`sidebar-overlay ${open ? 'open' : ''}`} onClick={() => setOpen(false)} />
 
-      {/* Sidebar */}
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="sidebar-logo">
-          <div className="sidebar-logo-mark">🚛 SalLog</div>
-          <div className="sidebar-logo-sub">Gestão Logística</div>
+          <div className="sidebar-logo-icon">🚛</div>
+          <div className="sidebar-logo-text">
+            <div className="sidebar-logo-mark">SalLog</div>
+            <div className="sidebar-logo-sub">Gestão Logística</div>
+          </div>
         </div>
 
         <nav className="sidebar-nav">
           {NAV.map(({ n, label, icon }) => (
-            <button key={n} onClick={() => nav({ name: n })} className={`sidebar-btn ${page.name === n ? 'active' : ''}`}>
+            <button
+              key={n}
+              onClick={() => nav({ name: n })}
+              className={`sidebar-btn ${page.name === n ? 'active' : ''}`}
+            >
               <span className="icon">{icon}</span>
               {label}
-              {n === 'drivers' && pendingCount > 0 && <span className="sidebar-badge">{pendingCount}</span>}
+              {n === 'drivers' && pendingCount > 0 && (
+                <span className="sidebar-badge">{pendingCount}</span>
+              )}
             </button>
           ))}
         </nav>
 
         <div className="sidebar-footer">
-          <div className="sidebar-user">{me.name}</div>
-          <div className="sidebar-role">{me.role}</div>
-          <button className="sidebar-logout" onClick={() => logout.mutate()}>Sair da conta</button>
+          <div className="sidebar-user-row">
+            <div className="sidebar-avatar">{initials(me.name)}</div>
+            <div>
+              <div className="sidebar-user">{me.name}</div>
+              <div className="sidebar-role">{me.role}</div>
+            </div>
+          </div>
+          <button className="sidebar-logout" onClick={() => logout.mutate()}>
+            <span>↪</span> Sair da conta
+          </button>
         </div>
       </aside>
 
-      {/* Main */}
       <div className="main-content">
         <header className="topbar">
           <button className="topbar-hamburger" onClick={() => setOpen(true)} aria-label="Menu">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M2 5h16M2 10h16M2 15h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M1.5 4.5h15M1.5 9h15M1.5 13.5h15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
             </svg>
           </button>
           <div className="topbar-title">{TITLES[page.name] ?? 'SalLog'}</div>
           {page.name === 'dashboard' && (
-            <button className="btn btn-primary btn-sm" onClick={() => nav({ name: 'freight-new' })}>+ Frete</button>
+            <button className="btn btn-primary btn-sm" onClick={() => nav({ name: 'freight-new' })}>+ Novo Frete</button>
           )}
         </header>
 
@@ -112,11 +129,14 @@ export default function App() {
         </main>
       </div>
 
-      {/* Bottom Nav (mobile only) */}
       <nav className="bottom-nav">
         <div className="bottom-nav-inner">
           {NAV.map(({ n, label, icon }) => (
-            <button key={n} onClick={() => nav({ name: n })} className={`bn-btn ${page.name === n ? 'active' : ''}`}>
+            <button
+              key={n}
+              onClick={() => nav({ name: n })}
+              className={`bn-btn ${page.name === n ? 'active' : ''}`}
+            >
               <span className="bn-icon">{icon}</span>
               {label}
             </button>

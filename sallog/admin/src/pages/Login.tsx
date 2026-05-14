@@ -16,120 +16,80 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(150deg, #061d55 0%, #0C3680 55%, #1a3a8f 100%)',
+      background: '#F4F6F9',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       padding: 20,
-      position: 'relative',
-      overflow: 'hidden',
-      fontFamily: "'Lexend', sans-serif",
     }}>
-      {/* Decorative circles */}
-      {[
-        { size: 340, top: -100, right: -80, opacity: 0.06 },
-        { size: 200, bottom: -60, left: -60, opacity: 0.05 },
-        { size: 120, top: '35%', left: '8%', opacity: 0.04 },
-      ].map((c, i) => (
-        <div key={i} style={{
-          position: 'absolute',
-          width: c.size, height: c.size,
-          borderRadius: '50%',
-          border: '1px solid rgba(255,255,255,0.15)',
-          background: `rgba(255,255,255,${c.opacity})`,
-          top: c.top as any, bottom: c.bottom as any, left: c.left as any, right: c.right as any,
-          pointerEvents: 'none',
-        }} />
-      ))}
-
-      {/* Decorative truck */}
-      <div style={{
-        position: 'absolute', bottom: 40, right: 40,
-        opacity: 0.04, fontSize: 120, pointerEvents: 'none',
-        fontFamily: 'system-ui',
-      }}>🚛</div>
-
-      {/* Card */}
-      <div style={{
-        background: '#fff',
-        borderRadius: 20,
-        padding: '40px 36px',
-        width: '100%',
-        maxWidth: 400,
-        boxShadow: '0 24px 64px rgba(0,0,0,0.35)',
-        position: 'relative',
-        zIndex: 1,
-      }}>
+      <div style={{ width: '100%', maxWidth: 380 }}>
         {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 60,
-            height: 60,
-            background: 'linear-gradient(135deg, #0C3680, #1a4a9e)',
+            width: 52, height: 52,
+            background: '#0C3680',
             borderRadius: 14,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 26,
-            marginBottom: 14,
-            boxShadow: '0 6px 20px rgba(12,54,128,0.3)',
+            margin: '0 auto 14px',
+            boxShadow: '0 4px 14px rgba(12,54,128,0.2)',
           }}>🚛</div>
-          <div style={{
-            fontFamily: "'Barlow Semi Condensed', sans-serif",
-            fontSize: 28,
-            fontWeight: 700,
-            color: '#0F172A',
-            letterSpacing: '-0.3px',
-          }}>SalLog</div>
-          <div style={{ fontSize: 13, color: '#94A3B8', marginTop: 3, fontWeight: 300 }}>
-            Painel Administrativo
-          </div>
+          <div style={{ fontFamily: "'Barlow Semi Condensed', sans-serif", fontSize: 24, fontWeight: 700, color: '#0C3680' }}>SalLog</div>
+          <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 3 }}>Painel Administrativo</div>
         </div>
 
-        {/* Fields */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
+        {/* Card */}
+        <div style={{
+          background: '#fff',
+          border: '1px solid #E5E7EB',
+          borderRadius: 14,
+          padding: 28,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+        }}>
+          <div style={{ marginBottom: 20 }}>
             <label className="form-label">Email</label>
             <input
               className="form-input"
               type="email"
               value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="admin@empresa.com.br"
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="admin@salvita.com.br"
               autoComplete="email"
             />
           </div>
 
-          <div>
+          <div style={{ marginBottom: error ? 12 : 20 }}>
             <label className="form-label">Senha</label>
             <input
               className="form-input"
               type="password"
               value={password}
-              onChange={e => setPassword(e.target.value)}
+              onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               autoComplete="current-password"
-              onKeyDown={e => e.key === 'Enter' && submit()}
+              onKeyDown={(e) => e.key === 'Enter' && submit()}
             />
           </div>
 
           {error && (
-            <div className="alert-error"><span>⚠</span>{error}</div>
+            <div className="alert alert-error" style={{ marginBottom: 16 }}>
+              <span>⚠</span> {error}
+            </div>
           )}
 
           <button
             className="btn btn-primary btn-lg"
-            style={{ width: '100%', borderRadius: 10, boxShadow: '0 4px 16px rgba(12,54,128,0.3)', marginTop: 4 }}
+            style={{ width: '100%' }}
             onClick={submit}
-            disabled={login.isPending}
+            disabled={login.isPending || !email || !password}
           >
             {login.isPending ? 'Entrando...' : 'Entrar'}
           </button>
         </div>
 
-        <div style={{ marginTop: 24, textAlign: 'center', fontSize: 11, color: '#CBD5E1' }}>
-          Sal Vita · Gestão Logística Interna
-        </div>
+        <p style={{ textAlign: 'center', fontSize: 11, color: '#D1D5DB', marginTop: 20 }}>
+          Sal Vita © 2026 · SalLog v2
+        </p>
       </div>
     </div>
   );
