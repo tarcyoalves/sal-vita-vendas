@@ -45061,9 +45061,21 @@ var freights = pgTable("freights", {
   createdBy: integer("created_by").notNull(),
   assignedDriverId: integer("assigned_driver_id"),
   loadDate: text("load_date"),
+  // ISO date string (pickup date)
+  deliveryDate: text("delivery_date"),
   // ISO date string
   direction: text("direction").notNull().default("ida"),
   // 'ida' | 'retorno' | 'ambos'
+  freightType: text("freight_type").notNull().default("completo"),
+  // 'completo' | 'complemento'
+  vehicleTypes: text("vehicle_types"),
+  // JSON array e.g. '["carreta","toco"]'
+  needsTarp: boolean("needs_tarp").notNull().default(false),
+  needsTracker: boolean("needs_tracker").notNull().default(false),
+  hasInsurance: boolean("has_insurance").notNull().default(true),
+  paymentMethod: text("payment_method"),
+  // 'pix' | 'avista' | 'prazo30' | 'prazo60' | 'a-combinar'
+  valueNegotiable: boolean("value_negotiable").notNull().default(false),
   validatedAt: timestamp("validated_at"),
   paidAt: timestamp("paid_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -49315,7 +49327,29 @@ var freightsRouter = router({
     if (freight.assignedDriverId !== driver.id && freight.status !== "available") throw new TRPCError({ code: "FORBIDDEN" });
     return freight;
   }),
-  create: adminProcedure.input(external_exports.object({ title: external_exports.string().min(3), description: external_exports.string().optional(), cargoType: external_exports.enum(["bigbag", "sacaria", "granel"]), originCity: external_exports.string(), originState: external_exports.string().length(2), destinationCity: external_exports.string(), destinationState: external_exports.string().length(2), distance: external_exports.number().optional(), value: external_exports.number().int().min(0), weight: external_exports.number().optional(), loadDate: external_exports.string().optional(), direction: external_exports.enum(["ida", "retorno", "ambos"]).default("ida") })).mutation(async ({ input, ctx }) => {
+  create: adminProcedure.input(external_exports.object({
+    title: external_exports.string().min(3),
+    description: external_exports.string().optional(),
+    cargoType: external_exports.enum(["bigbag", "sacaria", "granel"]),
+    originCity: external_exports.string(),
+    originState: external_exports.string().length(2),
+    destinationCity: external_exports.string(),
+    destinationState: external_exports.string().length(2),
+    distance: external_exports.number().optional(),
+    value: external_exports.number().int().min(0),
+    weight: external_exports.number().optional(),
+    loadDate: external_exports.string().optional(),
+    deliveryDate: external_exports.string().optional(),
+    direction: external_exports.enum(["ida", "retorno", "ambos"]).default("ida"),
+    freightType: external_exports.enum(["completo", "complemento"]).default("completo"),
+    vehicleTypes: external_exports.string().optional(),
+    // JSON array
+    needsTarp: external_exports.boolean().default(false),
+    needsTracker: external_exports.boolean().default(false),
+    hasInsurance: external_exports.boolean().default(true),
+    paymentMethod: external_exports.string().optional(),
+    valueNegotiable: external_exports.boolean().default(false)
+  })).mutation(async ({ input, ctx }) => {
     const [row] = await db.insert(freights).values({ ...input, createdBy: ctx.user.id }).returning();
     return row;
   }),
@@ -49721,6 +49755,14 @@ async function ensureTablesExist() {
   await sql3`ALTER TABLE freight_documents ADD COLUMN IF NOT EXISTS validated BOOLEAN NOT NULL DEFAULT FALSE`;
   await sql3`ALTER TABLE freight_documents ADD COLUMN IF NOT EXISTS validated_at TIMESTAMP`;
   await sql3`ALTER TABLE freight_documents ADD COLUMN IF NOT EXISTS validated_by INTEGER`;
+  await sql3`ALTER TABLE freights ADD COLUMN IF NOT EXISTS delivery_date TEXT`;
+  await sql3`ALTER TABLE freights ADD COLUMN IF NOT EXISTS freight_type TEXT NOT NULL DEFAULT 'completo'`;
+  await sql3`ALTER TABLE freights ADD COLUMN IF NOT EXISTS vehicle_types TEXT`;
+  await sql3`ALTER TABLE freights ADD COLUMN IF NOT EXISTS needs_tarp BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql3`ALTER TABLE freights ADD COLUMN IF NOT EXISTS needs_tracker BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql3`ALTER TABLE freights ADD COLUMN IF NOT EXISTS has_insurance BOOLEAN NOT NULL DEFAULT TRUE`;
+  await sql3`ALTER TABLE freights ADD COLUMN IF NOT EXISTS payment_method TEXT`;
+  await sql3`ALTER TABLE freights ADD COLUMN IF NOT EXISTS value_negotiable BOOLEAN NOT NULL DEFAULT FALSE`;
   {
     const adminEmail = "tarcyo.alves@gmail.com";
     const adminHash = hashPassword("01020304");
