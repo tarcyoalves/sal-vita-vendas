@@ -7,40 +7,37 @@ import Freights from './pages/Freights';
 import FreightNew from './pages/FreightNew';
 import './index.css';
 
-// Heavy pages with Leaflet (~150 KB) loaded on demand
 const FreightDetail = lazy(() => import('./pages/FreightDetail'));
-const MapPage = lazy(() => import('./pages/MapPage'));
-const Financial = lazy(() => import('./pages/Financial'));
+const MapPage       = lazy(() => import('./pages/MapPage'));
+const Financial     = lazy(() => import('./pages/Financial'));
 
 type Page = { name: 'login' | 'dashboard' | 'drivers' | 'freights' | 'freight-new' | 'freight-detail' | 'financial' | 'map'; id?: number };
 
+const LOGO = 'http://salvitarn.com.br/wp-content/uploads/2026/05/freteprime.png';
+
 const NAV = [
-  { n: 'dashboard'  as const, label: 'Dashboard',  icon: '📊' },
-  { n: 'freights'   as const, label: 'Fretes',      icon: '🚛' },
-  { n: 'drivers'    as const, label: 'Motoristas',  icon: '👤' },
-  { n: 'map'        as const, label: 'Mapa',         icon: '🗺️' },
-  { n: 'financial'  as const, label: 'Financeiro',  icon: '💰' },
+  { n: 'dashboard' as const,  label: 'Dashboard',  icon: '📊' },
+  { n: 'freights'  as const,  label: 'Fretes',      icon: '🚛' },
+  { n: 'drivers'   as const,  label: 'Motoristas',  icon: '👤' },
+  { n: 'map'       as const,  label: 'Mapa',         icon: '🗺️' },
+  { n: 'financial' as const,  label: 'Financeiro',  icon: '💰' },
 ];
 
 const TITLES: Record<string, string> = {
-  dashboard: 'Dashboard',
-  freights: 'Fretes',
-  drivers: 'Motoristas',
-  'freight-new': 'Novo Frete',
-  'freight-detail': 'Detalhes do Frete',
-  financial: 'Financeiro',
-  map: 'Mapa de Operações',
+  dashboard: 'Dashboard', freights: 'Fretes', drivers: 'Motoristas',
+  'freight-new': 'Novo Frete', 'freight-detail': 'Detalhes do Frete',
+  financial: 'Financeiro', map: 'Mapa de Operações',
 };
 
 function initials(name: string) {
   return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
 }
 
-function PageLoader() {
+function Spinner() {
   return (
     <div className="loading-center">
-      <span style={{ fontSize: 22 }}>🚛</span>
-      <span>Carregando...</span>
+      <div style={{ fontSize: 22, marginBottom: 6 }}>🚛</div>
+      <span style={{ color: 'var(--amber)', fontSize: 12, letterSpacing: 1 }}>CARREGANDO...</span>
     </div>
   );
 }
@@ -48,6 +45,7 @@ function PageLoader() {
 export default function App() {
   const [page, setPage] = useState<Page>({ name: 'login' });
   const [open, setOpen] = useState(false);
+  const [logoError, setLogoError] = useState(false);
 
   const { data: me, isLoading } = trpc.auth.me.useQuery();
   const { data: driversList } = trpc.drivers.list.useQuery({}, { enabled: !!me });
@@ -59,40 +57,48 @@ export default function App() {
   }, [me, isLoading]);
 
   const nav = (p: Page) => { setPage(p); setOpen(false); };
-  const pendingCount = driversList?.filter((d) => d.status === 'pending').length ?? 0;
+  const pendingCount = driversList?.filter(d => d.status === 'pending').length ?? 0;
 
   if (isLoading) return (
-    <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ width: 48, height: 48, background: 'var(--navy)', borderRadius: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, margin: '0 auto 14px' }}>🚛</div>
-        <div style={{ fontFamily: "'Barlow Semi Condensed', sans-serif", fontSize: 22, fontWeight: 700, color: 'var(--navy)', letterSpacing: '-0.3px' }}>FRETEPRIME</div>
-        <div style={{ color: 'var(--text-4)', fontSize: 12, marginTop: 3 }}>Carregando...</div>
+    <div style={{ display:'flex', height:'100vh', alignItems:'center', justifyContent:'center', background:'var(--bg)' }}>
+      <div style={{ textAlign:'center' }}>
+        {!logoError
+          ? <img src={LOGO} alt="FRETEPRIME" onError={() => setLogoError(true)}
+              style={{ height: 48, marginBottom: 16, display: 'block', margin: '0 auto 16px' }} />
+          : <div style={{ fontFamily:"'Barlow Semi Condensed',sans-serif", fontSize:28, fontWeight:700, color:'var(--amber)', letterSpacing:1, marginBottom:16 }}>FRETEPRIME</div>
+        }
+        <div style={{ color:'var(--amber)', fontSize:11, letterSpacing:2, fontWeight:600 }}>CARREGANDO...</div>
       </div>
     </div>
   );
 
-  if (!me || page.name === 'login') return <Login onLogin={() => nav({ name: 'dashboard' })} />;
+  if (!me || page.name === 'login') return <Login onLogin={() => nav({ name: 'dashboard' })} logo={LOGO} />;
 
   return (
     <div className="app-layout">
       <div className={`sidebar-overlay ${open ? 'open' : ''}`} onClick={() => setOpen(false)} />
 
       <aside className={`sidebar ${open ? 'open' : ''}`}>
+        {/* Logo */}
         <div className="sidebar-logo">
-          <div className="sidebar-logo-icon">🚛</div>
-          <div className="sidebar-logo-text">
-            <div className="sidebar-logo-mark">FRETEPRIME</div>
-            <div className="sidebar-logo-sub">Gestão Logística</div>
-          </div>
+          {logoError ? (
+            <div className="sidebar-logo-fallback">
+              <div className="sidebar-logo-icon">🚛</div>
+              <div>
+                <div className="sidebar-logo-mark">FRETEPRIME</div>
+                <div className="sidebar-logo-sub">Logística</div>
+              </div>
+            </div>
+          ) : (
+            <img src={LOGO} alt="FRETEPRIME" className="sidebar-logo-img"
+              onError={() => setLogoError(true)} />
+          )}
         </div>
 
         <nav className="sidebar-nav">
           {NAV.map(({ n, label, icon }) => (
-            <button
-              key={n}
-              onClick={() => nav({ name: n })}
-              className={`sidebar-btn ${page.name === n ? 'active' : ''}`}
-            >
+            <button key={n} onClick={() => nav({ name: n })}
+              className={`sidebar-btn ${page.name === n ? 'active' : ''}`}>
               <span className="icon">{icon}</span>
               {label}
               {n === 'drivers' && pendingCount > 0 && (
@@ -130,7 +136,7 @@ export default function App() {
         </header>
 
         <main className="page-content fade-in" key={page.name}>
-          <Suspense fallback={<PageLoader />}>
+          <Suspense fallback={<Spinner />}>
             {page.name === 'dashboard'      && <Dashboard nav={nav} />}
             {page.name === 'drivers'        && <Drivers />}
             {page.name === 'freights'       && <Freights nav={nav} />}
@@ -145,11 +151,8 @@ export default function App() {
       <nav className="bottom-nav">
         <div className="bottom-nav-inner">
           {NAV.map(({ n, label, icon }) => (
-            <button
-              key={n}
-              onClick={() => nav({ name: n })}
-              className={`bn-btn ${page.name === n ? 'active' : ''}`}
-            >
+            <button key={n} onClick={() => nav({ name: n })}
+              className={`bn-btn ${page.name === n ? 'active' : ''}`}>
               <span className="bn-icon">{icon}</span>
               {label}
             </button>
