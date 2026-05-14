@@ -22,52 +22,25 @@ export default function Login({ onLogin, logo = LOGO }: { onLogin: () => void; l
       background: 'var(--bg)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: 20,
-      position: 'relative',
-      overflow: 'hidden',
     }}>
-      {/* Ambient glow orbs */}
-      <div style={{
-        position: 'absolute', top: '-15%', right: '-10%',
-        width: 500, height: 500,
-        background: 'radial-gradient(circle, rgba(245,158,11,0.08) 0%, transparent 65%)',
-        pointerEvents: 'none',
-      }} />
-      <div style={{
-        position: 'absolute', bottom: '-15%', left: '-10%',
-        width: 450, height: 450,
-        background: 'radial-gradient(circle, rgba(34,211,238,0.06) 0%, transparent 65%)',
-        pointerEvents: 'none',
-      }} />
-
-      {/* Subtle grid pattern */}
-      <div style={{
-        position: 'absolute', inset: 0,
-        backgroundImage: 'linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)',
-        backgroundSize: '40px 40px',
-        pointerEvents: 'none',
-      }} />
-
-      <div style={{ width: '100%', maxWidth: 380, position: 'relative', zIndex: 1 }}>
+      <div style={{ width: '100%', maxWidth: 380 }}>
         {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
           {!logoError ? (
             <img
               src={logo}
               alt="FRETEPRIME"
               onError={() => setLogoError(true)}
-              style={{ height: 52, display: 'block', margin: '0 auto 12px', filter: 'drop-shadow(0 0 20px rgba(245,158,11,0.35))' }}
+              style={{ height: 52, display: 'block', margin: '0 auto 10px' }}
             />
           ) : (
             <div style={{
               fontFamily: "'Barlow Semi Condensed',sans-serif",
-              fontSize: 32, fontWeight: 700,
-              color: 'var(--amber)',
-              letterSpacing: 2,
-              marginBottom: 12,
-              textShadow: '0 0 28px rgba(245,158,11,0.45)',
+              fontSize: 28, fontWeight: 700,
+              color: 'var(--navy)', letterSpacing: 1, marginBottom: 10,
             }}>FRETEPRIME</div>
           )}
-          <div style={{ fontSize: 11, color: 'var(--text-4)', letterSpacing: 2, textTransform: 'uppercase', fontWeight: 500 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-4)', letterSpacing: 1.5, textTransform: 'uppercase' }}>
             Painel Administrativo
           </div>
         </div>
@@ -75,10 +48,10 @@ export default function Login({ onLogin, logo = LOGO }: { onLogin: () => void; l
         {/* Card */}
         <div style={{
           background: 'var(--surface)',
-          border: '1px solid var(--border-2)',
-          borderRadius: 16,
+          border: '1px solid var(--border)',
+          borderRadius: 14,
           padding: '28px 28px 24px',
-          boxShadow: '0 24px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04)',
+          boxShadow: 'var(--shadow-md)',
         }}>
           <div style={{ marginBottom: 18 }}>
             <label className="form-label">Email</label>
@@ -111,16 +84,16 @@ export default function Login({ onLogin, logo = LOGO }: { onLogin: () => void; l
 
           <button
             className="btn btn-primary btn-lg"
-            style={{ width: '100%', letterSpacing: 1 }}
+            style={{ width: '100%' }}
             onClick={submit}
             disabled={login.isPending || !email || !password}
           >
-            {login.isPending ? 'ENTRANDO...' : 'ENTRAR'}
+            {login.isPending ? 'Entrando...' : 'Entrar'}
           </button>
         </div>
 
-        <p style={{ textAlign: 'center', fontSize: 10, color: 'var(--text-4)', marginTop: 24, letterSpacing: 1 }}>
-          FRETEPRIME © 2026 — TODOS OS DIREITOS RESERVADOS
+        <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-4)', marginTop: 20 }}>
+          FretePrime © 2026
         </p>
       </div>
     </div>
