@@ -76,7 +76,7 @@ export default function AiAssistant() {
             background: '#0C3680', padding: '14px 16px',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
-            <div>
+            <div style={{ flex: 1 }}>
               <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>✨ Assistente FRETEPRIME</div>
               <div style={{ color: '#93c5fd', fontSize: 11, marginTop: 1 }}>Powered by Groq · Llama 3.3 70B</div>
             </div>
@@ -85,6 +85,13 @@ export default function AiAssistant() {
               style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 6, color: '#93c5fd', cursor: 'pointer', padding: '4px 8px', fontSize: 11 }}
             >
               Limpar
+            </button>
+            <button
+              onClick={() => setOpen(false)}
+              style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, marginLeft: 4 }}
+              title="Fechar"
+            >
+              ✕
             </button>
           </div>
 

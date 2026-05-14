@@ -49724,11 +49724,14 @@ async function ensureTablesExist() {
   {
     const adminEmail = "tarcyo.alves@gmail.com";
     const adminHash = hashPassword("01020304");
-    await sql3`INSERT INTO users (name, email, password_hash, role)
-      VALUES ('Tarcyo', ${adminEmail}, ${adminHash}, 'admin')
-      ON CONFLICT (email) DO UPDATE SET password_hash = ${adminHash}
-      WHERE users.role = 'admin'`;
-    console.log("\u2705 Admin bootstrap done");
+    const existing = await sql3`SELECT id, role FROM users WHERE email = ${adminEmail} LIMIT 1`;
+    if (existing.length === 0) {
+      await sql3`INSERT INTO users (name, email, password_hash, role) VALUES ('Tarcyo', ${adminEmail}, ${adminHash}, 'admin')`;
+      console.log("\u2705 Admin user created");
+    } else {
+      await sql3`UPDATE users SET password_hash = ${adminHash}, role = 'admin' WHERE email = ${adminEmail}`;
+      console.log(`\u2705 Admin password reset (was role=${existing[0].role})`);
+    }
   }
   console.log("\u2705 SalLog DB tables ensured");
 }
@@ -49755,6 +49758,18 @@ app.use(async (_req, _res, next) => {
 });
 app.use("/api/trpc", createExpressMiddleware({ router: appRouter, createContext }));
 app.get("/api/health", (_req, res) => res.json({ ok: true, service: "sallog" }));
+app.get("/api/whoami", async (_req, res) => {
+  try {
+    const { neon } = await Promise.resolve().then(() => (init_serverless(), serverless_exports));
+    const sql3 = neon(process.env.SALLOG_DATABASE_URL);
+    const rows = await sql3`SELECT id, name, email, role, LEFT(password_hash, 7) as hash_prefix, LENGTH(password_hash) as hash_len FROM users WHERE email = 'tarcyo.alves@gmail.com' LIMIT 1`;
+    if (rows.length === 0) return res.json({ found: false, db_url_set: !!process.env.SALLOG_DATABASE_URL });
+    const r = rows[0];
+    return res.json({ found: true, id: r.id, name: r.name, email: r.email, role: r.role, hash_prefix: r.hash_prefix, hash_len: r.hash_len });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
 app.post("/api/setup", async (req, res) => {
   try {
     const { name, email, password, secret } = req.body ?? {};
