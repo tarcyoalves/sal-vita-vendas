@@ -8,7 +8,7 @@ const STATES = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT'
 const CARGO_TYPES = [
   { value: 'bigbag',  label: 'Big Bag',  desc: 'Sacolas grandes de 1t' },
   { value: 'sacaria', label: 'Sacaria',  desc: 'Sacos de 25/50kg' },
-  { value: 'granel',  label: 'Granel',   desc: 'Sal a granel' },
+  { value: 'granel',  label: 'Granel',   desc: 'Sal a granel no caminhão' },
 ];
 
 export default function FreightNew({ nav }: { nav: (p: Page) => void }) {
@@ -17,47 +17,23 @@ export default function FreightNew({ nav }: { nav: (p: Page) => void }) {
     originCity: 'Mossoró', originState: 'RN',
     destinationCity: '', destinationState: 'SP',
     distance: '', valueReais: '', weight: '',
-    loadDate: '', direction: 'ida' as 'ida' | 'retorno' | 'ambos',
   });
-  const [error, setError]         = useState('');
-  const [aiHint, setAiHint]       = useState('');
-  const [aiLoading, setAiLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [aiHint, setAiHint] = useState('');
+  const set = (k: keyof typeof form, v: string) => setForm((p) => ({ ...p, [k]: v }));
 
-  const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
+  const suggestValue = trpc.ai.suggestValue.useMutation({
+    onSuccess: (data) => {
+      set('valueReais', data.valueReais.toFixed(2));
+      setAiHint(`✨ ${data.justificativa}`);
+    },
+    onError: () => setAiHint('Não foi possível sugerir um valor agora.'),
+  });
 
   const create = trpc.freights.create.useMutation({
     onSuccess: (data) => nav({ name: 'freight-detail', id: data.id }),
     onError: (e) => setError(e.message),
   });
-
-  const suggestValue = trpc.ai.suggestValue.useMutation({
-    onMutate: () => { setAiLoading(true); setAiHint(''); },
-    onSuccess: (data) => {
-      set('valueReais', data.valueReais.toFixed(2));
-      setAiHint(`✨ ${data.justificativa}`);
-      setAiLoading(false);
-    },
-    onError: () => {
-      setAiHint('Não foi possível sugerir valor agora.');
-      setAiLoading(false);
-    },
-  });
-
-  function handleSuggestValue() {
-    if (!form.originCity || !form.destinationCity) {
-      setAiHint('Preencha a rota primeiro.');
-      return;
-    }
-    suggestValue.mutate({
-      originCity: form.originCity,
-      originState: form.originState,
-      destinationCity: form.destinationCity,
-      destinationState: form.destinationState,
-      cargoType: form.cargoType,
-      weight: form.weight ? parseFloat(form.weight) : undefined,
-      distance: form.distance ? parseFloat(form.distance) : undefined,
-    });
-  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -75,157 +51,116 @@ export default function FreightNew({ nav }: { nav: (p: Page) => void }) {
       distance: form.distance ? parseFloat(form.distance) : undefined,
       value: Math.round(valueNum * 100),
       weight: form.weight ? parseFloat(form.weight) : undefined,
-      loadDate: form.loadDate || undefined,
-      direction: form.direction,
     });
   }
 
   return (
-    <div style={{ maxWidth: 720 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28 }}>
-        <button onClick={() => nav({ name: 'freights' })} className="btn btn-outline btn-sm">← Voltar</button>
+    <div style={{ padding: 32, maxWidth: 720, fontFamily: "'DM Sans', 'Inter', sans-serif" }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 32 }}>
+        <button onClick={() => nav({ name: 'freights' })} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, padding: '8px 12px', cursor: 'pointer', fontSize: 18, color: '#475569' }}>←</button>
         <div>
-          <h1 className="page-ttl">Novo Frete</h1>
-          <div className="page-sub">Publique uma oferta de carga para os motoristas</div>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.4px' }}>Novo Frete</h1>
+          <p style={{ margin: '2px 0 0', color: '#64748b', fontSize: 14 }}>Publique uma oferta de carga para os motoristas</p>
         </div>
       </div>
 
       <form onSubmit={handleSubmit}>
-        {/* Identificação */}
+        {/* Seção: Identificação */}
         <Section label="Identificação da Carga">
-          <div>
-            <label className="form-label">Título da oferta *</label>
-            <input className="form-input" required value={form.title}
-              onChange={e => set('title', e.target.value)}
-              placeholder="Ex: Sal Big Bag — Mossoró para São Paulo" />
-          </div>
+          <Field label="Título da oferta *">
+            <input style={inp} required value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="Ex: Sal Big Bag — Mossoró para São Paulo" />
+          </Field>
 
           <div>
-            <label className="form-label">Tipo de Carga *</label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginTop: 6 }}>
-              {CARGO_TYPES.map(c => (
-                <label key={c.value} style={{ cursor: 'pointer' }}>
-                  <input type="radio" name="cargoType" value={c.value}
-                    checked={form.cargoType === c.value}
-                    onChange={() => set('cargoType', c.value)}
-                    style={{ display: 'none' }} />
-                  <div style={{
-                    border: `2px solid ${form.cargoType === c.value ? 'var(--navy)' : 'var(--border)'}`,
-                    borderRadius: 10, padding: '12px 14px',
-                    background: form.cargoType === c.value ? 'var(--navy-dim)' : 'var(--surface-2)',
-                    transition: 'all 0.15s',
-                  }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: form.cargoType === c.value ? 'var(--navy)' : 'var(--text)', marginBottom: 2 }}>{c.label}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-4)' }}>{c.desc}</div>
+            <label style={lbl}>Tipo de Carga *</label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 6 }}>
+              {CARGO_TYPES.map((c) => (
+                <label key={c.value} style={{ display: 'block', cursor: 'pointer' }}>
+                  <input type="radio" name="cargoType" value={c.value} checked={form.cargoType === c.value} onChange={() => set('cargoType', c.value)} style={{ display: 'none' }} />
+                  <div style={{ border: `2px solid ${form.cargoType === c.value ? '#0C3680' : '#e2e8f0'}`, borderRadius: 10, padding: '12px 14px', background: form.cargoType === c.value ? '#eff6ff' : '#fff', transition: 'all 0.15s' }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: form.cargoType === c.value ? '#0C3680' : '#1e293b', marginBottom: 2 }}>{c.label}</div>
+                    <div style={{ fontSize: 12, color: '#94a3b8' }}>{c.desc}</div>
                   </div>
                 </label>
               ))}
             </div>
           </div>
 
-          <div>
-            <label className="form-label">Descrição / Observações</label>
-            <textarea className="form-input" style={{ minHeight: 76, resize: 'vertical' }}
-              value={form.description} onChange={e => set('description', e.target.value)}
-              placeholder="Horário de coleta, restrições de veículo, contato no destino..." />
-          </div>
+          <Field label="Descrição / Observações">
+            <textarea style={{ ...inp, minHeight: 80, resize: 'vertical' }} value={form.description} onChange={(e) => set('description', e.target.value)} placeholder="Horário de coleta, restrições de veículo, contato no destino..." />
+          </Field>
         </Section>
 
-        {/* Rota */}
+        {/* Seção: Rota */}
         <Section label="Rota">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 16, alignItems: 'end' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <label className="form-label">Cidade de Origem *</label>
-                <input className="form-input" required value={form.originCity} onChange={e => set('originCity', e.target.value)} placeholder="Mossoró" />
-              </div>
-              <div>
-                <label className="form-label">Estado *</label>
-                <select className="form-input" value={form.originState} onChange={e => set('originState', e.target.value)}>
-                  {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+            <div>
+              <Field label="Cidade de Origem *">
+                <input style={inp} required value={form.originCity} onChange={(e) => set('originCity', e.target.value)} placeholder="Mossoró" />
+              </Field>
+              <Field label="Estado *">
+                <select style={inp} value={form.originState} onChange={(e) => set('originState', e.target.value)}>
+                  {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
-              </div>
+              </Field>
             </div>
-            <div style={{ textAlign: 'center', paddingBottom: 14, fontSize: 22, color: 'var(--text-4)' }}>→</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <label className="form-label">Cidade de Destino *</label>
-                <input className="form-input" required value={form.destinationCity} onChange={e => set('destinationCity', e.target.value)} placeholder="São Paulo" />
-              </div>
-              <div>
-                <label className="form-label">Estado *</label>
-                <select className="form-input" value={form.destinationState} onChange={e => set('destinationState', e.target.value)}>
-                  {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+            <div style={{ textAlign: 'center', paddingBottom: 16, fontSize: 24, color: '#cbd5e1' }}>→</div>
+            <div>
+              <Field label="Cidade de Destino *">
+                <input style={inp} required value={form.destinationCity} onChange={(e) => set('destinationCity', e.target.value)} placeholder="São Paulo" />
+              </Field>
+              <Field label="Estado *">
+                <select style={inp} value={form.destinationState} onChange={(e) => set('destinationState', e.target.value)}>
+                  {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
-              </div>
+              </Field>
             </div>
           </div>
         </Section>
 
-        {/* Programação */}
-        <Section label="Programação">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <div>
-              <label className="form-label">Data de Carregamento</label>
-              <input className="form-input" type="date" value={form.loadDate} onChange={e => set('loadDate', e.target.value)} />
-            </div>
-            <div>
-              <label className="form-label">Sentido</label>
-              <select className="form-input" value={form.direction} onChange={e => set('direction', e.target.value as 'ida' | 'retorno' | 'ambos')}>
-                <option value="ida">Ida</option>
-                <option value="retorno">Retorno</option>
-                <option value="ambos">Ambos (Ida + Retorno)</option>
-              </select>
-            </div>
-          </div>
-        </Section>
-
-        {/* Valores */}
+        {/* Seção: Valores */}
         <Section label="Valores e Dimensões">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
-                <label className="form-label" style={{ margin: 0 }}>Valor do Frete (R$) *</label>
-                <button type="button" onClick={handleSuggestValue} disabled={aiLoading}
-                  style={{
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    fontSize: 11, color: 'var(--navy)', fontWeight: 600,
-                    display: 'flex', alignItems: 'center', gap: 3,
-                    opacity: aiLoading ? 0.6 : 1, fontFamily: 'inherit',
-                    padding: 0,
-                  }}>
-                  {aiLoading ? '⏳' : '✨'} {aiLoading ? 'Calculando...' : 'Sugerir com IA'}
-                </button>
-              </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+            <Field label="Valor do Frete (R$) *">
               <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', fontSize: 13, fontWeight: 600 }}>R$</span>
-                <input className="form-input" style={{ paddingLeft: 34 }} required type="number" min="0" step="0.01"
-                  value={form.valueReais} onChange={e => set('valueReais', e.target.value)} placeholder="1.500,00" />
+                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: 14, fontWeight: 600 }}>R$</span>
+                <input style={{ ...inp, paddingLeft: 36 }} required type="number" min="0" step="0.01" value={form.valueReais} onChange={(e) => set('valueReais', e.target.value)} placeholder="1.500,00" />
               </div>
-              {aiHint && (
-                <div style={{ fontSize: 11, color: aiHint.startsWith('✨') ? 'var(--green)' : 'var(--text-3)', marginTop: 5 }}>
-                  {aiHint}
-                </div>
-              )}
-            </div>
-            <div>
-              <label className="form-label">Peso (toneladas)</label>
-              <input className="form-input" type="number" min="0" step="0.1"
-                value={form.weight} onChange={e => set('weight', e.target.value)} placeholder="25" />
-            </div>
-            <div>
-              <label className="form-label">Distância (km)</label>
-              <input className="form-input" type="number" min="0" step="1"
-                value={form.distance} onChange={e => set('distance', e.target.value)} placeholder="2.800" />
-            </div>
+              <button
+                type="button"
+                disabled={suggestValue.isPending || !form.destinationCity}
+                onClick={() => suggestValue.mutate({
+                  originCity: form.originCity, originState: form.originState,
+                  destinationCity: form.destinationCity, destinationState: form.destinationState,
+                  cargoType: form.cargoType,
+                  weight: form.weight ? parseFloat(form.weight) : undefined,
+                  distance: form.distance ? parseFloat(form.distance) : undefined,
+                })}
+                style={{ marginTop: 6, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 7, padding: '6px 12px', color: '#1d4ed8', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: (!form.destinationCity || suggestValue.isPending) ? 0.5 : 1 }}
+              >
+                {suggestValue.isPending ? 'Consultando IA...' : '✨ Sugerir com IA'}
+              </button>
+              {aiHint && <div style={{ fontSize: 12, color: '#1d4ed8', marginTop: 4, background: '#eff6ff', padding: '6px 10px', borderRadius: 6 }}>{aiHint}</div>}
+            </Field>
+            <Field label="Peso (toneladas)">
+              <input style={inp} type="number" min="0" step="0.1" value={form.weight} onChange={(e) => set('weight', e.target.value)} placeholder="25" />
+            </Field>
+            <Field label="Distância (km)">
+              <input style={inp} type="number" min="0" step="1" value={form.distance} onChange={(e) => set('distance', e.target.value)} placeholder="2.800" />
+            </Field>
           </div>
         </Section>
 
-        {error && <div className="alert alert-error">{error}</div>}
+        {error && (
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 16px', color: '#dc2626', fontSize: 14, marginBottom: 20 }}>
+            ⚠ {error}
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 12 }}>
-          <button type="button" onClick={() => nav({ name: 'freights' })} className="btn btn-outline" style={{ flex: 1 }}>Cancelar</button>
-          <button type="submit" disabled={create.isPending} className="btn btn-primary btn-lg" style={{ flex: 2 }}>
+          <button type="button" onClick={() => nav({ name: 'freights' })} style={{ flex: 1, background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: 10, padding: 14, fontWeight: 600, cursor: 'pointer', fontSize: 15 }}>Cancelar</button>
+          <button type="submit" disabled={create.isPending} style={{ flex: 2, background: '#0C3680', color: '#fff', border: 'none', borderRadius: 10, padding: 14, fontWeight: 700, cursor: 'pointer', fontSize: 15, boxShadow: '0 4px 14px rgba(12,54,128,0.3)', opacity: create.isPending ? 0.7 : 1 }}>
             {create.isPending ? 'Publicando...' : '🚛 Publicar Frete'}
           </button>
         </div>
@@ -236,9 +171,21 @@ export default function FreightNew({ nav }: { nav: (p: Page) => void }) {
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="card" style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 18 }}>{label}</div>
+    <div style={{ background: '#fff', borderRadius: 14, padding: 24, marginBottom: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid #f1f5f9' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 18 }}>{label}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>{children}</div>
     </div>
   );
 }
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label style={lbl}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+const lbl: React.CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 };
+const inp: React.CSSProperties = { width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 9, padding: '10px 12px', fontSize: 14, outline: 'none', boxSizing: 'border-box', background: '#fafbff', color: '#1e293b', transition: 'border-color 0.15s' };

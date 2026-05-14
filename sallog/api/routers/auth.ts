@@ -16,9 +16,7 @@ export const authRouter = router({
     .input(z.object({ email: z.string().email(), password: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       const [u] = await db.select().from(users).where(eq(users.email, input.email));
-      console.log(`[loginAdmin] email=${input.email} found=${!!u} role=${u?.role ?? '-'} hashParts=${u ? u.passwordHash.split(':').length : 0}`);
       const valid = u ? verifyPassword(input.password, u.passwordHash) : (verifyPassword(input.password, DUMMY_HASH), false);
-      console.log(`[loginAdmin] valid=${valid}`);
       if (!valid || !u || u.role !== 'admin') throw new Error('Email ou senha inválidos');
       const token = signToken({ id: u.id, email: u.email, name: u.name, role: u.role });
       const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
@@ -48,6 +46,19 @@ export const authRouter = router({
       const [newDriver] = await db.insert(drivers).values({ userId: newUser.id, cpf: input.cpf, plate: input.plate.toUpperCase(), phone: input.phone, ...(input.vehicleType ? { vehicleType: input.vehicleType } : {}) }).returning();
       const token = signToken({ id: newUser.id, email: newUser.email, name: newUser.name, role: newUser.role });
       return { token, driver: { id: newDriver.id, cpf: newDriver.cpf, plate: newDriver.plate, phone: newDriver.phone, status: newDriver.status }, user: { id: newUser.id, name: newUser.name, role: newUser.role } };
+    }),
+
+  loginDriver: publicProcedure
+    .input(z.object({ cpf: z.string().min(1), password: z.string().min(1) }))
+    .mutation(async ({ input, ctx }) => {
+      const [driver] = await db.select().from(drivers).where(eq(drivers.cpf, input.cpf));
+      const [u] = driver ? await db.select().from(users).where(eq(users.id, driver.userId)) : [];
+      const valid = u ? verifyPassword(input.password, u.passwordHash) : (verifyPassword(input.password, DUMMY_HASH), false);
+      if (!valid || !driver || !u) throw new Error('CPF ou senha inválidos');
+      const token = signToken({ id: u.id, email: u.email, name: u.name, role: u.role });
+      const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+      ctx.res.setHeader('Set-Cookie', `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly${secure}; Path=/; Max-Age=${30 * 24 * 60 * 60}; SameSite=Lax`);
+      return { user: { id: u.id, name: u.name, email: u.email, role: u.role }, driver: { id: driver.id, cpf: driver.cpf, plate: driver.plate, phone: driver.phone, status: driver.status } };
     }),
 
   logout: publicProcedure.mutation(({ ctx }) => {

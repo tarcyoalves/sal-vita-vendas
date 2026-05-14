@@ -1,13 +1,16 @@
 import { z } from 'zod';
+import { eq } from 'drizzle-orm';
 import { router, adminProcedure } from '../trpc';
 import { db } from '../db';
-import { freights, drivers } from '../db/schema';
+import { freights, drivers, users } from '../db/schema';
 
-type GroqMessage = { role: 'user' | 'assistant' | 'system'; content: string };
-
-async function groqChat(messages: GroqMessage[], maxTokens = 800, fast = false): Promise<string> {
+async function groqChat(
+  messages: { role: string; content: string }[],
+  maxTokens = 800,
+  fast = false,
+): Promise<string> {
   const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) throw new Error('GROQ_API_KEY não configurada');
+  if (!apiKey) throw new Error('GROQ_API_KEY não configurada no servidor');
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -21,183 +24,171 @@ async function groqChat(messages: GroqMessage[], maxTokens = 800, fast = false):
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Groq error ${res.status}: ${err}`);
+    const err = await res.text().catch(() => '');
+    throw new Error(`Groq error ${res.status}: ${err.slice(0, 200)}`);
   }
 
-  const data = await res.json() as { choices: Array<{ message: { content: string } }> };
-  return data.choices[0].message.content ?? '';
+  const data = await res.json();
+  return data.choices[0].message.content as string;
 }
 
 async function getOperationContext() {
-  const [allFreights, allDrivers] = await Promise.all([
-    db.select().from(freights),
-    db.select().from(drivers),
-  ]);
+  const allFreights = await db.select().from(freights);
+  const allDrivers = await db
+    .select({
+      id: drivers.id,
+      status: drivers.status,
+      vehicleType: drivers.vehicleType,
+      score: drivers.score,
+      totalFreights: drivers.totalFreights,
+      isFavorite: drivers.isFavorite,
+      userName: users.name,
+    })
+    .from(drivers)
+    .leftJoin(users, eq(drivers.userId, users.id));
 
-  const stats = {
-    fretes: {
-      total: allFreights.length,
-      disponivel: allFreights.filter(f => f.status === 'available').length,
-      em_andamento: allFreights.filter(f => f.status === 'in_progress').length,
-      concluidos: allFreights.filter(f => f.status === 'completed').length,
-      validados: allFreights.filter(f => f.status === 'validated').length,
-      pagos: allFreights.filter(f => f.status === 'paid').length,
-    },
-    motoristas: {
-      total: allDrivers.length,
-      pendentes: allDrivers.filter(d => d.status === 'pending').length,
-      aprovados: allDrivers.filter(d => d.status === 'approved').length,
-    },
-    financeiro: {
-      a_receber: `R$ ${(allFreights.filter(f => f.status === 'validated').reduce((s, f) => s + f.value, 0) / 100).toFixed(2)}`,
-      total_pago: `R$ ${(allFreights.filter(f => f.status === 'paid').reduce((s, f) => s + f.value, 0) / 100).toFixed(2)}`,
-    },
+  const fSummary = {
+    total: allFreights.length,
+    available: allFreights.filter((f) => f.status === 'available').length,
+    in_progress: allFreights.filter((f) => f.status === 'in_progress').length,
+    completed: allFreights.filter((f) => f.status === 'completed').length,
+    validated: allFreights.filter((f) => f.status === 'validated').length,
+    paid: allFreights.filter((f) => f.status === 'paid').length,
+    totalValueCents: allFreights.reduce((s, f) => s + f.value, 0),
+    recent: allFreights.slice(-5).map((f) => ({
+      id: f.id,
+      title: f.title,
+      status: f.status,
+      value: f.value,
+      route: `${f.originCity}/${f.originState}→${f.destinationCity}/${f.destinationState}`,
+    })),
   };
 
-  const recentFreights = allFreights
-    .slice(-15)
-    .map(f => ({
-      id: f.id,
-      titulo: f.title,
-      rota: `${f.originCity}/${f.originState} → ${f.destinationCity}/${f.destinationState}`,
-      valor: `R$ ${(f.value / 100).toFixed(2)}`,
-      status: f.status,
-      carga: f.cargoType,
-      peso: f.weight,
-    }));
+  const dSummary = {
+    total: allDrivers.length,
+    pending: allDrivers.filter((d) => d.status === 'pending').length,
+    approved: allDrivers.filter((d) => d.status === 'approved').length,
+    rejected: allDrivers.filter((d) => d.status === 'rejected').length,
+    favorites: allDrivers.filter((d) => d.isFavorite).length,
+  };
 
-  return { stats, recentFreights, allFreights, allDrivers };
+  return { freights: fSummary, drivers: dSummary };
 }
 
+const SYSTEM_PROMPT = `Você é o assistente inteligente do FRETEPRIME, plataforma de gestão logística.
+Responda em português, de forma clara e objetiva. Use dados concretos da operação quando disponíveis.
+Powered by Groq · Llama 3.3 70B`;
+
 export const aiRouter = router({
-  // — Copilot chat with full operation context
   chat: adminProcedure
-    .input(z.object({
-      message: z.string().min(1).max(1000),
-      history: z.array(z.object({
-        role: z.enum(['user', 'assistant']),
-        content: z.string(),
-      })).optional().default([]),
-    }))
+    .input(
+      z.object({
+        message: z.string().min(1).max(2000),
+        history: z
+          .array(z.object({ role: z.enum(['user', 'assistant']), content: z.string() }))
+          .max(20)
+          .optional(),
+      }),
+    )
     .mutation(async ({ input }) => {
       const ctx = await getOperationContext();
 
-      const system = `Você é o assistente de IA do FRETEPRIME, plataforma de gestão logística da empresa Sal Vita (sal marinho de Mossoró/RN).
+      const systemWithContext = `${SYSTEM_PROMPT}
 
 DADOS ATUAIS DA OPERAÇÃO:
-${JSON.stringify(ctx.stats, null, 2)}
+Fretes: ${JSON.stringify(ctx.freights)}
+Motoristas: ${JSON.stringify(ctx.drivers)}
+Data/Hora: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' })}`;
 
-FRETES RECENTES (últimos 15):
-${ctx.recentFreights.map(f => `- #${f.id} ${f.titulo} | ${f.rota} | ${f.valor} | status: ${f.status}`).join('\n')}
-
-INSTRUÇÕES:
-- Responda sempre em português brasileiro
-- Seja objetivo e direto (máximo 4 parágrafos)
-- Use emojis com moderação para clareza
-- Valores: formato R$ X.XXX,XX
-- Baseie-se sempre nos dados reais acima
-- Para tópicos fora de logística, redirecione gentilmente`;
-
-      const reply = await groqChat([
-        { role: 'system', content: system },
-        ...input.history.slice(-10),
+      const messages = [
+        { role: 'system', content: systemWithContext },
+        ...(input.history?.slice(-10) ?? []),
         { role: 'user', content: input.message },
-      ]);
+      ];
 
+      const reply = await groqChat(messages, 600);
       return { reply };
     }),
 
-  // — Smart freight value suggestion
   suggestValue: adminProcedure
-    .input(z.object({
-      originCity: z.string(),
-      originState: z.string(),
-      destinationCity: z.string(),
-      destinationState: z.string(),
-      cargoType: z.string(),
-      weight: z.number().optional(),
-      distance: z.number().optional(),
-    }))
+    .input(
+      z.object({
+        originCity: z.string(),
+        originState: z.string(),
+        destinationCity: z.string(),
+        destinationState: z.string(),
+        cargoType: z.string(),
+        weight: z.number().optional(),
+        distance: z.number().optional(),
+      }),
+    )
     .mutation(async ({ input }) => {
       const allFreights = await db.select().from(freights);
-
       const similar = allFreights
-        .filter(f =>
-          f.originState === input.originState ||
-          f.destinationState === input.destinationState
-        )
-        .slice(-8)
-        .map(f => `${f.originCity}/${f.originState}→${f.destinationCity}/${f.destinationState}: R$${(f.value / 100).toFixed(0)}, ${f.weight ?? '?'}t, ${f.cargoType}`);
+        .filter((f) => f.destinationState === input.destinationState && f.cargoType === input.cargoType)
+        .slice(-10)
+        .map((f) => ({ value: f.value, weight: f.weight, distance: f.distance }));
 
-      const prompt = `Especialista em fretes de sal no Brasil.
+      const prompt = `Especialista em fretes de sal marinho no Brasil.
 
-ROTA: ${input.originCity}/${input.originState} → ${input.destinationCity}/${input.destinationState}
-CARGA: ${input.cargoType} | PESO: ${input.weight ? input.weight + 't' : 'n/d'} | DISTÂNCIA: ${input.distance ? input.distance + 'km' : 'n/d'}
+Rota: ${input.originCity}/${input.originState} → ${input.destinationCity}/${input.destinationState}
+Tipo: ${input.cargoType}${input.weight ? ` | Peso: ${input.weight}t` : ''}${input.distance ? ` | Distância: ${input.distance}km` : ''}
+Fretes similares recentes (centavos): ${JSON.stringify(similar)}
 
-FRETES HISTÓRICOS SIMILARES:
-${similar.length > 0 ? similar.join('\n') : 'Sem histórico'}
+Responda SOMENTE com JSON: {"valueReais": 1500.00, "justificativa": "texto breve"}`;
 
-Referencial: diesel ~R$6,20/L, consumo 2,2km/L carregado, pedágios ~R$0,12/km, margem 18%.
-
-Responda APENAS com JSON: {"valor": 3500, "justificativa": "Uma linha de explicação"}`;
-
-      const raw = await groqChat([{ role: 'user', content: prompt }], 120, true);
-
-      try {
-        const match = raw.match(/\{[\s\S]*\}/);
-        if (match) {
-          const parsed = JSON.parse(match[0]) as { valor: number; justificativa: string };
-          return {
-            valueCents: Math.round((parsed.valor || 2000) * 100),
-            valueReais: parsed.valor || 2000,
-            justificativa: parsed.justificativa || '',
-          };
-        }
-      } catch { /* fallback below */ }
-
-      return { valueCents: 200000, valueReais: 2000, justificativa: 'Valor base estimado' };
+      const raw = await groqChat([{ role: 'user', content: prompt }], 300, true);
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error('IA não retornou JSON válido');
+      const parsed = JSON.parse(match[0]) as { valueReais: number; justificativa: string };
+      return { valueReais: parsed.valueReais, justificativa: parsed.justificativa };
     }),
 
-  // — Score-based driver matching (no AI needed, pure logic)
   matchDrivers: adminProcedure
-    .input(z.object({
-      vehicleType: z.string().optional(),
-    }))
-    .query(async ({ input }) => {
-      const allDrivers = await db.select().from(drivers);
-      const approved = allDrivers.filter(d => d.status === 'approved');
+    .input(z.object({ freightId: z.number() }))
+    .mutation(async ({ input }) => {
+      const [freight] = await db.select().from(freights).where(eq(freights.id, input.freightId));
+      if (!freight) throw new Error('Frete não encontrado');
 
-      return approved
-        .map(d => {
-          let score = 0;
-          if (d.isFavorite) score += 20;
-          score += Math.min(d.totalFreights ?? 0, 30);
-          if (input.vehicleType && d.vehicleType === input.vehicleType) score += 10;
-          return { ...d, score };
+      const allDrivers = await db
+        .select({
+          id: drivers.id,
+          status: drivers.status,
+          vehicleType: drivers.vehicleType,
+          score: drivers.score,
+          totalFreights: drivers.totalFreights,
+          isFavorite: drivers.isFavorite,
+          userName: users.name,
         })
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 5);
+        .from(drivers)
+        .leftJoin(users, eq(drivers.userId, users.id));
+
+      const approved = allDrivers.filter((d) => d.status === 'approved');
+
+      const prompt = `Analise o frete e indique os 3 melhores motoristas disponíveis.
+
+FRETE: ${freight.title} | ${freight.originCity}/${freight.originState}→${freight.destinationCity}/${freight.destinationState} | ${freight.cargoType} | R$${(freight.value / 100).toFixed(2)}
+
+MOTORISTAS: ${approved.map((d) => `ID${d.id}: ${d.userName}, ${d.vehicleType}, score:${d.score ?? 0}, fretes:${d.totalFreights ?? 0}${d.isFavorite ? '⭐' : ''}`).join(' | ')}
+
+Responda em português com justificativa breve para cada indicação.`;
+
+      const suggestion = await groqChat([{ role: 'user', content: prompt }], 500);
+      return { suggestion };
     }),
 
-  // — Daily executive briefing
-  dailySummary: adminProcedure
-    .query(async () => {
-      const ctx = await getOperationContext();
+  dailySummary: adminProcedure.mutation(async () => {
+    const ctx = await getOperationContext();
+    const totalR = (ctx.freights.totalValueCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-      const prompt = `Você é assistente do FRETEPRIME. Gere um briefing executivo matinal em português.
+    const prompt = `Gere um briefing executivo diário do FRETEPRIME.
 
-DADOS:
-${JSON.stringify(ctx.stats, null, 2)}
+DADOS: ${JSON.stringify({ ...ctx, totalValue: totalR })}
 
-Escreva 3 bullet points diretos:
-• Situação dos fretes
-• Pontos de atenção
-• Ação recomendada hoje
+Crie um briefing com: 1) Resumo geral, 2) Pontos de atenção, 3) Recomendações, 4) Resumo financeiro.
+Seja direto e use os dados reais. Máximo 300 palavras.`;
 
-2 linhas por bullet máximo. Use emojis. Tom executivo.`;
-
-      const summary = await groqChat([{ role: 'user', content: prompt }], 300, true);
-      return { summary };
-    }),
+    const summary = await groqChat([{ role: 'user', content: prompt }], 700);
+    return { summary };
+  }),
 });
