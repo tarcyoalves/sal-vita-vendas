@@ -19,7 +19,16 @@ export default function FreightNew({ nav }: { nav: (p: Page) => void }) {
     distance: '', valueReais: '', weight: '',
   });
   const [error, setError] = useState('');
+  const [aiHint, setAiHint] = useState('');
   const set = (k: keyof typeof form, v: string) => setForm((p) => ({ ...p, [k]: v }));
+
+  const suggestValue = trpc.ai.suggestValue.useMutation({
+    onSuccess: (data) => {
+      set('valueReais', data.valueReais.toFixed(2));
+      setAiHint(`✨ ${data.justificativa}`);
+    },
+    onError: () => setAiHint('Não foi possível sugerir um valor agora.'),
+  });
 
   const create = trpc.freights.create.useMutation({
     onSuccess: (data) => nav({ name: 'freight-detail', id: data.id }),
@@ -118,6 +127,21 @@ export default function FreightNew({ nav }: { nav: (p: Page) => void }) {
                 <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: 14, fontWeight: 600 }}>R$</span>
                 <input style={{ ...inp, paddingLeft: 36 }} required type="number" min="0" step="0.01" value={form.valueReais} onChange={(e) => set('valueReais', e.target.value)} placeholder="1.500,00" />
               </div>
+              <button
+                type="button"
+                disabled={suggestValue.isPending || !form.destinationCity}
+                onClick={() => suggestValue.mutate({
+                  originCity: form.originCity, originState: form.originState,
+                  destinationCity: form.destinationCity, destinationState: form.destinationState,
+                  cargoType: form.cargoType,
+                  weight: form.weight ? parseFloat(form.weight) : undefined,
+                  distance: form.distance ? parseFloat(form.distance) : undefined,
+                })}
+                style={{ marginTop: 6, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 7, padding: '6px 12px', color: '#1d4ed8', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: (!form.destinationCity || suggestValue.isPending) ? 0.5 : 1 }}
+              >
+                {suggestValue.isPending ? 'Consultando IA...' : '✨ Sugerir com IA'}
+              </button>
+              {aiHint && <div style={{ fontSize: 12, color: '#1d4ed8', marginTop: 4, background: '#eff6ff', padding: '6px 10px', borderRadius: 6 }}>{aiHint}</div>}
             </Field>
             <Field label="Peso (toneladas)">
               <input style={inp} type="number" min="0" step="0.1" value={form.weight} onChange={(e) => set('weight', e.target.value)} placeholder="25" />

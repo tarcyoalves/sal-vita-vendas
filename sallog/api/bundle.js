@@ -4624,13 +4624,13 @@ var require_extend_node = __commonJS({
         };
         var SlowBuffer = require("buffer").SlowBuffer;
         original.SlowBufferToString = SlowBuffer.prototype.toString;
-        SlowBuffer.prototype.toString = function(encoding, start2, end) {
+        SlowBuffer.prototype.toString = function(encoding, start, end) {
           encoding = String(encoding || "utf8").toLowerCase();
           if (Buffer2.isNativeEncoding(encoding))
-            return original.SlowBufferToString.call(this, encoding, start2, end);
-          if (typeof start2 == "undefined") start2 = 0;
+            return original.SlowBufferToString.call(this, encoding, start, end);
+          if (typeof start == "undefined") start = 0;
           if (typeof end == "undefined") end = this.length;
-          return iconv.decode(this.slice(start2, end), encoding);
+          return iconv.decode(this.slice(start, end), encoding);
         };
         original.SlowBufferWrite = SlowBuffer.prototype.write;
         SlowBuffer.prototype.write = function(string, offset, length, encoding) {
@@ -4677,13 +4677,13 @@ var require_extend_node = __commonJS({
           return iconv.encode(str, encoding).length;
         };
         original.BufferToString = Buffer2.prototype.toString;
-        Buffer2.prototype.toString = function(encoding, start2, end) {
+        Buffer2.prototype.toString = function(encoding, start, end) {
           encoding = String(encoding || "utf8").toLowerCase();
           if (Buffer2.isNativeEncoding(encoding))
-            return original.BufferToString.call(this, encoding, start2, end);
-          if (typeof start2 == "undefined") start2 = 0;
+            return original.BufferToString.call(this, encoding, start, end);
+          if (typeof start == "undefined") start = 0;
           if (typeof end == "undefined") end = this.length;
-          return iconv.decode(this.slice(start2, end), encoding);
+          return iconv.decode(this.slice(start, end), encoding);
         };
         original.BufferWrite = Buffer2.prototype.write;
         Buffer2.prototype.write = function(string, offset, length, encoding) {
@@ -20948,24 +20948,24 @@ var require_fresh = __commonJS({
     function parseTokenList(str) {
       var end = 0;
       var list = [];
-      var start2 = 0;
+      var start = 0;
       for (var i = 0, len = str.length; i < len; i++) {
         switch (str.charCodeAt(i)) {
           case 32:
-            if (start2 === end) {
-              start2 = end = i + 1;
+            if (start === end) {
+              start = end = i + 1;
             }
             break;
           case 44:
-            list.push(str.substring(start2, end));
-            start2 = end = i + 1;
+            list.push(str.substring(start, end));
+            start = end = i + 1;
             break;
           default:
             end = i + 1;
             break;
         }
       }
-      list.push(str.substring(start2, end));
+      list.push(str.substring(start, end));
       return list;
     }
   }
@@ -21166,10 +21166,10 @@ var require_range_parser = __commonJS({
       ranges.type = str.slice(0, index);
       for (var i = 0; i < arr.length; i++) {
         var range = arr[i].split("-");
-        var start2 = parseInt(range[0], 10);
+        var start = parseInt(range[0], 10);
         var end = parseInt(range[1], 10);
-        if (isNaN(start2)) {
-          start2 = size - end;
+        if (isNaN(start)) {
+          start = size - end;
           end = size - 1;
         } else if (isNaN(end)) {
           end = size - 1;
@@ -21177,11 +21177,11 @@ var require_range_parser = __commonJS({
         if (end > size - 1) {
           end = size - 1;
         }
-        if (isNaN(start2) || isNaN(end) || start2 > end || start2 < 0) {
+        if (isNaN(start) || isNaN(end) || start > end || start < 0) {
           continue;
         }
         ranges.push({
-          start: start2,
+          start,
           end
         });
       }
@@ -21740,27 +21740,27 @@ var require_send = __commonJS({
     function parseTokenList(str) {
       var end = 0;
       var list = [];
-      var start2 = 0;
+      var start = 0;
       for (var i = 0, len = str.length; i < len; i++) {
         switch (str.charCodeAt(i)) {
           case 32:
-            if (start2 === end) {
-              start2 = end = i + 1;
+            if (start === end) {
+              start = end = i + 1;
             }
             break;
           case 44:
-            if (start2 !== end) {
-              list.push(str.substring(start2, end));
+            if (start !== end) {
+              list.push(str.substring(start, end));
             }
-            start2 = end = i + 1;
+            start = end = i + 1;
             break;
           default:
             end = i + 1;
             break;
         }
       }
-      if (start2 !== end) {
-        list.push(str.substring(start2, end));
+      if (start !== end) {
+        list.push(str.substring(start, end));
       }
       return list;
     }
@@ -21794,27 +21794,27 @@ var require_forwarded = __commonJS({
     function parse2(header) {
       var end = header.length;
       var list = [];
-      var start2 = header.length;
+      var start = header.length;
       for (var i = header.length - 1; i >= 0; i--) {
         switch (header.charCodeAt(i)) {
           case 32:
-            if (start2 === end) {
-              start2 = end = i;
+            if (start === end) {
+              start = end = i;
             }
             break;
           case 44:
-            if (start2 !== end) {
-              list.push(header.substring(start2, end));
+            if (start !== end) {
+              list.push(header.substring(start, end));
             }
-            start2 = end = i;
+            start = end = i;
             break;
           default:
-            start2 = i;
+            start = i;
             break;
         }
       }
-      if (start2 !== end) {
-        list.push(header.substring(start2, end));
+      if (start !== end) {
+        list.push(header.substring(start, end));
       }
       return list;
     }
@@ -23984,24 +23984,24 @@ var require_vary = __commonJS({
     function parse2(header) {
       var end = 0;
       var list = [];
-      var start2 = 0;
+      var start = 0;
       for (var i = 0, len = header.length; i < len; i++) {
         switch (header.charCodeAt(i)) {
           case 32:
-            if (start2 === end) {
-              start2 = end = i + 1;
+            if (start === end) {
+              start = end = i + 1;
             }
             break;
           case 44:
-            list.push(header.substring(start2, end));
-            start2 = end = i + 1;
+            list.push(header.substring(start, end));
+            start = end = i + 1;
             break;
           default:
             end = i + 1;
             break;
         }
       }
-      list.push(header.substring(start2, end));
+      list.push(header.substring(start, end));
       return list;
     }
     function vary(res, field) {
@@ -25173,12 +25173,12 @@ var require_ecdsa_sig_formatter = __commonJS({
       dst = base64Url(dst);
       return dst;
     }
-    function countPadding(buf, start2, stop) {
+    function countPadding(buf, start, stop) {
       var padding = 0;
-      while (start2 + padding < stop && buf[start2 + padding] === 0) {
+      while (start + padding < stop && buf[start + padding] === 0) {
         ++padding;
       }
-      var needsSign = buf[start2 + padding] >= MAX_OCTET;
+      var needsSign = buf[start + padding] >= MAX_OCTET;
       if (needsSign) {
         --padding;
       }
@@ -45021,6 +45021,8 @@ var users = pgTable("users", {
   passwordHash: text("password_hash").notNull(),
   role: text("role").notNull().default("driver"),
   // 'admin' | 'driver'
+  status: text("status").notNull().default("active"),
+  // 'active' | 'blocked'
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 var drivers = pgTable("drivers", {
@@ -45031,6 +45033,12 @@ var drivers = pgTable("drivers", {
   phone: text("phone").notNull(),
   status: text("status").notNull().default("pending"),
   // pending | approved | rejected
+  vehicleType: text("vehicle_type"),
+  // 'truck' | 'toco' | 'bitruck' | 'carreta' | 'outros'
+  pixKey: text("pix_key"),
+  score: real("score").default(0),
+  totalFreights: integer("total_freights").notNull().default(0),
+  isFavorite: boolean("is_favorite").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
@@ -45052,6 +45060,10 @@ var freights = pgTable("freights", {
   // available | in_progress | completed | validated | paid
   createdBy: integer("created_by").notNull(),
   assignedDriverId: integer("assigned_driver_id"),
+  loadDate: text("load_date"),
+  // ISO date string
+  direction: text("direction").notNull().default("ida"),
+  // 'ida' | 'retorno' | 'ambos'
   validatedAt: timestamp("validated_at"),
   paidAt: timestamp("paid_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -45063,6 +45075,8 @@ var freightInterests = pgTable(
     id: serial("id").primaryKey(),
     freightId: integer("freight_id").notNull(),
     driverId: integer("driver_id").notNull(),
+    status: text("status").notNull().default("pending"),
+    // 'pending' | 'accepted' | 'rejected'
     createdAt: timestamp("created_at").defaultNow().notNull()
   },
   (t2) => ({ uniq: uniqueIndex("freight_interests_uniq").on(t2.freightId, t2.driverId) })
@@ -45089,6 +45103,11 @@ var freightDocuments = pgTable("freight_documents", {
   freightId: integer("freight_id").notNull(),
   driverId: integer("driver_id").notNull(),
   fileUrl: text("file_url").notNull(),
+  type: text("type").notNull().default("comprovante"),
+  // 'comprovante' | 'canhoto'
+  validated: boolean("validated").notNull().default(false),
+  validatedAt: timestamp("validated_at"),
+  validatedBy: integer("validated_by"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull()
 });
 
@@ -49190,15 +49209,16 @@ var authRouter = router({
     const [u] = driver ? await db.select().from(users).where(eq(users.id, driver.userId)) : [];
     const valid = u ? verifyPassword(input.password, u.passwordHash) : (verifyPassword(input.password, DUMMY_HASH), false);
     if (!valid || !driver || !u) throw new Error("CPF ou senha inv\xE1lidos");
+    if (driver.status !== "approved") throw new Error("Cadastro aguardando aprova\xE7\xE3o do administrador");
     const token = signToken({ id: u.id, email: u.email, name: u.name, role: u.role });
     return { token, driver: { id: driver.id, cpf: driver.cpf, plate: driver.plate, phone: driver.phone, status: driver.status }, user: { id: u.id, name: u.name, role: u.role } };
   }),
-  registerDriver: publicProcedure.input(external_exports.object({ name: external_exports.string().min(2), cpf: external_exports.string().min(11), plate: external_exports.string().min(7), phone: external_exports.string().min(10), password: external_exports.string().min(6) })).mutation(async ({ input }) => {
+  registerDriver: publicProcedure.input(external_exports.object({ name: external_exports.string().min(2), cpf: external_exports.string().min(11), plate: external_exports.string().min(7), phone: external_exports.string().min(10), password: external_exports.string().min(6), vehicleType: external_exports.string().optional() })).mutation(async ({ input }) => {
     const existing = await db.select().from(drivers).where(eq(drivers.cpf, input.cpf));
     if (existing.length > 0) throw new Error("CPF j\xE1 cadastrado");
     const email = `${input.cpf.replace(/\D/g, "")}@motorista.sallog`;
     const [newUser] = await db.insert(users).values({ name: input.name, email, passwordHash: hashPassword(input.password), role: "driver" }).returning();
-    const [newDriver] = await db.insert(drivers).values({ userId: newUser.id, cpf: input.cpf, plate: input.plate.toUpperCase(), phone: input.phone }).returning();
+    const [newDriver] = await db.insert(drivers).values({ userId: newUser.id, cpf: input.cpf, plate: input.plate.toUpperCase(), phone: input.phone, ...input.vehicleType ? { vehicleType: input.vehicleType } : {} }).returning();
     const token = signToken({ id: newUser.id, email: newUser.email, name: newUser.name, role: newUser.role });
     return { token, driver: { id: newDriver.id, cpf: newDriver.cpf, plate: newDriver.plate, phone: newDriver.phone, status: newDriver.status }, user: { id: newUser.id, name: newUser.name, role: newUser.role } };
   }),
@@ -49211,11 +49231,11 @@ var authRouter = router({
 // api/routers/drivers.ts
 var driversRouter = router({
   list: adminProcedure.input(external_exports.object({ status: external_exports.string().optional() }).optional()).query(async ({ input }) => {
-    const rows = await db.select({ id: drivers.id, userId: drivers.userId, cpf: drivers.cpf, plate: drivers.plate, phone: drivers.phone, status: drivers.status, createdAt: drivers.createdAt, userName: users.name, userEmail: users.email }).from(drivers).leftJoin(users, eq(drivers.userId, users.id));
+    const rows = await db.select({ id: drivers.id, userId: drivers.userId, cpf: drivers.cpf, plate: drivers.plate, phone: drivers.phone, status: drivers.status, vehicleType: drivers.vehicleType, pixKey: drivers.pixKey, score: drivers.score, totalFreights: drivers.totalFreights, isFavorite: drivers.isFavorite, createdAt: drivers.createdAt, userName: users.name, userEmail: users.email }).from(drivers).leftJoin(users, eq(drivers.userId, users.id));
     return input?.status ? rows.filter((r) => r.status === input.status) : rows;
   }),
   getById: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).query(async ({ input }) => {
-    const [row] = await db.select({ id: drivers.id, cpf: drivers.cpf, plate: drivers.plate, phone: drivers.phone, status: drivers.status, createdAt: drivers.createdAt, userName: users.name }).from(drivers).leftJoin(users, eq(drivers.userId, users.id)).where(eq(drivers.id, input.id));
+    const [row] = await db.select({ id: drivers.id, cpf: drivers.cpf, plate: drivers.plate, phone: drivers.phone, status: drivers.status, vehicleType: drivers.vehicleType, pixKey: drivers.pixKey, score: drivers.score, totalFreights: drivers.totalFreights, isFavorite: drivers.isFavorite, createdAt: drivers.createdAt, userName: users.name }).from(drivers).leftJoin(users, eq(drivers.userId, users.id)).where(eq(drivers.id, input.id));
     return row ?? null;
   }),
   myDriver: protectedProcedure.query(async ({ ctx }) => {
@@ -49229,6 +49249,12 @@ var driversRouter = router({
   reject: adminProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ input }) => {
     await db.update(drivers).set({ status: "rejected", updatedAt: /* @__PURE__ */ new Date() }).where(eq(drivers.id, input.id));
     return { ok: true };
+  }),
+  toggleFavorite: adminProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ input }) => {
+    const [driver] = await db.select().from(drivers).where(eq(drivers.id, input.id));
+    if (!driver) throw new Error("Motorista n\xE3o encontrado");
+    await db.update(drivers).set({ isFavorite: !driver.isFavorite, updatedAt: /* @__PURE__ */ new Date() }).where(eq(drivers.id, input.id));
+    return { ok: true, isFavorite: !driver.isFavorite };
   })
 });
 
@@ -49239,6 +49265,7 @@ var freightsRouter = router({
     if (ctx.user.role === "admin") return input?.status ? rows.filter((r) => r.status === input.status) : rows;
     const [driver] = await db.select().from(drivers).where(eq(drivers.userId, ctx.user.id));
     if (!driver) return [];
+    if (driver.status !== "approved") return [];
     const scope = input?.scope ?? "all";
     if (scope === "available") return rows.filter((r) => r.status === "available");
     if (scope === "mine") return rows.filter((r) => r.assignedDriverId === driver.id);
@@ -49253,11 +49280,11 @@ var freightsRouter = router({
     if (freight.assignedDriverId !== driver.id && freight.status !== "available") throw new TRPCError({ code: "FORBIDDEN" });
     return freight;
   }),
-  create: adminProcedure.input(external_exports.object({ title: external_exports.string().min(3), description: external_exports.string().optional(), cargoType: external_exports.enum(["bigbag", "sacaria", "granel"]), originCity: external_exports.string(), originState: external_exports.string().length(2), destinationCity: external_exports.string(), destinationState: external_exports.string().length(2), distance: external_exports.number().optional(), value: external_exports.number().int().min(0), weight: external_exports.number().optional() })).mutation(async ({ input, ctx }) => {
+  create: adminProcedure.input(external_exports.object({ title: external_exports.string().min(3), description: external_exports.string().optional(), cargoType: external_exports.enum(["bigbag", "sacaria", "granel"]), originCity: external_exports.string(), originState: external_exports.string().length(2), destinationCity: external_exports.string(), destinationState: external_exports.string().length(2), distance: external_exports.number().optional(), value: external_exports.number().int().min(0), weight: external_exports.number().optional(), loadDate: external_exports.string().optional(), direction: external_exports.enum(["ida", "retorno", "ambos"]).default("ida") })).mutation(async ({ input, ctx }) => {
     const [row] = await db.insert(freights).values({ ...input, createdBy: ctx.user.id }).returning();
     return row;
   }),
-  update: adminProcedure.input(external_exports.object({ id: external_exports.number(), title: external_exports.string().optional(), description: external_exports.string().optional(), cargoType: external_exports.enum(["bigbag", "sacaria", "granel"]).optional(), originCity: external_exports.string().optional(), originState: external_exports.string().optional(), destinationCity: external_exports.string().optional(), destinationState: external_exports.string().optional(), distance: external_exports.number().optional(), value: external_exports.number().int().min(0).optional(), weight: external_exports.number().optional() })).mutation(async ({ input }) => {
+  update: adminProcedure.input(external_exports.object({ id: external_exports.number(), title: external_exports.string().optional(), description: external_exports.string().optional(), cargoType: external_exports.enum(["bigbag", "sacaria", "granel"]).optional(), originCity: external_exports.string().optional(), originState: external_exports.string().optional(), destinationCity: external_exports.string().optional(), destinationState: external_exports.string().optional(), distance: external_exports.number().optional(), value: external_exports.number().int().min(0).optional(), weight: external_exports.number().optional(), loadDate: external_exports.string().optional(), direction: external_exports.enum(["ida", "retorno", "ambos"]).optional() })).mutation(async ({ input }) => {
     const { id, ...data } = input;
     await db.update(freights).set({ ...data, updatedAt: /* @__PURE__ */ new Date() }).where(eq(freights.id, id));
     return { ok: true };
@@ -49268,6 +49295,8 @@ var freightsRouter = router({
     const [freight] = await db.select().from(freights).where(eq(freights.id, input.freightId));
     if (!freight || freight.status !== "available") throw new Error("Frete n\xE3o dispon\xEDvel");
     await db.update(freights).set({ assignedDriverId: input.driverId, status: "in_progress", updatedAt: /* @__PURE__ */ new Date() }).where(eq(freights.id, input.freightId));
+    await db.update(freightInterests).set({ status: "accepted" }).where(and(eq(freightInterests.freightId, input.freightId), eq(freightInterests.driverId, input.driverId)));
+    await db.update(freightInterests).set({ status: "rejected" }).where(and(eq(freightInterests.freightId, input.freightId), ne(freightInterests.driverId, input.driverId)));
     return { ok: true };
   }),
   markCompleted: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ input, ctx }) => {
@@ -49366,13 +49395,22 @@ var freightChatsRouter = router({
 
 // api/routers/freightDocuments.ts
 var freightDocumentsRouter = router({
-  create: protectedProcedure.input(external_exports.object({ freightId: external_exports.number(), fileUrl: external_exports.string().url() })).mutation(async ({ input, ctx }) => {
+  create: protectedProcedure.input(external_exports.object({
+    freightId: external_exports.number(),
+    fileUrl: external_exports.string().url(),
+    type: external_exports.enum(["comprovante", "canhoto"]).default("comprovante")
+  })).mutation(async ({ input, ctx }) => {
     if (ctx.user.role === "admin") throw new TRPCError({ code: "FORBIDDEN" });
     const [driver] = await db.select().from(drivers).where(eq(drivers.userId, ctx.user.id));
     if (!driver) throw new TRPCError({ code: "FORBIDDEN" });
     const [freight] = await db.select().from(freights).where(eq(freights.id, input.freightId));
     if (!freight || freight.assignedDriverId !== driver.id) throw new TRPCError({ code: "FORBIDDEN" });
-    const [row] = await db.insert(freightDocuments).values({ freightId: input.freightId, driverId: driver.id, fileUrl: input.fileUrl }).returning();
+    const [row] = await db.insert(freightDocuments).values({
+      freightId: input.freightId,
+      driverId: driver.id,
+      fileUrl: input.fileUrl,
+      type: input.type
+    }).returning();
     return row;
   }),
   listByFreight: protectedProcedure.input(external_exports.object({ freightId: external_exports.number() })).query(async ({ input, ctx }) => {
@@ -49383,6 +49421,161 @@ var freightDocumentsRouter = router({
       if (!freight || freight.assignedDriverId !== driver.id) throw new TRPCError({ code: "FORBIDDEN" });
     }
     return db.select().from(freightDocuments).where(eq(freightDocuments.freightId, input.freightId));
+  }),
+  validate: adminProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ input, ctx }) => {
+    await db.update(freightDocuments).set({ validated: true, validatedAt: /* @__PURE__ */ new Date(), validatedBy: ctx.user.id }).where(eq(freightDocuments.id, input.id));
+    return { ok: true };
+  }),
+  cloudinaryConfig: protectedProcedure.query(() => {
+    return {
+      cloudName: process.env.CLOUDINARY_CLOUD_NAME ?? "",
+      uploadPreset: process.env.CLOUDINARY_UPLOAD_PRESET ?? "sallog_docs"
+    };
+  })
+});
+
+// api/routers/ai.ts
+async function groqChat(messages, maxTokens = 800, fast = false) {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error("GROQ_API_KEY n\xE3o configurada no servidor");
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: fast ? "llama-3.1-8b-instant" : "llama-3.3-70b-versatile",
+      messages,
+      max_tokens: maxTokens,
+      temperature: 0.7
+    })
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => "");
+    throw new Error(`Groq error ${res.status}: ${err.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  return data.choices[0].message.content;
+}
+async function getOperationContext() {
+  const allFreights = await db.select().from(freights);
+  const allDrivers = await db.select({
+    id: drivers.id,
+    status: drivers.status,
+    vehicleType: drivers.vehicleType,
+    score: drivers.score,
+    totalFreights: drivers.totalFreights,
+    isFavorite: drivers.isFavorite,
+    userName: users.name
+  }).from(drivers).leftJoin(users, eq(drivers.userId, users.id));
+  const fSummary = {
+    total: allFreights.length,
+    available: allFreights.filter((f) => f.status === "available").length,
+    in_progress: allFreights.filter((f) => f.status === "in_progress").length,
+    completed: allFreights.filter((f) => f.status === "completed").length,
+    validated: allFreights.filter((f) => f.status === "validated").length,
+    paid: allFreights.filter((f) => f.status === "paid").length,
+    totalValueCents: allFreights.reduce((s, f) => s + f.value, 0),
+    recent: allFreights.slice(-5).map((f) => ({
+      id: f.id,
+      title: f.title,
+      status: f.status,
+      value: f.value,
+      route: `${f.originCity}/${f.originState}\u2192${f.destinationCity}/${f.destinationState}`
+    }))
+  };
+  const dSummary = {
+    total: allDrivers.length,
+    pending: allDrivers.filter((d) => d.status === "pending").length,
+    approved: allDrivers.filter((d) => d.status === "approved").length,
+    rejected: allDrivers.filter((d) => d.status === "rejected").length,
+    favorites: allDrivers.filter((d) => d.isFavorite).length
+  };
+  return { freights: fSummary, drivers: dSummary };
+}
+var SYSTEM_PROMPT = `Voc\xEA \xE9 o assistente inteligente do FRETEPRIME, plataforma de gest\xE3o log\xEDstica.
+Responda em portugu\xEAs, de forma clara e objetiva. Use dados concretos da opera\xE7\xE3o quando dispon\xEDveis.
+Powered by Groq \xB7 Llama 3.3 70B`;
+var aiRouter = router({
+  chat: adminProcedure.input(
+    external_exports.object({
+      message: external_exports.string().min(1).max(2e3),
+      history: external_exports.array(external_exports.object({ role: external_exports.enum(["user", "assistant"]), content: external_exports.string() })).max(20).optional()
+    })
+  ).mutation(async ({ input }) => {
+    const ctx = await getOperationContext();
+    const systemWithContext = `${SYSTEM_PROMPT}
+
+DADOS ATUAIS DA OPERA\xC7\xC3O:
+Fretes: ${JSON.stringify(ctx.freights)}
+Motoristas: ${JSON.stringify(ctx.drivers)}
+Data/Hora: ${(/* @__PURE__ */ new Date()).toLocaleString("pt-BR", { timeZone: "America/Fortaleza" })}`;
+    const messages = [
+      { role: "system", content: systemWithContext },
+      ...input.history?.slice(-10) ?? [],
+      { role: "user", content: input.message }
+    ];
+    const reply = await groqChat(messages, 600);
+    return { reply };
+  }),
+  suggestValue: adminProcedure.input(
+    external_exports.object({
+      originCity: external_exports.string(),
+      originState: external_exports.string(),
+      destinationCity: external_exports.string(),
+      destinationState: external_exports.string(),
+      cargoType: external_exports.string(),
+      weight: external_exports.number().optional(),
+      distance: external_exports.number().optional()
+    })
+  ).mutation(async ({ input }) => {
+    const allFreights = await db.select().from(freights);
+    const similar = allFreights.filter((f) => f.destinationState === input.destinationState && f.cargoType === input.cargoType).slice(-10).map((f) => ({ value: f.value, weight: f.weight, distance: f.distance }));
+    const prompt = `Especialista em fretes de sal marinho no Brasil.
+
+Rota: ${input.originCity}/${input.originState} \u2192 ${input.destinationCity}/${input.destinationState}
+Tipo: ${input.cargoType}${input.weight ? ` | Peso: ${input.weight}t` : ""}${input.distance ? ` | Dist\xE2ncia: ${input.distance}km` : ""}
+Fretes similares recentes (centavos): ${JSON.stringify(similar)}
+
+Responda SOMENTE com JSON: {"valueReais": 1500.00, "justificativa": "texto breve"}`;
+    const raw = await groqChat([{ role: "user", content: prompt }], 300, true);
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("IA n\xE3o retornou JSON v\xE1lido");
+    const parsed = JSON.parse(match[0]);
+    return { valueReais: parsed.valueReais, justificativa: parsed.justificativa };
+  }),
+  matchDrivers: adminProcedure.input(external_exports.object({ freightId: external_exports.number() })).mutation(async ({ input }) => {
+    const [freight] = await db.select().from(freights).where(eq(freights.id, input.freightId));
+    if (!freight) throw new Error("Frete n\xE3o encontrado");
+    const allDrivers = await db.select({
+      id: drivers.id,
+      status: drivers.status,
+      vehicleType: drivers.vehicleType,
+      score: drivers.score,
+      totalFreights: drivers.totalFreights,
+      isFavorite: drivers.isFavorite,
+      userName: users.name
+    }).from(drivers).leftJoin(users, eq(drivers.userId, users.id));
+    const approved = allDrivers.filter((d) => d.status === "approved");
+    const prompt = `Analise o frete e indique os 3 melhores motoristas dispon\xEDveis.
+
+FRETE: ${freight.title} | ${freight.originCity}/${freight.originState}\u2192${freight.destinationCity}/${freight.destinationState} | ${freight.cargoType} | R$${(freight.value / 100).toFixed(2)}
+
+MOTORISTAS: ${approved.map((d) => `ID${d.id}: ${d.userName}, ${d.vehicleType}, score:${d.score ?? 0}, fretes:${d.totalFreights ?? 0}${d.isFavorite ? "\u2B50" : ""}`).join(" | ")}
+
+Responda em portugu\xEAs com justificativa breve para cada indica\xE7\xE3o.`;
+    const suggestion = await groqChat([{ role: "user", content: prompt }], 500);
+    return { suggestion };
+  }),
+  dailySummary: adminProcedure.mutation(async () => {
+    const ctx = await getOperationContext();
+    const totalR = (ctx.freights.totalValueCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    const prompt = `Gere um briefing executivo di\xE1rio do FRETEPRIME.
+
+DADOS: ${JSON.stringify({ ...ctx, totalValue: totalR })}
+
+Crie um briefing com: 1) Resumo geral, 2) Pontos de aten\xE7\xE3o, 3) Recomenda\xE7\xF5es, 4) Resumo financeiro.
+Seja direto e use os dados reais. M\xE1ximo 300 palavras.`;
+    const summary = await groqChat([{ role: "user", content: prompt }], 700);
+    return { summary };
   })
 });
 
@@ -49394,11 +49587,13 @@ var appRouter = router({
   freightInterests: freightInterestsRouter,
   locations: locationsRouter,
   freightChats: freightChatsRouter,
-  freightDocuments: freightDocumentsRouter
+  freightDocuments: freightDocumentsRouter,
+  ai: aiRouter
 });
 
 // api/db/migrate.ts
 init_serverless();
+init_auth();
 async function ensureTablesExist() {
   const sql3 = Xs(process.env.SALLOG_DATABASE_URL);
   await sql3`CREATE TABLE IF NOT EXISTS users (
@@ -49449,6 +49644,28 @@ async function ensureTablesExist() {
   await sql3`CREATE INDEX IF NOT EXISTS locations_freight_idx ON driver_locations(freight_id, recorded_at DESC)`;
   await sql3`CREATE INDEX IF NOT EXISTS chats_freight_idx ON freight_chats(freight_id, created_at)`;
   await sql3`CREATE INDEX IF NOT EXISTS interests_driver_idx ON freight_interests(driver_id)`;
+  await sql3`ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'`;
+  await sql3`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS vehicle_type TEXT`;
+  await sql3`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS pix_key TEXT`;
+  await sql3`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS score REAL DEFAULT 0`;
+  await sql3`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS total_freights INTEGER NOT NULL DEFAULT 0`;
+  await sql3`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql3`ALTER TABLE freights ADD COLUMN IF NOT EXISTS load_date TEXT`;
+  await sql3`ALTER TABLE freights ADD COLUMN IF NOT EXISTS direction TEXT NOT NULL DEFAULT 'ida'`;
+  await sql3`ALTER TABLE freight_interests ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending'`;
+  await sql3`ALTER TABLE freight_documents ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'comprovante'`;
+  await sql3`ALTER TABLE freight_documents ADD COLUMN IF NOT EXISTS validated BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql3`ALTER TABLE freight_documents ADD COLUMN IF NOT EXISTS validated_at TIMESTAMP`;
+  await sql3`ALTER TABLE freight_documents ADD COLUMN IF NOT EXISTS validated_by INTEGER`;
+  {
+    const adminEmail = "tarcyo.alves@gmail.com";
+    const adminHash = hashPassword("01020304");
+    await sql3`INSERT INTO users (name, email, password_hash, role)
+      VALUES ('Tarcyo', ${adminEmail}, ${adminHash}, 'admin')
+      ON CONFLICT (email) DO UPDATE SET password_hash = ${adminHash}
+      WHERE users.role = 'admin'`;
+    console.log("\u2705 Admin bootstrap done");
+  }
   console.log("\u2705 SalLog DB tables ensured");
 }
 
@@ -49467,6 +49684,11 @@ app.use((0, import_cors.default)({
   credentials: true
 }));
 app.use(import_express.default.json());
+var initPromise = ensureTablesExist().catch(console.error);
+app.use(async (_req, _res, next) => {
+  await initPromise;
+  next();
+});
 app.use("/api/trpc", createExpressMiddleware({ router: appRouter, createContext }));
 app.get("/api/health", (_req, res) => res.json({ ok: true, service: "sallog" }));
 app.post("/api/setup", async (req, res) => {
@@ -49503,12 +49725,6 @@ app.post("/api/setup", async (req, res) => {
     return res.status(500).json({ error: e.message });
   }
 });
-var PORT = parseInt(process.env.PORT ?? "3001");
-async function start() {
-  await ensureTablesExist();
-  app.listen(PORT, () => console.log(`SalLog API running on :${PORT}`));
-}
-start().catch(console.error);
 var index_default = app;
 /*! Bundled license information:
 

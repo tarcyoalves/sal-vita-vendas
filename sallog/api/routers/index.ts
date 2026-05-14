@@ -6,6 +6,7 @@ import { freightInterestsRouter } from './freightInterests';
 import { locationsRouter } from './locations';
 import { freightChatsRouter } from './freightChats';
 import { freightDocumentsRouter } from './freightDocuments';
+import { aiRouter } from './ai';
 
 export const appRouter = router({
   auth: authRouter,
@@ -15,6 +16,7 @@ export const appRouter = router({
   locations: locationsRouter,
   freightChats: freightChatsRouter,
   freightDocuments: freightDocumentsRouter,
+  ai: aiRouter,
 });
 
 export type AppRouter = typeof appRouter;
