@@ -81,7 +81,7 @@ const USES = [
 ];
 
 interface Product {id:string;name:string;subtitle:string;weight:string;weightKg:number;price:number;pricePerKg:number;tag:string;highlight:boolean;savings?:string}
-interface ShipOpt  {service:string;price:number;days:string;icon:string;description:string}
+interface ShipOpt  {serviceId?:string;service:string;price:number;days:string;icon:string;description:string}
 interface CepData  {localidade:string;uf:string;bairro:string}
 
 /* ══════════════════════════════════════════════════════════ */
@@ -153,9 +153,34 @@ export default function SalVitaLanding() {
       const d=await(await fetch(`https://viacep.com.br/ws/${c}/json/`)).json();
       if(d.erro){setCepErr('CEP não encontrado.');setLoadingCep(false);return;}
       setCepData(d);
-      const opts=calcShipping(d.uf,selProd!.weightKg);
-      setShipping(opts); setSelShip(opts[0]);
       setCheckoutForm(f=>({...f, postalCode:c, city:d.localidade??'', state:d.uf??'', neighborhood:d.bairro??'', address:d.logradouro??f.address}));
+
+      // Call backend — tries Melhor Envio API first, falls back to static table
+      let opts: ShipOpt[] = [];
+      try {
+        const qty = selProd!.weightKg >= 10 ? 10 : 1;
+        const r = await fetch('/api/trpc/shipping.calculate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ json: { cep: c, quantity: qty } }),
+        });
+        const data = await r.json();
+        const options = data?.result?.data?.json?.options;
+        if (Array.isArray(options) && options.length > 0) {
+          opts = options.map((o: any) => ({
+            serviceId: o.serviceId,
+            service: o.name,
+            price: o.price,
+            days: o.days,
+            icon: o.name === 'SEDEX' ? '⚡' : '📦',
+            description: o.name === 'SEDEX' ? 'Expresso' : 'Econômico',
+          }));
+        }
+      } catch {}
+
+      // Fallback to local static table if API unavailable
+      if (opts.length === 0) opts = calcShipping(d.uf, selProd!.weightKg);
+      setShipping(opts); setSelShip(opts[0]);
     } catch {setCepErr('Erro de conexão. Tente novamente.');}
     setLoadingCep(false);
   };
@@ -177,7 +202,7 @@ export default function SalVitaLanding() {
         body:JSON.stringify({json:{
           ...checkoutForm,
           quantity:qty,
-          shippingServiceId:selShip.service==='PAC'?'1':'2',
+          shippingServiceId:selShip.serviceId ?? (selShip.service==='PAC'?'1':'2'),
           shippingServiceName:selShip.service,
           shippingPrice:selShip.price,
         }}),
