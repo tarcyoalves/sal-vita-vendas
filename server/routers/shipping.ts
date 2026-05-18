@@ -6,7 +6,7 @@ import { desc, eq } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 
 const ME_BASE = 'https://melhorenvio.com.br';
-const ORIGIN_CEP = '59600000';
+const ORIGIN_CEP = process.env.MELHOR_ENVIO_ORIGIN_CEP ?? '59600000';
 // Dimensions in cm — 1kg TBD by owner, 10kg box confirmed
 const PKG_1KG  = { height: 7, width: 15, length: 24 };
 const PKG_10KG = { height: 21, width: 24, length: 27 };
