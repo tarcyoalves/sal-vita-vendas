@@ -7,7 +7,11 @@ import { TRPCError } from '@trpc/server';
 
 const ME_BASE = 'https://melhorenvio.com.br';
 const ORIGIN_CEP = '59600000';
-const PKG = { height: 10, width: 12, length: 15 };
+// Dimensions in cm — 1kg TBD by owner, 10kg box confirmed
+const PKG_1KG  = { height: 10, width: 12, length: 15 };  // TODO: update with real 1kg package dimensions
+const PKG_10KG = { height: 21, width: 24, length: 27 };
+
+function getPkg(qty: number) { return qty >= 10 ? PKG_10KG : PKG_1KG; }
 
 const STATIC_REGIONS: Record<string, { pac:[number,string]; sedex:[number,string] }> = {
   RN:{pac:[14,'3–5'],sedex:[27,'1–2']}, CE:{pac:[15,'3–5'],sedex:[28,'1–2']},
@@ -51,7 +55,7 @@ async function meCalculate(destCep: string, qty: number) {
       body: JSON.stringify({
         from: { postal_code: ORIGIN_CEP },
         to: { postal_code: destCep.replace(/\D/g,'') },
-        package: { ...PKG, weight },
+        package: { ...getPkg(qty), weight },
         options: { insurance_value: 0, receipt: false, own_hand: false },
         // No "services" filter — returns all activated carriers on the account
       }),
@@ -303,7 +307,7 @@ export const shippingRouter = router({
           state_abbr: order.state,
           country_id: 'BR',
         },
-        volumes: [{ height: PKG.height, width: PKG.width, length: PKG.length, weight }],
+        volumes: [{ ...getPkg(order.quantity), weight }],
         options: {
           insurance_value: parseFloat(order.totalPrice ?? '30'),
           receipt: false,
