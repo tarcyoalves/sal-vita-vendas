@@ -14,6 +14,9 @@ import { eq } from 'drizzle-orm';
 
 const app = express();
 
+// Vercel sits behind a proxy — trust first hop so rate limiters see real client IPs
+app.set('trust proxy', 1);
+
 ensureTablesExist();
 
 // ── Allowed origins ────────────────────────────────────────────────────────────
