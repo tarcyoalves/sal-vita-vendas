@@ -86,6 +86,12 @@ interface CepData  {localidade:string;uf:string;bairro:string}
 
 /* ══════════════════════════════════════════════════════════ */
 export default function SalVitaLanding() {
+  useEffect(() => {
+    const prev = document.title;
+    document.title = 'SAL VITA PREMIUM — Sal Marinho Não Refinado de Mossoró · +80 Minerais';
+    return () => { document.title = prev; };
+  }, []);
+
   const [scrolled,setScrolled]             = useState(false);
   const [mobileMenu,setMobileMenu]         = useState(false);
   const [showModal,setShowModal]           = useState(false);
