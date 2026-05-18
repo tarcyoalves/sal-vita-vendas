@@ -22,7 +22,7 @@ import AppShell from "./components/AppShell";
 import { useAuth } from "./_core/hooks/useAuth";
 import { useReminderNotifications } from "./_core/hooks/useReminderNotifications";
 import SalVitaLanding from "./pages/SalVitaLanding";
-import Orders from "./pages/Orders";
+import SalVitaAdmin from "./pages/SalVitaAdmin";
 
 function Router() {
   return (
@@ -68,9 +68,6 @@ function Router() {
       <Route path="/meu-progresso">
         <AppShell><AttendantProgress /></AppShell>
       </Route>
-      <Route path="/orders">
-        <AppShell><Orders /></AppShell>
-      </Route>
       <Route path="/tv" component={TvDashboard} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
@@ -99,6 +96,18 @@ function App() {
   const isPublic = isPremium || PUBLIC_PATHS.some(p => path.startsWith(p));
 
   if (isPremium) {
+    if (path === '/sal-vita-admin') {
+      return (
+        <ErrorBoundary>
+          <ThemeProvider defaultTheme="light">
+            <TooltipProvider>
+              <Toaster />
+              <SalVitaAdmin />
+            </TooltipProvider>
+          </ThemeProvider>
+        </ErrorBoundary>
+      );
+    }
     return (
       <ErrorBoundary>
         <ThemeProvider defaultTheme="light">

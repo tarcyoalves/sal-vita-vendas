@@ -15,7 +15,6 @@ import {
   TrendingUp,
   KeyRound,
   Tv,
-  ShoppingBag,
 } from "lucide-react";
 import { useAuth } from "../_core/hooks/useAuth";
 import { trpc } from "../lib/trpc";
@@ -48,12 +47,6 @@ const NAV_ITEMS: NavItem[] = [
     label: "Atendentes",
     path: "/attendants",
     icon: <Users size={18} />,
-    roles: ["admin"],
-  },
-  {
-    label: "Pedidos Site",
-    path: "/orders",
-    icon: <ShoppingBag size={18} />,
     roles: ["admin"],
   },
   {
@@ -110,7 +103,6 @@ const PAGE_TITLES: Record<string, string> = {
   "/knowledge-base": "Base de Conhecimento",
   "/history": "Histórico",
   "/meu-progresso": "Meu Progresso",
-  "/orders": "Pedidos do Site",
 };
 
 interface AppShellProps {
