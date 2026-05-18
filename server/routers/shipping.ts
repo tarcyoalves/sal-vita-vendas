@@ -39,9 +39,11 @@ function staticCalc(uf: string, qty: number) {
   ];
 }
 
+let _meLastError = '';
+
 async function meCalculate(destCep: string, qty: number) {
   const token = process.env.MELHOR_ENVIO_TOKEN;
-  if (!token) { console.warn('[ME] token not set'); return null; }
+  if (!token) { _meLastError = 'TOKEN_NOT_SET'; return null; }
   try {
     const pkg = getPkg(qty);
     const weight = +(Math.max(1.2, qty * 1.05)).toFixed(2);
@@ -51,7 +53,6 @@ async function meCalculate(destCep: string, qty: number) {
       package: { height: pkg.height, width: pkg.width, length: pkg.length, weight },
       options: { receipt: false, own_hand: false },
     };
-    console.log('[ME] request:', JSON.stringify(body));
     const res = await fetch(`${ME_BASE}/api/v2/me/shipment/calculate`, {
       method: 'POST',
       headers: {
@@ -63,15 +64,16 @@ async function meCalculate(destCep: string, qty: number) {
       body: JSON.stringify(body),
     });
     const rawText = await res.text();
-    console.log('[ME] status:', res.status, '| body:', rawText.slice(0, 2000));
-    if (!res.ok) { console.error('[ME] FULL ERROR:', rawText); return null; }
+    if (!res.ok) { _meLastError = `HTTP_${res.status}:${rawText}`; return null; }
     let data: any;
-    try { data = JSON.parse(rawText); } catch { return null; }
-    if (!Array.isArray(data)) { console.warn('[ME] non-array:', rawText.slice(0, 200)); return null; }
+    try { data = JSON.parse(rawText); } catch { _meLastError = 'PARSE_ERROR'; return null; }
+    if (!Array.isArray(data)) { _meLastError = `NON_ARRAY:${rawText.slice(0,300)}`; return null; }
     const valid = data.filter((s: any) => s && !s.error && s.price);
-    const errors = data.filter((s: any) => s?.error).map((s: any) => `${s.name}:${JSON.stringify(s.error)}`).join(' | ');
-    console.log('[ME] valid:', valid.length, '/ total:', data.length, errors ? '| errors: ' + errors : '');
-    if (valid.length === 0) return null;
+    if (valid.length === 0) {
+      _meLastError = `ALL_ERRORS:${data.map((s:any)=>s.name+':'+JSON.stringify(s.error)).join('|')}`;
+      return null;
+    }
+    _meLastError = '';
     return valid.map((s: any) => ({
       serviceId: String(s.id),
       name:      s.name,
@@ -80,7 +82,7 @@ async function meCalculate(destCep: string, qty: number) {
       days:      s.delivery_range ? `${s.delivery_range.min}–${s.delivery_range.max} dias úteis` : '?',
     }));
   } catch (err) {
-    console.error('[ME] error:', err);
+    _meLastError = String(err);
     return null;
   }
 }
@@ -90,15 +92,15 @@ export const shippingRouter = router({
     .input(z.object({ cep: z.string().min(8), quantity: z.number().min(1).max(100).default(1) }))
     .mutation(async ({ input }) => {
       const apiResult = await meCalculate(input.cep, input.quantity);
-      if (apiResult && apiResult.length > 0) return { source: 'api' as const, options: apiResult };
-      // Fetch UF from ViaCEP to use static table
+      if (apiResult && apiResult.length > 0) return { source: 'api' as const, options: apiResult, meError: '' };
+      const meError = _meLastError;
       let uf = 'RN';
       try {
         const r = await fetch(`https://viacep.com.br/ws/${input.cep.replace(/\D/g,'')}/json/`);
         const d = await r.json();
         if (d.uf) uf = d.uf;
       } catch {}
-      return { source: 'static' as const, options: staticCalc(uf, input.quantity) };
+      return { source: 'static' as const, options: staticCalc(uf, input.quantity), meError };
     }),
 
   createOrder: publicProcedure
