@@ -8,7 +8,7 @@ import { TRPCError } from '@trpc/server';
 const ME_BASE = 'https://melhorenvio.com.br';
 const ORIGIN_CEP = '59600000';
 // Dimensions in cm — 1kg TBD by owner, 10kg box confirmed
-const PKG_1KG  = { height: 10, width: 12, length: 15 };  // TODO: update with real 1kg package dimensions
+const PKG_1KG  = { height: 7, width: 15, length: 24 };
 const PKG_10KG = { height: 21, width: 24, length: 27 };
 
 function getPkg(qty: number) { return qty >= 10 ? PKG_10KG : PKG_1KG; }
