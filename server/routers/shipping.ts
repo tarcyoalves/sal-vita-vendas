@@ -41,35 +41,23 @@ function staticCalc(uf: string, qty: number) {
 
 async function meCalculate(destCep: string, qty: number) {
   const token = process.env.MELHOR_ENVIO_TOKEN;
-  if (!token) {
-    console.warn('[ME] token not set');
-    return null;
-  }
+  if (!token) { console.warn('[ME] token not set'); return null; }
   try {
     const pkg = getPkg(qty);
     const weight = +(Math.max(1.2, qty * 1.05)).toFixed(2);
-    const unitPrice = 29.90;
     const body = {
       from: { postal_code: ORIGIN_CEP },
-      to:   { postal_code: destCep.replace(/\D/g,'') },
-      products: [{
-        id: 'sal-vita-1kg',
-        width:  pkg.width,
-        height: pkg.height,
-        length: pkg.length,
-        weight,
-        insurance_value: +(unitPrice * qty).toFixed(2),
-        quantity: qty,
-      }],
-      options: { receipt: false, own_hand: false, collect: false },
+      to:   { postal_code: destCep.replace(/\D/g, '') },
+      package: { height: pkg.height, width: pkg.width, length: pkg.length, weight },
+      options: { insurance_value: +(29.90 * qty).toFixed(2), receipt: false, own_hand: false },
     };
     const res = await fetch(`${ME_BASE}/api/v2/me/shipment/calculate`, {
       method: 'POST',
       headers: {
-        'Authorization':  `Bearer ${token}`,
-        'Content-Type':   'application/json',
-        'User-Agent':     'SalVita/1.0 (contato@salvitarn.com.br)',
-        'Accept':         'application/json',
+        'Authorization': `Bearer ${token}`,
+        'Content-Type':  'application/json',
+        'User-Agent':    'SalVita/1.0 (contato@salvitarn.com.br)',
+        'Accept':        'application/json',
       },
       body: JSON.stringify(body),
     });
@@ -78,9 +66,10 @@ async function meCalculate(destCep: string, qty: number) {
     if (!res.ok) return null;
     let data: any;
     try { data = JSON.parse(rawText); } catch { return null; }
-    if (!Array.isArray(data)) { console.warn('[ME] non-array response:', rawText.slice(0,200)); return null; }
+    if (!Array.isArray(data)) { console.warn('[ME] non-array:', rawText.slice(0, 200)); return null; }
     const valid = data.filter((s: any) => s && !s.error && s.price);
-    console.log('[ME] valid:', valid.length, '/ total:', data.length, '| errors:', data.filter((s:any)=>s?.error).map((s:any)=>s.name+':'+s.error?.join?.(',') ?? s.error).join(' | '));
+    const errors = data.filter((s: any) => s?.error).map((s: any) => `${s.name}:${JSON.stringify(s.error)}`).join(' | ');
+    console.log('[ME] valid:', valid.length, '/ total:', data.length, errors ? '| errors: ' + errors : '');
     if (valid.length === 0) return null;
     return valid.map((s: any) => ({
       serviceId: String(s.id),
