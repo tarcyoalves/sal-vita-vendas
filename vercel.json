@@ -48,6 +48,16 @@
       "dest": "/index.html"
     },
     {
+      "src": "/api/(.*)",
+      "has": [{ "type": "host", "value": "premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/api/bundle.js"
+    },
+    {
+      "src": "/api/(.*)",
+      "has": [{ "type": "host", "value": "www\\.premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/api/bundle.js"
+    },
+    {
       "src": "/(.*)",
       "has": [{ "type": "host", "value": "www\\.premium\\.salvitarn\\.com\\.br" }],
       "dest": "/sal-vita"
