@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { workSessions, sellers, tasks } from '../db/schema';
-import { eq, and, desc, gte, or } from 'drizzle-orm';
+import { eq, and, desc, gte, or, isNotNull, isNull, lt, count } from 'drizzle-orm';
 
 export const workSessionsRouter = router({
 
@@ -123,7 +123,9 @@ export const workSessionsRouter = router({
     todayStart.setHours(0, 0, 0, 0);
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
 
-    const [allSellers, todaySessions, todayTasks, allRecentSessions, allTasksForMonitor] = await Promise.all([
+    const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+
+    const [allSellers, todaySessions, todayTasks, allRecentSessions, ghostCounts, burstTasks] = await Promise.all([
       db.select().from(sellers).where(eq(sellers.status, 'active')),
       db.select().from(workSessions)
         .where(gte(workSessions.startedAt, todayStart))
@@ -145,12 +147,21 @@ export const workSessionsRouter = router({
       }).from(workSessions)
         .orderBy(desc(workSessions.startedAt))
         .limit(500),
-      // Monitoring: need lastContactedAt for ghost + burst detection
+      // Ghost count: tasks not contacted in 30+ days (aggregated, no row scan)
+      db.select({
+        userId: tasks.userId,
+        assignedTo: tasks.assignedTo,
+        ghostCount: count(),
+      }).from(tasks)
+        .where(or(isNull(tasks.lastContactedAt), lt(tasks.lastContactedAt, thirtyDaysAgo)))
+        .groupBy(tasks.userId, tasks.assignedTo),
+      // Burst detection: only tasks contacted in last 2 hours (not all tasks)
       db.select({
         userId: tasks.userId,
         assignedTo: tasks.assignedTo,
         lastContactedAt: tasks.lastContactedAt,
-      }).from(tasks),
+      }).from(tasks)
+        .where(and(isNotNull(tasks.lastContactedAt), gte(tasks.lastContactedAt, twoHoursAgo))),
     ]);
 
     return allSellers.map(seller => {
@@ -200,22 +211,20 @@ export const workSessionsRouter = router({
         }
       }
 
-      // Monitoring: ghost count (no real contact in 30+ days)
-      const sellerTasks = allTasksForMonitor.filter(
-        t => t.userId === seller.userId || t.assignedTo === seller.name
-      );
-      const ghostCount = sellerTasks.filter(
-        t => !t.lastContactedAt || new Date(t.lastContactedAt) < thirtyDaysAgo
-      ).length;
+      // Ghost count from pre-aggregated query
+      const ghostCount = ghostCounts
+        .filter(g => g.userId === seller.userId || g.assignedTo === seller.name)
+        .reduce((sum, g) => sum + Number(g.ghostCount), 0);
 
-      // Monitoring: burst detection (≥5 contacts in any 10-min window)
-      const contactedSorted = sellerTasks
+      // Burst detection using only last-2h tasks
+      const sellerBurst = burstTasks
+        .filter(t => t.userId === seller.userId || t.assignedTo === seller.name)
         .filter(t => t.lastContactedAt)
         .sort((a, b) => new Date(a.lastContactedAt!).getTime() - new Date(b.lastContactedAt!).getTime());
       let burstMax = 0;
-      for (let i = 0; i < contactedSorted.length; i++) {
-        const base = new Date(contactedSorted[i].lastContactedAt!).getTime();
-        const inWin = contactedSorted.filter(t => {
+      for (let i = 0; i < sellerBurst.length; i++) {
+        const base = new Date(sellerBurst[i].lastContactedAt!).getTime();
+        const inWin = sellerBurst.filter(t => {
           const d = new Date(t.lastContactedAt!).getTime() - base;
           return d >= 0 && d <= 600000;
         }).length;

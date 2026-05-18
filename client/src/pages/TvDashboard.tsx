@@ -182,7 +182,7 @@ function ChartTooltip({ active, payload, label }: any) {
 /* ─── Main Dashboard ─────────────────────────────────────── */
 export default function TvDashboard() {
   const { data, isLoading, dataUpdatedAt } = trpc.tv.dashboard.useQuery(undefined, {
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
     retry: 3,
   });
 

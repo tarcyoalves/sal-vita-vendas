@@ -26,7 +26,7 @@ const markFired = (key: string) => {
 export function useReminderNotifications(enabled: boolean, userName: string = '', isAdmin: boolean = false) {
   const { data: reminders } = trpc.tasks.reminders.useQuery(undefined, {
     enabled,
-    refetchInterval: 15_000,
+    refetchInterval: 60_000,
     refetchIntervalInBackground: false,
   });
 
@@ -97,7 +97,7 @@ export function useReminderNotifications(enabled: boolean, userName: string = ''
     };
 
     check();
-    const id = setInterval(check, 15000);
+    const id = setInterval(check, 60000);
 
     // Motivational + productivity push tip every 30 min
     const motivationId = setInterval(() => {
