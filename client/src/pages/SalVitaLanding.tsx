@@ -167,13 +167,30 @@ export default function SalVitaLanding() {
         const data = await r.json();
         const options = data?.result?.data?.json?.options;
         if (Array.isArray(options) && options.length > 0) {
+          const carrierIcon = (name: string, company: string): string => {
+            const n = name.toUpperCase();
+            const c = (company ?? '').toUpperCase();
+            if (n.includes('JADLOG')) return '📦';
+            if (n.includes('AZUL') || c.includes('AZUL')) return '✈️';
+            if (n.includes('LOGGI') || c.includes('LOGGI')) return '🏍️';
+            if (n.includes('TOTAL') || c.includes('TOTAL EXPRESS')) return '🚚';
+            // Correios services
+            return '📬';
+          };
+          const carrierDesc = (name: string, company: string): string => {
+            const n = name.toUpperCase();
+            if (n === 'PAC') return 'Econômico';
+            if (n === 'SEDEX' || n === 'SEDEX 10' || n === 'SEDEX HOJE') return 'Expresso';
+            if (n.includes('MINI ENVIOS') || n.includes('MINI ENVIO')) return 'Mini envio';
+            return company || 'Transportadora';
+          };
           opts = options.map((o: any) => ({
             serviceId: o.serviceId,
             service: o.name,
             price: o.price,
             days: o.days,
-            icon: o.name === 'SEDEX' ? '⚡' : '📦',
-            description: o.name === 'SEDEX' ? 'Expresso' : 'Econômico',
+            icon: carrierIcon(o.name ?? '', o.company ?? ''),
+            description: carrierDesc(o.name ?? '', o.company ?? ''),
           }));
         }
       } catch {}
@@ -1416,7 +1433,7 @@ export default function SalVitaLanding() {
                   <span style={{color:'#16a34a'}}>✓</span>
                   <p style={{fontSize:'.84rem',color:'#166534'}}>{cepData.localidade} — {cepData.uf}{cepData.bairro?` · ${cepData.bairro}`:''}</p>
                 </div>
-                <p style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',marginBottom:10}}>Opções via Correios (estimativa):</p>
+                <p style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',marginBottom:10}}>Opções de frete disponíveis:</p>
                 <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:18}}>
                   {shipping.map(opt=>(
                     <div key={opt.service} className={`sopt${selShip?.service===opt.service?' sel':''}`} onClick={()=>setSelShip(opt)}>

@@ -53,7 +53,7 @@ async function meCalculate(destCep: string, qty: number) {
         to: { postal_code: destCep.replace(/\D/g,'') },
         package: { ...PKG, weight },
         options: { insurance_value: 0, receipt: false, own_hand: false },
-        services: '1,2,17',
+        // No "services" filter — returns all activated carriers on the account
       }),
     });
     if (!res.ok) return null;
@@ -68,7 +68,8 @@ async function meCalculate(destCep: string, qty: number) {
         price: parseFloat(s.custom_price || s.price),
         days: s.delivery_range ? `${s.delivery_range.min}–${s.delivery_range.max} dias úteis` : '?',
       }));
-  } catch {
+  } catch (err) {
+    console.error('[meCalculate] Melhor Envio API error:', err);
     return null;
   }
 }
