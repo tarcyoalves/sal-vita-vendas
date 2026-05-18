@@ -42,48 +42,55 @@ function staticCalc(uf: string, qty: number) {
 async function meCalculate(destCep: string, qty: number) {
   const token = process.env.MELHOR_ENVIO_TOKEN;
   if (!token) {
-    console.warn('[meCalculate] MELHOR_ENVIO_TOKEN not set — falling back to static');
+    console.warn('[ME] token not set');
     return null;
   }
   try {
+    const pkg = getPkg(qty);
     const weight = +(Math.max(1.2, qty * 1.05)).toFixed(2);
+    const unitPrice = 29.90;
     const body = {
       from: { postal_code: ORIGIN_CEP },
-      to: { postal_code: destCep.replace(/\D/g,'') },
-      package: { ...getPkg(qty), weight },
-      options: { insurance_value: 0, receipt: false, own_hand: false },
+      to:   { postal_code: destCep.replace(/\D/g,'') },
+      products: [{
+        id: 'sal-vita-1kg',
+        width:  pkg.width,
+        height: pkg.height,
+        length: pkg.length,
+        weight,
+        insurance_value: +(unitPrice * qty).toFixed(2),
+        quantity: qty,
+      }],
+      options: { receipt: false, own_hand: false, collect: false },
     };
-    console.log('[meCalculate] calling ME API →', `${ME_BASE}/api/v2/me/shipment/calculate`, JSON.stringify(body));
     const res = await fetch(`${ME_BASE}/api/v2/me/shipment/calculate`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'User-Agent': 'SalVita/1.0 (contato@salvitarn.com.br)',
-        'Accept': 'application/json',
+        'Authorization':  `Bearer ${token}`,
+        'Content-Type':   'application/json',
+        'User-Agent':     'SalVita/1.0 (contato@salvitarn.com.br)',
+        'Accept':         'application/json',
       },
       body: JSON.stringify(body),
     });
     const rawText = await res.text();
-    console.log('[meCalculate] ME API status:', res.status, '| response:', rawText.slice(0, 500));
+    console.log('[ME] status:', res.status, '| body:', rawText.slice(0, 800));
     if (!res.ok) return null;
     let data: any;
     try { data = JSON.parse(rawText); } catch { return null; }
-    if (!Array.isArray(data)) {
-      console.warn('[meCalculate] ME API did not return array:', typeof data);
-      return null;
-    }
+    if (!Array.isArray(data)) { console.warn('[ME] non-array response:', rawText.slice(0,200)); return null; }
     const valid = data.filter((s: any) => s && !s.error && s.price);
-    console.log('[meCalculate] valid services:', valid.length, '| all:', data.length);
+    console.log('[ME] valid:', valid.length, '/ total:', data.length, '| errors:', data.filter((s:any)=>s?.error).map((s:any)=>s.name+':'+s.error?.join?.(',') ?? s.error).join(' | '));
+    if (valid.length === 0) return null;
     return valid.map((s: any) => ({
       serviceId: String(s.id),
-      name: s.name,
-      company: s.company?.name ?? 'Correios',
-      price: parseFloat(s.custom_price || s.price),
-      days: s.delivery_range ? `${s.delivery_range.min}–${s.delivery_range.max} dias úteis` : '?',
+      name:      s.name,
+      company:   s.company?.name ?? 'Correios',
+      price:     parseFloat(s.custom_price ?? s.price),
+      days:      s.delivery_range ? `${s.delivery_range.min}–${s.delivery_range.max} dias úteis` : '?',
     }));
   } catch (err) {
-    console.error('[meCalculate] Melhor Envio API error:', err);
+    console.error('[ME] error:', err);
     return null;
   }
 }
