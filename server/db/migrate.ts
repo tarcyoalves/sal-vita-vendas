@@ -101,6 +101,8 @@ export async function ensureTablesExist() {
     await sql`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`;
     await sql`CREATE INDEX IF NOT EXISTS site_orders_created_at_idx ON site_orders(created_at)`;
 
+    await sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS tracking_code TEXT`;
+
     console.log('✅ Database tables, indexes, and RLS ensured');
   } catch (err) {
     console.error('❌ Migration error:', err);

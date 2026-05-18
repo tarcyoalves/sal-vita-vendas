@@ -38,6 +38,16 @@
       "dest": "/index.html"
     },
     {
+      "src": "/meu-pedido",
+      "has": [{ "type": "host", "value": "premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/index.html"
+    },
+    {
+      "src": "/meu-pedido",
+      "has": [{ "type": "host", "value": "www\\.premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/index.html"
+    },
+    {
       "src": "/(.*)",
       "has": [{ "type": "host", "value": "www\\.premium\\.salvitarn\\.com\\.br" }],
       "dest": "/sal-vita"

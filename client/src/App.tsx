@@ -23,6 +23,7 @@ import { useAuth } from "./_core/hooks/useAuth";
 import { useReminderNotifications } from "./_core/hooks/useReminderNotifications";
 import SalVitaLanding from "./pages/SalVitaLanding";
 import SalVitaAdmin from "./pages/SalVitaAdmin";
+import TrackOrder from "./pages/TrackOrder";
 
 function Router() {
   return (
@@ -98,25 +99,16 @@ function App() {
   if (isPremium) {
     if (path === '/sal-vita-admin') {
       return (
-        <ErrorBoundary>
-          <ThemeProvider defaultTheme="light">
-            <TooltipProvider>
-              <Toaster />
-              <SalVitaAdmin />
-            </TooltipProvider>
-          </ThemeProvider>
-        </ErrorBoundary>
+        <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><SalVitaAdmin /></TooltipProvider></ThemeProvider></ErrorBoundary>
+      );
+    }
+    if (path === '/meu-pedido') {
+      return (
+        <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><TrackOrder /></TooltipProvider></ThemeProvider></ErrorBoundary>
       );
     }
     return (
-      <ErrorBoundary>
-        <ThemeProvider defaultTheme="light">
-          <TooltipProvider>
-            <Toaster />
-            <SalVitaLanding />
-          </TooltipProvider>
-        </ThemeProvider>
-      </ErrorBoundary>
+      <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><SalVitaLanding /></TooltipProvider></ThemeProvider></ErrorBoundary>
     );
   }
 

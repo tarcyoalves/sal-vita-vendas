@@ -120,6 +120,7 @@ export const siteOrders = pgTable('site_orders', {
   paymentStatus: text('payment_status').notNull().default('awaiting'),
   meOrderId: text('me_order_id'),
   meLabelUrl: text('me_label_url'),
+  trackingCode: text('tracking_code'),
   notes: text('notes'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

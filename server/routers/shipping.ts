@@ -155,6 +155,52 @@ export const shippingRouter = router({
       return updated;
     }),
 
+  trackOrder: publicProcedure
+    .input(z.object({
+      orderId: z.number().int().positive(),
+      phone: z.string().min(4),
+    }))
+    .query(async ({ input }) => {
+      const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
+      const order = orders[0];
+      if (!order) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado.' });
+      // Verify phone matches (last 4 digits for privacy)
+      const phone = order.customerPhone.replace(/\D/g, '');
+      const inputPhone = input.phone.replace(/\D/g, '');
+      if (!phone.endsWith(inputPhone.slice(-4))) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Telefone não confere com o pedido.' });
+      }
+      return {
+        id: order.id,
+        customerName: order.customerName,
+        product: order.product,
+        quantity: order.quantity,
+        totalPrice: order.totalPrice,
+        shippingServiceName: order.shippingServiceName,
+        city: order.city,
+        state: order.state,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        trackingCode: order.trackingCode,
+        shippedAt: order.status === 'shipped' || order.status === 'delivered' ? order.updatedAt : null,
+        createdAt: order.createdAt,
+      };
+    }),
+
+  updateTracking: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      trackingCode: z.string().min(1),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      const [updated] = await db.update(siteOrders)
+        .set({ trackingCode: input.trackingCode, status: 'shipped', updatedAt: new Date() })
+        .where(eq(siteOrders.id, input.id))
+        .returning();
+      return updated;
+    }),
+
   generateLabel: protectedProcedure
     .input(z.object({ orderId: z.number() }))
     .mutation(async ({ ctx, input }) => {

@@ -85,10 +85,15 @@ function OrdersPanel() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const [filter, setFilter] = useState<FilterTab>('all');
+  const [trackingInputs, setTrackingInputs] = useState<Record<number, string>>({});
   const { data: orders = [], isLoading, refetch } = trpc.shipping.listOrders.useQuery();
   const updateMut = trpc.shipping.updateStatus.useMutation({ onSuccess: () => refetch() });
   const labelMut = trpc.shipping.generateLabel.useMutation({
     onSuccess: (data) => { toast.success('Etiqueta gerada!'); window.open(data.labelUrl, '_blank'); refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const updateTrackingMut = trpc.shipping.updateTracking.useMutation({
+    onSuccess: () => { refetch(); toast.success('Código de rastreio salvo!'); },
     onError: (e) => toast.error(e.message),
   });
   const logoutMut = trpc.auth.logout.useMutation();
@@ -135,7 +140,10 @@ function OrdersPanel() {
             <ellipse cx="250" cy="187" rx="228" ry="164" fill="none" stroke="#0C3680" strokeWidth="15"/>
           </svg>
           <div>
-            <h1 className="font-bold text-gray-900 flex items-center gap-1.5 text-sm"><ShoppingBag size={15} className="text-blue-600"/>Gestão de Pedidos</h1>
+            <h1 className="font-bold text-gray-900 flex items-center gap-1.5 text-sm">
+              <ShoppingBag size={15} className="text-blue-600"/>Gestão de Pedidos
+              {(() => { const todayOrders = orders.filter(o => new Date(o.createdAt).toDateString() === new Date().toDateString()); return todayOrders.length > 0 ? <span className="ml-1 px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs font-semibold">🔔 {todayOrders.length} hoje</span> : null; })()}
+            </h1>
             <p className="text-xs text-gray-400">premium.salvitarn.com.br</p>
           </div>
         </div>
@@ -239,7 +247,47 @@ function OrdersPanel() {
                     </button>
                   )}
                   {order.meOrderId && <span className="flex items-center gap-1 text-xs text-gray-400 px-2 py-1.5">ME: {order.meOrderId}</span>}
+                  {order.trackingCode && (
+                    <a
+                      href={`https://wa.me/${order.customerPhone.replace(/\D/g,'')}?text=${encodeURIComponent(
+                        `🧂 *Sal Vita — Pedido #${order.id}*\n\nOlá ${order.customerName}! Seu pedido foi enviado! 🚚\n\n📦 Código de rastreio: *${order.trackingCode}*\n\n🔗 Rastreie aqui: https://rastreamento.correios.com.br/app/index.php?objetos=${order.trackingCode}\n\nOu acesse: https://premium.salvitarn.com.br/meu-pedido\nPedido: ${order.id} | Telefone: últimos 4 dígitos\n\nObrigado pela compra! 🙏`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600 transition"
+                    >
+                      📱 Notificar Cliente (WhatsApp)
+                    </a>
+                  )}
+                  <a
+                    href="https://premium.salvitarn.com.br/meu-pedido"
+                    target="_blank"
+                    className="text-xs text-gray-400 hover:text-gray-600 underline"
+                  >
+                    link rastreio
+                  </a>
                 </div>
+                {['confirmed','label_generated'].includes(order.status) && order.paymentStatus === 'confirmed' && (
+                  <div className="flex gap-2 items-center w-full mt-1">
+                    <input
+                      type="text"
+                      placeholder="Código rastreio Correios (ex: AA123456789BR)"
+                      value={trackingInputs[order.id] ?? order.trackingCode ?? ''}
+                      onChange={e => setTrackingInputs(t => ({...t, [order.id]: e.target.value}))}
+                      className="flex-1 px-3 py-1.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                    <button
+                      onClick={() => {
+                        const code = trackingInputs[order.id]?.trim();
+                        if (code) updateTrackingMut.mutate({ id: order.id, trackingCode: code });
+                      }}
+                      disabled={!trackingInputs[order.id]?.trim()}
+                      className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition disabled:opacity-40"
+                    >
+                      Salvar Rastreio
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
