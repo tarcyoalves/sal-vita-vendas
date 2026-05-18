@@ -41,9 +41,19 @@ function staticCalc(uf: string, qty: number) {
 
 async function meCalculate(destCep: string, qty: number) {
   const token = process.env.MELHOR_ENVIO_TOKEN;
-  if (!token) return null;
+  if (!token) {
+    console.warn('[meCalculate] MELHOR_ENVIO_TOKEN not set — falling back to static');
+    return null;
+  }
   try {
     const weight = +(Math.max(1.2, qty * 1.05)).toFixed(2);
+    const body = {
+      from: { postal_code: ORIGIN_CEP },
+      to: { postal_code: destCep.replace(/\D/g,'') },
+      package: { ...getPkg(qty), weight },
+      options: { insurance_value: 0, receipt: false, own_hand: false },
+    };
+    console.log('[meCalculate] calling ME API →', `${ME_BASE}/api/v2/me/shipment/calculate`, JSON.stringify(body));
     const res = await fetch(`${ME_BASE}/api/v2/me/shipment/calculate`, {
       method: 'POST',
       headers: {
@@ -52,26 +62,26 @@ async function meCalculate(destCep: string, qty: number) {
         'User-Agent': 'SalVita/1.0 (contato@salvitarn.com.br)',
         'Accept': 'application/json',
       },
-      body: JSON.stringify({
-        from: { postal_code: ORIGIN_CEP },
-        to: { postal_code: destCep.replace(/\D/g,'') },
-        package: { ...getPkg(qty), weight },
-        options: { insurance_value: 0, receipt: false, own_hand: false },
-        // No "services" filter — returns all activated carriers on the account
-      }),
+      body: JSON.stringify(body),
     });
+    const rawText = await res.text();
+    console.log('[meCalculate] ME API status:', res.status, '| response:', rawText.slice(0, 500));
     if (!res.ok) return null;
-    const data = await res.json();
-    if (!Array.isArray(data)) return null;
-    return data
-      .filter((s: any) => s && !s.error && s.price)
-      .map((s: any) => ({
-        serviceId: String(s.id),
-        name: s.name,
-        company: s.company?.name ?? 'Correios',
-        price: parseFloat(s.custom_price || s.price),
-        days: s.delivery_range ? `${s.delivery_range.min}–${s.delivery_range.max} dias úteis` : '?',
-      }));
+    let data: any;
+    try { data = JSON.parse(rawText); } catch { return null; }
+    if (!Array.isArray(data)) {
+      console.warn('[meCalculate] ME API did not return array:', typeof data);
+      return null;
+    }
+    const valid = data.filter((s: any) => s && !s.error && s.price);
+    console.log('[meCalculate] valid services:', valid.length, '| all:', data.length);
+    return valid.map((s: any) => ({
+      serviceId: String(s.id),
+      name: s.name,
+      company: s.company?.name ?? 'Correios',
+      price: parseFloat(s.custom_price || s.price),
+      days: s.delivery_range ? `${s.delivery_range.min}–${s.delivery_range.max} dias úteis` : '?',
+    }));
   } catch (err) {
     console.error('[meCalculate] Melhor Envio API error:', err);
     return null;
