@@ -22,6 +22,7 @@ import AppShell from "./components/AppShell";
 import { useAuth } from "./_core/hooks/useAuth";
 import { useReminderNotifications } from "./_core/hooks/useReminderNotifications";
 import SalVitaLanding from "./pages/SalVitaLanding";
+import Orders from "./pages/Orders";
 
 function Router() {
   return (
@@ -66,6 +67,9 @@ function Router() {
       </Route>
       <Route path="/meu-progresso">
         <AppShell><AttendantProgress /></AppShell>
+      </Route>
+      <Route path="/orders">
+        <AppShell><Orders /></AppShell>
       </Route>
       <Route path="/tv" component={TvDashboard} />
       <Route path={"/404"} component={NotFound} />
