@@ -96,6 +96,13 @@ function OrdersPanel() {
     onSuccess: () => { refetch(); toast.success('Código de rastreio salvo!'); },
     onError: (e) => toast.error(e.message),
   });
+  const cancelOrderMut = trpc.shipping.cancelOrder.useMutation({
+    onSuccess: (data) => {
+      alert(data.actions.join('\n'));
+      refetch();
+    },
+    onError: (e) => toast.error(e.message),
+  });
   const logoutMut = trpc.auth.logout.useMutation();
 
   const handleLogout = async () => {
@@ -240,9 +247,15 @@ function OrdersPanel() {
                       <ExternalLink size={14}/>Imprimir Etiqueta
                     </a>
                   )}
-                  {!['shipped','delivered','cancelled'].includes(order.status) && (
-                    <button onClick={() => { if(confirm('Cancelar este pedido?')) { updateMut.mutate({ id: order.id, status: 'cancelled' }); toast.info('Pedido cancelado.'); }}}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-red-600 border border-red-200 text-sm rounded-lg hover:bg-red-50 transition">
+                  {order.status !== 'cancelled' && order.status !== 'delivered' && (
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`Cancelar pedido #${order.id}? Isso cancela a etiqueta e reembolsa o cliente.`)) {
+                          cancelOrderMut.mutate({ id: order.id });
+                        }
+                      }}
+                      disabled={cancelOrderMut.isPending && cancelOrderMut.variables?.id === order.id}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-red-600 border border-red-200 text-sm rounded-lg hover:bg-red-50 transition disabled:opacity-50">
                       <X size={14}/>Cancelar
                     </button>
                   )}

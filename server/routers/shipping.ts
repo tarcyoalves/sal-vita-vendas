@@ -39,11 +39,9 @@ function staticCalc(uf: string, qty: number) {
   ];
 }
 
-let _meLastError = '';
-
 async function meCalculate(destCep: string, qty: number) {
   const token = process.env.MELHOR_ENVIO_TOKEN;
-  if (!token) { _meLastError = 'TOKEN_NOT_SET'; return null; }
+  if (!token) return null;
   try {
     const pkg = getPkg(qty);
     const weight = +(Math.max(1.2, qty * 1.05)).toFixed(2);
@@ -64,16 +62,12 @@ async function meCalculate(destCep: string, qty: number) {
       body: JSON.stringify(body),
     });
     const rawText = await res.text();
-    if (!res.ok) { _meLastError = `HTTP_${res.status}:${rawText}`; return null; }
+    if (!res.ok) return null;
     let data: any;
-    try { data = JSON.parse(rawText); } catch { _meLastError = 'PARSE_ERROR'; return null; }
-    if (!Array.isArray(data)) { _meLastError = `NON_ARRAY:${rawText.slice(0,300)}`; return null; }
+    try { data = JSON.parse(rawText); } catch { return null; }
+    if (!Array.isArray(data)) return null;
     const valid = data.filter((s: any) => s && !s.error && s.price);
-    if (valid.length === 0) {
-      _meLastError = `ALL_ERRORS:${data.map((s:any)=>s.name+':'+JSON.stringify(s.error)).join('|')}`;
-      return null;
-    }
-    _meLastError = '';
+    if (valid.length === 0) return null;
     return valid.map((s: any) => ({
       serviceId: String(s.id),
       name:      s.name,
@@ -81,8 +75,7 @@ async function meCalculate(destCep: string, qty: number) {
       price:     parseFloat(s.custom_price ?? s.price),
       days:      s.delivery_range ? `${s.delivery_range.min}–${s.delivery_range.max} dias úteis` : '?',
     }));
-  } catch (err) {
-    _meLastError = String(err);
+  } catch {
     return null;
   }
 }
@@ -92,15 +85,14 @@ export const shippingRouter = router({
     .input(z.object({ cep: z.string().min(8), quantity: z.number().min(1).max(100).default(1) }))
     .mutation(async ({ input }) => {
       const apiResult = await meCalculate(input.cep, input.quantity);
-      if (apiResult && apiResult.length > 0) return { source: 'api' as const, options: apiResult, meError: '' };
-      const meError = _meLastError;
+      if (apiResult && apiResult.length > 0) return { source: 'api' as const, options: apiResult };
       let uf = 'RN';
       try {
         const r = await fetch(`https://viacep.com.br/ws/${input.cep.replace(/\D/g,'')}/json/`);
         const d = await r.json();
         if (d.uf) uf = d.uf;
       } catch {}
-      return { source: 'static' as const, options: staticCalc(uf, input.quantity), meError };
+      return { source: 'static' as const, options: staticCalc(uf, input.quantity) };
     }),
 
   createOrder: publicProcedure
@@ -199,32 +191,6 @@ export const shippingRouter = router({
         shippedAt: order.status === 'shipped' || order.status === 'delivered' ? order.updatedAt : null,
         createdAt: order.createdAt,
       };
-    }),
-
-  debugShipping: protectedProcedure
-    .input(z.object({ cep: z.string().min(8) }))
-    .query(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
-      const token = process.env.MELHOR_ENVIO_TOKEN;
-      if (!token) return { error: 'MELHOR_ENVIO_TOKEN not set', token: null };
-      const body = {
-        from: { postal_code: ORIGIN_CEP },
-        to: { postal_code: input.cep.replace(/\D/g,'') },
-        package: { ...PKG_1KG, weight: 1.2 },
-        options: { insurance_value: 0, receipt: false, own_hand: false },
-      };
-      const res = await fetch(`${ME_BASE}/api/v2/me/shipment/calculate`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'User-Agent': 'SalVita/1.0 (contato@salvitarn.com.br)',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
-      const rawText = await res.text();
-      return { status: res.status, tokenPrefix: token.slice(0, 20) + '...', raw: rawText.slice(0, 2000) };
     }),
 
   updateTracking: protectedProcedure
@@ -397,5 +363,68 @@ export const shippingRouter = router({
         .returning();
 
       return { labelUrl, meOrderId, order: updated };
+    }),
+
+  cancelOrder: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+
+      const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, input.id));
+      const order = orders[0];
+      if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+      if (order.status === 'cancelled') throw new TRPCError({ code: 'CONFLICT', message: 'Pedido já cancelado.' });
+
+      const results: string[] = [];
+
+      if (order.meOrderId) {
+        const meToken = process.env.MELHOR_ENVIO_TOKEN;
+        if (meToken) {
+          try {
+            const meRes = await fetch(`${ME_BASE}/api/v2/me/shipment/cancel`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${meToken}`,
+                'Content-Type': 'application/json',
+                'User-Agent': 'SalVita/1.0 (contato@salvitarn.com.br)',
+                'Accept': 'application/json',
+              },
+              body: JSON.stringify({ orders: [order.meOrderId] }),
+            });
+            if (meRes.ok) results.push('Etiqueta ME cancelada');
+            else results.push(`Aviso: ME retornou ${meRes.status} — verifique manualmente`);
+          } catch {
+            results.push('Aviso: falha ao cancelar etiqueta ME — verifique manualmente');
+          }
+        }
+      }
+
+      if (order.paymentStatus === 'confirmed' && order.mpPaymentId) {
+        const mpToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+        if (mpToken) {
+          try {
+            const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}/refunds`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${mpToken}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({}),
+            });
+            if (mpRes.ok) results.push('Reembolso MP solicitado');
+            else {
+              const txt = await mpRes.text();
+              results.push(`Aviso: reembolso MP retornou ${mpRes.status}: ${txt.slice(0, 100)}`);
+            }
+          } catch {
+            results.push('Aviso: falha ao reembolsar no MP — faça manualmente');
+          }
+        }
+      }
+
+      const [updated] = await db.update(siteOrders)
+        .set({ status: 'cancelled', updatedAt: new Date() })
+        .where(eq(siteOrders.id, input.id))
+        .returning();
+
+      results.push('Pedido cancelado');
+      return { order: updated, actions: results };
     }),
 });
