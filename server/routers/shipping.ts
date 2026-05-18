@@ -202,6 +202,32 @@ export const shippingRouter = router({
       };
     }),
 
+  debugShipping: protectedProcedure
+    .input(z.object({ cep: z.string().min(8) }))
+    .query(async ({ ctx, input }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      const token = process.env.MELHOR_ENVIO_TOKEN;
+      if (!token) return { error: 'MELHOR_ENVIO_TOKEN not set', token: null };
+      const body = {
+        from: { postal_code: ORIGIN_CEP },
+        to: { postal_code: input.cep.replace(/\D/g,'') },
+        package: { ...PKG_1KG, weight: 1.2 },
+        options: { insurance_value: 0, receipt: false, own_hand: false },
+      };
+      const res = await fetch(`${ME_BASE}/api/v2/me/shipment/calculate`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'SalVita/1.0 (contato@salvitarn.com.br)',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      const rawText = await res.text();
+      return { status: res.status, tokenPrefix: token.slice(0, 20) + '...', raw: rawText.slice(0, 2000) };
+    }),
+
   updateTracking: protectedProcedure
     .input(z.object({
       id: z.number(),
