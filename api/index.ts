@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import crypto from 'crypto';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -13,11 +14,9 @@ import { eq } from 'drizzle-orm';
 
 const app = express();
 
-// Run DB migrations on startup (idempotent - IF NOT EXISTS)
 ensureTablesExist();
 
 // ── Allowed origins ────────────────────────────────────────────────────────────
-// In production, allow only the Vercel domain + any extra via env var
 const PROD_ORIGINS = [
   'https://sal-vita-vendas.vercel.app',
   'https://lembretes.salvitarn.com.br',
@@ -36,7 +35,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc:  ["'self'", "'unsafe-inline'", "'unsafe-eval'"],  // Vite/React needs eval in dev; tighten in future
+      scriptSrc:  ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
       styleSrc:   ["'self'", "'unsafe-inline'"],
       imgSrc:     ["'self'", 'data:', 'https:'],
       connectSrc: ["'self'", 'https://api.groq.com', 'https://generativelanguage.googleapis.com'],
@@ -45,13 +44,12 @@ app.use(helmet({
       frameAncestors: ["'none'"],
     },
   },
-  crossOriginEmbedderPolicy: false, // Breaks some browser APIs if true
+  crossOriginEmbedderPolicy: false,
 }));
 
 // ── CORS ───────────────────────────────────────────────────────────────────────
 app.use(cors({
   origin: (origin, cb) => {
-    // Allow server-to-server (no origin) and whitelisted origins only
     if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
     cb(new Error(`CORS: origin ${origin} not allowed`));
   },
@@ -60,42 +58,31 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
 }));
 
-app.use(express.json({ limit: '2mb' }));
-
-// Rate limiting for auth endpoints — 10 attempts per 15 minutes per email/IP
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => {
-    const body = req.body as Record<string, unknown>;
-    return (typeof body?.email === 'string' ? body.email : '') || req.ip || 'unknown';
-  },
-});
-
-app.use('/api/trpc/auth.login', authLimiter);
-app.use('/api/trpc/auth.emergencyReset', authLimiter);
-
-
-
-app.use(
-  '/api/trpc',
-  createExpressMiddleware({
-    router: appRouter,
-    createContext,
-  }),
-);
-
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true });
-});
-
-// Mercado Pago webhook — called when payment status changes
-app.post('/api/mp-webhook', async (req, res) => {
+// Raw body must be captured before express.json() for HMAC verification
+app.post('/api/mp-webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   try {
-    const { type, data } = req.body as { type?: string; data?: { id?: string } };
+    const rawBody = (req.body as Buffer).toString('utf8');
+    let body: { type?: string; data?: { id?: string } };
+    try { body = JSON.parse(rawBody); } catch { res.status(400).json({ error: 'Invalid JSON' }); return; }
+
+    const webhookSecret = process.env.MERCADO_PAGO_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      const xSig = req.headers['x-signature'] as string | undefined;
+      const xReqId = req.headers['x-request-id'] as string | undefined;
+      if (!xSig || !xReqId) { res.status(401).json({ error: 'Missing signature headers' }); return; }
+      const parts = Object.fromEntries(xSig.split(',').map(p => { const [k,...v]=p.split('='); return [k,v.join('=')]; }));
+      const { ts, v1 } = parts;
+      if (!ts || !v1) { res.status(401).json({ error: 'Malformed x-signature' }); return; }
+      const manifest = `id:${body?.data?.id ?? ''};request-id:${xReqId};ts:${ts}`;
+      const expected = crypto.createHmac('sha256', webhookSecret).update(manifest).digest('hex');
+      if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1))) {
+        res.status(401).json({ error: 'Invalid signature' }); return;
+      }
+    } else {
+      console.warn('[mp-webhook] MERCADO_PAGO_WEBHOOK_SECRET not set — skipping signature check');
+    }
+
+    const { type, data } = body;
     if (type !== 'payment' || !data?.id) { res.json({ ok: true }); return; }
 
     const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
@@ -125,6 +112,56 @@ app.post('/api/mp-webhook', async (req, res) => {
     console.error('MP webhook error:', err);
     res.json({ ok: true }); // Always 200 so MP doesn't retry endlessly
   }
+});
+
+app.use(express.json({ limit: '2mb' }));
+
+// ── Rate limiters ─────────────────────────────────────────────────────────────
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const body = req.body as Record<string, unknown>;
+    return (typeof body?.email === 'string' ? body.email : '') || req.ip || 'unknown';
+  },
+});
+
+const storeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: { error: 'Muitas requisições. Tente novamente em 15 minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const orderLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: 'Muitas tentativas de pedido. Tente novamente em 15 minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use('/api/trpc/auth.login', authLimiter);
+app.use('/api/trpc/auth.emergencyReset', authLimiter);
+app.use('/api/trpc/shipping.calculate', storeLimiter);
+app.use('/api/trpc/shipping.trackOrder', storeLimiter);
+app.use('/api/trpc/shipping.createOrder', orderLimiter);
+app.use('/api/trpc/shipping.createPayment', orderLimiter);
+
+app.use(
+  '/api/trpc',
+  createExpressMiddleware({
+    router: appRouter,
+    createContext,
+  }),
+);
+
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true });
 });
 
 export default app;

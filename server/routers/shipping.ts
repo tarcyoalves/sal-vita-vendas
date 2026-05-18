@@ -251,6 +251,7 @@ export const shippingRouter = router({
       const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
       const order = orders[0];
       if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+      if (order.paymentStatus === 'confirmed') throw new TRPCError({ code: 'CONFLICT', message: 'Este pedido já foi pago.' });
 
       const preference = {
         items: [{
