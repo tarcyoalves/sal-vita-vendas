@@ -49,8 +49,9 @@ async function meCalculate(destCep: string, qty: number) {
       from: { postal_code: ORIGIN_CEP },
       to:   { postal_code: destCep.replace(/\D/g, '') },
       package: { height: pkg.height, width: pkg.width, length: pkg.length, weight },
-      options: { insurance_value: +(29.90 * qty).toFixed(2), receipt: false, own_hand: false },
+      options: { receipt: false, own_hand: false },
     };
+    console.log('[ME] request:', JSON.stringify(body));
     const res = await fetch(`${ME_BASE}/api/v2/me/shipment/calculate`, {
       method: 'POST',
       headers: {
@@ -62,8 +63,8 @@ async function meCalculate(destCep: string, qty: number) {
       body: JSON.stringify(body),
     });
     const rawText = await res.text();
-    console.log('[ME] status:', res.status, '| body:', rawText.slice(0, 800));
-    if (!res.ok) return null;
+    console.log('[ME] status:', res.status, '| body:', rawText.slice(0, 2000));
+    if (!res.ok) { console.error('[ME] FULL ERROR:', rawText); return null; }
     let data: any;
     try { data = JSON.parse(rawText); } catch { return null; }
     if (!Array.isArray(data)) { console.warn('[ME] non-array:', rawText.slice(0, 200)); return null; }
