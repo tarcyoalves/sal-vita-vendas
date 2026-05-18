@@ -201,6 +201,60 @@ export const shippingRouter = router({
       return updated;
     }),
 
+  createPayment: publicProcedure
+    .input(z.object({ orderId: z.number() }))
+    .mutation(async ({ input }) => {
+      const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+      if (!token) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Configure MERCADO_PAGO_ACCESS_TOKEN no painel Vercel' });
+
+      const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
+      const order = orders[0];
+      if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+
+      const preference = {
+        items: [{
+          id: `order-${order.id}`,
+          title: `${order.product ?? 'Sal Vita'} × ${order.quantity}`,
+          quantity: 1,
+          unit_price: parseFloat(order.totalPrice ?? '30'),
+          currency_id: 'BRL',
+        }],
+        payer: {
+          name: order.customerName.split(' ')[0],
+          surname: order.customerName.split(' ').slice(1).join(' ') || '-',
+          email: order.customerEmail ?? 'cliente@salvitarn.com.br',
+          phone: { number: order.customerPhone.replace(/\D/g,'') },
+        },
+        back_urls: {
+          success: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&status=pago`,
+          failure: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&status=falhou`,
+          pending: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&status=pendente`,
+        },
+        auto_return: 'approved',
+        notification_url: `https://lembretes.salvitarn.com.br/api/mp-webhook`,
+        external_reference: String(order.id),
+        statement_descriptor: 'SAL VITA',
+        payment_methods: { installments: 3 },
+      };
+
+      const res = await fetch('https://api.mercadopago.com/checkout/preferences', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(preference),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro MP: ${txt}` });
+      }
+      const data = await res.json();
+
+      await db.update(siteOrders)
+        .set({ mpPreferenceId: data.id, updatedAt: new Date() })
+        .where(eq(siteOrders.id, input.orderId));
+
+      return { initPoint: data.init_point as string };
+    }),
+
   generateLabel: protectedProcedure
     .input(z.object({ orderId: z.number() }))
     .mutation(async ({ ctx, input }) => {

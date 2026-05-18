@@ -102,6 +102,8 @@ export async function ensureTablesExist() {
     await sql`CREATE INDEX IF NOT EXISTS site_orders_created_at_idx ON site_orders(created_at)`;
 
     await sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS tracking_code TEXT`;
+    await sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_preference_id TEXT`;
+    await sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_payment_id TEXT`;
 
     console.log('✅ Database tables, indexes, and RLS ensured');
   } catch (err) {

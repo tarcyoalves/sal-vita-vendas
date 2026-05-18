@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { trpc } from '../lib/trpc';
 
 const STATUS_STEPS = [
@@ -11,20 +11,36 @@ const STATUS_STEPS = [
 const STATUS_ORDER = ['pending', 'confirmed', 'label_generated', 'shipped', 'delivered'];
 
 function getStepIndex(status: string) {
-  if (status === 'label_generated') return 2; // same as shipped visually
+  if (status === 'label_generated') return 2;
   return STATUS_ORDER.indexOf(status);
 }
 
+// MP redirects with ?pedido=ID&status=pago after payment
+function getUrlParams() {
+  const p = new URLSearchParams(window.location.search);
+  return { pedido: p.get('pedido'), status: p.get('status') };
+}
+
 export default function TrackOrder() {
-  const [orderId, setOrderId] = useState('');
+  const urlParams = getUrlParams();
+  const [orderId, setOrderId] = useState(urlParams.pedido ?? '');
   const [phone, setPhone] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [queryInput, setQueryInput] = useState<{ orderId: number; phone: string } | null>(null);
+  const [mpStatus] = useState(urlParams.status);
 
   const { data: order, isLoading, error } = trpc.shipping.trackOrder.useQuery(
     queryInput!,
     { enabled: !!queryInput, retry: false }
   );
+
+  // If MP redirected here with pedido param, focus the phone field
+  useEffect(() => {
+    if (urlParams.pedido) {
+      const el = document.getElementById('track-phone');
+      if (el) el.focus();
+    }
+  }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,6 +74,29 @@ export default function TrackOrder() {
       </header>
 
       <div style={{ maxWidth: '560px', margin: '0 auto', padding: '40px 20px' }}>
+        {/* MP payment result banner */}
+        {mpStatus === 'pago' && (
+          <div style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '16px', padding: '20px 24px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <span style={{ fontSize: '28px' }}>🎉</span>
+            <div>
+              <p style={{ margin: 0, fontWeight: 700, color: '#4ade80', fontSize: '16px' }}>Pagamento aprovado!</p>
+              <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>Confirme seu pedido abaixo informando o número e telefone.</p>
+            </div>
+          </div>
+        )}
+        {mpStatus === 'falhou' && (
+          <div style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '16px', padding: '20px 24px', marginBottom: '24px' }}>
+            <p style={{ margin: 0, fontWeight: 700, color: '#fca5a5' }}>❌ Pagamento não aprovado.</p>
+            <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>Tente novamente ou pague via PIX pelo WhatsApp: <a href="https://wa.me/558421408212" style={{ color: '#4ade80' }}>clique aqui</a>.</p>
+          </div>
+        )}
+        {mpStatus === 'pendente' && (
+          <div style={{ background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.4)', borderRadius: '16px', padding: '20px 24px', marginBottom: '24px' }}>
+            <p style={{ margin: 0, fontWeight: 700, color: '#fde68a' }}>⏳ Pagamento pendente.</p>
+            <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>Se pagou via boleto, pode levar até 2 dias úteis para ser confirmado.</p>
+          </div>
+        )}
+
         {/* Search form */}
         <div style={{
           background: 'rgba(255,255,255,0.05)',
@@ -99,6 +138,7 @@ export default function TrackOrder() {
                   Últimos 4 dígitos do telefone
                 </label>
                 <input
+                  id="track-phone"
                   type="text"
                   value={phone}
                   onChange={e => setPhone(e.target.value)}

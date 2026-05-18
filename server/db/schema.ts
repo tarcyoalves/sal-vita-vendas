@@ -121,6 +121,8 @@ export const siteOrders = pgTable('site_orders', {
   meOrderId: text('me_order_id'),
   meLabelUrl: text('me_label_url'),
   trackingCode: text('tracking_code'),
+  mpPreferenceId: text('mp_preference_id'),
+  mpPaymentId: text('mp_payment_id'),
   notes: text('notes'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
