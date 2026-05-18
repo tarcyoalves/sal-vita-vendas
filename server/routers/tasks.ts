@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { eq, inArray, or, isNotNull, and, gte, count, sql, SQL } from 'drizzle-orm';
+import { eq, inArray, or, isNotNull, and, gte, count, sql, SQL, asc } from 'drizzle-orm';
 import { router, protectedProcedure } from '../trpc';
 import { TRPCError } from '@trpc/server';
 import { db } from '../db';
@@ -148,20 +148,23 @@ export const tasksRouter = router({
   }),
 
   reminders: protectedProcedure.query(async ({ ctx }) => {
+    // Only fetch reminders from yesterday onward — no need for historical data for notifications
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const reminderFields = {
+      id: tasks.id, title: tasks.title, reminderDate: tasks.reminderDate,
+      reminderEnabled: tasks.reminderEnabled, status: tasks.status,
+      notes: tasks.notes, assignedTo: tasks.assignedTo,
+    };
     if (ctx.user.role === 'admin') {
-      const result = await db.select().from(tasks).where(isNotNull(tasks.reminderDate));
-      return result.sort((a, b) => {
-        const dateA = a.reminderDate ? new Date(a.reminderDate).getTime() : 0;
-        const dateB = b.reminderDate ? new Date(b.reminderDate).getTime() : 0;
-        return dateA - dateB;
-      });
+      return db.select(reminderFields).from(tasks)
+        .where(and(isNotNull(tasks.reminderDate), gte(tasks.reminderDate, yesterday)))
+        .orderBy(asc(tasks.reminderDate))
+        .limit(300);
     }
     const filter = await userTaskFilter(ctx.user.id, ctx.user.name ?? '');
-    const result = await db.select().from(tasks).where(filter);
-    return result.filter(t => t.reminderDate).sort((a, b) => {
-      const dateA = a.reminderDate ? new Date(a.reminderDate).getTime() : 0;
-      const dateB = b.reminderDate ? new Date(b.reminderDate).getTime() : 0;
-      return dateA - dateB;
-    });
+    return db.select(reminderFields).from(tasks)
+      .where(and(filter, isNotNull(tasks.reminderDate), gte(tasks.reminderDate, yesterday)))
+      .orderBy(asc(tasks.reminderDate))
+      .limit(300);
   }),
 });

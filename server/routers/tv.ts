@@ -1,7 +1,7 @@
 import { router, protectedProcedure } from '../trpc';
 import { db } from '../db';
 import { sellers, tasks, workSessions, clients } from '../db/schema';
-import { eq, or, and, gte, sql } from 'drizzle-orm';
+import { eq, or, and, gte, sql, isNotNull } from 'drizzle-orm';
 
 const HOT_KEYWORDS = [
   'orçamento', 'orcamento', 'interessad', 'confirmar', 'confirmo',
@@ -16,6 +16,10 @@ export const tvRouter = router({
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
 
+    // 4 weeks ago — oldest date needed for weekly contact buckets
+    const fourWeeksAgo = new Date(todayStart);
+    fourWeeksAgo.setDate(todayStart.getDate() - 28);
+
     const [allSellers, allTasks, activeSessions, clientCount] = await Promise.all([
       db.select().from(sellers).where(eq(sellers.status, 'active')),
       db.select({
@@ -24,7 +28,14 @@ export const tvRouter = router({
         reminderDate: tasks.reminderDate, updatedAt: tasks.updatedAt,
         lastContactedAt: tasks.lastContactedAt,
         userId: tasks.userId,
-      }).from(tasks),
+      }).from(tasks).where(
+        // Only tasks relevant for dashboard: contacted in last 4 weeks, pending with reminder, or recently updated
+        or(
+          gte(tasks.lastContactedAt, fourWeeksAgo),
+          and(eq(tasks.status, 'pending'), isNotNull(tasks.reminderDate)),
+          gte(tasks.updatedAt, fourWeeksAgo),
+        )
+      ),
       db.select({ userId: workSessions.userId, status: workSessions.status })
         .from(workSessions)
         .where(and(

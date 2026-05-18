@@ -86,6 +86,12 @@ interface CepData  {localidade:string;uf:string;bairro:string}
 
 /* ══════════════════════════════════════════════════════════ */
 export default function SalVitaLanding() {
+  useEffect(() => {
+    const prev = document.title;
+    document.title = 'SAL VITA PREMIUM — Sal Marinho Não Refinado de Mossoró · +80 Minerais';
+    return () => { document.title = prev; };
+  }, []);
+
   const [scrolled,setScrolled]             = useState(false);
   const [mobileMenu,setMobileMenu]         = useState(false);
   const [showModal,setShowModal]           = useState(false);
@@ -98,6 +104,12 @@ export default function SalVitaLanding() {
   const [cepErr,setCepErr]                 = useState('');
   const [openFaq,setOpenFaq]               = useState<number|null>(null);
   const [visible,setVisible]               = useState<Set<string>>(new Set());
+  const [showCheckout,setShowCheckout]     = useState(false);
+  const [checkoutLoading,setCheckoutLoading] = useState(false);
+  const [checkoutForm,setCheckoutForm]     = useState({
+    customerName:'',customerPhone:'',postalCode:'',address:'',
+    number:'',complement:'',neighborhood:'',city:'',state:'',
+  });
   const obs = useRef<IntersectionObserver|null>(null);
 
   useEffect(()=>{
@@ -125,9 +137,11 @@ export default function SalVitaLanding() {
   const openBuy=useCallback((p:Product)=>{
     setSelProd(p); setShowModal(true); setMobileMenu(false);
     setCep(''); setCepData(null); setShipping([]); setSelShip(null); setCepErr('');
+    setShowCheckout(false);
+    setCheckoutForm({customerName:'',customerPhone:'',postalCode:'',address:'',number:'',complement:'',neighborhood:'',city:'',state:''});
     document.body.style.overflow='hidden';
   },[]);
-  const closeBuy=useCallback(()=>{ setShowModal(false); document.body.style.overflow=''; },[]);
+  const closeBuy=useCallback(()=>{ setShowModal(false); setShowCheckout(false); document.body.style.overflow=''; },[]);
 
   const lookupCep=async()=>{
     const c=cep.replace(/\D/g,'');
@@ -139,6 +153,7 @@ export default function SalVitaLanding() {
       setCepData(d);
       const opts=calcShipping(d.uf,selProd!.weightKg);
       setShipping(opts); setSelShip(opts[0]);
+      setCheckoutForm(f=>({...f, postalCode:c, city:d.localidade??'', state:d.uf??'', neighborhood:d.bairro??'', address:d.logradouro??f.address}));
     } catch {setCepErr('Erro de conexão. Tente novamente.');}
     setLoadingCep(false);
   };
@@ -147,6 +162,48 @@ export default function SalVitaLanding() {
     {id:'1kg',  name:'SAL VITA PREMIUM',      subtitle:'Embalagem zip lock com janela',      weight:'1kg',          weightKg:1.2, price:29.90, pricePerKg:29.90, tag:'Mais Vendido',          highlight:false},
     {id:'caixa',name:'CAIXA SAL VITA PREMIUM',subtitle:'10 embalagens zip lock de 1kg cada', weight:'10kg (10×1kg)',weightKg:12,  price:149.90,pricePerKg:14.99, tag:'Melhor Custo-Benefício', highlight:true, savings:'Economize R$ 149,10'},
   ];
+
+  async function handleCheckout(e:React.FormEvent) {
+    e.preventDefault();
+    if(!selProd||!selShip) return;
+    setCheckoutLoading(true);
+    try {
+      const qty = selProd.weightKg>=10?10:1;
+      const res = await fetch('/api/trpc/shipping.createOrder', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({json:{
+          ...checkoutForm,
+          quantity:qty,
+          shippingServiceId:selShip.service==='PAC'?'1':'2',
+          shippingServiceName:selShip.service,
+          shippingPrice:selShip.price,
+        }}),
+      });
+      const data = await res.json();
+      const orderId = data?.result?.data?.json?.id;
+      const total   = data?.result?.data?.json?.total;
+      const msg = `🧂 *Pedido #${orderId} — SAL VITA PREMIUM*\n\n`
+        +`👤 ${checkoutForm.customerName}\n`
+        +`📱 ${checkoutForm.customerPhone}\n`
+        +`📦 ${selProd.name} ${selProd.weight}\n`
+        +`🚚 Frete ${selShip.service}: R$ ${selShip.price.toFixed(2)}\n`
+        +`💰 *Total: R$ ${(total??(selProd.price+selShip.price)).toFixed(2)}*\n\n`
+        +`📍 ${checkoutForm.address}, ${checkoutForm.number} — ${checkoutForm.neighborhood}, ${checkoutForm.city}/${checkoutForm.state}\n`
+        +`CEP: ${checkoutForm.postalCode}\n\n`
+        +`Por favor, envie o comprovante PIX para confirmar.`;
+      window.open(`https://wa.me/${WA}?text=${encodeURIComponent(msg)}`, '_blank');
+      setShowCheckout(false);
+      setShowModal(false);
+      document.body.style.overflow='';
+      setCheckoutForm({customerName:'',customerPhone:'',postalCode:'',address:'',number:'',complement:'',neighborhood:'',city:'',state:''});
+    } catch(err) {
+      console.error(err);
+      window.open(waLink(selProd.name,selProd.weight,selProd.price,selShip),'_blank');
+    } finally {
+      setCheckoutLoading(false);
+    }
+  }
 
   /* ── Logo real ── */
   const Logo=({size=40,white=false}:{size?:number;white?:boolean})=>(
@@ -1118,6 +1175,126 @@ export default function SalVitaLanding() {
       </a>
 
       {/* ══════ MODAL ══════ */}
+      {/* ══════ CHECKOUT OVERLAY ══════ */}
+      {showCheckout&&showModal&&selProd&&selShip&&(
+        <div className="mo" style={{zIndex:10000}} onClick={e=>e.target===e.currentTarget&&setShowCheckout(false)}>
+          <div className="mb" style={{maxWidth:480}}>
+            <div className="mb-drag"/>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20}}>
+              <div>
+                <p style={{fontSize:'.84rem',fontWeight:700,letterSpacing:'.16em',color:'var(--brand)',textTransform:'uppercase',marginBottom:4}}>Dados para entrega</p>
+                <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.4rem',fontWeight:700,color:'var(--text)'}}>Finalizar Pedido</h3>
+                <p style={{color:'var(--muted)',fontSize:'.9rem',marginTop:2}}>{selProd.name} · Frete {selShip.service}: R$ {selShip.price.toFixed(2)}</p>
+              </div>
+              <button onClick={()=>setShowCheckout(false)} style={{background:'var(--sky)',border:'none',borderRadius:8,width:36,height:36,color:'var(--mid)',fontSize:'1.3rem',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>×</button>
+            </div>
+            <form onSubmit={handleCheckout} style={{display:'flex',flexDirection:'column',gap:12}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                <div style={{gridColumn:'1/-1'}}>
+                  <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>Nome completo *</label>
+                  <input required value={checkoutForm.customerName} onChange={e=>setCheckoutForm(f=>({...f,customerName:e.target.value}))}
+                    placeholder="Seu nome completo"
+                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
+                    onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
+                    onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
+                </div>
+                <div>
+                  <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>Telefone/WhatsApp *</label>
+                  <input required value={checkoutForm.customerPhone} onChange={e=>setCheckoutForm(f=>({...f,customerPhone:e.target.value}))}
+                    placeholder="(84) 99999-9999" minLength={10}
+                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
+                    onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
+                    onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
+                </div>
+                <div>
+                  <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>CEP *</label>
+                  <input required value={checkoutForm.postalCode} onChange={e=>setCheckoutForm(f=>({...f,postalCode:e.target.value.replace(/\D/g,'').slice(0,8)}))}
+                    placeholder="00000000" minLength={8} maxLength={8}
+                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
+                    onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
+                    onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
+                </div>
+                <div style={{gridColumn:'1/-1'}}>
+                  <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>Endereço (rua/av.) *</label>
+                  <input required value={checkoutForm.address} onChange={e=>setCheckoutForm(f=>({...f,address:e.target.value}))}
+                    placeholder="Rua / Avenida"
+                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
+                    onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
+                    onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
+                </div>
+                <div>
+                  <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>Número *</label>
+                  <input required value={checkoutForm.number} onChange={e=>setCheckoutForm(f=>({...f,number:e.target.value}))}
+                    placeholder="123"
+                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
+                    onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
+                    onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
+                </div>
+                <div>
+                  <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>Complemento</label>
+                  <input value={checkoutForm.complement} onChange={e=>setCheckoutForm(f=>({...f,complement:e.target.value}))}
+                    placeholder="Apto, bloco..."
+                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
+                    onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
+                    onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
+                </div>
+                <div>
+                  <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>Bairro *</label>
+                  <input required value={checkoutForm.neighborhood} onChange={e=>setCheckoutForm(f=>({...f,neighborhood:e.target.value}))}
+                    placeholder="Bairro"
+                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
+                    onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
+                    onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
+                </div>
+                <div>
+                  <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>Cidade *</label>
+                  <input required value={checkoutForm.city} onChange={e=>setCheckoutForm(f=>({...f,city:e.target.value}))}
+                    placeholder="Cidade"
+                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
+                    onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
+                    onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
+                </div>
+                <div>
+                  <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>Estado *</label>
+                  <input required value={checkoutForm.state} onChange={e=>setCheckoutForm(f=>({...f,state:e.target.value.toUpperCase().slice(0,2)}))}
+                    placeholder="UF" maxLength={2}
+                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
+                    onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
+                    onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
+                </div>
+              </div>
+              <div style={{background:'var(--sky)',borderRadius:10,padding:'12px 16px',marginTop:4}}>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                  <span style={{fontSize:'.9rem',color:'var(--muted)'}}>Produto</span>
+                  <span style={{fontSize:'.9rem',color:'var(--mid)'}}>R$ {selProd.price.toFixed(2)}</span>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                  <span style={{fontSize:'.9rem',color:'var(--muted)'}}>Frete {selShip.service}</span>
+                  <span style={{fontSize:'.9rem',color:'var(--mid)'}}>R$ {selShip.price.toFixed(2)}</span>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',paddingTop:8,borderTop:'1px solid rgba(26,58,138,.1)'}}>
+                  <span style={{fontWeight:700,color:'var(--text)'}}>Total</span>
+                  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.3rem',fontWeight:700,color:'var(--brand)'}}>R$ {(selProd.price+selShip.price).toFixed(2).replace('.',',')}</span>
+                </div>
+              </div>
+              <p style={{fontSize:'.82rem',color:'var(--muted)',lineHeight:1.5}}>Após confirmar, você será direcionado ao WhatsApp para enviar o comprovante PIX.</p>
+              <div style={{display:'flex',gap:10}}>
+                <button type="button" onClick={()=>setShowCheckout(false)}
+                  style={{flex:'0 0 auto',background:'var(--sky)',color:'var(--mid)',border:'none',borderRadius:10,padding:'14px 20px',fontSize:'.9rem',fontWeight:600,cursor:'pointer'}}>
+                  ← Voltar
+                </button>
+                <button type="submit" disabled={checkoutLoading}
+                  style={{flex:1,background:checkoutLoading?'#9bb3d0':'var(--brand)',color:'white',border:'none',borderRadius:10,padding:'14px',fontSize:'.95rem',fontWeight:700,cursor:checkoutLoading?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,transition:'background .2s'}}>
+                  {checkoutLoading?'Registrando pedido...':(
+                    <><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>Finalizar Pedido</>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {showModal&&selProd&&(
         <div className="mo" onClick={e=>e.target===e.currentTarget&&closeBuy()}>
           <div className="mb">
@@ -1196,13 +1373,13 @@ export default function SalVitaLanding() {
             )}
 
             <div style={{display:'flex',flexDirection:'column',gap:10}}>
-              <a href={waLink(selProd.name,selProd.weight,selProd.price,selShip??undefined)} target="_blank" rel="noopener noreferrer"
-                style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,background:'#128C7E',color:'white',borderRadius:12,padding:'16px',fontSize:'.93rem',fontWeight:700,textDecoration:'none',letterSpacing:'.04em',transition:'background .2s,transform .2s'}}
+              <button onClick={()=>setShowCheckout(true)}
+                style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,background:'#128C7E',color:'white',border:'none',borderRadius:12,padding:'16px',fontSize:'.93rem',fontWeight:700,cursor:'pointer',letterSpacing:'.04em',transition:'background .2s,transform .2s'}}
                 onMouseEnter={e=>{e.currentTarget.style.background='#25D366';e.currentTarget.style.transform='scale(1.02)';}}
                 onMouseLeave={e=>{e.currentTarget.style.background='#128C7E';e.currentTarget.style.transform='scale(1)';}}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
                 Finalizar via WhatsApp
-              </a>
+              </button>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
                 <a href="#" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,background:'#fffbeb',border:'1px solid #fde68a',color:'#92400e',borderRadius:10,padding:'12px',fontSize:'.9rem',fontWeight:600,textDecoration:'none',transition:'background .2s'}}
                   onMouseEnter={e=>e.currentTarget.style.background='#fef3c7'}

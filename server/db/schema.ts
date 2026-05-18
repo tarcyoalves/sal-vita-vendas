@@ -97,6 +97,37 @@ export const workSessions = pgTable('work_sessions', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+export const siteOrders = pgTable('site_orders', {
+  id: serial('id').primaryKey(),
+  customerName: text('customer_name').notNull(),
+  customerPhone: text('customer_phone').notNull(),
+  customerEmail: text('customer_email'),
+  postalCode: text('postal_code').notNull(),
+  address: text('address').notNull(),
+  number: text('number').notNull(),
+  complement: text('complement'),
+  neighborhood: text('neighborhood').notNull(),
+  city: text('city').notNull(),
+  state: text('state').notNull(),
+  quantity: integer('quantity').notNull().default(1),
+  product: text('product').notNull().default('Sal Marinho Integral 1kg'),
+  unitPrice: text('unit_price').notNull().default('29.90'),
+  shippingServiceId: text('shipping_service_id'),
+  shippingServiceName: text('shipping_service_name'),
+  shippingPrice: text('shipping_price'),
+  totalPrice: text('total_price'),
+  status: text('status').notNull().default('pending'),
+  paymentStatus: text('payment_status').notNull().default('awaiting'),
+  meOrderId: text('me_order_id'),
+  meLabelUrl: text('me_label_url'),
+  trackingCode: text('tracking_code'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type SiteOrder = typeof siteOrders.$inferSelect;
+
 export type User = typeof users.$inferSelect;
 export type Seller = typeof sellers.$inferSelect;
 export type Client = typeof clients.$inferSelect;
