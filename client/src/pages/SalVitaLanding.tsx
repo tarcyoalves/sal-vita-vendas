@@ -139,7 +139,7 @@ export default function SalVitaLanding() {
 
   const openBuy=useCallback((p:Product)=>{
     setSelProd(p); setShowModal(true); setMobileMenu(false);
-    setCep(''); setCepData(null); setShipping([]); setSelShip(null); setCepErr('');
+    setCep(''); setCepData(null); setShipping([]); setSelShip(null); setCepErr(''); setShippingSource(null);
     setShowCheckout(false); setOrderDone(null);
     setCheckoutForm({customerName:'',customerPhone:'',postalCode:'',address:'',number:'',complement:'',neighborhood:'',city:'',state:''});
     document.body.style.overflow='hidden';
@@ -241,8 +241,8 @@ export default function SalVitaLanding() {
         +`Por favor, envie o comprovante PIX para confirmar.`;
       setOrderDone({ id: orderId, total, waMsg });
     } catch(err) {
-      console.error(err);
-      window.open(waLink(selProd.name,selProd.weight,selProd.price,selShip),'_blank');
+      console.error('createOrder error:', err);
+      alert('Erro ao registrar pedido. Verifique sua conexão e tente novamente.');
     } finally {
       setCheckoutLoading(false);
     }
@@ -1028,7 +1028,7 @@ export default function SalVitaLanding() {
               <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(2rem,5vw,3.5rem)',fontWeight:700,color:'white',marginBottom:10}}>
                 Preço justo. Qualidade real.
               </h2>
-              <p style={{color:'rgba(255,255,255,.55)',fontSize:'1.05rem'}}>Frete calculado por CEP · Enviamos para todo o Brasil pelos Correios</p>
+              <p style={{color:'rgba(255,255,255,.55)',fontSize:'1.05rem'}}>Frete calculado por CEP via Melhor Envio · Enviamos para todo o Brasil</p>
             </div>
 
             <div id="price-c" data-reveal className={`rev price-grid${v('price-c')?' on':''}`} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))',gap:24,maxWidth:820,margin:'0 auto'}}>
@@ -1076,7 +1076,7 @@ export default function SalVitaLanding() {
             {/* Credibilidade perto do preço */}
             <div className="cred-wrap" style={{marginTop:40,display:'flex',flexWrap:'wrap',justifyContent:'center',gap:12}}>
               {[
-                {icon:'🚚',t:'Entrega Correios',s:'rastreamento em todos os pedidos'},
+                {icon:'🚚',t:'Entrega Rastreada',s:'rastreamento em todos os pedidos'},
                 {icon:'📄',t:'Nota Fiscal',s:'emitida em todos os pedidos'},
                 {icon:'🔒',t:'Pagamento Seguro',s:'PIX, cartão ou boleto'},
                 {icon:'📦',t:'Envio em até 2 dias úteis',s:'com rastreamento'},
@@ -1173,7 +1173,7 @@ export default function SalVitaLanding() {
               <div>
                 <h4 style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.16em',color:'rgba(255,255,255,.4)',textTransform:'uppercase',marginBottom:16}}>Produto</h4>
                 <ul style={{listStyle:'none',padding:0}}>
-                  {['1kg — R$ 29,90','Caixa 10kg — R$ 149,90','Frete por CEP · Correios','+80 Minerais Naturais','Não Refinado'].map(i=>(
+                  {['1kg — R$ 29,90','Caixa 10kg — R$ 149,90','Frete calculado por CEP','+80 Minerais Naturais','Não Refinado'].map(i=>(
                     <li key={i} style={{color:'rgba(255,255,255,.38)',fontSize:'.83rem',marginBottom:8}}>{i}</li>
                   ))}
                 </ul>
@@ -1181,7 +1181,7 @@ export default function SalVitaLanding() {
               <div>
                 <h4 style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.16em',color:'rgba(255,255,255,.4)',textTransform:'uppercase',marginBottom:16}}>Canais de Venda</h4>
                 <ul style={{listStyle:'none',padding:0}}>
-                  {[{l:'💬 WhatsApp',h:`https://wa.me/${WA}`},{l:'🛒 Mercado Livre',h:'#'},{l:'🛍️ Shopee',h:'#'},{l:'📦 Amazon',h:'#'}].map(lk=>(
+                  {[{l:'💬 WhatsApp',h:`https://wa.me/${WA}`},{l:'📧 E-mail',h:'mailto:contato@salvitarn.com.br'}].map(lk=>(
                     <li key={lk.l} style={{marginBottom:8}}>
                       <a href={lk.h} target="_blank" rel="noopener noreferrer" style={{color:'rgba(255,255,255,.38)',fontSize:'.83rem',textDecoration:'none',transition:'color .2s'}}
                         onMouseEnter={e=>e.currentTarget.style.color='white'}
@@ -1383,9 +1383,7 @@ export default function SalVitaLanding() {
                 </button>
                 <button type="submit" disabled={checkoutLoading}
                   style={{flex:1,background:checkoutLoading?'#9bb3d0':'var(--brand)',color:'white',border:'none',borderRadius:10,padding:'14px',fontSize:'.95rem',fontWeight:700,cursor:checkoutLoading?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,transition:'background .2s'}}>
-                  {checkoutLoading?'Registrando pedido...':(
-                    <><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>Finalizar Pedido</>
-                  )}
+                  {checkoutLoading ? 'Registrando pedido...' : 'Confirmar e Escolher Pagamento →'}
                 </button>
               </div>
             </form>
@@ -1483,17 +1481,6 @@ export default function SalVitaLanding() {
                 onMouseLeave={e=>{e.currentTarget.style.background='var(--brand)';e.currentTarget.style.transform='scale(1)';}}>
                 🛒 Comprar Agora
               </button>
-              <p style={{textAlign:'center',fontSize:'.8rem',color:'var(--muted)',margin:'4px 0 0'}}>Ou compre em outros canais:</p>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                <a href="https://www.mercadolivre.com.br/sal-vita" target="_blank" rel="noopener noreferrer"
-                  style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,background:'#fffbeb',border:'1px solid #fde68a',color:'#92400e',borderRadius:10,padding:'12px',fontSize:'.9rem',fontWeight:600,textDecoration:'none',transition:'background .2s'}}
-                  onMouseEnter={e=>e.currentTarget.style.background='#fef3c7'}
-                  onMouseLeave={e=>e.currentTarget.style.background='#fffbeb'}>🛒 Mercado Livre</a>
-                <a href="https://shopee.com.br/sal.vita" target="_blank" rel="noopener noreferrer"
-                  style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,background:'#fff1f0',border:'1px solid #fca5a5',color:'#991b1b',borderRadius:10,padding:'12px',fontSize:'.9rem',fontWeight:600,textDecoration:'none',transition:'background .2s'}}
-                  onMouseEnter={e=>e.currentTarget.style.background='#fee2e2'}
-                  onMouseLeave={e=>e.currentTarget.style.background='#fff1f0'}>🛍️ Shopee</a>
-              </div>
             </div>
             <p style={{marginTop:14,fontSize:'.84rem',color:'var(--muted)',textAlign:'center',lineHeight:1.5}}>Frete calculado via Melhor Envio · Enviamos para todo o Brasil</p>
           </div>
