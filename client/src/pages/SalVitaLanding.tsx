@@ -100,6 +100,7 @@ export default function SalVitaLanding() {
   const [cepData,setCepData]               = useState<CepData|null>(null);
   const [shipping,setShipping]             = useState<ShipOpt[]>([]);
   const [selShip,setSelShip]               = useState<ShipOpt|null>(null);
+  const [shippingSource,setShippingSource] = useState<'api'|'static'|null>(null);
   const [loadingCep,setLoadingCep]         = useState(false);
   const [cepErr,setCepErr]                 = useState('');
   const [openFaq,setOpenFaq]               = useState<number|null>(null);
@@ -165,8 +166,10 @@ export default function SalVitaLanding() {
           body: JSON.stringify({ json: { cep: c, quantity: qty } }),
         });
         const data = await r.json();
+        const source = data?.result?.data?.json?.source;
         const options = data?.result?.data?.json?.options;
         if (Array.isArray(options) && options.length > 0) {
+          setShippingSource(source === 'api' ? 'api' : 'static');
           const carrierIcon = (name: string, company: string): string => {
             const n = name.toUpperCase();
             const c = (company ?? '').toUpperCase();
@@ -196,7 +199,7 @@ export default function SalVitaLanding() {
       } catch {}
 
       // Fallback to local static table if API unavailable
-      if (opts.length === 0) opts = calcShipping(d.uf, selProd!.weightKg);
+      if (opts.length === 0) { opts = calcShipping(d.uf, selProd!.weightKg); setShippingSource('static'); }
       setShipping(opts); setSelShip(opts[0]);
     } catch {setCepErr('Erro de conexão. Tente novamente.');}
     setLoadingCep(false);
@@ -1433,7 +1436,13 @@ export default function SalVitaLanding() {
                   <span style={{color:'#16a34a'}}>✓</span>
                   <p style={{fontSize:'.84rem',color:'#166534'}}>{cepData.localidade} — {cepData.uf}{cepData.bairro?` · ${cepData.bairro}`:''}</p>
                 </div>
-                <p style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',marginBottom:10}}>Opções de frete disponíveis:</p>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+                  <p style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',margin:0}}>Opções de frete:</p>
+                  {shippingSource==='api'
+                    ? <span style={{fontSize:'.75rem',background:'#dcfce7',color:'#15803d',padding:'2px 8px',borderRadius:99,fontWeight:600}}>✓ Via Melhor Envio</span>
+                    : <span style={{fontSize:'.75rem',background:'#fef9c3',color:'#854d0e',padding:'2px 8px',borderRadius:99,fontWeight:600}}>Estimativa</span>
+                  }
+                </div>
                 <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:18}}>
                   {shipping.map(opt=>(
                     <div key={opt.service} className={`sopt${selShip?.service===opt.service?' sel':''}`} onClick={()=>setSelShip(opt)}>
@@ -1474,16 +1483,19 @@ export default function SalVitaLanding() {
                 onMouseLeave={e=>{e.currentTarget.style.background='var(--brand)';e.currentTarget.style.transform='scale(1)';}}>
                 🛒 Comprar Agora
               </button>
+              <p style={{textAlign:'center',fontSize:'.8rem',color:'var(--muted)',margin:'4px 0 0'}}>Ou compre em outros canais:</p>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                <a href="#" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,background:'#fffbeb',border:'1px solid #fde68a',color:'#92400e',borderRadius:10,padding:'12px',fontSize:'.9rem',fontWeight:600,textDecoration:'none',transition:'background .2s'}}
+                <a href="https://www.mercadolivre.com.br/sal-vita" target="_blank" rel="noopener noreferrer"
+                  style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,background:'#fffbeb',border:'1px solid #fde68a',color:'#92400e',borderRadius:10,padding:'12px',fontSize:'.9rem',fontWeight:600,textDecoration:'none',transition:'background .2s'}}
                   onMouseEnter={e=>e.currentTarget.style.background='#fef3c7'}
                   onMouseLeave={e=>e.currentTarget.style.background='#fffbeb'}>🛒 Mercado Livre</a>
-                <a href="#" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,background:'#fff1f0',border:'1px solid #fca5a5',color:'#991b1b',borderRadius:10,padding:'12px',fontSize:'.9rem',fontWeight:600,textDecoration:'none',transition:'background .2s'}}
+                <a href="https://shopee.com.br/sal.vita" target="_blank" rel="noopener noreferrer"
+                  style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,background:'#fff1f0',border:'1px solid #fca5a5',color:'#991b1b',borderRadius:10,padding:'12px',fontSize:'.9rem',fontWeight:600,textDecoration:'none',transition:'background .2s'}}
                   onMouseEnter={e=>e.currentTarget.style.background='#fee2e2'}
                   onMouseLeave={e=>e.currentTarget.style.background='#fff1f0'}>🛍️ Shopee</a>
               </div>
             </div>
-            <p style={{marginTop:14,fontSize:'.84rem',color:'var(--muted)',textAlign:'center',lineHeight:1.5}}>* Frete estimado via Correios. Valor final calculado na plataforma de venda.</p>
+            <p style={{marginTop:14,fontSize:'.84rem',color:'var(--muted)',textAlign:'center',lineHeight:1.5}}>Frete calculado via Melhor Envio · Enviamos para todo o Brasil</p>
           </div>
         </div>
       )}
