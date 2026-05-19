@@ -105,15 +105,14 @@ const USES = [
   {e:'🍞',t:'Pães e Panificação',d:'Ativa o glúten, melhora a crosta'},
 ];
 
-/* ─── Input masks & validators ───────────────────────────── */
-function maskPhone(v: string) {
+function maskPhone(v: string): string {
   const d = v.replace(/\D/g,'').slice(0,11);
   if (d.length <= 2) return d;
   if (d.length <= 7) return `(${d.slice(0,2)}) ${d.slice(2)}`;
   return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
 }
 
-function maskCpf(v: string) {
+function maskCpf(v: string): string {
   const d = v.replace(/\D/g,'').slice(0,11);
   if (d.length <= 3) return d;
   if (d.length <= 6) return `${d.slice(0,3)}.${d.slice(3)}`;
@@ -183,21 +182,6 @@ export default function SalVitaLanding() {
     return ()=>window.removeEventListener('scroll',h);
   },[]);
 
-  // Check for pending order in localStorage on mount
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('sv_pending_order');
-      if (stored) {
-        const p = JSON.parse(stored);
-        if (Date.now() - p.ts < 2 * 60 * 60 * 1000) {
-          setPendingOrder(p);
-        } else {
-          localStorage.removeItem('sv_pending_order');
-        }
-      }
-    } catch {}
-  }, []);
-
   useEffect(()=>{
     document.body.style.overflow = mobileMenu ? 'hidden' : '';
     return ()=>{ document.body.style.overflow=''; };
@@ -221,6 +205,19 @@ export default function SalVitaLanding() {
     if (c) setCouponCode(c.toUpperCase().trim());
   }, []);
 
+  // Check for pending order in localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('sv_pending_order');
+      if (stored) {
+        const p = JSON.parse(stored);
+        if (Date.now() - p.ts < 2 * 60 * 60 * 1000) {
+          setPendingOrder(p);
+        }
+      }
+    } catch {}
+  }, []);
+
   // Track cart abandonment at step 1 (form started: name + phone present)
   const cartTrackRef = useRef(false);
   useEffect(() => {
@@ -240,9 +237,9 @@ export default function SalVitaLanding() {
     setCep(''); setCepData(null); setShipping([]); setSelShip(null); setCepErr(''); setShippingSource(null);
     setShowCheckout(false); setOrderDone(null);
     setCheckoutForm({customerName:'',customerPhone:'',customerEmail:'',customerCpf:'',postalCode:'',address:'',number:'',complement:'',neighborhood:'',city:'',state:''});
-    setCouponState(null); setCouponCode(''); setCpfError('');
+    setCouponState(null); setCouponCode('');
     cartTrackRef.current = false;
-    try { localStorage.removeItem('sv_pending_order'); } catch {}
+    localStorage.removeItem('sv_pending_order');
     setPendingOrder(null);
     document.body.style.overflow='hidden';
   },[]);
@@ -371,7 +368,7 @@ export default function SalVitaLanding() {
       const orderId = data?.result?.data?.json?.id;
       const total   = data?.result?.data?.json?.total ?? (selProd.price+selShip.price);
       setOrderDone({ id: orderId, total });
-      try { localStorage.setItem('sv_pending_order', JSON.stringify({ id: orderId, total, ts: Date.now() })); } catch {}
+      localStorage.setItem('sv_pending_order', JSON.stringify({ id: orderId, total, ts: Date.now() }));
     } catch(err) {
       console.error('createOrder error:', err);
       alert('Erro ao registrar pedido. Verifique sua conexão e tente novamente.');
@@ -383,7 +380,6 @@ export default function SalVitaLanding() {
   async function handleMpPay() {
     if(!orderDone) return;
     setMpLoading(true);
-    try { localStorage.removeItem('sv_pending_order'); } catch {}
     try {
       const res = await fetch('/api/trpc/shipping.createPayment', {
         method:'POST',
@@ -409,25 +405,6 @@ export default function SalVitaLanding() {
 
   return (
     <>
-      {/* ── Pending order banner ── */}
-      {pendingOrder && (
-        <div style={{
-          position:'fixed',top:0,left:0,right:0,zIndex:99998,
-          background:'#0b1d3a',color:'white',padding:'10px 20px',
-          display:'flex',alignItems:'center',justifyContent:'center',gap:12,flexWrap:'wrap',
-          fontSize:'.88rem',fontWeight:600,
-          boxShadow:'0 2px 12px rgba(0,0,0,.3)',
-        }}>
-          <span>🛒 Você tem um pedido pendente #{pendingOrder.id} (R$ {pendingOrder.total.toFixed(2).replace('.',',')})</span>
-          <a href={`/meu-pedido?pedido=${pendingOrder.id}`}
-            style={{background:'#c9a227',color:'#071628',borderRadius:8,padding:'5px 14px',fontWeight:800,fontSize:'.82rem',textDecoration:'none',whiteSpace:'nowrap'}}>
-            Pagar agora →
-          </a>
-          <button onClick={()=>{ setPendingOrder(null); try{localStorage.removeItem('sv_pending_order');}catch{} }}
-            style={{background:'transparent',border:'none',color:'rgba(255,255,255,.6)',cursor:'pointer',fontSize:'1.1rem',lineHeight:1,padding:'0 4px'}}>×</button>
-        </div>
-      )}
-
       {/* ── Social proof toast ── */}
       {spToast && (
         <div style={{
@@ -1545,8 +1522,8 @@ export default function SalVitaLanding() {
                 </div>
                 <div>
                   <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>Telefone/WhatsApp *</label>
-                  <input required value={maskPhone(checkoutForm.customerPhone)} onChange={e=>setCheckoutForm(f=>({...f,customerPhone:e.target.value.replace(/\D/g,'').slice(0,11)}))}
-                    placeholder="(84) 99999-9999" minLength={10} type="tel"
+                  <input required value={checkoutForm.customerPhone} onChange={e=>setCheckoutForm(f=>({...f,customerPhone:e.target.value}))}
+                    placeholder="(84) 99999-9999" minLength={10}
                     style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
                     onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
                     onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
@@ -1561,12 +1538,11 @@ export default function SalVitaLanding() {
                 </div>
                 <div>
                   <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>CPF *</label>
-                  <input required type="text" inputMode="numeric" autoComplete="off" value={maskCpf(checkoutForm.customerCpf)} onChange={e=>{ setCpfError(''); setCheckoutForm(f=>({...f,customerCpf:e.target.value.replace(/\D/g,'').slice(0,11)})); }}
+                  <input required type="text" inputMode="numeric" autoComplete="off" value={checkoutForm.customerCpf} onChange={e=>setCheckoutForm(f=>({...f,customerCpf:e.target.value}))}
                     placeholder="000.000.000-00" maxLength={14}
-                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:`2px solid ${cpfError?'#ef4444':'transparent'}`,borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
-                    onFocus={e=>{ setCpfError(''); e.currentTarget.style.borderColor='var(--brand)'; }}
-                    onBlur={e=>{ const raw=checkoutForm.customerCpf.replace(/\D/g,''); if(raw.length===11&&!isValidCpf(raw)){setCpfError('CPF inválido. Verifique os números.');e.currentTarget.style.borderColor='#ef4444';}else{e.currentTarget.style.borderColor='transparent';} }}/>
-                  {cpfError&&<p style={{fontSize:'.78rem',color:'#ef4444',marginTop:4,fontWeight:600}}>{cpfError}</p>}
+                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
+                    onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
+                    onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
                 </div>
                 <div>
                   <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>CEP *</label>
@@ -1632,7 +1608,6 @@ export default function SalVitaLanding() {
                   <input
                     type="text" value={couponCode}
                     onChange={e=>{ setCouponCode(e.target.value.toUpperCase()); setCouponState(null); }}
-                    onBlur={()=>{ if(couponCode.trim()&&!couponState) validateCoupon(couponCode, selProd.price*(selProd.weightKg>=10?10:1)); }}
                     placeholder="Ex: VOLTA10"
                     style={{flex:1,background:'var(--offwhite)',border:`2px solid ${couponState?.valid?'#16a34a':couponState?.valid===false?'#ef4444':'transparent'}`,borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',fontFamily:'monospace',letterSpacing:'.1em'}}
                   />
