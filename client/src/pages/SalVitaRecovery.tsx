@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { trpc } from '../lib/trpc';
 import { toast } from 'sonner';
+import { useLocation } from 'wouter';
 
 /* ── Helpers ─────────────────────────────────────────────── */
 function timeAgo(dateStr: string | null | undefined): string {
@@ -155,7 +156,7 @@ function AbandonedTab() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontWeight: 800, fontSize: '1rem', color: '#0b1d3a' }}>{row.customerName || 'Cliente sem nome'}</span>
                 <span style={{ background: '#fef3c7', color: '#92400e', borderRadius: 999, padding: '2px 9px', fontSize: '.72rem', fontWeight: 700 }}>
-                  {stepLabel(row.step ?? 1)}
+                  {stepLabel(row.stepReached ?? 1)}
                 </span>
               </div>
               {row.customerPhone && <p style={{ margin: '3px 0 0', fontSize: '.82rem', color: '#64748b' }}>📱 {row.customerPhone}</p>}
@@ -237,7 +238,7 @@ function UnpaidTab() {
                 <p style={{ margin: '4px 0 0', fontSize: '.85rem', color: '#334155' }}>
                   🧂 Sal Marinho Integral 1kg × {row.quantity ?? 1} unidade{(row.quantity ?? 1) !== 1 ? 's' : ''}
                 </p>
-                <p style={{ margin: '4px 0 0', fontSize: '.9rem', fontWeight: 700, color: '#0C3680' }}>{fmt(row.totalAmount)}</p>
+                <p style={{ margin: '4px 0 0', fontSize: '.9rem', fontWeight: 700, color: '#0C3680' }}>{fmt(row.totalPrice)}</p>
                 <p style={{ margin: '4px 0 0', fontSize: '.78rem', color: '#94a3b8' }}>{timeAgo(row.createdAt)}</p>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -439,36 +440,35 @@ function AiTab() {
   const abandoned = abandonedQ.data ?? [];
   const unpaid = unpaidQ.data ?? [];
 
-  const totalAtRisk = [
-    ...unpaid.map((o: any) => parseFloat(o.totalAmount ?? '0') || 0),
-  ].reduce((a: number, b: number) => a + b, 0);
-
-  const totalOrders = abandoned.length + unpaid.length;
-  const conversionRate = totalOrders > 0 ? ((unpaid.filter((o: any) => o.paymentStatus === 'confirmed').length / totalOrders) * 100).toFixed(1) : '0.0';
+  const stats = aiMut.data?.stats as { abandoned?: number; unpaid?: number; conversionRate?: number; revenueAtRisk?: number } | undefined;
+  const displayAbandoned = stats?.abandoned ?? abandoned.length;
+  const displayUnpaid = stats?.unpaid ?? unpaid.length;
+  const displayConversionRate = stats?.conversionRate != null ? stats.conversionRate.toFixed(1) : '—';
+  const displayRevenueAtRisk = stats?.revenueAtRisk ?? unpaid.map((o: any) => parseFloat(o.totalPrice ?? '0') || 0).reduce((a: number, b: number) => a + b, 0);
 
   return (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
         <div style={{ background: '#fef3c7', border: '1.5px solid #fde68a', borderRadius: 14, padding: '16px 18px' }}>
           <p style={{ margin: '0 0 4px', fontSize: '.72rem', fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: '.05em' }}>Abandonados</p>
-          <p style={{ margin: 0, fontSize: '1.8rem', fontWeight: 800, color: '#78350f' }}>{abandoned.length}</p>
+          <p style={{ margin: 0, fontSize: '1.8rem', fontWeight: 800, color: '#78350f' }}>{displayAbandoned}</p>
         </div>
         <div style={{ background: '#fee2e2', border: '1.5px solid #fecaca', borderRadius: 14, padding: '16px 18px' }}>
           <p style={{ margin: '0 0 4px', fontSize: '.72rem', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase', letterSpacing: '.05em' }}>Não Pagos</p>
-          <p style={{ margin: 0, fontSize: '1.8rem', fontWeight: 800, color: '#7f1d1d' }}>{unpaid.length}</p>
+          <p style={{ margin: 0, fontSize: '1.8rem', fontWeight: 800, color: '#7f1d1d' }}>{displayUnpaid}</p>
         </div>
         <div style={{ background: '#dbeafe', border: '1.5px solid #bfdbfe', borderRadius: 14, padding: '16px 18px' }}>
           <p style={{ margin: '0 0 4px', fontSize: '.72rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: '.05em' }}>Conversão</p>
-          <p style={{ margin: 0, fontSize: '1.8rem', fontWeight: 800, color: '#1e3a8a' }}>{conversionRate}%</p>
+          <p style={{ margin: 0, fontSize: '1.8rem', fontWeight: 800, color: '#1e3a8a' }}>{displayConversionRate}%</p>
         </div>
         <div style={{ background: '#dcfce7', border: '1.5px solid #bbf7d0', borderRadius: 14, padding: '16px 18px' }}>
           <p style={{ margin: '0 0 4px', fontSize: '.72rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase', letterSpacing: '.05em' }}>Em Risco</p>
-          <p style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, color: '#14532d' }}>{fmt(totalAtRisk)}</p>
+          <p style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, color: '#14532d' }}>{fmt(displayRevenueAtRisk)}</p>
         </div>
       </div>
 
       <button
-        onClick={() => aiMut.mutate({ abandonedCount: abandoned.length, unpaidCount: unpaid.length, revenueAtRisk: totalAtRisk })}
+        onClick={() => aiMut.mutate({ abandonedCount: abandoned.length, unpaidCount: unpaid.length, revenueAtRisk: displayRevenueAtRisk })}
         disabled={aiMut.isPending}
         style={{ ...btnPrimary, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, padding: '11px 20px', fontSize: '.9rem', opacity: aiMut.isPending ? .7 : 1 }}
       >
@@ -505,6 +505,8 @@ type Tab = 'abandoned' | 'unpaid' | 'coupons' | 'ai';
 export default function SalVitaRecovery() {
   const [tab, setTab] = useState<Tab>('abandoned');
   const meQuery = trpc.auth.me.useQuery(undefined, { retry: false });
+  const [, setLocation] = useLocation();
+  const logoutMut = trpc.auth.logout.useMutation();
 
   if (meQuery.isLoading) {
     return (
@@ -545,7 +547,7 @@ export default function SalVitaRecovery() {
             ← Pedidos
           </button>
           <button
-            onClick={() => { localStorage.removeItem('sal_vita_admin_token'); window.location.href = '/sal-vita-admin'; }}
+            onClick={async () => { await logoutMut.mutateAsync(); setLocation('/sal-vita-admin'); window.location.reload(); }}
             style={{ padding: '8px 14px', background: 'rgba(255,255,255,.1)', color: 'white', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, fontSize: '.82rem', cursor: 'pointer' }}
           >
             Sair

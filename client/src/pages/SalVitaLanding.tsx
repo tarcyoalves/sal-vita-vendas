@@ -105,6 +105,34 @@ const USES = [
   {e:'🍞',t:'Pães e Panificação',d:'Ativa o glúten, melhora a crosta'},
 ];
 
+function maskPhone(v: string): string {
+  const d = v.replace(/\D/g,'').slice(0,11);
+  if (d.length <= 2) return d;
+  if (d.length <= 7) return `(${d.slice(0,2)}) ${d.slice(2)}`;
+  return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
+}
+
+function maskCpf(v: string): string {
+  const d = v.replace(/\D/g,'').slice(0,11);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `${d.slice(0,3)}.${d.slice(3)}`;
+  if (d.length <= 9) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`;
+  return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`;
+}
+
+function isValidCpf(cpf: string): boolean {
+  const d = cpf.replace(/\D/g,'');
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+  let sum = 0;
+  for (let i=0; i<9; i++) sum += parseInt(d[i]) * (10-i);
+  let r = (sum*10) % 11; if (r === 10 || r === 11) r = 0;
+  if (r !== parseInt(d[9])) return false;
+  sum = 0;
+  for (let i=0; i<10; i++) sum += parseInt(d[i]) * (11-i);
+  r = (sum*10) % 11; if (r === 10 || r === 11) r = 0;
+  return r === parseInt(d[10]);
+}
+
 interface Product {id:string;name:string;subtitle:string;weight:string;weightKg:number;price:number;pricePerKg:number;tag:string;highlight:boolean;savings?:string}
 interface ShipOpt  {serviceId?:string;service:string;price:number;days:string;icon:string;description:string}
 interface CepData  {localidade:string;uf:string;bairro:string}
@@ -143,6 +171,8 @@ export default function SalVitaLanding() {
   const [couponCode,setCouponCode]         = useState('');
   const [couponState,setCouponState]       = useState<{valid:boolean;message:string;discountValue?:number;discountType?:string}|null>(null);
   const [couponLoading,setCouponLoading]   = useState(false);
+  const [cpfError,setCpfError]             = useState('');
+  const [pendingOrder,setPendingOrder]     = useState<{id:number;total:number}|null>(null);
   const obs = useRef<IntersectionObserver|null>(null);
   const spToast = useSocialProof();
 
@@ -175,6 +205,19 @@ export default function SalVitaLanding() {
     if (c) setCouponCode(c.toUpperCase().trim());
   }, []);
 
+  // Check for pending order in localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('sv_pending_order');
+      if (stored) {
+        const p = JSON.parse(stored);
+        if (Date.now() - p.ts < 2 * 60 * 60 * 1000) {
+          setPendingOrder(p);
+        }
+      }
+    } catch {}
+  }, []);
+
   // Track cart abandonment at step 1 (form started: name + phone present)
   const cartTrackRef = useRef(false);
   useEffect(() => {
@@ -196,6 +239,8 @@ export default function SalVitaLanding() {
     setCheckoutForm({customerName:'',customerPhone:'',customerEmail:'',customerCpf:'',postalCode:'',address:'',number:'',complement:'',neighborhood:'',city:'',state:''});
     setCouponState(null); setCouponCode('');
     cartTrackRef.current = false;
+    localStorage.removeItem('sv_pending_order');
+    setPendingOrder(null);
     document.body.style.overflow='hidden';
   },[]);
   const closeBuy=useCallback(()=>{ setShowModal(false); setShowCheckout(false); setOrderDone(null); document.body.style.overflow=''; if(payTimerRef.current) clearInterval(payTimerRef.current); },[]);
@@ -323,6 +368,7 @@ export default function SalVitaLanding() {
       const orderId = data?.result?.data?.json?.id;
       const total   = data?.result?.data?.json?.total ?? (selProd.price+selShip.price);
       setOrderDone({ id: orderId, total });
+      localStorage.setItem('sv_pending_order', JSON.stringify({ id: orderId, total, ts: Date.now() }));
     } catch(err) {
       console.error('createOrder error:', err);
       alert('Erro ao registrar pedido. Verifique sua conexão e tente novamente.');
@@ -351,7 +397,7 @@ export default function SalVitaLanding() {
   /* ── Logo real ── */
   const Logo=({size=40,white=false}:{size?:number;white?:boolean})=>(
     <img
-      src="http://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
+      src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
       alt="Sal Vita Premium"
       style={{height:size,width:'auto',objectFit:'contain',filter:white?'brightness(0) invert(1)':'none'}}
     />
@@ -1484,7 +1530,7 @@ export default function SalVitaLanding() {
                 </div>
                 <div style={{gridColumn:'1/-1'}}>
                   <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>E-mail *</label>
-                  <input required type="text" inputMode="email" autoComplete="email" value={checkoutForm.customerEmail} onChange={e=>setCheckoutForm(f=>({...f,customerEmail:e.target.value}))}
+                  <input required type="email" autoComplete="email" value={checkoutForm.customerEmail} onChange={e=>setCheckoutForm(f=>({...f,customerEmail:e.target.value}))}
                     placeholder="seuemail@exemplo.com"
                     style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
                     onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
