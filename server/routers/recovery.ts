@@ -40,9 +40,10 @@ export const recoveryRouter = router({
     }))
     .mutation(async ({ input }) => {
       const phone = input.customerPhone.replace(/\D/g, '');
-      // Check if already converted to real order in last 24h
+      // Check if already converted to a real order in the last 24 hours
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const recent = await db.select().from(siteOrders)
-        .where(eq(siteOrders.customerPhone, phone))
+        .where(and(eq(siteOrders.customerPhone, phone), sql`${siteOrders.createdAt} > ${oneDayAgo}`))
         .limit(1);
       if (recent.length > 0) return { tracked: false, reason: 'converted' };
 

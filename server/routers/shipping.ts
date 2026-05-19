@@ -117,11 +117,18 @@ export const shippingRouter = router({
     .mutation(async ({ input }) => {
       const unitPrice = 29.90;
       const shipping = input.shippingPrice ?? 0;
+
+      // Validate shipping price server-side
+      if (input.shippingPrice !== undefined && (input.shippingPrice < 0 || input.shippingPrice > 200)) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Valor de frete inválido.' });
+      }
+
       let subtotal = +(unitPrice * input.quantity).toFixed(2);
       let couponDiscount = 0;
       let appliedCoupon: string | null = null;
+      let foundCouponId: number | null = null;
 
-      // Apply coupon if provided
+      // Apply coupon if provided (lookup only — increment happens inside transaction)
       if (input.couponCode) {
         const code = input.couponCode.toUpperCase().trim();
         const found = await db.select().from(coupons)
@@ -139,33 +146,37 @@ export const shippingRouter = router({
             }
             subtotal = +(subtotal - couponDiscount).toFixed(2);
             appliedCoupon = code;
-            // Increment usage
-            await db.update(coupons).set({ usedCount: sql`used_count + 1` }).where(eq(coupons.id, c.id));
+            foundCouponId = c.id;
           }
         }
       }
 
       const total = +(subtotal + shipping).toFixed(2);
-      const [order] = await db.insert(siteOrders).values({
-        customerName: input.customerName,
-        customerPhone: input.customerPhone,
-        customerEmail: input.customerEmail || null,
-        customerCpf: input.customerCpf ? input.customerCpf.replace(/\D/g,'') : null,
-        postalCode: input.postalCode.replace(/\D/g,''),
-        address: input.address,
-        number: input.number,
-        complement: input.complement || null,
-        neighborhood: input.neighborhood,
-        city: input.city,
-        state: input.state.toUpperCase(),
-        quantity: input.quantity,
-        shippingServiceId: input.shippingServiceId ?? null,
-        shippingServiceName: input.shippingServiceName ?? null,
-        shippingPrice: shipping > 0 ? String(shipping) : null,
-        totalPrice: String(total),
-        couponCode: appliedCoupon,
-        couponDiscount: couponDiscount > 0 ? String(couponDiscount) : null,
-      }).returning();
+      const [order] = await db.transaction(async (tx) => {
+        if (appliedCoupon && foundCouponId !== null) {
+          await tx.update(coupons).set({ usedCount: sql`used_count + 1` }).where(eq(coupons.id, foundCouponId));
+        }
+        return tx.insert(siteOrders).values({
+          customerName: input.customerName,
+          customerPhone: input.customerPhone,
+          customerEmail: input.customerEmail || null,
+          customerCpf: input.customerCpf ? input.customerCpf.replace(/\D/g,'') : null,
+          postalCode: input.postalCode.replace(/\D/g,''),
+          address: input.address,
+          number: input.number,
+          complement: input.complement || null,
+          neighborhood: input.neighborhood,
+          city: input.city,
+          state: input.state.toUpperCase(),
+          quantity: input.quantity,
+          shippingServiceId: input.shippingServiceId ?? null,
+          shippingServiceName: input.shippingServiceName ?? null,
+          shippingPrice: shipping > 0 ? String(shipping) : null,
+          totalPrice: String(total),
+          couponCode: appliedCoupon,
+          couponDiscount: couponDiscount > 0 ? String(couponDiscount) : null,
+        }).returning();
+      });
       return { id: order.id, total, couponDiscount, couponApplied: appliedCoupon };
     }),
 
@@ -335,7 +346,7 @@ Seja direto e use emojis para facilitar leitura.`;
     }),
 
   createPayment: publicProcedure
-    .input(z.object({ orderId: z.number() }))
+    .input(z.object({ orderId: z.number(), phone: z.string().min(4).optional() }))
     .mutation(async ({ input }) => {
       const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
       if (!token) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Configure MERCADO_PAGO_ACCESS_TOKEN no painel Vercel' });
@@ -344,6 +355,15 @@ Seja direto e use emojis para facilitar leitura.`;
       const order = orders[0];
       if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
       if (order.paymentStatus === 'confirmed') throw new TRPCError({ code: 'CONFLICT', message: 'Este pedido já foi pago.' });
+
+      // Verify phone last-4-digits when provided (non-breaking incremental check)
+      if (input.phone !== undefined) {
+        const orderPhone = order.customerPhone.replace(/\D/g, '');
+        const inputPhone = input.phone.replace(/\D/g, '');
+        if (!orderPhone.endsWith(inputPhone.slice(-4))) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Telefone não confere com o pedido.' });
+        }
+      }
 
       const preference = {
         items: [{
