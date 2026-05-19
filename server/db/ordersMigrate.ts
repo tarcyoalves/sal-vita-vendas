@@ -42,6 +42,9 @@ export async function ensureOrdersTablesExist() {
     await sql`CREATE INDEX IF NOT EXISTS site_orders_created_at_idx ON site_orders(created_at)`;
     await sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS customer_cpf TEXT`;
 
+    // Start order IDs at 10000 for new installs (safe to run multiple times)
+    await sql`SELECT setval(pg_get_serial_sequence('site_orders','id'), GREATEST(last_value, 9999), true) FROM site_orders_id_seq`;
+
     console.log('✅ Orders database tables ensured');
   } catch (err) {
     console.error('❌ Orders migration error:', err);

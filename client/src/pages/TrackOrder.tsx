@@ -28,6 +28,24 @@ export default function TrackOrder() {
   const [submitted, setSubmitted] = useState(false);
   const [queryInput, setQueryInput] = useState<{ orderId: number; phone: string } | null>(null);
   const [mpStatus] = useState(urlParams.status);
+  const [retryLoading, setRetryLoading] = useState(false);
+
+  async function handleRetryPayment() {
+    const id = parseInt(urlParams.pedido ?? '');
+    if (!id) return;
+    setRetryLoading(true);
+    try {
+      const res = await fetch('/api/trpc/shipping.createPayment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ json: { orderId: id } }),
+      });
+      const data = await res.json();
+      const initPoint = data?.result?.data?.json?.initPoint;
+      if (initPoint) { window.location.href = initPoint; }
+      else { alert('Erro ao gerar link. Tente novamente.'); setRetryLoading(false); }
+    } catch { alert('Erro de conexão. Tente novamente.'); setRetryLoading(false); }
+  }
 
   const { data: order, isLoading, error } = trpc.shipping.trackOrder.useQuery(
     queryInput!,
@@ -87,7 +105,13 @@ export default function TrackOrder() {
         {mpStatus === 'falhou' && (
           <div style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '16px', padding: '20px 24px', marginBottom: '24px' }}>
             <p style={{ margin: 0, fontWeight: 700, color: '#fca5a5' }}>❌ Pagamento não aprovado.</p>
-            <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>Tente novamente ou pague via PIX pelo WhatsApp: <a href="https://wa.me/558421408212" style={{ color: '#4ade80' }}>clique aqui</a>.</p>
+            <p style={{ margin: '6px 0 14px', fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>Não se preocupe — seu pedido foi salvo. Clique abaixo para tentar novamente com outro método de pagamento.</p>
+            {urlParams.pedido && (
+              <button onClick={handleRetryPayment} disabled={retryLoading}
+                style={{ background: retryLoading ? '#475569' : '#009ee3', color: 'white', border: 'none', borderRadius: '10px', padding: '12px 24px', fontWeight: 700, fontSize: '14px', cursor: retryLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                {retryLoading ? '⟳ Gerando link...' : '💳 Tentar pagamento novamente'}
+              </button>
+            )}
           </div>
         )}
         {mpStatus === 'pendente' && (

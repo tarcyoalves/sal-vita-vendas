@@ -1,5 +1,30 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
+/* ─── Social proof data ──────────────────────────────────── */
+const SP_NAMES = ['Ana','Maria','João','Carlos','Pedro','Fernanda','Juliana','Roberto','Marcos','Patrícia','Rafael','Camila','Lucas','Beatriz','Thiago','Larissa','Diego','Natália','Bruno','Isabela'];
+const SP_CITIES = ['Mossoró/RN','Natal/RN','Fortaleza/CE','Recife/PE','João Pessoa/PB','Campina Grande/PB','Maceió/AL','Aracaju/SE','Salvador/BA','Teresina/PI','São Luís/MA','Caicó/RN','Pau dos Ferros/RN','Parnamirim/RN','Caucaia/CE'];
+const SP_QTYS = ['1 embalagem de 1kg','2 embalagens de 1kg','1 embalagem de 10kg','3 embalagens de 1kg'];
+function randEl<T>(arr: T[]): T { return arr[Math.floor(Math.random()*arr.length)]; }
+
+function useSocialProof() {
+  const [toast, setToast] = useState<{name:string;city:string;qty:string;visible:boolean}|null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout>|null>(null);
+  useEffect(() => {
+    function show() {
+      setToast({ name:randEl(SP_NAMES), city:randEl(SP_CITIES), qty:randEl(SP_QTYS), visible:true });
+      timerRef.current = setTimeout(()=>setToast(t=>t?{...t,visible:false}:null), 4500);
+      timerRef.current = setTimeout(()=>{ setToast(null); schedule(); }, 5200);
+    }
+    function schedule() {
+      const delay = 12000 + Math.random()*18000; // 12–30s
+      timerRef.current = setTimeout(show, delay);
+    }
+    const initial = setTimeout(show, 5000); // first one after 5s
+    return () => { clearTimeout(initial); if(timerRef.current) clearTimeout(timerRef.current); };
+  }, []);
+  return toast;
+}
+
 /* ─── Image assets ───────────────────────────────────────── */
 const IMG = {
   produto:       'https://salvitarn.com.br/wp-content/uploads/2026/05/WhatsApp-Image-2026-05-04-at-09.02.12.jpeg',
@@ -116,6 +141,7 @@ export default function SalVitaLanding() {
     number:'',complement:'',neighborhood:'',city:'',state:'',
   });
   const obs = useRef<IntersectionObserver|null>(null);
+  const spToast = useSocialProof();
 
   useEffect(()=>{
     const h=()=>{ setScrolled(window.scrollY>50); };
@@ -279,6 +305,27 @@ export default function SalVitaLanding() {
 
   return (
     <>
+      {/* ── Social proof toast ── */}
+      {spToast && (
+        <div style={{
+          position:'fixed',bottom:80,left:20,zIndex:99999,
+          background:'white',borderRadius:14,padding:'12px 16px',
+          boxShadow:'0 8px 32px rgba(0,0,0,.18)',
+          display:'flex',alignItems:'center',gap:12,
+          maxWidth:300,
+          transition:'all .4s cubic-bezier(.34,1.56,.64,1)',
+          transform:spToast.visible?'translateY(0) scale(1)':'translateY(20px) scale(.95)',
+          opacity:spToast.visible?1:0,
+          border:'1px solid rgba(11,29,58,.08)',
+        }}>
+          <div style={{width:40,height:40,borderRadius:10,background:'linear-gradient(135deg,#0b1d3a,#1a3a6b)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:'1.2rem'}}>🧂</div>
+          <div>
+            <p style={{margin:0,fontWeight:700,fontSize:'.82rem',color:'#0b1d3a'}}>{spToast.name} de {spToast.city}</p>
+            <p style={{margin:'2px 0 0',fontSize:'.76rem',color:'#64748b'}}>comprou {spToast.qty} agora</p>
+            <p style={{margin:'2px 0 0',fontSize:'.7rem',color:'#94a3b8'}}>há poucos minutos · ✅ Compra confirmada</p>
+          </div>
+        </div>
+      )}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Great+Vibes&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600;1,700&family=Outfit:wght@300;400;500;600;700&display=swap');
 
@@ -774,6 +821,33 @@ export default function SalVitaLanding() {
                 <span style={{color:'var(--muted)',fontSize:'.82rem'}}>{label}</span>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* ══════ GARANTIA ══════ */}
+        <div style={{background:'#f0fdf4',borderTop:'1px solid #bbf7d0',borderBottom:'1px solid #bbf7d0',padding:'18px 24px'}}>
+          <div style={{maxWidth:900,margin:'0 auto',display:'flex',flexWrap:'wrap',gap:16,alignItems:'center',justifyContent:'center'}}>
+            <div style={{display:'flex',alignItems:'center',gap:12}}>
+              <div style={{width:52,height:52,borderRadius:'50%',background:'linear-gradient(135deg,#16a34a,#15803d)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="white"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+              </div>
+              <div>
+                <p style={{margin:0,fontWeight:800,fontSize:'1rem',color:'#15803d'}}>Garantia de Satisfação — 7 dias</p>
+                <p style={{margin:'2px 0 0',fontSize:'.84rem',color:'#166534'}}>Não gostou? Devolvemos 100% do seu dinheiro sem perguntas.</p>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:20,flexWrap:'wrap',justifyContent:'center'}}>
+              {[
+                {icon:'🔒',text:'Pagamento 100% seguro'},
+                {icon:'📦',text:'Envio com rastreamento'},
+                {icon:'🧾',text:'Nota fiscal emitida'},
+                {icon:'📱',text:'Suporte via WhatsApp'},
+              ].map(({icon,text})=>(
+                <div key={text} style={{display:'flex',alignItems:'center',gap:6,fontSize:'.82rem',color:'#166534',fontWeight:500}}>
+                  <span>{icon}</span><span>{text}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -1288,13 +1362,11 @@ export default function SalVitaLanding() {
                   : <>💳 Pagar com Mercado Pago</>}
               </button>
 
-              {/* payment methods */}
-              <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,marginTop:12,flexWrap:'wrap'}}>
-                {['VISA','MASTER','PIX','BOLETO','ELO','AMEX'].map(b=>(
-                  <span key={b} style={{background:'#f1f5f9',border:'1px solid #cbd5e1',borderRadius:4,padding:'2px 7px',fontSize:'.68rem',fontWeight:700,color:'#475569',letterSpacing:'.04em'}}>{b}</span>
-                ))}
+              {/* payment methods — purely informational */}
+              <div style={{textAlign:'center',marginTop:10}}>
+                <p style={{fontSize:'.75rem',color:'#94a3b8',margin:'0 0 4px'}}>Pagamento processado com segurança pelo Mercado Pago</p>
+                <p style={{fontSize:'.75rem',color:'#64748b',margin:0}}>💳 Cartão de crédito/débito · PIX · Boleto · Parcelamento 3×</p>
               </div>
-              <p style={{textAlign:'center',fontSize:'.78rem',color:'var(--muted)',marginTop:6}}>Parcelamento em até 3× sem juros</p>
 
               {/* trust badges */}
               <div style={{display:'flex',justifyContent:'center',gap:20,marginTop:14,paddingTop:14,borderTop:'1px solid #f1f5f9'}}>
