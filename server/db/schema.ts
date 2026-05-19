@@ -134,7 +134,7 @@ export const siteOrders = pgTable('site_orders', {
 export const abandonedCarts = pgTable('abandoned_carts', {
   id: serial('id').primaryKey(),
   customerName: text('customer_name').notNull(),
-  customerPhone: text('customer_phone').notNull(),
+  customerPhone: text('customer_phone').notNull().unique(),
   customerEmail: text('customer_email'),
   postalCode: text('postal_code'),
   quantity: integer('quantity').default(1),

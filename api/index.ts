@@ -18,8 +18,10 @@ const app = express();
 // Vercel sits behind a proxy — trust first hop so rate limiters see real client IPs
 app.set('trust proxy', 1);
 
-ensureTablesExist();
-ensureOrdersTablesExist();
+const dbReady = Promise.all([
+  ensureTablesExist().catch(err => console.error('DB init error:', err)),
+  ensureOrdersTablesExist().catch(err => console.error('Orders DB init error:', err)),
+]);
 
 // ── Allowed origins ────────────────────────────────────────────────────────────
 const PROD_ORIGINS = [
@@ -66,6 +68,12 @@ app.use(cors({
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
 }));
+
+// Wait for DB tables to be ready before processing any request
+app.use(async (_req, _res, next) => {
+  await dbReady;
+  next();
+});
 
 // Raw body must be captured before express.json() for HMAC verification
 app.post('/api/mp-webhook', express.raw({ type: 'application/json' }), async (req, res) => {

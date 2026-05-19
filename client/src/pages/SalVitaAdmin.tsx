@@ -390,17 +390,18 @@ function OrdersPanel() {
   const [, setLocation] = useLocation();
   const [filter, setFilter] = useState<FilterTab>('all');
   const [showAi, setShowAi] = useState(false);
-  const prevCount = useRef(0);
-  const { data: orders = [], isLoading, refetch } = trpc.shipping.listOrders.useQuery(undefined, { refetchInterval: 30000 });
+  const prevMaxId = useRef(0);
+  const { data: orders = [], isLoading, refetch } = trpc.shipping.listOrders.useQuery(undefined, { refetchInterval: 30000, refetchIntervalInBackground: false });
   const logoutMut = trpc.auth.logout.useMutation();
 
   // New order notification
   useEffect(() => {
-    if (prevCount.current > 0 && orders.length > prevCount.current) {
+    const currentMaxId = orders.length > 0 ? Math.max(...orders.map(o => o.id)) : 0;
+    if (prevMaxId.current > 0 && currentMaxId > prevMaxId.current) {
       toast('🛍️ Novo pedido recebido!', { duration: 5000 });
     }
-    prevCount.current = orders.length;
-  }, [orders.length]);
+    prevMaxId.current = currentMaxId;
+  }, [orders]);
 
   const handleLogout = async () => {
     await logoutMut.mutateAsync();

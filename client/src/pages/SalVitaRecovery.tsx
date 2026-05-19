@@ -155,7 +155,7 @@ function AbandonedTab() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontWeight: 800, fontSize: '1rem', color: '#0b1d3a' }}>{row.customerName || 'Cliente sem nome'}</span>
                 <span style={{ background: '#fef3c7', color: '#92400e', borderRadius: 999, padding: '2px 9px', fontSize: '.72rem', fontWeight: 700 }}>
-                  {stepLabel(row.step ?? 1)}
+                  {stepLabel(row.stepReached ?? 1)}
                 </span>
               </div>
               {row.customerPhone && <p style={{ margin: '3px 0 0', fontSize: '.82rem', color: '#64748b' }}>📱 {row.customerPhone}</p>}
@@ -237,7 +237,7 @@ function UnpaidTab() {
                 <p style={{ margin: '4px 0 0', fontSize: '.85rem', color: '#334155' }}>
                   🧂 Sal Marinho Integral 1kg × {row.quantity ?? 1} unidade{(row.quantity ?? 1) !== 1 ? 's' : ''}
                 </p>
-                <p style={{ margin: '4px 0 0', fontSize: '.9rem', fontWeight: 700, color: '#0C3680' }}>{fmt(row.totalAmount)}</p>
+                <p style={{ margin: '4px 0 0', fontSize: '.9rem', fontWeight: 700, color: '#0C3680' }}>{fmt(row.totalPrice)}</p>
                 <p style={{ margin: '4px 0 0', fontSize: '.78rem', color: '#94a3b8' }}>{timeAgo(row.createdAt)}</p>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -440,11 +440,12 @@ function AiTab() {
   const unpaid = unpaidQ.data ?? [];
 
   const totalAtRisk = [
-    ...unpaid.map((o: any) => parseFloat(o.totalAmount ?? '0') || 0),
+    ...unpaid.map((o: any) => parseFloat(o.totalPrice ?? '0') || 0),
   ].reduce((a: number, b: number) => a + b, 0);
 
-  const totalOrders = abandoned.length + unpaid.length;
-  const conversionRate = totalOrders > 0 ? ((unpaid.filter((o: any) => o.paymentStatus === 'confirmed').length / totalOrders) * 100).toFixed(1) : '0.0';
+  const conversionRate = aiMut.data?.stats?.conversionRate != null
+    ? String(aiMut.data.stats.conversionRate)
+    : '0.0';
 
   return (
     <div>
@@ -468,7 +469,7 @@ function AiTab() {
       </div>
 
       <button
-        onClick={() => aiMut.mutate({ abandonedCount: abandoned.length, unpaidCount: unpaid.length, revenueAtRisk: totalAtRisk })}
+        onClick={() => aiMut.mutate({ abandonedCount: abandoned.length, unpaidCount: unpaid.length, revenueAtRisk: aiMut.data?.stats?.revenueAtRisk ?? totalAtRisk })}
         disabled={aiMut.isPending}
         style={{ ...btnPrimary, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, padding: '11px 20px', fontSize: '.9rem', opacity: aiMut.isPending ? .7 : 1 }}
       >
@@ -505,6 +506,7 @@ type Tab = 'abandoned' | 'unpaid' | 'coupons' | 'ai';
 export default function SalVitaRecovery() {
   const [tab, setTab] = useState<Tab>('abandoned');
   const meQuery = trpc.auth.me.useQuery(undefined, { retry: false });
+  const logoutMut = trpc.auth.logout.useMutation();
 
   if (meQuery.isLoading) {
     return (
@@ -545,7 +547,7 @@ export default function SalVitaRecovery() {
             ← Pedidos
           </button>
           <button
-            onClick={() => { localStorage.removeItem('sal_vita_admin_token'); window.location.href = '/sal-vita-admin'; }}
+            onClick={async () => { await logoutMut.mutateAsync(); window.location.href = '/sal-vita-admin'; }}
             style={{ padding: '8px 14px', background: 'rgba(255,255,255,.1)', color: 'white', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, fontSize: '.82rem', cursor: 'pointer' }}
           >
             Sair
