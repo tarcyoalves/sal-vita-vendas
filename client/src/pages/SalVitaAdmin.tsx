@@ -24,7 +24,7 @@ const PAY_COLOR: Record<string, string> = {
   failed: 'bg-red-100 text-red-800',
 };
 
-type FilterTab = 'all' | 'awaiting' | 'confirmed' | 'shipped';
+type FilterTab = 'all' | 'awaiting' | 'confirmed' | 'toship' | 'shipped';
 
 function LoginForm() {
   const [email, setEmail] = useState('');
@@ -113,7 +113,8 @@ function OrdersPanel() {
 
   const filtered = orders.filter(o => {
     if (filter === 'awaiting') return o.paymentStatus === 'awaiting' && o.status !== 'cancelled';
-    if (filter === 'confirmed') return o.paymentStatus === 'confirmed' && !['shipped','delivered','cancelled'].includes(o.status);
+    if (filter === 'confirmed') return o.paymentStatus === 'confirmed' && !['label_generated','shipped','delivered','cancelled'].includes(o.status);
+    if (filter === 'toship') return o.status === 'label_generated' && o.paymentStatus === 'confirmed';
     if (filter === 'shipped') return ['shipped','delivered'].includes(o.status);
     return true;
   });
@@ -121,15 +122,17 @@ function OrdersPanel() {
   const stats = {
     total: orders.length,
     awaiting: orders.filter(o => o.paymentStatus === 'awaiting' && o.status !== 'cancelled').length,
+    toship: orders.filter(o => o.status === 'label_generated' && o.paymentStatus === 'confirmed').length,
     labels: orders.filter(o => !!o.meLabelUrl).length,
     revenue: orders.filter(o => o.paymentStatus === 'confirmed').reduce((s, o) => s + parseFloat(o.totalPrice ?? '0'), 0),
   };
 
-  const tabs: { key: FilterTab; label: string; count: number }[] = [
+  const tabs: { key: FilterTab; label: string; count: number; urgent?: boolean }[] = [
     { key: 'all', label: 'Todos', count: orders.length },
-    { key: 'awaiting', label: 'Aguardando Pgto', count: stats.awaiting },
-    { key: 'confirmed', label: 'Pgto Confirmado', count: orders.filter(o => o.paymentStatus === 'confirmed' && !['shipped','delivered','cancelled'].includes(o.status)).length },
-    { key: 'shipped', label: 'Enviados', count: orders.filter(o => ['shipped','delivered'].includes(o.status)).length },
+    { key: 'awaiting', label: '⏳ Aguard. Pgto', count: stats.awaiting },
+    { key: 'confirmed', label: '✅ Pago — Gerar Etiqueta', count: orders.filter(o => o.paymentStatus === 'confirmed' && !['label_generated','shipped','delivered','cancelled'].includes(o.status)).length },
+    { key: 'toship', label: '📦 Pendentes de Envio', count: stats.toship, urgent: stats.toship > 0 },
+    { key: 'shipped', label: '🚚 Enviados', count: orders.filter(o => ['shipped','delivered'].includes(o.status)).length },
   ];
 
   return (
@@ -172,10 +175,10 @@ function OrdersPanel() {
           {[
             { label: 'Total Pedidos', value: stats.total, color: 'blue' },
             { label: 'Aguard. Pagamento', value: stats.awaiting, color: 'yellow' },
-            { label: 'Etiquetas Geradas', value: stats.labels, color: 'green' },
+            { label: 'Pendentes de Envio', value: stats.toship, color: stats.toship > 0 ? 'orange' : 'gray' },
             { label: 'Receita Confirmada', value: `R$ ${stats.revenue.toFixed(2).replace('.',',')}`, color: 'emerald' },
           ].map(s => (
-            <div key={s.label} className="bg-white rounded-xl border p-4">
+            <div key={s.label} className={`bg-white rounded-xl border p-4 ${s.label === 'Pendentes de Envio' && stats.toship > 0 ? 'border-orange-300 bg-orange-50' : ''}`}>
               <p className="text-xs text-gray-500">{s.label}</p>
               <p className={`text-xl font-bold mt-1 text-${s.color}-600`}>{s.value}</p>
             </div>
@@ -222,8 +225,10 @@ function OrdersPanel() {
                     <p className="text-xs text-gray-500">{order.quantity}x 1kg · Frete {order.shippingServiceName ?? '—'}: R$ {parseFloat(order.shippingPrice ?? '0').toFixed(2).replace('.',',')}</p>
                   </div>
                 </div>
-                <div className="text-sm text-gray-500 border-t pt-2">
-                  {order.address}, {order.number}{order.complement ? ` (${order.complement})` : ''} — {order.neighborhood}
+                <div className="text-sm text-gray-500 border-t pt-2 flex flex-wrap gap-x-4 gap-y-1">
+                  <span>📍 {order.address}, {order.number}{order.complement ? ` (${order.complement})` : ''} — {order.neighborhood}, {order.city}/{order.state} · CEP {order.postalCode}</span>
+                  {(order as any).customerCpf && <span>🪪 CPF: {(order as any).customerCpf}</span>}
+                  {order.customerEmail && <span>✉️ {order.customerEmail}</span>}
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   {order.paymentStatus === 'awaiting' && order.status !== 'cancelled' && (
@@ -259,6 +264,20 @@ function OrdersPanel() {
                       <X size={14}/>Cancelar
                     </button>
                   )}
+                  {order.status === 'label_generated' && order.paymentStatus === 'confirmed' && (
+                    <button onClick={() => updateMut.mutate({ id: order.id, status: 'shipped' })}
+                      disabled={updateMut.isPending}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition disabled:opacity-50">
+                      🚚 Marcar como Enviado
+                    </button>
+                  )}
+                  {order.status === 'shipped' && (
+                    <button onClick={() => updateMut.mutate({ id: order.id, status: 'delivered' })}
+                      disabled={updateMut.isPending}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition disabled:opacity-50">
+                      🎉 Marcar como Entregue
+                    </button>
+                  )}
                   {order.meOrderId && <span className="flex items-center gap-1 text-xs text-gray-400 px-2 py-1.5">ME: {order.meOrderId}</span>}
                   {order.trackingCode && (
                     <a
@@ -292,12 +311,17 @@ function OrdersPanel() {
                     <button
                       onClick={() => {
                         const code = trackingInputs[order.id]?.trim();
-                        if (code) updateTrackingMut.mutate({ id: order.id, trackingCode: code });
+                        if (code) {
+                          updateTrackingMut.mutate({ id: order.id, trackingCode: code });
+                          if (order.status === 'label_generated') {
+                            updateMut.mutate({ id: order.id, status: 'shipped' });
+                          }
+                        }
                       }}
                       disabled={!trackingInputs[order.id]?.trim()}
                       className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition disabled:opacity-40"
                     >
-                      Salvar Rastreio
+                      💾 Salvar & Marcar Enviado
                     </button>
                   </div>
                 )}
