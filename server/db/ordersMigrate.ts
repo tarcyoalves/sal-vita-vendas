@@ -64,6 +64,7 @@ export async function ensureOrdersTablesExist() {
     `;
     await sql`CREATE INDEX IF NOT EXISTS abandoned_carts_phone_idx ON abandoned_carts(customer_phone)`;
     await sql`CREATE INDEX IF NOT EXISTS abandoned_carts_recovered_idx ON abandoned_carts(recovered)`;
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS abandoned_carts_phone_unique ON abandoned_carts(customer_phone)`;
 
     await sql`
       CREATE TABLE IF NOT EXISTS coupons (

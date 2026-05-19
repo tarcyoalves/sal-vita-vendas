@@ -166,6 +166,7 @@ export const shippingRouter = router({
         couponCode: appliedCoupon,
         couponDiscount: couponDiscount > 0 ? String(couponDiscount) : null,
       }).returning();
+      if (!order?.id) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Erro ao criar pedido. Tente novamente.' });
       return { id: order.id, total, couponDiscount, couponApplied: appliedCoupon };
     }),
 
@@ -193,7 +194,10 @@ export const shippingRouter = router({
       const paid = orders.filter(o => o.paymentStatus === 'confirmed');
       const revenue = paid.reduce((s, o) => s + parseFloat(o.totalPrice ?? '0'), 0);
       const cityCount: Record<string, number> = {};
-      orders.forEach(o => { cityCount[`${o.city}/${o.state}`] = (cityCount[`${o.city}/${o.state}`] ?? 0) + 1; });
+      orders.forEach(o => {
+        if (!o.city || !o.state) return;
+        cityCount[`${o.city}/${o.state}`] = (cityCount[`${o.city}/${o.state}`] ?? 0) + 1;
+      });
       const topCities = Object.entries(cityCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
       const now = new Date();
       const last7 = orders.filter(o => (now.getTime()-new Date(o.createdAt).getTime()) < 7*86400000);
@@ -407,7 +411,11 @@ Seja direto e use emojis para facilitar leitura.`;
         'Accept': 'application/json',
       };
 
-      const serviceId = order.shippingServiceId ? parseInt(order.shippingServiceId) : 1;
+      const serviceIdNum = order.shippingServiceId ? parseInt(order.shippingServiceId, 10) : NaN;
+      if (isNaN(serviceIdNum)) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: `ID de serviço de frete inválido: "${order.shippingServiceId}". Edite o pedido e selecione um serviço válido.` });
+      }
+      const serviceId = serviceIdNum;
       const weight = +(Math.max(1.2, order.quantity * 1.05)).toFixed(2);
 
       const cartBody = {
@@ -459,12 +467,24 @@ Seja direto e use emojis para facilitar leitura.`;
       const cartData = await cartRes.json();
       const meOrderId: string = cartData.id;
 
-      const checkRes = await fetch(`${ME_BASE}/api/v2/me/shipment/checkout`, {
-        method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }),
-      });
-      if (!checkRes.ok) {
-        const txt = await checkRes.text();
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro checkout ME: ${txt}` });
+      let checkRes: Response;
+      try {
+        checkRes = await fetch(`${ME_BASE}/api/v2/me/shipment/checkout`, {
+          method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }),
+        });
+        if (!checkRes.ok) {
+          const txt = await checkRes.text();
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro checkout ME: ${txt}` });
+        }
+      } catch (err) {
+        // Attempt to cancel the dangling ME cart order (best-effort)
+        try {
+          await fetch(`${ME_BASE}/api/v2/me/cart/${meOrderId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'SalVita/1.0 (contato@salvitarn.com.br)' },
+          });
+        } catch {} // best-effort cancel
+        throw err; // re-throw original error
       }
 
       const genRes = await fetch(`${ME_BASE}/api/v2/me/shipment/generate`, {
