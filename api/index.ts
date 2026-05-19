@@ -130,8 +130,10 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => {
     const body = req.body as Record<string, unknown>;
-    return (typeof body?.email === 'string' ? body.email : '') || req.ip || 'unknown';
+    const key = (typeof body?.email === 'string' ? body.email.trim() : '') || req.ip || 'unknown';
+    return key || 'unknown';
   },
+  validate: { xForwardedForHeader: false },
 });
 
 const storeLimiter = rateLimit({
