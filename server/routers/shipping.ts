@@ -143,6 +143,58 @@ export const shippingRouter = router({
       return db.select().from(siteOrders).orderBy(desc(siteOrders.createdAt));
     }),
 
+  analyzeOrders: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      const apiKey = process.env.GROQ_API_KEY;
+      if (!apiKey) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'GROQ_API_KEY não configurado' });
+
+      const orders = await db.select().from(siteOrders).orderBy(desc(siteOrders.createdAt));
+
+      const paid = orders.filter(o => o.paymentStatus === 'confirmed');
+      const revenue = paid.reduce((s, o) => s + parseFloat(o.totalPrice ?? '0'), 0);
+      const cityCount: Record<string, number> = {};
+      orders.forEach(o => { cityCount[`${o.city}/${o.state}`] = (cityCount[`${o.city}/${o.state}`] ?? 0) + 1; });
+      const topCities = Object.entries(cityCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
+      const now = new Date();
+      const last7 = orders.filter(o => (now.getTime()-new Date(o.createdAt).getTime()) < 7*86400000);
+      const statusCounts = orders.reduce((acc, o) => { acc[o.status] = (acc[o.status]??0)+1; return acc; }, {} as Record<string,number>);
+      const paymentCounts = orders.reduce((acc, o) => { acc[o.paymentStatus] = (acc[o.paymentStatus]??0)+1; return acc; }, {} as Record<string,number>);
+
+      const prompt = `Você é analista de e-commerce. Analise estes dados de pedidos da Sal Vita (sal marinho premium de Mossoró/RN) e responda em português brasileiro com insights concisos e acionáveis.
+
+Dados:
+- Total de pedidos: ${orders.length}
+- Pedidos últimos 7 dias: ${last7.length}
+- Receita confirmada: R$ ${revenue.toFixed(2)}
+- Status dos pedidos: ${JSON.stringify(statusCounts)}
+- Pagamentos: ${JSON.stringify(paymentCounts)}
+- Top cidades: ${topCities.map(([c,n])=>`${c}(${n})`).join(', ')}
+- Ticket médio: R$ ${orders.length ? (revenue/Math.max(paid.length,1)).toFixed(2) : '0'}
+
+Forneça:
+1. 📊 Resumo executivo (2 frases)
+2. 🔍 3 insights importantes
+3. ⚠️ Alertas e riscos (se houver)
+4. 💡 2 recomendações concretas para aumentar vendas
+
+Seja direto e use emojis para facilitar leitura.`;
+
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], max_tokens: 600, temperature: 0.7 }),
+      });
+      if (!res.ok) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Erro ao chamar Groq' });
+      const data = await res.json() as { choices: { message: { content: string } }[] };
+      const insights = data.choices?.[0]?.message?.content ?? 'Sem resposta';
+
+      return {
+        insights,
+        summary: { total: orders.length, revenue, paid: paid.length, pending: paymentCounts['awaiting']??0, last7: last7.length, topCities, ticketMedio: paid.length ? revenue/paid.length : 0 },
+      };
+    }),
+
   updateStatus: protectedProcedure
     .input(z.object({
       id: z.number(),
