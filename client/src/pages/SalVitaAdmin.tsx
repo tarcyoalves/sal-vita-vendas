@@ -100,6 +100,9 @@ function KpiCard({ icon, label, value, sub, accent, urgent }: { icon:string; lab
   );
 }
 
+const inputStyle: React.CSSProperties = { width:'100%', boxSizing:'border-box', padding:'9px 12px', border:'1.5px solid #e2e8f0', borderRadius:9, fontSize:'.88rem', outline:'none', fontFamily:'inherit' };
+const labelStyle: React.CSSProperties = { display:'block', fontSize:'.72rem', fontWeight:700, color:'#64748b', marginBottom:4, textTransform:'uppercase', letterSpacing:'.05em' };
+
 /* ── Edit Modal ───────────────────────────────────────────── */
 function EditModal({ order, onClose, onSaved }: { order: any; onClose: ()=>void; onSaved: ()=>void }) {
   const [form, setForm] = useState({
@@ -116,17 +119,12 @@ function EditModal({ order, onClose, onSaved }: { order: any; onClose: ()=>void;
     postalCode: order.postalCode ?? '',
     notes: order.notes ?? '',
   });
+  const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setForm(f => ({ ...f, [field]: e.target.value }));
   const updateMut = trpc.shipping.updateOrder.useMutation({
     onSuccess: () => { toast.success('Pedido atualizado!'); onSaved(); onClose(); },
     onError: (e) => toast.error(e.message),
   });
-  const F = ({ label, field, placeholder, half }: { label:string; field:keyof typeof form; placeholder?:string; half?:boolean }) => (
-    <div style={{ gridColumn: half ? undefined : '1/-1' }}>
-      <label style={{ display:'block', fontSize:'.72rem', fontWeight:700, color:'#64748b', marginBottom:4, textTransform:'uppercase', letterSpacing:'.05em' }}>{label}</label>
-      <input value={form[field]} onChange={e=>setForm(f=>({...f,[field]:e.target.value}))} placeholder={placeholder}
-        style={{ width:'100%', boxSizing:'border-box', padding:'9px 12px', border:'1.5px solid #e2e8f0', borderRadius:9, fontSize:'.88rem', outline:'none' }}/>
-    </div>
-  );
   return (
     <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
       <div style={{ background:'white', borderRadius:20, padding:24, width:'100%', maxWidth:520, maxHeight:'90vh', overflowY:'auto', boxShadow:'0 25px 60px rgba(0,0,0,.3)' }}>
@@ -135,23 +133,59 @@ function EditModal({ order, onClose, onSaved }: { order: any; onClose: ()=>void;
           <button onClick={onClose} style={{ background:'#f1f5f9', border:'none', borderRadius:8, width:32, height:32, cursor:'pointer', fontSize:'1.1rem', color:'#64748b' }}>×</button>
         </div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-          <F label="Nome completo" field="customerName"/>
-          <F label="Telefone" field="customerPhone" placeholder="(84) 99999-9999" half/>
-          <F label="CPF" field="customerCpf" placeholder="00000000000" half/>
-          <F label="E-mail" field="customerEmail" placeholder="cliente@email.com"/>
-          <F label="CEP" field="postalCode" placeholder="59000000" half/>
-          <F label="Estado (UF)" field="state" placeholder="RN" half/>
-          <F label="Cidade" field="city" half/>
-          <F label="Bairro" field="neighborhood" half/>
-          <F label="Endereço" field="address"/>
-          <F label="Número" field="number" placeholder="123" half/>
-          <F label="Complemento" field="complement" placeholder="Casa, Apto..." half/>
-          <F label="Observações internas" field="notes"/>
+          <div style={{ gridColumn:'1/-1' }}>
+            <label style={labelStyle}>Nome completo</label>
+            <input value={form.customerName} onChange={set('customerName')} style={inputStyle}/>
+          </div>
+          <div>
+            <label style={labelStyle}>Telefone</label>
+            <input value={form.customerPhone} onChange={set('customerPhone')} placeholder="(84) 99999-9999" style={inputStyle}/>
+          </div>
+          <div>
+            <label style={labelStyle}>CPF</label>
+            <input value={form.customerCpf} onChange={set('customerCpf')} placeholder="000.000.000-00" style={inputStyle}/>
+          </div>
+          <div style={{ gridColumn:'1/-1' }}>
+            <label style={labelStyle}>E-mail</label>
+            <input value={form.customerEmail} onChange={set('customerEmail')} placeholder="cliente@email.com" style={inputStyle}/>
+          </div>
+          <div>
+            <label style={labelStyle}>CEP</label>
+            <input value={form.postalCode} onChange={set('postalCode')} placeholder="59000000" style={inputStyle}/>
+          </div>
+          <div>
+            <label style={labelStyle}>Estado (UF)</label>
+            <input value={form.state} onChange={set('state')} placeholder="RN" maxLength={2} style={inputStyle}/>
+          </div>
+          <div>
+            <label style={labelStyle}>Cidade</label>
+            <input value={form.city} onChange={set('city')} style={inputStyle}/>
+          </div>
+          <div>
+            <label style={labelStyle}>Bairro</label>
+            <input value={form.neighborhood} onChange={set('neighborhood')} style={inputStyle}/>
+          </div>
+          <div style={{ gridColumn:'1/-1' }}>
+            <label style={labelStyle}>Endereço</label>
+            <input value={form.address} onChange={set('address')} style={inputStyle}/>
+          </div>
+          <div>
+            <label style={labelStyle}>Número</label>
+            <input value={form.number} onChange={set('number')} placeholder="123" style={inputStyle}/>
+          </div>
+          <div>
+            <label style={labelStyle}>Complemento</label>
+            <input value={form.complement} onChange={set('complement')} placeholder="Casa, Apto..." style={inputStyle}/>
+          </div>
+          <div style={{ gridColumn:'1/-1' }}>
+            <label style={labelStyle}>Observações internas</label>
+            <input value={form.notes} onChange={set('notes')} style={inputStyle}/>
+          </div>
         </div>
         <div style={{ display:'flex', gap:10, marginTop:20 }}>
           <button onClick={onClose} style={{ flex:1, padding:'11px', background:'#f1f5f9', border:'none', borderRadius:12, fontWeight:600, cursor:'pointer', color:'#64748b' }}>Cancelar</button>
           <button onClick={()=>updateMut.mutate({ id:order.id, ...form })} disabled={updateMut.isPending}
-            style={{ flex:2, padding:'11px', background:'#0b1d3a', color:'white', border:'none', borderRadius:12, fontWeight:700, cursor:'pointer', opacity:updateMut.isPending?.7:1 }}>
+            style={{ flex:2, padding:'11px', background:'#0b1d3a', color:'white', border:'none', borderRadius:12, fontWeight:700, cursor:'pointer', opacity:updateMut.isPending?0.7:1 }}>
             {updateMut.isPending ? 'Salvando...' : '💾 Salvar alterações'}
           </button>
         </div>
