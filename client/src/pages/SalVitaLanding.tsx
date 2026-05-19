@@ -109,6 +109,8 @@ export default function SalVitaLanding() {
   const [checkoutLoading,setCheckoutLoading] = useState(false);
   const [orderDone,setOrderDone]           = useState<{id:number;total:number}|null>(null);
   const [mpLoading,setMpLoading]           = useState(false);
+  const [payTimer,setPayTimer]             = useState(900); // 15 min countdown
+  const payTimerRef = useRef<ReturnType<typeof setInterval>|null>(null);
   const [checkoutForm,setCheckoutForm]     = useState({
     customerName:'',customerPhone:'',postalCode:'',address:'',
     number:'',complement:'',neighborhood:'',city:'',state:'',
@@ -144,7 +146,17 @@ export default function SalVitaLanding() {
     setCheckoutForm({customerName:'',customerPhone:'',postalCode:'',address:'',number:'',complement:'',neighborhood:'',city:'',state:''});
     document.body.style.overflow='hidden';
   },[]);
-  const closeBuy=useCallback(()=>{ setShowModal(false); setShowCheckout(false); setOrderDone(null); document.body.style.overflow=''; },[]);
+  const closeBuy=useCallback(()=>{ setShowModal(false); setShowCheckout(false); setOrderDone(null); document.body.style.overflow=''; if(payTimerRef.current) clearInterval(payTimerRef.current); },[]);
+
+  useEffect(()=>{
+    if(orderDone){
+      setPayTimer(900);
+      payTimerRef.current = setInterval(()=>setPayTimer(t=>t>0?t-1:0),1000);
+    } else {
+      if(payTimerRef.current) clearInterval(payTimerRef.current);
+    }
+    return ()=>{ if(payTimerRef.current) clearInterval(payTimerRef.current); };
+  },[orderDone]);
 
   const lookupCep=async()=>{
     const c=cep.replace(/\D/g,'');
@@ -299,6 +311,7 @@ export default function SalVitaLanding() {
 
         /* ── marquee ── */
         @keyframes mq {from{transform:translateX(0)} to{transform:translateX(-50%)}}
+        @keyframes spin {from{transform:rotate(0deg)} to{transform:rotate(360deg)}}
         .mq-inner{animation:mq 32s linear infinite;display:flex;width:max-content;}
         .mq-inner:hover{animation-play-state:paused;}
 
@@ -1227,34 +1240,91 @@ export default function SalVitaLanding() {
 
       {/* ══════ MODAL ══════ */}
       {/* ══════ CHECKOUT OVERLAY ══════ */}
-      {showCheckout&&showModal&&selProd&&selShip&&orderDone&&(
+      {showCheckout&&showModal&&selProd&&selShip&&orderDone&&(()=>{
+        const mm=String(Math.floor(payTimer/60)).padStart(2,'0');
+        const ss=String(payTimer%60).padStart(2,'0');
+        return(
         <div className="mo" style={{zIndex:10000}} onClick={e=>e.target===e.currentTarget&&closeBuy()}>
-          <div className="mb" style={{maxWidth:480}}>
-            <div className="mb-drag"/>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20}}>
-              <div>
-                <p style={{fontSize:'.84rem',fontWeight:700,letterSpacing:'.16em',color:'#16a34a',textTransform:'uppercase',marginBottom:4}}>✅ Pedido #{orderDone.id} registrado!</p>
-                <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.4rem',fontWeight:700,color:'var(--text)'}}>Como você quer pagar?</h3>
-                <p style={{color:'var(--muted)',fontSize:'.9rem',marginTop:2}}>Total: <strong>R$ {orderDone.total.toFixed(2)}</strong></p>
-              </div>
-              <button onClick={closeBuy} style={{background:'var(--sky)',border:'none',borderRadius:8,width:36,height:36,color:'var(--mid)',fontSize:'1.3rem',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>×</button>
+          <div className="mb" style={{maxWidth:460,padding:0,overflow:'hidden'}}>
+            <div className="mb-drag" style={{margin:'0 auto',paddingTop:8}}/>
+
+            {/* urgency bar */}
+            <div style={{background:payTimer<120?'#dc2626':'#f59e0b',padding:'8px 20px',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/></svg>
+              <span style={{color:'white',fontWeight:700,fontSize:'.82rem'}}>⏳ Reserva expira em <strong>{mm}:{ss}</strong> — conclua seu pedido agora</span>
             </div>
-            <div style={{display:'flex',flexDirection:'column',gap:12}}>
+
+            <div style={{padding:'20px 24px 24px'}}>
+              {/* header */}
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16}}>
+                <div>
+                  <p style={{fontSize:'.78rem',fontWeight:700,letterSpacing:'.14em',color:'#16a34a',textTransform:'uppercase',marginBottom:2}}>✅ Pedido #{orderDone.id} confirmado!</p>
+                  <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.5rem',fontWeight:700,color:'var(--text)',margin:0}}>Finalize seu pagamento</h3>
+                </div>
+                <button onClick={closeBuy} style={{background:'var(--sky)',border:'none',borderRadius:8,width:34,height:34,color:'var(--mid)',fontSize:'1.2rem',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>×</button>
+              </div>
+
+              {/* order summary */}
+              <div style={{background:'#f8fafc',borderRadius:10,padding:'12px 14px',marginBottom:16,border:'1px solid #e2e8f0'}}>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:'.83rem',color:'var(--muted)',marginBottom:4}}>
+                  <span>{selProd.name}</span>
+                  <span>R$ {(orderDone.total - (selShip.price)).toFixed(2)}</span>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:'.83rem',color:'var(--muted)',marginBottom:8}}>
+                  <span>Frete ({selShip.service})</span>
+                  <span>R$ {selShip.price.toFixed(2)}</span>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',fontWeight:700,fontSize:'1rem',borderTop:'1px solid #e2e8f0',paddingTop:8}}>
+                  <span>Total</span>
+                  <span style={{color:'var(--brand)'}}>R$ {orderDone.total.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* CTA button */}
               <button onClick={handleMpPay} disabled={mpLoading}
-                style={{background:mpLoading?'#9bb3d0':'#009ee3',color:'white',border:'none',borderRadius:12,padding:'16px',fontSize:'1rem',fontWeight:700,cursor:mpLoading?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:10,transition:'background .2s'}}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 3C8.26 3 4 7.26 4 12.5S8.26 22 13.5 22 23 17.74 23 12.5 18.74 3 13.5 3zm0 17C9.36 20 6 16.64 6 12.5S9.36 5 13.5 5 21 8.36 21 12.5 17.64 20 13.5 20zm-1-7.5v-4a1 1 0 0 0-2 0v4a1 1 0 0 0 .55.89l3 1.5a1 1 0 0 0 .9-1.78L12.5 12.5z"/></svg>
-                {mpLoading ? 'Gerando link...' : '💳 Pagar com Mercado Pago'}
+                style={{width:'100%',background:mpLoading?'#9bb3d0':'#009ee3',color:'white',border:'none',borderRadius:12,padding:'16px',fontSize:'1.05rem',fontWeight:800,cursor:mpLoading?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:10,transition:'all .2s',boxShadow:mpLoading?'none':'0 4px 14px rgba(0,158,227,.35)',letterSpacing:'.01em'}}>
+                {mpLoading
+                  ? <><svg width="18" height="18" viewBox="0 0 24 24" fill="white" style={{animation:'spin 1s linear infinite'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Gerando link seguro...</>
+                  : <>💳 Pagar com Mercado Pago</>}
               </button>
-              <p style={{textAlign:'center',fontSize:'.8rem',color:'var(--muted)',margin:'0'}}>
-                Cartão de crédito, débito, PIX ou boleto · Parcelamento em até 3×
-              </p>
-              <p style={{textAlign:'center',fontSize:'.8rem',color:'var(--muted)',margin:'4px 0 0'}}>
-                Rastreie seu pedido: <a href={`/meu-pedido`} style={{color:'var(--brand)'}}>Pedido #{orderDone.id}</a>
+
+              {/* payment methods */}
+              <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,marginTop:12,flexWrap:'wrap'}}>
+                {['VISA','MASTER','PIX','BOLETO','ELO','AMEX'].map(b=>(
+                  <span key={b} style={{background:'#f1f5f9',border:'1px solid #cbd5e1',borderRadius:4,padding:'2px 7px',fontSize:'.68rem',fontWeight:700,color:'#475569',letterSpacing:'.04em'}}>{b}</span>
+                ))}
+              </div>
+              <p style={{textAlign:'center',fontSize:'.78rem',color:'var(--muted)',marginTop:6}}>Parcelamento em até 3× sem juros</p>
+
+              {/* trust badges */}
+              <div style={{display:'flex',justifyContent:'center',gap:20,marginTop:14,paddingTop:14,borderTop:'1px solid #f1f5f9'}}>
+                <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="#16a34a"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+                  <span style={{fontSize:'.65rem',color:'#475569',fontWeight:600,textAlign:'center'}}>Compra<br/>Segura</span>
+                </div>
+                <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="#16a34a"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM12 17c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/></svg>
+                  <span style={{fontSize:'.65rem',color:'#475569',fontWeight:600,textAlign:'center'}}>Criptografia<br/>SSL</span>
+                </div>
+                <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="#009ee3"><path d="M20 4H4c-1.11 0-2 .89-2 2v12c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>
+                  <span style={{fontSize:'.65rem',color:'#475569',fontWeight:600,textAlign:'center'}}>Mercado<br/>Pago</span>
+                </div>
+                <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="#16a34a"><path d="M20 8h-2.81c-.45-.78-1.07-1.45-1.82-1.96L17 4.41 15.59 3l-2.17 2.17C13 5.06 12.51 5 12 5c-.51 0-1 .06-1.46.17L8.41 3 7 4.41l1.62 1.63C7.88 6.55 7.26 7.22 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8zm-6 8h-4v-2h4v2zm0-4h-4v-2h4v2z"/></svg>
+                  <span style={{fontSize:'.65rem',color:'#475569',fontWeight:600,textAlign:'center'}}>Entrega<br/>Garantida</span>
+                </div>
+              </div>
+
+              {/* track link */}
+              <p style={{textAlign:'center',fontSize:'.75rem',color:'var(--muted)',marginTop:12}}>
+                Após pagar, rastreie em: <a href="/meu-pedido" style={{color:'var(--brand)',fontWeight:600}}>Pedido #{orderDone.id}</a>
               </p>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {showCheckout&&showModal&&selProd&&selShip&&!orderDone&&(
         <div className="mo" style={{zIndex:10000}} onClick={e=>e.target===e.currentTarget&&setShowCheckout(false)}>
