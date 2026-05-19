@@ -57,10 +57,7 @@ app.use(helmet({
 // ── CORS ───────────────────────────────────────────────────────────────────────
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin) {
-      if (IS_PROD) return cb(new Error('CORS: requests without Origin are not allowed in production'));
-      return cb(null, true);
-    }
+    if (!origin) return cb(null, true); // server-to-server or Vercel internal routing
     if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
     cb(new Error(`CORS: origin ${origin} not allowed`));
   },
