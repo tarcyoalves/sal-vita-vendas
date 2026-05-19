@@ -1,8 +1,10 @@
 import { neon } from '@neondatabase/serverless';
 
 export async function ensureOrdersTablesExist() {
+  const url = process.env.ORDERS_DATABASE_URL;
+  if (!url) return; // Not configured yet — skip silently
   try {
-    const sql = neon(process.env.ORDERS_DATABASE_URL!);
+    const sql = neon(url);
 
     await sql`
       CREATE TABLE IF NOT EXISTS site_orders (
