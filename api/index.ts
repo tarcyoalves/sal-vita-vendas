@@ -42,10 +42,10 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc:  ["'self'", "'unsafe-inline'"],
+      scriptSrc:  ["'self'", "'unsafe-inline'", 'https://connect.facebook.net'],
       styleSrc:   ["'self'", "'unsafe-inline'"],
       imgSrc:     ["'self'", 'data:', 'https:'],
-      connectSrc: ["'self'", 'https://api.groq.com', 'https://generativelanguage.googleapis.com'],
+      connectSrc: ["'self'", 'https://api.groq.com', 'https://generativelanguage.googleapis.com', 'https://www.facebook.com', 'https://connect.facebook.net'],
       fontSrc:    ["'self'", 'https:', 'data:'],
       objectSrc:  ["'none'"],
       frameAncestors: ["'none'"],
