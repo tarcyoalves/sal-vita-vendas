@@ -140,6 +140,9 @@ export default function SalVitaLanding() {
     customerName:'',customerPhone:'',customerEmail:'',customerCpf:'',postalCode:'',address:'',
     number:'',complement:'',neighborhood:'',city:'',state:'',
   });
+  const [couponCode,setCouponCode]         = useState('');
+  const [couponState,setCouponState]       = useState<{valid:boolean;message:string;discountValue?:number;discountType?:string}|null>(null);
+  const [couponLoading,setCouponLoading]   = useState(false);
   const obs = useRef<IntersectionObserver|null>(null);
   const spToast = useSocialProof();
 
@@ -165,11 +168,34 @@ export default function SalVitaLanding() {
 
   const v=(id:string)=>visible.has(id);
 
+  // Read ?cupom= URL param and pre-fill coupon on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const c = params.get('cupom') ?? params.get('coupon');
+    if (c) setCouponCode(c.toUpperCase().trim());
+  }, []);
+
+  // Track cart abandonment at step 1 (form started: name + phone present)
+  const cartTrackRef = useRef(false);
+  useEffect(() => {
+    const { customerName, customerPhone } = checkoutForm;
+    if (!cartTrackRef.current && customerName.length >= 3 && customerPhone.length >= 10) {
+      cartTrackRef.current = true;
+      fetch('/api/trpc/recovery.trackCart', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({json:{ customerName, customerPhone, customerEmail: checkoutForm.customerEmail||undefined, quantity:selProd?.weightKg>=10?10:1, stepReached:1 }}),
+      }).catch(()=>{});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkoutForm.customerName, checkoutForm.customerPhone]);
+
   const openBuy=useCallback((p:Product)=>{
     setSelProd(p); setShowModal(true); setMobileMenu(false);
     setCep(''); setCepData(null); setShipping([]); setSelShip(null); setCepErr(''); setShippingSource(null);
     setShowCheckout(false); setOrderDone(null);
     setCheckoutForm({customerName:'',customerPhone:'',customerEmail:'',customerCpf:'',postalCode:'',address:'',number:'',complement:'',neighborhood:'',city:'',state:''});
+    setCouponState(null); setCouponCode('');
+    cartTrackRef.current = false;
     document.body.style.overflow='hidden';
   },[]);
   const closeBuy=useCallback(()=>{ setShowModal(false); setShowCheckout(false); setOrderDone(null); document.body.style.overflow=''; if(payTimerRef.current) clearInterval(payTimerRef.current); },[]);
@@ -193,6 +219,13 @@ export default function SalVitaLanding() {
       if(d.erro){setCepErr('CEP não encontrado.');setLoadingCep(false);return;}
       setCepData(d);
       setCheckoutForm(f=>({...f, postalCode:c, city:d.localidade??'', state:d.uf??'', neighborhood:d.bairro??'', address:d.logradouro??f.address}));
+      // Track cart abandonment at step 2 (shipping selection)
+      if (checkoutForm.customerName && checkoutForm.customerPhone) {
+        fetch('/api/trpc/recovery.trackCart', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({json:{ customerName:checkoutForm.customerName, customerPhone:checkoutForm.customerPhone, customerEmail:checkoutForm.customerEmail||undefined, postalCode:c, quantity:selProd?.weightKg>=10?10:1, stepReached:2 }}),
+        }).catch(()=>{});
+      }
 
       // Call backend — tries Melhor Envio API first, falls back to static table
       let opts: ShipOpt[] = [];
@@ -248,10 +281,30 @@ export default function SalVitaLanding() {
     {id:'caixa',name:'CAIXA SAL VITA PREMIUM',subtitle:'10 embalagens zip lock de 1kg cada', weight:'10kg (10×1kg)',weightKg:12,  price:149.90,pricePerKg:14.99, tag:'Melhor Custo-Benefício', highlight:true, savings:'Economize R$ 149,10'},
   ];
 
+  async function validateCoupon(code: string, orderVal: number) {
+    if (!code.trim()) return;
+    setCouponLoading(true);
+    try {
+      const res = await fetch('/api/trpc/recovery.validateCoupon', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({json:{ code: code.toUpperCase().trim(), orderValue: orderVal }}),
+      });
+      const data = await res.json();
+      const result = data?.result?.data?.json;
+      if (result) setCouponState(result);
+    } catch {}
+    setCouponLoading(false);
+  }
+
   async function handleCheckout(e:React.FormEvent) {
     e.preventDefault();
     if(!selProd||!selShip) return;
     setCheckoutLoading(true);
+    // Track step 3 (attempting payment)
+    fetch('/api/trpc/recovery.trackCart', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({json:{ customerName:checkoutForm.customerName, customerPhone:checkoutForm.customerPhone, customerEmail:checkoutForm.customerEmail||undefined, postalCode:checkoutForm.postalCode, quantity:selProd.weightKg>=10?10:1, stepReached:3 }}),
+    }).catch(()=>{});
     try {
       const qty = selProd.weightKg>=10?10:1;
       const res = await fetch('/api/trpc/shipping.createOrder', {
@@ -263,6 +316,7 @@ export default function SalVitaLanding() {
           shippingServiceId:selShip.serviceId ?? (selShip.service==='PAC'?'1':'2'),
           shippingServiceName:selShip.service,
           shippingPrice:selShip.price,
+          couponCode: couponCode && couponState?.valid ? couponCode.toUpperCase().trim() : undefined,
         }}),
       });
       const data = await res.json();
@@ -1501,18 +1555,63 @@ export default function SalVitaLanding() {
                     onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
                 </div>
               </div>
+              {/* Coupon field */}
+              <div style={{marginTop:4}}>
+                <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>🎁 Cupom de desconto</label>
+                <div style={{display:'flex',gap:8}}>
+                  <input
+                    type="text" value={couponCode}
+                    onChange={e=>{ setCouponCode(e.target.value.toUpperCase()); setCouponState(null); }}
+                    placeholder="Ex: VOLTA10"
+                    style={{flex:1,background:'var(--offwhite)',border:`2px solid ${couponState?.valid?'#16a34a':couponState?.valid===false?'#ef4444':'transparent'}`,borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',fontFamily:'monospace',letterSpacing:'.1em'}}
+                  />
+                  <button type="button"
+                    onClick={()=>validateCoupon(couponCode, selProd.price * (selProd.weightKg>=10?10:1))}
+                    disabled={!couponCode.trim() || couponLoading}
+                    style={{padding:'0 16px',background:'var(--brand)',color:'white',border:'none',borderRadius:10,fontSize:'.85rem',fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
+                    {couponLoading?'...':'Aplicar'}
+                  </button>
+                </div>
+                {couponState && (
+                  <p style={{fontSize:'.82rem',margin:'6px 0 0',fontWeight:600,color:couponState.valid?'#16a34a':'#ef4444'}}>
+                    {couponState.message}
+                  </p>
+                )}
+              </div>
+              {/* Order summary */}
               <div style={{background:'var(--sky)',borderRadius:10,padding:'12px 16px',marginTop:4}}>
                 <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
                   <span style={{fontSize:'.9rem',color:'var(--muted)'}}>Produto</span>
-                  <span style={{fontSize:'.9rem',color:'var(--mid)'}}>R$ {selProd.price.toFixed(2)}</span>
+                  <span style={{fontSize:'.9rem',color:'var(--mid)'}}>R$ {(selProd.price*(selProd.weightKg>=10?10:1)).toFixed(2)}</span>
                 </div>
+                {couponState?.valid && couponState.discountValue && (
+                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                    <span style={{fontSize:'.9rem',color:'#16a34a',fontWeight:600}}>🎁 Desconto {couponCode}</span>
+                    <span style={{fontSize:'.9rem',color:'#16a34a',fontWeight:700}}>
+                      -{couponState.discountType==='percent'
+                        ? `R$ ${((selProd.price*(selProd.weightKg>=10?10:1))*couponState.discountValue/100).toFixed(2)}`
+                        : `R$ ${couponState.discountValue.toFixed(2)}`}
+                    </span>
+                  </div>
+                )}
                 <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
                   <span style={{fontSize:'.9rem',color:'var(--muted)'}}>Frete {selShip.service}</span>
                   <span style={{fontSize:'.9rem',color:'var(--mid)'}}>R$ {selShip.price.toFixed(2)}</span>
                 </div>
                 <div style={{display:'flex',justifyContent:'space-between',paddingTop:8,borderTop:'1px solid rgba(26,58,138,.1)'}}>
                   <span style={{fontWeight:700,color:'var(--text)'}}>Total</span>
-                  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.3rem',fontWeight:700,color:'var(--brand)'}}>R$ {(selProd.price+selShip.price).toFixed(2).replace('.',',')}</span>
+                  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.3rem',fontWeight:700,color:'var(--brand)'}}>
+                    {(() => {
+                      let subtotal = selProd.price*(selProd.weightKg>=10?10:1);
+                      if (couponState?.valid && couponState.discountValue) {
+                        const disc = couponState.discountType==='percent'
+                          ? subtotal*couponState.discountValue/100
+                          : couponState.discountValue;
+                        subtotal = Math.max(0, subtotal - disc);
+                      }
+                      return `R$ ${(subtotal+selShip.price).toFixed(2).replace('.',',')}`;
+                    })()}
+                  </span>
                 </div>
               </div>
               <p style={{fontSize:'.82rem',color:'var(--muted)',lineHeight:1.5}}>Após confirmar, você será redirecionado para o Mercado Pago para pagar com cartão, PIX ou boleto.</p>

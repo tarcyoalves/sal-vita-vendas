@@ -243,7 +243,14 @@ function OrderCard({ order, onRefetch }: { order: any; onRefetch: ()=>void }) {
           </div>
           <div style={{ textAlign:'right', flexShrink:0 }}>
             <p style={{ fontSize:'1.25rem', fontWeight:800, color:'#0b1d3a', margin:0 }}>R$ {parseFloat(order.totalPrice??'0').toFixed(2).replace('.',',')}</p>
-            <p style={{ fontSize:'.76rem', color:'#94a3b8', margin:'3px 0 0' }}>{order.quantity}x 1kg · {order.shippingServiceName??'Correios'}: R$ {parseFloat(order.shippingPrice??'0').toFixed(2).replace('.',',')}</p>
+            <div style={{ marginTop:4, background:'linear-gradient(135deg,#f0f9ff,#e0f2fe)', border:'1px solid #bae6fd', borderRadius:8, padding:'4px 10px', display:'inline-block' }}>
+              <span style={{ fontSize:'.85rem', fontWeight:700, color:'#0369a1' }}>🧂 {order.quantity}× Sal Marinho Integral 1kg</span>
+            </div>
+            <p style={{ fontSize:'.72rem', color:'#94a3b8', margin:'3px 0 0' }}>
+              {order.shippingServiceName??'Correios'}: R$ {parseFloat(order.shippingPrice??'0').toFixed(2).replace('.',',')}
+              {(order as any).couponCode && <span style={{ marginLeft:6, color:'#16a34a', fontWeight:700 }}>🎁 {(order as any).couponCode}</span>}
+              {(order as any).couponDiscount && <span style={{ marginLeft:4, color:'#16a34a' }}>-R$ {parseFloat((order as any).couponDiscount).toFixed(2).replace('.',',')}</span>}
+            </p>
           </div>
         </div>
 
@@ -447,6 +454,10 @@ function OrdersPanel() {
           </div>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <button onClick={()=>window.location.href='/sal-vita-recovery'}
+            style={{ padding:'8px 14px', background:'rgba(251,146,60,.2)', border:'1px solid rgba(251,146,60,.4)', borderRadius:10, color:'#fed7aa', fontSize:'.8rem', fontWeight:600, cursor:'pointer' }}>
+            🔄 Recuperação
+          </button>
           <button onClick={()=>setShowAi(s=>!s)}
             style={{ padding:'8px 14px', background:showAi?'rgba(255,255,255,.2)':'rgba(255,255,255,.1)', border:'1px solid rgba(255,255,255,.2)', borderRadius:10, color:'white', fontSize:'.8rem', fontWeight:600, cursor:'pointer' }}>
             🤖 IA

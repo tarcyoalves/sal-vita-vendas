@@ -125,11 +125,43 @@ export const siteOrders = pgTable('site_orders', {
   mpPreferenceId: text('mp_preference_id'),
   mpPaymentId: text('mp_payment_id'),
   notes: text('notes'),
+  couponCode: text('coupon_code'),
+  couponDiscount: text('coupon_discount'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+export const abandonedCarts = pgTable('abandoned_carts', {
+  id: serial('id').primaryKey(),
+  customerName: text('customer_name').notNull(),
+  customerPhone: text('customer_phone').notNull(),
+  customerEmail: text('customer_email'),
+  postalCode: text('postal_code'),
+  quantity: integer('quantity').default(1),
+  stepReached: integer('step_reached').default(1), // 1=form 2=shipping 3=payment
+  recovered: boolean('recovered').default(false).notNull(),
+  recoverySentAt: timestamp('recovery_sent_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const coupons = pgTable('coupons', {
+  id: serial('id').primaryKey(),
+  code: text('code').notNull().unique(),
+  description: text('description'),
+  discountType: text('discount_type').notNull().default('percent'), // 'percent' | 'fixed'
+  discountValue: text('discount_value').notNull().default('10'),
+  minOrderValue: text('min_order_value').default('0'),
+  maxUses: integer('max_uses').default(100),
+  usedCount: integer('used_count').default(0).notNull(),
+  expiresAt: timestamp('expires_at'),
+  active: boolean('active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 export type SiteOrder = typeof siteOrders.$inferSelect;
+export type AbandonedCart = typeof abandonedCarts.$inferSelect;
+export type Coupon = typeof coupons.$inferSelect;
 
 export type User = typeof users.$inferSelect;
 export type Seller = typeof sellers.$inferSelect;

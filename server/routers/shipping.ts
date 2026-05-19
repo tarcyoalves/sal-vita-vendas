@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { router, publicProcedure, protectedProcedure } from '../trpc';
 import { ordersDb as db } from '../db/ordersDb';
-import { siteOrders } from '../db/schema';
-import { desc, eq } from 'drizzle-orm';
+import { siteOrders, coupons } from '../db/schema';
+import { desc, eq, and, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 
 const ME_BASE = 'https://melhorenvio.com.br';
@@ -112,11 +112,40 @@ export const shippingRouter = router({
       shippingServiceId: z.string().optional(),
       shippingServiceName: z.string().optional(),
       shippingPrice: z.number().min(0).optional(),
+      couponCode: z.string().max(20).optional(),
     }))
     .mutation(async ({ input }) => {
       const unitPrice = 29.90;
       const shipping = input.shippingPrice ?? 0;
-      const total = +(unitPrice * input.quantity + shipping).toFixed(2);
+      let subtotal = +(unitPrice * input.quantity).toFixed(2);
+      let couponDiscount = 0;
+      let appliedCoupon: string | null = null;
+
+      // Apply coupon if provided
+      if (input.couponCode) {
+        const code = input.couponCode.toUpperCase().trim();
+        const found = await db.select().from(coupons)
+          .where(and(eq(coupons.code, code), eq(coupons.active, true)))
+          .limit(1);
+        if (found.length > 0) {
+          const c = found[0];
+          const notExpired = !c.expiresAt || new Date() < new Date(c.expiresAt);
+          const notMaxed = !c.maxUses || c.usedCount < c.maxUses;
+          if (notExpired && notMaxed) {
+            if (c.discountType === 'percent') {
+              couponDiscount = +(subtotal * parseFloat(c.discountValue) / 100).toFixed(2);
+            } else {
+              couponDiscount = Math.min(subtotal, parseFloat(c.discountValue));
+            }
+            subtotal = +(subtotal - couponDiscount).toFixed(2);
+            appliedCoupon = code;
+            // Increment usage
+            await db.update(coupons).set({ usedCount: sql`used_count + 1` }).where(eq(coupons.id, c.id));
+          }
+        }
+      }
+
+      const total = +(subtotal + shipping).toFixed(2);
       const [order] = await db.insert(siteOrders).values({
         customerName: input.customerName,
         customerPhone: input.customerPhone,
@@ -134,8 +163,10 @@ export const shippingRouter = router({
         shippingServiceName: input.shippingServiceName ?? null,
         shippingPrice: shipping > 0 ? String(shipping) : null,
         totalPrice: String(total),
+        couponCode: appliedCoupon,
+        couponDiscount: couponDiscount > 0 ? String(couponDiscount) : null,
       }).returning();
-      return { id: order.id, total };
+      return { id: order.id, total, couponDiscount, couponApplied: appliedCoupon };
     }),
 
   listOrders: protectedProcedure
