@@ -100,9 +100,70 @@ function KpiCard({ icon, label, value, sub, accent, urgent }: { icon:string; lab
   );
 }
 
+/* ── Edit Modal ───────────────────────────────────────────── */
+function EditModal({ order, onClose, onSaved }: { order: any; onClose: ()=>void; onSaved: ()=>void }) {
+  const [form, setForm] = useState({
+    customerName: order.customerName ?? '',
+    customerPhone: order.customerPhone ?? '',
+    customerEmail: order.customerEmail ?? '',
+    customerCpf: order.customerCpf ?? '',
+    address: order.address ?? '',
+    number: order.number ?? '',
+    complement: order.complement ?? '',
+    neighborhood: order.neighborhood ?? '',
+    city: order.city ?? '',
+    state: order.state ?? '',
+    postalCode: order.postalCode ?? '',
+    notes: order.notes ?? '',
+  });
+  const updateMut = trpc.shipping.updateOrder.useMutation({
+    onSuccess: () => { toast.success('Pedido atualizado!'); onSaved(); onClose(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const F = ({ label, field, placeholder, half }: { label:string; field:keyof typeof form; placeholder?:string; half?:boolean }) => (
+    <div style={{ gridColumn: half ? undefined : '1/-1' }}>
+      <label style={{ display:'block', fontSize:'.72rem', fontWeight:700, color:'#64748b', marginBottom:4, textTransform:'uppercase', letterSpacing:'.05em' }}>{label}</label>
+      <input value={form[field]} onChange={e=>setForm(f=>({...f,[field]:e.target.value}))} placeholder={placeholder}
+        style={{ width:'100%', boxSizing:'border-box', padding:'9px 12px', border:'1.5px solid #e2e8f0', borderRadius:9, fontSize:'.88rem', outline:'none' }}/>
+    </div>
+  );
+  return (
+    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+      <div style={{ background:'white', borderRadius:20, padding:24, width:'100%', maxWidth:520, maxHeight:'90vh', overflowY:'auto', boxShadow:'0 25px 60px rgba(0,0,0,.3)' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+          <h3 style={{ margin:0, fontSize:'1.05rem', fontWeight:800, color:'#0b1d3a' }}>✏️ Editar Pedido #{order.id}</h3>
+          <button onClick={onClose} style={{ background:'#f1f5f9', border:'none', borderRadius:8, width:32, height:32, cursor:'pointer', fontSize:'1.1rem', color:'#64748b' }}>×</button>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+          <F label="Nome completo" field="customerName"/>
+          <F label="Telefone" field="customerPhone" placeholder="(84) 99999-9999" half/>
+          <F label="CPF" field="customerCpf" placeholder="00000000000" half/>
+          <F label="E-mail" field="customerEmail" placeholder="cliente@email.com"/>
+          <F label="CEP" field="postalCode" placeholder="59000000" half/>
+          <F label="Estado (UF)" field="state" placeholder="RN" half/>
+          <F label="Cidade" field="city" half/>
+          <F label="Bairro" field="neighborhood" half/>
+          <F label="Endereço" field="address"/>
+          <F label="Número" field="number" placeholder="123" half/>
+          <F label="Complemento" field="complement" placeholder="Casa, Apto..." half/>
+          <F label="Observações internas" field="notes"/>
+        </div>
+        <div style={{ display:'flex', gap:10, marginTop:20 }}>
+          <button onClick={onClose} style={{ flex:1, padding:'11px', background:'#f1f5f9', border:'none', borderRadius:12, fontWeight:600, cursor:'pointer', color:'#64748b' }}>Cancelar</button>
+          <button onClick={()=>updateMut.mutate({ id:order.id, ...form })} disabled={updateMut.isPending}
+            style={{ flex:2, padding:'11px', background:'#0b1d3a', color:'white', border:'none', borderRadius:12, fontWeight:700, cursor:'pointer', opacity:updateMut.isPending?.7:1 }}>
+            {updateMut.isPending ? 'Salvando...' : '💾 Salvar alterações'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Order Card ───────────────────────────────────────────── */
 function OrderCard({ order, onRefetch }: { order: any; onRefetch: ()=>void }) {
   const [trackInput, setTrackInput] = useState(order.trackingCode ?? '');
+  const [editing, setEditing] = useState(false);
   const updateMut = trpc.shipping.updateStatus.useMutation({ onSuccess: ()=>{ onRefetch(); toast.success('Status atualizado!'); } });
   const labelMut = trpc.shipping.generateLabel.useMutation({
     onSuccess: (d) => { toast.success('Etiqueta gerada!'); window.open(d.labelUrl, '_blank'); onRefetch(); },
@@ -216,8 +277,14 @@ function OrderCard({ order, onRefetch }: { order: any; onRefetch: ()=>void }) {
           </div>
         )}
 
+            <button onClick={()=>setEditing(true)}
+            style={{ padding:'8px 14px', background:'white', color:'#475569', border:'1.5px solid #e2e8f0', borderRadius:10, fontSize:'.83rem', fontWeight:600, cursor:'pointer' }}>
+            ✏️ Editar
+          </button>
+
         {order.meOrderId && <p style={{ margin:'6px 0 0', fontSize:'.72rem', color:'#cbd5e1' }}>ME ID: {order.meOrderId}{order.trackingCode ? ` · Rastreio: ${order.trackingCode}` : ''}</p>}
       </div>
+      {editing && <EditModal order={order} onClose={()=>setEditing(false)} onSaved={onRefetch}/>}
     </div>
   );
 }

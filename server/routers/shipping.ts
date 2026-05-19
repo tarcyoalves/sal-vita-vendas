@@ -100,6 +100,7 @@ export const shippingRouter = router({
       customerName: z.string().min(2).max(100),
       customerPhone: z.string().min(10).max(20),
       customerEmail: z.string().email().optional().or(z.literal('')),
+      customerCpf: z.string().min(11).max(14).optional(),
       postalCode: z.string().min(8).max(9),
       address: z.string().min(3).max(200),
       number: z.string().min(1).max(20),
@@ -120,6 +121,7 @@ export const shippingRouter = router({
         customerName: input.customerName,
         customerPhone: input.customerPhone,
         customerEmail: input.customerEmail || null,
+        customerCpf: input.customerCpf ? input.customerCpf.replace(/\D/g,'') : null,
         postalCode: input.postalCode.replace(/\D/g,''),
         address: input.address,
         number: input.number,
@@ -193,6 +195,42 @@ Seja direto e use emojis para facilitar leitura.`;
         insights,
         summary: { total: orders.length, revenue, paid: paid.length, pending: paymentCounts['awaiting']??0, last7: last7.length, topCities, ticketMedio: paid.length ? revenue/paid.length : 0 },
       };
+    }),
+
+  updateOrder: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      customerName: z.string().min(2).optional(),
+      customerPhone: z.string().min(10).optional(),
+      customerEmail: z.string().email().optional().or(z.literal('')),
+      customerCpf: z.string().optional(),
+      address: z.string().optional(),
+      number: z.string().optional(),
+      complement: z.string().optional(),
+      neighborhood: z.string().optional(),
+      city: z.string().optional(),
+      state: z.string().length(2).optional(),
+      postalCode: z.string().optional(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      const { id, ...fields } = input;
+      const updates: Record<string,unknown> = { updatedAt: new Date() };
+      if (fields.customerName) updates.customerName = fields.customerName;
+      if (fields.customerPhone) updates.customerPhone = fields.customerPhone;
+      if (fields.customerEmail !== undefined) updates.customerEmail = fields.customerEmail || null;
+      if (fields.customerCpf !== undefined) updates.customerCpf = fields.customerCpf.replace(/\D/g,'') || null;
+      if (fields.address) updates.address = fields.address;
+      if (fields.number) updates.number = fields.number;
+      if (fields.complement !== undefined) updates.complement = fields.complement || null;
+      if (fields.neighborhood) updates.neighborhood = fields.neighborhood;
+      if (fields.city) updates.city = fields.city;
+      if (fields.state) updates.state = fields.state.toUpperCase();
+      if (fields.postalCode) updates.postalCode = fields.postalCode.replace(/\D/g,'');
+      if (fields.notes !== undefined) updates.notes = fields.notes || null;
+      const [updated] = await db.update(siteOrders).set(updates).where(eq(siteOrders.id, id)).returning();
+      return updated;
     }),
 
   updateStatus: protectedProcedure
@@ -352,6 +390,7 @@ Seja direto e use emojis para facilitar leitura.`;
           name: order.customerName,
           phone: order.customerPhone.replace(/\D/g,''),
           email: order.customerEmail ?? 'cliente@salvitarn.com.br',
+          document: order.customerCpf ? order.customerCpf.replace(/\D/g,'') : undefined,
           postal_code: order.postalCode,
           address: order.address,
           number: order.number,

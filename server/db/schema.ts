@@ -102,6 +102,7 @@ export const siteOrders = pgTable('site_orders', {
   customerName: text('customer_name').notNull(),
   customerPhone: text('customer_phone').notNull(),
   customerEmail: text('customer_email'),
+  customerCpf: text('customer_cpf'),
   postalCode: text('postal_code').notNull(),
   address: text('address').notNull(),
   number: text('number').notNull(),

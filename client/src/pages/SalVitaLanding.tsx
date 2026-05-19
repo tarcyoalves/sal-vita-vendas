@@ -137,7 +137,7 @@ export default function SalVitaLanding() {
   const [payTimer,setPayTimer]             = useState(900); // 15 min countdown
   const payTimerRef = useRef<ReturnType<typeof setInterval>|null>(null);
   const [checkoutForm,setCheckoutForm]     = useState({
-    customerName:'',customerPhone:'',postalCode:'',address:'',
+    customerName:'',customerPhone:'',customerCpf:'',postalCode:'',address:'',
     number:'',complement:'',neighborhood:'',city:'',state:'',
   });
   const obs = useRef<IntersectionObserver|null>(null);
@@ -169,7 +169,7 @@ export default function SalVitaLanding() {
     setSelProd(p); setShowModal(true); setMobileMenu(false);
     setCep(''); setCepData(null); setShipping([]); setSelShip(null); setCepErr(''); setShippingSource(null);
     setShowCheckout(false); setOrderDone(null);
-    setCheckoutForm({customerName:'',customerPhone:'',postalCode:'',address:'',number:'',complement:'',neighborhood:'',city:'',state:''});
+    setCheckoutForm({customerName:'',customerPhone:'',customerCpf:'',postalCode:'',address:'',number:'',complement:'',neighborhood:'',city:'',state:''});
     document.body.style.overflow='hidden';
   },[]);
   const closeBuy=useCallback(()=>{ setShowModal(false); setShowCheckout(false); setOrderDone(null); document.body.style.overflow=''; if(payTimerRef.current) clearInterval(payTimerRef.current); },[]);
@@ -1424,6 +1424,14 @@ export default function SalVitaLanding() {
                   <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>Telefone/WhatsApp *</label>
                   <input required value={checkoutForm.customerPhone} onChange={e=>setCheckoutForm(f=>({...f,customerPhone:e.target.value}))}
                     placeholder="(84) 99999-9999" minLength={10}
+                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
+                    onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
+                    onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
+                </div>
+                <div>
+                  <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>CPF *</label>
+                  <input required value={checkoutForm.customerCpf} onChange={e=>setCheckoutForm(f=>({...f,customerCpf:e.target.value.replace(/\D/g,'').slice(0,11)}))}
+                    placeholder="000.000.000-00" minLength={11} maxLength={11}
                     style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
                     onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
                     onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
