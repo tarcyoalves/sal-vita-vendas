@@ -173,7 +173,13 @@ export const shippingRouter = router({
     .input(z.object({ status: z.string().optional() }).optional())
     .query(async ({ ctx }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
-      return db.select().from(siteOrders).orderBy(desc(siteOrders.createdAt));
+      // Exclude orders where client never initiated payment (no mpPreferenceId and still awaiting)
+      // Those go to the recovery panel instead
+      return db.select().from(siteOrders)
+        .where(
+          sql`NOT (${siteOrders.paymentStatus} = 'awaiting' AND ${siteOrders.mpPreferenceId} IS NULL)`
+        )
+        .orderBy(desc(siteOrders.createdAt));
     }),
 
   analyzeOrders: protectedProcedure
