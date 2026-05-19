@@ -234,6 +234,7 @@ export default function SalVitaLanding() {
 
   const openBuy=useCallback((p:Product)=>{
     setSelProd(p); setShowModal(true); setMobileMenu(false);
+    try { (window as any).fbq?.('track','ViewContent',{ content_name: p.name, content_ids: [String(p.id)], content_type: 'product', value: p.price, currency: 'BRL' }); } catch {}
     setCep(''); setCepData(null); setShipping([]); setSelShip(null); setCepErr(''); setShippingSource(null);
     setShowCheckout(false); setOrderDone(null);
     setCheckoutForm({customerName:'',customerPhone:'',customerEmail:'',customerCpf:'',postalCode:'',address:'',number:'',complement:'',neighborhood:'',city:'',state:''});
@@ -369,6 +370,7 @@ export default function SalVitaLanding() {
       const total   = data?.result?.data?.json?.total ?? (selProd.price+selShip.price);
       setOrderDone({ id: orderId, total });
       localStorage.setItem('sv_pending_order', JSON.stringify({ id: orderId, total, ts: Date.now() }));
+      try { (window as any).fbq?.('track','AddPaymentInfo',{ value: total, currency: 'BRL', content_name: selProd?.name, num_items: qty }); } catch {}
     } catch(err) {
       console.error('createOrder error:', err);
       alert('Erro ao registrar pedido. Verifique sua conexão e tente novamente.');
@@ -388,7 +390,10 @@ export default function SalVitaLanding() {
       });
       const data = await res.json();
       const initPoint = data?.result?.data?.json?.initPoint;
-      if(initPoint) { window.location.href = initPoint; }
+      if(initPoint) {
+        try { (window as any).fbq?.('track','Purchase',{ value: orderDone.total, currency: 'BRL', content_name: selProd?.name, num_items: 1 }); } catch {}
+        window.location.href = initPoint;
+      }
       else { alert('Erro ao gerar link de pagamento. Tente novamente.'); }
     } catch { alert('Erro ao conectar com Mercado Pago. Tente novamente.'); }
     setMpLoading(false);
@@ -1760,7 +1765,7 @@ export default function SalVitaLanding() {
             )}
 
             <div style={{display:'flex',flexDirection:'column',gap:10}}>
-              <button onClick={()=>setShowCheckout(true)}
+              <button onClick={()=>{ setShowCheckout(true); try { (window as any).fbq?.('track','InitiateCheckout',{ content_name: selProd?.name, value: selProd?.price, currency: 'BRL', num_items: 1 }); } catch {} }}
                 style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,background:'var(--brand)',color:'white',border:'none',borderRadius:12,padding:'16px',fontSize:'.93rem',fontWeight:700,cursor:'pointer',letterSpacing:'.04em',transition:'background .2s,transform .2s'}}
                 onMouseEnter={e=>{e.currentTarget.style.background='#1a4aad';e.currentTarget.style.transform='scale(1.02)';}}
                 onMouseLeave={e=>{e.currentTarget.style.background='var(--brand)';e.currentTarget.style.transform='scale(1)';}}>
