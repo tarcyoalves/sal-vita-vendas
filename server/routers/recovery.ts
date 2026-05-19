@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { router, publicProcedure, protectedProcedure } from '../trpc';
 import { ordersDb as db } from '../db/ordersDb';
 import { abandonedCarts, coupons, siteOrders } from '../db/schema';
-import { desc, eq, and, lt, sql } from 'drizzle-orm';
+import { desc, eq, and, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 
 function fmtPhone(raw: string) {
@@ -110,13 +110,12 @@ export const recoveryRouter = router({
       };
     }),
 
-  // Admin: list abandoned carts (not yet recovered, older than 30 min)
+  // Admin: list abandoned carts (not yet recovered)
   listAbandoned: protectedProcedure
     .query(async ({ ctx }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
-      const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
       const rows = await db.select().from(abandonedCarts)
-        .where(and(eq(abandonedCarts.recovered, false), lt(abandonedCarts.updatedAt, thirtyMinAgo)))
+        .where(eq(abandonedCarts.recovered, false))
         .orderBy(desc(abandonedCarts.updatedAt));
       return rows.map(r => ({
         ...r,
@@ -125,15 +124,14 @@ export const recoveryRouter = router({
       }));
     }),
 
-  // Admin: list unpaid orders (payment awaiting for > 1 hour)
+  // Admin: list unpaid orders (payment awaiting, not cancelled)
   listUnpaid: protectedProcedure
     .query(async ({ ctx }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
       const rows = await db.select().from(siteOrders)
         .where(and(
           eq(siteOrders.paymentStatus, 'awaiting'),
-          lt(siteOrders.createdAt, oneHourAgo),
+          eq(siteOrders.status, 'pending'),
         ))
         .orderBy(desc(siteOrders.createdAt));
       return rows.map(r => ({
