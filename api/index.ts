@@ -8,7 +8,8 @@ import { createExpressMiddleware } from '@trpc/server/adapters/express';
 import { appRouter } from '../server/routers';
 import { createContext } from '../server/trpc';
 import { ensureTablesExist } from '../server/db/migrate';
-import { db } from '../server/db';
+import { ensureOrdersTablesExist } from '../server/db/ordersMigrate';
+import { ordersDb } from '../server/db/ordersDb';
 import { siteOrders } from '../server/db/schema';
 import { eq } from 'drizzle-orm';
 
@@ -18,6 +19,7 @@ const app = express();
 app.set('trust proxy', 1);
 
 ensureTablesExist();
+ensureOrdersTablesExist();
 
 // ── Allowed origins ────────────────────────────────────────────────────────────
 const PROD_ORIGINS = [
@@ -101,11 +103,11 @@ app.post('/api/mp-webhook', express.raw({ type: 'application/json' }), async (re
     if (!orderId) { res.json({ ok: true }); return; }
 
     if (payment.status === 'approved') {
-      await db.update(siteOrders)
+      await ordersDb.update(siteOrders)
         .set({ paymentStatus: 'confirmed', mpPaymentId: String(payment.id), updatedAt: new Date() })
         .where(eq(siteOrders.id, orderId));
     } else if (payment.status === 'rejected') {
-      await db.update(siteOrders)
+      await ordersDb.update(siteOrders)
         .set({ paymentStatus: 'failed', mpPaymentId: String(payment.id), updatedAt: new Date() })
         .where(eq(siteOrders.id, orderId));
     }

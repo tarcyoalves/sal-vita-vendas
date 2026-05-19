@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, publicProcedure, protectedProcedure } from '../trpc';
-import { db } from '../db';
+import { ordersDb as db } from '../db/ordersDb';
 import { siteOrders } from '../db/schema';
 import { desc, eq } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
