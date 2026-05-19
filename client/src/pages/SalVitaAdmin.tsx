@@ -526,8 +526,8 @@ function OrdersPanel() {
 }
 
 export default function SalVitaAdmin() {
-  const { user, isAuthenticated, isLoading } = useAuth();
-  if (isLoading) return (
+  const { user, isAuthenticated, loading } = useAuth();
+  if (loading) return (
     <div style={{ minHeight:'100vh', background:'#0b1d3a', display:'flex', alignItems:'center', justifyContent:'center' }}>
       <span style={{ color:'white', fontSize:'.9rem' }}>Carregando...</span>
     </div>
