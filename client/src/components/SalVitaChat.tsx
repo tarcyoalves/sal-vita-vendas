@@ -123,13 +123,25 @@ export default function SalVitaChat() {
             }}>
               <span style={{ fontSize: '1.2rem' }}>🌊</span>
             </div>
-            <div>
+            <div style={{ flex: 1 }}>
               <div style={{ color: '#fff', fontWeight: 700, fontSize: '.95rem' }}>Sal Vita Premium</div>
               <div style={{ color: 'rgba(255,255,255,.75)', fontSize: '.75rem', display: 'flex', alignItems: 'center', gap: 4 }}>
                 <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ade80', display: 'inline-block' }}/>
                 Online agora
               </div>
             </div>
+            <button onClick={() => setOpen(false)} aria-label="Fechar chat" style={{
+              background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: '50%',
+              width: 32, height: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'white', transition: 'background .2s', flexShrink: 0,
+            }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,.28)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,.15)'; }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
           </div>
 
           {/* Messages */}
