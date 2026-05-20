@@ -60,8 +60,17 @@ export default function SalVitaChat() {
 
   return (
     <>
+      <style>{`
+        /* On mobile the sticky "Comprar Agora" bar is ~68px tall — push chat above it */
+        @media (max-width: 640px) {
+          .sv-chat-btn  { bottom: 82px !important; }
+          .sv-chat-win  { bottom: 152px !important; height: min(460px, calc(100dvh - 180px)) !important; }
+        }
+      `}</style>
+
       {/* Floating button */}
       <button
+        className="sv-chat-btn"
         onClick={() => setOpen(o => !o)}
         aria-label="Abrir chat"
         style={{
@@ -94,7 +103,7 @@ export default function SalVitaChat() {
 
       {/* Chat window */}
       {open && (
-        <div style={{
+        <div className="sv-chat-win" style={{
           position: 'fixed', bottom: 94, right: 24, zIndex: 9998,
           width: 'min(370px, calc(100vw - 32px))',
           height: 'min(520px, calc(100dvh - 120px))',
