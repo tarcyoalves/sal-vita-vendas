@@ -89,6 +89,9 @@ export async function ensureOrdersTablesExist() {
     await sql`CREATE INDEX IF NOT EXISTS automation_runs_status_idx ON automation_runs(status)`;
     await sql`CREATE INDEX IF NOT EXISTS automation_runs_scheduled_for_idx ON automation_runs(scheduled_for)`;
     await sql`CREATE INDEX IF NOT EXISTS automation_runs_cart_id_idx ON automation_runs(cart_id)`;
+    await sql`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_body TEXT`;
+    await sql`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_reasoning TEXT`;
+    await sql`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_processed_at TIMESTAMP`;
 
     await sql`
       CREATE TABLE IF NOT EXISTS coupons (

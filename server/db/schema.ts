@@ -158,6 +158,10 @@ export const automationRuns = pgTable('automation_runs', {
   sentAt: timestamp('sent_at'),
   cancelledAt: timestamp('cancelled_at'),
   providerResponse: text('provider_response'),
+  // AI-generated fields
+  aiBody: text('ai_body'),            // AI-generated custom message (overrides template)
+  aiReasoning: text('ai_reasoning'),  // AI explanation of its decisions
+  aiProcessedAt: timestamp('ai_processed_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

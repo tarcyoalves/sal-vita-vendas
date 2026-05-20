@@ -139,6 +139,7 @@ function WaStatusBadge() {
 
 function AbandonedTab() {
   const { data, isLoading, refetch } = trpc.recovery.listAbandoned.useQuery(undefined, { refetchInterval: 30000 });
+  const [aiPreviews, setAiPreviews] = useState<Record<number, string>>({});
   const markRecovered = trpc.recovery.markRecovered.useMutation({
     onSuccess: () => { toast.success('Marcado como recuperado!'); refetch(); },
     onError: (e) => toast.error(e.message),
@@ -155,6 +156,21 @@ function AbandonedTab() {
     onSuccess: (d: any) => toast.success(`Job: ${d.sent} enviados, ${d.cancelled} cancelados`),
     onError: (e) => toast.error(e.message),
   });
+  const aiProcessMut = trpc.recovery.aiProcessCarts.useMutation({
+    onSuccess: (d: any) => {
+      toast.success(`🤖 IA processou ${d.processed} carrinhos`);
+      refetch();
+    },
+    onError: (e) => toast.error('IA: ' + e.message),
+  });
+  const aiSendMut = trpc.recovery.aiSendCart.useMutation({
+    onSuccess: (d: any) => {
+      toast.success(`🤖 IA enviou para ${d.phone}`);
+      setAiPreviews(p => ({ ...p }));
+      refetch();
+    },
+    onError: (e) => toast.error('IA: ' + e.message),
+  });
 
   if (isLoading) return <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Carregando...</div>;
 
@@ -162,17 +178,47 @@ function AbandonedTab() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+      {/* Action bar */}
+      <div style={{ background: 'linear-gradient(135deg,#0b1d3a,#1a3a6b)', borderRadius: 14, padding: '14px 18px', marginBottom: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <p style={{ margin: 0, fontWeight: 800, color: 'white', fontSize: '.95rem' }}>🤖 Recuperação com IA</p>
+          <p style={{ margin: '2px 0 0', fontSize: '.75rem', color: 'rgba(255,255,255,.65)' }}>IA analisa cada lead e gera mensagem personalizada no melhor horário</p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => aiProcessMut.mutate()}
+            disabled={aiProcessMut.isPending}
+            style={{ padding: '9px 16px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: 9, fontWeight: 700, fontSize: '.82rem', cursor: aiProcessMut.isPending ? 'not-allowed' : 'pointer', opacity: aiProcessMut.isPending ? .7 : 1 }}
+          >
+            {aiProcessMut.isPending ? '⏳ Processando...' : '🤖 IA Processar Todos'}
+          </button>
+          <button
+            onClick={() => jobMut.mutate()}
+            disabled={jobMut.isPending}
+            style={{ padding: '9px 16px', background: 'rgba(255,255,255,.15)', color: 'white', border: '1px solid rgba(255,255,255,.2)', borderRadius: 9, fontWeight: 700, fontSize: '.82rem', cursor: jobMut.isPending ? 'not-allowed' : 'pointer', opacity: jobMut.isPending ? .7 : 1 }}
+          >
+            {jobMut.isPending ? '⏳ Executando...' : '▶ Executar Job'}
+          </button>
+        </div>
+      </div>
+
+      {aiProcessMut.data && (
+        <div style={{ background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: 12, padding: '12px 16px', marginBottom: 16 }}>
+          <p style={{ margin: '0 0 8px', fontWeight: 700, color: '#15803d', fontSize: '.85rem' }}>
+            🤖 IA processou {(aiProcessMut.data as any).processed} carrinhos
+          </p>
+          {((aiProcessMut.data as any).results ?? []).map((r: any) => (
+            <p key={r.cartId} style={{ margin: '4px 0', fontSize: '.78rem', color: '#166534' }}>
+              • <strong>{r.name}</strong> — envio: {new Date(r.scheduledFor).toLocaleString('pt-BR')} — {r.reasoning}
+            </p>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
         <p style={{ fontSize: '.82rem', color: '#64748b', margin: 0 }}>
           {rows.length} carrinho{rows.length !== 1 ? 's' : ''} abandonado{rows.length !== 1 ? 's' : ''}
         </p>
-        <button
-          onClick={() => jobMut.mutate()}
-          disabled={jobMut.isPending}
-          style={{ ...btnPrimary, fontSize: '.75rem', padding: '6px 12px', opacity: jobMut.isPending ? .7 : 1 }}
-        >
-          {jobMut.isPending ? '⏳ Executando...' : '▶ Executar Job Agora'}
-        </button>
       </div>
 
       {rows.length === 0 ? (
@@ -209,24 +255,27 @@ function AbandonedTab() {
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               <button
+                onClick={() => aiSendMut.mutate({ cartId: row.id })}
+                disabled={aiSendMut.isPending}
+                title="IA gera mensagem personalizada e envia agora"
+                style={{ padding: '7px 13px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: 8, fontSize: '.78rem', fontWeight: 700, cursor: aiSendMut.isPending ? 'not-allowed' : 'pointer', opacity: aiSendMut.isPending ? .7 : 1 }}
+              >
+                🤖 IA Enviar
+              </button>
+              <button
                 onClick={() => sendMut.mutate({ id: row.id })}
                 disabled={sendMut.isPending}
                 style={{ ...btnWa, opacity: sendMut.isPending ? .7 : 1 }}
               >
-                📤 Enviar WA
+                📤 Template
               </button>
               <button
                 onClick={() => sendCouponMut.mutate({ id: row.id, coupon: 'VOLTA10' })}
                 disabled={sendCouponMut.isPending}
                 style={{ ...btnWaSecondary, opacity: sendCouponMut.isPending ? .7 : 1 }}
               >
-                🎁 Enviar + Cupom
+                🎁 + Cupom
               </button>
-              {row.waLink && (
-                <button onClick={() => window.open(row.waLink, '_blank')} style={{ ...btnGhost, fontSize: '.75rem' }}>
-                  🔗 Abrir WA
-                </button>
-              )}
               <button
                 onClick={() => markRecovered.mutate({ id: row.id })}
                 disabled={markRecovered.isPending}
@@ -248,9 +297,21 @@ function UnpaidTab() {
   const templatesQ = trpc.recovery.listTemplates.useQuery();
   const [selectedTemplates, setSelectedTemplates] = useState<Record<number, number>>({});
   const [previews, setPreviews] = useState<Record<number, string>>({});
+  const [aiMsgMap, setAiMsgMap] = useState<Record<number, { message: string; reasoning: string }>>({});
   const sendMut = trpc.recovery.sendUnpaid.useMutation({
     onSuccess: (d: any) => { toast.success(d.hasPix ? `✅ PIX enviado para ${d.phone}` : `✅ Enviado para ${d.phone}`); refetch(); },
     onError: (e) => toast.error('Falha no envio: ' + e.message),
+  });
+  const aiOrderMut = trpc.recovery.aiProcessOrder.useMutation({
+    onSuccess: (d: any, vars: any) => {
+      setAiMsgMap(m => ({ ...m, [vars.orderId]: { message: d.message, reasoning: d.reasoning } }));
+      toast.success(d.hasPix ? '🤖 IA gerou mensagem com PIX' : '🤖 IA gerou mensagem');
+    },
+    onError: (e) => toast.error('IA: ' + e.message),
+  });
+  const aiSendUnpaidMut = trpc.recovery.sendUnpaid.useMutation({
+    onSuccess: (d: any) => { toast.success(`✅ Enviado para ${d.phone}`); refetch(); },
+    onError: (e) => toast.error(e.message),
   });
 
   if (isLoading) return <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Carregando...</div>;
@@ -300,27 +361,42 @@ function UnpaidTab() {
                 </select>
               )}
 
-              {/* Preview */}
-              {previews[row.id] && (
-                <div style={{ background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: 10, padding: '10px 12px', marginTop: 6, maxWidth: 360 }}>
-                  <p style={{ margin: '0 0 4px', fontSize: '.7rem', fontWeight: 700, color: '#15803d', textTransform: 'uppercase' }}>Preview</p>
-                  <pre style={{ margin: 0, fontFamily: 'inherit', fontSize: '.78rem', color: '#166534', whiteSpace: 'pre-wrap' }}>{previews[row.id]}</pre>
+              {/* AI Preview */}
+              {aiMsgMap[row.id] && (
+                <div style={{ background: '#eef2ff', border: '1.5px solid #c7d2fe', borderRadius: 10, padding: '10px 12px', marginTop: 6, maxWidth: 380 }}>
+                  <p style={{ margin: '0 0 4px', fontSize: '.7rem', fontWeight: 700, color: '#4338ca', textTransform: 'uppercase' }}>🤖 Mensagem IA</p>
+                  <pre style={{ margin: 0, fontFamily: 'inherit', fontSize: '.78rem', color: '#3730a3', whiteSpace: 'pre-wrap' }}>{aiMsgMap[row.id].message}</pre>
+                  {aiMsgMap[row.id].reasoning && (
+                    <p style={{ margin: '6px 0 0', fontSize: '.7rem', color: '#6366f1', fontStyle: 'italic' }}>💡 {aiMsgMap[row.id].reasoning}</p>
+                  )}
                 </div>
               )}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
               <button
+                onClick={() => aiOrderMut.mutate({ orderId: row.id })}
+                disabled={aiOrderMut.isPending}
+                title="IA gera mensagem personalizada (com PIX se disponível)"
+                style={{ padding: '7px 13px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: 8, fontSize: '.78rem', fontWeight: 700, cursor: aiOrderMut.isPending ? 'not-allowed' : 'pointer', opacity: aiOrderMut.isPending ? .7 : 1 }}
+              >
+                {aiOrderMut.isPending ? '⏳...' : '🤖 IA Gerar'}
+              </button>
+              {aiMsgMap[row.id] && (
+                <button
+                  onClick={() => sendMut.mutate({ id: row.id })}
+                  disabled={sendMut.isPending}
+                  style={{ padding: '7px 13px', background: '#22c55e', color: 'white', border: 'none', borderRadius: 8, fontSize: '.78rem', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  📤 Enviar IA
+                </button>
+              )}
+              <button
                 onClick={() => sendMut.mutate({ id: row.id, templateId: selectedTemplates[row.id] || undefined })}
                 disabled={sendMut.isPending}
                 style={{ ...btnWa, opacity: sendMut.isPending ? .7 : 1 }}
               >
-                {row.mpPaymentId ? '💸 Enviar PIX/WA' : '📤 Enviar WA'}
+                {row.mpPaymentId ? '💸 Template PIX' : '📤 Template'}
               </button>
-              {row.waLinkUnpaid && (
-                <button onClick={() => window.open(row.waLinkUnpaid, '_blank')} style={{ ...btnGhost, fontSize: '.75rem' }}>
-                  🔗 Abrir WA
-                </button>
-              )}
             </div>
           </div>
         </div>
@@ -746,14 +822,24 @@ function AutomationTab() {
                   <span style={{ background: sc.bg, color: sc.text, borderRadius: 999, padding: '2px 9px', fontSize: '.72rem', fontWeight: 700 }}>
                     {r.status === 'scheduled' ? '⏳ Agendada' : r.status === 'sent' ? '✓ Enviada' : r.status === 'cancelled' ? 'Cancelada' : '✗ Falhou'}
                   </span>
+                  {r.aiBody && <span style={{ background: '#eef2ff', color: '#4338ca', borderRadius: 999, padding: '2px 9px', fontSize: '.7rem', fontWeight: 700 }}>🤖 IA</span>}
                   {isOverdue && <span style={{ background: '#fee2e2', color: '#991b1b', borderRadius: 999, padding: '2px 9px', fontSize: '.7rem', fontWeight: 700 }}>VENCIDA</span>}
                 </div>
-                <p style={{ margin: 0, fontSize: '.75rem', color: '#94a3b8' }}>
+                <p style={{ margin: '0 0 2px', fontSize: '.75rem', color: '#94a3b8' }}>
                   {r.status === 'scheduled' ? `Disparo: ${new Date(r.scheduledFor).toLocaleString('pt-BR')}` : ''}
                   {r.status === 'sent' ? `Enviada: ${timeAgo(r.sentAt)}` : ''}
                   {r.status === 'cancelled' ? `Cancelada: ${timeAgo(r.cancelledAt)}` : ''}
                   {' · '}Criada {timeAgo(r.createdAt)}
                 </p>
+                {r.aiReasoning && (
+                  <p style={{ margin: 0, fontSize: '.72rem', color: '#6366f1', fontStyle: 'italic' }}>💡 {r.aiReasoning}</p>
+                )}
+                {r.aiBody && r.status === 'scheduled' && (
+                  <div style={{ marginTop: 6, background: '#eef2ff', borderRadius: 8, padding: '6px 10px', maxWidth: 360 }}>
+                    <p style={{ margin: '0 0 3px', fontSize: '.68rem', fontWeight: 700, color: '#4338ca' }}>PRÉVIA DA MENSAGEM IA:</p>
+                    <pre style={{ margin: 0, fontFamily: 'inherit', fontSize: '.73rem', color: '#3730a3', whiteSpace: 'pre-wrap', maxHeight: 70, overflow: 'hidden' }}>{r.aiBody}</pre>
+                  </div>
+                )}
               </div>
             </div>
           </div>

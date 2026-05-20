@@ -37086,6 +37086,12 @@ var init_schema2 = __esm({
       sentAt: timestamp("sent_at"),
       cancelledAt: timestamp("cancelled_at"),
       providerResponse: text("provider_response"),
+      // AI-generated fields
+      aiBody: text("ai_body"),
+      // AI-generated custom message (overrides template)
+      aiReasoning: text("ai_reasoning"),
+      // AI explanation of its decisions
+      aiProcessedAt: timestamp("ai_processed_at"),
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
@@ -55262,6 +55268,202 @@ var recoveryRouter = router({
     await ordersDb.update(msgTemplates).set({ isDefault: true }).where(eq(msgTemplates.id, input.id));
     return { ok: true };
   }),
+  // Admin: AI processes all pending abandoned carts — generates personalized messages + optimal timing
+  aiProcessCarts: protectedProcedure.mutation(async ({ ctx }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey)
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "GROQ_API_KEY n\xE3o configurado" });
+    const pending = await ordersDb.select({
+      run: automationRuns,
+      cart: abandonedCarts
+    }).from(automationRuns).innerJoin(abandonedCarts, eq(automationRuns.cartId, abandonedCarts.id)).where(and(eq(automationRuns.status, "scheduled"), sql`${automationRuns.aiProcessedAt} IS NULL`)).limit(30);
+    const now = /* @__PURE__ */ new Date();
+    const nowBR = new Date(now.getTime() - 3 * 60 * 60 * 1e3);
+    const hour = nowBR.getUTCHours();
+    const weekday = nowBR.getUTCDay();
+    let processed = 0;
+    const results = [];
+    for (const { run: run2, cart } of pending) {
+      if (cart.status === "converted" || cart.recovered) {
+        await ordersDb.update(automationRuns).set({ status: "cancelled", cancelledAt: /* @__PURE__ */ new Date(), aiProcessedAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(automationRuns.id, run2.id));
+        continue;
+      }
+      const stepDesc = cart.stepReached === 1 ? "preencheu o formul\xE1rio mas n\xE3o calculou frete" : cart.stepReached === 2 ? "calculou o frete mas n\xE3o foi para o pagamento" : "chegou at\xE9 a etapa de pagamento mas n\xE3o concluiu";
+      const prompt = `Voc\xEA \xE9 especialista em convers\xE3o de e-commerce para a Sal Vita (sal marinho premium de Mossor\xF3/RN).
+
+DADOS DO LEAD:
+- Nome: ${cart.customerName}
+- Telefone: ${cart.customerPhone}
+- Quantidade no carrinho: ${cart.quantity ?? 1}kg
+- Etapa atingida: ${stepDesc}
+- CEP (regi\xE3o): ${cart.postalCode ?? "n\xE3o informado"}
+- Abandonou: ${cart.createdAt ? new Date(cart.createdAt).toLocaleString("pt-BR") : "recentemente"}
+- Hor\xE1rio atual em Bras\xEDlia: ${hour}:00, ${["Domingo", "Segunda", "Ter\xE7a", "Quarta", "Quinta", "Sexta", "S\xE1bado"][weekday]}
+
+PRODUTO: Sal Marinho Integral 1kg \u2014 R$ 29,90 (sem refino, 84+ minerais, Mossor\xF3/RN)
+SITE: https://premium.salvitarn.com.br
+
+TAREFA: Gere uma mensagem de recupera\xE7\xE3o de carrinho para WhatsApp e defina o melhor hor\xE1rio para envio.
+
+Regras da mensagem:
+- M\xE1ximo 3 par\xE1grafos curtos (n\xE3o mais que 180 palavras total)
+- Tom amig\xE1vel e natural, N\xC3O insistente
+- Use *negrito* para destaque
+- Termine com link do site
+- Adapte ao passo que o cliente alcan\xE7ou (ex: se chegou no frete, mencione o frete gr\xE1tis para pedidos maiores)
+- Opcionalmente inclua cupom VOLTA10 se fizer sentido (n\xE3o para quem j\xE1 foi ao pagamento)
+- N\xC3O mencione o n\xFAmero de telefone nem diga "detectamos"
+
+Regras do hor\xE1rio:
+- N\xE3o envie entre 22h e 8h
+- Prefira 9h\u201311h ou 18h\u201320h em dias \xFAteis
+- Se for fim de semana, prefira 10h\u201312h
+- Retorne hor\xE1rio como ISO8601 UTC (subtraia 3h do hor\xE1rio Bras\xEDlia)
+
+Responda SOMENTE com JSON v\xE1lido neste formato exato:
+{"mensagem": "texto aqui", "scheduledFor": "2026-01-01T13:00:00.000Z", "oferecer_cupom": true, "raciocinio": "motivo da escolha"}`;
+      try {
+        const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: [{ role: "user", content: prompt }],
+            max_tokens: 600,
+            temperature: 0.6,
+            response_format: { type: "json_object" }
+          })
+        });
+        if (!res.ok)
+          continue;
+        const data = await res.json();
+        const raw = data.choices?.[0]?.message?.content ?? "{}";
+        let parsed;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          continue;
+        }
+        const aiMsg = parsed.mensagem?.trim();
+        if (!aiMsg)
+          continue;
+        let sf = parsed.scheduledFor ? new Date(parsed.scheduledFor) : run2.scheduledFor;
+        const min30 = new Date(Date.now() + 30 * 60 * 1e3);
+        const max48h = new Date(Date.now() + 48 * 60 * 60 * 1e3);
+        if (sf < min30)
+          sf = min30;
+        if (sf > max48h)
+          sf = max48h;
+        await ordersDb.update(automationRuns).set({
+          aiBody: aiMsg,
+          aiReasoning: parsed.raciocinio ?? null,
+          aiProcessedAt: /* @__PURE__ */ new Date(),
+          scheduledFor: sf,
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(eq(automationRuns.id, run2.id));
+        results.push({ cartId: cart.id, name: cart.customerName, scheduledFor: sf.toISOString(), reasoning: parsed.raciocinio ?? "" });
+        processed++;
+      } catch {
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    return { processed, results };
+  }),
+  // Admin: AI processes a single unpaid order — generates personalized follow-up
+  aiProcessOrder: protectedProcedure.input(external_exports.object({ orderId: external_exports.number() })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey)
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "GROQ_API_KEY n\xE3o configurado" });
+    const [order2] = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
+    if (!order2)
+      throw new TRPCError({ code: "NOT_FOUND" });
+    const pixCode = order2.mpPaymentId ? await fetchPixCode(order2.mpPaymentId) : null;
+    const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order2.id}`;
+    const prompt = `Voc\xEA \xE9 especialista em recupera\xE7\xE3o de vendas para Sal Vita (sal marinho premium de Mossor\xF3/RN).
+
+PEDIDO N\xC3O PAGO:
+- Cliente: ${order2.customerName}
+- Pedido: #${order2.id}
+- Valor total: R$ ${parseFloat(order2.totalPrice ?? "0").toFixed(2)}
+- Quantidade: ${order2.quantity}x Sal Marinho Integral 1kg
+- Status do pagamento: ${order2.paymentStatus === "failed" ? "FALHOU" : "aguardando"}
+- Tem c\xF3digo PIX: ${pixCode ? "SIM" : "N\xC3O"}
+- Link do pedido: ${orderLink}
+${pixCode ? `- C\xF3digo PIX: ${pixCode.substring(0, 30)}...` : ""}
+
+Gere uma mensagem de WhatsApp para recuperar este pagamento.
+Regras:
+- Se tem PIX: inclua instru\xE7\xE3o clara para copiar e usar o c\xF3digo
+- Se pagamento falhou: seja simp\xE1tico, sugira tentar outro m\xE9todo
+- M\xE1ximo 3 par\xE1grafos, tom amig\xE1vel
+- Use *negrito* para destaque no valor e pedido
+- Inclua o link do pedido ao final
+
+Responda SOMENTE em JSON: {"mensagem": "texto aqui", "raciocinio": "motivo"}`;
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 400,
+        temperature: 0.6,
+        response_format: { type: "json_object" }
+      })
+    });
+    if (!res.ok)
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro na API Groq" });
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content ?? "{}";
+    const parsed = JSON.parse(raw);
+    if (!parsed.mensagem)
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "IA n\xE3o gerou mensagem" });
+    const finalMsg = pixCode ? parsed.mensagem.replace("{pix}", pixCode) : parsed.mensagem;
+    return { message: finalMsg, hasPix: !!pixCode, reasoning: parsed.raciocinio ?? "" };
+  }),
+  // Admin: AI processes + immediately sends to one specific cart
+  aiSendCart: protectedProcedure.input(external_exports.object({ cartId: external_exports.number() })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey)
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "GROQ_API_KEY n\xE3o configurado" });
+    const [cart] = await ordersDb.select().from(abandonedCarts).where(eq(abandonedCarts.id, input.cartId)).limit(1);
+    if (!cart)
+      throw new TRPCError({ code: "NOT_FOUND" });
+    const stepDesc = cart.stepReached === 1 ? "preencheu o formul\xE1rio mas n\xE3o calculou frete" : cart.stepReached === 2 ? "calculou o frete mas n\xE3o foi para o pagamento" : "chegou at\xE9 a etapa de pagamento mas n\xE3o concluiu";
+    const prompt = `Gere uma mensagem de recupera\xE7\xE3o de carrinho para WhatsApp para o cliente ${cart.customerName} da Sal Vita (sal marinho de Mossor\xF3/RN, R$29,90/kg).
+O cliente ${stepDesc}. Quantidade: ${cart.quantity ?? 1}kg.
+M\xE1ximo 3 par\xE1grafos, tom amig\xE1vel, use *negrito*, inclua https://premium.salvitarn.com.br ao final.
+Responda SOMENTE JSON: {"mensagem": "texto"}`;
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 350,
+        temperature: 0.7,
+        response_format: { type: "json_object" }
+      })
+    });
+    if (!res.ok)
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro na API Groq" });
+    const data = await res.json();
+    const parsed = JSON.parse(data.choices?.[0]?.message?.content ?? "{}");
+    if (!parsed.mensagem)
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "IA n\xE3o gerou mensagem" });
+    const ok = await sendViaWhatsApp(cart.customerPhone, parsed.mensagem);
+    if (ok) {
+      await ordersDb.update(abandonedCarts).set({ recoverySentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.id, input.cartId));
+      await ordersDb.update(automationRuns).set({ status: "sent", sentAt: /* @__PURE__ */ new Date(), aiBody: parsed.mensagem, updatedAt: /* @__PURE__ */ new Date() }).where(and(eq(automationRuns.cartId, input.cartId), eq(automationRuns.status, "scheduled")));
+    }
+    return { ok, phone: fmtPhone(cart.customerPhone), preview: parsed.mensagem };
+  }),
   // Internal/Admin: run automation job — sends scheduled WA messages for abandoned carts
   // Called by cron (/api/cron/abandoned-cart) or manually from admin UI
   runAutomationJob: protectedProcedure.mutation(async ({ ctx }) => {
@@ -55279,8 +55481,13 @@ var recoveryRouter = router({
         cancelled++;
         continue;
       }
-      const [tpl] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.type, "abandoned"), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true))).limit(1);
-      const msg = tpl ? renderTemplate(tpl.body, { nome: cart.customerName, link: "https://premium.salvitarn.com.br", cupom: "VOLTA10", produto: "Sal Marinho Integral 1kg" }) : recoveryMsg(cart.customerName);
+      let msg;
+      if (run2.aiBody) {
+        msg = run2.aiBody;
+      } else {
+        const [tpl] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.type, "abandoned"), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true))).limit(1);
+        msg = tpl ? renderTemplate(tpl.body, { nome: cart.customerName, link: "https://premium.salvitarn.com.br", cupom: "VOLTA10", produto: "Sal Marinho Integral 1kg" }) : recoveryMsg(cart.customerName);
+      }
       const ok = await sendViaWhatsApp(run2.customerPhone, msg);
       if (ok) {
         await ordersDb.update(automationRuns).set({ status: "sent", sentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(automationRuns.id, run2.id));
@@ -55624,6 +55831,9 @@ async function ensureOrdersTablesExist() {
     await sql4`CREATE INDEX IF NOT EXISTS automation_runs_status_idx ON automation_runs(status)`;
     await sql4`CREATE INDEX IF NOT EXISTS automation_runs_scheduled_for_idx ON automation_runs(scheduled_for)`;
     await sql4`CREATE INDEX IF NOT EXISTS automation_runs_cart_id_idx ON automation_runs(cart_id)`;
+    await sql4`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_body TEXT`;
+    await sql4`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_reasoning TEXT`;
+    await sql4`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_processed_at TIMESTAMP`;
     await sql4`
       CREATE TABLE IF NOT EXISTS coupons (
         id SERIAL PRIMARY KEY,
