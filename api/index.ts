@@ -192,6 +192,14 @@ const couponCheckLimiter = rateLimit({
   keyGenerator: (req) => req.ip || 'unknown',
 });
 
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 15,
+  message: { error: 'Muitas mensagens. Aguarde um momento.' },
+  validate: { xForwardedForHeader: false },
+  keyGenerator: (req) => req.ip || 'unknown',
+});
+
 app.use('/api/trpc/auth.login', authLimiter);
 app.use('/api/trpc/auth.emergencyReset', authLimiter);
 app.use('/api/trpc/shipping.calculate', storeLimiter);
@@ -200,6 +208,7 @@ app.use('/api/trpc/shipping.createOrder', orderLimiter);
 app.use('/api/trpc/shipping.createPayment', orderLimiter);
 app.use('/api/trpc/recovery.trackCart', cartTrackLimiter);
 app.use('/api/trpc/recovery.validateCoupon', couponCheckLimiter);
+app.use('/api/trpc/recovery.chat', chatLimiter);
 
 app.use(
   '/api/trpc',

@@ -290,4 +290,50 @@ Seja específico, prático e use dados fornecidos. Formate com emojis e seções
         },
       };
     }),
+
+  // Public: customer chat powered by Groq
+  chat: publicProcedure
+    .input(z.object({
+      messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string() })).max(20),
+    }))
+    .mutation(async ({ input }) => {
+      const apiKey = process.env.SAL_VITA_PREMIUM_1KG_GROQ ?? process.env.GROQ_API_KEY_PREMIUM ?? process.env.GROQ_API_KEY;
+      if (!apiKey) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Chat não disponível no momento.' });
+
+      const system = `Você é a assistente virtual do SAL VITA PREMIUM, um sal marinho integral artesanal produzido em Mossoró/RN, Brasil.
+
+PRODUTO:
+- Nome: Sal Vita Premium — Sal Marinho Integral 1kg
+- Preço: R$ 29,90 por kg (pode variar conforme quantidade)
+- Diferencial: sem refino, colhido diretamente do mar, mantém 84+ minerais naturais (magnésio, potássio, cálcio, iodo)
+- Produzido em Mossoró/RN (capital mundial do sal)
+- Ideal para: culinária saudável, dieta natural, substituição do sal refinado
+- Enviamos para todo o Brasil via Melhor Envio (PAC/SEDEX)
+- Formas de pagamento: Cartão, PIX, Boleto (via Mercado Pago)
+- Site: https://premium.salvitarn.com.br
+- Rastreio: https://premium.salvitarn.com.br/meu-pedido
+
+INSTRUÇÕES:
+- Seja simpática, objetiva e use emojis com moderação 🌊
+- Responda APENAS sobre o produto, pedidos, frete, pagamento e dúvidas do site
+- Se não souber, diga "Vou verificar isso para você! Entre em contato pelo WhatsApp para mais detalhes."
+- Nunca invente preços ou prazos que não conhece
+- Incentive a compra quando pertinente, mas sem ser insistente
+- Máximo 3 parágrafos curtos por resposta`;
+
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [{ role: 'system', content: system }, ...input.messages],
+          max_tokens: 300,
+          temperature: 0.7,
+        }),
+      });
+
+      if (!res.ok) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Erro ao processar mensagem.' });
+      const data = await res.json() as { choices: { message: { content: string } }[] };
+      return { reply: data.choices[0]?.message?.content ?? 'Desculpe, não consegui processar sua mensagem.' };
+    }),
 });
