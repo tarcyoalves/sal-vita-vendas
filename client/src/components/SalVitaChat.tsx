@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { trpc } from '../_core/trpc';
+import { trpc } from '../lib/trpc';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
 
