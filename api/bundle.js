@@ -104,7 +104,7 @@ var require_main = __commonJS({
     var fs = require("fs");
     var path = require("path");
     var os = require("os");
-    var crypto = require("crypto");
+    var crypto2 = require("crypto");
     var packageJson = require_package();
     var version2 = packageJson.version;
     var LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
@@ -323,7 +323,7 @@ var require_main = __commonJS({
       const authTag = ciphertext.subarray(-16);
       ciphertext = ciphertext.subarray(12, -16);
       try {
-        const aesgcm = crypto.createDecipheriv("aes-256-gcm", key, nonce);
+        const aesgcm = crypto2.createDecipheriv("aes-256-gcm", key, nonce);
         aesgcm.setAuthTag(authTag);
         return `${aesgcm.update(ciphertext)}${aesgcm.final()}`;
       } catch (error) {
@@ -504,8 +504,8 @@ var require_depd = __commonJS({
       return deprecate;
     }
     function eehaslisteners(emitter, type) {
-      var count = typeof emitter.listenerCount !== "function" ? emitter.listeners(type).length : emitter.listenerCount(type);
-      return count > 0;
+      var count2 = typeof emitter.listenerCount !== "function" ? emitter.listeners(type).length : emitter.listenerCount(type);
+      return count2 > 0;
     }
     function isignored(namespace) {
       if (process.noDeprecation) {
@@ -17548,16 +17548,16 @@ var require_urlencoded = __commonJS({
       }
     }
     function parameterCount(body, limit) {
-      var count = 0;
+      var count2 = 0;
       var index = 0;
       while ((index = body.indexOf("&", index)) !== -1) {
-        count++;
+        count2++;
         index++;
-        if (count === limit) {
+        if (count2 === limit) {
           return void 0;
         }
       }
-      return count;
+      return count2;
     }
     function parser(name) {
       var mod = parsers[name];
@@ -18152,8 +18152,8 @@ var require_encodeurl = __commonJS({
     var ENCODE_CHARS_REGEXP = /(?:[^\x21\x23-\x3B\x3D\x3F-\x5F\x61-\x7A\x7C\x7E]|%(?:[^0-9A-Fa-f]|[0-9A-Fa-f][^0-9A-Fa-f]|$))+/g;
     var UNMATCHED_SURROGATE_PAIR_REGEXP = /(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]|[\uD800-\uDBFF]([^\uDC00-\uDFFF]|$)/g;
     var UNMATCHED_SURROGATE_PAIR_REPLACE = "$1\uFFFD$2";
-    function encodeUrl(url) {
-      return String(url).replace(UNMATCHED_SURROGATE_PAIR_REGEXP, UNMATCHED_SURROGATE_PAIR_REPLACE).replace(ENCODE_CHARS_REGEXP, encodeURI);
+    function encodeUrl(url2) {
+      return String(url2).replace(UNMATCHED_SURROGATE_PAIR_REGEXP, UNMATCHED_SURROGATE_PAIR_REPLACE).replace(ENCODE_CHARS_REGEXP, encodeURI);
     }
   }
 });
@@ -18209,35 +18209,35 @@ var require_escape_html = __commonJS({
 var require_parseurl = __commonJS({
   "node_modules/parseurl/index.js"(exports2, module2) {
     "use strict";
-    var url = require("url");
-    var parse2 = url.parse;
-    var Url = url.Url;
+    var url2 = require("url");
+    var parse2 = url2.parse;
+    var Url = url2.Url;
     module2.exports = parseurl;
     module2.exports.original = originalurl;
     function parseurl(req) {
-      var url2 = req.url;
-      if (url2 === void 0) {
+      var url3 = req.url;
+      if (url3 === void 0) {
         return void 0;
       }
       var parsed = req._parsedUrl;
-      if (fresh(url2, parsed)) {
+      if (fresh(url3, parsed)) {
         return parsed;
       }
-      parsed = fastparse(url2);
-      parsed._raw = url2;
+      parsed = fastparse(url3);
+      parsed._raw = url3;
       return req._parsedUrl = parsed;
     }
     function originalurl(req) {
-      var url2 = req.originalUrl;
-      if (typeof url2 !== "string") {
+      var url3 = req.originalUrl;
+      if (typeof url3 !== "string") {
         return parseurl(req);
       }
       var parsed = req._parsedOriginalUrl;
-      if (fresh(url2, parsed)) {
+      if (fresh(url3, parsed)) {
         return parsed;
       }
-      parsed = fastparse(url2);
-      parsed._raw = url2;
+      parsed = fastparse(url3);
+      parsed._raw = url3;
       return req._parsedOriginalUrl = parsed;
     }
     function fastparse(str) {
@@ -18267,18 +18267,18 @@ var require_parseurl = __commonJS({
             return parse2(str);
         }
       }
-      var url2 = Url !== void 0 ? new Url() : {};
-      url2.path = str;
-      url2.href = str;
-      url2.pathname = pathname;
+      var url3 = Url !== void 0 ? new Url() : {};
+      url3.path = str;
+      url3.href = str;
+      url3.pathname = pathname;
       if (search !== null) {
-        url2.query = query;
-        url2.search = search;
+        url3.query = query;
+        url3.search = search;
       }
-      return url2;
+      return url3;
     }
-    function fresh(url2, parsedUrl) {
-      return typeof parsedUrl === "object" && parsedUrl !== null && (Url === void 0 || parsedUrl instanceof Url) && parsedUrl._raw === url2;
+    function fresh(url3, parsedUrl) {
+      return typeof parsedUrl === "object" && parsedUrl !== null && (Url === void 0 || parsedUrl instanceof Url) && parsedUrl._raw === url3;
     }
   }
 });
@@ -19582,14 +19582,14 @@ var require_router = __commonJS({
         return void 0;
       }
     }
-    function getProtohost(url) {
-      if (typeof url !== "string" || url.length === 0 || url[0] === "/") {
+    function getProtohost(url2) {
+      if (typeof url2 !== "string" || url2.length === 0 || url2[0] === "/") {
         return void 0;
       }
-      var searchIndex = url.indexOf("?");
-      var pathLength = searchIndex !== -1 ? searchIndex : url.length;
-      var fqdnIndex = url.slice(0, pathLength).indexOf("://");
-      return fqdnIndex !== -1 ? url.substring(0, url.indexOf("/", 3 + fqdnIndex)) : void 0;
+      var searchIndex = url2.indexOf("?");
+      var pathLength = searchIndex !== -1 ? searchIndex : url2.length;
+      var fqdnIndex = url2.slice(0, pathLength).indexOf("://");
+      return fqdnIndex !== -1 ? url2.substring(0, url2.indexOf("/", 3 + fqdnIndex)) : void 0;
     }
     function gettype(obj) {
       var type = typeof obj;
@@ -20454,14 +20454,14 @@ var require_etag = __commonJS({
   "node_modules/etag/index.js"(exports2, module2) {
     "use strict";
     module2.exports = etag;
-    var crypto = require("crypto");
+    var crypto2 = require("crypto");
     var Stats = require("fs").Stats;
     var toString = Object.prototype.toString;
     function entitytag(entity) {
       if (entity.length === 0) {
         return '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
       }
-      var hash = crypto.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
+      var hash = crypto2.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
       var len = typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length;
       return '"' + len.toString(16) + "-" + hash + '"';
     }
@@ -21320,8 +21320,8 @@ var require_send = __commonJS({
       return typeof res.getHeaderNames !== "function" ? Object.keys(res._headers || {}) : res.getHeaderNames();
     }
     function hasListeners(emitter, type) {
-      var count = typeof emitter.listenerCount !== "function" ? emitter.listeners(type).length : emitter.listenerCount(type);
-      return count > 0;
+      var count2 = typeof emitter.listenerCount !== "function" ? emitter.listeners(type).length : emitter.listenerCount(type);
+      return count2 > 0;
     }
     function headersSent(res) {
       return typeof res.headersSent !== "boolean" ? Boolean(res._header) : res.headersSent;
@@ -23024,13 +23024,13 @@ var require_mediaType = __commonJS({
       return spec.q > 0;
     }
     function quoteCount(string) {
-      var count = 0;
+      var count2 = 0;
       var index = 0;
       while ((index = string.indexOf('"', index)) !== -1) {
-        count++;
+        count2++;
         index++;
       }
-      return count;
+      return count2;
     }
     function splitKeyValuePair(str) {
       var index = str.indexOf("=");
@@ -23384,13 +23384,13 @@ var require_request = __commonJS({
 // node_modules/cookie-signature/index.js
 var require_cookie_signature = __commonJS({
   "node_modules/cookie-signature/index.js"(exports2) {
-    var crypto = require("crypto");
+    var crypto2 = require("crypto");
     exports2.sign = function(val, secret) {
       if ("string" !== typeof val)
         throw new TypeError("Cookie value must be provided as a string.");
       if (null == secret)
         throw new TypeError("Secret key must be provided.");
-      return val + "." + crypto.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
+      return val + "." + crypto2.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
     };
     exports2.unsign = function(val, secret) {
       if ("string" !== typeof val)
@@ -23401,7 +23401,7 @@ var require_cookie_signature = __commonJS({
       return sha1(mac) == sha1(val) ? str : false;
     };
     function sha1(str) {
-      return crypto.createHash("sha1").update(str).digest("hex");
+      return crypto2.createHash("sha1").update(str).digest("hex");
     }
   }
 });
@@ -24042,18 +24042,18 @@ var require_response = __commonJS({
       this.append("Set-Cookie", cookie.serialize(name, String(val), opts));
       return this;
     };
-    res.location = function location(url) {
+    res.location = function location(url2) {
       var loc;
-      if (url === "back") {
+      if (url2 === "back") {
         deprecate('res.location("back"): use res.location(req.get("Referrer") || "/") and refer to https://dub.sh/security-redirect for best practices');
         loc = this.req.get("Referrer") || "/";
       } else {
-        loc = String(url);
+        loc = String(url2);
       }
       return this.set("Location", encodeUrl(loc));
     };
-    res.redirect = function redirect(url) {
-      var address = url;
+    res.redirect = function redirect(url2) {
+      var address = url2;
       var body;
       var status = 302;
       if (arguments.length === 2) {
@@ -24215,7 +24215,7 @@ var require_serve_static = __commonJS({
     var parseUrl = require_parseurl();
     var resolve = require("path").resolve;
     var send = require_send();
-    var url = require("url");
+    var url2 = require("url");
     module2.exports = serveStatic;
     module2.exports.mime = send.mime;
     function serveStatic(root, options) {
@@ -24297,7 +24297,7 @@ var require_serve_static = __commonJS({
         var originalUrl = parseUrl.original(this.req);
         originalUrl.path = null;
         originalUrl.pathname = collapseLeadingSlashes(originalUrl.pathname + "/");
-        var loc = encodeUrl(url.format(originalUrl));
+        var loc = encodeUrl(url2.format(originalUrl));
         var doc = createHtmlDocument("Redirecting", "Redirecting to " + escapeHtml(loc));
         res.statusCode = 301;
         res.setHeader("Content-Type", "text/html; charset=UTF-8");
@@ -25430,12 +25430,12 @@ var require_ipv6 = __commonJS({
        * addressAndPort.address.correctForm(); // 'ffff::'
        * addressAndPort.port; // 8080
        */
-      static fromURL(url) {
+      static fromURL(url2) {
         let host;
         let port = null;
         let result;
-        if (url.indexOf("[") !== -1 && url.indexOf("]:") !== -1) {
-          result = constants6.RE_URL_WITH_PORT.exec(url);
+        if (url2.indexOf("[") !== -1 && url2.indexOf("]:") !== -1) {
+          result = constants6.RE_URL_WITH_PORT.exec(url2);
           if (result === null) {
             return {
               error: "failed to parse address with port",
@@ -25445,9 +25445,9 @@ var require_ipv6 = __commonJS({
           }
           host = result[1];
           port = result[2];
-        } else if (url.indexOf("/") !== -1) {
-          url = url.replace(/^[a-z0-9]+:\/\//, "");
-          result = constants6.RE_URL.exec(url);
+        } else if (url2.indexOf("/") !== -1) {
+          url2 = url2.replace(/^[a-z0-9]+:\/\//, "");
+          result = constants6.RE_URL.exec(url2);
           if (result === null) {
             return {
               error: "failed to parse address from URL",
@@ -25457,7 +25457,7 @@ var require_ipv6 = __commonJS({
           }
           host = result[1];
         } else {
-          host = url;
+          host = url2;
         }
         if (port) {
           port = parseInt(port, 10);
@@ -26498,14 +26498,14 @@ var require_buffer_equal_constant_time = __commonJS({
 var require_jwa = __commonJS({
   "node_modules/jwa/index.js"(exports2, module2) {
     var Buffer3 = require_safe_buffer().Buffer;
-    var crypto = require("crypto");
+    var crypto2 = require("crypto");
     var formatEcdsa = require_ecdsa_sig_formatter();
     var util2 = require("util");
     var MSG_INVALID_ALGORITHM = '"%s" is not a valid algorithm.\n  Supported algorithms are:\n  "HS256", "HS384", "HS512", "RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512" and "none".';
     var MSG_INVALID_SECRET = "secret must be a string or buffer";
     var MSG_INVALID_VERIFIER_KEY = "key must be a string or a buffer";
     var MSG_INVALID_SIGNER_KEY = "key must be a string, a buffer or an object";
-    var supportsKeyObjects = typeof crypto.createPublicKey === "function";
+    var supportsKeyObjects = typeof crypto2.createPublicKey === "function";
     if (supportsKeyObjects) {
       MSG_INVALID_VERIFIER_KEY += " or a KeyObject";
       MSG_INVALID_SECRET += "or a KeyObject";
@@ -26595,17 +26595,17 @@ var require_jwa = __commonJS({
       return function sign(thing, secret) {
         checkIsSecretKey(secret);
         thing = normalizeInput(thing);
-        var hmac = crypto.createHmac("sha" + bits, secret);
+        var hmac = crypto2.createHmac("sha" + bits, secret);
         var sig = (hmac.update(thing), hmac.digest("base64"));
         return fromBase64(sig);
       };
     }
     var bufferEqual;
-    var timingSafeEqual2 = "timingSafeEqual" in crypto ? function timingSafeEqual3(a2, b) {
+    var timingSafeEqual2 = "timingSafeEqual" in crypto2 ? function timingSafeEqual3(a2, b) {
       if (a2.byteLength !== b.byteLength) {
         return false;
       }
-      return crypto.timingSafeEqual(a2, b);
+      return crypto2.timingSafeEqual(a2, b);
     } : function timingSafeEqual3(a2, b) {
       if (!bufferEqual) {
         bufferEqual = require_buffer_equal_constant_time();
@@ -26622,7 +26622,7 @@ var require_jwa = __commonJS({
       return function sign(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
-        var signer = crypto.createSign("RSA-SHA" + bits);
+        var signer = crypto2.createSign("RSA-SHA" + bits);
         var sig = (signer.update(thing), signer.sign(privateKey, "base64"));
         return fromBase64(sig);
       };
@@ -26632,7 +26632,7 @@ var require_jwa = __commonJS({
         checkIsPublicKey(publicKey);
         thing = normalizeInput(thing);
         signature = toBase64(signature);
-        var verifier = crypto.createVerify("RSA-SHA" + bits);
+        var verifier = crypto2.createVerify("RSA-SHA" + bits);
         verifier.update(thing);
         return verifier.verify(publicKey, signature, "base64");
       };
@@ -26641,11 +26641,11 @@ var require_jwa = __commonJS({
       return function sign(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
-        var signer = crypto.createSign("RSA-SHA" + bits);
+        var signer = crypto2.createSign("RSA-SHA" + bits);
         var sig = (signer.update(thing), signer.sign({
           key: privateKey,
-          padding: crypto.constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: crypto.constants.RSA_PSS_SALTLEN_DIGEST
+          padding: crypto2.constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: crypto2.constants.RSA_PSS_SALTLEN_DIGEST
         }, "base64"));
         return fromBase64(sig);
       };
@@ -26655,12 +26655,12 @@ var require_jwa = __commonJS({
         checkIsPublicKey(publicKey);
         thing = normalizeInput(thing);
         signature = toBase64(signature);
-        var verifier = crypto.createVerify("RSA-SHA" + bits);
+        var verifier = crypto2.createVerify("RSA-SHA" + bits);
         verifier.update(thing);
         return verifier.verify({
           key: publicKey,
-          padding: crypto.constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: crypto.constants.RSA_PSS_SALTLEN_DIGEST
+          padding: crypto2.constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: crypto2.constants.RSA_PSS_SALTLEN_DIGEST
         }, signature, "base64");
       };
     }
@@ -27744,8 +27744,8 @@ var require_lt = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/lt.js"(exports2, module2) {
     "use strict";
     var compare = require_compare();
-    var lt2 = (a2, b, loose) => compare(a2, b, loose) < 0;
-    module2.exports = lt2;
+    var lt3 = (a2, b, loose) => compare(a2, b, loose) < 0;
+    module2.exports = lt3;
   }
 });
 
@@ -27797,7 +27797,7 @@ var require_cmp = __commonJS({
     var neq = require_neq();
     var gt3 = require_gt();
     var gte2 = require_gte();
-    var lt2 = require_lt();
+    var lt3 = require_lt();
     var lte2 = require_lte();
     var cmp = (a2, op, b, loose) => {
       switch (op) {
@@ -27828,7 +27828,7 @@ var require_cmp = __commonJS({
         case ">=":
           return gte2(a2, b, loose);
         case "<":
-          return lt2(a2, b, loose);
+          return lt3(a2, b, loose);
         case "<=":
           return lte2(a2, b, loose);
         default:
@@ -28581,7 +28581,7 @@ var require_outside = __commonJS({
     var Range = require_range2();
     var satisfies = require_satisfies();
     var gt3 = require_gt();
-    var lt2 = require_lt();
+    var lt3 = require_lt();
     var lte2 = require_lte();
     var gte2 = require_gte();
     var outside = (version2, range, hilo, options) => {
@@ -28592,12 +28592,12 @@ var require_outside = __commonJS({
         case ">":
           gtfn = gt3;
           ltefn = lte2;
-          ltfn = lt2;
+          ltfn = lt3;
           comp = ">";
           ecomp = ">=";
           break;
         case "<":
-          gtfn = lt2;
+          gtfn = lt3;
           ltefn = gte2;
           ltfn = gt3;
           comp = "<";
@@ -28778,12 +28778,12 @@ var require_subset = __commonJS({
         }
       }
       const eqSet = /* @__PURE__ */ new Set();
-      let gt3, lt2;
+      let gt3, lt3;
       for (const c of sub) {
         if (c.operator === ">" || c.operator === ">=") {
           gt3 = higherGT(gt3, c, options);
         } else if (c.operator === "<" || c.operator === "<=") {
-          lt2 = lowerLT(lt2, c, options);
+          lt3 = lowerLT(lt3, c, options);
         } else {
           eqSet.add(c.semver);
         }
@@ -28792,11 +28792,11 @@ var require_subset = __commonJS({
         return null;
       }
       let gtltComp;
-      if (gt3 && lt2) {
-        gtltComp = compare(gt3.semver, lt2.semver, options);
+      if (gt3 && lt3) {
+        gtltComp = compare(gt3.semver, lt3.semver, options);
         if (gtltComp > 0) {
           return null;
-        } else if (gtltComp === 0 && (gt3.operator !== ">=" || lt2.operator !== "<=")) {
+        } else if (gtltComp === 0 && (gt3.operator !== ">=" || lt3.operator !== "<=")) {
           return null;
         }
       }
@@ -28804,7 +28804,7 @@ var require_subset = __commonJS({
         if (gt3 && !satisfies(eq2, String(gt3), options)) {
           return null;
         }
-        if (lt2 && !satisfies(eq2, String(lt2), options)) {
+        if (lt3 && !satisfies(eq2, String(lt3), options)) {
           return null;
         }
         for (const c of dom) {
@@ -28816,9 +28816,9 @@ var require_subset = __commonJS({
       }
       let higher, lower;
       let hasDomLT, hasDomGT;
-      let needDomLTPre = lt2 && !options.includePrerelease && lt2.semver.prerelease.length ? lt2.semver : false;
+      let needDomLTPre = lt3 && !options.includePrerelease && lt3.semver.prerelease.length ? lt3.semver : false;
       let needDomGTPre = gt3 && !options.includePrerelease && gt3.semver.prerelease.length ? gt3.semver : false;
-      if (needDomLTPre && needDomLTPre.prerelease.length === 1 && lt2.operator === "<" && needDomLTPre.prerelease[0] === 0) {
+      if (needDomLTPre && needDomLTPre.prerelease.length === 1 && lt3.operator === "<" && needDomLTPre.prerelease[0] === 0) {
         needDomLTPre = false;
       }
       for (const c of dom) {
@@ -28839,29 +28839,29 @@ var require_subset = __commonJS({
             return false;
           }
         }
-        if (lt2) {
+        if (lt3) {
           if (needDomLTPre) {
             if (c.semver.prerelease && c.semver.prerelease.length && c.semver.major === needDomLTPre.major && c.semver.minor === needDomLTPre.minor && c.semver.patch === needDomLTPre.patch) {
               needDomLTPre = false;
             }
           }
           if (c.operator === "<" || c.operator === "<=") {
-            lower = lowerLT(lt2, c, options);
-            if (lower === c && lower !== lt2) {
+            lower = lowerLT(lt3, c, options);
+            if (lower === c && lower !== lt3) {
               return false;
             }
-          } else if (lt2.operator === "<=" && !satisfies(lt2.semver, String(c), options)) {
+          } else if (lt3.operator === "<=" && !satisfies(lt3.semver, String(c), options)) {
             return false;
           }
         }
-        if (!c.operator && (lt2 || gt3) && gtltComp !== 0) {
+        if (!c.operator && (lt3 || gt3) && gtltComp !== 0) {
           return false;
         }
       }
-      if (gt3 && hasDomLT && !lt2 && gtltComp !== 0) {
+      if (gt3 && hasDomLT && !lt3 && gtltComp !== 0) {
         return false;
       }
-      if (lt2 && hasDomGT && !gt3 && gtltComp !== 0) {
+      if (lt3 && hasDomGT && !gt3 && gtltComp !== 0) {
         return false;
       }
       if (needDomGTPre || needDomLTPre) {
@@ -28911,7 +28911,7 @@ var require_semver2 = __commonJS({
     var sort = require_sort();
     var rsort = require_rsort();
     var gt3 = require_gt();
-    var lt2 = require_lt();
+    var lt3 = require_lt();
     var eq2 = require_eq();
     var neq = require_neq();
     var gte2 = require_gte();
@@ -28949,7 +28949,7 @@ var require_semver2 = __commonJS({
       sort,
       rsort,
       gt: gt3,
-      lt: lt2,
+      lt: lt3,
       eq: eq2,
       neq,
       gte: gte2,
@@ -29957,6 +29957,7 @@ module.exports = __toCommonJS(api_exports);
 })();
 
 // api/index.ts
+var import_crypto2 = __toESM(require("crypto"));
 var import_express = __toESM(require_express2());
 var import_cors = __toESM(require_lib3());
 
@@ -30765,11 +30766,11 @@ var ValidationError = class extends Error {
    * describing the issue in detail.
    */
   constructor(code, message) {
-    const url = `https://express-rate-limit.github.io/${code}/`;
-    super(`${message} See ${url} for more information.`);
+    const url2 = `https://express-rate-limit.github.io/${code}/`;
+    super(`${message} See ${url2} for more information.`);
     this.name = this.constructor.name;
     this.code = code;
-    this.help = url;
+    this.help = url2;
   }
 };
 var ChangeWarning = class extends ValidationError {
@@ -32786,7 +32787,7 @@ function _takeWithGrace() {
       const iterator = _usingCtx$1.a(iteratorResource(iterable));
       let result;
       const timer = _usingCtx$1.u(timerResource(opts.gracePeriodMs));
-      let count = opts.count;
+      let count2 = opts.count;
       let timerPromise = new Promise(() => {
       });
       while (true) {
@@ -32796,7 +32797,7 @@ function _takeWithGrace() {
         if (result.done)
           return result.value;
         yield result.value;
-        if (--count === 0)
+        if (--count2 === 0)
           timerPromise = timer.start();
         result = null;
       }
@@ -33526,7 +33527,7 @@ async function resolveResponse(opts) {
   const { router: router2, req } = opts;
   const headers = new Headers([["vary", "trpc-accept, accept"]]);
   const config = router2._def._config;
-  const url = new URL(req.url);
+  const url2 = new URL(req.url);
   if (req.method === "HEAD")
     return new Response(null, { status: 204 });
   const allowBatching = (_ref = (_opts$allowBatching = opts.allowBatching) !== null && _opts$allowBatching !== void 0 ? _opts$allowBatching : (_opts$batching = opts.batching) === null || _opts$batching === void 0 ? void 0 : _opts$batching.enabled) !== null && _ref !== void 0 ? _ref : true;
@@ -33537,9 +33538,9 @@ async function resolveResponse(opts) {
         req,
         path: decodeURIComponent(opts.path),
         router: router2,
-        searchParams: url.searchParams,
+        searchParams: url2.searchParams,
         headers: opts.req.headers,
-        url,
+        url: url2,
         maxBatchSize: opts.maxBatchSize
       })];
     } catch (cause) {
@@ -34306,7 +34307,7 @@ function incomingMessageToRequest(req, res, opts) {
   };
   res.once("close", onAbort);
   req.once("aborted", onAbort);
-  const url = createURL(req);
+  const url2 = createURL(req);
   const init = {
     headers: createHeaders(req.headers),
     method: req.method,
@@ -34316,7 +34317,7 @@ function incomingMessageToRequest(req, res, opts) {
     init.body = createBody(req, opts);
     init.duplex = "half";
   }
-  const request = new Request(url, init);
+  const request = new Request(url2, init);
   return request;
 }
 async function writeResponseBodyChunk(res, chunk) {
@@ -37964,11 +37965,11 @@ var et = I((Vh, Di) => {
   a($a, "escapeElement");
   function Mi(r) {
     for (var e = "{", t2 = 0; t2 < r.length; t2++)
-      t2 > 0 && (e = e + ","), r[t2] === null || typeof r[t2] > "u" ? e = e + "NULL" : Array.isArray(r[t2]) ? e = e + Mi(r[t2]) : r[t2] instanceof y ? e += "\\\\x" + r[t2].toString("hex") : e += $a(lt2(r[t2]));
+      t2 > 0 && (e = e + ","), r[t2] === null || typeof r[t2] > "u" ? e = e + "NULL" : Array.isArray(r[t2]) ? e = e + Mi(r[t2]) : r[t2] instanceof y ? e += "\\\\x" + r[t2].toString("hex") : e += $a(lt3(r[t2]));
     return e = e + "}", e;
   }
   a(Mi, "arrayString");
-  var lt2 = a(function(r, e) {
+  var lt3 = a(function(r, e) {
     if (r == null)
       return null;
     if (r instanceof y)
@@ -37986,7 +37987,7 @@ var et = I((Vh, Di) => {
     if (r && typeof r.toPostgres == "function") {
       if (e = e || [], e.indexOf(r) !== -1)
         throw new Error('circular reference detected while preparing "' + r + '" for query');
-      return e.push(r), lt2(r.toPostgres(lt2), e);
+      return e.push(r), lt3(r.toPostgres(lt3), e);
     }
     return JSON.stringify(r);
   }
@@ -38028,7 +38029,7 @@ var et = I((Vh, Di) => {
     return "md5" + i;
   }, "postgresMd5PasswordHash");
   Di.exports = { prepareValue: a(function(e) {
-    return lt2(
+    return lt3(
       e
     );
   }, "prepareValueWrapper"), normalizeQueryConfig: Ya, postgresMd5PasswordHash: Za, md5: Xt };
@@ -41825,10 +41826,10 @@ var PgEnumColumn = class extends PgColumn {
 // node_modules/drizzle-orm/subquery.js
 var Subquery = class {
   static [entityKind] = "Subquery";
-  constructor(sql3, selection, alias, isWith = false) {
+  constructor(sql4, selection, alias, isWith = false) {
     this._ = {
       brand: "Subquery",
-      sql: sql3,
+      sql: sql4,
       selectedFields: selection,
       alias,
       isWith
@@ -42146,7 +42147,7 @@ function sql(strings, ...params) {
   }
   sql22.param = param2;
 })(sql || (sql = {}));
-((SQL2) => {
+((SQL22) => {
   class Aliased {
     constructor(sql22, fieldAlias) {
       this.sql = sql22;
@@ -42163,7 +42164,7 @@ function sql(strings, ...params) {
       return new Aliased(this.sql, this.fieldAlias);
     }
   }
-  SQL2.Aliased = Aliased;
+  SQL22.Aliased = Aliased;
 })(SQL || (SQL = {}));
 var Placeholder = class {
   constructor(name2) {
@@ -43477,6 +43478,11 @@ function mapRelationalRow(tablesConfig, tableConfig, row, buildQueryResultSelect
     }
   }
   return result;
+}
+
+// node_modules/drizzle-orm/sql/functions/aggregate.js
+function count(expression) {
+  return sql`count(${expression || sql.raw("*")})`.mapWith(Number);
 }
 
 // node_modules/drizzle-orm/pg-core/view-base.js
@@ -45665,10 +45671,10 @@ var PgRelationalQuery = class extends QueryPromise {
 
 // node_modules/drizzle-orm/pg-core/query-builders/raw.js
 var PgRaw = class extends QueryPromise {
-  constructor(execute, sql3, query, mapBatchResult) {
+  constructor(execute, sql4, query, mapBatchResult) {
     super();
     this.execute = execute;
-    this.sql = sql3;
+    this.sql = sql4;
     this.query = query;
     this.mapBatchResult = mapBatchResult;
   }
@@ -45939,8 +45945,8 @@ var PgDatabase = class {
     return new PgRefreshMaterializedView(view, this.session, this.dialect);
   }
   execute(query) {
-    const sql3 = query.getSQL();
-    const builtQuery = this.dialect.sqlToQuery(sql3);
+    const sql4 = query.getSQL();
+    const builtQuery = this.dialect.sqlToQuery(sql4);
     const prepared = this.session.prepareQuery(
       builtQuery,
       void 0,
@@ -45949,7 +45955,7 @@ var PgDatabase = class {
     );
     return new PgRaw(
       () => prepared.execute(),
-      sql3,
+      sql4,
       builtQuery,
       (result) => prepared.mapResult(result, true)
     );
@@ -46199,11 +46205,14 @@ function drizzle(client, config = {}) {
 // server/db/schema.ts
 var schema_exports = {};
 __export(schema_exports, {
+  abandonedCarts: () => abandonedCarts,
   chatMessages: () => chatMessages,
   clients: () => clients,
+  coupons: () => coupons,
   knowledgeDocuments: () => knowledgeDocuments,
   reminders: () => reminders,
   sellers: () => sellers,
+  siteOrders: () => siteOrders,
   tasks: () => tasks,
   users: () => users,
   workSessions: () => workSessions
@@ -46298,6 +46307,67 @@ var workSessions = pgTable("work_sessions", {
   dailyGoalHours: integer("daily_goal_hours").default(8).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+var siteOrders = pgTable("site_orders", {
+  id: serial("id").primaryKey(),
+  customerName: text("customer_name").notNull(),
+  customerPhone: text("customer_phone").notNull(),
+  customerEmail: text("customer_email"),
+  customerCpf: text("customer_cpf"),
+  postalCode: text("postal_code").notNull(),
+  address: text("address").notNull(),
+  number: text("number").notNull(),
+  complement: text("complement"),
+  neighborhood: text("neighborhood").notNull(),
+  city: text("city").notNull(),
+  state: text("state").notNull(),
+  quantity: integer("quantity").notNull().default(1),
+  product: text("product").notNull().default("Sal Marinho Integral 1kg"),
+  unitPrice: text("unit_price").notNull().default("29.90"),
+  shippingServiceId: text("shipping_service_id"),
+  shippingServiceName: text("shipping_service_name"),
+  shippingPrice: text("shipping_price"),
+  totalPrice: text("total_price"),
+  status: text("status").notNull().default("pending"),
+  paymentStatus: text("payment_status").notNull().default("awaiting"),
+  meOrderId: text("me_order_id"),
+  meLabelUrl: text("me_label_url"),
+  trackingCode: text("tracking_code"),
+  mpPreferenceId: text("mp_preference_id"),
+  mpPaymentId: text("mp_payment_id"),
+  notes: text("notes"),
+  couponCode: text("coupon_code"),
+  couponDiscount: text("coupon_discount"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+var abandonedCarts = pgTable("abandoned_carts", {
+  id: serial("id").primaryKey(),
+  customerName: text("customer_name").notNull(),
+  customerPhone: text("customer_phone").notNull().unique(),
+  customerEmail: text("customer_email"),
+  postalCode: text("postal_code"),
+  quantity: integer("quantity").default(1),
+  stepReached: integer("step_reached").default(1),
+  // 1=form 2=shipping 3=payment
+  recovered: boolean("recovered").default(false).notNull(),
+  recoverySentAt: timestamp("recovery_sent_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+var coupons = pgTable("coupons", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  description: text("description"),
+  discountType: text("discount_type").notNull().default("percent"),
+  // 'percent' | 'fixed'
+  discountValue: text("discount_value").notNull().default("10"),
+  minOrderValue: text("min_order_value").default("0"),
+  maxUses: integer("max_uses").default(100),
+  usedCount: integer("used_count").default(0).notNull(),
+  expiresAt: timestamp("expires_at"),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
 // server/db/index.ts
@@ -50497,13 +50567,23 @@ var remindersRouter = router({
 });
 
 // server/routers/tasks.ts
+async function userTaskFilter(userId, userName) {
+  const sellerRows = await db.select({ name: sellers.name }).from(sellers).where(eq(sellers.userId, userId));
+  const sellerName = sellerRows[0]?.name;
+  const conditions = [eq(tasks.userId, userId)];
+  if (userName)
+    conditions.push(sql`lower(${tasks.assignedTo}) = ${userName.toLowerCase()}`);
+  if (sellerName)
+    conditions.push(sql`lower(${tasks.assignedTo}) = ${sellerName.toLowerCase()}`);
+  return or2(...conditions);
+}
 var tasksRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     if (ctx.user.role === "admin") {
       return db.select().from(tasks).orderBy(tasks.createdAt);
     }
-    const userName = ctx.user.name ?? "";
-    return db.select().from(tasks).where(or2(eq(tasks.userId, ctx.user.id), eq(tasks.assignedTo, userName))).orderBy(tasks.createdAt);
+    const filter = await userTaskFilter(ctx.user.id, ctx.user.name ?? "");
+    return db.select().from(tasks).where(filter).orderBy(tasks.createdAt);
   }),
   create: protectedProcedure.input(external_exports.object({
     clientId: external_exports.number().optional().default(0),
@@ -50542,46 +50622,79 @@ var tasksRouter = router({
     status: external_exports.enum(["pending", "completed", "cancelled"]).optional()
   })).mutation(async ({ input, ctx }) => {
     const { id, ...data } = input;
-    const userName = ctx.user.name ?? "";
-    const where = ctx.user.role === "admin" ? eq(tasks.id, id) : and(eq(tasks.id, id), or2(eq(tasks.userId, ctx.user.id), eq(tasks.assignedTo, userName)));
+    const ownerFilter = ctx.user.role === "admin" ? eq(tasks.id, id) : and(eq(tasks.id, id), await userTaskFilter(ctx.user.id, ctx.user.name ?? ""));
     const now = /* @__PURE__ */ new Date();
     const setData = { ...data, updatedAt: now };
     if (data.notes && data.notes.trim().length > 15) {
       setData.lastContactedAt = now;
     }
-    const [updated] = await db.update(tasks).set(setData).where(where).returning();
+    const [updated] = await db.update(tasks).set(setData).where(ownerFilter).returning();
     if (!updated)
       throw new TRPCError({ code: "FORBIDDEN", message: "Tarefa n\xE3o encontrada ou sem permiss\xE3o" });
-    return updated;
+    let burstWarning = false;
+    let burstCount = 0;
+    if (ctx.user.role !== "admin" && setData.lastContactedAt) {
+      const tenMinAgo = new Date(now.getTime() - 10 * 60 * 1e3);
+      const [burstRow] = await db.select({ cnt: count() }).from(tasks).where(and(eq(tasks.userId, ctx.user.id), isNotNull(tasks.lastContactedAt), gte(tasks.lastContactedAt, tenMinAgo)));
+      burstCount = Number(burstRow?.cnt ?? 0);
+      burstWarning = burstCount >= 10;
+    }
+    return { ...updated, burstWarning, burstCount };
   }),
   delete: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ input, ctx }) => {
-    const userName = ctx.user.name ?? "";
-    const where = ctx.user.role === "admin" ? eq(tasks.id, input.id) : and(eq(tasks.id, input.id), or2(eq(tasks.userId, ctx.user.id), eq(tasks.assignedTo, userName)));
-    await db.delete(tasks).where(where);
+    const ownerFilter = ctx.user.role === "admin" ? eq(tasks.id, input.id) : and(eq(tasks.id, input.id), await userTaskFilter(ctx.user.id, ctx.user.name ?? ""));
+    await db.delete(tasks).where(ownerFilter);
     return { ok: true };
   }),
   deleteMany: protectedProcedure.input(external_exports.object({ ids: external_exports.array(external_exports.number()).min(1) })).mutation(async ({ input, ctx }) => {
-    const userName = ctx.user.name ?? "";
-    const where = ctx.user.role === "admin" ? inArray(tasks.id, input.ids) : and(inArray(tasks.id, input.ids), or2(eq(tasks.userId, ctx.user.id), eq(tasks.assignedTo, userName)));
-    await db.delete(tasks).where(where);
+    const ownerFilter = ctx.user.role === "admin" ? inArray(tasks.id, input.ids) : and(inArray(tasks.id, input.ids), await userTaskFilter(ctx.user.id, ctx.user.name ?? ""));
+    await db.delete(tasks).where(ownerFilter);
     return { ok: true, count: input.ids.length };
   }),
-  reminders: protectedProcedure.query(async ({ ctx }) => {
-    if (ctx.user.role === "admin") {
-      const result2 = await db.select().from(tasks).where(isNotNull(tasks.reminderDate));
-      return result2.sort((a2, b) => {
-        const dateA = a2.reminderDate ? new Date(a2.reminderDate).getTime() : 0;
-        const dateB = b.reminderDate ? new Date(b.reminderDate).getTime() : 0;
-        return dateA - dateB;
-      });
+  fraudAlerts: protectedProcedure.query(async ({ ctx }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1e3);
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1e3);
+    const [burstRows, hourRows, allSellers] = await Promise.all([
+      db.select({ userId: tasks.userId, cnt: count() }).from(tasks).where(and(isNotNull(tasks.lastContactedAt), gte(tasks.lastContactedAt, tenMinAgo))).groupBy(tasks.userId),
+      db.select({ userId: tasks.userId, cnt: count() }).from(tasks).where(and(isNotNull(tasks.lastContactedAt), gte(tasks.lastContactedAt, oneHourAgo))).groupBy(tasks.userId),
+      db.select({ name: sellers.name, userId: sellers.userId }).from(sellers)
+    ]);
+    const alerts = [];
+    for (const row of burstRows) {
+      if (Number(row.cnt) >= 10) {
+        const seller = allSellers.find((s) => s.userId === row.userId);
+        if (seller)
+          alerts.push({ sellerName: seller.name, type: "burst", message: `${row.cnt} contatos em menos de 10 minutos`, severity: "high", count: Number(row.cnt) });
+      }
     }
-    const userName = ctx.user.name ?? "";
-    const result = await db.select().from(tasks).where(or2(eq(tasks.userId, ctx.user.id), eq(tasks.assignedTo, userName)));
-    return result.filter((t2) => t2.reminderDate).sort((a2, b) => {
-      const dateA = a2.reminderDate ? new Date(a2.reminderDate).getTime() : 0;
-      const dateB = b.reminderDate ? new Date(b.reminderDate).getTime() : 0;
-      return dateA - dateB;
-    });
+    for (const row of hourRows) {
+      if (Number(row.cnt) >= 45) {
+        const seller = allSellers.find((s) => s.userId === row.userId);
+        if (seller && !alerts.some((a2) => a2.sellerName === seller.name)) {
+          alerts.push({ sellerName: seller.name, type: "burst_hour", message: `${row.cnt} contatos em menos de 1 hora`, severity: "medium", count: Number(row.cnt) });
+        }
+      }
+    }
+    return alerts;
+  }),
+  reminders: protectedProcedure.query(async ({ ctx }) => {
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1e3);
+    const reminderFields = {
+      id: tasks.id,
+      title: tasks.title,
+      reminderDate: tasks.reminderDate,
+      reminderEnabled: tasks.reminderEnabled,
+      status: tasks.status,
+      notes: tasks.notes,
+      assignedTo: tasks.assignedTo
+    };
+    if (ctx.user.role === "admin") {
+      return db.select(reminderFields).from(tasks).where(and(isNotNull(tasks.reminderDate), gte(tasks.reminderDate, yesterday))).orderBy(asc(tasks.reminderDate)).limit(300);
+    }
+    const filter = await userTaskFilter(ctx.user.id, ctx.user.name ?? "");
+    return db.select(reminderFields).from(tasks).where(and(filter, isNotNull(tasks.reminderDate), gte(tasks.reminderDate, yesterday))).orderBy(asc(tasks.reminderDate)).limit(300);
   })
 });
 
@@ -50733,7 +50846,7 @@ function addMinutes(d, mins) {
 }
 async function callLLMWithTools(apiKey, baseURL, model, messages, tools, maxTokens = 1e3) {
   const loop = async (msgs) => {
-    const body = { model, messages: msgs, max_tokens: maxTokens, temperature: 0.4 };
+    const body = { model, messages: msgs, max_tokens: maxTokens, temperature: 0.4, parallel_tool_calls: false };
     if (tools.length)
       body.tools = tools;
     const res = await fetch(`${baseURL}/chat/completions`, {
@@ -50743,7 +50856,9 @@ async function callLLMWithTools(apiKey, baseURL, model, messages, tools, maxToke
     });
     if (!res.ok) {
       const t2 = await res.text().catch(() => "");
-      throw new Error(`LLM API ${res.status}: ${t2.slice(0, 200)}`);
+      const err = new Error(`LLM API ${res.status}: ${t2.slice(0, 300)}`);
+      err.status = res.status;
+      throw err;
     }
     const data = await res.json();
     const msg = data?.choices?.[0]?.message;
@@ -50752,7 +50867,11 @@ async function callLLMWithTools(apiKey, baseURL, model, messages, tools, maxToke
     if (msg.tool_calls?.length) {
       const newMsgs = [...msgs, msg];
       for (const tc of msg.tool_calls) {
-        const args = JSON.parse(tc.function.arguments ?? "{}");
+        let args = {};
+        try {
+          args = JSON.parse(tc.function.arguments ?? "{}");
+        } catch {
+        }
         const result = await executeTool(tc.function.name, args);
         newMsgs.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(result) });
       }
@@ -50770,10 +50889,24 @@ async function callLLM(apiKey, baseURL, model, messages, maxTokens = 800, temper
   });
   if (!res.ok) {
     const text2 = await res.text().catch(() => "");
-    throw new Error(`LLM API error ${res.status}: ${text2.slice(0, 200)}`);
+    const err = new Error(`LLM API ${res.status}: ${text2.slice(0, 300)}`);
+    err.status = res.status;
+    throw err;
   }
   const data = await res.json();
   return data?.choices?.[0]?.message?.content ?? "Sem resposta da IA.";
+}
+function isRateLimit(err) {
+  return err?.status === 429 || /429|rate.?limit|quota/i.test(err?.message ?? "");
+}
+function getFallbackConfig(primaryProvider) {
+  if (primaryProvider !== "groq" && process.env.GROQ_API_KEY) {
+    return { apiKey: process.env.GROQ_API_KEY, baseURL: BASE_URLS.groq, model: DEFAULT_MODELS.groq };
+  }
+  if (primaryProvider !== "gemini" && process.env.GEMINI_API_KEY) {
+    return { apiKey: process.env.GEMINI_API_KEY, baseURL: BASE_URLS.gemini, model: DEFAULT_MODELS.gemini };
+  }
+  return null;
 }
 var TOOLS = [
   {
@@ -50785,6 +50918,49 @@ var TOOLS = [
         type: "object",
         properties: {
           attendant_name: { type: "string", description: 'Nome do atendente (ex: "Analice")' }
+        },
+        required: ["attendant_name"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "read_notes",
+      description: `L\xEA o conte\xFAdo completo das anota\xE7\xF5es/observa\xE7\xF5es dos lembretes de um atendente.
+
+QUANDO USAR: sempre que o usu\xE1rio perguntar sobre anota\xE7\xF5es, observa\xE7\xF5es, o que foi dito, o que cada cliente falou, o que foi registrado, o que o atendente escreveu, o que aconteceu nos contatos, ou similares.
+
+QUAL FILTRO DE DATA USAR:
+- Pergunta sobre "anota\xE7\xF5es de hoje" / "o que anotou hoje" / "atividade de hoje" \u2192 use today_updated_only=true (mostra tudo que foi atualizado hoje)
+- Pergunta sobre "contatos feitos hoje" / "quem ele contatou hoje" \u2192 use today_contacts_only=true
+- Pergunta sobre "lembretes agendados para hoje" (data de lembrete = hoje) \u2192 use today_reminders_only=true
+- Sem filtro de data \u2192 retorna os mais recentes independente do dia
+
+IMPORTANTE: Quando usar qualquer filtro de hoje, passe tamb\xE9m only_with_notes=false para ver TODOS os registros de hoje, mesmo os sem anota\xE7\xE3o.`,
+      parameters: {
+        type: "object",
+        properties: {
+          attendant_name: { type: "string", description: 'Nome do atendente (ex: "Matheus")' },
+          limit: { type: "number", description: "Quantos lembretes retornar (padr\xE3o: 30, m\xE1x: 100)" },
+          only_with_notes: { type: "boolean", description: "Se true, retorna apenas lembretes com anota\xE7\xE3o. Se false (recomendado com filtros de hoje), retorna todos." },
+          today_updated_only: { type: "boolean", description: 'Se true, mostra apenas registros atualizados hoje. USE ESTE para "anota\xE7\xF5es de hoje", "o que anotou hoje", "atividade de hoje".' },
+          today_contacts_only: { type: "boolean", description: 'Se true, filtra apenas contatos realizados hoje (lastContactedAt de hoje). Use para "quem ele contatou hoje".' },
+          today_reminders_only: { type: "boolean", description: 'Se true, filtra apenas lembretes com data de lembrete = hoje (reminderDate). Use APENAS para "lembretes agendados para hoje".' }
+        },
+        required: ["attendant_name"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "find_suspicious_notes",
+      description: "Analisa as anota\xE7\xF5es de um atendente em busca de padr\xF5es suspeitos: notas vazias/gen\xE9ricas, notas id\xEAnticas repetidas (copy-paste), clientes salvos sem editar nenhuma anota\xE7\xE3o, ou notas muito curtas que indicam falta de contato real. Use quando suspeitar de fraude ou trabalho fict\xEDcio.",
+      parameters: {
+        type: "object",
+        properties: {
+          attendant_name: { type: "string", description: 'Nome do atendente (ex: "Matheus")' }
         },
         required: ["attendant_name"]
       }
@@ -50807,14 +50983,34 @@ var TOOLS = [
   {
     type: "function",
     function: {
+      name: "search_knowledge",
+      description: "Busca documentos na base de conhecimento da Sal Vita. Use quando precisar de regras do neg\xF3cio, scripts de abordagem, pol\xEDticas da empresa, como interpretar situa\xE7\xF5es, o que fazer com clientes dif\xEDceis, ou qualquer orienta\xE7\xE3o sobre como os atendentes devem trabalhar.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: 'Termo ou assunto a buscar na base de conhecimento (ex: "como lidar com cliente sem retorno", "metas di\xE1rias", "script de abordagem")' },
+          category: { type: "string", description: 'Categoria opcional para filtrar (ex: "processos", "scripts", "metas", "fraude")' }
+        },
+        required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
       name: "reschedule_tasks",
-      description: "Redistribui os lembretes vencidos (atrasados) de um atendente ao longo dos pr\xF3ximos dias \xFAteis, com um limite por dia. Use quando o usu\xE1rio pedir para reagendar ou distribuir lembretes.",
+      description: `Redistribui os lembretes vencidos (atrasados) de um atendente ao longo dos pr\xF3ximos dias \xFAteis.
+
+REGRA OBRIGAT\xD3RIA: SEMPRE chame com dry_run=true PRIMEIRO para mostrar ao usu\xE1rio quantos lembretes seriam afetados e em quantos dias. S\xF3 execute com dry_run=false se o usu\xE1rio confirmar explicitamente com "sim", "pode fazer", "confirmo" ou similar.
+
+Esta a\xE7\xE3o \xE9 IRREVERS\xCDVEL \u2014 os lembretes ser\xE3o redistribu\xEDdos para datas futuras.`,
       parameters: {
         type: "object",
         properties: {
           attendant_name: { type: "string", description: "Nome exato do atendente" },
           tasks_per_day: { type: "number", description: "Quantos lembretes por dia \xFAtil (padr\xE3o: 50)" },
-          start_hour: { type: "number", description: "Hora inicial do dia para o primeiro lembrete (padr\xE3o: 8)" }
+          start_hour: { type: "number", description: "Hora inicial do dia para o primeiro lembrete (padr\xE3o: 8)" },
+          dry_run: { type: "boolean", description: "Se true (padr\xE3o), apenas mostra o que SERIA feito sem alterar o banco. SEMPRE use true primeiro." }
         },
         required: ["attendant_name"]
       }
@@ -50841,6 +51037,175 @@ async function executeTool(name, args) {
       overdue: overdue.length,
       upcoming: upcoming.length,
       sample_overdue: overdue.slice(0, 5).map((t2) => ({ id: t2.id, title: t2.title.slice(0, 60), date: t2.reminderDate }))
+    };
+  }
+  if (name === "read_notes") {
+    const name_ = String(args.attendant_name ?? "");
+    const limit = Math.min(Number(args.limit ?? 30), 100);
+    const todayUpdatedOnly = args.today_updated_only === true;
+    const todayContactsOnly = args.today_contacts_only === true;
+    const todayRemindersOnly = args.today_reminders_only === true;
+    const usingTodayFilter = todayUpdatedOnly || todayContactsOnly || todayRemindersOnly;
+    const onlyWithNotes = args.only_with_notes !== void 0 ? args.only_with_notes === true : !usingTodayFilter;
+    const seller = (await db.select().from(sellers)).find(
+      (s) => s.name.toLowerCase().includes(name_.toLowerCase())
+    );
+    if (!seller)
+      return { error: `Atendente "${name_}" n\xE3o encontrado.` };
+    const allTasks = await db.select().from(tasks).where(
+      or2(eq(tasks.assignedTo, seller.name), eq(tasks.userId, seller.userId))
+    );
+    const now = /* @__PURE__ */ new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(now);
+    todayEnd.setHours(23, 59, 59, 999);
+    let sorted = allTasks.sort(
+      (a2, b) => new Date(b.updatedAt).getTime() - new Date(a2.updatedAt).getTime()
+    );
+    if (todayUpdatedOnly) {
+      sorted = sorted.filter(
+        (t2) => new Date(t2.updatedAt) >= todayStart && new Date(t2.updatedAt) <= todayEnd
+      );
+    }
+    if (todayContactsOnly) {
+      sorted = sorted.filter(
+        (t2) => t2.lastContactedAt && new Date(t2.lastContactedAt) >= todayStart && new Date(t2.lastContactedAt) <= todayEnd
+      );
+    }
+    if (todayRemindersOnly) {
+      sorted = sorted.filter(
+        (t2) => t2.reminderDate && new Date(t2.reminderDate) >= todayStart && new Date(t2.reminderDate) <= todayEnd
+      );
+    }
+    const filtered = onlyWithNotes ? sorted.filter((t2) => t2.notes && t2.notes.trim().length > 0) : sorted;
+    const items = filtered.slice(0, limit).map((t2) => {
+      const createdAt = new Date(t2.createdAt);
+      const updatedAt = new Date(t2.updatedAt);
+      const diffMs = updatedAt.getTime() - createdAt.getTime();
+      const neverEdited = diffMs < 2 * 60 * 1e3;
+      return {
+        cliente: t2.title,
+        anotacao: t2.notes?.trim() || "(sem anota\xE7\xE3o)",
+        tamanho_nota: t2.notes?.trim().length ?? 0,
+        ultimo_contato: t2.lastContactedAt ? new Date(t2.lastContactedAt).toLocaleString("pt-BR") : "nunca",
+        lembrete: t2.reminderDate ? new Date(t2.reminderDate).toLocaleString("pt-BR") : "sem data",
+        atualizado: updatedAt.toLocaleString("pt-BR"),
+        criado: createdAt.toLocaleString("pt-BR"),
+        nunca_editado: neverEdited,
+        vencido: t2.reminderDate ? new Date(t2.reminderDate) < now : false
+      };
+    });
+    const totalSemNota = allTasks.filter((t2) => !t2.notes || t2.notes.trim().length < 5).length;
+    const totalComNota = allTasks.filter((t2) => t2.notes && t2.notes.trim().length >= 5).length;
+    const neverEditedCount = allTasks.filter((t2) => {
+      const diff = new Date(t2.updatedAt).getTime() - new Date(t2.createdAt).getTime();
+      return diff < 2 * 60 * 1e3;
+    }).length;
+    return {
+      atendente: seller.name,
+      total_lembretes: allTasks.length,
+      total_sem_anotacao: totalSemNota,
+      total_com_anotacao: totalComNota,
+      nunca_editados: neverEditedCount,
+      mostrando: items.length,
+      lembretes: items
+    };
+  }
+  if (name === "search_knowledge") {
+    const query = String(args.query ?? "").toLowerCase();
+    const category = args.category ? String(args.category).toLowerCase() : null;
+    const all = await db.select().from(knowledgeDocuments);
+    const matched = all.filter((doc) => {
+      const inContent = doc.content.toLowerCase().includes(query) || doc.title.toLowerCase().includes(query);
+      const inCategory = !category || (doc.category ?? "").toLowerCase().includes(category);
+      return inContent && inCategory;
+    }).slice(0, 5);
+    if (matched.length === 0) {
+      const fallback = all.slice(0, 3).map((d) => ({ titulo: d.title, categoria: d.category, conteudo: d.content.slice(0, 800) }));
+      return { encontrados: 0, mensagem: `Nenhum documento encontrado para "${query}". Documentos dispon\xEDveis:`, documentos: fallback };
+    }
+    return {
+      encontrados: matched.length,
+      documentos: matched.map((d) => ({
+        titulo: d.title,
+        categoria: d.category,
+        conteudo: d.content.slice(0, 1500)
+      }))
+    };
+  }
+  if (name === "find_suspicious_notes") {
+    const name_ = String(args.attendant_name ?? "");
+    const seller = (await db.select().from(sellers)).find(
+      (s) => s.name.toLowerCase().includes(name_.toLowerCase())
+    );
+    if (!seller)
+      return { error: `Atendente "${name_}" n\xE3o encontrado.` };
+    const allTasks = await db.select().from(tasks).where(
+      or2(eq(tasks.assignedTo, seller.name), eq(tasks.userId, seller.userId))
+    );
+    const now = /* @__PURE__ */ new Date();
+    const emptyNotes = allTasks.filter((t2) => !t2.notes || t2.notes.trim().length < 10);
+    const genericPatterns = /^(ok|sim|não|nao|ligou|retornar|retorno|contato|tel|falar|ligar|aguardar|pendente|\.+|-+|ok\.?|certo|feito|done|ok ok)\.?$/i;
+    const genericNotes = allTasks.filter((t2) => t2.notes && genericPatterns.test(t2.notes.trim()));
+    const noteFreq = {};
+    for (const t2 of allTasks) {
+      if (!t2.notes || t2.notes.trim().length < 5)
+        continue;
+      const key = t2.notes.trim().toLowerCase().slice(0, 80);
+      if (!noteFreq[key])
+        noteFreq[key] = { count: 0, clients: [] };
+      noteFreq[key].count++;
+      noteFreq[key].clients.push(t2.title.slice(0, 40));
+    }
+    const duplicates = Object.entries(noteFreq).filter(([, v2]) => v2.count >= 3).map(([note, v2]) => ({ nota: note.slice(0, 80), repetida: v2.count, exemplos_clientes: v2.clients.slice(0, 5) })).sort((a2, b) => b.repetida - a2.repetida);
+    const neverEdited = allTasks.filter((t2) => {
+      const diff = new Date(t2.updatedAt).getTime() - new Date(t2.createdAt).getTime();
+      return diff < 2 * 60 * 1e3;
+    });
+    const contactedNoNote = allTasks.filter(
+      (t2) => t2.lastContactedAt && (!t2.notes || t2.notes.trim().length < 10)
+    );
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 864e5);
+    const rescheduledNoContact = allTasks.filter(
+      (t2) => new Date(t2.updatedAt) > sevenDaysAgo && (!t2.lastContactedAt || new Date(t2.lastContactedAt) < sevenDaysAgo) && t2.reminderDate
+    );
+    let suspicion = "baixa";
+    const score = emptyNotes.length + genericNotes.length * 2 + duplicates.length * 5 + neverEdited.length + contactedNoNote.length * 2 + rescheduledNoContact.length * 3;
+    if (score > 50)
+      suspicion = "CR\xCDTICA";
+    else if (score > 20)
+      suspicion = "alta";
+    else if (score > 5)
+      suspicion = "m\xE9dia";
+    return {
+      atendente: seller.name,
+      total_lembretes: allTasks.length,
+      suspeita: suspicion,
+      score_fraude: score,
+      sem_anotacao_ou_muito_curta: {
+        quantidade: emptyNotes.length,
+        exemplos: emptyNotes.slice(0, 10).map((t2) => ({ cliente: t2.title.slice(0, 50), anotacao: t2.notes?.trim() || "(vazio)" }))
+      },
+      notas_genericas: {
+        quantidade: genericNotes.length,
+        exemplos: genericNotes.slice(0, 10).map((t2) => ({ cliente: t2.title.slice(0, 50), anotacao: t2.notes?.trim() }))
+      },
+      notas_duplicadas_copy_paste: {
+        grupos: duplicates.slice(0, 10)
+      },
+      salvos_sem_editar: {
+        quantidade: neverEdited.length,
+        exemplos: neverEdited.slice(0, 10).map((t2) => ({ cliente: t2.title.slice(0, 50), anotacao: t2.notes?.trim() || "(vazio)", criado: new Date(t2.createdAt).toLocaleString("pt-BR") }))
+      },
+      contato_marcado_sem_nota: {
+        quantidade: contactedNoNote.length,
+        exemplos: contactedNoNote.slice(0, 5).map((t2) => ({ cliente: t2.title.slice(0, 50), ultimo_contato: new Date(t2.lastContactedAt).toLocaleString("pt-BR") }))
+      },
+      reagendado_sem_contato_real: {
+        quantidade: rescheduledNoContact.length,
+        exemplos: rescheduledNoContact.slice(0, 5).map((t2) => ({ cliente: t2.title.slice(0, 50), atualizado: new Date(t2.updatedAt).toLocaleString("pt-BR") }))
+      }
     };
   }
   if (name === "list_sessions") {
@@ -50890,6 +51255,7 @@ async function executeTool(name, args) {
     const name_ = String(args.attendant_name ?? "");
     const perDay = Number(args.tasks_per_day ?? 50);
     const startHour = Number(args.start_hour ?? 8);
+    const dryRun = args.dry_run !== false;
     const allSellers = await db.select().from(sellers);
     const seller = allSellers.find((s) => s.name.toLowerCase().includes(name_.toLowerCase()));
     if (!seller)
@@ -50903,7 +51269,21 @@ async function executeTool(name, args) {
     );
     if (overdue.length === 0)
       return { message: `Nenhum lembrete vencido para ${seller.name}.` };
-    let currentDay = nextBusinessDay(now);
+    const daysNeeded = Math.ceil(overdue.length / perDay);
+    const firstDay = nextBusinessDay(now);
+    if (dryRun) {
+      return {
+        dry_run: true,
+        atendente: seller.name,
+        lembretes_vencidos: overdue.length,
+        dias_necessarios: daysNeeded,
+        por_dia: perDay,
+        primeiro_dia: firstDay.toLocaleDateString("pt-BR"),
+        aviso: `\u26A0\uFE0F SIMULA\xC7\xC3O \u2014 nenhuma altera\xE7\xE3o foi feita. Para executar, confirme com "pode reagendar" e o sistema chamar\xE1 com dry_run=false.`,
+        exemplos: overdue.slice(0, 5).map((t2) => ({ cliente: t2.title.slice(0, 50), venceu: t2.reminderDate ? new Date(t2.reminderDate).toLocaleDateString("pt-BR") : "?" }))
+      };
+    }
+    let currentDay = firstDay;
     let countToday = 0;
     let updated = 0;
     const minutesBetween = Math.floor(9 * 60 / Math.max(perDay, 1));
@@ -50920,13 +51300,12 @@ async function executeTool(name, args) {
       countToday++;
       updated++;
     }
-    const daysNeeded = Math.ceil(overdue.length / perDay);
     return {
       success: true,
       rescheduled: updated,
       attendant: seller.name,
       days_used: daysNeeded,
-      first_day: currentDay.toLocaleDateString("pt-BR"),
+      first_day: firstDay.toLocaleDateString("pt-BR"),
       message: `\u2705 ${updated} lembretes de ${seller.name} redistribu\xEDdos em ${daysNeeded} dia(s) \xFAtil(eis) \u2014 ${perDay} por dia a partir de amanh\xE3.`
     };
   }
@@ -50987,14 +51366,16 @@ var aiRouter = router({
   bulkReschedule: protectedProcedure.input(external_exports.object({
     sellerName: external_exports.string().min(1),
     tasksPerDay: external_exports.number().min(1).max(200).default(50),
-    startHour: external_exports.number().min(6).max(12).default(8)
+    startHour: external_exports.number().min(6).max(12).default(8),
+    dryRun: external_exports.boolean().default(false)
   })).mutation(async ({ input, ctx }) => {
     if (ctx.user.role !== "admin")
       throw new Error("Apenas admins podem reagendar em massa");
     return executeTool("reschedule_tasks", {
       attendant_name: input.sellerName,
       tasks_per_day: input.tasksPerDay,
-      start_hour: input.startHour
+      start_hour: input.startHour,
+      dry_run: input.dryRun
     });
   }),
   testConnection: protectedProcedure.input(external_exports.object({
@@ -51021,7 +51402,8 @@ var aiRouter = router({
       const envKey = provider === "groq" ? process.env.GROQ_API_KEY : provider === "gemini" ? process.env.GEMINI_API_KEY : void 0;
       const apiKey = input.apiKey || envKey || "";
       const baseURL = BASE_URLS[provider] ?? BASE_URLS.groq;
-      const model = input.model ?? DEFAULT_MODELS[provider] ?? "llama-3.3-70b-versatile";
+      const isAdmin = ctx.user.role === "admin";
+      const model = isAdmin ? DEFAULT_MODELS[provider] ?? "llama-3.3-70b-versatile" : input.model ?? DEFAULT_MODELS[provider] ?? "llama-3.3-70b-versatile";
       console.log("[AI_CHAT] uid:", ctx.user.id, "provider:", provider, "model:", model, "hasKey:", !!apiKey);
       await db.insert(chatMessages).values({ userId: ctx.user.id, content: input.message, role: "user" });
       console.log("[AI_CHAT] msg saved");
@@ -51030,48 +51412,55 @@ var aiRouter = router({
         await db.insert(chatMessages).values({ userId: ctx.user.id, content: reply2, role: "assistant" });
         return { reply: reply2 };
       }
-      const history = await db.select().from(chatMessages).where(eq(chatMessages.userId, ctx.user.id)).orderBy(desc(chatMessages.createdAt)).limit(8);
+      const history = await db.select().from(chatMessages).where(eq(chatMessages.userId, ctx.user.id)).orderBy(desc(chatMessages.createdAt)).limit(4);
       console.log("[AI_CHAT] history:", history.length, "rows");
       const userContext = await buildUserContext(ctx.user.id, ctx.user.role);
       console.log("[AI_CHAT] context built");
-      const isAdmin = ctx.user.role === "admin";
-      const systemPrompt = isAdmin ? `Voc\xEA \xE9 um assistente de gest\xE3o de equipes de vendas da empresa Sal Vita \u2014 Sal do Brasil.
-Voc\xEA tem acesso a ferramentas que permitem EXECUTAR a\xE7\xF5es reais no sistema (n\xE3o apenas descrever).
-
+      const systemPrompt = isAdmin ? `Gestor Sal Vita. Ferramentas dispon\xEDveis:
+- list_tasks: resumo de lembretes (contagens, vencidos)
+- read_notes: l\xEA o CONTE\xDADO REAL das anota\xE7\xF5es \u2014 use IMEDIATAMENTE para qualquer pergunta sobre o que foi dito/anotado/registrado
+  \xB7 "anota\xE7\xF5es de hoje" / "o que anotou hoje" / "atividade de hoje" \u2192 today_updated_only=true, only_with_notes=false
+  \xB7 "contatos de hoje" / "quem contatou hoje" \u2192 today_contacts_only=true, only_with_notes=false
+  \xB7 "lembretes agendados para hoje" (data = hoje) \u2192 today_reminders_only=true, only_with_notes=false
+  \xB7 sem filtro de data \u2192 retorna os mais recentes
+- find_suspicious_notes: detecta fraudes \u2014 notas vazias, copy-paste, salvos sem editar
+- search_knowledge: busca na base de conhecimento da empresa \u2014 use quando precisar de regras do neg\xF3cio, scripts, pol\xEDticas, metas, ou orienta\xE7\xF5es de como avaliar o trabalho dos atendentes
+- list_sessions: sess\xF5es/acesso do atendente
+- reschedule_tasks: redistribui lembretes vencidos \u2014 DRY_RUN=TRUE SEMPRE PRIMEIRO, s\xF3 execute com dry_run=false ap\xF3s confirma\xE7\xE3o expl\xEDcita do usu\xE1rio
+REGRAS ABSOLUTAS:
+1. NUNCA diga "n\xE3o consigo ver" \u2014 sempre chame read_notes
+2. Para perguntas de "hoje", use today_updated_only=true (atividade geral de hoje)
+3. Mostre os dados reais do banco, n\xE3o invente respostas
+4. Quando precisar de contexto sobre processos da empresa, chame search_knowledge primeiro
+5. reschedule_tasks \xE9 IRREVERS\xCDVEL \u2014 sempre dry_run=true primeiro para mostrar preview, s\xF3 execute se usu\xE1rio confirmar
+Seja direto; portugu\xEAs BR; emojis.
+${userContext}` : `Assistente Sal Vita \u2014 atendente. Apenas informativo, sem executar a\xE7\xF5es.
 ${userContext}
-
-FERRAMENTAS DISPON\xCDVEIS (use quando o usu\xE1rio pedir):
-- list_tasks: listar lembretes/status de um atendente
-- list_sessions: ver hist\xF3rico de acesso/sess\xF5es de trabalho \u2014 quando entrou, quanto trabalhou, pausas, \xFAltimos 7 dias. Use "todos" para ver todos.
-- reschedule_tasks: REDISTRIBUIR lembretes vencidos de um atendente em dias \xFAteis futuros
-
-INSTRU\xC7\xD5ES CR\xCDTICAS:
-- Quando o usu\xE1rio pedir para "reagendar", "redistribuir", "reorganizar" lembretes de algum atendente \u2192 USE a ferramenta reschedule_tasks imediatamente. N\xC3O apenas descreva \u2014 EXECUTE.
-- Quando perguntarem sobre acesso, presen\xE7a, horas trabalhadas, tempo ativo, ociosidade \u2192 USE list_sessions.
-- Quando precisar ver os dados de tarefas de um atendente \u2192 USE list_tasks primeiro.
-- Ap\xF3s executar uma ferramenta, informe o resultado real retornado por ela.
-- Use os dados reais do contexto acima nas an\xE1lises. O contexto j\xE1 inclui dados de sess\xE3o de HOJE.
-- Seja direto, use emojis, responda em portugu\xEAs brasileiro.` : `Voc\xEA \xE9 um assistente de suporte ao atendente da empresa Sal Vita \u2014 Sal do Brasil.
-Seu papel \xE9 INFORMATIVO apenas \u2014 voc\xEA n\xE3o pode executar a\xE7\xF5es no sistema.
-
-${userContext}
-
-SUAS FUN\xC7\xD5ES:
-1. Analisar sua pr\xF3pria performance com base nos dados acima
-2. Sugerir prioridades para o dia/semana
-3. Dicas de abordagem com clientes de sal B2B
-4. Alertar sobre lembretes vencidos
-
-REGRAS:
-- Apenas informa\xE7\xF5es e dicas \u2014 sem execu\xE7\xE3o de a\xE7\xF5es
-- Use os dados reais do contexto
-- Seja objetivo, use emojis, responda em portugu\xEAs brasileiro`;
+Foco: performance pr\xF3pria, prioridades do dia, dicas B2B de sal. Objetivo, emojis, portugu\xEAs BR.`;
       const messages = [
         { role: "system", content: systemPrompt },
         ...history.reverse().map((m2) => ({ role: m2.role, content: m2.content }))
       ];
-      console.log("[AI_CHAT] calling LLM, isAdmin:", isAdmin);
-      const reply = isAdmin ? await callLLMWithTools(apiKey, baseURL, model, messages, TOOLS, 1200) : await callLLM(apiKey, baseURL, model, messages, 800, 0.6);
+      console.log("[AI_CHAT] calling LLM, isAdmin:", isAdmin, "provider:", provider);
+      let reply;
+      try {
+        reply = isAdmin ? await callLLMWithTools(apiKey, baseURL, model, messages, TOOLS, 1e3) : await callLLM(apiKey, baseURL, model, messages, 700, 0.6);
+      } catch (primaryErr) {
+        if (isRateLimit(primaryErr)) {
+          const fb = getFallbackConfig(provider);
+          if (fb) {
+            console.log("[AI_CHAT] 429 on", provider, "\u2014 falling back to", fb.model);
+            reply = isAdmin ? await callLLMWithTools(fb.apiKey, fb.baseURL, fb.model, messages, TOOLS, 1e3) : await callLLM(fb.apiKey, fb.baseURL, fb.model, messages, 700, 0.6);
+          } else {
+            throw primaryErr;
+          }
+        } else if (isAdmin && primaryErr.status === 400) {
+          console.log("[AI_CHAT] tool_use 400, retrying without tools");
+          reply = await callLLM(apiKey, baseURL, model, messages, 1e3, 0.4);
+        } else {
+          throw primaryErr;
+        }
+      }
       console.log("[AI_CHAT] LLM OK, reply len:", reply.length);
       await db.insert(chatMessages).values({ userId: ctx.user.id, content: reply, role: "assistant" });
       return { reply };
@@ -51308,7 +51697,8 @@ Observa\xE7\xF5es: ${input.notes || "sem observa\xE7\xF5es"}` }
     }
   }),
   history: protectedProcedure.query(async ({ ctx }) => {
-    return db.select().from(chatMessages).where(eq(chatMessages.userId, ctx.user.id)).orderBy(chatMessages.createdAt).limit(50);
+    const rows = await db.select().from(chatMessages).where(eq(chatMessages.userId, ctx.user.id)).orderBy(desc(chatMessages.createdAt)).limit(50);
+    return rows.reverse();
   }),
   clearHistory: protectedProcedure.mutation(async ({ ctx }) => {
     await db.delete(chatMessages).where(eq(chatMessages.userId, ctx.user.id));
@@ -51417,7 +51807,8 @@ var workSessionsRouter = router({
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 864e5);
-    const [allSellers, todaySessions, todayTasks, allRecentSessions, allTasksForMonitor] = await Promise.all([
+    const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1e3);
+    const [allSellers, todaySessions, todayTasks, allRecentSessions, ghostCounts, burstTasks] = await Promise.all([
       db.select().from(sellers).where(eq(sellers.status, "active")),
       db.select().from(workSessions).where(gte(workSessions.startedAt, todayStart)).orderBy(desc(workSessions.startedAt)),
       // Today's edited tasks — include title so we can show what they worked on
@@ -51434,12 +51825,18 @@ var workSessionsRouter = router({
         endedAt: workSessions.endedAt,
         status: workSessions.status
       }).from(workSessions).orderBy(desc(workSessions.startedAt)).limit(500),
-      // Monitoring: need lastContactedAt for ghost + burst detection
+      // Ghost count: tasks not contacted in 30+ days (aggregated, no row scan)
+      db.select({
+        userId: tasks.userId,
+        assignedTo: tasks.assignedTo,
+        ghostCount: count()
+      }).from(tasks).where(or2(isNull2(tasks.lastContactedAt), lt(tasks.lastContactedAt, thirtyDaysAgo))).groupBy(tasks.userId, tasks.assignedTo),
+      // Burst detection: only tasks contacted in last 2 hours (not all tasks)
       db.select({
         userId: tasks.userId,
         assignedTo: tasks.assignedTo,
         lastContactedAt: tasks.lastContactedAt
-      }).from(tasks)
+      }).from(tasks).where(and(isNotNull(tasks.lastContactedAt), gte(tasks.lastContactedAt, twoHoursAgo)))
     ]);
     return allSellers.map((seller) => {
       const session = todaySessions.find((s) => s.userId === seller.userId) ?? null;
@@ -51470,17 +51867,12 @@ var workSessionsRouter = router({
           idleSinceMs = now.getTime() - new Date(session.startedAt).getTime();
         }
       }
-      const sellerTasks = allTasksForMonitor.filter(
-        (t2) => t2.userId === seller.userId || t2.assignedTo === seller.name
-      );
-      const ghostCount = sellerTasks.filter(
-        (t2) => !t2.lastContactedAt || new Date(t2.lastContactedAt) < thirtyDaysAgo
-      ).length;
-      const contactedSorted = sellerTasks.filter((t2) => t2.lastContactedAt).sort((a2, b) => new Date(a2.lastContactedAt).getTime() - new Date(b.lastContactedAt).getTime());
+      const ghostCount = ghostCounts.filter((g2) => g2.userId === seller.userId || g2.assignedTo === seller.name).reduce((sum, g2) => sum + Number(g2.ghostCount), 0);
+      const sellerBurst = burstTasks.filter((t2) => t2.userId === seller.userId || t2.assignedTo === seller.name).filter((t2) => t2.lastContactedAt).sort((a2, b) => new Date(a2.lastContactedAt).getTime() - new Date(b.lastContactedAt).getTime());
       let burstMax = 0;
-      for (let i = 0; i < contactedSorted.length; i++) {
-        const base = new Date(contactedSorted[i].lastContactedAt).getTime();
-        const inWin = contactedSorted.filter((t2) => {
+      for (let i = 0; i < sellerBurst.length; i++) {
+        const base = new Date(sellerBurst[i].lastContactedAt).getTime();
+        const inWin = sellerBurst.filter((t2) => {
           const d = new Date(t2.lastContactedAt).getTime() - base;
           return d >= 0 && d <= 6e5;
         }).length;
@@ -51539,6 +51931,8 @@ var tvRouter = router({
     const now = /* @__PURE__ */ new Date();
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
+    const fourWeeksAgo = new Date(todayStart);
+    fourWeeksAgo.setDate(todayStart.getDate() - 28);
     const [allSellers, allTasks, activeSessions, clientCount] = await Promise.all([
       db.select().from(sellers).where(eq(sellers.status, "active")),
       db.select({
@@ -51551,7 +51945,14 @@ var tvRouter = router({
         updatedAt: tasks.updatedAt,
         lastContactedAt: tasks.lastContactedAt,
         userId: tasks.userId
-      }).from(tasks),
+      }).from(tasks).where(
+        // Only tasks relevant for dashboard: contacted in last 4 weeks, pending with reminder, or recently updated
+        or2(
+          gte(tasks.lastContactedAt, fourWeeksAgo),
+          and(eq(tasks.status, "pending"), isNotNull(tasks.reminderDate)),
+          gte(tasks.updatedAt, fourWeeksAgo)
+        )
+      ),
       db.select({ userId: workSessions.userId, status: workSessions.status }).from(workSessions).where(and(
         or2(eq(workSessions.status, "active"), eq(workSessions.status, "paused")),
         gte(workSessions.startedAt, todayStart)
@@ -51646,6 +52047,973 @@ var tvRouter = router({
   })
 });
 
+// server/db/ordersDb.ts
+var url = process.env.ORDERS_DATABASE_URL ?? process.env.DATABASE_URL;
+var sql3 = Ys(url);
+var ordersDb = drizzle(sql3, { schema: schema_exports });
+
+// server/routers/shipping.ts
+var ME_BASE = "https://melhorenvio.com.br";
+var ORIGIN_CEP = process.env.MELHOR_ENVIO_ORIGIN_CEP ?? "59600000";
+var PKG_1KG = { height: 7, width: 15, length: 24 };
+var PKG_10KG = { height: 21, width: 24, length: 27 };
+function getPkg(qty) {
+  return qty >= 10 ? PKG_10KG : PKG_1KG;
+}
+var STATIC_REGIONS = {
+  RN: { pac: [14, "3\u20135"], sedex: [27, "1\u20132"] },
+  CE: { pac: [15, "3\u20135"], sedex: [28, "1\u20132"] },
+  PB: { pac: [15, "4\u20136"], sedex: [29, "1\u20133"] },
+  PE: { pac: [16, "4\u20136"], sedex: [30, "2\u20133"] },
+  AL: { pac: [16, "4\u20137"], sedex: [31, "2\u20133"] },
+  SE: { pac: [17, "5\u20137"], sedex: [32, "2\u20133"] },
+  BA: { pac: [18, "5\u20138"], sedex: [33, "2\u20133"] },
+  MA: { pac: [18, "5\u20138"], sedex: [34, "2\u20133"] },
+  PI: { pac: [17, "4\u20137"], sedex: [32, "2\u20133"] },
+  SP: { pac: [22, "6\u20139"], sedex: [40, "2\u20134"] },
+  RJ: { pac: [22, "6\u20139"], sedex: [40, "2\u20134"] },
+  MG: { pac: [20, "5\u20138"], sedex: [38, "2\u20134"] },
+  ES: { pac: [21, "6\u20139"], sedex: [39, "2\u20134"] },
+  PR: { pac: [24, "7\u201310"], sedex: [44, "3\u20135"] },
+  SC: { pac: [25, "8\u201311"], sedex: [46, "3\u20135"] },
+  RS: { pac: [26, "8\u201312"], sedex: [48, "3\u20135"] },
+  DF: { pac: [22, "6\u20139"], sedex: [42, "2\u20134"] },
+  GO: { pac: [21, "6\u201310"], sedex: [41, "2\u20134"] },
+  MT: { pac: [26, "8\u201312"], sedex: [48, "3\u20135"] },
+  MS: { pac: [24, "7\u201311"], sedex: [45, "3\u20135"] },
+  AM: { pac: [36, "12\u201318"], sedex: [62, "5\u20138"] },
+  PA: { pac: [32, "10\u201316"], sedex: [57, "4\u20137"] },
+  AC: { pac: [40, "14\u201320"], sedex: [68, "6\u201310"] },
+  RO: { pac: [34, "11\u201317"], sedex: [60, "5\u20138"] },
+  RR: { pac: [40, "14\u201320"], sedex: [68, "6\u201310"] },
+  AP: { pac: [37, "12\u201318"], sedex: [64, "5\u20139"] },
+  TO: { pac: [24, "9\u201313"], sedex: [46, "3\u20136"] }
+};
+function staticCalc(uf, qty) {
+  const r = STATIC_REGIONS[uf] ?? { pac: [28, "10\u201315"], sedex: [52, "4\u20137"] };
+  const f = qty >= 10 ? 2.2 : qty >= 5 ? 1.4 : 1;
+  return [
+    { serviceId: "1", name: "PAC", company: "Correios", price: +(r.pac[0] * f).toFixed(2), days: `${r.pac[1]} dias \xFAteis` },
+    { serviceId: "2", name: "SEDEX", company: "Correios", price: +(r.sedex[0] * f).toFixed(2), days: `${r.sedex[1]} dias \xFAteis` }
+  ];
+}
+async function meCalculate(destCep, qty) {
+  const token = process.env.MELHOR_ENVIO_TOKEN;
+  if (!token)
+    return null;
+  try {
+    const pkg = getPkg(qty);
+    const weight = +Math.max(1.2, qty * 1.05).toFixed(2);
+    const body = {
+      from: { postal_code: ORIGIN_CEP },
+      to: { postal_code: destCep.replace(/\D/g, "") },
+      package: { height: pkg.height, width: pkg.width, length: pkg.length, weight },
+      options: { receipt: false, own_hand: false }
+    };
+    const res = await fetch(`${ME_BASE}/api/v2/me/shipment/calculate`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "User-Agent": "SalVita/1.0 (contato@salvitarn.com.br)",
+        "Accept": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+    const rawText = await res.text();
+    if (!res.ok)
+      return null;
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      return null;
+    }
+    if (!Array.isArray(data))
+      return null;
+    const valid = data.filter((s) => s && !s.error && s.price);
+    if (valid.length === 0)
+      return null;
+    return valid.map((s) => ({
+      serviceId: String(s.id),
+      name: s.name,
+      company: s.company?.name ?? "Correios",
+      price: parseFloat(s.custom_price ?? s.price),
+      days: s.delivery_range ? `${s.delivery_range.min}\u2013${s.delivery_range.max} dias \xFAteis` : "?"
+    }));
+  } catch {
+    return null;
+  }
+}
+var shippingRouter = router({
+  calculate: publicProcedure.input(external_exports.object({ cep: external_exports.string().min(8), quantity: external_exports.number().min(1).max(100).default(1) })).mutation(async ({ input }) => {
+    const apiResult = await meCalculate(input.cep, input.quantity);
+    if (apiResult && apiResult.length > 0)
+      return { source: "api", options: apiResult };
+    let uf = "RN";
+    try {
+      const r = await fetch(`https://viacep.com.br/ws/${input.cep.replace(/\D/g, "")}/json/`);
+      const d = await r.json();
+      if (d.uf)
+        uf = d.uf;
+    } catch {
+    }
+    return { source: "static", options: staticCalc(uf, input.quantity) };
+  }),
+  createOrder: publicProcedure.input(external_exports.object({
+    customerName: external_exports.string().min(2).max(100),
+    customerPhone: external_exports.string().min(10).max(20),
+    customerEmail: external_exports.string().email().optional().or(external_exports.literal("")),
+    customerCpf: external_exports.string().min(11).max(14).optional(),
+    postalCode: external_exports.string().min(8).max(9),
+    address: external_exports.string().min(3).max(200),
+    number: external_exports.string().min(1).max(20),
+    complement: external_exports.string().max(100).optional().or(external_exports.literal("")),
+    neighborhood: external_exports.string().min(2).max(100),
+    city: external_exports.string().min(2).max(100),
+    state: external_exports.string().length(2),
+    quantity: external_exports.number().int().min(1).max(100),
+    shippingServiceId: external_exports.string().optional(),
+    shippingServiceName: external_exports.string().optional(),
+    shippingPrice: external_exports.number().min(0).optional(),
+    couponCode: external_exports.string().max(20).optional()
+  })).mutation(async ({ input }) => {
+    const unitPrice = 29.9;
+    const shipping = input.shippingPrice ?? 0;
+    if (input.shippingPrice !== void 0 && (input.shippingPrice < 0 || input.shippingPrice > 200)) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Valor de frete inv\xE1lido." });
+    }
+    let subtotal = +(unitPrice * input.quantity).toFixed(2);
+    let couponDiscount = 0;
+    let appliedCoupon = null;
+    let foundCouponId = null;
+    if (input.couponCode) {
+      const code = input.couponCode.toUpperCase().trim();
+      const found = await ordersDb.select().from(coupons).where(and(eq(coupons.code, code), eq(coupons.active, true))).limit(1);
+      if (found.length > 0) {
+        const c = found[0];
+        const notExpired = !c.expiresAt || /* @__PURE__ */ new Date() < new Date(c.expiresAt);
+        const notMaxed = !c.maxUses || c.usedCount < c.maxUses;
+        if (notExpired && notMaxed) {
+          if (c.discountType === "percent") {
+            couponDiscount = +(subtotal * parseFloat(c.discountValue) / 100).toFixed(2);
+          } else {
+            couponDiscount = Math.min(subtotal, parseFloat(c.discountValue));
+          }
+          subtotal = +(subtotal - couponDiscount).toFixed(2);
+          appliedCoupon = code;
+          foundCouponId = c.id;
+        }
+      }
+    }
+    const total = +(subtotal + shipping).toFixed(2);
+    const [order] = await ordersDb.transaction(async (tx) => {
+      if (appliedCoupon && foundCouponId !== null) {
+        await tx.update(coupons).set({ usedCount: sql`used_count + 1` }).where(eq(coupons.id, foundCouponId));
+      }
+      return tx.insert(siteOrders).values({
+        customerName: input.customerName,
+        customerPhone: input.customerPhone,
+        customerEmail: input.customerEmail || null,
+        customerCpf: input.customerCpf ? input.customerCpf.replace(/\D/g, "") : null,
+        postalCode: input.postalCode.replace(/\D/g, ""),
+        address: input.address,
+        number: input.number,
+        complement: input.complement || null,
+        neighborhood: input.neighborhood,
+        city: input.city,
+        state: input.state.toUpperCase(),
+        quantity: input.quantity,
+        shippingServiceId: input.shippingServiceId ?? null,
+        shippingServiceName: input.shippingServiceName ?? null,
+        shippingPrice: shipping > 0 ? String(shipping) : null,
+        totalPrice: String(total),
+        couponCode: appliedCoupon,
+        couponDiscount: couponDiscount > 0 ? String(couponDiscount) : null
+      }).returning();
+    });
+    if (!order?.id)
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao criar pedido. Tente novamente." });
+    return { id: order.id, total, couponDiscount, couponApplied: appliedCoupon };
+  }),
+  listOrders: protectedProcedure.input(external_exports.object({ status: external_exports.string().optional() }).optional()).query(async ({ ctx }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    return ordersDb.select().from(siteOrders).where(
+      sql`NOT (${siteOrders.paymentStatus} = 'awaiting' AND ${siteOrders.mpPreferenceId} IS NULL)`
+    ).orderBy(desc(siteOrders.createdAt));
+  }),
+  analyzeOrders: protectedProcedure.mutation(async ({ ctx }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey)
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "GROQ_API_KEY n\xE3o configurado" });
+    const orders = await ordersDb.select().from(siteOrders).orderBy(desc(siteOrders.createdAt));
+    const paid = orders.filter((o) => o.paymentStatus === "confirmed");
+    const revenue = paid.reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0);
+    const cityCount = {};
+    orders.forEach((o) => {
+      if (!o.city || !o.state)
+        return;
+      cityCount[`${o.city}/${o.state}`] = (cityCount[`${o.city}/${o.state}`] ?? 0) + 1;
+    });
+    const topCities = Object.entries(cityCount).sort((a2, b) => b[1] - a2[1]).slice(0, 5);
+    const now = /* @__PURE__ */ new Date();
+    const last7 = orders.filter((o) => now.getTime() - new Date(o.createdAt).getTime() < 7 * 864e5);
+    const statusCounts = orders.reduce((acc, o) => {
+      acc[o.status] = (acc[o.status] ?? 0) + 1;
+      return acc;
+    }, {});
+    const paymentCounts = orders.reduce((acc, o) => {
+      acc[o.paymentStatus] = (acc[o.paymentStatus] ?? 0) + 1;
+      return acc;
+    }, {});
+    const prompt = `Voc\xEA \xE9 analista de e-commerce. Analise estes dados de pedidos da Sal Vita (sal marinho premium de Mossor\xF3/RN) e responda em portugu\xEAs brasileiro com insights concisos e acion\xE1veis.
+
+Dados:
+- Total de pedidos: ${orders.length}
+- Pedidos \xFAltimos 7 dias: ${last7.length}
+- Receita confirmada: R$ ${revenue.toFixed(2)}
+- Status dos pedidos: ${JSON.stringify(statusCounts)}
+- Pagamentos: ${JSON.stringify(paymentCounts)}
+- Top cidades: ${topCities.map(([c, n]) => `${c}(${n})`).join(", ")}
+- Ticket m\xE9dio: R$ ${orders.length ? (revenue / Math.max(paid.length, 1)).toFixed(2) : "0"}
+
+Forne\xE7a:
+1. \u{1F4CA} Resumo executivo (2 frases)
+2. \u{1F50D} 3 insights importantes
+3. \u26A0\uFE0F Alertas e riscos (se houver)
+4. \u{1F4A1} 2 recomenda\xE7\xF5es concretas para aumentar vendas
+
+Seja direto e use emojis para facilitar leitura.`;
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages: [{ role: "user", content: prompt }], max_tokens: 600, temperature: 0.7 })
+    });
+    if (!res.ok)
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao chamar Groq" });
+    const data = await res.json();
+    const insights = data.choices?.[0]?.message?.content ?? "Sem resposta";
+    return {
+      insights,
+      summary: { total: orders.length, revenue, paid: paid.length, pending: paymentCounts["awaiting"] ?? 0, last7: last7.length, topCities, ticketMedio: paid.length ? revenue / paid.length : 0 }
+    };
+  }),
+  updateOrder: protectedProcedure.input(external_exports.object({
+    id: external_exports.number(),
+    customerName: external_exports.string().min(2).optional(),
+    customerPhone: external_exports.string().min(10).optional(),
+    customerEmail: external_exports.string().email().optional().or(external_exports.literal("")),
+    customerCpf: external_exports.string().optional(),
+    address: external_exports.string().optional(),
+    number: external_exports.string().optional(),
+    complement: external_exports.string().optional(),
+    neighborhood: external_exports.string().optional(),
+    city: external_exports.string().optional(),
+    state: external_exports.string().length(2).optional(),
+    postalCode: external_exports.string().optional(),
+    notes: external_exports.string().optional()
+  })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const { id, ...fields } = input;
+    const updates = { updatedAt: /* @__PURE__ */ new Date() };
+    if (fields.customerName)
+      updates.customerName = fields.customerName;
+    if (fields.customerPhone)
+      updates.customerPhone = fields.customerPhone;
+    if (fields.customerEmail !== void 0)
+      updates.customerEmail = fields.customerEmail || null;
+    if (fields.customerCpf !== void 0)
+      updates.customerCpf = fields.customerCpf.replace(/\D/g, "") || null;
+    if (fields.address)
+      updates.address = fields.address;
+    if (fields.number)
+      updates.number = fields.number;
+    if (fields.complement !== void 0)
+      updates.complement = fields.complement || null;
+    if (fields.neighborhood)
+      updates.neighborhood = fields.neighborhood;
+    if (fields.city)
+      updates.city = fields.city;
+    if (fields.state)
+      updates.state = fields.state.toUpperCase();
+    if (fields.postalCode)
+      updates.postalCode = fields.postalCode.replace(/\D/g, "");
+    if (fields.notes !== void 0)
+      updates.notes = fields.notes || null;
+    const [updated] = await ordersDb.update(siteOrders).set(updates).where(eq(siteOrders.id, id)).returning();
+    return updated;
+  }),
+  updateStatus: protectedProcedure.input(external_exports.object({
+    id: external_exports.number(),
+    status: external_exports.enum(["pending", "confirmed", "shipped", "delivered", "cancelled"]).optional(),
+    paymentStatus: external_exports.enum(["awaiting", "confirmed", "failed"]).optional()
+  })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const updates = { updatedAt: /* @__PURE__ */ new Date() };
+    if (input.status)
+      updates.status = input.status;
+    if (input.paymentStatus)
+      updates.paymentStatus = input.paymentStatus;
+    const [updated] = await ordersDb.update(siteOrders).set(updates).where(eq(siteOrders.id, input.id)).returning();
+    return updated;
+  }),
+  trackOrder: publicProcedure.input(external_exports.object({
+    orderId: external_exports.number().int().positive(),
+    phone: external_exports.string().min(4)
+  })).query(async ({ input }) => {
+    const orders = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
+    const order = orders[0];
+    if (!order)
+      throw new TRPCError({ code: "NOT_FOUND", message: "Pedido n\xE3o encontrado." });
+    const phone = order.customerPhone.replace(/\D/g, "");
+    const inputPhone = input.phone.replace(/\D/g, "");
+    if (!phone.endsWith(inputPhone.slice(-4))) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Telefone n\xE3o confere com o pedido." });
+    }
+    return {
+      id: order.id,
+      customerName: order.customerName,
+      product: order.product,
+      quantity: order.quantity,
+      totalPrice: order.totalPrice,
+      shippingServiceName: order.shippingServiceName,
+      city: order.city,
+      state: order.state,
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      trackingCode: order.trackingCode,
+      shippedAt: order.status === "shipped" || order.status === "delivered" ? order.updatedAt : null,
+      createdAt: order.createdAt
+    };
+  }),
+  updateTracking: protectedProcedure.input(external_exports.object({
+    id: external_exports.number(),
+    trackingCode: external_exports.string().min(1)
+  })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const [updated] = await ordersDb.update(siteOrders).set({ trackingCode: input.trackingCode, status: "shipped", updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, input.id)).returning();
+    return updated;
+  }),
+  createPayment: publicProcedure.input(external_exports.object({ orderId: external_exports.number(), phone: external_exports.string().min(4).optional() })).mutation(async ({ input }) => {
+    const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+    if (!token)
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Configure MERCADO_PAGO_ACCESS_TOKEN no painel Vercel" });
+    const orders = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
+    const order = orders[0];
+    if (!order)
+      throw new TRPCError({ code: "NOT_FOUND" });
+    if (order.paymentStatus === "confirmed")
+      throw new TRPCError({ code: "CONFLICT", message: "Este pedido j\xE1 foi pago." });
+    if (input.phone !== void 0) {
+      const orderPhone = order.customerPhone.replace(/\D/g, "");
+      const inputPhone = input.phone.replace(/\D/g, "");
+      if (!orderPhone.endsWith(inputPhone.slice(-4))) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Telefone n\xE3o confere com o pedido." });
+      }
+    }
+    const preference = {
+      items: [{
+        id: `order-${order.id}`,
+        title: `${order.product ?? "Sal Vita"} \xD7 ${order.quantity}`,
+        quantity: 1,
+        unit_price: parseFloat(order.totalPrice ?? "30"),
+        currency_id: "BRL"
+      }],
+      payer: {
+        name: order.customerName.split(" ")[0],
+        surname: order.customerName.split(" ").slice(1).join(" ") || "-",
+        email: order.customerEmail ?? "cliente@salvitarn.com.br",
+        phone: { number: order.customerPhone.replace(/\D/g, "") }
+      },
+      back_urls: {
+        success: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&status=pago`,
+        failure: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&status=falhou`,
+        pending: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&status=pendente`
+      },
+      auto_return: "approved",
+      notification_url: `https://lembretes.salvitarn.com.br/api/mp-webhook`,
+      external_reference: String(order.id),
+      statement_descriptor: "SAL VITA",
+      payment_methods: { installments: 3 }
+    };
+    const res = await fetch("https://api.mercadopago.com/checkout/preferences", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(preference)
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro MP: ${txt}` });
+    }
+    const data = await res.json();
+    await ordersDb.update(siteOrders).set({ mpPreferenceId: data.id, updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, input.orderId));
+    return { initPoint: data.init_point };
+  }),
+  generateLabel: protectedProcedure.input(external_exports.object({ orderId: external_exports.number() })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const token = process.env.MELHOR_ENVIO_TOKEN;
+    if (!token)
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Configure MELHOR_ENVIO_TOKEN no painel Vercel" });
+    const orders = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
+    const order = orders[0];
+    if (!order)
+      throw new TRPCError({ code: "NOT_FOUND" });
+    const headers = {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "User-Agent": "SalVita/1.0 (contato@salvitarn.com.br)",
+      "Accept": "application/json"
+    };
+    const serviceIdNum = order.shippingServiceId ? parseInt(order.shippingServiceId, 10) : NaN;
+    if (isNaN(serviceIdNum)) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: `ID de servi\xE7o de frete inv\xE1lido: "${order.shippingServiceId}". Edite o pedido e selecione um servi\xE7o v\xE1lido.` });
+    }
+    const serviceId = serviceIdNum;
+    const weight = +Math.max(1.2, order.quantity * 1.05).toFixed(2);
+    const cartBody = {
+      service: serviceId,
+      from: {
+        name: "Sal Vita",
+        phone: "84214082120",
+        email: "contato@salvitarn.com.br",
+        postal_code: ORIGIN_CEP,
+        address: "Av. Presidente Dutra",
+        number: "1",
+        city: "Mossor\xF3",
+        state_abbr: "RN",
+        country_id: "BR"
+      },
+      to: {
+        name: order.customerName,
+        phone: order.customerPhone.replace(/\D/g, ""),
+        email: order.customerEmail ?? "cliente@salvitarn.com.br",
+        document: order.customerCpf ? order.customerCpf.replace(/\D/g, "") : void 0,
+        postal_code: order.postalCode,
+        address: order.address,
+        number: order.number,
+        complement: order.complement ?? "",
+        district: order.neighborhood,
+        city: order.city,
+        state_abbr: order.state,
+        country_id: "BR"
+      },
+      volumes: [{ ...getPkg(order.quantity), weight }],
+      options: {
+        insurance_value: parseFloat(order.totalPrice ?? "30"),
+        receipt: false,
+        own_hand: false,
+        non_commercial: false
+      },
+      products: [{
+        name: "Sal Marinho Integral 1kg",
+        quantity: order.quantity,
+        unitary_value: 29.9
+      }]
+    };
+    const cartRes = await fetch(`${ME_BASE}/api/v2/me/cart`, { method: "POST", headers, body: JSON.stringify(cartBody) });
+    if (!cartRes.ok) {
+      const txt = await cartRes.text();
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro cart ME: ${txt}` });
+    }
+    const cartData = await cartRes.json();
+    const meOrderId = cartData.id;
+    let checkRes;
+    try {
+      checkRes = await fetch(`${ME_BASE}/api/v2/me/shipment/checkout`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ orders: [meOrderId] })
+      });
+      if (!checkRes.ok) {
+        const txt = await checkRes.text();
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro checkout ME: ${txt}` });
+      }
+    } catch (err) {
+      try {
+        await fetch(`${ME_BASE}/api/v2/me/cart/${meOrderId}`, {
+          method: "DELETE",
+          headers: { "Authorization": `Bearer ${token}`, "User-Agent": "SalVita/1.0 (contato@salvitarn.com.br)" }
+        });
+      } catch {
+      }
+      throw err;
+    }
+    const genRes = await fetch(`${ME_BASE}/api/v2/me/shipment/generate`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ orders: [meOrderId] })
+    });
+    if (!genRes.ok) {
+      const txt = await genRes.text();
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro gerar etiqueta ME: ${txt}` });
+    }
+    const printRes = await fetch(`${ME_BASE}/api/v2/me/shipment/print`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ orders: [meOrderId], mode: "private" })
+    });
+    if (!printRes.ok) {
+      const txt = await printRes.text();
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro imprimir etiqueta ME: ${txt}` });
+    }
+    const printData = await printRes.json();
+    const labelUrl = printData.url;
+    const [updated] = await ordersDb.update(siteOrders).set({ meOrderId, meLabelUrl: labelUrl, status: "shipped", updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, input.orderId)).returning();
+    return { labelUrl, meOrderId, order: updated };
+  }),
+  cancelOrder: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const orders = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.id));
+    const order = orders[0];
+    if (!order)
+      throw new TRPCError({ code: "NOT_FOUND" });
+    if (order.status === "cancelled")
+      throw new TRPCError({ code: "CONFLICT", message: "Pedido j\xE1 cancelado." });
+    const results = [];
+    if (order.meOrderId) {
+      const meToken = process.env.MELHOR_ENVIO_TOKEN;
+      if (meToken) {
+        try {
+          const meRes = await fetch(`${ME_BASE}/api/v2/me/shipment/cancel`, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${meToken}`,
+              "Content-Type": "application/json",
+              "User-Agent": "SalVita/1.0 (contato@salvitarn.com.br)",
+              "Accept": "application/json"
+            },
+            body: JSON.stringify({ orders: [order.meOrderId] })
+          });
+          if (meRes.ok)
+            results.push("Etiqueta ME cancelada");
+          else
+            results.push(`Aviso: ME retornou ${meRes.status} \u2014 verifique manualmente`);
+        } catch {
+          results.push("Aviso: falha ao cancelar etiqueta ME \u2014 verifique manualmente");
+        }
+      }
+    }
+    if (order.paymentStatus === "confirmed" && order.mpPaymentId) {
+      const mpToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+      if (mpToken) {
+        try {
+          const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}/refunds`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${mpToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify({})
+          });
+          if (mpRes.ok)
+            results.push("Reembolso MP solicitado");
+          else {
+            const txt = await mpRes.text();
+            results.push(`Aviso: reembolso MP retornou ${mpRes.status}: ${txt.slice(0, 100)}`);
+          }
+        } catch {
+          results.push("Aviso: falha ao reembolsar no MP \u2014 fa\xE7a manualmente");
+        }
+      }
+    }
+    const [updated] = await ordersDb.update(siteOrders).set({ status: "cancelled", updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, input.id)).returning();
+    results.push("Pedido cancelado");
+    return { order: updated, actions: results };
+  })
+});
+
+// server/routers/recovery.ts
+async function sendViaWhatsApp(phone, message) {
+  const url2 = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
+  const key = process.env.WA_API_KEY || "MinhaChaveSuperSegura123456";
+  try {
+    const res = await fetch(`${url2}/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": key },
+      body: JSON.stringify({ phone: fmtPhone(phone), message })
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+function fmtPhone(raw) {
+  const d = raw.replace(/\D/g, "");
+  return d.startsWith("55") ? d : `55${d}`;
+}
+function waLink(phone, msg) {
+  return `https://wa.me/${fmtPhone(phone)}?text=${encodeURIComponent(msg)}`;
+}
+function recoveryMsg(name, coupon) {
+  return `Ol\xE1 *${name}*! \u{1F30A}
+
+Notamos que voc\xEA se interessou pelo *Sal Marinho Integral Sal Vita* mas n\xE3o finalizou o pedido.
+
+${coupon ? `\u{1F381} Use o cupom *${coupon}* e ganhe desconto especial!
+
+` : ""}\u{1F449} Finalize agora: https://premium.salvitarn.com.br
+
+Qualquer d\xFAvida \xE9 s\xF3 chamar aqui! \u{1F60A}
+_Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
+}
+function unpaidMsg(name, id, qty, total) {
+  return `Ol\xE1 *${name}*! \u{1F30A}
+
+Seu pedido *#${id}* do Sal Vita ainda est\xE1 aguardando pagamento.
+
+\u{1F4E6} ${qty}x Sal Marinho Integral 1kg
+\u{1F4B0} Total: R$ ${total}
+
+Finalize o pagamento aqui:
+\u{1F449} https://premium.salvitarn.com.br/meu-pedido?pedido=${id}
+
+_Pedido reservado por tempo limitado!_
+_Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
+}
+function failedMsg(name, id) {
+  return `Ol\xE1 *${name}*! \u{1F30A}
+
+Houve um problema com o pagamento do pedido *#${id}*.
+
+Tente novamente com outro m\xE9todo:
+\u{1F449} https://premium.salvitarn.com.br/meu-pedido?pedido=${id}
+
+Aceitamos Cart\xE3o, PIX e Boleto \u{1F4B3}
+_Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
+}
+var recoveryRouter = router({
+  // Public: track cart step from landing page
+  trackCart: publicProcedure.input(external_exports.object({
+    customerName: external_exports.string().min(2).max(100),
+    customerPhone: external_exports.string().min(10).max(20),
+    customerEmail: external_exports.string().optional(),
+    postalCode: external_exports.string().optional(),
+    quantity: external_exports.number().int().min(1).max(100).default(1),
+    stepReached: external_exports.number().int().min(1).max(3).default(1)
+  })).mutation(async ({ input }) => {
+    const phone = input.customerPhone.replace(/\D/g, "");
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1e3);
+    const recent = await ordersDb.select().from(siteOrders).where(and(eq(siteOrders.customerPhone, phone), sql`${siteOrders.createdAt} > ${oneDayAgo}`)).limit(1);
+    if (recent.length > 0)
+      return { tracked: false, reason: "converted" };
+    const existing = await ordersDb.select().from(abandonedCarts).where(eq(abandonedCarts.customerPhone, phone)).limit(1);
+    if (existing.length > 0) {
+      await ordersDb.update(abandonedCarts).set({
+        customerName: input.customerName,
+        customerEmail: input.customerEmail ?? existing[0].customerEmail,
+        postalCode: input.postalCode ?? existing[0].postalCode,
+        quantity: input.quantity,
+        stepReached: Math.max(existing[0].stepReached ?? 1, input.stepReached),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq(abandonedCarts.id, existing[0].id));
+    } else {
+      await ordersDb.insert(abandonedCarts).values({
+        customerName: input.customerName,
+        customerPhone: phone,
+        customerEmail: input.customerEmail ?? null,
+        postalCode: input.postalCode ?? null,
+        quantity: input.quantity,
+        stepReached: input.stepReached
+      });
+    }
+    return { tracked: true };
+  }),
+  // Public: validate coupon code
+  validateCoupon: publicProcedure.input(external_exports.object({
+    code: external_exports.string().min(1).max(50),
+    orderValue: external_exports.number().min(0).optional()
+  })).mutation(async ({ input }) => {
+    const code = input.code.toUpperCase().trim();
+    const found = await ordersDb.select().from(coupons).where(and(eq(coupons.code, code), eq(coupons.active, true))).limit(1);
+    if (!found.length)
+      return { valid: false, message: "Cupom inv\xE1lido ou expirado." };
+    const c = found[0];
+    if (c.expiresAt && /* @__PURE__ */ new Date() > new Date(c.expiresAt)) {
+      return { valid: false, message: "Este cupom expirou." };
+    }
+    if (c.maxUses && c.usedCount >= c.maxUses) {
+      return { valid: false, message: "Cupom esgotado." };
+    }
+    const minVal = parseFloat(c.minOrderValue ?? "0");
+    if (input.orderValue !== void 0 && input.orderValue < minVal) {
+      return { valid: false, message: `Pedido m\xEDnimo de R$ ${minVal.toFixed(2)} para este cupom.` };
+    }
+    return {
+      valid: true,
+      discountType: c.discountType,
+      discountValue: parseFloat(c.discountValue),
+      description: c.description ?? "",
+      message: c.discountType === "percent" ? `\u2705 Cupom v\xE1lido! ${c.discountValue}% de desconto aplicado.` : `\u2705 Cupom v\xE1lido! R$ ${parseFloat(c.discountValue).toFixed(2)} de desconto aplicado.`
+    };
+  }),
+  // Admin: list abandoned carts (not yet recovered)
+  listAbandoned: protectedProcedure.query(async ({ ctx }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const rows = await ordersDb.select().from(abandonedCarts).where(eq(abandonedCarts.recovered, false)).orderBy(desc(abandonedCarts.updatedAt));
+    return rows.map((r) => ({
+      ...r,
+      waLink: waLink(r.customerPhone, recoveryMsg(r.customerName)),
+      waLinkWithCoupon: waLink(r.customerPhone, recoveryMsg(r.customerName, "VOLTA10"))
+    }));
+  }),
+  // Admin: list unpaid orders (payment awaiting, not cancelled)
+  listUnpaid: protectedProcedure.query(async ({ ctx }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const rows = await ordersDb.select().from(siteOrders).where(and(
+      eq(siteOrders.paymentStatus, "awaiting"),
+      eq(siteOrders.status, "pending")
+    )).orderBy(desc(siteOrders.createdAt));
+    return rows.map((r) => ({
+      ...r,
+      waLinkUnpaid: waLink(r.customerPhone, unpaidMsg(r.customerName, r.id, r.quantity, r.totalPrice ?? "0")),
+      waLinkFailed: waLink(r.customerPhone, failedMsg(r.customerName, r.id))
+    }));
+  }),
+  // Admin: mark abandoned cart as recovered
+  markRecovered: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    await ordersDb.update(abandonedCarts).set({ recovered: true, updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.id, input.id));
+    return { ok: true };
+  }),
+  // Admin: mark recovery message sent
+  markSent: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    await ordersDb.update(abandonedCarts).set({ recoverySentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.id, input.id));
+    return { ok: true };
+  }),
+  // Admin: list coupons
+  listCoupons: protectedProcedure.query(async ({ ctx }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    return ordersDb.select().from(coupons).orderBy(desc(coupons.createdAt));
+  }),
+  // Admin: create coupon
+  createCoupon: protectedProcedure.input(external_exports.object({
+    code: external_exports.string().min(2).max(20).transform((s) => s.toUpperCase().trim()),
+    description: external_exports.string().max(200).optional(),
+    discountType: external_exports.enum(["percent", "fixed"]),
+    discountValue: external_exports.number().min(1),
+    minOrderValue: external_exports.number().min(0).default(0),
+    maxUses: external_exports.number().int().min(1).default(100),
+    expiresAt: external_exports.string().optional()
+  })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const [created] = await ordersDb.insert(coupons).values({
+      code: input.code,
+      description: input.description ?? null,
+      discountType: input.discountType,
+      discountValue: String(input.discountValue),
+      minOrderValue: String(input.minOrderValue),
+      maxUses: input.maxUses,
+      expiresAt: input.expiresAt ? new Date(input.expiresAt) : null
+    }).returning();
+    return created;
+  }),
+  // Admin: toggle coupon active/inactive
+  toggleCoupon: protectedProcedure.input(external_exports.object({ id: external_exports.number(), active: external_exports.boolean() })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    await ordersDb.update(coupons).set({ active: input.active }).where(eq(coupons.id, input.id));
+    return { ok: true };
+  }),
+  // Admin: send WhatsApp recovery message to specific cart
+  sendRecovery: protectedProcedure.input(external_exports.object({ id: external_exports.number(), coupon: external_exports.string().optional() })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const [cart] = await ordersDb.select().from(abandonedCarts).where(eq(abandonedCarts.id, input.id)).limit(1);
+    if (!cart)
+      throw new TRPCError({ code: "NOT_FOUND" });
+    const msg = recoveryMsg(cart.customerName, input.coupon);
+    const ok = await sendViaWhatsApp(cart.customerPhone, msg);
+    if (ok) {
+      await ordersDb.update(abandonedCarts).set({ recoverySentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.id, input.id));
+    }
+    return { ok, phone: fmtPhone(cart.customerPhone) };
+  }),
+  // Admin: send WhatsApp to unpaid order
+  sendUnpaid: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const [order] = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.id)).limit(1);
+    if (!order)
+      throw new TRPCError({ code: "NOT_FOUND" });
+    const msg = unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? "0");
+    const ok = await sendViaWhatsApp(order.customerPhone, msg);
+    return { ok, phone: fmtPhone(order.customerPhone) };
+  }),
+  // Admin: auto-send to all carts not contacted in last 24h
+  autoSendAbandoned: protectedProcedure.mutation(async ({ ctx }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1e3);
+    const pending = await ordersDb.select().from(abandonedCarts).where(
+      and(
+        eq(abandonedCarts.recovered, false),
+        sql`(${abandonedCarts.recoverySentAt} IS NULL OR ${abandonedCarts.recoverySentAt} < ${oneDayAgo})`
+      )
+    ).limit(50);
+    let sent = 0;
+    for (const cart of pending) {
+      const ok = await sendViaWhatsApp(cart.customerPhone, recoveryMsg(cart.customerName));
+      if (ok) {
+        await ordersDb.update(abandonedCarts).set({ recoverySentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.id, cart.id));
+        sent++;
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    return { sent, total: pending.length };
+  }),
+  // Admin: check WA connection status
+  waStatus: protectedProcedure.query(async ({ ctx }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const url2 = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
+    const key = process.env.WA_API_KEY || "MinhaChaveSuperSegura123456";
+    try {
+      const res = await fetch(`${url2}/status`, { headers: { "apikey": key } });
+      return await res.json();
+    } catch {
+      return { status: "error", connected: false };
+    }
+  }),
+  // Admin: delete coupon
+  deleteCoupon: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    await ordersDb.delete(coupons).where(eq(coupons.id, input.id));
+    return { ok: true };
+  }),
+  // Admin: AI recovery analysis (uses separate GROQ key for premium)
+  aiRecovery: protectedProcedure.mutation(async ({ ctx }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const apiKey = process.env.SAL_VITA_PREMIUM_1KG_GROQ ?? process.env.GROQ_API_KEY_PREMIUM ?? process.env.GROQ_API_KEY;
+    if (!apiKey)
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "SAL_VITA_PREMIUM_1KG_GROQ n\xE3o configurado" });
+    const [carts, unpaidOrders, allOrders] = await Promise.all([
+      ordersDb.select().from(abandonedCarts).where(eq(abandonedCarts.recovered, false)).orderBy(desc(abandonedCarts.updatedAt)),
+      ordersDb.select().from(siteOrders).where(eq(siteOrders.paymentStatus, "awaiting")).orderBy(desc(siteOrders.createdAt)),
+      ordersDb.select().from(siteOrders).orderBy(desc(siteOrders.createdAt)).limit(100)
+    ]);
+    const paid = allOrders.filter((o) => o.paymentStatus === "confirmed");
+    const conversionRate = allOrders.length > 0 ? (paid.length / allOrders.length * 100).toFixed(1) : "0";
+    const revenueAtRisk = unpaidOrders.reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0);
+    const hourDist = {};
+    carts.forEach((c) => {
+      const h = new Date(c.createdAt).getHours();
+      hourDist[h] = (hourDist[h] ?? 0) + 1;
+    });
+    const peakHour = Object.entries(hourDist).sort((a2, b) => b[1] - a2[1])[0];
+    const stepDist = carts.reduce((acc, c) => {
+      const s = c.stepReached ?? 1;
+      acc[s] = (acc[s] ?? 0) + 1;
+      return acc;
+    }, {});
+    const prompt = `Voc\xEA \xE9 especialista em e-commerce e recupera\xE7\xE3o de vendas. Analise estes dados da Sal Vita (sal marinho premium de Mossor\xF3/RN) e forne\xE7a estrat\xE9gias de recupera\xE7\xE3o em portugu\xEAs brasileiro.
+
+DADOS DE ABANDONO:
+- Carrinhos abandonados n\xE3o recuperados: ${carts.length}
+- Pedidos n\xE3o pagos (aguardando pagamento): ${unpaidOrders.length}
+- Taxa de convers\xE3o atual: ${conversionRate}%
+- Receita em risco (pedidos n\xE3o pagos): R$ ${revenueAtRisk.toFixed(2)}
+- Distribui\xE7\xE3o por etapa de abandono: ${JSON.stringify(stepDist)} (1=formul\xE1rio, 2=frete, 3=pagamento)
+- Hor\xE1rio de pico de abandono: ${peakHour ? `${peakHour[0]}h (${peakHour[1]} carrinhos)` : "N/A"}
+
+PEDIDOS RECENTES (\xFAltimos 100):
+- Total: ${allOrders.length}
+- Pagos e confirmados: ${paid.length}
+- Aguardando pagamento: ${unpaidOrders.length}
+- Cidades com mais abandonos: ${[...new Set(carts.map((c) => c.postalCode?.slice(0, 5)).filter(Boolean))].slice(0, 5).join(", ")}
+
+Forne\xE7a:
+1. \u{1F3AF} An\xE1lise do funil de abandono (onde est\xE3o saindo e por qu\xEA)
+2. \u{1F4F1} 3 mensagens WhatsApp de recupera\xE7\xE3o personalizadas para diferentes situa\xE7\xF5es
+3. \u{1F381} Estrat\xE9gia de cupom recomendada (tipo, valor, validade)
+4. \u23F0 Melhor hor\xE1rio para enviar mensagens de recupera\xE7\xE3o
+5. \u{1F4A1} 2 mudan\xE7as na landing page para reduzir abandono
+
+Seja espec\xEDfico, pr\xE1tico e use dados fornecidos. Formate com emojis e se\xE7\xF5es claras.`;
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 1200,
+        temperature: 0.7
+      })
+    });
+    if (!res.ok)
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao chamar Groq" });
+    const data = await res.json();
+    const insights = data.choices?.[0]?.message?.content ?? "Sem resposta";
+    return {
+      insights,
+      stats: {
+        abandoned: carts.length,
+        unpaid: unpaidOrders.length,
+        conversionRate,
+        revenueAtRisk,
+        stepDist,
+        peakHour: peakHour ? Number(peakHour[0]) : null
+      }
+    };
+  }),
+  // Public: customer chat powered by Groq
+  chat: publicProcedure.input(external_exports.object({
+    messages: external_exports.array(external_exports.object({ role: external_exports.enum(["user", "assistant"]), content: external_exports.string() })).max(20)
+  })).mutation(async ({ input }) => {
+    const apiKey = process.env.SAL_VITA_PREMIUM_1KG_GROQ ?? process.env.GROQ_API_KEY_PREMIUM ?? process.env.GROQ_API_KEY;
+    if (!apiKey)
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Chat n\xE3o dispon\xEDvel no momento." });
+    const system = `Voc\xEA \xE9 a assistente virtual do SAL VITA PREMIUM, um sal marinho integral artesanal produzido em Mossor\xF3/RN, Brasil.
+
+PRODUTO:
+- Nome: Sal Vita Premium \u2014 Sal Marinho Integral 1kg
+- Pre\xE7o: R$ 29,90 por kg (pode variar conforme quantidade)
+- Diferencial: sem refino, colhido diretamente do mar, mant\xE9m 84+ minerais naturais (magn\xE9sio, pot\xE1ssio, c\xE1lcio, iodo)
+- Produzido em Mossor\xF3/RN (capital mundial do sal)
+- Ideal para: culin\xE1ria saud\xE1vel, dieta natural, substitui\xE7\xE3o do sal refinado
+- Enviamos para todo o Brasil via Melhor Envio (PAC/SEDEX)
+- Formas de pagamento: Cart\xE3o, PIX, Boleto (via Mercado Pago)
+- Site: https://premium.salvitarn.com.br
+- Rastreio: https://premium.salvitarn.com.br/meu-pedido
+
+INSTRU\xC7\xD5ES:
+- Seja simp\xE1tica, objetiva e use emojis com modera\xE7\xE3o
+- Responda APENAS sobre o produto, pedidos, frete, pagamento e d\xFAvidas do site
+- Se n\xE3o souber, diga "Vou verificar isso para voc\xEA! Entre em contato pelo WhatsApp para mais detalhes."
+- Nunca invente pre\xE7os ou prazos que n\xE3o conhece
+- Incentive a compra quando pertinente, mas sem ser insistente
+- FORMATO: escreva respostas curtas, divididas em par\xE1grafos pequenos (1-2 frases cada), com linha em branco entre eles. Nunca escreva um bloco longo de texto corrido. M\xE1ximo 3 par\xE1grafos.
+- IMPORTANTE: Nunca mencione aditivos, conservantes ou subst\xE2ncias qu\xEDmicas espontaneamente. S\xF3 trate desse assunto se o cliente perguntar diretamente. Se perguntado, informe que o produto pode conter ferrocianeto de s\xF3dio como antiaglomerante, em conformidade com as normas da ANVISA e legisla\xE7\xE3o vigente.`;
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "system", content: system }, ...input.messages],
+        max_tokens: 300,
+        temperature: 0.7
+      })
+    });
+    if (!res.ok)
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao processar mensagem." });
+    const data = await res.json();
+    return { reply: data.choices[0]?.message?.content ?? "Desculpe, n\xE3o consegui processar sua mensagem." };
+  })
+});
+
 // server/routers/index.ts
 var appRouter = router({
   auth: authRouter,
@@ -51656,14 +53024,16 @@ var appRouter = router({
   ai: aiRouter,
   knowledge: knowledgeRouter,
   workSessions: workSessionsRouter,
-  tv: tvRouter
+  tv: tvRouter,
+  shipping: shippingRouter,
+  recovery: recoveryRouter
 });
 
 // server/db/migrate.ts
 async function ensureTablesExist() {
   try {
-    const sql3 = Ys(process.env.DATABASE_URL);
-    await sql3`
+    const sql4 = Ys(process.env.DATABASE_URL);
+    await sql4`
       CREATE TABLE IF NOT EXISTS knowledge_documents (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
@@ -51675,10 +53045,10 @@ async function ensureTablesExist() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `;
-    await sql3`
+    await sql4`
       ALTER TABLE sellers ADD COLUMN IF NOT EXISTS work_hours_goal INTEGER NOT NULL DEFAULT 8
     `;
-    await sql3`
+    await sql4`
       CREATE TABLE IF NOT EXISTS work_sessions (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
@@ -51692,28 +53062,62 @@ async function ensureTablesExist() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `;
-    await sql3`CREATE INDEX IF NOT EXISTS tasks_user_id_idx ON tasks(user_id)`;
-    await sql3`CREATE INDEX IF NOT EXISTS tasks_assigned_to_idx ON tasks(assigned_to)`;
-    await sql3`CREATE INDEX IF NOT EXISTS tasks_status_idx ON tasks(status)`;
-    await sql3`CREATE INDEX IF NOT EXISTS tasks_reminder_date_idx ON tasks(reminder_date)`;
-    await sql3`CREATE INDEX IF NOT EXISTS work_sessions_user_id_idx ON work_sessions(user_id)`;
-    await sql3`CREATE INDEX IF NOT EXISTS work_sessions_status_idx ON work_sessions(status)`;
-    await sql3`CREATE INDEX IF NOT EXISTS work_sessions_started_at_idx ON work_sessions(started_at)`;
-    await sql3`CREATE INDEX IF NOT EXISTS chat_messages_user_id_idx ON chat_messages(user_id)`;
-    await sql3`CREATE INDEX IF NOT EXISTS knowledge_docs_user_id_idx ON knowledge_documents(user_id)`;
-    await sql3`CREATE INDEX IF NOT EXISTS sellers_status_idx ON sellers(status)`;
-    await sql3`CREATE INDEX IF NOT EXISTS sellers_user_id_idx ON sellers(user_id)`;
-    await sql3`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_contacted_at TIMESTAMP`;
-    await sql3`CREATE INDEX IF NOT EXISTS tasks_last_contacted_at_idx ON tasks(last_contacted_at)`;
-    await sql3`ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT false NOT NULL`;
-    await sql3`ALTER TABLE users               ENABLE ROW LEVEL SECURITY`;
-    await sql3`ALTER TABLE sellers             ENABLE ROW LEVEL SECURITY`;
-    await sql3`ALTER TABLE tasks               ENABLE ROW LEVEL SECURITY`;
-    await sql3`ALTER TABLE clients             ENABLE ROW LEVEL SECURITY`;
-    await sql3`ALTER TABLE reminders           ENABLE ROW LEVEL SECURITY`;
-    await sql3`ALTER TABLE chat_messages       ENABLE ROW LEVEL SECURITY`;
-    await sql3`ALTER TABLE knowledge_documents ENABLE ROW LEVEL SECURITY`;
-    await sql3`ALTER TABLE work_sessions       ENABLE ROW LEVEL SECURITY`;
+    await sql4`CREATE INDEX IF NOT EXISTS tasks_user_id_idx ON tasks(user_id)`;
+    await sql4`CREATE INDEX IF NOT EXISTS tasks_assigned_to_idx ON tasks(assigned_to)`;
+    await sql4`CREATE INDEX IF NOT EXISTS tasks_status_idx ON tasks(status)`;
+    await sql4`CREATE INDEX IF NOT EXISTS tasks_reminder_date_idx ON tasks(reminder_date)`;
+    await sql4`CREATE INDEX IF NOT EXISTS work_sessions_user_id_idx ON work_sessions(user_id)`;
+    await sql4`CREATE INDEX IF NOT EXISTS work_sessions_status_idx ON work_sessions(status)`;
+    await sql4`CREATE INDEX IF NOT EXISTS work_sessions_started_at_idx ON work_sessions(started_at)`;
+    await sql4`CREATE INDEX IF NOT EXISTS chat_messages_user_id_idx ON chat_messages(user_id)`;
+    await sql4`CREATE INDEX IF NOT EXISTS knowledge_docs_user_id_idx ON knowledge_documents(user_id)`;
+    await sql4`CREATE INDEX IF NOT EXISTS sellers_status_idx ON sellers(status)`;
+    await sql4`CREATE INDEX IF NOT EXISTS sellers_user_id_idx ON sellers(user_id)`;
+    await sql4`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_contacted_at TIMESTAMP`;
+    await sql4`CREATE INDEX IF NOT EXISTS tasks_last_contacted_at_idx ON tasks(last_contacted_at)`;
+    await sql4`ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT false NOT NULL`;
+    await sql4`ALTER TABLE users               ENABLE ROW LEVEL SECURITY`;
+    await sql4`ALTER TABLE sellers             ENABLE ROW LEVEL SECURITY`;
+    await sql4`ALTER TABLE tasks               ENABLE ROW LEVEL SECURITY`;
+    await sql4`ALTER TABLE clients             ENABLE ROW LEVEL SECURITY`;
+    await sql4`ALTER TABLE reminders           ENABLE ROW LEVEL SECURITY`;
+    await sql4`ALTER TABLE chat_messages       ENABLE ROW LEVEL SECURITY`;
+    await sql4`ALTER TABLE knowledge_documents ENABLE ROW LEVEL SECURITY`;
+    await sql4`ALTER TABLE work_sessions       ENABLE ROW LEVEL SECURITY`;
+    await sql4`
+      CREATE TABLE IF NOT EXISTS site_orders (
+        id SERIAL PRIMARY KEY,
+        customer_name TEXT NOT NULL,
+        customer_phone TEXT NOT NULL,
+        customer_email TEXT,
+        postal_code TEXT NOT NULL,
+        address TEXT NOT NULL,
+        number TEXT NOT NULL,
+        complement TEXT,
+        neighborhood TEXT NOT NULL,
+        city TEXT NOT NULL,
+        state TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        product TEXT NOT NULL DEFAULT 'Sal Marinho Integral 1kg',
+        unit_price TEXT NOT NULL DEFAULT '29.90',
+        shipping_service_id TEXT,
+        shipping_service_name TEXT,
+        shipping_price TEXT,
+        total_price TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        payment_status TEXT NOT NULL DEFAULT 'awaiting',
+        me_order_id TEXT,
+        me_label_url TEXT,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+    await sql4`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`;
+    await sql4`CREATE INDEX IF NOT EXISTS site_orders_created_at_idx ON site_orders(created_at)`;
+    await sql4`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS tracking_code TEXT`;
+    await sql4`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_preference_id TEXT`;
+    await sql4`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_payment_id TEXT`;
     console.log("\u2705 Database tables, indexes, and RLS ensured");
   } catch (err) {
     console.error("\u274C Migration error:", err);
@@ -51721,9 +53125,98 @@ async function ensureTablesExist() {
   }
 }
 
+// server/db/ordersMigrate.ts
+async function ensureOrdersTablesExist() {
+  const url2 = process.env.ORDERS_DATABASE_URL;
+  if (!url2)
+    return;
+  try {
+    const sql4 = Ys(url2);
+    await sql4`
+      CREATE TABLE IF NOT EXISTS site_orders (
+        id SERIAL PRIMARY KEY,
+        customer_name TEXT NOT NULL,
+        customer_phone TEXT NOT NULL,
+        customer_email TEXT,
+        postal_code TEXT NOT NULL,
+        address TEXT NOT NULL,
+        number TEXT NOT NULL,
+        complement TEXT,
+        neighborhood TEXT NOT NULL,
+        city TEXT NOT NULL,
+        state TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        product TEXT NOT NULL DEFAULT 'Sal Marinho Integral 1kg',
+        unit_price TEXT NOT NULL DEFAULT '29.90',
+        shipping_service_id TEXT,
+        shipping_service_name TEXT,
+        shipping_price TEXT,
+        total_price TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        payment_status TEXT NOT NULL DEFAULT 'awaiting',
+        me_order_id TEXT,
+        me_label_url TEXT,
+        notes TEXT,
+        tracking_code TEXT,
+        mp_preference_id TEXT,
+        mp_payment_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+    await sql4`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`;
+    await sql4`CREATE INDEX IF NOT EXISTS site_orders_created_at_idx ON site_orders(created_at)`;
+    await sql4`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS customer_cpf TEXT`;
+    await sql4`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS coupon_code TEXT`;
+    await sql4`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS coupon_discount TEXT`;
+    await sql4`SELECT setval(pg_get_serial_sequence('site_orders','id'), GREATEST(last_value, 9999), true) FROM site_orders_id_seq`;
+    await sql4`
+      CREATE TABLE IF NOT EXISTS abandoned_carts (
+        id SERIAL PRIMARY KEY,
+        customer_name TEXT NOT NULL,
+        customer_phone TEXT NOT NULL,
+        customer_email TEXT,
+        postal_code TEXT,
+        quantity INTEGER DEFAULT 1,
+        step_reached INTEGER DEFAULT 1,
+        recovered BOOLEAN NOT NULL DEFAULT FALSE,
+        recovery_sent_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+    await sql4`CREATE INDEX IF NOT EXISTS abandoned_carts_phone_idx ON abandoned_carts(customer_phone)`;
+    await sql4`CREATE INDEX IF NOT EXISTS abandoned_carts_recovered_idx ON abandoned_carts(recovered)`;
+    await sql4`CREATE UNIQUE INDEX IF NOT EXISTS abandoned_carts_phone_unique ON abandoned_carts(customer_phone)`;
+    await sql4`
+      CREATE TABLE IF NOT EXISTS coupons (
+        id SERIAL PRIMARY KEY,
+        code TEXT NOT NULL UNIQUE,
+        description TEXT,
+        discount_type TEXT NOT NULL DEFAULT 'percent',
+        discount_value TEXT NOT NULL DEFAULT '10',
+        min_order_value TEXT DEFAULT '0',
+        max_uses INTEGER DEFAULT 100,
+        used_count INTEGER NOT NULL DEFAULT 0,
+        expires_at TIMESTAMP,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+    console.log("\u2705 Orders database tables ensured");
+  } catch (err) {
+    console.error("\u274C Orders migration error:", err);
+    throw err;
+  }
+}
+
 // api/index.ts
 var app = (0, import_express.default)();
-ensureTablesExist();
+app.set("trust proxy", 1);
+var dbReady = Promise.all([
+  ensureTablesExist().catch((err) => console.error("DB init error:", err)),
+  ensureOrdersTablesExist().catch((err) => console.error("Orders DB init error:", err))
+]);
 var PROD_ORIGINS = [
   "https://sal-vita-vendas.vercel.app",
   "https://lembretes.salvitarn.com.br",
@@ -51738,22 +53231,22 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      // Vite/React needs eval in dev; tighten in future
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://connect.facebook.net"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "https://api.groq.com", "https://generativelanguage.googleapis.com"],
+      connectSrc: ["'self'", "https://api.groq.com", "https://generativelanguage.googleapis.com", "https://www.facebook.com", "https://connect.facebook.net"],
       fontSrc: ["'self'", "https:", "data:"],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"]
     }
   },
   crossOriginEmbedderPolicy: false
-  // Breaks some browser APIs if true
 }));
 app.use((0, import_cors.default)({
   origin: (origin, cb) => {
-    if (!origin || ALLOWED_ORIGINS.includes(origin))
+    if (!origin)
+      return cb(null, true);
+    if (ALLOWED_ORIGINS.includes(origin))
       return cb(null, true);
     cb(new Error(`CORS: origin ${origin} not allowed`));
   },
@@ -51761,6 +53254,97 @@ app.use((0, import_cors.default)({
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "Cookie"]
 }));
+app.use(async (_req, _res, next) => {
+  await dbReady;
+  next();
+});
+app.post("/api/mp-webhook", import_express.default.raw({ type: "application/json" }), async (req, res) => {
+  try {
+    const rawBody = req.body.toString("utf8");
+    let body;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      res.status(400).json({ error: "Invalid JSON" });
+      return;
+    }
+    const webhookSecret = process.env.MERCADO_PAGO_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      const xSig = req.headers["x-signature"];
+      const xReqId = req.headers["x-request-id"];
+      if (!xSig || !xReqId) {
+        res.status(401).json({ error: "Missing signature headers" });
+        return;
+      }
+      const parts = Object.fromEntries(xSig.split(",").map((p2) => {
+        const [k, ...v2] = p2.split("=");
+        return [k, v2.join("=")];
+      }));
+      const { ts: ts2, v1 } = parts;
+      if (!ts2 || !v1) {
+        res.status(401).json({ error: "Malformed x-signature" });
+        return;
+      }
+      const manifest = `id:${body?.data?.id ?? ""};request-id:${xReqId};ts:${ts2}`;
+      const expected = import_crypto2.default.createHmac("sha256", webhookSecret).update(manifest).digest("hex");
+      if (!import_crypto2.default.timingSafeEqual(Buffer.from(expected), Buffer.from(v1))) {
+        res.status(401).json({ error: "Invalid signature" });
+        return;
+      }
+    } else {
+      if (IS_PROD) {
+        console.error("[mp-webhook] MERCADO_PAGO_WEBHOOK_SECRET not set in production \u2014 rejecting request");
+        res.status(401).json({ error: "Webhook secret not configured" });
+        return;
+      }
+      console.warn("[mp-webhook] MERCADO_PAGO_WEBHOOK_SECRET not set \u2014 skipping signature check");
+    }
+    const { type, data } = body;
+    if (type !== "payment" || !data?.id) {
+      res.json({ ok: true });
+      return;
+    }
+    const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+    if (!token) {
+      res.status(500).json({ error: "no token" });
+      return;
+    }
+    const payRes = await fetch(`https://api.mercadopago.com/v1/payments/${data.id}`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    if (!payRes.ok) {
+      res.json({ ok: true });
+      return;
+    }
+    const payment = await payRes.json();
+    const orderId = parseInt(payment.external_reference ?? "");
+    if (!orderId) {
+      res.json({ ok: true });
+      return;
+    }
+    if (payment.status === "approved") {
+      const orderRows = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, orderId));
+      const order = orderRows[0];
+      if (order && payment.transaction_amount !== void 0) {
+        const expectedTotal = parseFloat(order.totalPrice ?? "0");
+        if (Math.abs(payment.transaction_amount - expectedTotal) > 0.01) {
+          console.warn(`[mp-webhook] Amount mismatch for order ${orderId}: expected ${expectedTotal}, got ${payment.transaction_amount}`);
+          res.status(400).json({ error: "Payment amount does not match order total" });
+          return;
+        }
+      }
+    }
+    if (payment.status === "approved") {
+      await ordersDb.update(siteOrders).set({ paymentStatus: "confirmed", mpPaymentId: String(payment.id), updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, orderId));
+    } else if (payment.status === "rejected") {
+      await ordersDb.update(siteOrders).set({ paymentStatus: "failed", mpPaymentId: String(payment.id), updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, orderId));
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("MP webhook error:", err);
+    res.json({ ok: true });
+  }
+});
 app.use(import_express.default.json({ limit: "2mb" }));
 var authLimiter = rate_limit_default({
   windowMs: 15 * 60 * 1e3,
@@ -51770,11 +53354,53 @@ var authLimiter = rate_limit_default({
   legacyHeaders: false,
   keyGenerator: (req) => {
     const body = req.body;
-    return (typeof body?.email === "string" ? body.email : "") || req.ip || "unknown";
-  }
+    const key = (typeof body?.email === "string" ? body.email.trim() : "") || req.ip || "unknown";
+    return key || "unknown";
+  },
+  validate: { xForwardedForHeader: false }
+});
+var storeLimiter = rate_limit_default({
+  windowMs: 15 * 60 * 1e3,
+  max: 30,
+  message: { error: "Muitas requisi\xE7\xF5es. Tente novamente em 15 minutos." },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+var orderLimiter = rate_limit_default({
+  windowMs: 15 * 60 * 1e3,
+  max: 5,
+  message: { error: "Muitas tentativas de pedido. Tente novamente em 15 minutos." },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+var cartTrackLimiter = rate_limit_default({
+  windowMs: 15 * 60 * 1e3,
+  max: 10,
+  validate: { xForwardedForHeader: false },
+  keyGenerator: (req) => req.ip || "unknown"
+});
+var couponCheckLimiter = rate_limit_default({
+  windowMs: 5 * 60 * 1e3,
+  max: 20,
+  validate: { xForwardedForHeader: false },
+  keyGenerator: (req) => req.ip || "unknown"
+});
+var chatLimiter = rate_limit_default({
+  windowMs: 60 * 1e3,
+  max: 15,
+  message: { error: "Muitas mensagens. Aguarde um momento." },
+  validate: { xForwardedForHeader: false },
+  keyGenerator: (req) => req.ip || "unknown"
 });
 app.use("/api/trpc/auth.login", authLimiter);
 app.use("/api/trpc/auth.emergencyReset", authLimiter);
+app.use("/api/trpc/shipping.calculate", storeLimiter);
+app.use("/api/trpc/shipping.trackOrder", storeLimiter);
+app.use("/api/trpc/shipping.createOrder", orderLimiter);
+app.use("/api/trpc/shipping.createPayment", orderLimiter);
+app.use("/api/trpc/recovery.trackCart", cartTrackLimiter);
+app.use("/api/trpc/recovery.validateCoupon", couponCheckLimiter);
+app.use("/api/trpc/recovery.chat", chatLimiter);
 app.use(
   "/api/trpc",
   createExpressMiddleware({
