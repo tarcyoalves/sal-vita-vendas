@@ -28,7 +28,7 @@ export default function SalVitaChat() {
         setGreeted(true);
         setMsgs([{
           role: 'assistant',
-          content: 'Olá! 🌊 Sou a assistente virtual do Sal Vita Premium. Posso te ajudar com dúvidas sobre o produto, frete, pagamento ou seu pedido. Como posso te ajudar?',
+          content: 'Olá! Sou a assistente virtual do Sal Vita Premium. ✨\n\nPosso te ajudar com dúvidas sobre o produto, frete, pagamento ou seu pedido.\n\nComo posso te ajudar?',
         }]);
       }
       setTimeout(() => inputRef.current?.focus(), 100);
@@ -128,9 +128,19 @@ export default function SalVitaChat() {
           }}>
             <div style={{
               width: 38, height: 38, borderRadius: '50%',
-              background: 'rgba(255,255,255,.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'white', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
             }}>
-              <span style={{ fontSize: '1.2rem' }}>🌊</span>
+              <img
+                src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
+                alt="Sal Vita"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={e => {
+                  const el = e.currentTarget;
+                  el.style.display = 'none';
+                  el.parentElement!.style.background = '#0C3680';
+                  el.parentElement!.innerHTML = '<span style="color:white;font-weight:800;font-size:.8rem">SV</span>';
+                }}
+              />
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ color: '#fff', fontWeight: 700, fontSize: '.95rem' }}>Sal Vita Premium</div>
@@ -158,7 +168,9 @@ export default function SalVitaChat() {
             {msgs.map((m, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
                 <div className={`chat-msg ${m.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai'}`}>
-                  {m.content}
+                  {m.content.split('\n').map((line, j, arr) => (
+                    <span key={j}>{line}{j < arr.length - 1 && <br />}</span>
+                  ))}
                 </div>
               </div>
             ))}

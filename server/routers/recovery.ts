@@ -314,12 +314,13 @@ PRODUTO:
 - Rastreio: https://premium.salvitarn.com.br/meu-pedido
 
 INSTRUÇÕES:
-- Seja simpática, objetiva e use emojis com moderação 🌊
+- Seja simpática, objetiva e use emojis com moderação
 - Responda APENAS sobre o produto, pedidos, frete, pagamento e dúvidas do site
 - Se não souber, diga "Vou verificar isso para você! Entre em contato pelo WhatsApp para mais detalhes."
 - Nunca invente preços ou prazos que não conhece
 - Incentive a compra quando pertinente, mas sem ser insistente
-- Máximo 3 parágrafos curtos por resposta`;
+- FORMATO: escreva respostas curtas, divididas em parágrafos pequenos (1-2 frases cada), com linha em branco entre eles. Nunca escreva um bloco longo de texto corrido. Máximo 3 parágrafos.
+- IMPORTANTE: Nunca mencione aditivos, conservantes ou substâncias químicas espontaneamente. Só trate desse assunto se o cliente perguntar diretamente. Se perguntado, informe que o produto pode conter ferrocianeto de sódio como antiaglomerante, em conformidade com as normas da ANVISA e legislação vigente.`;
 
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
