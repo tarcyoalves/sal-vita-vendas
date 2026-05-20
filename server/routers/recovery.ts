@@ -2,8 +2,23 @@ import { z } from 'zod';
 import { router, publicProcedure, protectedProcedure } from '../trpc';
 import { ordersDb as db } from '../db/ordersDb';
 import { abandonedCarts, coupons, siteOrders } from '../db/schema';
-import { desc, eq, and, sql } from 'drizzle-orm';
+import { desc, eq, and, sql, isNull, lt } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
+
+async function sendViaWhatsApp(phone: string, message: string): Promise<boolean> {
+  const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
+  const key = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
+  try {
+    const res = await fetch(`${url}/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': key },
+      body: JSON.stringify({ phone: fmtPhone(phone), message }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 function fmtPhone(raw: string) {
   const d = raw.replace(/\D/g, '');
@@ -203,6 +218,75 @@ export const recoveryRouter = router({
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       await db.update(coupons).set({ active: input.active }).where(eq(coupons.id, input.id));
       return { ok: true };
+    }),
+
+  // Admin: send WhatsApp recovery message to specific cart
+  sendRecovery: protectedProcedure
+    .input(z.object({ id: z.number(), coupon: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      const [cart] = await db.select().from(abandonedCarts).where(eq(abandonedCarts.id, input.id)).limit(1);
+      if (!cart) throw new TRPCError({ code: 'NOT_FOUND' });
+      const msg = recoveryMsg(cart.customerName, input.coupon);
+      const ok = await sendViaWhatsApp(cart.customerPhone, msg);
+      if (ok) {
+        await db.update(abandonedCarts)
+          .set({ recoverySentAt: new Date(), updatedAt: new Date() })
+          .where(eq(abandonedCarts.id, input.id));
+      }
+      return { ok, phone: fmtPhone(cart.customerPhone) };
+    }),
+
+  // Admin: send WhatsApp to unpaid order
+  sendUnpaid: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      const [order] = await db.select().from(siteOrders).where(eq(siteOrders.id, input.id)).limit(1);
+      if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+      const msg = unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0');
+      const ok = await sendViaWhatsApp(order.customerPhone, msg);
+      return { ok, phone: fmtPhone(order.customerPhone) };
+    }),
+
+  // Admin: auto-send to all carts not contacted in last 24h
+  autoSendAbandoned: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const pending = await db.select().from(abandonedCarts).where(
+        and(
+          eq(abandonedCarts.recovered, false),
+          sql`(${abandonedCarts.recoverySentAt} IS NULL OR ${abandonedCarts.recoverySentAt} < ${oneDayAgo})`,
+        )
+      ).limit(50);
+
+      let sent = 0;
+      for (const cart of pending) {
+        const ok = await sendViaWhatsApp(cart.customerPhone, recoveryMsg(cart.customerName));
+        if (ok) {
+          await db.update(abandonedCarts)
+            .set({ recoverySentAt: new Date(), updatedAt: new Date() })
+            .where(eq(abandonedCarts.id, cart.id));
+          sent++;
+        }
+        await new Promise(r => setTimeout(r, 1500));
+      }
+      return { sent, total: pending.length };
+    }),
+
+  // Admin: check WA connection status
+  waStatus: protectedProcedure
+    .query(async ({ ctx }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
+      const key = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
+      try {
+        const res = await fetch(`${url}/status`, { headers: { 'apikey': key } });
+        return await res.json() as { status: string; connected: boolean };
+      } catch {
+        return { status: 'error', connected: false };
+      }
     }),
 
   // Admin: delete coupon
