@@ -10,8 +10,8 @@ import { createContext } from '../server/trpc';
 import { ensureTablesExist } from '../server/db/migrate';
 import { ensureOrdersTablesExist } from '../server/db/ordersMigrate';
 import { ordersDb } from '../server/db/ordersDb';
-import { siteOrders } from '../server/db/schema';
-import { eq } from 'drizzle-orm';
+import { siteOrders, abandonedCarts, automationRuns } from '../server/db/schema';
+import { eq, and } from 'drizzle-orm';
 
 const app = express();
 
@@ -132,6 +132,17 @@ app.post('/api/mp-webhook', express.raw({ type: 'application/json' }), async (re
       await ordersDb.update(siteOrders)
         .set({ paymentStatus: 'confirmed', mpPaymentId: String(payment.id), updatedAt: new Date() })
         .where(eq(siteOrders.id, orderId));
+      // Cancel pending WA automations for this customer's phone
+      if (order) {
+        const phone = order.customerPhone.replace(/\D/g, '');
+        await ordersDb.update(automationRuns)
+          .set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
+          .where(and(eq(automationRuns.customerPhone, phone), eq(automationRuns.status, 'scheduled')));
+        // Mark cart as converted if exists
+        await ordersDb.update(abandonedCarts)
+          .set({ status: 'converted', recovered: true, convertedAt: new Date(), updatedAt: new Date() })
+          .where(eq(abandonedCarts.customerPhone, phone));
+      }
     } else if (payment.status === 'rejected') {
       await ordersDb.update(siteOrders)
         .set({ paymentStatus: 'failed', mpPaymentId: String(payment.id), updatedAt: new Date() })
@@ -217,6 +228,67 @@ app.use(
     createContext,
   }),
 );
+
+// Cron endpoint — called by Vercel Cron or external scheduler every 5 min
+app.post('/api/cron/abandoned-cart', express.json(), async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  const provided = req.headers['x-cron-secret'] ?? req.headers['authorization']?.replace('Bearer ', '');
+  if (secret && provided !== secret) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  try {
+    const { lte } = await import('drizzle-orm');
+    const { automationRuns: runs, abandonedCarts: carts } = await import('../server/db/schema');
+    const now = new Date();
+    const due = await ordersDb.select().from(runs).where(
+      and(eq(runs.status, 'scheduled'), lte(runs.scheduledFor, now))
+    ).limit(50);
+
+    const waUrl = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
+    const waKey = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
+
+    let sent = 0, cancelled = 0, failed = 0;
+    for (const run of due) {
+      const [cart] = await ordersDb.select().from(carts).where(eq(carts.id, run.cartId)).limit(1);
+      if (!cart || cart.status === 'converted' || cart.recovered) {
+        await ordersDb.update(runs).set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
+          .where(eq(runs.id, run.id));
+        cancelled++;
+        continue;
+      }
+      const name = cart.customerName;
+      const msg = `Olá *${name}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou o pedido.\n\n👉 Finalize agora: https://premium.salvitarn.com.br\n\nQualquer dúvida é só chamar! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
+      try {
+        const phone = run.customerPhone.replace(/\D/g, '');
+        const fmtPhone = phone.startsWith('55') ? phone : `55${phone}`;
+        const r = await fetch(`${waUrl}/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': waKey },
+          body: JSON.stringify({ phone: fmtPhone, message: msg }),
+        });
+        if (r.ok) {
+          await ordersDb.update(runs).set({ status: 'sent', sentAt: new Date(), providerResponse: JSON.stringify(await r.json()), updatedAt: new Date() })
+            .where(eq(runs.id, run.id));
+          await ordersDb.update(carts).set({ recoverySentAt: new Date(), updatedAt: new Date() })
+            .where(eq(carts.id, run.cartId));
+          sent++;
+        } else {
+          await ordersDb.update(runs).set({ status: 'failed', updatedAt: new Date() }).where(eq(runs.id, run.id));
+          failed++;
+        }
+      } catch {
+        await ordersDb.update(runs).set({ status: 'failed', updatedAt: new Date() }).where(eq(runs.id, run.id));
+        failed++;
+      }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    res.json({ ok: true, processed: due.length, sent, cancelled, failed });
+  } catch (err) {
+    console.error('[cron] abandoned-cart error:', err);
+    res.status(500).json({ error: String(err) });
+  }
+});
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });

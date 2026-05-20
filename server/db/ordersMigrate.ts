@@ -66,6 +66,30 @@ export async function ensureOrdersTablesExist() {
     await sql`CREATE INDEX IF NOT EXISTS abandoned_carts_recovered_idx ON abandoned_carts(recovered)`;
     await sql`CREATE UNIQUE INDEX IF NOT EXISTS abandoned_carts_phone_unique ON abandoned_carts(customer_phone)`;
 
+    await sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'checkout_started'`;
+    await sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS abandoned_at TIMESTAMP`;
+    await sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS converted_at TIMESTAMP`;
+    await sql`CREATE INDEX IF NOT EXISTS abandoned_carts_status_idx ON abandoned_carts(status)`;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS automation_runs (
+        id SERIAL PRIMARY KEY,
+        cart_id INTEGER NOT NULL,
+        customer_phone TEXT NOT NULL,
+        rule_name TEXT NOT NULL DEFAULT 'abandoned_cart_30m',
+        status TEXT NOT NULL DEFAULT 'scheduled',
+        scheduled_for TIMESTAMP NOT NULL,
+        sent_at TIMESTAMP,
+        cancelled_at TIMESTAMP,
+        provider_response TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS automation_runs_status_idx ON automation_runs(status)`;
+    await sql`CREATE INDEX IF NOT EXISTS automation_runs_scheduled_for_idx ON automation_runs(scheduled_for)`;
+    await sql`CREATE INDEX IF NOT EXISTS automation_runs_cart_id_idx ON automation_runs(cart_id)`;
+
     await sql`
       CREATE TABLE IF NOT EXISTS coupons (
         id SERIAL PRIMARY KEY,

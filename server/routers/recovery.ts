@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { router, publicProcedure, protectedProcedure } from '../trpc';
 import { ordersDb as db } from '../db/ordersDb';
-import { abandonedCarts, coupons, siteOrders } from '../db/schema';
-import { desc, eq, and, sql, isNull, lt } from 'drizzle-orm';
+import { abandonedCarts, automationRuns, coupons, siteOrders } from '../db/schema';
+import { desc, eq, and, sql, lte } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 
 async function sendViaWhatsApp(phone: string, message: string): Promise<boolean> {
@@ -67,26 +67,62 @@ export const recoveryRouter = router({
         .where(eq(abandonedCarts.customerPhone, phone))
         .limit(1);
 
+      const newStep = input.stepReached;
+      let cartId: number;
+
       if (existing.length > 0) {
+        const cart = existing[0];
+        const higherStep = Math.max(cart.stepReached ?? 1, newStep);
+        // Only advance status if not already converted/cancelled
+        const currentStatus = cart.status ?? 'checkout_started';
+        const nextStatus = currentStatus === 'converted' || currentStatus === 'cancelled'
+          ? currentStatus
+          : higherStep >= 3 ? 'redirected_to_payment'
+          : higherStep >= 2 ? 'checkout_started'
+          : 'checkout_started';
         await db.update(abandonedCarts).set({
           customerName: input.customerName,
-          customerEmail: input.customerEmail ?? existing[0].customerEmail,
-          postalCode: input.postalCode ?? existing[0].postalCode,
+          customerEmail: input.customerEmail ?? cart.customerEmail,
+          postalCode: input.postalCode ?? cart.postalCode,
           quantity: input.quantity,
-          stepReached: Math.max(existing[0].stepReached ?? 1, input.stepReached),
+          stepReached: higherStep,
+          status: nextStatus,
           updatedAt: new Date(),
-        }).where(eq(abandonedCarts.id, existing[0].id));
+        }).where(eq(abandonedCarts.id, cart.id));
+        cartId = cart.id;
       } else {
-        await db.insert(abandonedCarts).values({
+        const [inserted] = await db.insert(abandonedCarts).values({
           customerName: input.customerName,
           customerPhone: phone,
           customerEmail: input.customerEmail ?? null,
           postalCode: input.postalCode ?? null,
           quantity: input.quantity,
-          stepReached: input.stepReached,
-        });
+          stepReached: newStep,
+          status: 'checkout_started',
+        }).returning({ id: abandonedCarts.id });
+        cartId = inserted.id;
       }
-      return { tracked: true };
+
+      // Schedule 30-min abandonment automation when customer reaches shipping step
+      // Only if no pending automation exists for this cart yet
+      if (newStep >= 2) {
+        const existingRun = await db.select({ id: automationRuns.id })
+          .from(automationRuns)
+          .where(and(eq(automationRuns.cartId, cartId), eq(automationRuns.status, 'scheduled')))
+          .limit(1);
+        if (existingRun.length === 0) {
+          const scheduledFor = new Date(Date.now() + 30 * 60 * 1000);
+          await db.insert(automationRuns).values({
+            cartId,
+            customerPhone: phone,
+            ruleName: 'abandoned_cart_30m',
+            status: 'scheduled',
+            scheduledFor,
+          });
+        }
+      }
+
+      return { tracked: true, cartId };
     }),
 
   // Public: validate coupon code
@@ -287,6 +323,54 @@ export const recoveryRouter = router({
       } catch {
         return { status: 'error', connected: false };
       }
+    }),
+
+  // Internal/Admin: run automation job — sends scheduled WA messages for abandoned carts
+  // Called by cron (/api/cron/abandoned-cart) or manually from admin UI
+  runAutomationJob: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      const now = new Date();
+      const due = await db.select().from(automationRuns).where(
+        and(eq(automationRuns.status, 'scheduled'), lte(automationRuns.scheduledFor, now))
+      ).limit(50);
+
+      let sent = 0, cancelled = 0, failed = 0;
+      for (const run of due) {
+        // Verify cart is not converted and has no confirmed payment
+        const [cart] = await db.select().from(abandonedCarts)
+          .where(eq(abandonedCarts.id, run.cartId)).limit(1);
+        if (!cart || cart.status === 'converted' || cart.recovered) {
+          await db.update(automationRuns).set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
+            .where(eq(automationRuns.id, run.id));
+          cancelled++;
+          continue;
+        }
+        const msg = recoveryMsg(cart.customerName);
+        const ok = await sendViaWhatsApp(run.customerPhone, msg);
+        if (ok) {
+          await db.update(automationRuns).set({ status: 'sent', sentAt: new Date(), updatedAt: new Date() })
+            .where(eq(automationRuns.id, run.id));
+          await db.update(abandonedCarts).set({ recoverySentAt: new Date(), updatedAt: new Date() })
+            .where(eq(abandonedCarts.id, run.cartId));
+          sent++;
+        } else {
+          await db.update(automationRuns).set({ status: 'failed', updatedAt: new Date() })
+            .where(eq(automationRuns.id, run.id));
+          failed++;
+        }
+        await new Promise(r => setTimeout(r, 1200));
+      }
+      return { processed: due.length, sent, cancelled, failed };
+    }),
+
+  // Admin: list automation runs
+  listAutomationRuns: protectedProcedure
+    .query(async ({ ctx }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      return db.select().from(automationRuns)
+        .orderBy(desc(automationRuns.createdAt))
+        .limit(100);
     }),
 
   // Admin: delete coupon

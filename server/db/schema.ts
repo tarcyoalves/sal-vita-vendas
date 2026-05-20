@@ -139,8 +139,25 @@ export const abandonedCarts = pgTable('abandoned_carts', {
   postalCode: text('postal_code'),
   quantity: integer('quantity').default(1),
   stepReached: integer('step_reached').default(1), // 1=form 2=shipping 3=payment
+  status: text('status').notNull().default('checkout_started'), // checkout_started | redirected_to_payment | abandoned | converted | cancelled
   recovered: boolean('recovered').default(false).notNull(),
   recoverySentAt: timestamp('recovery_sent_at'),
+  abandonedAt: timestamp('abandoned_at'),
+  convertedAt: timestamp('converted_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const automationRuns = pgTable('automation_runs', {
+  id: serial('id').primaryKey(),
+  cartId: integer('cart_id').notNull(),
+  customerPhone: text('customer_phone').notNull(),
+  ruleName: text('rule_name').notNull().default('abandoned_cart_30m'),
+  status: text('status').notNull().default('scheduled'), // scheduled | sent | cancelled | failed
+  scheduledFor: timestamp('scheduled_for').notNull(),
+  sentAt: timestamp('sent_at'),
+  cancelledAt: timestamp('cancelled_at'),
+  providerResponse: text('provider_response'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -162,6 +179,7 @@ export const coupons = pgTable('coupons', {
 export type SiteOrder = typeof siteOrders.$inferSelect;
 export type AbandonedCart = typeof abandonedCarts.$inferSelect;
 export type Coupon = typeof coupons.$inferSelect;
+export type AutomationRun = typeof automationRuns.$inferSelect;
 
 export type User = typeof users.$inferSelect;
 export type Seller = typeof sellers.$inferSelect;

@@ -120,36 +120,68 @@ function LoginForm() {
 }
 
 /* ── Tab 1: Carrinhos Abandonados ────────────────────────── */
+function WaStatusBadge() {
+  const { data, isLoading } = trpc.recovery.waStatus.useQuery(undefined, { refetchInterval: 60000 });
+  if (isLoading) return null;
+  const connected = (data as any)?.connected;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      background: connected ? '#dcfce7' : '#fee2e2',
+      color: connected ? '#166534' : '#991b1b',
+      borderRadius: 999, padding: '4px 12px', fontSize: '.75rem', fontWeight: 700,
+    }}>
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: connected ? '#22c55e' : '#ef4444', display: 'inline-block' }} />
+      WA {connected ? 'Conectado' : 'Desconectado'}
+    </span>
+  );
+}
+
 function AbandonedTab() {
   const { data, isLoading, refetch } = trpc.recovery.listAbandoned.useQuery(undefined, { refetchInterval: 30000 });
-  const markSent = trpc.recovery.markSent.useMutation({ onSuccess: () => refetch() });
   const markRecovered = trpc.recovery.markRecovered.useMutation({
     onSuccess: () => { toast.success('Marcado como recuperado!'); refetch(); },
     onError: (e) => toast.error(e.message),
   });
-
-  const openWa = (url: string, id: number) => {
-    window.open(url, '_blank');
-    markSent.mutate({ id });
-  };
+  const sendMut = trpc.recovery.sendRecovery.useMutation({
+    onSuccess: (d: any) => { toast.success(`✅ Enviado para ${d.phone}`); refetch(); },
+    onError: (e) => toast.error('Falha no envio: ' + e.message),
+  });
+  const sendCouponMut = trpc.recovery.sendRecovery.useMutation({
+    onSuccess: (d: any) => { toast.success(`🎁 Enviado com cupom para ${d.phone}`); refetch(); },
+    onError: (e) => toast.error('Falha no envio: ' + e.message),
+  });
+  const jobMut = trpc.recovery.runAutomationJob.useMutation({
+    onSuccess: (d: any) => toast.success(`Job: ${d.sent} enviados, ${d.cancelled} cancelados`),
+    onError: (e) => toast.error(e.message),
+  });
 
   if (isLoading) return <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Carregando...</div>;
 
   const rows = data ?? [];
-  if (rows.length === 0) {
-    return (
-      <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}>
-        <div style={{ fontSize: '3rem', marginBottom: 12 }}>🎉</div>
-        <p style={{ fontWeight: 700, fontSize: '1.05rem', margin: 0 }}>Nenhum carrinho abandonado!</p>
-        <p style={{ fontSize: '.85rem', color: '#94a3b8', marginTop: 6 }}>Todos os clientes finalizaram suas compras.</p>
-      </div>
-    );
-  }
 
   return (
     <div>
-      <p style={{ fontSize: '.82rem', color: '#64748b', marginBottom: 16 }}>{rows.length} carrinho{rows.length !== 1 ? 's' : ''} abandonado{rows.length !== 1 ? 's' : ''}</p>
-      {rows.map((row: any) => (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+        <p style={{ fontSize: '.82rem', color: '#64748b', margin: 0 }}>
+          {rows.length} carrinho{rows.length !== 1 ? 's' : ''} abandonado{rows.length !== 1 ? 's' : ''}
+        </p>
+        <button
+          onClick={() => jobMut.mutate()}
+          disabled={jobMut.isPending}
+          style={{ ...btnPrimary, fontSize: '.75rem', padding: '6px 12px', opacity: jobMut.isPending ? .7 : 1 }}
+        >
+          {jobMut.isPending ? '⏳ Executando...' : '▶ Executar Job Agora'}
+        </button>
+      </div>
+
+      {rows.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}>
+          <div style={{ fontSize: '3rem', marginBottom: 12 }}>🎉</div>
+          <p style={{ fontWeight: 700, fontSize: '1.05rem', margin: 0 }}>Nenhum carrinho abandonado!</p>
+          <p style={{ fontSize: '.85rem', color: '#94a3b8', marginTop: 6 }}>Todos os clientes finalizaram suas compras.</p>
+        </div>
+      ) : rows.map((row: any) => (
         <div key={row.id} style={{ ...card, borderLeft: '4px solid #f59e0b' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
             <div>
@@ -158,6 +190,11 @@ function AbandonedTab() {
                 <span style={{ background: '#fef3c7', color: '#92400e', borderRadius: 999, padding: '2px 9px', fontSize: '.72rem', fontWeight: 700 }}>
                   {stepLabel(row.stepReached ?? 1)}
                 </span>
+                {row.status && row.status !== 'checkout_started' && (
+                  <span style={{ background: '#f0fdf4', color: '#15803d', borderRadius: 999, padding: '2px 9px', fontSize: '.7rem', fontWeight: 600 }}>
+                    {row.status === 'converted' ? '✓ Convertido' : row.status === 'redirected_to_payment' ? '→ No Pagamento' : row.status}
+                  </span>
+                )}
               </div>
               {row.customerPhone && <p style={{ margin: '3px 0 0', fontSize: '.82rem', color: '#64748b' }}>📱 {row.customerPhone}</p>}
               {row.customerEmail && <p style={{ margin: '2px 0 0', fontSize: '.82rem', color: '#64748b' }}>✉️ {row.customerEmail}</p>}
@@ -171,14 +208,23 @@ function AbandonedTab() {
               )}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <button
+                onClick={() => sendMut.mutate({ id: row.id })}
+                disabled={sendMut.isPending}
+                style={{ ...btnWa, opacity: sendMut.isPending ? .7 : 1 }}
+              >
+                📤 Enviar WA
+              </button>
+              <button
+                onClick={() => sendCouponMut.mutate({ id: row.id, coupon: 'VOLTA10' })}
+                disabled={sendCouponMut.isPending}
+                style={{ ...btnWaSecondary, opacity: sendCouponMut.isPending ? .7 : 1 }}
+              >
+                🎁 Enviar + Cupom
+              </button>
               {row.waLink && (
-                <button onClick={() => openWa(row.waLink, row.id)} style={btnWa}>
-                  🔗 WhatsApp Simples
-                </button>
-              )}
-              {row.waLinkWithCoupon && (
-                <button onClick={() => openWa(row.waLinkWithCoupon, row.id)} style={btnWaSecondary}>
-                  🎁 WhatsApp + Cupom
+                <button onClick={() => window.open(row.waLink, '_blank')} style={{ ...btnGhost, fontSize: '.75rem' }}>
+                  🔗 Abrir WA
                 </button>
               )}
               <button
@@ -199,6 +245,10 @@ function AbandonedTab() {
 /* ── Tab 2: Pedidos Não Pagos ────────────────────────────── */
 function UnpaidTab() {
   const { data, isLoading, refetch } = trpc.recovery.listUnpaid.useQuery(undefined, { refetchInterval: 30000 });
+  const sendMut = trpc.recovery.sendUnpaid.useMutation({
+    onSuccess: (d: any) => { toast.success(`✅ Enviado para ${d.phone}`); refetch(); },
+    onError: (e) => toast.error('Falha no envio: ' + e.message),
+  });
 
   if (isLoading) return <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Carregando...</div>;
 
@@ -242,14 +292,16 @@ function UnpaidTab() {
                 <p style={{ margin: '4px 0 0', fontSize: '.78rem', color: '#94a3b8' }}>{timeAgo(row.createdAt)}</p>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                <button
+                  onClick={() => sendMut.mutate({ id: row.id })}
+                  disabled={sendMut.isPending}
+                  style={{ ...btnWa, opacity: sendMut.isPending ? .7 : 1 }}
+                >
+                  📤 Enviar WA
+                </button>
                 {row.waLinkUnpaid && (
-                  <button onClick={() => window.open(row.waLinkUnpaid, '_blank')} style={btnWa}>
-                    💸 Lembrar de Pagar
-                  </button>
-                )}
-                {row.waLinkFailed && (
-                  <button onClick={() => window.open(row.waLinkFailed, '_blank')} style={btnDanger}>
-                    ❌ Pagamento Falhou
+                  <button onClick={() => window.open(row.waLinkUnpaid, '_blank')} style={{ ...btnGhost, fontSize: '.75rem' }}>
+                    🔗 Abrir WA
                   </button>
                 )}
               </div>
@@ -429,7 +481,84 @@ function CouponsTab() {
   );
 }
 
-/* ── Tab 4: IA Recuperação ───────────────────────────────── */
+/* ── Tab 4: Automações ───────────────────────────────────── */
+function AutomationTab() {
+  const { data, isLoading, refetch } = trpc.recovery.listAutomationRuns.useQuery(undefined, { refetchInterval: 20000 });
+  const jobMut = trpc.recovery.runAutomationJob.useMutation({
+    onSuccess: (d: any) => { toast.success(`Job: ${d.sent} enviados, ${d.cancelled} cancelados, ${d.failed} falhas`); refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  if (isLoading) return <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Carregando...</div>;
+  const rows = (data ?? []) as any[];
+
+  const statusColor: Record<string, { bg: string; text: string }> = {
+    scheduled: { bg: '#fef3c7', text: '#92400e' },
+    sent:      { bg: '#d1fae5', text: '#065f46' },
+    cancelled: { bg: '#f1f5f9', text: '#64748b' },
+    failed:    { bg: '#fee2e2', text: '#991b1b' },
+  };
+
+  const scheduled = rows.filter(r => r.status === 'scheduled').length;
+  const sent = rows.filter(r => r.status === 'sent').length;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <span style={{ background: '#fef3c7', color: '#92400e', borderRadius: 10, padding: '6px 14px', fontSize: '.82rem', fontWeight: 700 }}>
+            ⏳ {scheduled} agendadas
+          </span>
+          <span style={{ background: '#d1fae5', color: '#065f46', borderRadius: 10, padding: '6px 14px', fontSize: '.82rem', fontWeight: 700 }}>
+            ✓ {sent} enviadas
+          </span>
+        </div>
+        <button
+          onClick={() => jobMut.mutate()}
+          disabled={jobMut.isPending}
+          style={{ ...btnPrimary, fontSize: '.78rem', padding: '7px 14px', marginLeft: 'auto', opacity: jobMut.isPending ? .7 : 1 }}
+        >
+          {jobMut.isPending ? '⏳ Executando...' : '▶ Executar Job'}
+        </button>
+      </div>
+
+      {rows.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 60, color: '#64748b', border: '2px dashed #e2e8f0', borderRadius: 14 }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: 10 }}>⚡</div>
+          <p style={{ fontWeight: 700, margin: '0 0 6px' }}>Nenhuma automação registrada</p>
+          <p style={{ fontSize: '.83rem', margin: 0, color: '#94a3b8' }}>As automações aparecem quando clientes abandonam o checkout.</p>
+        </div>
+      ) : rows.map((r: any) => {
+        const sc = statusColor[r.status] ?? { bg: '#f1f5f9', text: '#334155' };
+        const isOverdue = r.status === 'scheduled' && new Date(r.scheduledFor) <= new Date();
+        return (
+          <div key={r.id} style={{ ...card, borderLeft: `4px solid ${r.status === 'sent' ? '#22c55e' : r.status === 'scheduled' ? '#f59e0b' : '#cbd5e1'}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                  <span style={{ fontWeight: 700, fontSize: '.9rem', color: '#0b1d3a' }}>Cart #{r.cartId}</span>
+                  <span style={{ fontFamily: 'monospace', fontSize: '.82rem', color: '#334155' }}>{r.customerPhone}</span>
+                  <span style={{ background: sc.bg, color: sc.text, borderRadius: 999, padding: '2px 9px', fontSize: '.72rem', fontWeight: 700 }}>
+                    {r.status === 'scheduled' ? '⏳ Agendada' : r.status === 'sent' ? '✓ Enviada' : r.status === 'cancelled' ? 'Cancelada' : '✗ Falhou'}
+                  </span>
+                  {isOverdue && <span style={{ background: '#fee2e2', color: '#991b1b', borderRadius: 999, padding: '2px 9px', fontSize: '.7rem', fontWeight: 700 }}>VENCIDA</span>}
+                </div>
+                <p style={{ margin: 0, fontSize: '.75rem', color: '#94a3b8' }}>
+                  {r.status === 'scheduled' ? `Disparo: ${new Date(r.scheduledFor).toLocaleString('pt-BR')}` : ''}
+                  {r.status === 'sent' ? `Enviada: ${timeAgo(r.sentAt)}` : ''}
+                  {r.status === 'cancelled' ? `Cancelada: ${timeAgo(r.cancelledAt)}` : ''}
+                  {' · '}Criada {timeAgo(r.createdAt)}
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── Tab 5: IA Recuperação ───────────────────────────────── */
 function AiTab() {
   const abandonedQ = trpc.recovery.listAbandoned.useQuery();
   const unpaidQ = trpc.recovery.listUnpaid.useQuery();
@@ -500,7 +629,7 @@ function AiTab() {
 }
 
 /* ── Main Component ──────────────────────────────────────── */
-type Tab = 'abandoned' | 'unpaid' | 'coupons' | 'ai';
+type Tab = 'abandoned' | 'unpaid' | 'automations' | 'coupons' | 'ai';
 
 export default function SalVitaRecovery() {
   const [tab, setTab] = useState<Tab>('abandoned');
@@ -522,10 +651,11 @@ export default function SalVitaRecovery() {
   }
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'abandoned', label: '🛒 Carrinhos Abandonados' },
-    { id: 'unpaid', label: '💳 Pedidos Não Pagos' },
+    { id: 'abandoned', label: '🛒 Carrinhos' },
+    { id: 'unpaid', label: '💳 Não Pagos' },
+    { id: 'automations', label: '⚡ Automações' },
     { id: 'coupons', label: '🎟️ Cupons' },
-    { id: 'ai', label: '🤖 IA Recuperação' },
+    { id: 'ai', label: '🤖 IA' },
   ];
 
   return (
@@ -535,8 +665,11 @@ export default function SalVitaRecovery() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: '1.5rem' }}>🔄</span>
           <div>
-            <h1 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800 }}>Recuperação de Vendas</h1>
-            <p style={{ margin: 0, fontSize: '.78rem', opacity: .7 }}>Carrinhos abandonados · Cupons · IA</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <h1 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800 }}>Recuperação de Vendas</h1>
+              <WaStatusBadge />
+            </div>
+            <p style={{ margin: 0, fontSize: '.78rem', opacity: .7 }}>Carrinhos · Automações · Cupons · IA</p>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -578,6 +711,7 @@ export default function SalVitaRecovery() {
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px 16px' }}>
         {tab === 'abandoned' && <AbandonedTab />}
         {tab === 'unpaid' && <UnpaidTab />}
+        {tab === 'automations' && <AutomationTab />}
         {tab === 'coupons' && <CouponsTab />}
         {tab === 'ai' && <AiTab />}
       </div>

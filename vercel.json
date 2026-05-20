@@ -4,9 +4,15 @@
   "outputDirectory": "client/dist",
   "functions": {
     "api/bundle.js": {
-      "maxDuration": 30
+      "maxDuration": 60
     }
   },
+  "crons": [
+    {
+      "path": "/api/cron/abandoned-cart",
+      "schedule": "*/5 * * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
@@ -34,6 +40,16 @@
     },
     {
       "src": "/sal-vita-admin",
+      "has": [{ "type": "host", "value": "www\\.premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/index.html"
+    },
+    {
+      "src": "/sal-vita-recovery",
+      "has": [{ "type": "host", "value": "premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/index.html"
+    },
+    {
+      "src": "/sal-vita-recovery",
       "has": [{ "type": "host", "value": "www\\.premium\\.salvitarn\\.com\\.br" }],
       "dest": "/index.html"
     },
