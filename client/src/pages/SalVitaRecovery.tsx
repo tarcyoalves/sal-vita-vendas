@@ -245,14 +245,19 @@ function AbandonedTab() {
 /* ── Tab 2: Pedidos Não Pagos ────────────────────────────── */
 function UnpaidTab() {
   const { data, isLoading, refetch } = trpc.recovery.listUnpaid.useQuery(undefined, { refetchInterval: 30000 });
+  const templatesQ = trpc.recovery.listTemplates.useQuery();
+  const [selectedTemplates, setSelectedTemplates] = useState<Record<number, number>>({});
+  const [previews, setPreviews] = useState<Record<number, string>>({});
   const sendMut = trpc.recovery.sendUnpaid.useMutation({
-    onSuccess: (d: any) => { toast.success(`✅ Enviado para ${d.phone}`); refetch(); },
+    onSuccess: (d: any) => { toast.success(d.hasPix ? `✅ PIX enviado para ${d.phone}` : `✅ Enviado para ${d.phone}`); refetch(); },
     onError: (e) => toast.error('Falha no envio: ' + e.message),
   });
 
   if (isLoading) return <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Carregando...</div>;
 
   const rows = data ?? [];
+  const unpaidTemplates = (templatesQ.data ?? []).filter((t: any) => t.type === 'unpaid' || t.type === 'failed');
+
   if (rows.length === 0) {
     return (
       <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}>
@@ -263,49 +268,240 @@ function UnpaidTab() {
     );
   }
 
-  const payColor: Record<string, { bg: string; text: string }> = {
-    awaiting: { bg: '#fef3c7', text: '#92400e' },
-    confirmed: { bg: '#d1fae5', text: '#065f46' },
-    failed: { bg: '#fee2e2', text: '#991b1b' },
-  };
-
   return (
     <div>
       <p style={{ fontSize: '.82rem', color: '#64748b', marginBottom: 16 }}>{rows.length} pedido{rows.length !== 1 ? 's' : ''} sem pagamento</p>
-      {rows.map((row: any) => {
-        const pc = payColor[row.paymentStatus] ?? { bg: '#f1f5f9', text: '#334155' };
-        return (
-          <div key={row.id} style={{ ...card, borderLeft: '4px solid #ef4444' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontWeight: 800, fontSize: '1rem', color: '#0b1d3a' }}>#{row.id} — {row.customerName || 'Cliente'}</span>
-                  <span style={{ background: pc.bg, color: pc.text, borderRadius: 999, padding: '2px 9px', fontSize: '.72rem', fontWeight: 700 }}>
-                    {row.paymentStatus === 'awaiting' ? 'Aguard. Pgto' : row.paymentStatus === 'confirmed' ? 'Pago ✓' : 'Falhou'}
-                  </span>
-                </div>
-                {row.customerPhone && <p style={{ margin: '3px 0 0', fontSize: '.82rem', color: '#64748b' }}>📱 {row.customerPhone}</p>}
-                <p style={{ margin: '4px 0 0', fontSize: '.85rem', color: '#334155' }}>
-                  🧂 Sal Marinho Integral 1kg × {row.quantity ?? 1} unidade{(row.quantity ?? 1) !== 1 ? 's' : ''}
-                </p>
-                <p style={{ margin: '4px 0 0', fontSize: '.9rem', fontWeight: 700, color: '#0C3680' }}>{fmt(row.totalPrice)}</p>
-                <p style={{ margin: '4px 0 0', fontSize: '.78rem', color: '#94a3b8' }}>{timeAgo(row.createdAt)}</p>
+      {rows.map((row: any) => (
+        <div key={row.id} style={{ ...card, borderLeft: `4px solid ${row.paymentStatus === 'failed' ? '#ef4444' : '#f59e0b'}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                <span style={{ fontWeight: 800, fontSize: '1rem', color: '#0b1d3a' }}>#{row.id} — {row.customerName || 'Cliente'}</span>
+                <span style={{ background: row.paymentStatus === 'failed' ? '#fee2e2' : '#fef3c7', color: row.paymentStatus === 'failed' ? '#991b1b' : '#92400e', borderRadius: 999, padding: '2px 9px', fontSize: '.72rem', fontWeight: 700 }}>
+                  {row.paymentStatus === 'awaiting' ? 'Aguard. Pgto' : row.paymentStatus === 'confirmed' ? 'Pago ✓' : 'Pagamento Falhou'}
+                </span>
+                {row.mpPaymentId && <span style={{ background: '#f0fdf4', color: '#15803d', borderRadius: 999, padding: '2px 8px', fontSize: '.7rem', fontWeight: 600 }}>PIX/Boleto disponível</span>}
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                <button
-                  onClick={() => sendMut.mutate({ id: row.id })}
-                  disabled={sendMut.isPending}
-                  style={{ ...btnWa, opacity: sendMut.isPending ? .7 : 1 }}
+              {row.customerPhone && <p style={{ margin: '2px 0', fontSize: '.82rem', color: '#64748b' }}>📱 {row.customerPhone}</p>}
+              <p style={{ margin: '2px 0', fontSize: '.85rem', color: '#334155' }}>🧂 {row.quantity ?? 1}× Sal Marinho 1kg — <strong>{fmt(row.totalPrice)}</strong></p>
+              <p style={{ margin: '2px 0 6px', fontSize: '.75rem', color: '#94a3b8' }}>{timeAgo(row.createdAt)}</p>
+
+              {/* Template selector */}
+              {unpaidTemplates.length > 0 && (
+                <select
+                  value={selectedTemplates[row.id] ?? ''}
+                  onChange={e => setSelectedTemplates(s => ({ ...s, [row.id]: Number(e.target.value) }))}
+                  style={{ ...inputStyle, maxWidth: 280, marginBottom: 4 }}
                 >
-                  📤 Enviar WA
-                </button>
-                {row.waLinkUnpaid && (
-                  <button onClick={() => window.open(row.waLinkUnpaid, '_blank')} style={{ ...btnGhost, fontSize: '.75rem' }}>
-                    🔗 Abrir WA
-                  </button>
-                )}
-              </div>
+                  <option value="">Template automático</option>
+                  {unpaidTemplates.map((t: any) => (
+                    <option key={t.id} value={t.id}>{t.label}{t.isDefault ? ' ★' : ''}</option>
+                  ))}
+                </select>
+              )}
+
+              {/* Preview */}
+              {previews[row.id] && (
+                <div style={{ background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: 10, padding: '10px 12px', marginTop: 6, maxWidth: 360 }}>
+                  <p style={{ margin: '0 0 4px', fontSize: '.7rem', fontWeight: 700, color: '#15803d', textTransform: 'uppercase' }}>Preview</p>
+                  <pre style={{ margin: 0, fontFamily: 'inherit', fontSize: '.78rem', color: '#166534', whiteSpace: 'pre-wrap' }}>{previews[row.id]}</pre>
+                </div>
+              )}
             </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+              <button
+                onClick={() => sendMut.mutate({ id: row.id, templateId: selectedTemplates[row.id] || undefined })}
+                disabled={sendMut.isPending}
+                style={{ ...btnWa, opacity: sendMut.isPending ? .7 : 1 }}
+              >
+                {row.mpPaymentId ? '💸 Enviar PIX/WA' : '📤 Enviar WA'}
+              </button>
+              {row.waLinkUnpaid && (
+                <button onClick={() => window.open(row.waLinkUnpaid, '_blank')} style={{ ...btnGhost, fontSize: '.75rem' }}>
+                  🔗 Abrir WA
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── Tab 3: Templates de Mensagem ────────────────────────── */
+const TYPE_LABELS: Record<string, string> = {
+  abandoned: '🛒 Abandono', unpaid: '💸 Não Pago', failed: '❌ Pgto Falhou', general: '💬 Geral',
+};
+const VARS_HINT: Record<string, string[]> = {
+  abandoned: ['{nome}', '{cupom}', '{link}', '{produto}'],
+  unpaid:    ['{nome}', '{pedido}', '{valor}', '{link}', '{pix}'],
+  failed:    ['{nome}', '{pedido}', '{link}'],
+  general:   ['{nome}'],
+};
+
+function TemplatesTab() {
+  const { data, isLoading, refetch } = trpc.recovery.listTemplates.useQuery();
+  const saveMut = trpc.recovery.saveTemplate.useMutation({
+    onSuccess: () => { toast.success('Template salvo!'); setEditing(null); refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const deleteMut = trpc.recovery.deleteTemplate.useMutation({
+    onSuccess: () => { toast.success('Removido'); refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const setDefaultMut = trpc.recovery.setDefaultTemplate.useMutation({
+    onSuccess: () => { toast.success('Padrão atualizado'); refetch(); },
+  });
+
+  const blank = { id: undefined as number | undefined, slug: '', type: 'abandoned' as const, label: '', body: '', active: true, isDefault: false };
+  const [editing, setEditing] = useState<typeof blank | null>(null);
+  const [showNew, setShowNew] = useState(false);
+
+  if (isLoading) return <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Carregando...</div>;
+  const templates = (data ?? []) as any[];
+  const grouped = templates.reduce((acc: Record<string, any[]>, t: any) => {
+    (acc[t.type] = acc[t.type] ?? []).push(t);
+    return acc;
+  }, {});
+
+  const form = editing ?? { ...blank };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <p style={{ margin: 0, fontSize: '.82rem', color: '#64748b' }}>{templates.length} template{templates.length !== 1 ? 's' : ''}</p>
+        <button onClick={() => { setShowNew(true); setEditing({ ...blank }); }} style={{ ...btnPrimary, fontSize: '.8rem' }}>
+          ➕ Novo Template
+        </button>
+      </div>
+
+      {/* Editor */}
+      {editing && (
+        <div style={{ ...card, borderColor: '#c7d2fe', marginBottom: 24 }}>
+          <h3 style={{ margin: '0 0 16px', fontSize: '1rem', fontWeight: 800, color: '#0b1d3a' }}>
+            {editing.id ? 'Editar Template' : 'Novo Template'}
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 12 }}>
+            <div>
+              <label style={labelStyle}>Tipo</label>
+              <select value={form.type} onChange={e => setEditing(f => f ? { ...f, type: e.target.value as any } : f)} style={inputStyle}>
+                <option value="abandoned">🛒 Abandono</option>
+                <option value="unpaid">💸 Não Pago</option>
+                <option value="failed">❌ Pgto Falhou</option>
+                <option value="general">💬 Geral</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Nome (exibição)</label>
+              <input value={form.label} onChange={e => setEditing(f => f ? { ...f, label: e.target.value } : f)} placeholder="Ex: Abandono – Urgência" style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Slug (único)</label>
+              <input value={form.slug} onChange={e => setEditing(f => f ? { ...f, slug: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_') } : f)} placeholder="abandoned_urgencia" style={{ ...inputStyle, fontFamily: 'monospace' }} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, justifyContent: 'flex-end' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.82rem', color: '#334155', cursor: 'pointer' }}>
+                <input type="checkbox" checked={form.active} onChange={e => setEditing(f => f ? { ...f, active: e.target.checked } : f)} />
+                Ativo
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.82rem', color: '#334155', cursor: 'pointer' }}>
+                <input type="checkbox" checked={form.isDefault} onChange={e => setEditing(f => f ? { ...f, isDefault: e.target.checked } : f)} />
+                Padrão para este tipo
+              </label>
+            </div>
+          </div>
+
+          {/* Var hints */}
+          <div style={{ marginBottom: 8 }}>
+            <p style={{ ...labelStyle, marginBottom: 4 }}>Variáveis disponíveis</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {(VARS_HINT[form.type] ?? []).map(v => (
+                <button key={v} type="button"
+                  onClick={() => setEditing(f => f ? { ...f, body: f.body + v } : f)}
+                  style={{ padding: '3px 10px', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: 6, fontSize: '.75rem', fontFamily: 'monospace', cursor: 'pointer' }}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <label style={labelStyle}>Mensagem</label>
+            <textarea
+              value={form.body}
+              onChange={e => setEditing(f => f ? { ...f, body: e.target.value } : f)}
+              rows={8}
+              placeholder={'Olá *{nome}*! ...\n\nUse {link} para o link do site.'}
+              style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace', fontSize: '.82rem', lineHeight: 1.5 }}
+            />
+            <p style={{ margin: '4px 0 0', fontSize: '.72rem', color: '#94a3b8' }}>{form.body.length} caracteres</p>
+          </div>
+
+          {/* Preview */}
+          {form.body && (
+            <div style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+              <p style={{ margin: '0 0 6px', fontSize: '.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Preview (com dados fictícios)</p>
+              <pre style={{ margin: 0, fontFamily: 'inherit', fontSize: '.82rem', color: '#334155', whiteSpace: 'pre-wrap' }}>
+                {renderTplPreview(form.body, form.type)}
+              </pre>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => saveMut.mutate({ ...form, id: form.id })} disabled={saveMut.isPending || !form.label || !form.slug || !form.body}
+              style={{ ...btnPrimary, opacity: saveMut.isPending ? .7 : 1 }}>
+              {saveMut.isPending ? 'Salvando...' : '💾 Salvar'}
+            </button>
+            <button onClick={() => setEditing(null)} style={btnGhost}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Template groups */}
+      {Object.entries(TYPE_LABELS).map(([type, typeLabel]) => {
+        const items = grouped[type] ?? [];
+        if (!items.length && !editing) return null;
+        return (
+          <div key={type} style={{ marginBottom: 24 }}>
+            <h3 style={{ fontSize: '.82rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em', margin: '0 0 10px' }}>
+              {typeLabel}
+            </h3>
+            {items.length === 0 ? (
+              <p style={{ fontSize: '.82rem', color: '#94a3b8', margin: 0 }}>Nenhum template deste tipo</p>
+            ) : items.map((t: any) => (
+              <div key={t.id} style={{ ...card, opacity: t.active ? 1 : 0.6, marginBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                      <span style={{ fontWeight: 800, color: '#0b1d3a', fontSize: '.95rem' }}>{t.label}</span>
+                      {t.isDefault && <span style={{ background: '#dbeafe', color: '#1e40af', borderRadius: 999, padding: '2px 8px', fontSize: '.7rem', fontWeight: 700 }}>★ Padrão</span>}
+                      {!t.active && <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 999, padding: '2px 8px', fontSize: '.7rem', fontWeight: 600 }}>Inativo</span>}
+                      <span style={{ fontFamily: 'monospace', fontSize: '.72rem', color: '#94a3b8' }}>{t.slug}</span>
+                    </div>
+                    <pre style={{ margin: 0, fontFamily: 'inherit', fontSize: '.78rem', color: '#475569', whiteSpace: 'pre-wrap', maxHeight: 80, overflow: 'hidden', WebkitMaskImage: 'linear-gradient(to bottom, black 60%, transparent 100%)' }}>
+                      {t.body}
+                    </pre>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    {!t.isDefault && (
+                      <button onClick={() => setDefaultMut.mutate({ id: t.id, type: t.type })} style={{ ...btnGhost, fontSize: '.72rem', padding: '5px 10px' }}>
+                        ★ Padrão
+                      </button>
+                    )}
+                    <button onClick={() => setEditing({ id: t.id, slug: t.slug, type: t.type, label: t.label, body: t.body, active: t.active, isDefault: t.isDefault })}
+                      style={{ ...btnGhost, fontSize: '.72rem', padding: '5px 10px' }}>
+                      ✏️ Editar
+                    </button>
+                    <button onClick={() => { if (!confirm(`Excluir "${t.label}"?`)) return; deleteMut.mutate({ id: t.id }); }}
+                      style={{ ...btnDanger, fontSize: '.72rem', padding: '5px 10px' }}>
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         );
       })}
@@ -313,7 +509,16 @@ function UnpaidTab() {
   );
 }
 
-/* ── Tab 3: Cupons ───────────────────────────────────────── */
+function renderTplPreview(body: string, type: string): string {
+  const fakeVars: Record<string, string> = {
+    nome: 'João Silva', cupom: 'VOLTA10', link: 'https://premium.salvitarn.com.br',
+    produto: 'Sal Marinho Integral 1kg', pedido: '10042', valor: '79,80',
+    pix: '00020126580014br.gov.bcb.pix0136abc123...', boleto_url: 'https://mercadopago.com/boleto/...',
+  };
+  return body.replace(/\{(\w+)\}/g, (_, k) => fakeVars[k] ?? `{${k}}`);
+}
+
+/* ── Tab 5: Cupons ───────────────────────────────────────── */
 function CouponsTab() {
   const { data, isLoading, refetch } = trpc.recovery.listCoupons.useQuery();
   const [showForm, setShowForm] = useState(false);
@@ -629,7 +834,7 @@ function AiTab() {
 }
 
 /* ── Main Component ──────────────────────────────────────── */
-type Tab = 'abandoned' | 'unpaid' | 'automations' | 'coupons' | 'ai';
+type Tab = 'abandoned' | 'unpaid' | 'templates' | 'automations' | 'coupons' | 'ai';
 
 export default function SalVitaRecovery() {
   const [tab, setTab] = useState<Tab>('abandoned');
@@ -653,6 +858,7 @@ export default function SalVitaRecovery() {
   const tabs: { id: Tab; label: string }[] = [
     { id: 'abandoned', label: '🛒 Carrinhos' },
     { id: 'unpaid', label: '💳 Não Pagos' },
+    { id: 'templates', label: '📝 Mensagens' },
     { id: 'automations', label: '⚡ Automações' },
     { id: 'coupons', label: '🎟️ Cupons' },
     { id: 'ai', label: '🤖 IA' },
@@ -711,6 +917,7 @@ export default function SalVitaRecovery() {
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px 16px' }}>
         {tab === 'abandoned' && <AbandonedTab />}
         {tab === 'unpaid' && <UnpaidTab />}
+        {tab === 'templates' && <TemplatesTab />}
         {tab === 'automations' && <AutomationTab />}
         {tab === 'coupons' && <CouponsTab />}
         {tab === 'ai' && <AiTab />}

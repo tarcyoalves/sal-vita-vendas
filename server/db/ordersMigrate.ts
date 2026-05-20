@@ -106,6 +106,45 @@ export async function ensureOrdersTablesExist() {
       )
     `;
 
+    await sql`
+      CREATE TABLE IF NOT EXISTS msg_templates (
+        id SERIAL PRIMARY KEY,
+        slug TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL,
+        label TEXT NOT NULL,
+        body TEXT NOT NULL,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        is_default BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS msg_templates_type_idx ON msg_templates(type)`;
+
+    // Seed default templates
+    await sql`
+      INSERT INTO msg_templates (slug, type, label, body, active, is_default) VALUES
+      ('abandoned_simples', 'abandoned', 'Abandono – Simples',
+       ${'Olá *{nome}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou.\n\n👉 Finalize agora: {link}\n\nQualquer dúvida, é só chamar! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_'},
+       true, true),
+      ('abandoned_urgencia', 'abandoned', 'Abandono – Urgência',
+       ${'Olá *{nome}*! 🧂\n\n⚠️ Seu sal ainda está no carrinho, mas o estoque é limitado!\n\nGaranta agora antes de esgotar:\n👉 {link}\n\n_Sal Vita — Mossoró/RN_'},
+       true, false),
+      ('abandoned_cupom', 'abandoned', 'Abandono – Com Cupom',
+       ${'Olá *{nome}*! 🎁\n\nVimos que você ficou interessado no *Sal Vita Premium* e queremos te ajudar a finalizar.\n\nUse o cupom *{cupom}* e ganhe desconto especial:\n👉 {link}\n\nOfertas por tempo limitado!\n_Sal Vita — Sal Marinho de Mossoró/RN_'},
+       true, false),
+      ('unpaid_pix', 'unpaid', 'Não Pago – PIX Copia e Cola',
+       ${'Olá *{nome}*! 💸\n\nSeu pedido *#{pedido}* — R$ {valor} — ainda está aguardando pagamento.\n\n✅ Pague agora via *PIX Copia e Cola*:\n```\n{pix}\n```\nCopie o código acima e cole no seu banco!\n\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_'},
+       true, true),
+      ('unpaid_lembrete', 'unpaid', 'Não Pago – Lembrete Geral',
+       ${'Olá *{nome}*! 🌊\n\nSeu pedido *#{pedido}* do Sal Vita ainda está aguardando pagamento.\n\n💰 Total: R$ {valor}\n\nFinalize aqui:\n👉 {link}\n\n_Pedido reservado por tempo limitado!_\n_Sal Vita — Mossoró/RN_'},
+       true, false),
+      ('failed_tentar_novamente', 'failed', 'Pagamento Falhou – Tentar Novamente',
+       ${'Olá *{nome}*! 😕\n\nHouve um problema no pagamento do pedido *#{pedido}*.\n\nTente com outro método de pagamento:\n👉 {link}\n\nAceitamos *PIX*, *Cartão* e *Boleto* 💳\n_Sal Vita — Mossoró/RN_'},
+       true, true)
+      ON CONFLICT (slug) DO NOTHING
+    `;
+
     console.log('✅ Orders database tables ensured');
   } catch (err) {
     console.error('❌ Orders migration error:', err);

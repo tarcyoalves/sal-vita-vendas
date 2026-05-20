@@ -176,10 +176,23 @@ export const coupons = pgTable('coupons', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+export const msgTemplates = pgTable('msg_templates', {
+  id: serial('id').primaryKey(),
+  slug: text('slug').notNull().unique(), // unique key, e.g. 'abandoned_simple'
+  type: text('type').notNull(), // 'abandoned' | 'unpaid' | 'failed' | 'general'
+  label: text('label').notNull(), // display name in admin
+  body: text('body').notNull(), // message body with {variáveis}
+  active: boolean('active').default(true).notNull(),
+  isDefault: boolean('is_default').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 export type SiteOrder = typeof siteOrders.$inferSelect;
 export type AbandonedCart = typeof abandonedCarts.$inferSelect;
 export type Coupon = typeof coupons.$inferSelect;
 export type AutomationRun = typeof automationRuns.$inferSelect;
+export type MsgTemplate = typeof msgTemplates.$inferSelect;
 
 export type User = typeof users.$inferSelect;
 export type Seller = typeof sellers.$inferSelect;

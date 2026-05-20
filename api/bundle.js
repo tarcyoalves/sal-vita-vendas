@@ -36920,6 +36920,7 @@ __export(schema_exports, {
   clients: () => clients,
   coupons: () => coupons,
   knowledgeDocuments: () => knowledgeDocuments,
+  msgTemplates: () => msgTemplates,
   reminders: () => reminders,
   sellers: () => sellers,
   siteOrders: () => siteOrders,
@@ -36927,7 +36928,7 @@ __export(schema_exports, {
   users: () => users,
   workSessions: () => workSessions
 });
-var users, sellers, clients, tasks, reminders, chatMessages, knowledgeDocuments, workSessions, siteOrders, abandonedCarts, automationRuns, coupons;
+var users, sellers, clients, tasks, reminders, chatMessages, knowledgeDocuments, workSessions, siteOrders, abandonedCarts, automationRuns, coupons, msgTemplates;
 var init_schema2 = __esm({
   "server/db/schema.ts"() {
     "use strict";
@@ -37101,6 +37102,21 @@ var init_schema2 = __esm({
       expiresAt: timestamp("expires_at"),
       active: boolean("active").default(true).notNull(),
       createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    msgTemplates = pgTable("msg_templates", {
+      id: serial("id").primaryKey(),
+      slug: text("slug").notNull().unique(),
+      // unique key, e.g. 'abandoned_simple'
+      type: text("type").notNull(),
+      // 'abandoned' | 'unpaid' | 'failed' | 'general'
+      label: text("label").notNull(),
+      // display name in admin
+      body: text("body").notNull(),
+      // message body with {variáveis}
+      active: boolean("active").default(true).notNull(),
+      isDefault: boolean("is_default").default(false).notNull(),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
   }
 });
@@ -54849,6 +54865,9 @@ function fmtPhone(raw) {
 function waLink(phone, msg) {
   return `https://wa.me/${fmtPhone(phone)}?text=${encodeURIComponent(msg)}`;
 }
+function renderTemplate(body, vars) {
+  return body.replace(/\{(\w+)\}/g, (_2, k) => vars[k] ?? `{${k}}`);
+}
 function recoveryMsg(name2, coupon) {
   return `Ol\xE1 *${name2}*! \u{1F30A}
 
@@ -54885,6 +54904,22 @@ Tente novamente com outro m\xE9todo:
 
 Aceitamos Cart\xE3o, PIX e Boleto \u{1F4B3}
 _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
+}
+async function fetchPixCode(mpPaymentId) {
+  const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+  if (!token || !mpPaymentId)
+    return null;
+  try {
+    const res = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok)
+      return null;
+    const data = await res.json();
+    return data?.point_of_interaction?.transaction_data?.qr_code ?? null;
+  } catch {
+    return null;
+  }
 }
 var recoveryRouter = router({
   // Public: track cart step from landing page
@@ -55050,29 +55085,92 @@ var recoveryRouter = router({
     return { ok: true };
   }),
   // Admin: send WhatsApp recovery message to specific cart
-  sendRecovery: protectedProcedure.input(external_exports.object({ id: external_exports.number(), coupon: external_exports.string().optional() })).mutation(async ({ ctx, input }) => {
+  sendRecovery: protectedProcedure.input(external_exports.object({ id: external_exports.number(), coupon: external_exports.string().optional(), templateId: external_exports.number().optional() })).mutation(async ({ ctx, input }) => {
     if (ctx.user.role !== "admin")
       throw new TRPCError({ code: "FORBIDDEN" });
     const [cart] = await ordersDb.select().from(abandonedCarts).where(eq(abandonedCarts.id, input.id)).limit(1);
     if (!cart)
       throw new TRPCError({ code: "NOT_FOUND" });
-    const msg = recoveryMsg(cart.customerName, input.coupon);
+    let msg;
+    if (input.templateId) {
+      const [tpl] = await ordersDb.select().from(msgTemplates).where(eq(msgTemplates.id, input.templateId)).limit(1);
+      if (tpl) {
+        msg = renderTemplate(tpl.body, {
+          nome: cart.customerName,
+          cupom: input.coupon ?? "VOLTA10",
+          link: "https://premium.salvitarn.com.br",
+          produto: "Sal Marinho Integral 1kg"
+        });
+      } else {
+        msg = recoveryMsg(cart.customerName, input.coupon);
+      }
+    } else {
+      const [tpl] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.type, "abandoned"), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true))).limit(1);
+      msg = tpl ? renderTemplate(tpl.body, { nome: cart.customerName, cupom: input.coupon ?? "VOLTA10", link: "https://premium.salvitarn.com.br", produto: "Sal Marinho Integral 1kg" }) : recoveryMsg(cart.customerName, input.coupon);
+    }
     const ok = await sendViaWhatsApp(cart.customerPhone, msg);
     if (ok) {
       await ordersDb.update(abandonedCarts).set({ recoverySentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.id, input.id));
     }
-    return { ok, phone: fmtPhone(cart.customerPhone) };
+    return { ok, phone: fmtPhone(cart.customerPhone), preview: msg };
   }),
-  // Admin: send WhatsApp to unpaid order
-  sendUnpaid: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
+  // Admin: send WhatsApp to unpaid order (with optional template + PIX fetch)
+  sendUnpaid: protectedProcedure.input(external_exports.object({ id: external_exports.number(), templateId: external_exports.number().optional() })).mutation(async ({ ctx, input }) => {
     if (ctx.user.role !== "admin")
       throw new TRPCError({ code: "FORBIDDEN" });
     const [order2] = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.id)).limit(1);
     if (!order2)
       throw new TRPCError({ code: "NOT_FOUND" });
-    const msg = unpaidMsg(order2.customerName, order2.id, order2.quantity, order2.totalPrice ?? "0");
+    const pixCode = order2.mpPaymentId ? await fetchPixCode(order2.mpPaymentId) : null;
+    const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order2.id}`;
+    const vars = {
+      nome: order2.customerName,
+      pedido: String(order2.id),
+      valor: parseFloat(order2.totalPrice ?? "0").toFixed(2).replace(".", ","),
+      link: orderLink,
+      pix: pixCode ?? "",
+      produto: "Sal Marinho Integral 1kg"
+    };
+    let msg;
+    if (input.templateId) {
+      const [tpl] = await ordersDb.select().from(msgTemplates).where(eq(msgTemplates.id, input.templateId)).limit(1);
+      msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order2.customerName, order2.id, order2.quantity, order2.totalPrice ?? "0");
+    } else if (pixCode) {
+      const [tpl] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.slug, "unpaid_pix"), eq(msgTemplates.active, true))).limit(1);
+      msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order2.customerName, order2.id, order2.quantity, order2.totalPrice ?? "0");
+    } else {
+      const [tpl] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.type, "unpaid"), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true))).limit(1);
+      msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order2.customerName, order2.id, order2.quantity, order2.totalPrice ?? "0");
+    }
     const ok = await sendViaWhatsApp(order2.customerPhone, msg);
-    return { ok, phone: fmtPhone(order2.customerPhone) };
+    return { ok, phone: fmtPhone(order2.customerPhone), hasPix: !!pixCode, preview: msg };
+  }),
+  // Admin: get payment info (PIX code / boleto) for unpaid order
+  getPaymentInfo: protectedProcedure.input(external_exports.object({ orderId: external_exports.number() })).query(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const [order2] = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
+    if (!order2?.mpPaymentId)
+      return { pixCode: null, boletoUrl: null };
+    const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+    if (!token)
+      return { pixCode: null, boletoUrl: null };
+    try {
+      const res = await fetch(`https://api.mercadopago.com/v1/payments/${order2.mpPaymentId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok)
+        return { pixCode: null, boletoUrl: null };
+      const data = await res.json();
+      return {
+        pixCode: data?.point_of_interaction?.transaction_data?.qr_code ?? null,
+        boletoUrl: data?.transaction_details?.external_resource_url ?? null,
+        paymentMethod: data?.payment_method_id ?? null,
+        status: data?.status ?? null
+      };
+    } catch {
+      return { pixCode: null, boletoUrl: null };
+    }
   }),
   // Admin: auto-send to all carts not contacted in last 24h
   autoSendAbandoned: protectedProcedure.mutation(async ({ ctx }) => {
@@ -55109,6 +55207,61 @@ var recoveryRouter = router({
       return { status: "error", connected: false };
     }
   }),
+  // Admin: list message templates
+  listTemplates: protectedProcedure.query(async ({ ctx }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    return ordersDb.select().from(msgTemplates).orderBy(msgTemplates.type, msgTemplates.label);
+  }),
+  // Admin: save (create or update) template
+  saveTemplate: protectedProcedure.input(external_exports.object({
+    id: external_exports.number().optional(),
+    slug: external_exports.string().min(2).max(50).regex(/^[a-z0-9_]+$/),
+    type: external_exports.enum(["abandoned", "unpaid", "failed", "general"]),
+    label: external_exports.string().min(2).max(80),
+    body: external_exports.string().min(10).max(1500),
+    active: external_exports.boolean().default(true),
+    isDefault: external_exports.boolean().default(false)
+  })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    if (input.id) {
+      const [updated] = await ordersDb.update(msgTemplates).set({
+        slug: input.slug,
+        type: input.type,
+        label: input.label,
+        body: input.body,
+        active: input.active,
+        isDefault: input.isDefault,
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq(msgTemplates.id, input.id)).returning();
+      return updated;
+    }
+    const [created] = await ordersDb.insert(msgTemplates).values({
+      slug: input.slug,
+      type: input.type,
+      label: input.label,
+      body: input.body,
+      active: input.active,
+      isDefault: input.isDefault
+    }).returning();
+    return created;
+  }),
+  // Admin: delete template
+  deleteTemplate: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    await ordersDb.delete(msgTemplates).where(eq(msgTemplates.id, input.id));
+    return { ok: true };
+  }),
+  // Admin: set template as default for its type
+  setDefaultTemplate: protectedProcedure.input(external_exports.object({ id: external_exports.number(), type: external_exports.string() })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    await ordersDb.update(msgTemplates).set({ isDefault: false }).where(eq(msgTemplates.type, input.type));
+    await ordersDb.update(msgTemplates).set({ isDefault: true }).where(eq(msgTemplates.id, input.id));
+    return { ok: true };
+  }),
   // Internal/Admin: run automation job — sends scheduled WA messages for abandoned carts
   // Called by cron (/api/cron/abandoned-cart) or manually from admin UI
   runAutomationJob: protectedProcedure.mutation(async ({ ctx }) => {
@@ -55126,7 +55279,8 @@ var recoveryRouter = router({
         cancelled++;
         continue;
       }
-      const msg = recoveryMsg(cart.customerName);
+      const [tpl] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.type, "abandoned"), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true))).limit(1);
+      const msg = tpl ? renderTemplate(tpl.body, { nome: cart.customerName, link: "https://premium.salvitarn.com.br", cupom: "VOLTA10", produto: "Sal Marinho Integral 1kg" }) : recoveryMsg(cart.customerName);
       const ok = await sendViaWhatsApp(run2.customerPhone, msg);
       if (ok) {
         await ordersDb.update(automationRuns).set({ status: "sent", sentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(automationRuns.id, run2.id));
@@ -55484,6 +55638,42 @@ async function ensureOrdersTablesExist() {
         active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
+    `;
+    await sql4`
+      CREATE TABLE IF NOT EXISTS msg_templates (
+        id SERIAL PRIMARY KEY,
+        slug TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL,
+        label TEXT NOT NULL,
+        body TEXT NOT NULL,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        is_default BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+    await sql4`CREATE INDEX IF NOT EXISTS msg_templates_type_idx ON msg_templates(type)`;
+    await sql4`
+      INSERT INTO msg_templates (slug, type, label, body, active, is_default) VALUES
+      ('abandoned_simples', 'abandoned', 'Abandono – Simples',
+       ${"Ol\xE1 *{nome}*! \u{1F30A}\n\nNotamos que voc\xEA se interessou pelo *Sal Marinho Integral Sal Vita* mas n\xE3o finalizou.\n\n\u{1F449} Finalize agora: {link}\n\nQualquer d\xFAvida, \xE9 s\xF3 chamar! \u{1F60A}\n_Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_"},
+       true, true),
+      ('abandoned_urgencia', 'abandoned', 'Abandono – Urgência',
+       ${"Ol\xE1 *{nome}*! \u{1F9C2}\n\n\u26A0\uFE0F Seu sal ainda est\xE1 no carrinho, mas o estoque \xE9 limitado!\n\nGaranta agora antes de esgotar:\n\u{1F449} {link}\n\n_Sal Vita \u2014 Mossor\xF3/RN_"},
+       true, false),
+      ('abandoned_cupom', 'abandoned', 'Abandono – Com Cupom',
+       ${"Ol\xE1 *{nome}*! \u{1F381}\n\nVimos que voc\xEA ficou interessado no *Sal Vita Premium* e queremos te ajudar a finalizar.\n\nUse o cupom *{cupom}* e ganhe desconto especial:\n\u{1F449} {link}\n\nOfertas por tempo limitado!\n_Sal Vita \u2014 Sal Marinho de Mossor\xF3/RN_"},
+       true, false),
+      ('unpaid_pix', 'unpaid', 'Não Pago – PIX Copia e Cola',
+       ${"Ol\xE1 *{nome}*! \u{1F4B8}\n\nSeu pedido *#{pedido}* \u2014 R$ {valor} \u2014 ainda est\xE1 aguardando pagamento.\n\n\u2705 Pague agora via *PIX Copia e Cola*:\n```\n{pix}\n```\nCopie o c\xF3digo acima e cole no seu banco!\n\n_Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_"},
+       true, true),
+      ('unpaid_lembrete', 'unpaid', 'Não Pago – Lembrete Geral',
+       ${"Ol\xE1 *{nome}*! \u{1F30A}\n\nSeu pedido *#{pedido}* do Sal Vita ainda est\xE1 aguardando pagamento.\n\n\u{1F4B0} Total: R$ {valor}\n\nFinalize aqui:\n\u{1F449} {link}\n\n_Pedido reservado por tempo limitado!_\n_Sal Vita \u2014 Mossor\xF3/RN_"},
+       true, false),
+      ('failed_tentar_novamente', 'failed', 'Pagamento Falhou – Tentar Novamente',
+       ${"Ol\xE1 *{nome}*! \u{1F615}\n\nHouve um problema no pagamento do pedido *#{pedido}*.\n\nTente com outro m\xE9todo de pagamento:\n\u{1F449} {link}\n\nAceitamos *PIX*, *Cart\xE3o* e *Boleto* \u{1F4B3}\n_Sal Vita \u2014 Mossor\xF3/RN_"},
+       true, true)
+      ON CONFLICT (slug) DO NOTHING
     `;
     console.log("\u2705 Orders database tables ensured");
   } catch (err) {
