@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc';
 import { db } from '../db';
 import { chatMessages, tasks, clients, sellers, workSessions, knowledgeDocuments } from '../db/schema';
-import { eq, desc, or, gte, and } from 'drizzle-orm';
+import { eq, desc, or, gte, and, ilike } from 'drizzle-orm';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -216,9 +216,7 @@ Esta ação é IRREVERSÍVEL — os lembretes serão redistribuídos para datas 
 async function executeTool(name: string, args: any): Promise<any> {
   if (name === 'list_tasks') {
     const name_ = String(args.attendant_name ?? '');
-    const seller = (await db.select().from(sellers)).find(
-      s => s.name.toLowerCase().includes(name_.toLowerCase())
-    );
+    const [seller] = await db.select().from(sellers).where(ilike(sellers.name, `%${name_}%`)).limit(1);
     if (!seller) return { error: `Atendente "${name_}" não encontrado.` };
     const st = await db.select().from(tasks).where(
       or(eq(tasks.assignedTo, seller.name), eq(tasks.userId, seller.userId))
@@ -246,9 +244,7 @@ async function executeTool(name: string, args: any): Promise<any> {
       ? args.only_with_notes === true
       : !usingTodayFilter;
 
-    const seller = (await db.select().from(sellers)).find(
-      s => s.name.toLowerCase().includes(name_.toLowerCase())
-    );
+    const [seller] = await db.select().from(sellers).where(ilike(sellers.name, `%${name_}%`)).limit(1);
     if (!seller) return { error: `Atendente "${name_}" não encontrado.` };
 
     const allTasks = await db.select().from(tasks).where(
@@ -320,19 +316,21 @@ async function executeTool(name: string, args: any): Promise<any> {
   }
 
   if (name === 'search_knowledge') {
-    const query = String(args.query ?? '').toLowerCase();
-    const category = args.category ? String(args.category).toLowerCase() : null;
+    const query = String(args.query ?? '');
+    const category = args.category ? String(args.category) : null;
 
-    const all = await db.select().from(knowledgeDocuments);
-    const matched = all.filter(doc => {
-      const inContent = doc.content.toLowerCase().includes(query) || doc.title.toLowerCase().includes(query);
-      const inCategory = !category || (doc.category ?? '').toLowerCase().includes(category);
-      return inContent && inCategory;
-    }).slice(0, 5);
+    const searchWhere = category
+      ? and(
+          or(ilike(knowledgeDocuments.title, `%${query}%`), ilike(knowledgeDocuments.content, `%${query}%`)),
+          ilike(knowledgeDocuments.category, `%${category}%`)
+        )
+      : or(ilike(knowledgeDocuments.title, `%${query}%`), ilike(knowledgeDocuments.content, `%${query}%`));
+
+    const matched = await db.select().from(knowledgeDocuments).where(searchWhere).limit(5);
 
     if (matched.length === 0) {
-      const fallback = all.slice(0, 3).map(d => ({ titulo: d.title, categoria: d.category, conteudo: d.content.slice(0, 800) }));
-      return { encontrados: 0, mensagem: `Nenhum documento encontrado para "${query}". Documentos disponíveis:`, documentos: fallback };
+      const fallback = await db.select().from(knowledgeDocuments).limit(3);
+      return { encontrados: 0, mensagem: `Nenhum documento encontrado para "${query}". Documentos disponíveis:`, documentos: fallback.map(d => ({ titulo: d.title, categoria: d.category, conteudo: d.content.slice(0, 800) })) };
     }
 
     return {
@@ -348,9 +346,7 @@ async function executeTool(name: string, args: any): Promise<any> {
   if (name === 'find_suspicious_notes') {
     const name_ = String(args.attendant_name ?? '');
 
-    const seller = (await db.select().from(sellers)).find(
-      s => s.name.toLowerCase().includes(name_.toLowerCase())
-    );
+    const [seller] = await db.select().from(sellers).where(ilike(sellers.name, `%${name_}%`)).limit(1);
     if (!seller) return { error: `Atendente "${name_}" não encontrado.` };
 
     const allTasks = await db.select().from(tasks).where(
@@ -436,10 +432,9 @@ async function executeTool(name: string, args: any): Promise<any> {
     const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
     const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
 
-    const allSellers = await db.select().from(sellers);
     const targets = nameArg === 'todos'
-      ? allSellers
-      : allSellers.filter(s => s.name.toLowerCase().includes(nameArg));
+      ? await db.select().from(sellers)
+      : await db.select().from(sellers).where(ilike(sellers.name, `%${nameArg}%`));
     if (targets.length === 0) return { error: `Atendente "${args.attendant_name}" não encontrado.` };
 
     const recentSessions = await db.select().from(workSessions)
@@ -486,8 +481,7 @@ async function executeTool(name: string, args: any): Promise<any> {
     const startHour = Number(args.start_hour ?? 8);
     const dryRun = args.dry_run !== false;
 
-    const allSellers = await db.select().from(sellers);
-    const seller = allSellers.find(s => s.name.toLowerCase().includes(name_.toLowerCase()));
+    const [seller] = await db.select().from(sellers).where(ilike(sellers.name, `%${name_}%`)).limit(1);
     if (!seller) return { error: `Atendente "${name_}" não encontrado.` };
 
     const now = new Date();
@@ -558,9 +552,20 @@ async function buildUserContext(userId: number, role: string): Promise<string> {
   const now = new Date();
   const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
 
+  const taskFields = {
+    id: tasks.id,
+    title: tasks.title,
+    assignedTo: tasks.assignedTo,
+    userId: tasks.userId,
+    reminderDate: tasks.reminderDate,
+    reminderEnabled: tasks.reminderEnabled,
+    priority: tasks.priority,
+    lastContactedAt: tasks.lastContactedAt,
+    status: tasks.status,
+  };
   const userTasks = role === 'admin'
-    ? await db.select().from(tasks)
-    : await db.select().from(tasks).where(eq(tasks.userId, userId));
+    ? await db.select(taskFields).from(tasks)
+    : await db.select(taskFields).from(tasks).where(eq(tasks.userId, userId));
 
   const withReminder = userTasks.filter(t => t.reminderDate && t.reminderEnabled !== false);
   const overdue = withReminder.filter(t => new Date(t.reminderDate!) < now);
