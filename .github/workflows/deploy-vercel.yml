@@ -7,16 +7,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Install Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - name: Install Vercel CLI
-        run: npm install -g vercel
-      - name: Deploy to Vercel Production
-        run: vercel deploy --prod -y --token "$VERCEL_TOKEN" --scope tarcyoalves-projects
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: team_ZHn6TWGLumT9fkcooDeIbHD8
-          VERCEL_PROJECT_ID: prj_xpZOPvJsMdf7uEs6LX67fx5i0Ro8
+      - name: Trigger Vercel Deploy Hook
+        run: |
+          curl -s -X POST \
+            "https://api.vercel.com/v1/integrations/deploy/prj_xpZOPvJsMdf7uEs6LX67fx5i0Ro8/FkpvHZSnB1" \
+            | cat
