@@ -251,6 +251,22 @@ export async function ensureTablesExist() {
     await sql`ALTER TABLE coupons             ENABLE ROW LEVEL SECURITY`;
     await sql`ALTER TABLE msg_templates       ENABLE ROW LEVEL SECURITY`;
 
+    // Seed admin user on fresh database
+    const existing = await sql`SELECT id FROM users LIMIT 1`;
+    if (existing.length === 0) {
+      await sql`
+        INSERT INTO users (name, email, password_hash, role, must_change_password)
+        VALUES (
+          'Tarcyo Alves',
+          'tarcyo.alves@gmail.com',
+          '310000:2c6091da2f871bc42a2f6e7cd1db163a:7517d9b6504b6ec5df8c191e43eb8327936c94291b9be10171eced505978089116dd7f31d5f6f0b4a3b79e5d173ba7e2eabec5a1adf33239d8cb41724a546e52',
+          'admin',
+          false
+        )
+      `;
+      console.log('✅ Admin user created: tarcyo.alves@gmail.com / admin123');
+    }
+
     console.log('✅ Database tables, indexes, and RLS ensured');
   } catch (err) {
     console.error('❌ Migration error:', err);

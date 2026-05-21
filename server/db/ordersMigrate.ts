@@ -1,17 +1,17 @@
-import { neon } from '@neondatabase/serverless';
+import postgres from 'postgres';
 
 export async function ensureOrdersTablesExist() {
-  const url = process.env.ORDERS_DATABASE_URL;
-  if (!url) return; // Not configured yet — skip silently
+  const url = process.env.ORDERS_DATABASE_URL ?? process.env.DATABASE_URL;
+  if (!url) return;
+  const sql = postgres(url, { max: 1, prepare: false });
   try {
-    const sql = neon(url);
-
     await sql`
       CREATE TABLE IF NOT EXISTS site_orders (
         id SERIAL PRIMARY KEY,
         customer_name TEXT NOT NULL,
         customer_phone TEXT NOT NULL,
         customer_email TEXT,
+        customer_cpf TEXT,
         postal_code TEXT NOT NULL,
         address TEXT NOT NULL,
         number TEXT NOT NULL,
@@ -34,41 +34,36 @@ export async function ensureOrdersTablesExist() {
         tracking_code TEXT,
         mp_preference_id TEXT,
         mp_payment_id TEXT,
+        coupon_code TEXT,
+        coupon_discount TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `;
     await sql`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`;
     await sql`CREATE INDEX IF NOT EXISTS site_orders_created_at_idx ON site_orders(created_at)`;
-    await sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS customer_cpf TEXT`;
-    await sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS coupon_code TEXT`;
-    await sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS coupon_discount TEXT`;
 
-    // Start order IDs at 10000 for new installs (safe to run multiple times)
     await sql`SELECT setval(pg_get_serial_sequence('site_orders','id'), GREATEST(last_value, 9999), true) FROM site_orders_id_seq`;
 
     await sql`
       CREATE TABLE IF NOT EXISTS abandoned_carts (
         id SERIAL PRIMARY KEY,
         customer_name TEXT NOT NULL,
-        customer_phone TEXT NOT NULL,
+        customer_phone TEXT NOT NULL UNIQUE,
         customer_email TEXT,
         postal_code TEXT,
         quantity INTEGER DEFAULT 1,
         step_reached INTEGER DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'checkout_started',
         recovered BOOLEAN NOT NULL DEFAULT FALSE,
         recovery_sent_at TIMESTAMP,
+        abandoned_at TIMESTAMP,
+        converted_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `;
     await sql`CREATE INDEX IF NOT EXISTS abandoned_carts_phone_idx ON abandoned_carts(customer_phone)`;
-    await sql`CREATE INDEX IF NOT EXISTS abandoned_carts_recovered_idx ON abandoned_carts(recovered)`;
-    await sql`CREATE UNIQUE INDEX IF NOT EXISTS abandoned_carts_phone_unique ON abandoned_carts(customer_phone)`;
-
-    await sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'checkout_started'`;
-    await sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS abandoned_at TIMESTAMP`;
-    await sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS converted_at TIMESTAMP`;
     await sql`CREATE INDEX IF NOT EXISTS abandoned_carts_status_idx ON abandoned_carts(status)`;
 
     await sql`
@@ -82,6 +77,9 @@ export async function ensureOrdersTablesExist() {
         sent_at TIMESTAMP,
         cancelled_at TIMESTAMP,
         provider_response TEXT,
+        ai_body TEXT,
+        ai_reasoning TEXT,
+        ai_processed_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
@@ -89,9 +87,6 @@ export async function ensureOrdersTablesExist() {
     await sql`CREATE INDEX IF NOT EXISTS automation_runs_status_idx ON automation_runs(status)`;
     await sql`CREATE INDEX IF NOT EXISTS automation_runs_scheduled_for_idx ON automation_runs(scheduled_for)`;
     await sql`CREATE INDEX IF NOT EXISTS automation_runs_cart_id_idx ON automation_runs(cart_id)`;
-    await sql`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_body TEXT`;
-    await sql`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_reasoning TEXT`;
-    await sql`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_processed_at TIMESTAMP`;
 
     await sql`
       CREATE TABLE IF NOT EXISTS coupons (
@@ -124,7 +119,6 @@ export async function ensureOrdersTablesExist() {
     `;
     await sql`CREATE INDEX IF NOT EXISTS msg_templates_type_idx ON msg_templates(type)`;
 
-    // Seed default templates
     await sql`
       INSERT INTO msg_templates (slug, type, label, body, active, is_default) VALUES
       ('abandoned_simples', 'abandoned', 'Abandono – Simples',
@@ -152,5 +146,7 @@ export async function ensureOrdersTablesExist() {
   } catch (err) {
     console.error('❌ Orders migration error:', err);
     throw err;
+  } finally {
+    await sql.end();
   }
 }
