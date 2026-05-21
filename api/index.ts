@@ -10,8 +10,12 @@ import { createContext } from '../server/trpc';
 import { ensureTablesExist } from '../server/db/migrate';
 import { ensureOrdersTablesExist } from '../server/db/ordersMigrate';
 import { ordersDb } from '../server/db/ordersDb';
-import { siteOrders, abandonedCarts, automationRuns } from '../server/db/schema';
+import { siteOrders, abandonedCarts, automationRuns, msgTemplates } from '../server/db/schema';
 import { eq, and } from 'drizzle-orm';
+
+function renderTemplate(body: string, vars: Record<string, string>): string {
+  return body.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
+}
 
 const app = express();
 
@@ -248,6 +252,11 @@ app.post('/api/cron/abandoned-cart', express.json(), async (req, res) => {
     const waUrl = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
     const waKey = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
 
+    // Load default abandoned template once for all runs
+    const [defaultTemplate] = await ordersDb.select().from(msgTemplates)
+      .where(and(eq(msgTemplates.type, 'abandoned'), eq(msgTemplates.isDefault, true)))
+      .limit(1);
+
     let sent = 0, cancelled = 0, failed = 0;
     for (const run of due) {
       const [cart] = await ordersDb.select().from(carts).where(eq(carts.id, run.cartId)).limit(1);
@@ -258,7 +267,16 @@ app.post('/api/cron/abandoned-cart', express.json(), async (req, res) => {
         continue;
       }
       const name = cart.customerName;
-      const msg = `Olá *${name}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou o pedido.\n\n👉 Finalize agora: https://premium.salvitarn.com.br\n\nQualquer dúvida é só chamar! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
+      const link = 'https://premium.salvitarn.com.br';
+      let msg: string;
+      if (run.aiBody) {
+        // AI-generated personalized message takes priority
+        msg = run.aiBody;
+      } else if (defaultTemplate) {
+        msg = renderTemplate(defaultTemplate.body, { nome: name, link, cupom: '' });
+      } else {
+        msg = `Olá *${name}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou o pedido.\n\n👉 Finalize agora: ${link}\n\nQualquer dúvida é só chamar! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
+      }
       try {
         const phone = run.customerPhone.replace(/\D/g, '');
         const fmtPhone = phone.startsWith('55') ? phone : `55${phone}`;

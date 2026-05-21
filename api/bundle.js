@@ -55895,6 +55895,9 @@ async function ensureOrdersTablesExist() {
 // api/index.ts
 init_schema2();
 init_drizzle_orm();
+function renderTemplate2(body, vars) {
+  return body.replace(/\{(\w+)\}/g, (_2, k) => vars[k] ?? `{${k}}`);
+}
 var app = (0, import_express.default)();
 app.set("trust proxy", 1);
 var dbReady = Promise.all([
@@ -56113,6 +56116,7 @@ app.post("/api/cron/abandoned-cart", import_express.default.json(), async (req, 
     ).limit(50);
     const waUrl = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
     const waKey = process.env.WA_API_KEY || "MinhaChaveSuperSegura123456";
+    const [defaultTemplate] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.type, "abandoned"), eq(msgTemplates.isDefault, true))).limit(1);
     let sent = 0, cancelled = 0, failed = 0;
     for (const run2 of due) {
       const [cart] = await ordersDb.select().from(carts).where(eq(carts.id, run2.cartId)).limit(1);
@@ -56122,14 +56126,22 @@ app.post("/api/cron/abandoned-cart", import_express.default.json(), async (req, 
         continue;
       }
       const name2 = cart.customerName;
-      const msg = `Ol\xE1 *${name2}*! \u{1F30A}
+      const link = "https://premium.salvitarn.com.br";
+      let msg;
+      if (run2.aiBody) {
+        msg = run2.aiBody;
+      } else if (defaultTemplate) {
+        msg = renderTemplate2(defaultTemplate.body, { nome: name2, link, cupom: "" });
+      } else {
+        msg = `Ol\xE1 *${name2}*! \u{1F30A}
 
 Notamos que voc\xEA se interessou pelo *Sal Marinho Integral Sal Vita* mas n\xE3o finalizou o pedido.
 
-\u{1F449} Finalize agora: https://premium.salvitarn.com.br
+\u{1F449} Finalize agora: ${link}
 
 Qualquer d\xFAvida \xE9 s\xF3 chamar! \u{1F60A}
 _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
+      }
       try {
         const phone = run2.customerPhone.replace(/\D/g, "");
         const fmtPhone2 = phone.startsWith("55") ? phone : `55${phone}`;
