@@ -1,0 +1,33 @@
+{
+  "buildCommand": "npm install && npm run build",
+  "outputDirectory": "admin/dist",
+  "functions": {
+    "api/bundle.js": {
+      "maxDuration": 30
+    }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }
+      ]
+    }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/bundle.js" },
+    {
+      "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|ico|svg|webp|woff|woff2|ttf|eot|map|json|txt|xml))",
+      "dest": "/$1"
+    },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}

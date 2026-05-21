@@ -34,8 +34,8 @@ export default function AttendantProgress() {
       d >= from && d < new Date(todayStart.getTime() + days * 86400000);
 
     const todayTasks  = active.filter(t => inRange(new Date(t.reminderDate!), todayStart, 1));
-    const weekTasks   = active.filter(t => inRange(new Date(t.reminderDate!), weekStart,  1));
-    const monthTasks  = active.filter(t => inRange(new Date(t.reminderDate!), monthStart, 1));
+    const weekTasks   = active.filter(t => inRange(new Date(t.reminderDate!), weekStart,  7));
+    const monthTasks  = active.filter(t => inRange(new Date(t.reminderDate!), monthStart, 30));
 
     const overdueToday   = todayTasks.filter(t => new Date(t.reminderDate!) < now);
     const upcomingToday  = todayTasks.filter(t => new Date(t.reminderDate!) >= now);

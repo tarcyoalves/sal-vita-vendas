@@ -4,16 +4,91 @@
   "outputDirectory": "client/dist",
   "functions": {
     "api/bundle.js": {
-      "maxDuration": 30
+      "maxDuration": 60
     }
   },
+  "crons": [
+    {
+      "path": "/api/cron/abandoned-cart",
+      "schedule": "*/5 * * * *"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options",   "value": "nosniff" },
+        { "key": "X-Frame-Options",           "value": "DENY" },
+        { "key": "X-XSS-Protection",          "value": "1; mode=block" },
+        { "key": "Referrer-Policy",           "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy",        "value": "camera=(), microphone=(), geolocation=(), payment=()" },
+        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }
+      ]
+    }
+  ],
   "routes": [
+    {
+      "src": "/sal-vita-admin",
+      "has": [{ "type": "host", "value": "premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/index.html"
+    },
+    {
+      "src": "/sal-vita-admin",
+      "has": [{ "type": "host", "value": "www\\.premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/index.html"
+    },
+    {
+      "src": "/sal-vita-recovery",
+      "has": [{ "type": "host", "value": "premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/index.html"
+    },
+    {
+      "src": "/sal-vita-recovery",
+      "has": [{ "type": "host", "value": "www\\.premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/index.html"
+    },
+    {
+      "src": "/meu-pedido",
+      "has": [{ "type": "host", "value": "premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/index.html"
+    },
+    {
+      "src": "/meu-pedido",
+      "has": [{ "type": "host", "value": "www\\.premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/index.html"
+    },
+    {
+      "src": "/api/(.*)",
+      "has": [{ "type": "host", "value": "premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/api/bundle.js"
+    },
+    {
+      "src": "/api/(.*)",
+      "has": [{ "type": "host", "value": "www\\.premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/api/bundle.js"
+    },
+    {
+      "src": "/(.*)",
+      "has": [{ "type": "host", "value": "www\\.premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/sal-vita"
+    },
+    {
+      "src": "/(.*)",
+      "has": [{ "type": "host", "value": "premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/sal-vita"
+    },
     {
       "src": "/api/(.*)",
       "dest": "/api/bundle.js"
     },
     {
-      "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|ico|svg|webp|woff|woff2|ttf|eot|map))",
+      "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|ico|svg|webp|woff|woff2|ttf|eot|map|webmanifest|json|txt|xml))",
       "dest": "/$1"
     },
     {

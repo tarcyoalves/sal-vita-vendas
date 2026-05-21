@@ -6,6 +6,7 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   role: text('role').notNull().default('user'), // 'admin' | 'user'
+  mustChangePassword: boolean('must_change_password').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -47,6 +48,7 @@ export const tasks = pgTable('tasks', {
   status: text('status').notNull().default('pending'),
   priority: text('priority').notNull().default('medium'),
   assignedTo: text('assigned_to'),
+  lastContactedAt: timestamp('last_contacted_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -94,6 +96,107 @@ export const workSessions = pgTable('work_sessions', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
+
+export const siteOrders = pgTable('site_orders', {
+  id: serial('id').primaryKey(),
+  customerName: text('customer_name').notNull(),
+  customerPhone: text('customer_phone').notNull(),
+  customerEmail: text('customer_email'),
+  customerCpf: text('customer_cpf'),
+  postalCode: text('postal_code').notNull(),
+  address: text('address').notNull(),
+  number: text('number').notNull(),
+  complement: text('complement'),
+  neighborhood: text('neighborhood').notNull(),
+  city: text('city').notNull(),
+  state: text('state').notNull(),
+  quantity: integer('quantity').notNull().default(1),
+  product: text('product').notNull().default('Sal Marinho Integral 1kg'),
+  unitPrice: text('unit_price').notNull().default('29.90'),
+  shippingServiceId: text('shipping_service_id'),
+  shippingServiceName: text('shipping_service_name'),
+  shippingPrice: text('shipping_price'),
+  totalPrice: text('total_price'),
+  status: text('status').notNull().default('pending'),
+  paymentStatus: text('payment_status').notNull().default('awaiting'),
+  meOrderId: text('me_order_id'),
+  meLabelUrl: text('me_label_url'),
+  trackingCode: text('tracking_code'),
+  mpPreferenceId: text('mp_preference_id'),
+  mpPaymentId: text('mp_payment_id'),
+  notes: text('notes'),
+  couponCode: text('coupon_code'),
+  couponDiscount: text('coupon_discount'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const abandonedCarts = pgTable('abandoned_carts', {
+  id: serial('id').primaryKey(),
+  customerName: text('customer_name').notNull(),
+  customerPhone: text('customer_phone').notNull().unique(),
+  customerEmail: text('customer_email'),
+  postalCode: text('postal_code'),
+  quantity: integer('quantity').default(1),
+  stepReached: integer('step_reached').default(1), // 1=form 2=shipping 3=payment
+  status: text('status').notNull().default('checkout_started'), // checkout_started | redirected_to_payment | abandoned | converted | cancelled
+  recovered: boolean('recovered').default(false).notNull(),
+  recoverySentAt: timestamp('recovery_sent_at'),
+  abandonedAt: timestamp('abandoned_at'),
+  convertedAt: timestamp('converted_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const automationRuns = pgTable('automation_runs', {
+  id: serial('id').primaryKey(),
+  cartId: integer('cart_id').notNull(),
+  customerPhone: text('customer_phone').notNull(),
+  ruleName: text('rule_name').notNull().default('abandoned_cart_30m'),
+  status: text('status').notNull().default('scheduled'), // scheduled | sent | cancelled | failed
+  scheduledFor: timestamp('scheduled_for').notNull(),
+  sentAt: timestamp('sent_at'),
+  cancelledAt: timestamp('cancelled_at'),
+  providerResponse: text('provider_response'),
+  // AI-generated fields
+  aiBody: text('ai_body'),            // AI-generated custom message (overrides template)
+  aiReasoning: text('ai_reasoning'),  // AI explanation of its decisions
+  aiProcessedAt: timestamp('ai_processed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const coupons = pgTable('coupons', {
+  id: serial('id').primaryKey(),
+  code: text('code').notNull().unique(),
+  description: text('description'),
+  discountType: text('discount_type').notNull().default('percent'), // 'percent' | 'fixed'
+  discountValue: text('discount_value').notNull().default('10'),
+  minOrderValue: text('min_order_value').default('0'),
+  maxUses: integer('max_uses').default(100),
+  usedCount: integer('used_count').default(0).notNull(),
+  expiresAt: timestamp('expires_at'),
+  active: boolean('active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const msgTemplates = pgTable('msg_templates', {
+  id: serial('id').primaryKey(),
+  slug: text('slug').notNull().unique(), // unique key, e.g. 'abandoned_simple'
+  type: text('type').notNull(), // 'abandoned' | 'unpaid' | 'failed' | 'general'
+  label: text('label').notNull(), // display name in admin
+  body: text('body').notNull(), // message body with {variáveis}
+  active: boolean('active').default(true).notNull(),
+  isDefault: boolean('is_default').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type SiteOrder = typeof siteOrders.$inferSelect;
+export type AbandonedCart = typeof abandonedCarts.$inferSelect;
+export type Coupon = typeof coupons.$inferSelect;
+export type AutomationRun = typeof automationRuns.$inferSelect;
+export type MsgTemplate = typeof msgTemplates.$inferSelect;
 
 export type User = typeof users.$inferSelect;
 export type Seller = typeof sellers.$inferSelect;

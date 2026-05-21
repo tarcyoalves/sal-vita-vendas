@@ -45,11 +45,25 @@ export default function Attendants() {
     status: "active" as "active" | "inactive",
   });
 
+  const [resetInfo, setResetInfo] = useState<{ name: string; email: string; password: string } | null>(null);
+
   const { data: attendants = [], isLoading, refetch } = trpc.sellers.listWithRole.useQuery();
+  const { data: fraudAlerts = [] } = trpc.tasks.fraudAlerts.useQuery(undefined, { refetchInterval: 60_000 });
   const createMutation = trpc.sellers.create.useMutation();
   const updateMutation = trpc.sellers.update.useMutation();
   const deleteMutation = trpc.sellers.delete.useMutation();
   const updateRoleMutation = trpc.sellers.updateRole.useMutation();
+  const resetPasswordMutation = trpc.auth.adminResetPassword.useMutation();
+
+  const handleResetPassword = async (attendant: Attendant) => {
+    if (!confirm(`Resetar a senha de "${attendant.name}"? Uma nova senha será gerada.`)) return;
+    try {
+      const result = await resetPasswordMutation.mutateAsync({ userId: attendant.userId });
+      setResetInfo({ name: result.name, email: result.email, password: result.generatedPassword });
+    } catch (error: any) {
+      toast.error(error?.message ?? "Erro ao resetar senha");
+    }
+  };
 
   const [formData, setFormData] = useState({
     name: "",
@@ -159,6 +173,47 @@ export default function Attendants() {
   return (
     <div className="p-4 md:p-6 space-y-4">
 
+        {/* Fraud alerts banner */}
+        {fraudAlerts.length > 0 && (
+          <div className="bg-red-50 border border-red-300 rounded-xl p-4 space-y-2">
+            <p className="font-semibold text-red-800 flex items-center gap-2">🚨 Alertas de comportamento suspeito detectados agora</p>
+            {fraudAlerts.map((alert, i) => (
+              <div key={i} className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${alert.severity === 'high' ? 'bg-red-100 text-red-800' : 'bg-orange-100 text-orange-800'}`}>
+                <span>{alert.severity === 'high' ? '🔴' : '🟠'}</span>
+                <strong>{alert.sellerName}</strong>: {alert.message}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Reset password modal */}
+        {resetInfo && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
+              <h2 className="text-2xl font-bold text-orange-600 mb-2">🔑 Senha Resetada!</h2>
+              <p className="text-gray-600 mb-6">Anote a nova senha — ela não será exibida novamente.</p>
+              <div className="bg-gray-50 rounded-xl p-4 space-y-3 border">
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Nome</p>
+                  <p className="font-semibold text-gray-800">{resetInfo.name}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Email (login)</p>
+                  <p className="font-mono text-blue-700">{resetInfo.email}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Nova senha gerada</p>
+                  <p className="font-mono text-lg font-bold text-orange-700 bg-orange-50 px-3 py-2 rounded-lg border border-orange-200 select-all tracking-widest">{resetInfo.password}</p>
+                </div>
+              </div>
+              <p className="text-xs text-orange-600 mt-3">⚠️ Copie a senha agora. Ela não será exibida novamente.</p>
+              <Button className="w-full mt-4 bg-orange-600 hover:bg-orange-700" onClick={() => setResetInfo(null)}>
+                ✅ Entendido, já copiei a senha
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Password reveal modal */}
         {createdInfo && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -261,13 +316,19 @@ export default function Attendants() {
           <Card><CardContent className="pt-6 text-center text-gray-500">Nenhum atendente cadastrado</CardContent></Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {attendants.map((attendant: Attendant) => (
-              <Card key={attendant.id}>
+            {attendants.map((attendant: Attendant) => {
+              const alert = fraudAlerts.find(a => a.sellerName === attendant.name);
+              return (
+              <Card key={attendant.id} className={alert ? 'border-red-400' : ''}>
                 <CardContent className="pt-5">
                   <div className="space-y-3">
                     <div>
-                      <h3 className="font-semibold text-lg">{attendant.name}</h3>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-semibold text-lg">{attendant.name}</h3>
+                        {alert && <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${alert.severity === 'high' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>{alert.severity === 'high' ? '🔴 ALERTA' : '🟠 Suspeito'}</span>}
+                      </div>
                       <p className="text-sm text-gray-500">{attendant.email}</p>
+                      {alert && <p className="text-xs text-red-600 mt-1">⚠️ {alert.message}</p>}
                     </div>
                     <div className="space-y-1 text-sm text-gray-600">
                       {attendant.phone && <p>📱 {attendant.phone}</p>}
@@ -294,6 +355,15 @@ export default function Attendants() {
                       </div>
                       <Button
                         size="sm"
+                        variant="outline"
+                        className="w-full border-orange-300 text-orange-700 hover:bg-orange-50"
+                        onClick={() => handleResetPassword(attendant)}
+                        disabled={resetPasswordMutation.isPending}
+                      >
+                        🔑 Resetar Senha
+                      </Button>
+                      <Button
+                        size="sm"
                         variant={attendant.userRole === "admin" ? "outline" : "default"}
                         className="w-full"
                         onClick={() => handleToggleRole(attendant)}
@@ -305,7 +375,8 @@ export default function Attendants() {
                   </div>
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         )}
 

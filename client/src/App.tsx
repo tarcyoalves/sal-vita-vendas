@@ -16,14 +16,21 @@ import Tasks from "./pages/Tasks";
 import Attendants from "./pages/Attendants";
 import KnowledgeBase from "./pages/KnowledgeBase";
 import AttendantProgress from "./pages/AttendantProgress";
+import TvDashboard from "./pages/TvDashboard";
 import FloatingChat from "./components/FloatingChat";
 import AppShell from "./components/AppShell";
 import { useAuth } from "./_core/hooks/useAuth";
 import { useReminderNotifications } from "./_core/hooks/useReminderNotifications";
+import SalVitaLanding from "./pages/SalVitaLanding";
+import SalVitaAdmin from "./pages/SalVitaAdmin";
+import SalVitaRecovery from "./pages/SalVitaRecovery";
+import SalVitaChat from "./components/SalVitaChat";
+import TrackOrder from "./pages/TrackOrder";
 
 function Router() {
   return (
     <Switch>
+      <Route path={"/sal-vita"} component={SalVitaLanding} />
       <Route path={"/"} component={Home} />
       <Route path={"/admin/dashboard"}>
         <AppShell><AdminDashboard /></AppShell>
@@ -64,6 +71,7 @@ function Router() {
       <Route path="/meu-progresso">
         <AppShell><AttendantProgress /></AppShell>
       </Route>
+      <Route path="/tv" component={TvDashboard} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
@@ -81,7 +89,36 @@ function NotificationManager() {
   return null;
 }
 
+const PUBLIC_PATHS = ['/sal-vita'];
+const PREMIUM_HOSTS = ['www.premium.salvitarn.com.br', 'premium.salvitarn.com.br'];
+
 function App() {
+  const host = typeof window !== 'undefined' ? window.location.hostname : '';
+  const path = typeof window !== 'undefined' ? window.location.pathname : '';
+  const isPremium = PREMIUM_HOSTS.includes(host);
+  const isPublic = isPremium || PUBLIC_PATHS.some(p => path.startsWith(p));
+
+  if (isPremium) {
+    if (path === '/sal-vita-admin') {
+      return (
+        <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><SalVitaAdmin /></TooltipProvider></ThemeProvider></ErrorBoundary>
+      );
+    }
+    if (path === '/sal-vita-recovery') {
+      return (
+        <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><SalVitaRecovery /></TooltipProvider></ThemeProvider></ErrorBoundary>
+      );
+    }
+    if (path === '/meu-pedido') {
+      return (
+        <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><TrackOrder /></TooltipProvider></ThemeProvider></ErrorBoundary>
+      );
+    }
+    return (
+      <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><SalVitaLanding /><SalVitaChat /></TooltipProvider></ThemeProvider></ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <ThemeProvider
@@ -90,9 +127,9 @@ function App() {
       >
         <TooltipProvider>
           <Toaster />
-          <NotificationManager />
+          {!isPublic && <NotificationManager />}
           <Router />
-          <FloatingChat />
+          {!isPublic && <FloatingChat />}
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

@@ -1,47 +1,53 @@
 import { useState, useRef, useEffect } from 'react';
+import { useLocation } from 'wouter';
 import { trpc } from '../lib/trpc';
 import { useAuth } from '../_core/hooks/useAuth';
 import { toast } from 'sonner';
 
 interface Msg { role: 'user' | 'assistant'; content: string; ts: Date; }
 
-function getStoredApiConfig(): { apiKey: string; provider: string; model: string } | null {
+function getStoredApiConfig(): { apiKey: string; provider: string } | null {
   try {
     const configs = JSON.parse(localStorage.getItem('aiConfigs') || '{}');
     const entry = Object.values(configs as Record<string, any>).find((c: any) => c.status === 'configured');
-    if (entry) return { apiKey: (entry as any).apiKey, provider: (entry as any).provider, model: (entry as any).model };
+    if (entry) return { apiKey: (entry as any).apiKey, provider: (entry as any).provider };
   } catch { /* ignore */ }
   return null;
 }
 
 export default function FloatingChat() {
   const { user } = useAuth();
+  const [location] = useLocation();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
-  const [initialized, setInitialized] = useState(false);
+  const hasInitializedRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const utils = trpc.useUtils();
 
   const chatMutation = trpc.ai.chat.useMutation();
   const clearMutation = trpc.ai.clearHistory.useMutation();
-  const { data: history = [] } = trpc.ai.history.useQuery(undefined, { enabled: !!user });
+  const { data: history = [], isSuccess: historyLoaded } = trpc.ai.history.useQuery(
+    undefined,
+    { enabled: !!user, staleTime: Infinity }
+  );
 
   useEffect(() => {
-    if (initialized) return;
+    if (!historyLoaded || hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
     if ((history as any[]).length > 0) {
       setMsgs((history as any[]).map((m: any) => ({ role: m.role as 'user' | 'assistant', content: m.content, ts: new Date(m.createdAt) })));
     } else {
       setMsgs([{ role: 'assistant', content: '👋 Olá! Sou a IA da Sal Vita.\nPosso ajudar com:\n📊 Análise de desempenho\n📋 Tarefas pendentes\n💡 Dicas de vendas\n\nComo posso ajudar?', ts: new Date() }]);
     }
-    setInitialized(true);
-  }, [history, initialized]);
+  }, [history, historyLoaded]);
 
   useEffect(() => {
     if (open) setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
   }, [msgs, open]);
 
-  if (!user) return null;
+  if (!user || location === '/ai-chat') return null;
 
   const send = async () => {
     const text = input.trim();
@@ -55,7 +61,6 @@ export default function FloatingChat() {
         message: text,
         apiKey: cfg?.apiKey,
         provider: cfg?.provider,
-        model: cfg?.model,
       });
       setMsgs(prev => [...prev, { role: 'assistant', content: res.reply, ts: new Date() }]);
     } catch (e: any) {
@@ -70,6 +75,7 @@ export default function FloatingChat() {
   const clear = async () => {
     await clearMutation.mutateAsync();
     setMsgs([{ role: 'assistant', content: 'Histórico limpo! Como posso ajudar?', ts: new Date() }]);
+    utils.ai.history.invalidate();
   };
 
   return (
@@ -77,7 +83,7 @@ export default function FloatingChat() {
       {/* Floating bubble */}
       <button
         onClick={() => setOpen(o => !o)}
-        className="fixed bottom-4 right-4 z-50 w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-2xl flex items-center justify-center text-2xl transition-all active:scale-95"
+        className="fixed bottom-[88px] right-4 md:bottom-4 z-50 w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-2xl flex items-center justify-center text-2xl transition-all active:scale-95"
         title={open ? 'Fechar chat' : 'Abrir chat IA'}
         aria-label="Chat com IA"
       >
@@ -88,7 +94,7 @@ export default function FloatingChat() {
       {open && (
         <div
           className="fixed bottom-24 right-5 z-50 bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col"
-          style={{ width: 'min(380px, calc(100vw - 16px))', height: 'min(520px, calc(100vh - 110px))' }}
+          style={{ width: 'min(380px, calc(100vw - 16px))', height: 'min(520px, calc(100vh - 170px))' }}
         >
           {/* Header */}
           <div className="bg-blue-600 text-white px-4 py-3 rounded-t-2xl flex items-center justify-between flex-shrink-0">
