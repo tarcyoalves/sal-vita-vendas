@@ -312,4 +312,100 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
 
+// One-time migration: copy all data from Neon → Supabase
+// Protected by ADMIN_RESET_SECRET. Remove after migration is done.
+app.post('/api/migrate-from-neon', express.json(), async (req, res) => {
+  const secret = process.env.ADMIN_RESET_SECRET;
+  if (!secret || req.body?.secret !== secret) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const neonUrl = req.body?.neonUrl as string | undefined;
+  if (!neonUrl) {
+    return res.status(400).json({ error: 'neonUrl required' });
+  }
+
+  const postgres = (await import('postgres')).default;
+  const src = postgres(neonUrl, { max: 1, prepare: false, ssl: 'require' });
+  const dst = postgres(process.env.DATABASE_URL!, { max: 1, prepare: false });
+
+  try {
+    const counts: Record<string, number> = {};
+
+    // users
+    const users = await src`SELECT * FROM users`;
+    if (users.length > 0) {
+      await dst`DELETE FROM users WHERE true`;
+      for (const u of users) {
+        await dst`INSERT INTO users ${dst(u)} ON CONFLICT (email) DO UPDATE SET
+          name = EXCLUDED.name, password_hash = EXCLUDED.password_hash,
+          role = EXCLUDED.role, must_change_password = EXCLUDED.must_change_password`;
+      }
+      await dst`SELECT setval(pg_get_serial_sequence('users','id'), (SELECT MAX(id) FROM users))`;
+      counts.users = users.length;
+    }
+
+    // sellers
+    const sellers = await src`SELECT * FROM sellers`;
+    if (sellers.length > 0) {
+      await dst`DELETE FROM sellers WHERE true`;
+      for (const r of sellers) await dst`INSERT INTO sellers ${dst(r)} ON CONFLICT DO NOTHING`;
+      await dst`SELECT setval(pg_get_serial_sequence('sellers','id'), (SELECT MAX(id) FROM sellers))`;
+      counts.sellers = sellers.length;
+    }
+
+    // clients
+    const clients = await src`SELECT * FROM clients`;
+    if (clients.length > 0) {
+      await dst`DELETE FROM clients WHERE true`;
+      for (const r of clients) await dst`INSERT INTO clients ${dst(r)} ON CONFLICT DO NOTHING`;
+      await dst`SELECT setval(pg_get_serial_sequence('clients','id'), (SELECT MAX(id) FROM clients))`;
+      counts.clients = clients.length;
+    }
+
+    // tasks
+    const tasks = await src`SELECT * FROM tasks`;
+    if (tasks.length > 0) {
+      await dst`DELETE FROM tasks WHERE true`;
+      for (const r of tasks) await dst`INSERT INTO tasks ${dst(r)} ON CONFLICT DO NOTHING`;
+      await dst`SELECT setval(pg_get_serial_sequence('tasks','id'), (SELECT MAX(id) FROM tasks))`;
+      counts.tasks = tasks.length;
+    }
+
+    // reminders
+    const reminders = await src`SELECT * FROM reminders`;
+    if (reminders.length > 0) {
+      await dst`DELETE FROM reminders WHERE true`;
+      for (const r of reminders) await dst`INSERT INTO reminders ${dst(r)} ON CONFLICT DO NOTHING`;
+      await dst`SELECT setval(pg_get_serial_sequence('reminders','id'), (SELECT MAX(id) FROM reminders))`;
+      counts.reminders = reminders.length;
+    }
+
+    // knowledge_documents
+    const docs = await src`SELECT * FROM knowledge_documents`;
+    if (docs.length > 0) {
+      await dst`DELETE FROM knowledge_documents WHERE true`;
+      for (const r of docs) await dst`INSERT INTO knowledge_documents ${dst(r)} ON CONFLICT DO NOTHING`;
+      await dst`SELECT setval(pg_get_serial_sequence('knowledge_documents','id'), (SELECT MAX(id) FROM knowledge_documents))`;
+      counts.knowledge_documents = docs.length;
+    }
+
+    // work_sessions
+    const sessions = await src`SELECT * FROM work_sessions`;
+    if (sessions.length > 0) {
+      await dst`DELETE FROM work_sessions WHERE true`;
+      for (const r of sessions) await dst`INSERT INTO work_sessions ${dst(r)} ON CONFLICT DO NOTHING`;
+      await dst`SELECT setval(pg_get_serial_sequence('work_sessions','id'), (SELECT MAX(id) FROM work_sessions))`;
+      counts.work_sessions = sessions.length;
+    }
+
+    res.json({ success: true, migrated: counts });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    await src.end();
+    await dst.end();
+  }
+});
+
 export default app;
