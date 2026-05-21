@@ -3,7 +3,7 @@ import postgres from 'postgres';
 export async function ensureOrdersTablesExist() {
   const url = process.env.ORDERS_DATABASE_URL ?? process.env.DATABASE_URL;
   if (!url) return;
-  const sql = postgres(url, { max: 1, prepare: false });
+  const sql = postgres(url, { max: 1, prepare: false, ssl: 'require' });
   try {
     await sql`
       CREATE TABLE IF NOT EXISTS site_orders (

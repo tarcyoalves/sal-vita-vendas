@@ -4,7 +4,8 @@ import * as schema from './schema';
 
 const client = postgres(process.env.DATABASE_URL!, {
   max: 1,
-  prepare: false, // required for Supabase transaction pooler
+  prepare: false,
+  ssl: 'require',
 });
 
 export const db = drizzle(client, { schema });
