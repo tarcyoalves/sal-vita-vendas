@@ -1,9 +1,7 @@
-import { neon } from '@neondatabase/serverless';
+import { sql } from './index';
 
 export async function ensureTablesExist() {
   try {
-    const sql = neon(process.env.DATABASE_URL!);
-
     // Create knowledge_documents table if it doesn't exist
     await sql`
       CREATE TABLE IF NOT EXISTS knowledge_documents (
@@ -51,7 +49,6 @@ export async function ensureTablesExist() {
     await sql`CREATE INDEX IF NOT EXISTS sellers_user_id_idx ON sellers(user_id)`;
 
     // last_contacted_at: tracks when attendant actually edited a task with notes
-    // (different from updatedAt which changes on any touch incl. bulk reschedule)
     await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_contacted_at TIMESTAMP`;
     await sql`CREATE INDEX IF NOT EXISTS tasks_last_contacted_at_idx ON tasks(last_contacted_at)`;
 
@@ -59,7 +56,6 @@ export async function ensureTablesExist() {
     await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT false NOT NULL`;
 
     // Row Level Security — defense-in-depth
-    // Table owner (service role) bypasses RLS automatically; other roles are blocked
     await sql`ALTER TABLE users               ENABLE ROW LEVEL SECURITY`;
     await sql`ALTER TABLE sellers             ENABLE ROW LEVEL SECURITY`;
     await sql`ALTER TABLE tasks               ENABLE ROW LEVEL SECURITY`;
