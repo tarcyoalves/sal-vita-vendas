@@ -52809,7 +52809,7 @@ app.post("/api/migrate-from-neon", import_express.default.json(), async (req, re
   }
   const postgres2 = (await Promise.resolve().then(() => (init_src(), src_exports))).default;
   const src = postgres2(neonUrl, { max: 1, prepare: false, ssl: "require" });
-  const dst = postgres2(process.env.DATABASE_URL, { max: 1, prepare: false });
+  const dst = postgres2(process.env.DATABASE_URL, { max: 1, prepare: false, ssl: "require" });
   try {
     const counts = {};
     const users2 = await src`SELECT * FROM users`;

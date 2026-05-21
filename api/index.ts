@@ -327,7 +327,7 @@ app.post('/api/migrate-from-neon', express.json(), async (req, res) => {
 
   const postgres = (await import('postgres')).default;
   const src = postgres(neonUrl, { max: 1, prepare: false, ssl: 'require' });
-  const dst = postgres(process.env.DATABASE_URL!, { max: 1, prepare: false });
+  const dst = postgres(process.env.DATABASE_URL!, { max: 1, prepare: false, ssl: 'require' });
 
   try {
     const counts: Record<string, number> = {};
