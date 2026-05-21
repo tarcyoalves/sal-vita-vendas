@@ -2,7 +2,92 @@ import { sql } from './index';
 
 export async function ensureTablesExist() {
   try {
-    // Create knowledge_documents table if it doesn't exist
+    // Base tables
+    await sql`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'user',
+        must_change_password BOOLEAN DEFAULT false NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS sellers (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL DEFAULT 0,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        phone TEXT,
+        department TEXT,
+        daily_goal INTEGER DEFAULT 10,
+        work_hours_goal INTEGER DEFAULT 8 NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS clients (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT,
+        phone TEXT,
+        company TEXT,
+        city TEXT,
+        state TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL DEFAULT 0,
+        client_id INTEGER NOT NULL DEFAULT 0,
+        title TEXT NOT NULL,
+        description TEXT,
+        notes TEXT,
+        reminder_date TIMESTAMP,
+        reminder_enabled BOOLEAN DEFAULT true,
+        status TEXT NOT NULL DEFAULT 'pending',
+        priority TEXT NOT NULL DEFAULT 'medium',
+        assigned_to TEXT,
+        last_contacted_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS reminders (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        client_name TEXT NOT NULL,
+        client_phone TEXT,
+        notes TEXT,
+        scheduled_date TIMESTAMP NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        role TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+
     await sql`
       CREATE TABLE IF NOT EXISTS knowledge_documents (
         id SERIAL PRIMARY KEY,
@@ -14,10 +99,6 @@ export async function ensureTablesExist() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
-    `;
-
-    await sql`
-      ALTER TABLE sellers ADD COLUMN IF NOT EXISTS work_hours_goal INTEGER NOT NULL DEFAULT 8
     `;
 
     await sql`
@@ -35,42 +116,13 @@ export async function ensureTablesExist() {
       )
     `;
 
-    // Performance indexes — idempotent, zero downtime
-    await sql`CREATE INDEX IF NOT EXISTS tasks_user_id_idx ON tasks(user_id)`;
-    await sql`CREATE INDEX IF NOT EXISTS tasks_assigned_to_idx ON tasks(assigned_to)`;
-    await sql`CREATE INDEX IF NOT EXISTS tasks_status_idx ON tasks(status)`;
-    await sql`CREATE INDEX IF NOT EXISTS tasks_reminder_date_idx ON tasks(reminder_date)`;
-    await sql`CREATE INDEX IF NOT EXISTS work_sessions_user_id_idx ON work_sessions(user_id)`;
-    await sql`CREATE INDEX IF NOT EXISTS work_sessions_status_idx ON work_sessions(status)`;
-    await sql`CREATE INDEX IF NOT EXISTS work_sessions_started_at_idx ON work_sessions(started_at)`;
-    await sql`CREATE INDEX IF NOT EXISTS chat_messages_user_id_idx ON chat_messages(user_id)`;
-    await sql`CREATE INDEX IF NOT EXISTS knowledge_docs_user_id_idx ON knowledge_documents(user_id)`;
-    await sql`CREATE INDEX IF NOT EXISTS sellers_status_idx ON sellers(status)`;
-    await sql`CREATE INDEX IF NOT EXISTS sellers_user_id_idx ON sellers(user_id)`;
-
-    // last_contacted_at: tracks when attendant actually edited a task with notes
-    await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_contacted_at TIMESTAMP`;
-    await sql`CREATE INDEX IF NOT EXISTS tasks_last_contacted_at_idx ON tasks(last_contacted_at)`;
-
-    // must_change_password: force attendant to set own password on first login
-    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT false NOT NULL`;
-
-    // Row Level Security — defense-in-depth
-    await sql`ALTER TABLE users               ENABLE ROW LEVEL SECURITY`;
-    await sql`ALTER TABLE sellers             ENABLE ROW LEVEL SECURITY`;
-    await sql`ALTER TABLE tasks               ENABLE ROW LEVEL SECURITY`;
-    await sql`ALTER TABLE clients             ENABLE ROW LEVEL SECURITY`;
-    await sql`ALTER TABLE reminders           ENABLE ROW LEVEL SECURITY`;
-    await sql`ALTER TABLE chat_messages       ENABLE ROW LEVEL SECURITY`;
-    await sql`ALTER TABLE knowledge_documents ENABLE ROW LEVEL SECURITY`;
-    await sql`ALTER TABLE work_sessions       ENABLE ROW LEVEL SECURITY`;
-
     await sql`
       CREATE TABLE IF NOT EXISTS site_orders (
         id SERIAL PRIMARY KEY,
         customer_name TEXT NOT NULL,
         customer_phone TEXT NOT NULL,
         customer_email TEXT,
+        customer_cpf TEXT,
         postal_code TEXT NOT NULL,
         address TEXT NOT NULL,
         number TEXT NOT NULL,
@@ -89,17 +141,115 @@ export async function ensureTablesExist() {
         payment_status TEXT NOT NULL DEFAULT 'awaiting',
         me_order_id TEXT,
         me_label_url TEXT,
+        tracking_code TEXT,
+        mp_preference_id TEXT,
+        mp_payment_id TEXT,
         notes TEXT,
+        coupon_code TEXT,
+        coupon_discount TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS abandoned_carts (
+        id SERIAL PRIMARY KEY,
+        customer_name TEXT NOT NULL,
+        customer_phone TEXT NOT NULL UNIQUE,
+        customer_email TEXT,
+        postal_code TEXT,
+        quantity INTEGER DEFAULT 1,
+        step_reached INTEGER DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'checkout_started',
+        recovered BOOLEAN DEFAULT false NOT NULL,
+        recovery_sent_at TIMESTAMP,
+        abandoned_at TIMESTAMP,
+        converted_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS automation_runs (
+        id SERIAL PRIMARY KEY,
+        cart_id INTEGER NOT NULL,
+        customer_phone TEXT NOT NULL,
+        rule_name TEXT NOT NULL DEFAULT 'abandoned_cart_30m',
+        status TEXT NOT NULL DEFAULT 'scheduled',
+        scheduled_for TIMESTAMP NOT NULL,
+        sent_at TIMESTAMP,
+        cancelled_at TIMESTAMP,
+        provider_response TEXT,
+        ai_body TEXT,
+        ai_reasoning TEXT,
+        ai_processed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS coupons (
+        id SERIAL PRIMARY KEY,
+        code TEXT NOT NULL UNIQUE,
+        description TEXT,
+        discount_type TEXT NOT NULL DEFAULT 'percent',
+        discount_value TEXT NOT NULL DEFAULT '10',
+        min_order_value TEXT DEFAULT '0',
+        max_uses INTEGER DEFAULT 100,
+        used_count INTEGER DEFAULT 0 NOT NULL,
+        expires_at TIMESTAMP,
+        active BOOLEAN DEFAULT true NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS msg_templates (
+        id SERIAL PRIMARY KEY,
+        slug TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL,
+        label TEXT NOT NULL,
+        body TEXT NOT NULL,
+        active BOOLEAN DEFAULT true NOT NULL,
+        is_default BOOLEAN DEFAULT false NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+
+    // Performance indexes
+    await sql`CREATE INDEX IF NOT EXISTS tasks_user_id_idx ON tasks(user_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS tasks_assigned_to_idx ON tasks(assigned_to)`;
+    await sql`CREATE INDEX IF NOT EXISTS tasks_status_idx ON tasks(status)`;
+    await sql`CREATE INDEX IF NOT EXISTS tasks_reminder_date_idx ON tasks(reminder_date)`;
+    await sql`CREATE INDEX IF NOT EXISTS tasks_last_contacted_at_idx ON tasks(last_contacted_at)`;
+    await sql`CREATE INDEX IF NOT EXISTS work_sessions_user_id_idx ON work_sessions(user_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS work_sessions_status_idx ON work_sessions(status)`;
+    await sql`CREATE INDEX IF NOT EXISTS work_sessions_started_at_idx ON work_sessions(started_at)`;
+    await sql`CREATE INDEX IF NOT EXISTS chat_messages_user_id_idx ON chat_messages(user_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS knowledge_docs_user_id_idx ON knowledge_documents(user_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS sellers_status_idx ON sellers(status)`;
+    await sql`CREATE INDEX IF NOT EXISTS sellers_user_id_idx ON sellers(user_id)`;
     await sql`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`;
     await sql`CREATE INDEX IF NOT EXISTS site_orders_created_at_idx ON site_orders(created_at)`;
 
-    await sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS tracking_code TEXT`;
-    await sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_preference_id TEXT`;
-    await sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_payment_id TEXT`;
+    // Row Level Security
+    await sql`ALTER TABLE users               ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE sellers             ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE tasks               ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE clients             ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE reminders           ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE chat_messages       ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE knowledge_documents ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE work_sessions       ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE site_orders         ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE abandoned_carts     ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE automation_runs     ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE coupons             ENABLE ROW LEVEL SECURITY`;
+    await sql`ALTER TABLE msg_templates       ENABLE ROW LEVEL SECURITY`;
 
     console.log('✅ Database tables, indexes, and RLS ensured');
   } catch (err) {
