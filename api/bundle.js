@@ -50892,7 +50892,7 @@ var shippingRouter = router({
       }
     }
     const total = +(subtotal + shipping).toFixed(2);
-    const [order2] = await ordersDb.transaction(async (tx) => {
+    const [order] = await ordersDb.transaction(async (tx) => {
       if (appliedCoupon && foundCouponId !== null) {
         await tx.update(coupons).set({ usedCount: sql`used_count + 1` }).where(eq(coupons.id, foundCouponId));
       }
@@ -50917,9 +50917,9 @@ var shippingRouter = router({
         couponDiscount: couponDiscount > 0 ? String(couponDiscount) : null
       }).returning();
     });
-    if (!order2?.id)
+    if (!order?.id)
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao criar pedido. Tente novamente." });
-    return { id: order2.id, total, couponDiscount, couponApplied: appliedCoupon };
+    return { id: order.id, total, couponDiscount, couponApplied: appliedCoupon };
   }),
   listOrders: protectedProcedure.input(external_exports.object({ status: external_exports.string().optional() }).optional()).query(async ({ ctx }) => {
     if (ctx.user.role !== "admin")
@@ -51052,28 +51052,28 @@ Seja direto e use emojis para facilitar leitura.`;
     phone: external_exports.string().min(4)
   })).query(async ({ input }) => {
     const orders = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
-    const order2 = orders[0];
-    if (!order2)
+    const order = orders[0];
+    if (!order)
       throw new TRPCError({ code: "NOT_FOUND", message: "Pedido n\xE3o encontrado." });
-    const phone = order2.customerPhone.replace(/\D/g, "");
+    const phone = order.customerPhone.replace(/\D/g, "");
     const inputPhone = input.phone.replace(/\D/g, "");
     if (!phone.endsWith(inputPhone.slice(-4))) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Telefone n\xE3o confere com o pedido." });
     }
     return {
-      id: order2.id,
-      customerName: order2.customerName,
-      product: order2.product,
-      quantity: order2.quantity,
-      totalPrice: order2.totalPrice,
-      shippingServiceName: order2.shippingServiceName,
-      city: order2.city,
-      state: order2.state,
-      status: order2.status,
-      paymentStatus: order2.paymentStatus,
-      trackingCode: order2.trackingCode,
-      shippedAt: order2.status === "shipped" || order2.status === "delivered" ? order2.updatedAt : null,
-      createdAt: order2.createdAt
+      id: order.id,
+      customerName: order.customerName,
+      product: order.product,
+      quantity: order.quantity,
+      totalPrice: order.totalPrice,
+      shippingServiceName: order.shippingServiceName,
+      city: order.city,
+      state: order.state,
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      trackingCode: order.trackingCode,
+      shippedAt: order.status === "shipped" || order.status === "delivered" ? order.updatedAt : null,
+      createdAt: order.createdAt
     };
   }),
   updateTracking: protectedProcedure.input(external_exports.object({
@@ -51090,13 +51090,13 @@ Seja direto e use emojis para facilitar leitura.`;
     if (!token)
       throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Configure MERCADO_PAGO_ACCESS_TOKEN no painel Vercel" });
     const orders = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
-    const order2 = orders[0];
-    if (!order2)
+    const order = orders[0];
+    if (!order)
       throw new TRPCError({ code: "NOT_FOUND" });
-    if (order2.paymentStatus === "confirmed")
+    if (order.paymentStatus === "confirmed")
       throw new TRPCError({ code: "CONFLICT", message: "Este pedido j\xE1 foi pago." });
     if (input.phone !== void 0) {
-      const orderPhone = order2.customerPhone.replace(/\D/g, "");
+      const orderPhone = order.customerPhone.replace(/\D/g, "");
       const inputPhone = input.phone.replace(/\D/g, "");
       if (!orderPhone.endsWith(inputPhone.slice(-4))) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Telefone n\xE3o confere com o pedido." });
@@ -51104,26 +51104,26 @@ Seja direto e use emojis para facilitar leitura.`;
     }
     const preference = {
       items: [{
-        id: `order-${order2.id}`,
-        title: `${order2.product ?? "Sal Vita"} \xD7 ${order2.quantity}`,
+        id: `order-${order.id}`,
+        title: `${order.product ?? "Sal Vita"} \xD7 ${order.quantity}`,
         quantity: 1,
-        unit_price: parseFloat(order2.totalPrice ?? "30"),
+        unit_price: parseFloat(order.totalPrice ?? "30"),
         currency_id: "BRL"
       }],
       payer: {
-        name: order2.customerName.split(" ")[0],
-        surname: order2.customerName.split(" ").slice(1).join(" ") || "-",
-        email: order2.customerEmail ?? "cliente@salvitarn.com.br",
-        phone: { number: order2.customerPhone.replace(/\D/g, "") }
+        name: order.customerName.split(" ")[0],
+        surname: order.customerName.split(" ").slice(1).join(" ") || "-",
+        email: order.customerEmail ?? "cliente@salvitarn.com.br",
+        phone: { number: order.customerPhone.replace(/\D/g, "") }
       },
       back_urls: {
-        success: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order2.id}&status=pago`,
-        failure: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order2.id}&status=falhou`,
-        pending: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order2.id}&status=pendente`
+        success: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&status=pago`,
+        failure: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&status=falhou`,
+        pending: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&status=pendente`
       },
       auto_return: "approved",
       notification_url: `https://lembretes.salvitarn.com.br/api/mp-webhook`,
-      external_reference: String(order2.id),
+      external_reference: String(order.id),
       statement_descriptor: "SAL VITA",
       payment_methods: { installments: 3 }
     };
@@ -51147,8 +51147,8 @@ Seja direto e use emojis para facilitar leitura.`;
     if (!token)
       throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Configure MELHOR_ENVIO_TOKEN no painel Vercel" });
     const orders = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
-    const order2 = orders[0];
-    if (!order2)
+    const order = orders[0];
+    if (!order)
       throw new TRPCError({ code: "NOT_FOUND" });
     const headers = {
       "Authorization": `Bearer ${token}`,
@@ -51156,12 +51156,12 @@ Seja direto e use emojis para facilitar leitura.`;
       "User-Agent": "SalVita/1.0 (contato@salvitarn.com.br)",
       "Accept": "application/json"
     };
-    const serviceIdNum = order2.shippingServiceId ? parseInt(order2.shippingServiceId, 10) : NaN;
+    const serviceIdNum = order.shippingServiceId ? parseInt(order.shippingServiceId, 10) : NaN;
     if (isNaN(serviceIdNum)) {
-      throw new TRPCError({ code: "BAD_REQUEST", message: `ID de servi\xE7o de frete inv\xE1lido: "${order2.shippingServiceId}". Edite o pedido e selecione um servi\xE7o v\xE1lido.` });
+      throw new TRPCError({ code: "BAD_REQUEST", message: `ID de servi\xE7o de frete inv\xE1lido: "${order.shippingServiceId}". Edite o pedido e selecione um servi\xE7o v\xE1lido.` });
     }
     const serviceId = serviceIdNum;
-    const weight = +Math.max(1.2, order2.quantity * 1.05).toFixed(2);
+    const weight = +Math.max(1.2, order.quantity * 1.05).toFixed(2);
     const cartBody = {
       service: serviceId,
       from: {
@@ -51176,29 +51176,29 @@ Seja direto e use emojis para facilitar leitura.`;
         country_id: "BR"
       },
       to: {
-        name: order2.customerName,
-        phone: order2.customerPhone.replace(/\D/g, ""),
-        email: order2.customerEmail ?? "cliente@salvitarn.com.br",
-        document: order2.customerCpf ? order2.customerCpf.replace(/\D/g, "") : void 0,
-        postal_code: order2.postalCode,
-        address: order2.address,
-        number: order2.number,
-        complement: order2.complement ?? "",
-        district: order2.neighborhood,
-        city: order2.city,
-        state_abbr: order2.state,
+        name: order.customerName,
+        phone: order.customerPhone.replace(/\D/g, ""),
+        email: order.customerEmail ?? "cliente@salvitarn.com.br",
+        document: order.customerCpf ? order.customerCpf.replace(/\D/g, "") : void 0,
+        postal_code: order.postalCode,
+        address: order.address,
+        number: order.number,
+        complement: order.complement ?? "",
+        district: order.neighborhood,
+        city: order.city,
+        state_abbr: order.state,
         country_id: "BR"
       },
-      volumes: [{ ...getPkg(order2.quantity), weight }],
+      volumes: [{ ...getPkg(order.quantity), weight }],
       options: {
-        insurance_value: parseFloat(order2.totalPrice ?? "30"),
+        insurance_value: parseFloat(order.totalPrice ?? "30"),
         receipt: false,
         own_hand: false,
         non_commercial: false
       },
       products: [{
         name: "Sal Marinho Integral 1kg",
-        quantity: order2.quantity,
+        quantity: order.quantity,
         unitary_value: 29.9
       }]
     };
@@ -51257,13 +51257,13 @@ Seja direto e use emojis para facilitar leitura.`;
     if (ctx.user.role !== "admin")
       throw new TRPCError({ code: "FORBIDDEN" });
     const orders = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.id));
-    const order2 = orders[0];
-    if (!order2)
+    const order = orders[0];
+    if (!order)
       throw new TRPCError({ code: "NOT_FOUND" });
-    if (order2.status === "cancelled")
+    if (order.status === "cancelled")
       throw new TRPCError({ code: "CONFLICT", message: "Pedido j\xE1 cancelado." });
     const results = [];
-    if (order2.meOrderId) {
+    if (order.meOrderId) {
       const meToken = process.env.MELHOR_ENVIO_TOKEN;
       if (meToken) {
         try {
@@ -51275,7 +51275,7 @@ Seja direto e use emojis para facilitar leitura.`;
               "User-Agent": "SalVita/1.0 (contato@salvitarn.com.br)",
               "Accept": "application/json"
             },
-            body: JSON.stringify({ orders: [order2.meOrderId] })
+            body: JSON.stringify({ orders: [order.meOrderId] })
           });
           if (meRes.ok)
             results.push("Etiqueta ME cancelada");
@@ -51286,11 +51286,11 @@ Seja direto e use emojis para facilitar leitura.`;
         }
       }
     }
-    if (order2.paymentStatus === "confirmed" && order2.mpPaymentId) {
+    if (order.paymentStatus === "confirmed" && order.mpPaymentId) {
       const mpToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
       if (mpToken) {
         try {
-          const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${order2.mpPaymentId}/refunds`, {
+          const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}/refunds`, {
             method: "POST",
             headers: { "Authorization": `Bearer ${mpToken}`, "Content-Type": "application/json" },
             body: JSON.stringify({})
@@ -51589,15 +51589,15 @@ var recoveryRouter = router({
   sendUnpaid: protectedProcedure.input(external_exports.object({ id: external_exports.number(), templateId: external_exports.number().optional() })).mutation(async ({ ctx, input }) => {
     if (ctx.user.role !== "admin")
       throw new TRPCError({ code: "FORBIDDEN" });
-    const [order2] = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.id)).limit(1);
-    if (!order2)
+    const [order] = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.id)).limit(1);
+    if (!order)
       throw new TRPCError({ code: "NOT_FOUND" });
-    const pixCode = order2.mpPaymentId ? await fetchPixCode(order2.mpPaymentId) : null;
-    const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order2.id}`;
+    const pixCode = order.mpPaymentId ? await fetchPixCode(order.mpPaymentId) : null;
+    const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}`;
     const vars = {
-      nome: order2.customerName,
-      pedido: String(order2.id),
-      valor: parseFloat(order2.totalPrice ?? "0").toFixed(2).replace(".", ","),
+      nome: order.customerName,
+      pedido: String(order.id),
+      valor: parseFloat(order.totalPrice ?? "0").toFixed(2).replace(".", ","),
       link: orderLink,
       pix: pixCode ?? "",
       produto: "Sal Marinho Integral 1kg"
@@ -51605,29 +51605,29 @@ var recoveryRouter = router({
     let msg;
     if (input.templateId) {
       const [tpl] = await ordersDb.select().from(msgTemplates).where(eq(msgTemplates.id, input.templateId)).limit(1);
-      msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order2.customerName, order2.id, order2.quantity, order2.totalPrice ?? "0");
+      msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? "0");
     } else if (pixCode) {
       const [tpl] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.slug, "unpaid_pix"), eq(msgTemplates.active, true))).limit(1);
-      msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order2.customerName, order2.id, order2.quantity, order2.totalPrice ?? "0");
+      msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? "0");
     } else {
       const [tpl] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.type, "unpaid"), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true))).limit(1);
-      msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order2.customerName, order2.id, order2.quantity, order2.totalPrice ?? "0");
+      msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? "0");
     }
-    const ok = await sendViaWhatsApp(order2.customerPhone, msg);
-    return { ok, phone: fmtPhone(order2.customerPhone), hasPix: !!pixCode, preview: msg };
+    const ok = await sendViaWhatsApp(order.customerPhone, msg);
+    return { ok, phone: fmtPhone(order.customerPhone), hasPix: !!pixCode, preview: msg };
   }),
   // Admin: get payment info (PIX code / boleto) for unpaid order
   getPaymentInfo: protectedProcedure.input(external_exports.object({ orderId: external_exports.number() })).query(async ({ ctx, input }) => {
     if (ctx.user.role !== "admin")
       throw new TRPCError({ code: "FORBIDDEN" });
-    const [order2] = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
-    if (!order2?.mpPaymentId)
+    const [order] = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
+    if (!order?.mpPaymentId)
       return { pixCode: null, boletoUrl: null };
     const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
     if (!token)
       return { pixCode: null, boletoUrl: null };
     try {
-      const res = await fetch(`https://api.mercadopago.com/v1/payments/${order2.mpPaymentId}`, {
+      const res = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.ok)
@@ -51843,19 +51843,19 @@ Responda SOMENTE com JSON v\xE1lido neste formato exato:
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey)
       throw new TRPCError({ code: "PRECONDITION_FAILED", message: "GROQ_API_KEY n\xE3o configurado" });
-    const [order2] = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
-    if (!order2)
+    const [order] = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
+    if (!order)
       throw new TRPCError({ code: "NOT_FOUND" });
-    const pixCode = order2.mpPaymentId ? await fetchPixCode(order2.mpPaymentId) : null;
-    const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order2.id}`;
+    const pixCode = order.mpPaymentId ? await fetchPixCode(order.mpPaymentId) : null;
+    const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}`;
     const prompt = `Voc\xEA \xE9 especialista em recupera\xE7\xE3o de vendas para Sal Vita (sal marinho premium de Mossor\xF3/RN).
 
 PEDIDO N\xC3O PAGO:
-- Cliente: ${order2.customerName}
-- Pedido: #${order2.id}
-- Valor total: R$ ${parseFloat(order2.totalPrice ?? "0").toFixed(2)}
-- Quantidade: ${order2.quantity}x Sal Marinho Integral 1kg
-- Status do pagamento: ${order2.paymentStatus === "failed" ? "FALHOU" : "aguardando"}
+- Cliente: ${order.customerName}
+- Pedido: #${order.id}
+- Valor total: R$ ${parseFloat(order.totalPrice ?? "0").toFixed(2)}
+- Quantidade: ${order.quantity}x Sal Marinho Integral 1kg
+- Status do pagamento: ${order.paymentStatus === "failed" ? "FALHOU" : "aguardando"}
 - Tem c\xF3digo PIX: ${pixCode ? "SIM" : "N\xC3O"}
 - Link do pedido: ${orderLink}
 ${pixCode ? `- C\xF3digo PIX: ${pixCode.substring(0, 30)}...` : ""}
@@ -52525,9 +52525,12 @@ function renderTemplate2(body, vars) {
 }
 var app = (0, import_express.default)();
 app.set("trust proxy", 1);
+function withTimeout(p, ms) {
+  return Promise.race([p, new Promise((resolve) => setTimeout(resolve, ms))]);
+}
 var dbReady = Promise.all([
-  ensureTablesExist().catch((err) => console.error("DB init error:", err)),
-  ensureOrdersTablesExist().catch((err) => console.error("Orders DB init error:", err))
+  withTimeout(ensureTablesExist(), 1e4).catch((err) => console.error("DB init error:", err)),
+  withTimeout(ensureOrdersTablesExist(), 1e4).catch((err) => console.error("Orders DB init error:", err))
 ]);
 var PROD_ORIGINS = [
   "https://sal-vita-vendas.vercel.app",
@@ -52566,6 +52569,15 @@ app.use((0, import_cors.default)({
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "Cookie"]
 }));
+app.get("/api/db-health", async (_req, res) => {
+  try {
+    const t0 = Date.now();
+    await client`SELECT 1`;
+    res.json({ db: "ok", ms: Date.now() - t0 });
+  } catch (err) {
+    res.status(500).json({ db: "error", message: err.message });
+  }
+});
 app.use(async (_req, _res, next) => {
   await dbReady;
   next();
@@ -52636,17 +52648,15 @@ app.post("/api/mp-webhook", import_express.default.raw({ type: "application/json
     }
     if (payment.status === "approved") {
       const orderRows = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, orderId));
-      const order2 = orderRows[0];
-      if (order2 && payment.transaction_amount !== void 0) {
-        const expectedTotal = parseFloat(order2.totalPrice ?? "0");
+      const order = orderRows[0];
+      if (order && payment.transaction_amount !== void 0) {
+        const expectedTotal = parseFloat(order.totalPrice ?? "0");
         if (Math.abs(payment.transaction_amount - expectedTotal) > 0.01) {
           console.warn(`[mp-webhook] Amount mismatch for order ${orderId}: expected ${expectedTotal}, got ${payment.transaction_amount}`);
           res.status(400).json({ error: "Payment amount does not match order total" });
           return;
         }
       }
-    }
-    if (payment.status === "approved") {
       await ordersDb.update(siteOrders).set({ paymentStatus: "confirmed", mpPaymentId: String(payment.id), updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, orderId));
       if (order) {
         const phone = order.customerPhone.replace(/\D/g, "");

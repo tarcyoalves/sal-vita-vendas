@@ -10,6 +10,7 @@ import { createContext } from '../server/trpc';
 import { ensureTablesExist } from '../server/db/migrate';
 import { ensureOrdersTablesExist } from '../server/db/ordersMigrate';
 import { ordersDb } from '../server/db/ordersDb';
+import { sql as sqlClient } from '../server/db/index';
 import { siteOrders, abandonedCarts, automationRuns, msgTemplates } from '../server/db/schema';
 import { eq, and } from 'drizzle-orm';
 
@@ -22,9 +23,14 @@ const app = express();
 // Vercel sits behind a proxy — trust first hop so rate limiters see real client IPs
 app.set('trust proxy', 1);
 
+// Resolve after ms regardless of whether the promise settled, to avoid hanging cold starts
+function withTimeout(p: Promise<unknown>, ms: number): Promise<unknown> {
+  return Promise.race([p, new Promise<void>(resolve => setTimeout(resolve, ms))]);
+}
+
 const dbReady = Promise.all([
-  ensureTablesExist().catch(err => console.error('DB init error:', err)),
-  ensureOrdersTablesExist().catch(err => console.error('Orders DB init error:', err)),
+  withTimeout(ensureTablesExist(), 10_000).catch(err => console.error('DB init error:', err)),
+  withTimeout(ensureOrdersTablesExist(), 10_000).catch(err => console.error('Orders DB init error:', err)),
 ]);
 
 // ── Allowed origins ────────────────────────────────────────────────────────────
@@ -69,6 +75,17 @@ app.use(cors({
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
 }));
+
+// DB connectivity probe — bypasses the dbReady wait intentionally
+app.get('/api/db-health', async (_req, res) => {
+  try {
+    const t0 = Date.now();
+    await sqlClient`SELECT 1`;
+    res.json({ db: 'ok', ms: Date.now() - t0 });
+  } catch (err: any) {
+    res.status(500).json({ db: 'error', message: err.message });
+  }
+});
 
 // Wait for DB tables to be ready before processing any request
 app.use(async (_req, _res, next) => {
@@ -130,9 +147,6 @@ app.post('/api/mp-webhook', express.raw({ type: 'application/json' }), async (re
           res.status(400).json({ error: 'Payment amount does not match order total' }); return;
         }
       }
-    }
-
-    if (payment.status === 'approved') {
       await ordersDb.update(siteOrders)
         .set({ paymentStatus: 'confirmed', mpPaymentId: String(payment.id), updatedAt: new Date() })
         .where(eq(siteOrders.id, orderId));
