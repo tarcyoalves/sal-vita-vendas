@@ -7,8 +7,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Vercel Deploy Hook
+      - name: Trigger Vercel deploy hook
         run: |
-          curl -s -X POST \
-            "https://api.vercel.com/v1/integrations/deploy/prj_xpZOPvJsMdf7uEs6LX67fx5i0Ro8/FkpvHZSnB1" \
-            | cat
+          response=$(curl -s -X POST \
+            "https://api.vercel.com/v1/integrations/deploy/prj_xpZOPvJsMdf7uEs6LX67fx5i0Ro8/FkpvHZSnB1")
+          echo "Response: $response"
+          echo "$response" | grep -q '"state":"PENDING"' && echo "✅ Deploy triggered" || echo "❌ Deploy failed"
