@@ -39,27 +39,34 @@ const dbReady = Promise.all([
 // To restore CRM data from an old Neon DB, call POST /api/migrate-from-neon with neonUrl + secret.
 async function autoMigrateIfNeeded(): Promise<void> {
   const dstUrl = process.env.DATABASE_URL!;
-  // Try each candidate env var as a potential CRM source DB
   const candidates: [string, string | undefined][] = [
     ['CRM_DATABASE_URL',    process.env.CRM_DATABASE_URL],
     ['SALLOG_DATABASE_URL', process.env.SALLOG_DATABASE_URL],
     ['NEON_DATABASE_URL',   process.env.NEON_DATABASE_URL],
   ];
   const srcEntry = candidates.find(([, v]) => v && v !== dstUrl);
-  if (!srcEntry) return; // no source configured
+  if (!srcEntry) return;
 
   const [srcKey, srcUrl] = srcEntry;
+  // Use isolated pools — never touch the shared main pool (sqlClient) so
+  // real user requests are never blocked waiting for migration connections.
+  let dst: ReturnType<typeof postgres> | null = null;
   let src: ReturnType<typeof postgres> | null = null;
   try {
-    const dstRows = await sqlClient`SELECT COUNT(*)::int AS cnt FROM sellers` as Array<{ cnt: number }>;
-    if ((dstRows[0]?.cnt ?? 0) > 0) return; // already migrated
+    dst = postgres(dstUrl, { max: 1, prepare: false, ssl: 'require', connect_timeout: 5 });
+
+    const dstRows = await Promise.race([
+      dst`SELECT COUNT(*)::int AS cnt FROM sellers`,
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('dst_timeout')), 8_000)),
+    ]) as unknown as Array<{ cnt: number }>;
+    if ((dstRows[0]?.cnt ?? 0) > 0) return;
 
     src = postgres(srcUrl!, { max: 1, prepare: false, ssl: 'require', connect_timeout: 5 });
 
     const srcRows = await Promise.race([
       src`SELECT COUNT(*)::int AS cnt FROM sellers`,
       new Promise<never>((_, rej) => setTimeout(() => rej(new Error('src_timeout')), 8_000)),
-    ]) as Array<{ cnt: number }>;
+    ]) as unknown as Array<{ cnt: number }>;
     const srcCount = srcRows[0]?.cnt ?? 0;
     if (srcCount === 0) return;
 
@@ -73,19 +80,19 @@ async function autoMigrateIfNeeded(): Promise<void> {
     ]);
 
     for (const u of usrs) {
-      await sqlClient`INSERT INTO users ${sqlClient(u)} ON CONFLICT (email) DO UPDATE SET
+      await dst`INSERT INTO users ${dst(u)} ON CONFLICT (email) DO UPDATE SET
         name = EXCLUDED.name, password_hash = EXCLUDED.password_hash,
         role = EXCLUDED.role, must_change_password = EXCLUDED.must_change_password`;
     }
-    if (usrs.length) await sqlClient`SELECT setval(pg_get_serial_sequence('users','id'), (SELECT MAX(id) FROM users))`;
-    for (const r of slrs) await sqlClient`INSERT INTO sellers ${sqlClient(r)} ON CONFLICT DO NOTHING`;
-    if (slrs.length) await sqlClient`SELECT setval(pg_get_serial_sequence('sellers','id'), (SELECT MAX(id) FROM sellers))`;
-    for (const r of clts) await sqlClient`INSERT INTO clients ${sqlClient(r)} ON CONFLICT DO NOTHING`;
-    if (clts.length) await sqlClient`SELECT setval(pg_get_serial_sequence('clients','id'), (SELECT MAX(id) FROM clients))`;
-    for (const r of tsks) await sqlClient`INSERT INTO tasks ${sqlClient(r)} ON CONFLICT DO NOTHING`;
-    if (tsks.length) await sqlClient`SELECT setval(pg_get_serial_sequence('tasks','id'), (SELECT MAX(id) FROM tasks))`;
-    for (const r of rmds) await sqlClient`INSERT INTO reminders ${sqlClient(r)} ON CONFLICT DO NOTHING`;
-    if (rmds.length) await sqlClient`SELECT setval(pg_get_serial_sequence('reminders','id'), (SELECT MAX(id) FROM reminders))`;
+    if (usrs.length) await dst`SELECT setval(pg_get_serial_sequence('users','id'), (SELECT MAX(id) FROM users))`;
+    for (const r of slrs) await dst`INSERT INTO sellers ${dst(r)} ON CONFLICT DO NOTHING`;
+    if (slrs.length) await dst`SELECT setval(pg_get_serial_sequence('sellers','id'), (SELECT MAX(id) FROM sellers))`;
+    for (const r of clts) await dst`INSERT INTO clients ${dst(r)} ON CONFLICT DO NOTHING`;
+    if (clts.length) await dst`SELECT setval(pg_get_serial_sequence('clients','id'), (SELECT MAX(id) FROM clients))`;
+    for (const r of tsks) await dst`INSERT INTO tasks ${dst(r)} ON CONFLICT DO NOTHING`;
+    if (tsks.length) await dst`SELECT setval(pg_get_serial_sequence('tasks','id'), (SELECT MAX(id) FROM tasks))`;
+    for (const r of rmds) await dst`INSERT INTO reminders ${dst(r)} ON CONFLICT DO NOTHING`;
+    if (rmds.length) await dst`SELECT setval(pg_get_serial_sequence('reminders','id'), (SELECT MAX(id) FROM reminders))`;
 
     console.log('[auto-migrate] done:', { users: usrs.length, sellers: slrs.length, clients: clts.length, tasks: tsks.length, reminders: rmds.length });
   } catch (err: any) {
@@ -93,6 +100,7 @@ async function autoMigrateIfNeeded(): Promise<void> {
       console.error('[auto-migrate] error:', err?.message ?? err);
     }
   } finally {
+    await dst?.end({ timeout: 3 }).catch(() => {});
     await src?.end({ timeout: 3 }).catch(() => {});
   }
 }
@@ -154,7 +162,7 @@ app.get('/api/db-health', async (_req, res) => {
       sqlClient`SELECT 1`,
       sqlClient`SELECT COUNT(*)::int AS cnt FROM sellers`,
     ]);
-    res.json({ db: 'ok', ms: Date.now() - t0, sellers: (sellersRes as Array<{cnt:number}>)[0]?.cnt ?? 0 });
+    res.json({ db: 'ok', ms: Date.now() - t0, sellers: (sellersRes as unknown as Array<{cnt:number}>)[0]?.cnt ?? 0 });
   } catch (err: any) {
     res.status(500).json({ db: 'error', message: err.message });
   }

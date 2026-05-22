@@ -52509,9 +52509,14 @@ async function autoMigrateIfNeeded() {
   if (!srcEntry)
     return;
   const [srcKey, srcUrl] = srcEntry;
+  let dst = null;
   let src = null;
   try {
-    const dstRows = await client`SELECT COUNT(*)::int AS cnt FROM sellers`;
+    dst = src_default(dstUrl, { max: 1, prepare: false, ssl: "require", connect_timeout: 5 });
+    const dstRows = await Promise.race([
+      dst`SELECT COUNT(*)::int AS cnt FROM sellers`,
+      new Promise((_, rej) => setTimeout(() => rej(new Error("dst_timeout")), 8e3))
+    ]);
     if ((dstRows[0]?.cnt ?? 0) > 0)
       return;
     src = src_default(srcUrl, { max: 1, prepare: false, ssl: "require", connect_timeout: 5 });
@@ -52531,34 +52536,36 @@ async function autoMigrateIfNeeded() {
       src`SELECT * FROM reminders`
     ]);
     for (const u of usrs) {
-      await client`INSERT INTO users ${client(u)} ON CONFLICT (email) DO UPDATE SET
+      await dst`INSERT INTO users ${dst(u)} ON CONFLICT (email) DO UPDATE SET
         name = EXCLUDED.name, password_hash = EXCLUDED.password_hash,
         role = EXCLUDED.role, must_change_password = EXCLUDED.must_change_password`;
     }
     if (usrs.length)
-      await client`SELECT setval(pg_get_serial_sequence('users','id'), (SELECT MAX(id) FROM users))`;
+      await dst`SELECT setval(pg_get_serial_sequence('users','id'), (SELECT MAX(id) FROM users))`;
     for (const r of slrs)
-      await client`INSERT INTO sellers ${client(r)} ON CONFLICT DO NOTHING`;
+      await dst`INSERT INTO sellers ${dst(r)} ON CONFLICT DO NOTHING`;
     if (slrs.length)
-      await client`SELECT setval(pg_get_serial_sequence('sellers','id'), (SELECT MAX(id) FROM sellers))`;
+      await dst`SELECT setval(pg_get_serial_sequence('sellers','id'), (SELECT MAX(id) FROM sellers))`;
     for (const r of clts)
-      await client`INSERT INTO clients ${client(r)} ON CONFLICT DO NOTHING`;
+      await dst`INSERT INTO clients ${dst(r)} ON CONFLICT DO NOTHING`;
     if (clts.length)
-      await client`SELECT setval(pg_get_serial_sequence('clients','id'), (SELECT MAX(id) FROM clients))`;
+      await dst`SELECT setval(pg_get_serial_sequence('clients','id'), (SELECT MAX(id) FROM clients))`;
     for (const r of tsks)
-      await client`INSERT INTO tasks ${client(r)} ON CONFLICT DO NOTHING`;
+      await dst`INSERT INTO tasks ${dst(r)} ON CONFLICT DO NOTHING`;
     if (tsks.length)
-      await client`SELECT setval(pg_get_serial_sequence('tasks','id'), (SELECT MAX(id) FROM tasks))`;
+      await dst`SELECT setval(pg_get_serial_sequence('tasks','id'), (SELECT MAX(id) FROM tasks))`;
     for (const r of rmds)
-      await client`INSERT INTO reminders ${client(r)} ON CONFLICT DO NOTHING`;
+      await dst`INSERT INTO reminders ${dst(r)} ON CONFLICT DO NOTHING`;
     if (rmds.length)
-      await client`SELECT setval(pg_get_serial_sequence('reminders','id'), (SELECT MAX(id) FROM reminders))`;
+      await dst`SELECT setval(pg_get_serial_sequence('reminders','id'), (SELECT MAX(id) FROM reminders))`;
     console.log("[auto-migrate] done:", { users: usrs.length, sellers: slrs.length, clients: clts.length, tasks: tsks.length, reminders: rmds.length });
   } catch (err) {
     if (!(err?.message ?? "").includes("does not exist")) {
       console.error("[auto-migrate] error:", err?.message ?? err);
     }
   } finally {
+    await dst?.end({ timeout: 3 }).catch(() => {
+    });
     await src?.end({ timeout: 3 }).catch(() => {
     });
   }
