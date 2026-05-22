@@ -39,7 +39,8 @@ const dbReady = Promise.all([
 async function autoMigrateIfNeeded(): Promise<void> {
   const srcUrl = process.env.ORDERS_DATABASE_URL;
   const dstUrl = process.env.DATABASE_URL!;
-  if (!srcUrl || srcUrl === dstUrl) return;
+  if (!srcUrl) { console.log('[auto-migrate] ORDERS_DATABASE_URL not set — skipping'); return; }
+  if (srcUrl === dstUrl) { console.log('[auto-migrate] ORDERS_DATABASE_URL same as DATABASE_URL — skipping'); return; }
 
   let src: ReturnType<typeof postgres> | null = null;
   let dst: ReturnType<typeof postgres> | null = null;
@@ -51,8 +52,10 @@ async function autoMigrateIfNeeded(): Promise<void> {
       dst`SELECT COUNT(*)::int AS cnt FROM sellers`,
       new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 6_000)),
     ]) as Array<{ cnt: number }>;
-    if ((dstCheck[0]?.cnt ?? 0) > 0) return; // Already has data
+    const dstCount = dstCheck[0]?.cnt ?? 0;
+    if (dstCount > 0) { console.log(`[auto-migrate] Supabase already has ${dstCount} sellers — skipping`); return; }
 
+    console.log('[auto-migrate] Supabase sellers=0, checking ORDERS_DATABASE_URL source...');
     src = postgres(srcUrl, { max: 1, prepare: false, ssl: 'require', connect_timeout: 10 });
 
     // Check if source has sellers
@@ -61,7 +64,7 @@ async function autoMigrateIfNeeded(): Promise<void> {
       new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 8_000)),
     ]) as Array<{ cnt: number }>;
     const srcCount = srcCheck[0]?.cnt ?? 0;
-    if (srcCount === 0) return; // Source also empty or no sellers table
+    if (srcCount === 0) { console.log('[auto-migrate] Source also has 0 sellers — nothing to migrate'); return; }
 
     console.log(`[auto-migrate] Found ${srcCount} sellers in ORDERS_DATABASE_URL — migrating to Supabase`);
 
@@ -152,8 +155,11 @@ app.use(cors({
 app.get('/api/db-health', async (_req, res) => {
   try {
     const t0 = Date.now();
-    await sqlClient`SELECT 1`;
-    res.json({ db: 'ok', ms: Date.now() - t0 });
+    const [, sellers] = await Promise.all([
+      sqlClient`SELECT 1`,
+      sqlClient`SELECT COUNT(*)::int AS cnt FROM sellers`,
+    ]);
+    res.json({ db: 'ok', ms: Date.now() - t0, sellers: (sellers as Array<{cnt:number}>)[0]?.cnt ?? 0 });
   } catch (err: any) {
     res.status(500).json({ db: 'error', message: err.message });
   }

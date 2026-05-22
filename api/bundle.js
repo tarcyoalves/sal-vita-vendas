@@ -52479,8 +52479,14 @@ var dbReady = Promise.all([
 async function autoMigrateIfNeeded() {
   const srcUrl = process.env.ORDERS_DATABASE_URL;
   const dstUrl = process.env.DATABASE_URL;
-  if (!srcUrl || srcUrl === dstUrl)
+  if (!srcUrl) {
+    console.log("[auto-migrate] ORDERS_DATABASE_URL not set \u2014 skipping");
     return;
+  }
+  if (srcUrl === dstUrl) {
+    console.log("[auto-migrate] ORDERS_DATABASE_URL same as DATABASE_URL \u2014 skipping");
+    return;
+  }
   let src = null;
   let dst = null;
   try {
@@ -52489,16 +52495,22 @@ async function autoMigrateIfNeeded() {
       dst`SELECT COUNT(*)::int AS cnt FROM sellers`,
       new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 6e3))
     ]);
-    if ((dstCheck[0]?.cnt ?? 0) > 0)
+    const dstCount = dstCheck[0]?.cnt ?? 0;
+    if (dstCount > 0) {
+      console.log(`[auto-migrate] Supabase already has ${dstCount} sellers \u2014 skipping`);
       return;
+    }
+    console.log("[auto-migrate] Supabase sellers=0, checking ORDERS_DATABASE_URL source...");
     src = src_default(srcUrl, { max: 1, prepare: false, ssl: "require", connect_timeout: 10 });
     const srcCheck = await Promise.race([
       src`SELECT COUNT(*)::int AS cnt FROM sellers`,
       new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 8e3))
     ]);
     const srcCount = srcCheck[0]?.cnt ?? 0;
-    if (srcCount === 0)
+    if (srcCount === 0) {
+      console.log("[auto-migrate] Source also has 0 sellers \u2014 nothing to migrate");
       return;
+    }
     console.log(`[auto-migrate] Found ${srcCount} sellers in ORDERS_DATABASE_URL \u2014 migrating to Supabase`);
     const [usrs, slrs, clts, tsks, rmds] = await Promise.all([
       src`SELECT * FROM users`,
@@ -52582,8 +52594,11 @@ app.use((0, import_cors.default)({
 app.get("/api/db-health", async (_req, res) => {
   try {
     const t0 = Date.now();
-    await client`SELECT 1`;
-    res.json({ db: "ok", ms: Date.now() - t0 });
+    const [, sellers2] = await Promise.all([
+      client`SELECT 1`,
+      client`SELECT COUNT(*)::int AS cnt FROM sellers`
+    ]);
+    res.json({ db: "ok", ms: Date.now() - t0, sellers: sellers2[0]?.cnt ?? 0 });
   } catch (err) {
     res.status(500).json({ db: "error", message: err.message });
   }
