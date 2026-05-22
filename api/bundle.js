@@ -37068,9 +37068,9 @@ function connection(x, options, socket) {
   Error.captureStackTrace(error, connection);
   return error;
 }
-function postgres(x) {
+function postgres2(x) {
   const error = new PostgresError(x);
-  Error.captureStackTrace(error, postgres);
+  Error.captureStackTrace(error, postgres2);
   return error;
 }
 function generic(code, message) {
@@ -37101,7 +37101,7 @@ var init_errors2 = __esm({
     };
     Errors = {
       connection,
-      postgres,
+      postgres: postgres2,
       generic,
       notSupported
     };
@@ -38393,10 +38393,10 @@ var init_connection = __esm({
 });
 
 // node_modules/postgres/src/subscribe.js
-function Subscribe(postgres2, options) {
+function Subscribe(postgres3, options) {
   const subscribers = /* @__PURE__ */ new Map(), slot = "postgresjs_" + Math.random().toString(36).slice(2), state = {};
   let connection2, stream, ended = false;
-  const sql2 = subscribe.sql = postgres2({
+  const sql2 = subscribe.sql = postgres3({
     ...options,
     transform: { column: {}, value: {}, row: {} },
     max: 1,
@@ -52543,6 +52543,72 @@ var dbReady = Promise.all([
   withTimeout(ensureTablesExist(), 1e4).catch((err) => console.error("DB init error:", err)),
   withTimeout(ensureOrdersTablesExist(), 1e4).catch((err) => console.error("Orders DB init error:", err))
 ]);
+async function autoMigrateIfNeeded() {
+  const srcUrl = process.env.ORDERS_DATABASE_URL;
+  const dstUrl = process.env.DATABASE_URL;
+  if (!srcUrl || srcUrl === dstUrl)
+    return;
+  let src = null;
+  let dst = null;
+  try {
+    dst = postgres(dstUrl, { max: 1, prepare: false, ssl: "require", connect_timeout: 10 });
+    const dstCheck = await Promise.race([
+      dst`SELECT COUNT(*)::int AS cnt FROM sellers`,
+      new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 6e3))
+    ]);
+    if ((dstCheck[0]?.cnt ?? 0) > 0)
+      return;
+    src = postgres(srcUrl, { max: 1, prepare: false, ssl: "require", connect_timeout: 10 });
+    const srcCheck = await Promise.race([
+      src`SELECT COUNT(*)::int AS cnt FROM sellers`,
+      new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 8e3))
+    ]);
+    const srcCount = srcCheck[0]?.cnt ?? 0;
+    if (srcCount === 0)
+      return;
+    console.log(`[auto-migrate] Found ${srcCount} sellers in ORDERS_DATABASE_URL \u2014 migrating to Supabase`);
+    const [usrs, slrs, clts, tsks, rmds] = await Promise.all([
+      src`SELECT * FROM users`,
+      src`SELECT * FROM sellers`,
+      src`SELECT * FROM clients`,
+      src`SELECT * FROM tasks`,
+      src`SELECT * FROM reminders`
+    ]);
+    for (const u of usrs) {
+      await dst`INSERT INTO users ${dst(u)} ON CONFLICT (email) DO UPDATE SET
+        name = EXCLUDED.name, password_hash = EXCLUDED.password_hash,
+        role = EXCLUDED.role, must_change_password = EXCLUDED.must_change_password`;
+    }
+    if (usrs.length)
+      await dst`SELECT setval(pg_get_serial_sequence('users','id'), (SELECT MAX(id) FROM users))`;
+    for (const r of slrs)
+      await dst`INSERT INTO sellers ${dst(r)} ON CONFLICT DO NOTHING`;
+    if (slrs.length)
+      await dst`SELECT setval(pg_get_serial_sequence('sellers','id'), (SELECT MAX(id) FROM sellers))`;
+    for (const r of clts)
+      await dst`INSERT INTO clients ${dst(r)} ON CONFLICT DO NOTHING`;
+    if (clts.length)
+      await dst`SELECT setval(pg_get_serial_sequence('clients','id'), (SELECT MAX(id) FROM clients))`;
+    for (const r of tsks)
+      await dst`INSERT INTO tasks ${dst(r)} ON CONFLICT DO NOTHING`;
+    if (tsks.length)
+      await dst`SELECT setval(pg_get_serial_sequence('tasks','id'), (SELECT MAX(id) FROM tasks))`;
+    for (const r of rmds)
+      await dst`INSERT INTO reminders ${dst(r)} ON CONFLICT DO NOTHING`;
+    if (rmds.length)
+      await dst`SELECT setval(pg_get_serial_sequence('reminders','id'), (SELECT MAX(id) FROM reminders))`;
+    console.log("[auto-migrate] Done:", { users: usrs.length, sellers: slrs.length, clients: clts.length, tasks: tsks.length, reminders: rmds.length });
+  } catch (err) {
+    if (err?.message !== "timeout")
+      console.error("[auto-migrate]", err?.message ?? err);
+  } finally {
+    await Promise.allSettled([
+      src?.end({ timeout: 3 }),
+      dst?.end({ timeout: 3 })
+    ]);
+  }
+}
+autoMigrateIfNeeded().catch((err) => console.error("[auto-migrate] uncaught:", err));
 var PROD_ORIGINS = [
   "https://sal-vita-vendas.vercel.app",
   "https://lembretes.salvitarn.com.br",
@@ -52825,9 +52891,9 @@ app.post("/api/migrate-from-neon", import_express.default.json(), async (req, re
   if (!neonUrl) {
     return res.status(400).json({ error: "neonUrl required" });
   }
-  const postgres2 = (await Promise.resolve().then(() => (init_src(), src_exports))).default;
-  const src = postgres2(neonUrl, { max: 1, prepare: false, ssl: "require" });
-  const dst = postgres2(process.env.DATABASE_URL, { max: 1, prepare: false, ssl: "require" });
+  const postgres3 = (await Promise.resolve().then(() => (init_src(), src_exports))).default;
+  const src = postgres3(neonUrl, { max: 1, prepare: false, ssl: "require" });
+  const dst = postgres3(process.env.DATABASE_URL, { max: 1, prepare: false, ssl: "require" });
   try {
     const counts = {};
     const users2 = await src`SELECT * FROM users`;

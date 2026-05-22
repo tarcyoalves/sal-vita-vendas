@@ -33,6 +33,77 @@ const dbReady = Promise.all([
   withTimeout(ensureOrdersTablesExist(), 10_000).catch(err => console.error('Orders DB init error:', err)),
 ]);
 
+// Auto-migrate sellers/tasks from ORDERS_DATABASE_URL if it has data and Supabase is empty.
+// ORDERS_DATABASE_URL may still point to the old Neon database that has all the CRM data.
+async function autoMigrateIfNeeded(): Promise<void> {
+  const srcUrl = process.env.ORDERS_DATABASE_URL;
+  const dstUrl = process.env.DATABASE_URL!;
+  if (!srcUrl || srcUrl === dstUrl) return;
+
+  let src: ReturnType<typeof postgres> | null = null;
+  let dst: ReturnType<typeof postgres> | null = null;
+  try {
+    dst = postgres(dstUrl, { max: 1, prepare: false, ssl: 'require', connect_timeout: 10 });
+
+    // Only proceed if destination has no sellers
+    const dstCheck = await Promise.race([
+      dst`SELECT COUNT(*)::int AS cnt FROM sellers`,
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 6_000)),
+    ]) as Array<{ cnt: number }>;
+    if ((dstCheck[0]?.cnt ?? 0) > 0) return; // Already has data
+
+    src = postgres(srcUrl, { max: 1, prepare: false, ssl: 'require', connect_timeout: 10 });
+
+    // Check if source has sellers
+    const srcCheck = await Promise.race([
+      src`SELECT COUNT(*)::int AS cnt FROM sellers`,
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 8_000)),
+    ]) as Array<{ cnt: number }>;
+    const srcCount = srcCheck[0]?.cnt ?? 0;
+    if (srcCount === 0) return; // Source also empty or no sellers table
+
+    console.log(`[auto-migrate] Found ${srcCount} sellers in ORDERS_DATABASE_URL — migrating to Supabase`);
+
+    const [usrs, slrs, clts, tsks, rmds] = await Promise.all([
+      src`SELECT * FROM users`,
+      src`SELECT * FROM sellers`,
+      src`SELECT * FROM clients`,
+      src`SELECT * FROM tasks`,
+      src`SELECT * FROM reminders`,
+    ]);
+
+    for (const u of usrs) {
+      await dst`INSERT INTO users ${dst(u)} ON CONFLICT (email) DO UPDATE SET
+        name = EXCLUDED.name, password_hash = EXCLUDED.password_hash,
+        role = EXCLUDED.role, must_change_password = EXCLUDED.must_change_password`;
+    }
+    if (usrs.length) await dst`SELECT setval(pg_get_serial_sequence('users','id'), (SELECT MAX(id) FROM users))`;
+
+    for (const r of slrs) await dst`INSERT INTO sellers ${dst(r)} ON CONFLICT DO NOTHING`;
+    if (slrs.length) await dst`SELECT setval(pg_get_serial_sequence('sellers','id'), (SELECT MAX(id) FROM sellers))`;
+
+    for (const r of clts) await dst`INSERT INTO clients ${dst(r)} ON CONFLICT DO NOTHING`;
+    if (clts.length) await dst`SELECT setval(pg_get_serial_sequence('clients','id'), (SELECT MAX(id) FROM clients))`;
+
+    for (const r of tsks) await dst`INSERT INTO tasks ${dst(r)} ON CONFLICT DO NOTHING`;
+    if (tsks.length) await dst`SELECT setval(pg_get_serial_sequence('tasks','id'), (SELECT MAX(id) FROM tasks))`;
+
+    for (const r of rmds) await dst`INSERT INTO reminders ${dst(r)} ON CONFLICT DO NOTHING`;
+    if (rmds.length) await dst`SELECT setval(pg_get_serial_sequence('reminders','id'), (SELECT MAX(id) FROM reminders))`;
+
+    console.log('[auto-migrate] Done:', { users: usrs.length, sellers: slrs.length, clients: clts.length, tasks: tsks.length, reminders: rmds.length });
+  } catch (err: any) {
+    if (err?.message !== 'timeout') console.error('[auto-migrate]', err?.message ?? err);
+  } finally {
+    await Promise.allSettled([
+      src?.end({ timeout: 3 }),
+      dst?.end({ timeout: 3 }),
+    ]);
+  }
+}
+
+autoMigrateIfNeeded().catch(err => console.error('[auto-migrate] uncaught:', err));
+
 // ── Allowed origins ────────────────────────────────────────────────────────────
 const PROD_ORIGINS = [
   'https://sal-vita-vendas.vercel.app',
