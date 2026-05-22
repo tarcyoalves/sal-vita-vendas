@@ -45027,10 +45027,11 @@ function drizzle(client3, config = {}) {
 init_src();
 init_schema2();
 var client = src_default(process.env.DATABASE_URL, {
-  max: 5,
+  max: 2,
+  idle_timeout: 20,
   prepare: false,
   ssl: "require",
-  connect_timeout: 10
+  connect_timeout: 15
 });
 var db = drizzle(client, { schema: schema_exports });
 
@@ -50733,7 +50734,7 @@ var tvRouter = router({
 init_src();
 init_schema2();
 var url = process.env.ORDERS_DATABASE_URL ?? process.env.DATABASE_URL;
-var client2 = src_default(url, { max: 1, prepare: false, ssl: "require" });
+var client2 = src_default(url, { max: 1, idle_timeout: 20, prepare: false, ssl: "require", connect_timeout: 15 });
 var ordersDb = drizzle(client2, { schema: schema_exports });
 
 // server/routers/shipping.ts
@@ -52588,10 +52589,7 @@ app.get("/api/db-health", async (_req, res) => {
     res.status(500).json({ db: "error", message: err.message });
   }
 });
-app.use(async (_req, _res, next) => {
-  await dbReady;
-  next();
-});
+dbReady.catch((err) => console.error("Background dbReady failed:", err));
 app.post("/api/mp-webhook", import_express.default.raw({ type: "application/json" }), async (req, res) => {
   try {
     const rawBody = req.body.toString("utf8");

@@ -87,11 +87,10 @@ app.get('/api/db-health', async (_req, res) => {
   }
 });
 
-// Wait for DB tables to be ready before processing any request
-app.use(async (_req, _res, next) => {
-  await dbReady;
-  next();
-});
+// Run schema migration in background — do NOT block requests.
+// Tables already exist from prior successful migration; new instances
+// should not wait 10s for migration before serving any tRPC call.
+dbReady.catch(err => console.error('Background dbReady failed:', err));
 
 // Raw body must be captured before express.json() for HMAC verification
 app.post('/api/mp-webhook', express.raw({ type: 'application/json' }), async (req, res) => {
