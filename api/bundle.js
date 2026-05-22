@@ -52596,20 +52596,34 @@ app.use((0, import_cors.default)({
 app.get("/api/db-health", async (_req, res) => {
   try {
     const t0 = Date.now();
-    const [, sellers2] = await Promise.all([
+    const [, sellersRes] = await Promise.all([
       client`SELECT 1`,
       client`SELECT COUNT(*)::int AS cnt FROM sellers`
     ]);
     const dstUrl = process.env.DATABASE_URL;
+    const srcUrl = process.env.ORDERS_DATABASE_URL;
+    let srcProbe = {};
+    if (srcUrl && srcUrl !== dstUrl) {
+      let srcClient = null;
+      try {
+        srcClient = src_default(srcUrl, { max: 1, prepare: false, ssl: "require", connect_timeout: 8 });
+        const rows = await Promise.race([
+          srcClient`SELECT COUNT(*)::int AS cnt FROM sellers`,
+          new Promise((_, rej) => setTimeout(() => rej(new Error("probe_timeout_8s")), 8e3))
+        ]);
+        srcProbe = { sellers: rows[0]?.cnt ?? 0 };
+      } catch (e) {
+        srcProbe = { error: e.message };
+      } finally {
+        await srcClient?.end({ timeout: 2 }).catch(() => {
+        });
+      }
+    }
     res.json({
       db: "ok",
       ms: Date.now() - t0,
-      sellers: sellers2[0]?.cnt ?? 0,
-      env: {
-        ORDERS_DATABASE_URL: !process.env.ORDERS_DATABASE_URL ? "unset" : process.env.ORDERS_DATABASE_URL === dstUrl ? "same-as-dst" : "set",
-        SALLOG_DATABASE_URL: !process.env.SALLOG_DATABASE_URL ? "unset" : process.env.SALLOG_DATABASE_URL === dstUrl ? "same-as-dst" : "set",
-        NEON_DATABASE_URL: !process.env.NEON_DATABASE_URL ? "unset" : process.env.NEON_DATABASE_URL === dstUrl ? "same-as-dst" : "set"
-      }
+      sellers: sellersRes[0]?.cnt ?? 0,
+      src: srcUrl ? srcProbe : "no-source-url"
     });
   } catch (err) {
     res.status(500).json({ db: "error", message: err.message });

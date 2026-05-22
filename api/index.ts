@@ -159,20 +159,36 @@ app.use(cors({
 app.get('/api/db-health', async (_req, res) => {
   try {
     const t0 = Date.now();
-    const [, sellers] = await Promise.all([
+    const [, sellersRes] = await Promise.all([
       sqlClient`SELECT 1`,
       sqlClient`SELECT COUNT(*)::int AS cnt FROM sellers`,
     ]);
     const dstUrl = process.env.DATABASE_URL!;
+    const srcUrl = process.env.ORDERS_DATABASE_URL;
+
+    // Probe source DB synchronously so we can see seller count and errors in HTTP response
+    let srcProbe: { sellers?: number; error?: string } = {};
+    if (srcUrl && srcUrl !== dstUrl) {
+      let srcClient: ReturnType<typeof postgres> | null = null;
+      try {
+        srcClient = postgres(srcUrl, { max: 1, prepare: false, ssl: 'require', connect_timeout: 8 });
+        const rows = await Promise.race([
+          srcClient`SELECT COUNT(*)::int AS cnt FROM sellers`,
+          new Promise<never>((_, rej) => setTimeout(() => rej(new Error('probe_timeout_8s')), 8_000)),
+        ]) as Array<{ cnt: number }>;
+        srcProbe = { sellers: rows[0]?.cnt ?? 0 };
+      } catch (e: any) {
+        srcProbe = { error: e.message };
+      } finally {
+        await srcClient?.end({ timeout: 2 }).catch(() => {});
+      }
+    }
+
     res.json({
       db: 'ok',
       ms: Date.now() - t0,
-      sellers: (sellers as Array<{cnt:number}>)[0]?.cnt ?? 0,
-      env: {
-        ORDERS_DATABASE_URL: !process.env.ORDERS_DATABASE_URL ? 'unset' : process.env.ORDERS_DATABASE_URL === dstUrl ? 'same-as-dst' : 'set',
-        SALLOG_DATABASE_URL: !process.env.SALLOG_DATABASE_URL ? 'unset' : process.env.SALLOG_DATABASE_URL === dstUrl ? 'same-as-dst' : 'set',
-        NEON_DATABASE_URL:   !process.env.NEON_DATABASE_URL   ? 'unset' : process.env.NEON_DATABASE_URL   === dstUrl ? 'same-as-dst' : 'set',
-      },
+      sellers: (sellersRes as Array<{cnt:number}>)[0]?.cnt ?? 0,
+      src: srcUrl ? srcProbe : 'no-source-url',
     });
   } catch (err: any) {
     res.status(500).json({ db: 'error', message: err.message });
