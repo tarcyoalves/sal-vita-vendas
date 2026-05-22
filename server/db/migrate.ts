@@ -2,6 +2,11 @@ import { neon } from '@neondatabase/serverless';
 
 export async function ensureTablesExist() {
   const sql = neon(process.env.DATABASE_URL!);
+
+  // Attempt seed immediately — silently skips if users table doesn't exist yet.
+  // Handles the case where a prior Lambda freeze created tables but skipped the seed.
+  await seedAdminIfNeeded(sql).catch(() => {});
+
   try {
     // Fast probe: skip full DDL only when all 5 core tables exist
     const check = await sql`

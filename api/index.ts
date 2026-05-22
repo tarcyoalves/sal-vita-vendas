@@ -30,9 +30,13 @@ function withTimeout(p: Promise<unknown>, ms: number): Promise<unknown> {
 }
 
 const dbReady = Promise.all([
-  withTimeout(ensureTablesExist(), 30_000).catch(err => console.error('DB init error:', err)),
+  withTimeout(ensureTablesExist(), 20_000).catch(err => console.error('DB init error:', err)),
   withTimeout(ensureOrdersTablesExist(), 10_000).catch(err => console.error('Orders DB init error:', err)),
 ]);
+
+// Set once dbReady settles so the guard middleware only blocks the very first request
+let migrationSettled = false;
+dbReady.then(() => { migrationSettled = true; });
 
 // CRM data auto-migration: only runs if a source DB with a 'sellers' table is available.
 // ORDERS_DATABASE_URL is the e-commerce DB (no CRM tables) so it is skipped automatically.
@@ -169,9 +173,6 @@ app.get('/api/db-health', async (_req, res) => {
   }
 });
 
-// Run schema migration in background — do NOT block requests.
-// Tables already exist from prior successful migration; new instances
-// should not wait 10s for migration before serving any tRPC call.
 dbReady.catch(err => console.error('Background dbReady failed:', err));
 
 // Raw body must be captured before express.json() for HMAC verification
@@ -316,6 +317,14 @@ app.use('/api/trpc/shipping.createPayment', orderLimiter);
 app.use('/api/trpc/recovery.trackCart', cartTrackLimiter);
 app.use('/api/trpc/recovery.validateCoupon', couponCheckLimiter);
 app.use('/api/trpc/recovery.chat', chatLimiter);
+
+// On the very first request after a cold start, wait for migration to settle
+// so the admin seed and schema exist before any login attempt.
+// After the first request, migrationSettled=true and all subsequent requests skip the wait.
+app.use('/api/trpc', async (_req, _res, next) => {
+  if (!migrationSettled) await dbReady;
+  next();
+});
 
 app.use(
   '/api/trpc',

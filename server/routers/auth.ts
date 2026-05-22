@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import { eq } from 'drizzle-orm';
 import { router, publicProcedure, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
@@ -31,7 +32,7 @@ export const authRouter = router({
       const [user] = await db.select().from(users).where(eq(users.email, input.email));
       const valid = user ? verifyPassword(input.password, user.passwordHash) : (verifyPassword(input.password, DUMMY_HASH), false);
       if (!valid) {
-        throw new Error('Email ou senha inválidos');
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Email ou senha inválidos' });
       }
       const token = signToken({ id: user.id, email: user.email, name: user.name, role: user.role });
       const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
