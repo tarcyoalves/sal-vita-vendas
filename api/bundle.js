@@ -52512,17 +52512,17 @@ async function autoMigrateIfNeeded() {
   let dst = null;
   let src = null;
   try {
-    dst = src_default(dstUrl, { max: 1, prepare: false, ssl: "require", connect_timeout: 5 });
+    dst = src_default(dstUrl, { max: 1, prepare: false, ssl: "require", connect_timeout: 8 });
     const dstRows = await Promise.race([
       dst`SELECT COUNT(*)::int AS cnt FROM sellers`,
-      new Promise((_, rej) => setTimeout(() => rej(new Error("dst_timeout")), 8e3))
+      new Promise((_, rej) => setTimeout(() => rej(new Error("dst_timeout")), 1e4))
     ]);
     if ((dstRows[0]?.cnt ?? 0) > 0)
       return;
-    src = src_default(srcUrl, { max: 1, prepare: false, ssl: "require", connect_timeout: 5 });
+    src = src_default(srcUrl, { max: 1, prepare: false, ssl: "require", connect_timeout: 10 });
     const srcRows = await Promise.race([
       src`SELECT COUNT(*)::int AS cnt FROM sellers`,
-      new Promise((_, rej) => setTimeout(() => rej(new Error("src_timeout")), 8e3))
+      new Promise((_, rej) => setTimeout(() => rej(new Error("src_timeout")), 12e3))
     ]);
     const srcCount = srcRows[0]?.cnt ?? 0;
     if (srcCount === 0)

@@ -53,19 +53,20 @@ async function autoMigrateIfNeeded(): Promise<void> {
   let dst: ReturnType<typeof postgres> | null = null;
   let src: ReturnType<typeof postgres> | null = null;
   try {
-    dst = postgres(dstUrl, { max: 1, prepare: false, ssl: 'require', connect_timeout: 5 });
+    dst = postgres(dstUrl, { max: 1, prepare: false, ssl: 'require', connect_timeout: 8 });
 
     const dstRows = await Promise.race([
       dst`SELECT COUNT(*)::int AS cnt FROM sellers`,
-      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('dst_timeout')), 8_000)),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('dst_timeout')), 10_000)),
     ]) as unknown as Array<{ cnt: number }>;
     if ((dstRows[0]?.cnt ?? 0) > 0) return;
 
-    src = postgres(srcUrl!, { max: 1, prepare: false, ssl: 'require', connect_timeout: 5 });
+    // Neon free-tier may take up to 10 s to wake from auto-suspend
+    src = postgres(srcUrl!, { max: 1, prepare: false, ssl: 'require', connect_timeout: 10 });
 
     const srcRows = await Promise.race([
       src`SELECT COUNT(*)::int AS cnt FROM sellers`,
-      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('src_timeout')), 8_000)),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('src_timeout')), 12_000)),
     ]) as unknown as Array<{ cnt: number }>;
     const srcCount = srcRows[0]?.cnt ?? 0;
     if (srcCount === 0) return;
