@@ -7,7 +7,7 @@ export async function ensureTablesExist() {
     max: 1,
     prepare: false,
     ssl: 'require',
-    connect_timeout: 8,
+    connect_timeout: 20,  // Neon auto-suspend wake-up can take up to 15 s
   });
   try {
     // Fast-path: single probe query. If 'users' table exists, all tables were
@@ -24,10 +24,10 @@ export async function ensureTablesExist() {
         return;
       }
     } catch (probeErr: any) {
-      // Probe failed — assume tables exist (created by a prior deployment) and
-      // return early rather than blocking the cold start with DDL attempts.
-      console.warn('⚠️ DB probe failed, skipping migration:', probeErr?.message ?? probeErr);
-      return;
+      // Probe failed — log but do NOT return early. On a fresh Neon DB the
+      // compute may still be waking up when the probe fires; returning here
+      // would permanently skip DDL and leave the DB with no tables.
+      console.warn('⚠️ DB probe failed, proceeding to DDL:', probeErr?.message ?? probeErr);
     }
 
     // Full schema migration only runs on fresh databases

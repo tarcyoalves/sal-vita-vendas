@@ -30,7 +30,7 @@ function withTimeout(p: Promise<unknown>, ms: number): Promise<unknown> {
 }
 
 const dbReady = Promise.all([
-  withTimeout(ensureTablesExist(), 10_000).catch(err => console.error('DB init error:', err)),
+  withTimeout(ensureTablesExist(), 30_000).catch(err => console.error('DB init error:', err)),
   withTimeout(ensureOrdersTablesExist(), 10_000).catch(err => console.error('Orders DB init error:', err)),
 ]);
 
