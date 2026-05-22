@@ -1,39 +1,24 @@
-import postgres from 'postgres';
+import { neon } from '@neondatabase/serverless';
 
 export async function ensureTablesExist() {
-  const dbUrl = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL!;
-  // Use a dedicated client so a hanging migration never blocks the main db pool
-  const sql = postgres(dbUrl, {
-    max: 1,
-    prepare: false,
-    ssl: 'require',
-    connect_timeout: 20,  // Neon auto-suspend wake-up can take up to 15 s
-  });
+  const sql = neon(process.env.DATABASE_URL!);
   try {
-    // Fast-path: probe all critical tables. Only skip DDL when ALL 5 core
-    // tables exist — guards against Lambda-freeze mid-migration leaving a
-    // partial schema (e.g. 'users' created but 'sellers' not).
-    // All DDL uses CREATE TABLE IF NOT EXISTS so re-running is always safe.
-    try {
-      const check = await sql`
-        SELECT COUNT(*)::int AS cnt
-        FROM information_schema.tables
-        WHERE table_schema = 'public'
-          AND table_name IN ('users', 'sellers', 'tasks', 'clients', 'reminders')
-      `;
-      if ((check[0]?.cnt ?? 0) >= 5) {
-        console.log('✅ Tables already exist — skipping DDL');
-        return;
-      }
-      console.log(`⚠️ Only ${check[0]?.cnt ?? 0}/5 core tables found — running DDL`);
-    } catch (probeErr: any) {
-      // Probe failed — log but do NOT return early. On a fresh Neon DB the
-      // compute may still be waking up when the probe fires; returning here
-      // would permanently skip DDL and leave the DB with no tables.
-      console.warn('⚠️ DB probe failed, proceeding to DDL:', probeErr?.message ?? probeErr);
+    // Fast probe: skip full DDL only when all 5 core tables exist
+    const check = await sql`
+      SELECT COUNT(*)::int AS cnt
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_name IN ('users', 'sellers', 'tasks', 'clients', 'reminders')
+    `;
+    const found = (check[0] as { cnt: number })?.cnt ?? 0;
+    if (found >= 5) {
+      await runIncrementalMigrations(sql);
+      console.log('✅ DB incremental migrations done');
+      return;
     }
+    console.log(`⚠️ Only ${found}/5 core tables — running full DDL`);
 
-    // Full schema migration only runs on fresh databases
+    // ── Core CRM tables ──────────────────────────────────────────────────────
     await sql`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -147,140 +132,29 @@ export async function ensureTablesExist() {
       )
     `;
 
-    await sql`
-      CREATE TABLE IF NOT EXISTS site_orders (
-        id SERIAL PRIMARY KEY,
-        customer_name TEXT NOT NULL,
-        customer_phone TEXT NOT NULL,
-        customer_email TEXT,
-        customer_cpf TEXT,
-        postal_code TEXT NOT NULL,
-        address TEXT NOT NULL,
-        number TEXT NOT NULL,
-        complement TEXT,
-        neighborhood TEXT NOT NULL,
-        city TEXT NOT NULL,
-        state TEXT NOT NULL,
-        quantity INTEGER NOT NULL DEFAULT 1,
-        product TEXT NOT NULL DEFAULT 'Sal Marinho Integral 1kg',
-        unit_price TEXT NOT NULL DEFAULT '29.90',
-        shipping_service_id TEXT,
-        shipping_service_name TEXT,
-        shipping_price TEXT,
-        total_price TEXT,
-        status TEXT NOT NULL DEFAULT 'pending',
-        payment_status TEXT NOT NULL DEFAULT 'awaiting',
-        me_order_id TEXT,
-        me_label_url TEXT,
-        tracking_code TEXT,
-        mp_preference_id TEXT,
-        mp_payment_id TEXT,
-        notes TEXT,
-        coupon_code TEXT,
-        coupon_discount TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-      )
-    `;
-
-    await sql`
-      CREATE TABLE IF NOT EXISTS abandoned_carts (
-        id SERIAL PRIMARY KEY,
-        customer_name TEXT NOT NULL,
-        customer_phone TEXT NOT NULL UNIQUE,
-        customer_email TEXT,
-        postal_code TEXT,
-        quantity INTEGER DEFAULT 1,
-        step_reached INTEGER DEFAULT 1,
-        status TEXT NOT NULL DEFAULT 'checkout_started',
-        recovered BOOLEAN DEFAULT false NOT NULL,
-        recovery_sent_at TIMESTAMP,
-        abandoned_at TIMESTAMP,
-        converted_at TIMESTAMP,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-      )
-    `;
-
-    await sql`
-      CREATE TABLE IF NOT EXISTS automation_runs (
-        id SERIAL PRIMARY KEY,
-        cart_id INTEGER NOT NULL,
-        customer_phone TEXT NOT NULL,
-        rule_name TEXT NOT NULL DEFAULT 'abandoned_cart_30m',
-        status TEXT NOT NULL DEFAULT 'scheduled',
-        scheduled_for TIMESTAMP NOT NULL,
-        sent_at TIMESTAMP,
-        cancelled_at TIMESTAMP,
-        provider_response TEXT,
-        ai_body TEXT,
-        ai_reasoning TEXT,
-        ai_processed_at TIMESTAMP,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-      )
-    `;
-
-    await sql`
-      CREATE TABLE IF NOT EXISTS coupons (
-        id SERIAL PRIMARY KEY,
-        code TEXT NOT NULL UNIQUE,
-        description TEXT,
-        discount_type TEXT NOT NULL DEFAULT 'percent',
-        discount_value TEXT NOT NULL DEFAULT '10',
-        min_order_value TEXT DEFAULT '0',
-        max_uses INTEGER DEFAULT 100,
-        used_count INTEGER DEFAULT 0 NOT NULL,
-        expires_at TIMESTAMP,
-        active BOOLEAN DEFAULT true NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-      )
-    `;
-
-    await sql`
-      CREATE TABLE IF NOT EXISTS msg_templates (
-        id SERIAL PRIMARY KEY,
-        slug TEXT NOT NULL UNIQUE,
-        type TEXT NOT NULL,
-        label TEXT NOT NULL,
-        body TEXT NOT NULL,
-        active BOOLEAN DEFAULT true NOT NULL,
-        is_default BOOLEAN DEFAULT false NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-      )
-    `;
-
-    // Performance indexes
-    await sql`CREATE INDEX IF NOT EXISTS tasks_user_id_idx ON tasks(user_id)`;
-    await sql`CREATE INDEX IF NOT EXISTS tasks_assigned_to_idx ON tasks(assigned_to)`;
-    await sql`CREATE INDEX IF NOT EXISTS tasks_status_idx ON tasks(status)`;
-    await sql`CREATE INDEX IF NOT EXISTS tasks_reminder_date_idx ON tasks(reminder_date)`;
+    // ── Indexes ───────────────────────────────────────────────────────────────
+    await sql`CREATE INDEX IF NOT EXISTS tasks_user_id_idx           ON tasks(user_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS tasks_assigned_to_idx       ON tasks(assigned_to)`;
+    await sql`CREATE INDEX IF NOT EXISTS tasks_status_idx            ON tasks(status)`;
+    await sql`CREATE INDEX IF NOT EXISTS tasks_reminder_date_idx     ON tasks(reminder_date)`;
     await sql`CREATE INDEX IF NOT EXISTS tasks_last_contacted_at_idx ON tasks(last_contacted_at)`;
-    await sql`CREATE INDEX IF NOT EXISTS work_sessions_user_id_idx ON work_sessions(user_id)`;
-    await sql`CREATE INDEX IF NOT EXISTS work_sessions_status_idx ON work_sessions(status)`;
+    await sql`CREATE INDEX IF NOT EXISTS work_sessions_user_id_idx   ON work_sessions(user_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS work_sessions_status_idx    ON work_sessions(status)`;
     await sql`CREATE INDEX IF NOT EXISTS work_sessions_started_at_idx ON work_sessions(started_at)`;
-    await sql`CREATE INDEX IF NOT EXISTS chat_messages_user_id_idx ON chat_messages(user_id)`;
-    await sql`CREATE INDEX IF NOT EXISTS knowledge_docs_user_id_idx ON knowledge_documents(user_id)`;
-    await sql`CREATE INDEX IF NOT EXISTS sellers_status_idx ON sellers(status)`;
-    await sql`CREATE INDEX IF NOT EXISTS sellers_user_id_idx ON sellers(user_id)`;
-    await sql`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`;
-    await sql`CREATE INDEX IF NOT EXISTS site_orders_created_at_idx ON site_orders(created_at)`;
+    await sql`CREATE INDEX IF NOT EXISTS chat_messages_user_id_idx   ON chat_messages(user_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS knowledge_docs_user_id_idx  ON knowledge_documents(user_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS sellers_status_idx          ON sellers(status)`;
+    await sql`CREATE INDEX IF NOT EXISTS sellers_user_id_idx         ON sellers(user_id)`;
 
-    // Row Level Security — wrapped individually; Supabase transaction pooler
-    // may reject ALTER TABLE in some connection modes but tables still work.
-    const rlsTables = ['users','sellers','tasks','clients','reminders',
-      'chat_messages','knowledge_documents','work_sessions','site_orders',
-      'abandoned_carts','automation_runs','coupons','msg_templates'];
-    for (const t of rlsTables) {
-      try {
-        await sql`ALTER TABLE ${sql(t)} ENABLE ROW LEVEL SECURITY`;
-      } catch { /* RLS already enabled or not supported in this connection mode */ }
+    // ── RLS ───────────────────────────────────────────────────────────────────
+    for (const t of ['users','sellers','tasks','clients','reminders',
+                     'chat_messages','knowledge_documents','work_sessions']) {
+      try { await sql`ALTER TABLE ${sql(t)} ENABLE ROW LEVEL SECURITY`; } catch {}
     }
 
-    // Seed admin user on fresh database
+    // ── Seed admin on fresh DB ────────────────────────────────────────────────
     const existing = await sql`SELECT id FROM users LIMIT 1`;
-    if (existing.length === 0) {
+    if ((existing as unknown[]).length === 0) {
       await sql`
         INSERT INTO users (name, email, password_hash, role, must_change_password)
         VALUES (
@@ -291,14 +165,35 @@ export async function ensureTablesExist() {
           false
         )
       `;
-      console.log('✅ Admin user created: tarcyo.alves@gmail.com / admin123');
+      console.log('✅ Admin user seeded: tarcyo.alves@gmail.com / admin123');
     }
 
-    console.log('✅ Database tables, indexes, and RLS ensured');
+    console.log('✅ Full schema created successfully');
   } catch (err) {
     console.error('❌ Migration error:', err);
     throw err;
-  } finally {
-    await sql.end({ timeout: 2 });
   }
+}
+
+async function runIncrementalMigrations(sql: ReturnType<typeof neon>) {
+  await sql`ALTER TABLE sellers ADD COLUMN IF NOT EXISTS work_hours_goal INTEGER NOT NULL DEFAULT 8`;
+  await sql`ALTER TABLE tasks   ADD COLUMN IF NOT EXISTS last_contacted_at TIMESTAMP`;
+  await sql`ALTER TABLE tasks   ADD COLUMN IF NOT EXISTS reminder_enabled BOOLEAN DEFAULT true`;
+  await sql`ALTER TABLE users   ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT false NOT NULL`;
+
+  await sql`CREATE INDEX IF NOT EXISTS tasks_user_id_idx           ON tasks(user_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS tasks_assigned_to_idx       ON tasks(assigned_to)`;
+  await sql`CREATE INDEX IF NOT EXISTS tasks_status_idx            ON tasks(status)`;
+  await sql`CREATE INDEX IF NOT EXISTS tasks_reminder_date_idx     ON tasks(reminder_date)`;
+  await sql`CREATE INDEX IF NOT EXISTS tasks_last_contacted_at_idx ON tasks(last_contacted_at)`;
+  await sql`CREATE INDEX IF NOT EXISTS work_sessions_user_id_idx   ON work_sessions(user_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS work_sessions_status_idx    ON work_sessions(status)`;
+  await sql`CREATE INDEX IF NOT EXISTS work_sessions_started_at_idx ON work_sessions(started_at)`;
+  await sql`CREATE INDEX IF NOT EXISTS chat_messages_user_id_idx   ON chat_messages(user_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS knowledge_docs_user_id_idx  ON knowledge_documents(user_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS sellers_status_idx          ON sellers(status)`;
+  await sql`CREATE INDEX IF NOT EXISTS sellers_user_id_idx         ON sellers(user_id)`;
+
+  // Purge chat history > 90 days to keep Neon free-tier storage in check
+  try { await sql`DELETE FROM chat_messages WHERE created_at < NOW() - INTERVAL '90 days'`; } catch {}
 }
