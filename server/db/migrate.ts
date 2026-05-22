@@ -10,19 +10,22 @@ export async function ensureTablesExist() {
     connect_timeout: 20,  // Neon auto-suspend wake-up can take up to 15 s
   });
   try {
-    // Fast-path: single probe query. If 'users' table exists, all tables were
-    // created by a previous successful deployment — skip the full DDL block.
-    // This makes cold starts ~10x faster on warm databases.
+    // Fast-path: probe all critical tables. Only skip DDL when ALL 5 core
+    // tables exist — guards against Lambda-freeze mid-migration leaving a
+    // partial schema (e.g. 'users' created but 'sellers' not).
+    // All DDL uses CREATE TABLE IF NOT EXISTS so re-running is always safe.
     try {
       const check = await sql`
         SELECT COUNT(*)::int AS cnt
         FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name = 'users'
+        WHERE table_schema = 'public'
+          AND table_name IN ('users', 'sellers', 'tasks', 'clients', 'reminders')
       `;
-      if ((check[0]?.cnt ?? 0) > 0) {
+      if ((check[0]?.cnt ?? 0) >= 5) {
         console.log('✅ Tables already exist — skipping DDL');
         return;
       }
+      console.log(`⚠️ Only ${check[0]?.cnt ?? 0}/5 core tables found — running DDL`);
     } catch (probeErr: any) {
       // Probe failed — log but do NOT return early. On a fresh Neon DB the
       // compute may still be waking up when the probe fires; returning here
