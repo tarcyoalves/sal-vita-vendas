@@ -54,11 +54,11 @@ async function autoMigrateIfNeeded(): Promise<void> {
     const dstRows = await sqlClient`SELECT COUNT(*)::int AS cnt FROM sellers` as Array<{ cnt: number }>;
     if ((dstRows[0]?.cnt ?? 0) > 0) return; // already migrated
 
-    src = postgres(srcUrl!, { max: 1, prepare: false, ssl: 'require', connect_timeout: 20 });
+    src = postgres(srcUrl!, { max: 1, prepare: false, ssl: 'require', connect_timeout: 5 });
 
     const srcRows = await Promise.race([
       src`SELECT COUNT(*)::int AS cnt FROM sellers`,
-      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('src_timeout')), 20_000)),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('src_timeout')), 8_000)),
     ]) as Array<{ cnt: number }>;
     const srcCount = srcRows[0]?.cnt ?? 0;
     if (srcCount === 0) return;
@@ -97,7 +97,11 @@ async function autoMigrateIfNeeded(): Promise<void> {
   }
 }
 
-autoMigrateIfNeeded().catch(err => console.error('[auto-migrate] uncaught:', err));
+// Delay migration by 6 s so the first wave of cold-start requests gets
+// DB connections before migration competes for the pool.
+setTimeout(() => {
+  autoMigrateIfNeeded().catch(err => console.error('[auto-migrate] uncaught:', err));
+}, 6_000);
 
 // ── Allowed origins ────────────────────────────────────────────────────────────
 const PROD_ORIGINS = [

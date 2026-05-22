@@ -52061,6 +52061,20 @@ async function ensureTablesExist() {
     connect_timeout: 8
   });
   try {
+    try {
+      const check = await sql2`
+        SELECT COUNT(*)::int AS cnt
+        FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'users'
+      `;
+      if ((check[0]?.cnt ?? 0) > 0) {
+        console.log("\u2705 Tables already exist \u2014 skipping DDL");
+        return;
+      }
+    } catch (probeErr) {
+      console.warn("\u26A0\uFE0F DB probe failed, skipping migration:", probeErr?.message ?? probeErr);
+      return;
+    }
     await sql2`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -52500,10 +52514,10 @@ async function autoMigrateIfNeeded() {
     const dstRows = await client`SELECT COUNT(*)::int AS cnt FROM sellers`;
     if ((dstRows[0]?.cnt ?? 0) > 0)
       return;
-    src = src_default(srcUrl, { max: 1, prepare: false, ssl: "require", connect_timeout: 20 });
+    src = src_default(srcUrl, { max: 1, prepare: false, ssl: "require", connect_timeout: 5 });
     const srcRows = await Promise.race([
       src`SELECT COUNT(*)::int AS cnt FROM sellers`,
-      new Promise((_, rej) => setTimeout(() => rej(new Error("src_timeout")), 2e4))
+      new Promise((_, rej) => setTimeout(() => rej(new Error("src_timeout")), 8e3))
     ]);
     const srcCount = srcRows[0]?.cnt ?? 0;
     if (srcCount === 0)
@@ -52549,7 +52563,9 @@ async function autoMigrateIfNeeded() {
     });
   }
 }
-autoMigrateIfNeeded().catch((err) => console.error("[auto-migrate] uncaught:", err));
+setTimeout(() => {
+  autoMigrateIfNeeded().catch((err) => console.error("[auto-migrate] uncaught:", err));
+}, 6e3);
 var PROD_ORIGINS = [
   "https://sal-vita-vendas.vercel.app",
   "https://lembretes.salvitarn.com.br",
