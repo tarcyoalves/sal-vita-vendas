@@ -13,6 +13,7 @@ export async function ensureTablesExist() {
     const found = (check[0] as { cnt: number })?.cnt ?? 0;
     if (found >= 5) {
       await runIncrementalMigrations(sql);
+      await seedAdminIfNeeded(sql);
       console.log('✅ DB incremental migrations done');
       return;
     }
@@ -152,7 +153,19 @@ export async function ensureTablesExist() {
       try { await sql`ALTER TABLE ${sql(t)} ENABLE ROW LEVEL SECURITY`; } catch {}
     }
 
-    // ── Seed admin on fresh DB ────────────────────────────────────────────────
+    console.log('✅ Full schema created successfully');
+  } catch (err) {
+    console.error('❌ Migration error:', err);
+    throw err;
+  }
+
+  // Seed runs after BOTH full DDL and incremental paths so Lambda-freeze
+  // mid-migration never leaves the DB without the admin account.
+  await seedAdminIfNeeded(sql);
+}
+
+async function seedAdminIfNeeded(sql: ReturnType<typeof neon>) {
+  try {
     const existing = await sql`SELECT id FROM users LIMIT 1`;
     if ((existing as unknown[]).length === 0) {
       await sql`
@@ -165,14 +178,9 @@ export async function ensureTablesExist() {
           false
         )
       `;
-      console.log('✅ Admin user seeded: tarcyo.alves@gmail.com / admin123');
+      console.log('✅ Admin seeded: tarcyo.alves@gmail.com / admin123');
     }
-
-    console.log('✅ Full schema created successfully');
-  } catch (err) {
-    console.error('❌ Migration error:', err);
-    throw err;
-  }
+  } catch { /* users table may not exist yet on partial migration */ }
 }
 
 async function runIncrementalMigrations(sql: ReturnType<typeof neon>) {
