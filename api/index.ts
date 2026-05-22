@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import crypto from 'crypto';
+import postgres from 'postgres';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -409,7 +410,6 @@ app.post('/api/migrate-from-neon', express.json(), async (req, res) => {
     return res.status(400).json({ error: 'neonUrl required' });
   }
 
-  const postgres = (await import('postgres')).default;
   const src = postgres(neonUrl, { max: 1, prepare: false, ssl: 'require' });
   const dst = postgres(process.env.DATABASE_URL!, { max: 1, prepare: false, ssl: 'require' });
 
