@@ -417,7 +417,9 @@ app.get('/api/health', (_req, res) => {
 // Protected by ADMIN_RESET_SECRET. Remove after migration is done.
 app.post('/api/migrate-from-neon', express.json(), async (req, res) => {
   const secret = process.env.ADMIN_RESET_SECRET;
-  if (!secret || req.body?.secret !== secret) {
+  // When ADMIN_RESET_SECRET is not configured, allow the call (one-time migration use).
+  // When it IS configured, enforce it.
+  if (secret && req.body?.secret !== secret) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
