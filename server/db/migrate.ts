@@ -1,8 +1,9 @@
 import postgres from 'postgres';
 
 export async function ensureTablesExist() {
+  const dbUrl = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL!;
   // Use a dedicated client so a hanging migration never blocks the main db pool
-  const sql = postgres(process.env.DATABASE_URL!, {
+  const sql = postgres(dbUrl, {
     max: 1,
     prepare: false,
     ssl: 'require',

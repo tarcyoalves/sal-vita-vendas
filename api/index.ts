@@ -38,7 +38,7 @@ const dbReady = Promise.all([
 // ORDERS_DATABASE_URL is the e-commerce DB (no CRM tables) so it is skipped automatically.
 // To restore CRM data from an old Neon DB, call POST /api/migrate-from-neon with neonUrl + secret.
 async function autoMigrateIfNeeded(): Promise<void> {
-  const dstUrl = process.env.DATABASE_URL!;
+  const dstUrl = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL!;
   const candidates: [string, string | undefined][] = [
     ['CRM_DATABASE_URL',    process.env.CRM_DATABASE_URL],
     ['SALLOG_DATABASE_URL', process.env.SALLOG_DATABASE_URL],
@@ -418,7 +418,8 @@ app.post('/api/migrate-from-neon', express.json(), async (req, res) => {
   }
 
   const src = postgres(neonUrl, { max: 1, prepare: false, ssl: 'require' });
-  const dst = postgres(process.env.DATABASE_URL!, { max: 1, prepare: false, ssl: 'require' });
+  const dstUrl = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL!;
+  const dst = postgres(dstUrl, { max: 1, prepare: false, ssl: 'require' });
 
   try {
     const counts: Record<string, number> = {};
