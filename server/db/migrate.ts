@@ -147,111 +147,7 @@ export async function ensureTablesExist() {
       )
     `;
 
-    await sql`
-      CREATE TABLE IF NOT EXISTS site_orders (
-        id SERIAL PRIMARY KEY,
-        customer_name TEXT NOT NULL,
-        customer_phone TEXT NOT NULL,
-        customer_email TEXT,
-        customer_cpf TEXT,
-        postal_code TEXT NOT NULL,
-        address TEXT NOT NULL,
-        number TEXT NOT NULL,
-        complement TEXT,
-        neighborhood TEXT NOT NULL,
-        city TEXT NOT NULL,
-        state TEXT NOT NULL,
-        quantity INTEGER NOT NULL DEFAULT 1,
-        product TEXT NOT NULL DEFAULT 'Sal Marinho Integral 1kg',
-        unit_price TEXT NOT NULL DEFAULT '29.90',
-        shipping_service_id TEXT,
-        shipping_service_name TEXT,
-        shipping_price TEXT,
-        total_price TEXT,
-        status TEXT NOT NULL DEFAULT 'pending',
-        payment_status TEXT NOT NULL DEFAULT 'awaiting',
-        me_order_id TEXT,
-        me_label_url TEXT,
-        tracking_code TEXT,
-        mp_preference_id TEXT,
-        mp_payment_id TEXT,
-        notes TEXT,
-        coupon_code TEXT,
-        coupon_discount TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-      )
-    `;
-
-    await sql`
-      CREATE TABLE IF NOT EXISTS abandoned_carts (
-        id SERIAL PRIMARY KEY,
-        customer_name TEXT NOT NULL,
-        customer_phone TEXT NOT NULL UNIQUE,
-        customer_email TEXT,
-        postal_code TEXT,
-        quantity INTEGER DEFAULT 1,
-        step_reached INTEGER DEFAULT 1,
-        status TEXT NOT NULL DEFAULT 'checkout_started',
-        recovered BOOLEAN DEFAULT false NOT NULL,
-        recovery_sent_at TIMESTAMP,
-        abandoned_at TIMESTAMP,
-        converted_at TIMESTAMP,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-      )
-    `;
-
-    await sql`
-      CREATE TABLE IF NOT EXISTS automation_runs (
-        id SERIAL PRIMARY KEY,
-        cart_id INTEGER NOT NULL,
-        customer_phone TEXT NOT NULL,
-        rule_name TEXT NOT NULL DEFAULT 'abandoned_cart_30m',
-        status TEXT NOT NULL DEFAULT 'scheduled',
-        scheduled_for TIMESTAMP NOT NULL,
-        sent_at TIMESTAMP,
-        cancelled_at TIMESTAMP,
-        provider_response TEXT,
-        ai_body TEXT,
-        ai_reasoning TEXT,
-        ai_processed_at TIMESTAMP,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-      )
-    `;
-
-    await sql`
-      CREATE TABLE IF NOT EXISTS coupons (
-        id SERIAL PRIMARY KEY,
-        code TEXT NOT NULL UNIQUE,
-        description TEXT,
-        discount_type TEXT NOT NULL DEFAULT 'percent',
-        discount_value TEXT NOT NULL DEFAULT '10',
-        min_order_value TEXT DEFAULT '0',
-        max_uses INTEGER DEFAULT 100,
-        used_count INTEGER DEFAULT 0 NOT NULL,
-        expires_at TIMESTAMP,
-        active BOOLEAN DEFAULT true NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-      )
-    `;
-
-    await sql`
-      CREATE TABLE IF NOT EXISTS msg_templates (
-        id SERIAL PRIMARY KEY,
-        slug TEXT NOT NULL UNIQUE,
-        type TEXT NOT NULL,
-        label TEXT NOT NULL,
-        body TEXT NOT NULL,
-        active BOOLEAN DEFAULT true NOT NULL,
-        is_default BOOLEAN DEFAULT false NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-      )
-    `;
-
-    // Performance indexes
+    // Performance indexes (CRM tables only)
     await sql`CREATE INDEX IF NOT EXISTS tasks_user_id_idx ON tasks(user_id)`;
     await sql`CREATE INDEX IF NOT EXISTS tasks_assigned_to_idx ON tasks(assigned_to)`;
     await sql`CREATE INDEX IF NOT EXISTS tasks_status_idx ON tasks(status)`;
@@ -264,19 +160,22 @@ export async function ensureTablesExist() {
     await sql`CREATE INDEX IF NOT EXISTS knowledge_docs_user_id_idx ON knowledge_documents(user_id)`;
     await sql`CREATE INDEX IF NOT EXISTS sellers_status_idx ON sellers(status)`;
     await sql`CREATE INDEX IF NOT EXISTS sellers_user_id_idx ON sellers(user_id)`;
-    await sql`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`;
-    await sql`CREATE INDEX IF NOT EXISTS site_orders_created_at_idx ON site_orders(created_at)`;
 
-    // Row Level Security — wrapped individually; Supabase transaction pooler
-    // may reject ALTER TABLE in some connection modes but tables still work.
+    // Orders tables (site_orders, abandoned_carts, etc.) live in ORDERS_DATABASE_URL
+    // and are managed by server/db/ordersMigrate.ts — do NOT create them here.
+
     const rlsTables = ['users','sellers','tasks','clients','reminders',
-      'chat_messages','knowledge_documents','work_sessions','site_orders',
-      'abandoned_carts','automation_runs','coupons','msg_templates'];
+      'chat_messages','knowledge_documents','work_sessions'];
     for (const t of rlsTables) {
       try {
         await sql`ALTER TABLE ${sql(t)} ENABLE ROW LEVEL SECURITY`;
       } catch { /* RLS already enabled or not supported in this connection mode */ }
     }
+
+    // Purge chat history older than 90 days to keep storage under Neon free-tier limit
+    try {
+      await sql`DELETE FROM chat_messages WHERE created_at < NOW() - INTERVAL '90 days'`;
+    } catch { /* table may not exist yet on first run */ }
 
     // Seed admin user on fresh database
     const existing = await sql`SELECT id FROM users LIMIT 1`;

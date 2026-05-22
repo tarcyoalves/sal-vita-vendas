@@ -2,8 +2,9 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from './schema';
 
-// Prefer NEON_DATABASE_URL when set — allows switching from Supabase to Neon
-// by adding a single env var without removing DATABASE_URL.
+// DATABASE_URL → CRM Neon project (users, sellers, tasks, clients, reminders, etc.)
+// ORDERS_DATABASE_URL → Orders Neon project (site_orders, abandoned_carts, etc.)
+// NEON_DATABASE_URL is kept as a legacy override for backwards compatibility.
 const dbUrl = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL!;
 
 const client = postgres(dbUrl, {
