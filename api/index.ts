@@ -35,38 +35,33 @@ const dbReady = Promise.all([
 ]);
 
 // Auto-migrate sellers/tasks from ORDERS_DATABASE_URL if it has data and Supabase is empty.
-// ORDERS_DATABASE_URL may still point to the old Neon database that has all the CRM data.
+// Uses the main sqlClient pool for destination (already connected) to avoid extra connection overhead.
 async function autoMigrateIfNeeded(): Promise<void> {
   const srcUrl = process.env.ORDERS_DATABASE_URL;
   const dstUrl = process.env.DATABASE_URL!;
-  if (!srcUrl) { console.log('[auto-migrate] ORDERS_DATABASE_URL not set — skipping'); return; }
-  if (srcUrl === dstUrl) { console.log('[auto-migrate] ORDERS_DATABASE_URL same as DATABASE_URL — skipping'); return; }
+  console.log('[auto-migrate] checking — ORDERS_DATABASE_URL set:', !!srcUrl, 'same as DB:', srcUrl === dstUrl);
+  if (!srcUrl || srcUrl === dstUrl) return;
 
   let src: ReturnType<typeof postgres> | null = null;
-  let dst: ReturnType<typeof postgres> | null = null;
   try {
-    dst = postgres(dstUrl, { max: 1, prepare: false, ssl: 'require', connect_timeout: 10 });
+    // Use the main pool (sqlClient) for destination — already connected, no new handshake needed.
+    const dstRows = await sqlClient`SELECT COUNT(*)::int AS cnt FROM sellers` as Array<{ cnt: number }>;
+    const dstCount = dstRows[0]?.cnt ?? 0;
+    console.log(`[auto-migrate] Supabase sellers=${dstCount}`);
+    if (dstCount > 0) return;
 
-    // Only proceed if destination has no sellers
-    const dstCheck = await Promise.race([
-      dst`SELECT COUNT(*)::int AS cnt FROM sellers`,
-      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 6_000)),
-    ]) as Array<{ cnt: number }>;
-    const dstCount = dstCheck[0]?.cnt ?? 0;
-    if (dstCount > 0) { console.log(`[auto-migrate] Supabase already has ${dstCount} sellers — skipping`); return; }
+    // Connect to source (old Neon DB) — longer timeout in case it's throttled
+    src = postgres(srcUrl, { max: 1, prepare: false, ssl: 'require', connect_timeout: 20 });
 
-    console.log('[auto-migrate] Supabase sellers=0, checking ORDERS_DATABASE_URL source...');
-    src = postgres(srcUrl, { max: 1, prepare: false, ssl: 'require', connect_timeout: 10 });
-
-    // Check if source has sellers
-    const srcCheck = await Promise.race([
+    const srcRows = await Promise.race([
       src`SELECT COUNT(*)::int AS cnt FROM sellers`,
-      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 8_000)),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('src_timeout')), 20_000)),
     ]) as Array<{ cnt: number }>;
-    const srcCount = srcCheck[0]?.cnt ?? 0;
-    if (srcCount === 0) { console.log('[auto-migrate] Source also has 0 sellers — nothing to migrate'); return; }
+    const srcCount = srcRows[0]?.cnt ?? 0;
+    console.log(`[auto-migrate] source sellers=${srcCount}`);
+    if (srcCount === 0) return;
 
-    console.log(`[auto-migrate] Found ${srcCount} sellers in ORDERS_DATABASE_URL — migrating to Supabase`);
+    console.log(`[auto-migrate] migrating ${srcCount} sellers from source to Supabase...`);
 
     const [usrs, slrs, clts, tsks, rmds] = await Promise.all([
       src`SELECT * FROM users`,
@@ -77,32 +72,29 @@ async function autoMigrateIfNeeded(): Promise<void> {
     ]);
 
     for (const u of usrs) {
-      await dst`INSERT INTO users ${dst(u)} ON CONFLICT (email) DO UPDATE SET
+      await sqlClient`INSERT INTO users ${sqlClient(u)} ON CONFLICT (email) DO UPDATE SET
         name = EXCLUDED.name, password_hash = EXCLUDED.password_hash,
         role = EXCLUDED.role, must_change_password = EXCLUDED.must_change_password`;
     }
-    if (usrs.length) await dst`SELECT setval(pg_get_serial_sequence('users','id'), (SELECT MAX(id) FROM users))`;
+    if (usrs.length) await sqlClient`SELECT setval(pg_get_serial_sequence('users','id'), (SELECT MAX(id) FROM users))`;
 
-    for (const r of slrs) await dst`INSERT INTO sellers ${dst(r)} ON CONFLICT DO NOTHING`;
-    if (slrs.length) await dst`SELECT setval(pg_get_serial_sequence('sellers','id'), (SELECT MAX(id) FROM sellers))`;
+    for (const r of slrs) await sqlClient`INSERT INTO sellers ${sqlClient(r)} ON CONFLICT DO NOTHING`;
+    if (slrs.length) await sqlClient`SELECT setval(pg_get_serial_sequence('sellers','id'), (SELECT MAX(id) FROM sellers))`;
 
-    for (const r of clts) await dst`INSERT INTO clients ${dst(r)} ON CONFLICT DO NOTHING`;
-    if (clts.length) await dst`SELECT setval(pg_get_serial_sequence('clients','id'), (SELECT MAX(id) FROM clients))`;
+    for (const r of clts) await sqlClient`INSERT INTO clients ${sqlClient(r)} ON CONFLICT DO NOTHING`;
+    if (clts.length) await sqlClient`SELECT setval(pg_get_serial_sequence('clients','id'), (SELECT MAX(id) FROM clients))`;
 
-    for (const r of tsks) await dst`INSERT INTO tasks ${dst(r)} ON CONFLICT DO NOTHING`;
-    if (tsks.length) await dst`SELECT setval(pg_get_serial_sequence('tasks','id'), (SELECT MAX(id) FROM tasks))`;
+    for (const r of tsks) await sqlClient`INSERT INTO tasks ${sqlClient(r)} ON CONFLICT DO NOTHING`;
+    if (tsks.length) await sqlClient`SELECT setval(pg_get_serial_sequence('tasks','id'), (SELECT MAX(id) FROM tasks))`;
 
-    for (const r of rmds) await dst`INSERT INTO reminders ${dst(r)} ON CONFLICT DO NOTHING`;
-    if (rmds.length) await dst`SELECT setval(pg_get_serial_sequence('reminders','id'), (SELECT MAX(id) FROM reminders))`;
+    for (const r of rmds) await sqlClient`INSERT INTO reminders ${sqlClient(r)} ON CONFLICT DO NOTHING`;
+    if (rmds.length) await sqlClient`SELECT setval(pg_get_serial_sequence('reminders','id'), (SELECT MAX(id) FROM reminders))`;
 
     console.log('[auto-migrate] Done:', { users: usrs.length, sellers: slrs.length, clients: clts.length, tasks: tsks.length, reminders: rmds.length });
   } catch (err: any) {
-    if (err?.message !== 'timeout') console.error('[auto-migrate]', err?.message ?? err);
+    console.error('[auto-migrate] error:', err?.message ?? err);
   } finally {
-    await Promise.allSettled([
-      src?.end({ timeout: 3 }),
-      dst?.end({ timeout: 3 }),
-    ]);
+    await src?.end({ timeout: 3 }).catch(() => {});
   }
 }
 

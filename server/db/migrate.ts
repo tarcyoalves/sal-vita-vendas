@@ -243,20 +243,16 @@ export async function ensureTablesExist() {
     await sql`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`;
     await sql`CREATE INDEX IF NOT EXISTS site_orders_created_at_idx ON site_orders(created_at)`;
 
-    // Row Level Security
-    await sql`ALTER TABLE users               ENABLE ROW LEVEL SECURITY`;
-    await sql`ALTER TABLE sellers             ENABLE ROW LEVEL SECURITY`;
-    await sql`ALTER TABLE tasks               ENABLE ROW LEVEL SECURITY`;
-    await sql`ALTER TABLE clients             ENABLE ROW LEVEL SECURITY`;
-    await sql`ALTER TABLE reminders           ENABLE ROW LEVEL SECURITY`;
-    await sql`ALTER TABLE chat_messages       ENABLE ROW LEVEL SECURITY`;
-    await sql`ALTER TABLE knowledge_documents ENABLE ROW LEVEL SECURITY`;
-    await sql`ALTER TABLE work_sessions       ENABLE ROW LEVEL SECURITY`;
-    await sql`ALTER TABLE site_orders         ENABLE ROW LEVEL SECURITY`;
-    await sql`ALTER TABLE abandoned_carts     ENABLE ROW LEVEL SECURITY`;
-    await sql`ALTER TABLE automation_runs     ENABLE ROW LEVEL SECURITY`;
-    await sql`ALTER TABLE coupons             ENABLE ROW LEVEL SECURITY`;
-    await sql`ALTER TABLE msg_templates       ENABLE ROW LEVEL SECURITY`;
+    // Row Level Security — wrapped individually; Supabase transaction pooler
+    // may reject ALTER TABLE in some connection modes but tables still work.
+    const rlsTables = ['users','sellers','tasks','clients','reminders',
+      'chat_messages','knowledge_documents','work_sessions','site_orders',
+      'abandoned_carts','automation_runs','coupons','msg_templates'];
+    for (const t of rlsTables) {
+      try {
+        await sql`ALTER TABLE ${sql(t)} ENABLE ROW LEVEL SECURITY`;
+      } catch { /* RLS already enabled or not supported in this connection mode */ }
+    }
 
     // Seed admin user on fresh database
     const existing = await sql`SELECT id FROM users LIMIT 1`;

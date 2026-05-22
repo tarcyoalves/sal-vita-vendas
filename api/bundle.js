@@ -52279,19 +52279,27 @@ async function ensureTablesExist() {
     await sql2`CREATE INDEX IF NOT EXISTS sellers_user_id_idx ON sellers(user_id)`;
     await sql2`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`;
     await sql2`CREATE INDEX IF NOT EXISTS site_orders_created_at_idx ON site_orders(created_at)`;
-    await sql2`ALTER TABLE users               ENABLE ROW LEVEL SECURITY`;
-    await sql2`ALTER TABLE sellers             ENABLE ROW LEVEL SECURITY`;
-    await sql2`ALTER TABLE tasks               ENABLE ROW LEVEL SECURITY`;
-    await sql2`ALTER TABLE clients             ENABLE ROW LEVEL SECURITY`;
-    await sql2`ALTER TABLE reminders           ENABLE ROW LEVEL SECURITY`;
-    await sql2`ALTER TABLE chat_messages       ENABLE ROW LEVEL SECURITY`;
-    await sql2`ALTER TABLE knowledge_documents ENABLE ROW LEVEL SECURITY`;
-    await sql2`ALTER TABLE work_sessions       ENABLE ROW LEVEL SECURITY`;
-    await sql2`ALTER TABLE site_orders         ENABLE ROW LEVEL SECURITY`;
-    await sql2`ALTER TABLE abandoned_carts     ENABLE ROW LEVEL SECURITY`;
-    await sql2`ALTER TABLE automation_runs     ENABLE ROW LEVEL SECURITY`;
-    await sql2`ALTER TABLE coupons             ENABLE ROW LEVEL SECURITY`;
-    await sql2`ALTER TABLE msg_templates       ENABLE ROW LEVEL SECURITY`;
+    const rlsTables = [
+      "users",
+      "sellers",
+      "tasks",
+      "clients",
+      "reminders",
+      "chat_messages",
+      "knowledge_documents",
+      "work_sessions",
+      "site_orders",
+      "abandoned_carts",
+      "automation_runs",
+      "coupons",
+      "msg_templates"
+    ];
+    for (const t2 of rlsTables) {
+      try {
+        await sql2`ALTER TABLE ${sql2(t2)} ENABLE ROW LEVEL SECURITY`;
+      } catch {
+      }
+    }
     const existing = await sql2`SELECT id FROM users LIMIT 1`;
     if (existing.length === 0) {
       await sql2`
@@ -52479,39 +52487,26 @@ var dbReady = Promise.all([
 async function autoMigrateIfNeeded() {
   const srcUrl = process.env.ORDERS_DATABASE_URL;
   const dstUrl = process.env.DATABASE_URL;
-  if (!srcUrl) {
-    console.log("[auto-migrate] ORDERS_DATABASE_URL not set \u2014 skipping");
+  console.log("[auto-migrate] checking \u2014 ORDERS_DATABASE_URL set:", !!srcUrl, "same as DB:", srcUrl === dstUrl);
+  if (!srcUrl || srcUrl === dstUrl)
     return;
-  }
-  if (srcUrl === dstUrl) {
-    console.log("[auto-migrate] ORDERS_DATABASE_URL same as DATABASE_URL \u2014 skipping");
-    return;
-  }
   let src = null;
-  let dst = null;
   try {
-    dst = src_default(dstUrl, { max: 1, prepare: false, ssl: "require", connect_timeout: 10 });
-    const dstCheck = await Promise.race([
-      dst`SELECT COUNT(*)::int AS cnt FROM sellers`,
-      new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 6e3))
-    ]);
-    const dstCount = dstCheck[0]?.cnt ?? 0;
-    if (dstCount > 0) {
-      console.log(`[auto-migrate] Supabase already has ${dstCount} sellers \u2014 skipping`);
+    const dstRows = await client`SELECT COUNT(*)::int AS cnt FROM sellers`;
+    const dstCount = dstRows[0]?.cnt ?? 0;
+    console.log(`[auto-migrate] Supabase sellers=${dstCount}`);
+    if (dstCount > 0)
       return;
-    }
-    console.log("[auto-migrate] Supabase sellers=0, checking ORDERS_DATABASE_URL source...");
-    src = src_default(srcUrl, { max: 1, prepare: false, ssl: "require", connect_timeout: 10 });
-    const srcCheck = await Promise.race([
+    src = src_default(srcUrl, { max: 1, prepare: false, ssl: "require", connect_timeout: 20 });
+    const srcRows = await Promise.race([
       src`SELECT COUNT(*)::int AS cnt FROM sellers`,
-      new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 8e3))
+      new Promise((_, rej) => setTimeout(() => rej(new Error("src_timeout")), 2e4))
     ]);
-    const srcCount = srcCheck[0]?.cnt ?? 0;
-    if (srcCount === 0) {
-      console.log("[auto-migrate] Source also has 0 sellers \u2014 nothing to migrate");
+    const srcCount = srcRows[0]?.cnt ?? 0;
+    console.log(`[auto-migrate] source sellers=${srcCount}`);
+    if (srcCount === 0)
       return;
-    }
-    console.log(`[auto-migrate] Found ${srcCount} sellers in ORDERS_DATABASE_URL \u2014 migrating to Supabase`);
+    console.log(`[auto-migrate] migrating ${srcCount} sellers from source to Supabase...`);
     const [usrs, slrs, clts, tsks, rmds] = await Promise.all([
       src`SELECT * FROM users`,
       src`SELECT * FROM sellers`,
@@ -52520,37 +52515,34 @@ async function autoMigrateIfNeeded() {
       src`SELECT * FROM reminders`
     ]);
     for (const u of usrs) {
-      await dst`INSERT INTO users ${dst(u)} ON CONFLICT (email) DO UPDATE SET
+      await client`INSERT INTO users ${client(u)} ON CONFLICT (email) DO UPDATE SET
         name = EXCLUDED.name, password_hash = EXCLUDED.password_hash,
         role = EXCLUDED.role, must_change_password = EXCLUDED.must_change_password`;
     }
     if (usrs.length)
-      await dst`SELECT setval(pg_get_serial_sequence('users','id'), (SELECT MAX(id) FROM users))`;
+      await client`SELECT setval(pg_get_serial_sequence('users','id'), (SELECT MAX(id) FROM users))`;
     for (const r of slrs)
-      await dst`INSERT INTO sellers ${dst(r)} ON CONFLICT DO NOTHING`;
+      await client`INSERT INTO sellers ${client(r)} ON CONFLICT DO NOTHING`;
     if (slrs.length)
-      await dst`SELECT setval(pg_get_serial_sequence('sellers','id'), (SELECT MAX(id) FROM sellers))`;
+      await client`SELECT setval(pg_get_serial_sequence('sellers','id'), (SELECT MAX(id) FROM sellers))`;
     for (const r of clts)
-      await dst`INSERT INTO clients ${dst(r)} ON CONFLICT DO NOTHING`;
+      await client`INSERT INTO clients ${client(r)} ON CONFLICT DO NOTHING`;
     if (clts.length)
-      await dst`SELECT setval(pg_get_serial_sequence('clients','id'), (SELECT MAX(id) FROM clients))`;
+      await client`SELECT setval(pg_get_serial_sequence('clients','id'), (SELECT MAX(id) FROM clients))`;
     for (const r of tsks)
-      await dst`INSERT INTO tasks ${dst(r)} ON CONFLICT DO NOTHING`;
+      await client`INSERT INTO tasks ${client(r)} ON CONFLICT DO NOTHING`;
     if (tsks.length)
-      await dst`SELECT setval(pg_get_serial_sequence('tasks','id'), (SELECT MAX(id) FROM tasks))`;
+      await client`SELECT setval(pg_get_serial_sequence('tasks','id'), (SELECT MAX(id) FROM tasks))`;
     for (const r of rmds)
-      await dst`INSERT INTO reminders ${dst(r)} ON CONFLICT DO NOTHING`;
+      await client`INSERT INTO reminders ${client(r)} ON CONFLICT DO NOTHING`;
     if (rmds.length)
-      await dst`SELECT setval(pg_get_serial_sequence('reminders','id'), (SELECT MAX(id) FROM reminders))`;
+      await client`SELECT setval(pg_get_serial_sequence('reminders','id'), (SELECT MAX(id) FROM reminders))`;
     console.log("[auto-migrate] Done:", { users: usrs.length, sellers: slrs.length, clients: clts.length, tasks: tsks.length, reminders: rmds.length });
   } catch (err) {
-    if (err?.message !== "timeout")
-      console.error("[auto-migrate]", err?.message ?? err);
+    console.error("[auto-migrate] error:", err?.message ?? err);
   } finally {
-    await Promise.allSettled([
-      src?.end({ timeout: 3 }),
-      dst?.end({ timeout: 3 })
-    ]);
+    await src?.end({ timeout: 3 }).catch(() => {
+    });
   }
 }
 autoMigrateIfNeeded().catch((err) => console.error("[auto-migrate] uncaught:", err));
