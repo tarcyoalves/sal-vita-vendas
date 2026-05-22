@@ -3,9 +3,10 @@ import postgres from 'postgres';
 import * as schema from './schema';
 
 const client = postgres(process.env.DATABASE_URL!, {
-  max: 1,
+  max: 5,
   prepare: false,
   ssl: 'require',
+  connect_timeout: 10,
 });
 
 export const db = drizzle(client, { schema });

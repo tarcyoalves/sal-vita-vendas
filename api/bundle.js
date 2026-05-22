@@ -45027,9 +45027,10 @@ function drizzle(client3, config = {}) {
 init_src();
 init_schema2();
 var client = src_default(process.env.DATABASE_URL, {
-  max: 1,
+  max: 5,
   prepare: false,
-  ssl: "require"
+  ssl: "require",
+  connect_timeout: 10
 });
 var db = drizzle(client, { schema: schema_exports });
 
@@ -52116,9 +52117,16 @@ var appRouter = router({
 });
 
 // server/db/migrate.ts
+init_src();
 async function ensureTablesExist() {
+  const sql2 = src_default(process.env.DATABASE_URL, {
+    max: 1,
+    prepare: false,
+    ssl: "require",
+    connect_timeout: 8
+  });
   try {
-    await client`
+    await sql2`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -52129,7 +52137,7 @@ async function ensureTablesExist() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `;
-    await client`
+    await sql2`
       CREATE TABLE IF NOT EXISTS sellers (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL DEFAULT 0,
@@ -52144,7 +52152,7 @@ async function ensureTablesExist() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `;
-    await client`
+    await sql2`
       CREATE TABLE IF NOT EXISTS clients (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -52157,7 +52165,7 @@ async function ensureTablesExist() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `;
-    await client`
+    await sql2`
       CREATE TABLE IF NOT EXISTS tasks (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL DEFAULT 0,
@@ -52175,7 +52183,7 @@ async function ensureTablesExist() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `;
-    await client`
+    await sql2`
       CREATE TABLE IF NOT EXISTS reminders (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
@@ -52188,7 +52196,7 @@ async function ensureTablesExist() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `;
-    await client`
+    await sql2`
       CREATE TABLE IF NOT EXISTS chat_messages (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
@@ -52197,7 +52205,7 @@ async function ensureTablesExist() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `;
-    await client`
+    await sql2`
       CREATE TABLE IF NOT EXISTS knowledge_documents (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
@@ -52209,7 +52217,7 @@ async function ensureTablesExist() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `;
-    await client`
+    await sql2`
       CREATE TABLE IF NOT EXISTS work_sessions (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
@@ -52223,7 +52231,7 @@ async function ensureTablesExist() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `;
-    await client`
+    await sql2`
       CREATE TABLE IF NOT EXISTS site_orders (
         id SERIAL PRIMARY KEY,
         customer_name TEXT NOT NULL,
@@ -52258,7 +52266,7 @@ async function ensureTablesExist() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `;
-    await client`
+    await sql2`
       CREATE TABLE IF NOT EXISTS abandoned_carts (
         id SERIAL PRIMARY KEY,
         customer_name TEXT NOT NULL,
@@ -52276,7 +52284,7 @@ async function ensureTablesExist() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `;
-    await client`
+    await sql2`
       CREATE TABLE IF NOT EXISTS automation_runs (
         id SERIAL PRIMARY KEY,
         cart_id INTEGER NOT NULL,
@@ -52294,7 +52302,7 @@ async function ensureTablesExist() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `;
-    await client`
+    await sql2`
       CREATE TABLE IF NOT EXISTS coupons (
         id SERIAL PRIMARY KEY,
         code TEXT NOT NULL UNIQUE,
@@ -52309,7 +52317,7 @@ async function ensureTablesExist() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `;
-    await client`
+    await sql2`
       CREATE TABLE IF NOT EXISTS msg_templates (
         id SERIAL PRIMARY KEY,
         slug TEXT NOT NULL UNIQUE,
@@ -52322,36 +52330,36 @@ async function ensureTablesExist() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `;
-    await client`CREATE INDEX IF NOT EXISTS tasks_user_id_idx ON tasks(user_id)`;
-    await client`CREATE INDEX IF NOT EXISTS tasks_assigned_to_idx ON tasks(assigned_to)`;
-    await client`CREATE INDEX IF NOT EXISTS tasks_status_idx ON tasks(status)`;
-    await client`CREATE INDEX IF NOT EXISTS tasks_reminder_date_idx ON tasks(reminder_date)`;
-    await client`CREATE INDEX IF NOT EXISTS tasks_last_contacted_at_idx ON tasks(last_contacted_at)`;
-    await client`CREATE INDEX IF NOT EXISTS work_sessions_user_id_idx ON work_sessions(user_id)`;
-    await client`CREATE INDEX IF NOT EXISTS work_sessions_status_idx ON work_sessions(status)`;
-    await client`CREATE INDEX IF NOT EXISTS work_sessions_started_at_idx ON work_sessions(started_at)`;
-    await client`CREATE INDEX IF NOT EXISTS chat_messages_user_id_idx ON chat_messages(user_id)`;
-    await client`CREATE INDEX IF NOT EXISTS knowledge_docs_user_id_idx ON knowledge_documents(user_id)`;
-    await client`CREATE INDEX IF NOT EXISTS sellers_status_idx ON sellers(status)`;
-    await client`CREATE INDEX IF NOT EXISTS sellers_user_id_idx ON sellers(user_id)`;
-    await client`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`;
-    await client`CREATE INDEX IF NOT EXISTS site_orders_created_at_idx ON site_orders(created_at)`;
-    await client`ALTER TABLE users               ENABLE ROW LEVEL SECURITY`;
-    await client`ALTER TABLE sellers             ENABLE ROW LEVEL SECURITY`;
-    await client`ALTER TABLE tasks               ENABLE ROW LEVEL SECURITY`;
-    await client`ALTER TABLE clients             ENABLE ROW LEVEL SECURITY`;
-    await client`ALTER TABLE reminders           ENABLE ROW LEVEL SECURITY`;
-    await client`ALTER TABLE chat_messages       ENABLE ROW LEVEL SECURITY`;
-    await client`ALTER TABLE knowledge_documents ENABLE ROW LEVEL SECURITY`;
-    await client`ALTER TABLE work_sessions       ENABLE ROW LEVEL SECURITY`;
-    await client`ALTER TABLE site_orders         ENABLE ROW LEVEL SECURITY`;
-    await client`ALTER TABLE abandoned_carts     ENABLE ROW LEVEL SECURITY`;
-    await client`ALTER TABLE automation_runs     ENABLE ROW LEVEL SECURITY`;
-    await client`ALTER TABLE coupons             ENABLE ROW LEVEL SECURITY`;
-    await client`ALTER TABLE msg_templates       ENABLE ROW LEVEL SECURITY`;
-    const existing = await client`SELECT id FROM users LIMIT 1`;
+    await sql2`CREATE INDEX IF NOT EXISTS tasks_user_id_idx ON tasks(user_id)`;
+    await sql2`CREATE INDEX IF NOT EXISTS tasks_assigned_to_idx ON tasks(assigned_to)`;
+    await sql2`CREATE INDEX IF NOT EXISTS tasks_status_idx ON tasks(status)`;
+    await sql2`CREATE INDEX IF NOT EXISTS tasks_reminder_date_idx ON tasks(reminder_date)`;
+    await sql2`CREATE INDEX IF NOT EXISTS tasks_last_contacted_at_idx ON tasks(last_contacted_at)`;
+    await sql2`CREATE INDEX IF NOT EXISTS work_sessions_user_id_idx ON work_sessions(user_id)`;
+    await sql2`CREATE INDEX IF NOT EXISTS work_sessions_status_idx ON work_sessions(status)`;
+    await sql2`CREATE INDEX IF NOT EXISTS work_sessions_started_at_idx ON work_sessions(started_at)`;
+    await sql2`CREATE INDEX IF NOT EXISTS chat_messages_user_id_idx ON chat_messages(user_id)`;
+    await sql2`CREATE INDEX IF NOT EXISTS knowledge_docs_user_id_idx ON knowledge_documents(user_id)`;
+    await sql2`CREATE INDEX IF NOT EXISTS sellers_status_idx ON sellers(status)`;
+    await sql2`CREATE INDEX IF NOT EXISTS sellers_user_id_idx ON sellers(user_id)`;
+    await sql2`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`;
+    await sql2`CREATE INDEX IF NOT EXISTS site_orders_created_at_idx ON site_orders(created_at)`;
+    await sql2`ALTER TABLE users               ENABLE ROW LEVEL SECURITY`;
+    await sql2`ALTER TABLE sellers             ENABLE ROW LEVEL SECURITY`;
+    await sql2`ALTER TABLE tasks               ENABLE ROW LEVEL SECURITY`;
+    await sql2`ALTER TABLE clients             ENABLE ROW LEVEL SECURITY`;
+    await sql2`ALTER TABLE reminders           ENABLE ROW LEVEL SECURITY`;
+    await sql2`ALTER TABLE chat_messages       ENABLE ROW LEVEL SECURITY`;
+    await sql2`ALTER TABLE knowledge_documents ENABLE ROW LEVEL SECURITY`;
+    await sql2`ALTER TABLE work_sessions       ENABLE ROW LEVEL SECURITY`;
+    await sql2`ALTER TABLE site_orders         ENABLE ROW LEVEL SECURITY`;
+    await sql2`ALTER TABLE abandoned_carts     ENABLE ROW LEVEL SECURITY`;
+    await sql2`ALTER TABLE automation_runs     ENABLE ROW LEVEL SECURITY`;
+    await sql2`ALTER TABLE coupons             ENABLE ROW LEVEL SECURITY`;
+    await sql2`ALTER TABLE msg_templates       ENABLE ROW LEVEL SECURITY`;
+    const existing = await sql2`SELECT id FROM users LIMIT 1`;
     if (existing.length === 0) {
-      await client`
+      await sql2`
         INSERT INTO users (name, email, password_hash, role, must_change_password)
         VALUES (
           'Tarcyo Alves',
@@ -52367,6 +52375,8 @@ async function ensureTablesExist() {
   } catch (err) {
     console.error("\u274C Migration error:", err);
     throw err;
+  } finally {
+    await sql2.end({ timeout: 2 });
   }
 }
 

@@ -1,6 +1,13 @@
-import { sql } from './index';
+import postgres from 'postgres';
 
 export async function ensureTablesExist() {
+  // Use a dedicated client so a hanging migration never blocks the main db pool
+  const sql = postgres(process.env.DATABASE_URL!, {
+    max: 1,
+    prepare: false,
+    ssl: 'require',
+    connect_timeout: 8,
+  });
   try {
     // Base tables
     await sql`
@@ -271,5 +278,7 @@ export async function ensureTablesExist() {
   } catch (err) {
     console.error('❌ Migration error:', err);
     throw err;
+  } finally {
+    await sql.end({ timeout: 2 });
   }
 }
