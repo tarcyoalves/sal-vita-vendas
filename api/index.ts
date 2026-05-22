@@ -413,6 +413,64 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
 
+// Temporary one-shot migration endpoint (GET so it can be called from any tool)
+// Safe: only copies data, never deletes; auto-skips if destination already has sellers.
+app.get('/api/migrate-now', async (req, res) => {
+  const neonUrl = req.query.src as string | undefined;
+  if (!neonUrl) return res.status(400).json({ error: 'src query param required' });
+
+  const dstUrl = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL!;
+  const src = postgres(neonUrl, { max: 1, prepare: false, ssl: 'require', connect_timeout: 15 });
+  const dst = postgres(dstUrl,  { max: 1, prepare: false, ssl: 'require', connect_timeout: 8 });
+
+  try {
+    const dstCheck = await dst`SELECT COUNT(*)::int AS cnt FROM sellers`;
+    if ((dstCheck[0] as { cnt: number }).cnt > 0) {
+      return res.json({ skipped: true, reason: 'destination already has sellers' });
+    }
+
+    const counts: Record<string, number> = {};
+    const [usrs, slrs, clts, tsks, rmds] = await Promise.all([
+      src`SELECT * FROM users`,
+      src`SELECT * FROM sellers`,
+      src`SELECT * FROM clients`,
+      src`SELECT * FROM tasks`,
+      src`SELECT * FROM reminders`,
+    ]);
+
+    for (const u of usrs) {
+      await dst`INSERT INTO users ${dst(u)} ON CONFLICT (email) DO UPDATE SET
+        name = EXCLUDED.name, password_hash = EXCLUDED.password_hash,
+        role = EXCLUDED.role, must_change_password = EXCLUDED.must_change_password`;
+    }
+    if (usrs.length) await dst`SELECT setval(pg_get_serial_sequence('users','id'), (SELECT MAX(id) FROM users))`;
+    counts.users = usrs.length;
+
+    for (const r of slrs) await dst`INSERT INTO sellers ${dst(r)} ON CONFLICT DO NOTHING`;
+    if (slrs.length) await dst`SELECT setval(pg_get_serial_sequence('sellers','id'), (SELECT MAX(id) FROM sellers))`;
+    counts.sellers = slrs.length;
+
+    for (const r of clts) await dst`INSERT INTO clients ${dst(r)} ON CONFLICT DO NOTHING`;
+    if (clts.length) await dst`SELECT setval(pg_get_serial_sequence('clients','id'), (SELECT MAX(id) FROM clients))`;
+    counts.clients = clts.length;
+
+    for (const r of tsks) await dst`INSERT INTO tasks ${dst(r)} ON CONFLICT DO NOTHING`;
+    if (tsks.length) await dst`SELECT setval(pg_get_serial_sequence('tasks','id'), (SELECT MAX(id) FROM tasks))`;
+    counts.tasks = tsks.length;
+
+    for (const r of rmds) await dst`INSERT INTO reminders ${dst(r)} ON CONFLICT DO NOTHING`;
+    if (rmds.length) await dst`SELECT setval(pg_get_serial_sequence('reminders','id'), (SELECT MAX(id) FROM reminders))`;
+    counts.reminders = rmds.length;
+
+    res.json({ success: true, migrated: counts });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    await src.end().catch(() => {});
+    await dst.end().catch(() => {});
+  }
+});
+
 // One-time migration: copy all data from Neon → Supabase
 // Protected by ADMIN_RESET_SECRET. Remove after migration is done.
 app.post('/api/migrate-from-neon', express.json(), async (req, res) => {
