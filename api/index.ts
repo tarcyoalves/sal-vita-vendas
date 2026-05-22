@@ -4,7 +4,7 @@ import postgres from 'postgres';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { createExpressMiddleware } from '@trpc/server/adapters/express';
 import { appRouter } from '../server/routers';
 import { createContext } from '../server/trpc';
@@ -256,8 +256,8 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => {
     const body = req.body as Record<string, unknown>;
-    const key = (typeof body?.email === 'string' ? body.email.trim() : '') || req.ip || 'unknown';
-    return key || 'unknown';
+    const email = typeof body?.email === 'string' ? body.email.trim() : '';
+    return email || ipKeyGenerator(req.ip ?? 'unknown');
   },
   validate: { xForwardedForHeader: false },
 });
@@ -282,14 +282,12 @@ const cartTrackLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   validate: { xForwardedForHeader: false },
-  keyGenerator: (req) => req.ip || 'unknown',
 });
 
 const couponCheckLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
   max: 20,
   validate: { xForwardedForHeader: false },
-  keyGenerator: (req) => req.ip || 'unknown',
 });
 
 const chatLimiter = rateLimit({
@@ -297,7 +295,6 @@ const chatLimiter = rateLimit({
   max: 15,
   message: { error: 'Muitas mensagens. Aguarde um momento.' },
   validate: { xForwardedForHeader: false },
-  keyGenerator: (req) => req.ip || 'unknown',
 });
 
 app.use('/api/trpc/auth.login', authLimiter);

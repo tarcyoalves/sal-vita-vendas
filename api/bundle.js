@@ -52688,8 +52688,8 @@ var authLimiter = rate_limit_default({
   legacyHeaders: false,
   keyGenerator: (req) => {
     const body = req.body;
-    const key = (typeof body?.email === "string" ? body.email.trim() : "") || req.ip || "unknown";
-    return key || "unknown";
+    const email = typeof body?.email === "string" ? body.email.trim() : "";
+    return email || ipKeyGenerator(req.ip ?? "unknown");
   },
   validate: { xForwardedForHeader: false }
 });
@@ -52710,21 +52710,18 @@ var orderLimiter = rate_limit_default({
 var cartTrackLimiter = rate_limit_default({
   windowMs: 15 * 60 * 1e3,
   max: 10,
-  validate: { xForwardedForHeader: false },
-  keyGenerator: (req) => req.ip || "unknown"
+  validate: { xForwardedForHeader: false }
 });
 var couponCheckLimiter = rate_limit_default({
   windowMs: 5 * 60 * 1e3,
   max: 20,
-  validate: { xForwardedForHeader: false },
-  keyGenerator: (req) => req.ip || "unknown"
+  validate: { xForwardedForHeader: false }
 });
 var chatLimiter = rate_limit_default({
   windowMs: 60 * 1e3,
   max: 15,
   message: { error: "Muitas mensagens. Aguarde um momento." },
-  validate: { xForwardedForHeader: false },
-  keyGenerator: (req) => req.ip || "unknown"
+  validate: { xForwardedForHeader: false }
 });
 app.use("/api/trpc/auth.login", authLimiter);
 app.use("/api/trpc/auth.emergencyReset", authLimiter);
