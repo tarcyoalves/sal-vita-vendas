@@ -52487,25 +52487,18 @@ var dbReady = Promise.all([
 async function autoMigrateIfNeeded() {
   const dstUrl = process.env.DATABASE_URL;
   const candidates = [
-    ["ORDERS_DATABASE_URL", process.env.ORDERS_DATABASE_URL],
+    ["CRM_DATABASE_URL", process.env.CRM_DATABASE_URL],
     ["SALLOG_DATABASE_URL", process.env.SALLOG_DATABASE_URL],
     ["NEON_DATABASE_URL", process.env.NEON_DATABASE_URL]
   ];
-  const envSummary = candidates.map(([k, v]) => `${k}=${v ? v === dstUrl ? "same-as-dst" : "set" : "unset"}`).join(", ");
-  console.log("[auto-migrate] env check:", envSummary);
-  const srcUrl = candidates.find(([, v]) => v && v !== dstUrl)?.[1];
-  const srcKey = candidates.find(([, v]) => v && v !== dstUrl)?.[0];
-  if (!srcUrl) {
-    console.log("[auto-migrate] no usable source URL \u2014 skipping");
+  const srcEntry = candidates.find(([, v]) => v && v !== dstUrl);
+  if (!srcEntry)
     return;
-  }
-  console.log("[auto-migrate] source:", srcKey);
+  const [srcKey, srcUrl] = srcEntry;
   let src = null;
   try {
     const dstRows = await client`SELECT COUNT(*)::int AS cnt FROM sellers`;
-    const dstCount = dstRows[0]?.cnt ?? 0;
-    console.log(`[auto-migrate] Supabase sellers=${dstCount}`);
-    if (dstCount > 0)
+    if ((dstRows[0]?.cnt ?? 0) > 0)
       return;
     src = src_default(srcUrl, { max: 1, prepare: false, ssl: "require", connect_timeout: 20 });
     const srcRows = await Promise.race([
@@ -52513,10 +52506,9 @@ async function autoMigrateIfNeeded() {
       new Promise((_, rej) => setTimeout(() => rej(new Error("src_timeout")), 2e4))
     ]);
     const srcCount = srcRows[0]?.cnt ?? 0;
-    console.log(`[auto-migrate] source sellers=${srcCount}`);
     if (srcCount === 0)
       return;
-    console.log(`[auto-migrate] migrating ${srcCount} sellers from ${srcKey} to Supabase...`);
+    console.log(`[auto-migrate] migrating ${srcCount} sellers from ${srcKey}...`);
     const [usrs, slrs, clts, tsks, rmds] = await Promise.all([
       src`SELECT * FROM users`,
       src`SELECT * FROM sellers`,
@@ -52547,9 +52539,11 @@ async function autoMigrateIfNeeded() {
       await client`INSERT INTO reminders ${client(r)} ON CONFLICT DO NOTHING`;
     if (rmds.length)
       await client`SELECT setval(pg_get_serial_sequence('reminders','id'), (SELECT MAX(id) FROM reminders))`;
-    console.log("[auto-migrate] Done:", { users: usrs.length, sellers: slrs.length, clients: clts.length, tasks: tsks.length, reminders: rmds.length });
+    console.log("[auto-migrate] done:", { users: usrs.length, sellers: slrs.length, clients: clts.length, tasks: tsks.length, reminders: rmds.length });
   } catch (err) {
-    console.error("[auto-migrate] error:", err?.message ?? err);
+    if (!(err?.message ?? "").includes("does not exist")) {
+      console.error("[auto-migrate] error:", err?.message ?? err);
+    }
   } finally {
     await src?.end({ timeout: 3 }).catch(() => {
     });
@@ -52600,31 +52594,7 @@ app.get("/api/db-health", async (_req, res) => {
       client`SELECT 1`,
       client`SELECT COUNT(*)::int AS cnt FROM sellers`
     ]);
-    const dstUrl = process.env.DATABASE_URL;
-    const srcUrl = process.env.ORDERS_DATABASE_URL;
-    let srcProbe = {};
-    if (srcUrl && srcUrl !== dstUrl) {
-      let srcClient = null;
-      try {
-        srcClient = src_default(srcUrl, { max: 1, prepare: false, ssl: "require", connect_timeout: 8 });
-        const rows = await Promise.race([
-          srcClient`SELECT COUNT(*)::int AS cnt FROM sellers`,
-          new Promise((_, rej) => setTimeout(() => rej(new Error("probe_timeout_8s")), 8e3))
-        ]);
-        srcProbe = { sellers: rows[0]?.cnt ?? 0 };
-      } catch (e) {
-        srcProbe = { error: e.message };
-      } finally {
-        await srcClient?.end({ timeout: 2 }).catch(() => {
-        });
-      }
-    }
-    res.json({
-      db: "ok",
-      ms: Date.now() - t0,
-      sellers: sellersRes[0]?.cnt ?? 0,
-      src: srcUrl ? srcProbe : "no-source-url"
-    });
+    res.json({ db: "ok", ms: Date.now() - t0, sellers: sellersRes[0]?.cnt ?? 0 });
   } catch (err) {
     res.status(500).json({ db: "error", message: err.message });
   }

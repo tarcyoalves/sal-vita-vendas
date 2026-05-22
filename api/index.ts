@@ -34,47 +34,36 @@ const dbReady = Promise.all([
   withTimeout(ensureOrdersTablesExist(), 10_000).catch(err => console.error('Orders DB init error:', err)),
 ]);
 
-// Auto-migrate CRM data from any available old Neon DB to Supabase (if Supabase is empty).
-// Tries candidate env vars in order: ORDERS_DATABASE_URL, SALLOG_DATABASE_URL, NEON_DATABASE_URL.
-// Uses the main sqlClient pool for destination (already connected).
+// CRM data auto-migration: only runs if a source DB with a 'sellers' table is available.
+// ORDERS_DATABASE_URL is the e-commerce DB (no CRM tables) so it is skipped automatically.
+// To restore CRM data from an old Neon DB, call POST /api/migrate-from-neon with neonUrl + secret.
 async function autoMigrateIfNeeded(): Promise<void> {
   const dstUrl = process.env.DATABASE_URL!;
-  const candidates = [
-    ['ORDERS_DATABASE_URL', process.env.ORDERS_DATABASE_URL],
+  // Try each candidate env var as a potential CRM source DB
+  const candidates: [string, string | undefined][] = [
+    ['CRM_DATABASE_URL',    process.env.CRM_DATABASE_URL],
     ['SALLOG_DATABASE_URL', process.env.SALLOG_DATABASE_URL],
     ['NEON_DATABASE_URL',   process.env.NEON_DATABASE_URL],
-  ] as [string, string | undefined][];
+  ];
+  const srcEntry = candidates.find(([, v]) => v && v !== dstUrl);
+  if (!srcEntry) return; // no source configured
 
-  const envSummary = candidates.map(([k, v]) => `${k}=${v ? (v === dstUrl ? 'same-as-dst' : 'set') : 'unset'}`).join(', ');
-  console.log('[auto-migrate] env check:', envSummary);
-
-  const srcUrl = candidates.find(([, v]) => v && v !== dstUrl)?.[1];
-  const srcKey = candidates.find(([, v]) => v && v !== dstUrl)?.[0];
-  if (!srcUrl) {
-    console.log('[auto-migrate] no usable source URL — skipping');
-    return;
-  }
-  console.log('[auto-migrate] source:', srcKey);
-
+  const [srcKey, srcUrl] = srcEntry;
   let src: ReturnType<typeof postgres> | null = null;
   try {
     const dstRows = await sqlClient`SELECT COUNT(*)::int AS cnt FROM sellers` as Array<{ cnt: number }>;
-    const dstCount = dstRows[0]?.cnt ?? 0;
-    console.log(`[auto-migrate] Supabase sellers=${dstCount}`);
-    if (dstCount > 0) return;
+    if ((dstRows[0]?.cnt ?? 0) > 0) return; // already migrated
 
-    src = postgres(srcUrl, { max: 1, prepare: false, ssl: 'require', connect_timeout: 20 });
+    src = postgres(srcUrl!, { max: 1, prepare: false, ssl: 'require', connect_timeout: 20 });
 
     const srcRows = await Promise.race([
       src`SELECT COUNT(*)::int AS cnt FROM sellers`,
       new Promise<never>((_, rej) => setTimeout(() => rej(new Error('src_timeout')), 20_000)),
     ]) as Array<{ cnt: number }>;
     const srcCount = srcRows[0]?.cnt ?? 0;
-    console.log(`[auto-migrate] source sellers=${srcCount}`);
     if (srcCount === 0) return;
 
-    console.log(`[auto-migrate] migrating ${srcCount} sellers from ${srcKey} to Supabase...`);
-
+    console.log(`[auto-migrate] migrating ${srcCount} sellers from ${srcKey}...`);
     const [usrs, slrs, clts, tsks, rmds] = await Promise.all([
       src`SELECT * FROM users`,
       src`SELECT * FROM sellers`,
@@ -89,22 +78,20 @@ async function autoMigrateIfNeeded(): Promise<void> {
         role = EXCLUDED.role, must_change_password = EXCLUDED.must_change_password`;
     }
     if (usrs.length) await sqlClient`SELECT setval(pg_get_serial_sequence('users','id'), (SELECT MAX(id) FROM users))`;
-
     for (const r of slrs) await sqlClient`INSERT INTO sellers ${sqlClient(r)} ON CONFLICT DO NOTHING`;
     if (slrs.length) await sqlClient`SELECT setval(pg_get_serial_sequence('sellers','id'), (SELECT MAX(id) FROM sellers))`;
-
     for (const r of clts) await sqlClient`INSERT INTO clients ${sqlClient(r)} ON CONFLICT DO NOTHING`;
     if (clts.length) await sqlClient`SELECT setval(pg_get_serial_sequence('clients','id'), (SELECT MAX(id) FROM clients))`;
-
     for (const r of tsks) await sqlClient`INSERT INTO tasks ${sqlClient(r)} ON CONFLICT DO NOTHING`;
     if (tsks.length) await sqlClient`SELECT setval(pg_get_serial_sequence('tasks','id'), (SELECT MAX(id) FROM tasks))`;
-
     for (const r of rmds) await sqlClient`INSERT INTO reminders ${sqlClient(r)} ON CONFLICT DO NOTHING`;
     if (rmds.length) await sqlClient`SELECT setval(pg_get_serial_sequence('reminders','id'), (SELECT MAX(id) FROM reminders))`;
 
-    console.log('[auto-migrate] Done:', { users: usrs.length, sellers: slrs.length, clients: clts.length, tasks: tsks.length, reminders: rmds.length });
+    console.log('[auto-migrate] done:', { users: usrs.length, sellers: slrs.length, clients: clts.length, tasks: tsks.length, reminders: rmds.length });
   } catch (err: any) {
-    console.error('[auto-migrate] error:', err?.message ?? err);
+    if (!(err?.message ?? '').includes('does not exist')) {
+      console.error('[auto-migrate] error:', err?.message ?? err);
+    }
   } finally {
     await src?.end({ timeout: 3 }).catch(() => {});
   }
@@ -163,33 +150,7 @@ app.get('/api/db-health', async (_req, res) => {
       sqlClient`SELECT 1`,
       sqlClient`SELECT COUNT(*)::int AS cnt FROM sellers`,
     ]);
-    const dstUrl = process.env.DATABASE_URL!;
-    const srcUrl = process.env.ORDERS_DATABASE_URL;
-
-    // Probe source DB synchronously so we can see seller count and errors in HTTP response
-    let srcProbe: { sellers?: number; error?: string } = {};
-    if (srcUrl && srcUrl !== dstUrl) {
-      let srcClient: ReturnType<typeof postgres> | null = null;
-      try {
-        srcClient = postgres(srcUrl, { max: 1, prepare: false, ssl: 'require', connect_timeout: 8 });
-        const rows = await Promise.race([
-          srcClient`SELECT COUNT(*)::int AS cnt FROM sellers`,
-          new Promise<never>((_, rej) => setTimeout(() => rej(new Error('probe_timeout_8s')), 8_000)),
-        ]) as Array<{ cnt: number }>;
-        srcProbe = { sellers: rows[0]?.cnt ?? 0 };
-      } catch (e: any) {
-        srcProbe = { error: e.message };
-      } finally {
-        await srcClient?.end({ timeout: 2 }).catch(() => {});
-      }
-    }
-
-    res.json({
-      db: 'ok',
-      ms: Date.now() - t0,
-      sellers: (sellersRes as Array<{cnt:number}>)[0]?.cnt ?? 0,
-      src: srcUrl ? srcProbe : 'no-source-url',
-    });
+    res.json({ db: 'ok', ms: Date.now() - t0, sellers: (sellersRes as Array<{cnt:number}>)[0]?.cnt ?? 0 });
   } catch (err: any) {
     res.status(500).json({ db: 'error', message: err.message });
   }
