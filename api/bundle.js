@@ -52485,11 +52485,21 @@ var dbReady = Promise.all([
   withTimeout(ensureOrdersTablesExist(), 1e4).catch((err) => console.error("Orders DB init error:", err))
 ]);
 async function autoMigrateIfNeeded() {
-  const srcUrl = process.env.ORDERS_DATABASE_URL;
   const dstUrl = process.env.DATABASE_URL;
-  console.log("[auto-migrate] checking \u2014 ORDERS_DATABASE_URL set:", !!srcUrl, "same as DB:", srcUrl === dstUrl);
-  if (!srcUrl || srcUrl === dstUrl)
+  const candidates = [
+    ["ORDERS_DATABASE_URL", process.env.ORDERS_DATABASE_URL],
+    ["SALLOG_DATABASE_URL", process.env.SALLOG_DATABASE_URL],
+    ["NEON_DATABASE_URL", process.env.NEON_DATABASE_URL]
+  ];
+  const envSummary = candidates.map(([k, v]) => `${k}=${v ? v === dstUrl ? "same-as-dst" : "set" : "unset"}`).join(", ");
+  console.log("[auto-migrate] env check:", envSummary);
+  const srcUrl = candidates.find(([, v]) => v && v !== dstUrl)?.[1];
+  const srcKey = candidates.find(([, v]) => v && v !== dstUrl)?.[0];
+  if (!srcUrl) {
+    console.log("[auto-migrate] no usable source URL \u2014 skipping");
     return;
+  }
+  console.log("[auto-migrate] source:", srcKey);
   let src = null;
   try {
     const dstRows = await client`SELECT COUNT(*)::int AS cnt FROM sellers`;
@@ -52506,7 +52516,7 @@ async function autoMigrateIfNeeded() {
     console.log(`[auto-migrate] source sellers=${srcCount}`);
     if (srcCount === 0)
       return;
-    console.log(`[auto-migrate] migrating ${srcCount} sellers from source to Supabase...`);
+    console.log(`[auto-migrate] migrating ${srcCount} sellers from ${srcKey} to Supabase...`);
     const [usrs, slrs, clts, tsks, rmds] = await Promise.all([
       src`SELECT * FROM users`,
       src`SELECT * FROM sellers`,
@@ -52590,7 +52600,17 @@ app.get("/api/db-health", async (_req, res) => {
       client`SELECT 1`,
       client`SELECT COUNT(*)::int AS cnt FROM sellers`
     ]);
-    res.json({ db: "ok", ms: Date.now() - t0, sellers: sellers2[0]?.cnt ?? 0 });
+    const dstUrl = process.env.DATABASE_URL;
+    res.json({
+      db: "ok",
+      ms: Date.now() - t0,
+      sellers: sellers2[0]?.cnt ?? 0,
+      env: {
+        ORDERS_DATABASE_URL: !process.env.ORDERS_DATABASE_URL ? "unset" : process.env.ORDERS_DATABASE_URL === dstUrl ? "same-as-dst" : "set",
+        SALLOG_DATABASE_URL: !process.env.SALLOG_DATABASE_URL ? "unset" : process.env.SALLOG_DATABASE_URL === dstUrl ? "same-as-dst" : "set",
+        NEON_DATABASE_URL: !process.env.NEON_DATABASE_URL ? "unset" : process.env.NEON_DATABASE_URL === dstUrl ? "same-as-dst" : "set"
+      }
+    });
   } catch (err) {
     res.status(500).json({ db: "error", message: err.message });
   }

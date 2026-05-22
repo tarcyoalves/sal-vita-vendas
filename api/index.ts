@@ -34,23 +34,35 @@ const dbReady = Promise.all([
   withTimeout(ensureOrdersTablesExist(), 10_000).catch(err => console.error('Orders DB init error:', err)),
 ]);
 
-// Auto-migrate sellers/tasks from ORDERS_DATABASE_URL if it has data and Supabase is empty.
-// Uses the main sqlClient pool for destination (already connected) to avoid extra connection overhead.
+// Auto-migrate CRM data from any available old Neon DB to Supabase (if Supabase is empty).
+// Tries candidate env vars in order: ORDERS_DATABASE_URL, SALLOG_DATABASE_URL, NEON_DATABASE_URL.
+// Uses the main sqlClient pool for destination (already connected).
 async function autoMigrateIfNeeded(): Promise<void> {
-  const srcUrl = process.env.ORDERS_DATABASE_URL;
   const dstUrl = process.env.DATABASE_URL!;
-  console.log('[auto-migrate] checking — ORDERS_DATABASE_URL set:', !!srcUrl, 'same as DB:', srcUrl === dstUrl);
-  if (!srcUrl || srcUrl === dstUrl) return;
+  const candidates = [
+    ['ORDERS_DATABASE_URL', process.env.ORDERS_DATABASE_URL],
+    ['SALLOG_DATABASE_URL', process.env.SALLOG_DATABASE_URL],
+    ['NEON_DATABASE_URL',   process.env.NEON_DATABASE_URL],
+  ] as [string, string | undefined][];
+
+  const envSummary = candidates.map(([k, v]) => `${k}=${v ? (v === dstUrl ? 'same-as-dst' : 'set') : 'unset'}`).join(', ');
+  console.log('[auto-migrate] env check:', envSummary);
+
+  const srcUrl = candidates.find(([, v]) => v && v !== dstUrl)?.[1];
+  const srcKey = candidates.find(([, v]) => v && v !== dstUrl)?.[0];
+  if (!srcUrl) {
+    console.log('[auto-migrate] no usable source URL — skipping');
+    return;
+  }
+  console.log('[auto-migrate] source:', srcKey);
 
   let src: ReturnType<typeof postgres> | null = null;
   try {
-    // Use the main pool (sqlClient) for destination — already connected, no new handshake needed.
     const dstRows = await sqlClient`SELECT COUNT(*)::int AS cnt FROM sellers` as Array<{ cnt: number }>;
     const dstCount = dstRows[0]?.cnt ?? 0;
     console.log(`[auto-migrate] Supabase sellers=${dstCount}`);
     if (dstCount > 0) return;
 
-    // Connect to source (old Neon DB) — longer timeout in case it's throttled
     src = postgres(srcUrl, { max: 1, prepare: false, ssl: 'require', connect_timeout: 20 });
 
     const srcRows = await Promise.race([
@@ -61,7 +73,7 @@ async function autoMigrateIfNeeded(): Promise<void> {
     console.log(`[auto-migrate] source sellers=${srcCount}`);
     if (srcCount === 0) return;
 
-    console.log(`[auto-migrate] migrating ${srcCount} sellers from source to Supabase...`);
+    console.log(`[auto-migrate] migrating ${srcCount} sellers from ${srcKey} to Supabase...`);
 
     const [usrs, slrs, clts, tsks, rmds] = await Promise.all([
       src`SELECT * FROM users`,
@@ -151,7 +163,17 @@ app.get('/api/db-health', async (_req, res) => {
       sqlClient`SELECT 1`,
       sqlClient`SELECT COUNT(*)::int AS cnt FROM sellers`,
     ]);
-    res.json({ db: 'ok', ms: Date.now() - t0, sellers: (sellers as Array<{cnt:number}>)[0]?.cnt ?? 0 });
+    const dstUrl = process.env.DATABASE_URL!;
+    res.json({
+      db: 'ok',
+      ms: Date.now() - t0,
+      sellers: (sellers as Array<{cnt:number}>)[0]?.cnt ?? 0,
+      env: {
+        ORDERS_DATABASE_URL: !process.env.ORDERS_DATABASE_URL ? 'unset' : process.env.ORDERS_DATABASE_URL === dstUrl ? 'same-as-dst' : 'set',
+        SALLOG_DATABASE_URL: !process.env.SALLOG_DATABASE_URL ? 'unset' : process.env.SALLOG_DATABASE_URL === dstUrl ? 'same-as-dst' : 'set',
+        NEON_DATABASE_URL:   !process.env.NEON_DATABASE_URL   ? 'unset' : process.env.NEON_DATABASE_URL   === dstUrl ? 'same-as-dst' : 'set',
+      },
+    });
   } catch (err: any) {
     res.status(500).json({ db: 'error', message: err.message });
   }
