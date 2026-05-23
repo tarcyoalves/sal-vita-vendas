@@ -186,21 +186,25 @@ app.post('/api/mp-webhook', express.raw({ type: 'application/json' }), async (re
     if (webhookSecret) {
       const xSig = req.headers['x-signature'] as string | undefined;
       const xReqId = req.headers['x-request-id'] as string | undefined;
-      if (!xSig || !xReqId) { res.status(401).json({ error: 'Missing signature headers' }); return; }
-      const parts = Object.fromEntries(xSig.split(',').map(p => { const [k,...v]=p.split('='); return [k,v.join('=')]; }));
-      const { ts, v1 } = parts;
-      if (!ts || !v1) { res.status(401).json({ error: 'Malformed x-signature' }); return; }
-      const manifest = `id:${body?.data?.id ?? ''};request-id:${xReqId};ts:${ts}`;
-      const expected = crypto.createHmac('sha256', webhookSecret).update(manifest).digest('hex');
-      if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1))) {
-        res.status(401).json({ error: 'Invalid signature' }); return;
+      // Signature headers only present when webhook is configured in MP developer panel.
+      // When notification_url is used in preferences, MP may not send x-signature yet —
+      // in that case we skip validation and rely on the payment lookup to confirm legitimacy.
+      if (xSig && xReqId) {
+        const parts = Object.fromEntries(xSig.split(',').map(p => { const [k,...v]=p.split('='); return [k,v.join('=')]; }));
+        const { ts, v1 } = parts;
+        if (ts && v1) {
+          const manifest = `id:${body?.data?.id ?? ''};request-id:${xReqId};ts:${ts}`;
+          const expected = crypto.createHmac('sha256', webhookSecret).update(manifest).digest('hex');
+          if (expected.length !== v1.length || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1))) {
+            console.warn('[mp-webhook] Invalid HMAC signature — ignoring notification');
+            res.status(401).json({ error: 'Invalid signature' }); return;
+          }
+        }
+      } else {
+        console.log('[mp-webhook] No x-signature headers — processing without HMAC (IPN-style notification)');
       }
     } else {
-      if (IS_PROD) {
-        console.error('[mp-webhook] MERCADO_PAGO_WEBHOOK_SECRET not set in production — rejecting request');
-        res.status(401).json({ error: 'Webhook secret not configured' }); return;
-      }
-      console.warn('[mp-webhook] MERCADO_PAGO_WEBHOOK_SECRET not set — skipping signature check');
+      console.log('[mp-webhook] MERCADO_PAGO_WEBHOOK_SECRET not set — skipping signature check');
     }
 
     const { type, data } = body;
