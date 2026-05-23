@@ -13,7 +13,7 @@ import { ensureOrdersTablesExist } from '../server/db/ordersMigrate';
 import { ordersDb } from '../server/db/ordersDb';
 import { sql as sqlClient } from '../server/db/index';
 import { siteOrders, abandonedCarts, automationRuns, msgTemplates } from '../server/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 
 function renderTemplate(body: string, vars: Record<string, string>): string {
   return body.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
@@ -36,7 +36,11 @@ const dbReady = Promise.all([
 
 // Set once dbReady settles so the guard middleware only blocks the very first request
 let migrationSettled = false;
-dbReady.then(() => { migrationSettled = true; });
+dbReady.then(() => {
+  migrationSettled = true;
+  // Keep orders DB connection warm — ping every 4 min so Neon doesn't auto-suspend mid-session
+  setInterval(() => { ordersDb.execute(sql`SELECT 1`).catch(() => {}); }, 4 * 60 * 1000);
+});
 
 // CRM data auto-migration: only runs if a source DB with a 'sellers' table is available.
 // ORDERS_DATABASE_URL is the e-commerce DB (no CRM tables) so it is skipped automatically.
