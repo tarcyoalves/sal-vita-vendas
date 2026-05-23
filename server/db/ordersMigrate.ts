@@ -43,7 +43,16 @@ export async function ensureOrdersTablesExist() {
     await sql`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`;
     await sql`CREATE INDEX IF NOT EXISTS site_orders_created_at_idx ON site_orders(created_at)`;
 
-    await sql`SELECT setval(pg_get_serial_sequence('site_orders','id'), GREATEST(last_value, 9999), true) FROM site_orders_id_seq`;
+    // Start order IDs at a higher number so they look credible — non-critical
+    try {
+      await sql`
+        SELECT setval(
+          pg_get_serial_sequence('site_orders', 'id'),
+          GREATEST((SELECT COALESCE(MAX(id), 0) FROM site_orders), 9999),
+          true
+        )
+      `;
+    } catch { /* non-critical — fresh DB starts at 1 */ }
 
     await sql`
       CREATE TABLE IF NOT EXISTS abandoned_carts (

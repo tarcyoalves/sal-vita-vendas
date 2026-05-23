@@ -10,7 +10,7 @@
   "crons": [
     {
       "path": "/api/cron/abandoned-cart",
-      "schedule": "0 12 * * *"
+      "schedule": "*/5 * * * *"
     }
   ],
   "headers": [
