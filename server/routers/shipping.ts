@@ -389,7 +389,7 @@ Seja direto e use emojis para facilitar leitura.`;
           pending: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&status=pendente`,
         },
         auto_return: 'approved',
-        notification_url: `https://lembretes.salvitarn.com.br/api/mp-webhook`,
+        notification_url: `https://premium.salvitarn.com.br/api/mp-webhook`,
         external_reference: String(order.id),
         statement_descriptor: 'SAL VITA',
         payment_methods: { installments: 3 },
