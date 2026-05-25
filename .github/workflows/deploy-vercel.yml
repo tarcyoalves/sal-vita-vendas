@@ -6,15 +6,29 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      VERCEL_ORG_ID: team_ZHn6TWGLumT9fkcooDeIbHD8
+      VERCEL_PROJECT_ID: prj_xpZOPvJsMdf7uEs6LX67fx5i0Ro8
     steps:
-      - name: Trigger Vercel deploy hook
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build project
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy to Vercel
+        id: deploy
         run: |
-          response=$(curl -s -X POST \
-            "https://api.vercel.com/v1/integrations/deploy/prj_xpZOPvJsMdf7uEs6LX67fx5i0Ro8/FkpvHZSnB1")
-          echo "Response: $response"
-          if echo "$response" | grep -q '"state"'; then
-            echo "✅ Deploy triggered successfully"
-          else
-            echo "❌ Unexpected response: $response"
-            exit 1
-          fi
+          url=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+          echo "url=$url" >> $GITHUB_OUTPUT
+          echo "✅ Deployed: $url"
