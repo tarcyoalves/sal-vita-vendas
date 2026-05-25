@@ -181,8 +181,8 @@ export async function ensureTablesExist() {
   await sql`CREATE INDEX IF NOT EXISTS sellers_user_id_idx         ON sellers(user_id)`;
 
   // Purge old data to stay within Neon free-tier limits (512 MB storage, ~5 GB transfer/month)
-  try { await sql`DELETE FROM chat_messages WHERE created_at < NOW() - INTERVAL '90 days'`; } catch {}
-  try { await sql`DELETE FROM tasks WHERE status IN ('completed','cancelled') AND updated_at < NOW() - INTERVAL '180 days'`; } catch {}
-  try { await sql`DELETE FROM reminders WHERE status = 'completed' AND scheduled_date < NOW() - INTERVAL '180 days'`; } catch {}
+  // Chat: keep only today's messages — each session starts fresh, old history wastes storage+transfer
+  try { await sql`DELETE FROM chat_messages WHERE created_at < CURRENT_DATE`; } catch {}
+  // Work sessions: keep last 90 days of completed sessions
   try { await sql`DELETE FROM work_sessions WHERE status = 'completed' AND ended_at < NOW() - INTERVAL '90 days'`; } catch {}
 }
