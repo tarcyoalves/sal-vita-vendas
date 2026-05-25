@@ -179,6 +179,43 @@ app.get('/api/db-health', async (_req, res) => {
 
 dbReady.catch(err => console.error('Background dbReady failed:', err));
 
+// DB storage and row-count monitor — admin only
+app.get('/api/db-stats', async (req, res) => {
+  const secret = process.env.ADMIN_RESET_SECRET;
+  if (secret && req.headers['x-admin-secret'] !== secret) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const [sizes, counts] = await Promise.all([
+      sqlClient`
+        SELECT
+          pg_size_pretty(pg_database_size(current_database())) AS total_db_size,
+          pg_size_pretty(pg_total_relation_size('chat_messages'))    AS chat_messages,
+          pg_size_pretty(pg_total_relation_size('tasks'))            AS tasks,
+          pg_size_pretty(pg_total_relation_size('reminders'))        AS reminders,
+          pg_size_pretty(pg_total_relation_size('work_sessions'))    AS work_sessions,
+          pg_size_pretty(pg_total_relation_size('knowledge_documents')) AS knowledge_documents,
+          pg_size_pretty(pg_total_relation_size('clients'))          AS clients,
+          pg_size_pretty(pg_total_relation_size('sellers'))          AS sellers,
+          pg_size_pretty(pg_total_relation_size('users'))            AS users
+      `,
+      sqlClient`
+        SELECT
+          (SELECT COUNT(*) FROM chat_messages)      AS chat_messages,
+          (SELECT COUNT(*) FROM tasks)              AS tasks,
+          (SELECT COUNT(*) FROM reminders)          AS reminders,
+          (SELECT COUNT(*) FROM work_sessions)      AS work_sessions,
+          (SELECT COUNT(*) FROM knowledge_documents) AS knowledge_documents,
+          (SELECT COUNT(*) FROM clients)            AS clients,
+          (SELECT COUNT(*) FROM sellers)            AS sellers
+      `,
+    ]);
+    res.json({ sizes: (sizes as any[])[0], rows: (counts as any[])[0] });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Raw body must be captured before express.json() for HMAC verification
 app.post('/api/mp-webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   try {
