@@ -342,8 +342,8 @@ app.use(
   }),
 );
 
-// Cron endpoint — called by Vercel Cron or external scheduler every 5 min
-app.post('/api/cron/abandoned-cart', express.json(), async (req, res) => {
+// Cron endpoint — Vercel Cron sends GET; external callers may use POST
+app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
   const secret = process.env.CRON_SECRET;
   const provided = req.headers['x-cron-secret'] ?? req.headers['authorization']?.replace('Bearer ', '');
   if (secret && provided !== secret) {
