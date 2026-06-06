@@ -129,13 +129,53 @@ export default function Tasks() {
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
 
-  const { data: tasks = [], isLoading, refetch } = trpc.tasks.list.useQuery();
+  const { data: tasks = [], isLoading, refetch } = trpc.tasks.list.useQuery(undefined, { refetchInterval: 30_000 });
   const { data: attendants = [] } = trpc.sellers.list.useQuery();
+  const { data: workSession } = trpc.workSessions.current.useQuery(undefined, { enabled: !isAdmin, refetchInterval: 10_000 });
+  const { data: sellerProfile } = trpc.sellers.myProfile.useQuery(undefined, { enabled: !isAdmin });
   const createMutation = trpc.tasks.create.useMutation();
   const updateMutation = trpc.tasks.update.useMutation();
   const deleteMutation = trpc.tasks.delete.useMutation();
   const deleteManyMutation = trpc.tasks.deleteMany.useMutation();
   const suggestMutation = trpc.ai.suggestSalesApproach.useMutation();
+
+  const dailyProgress = useMemo(() => {
+    if (isAdmin) return null;
+    const GOAL = 100;
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+    const contacts = (tasks as any[]).filter(t => t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart).length;
+    const pct = Math.min(Math.round((contacts / GOAL) * 100), 100);
+
+    let workedMs = 0;
+    if (workSession) {
+      const now = Date.now();
+      const start = new Date(workSession.startedAt).getTime();
+      const end   = workSession.endedAt ? new Date(workSession.endedAt).getTime() : now;
+      const paused = workSession.totalPausedMs ?? 0;
+      const extraPause = (workSession.status === 'paused' && workSession.pausedAt)
+        ? now - new Date(workSession.pausedAt).getTime() : 0;
+      workedMs = Math.max(0, end - start - paused - extraPause);
+    }
+    const goalMs = (sellerProfile?.workHoursGoal ?? 8) * 3600000;
+    const hoursPct = Math.min(Math.round((workedMs / goalMs) * 100), 100);
+    const h = Math.floor(workedMs / 3600000), mn = Math.floor((workedMs % 3600000) / 60000);
+
+    const color = pct >= 100 ? '#16a34a' : pct >= 60 ? '#2563eb' : pct >= 30 ? '#d97706' : '#dc2626';
+    return { contacts, pct, hoursPct, hoursLabel: `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}`, color, remaining: GOAL - contacts };
+  }, [tasks, workSession, sellerProfile, isAdmin]);
+
+  const prevContactsRef = useRef<number>(-1);
+  useEffect(() => {
+    if (isAdmin || !dailyProgress) return;
+    const prev = prevContactsRef.current;
+    const cur  = dailyProgress.contacts;
+    if (prev < 0) { prevContactsRef.current = cur; return; }
+    if (prev < 25  && cur >= 25)  toast.success('🎯 25 contatos! Ótimo começo!');
+    if (prev < 50  && cur >= 50)  toast.success('🔥 Metade da meta! 50 contatos!');
+    if (prev < 75  && cur >= 75)  toast.success('⚡ 75 contatos! Faltam só 25!');
+    if (prev < 100 && cur >= 100) toast.success('🏆 META BATIDA! 100 contatos hoje!', { duration: 6000 });
+    prevContactsRef.current = cur;
+  }, [dailyProgress?.contacts, isAdmin]);
 
   const [formData, setFormData] = useState<{
     clientId: number;
@@ -482,6 +522,42 @@ export default function Tasks() {
           <button onClick={() => { setShowMonitorBanner(false); sessionStorage.setItem('monitorBannerDismissed', '1'); }} className="text-amber-600 hover:text-amber-900 font-bold text-base leading-none flex-shrink-0 mt-0.5" title="Fechar">✕</button>
         </div>
       )}
+      {dailyProgress && (
+        <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-base">📞</span>
+              <span className="text-sm font-semibold text-gray-700">Contatos hoje</span>
+              <span className="text-lg font-black" style={{ color: dailyProgress.color }}>{dailyProgress.contacts}</span>
+              <span className="text-xs text-gray-400">/ 100</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-gray-400">⏱</span>
+                <span className="text-xs font-semibold text-gray-600">{dailyProgress.hoursLabel}</span>
+                {dailyProgress.hoursPct > 0 && (
+                  <div className="w-12 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-slate-500 rounded-full transition-all" style={{ width: `${dailyProgress.hoursPct}%` }} />
+                  </div>
+                )}
+              </div>
+              <span className="text-sm font-bold" style={{ color: dailyProgress.color }}>{dailyProgress.pct}%</span>
+            </div>
+          </div>
+          <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-700"
+              style={{ width: `${dailyProgress.pct}%`, backgroundColor: dailyProgress.color }}
+            />
+          </div>
+          {dailyProgress.contacts >= 100 ? (
+            <p className="text-xs text-green-600 font-semibold mt-1.5">🏆 Meta atingida! Excelente trabalho!</p>
+          ) : (
+            <p className="text-xs text-gray-400 mt-1.5">Faltam <strong>{dailyProgress.remaining}</strong> contatos para a meta de hoje</p>
+          )}
+        </div>
+      )}
+
       <input type="text" placeholder="🔍 Pesquisar tarefas..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full px-3 py-2.5 border rounded-lg text-sm" />
 
       <div className="flex justify-between items-center flex-wrap gap-2">
