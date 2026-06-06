@@ -19,6 +19,9 @@ import {
   ChevronDown,
   ChevronRight,
   FileText,
+  Trash2,
+  AlertTriangle,
+  Eye,
 } from "lucide-react";
 import AttendantDetailModal from '../components/AttendantDetailModal';
 
@@ -159,6 +162,9 @@ export default function AdminDashboard() {
   const { data: sellers = [], isLoading } = trpc.sellers.list.useQuery();
   const { data: tasks = [] } = trpc.tasks.list.useQuery();
   const { data: reminders = [] } = trpc.tasks.reminders.useQuery();
+  const { data: deletionLogs = [], refetch: refetchDeletionLogs } = trpc.tasks.deletionLogs.useQuery({ onlyUnreviewed: true }, { refetchInterval: 60_000 });
+  const markDeletionReviewedMutation = trpc.tasks.markDeletionReviewed.useMutation({ onSuccess: () => refetchDeletionLogs() });
+  const [showDeletionLogs, setShowDeletionLogs] = useState(false);
   const analyzeAttendantsMutation = trpc.ai.analyzeAttendants.useMutation();
   const { data: sessionData = [] } = trpc.workSessions.allActiveToday.useQuery(undefined, { refetchInterval: 60_000 });
   const [expandedSessions, setExpandedSessions] = useState<Set<number>>(new Set());
@@ -291,6 +297,72 @@ export default function AdminDashboard() {
           <span>{(() => { try { return new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }); } catch { const d = new Date(); return `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`; } })()}</span>
         </div>
       </div>
+
+      {/* Task Deletion Alert Banner */}
+      {deletionLogs.length > 0 && (
+        <div
+          className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 cursor-pointer hover:bg-amber-100 transition-colors"
+          onClick={() => setShowDeletionLogs(v => !v)}
+        >
+          <div className="flex items-center gap-2 text-amber-800">
+            <AlertTriangle size={18} className="text-amber-500 shrink-0" />
+            <span className="font-semibold text-sm">
+              {deletionLogs.length} tarefa{deletionLogs.length > 1 ? 's' : ''} excluída{deletionLogs.length > 1 ? 's' : ''} aguarda{deletionLogs.length > 1 ? 'm' : ''} revisão
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-bold">
+              {deletionLogs.length}
+            </span>
+            {showDeletionLogs ? <ChevronDown size={16} className="text-amber-600" /> : <ChevronRight size={16} className="text-amber-600" />}
+          </div>
+        </div>
+      )}
+
+      {/* Task Deletion Logs Panel */}
+      {showDeletionLogs && deletionLogs.length > 0 && (
+        <Card className="border-amber-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base text-amber-800">
+              <Trash2 size={16} />
+              Tarefas Excluídas — Pendentes de Revisão
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-amber-100">
+              {deletionLogs.map((log: any) => (
+                <div key={log.id} className="px-4 py-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-sm text-gray-800 truncate">{log.taskTitle}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Excluída por <span className="font-semibold text-gray-700">{log.deletedByName}</span>
+                      {' · '}
+                      {new Date(log.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                    <div className="mt-1.5 flex items-start gap-1.5">
+                      <span className="text-xs text-amber-700 font-medium shrink-0">Motivo:</span>
+                      <span className="text-xs text-gray-700 break-words">{log.reason}</span>
+                    </div>
+                    {log.taskNotes && (
+                      <p className="text-xs text-gray-400 mt-1 italic truncate">Nota: {log.taskNotes.slice(0, 80)}</p>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 text-xs border-green-300 text-green-700 hover:bg-green-50"
+                    onClick={() => markDeletionReviewedMutation.mutate({ id: log.id })}
+                    disabled={markDeletionReviewedMutation.isPending}
+                  >
+                    <Eye size={13} className="mr-1" />
+                    Revisei
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

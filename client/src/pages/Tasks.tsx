@@ -127,6 +127,7 @@ export default function Tasks() {
   const [showMonitorBanner, setShowMonitorBanner] = useState(() => sessionStorage.getItem('monitorBannerDismissed') !== '1');
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
 
   const { data: tasks = [], isLoading, refetch } = trpc.tasks.list.useQuery();
   const { data: attendants = [] } = trpc.sellers.list.useQuery();
@@ -202,25 +203,27 @@ export default function Tasks() {
 
   const confirmDelete = async () => {
     if (deleteConfirm === null) return;
+    if (deleteReason.trim().length < 5) { toast.error("Informe o motivo da exclusão (mínimo 5 caracteres)"); return; }
     try {
-      await deleteMutation.mutateAsync({ id: deleteConfirm });
+      await deleteMutation.mutateAsync({ id: deleteConfirm, reason: deleteReason.trim() });
       toast.success("Tarefa deletada");
       resetForm();
       refetch();
     } catch { toast.error("Erro ao deletar"); }
-    finally { setDeleteConfirm(null); }
+    finally { setDeleteConfirm(null); setDeleteReason(""); }
   };
 
   const handleBulkDelete = () => setBulkDeleteConfirm(true);
 
   const confirmBulkDelete = async () => {
+    if (deleteReason.trim().length < 5) { toast.error("Informe o motivo da exclusão (mínimo 5 caracteres)"); return; }
     try {
-      await deleteManyMutation.mutateAsync({ ids: Array.from(selectedTasks) });
+      await deleteManyMutation.mutateAsync({ ids: Array.from(selectedTasks), reason: deleteReason.trim() });
       toast.success(`${selectedTasks.size} tarefa(s) deletada(s)!`);
       setSelectedTasks(new Set());
       refetch();
     } catch { toast.error("Erro ao deletar tarefas"); }
-    finally { setBulkDeleteConfirm(false); }
+    finally { setBulkDeleteConfirm(false); setDeleteReason(""); }
   };
 
   const filteredTasks = useMemo(() => {
@@ -725,24 +728,42 @@ export default function Tasks() {
       {/* Delete confirmation modal */}
       {(deleteConfirm !== null || bulkDeleteConfirm) && (
         <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-xs w-full p-6 text-center">
-            <div className="text-4xl mb-3">🗑️</div>
-            <h3 className="text-base font-bold text-gray-800 mb-2">Confirmar exclusão</h3>
-            <p className="text-sm text-gray-500 mb-5">
-              {bulkDeleteConfirm
-                ? `Deletar ${selectedTasks.size} tarefa(s) selecionada(s)?`
-                : "Tem certeza que deseja deletar esta tarefa?"}
-            </p>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
+            <div className="text-center mb-4">
+              <div className="text-4xl mb-2">🗑️</div>
+              <h3 className="text-base font-bold text-gray-800">Confirmar exclusão</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                {bulkDeleteConfirm
+                  ? `Deletar ${selectedTasks.size} tarefa(s) selecionada(s)?`
+                  : "Tem certeza que deseja deletar esta tarefa?"}
+              </p>
+            </div>
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Motivo da exclusão <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-300"
+                rows={3}
+                placeholder="Descreva o motivo (ex: tarefa duplicada, cliente cancelou...)"
+                value={deleteReason}
+                onChange={e => setDeleteReason(e.target.value)}
+                maxLength={500}
+                autoFocus
+              />
+              <p className="text-xs text-gray-400 mt-0.5 text-right">{deleteReason.length}/500</p>
+            </div>
             <div className="flex gap-3">
               <button
-                onClick={() => { setDeleteConfirm(null); setBulkDeleteConfirm(false); }}
+                onClick={() => { setDeleteConfirm(null); setBulkDeleteConfirm(false); setDeleteReason(""); }}
                 className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition"
               >
                 Cancelar
               </button>
               <button
                 onClick={bulkDeleteConfirm ? confirmBulkDelete : confirmDelete}
-                className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold transition"
+                disabled={deleteReason.trim().length < 5}
+                className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold transition"
               >
                 Deletar
               </button>
