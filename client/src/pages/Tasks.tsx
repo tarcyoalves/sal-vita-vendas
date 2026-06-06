@@ -129,15 +129,23 @@ export default function Tasks() {
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
 
-  const { data: tasks = [], isLoading, refetch } = trpc.tasks.list.useQuery(undefined, { refetchInterval: 30_000 });
+  const { data: tasks = [], isLoading, refetch } = trpc.tasks.list.useQuery();
   const { data: attendants = [] } = trpc.sellers.list.useQuery();
-  const { data: workSession } = trpc.workSessions.current.useQuery(undefined, { enabled: !isAdmin, refetchInterval: 10_000 });
-  const { data: sellerProfile } = trpc.sellers.myProfile.useQuery(undefined, { enabled: !isAdmin });
+  // staleTime: avoids redundant server calls; session/profile rarely change
+  const { data: workSession } = trpc.workSessions.current.useQuery(undefined, { enabled: !isAdmin, staleTime: 60_000 });
+  const { data: sellerProfile } = trpc.sellers.myProfile.useQuery(undefined, { enabled: !isAdmin, staleTime: 300_000 });
   const createMutation = trpc.tasks.create.useMutation();
   const updateMutation = trpc.tasks.update.useMutation();
   const deleteMutation = trpc.tasks.delete.useMutation();
   const deleteManyMutation = trpc.tasks.deleteMany.useMutation();
   const suggestMutation = trpc.ai.suggestSalesApproach.useMutation();
+
+  const [progressTick, setProgressTick] = useState(0);
+  useEffect(() => {
+    if (!workSession || workSession.status !== 'active') return;
+    const id = setInterval(() => setProgressTick(t => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, [workSession?.status]);
 
   const dailyProgress = useMemo(() => {
     if (isAdmin) return null;
@@ -162,7 +170,7 @@ export default function Tasks() {
 
     const color = pct >= 100 ? '#16a34a' : pct >= 60 ? '#2563eb' : pct >= 30 ? '#d97706' : '#dc2626';
     return { contacts, pct, hoursPct, hoursLabel: `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}`, color, remaining: GOAL - contacts };
-  }, [tasks, workSession, sellerProfile, isAdmin]);
+  }, [tasks, workSession, sellerProfile, isAdmin, progressTick]);
 
   const prevContactsRef = useRef<number>(-1);
   useEffect(() => {

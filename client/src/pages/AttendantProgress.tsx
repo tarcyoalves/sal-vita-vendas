@@ -1,6 +1,6 @@
 import { trpc } from '../lib/trpc';
 import { useAuth } from '../_core/hooks/useAuth';
-import { useMemo, useEffect, useRef } from 'react';
+import { useMemo, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Phone, Clock, Zap, TrendingUp, AlertCircle, Trophy } from 'lucide-react';
 
@@ -31,9 +31,18 @@ function ProgressRing({ pct, size = 96, stroke = 9, color }: { pct: number; size
 
 export default function AttendantProgress() {
   const { user } = useAuth();
-  const { data: tasks = [], isLoading } = trpc.tasks.list.useQuery(undefined, { refetchInterval: 30_000 });
-  const { data: session } = trpc.workSessions.current.useQuery(undefined, { refetchInterval: 10_000 });
-  const { data: sellerProfile } = trpc.sellers.myProfile.useQuery();
+  // No refetchInterval — mutations invalidate the cache; server is not polled
+  const { data: tasks = [], isLoading } = trpc.tasks.list.useQuery();
+  const { data: session } = trpc.workSessions.current.useQuery(undefined, { staleTime: 60_000 });
+  const { data: sellerProfile } = trpc.sellers.myProfile.useQuery(undefined, { staleTime: 300_000 });
+
+  // Local clock tick — updates display every minute without any server call
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!session || session.status !== 'active') return;
+    const id = setInterval(() => setTick(t => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, [session?.status]);
 
   const prevContactsRef = useRef<number>(-1);
 
@@ -92,7 +101,7 @@ export default function AttendantProgress() {
       maxBar,
       sessionStatus: session?.status ?? null,
     };
-  }, [tasks, session, sellerProfile]);
+  }, [tasks, session, sellerProfile, tick]);
 
   useEffect(() => {
     const prev = prevContactsRef.current;
