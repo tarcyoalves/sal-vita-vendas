@@ -11,8 +11,14 @@ function generatePassword(length = 8): string {
 }
 
 export const sellersRouter = router({
-  list: protectedProcedure.query(async () => {
-    return db.select().from(sellers).orderBy(sellers.name);
+  // Non-admins only receive name + id (needed for assignedTo display).
+  // Admins receive full rows.
+  list: protectedProcedure.query(async ({ ctx }) => {
+    if (ctx.user.role === 'admin') {
+      return db.select().from(sellers).orderBy(sellers.name);
+    }
+    return db.select({ id: sellers.id, name: sellers.name, status: sellers.status })
+      .from(sellers).where(eq(sellers.status, 'active')).orderBy(sellers.name);
   }),
 
   create: adminProcedure

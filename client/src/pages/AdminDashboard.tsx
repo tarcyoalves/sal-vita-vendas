@@ -22,6 +22,9 @@ import {
   Trash2,
   AlertTriangle,
   Eye,
+  Phone,
+  RefreshCw,
+  NotebookPen,
 } from "lucide-react";
 import AttendantDetailModal from '../components/AttendantDetailModal';
 
@@ -159,14 +162,14 @@ function AiAnalysisReport({ markdown }: { markdown: string }) {
 export default function AdminDashboard() {
   const { user, loading } = useAuth();
   const [, setLocation] = useLocation();
-  const { data: sellers = [], isLoading } = trpc.sellers.list.useQuery();
-  const { data: tasks = [] } = trpc.tasks.list.useQuery();
-  const { data: reminders = [] } = trpc.tasks.reminders.useQuery();
-  const { data: deletionLogs = [], refetch: refetchDeletionLogs } = trpc.tasks.deletionLogs.useQuery({ onlyUnreviewed: true }, { refetchInterval: 60_000 });
+  const { data: sellers = [], isLoading } = trpc.sellers.list.useQuery(undefined, { staleTime: 300_000 });
+  const { data: tasks = [] } = trpc.tasks.list.useQuery(undefined, { staleTime: 120_000 });
+  const { data: reminders = [] } = trpc.tasks.reminders.useQuery(undefined, { staleTime: 120_000 });
+  const { data: deletionLogs = [], refetch: refetchDeletionLogs } = trpc.tasks.deletionLogs.useQuery({ onlyUnreviewed: true }, { staleTime: 120_000 });
   const markDeletionReviewedMutation = trpc.tasks.markDeletionReviewed.useMutation({ onSuccess: () => refetchDeletionLogs() });
   const [showDeletionLogs, setShowDeletionLogs] = useState(false);
   const analyzeAttendantsMutation = trpc.ai.analyzeAttendants.useMutation();
-  const { data: sessionData = [] } = trpc.workSessions.allActiveToday.useQuery(undefined, { refetchInterval: 60_000 });
+  const { data: sessionData = [], refetch: refetchSessions, isFetching: sessionsFetching } = trpc.workSessions.allActiveToday.useQuery(undefined, { staleTime: 90_000 });
   const [expandedSessions, setExpandedSessions] = useState<Set<number>>(new Set());
   const toggleSession = (id: number) => setExpandedSessions(prev => {
     const next = new Set(prev);
@@ -217,11 +220,15 @@ export default function AdminDashboard() {
   const pending = (tasks as any[]).filter(t => t.status === 'pending');
   const completed = (tasks as any[]).filter(t => t.status === 'completed');
   const overdue = (tasks as any[]).filter(t => {
-    if (t.status === 'completed') return false;
+    if (t.status !== 'pending') return false;
     if (!t.reminderDate) return false;
     return new Date(t.reminderDate) < new Date();
   });
   const completionRate = tasks.length > 0 ? Math.round((completed.length / tasks.length) * 100) : 0;
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const contactsToday = (tasks as any[]).filter(t => t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart).length;
+  const withNotes = (tasks as any[]).filter(t => t.notes && t.notes.trim().length >= 15).length;
+  const noteQuality = tasks.length > 0 ? Math.round((withNotes / tasks.length) * 100) : 0;
 
   // Filter reminders based on selection
   const filteredReminders = (reminders as any[]).filter(r => {
@@ -240,36 +247,58 @@ export default function AdminDashboard() {
 
   const kpis = [
     {
-      label: "Atendentes",
-      value: sellers?.length || 0,
-      icon: <Users size={22} />,
+      label: "Contatos hoje",
+      value: contactsToday,
+      sub: `meta: ${(sellers?.length || 0) * 100}`,
+      icon: <Phone size={22} />,
       color: "text-blue-600",
       bg: "bg-blue-50",
       border: "border-blue-100",
     },
     {
+      label: "Atendentes",
+      value: sellers?.length || 0,
+      sub: `${(sessionData as any[]).filter((s: any) => s.session?.status === 'active').length} ativos agora`,
+      icon: <Users size={22} />,
+      color: "text-indigo-600",
+      bg: "bg-indigo-50",
+      border: "border-indigo-100",
+    },
+    {
       label: "Pendentes",
       value: pending.length,
+      sub: `${completionRate}% concluídos`,
       icon: <ClipboardList size={22} />,
       color: "text-orange-500",
       bg: "bg-orange-50",
       border: "border-orange-100",
     },
     {
-      label: "Com lembrete",
-      value: (tasks as any[]).filter(t => t.reminderDate && t.reminderEnabled).length,
-      icon: <CheckCircle2 size={22} />,
-      color: "text-green-600",
-      bg: "bg-green-50",
-      border: "border-green-100",
-    },
-    {
       label: "Atrasados",
       value: overdue.length,
-      icon: <TrendingUp size={22} />,
-      color: "text-purple-600",
-      bg: "bg-purple-50",
-      border: "border-purple-100",
+      sub: overdue.length > 0 ? "precisam de ação" : "tudo em dia ✓",
+      icon: <AlertTriangle size={22} />,
+      color: overdue.length > 0 ? "text-red-600" : "text-green-600",
+      bg: overdue.length > 0 ? "bg-red-50" : "bg-green-50",
+      border: overdue.length > 0 ? "border-red-100" : "border-green-100",
+    },
+    {
+      label: "Qualidade notas",
+      value: `${noteQuality}%`,
+      sub: `${withNotes} com anotação`,
+      icon: <NotebookPen size={22} />,
+      color: noteQuality >= 70 ? "text-green-600" : noteQuality >= 40 ? "text-amber-600" : "text-red-600",
+      bg: noteQuality >= 70 ? "bg-green-50" : noteQuality >= 40 ? "bg-amber-50" : "bg-red-50",
+      border: noteQuality >= 70 ? "border-green-100" : noteQuality >= 40 ? "border-amber-100" : "border-red-100",
+    },
+    {
+      label: "Com lembrete",
+      value: (tasks as any[]).filter(t => t.reminderDate && t.reminderEnabled).length,
+      sub: `de ${tasks.length} total`,
+      icon: <CheckCircle2 size={22} />,
+      color: "text-teal-600",
+      bg: "bg-teal-50",
+      border: "border-teal-100",
     },
   ];
 
@@ -365,16 +394,17 @@ export default function AdminDashboard() {
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {kpis.map((kpi) => (
           <Card key={kpi.label} className={`border ${kpi.border}`}>
-            <CardContent className="pt-5 px-5 pb-4">
+            <CardContent className="pt-4 px-4 pb-3">
               <div className="flex items-start justify-between">
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className={`text-2xl font-bold ${kpi.color}`}>{kpi.value}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{kpi.label}</p>
+                  <p className="text-xs font-medium text-gray-600 mt-0.5">{kpi.label}</p>
+                  {(kpi as any).sub && <p className="text-[11px] text-gray-400 mt-0.5">{(kpi as any).sub}</p>}
                 </div>
-                <div className={`${kpi.bg} ${kpi.color} p-2 rounded-lg`}>
+                <div className={`${kpi.bg} ${kpi.color} p-2 rounded-lg flex-shrink-0 ml-2`}>
                   {kpi.icon}
                 </div>
               </div>
@@ -405,19 +435,27 @@ export default function AdminDashboard() {
             </div>
           ) : sellers && sellers.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {sellers.map((seller) => {
+              {sellers.map((seller: any) => {
                 const sellerTasks = (tasks as any[]).filter(t => t.assignedTo === seller.name || t.userId === seller.userId);
-                const withReminder = sellerTasks.filter(t => t.reminderDate && t.reminderEnabled).length;
-                const rate = sellerTasks.length > 0 ? Math.round((withReminder / sellerTasks.length) * 100) : 0;
+                const sellerContactsToday = sellerTasks.filter(t => t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart).length;
+                const GOAL = 100;
+                const pct = Math.min(Math.round((sellerContactsToday / GOAL) * 100), 100);
                 const sellerOverdue = sellerTasks.filter(t => {
-                  if (!t.reminderDate || !t.reminderEnabled) return false;
+                  if (t.status !== 'pending' || !t.reminderDate || !t.reminderEnabled) return false;
                   return new Date(t.reminderDate) < new Date();
                 }).length;
+                const sessionRow = (sessionData as any[]).find((s: any) => s.name === seller.name);
+                const isActive = sessionRow?.session?.status === 'active';
+                const isPaused = sessionRow?.session?.status === 'paused';
+                const barColor = pct >= 100 ? 'bg-green-500' : pct >= 60 ? 'bg-blue-500' : pct >= 30 ? 'bg-amber-400' : 'bg-red-400';
                 return (
                   <div key={seller.id} className="p-4 border rounded-xl bg-white hover:shadow-sm transition-shadow">
                     <div className="flex items-center gap-3 mb-3">
-                      <div className="w-9 h-9 rounded-full bg-slate-700 text-white flex items-center justify-center text-sm font-bold flex-shrink-0">
-                        {seller.name.charAt(0).toUpperCase()}
+                      <div className="relative flex-shrink-0">
+                        <div className="w-9 h-9 rounded-full bg-slate-700 text-white flex items-center justify-center text-sm font-bold">
+                          {seller.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${isActive ? 'bg-green-500' : isPaused ? 'bg-yellow-400' : 'bg-gray-300'}`} />
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="font-semibold text-sm text-gray-800 truncate">{seller.name}</p>
@@ -432,19 +470,19 @@ export default function AdminDashboard() {
                         Analisar
                       </button>
                     </div>
+                    {/* Contatos hoje vs meta */}
                     <div className="flex items-center gap-2 mb-1">
-                      <div className="flex-1 bg-gray-100 rounded-full h-1.5">
-                        <div
-                          className={`h-1.5 rounded-full transition-all ${rate >= 70 ? 'bg-green-500' : rate >= 40 ? 'bg-orange-400' : 'bg-red-400'}`}
-                          style={{ width: `${rate}%` }}
-                        />
+                      <div className="flex-1 bg-gray-100 rounded-full h-2">
+                        <div className={`h-2 rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
                       </div>
-                      <span className="text-xs font-semibold text-gray-700 w-8 text-right">{rate}%</span>
+                      <span className="text-xs font-bold text-gray-700 w-14 text-right tabular-nums">
+                        {sellerContactsToday}/{GOAL}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between text-xs text-gray-400">
-                      <span>{withReminder}/{sellerTasks.length} com lembrete</span>
+                      <span className="flex items-center gap-1"><Phone size={10} /> {sellerContactsToday} contatos hoje</span>
                       {sellerOverdue > 0 && (
-                        <span className="text-red-500 font-medium">⚠️ {sellerOverdue} atrasada{sellerOverdue > 1 ? 's' : ''}</span>
+                        <span className="text-red-500 font-medium flex items-center gap-0.5"><AlertTriangle size={10} /> {sellerOverdue} atrasado{sellerOverdue > 1 ? 's' : ''}</span>
                       )}
                     </div>
                   </div>
@@ -552,7 +590,15 @@ export default function AdminDashboard() {
               <Timer size={18} className="text-cyan-600" />
               Sessões de Trabalho Hoje
             </span>
-            <span className="text-xs text-gray-400 font-normal">atualiza a cada 60s · clique para detalhar</span>
+            <button
+              onClick={() => refetchSessions()}
+              disabled={sessionsFetching}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-cyan-600 transition disabled:opacity-50"
+              title="Atualizar"
+            >
+              <RefreshCw size={13} className={sessionsFetching ? 'animate-spin' : ''} />
+              {sessionsFetching ? 'Atualizando...' : 'Atualizar'}
+            </button>
           </CardTitle>
         </CardHeader>
         <CardContent>

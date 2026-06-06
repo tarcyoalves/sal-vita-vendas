@@ -103,7 +103,7 @@ export const authRouter = router({
       if (user.role !== 'admin') throw new Error('Apenas admins podem usar recuperação de emergência');
       const generated = generatePassword();
       await db.update(users)
-        .set({ passwordHash: hashPassword(generated) })
+        .set({ passwordHash: hashPassword(generated), mustChangePassword: true })
         .where(eq(users.id, user.id));
       return { name: user.name, generatedPassword: generated };
     }),

@@ -786,7 +786,8 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
     const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
 
     const allSellers = await db.select().from(sellers);
-    const allTasks = await db.select().from(tasks);
+    // Limit to 5000 most-recent tasks to protect Neon free tier on large datasets
+    const allTasks = await db.select().from(tasks).orderBy(desc(tasks.updatedAt)).limit(5000);
     const recentSessions = await db.select().from(workSessions)
       .where(gte(workSessions.startedAt, sevenDaysAgo))
       .orderBy(desc(workSessions.startedAt));

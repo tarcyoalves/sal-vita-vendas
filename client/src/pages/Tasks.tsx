@@ -371,7 +371,7 @@ export default function Tasks() {
         if (!t.reminderDate) return false;
         const rd = new Date(t.reminderDate);
         const rdDay = new Date(rd.getFullYear(), rd.getMonth(), rd.getDate());
-        if (reminderTab === "overdue") return rd < now && t.reminderEnabled !== false;
+        if (reminderTab === "overdue") return rd < now && t.reminderEnabled !== false && t.status === 'pending';
         if (reminderTab === "upcoming") return rd >= now && t.reminderEnabled !== false;
         if (reminderTab === "today") return rdDay.getTime() === today.getTime();
         if (reminderTab === "yesterday") return rdDay.getTime() === yesterday.getTime();
