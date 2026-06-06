@@ -99,7 +99,7 @@ export const tasksRouter = router({
   delete: protectedProcedure
     .input(z.object({
       id: z.number(),
-      reason: z.string().min(5, 'Motivo deve ter pelo menos 5 caracteres').max(500),
+      reason: z.string().max(500).optional().default('Não informado'),
     }))
     .mutation(async ({ input, ctx }) => {
       const ownerFilter = ctx.user.role === 'admin'
@@ -127,7 +127,7 @@ export const tasksRouter = router({
   deleteMany: protectedProcedure
     .input(z.object({
       ids: z.array(z.number()).min(1),
-      reason: z.string().min(5, 'Motivo deve ter pelo menos 5 caracteres').max(500),
+      reason: z.string().max(500).optional().default('Não informado'),
     }))
     .mutation(async ({ input, ctx }) => {
       const ownerFilter = ctx.user.role === 'admin'
