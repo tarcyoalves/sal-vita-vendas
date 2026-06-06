@@ -34,7 +34,8 @@ function addMinutes(d: Date, mins: number): Date {
 
 async function callLLMWithTools(
   apiKey: string, baseURL: string, model: string,
-  messages: any[], tools: any[], maxTokens = 1000
+  messages: any[], tools: any[], maxTokens = 1000,
+  callerUserId?: number
 ): Promise<string> {
   const loop = async (msgs: any[]): Promise<string> => {
     const body: any = { model, messages: msgs, max_tokens: maxTokens, temperature: 0.4, parallel_tool_calls: false };
@@ -61,7 +62,7 @@ async function callLLMWithTools(
       for (const tc of msg.tool_calls) {
         let args: any = {};
         try { args = JSON.parse(tc.function.arguments ?? '{}'); } catch { /* truncated args, use empty */ }
-        const result = await executeTool(tc.function.name, args);
+        const result = await executeTool(tc.function.name, args, callerUserId);
         newMsgs.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result) });
       }
       return loop(newMsgs);
@@ -213,7 +214,7 @@ Esta ação é IRREVERSÍVEL — os lembretes serão redistribuídos para datas 
   },
 ];
 
-async function executeTool(name: string, args: any): Promise<any> {
+async function executeTool(name: string, args: any, callerUserId?: number): Promise<any> {
   if (name === 'list_tasks') {
     const name_ = String(args.attendant_name ?? '');
     const [seller] = await db.select().from(sellers).where(ilike(sellers.name, `%${name_}%`)).limit(1);
@@ -319,17 +320,24 @@ async function executeTool(name: string, args: any): Promise<any> {
     const query = String(args.query ?? '');
     const category = args.category ? String(args.category) : null;
 
+    // Always scope to the caller's own documents to prevent cross-user leakage
+    const userFilter = callerUserId ? eq(knowledgeDocuments.userId, callerUserId) : undefined;
+
     const searchWhere = category
       ? and(
+          userFilter,
           or(ilike(knowledgeDocuments.title, `%${query}%`), ilike(knowledgeDocuments.content, `%${query}%`)),
           ilike(knowledgeDocuments.category, `%${category}%`)
         )
-      : or(ilike(knowledgeDocuments.title, `%${query}%`), ilike(knowledgeDocuments.content, `%${query}%`));
+      : and(
+          userFilter,
+          or(ilike(knowledgeDocuments.title, `%${query}%`), ilike(knowledgeDocuments.content, `%${query}%`))
+        );
 
     const matched = await db.select().from(knowledgeDocuments).where(searchWhere).limit(5);
 
     if (matched.length === 0) {
-      const fallback = await db.select().from(knowledgeDocuments).limit(3);
+      const fallback = await db.select().from(knowledgeDocuments).where(userFilter).limit(3);
       return { encontrados: 0, mensagem: `Nenhum documento encontrado para "${query}". Documentos disponíveis:`, documentos: fallback.map(d => ({ titulo: d.title, categoria: d.category, conteudo: d.content.slice(0, 800) })) };
     }
 
@@ -727,7 +735,7 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
         let reply: string;
         try {
           reply = isAdmin
-            ? await callLLMWithTools(apiKey, baseURL, model, messages, TOOLS, 1000)
+            ? await callLLMWithTools(apiKey, baseURL, model, messages, TOOLS, 1000, ctx.user.id)
             : await callLLM(apiKey, baseURL, model, messages, 700, 0.6);
         } catch (primaryErr: any) {
           if (isRateLimit(primaryErr)) {
@@ -735,7 +743,7 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
             if (fb) {
               console.log('[AI_CHAT] 429 on', provider, '— falling back to', fb.model);
               reply = isAdmin
-                ? await callLLMWithTools(fb.apiKey, fb.baseURL, fb.model, messages, TOOLS, 1000)
+                ? await callLLMWithTools(fb.apiKey, fb.baseURL, fb.model, messages, TOOLS, 1000, ctx.user.id)
                 : await callLLM(fb.apiKey, fb.baseURL, fb.model, messages, 700, 0.6);
             } else {
               throw primaryErr;

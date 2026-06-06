@@ -167,11 +167,8 @@ app.use(cors({
 app.get('/api/db-health', async (_req, res) => {
   try {
     const t0 = Date.now();
-    const [, sellersRes] = await Promise.all([
-      sqlClient`SELECT 1`,
-      sqlClient`SELECT COUNT(*)::int AS cnt FROM sellers`,
-    ]);
-    res.json({ db: 'ok', ms: Date.now() - t0, sellers: (sellersRes as unknown as Array<{cnt:number}>)[0]?.cnt ?? 0 });
+    await sqlClient`SELECT 1`;
+    res.json({ db: 'ok', ms: Date.now() - t0 });
   } catch (err: any) {
     res.status(500).json({ db: 'error', message: err.message });
   }
@@ -362,6 +359,8 @@ app.use('/api/trpc/shipping.createPayment', orderLimiter);
 app.use('/api/trpc/recovery.trackCart', cartTrackLimiter);
 app.use('/api/trpc/recovery.validateCoupon', couponCheckLimiter);
 app.use('/api/trpc/recovery.chat', chatLimiter);
+app.use('/api/trpc/ai.chat', chatLimiter);
+app.use('/api/trpc/ai.testConnection', authLimiter);
 
 // On the very first request after a cold start, wait for migration to settle
 // so the admin seed and schema exist before any login attempt.
@@ -462,9 +461,10 @@ app.get('/api/health', (_req, res) => {
 // Protected by ADMIN_RESET_SECRET. Remove after migration is done.
 app.post('/api/migrate-from-neon', express.json(), async (req, res) => {
   const secret = process.env.ADMIN_RESET_SECRET;
-  // When ADMIN_RESET_SECRET is not configured, allow the call (one-time migration use).
-  // When it IS configured, enforce it.
-  if (secret && req.body?.secret !== secret) {
+  if (!secret) {
+    return res.status(503).json({ error: 'Migration endpoint disabled: configure ADMIN_RESET_SECRET to enable' });
+  }
+  if (req.body?.secret !== secret) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 

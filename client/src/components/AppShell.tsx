@@ -119,6 +119,10 @@ export default function AppShell({ children }: AppShellProps) {
   const logoutMutation = trpc.auth.logout.useMutation();
 
   const role = (user?.role ?? "user") as "admin" | "user";
+  const { data: pendingDeletions } = trpc.tasks.deletionLogs.useQuery(
+    { onlyUnreviewed: true },
+    { enabled: role === "admin", refetchInterval: 60_000, select: (d) => d.length }
+  );
   const visibleItems = NAV_ITEMS.filter((item) => item.roles.includes(role));
   const bottomNavItems = role === "admin" ? BOTTOM_NAV_ADMIN : BOTTOM_NAV_USER;
 
@@ -315,7 +319,12 @@ export default function AppShell({ children }: AppShellProps) {
                   }}
                 >
                   <span className="flex-shrink-0">{item.icon}</span>
-                  <span>{item.label}</span>
+                  <span className="flex-1 text-left">{item.label}</span>
+                  {item.path === "/admin/dashboard" && !!pendingDeletions && pendingDeletions > 0 && (
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold">
+                      {pendingDeletions > 9 ? "9+" : pendingDeletions}
+                    </span>
+                  )}
                 </button>
               </li>
             );
@@ -417,12 +426,19 @@ export default function AppShell({ children }: AppShellProps) {
                 onClick={() => setLocation(item.path)}
                 className="flex flex-col items-center gap-0.5 flex-1 py-1 transition-all"
               >
-                <span
-                  className={`flex items-center justify-center w-12 h-10 rounded-2xl transition-all ${
-                    active ? "bg-blue-600 text-white shadow-md" : "text-gray-400"
-                  }`}
-                >
-                  {item.icon}
+                <span className="relative">
+                  <span
+                    className={`flex items-center justify-center w-12 h-10 rounded-2xl transition-all ${
+                      active ? "bg-blue-600 text-white shadow-md" : "text-gray-400"
+                    }`}
+                  >
+                    {item.icon}
+                  </span>
+                  {item.path === "/admin/dashboard" && !!pendingDeletions && pendingDeletions > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] font-bold">
+                      {pendingDeletions > 9 ? "9+" : pendingDeletions}
+                    </span>
+                  )}
                 </span>
                 <span className={`text-[10px] font-medium leading-tight ${active ? "text-blue-600" : "text-gray-400"}`}>
                   {item.label}
