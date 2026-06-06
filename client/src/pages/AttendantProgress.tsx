@@ -42,7 +42,8 @@ export default function AttendantProgress() {
     if (!session || session.status !== 'active') return;
     const id = setInterval(() => setTick(t => t + 1), 60_000);
     return () => clearInterval(id);
-  }, [session?.status]);
+  // session inteiro como dependência: recria o interval se startedAt/pausedMs mudar
+  }, [session]);
 
   const prevContactsRef = useRef<number>(-1);
 

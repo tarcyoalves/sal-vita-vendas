@@ -145,7 +145,8 @@ export default function Tasks() {
     if (!workSession || workSession.status !== 'active') return;
     const id = setInterval(() => setProgressTick(t => t + 1), 60_000);
     return () => clearInterval(id);
-  }, [workSession?.status]);
+  // workSession inteiro: recria o interval se startedAt/pausedMs mudar
+  }, [workSession]);
 
   const dailyProgress = useMemo(() => {
     if (isAdmin) return null;
