@@ -1,4 +1,5 @@
 import { useAuth } from '../_core/hooks/useAuth';
+import { Link } from 'wouter';
 import { trpc } from '../lib/trpc';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -560,11 +561,16 @@ export default function Tasks() {
               style={{ width: `${dailyProgress.pct}%`, backgroundColor: dailyProgress.color }}
             />
           </div>
-          {dailyProgress.contacts >= 100 ? (
-            <p className="text-xs text-green-600 font-semibold mt-1.5">🏆 Meta atingida! Excelente trabalho!</p>
-          ) : (
-            <p className="text-xs text-gray-400 mt-1.5">Faltam <strong>{dailyProgress.remaining}</strong> contatos para a meta de hoje</p>
-          )}
+          <div className="flex items-center justify-between mt-1.5">
+            {dailyProgress.contacts >= 100 ? (
+              <p className="text-xs text-green-600 font-semibold">🏆 Meta atingida! Excelente trabalho!</p>
+            ) : (
+              <p className="text-xs text-gray-400">Faltam <strong>{dailyProgress.remaining}</strong> contatos para a meta de hoje</p>
+            )}
+            <Link href="/meu-progresso" className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 shrink-0 ml-3">
+              📊 Ver meu desempenho
+            </Link>
+          </div>
         </div>
       )}
 
