@@ -237,6 +237,7 @@ export default function Tasks() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim()) { toast.error("Título é obrigatório"); return; }
+    if (!formData.reminderDate) { toast.error("📅 Data do lembrete é obrigatória"); return; }
     if (!editingTask && !formData.notes.trim()) {
       setIsModalOpen(false);
       setShowNotesWarning(true);
@@ -665,8 +666,8 @@ export default function Tasks() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs font-medium mb-1 text-gray-600">🗓️ Data</label>
-                <input type="date" value={formData.reminderDate} onChange={(e) => setFormData({ ...formData, reminderDate: e.target.value })} className="w-full px-2 py-1.5 border rounded-lg text-sm" />
+                <label className="block text-xs font-medium mb-1 text-gray-600">🗓️ Data <span className="text-red-500">*</span></label>
+                <input type="date" value={formData.reminderDate} onChange={(e) => setFormData({ ...formData, reminderDate: e.target.value })} className={`w-full px-2 py-1.5 border rounded-lg text-sm ${!formData.reminderDate ? 'border-red-300 bg-red-50' : 'border-gray-300'}`} required />
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1 text-gray-600">⏰ Hora</label>

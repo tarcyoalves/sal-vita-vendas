@@ -32,7 +32,7 @@ export const tasksRouter = router({
       title: z.string().min(1).max(500),
       description: z.string().max(2000).optional(),
       notes: z.string().max(5000).optional(),
-      reminderDate: z.date().optional(),
+      reminderDate: z.date({ required_error: 'Data do lembrete é obrigatória' }),
       reminderEnabled: z.boolean().optional().default(true),
       priority: z.enum(['low', 'medium', 'high']).optional().default('medium'),
       assignedTo: z.string().optional(),
