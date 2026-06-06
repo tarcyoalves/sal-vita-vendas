@@ -129,6 +129,10 @@ export default function Tasks() {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
+  // ID da tarefa mais urgente a destacar após salvar
+  const [highlightTaskId, setHighlightTaskId] = useState<number | null>(null);
+  // Ref para controlar alerta de ociosidade (último contato feito)
+  const lastContactTimeRef = useRef<number>(Date.now());
 
   const { data: tasks = [], isLoading, refetch } = trpc.tasks.list.useQuery();
   const { data: attendants = [] } = trpc.sellers.list.useQuery();
@@ -187,6 +191,63 @@ export default function Tasks() {
     prevContactsRef.current = cur;
   }, [dailyProgress?.contacts, isAdmin]);
 
+  // ─── 1. NOTIFICAÇÕES DE LEMBRETE NO HORÁRIO EXATO ──────────────────────────
+  // Agenda setTimeout para cada tarefa com lembrete nas próximas 4h.
+  // Dispara Notification API nativa — zero custo de servidor.
+  const scheduledRemindersRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    if (isAdmin || !('Notification' in window)) return;
+    if (Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+    if (Notification.permission !== 'granted') return;
+
+    const now = Date.now();
+    const fourHours = 4 * 3600_000;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    (tasks as any[]).forEach((t: any) => {
+      if (!t.reminderDate || t.reminderEnabled === false || t.status !== 'pending') return;
+      if (scheduledRemindersRef.current.has(t.id)) return; // já agendado
+      const fireAt = new Date(t.reminderDate).getTime();
+      const delay  = fireAt - now;
+      if (delay <= 0 || delay > fourHours) return; // só agenda os próximos 4h
+
+      scheduledRemindersRef.current.add(t.id);
+      timers.push(setTimeout(() => {
+        new Notification('🔔 Lembrete Sal Vita', {
+          body: t.title,
+          icon: '/favicon.ico',
+          tag: `reminder-${t.id}`,
+        });
+        scheduledRemindersRef.current.delete(t.id);
+      }, delay));
+    });
+
+    return () => timers.forEach(clearTimeout);
+  }, [tasks, isAdmin]);
+
+  // ─── 2. ALERTA DE OCIOSIDADE ───────────────────────────────────────────────
+  // A cada 15 min verifica se o atendente ainda não registrou nenhum contato.
+  // Só dispara se a sessão estiver ativa e tiver tarefas pendentes.
+  const IDLE_MS = 15 * 60_000;
+  useEffect(() => {
+    if (isAdmin) return;
+    const id = setInterval(() => {
+      if (workSession?.status !== 'active') return;
+      const idleMs = Date.now() - lastContactTimeRef.current;
+      if (idleMs < IDLE_MS) return;
+      const pending = (tasks as any[]).filter(t => t.status === 'pending').length;
+      if (pending === 0) return;
+      const idleMin = Math.round(idleMs / 60_000);
+      toast.warning(
+        `⏰ ${idleMin} min sem contatos! Você tem ${pending} tarefa${pending > 1 ? 's' : ''} pendente${pending > 1 ? 's' : ''}.`,
+        { duration: 8000, id: 'idle-alert' }
+      );
+    }, IDLE_MS);
+    return () => clearInterval(id);
+  }, [isAdmin, tasks, workSession?.status]);
+
   const [formData, setFormData] = useState<{
     clientId: number;
     title: string;
@@ -214,6 +275,20 @@ export default function Tasks() {
     setEditingTask(null);
   }, []);
 
+  // ─── 3. PRÓXIMA TAREFA URGENTE ────────────────────────────────────────────
+  // Após salvar, encontra a tarefa pendente com lembrete mais próximo e destaca.
+  const highlightNextUrgent = useCallback((updatedTasks: any[]) => {
+    const now = new Date();
+    const next = updatedTasks
+      .filter(t => t.status === 'pending' && t.reminderDate && t.reminderEnabled !== false)
+      .sort((a, b) => new Date(a.reminderDate).getTime() - new Date(b.reminderDate).getTime())
+      .find(t => new Date(t.reminderDate) >= now);
+    if (next) {
+      setHighlightTaskId(next.id);
+      setTimeout(() => setHighlightTaskId(null), 6000);
+    }
+  }, []);
+
   const doSave = async () => {
     try {
       let reminderDateTime: Date | undefined;
@@ -230,8 +305,12 @@ export default function Tasks() {
         await createMutation.mutateAsync({ clientId: formData.clientId || 0, title: formData.title, description: formData.description, notes: formData.notes, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
         toast.success("Tarefa criada! Lembrete ativado ✅");
       }
+      // Atualiza o timestamp do último contato para o alerta de ociosidade
+      if (!isAdmin) lastContactTimeRef.current = Date.now();
       setShowNotesWarning(false);
-      resetForm(); setIsModalOpen(false); refetch();
+      resetForm(); setIsModalOpen(false);
+      const { data: fresh } = await refetch();
+      if (!isAdmin && fresh) highlightNextUrgent(fresh as any[]);
     } catch { toast.error("Erro ao salvar tarefa"); }
   };
 
@@ -533,6 +612,20 @@ export default function Tasks() {
           <button onClick={() => { setShowMonitorBanner(false); sessionStorage.setItem('monitorBannerDismissed', '1'); }} className="text-amber-600 hover:text-amber-900 font-bold text-base leading-none flex-shrink-0 mt-0.5" title="Fechar">✕</button>
         </div>
       )}
+      {!isAdmin && 'Notification' in window && Notification.permission === 'default' && (
+        <div className="flex items-center gap-3 bg-blue-50 border border-blue-300 rounded-xl px-4 py-3 text-sm text-blue-900">
+          <span className="text-lg flex-shrink-0">🔔</span>
+          <div className="flex-1">
+            <strong>Ative as notificações</strong> para receber lembretes no horário certo, mesmo com o celular bloqueado.
+          </div>
+          <button
+            onClick={() => Notification.requestPermission()}
+            className="flex-shrink-0 px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition"
+          >
+            Ativar
+          </button>
+        </div>
+      )}
       {dailyProgress && (
         <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
           <div className="flex items-center justify-between mb-2">
@@ -756,7 +849,8 @@ export default function Tasks() {
             {selectedTasks.size > 0 && <span className="text-sm text-blue-600 font-medium ml-2">{selectedTasks.size} selecionada(s)</span>}
           </div>
           {filteredTasks.map((task: Task) => (
-            <div key={task.id} className="border rounded-lg overflow-hidden shadow-sm">
+            <div key={task.id} className={`border rounded-lg overflow-hidden shadow-sm transition-all duration-300 ${highlightTaskId === task.id ? 'ring-2 ring-blue-500 ring-offset-1 shadow-blue-200 shadow-md' : ''}`}
+              style={highlightTaskId === task.id ? { animation: 'pulse-highlight 1s ease-in-out 3' } : {}}>
               <div className="flex items-center gap-2 md:gap-3 p-3 bg-white hover:bg-gray-50 transition cursor-pointer" onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)}>
                 <label className="flex-shrink-0 p-1 -m-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
                   <input type="checkbox" checked={selectedTasks.has(task.id)} onChange={() => handleSelectTask(task.id)} className="w-5 h-5 cursor-pointer" />
