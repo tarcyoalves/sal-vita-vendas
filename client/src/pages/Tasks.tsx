@@ -12,6 +12,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from '../components/ui/dialog';
+import {
+  Search, Phone, Clock, Smartphone, Mail, Bell, BellOff, User, Users,
+  Crown, Timer, BarChart2, Plus, Upload, Trash2, Pencil, Bot, CheckSquare,
+  AlertTriangle, CalendarClock, CalendarDays, ChevronDown, ChevronUp,
+  Eye, Activity, FileText, Trophy, AlertCircle,
+} from 'lucide-react';
 
 interface Task {
   id: number;
@@ -517,8 +523,9 @@ export default function Tasks() {
     }
   };
 
-  const priorityEmoji: Record<string, string> = { low: "🟦", medium: "🟨", high: "🟥" };
-  const statusEmoji: Record<string, string> = { pending: "⏳", completed: "✅", cancelled: "❌" };
+  const priorityColor: Record<string, string> = { low: "#3b82f6", medium: "#f59e0b", high: "#ef4444" };
+  const priorityLabel: Record<string, string> = { low: "Baixa", medium: "Média", high: "Alta" };
+  const statusColor: Record<string, string> = { pending: "#6b7280", completed: "#16a34a", cancelled: "#dc2626" };
 
   if (!user) return <div className="p-4 text-center">Carregando...</div>;
 
@@ -526,7 +533,7 @@ export default function Tasks() {
     <div className="p-3 md:p-6 space-y-3 md:space-y-4">
       {!isAdmin && showMonitorBanner && (
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 text-sm text-amber-900">
-          <span className="text-lg flex-shrink-0 mt-0.5">🔍</span>
+          <Eye size={16} className="flex-shrink-0 mt-0.5 text-amber-600" />
           <div className="flex-1">
             <strong>Trabalho monitorado</strong> — anotações, qualidade e velocidade dos contatos são acompanhados diariamente pela gestão.
           </div>
@@ -537,14 +544,14 @@ export default function Tasks() {
         <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <span className="text-base">📞</span>
+              <Phone size={15} className="text-blue-600 flex-shrink-0" />
               <span className="text-sm font-semibold text-gray-700">Contatos hoje</span>
               <span className="text-lg font-black" style={{ color: dailyProgress.color }}>{dailyProgress.contacts}</span>
               <span className="text-xs text-gray-400">/ 100</span>
             </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5">
-                <span className="text-xs text-gray-400">⏱</span>
+                <Timer size={11} className="text-gray-400" />
                 <span className="text-xs font-semibold text-gray-600">{dailyProgress.hoursLabel}</span>
                 {dailyProgress.hoursPct > 0 && (
                   <div className="w-12 h-1.5 bg-gray-200 rounded-full overflow-hidden">
@@ -563,18 +570,21 @@ export default function Tasks() {
           </div>
           <div className="flex items-center justify-between mt-1.5">
             {dailyProgress.contacts >= 100 ? (
-              <p className="text-xs text-green-600 font-semibold">🏆 Meta atingida! Excelente trabalho!</p>
+              <p className="text-xs text-green-600 font-semibold flex items-center gap-1"><Trophy size={12} /> Meta atingida! Excelente trabalho!</p>
             ) : (
               <p className="text-xs text-gray-400">Faltam <strong>{dailyProgress.remaining}</strong> contatos para a meta de hoje</p>
             )}
             <Link href="/meu-progresso" className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 shrink-0 ml-3">
-              📊 Ver meu desempenho
+              <BarChart2 size={12} /> Ver meu desempenho
             </Link>
           </div>
         </div>
       )}
 
-      <input type="text" placeholder="🔍 Pesquisar tarefas..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full px-3 py-2.5 border rounded-lg text-sm" />
+      <div className="relative">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <input type="text" placeholder="Pesquisar tarefas..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white" />
+      </div>
 
       <div className="flex justify-between items-center flex-wrap gap-2">
         <div className="flex gap-2 flex-wrap">
@@ -584,29 +594,29 @@ export default function Tasks() {
           </select>
           {isAdmin && (
             <select value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
-              <option value="all">👥 Todos</option>
-              <option value="__none__">🔑 Sem atendente</option>
-              {user?.name && <option value={user.name}>👑 {user.name}</option>}
-              {(attendants as any[]).map((a: any) => <option key={a.id} value={a.name}>👤 {a.name}</option>)}
+              <option value="all">Todos atendentes</option>
+              <option value="__none__">Sem atendente</option>
+              {user?.name && <option value={user.name}>{user.name} (admin)</option>}
+              {(attendants as any[]).map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
             </select>
           )}
           <button
             onClick={() => setFilterContact(filterContact === "whatsapp" ? "all" : "whatsapp")}
-            className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterContact === "whatsapp" ? "bg-green-500 text-white border-green-500" : "bg-white text-gray-700 hover:bg-green-50"}`}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border font-medium transition ${filterContact === "whatsapp" ? "bg-green-500 text-white border-green-500" : "bg-white text-gray-700 hover:bg-green-50 border-gray-200"}`}
           >
-            📱 WhatsApp
+            <Smartphone size={14} /> WhatsApp
           </button>
           <button
             onClick={() => setFilterContact(filterContact === "email" ? "all" : "email")}
-            className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterContact === "email" ? "bg-blue-500 text-white border-blue-500" : "bg-white text-gray-700 hover:bg-blue-50"}`}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border font-medium transition ${filterContact === "email" ? "bg-blue-500 text-white border-blue-500" : "bg-white text-gray-700 hover:bg-blue-50 border-gray-200"}`}
           >
-            📧 Email
+            <Mail size={14} /> Email
           </button>
           <button
             onClick={() => setFilterReminder(filterReminder === "active" ? "all" : filterReminder === "all" ? "inactive" : "all")}
-            className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterReminder === "active" ? "bg-orange-500 text-white border-orange-500" : filterReminder === "inactive" ? "bg-gray-500 text-white border-gray-500" : "bg-white text-gray-700 hover:bg-orange-50"}`}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border font-medium transition ${filterReminder === "active" ? "bg-orange-500 text-white border-orange-500" : filterReminder === "inactive" ? "bg-gray-500 text-white border-gray-500" : "bg-white text-gray-700 hover:bg-orange-50 border-gray-200"}`}
           >
-            {filterReminder === "inactive" ? "🔕 Sem lembrete" : "🔔 Lembrete"}
+            {filterReminder === "inactive" ? <><BellOff size={14} /> Sem lembrete</> : <><Bell size={14} /> Lembrete</>}
           </button>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -614,15 +624,15 @@ export default function Tasks() {
             <>
               <select value={bulkRepresentative} onChange={(e) => setBulkRepresentative(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
                 <option value="">Atendente...</option>
-                {user?.name && <option value={user.name}>👑 {user.name}</option>}
+                {user?.name && <option value={user.name}>{user.name} (admin)</option>}
                 {attendants.map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
               </select>
-              <Button size="sm" onClick={handleBulkAssign} variant="outline">👤 Designar ({selectedTasks.size})</Button>
-              <Button size="sm" variant="destructive" onClick={handleBulkDelete}>🗑️ Deletar ({selectedTasks.size})</Button>
+              <Button size="sm" onClick={handleBulkAssign} variant="outline" className="flex items-center gap-1.5"><User size={14} /> Designar ({selectedTasks.size})</Button>
+              <Button size="sm" variant="destructive" onClick={handleBulkDelete} className="flex items-center gap-1.5"><Trash2 size={14} /> Deletar ({selectedTasks.size})</Button>
             </>
           )}
-          {isAdmin && <Button onClick={() => setShowImport(!showImport)} variant="outline" size="sm">📤 CSV</Button>}
-          <Button onClick={handleOpenNewTask} size="sm">➕ Nova</Button>
+          {isAdmin && <Button onClick={() => setShowImport(!showImport)} variant="outline" size="sm" className="flex items-center gap-1.5"><Upload size={14} /> CSV</Button>}
+          <Button onClick={handleOpenNewTask} size="sm" className="flex items-center gap-1.5"><Plus size={14} /> Nova</Button>
         </div>
       </div>
 
@@ -645,11 +655,11 @@ export default function Tasks() {
                 </div>
                 <select value={selectedRepresentative} onChange={(e) => setSelectedRepresentative(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
                   <option value="">Selecionar atendente...</option>
-                  {user?.name && <option value={user.name}>👑 {user.name}</option>}
+                  {user?.name && <option value={user.name}>{user.name} (admin)</option>}
                   {attendants.map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
                 </select>
                 <Button onClick={handleImportTasks} className="w-full" disabled={importLoading}>
-                  {importLoading ? `Importando...` : `✅ Importar ${importedTasks.length} tarefas`}
+                  {importLoading ? `Importando...` : `Importar ${importedTasks.length} tarefas`}
                 </Button>
               </>
             )}
@@ -660,7 +670,7 @@ export default function Tasks() {
       {/* Task Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-2xl w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto mx-4 md:mx-auto">
-          <DialogHeader><DialogTitle className="text-base">{editingTask ? "✏️ Editar Tarefa" : "➕ Nova Tarefa"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-base flex items-center gap-2">{editingTask ? <><Pencil size={16} /> Editar Tarefa</> : <><Plus size={16} /> Nova Tarefa</>}</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
               <label className="block text-xs font-medium mb-1 text-gray-600">Título *</label>
@@ -672,33 +682,33 @@ export default function Tasks() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs font-medium mb-1 text-gray-600">🗓️ Data <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-medium mb-1 text-gray-600 flex items-center gap-1"><CalendarClock size={12} /> Data <span className="text-red-500">*</span></label>
                 <input type="date" value={formData.reminderDate} onChange={(e) => setFormData({ ...formData, reminderDate: e.target.value })} className={`w-full px-2 py-1.5 border rounded-lg text-sm ${!formData.reminderDate ? 'border-red-300 bg-red-50' : 'border-gray-300'}`} required />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1 text-gray-600">⏰ Hora</label>
+                <label className="block text-xs font-medium mb-1 text-gray-600 flex items-center gap-1"><Clock size={12} /> Hora</label>
                 <input type="time" value={formData.reminderTime} onChange={(e) => setFormData({ ...formData, reminderTime: e.target.value })} className="w-full px-2 py-1.5 border rounded-lg text-sm" />
               </div>
             </div>
             <div className="flex items-center gap-2 bg-blue-50 px-2 py-1.5 rounded-lg">
               <input type="checkbox" id="reminderEnabled" checked={formData.reminderEnabled} onChange={(e) => setFormData({ ...formData, reminderEnabled: e.target.checked })} className="w-3.5 h-3.5" />
-              <label htmlFor="reminderEnabled" className="text-xs font-medium text-blue-800">🔔 Ativar notificação no navegador</label>
+              <label htmlFor="reminderEnabled" className="text-xs font-medium text-blue-800 flex items-center gap-1"><Bell size={12} /> Ativar notificação no navegador</label>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs font-medium mb-1 text-gray-600">Prioridade</label>
                 <select value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })} className="w-full px-2 py-1.5 border rounded-lg text-sm">
-                  <option value="low">🟦 Baixa</option>
-                  <option value="medium">🟨 Média</option>
-                  <option value="high">🟥 Alta</option>
+                  <option value="low">Baixa</option>
+                  <option value="medium">Média</option>
+                  <option value="high">Alta</option>
                 </select>
               </div>
               {isAdmin && (
                 <div>
-                  <label className="block text-xs font-medium mb-1 text-gray-600">👤 Designar para</label>
+                  <label className="block text-xs font-medium mb-1 text-gray-600 flex items-center gap-1"><User size={12} /> Designar para</label>
                   <select value={formData.assignedTo} onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })} className="w-full px-2 py-1.5 border rounded-lg text-sm">
                     <option value="">Nenhum</option>
-                    {user?.name && <option value={user.name}>👑 {user.name}</option>}
+                    {user?.name && <option value={user.name}>{user.name} (admin)</option>}
                     {attendants.map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
                   </select>
                 </div>
@@ -706,7 +716,7 @@ export default function Tasks() {
             </div>
             <DialogFooter className="flex gap-2 pt-1">
               <Button type="submit" size="sm" className="flex-1 bg-blue-600 hover:bg-blue-700">{editingTask ? "Atualizar" : "Criar Tarefa"}</Button>
-              {editingTask && <Button type="button" size="sm" variant="destructive" onClick={() => handleDelete(editingTask.id)}>🗑️</Button>}
+              {editingTask && <Button type="button" size="sm" variant="destructive" onClick={() => handleDelete(editingTask.id)} className="flex items-center gap-1"><Trash2 size={13} /></Button>}
               <Button type="button" size="sm" variant="outline" onClick={() => { setIsModalOpen(false); resetForm(); }}>Cancelar</Button>
             </DialogFooter>
           </form>
@@ -715,25 +725,25 @@ export default function Tasks() {
 
       {/* Reminder Tabs */}
       <div className="flex gap-1 overflow-x-auto pb-1">
-        {[
-          { key: "all",       label: "📋 Todas",           cls: "bg-blue-600 border-blue-600" },
-          { key: "overdue",   label: "🚨 Atrasados",        cls: "bg-red-600 border-red-600" },
-          { key: "upcoming",  label: "📅 Agendados",        cls: "bg-green-600 border-green-600" },
-          { key: "today",     label: "🔔 Hoje",             cls: "bg-blue-600 border-blue-600" },
-          { key: "yesterday", label: "📆 Ontem",            cls: "bg-blue-600 border-blue-600" },
-          { key: "lastWeek",  label: "📆 Semana passada",   cls: "bg-blue-600 border-blue-600" },
-          { key: "lastMonth", label: "🗓️ Mês passado",      cls: "bg-blue-600 border-blue-600" },
-        ].map(tab => (
+        {([
+          { key: "all",       label: "Todas",          icon: <CheckSquare size={13} />, cls: "bg-blue-600 border-blue-600" },
+          { key: "overdue",   label: "Atrasados",      icon: <AlertTriangle size={13} />, cls: "bg-red-600 border-red-600" },
+          { key: "upcoming",  label: "Agendados",      icon: <CalendarClock size={13} />, cls: "bg-green-600 border-green-600" },
+          { key: "today",     label: "Hoje",           icon: <Bell size={13} />, cls: "bg-blue-600 border-blue-600" },
+          { key: "yesterday", label: "Ontem",          icon: <CalendarDays size={13} />, cls: "bg-blue-600 border-blue-600" },
+          { key: "lastWeek",  label: "Semana passada", icon: <CalendarDays size={13} />, cls: "bg-blue-600 border-blue-600" },
+          { key: "lastMonth", label: "Mês passado",    icon: <CalendarDays size={13} />, cls: "bg-blue-600 border-blue-600" },
+        ] as const).map(tab => (
           <button
             key={tab.key}
             onClick={() => setReminderTab(tab.key as any)}
-            className={`px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap border transition ${
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap border transition ${
               reminderTab === tab.key
                 ? `${tab.cls} text-white`
                 : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
             }`}
           >
-            {tab.label}
+            {tab.icon}{tab.label}
           </button>
         ))}
       </div>
@@ -744,7 +754,7 @@ export default function Tasks() {
       ) : filteredTasks.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-gray-500 text-lg">Nenhuma tarefa encontrada</p>
-          <Button onClick={handleOpenNewTask} className="mt-4">➕ Criar primeira tarefa</Button>
+          <Button onClick={handleOpenNewTask} className="mt-4 flex items-center gap-1.5"><Plus size={14} /> Criar primeira tarefa</Button>
         </div>
       ) : (
         <div className="space-y-2">
@@ -761,16 +771,16 @@ export default function Tasks() {
                 <label className="flex-shrink-0 p-1 -m-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
                   <input type="checkbox" checked={selectedTasks.has(task.id)} onChange={() => handleSelectTask(task.id)} className="w-5 h-5 cursor-pointer" />
                 </label>
-                <div className="flex gap-1 flex-shrink-0">
-                  <span>{statusEmoji[task.status || 'pending']}</span>
-                  <span>{priorityEmoji[task.priority || 'medium']}</span>
+                <div className="flex gap-1 flex-shrink-0 items-center">
+                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: statusColor[task.status || 'pending'] }} />
+                  <span className="w-1.5 h-5 rounded-sm flex-shrink-0" style={{ backgroundColor: priorityColor[task.priority || 'medium'] }} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm leading-snug line-clamp-2 md:truncate">{task.title}</p>
                   <div className="flex gap-2 items-center flex-wrap mt-0.5">
-                    {isAdmin && task.assignedTo && <p className="text-xs text-gray-500">👤 {task.assignedTo}</p>}
-                    {hasPhone(`${task.title} ${task.notes ?? ''}`) && <span className="text-xs text-green-600">📱</span>}
-                    {hasEmail(`${task.title} ${task.notes ?? ''}`) && <span className="text-xs text-blue-600">📧</span>}
+                    {isAdmin && task.assignedTo && <p className="text-xs text-gray-500 flex items-center gap-0.5"><User size={10} />{task.assignedTo}</p>}
+                    {hasPhone(`${task.title} ${task.notes ?? ''}`) && <span className="inline-flex items-center gap-0.5 text-xs text-green-700 bg-green-50 px-1.5 py-0.5 rounded-full"><Smartphone size={10} />WA</span>}
+                    {hasEmail(`${task.title} ${task.notes ?? ''}`) && <span className="inline-flex items-center gap-0.5 text-xs text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-full"><Mail size={10} />Email</span>}
                   </div>
                 </div>
                 {task.reminderDate && task.reminderEnabled && (() => {
@@ -784,8 +794,8 @@ export default function Tasks() {
                     const dateStr = `${p(rd.getDate())}/${p(rd.getMonth() + 1)}`;
                     const timeStr = `${p(rd.getHours())}:${p(rd.getMinutes())}`;
                     return (
-                      <div className={`text-xs px-1.5 py-1 rounded-lg text-center flex-shrink-0 font-medium leading-tight ${isOverdue ? 'bg-red-100 text-red-700' : isToday ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                        <div>{isOverdue ? '🚨' : isToday ? '⚠️' : '🔔'}</div>
+                      <div className={`flex flex-col items-center text-xs px-1.5 py-1 rounded-lg flex-shrink-0 font-medium leading-tight gap-0.5 ${isOverdue ? 'bg-red-100 text-red-700' : isToday ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                        {isOverdue ? <AlertTriangle size={11} /> : isToday ? <AlertCircle size={11} /> : <Bell size={11} />}
                         <div>{dateStr}</div>
                         <div>{timeStr}</div>
                       </div>
@@ -795,19 +805,19 @@ export default function Tasks() {
               </div>
               {expandedTask === task.id && (
                 <div className="p-3 bg-gray-50 border-t space-y-2">
-                  {task.notes && <div className="text-sm bg-yellow-50 p-3 rounded border border-yellow-200"><strong>📝 Anotações:</strong><p className="whitespace-pre-wrap mt-2 leading-relaxed">{task.notes}</p></div>}
-                  <p className="text-xs text-gray-500">Criada: {new Date(task.createdAt).toLocaleDateString("pt-BR")}</p>
+                  {task.notes && <div className="text-sm bg-yellow-50 p-3 rounded border border-yellow-200"><strong className="flex items-center gap-1"><FileText size={13} /> Anotações</strong><p className="whitespace-pre-wrap mt-2 leading-relaxed text-gray-700">{task.notes}</p></div>}
+                  <p className="text-xs text-gray-400">Criada: {new Date(task.createdAt).toLocaleDateString("pt-BR")}</p>
                   {aiSuggestion?.taskId === task.id && (
                     <div className="text-sm bg-purple-50 p-2 rounded border border-purple-200">
-                      <strong>🤖 Sugestão de abordagem:</strong>
+                      <strong className="flex items-center gap-1"><Bot size={13} /> Sugestão de abordagem</strong>
                       <p className="mt-1 text-gray-700">{aiSuggestion.text}</p>
                     </div>
                   )}
                   <div className="flex gap-2 flex-wrap">
-                    <Button size="sm" variant="outline" onClick={() => handleEdit(task)}>✏️ Editar</Button>
-                    <Button size="sm" variant="destructive" onClick={() => handleDelete(task.id)}>🗑️ Deletar</Button>
-                    <Button size="sm" variant="outline" className="text-purple-700 border-purple-300 hover:bg-purple-50" onClick={() => handleAiSuggest(task)} disabled={loadingSuggestion}>
-                      {loadingSuggestion && aiSuggestion === null ? "⏳ Gerando..." : "🤖 Sugestão IA"}
+                    <Button size="sm" variant="outline" onClick={() => handleEdit(task)} className="flex items-center gap-1.5"><Pencil size={13} /> Editar</Button>
+                    <Button size="sm" variant="destructive" onClick={() => handleDelete(task.id)} className="flex items-center gap-1.5"><Trash2 size={13} /> Deletar</Button>
+                    <Button size="sm" variant="outline" className="flex items-center gap-1.5 text-purple-700 border-purple-300 hover:bg-purple-50" onClick={() => handleAiSuggest(task)} disabled={loadingSuggestion}>
+                      <Bot size={13} />{loadingSuggestion && aiSuggestion === null ? "Gerando..." : "Sugestão IA"}
                     </Button>
                   </div>
                 </div>
@@ -822,7 +832,7 @@ export default function Tasks() {
         <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
             <div className="text-center mb-4">
-              <div className="text-4xl mb-2">🗑️</div>
+              <div className="flex justify-center mb-2"><div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center"><Trash2 size={22} className="text-red-600" /></div></div>
               <h3 className="text-base font-bold text-gray-800">Confirmar exclusão</h3>
               <p className="text-sm text-gray-500 mt-1">
                 {bulkDeleteConfirm
@@ -876,7 +886,7 @@ export default function Tasks() {
             <div className="px-6 pt-4 pb-6 space-y-5">
               {/* Header */}
               <div className="text-center">
-                <div className="text-4xl mb-2">📋</div>
+                <div className="flex justify-center mb-2"><div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center"><FileText size={22} className="text-blue-600" /></div></div>
                 <h3 className="text-lg font-bold text-gray-800">Anotou as informações importantes?</h3>
                 <p className="text-xs text-gray-400 mt-1">Contato recorrente — cada conversa deve ser documentada.</p>
               </div>

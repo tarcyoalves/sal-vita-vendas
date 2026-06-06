@@ -3,7 +3,7 @@ import { trpc } from '../lib/trpc';
 import { useLocation } from 'wouter';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { KeyRound, X } from 'lucide-react';
+import { KeyRound, X, Eye, EyeOff } from 'lucide-react';
 
 export default function Home() {
   const { user, loading, isAuthenticated } = useAuth();
@@ -12,6 +12,7 @@ export default function Home() {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  const [showPassword, setShowPassword] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [recoverySecret, setRecoverySecret] = useState('');
@@ -90,15 +91,25 @@ export default function Home() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
-            <input
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
 
           <button
