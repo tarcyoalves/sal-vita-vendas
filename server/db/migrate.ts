@@ -155,6 +155,23 @@ export async function ensureTablesExist() {
     `;
   }
 
+  // task_deletion_logs: audit trail for task deletions made by attendants
+  await sql`
+    CREATE TABLE IF NOT EXISTS task_deletion_logs (
+      id                   SERIAL PRIMARY KEY,
+      task_id              INTEGER NOT NULL,
+      task_title           TEXT NOT NULL,
+      task_notes           TEXT,
+      deleted_by_user_id   INTEGER NOT NULL,
+      deleted_by_name      TEXT NOT NULL,
+      reason               TEXT NOT NULL,
+      reviewed_by_admin    BOOLEAN NOT NULL DEFAULT false,
+      created_at           TIMESTAMP DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS task_del_logs_reviewed_idx ON task_deletion_logs(reviewed_by_admin)`;
+  await sql`CREATE INDEX IF NOT EXISTS task_del_logs_user_idx     ON task_deletion_logs(deleted_by_user_id)`;
+
   // ── Incremental migrations (always run, idempotent) ───────────────────────
   await sql`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS assigned_to       TEXT`;
   await sql`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS order_value        NUMERIC(10,2)`;

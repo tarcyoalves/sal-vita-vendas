@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { eq, inArray, or, isNotNull, and, gte, count, sql, SQL, asc } from 'drizzle-orm';
-import { router, protectedProcedure } from '../trpc';
+import { eq, inArray, or, isNotNull, and, gte, count, sql, SQL, asc, desc } from 'drizzle-orm';
+import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { TRPCError } from '@trpc/server';
 import { db } from '../db';
-import { tasks, sellers } from '../db/schema';
+import { tasks, sellers, taskDeletionLogs } from '../db/schema';
 
 // Build the assignedTo filter for a non-admin user.
 // Uses case-insensitive comparison: tasks imported via CSV often have different
@@ -97,23 +97,82 @@ export const tasksRouter = router({
     }),
 
   delete: protectedProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({
+      id: z.number(),
+      reason: z.string().min(5, 'Motivo deve ter pelo menos 5 caracteres').max(500),
+    }))
     .mutation(async ({ input, ctx }) => {
       const ownerFilter = ctx.user.role === 'admin'
         ? eq(tasks.id, input.id)
         : and(eq(tasks.id, input.id), await userTaskFilter(ctx.user.id, ctx.user.name ?? ''));
-      await db.delete(tasks).where(ownerFilter);
+
+      const [task] = await db.select({ id: tasks.id, title: tasks.title, notes: tasks.notes })
+        .from(tasks).where(ownerFilter).limit(1);
+      if (!task) throw new TRPCError({ code: 'NOT_FOUND', message: 'Tarefa não encontrada ou sem permissão' });
+
+      await db.insert(taskDeletionLogs).values({
+        taskId: task.id,
+        taskTitle: task.title,
+        taskNotes: task.notes ?? null,
+        deletedByUserId: ctx.user.id,
+        deletedByName: ctx.user.name ?? ctx.user.email,
+        reason: input.reason,
+        reviewedByAdmin: ctx.user.role === 'admin',
+      });
+
+      await db.delete(tasks).where(eq(tasks.id, task.id));
       return { ok: true };
     }),
 
   deleteMany: protectedProcedure
-    .input(z.object({ ids: z.array(z.number()).min(1) }))
+    .input(z.object({
+      ids: z.array(z.number()).min(1),
+      reason: z.string().min(5, 'Motivo deve ter pelo menos 5 caracteres').max(500),
+    }))
     .mutation(async ({ input, ctx }) => {
       const ownerFilter = ctx.user.role === 'admin'
         ? inArray(tasks.id, input.ids)
         : and(inArray(tasks.id, input.ids), await userTaskFilter(ctx.user.id, ctx.user.name ?? ''));
-      await db.delete(tasks).where(ownerFilter);
-      return { ok: true, count: input.ids.length };
+
+      const found = await db.select({ id: tasks.id, title: tasks.title, notes: tasks.notes })
+        .from(tasks).where(ownerFilter);
+      if (found.length === 0) throw new TRPCError({ code: 'NOT_FOUND', message: 'Nenhuma tarefa encontrada ou sem permissão' });
+
+      await db.insert(taskDeletionLogs).values(found.map(t => ({
+        taskId: t.id,
+        taskTitle: t.title,
+        taskNotes: t.notes ?? null,
+        deletedByUserId: ctx.user.id,
+        deletedByName: ctx.user.name ?? ctx.user.email,
+        reason: input.reason,
+        reviewedByAdmin: ctx.user.role === 'admin',
+      })));
+
+      await db.delete(tasks).where(inArray(tasks.id, found.map(t => t.id)));
+      return { ok: true, count: found.length };
+    }),
+
+  // Admin: list pending deletion log reviews
+  deletionLogs: adminProcedure
+    .input(z.object({ onlyUnreviewed: z.boolean().optional().default(true) }).optional())
+    .query(async ({ input }) => {
+      const filter = input?.onlyUnreviewed !== false
+        ? eq(taskDeletionLogs.reviewedByAdmin, false)
+        : undefined;
+      return db.select().from(taskDeletionLogs)
+        .where(filter)
+        .orderBy(desc(taskDeletionLogs.createdAt))
+        .limit(100);
+    }),
+
+  // Admin: mark a deletion log as reviewed
+  markDeletionReviewed: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.update(taskDeletionLogs)
+        .set({ reviewedByAdmin: true })
+        .where(eq(taskDeletionLogs.id, input.id));
+      return { ok: true };
     }),
 
   fraudAlerts: protectedProcedure.query(async ({ ctx }) => {

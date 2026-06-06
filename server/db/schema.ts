@@ -198,9 +198,22 @@ export type Coupon = typeof coupons.$inferSelect;
 export type AutomationRun = typeof automationRuns.$inferSelect;
 export type MsgTemplate = typeof msgTemplates.$inferSelect;
 
+export const taskDeletionLogs = pgTable('task_deletion_logs', {
+  id: serial('id').primaryKey(),
+  taskId: integer('task_id').notNull(),
+  taskTitle: text('task_title').notNull(),
+  taskNotes: text('task_notes'),
+  deletedByUserId: integer('deleted_by_user_id').notNull(),
+  deletedByName: text('deleted_by_name').notNull(),
+  reason: text('reason').notNull(),
+  reviewedByAdmin: boolean('reviewed_by_admin').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Seller = typeof sellers.$inferSelect;
 export type Client = typeof clients.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type Reminder = typeof reminders.$inferSelect;
 export type KnowledgeDocument = typeof knowledgeDocuments.$inferSelect;
+export type TaskDeletionLog = typeof taskDeletionLogs.$inferSelect;
