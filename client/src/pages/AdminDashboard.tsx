@@ -275,14 +275,49 @@ export default function AdminDashboard() {
         .slice(0, 8)
     : [];
 
-  // ── Ranking de conversão por atendente ──────────────────────────────────────
+  // ── Ranking de conversão por atendente (+ ticket de esforço individual e taxa de perdidos) ─
   const conversionRanking = (sellers as any[] || []).map((seller: any) => {
     const mine = (tasks as any[]).filter(t => t.assignedTo === seller.name || t.userId === seller.userId);
     const minePending = mine.length;
-    const mineConverted = mine.filter(t => t.convertedAt).length;
+    const mineConvertedTasks = mine.filter(t => t.convertedAt);
+    const mineConverted = mineConvertedTasks.length;
+    const mineCancelled = mine.filter(t => t.status === 'cancelled').length;
     const rate = minePending > 0 ? Math.round((mineConverted / minePending) * 100) : 0;
-    return { name: seller.name, total: minePending, converted: mineConverted, rate };
+    // Ticket de esforço individual: quantos contatos esse atendente precisa, em média, até converter
+    const myAvgContacts = mineConverted > 0
+      ? Math.round(mineConvertedTasks.reduce((acc, t) => acc + (t.contactCount || 0), 0) / mineConverted)
+      : 0;
+    // Taxa de leads perdidos: cancelados em relação ao que já teve um desfecho (convertido ou cancelado)
+    const decided = mineConverted + mineCancelled;
+    const lostRate = decided > 0 ? Math.round((mineCancelled / decided) * 100) : 0;
+    return { name: seller.name, total: minePending, converted: mineConverted, rate, myAvgContacts, cancelled: mineCancelled, lostRate };
   }).filter(r => r.total > 0).sort((a, b) => b.converted - a.converted || b.rate - a.rate);
+
+  // ── Tendência semanal de conversões (últimas 8 semanas, agrupado por convertedAt) ──
+  const weeklyTrend = (() => {
+    const weeks: { label: string; start: number; end: number; count: number }[] = [];
+    const now = new Date();
+    const startOfWeek = (d: Date) => { const x = new Date(d); const day = x.getDay(); x.setDate(x.getDate() - day); x.setHours(0, 0, 0, 0); return x; };
+    let cursor = startOfWeek(now);
+    for (let i = 7; i >= 0; i--) {
+      const start = new Date(cursor); start.setDate(start.getDate() - i * 7);
+      const end = new Date(start); end.setDate(end.getDate() + 7);
+      const p = (n: number) => String(n).padStart(2, '0');
+      weeks.push({ label: `${p(start.getDate())}/${p(start.getMonth() + 1)}`, start: start.getTime(), end: end.getTime(), count: 0 });
+    }
+    for (const t of convertedTasks) {
+      const ts = new Date(t.convertedAt).getTime();
+      const wk = weeks.find(w => ts >= w.start && ts < w.end);
+      if (wk) wk.count++;
+    }
+    return weeks;
+  })();
+  const weeklyTrendMax = Math.max(1, ...weeklyTrend.map(w => w.count));
+
+  // ── Taxa geral de leads perdidos (cancelados vs. convertidos — leads com desfecho) ──
+  const cancelledTotal = (tasks as any[]).filter(t => t.status === 'cancelled').length;
+  const decidedTotal = convertedCount + cancelledTotal;
+  const lostRateGlobal = decidedTotal > 0 ? Math.round((cancelledTotal / decidedTotal) * 100) : 0;
 
   // Filter reminders based on selection
   const filteredReminders = (reminders as any[]).filter(r => {
@@ -523,18 +558,50 @@ export default function AdminDashboard() {
             )}
           </div>
 
+          {/* Tendência semanal de conversões */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-gray-500">📈 Tendência de conversões — últimas 8 semanas</p>
+              {decidedTotal > 0 && (
+                <p className="text-[11px] text-gray-400">
+                  Taxa de leads perdidos: <strong className={lostRateGlobal >= 50 ? 'text-red-500' : lostRateGlobal >= 25 ? 'text-amber-600' : 'text-gray-600'}>{lostRateGlobal}%</strong>
+                  <span className="text-gray-300"> ({cancelledTotal} cancelado{cancelledTotal !== 1 ? 's' : ''} de {decidedTotal} com desfecho)</span>
+                </p>
+              )}
+            </div>
+            <div className="flex items-end gap-2 h-20">
+              {weeklyTrend.map(w => (
+                <div key={w.label} className="flex-1 flex flex-col items-center justify-end gap-1">
+                  <span className="text-[10px] text-gray-500 font-medium">{w.count > 0 ? w.count : ''}</span>
+                  <div
+                    className={`w-full rounded-t ${w.count > 0 ? 'bg-emerald-400' : 'bg-gray-100'} transition-all`}
+                    style={{ height: `${Math.max(4, Math.round((w.count / weeklyTrendMax) * 64))}px` }}
+                  />
+                  <span className="text-[9px] text-gray-400">{w.label}</span>
+                </div>
+              ))}
+            </div>
+            {convertedCount === 0 && <p className="text-xs text-gray-400 mt-1">Sem conversões registradas ainda — o gráfico vai ganhar vida conforme as vendas acontecerem.</p>}
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Ranking de conversão */}
             <div>
               <p className="text-xs font-medium text-gray-500 mb-2">🏆 Ranking de conversão por atendente</p>
               {conversionRanking.length > 0 ? (
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   {conversionRanking.slice(0, 6).map((r, i) => (
-                    <div key={r.name} className="flex items-center gap-2 text-sm">
-                      <span className="text-xs text-gray-400 w-4">{i + 1}º</span>
-                      <span className="flex-1 truncate text-gray-700">{r.name}</span>
-                      <span className="text-emerald-700 font-semibold text-xs">{r.converted} 🎉</span>
-                      <span className="text-[11px] text-gray-400 w-12 text-right">{r.rate}%</span>
+                    <div key={r.name} className="text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400 w-4">{i + 1}º</span>
+                        <span className="flex-1 truncate text-gray-700">{r.name}</span>
+                        <span className="text-emerald-700 font-semibold text-xs">{r.converted} 🎉</span>
+                        <span className="text-[11px] text-gray-400 w-12 text-right">{r.rate}%</span>
+                      </div>
+                      <div className="flex items-center gap-3 pl-6 mt-0.5 text-[10px] text-gray-400">
+                        {r.myAvgContacts > 0 && <span>📞 ~{r.myAvgContacts} contatos/venda</span>}
+                        {r.cancelled > 0 && <span className={r.lostRate >= 50 ? 'text-red-500' : ''}>❌ {r.cancelled} perdido(s) ({r.lostRate}%)</span>}
+                      </div>
                     </div>
                   ))}
                 </div>
