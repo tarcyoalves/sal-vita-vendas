@@ -698,7 +698,7 @@ export default function AdminDashboard() {
                       </button>
                     </div>
                     {/* Contatos hoje vs meta */}
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-2">
                       <div className="flex-1 bg-gray-100 rounded-full h-2">
                         <div className={`h-2 rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
                       </div>
@@ -706,11 +706,22 @@ export default function AdminDashboard() {
                         {sellerContactsToday}/{GOAL}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between text-xs text-gray-400">
-                      <span className="flex items-center gap-1"><Phone size={10} /> {sellerContactsToday} contatos hoje</span>
-                      {sellerOverdue > 0 && (
-                        <span className="text-red-500 font-medium flex items-center gap-0.5"><AlertTriangle size={10} /> {sellerOverdue} atrasado{sellerOverdue > 1 ? 's' : ''}</span>
-                      )}
+                    {/* Carteira: total / contatos hoje / atrasados */}
+                    <div className="grid grid-cols-3 gap-1.5 text-center">
+                      <div className="bg-slate-50 rounded-lg py-1.5 px-1">
+                        <p className="text-sm font-bold text-slate-700 tabular-nums">{sellerTasks.length}</p>
+                        <p className="text-[10px] text-gray-400 flex items-center justify-center gap-0.5"><Users size={9} /> total</p>
+                      </div>
+                      <div className="bg-blue-50 rounded-lg py-1.5 px-1">
+                        <p className="text-sm font-bold text-blue-700 tabular-nums">{sellerContactsToday}</p>
+                        <p className="text-[10px] text-gray-400 flex items-center justify-center gap-0.5"><Phone size={9} /> hoje</p>
+                      </div>
+                      <div className={`rounded-lg py-1.5 px-1 ${sellerOverdue > 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
+                        <p className={`text-sm font-bold tabular-nums ${sellerOverdue > 0 ? 'text-red-600' : 'text-gray-400'}`}>{sellerOverdue}</p>
+                        <p className={`text-[10px] flex items-center justify-center gap-0.5 ${sellerOverdue > 0 ? 'text-red-400' : 'text-gray-400'}`}>
+                          <AlertTriangle size={9} /> atrasado{sellerOverdue !== 1 ? 's' : ''}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 );
