@@ -112,6 +112,7 @@ export default function Tasks() {
   const [filterAssignee, setFilterAssignee] = useState<string>("all");
   const [filterContact, setFilterContact] = useState<"all" | "whatsapp" | "email">("all");
   const [filterReminder, setFilterReminder] = useState<"all" | "active" | "inactive">("all");
+  const [filterConverted, setFilterConverted] = useState<"all" | "active_clients" | "leads">("all");
   const [reminderTab, setReminderTab] = useState<"all" | "today" | "yesterday" | "lastWeek" | "lastMonth">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [importedTasks, setImportedTasks] = useState<{ title: string; description: string; notes: string }[]>([]);
@@ -413,6 +414,11 @@ export default function Tasks() {
     } else if (filterReminder === "inactive") {
       result = result.filter(t => t.reminderEnabled === false || !t.reminderDate);
     }
+    if (filterConverted === "active_clients") {
+      result = result.filter(t => !!t.convertedAt);
+    } else if (filterConverted === "leads") {
+      result = result.filter(t => !t.convertedAt);
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(t => t.title.toLowerCase().includes(q) || t.notes?.toLowerCase().includes(q) || t.assignedTo?.toLowerCase().includes(q));
@@ -435,7 +441,7 @@ export default function Tasks() {
       if (aOverdue && bOverdue) return bDate! - aDate!;
       return 0;
     });
-  }, [tasks, filterStatus, filterAssignee, filterContact, filterReminder, reminderTab, isAdmin, searchQuery]);
+  }, [tasks, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, reminderTab, isAdmin, searchQuery]);
 
   const handleEdit = useCallback((task: Task) => {
     setEditingTask(task);
@@ -718,6 +724,16 @@ export default function Tasks() {
           >
             {filterReminder === "inactive" ? "🔕 Sem lembrete" : "🔔 Lembrete"}
           </button>
+          <select
+            value={filterConverted}
+            onChange={(e) => setFilterConverted(e.target.value as "all" | "active_clients" | "leads")}
+            className={`px-3 py-2 border rounded-lg text-sm font-medium ${filterConverted === "active_clients" ? "bg-emerald-500 text-white border-emerald-500" : filterConverted === "leads" ? "bg-amber-500 text-white border-amber-500" : "bg-white text-gray-700"}`}
+            title="Filtrar por situação do cliente"
+          >
+            <option value="all">🎯 Todos (leads + clientes)</option>
+            <option value="active_clients">🎉 Só clientes ativos</option>
+            <option value="leads">🌱 Só leads (não convertidos)</option>
+          </select>
         </div>
         <div className="flex gap-2 flex-wrap">
           {isAdmin && selectedTasks.size > 0 && (
