@@ -89,6 +89,16 @@ export default function AttendantProgress() {
       t.lastContactedAt && new Date(t.lastContactedAt) >= weekStart
     ).length;
 
+    // 🎉 Minhas conversões (clientes ativos)
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
+    const convertedTasks = (tasks as any[]).filter(t => !!t.convertedAt);
+    const convertedCount = convertedTasks.length;
+    const conversionRate = (tasks as any[]).length > 0
+      ? Math.round((convertedCount / (tasks as any[]).length) * 100) : 0;
+    const convertedThisMonth = convertedTasks.filter(t => {
+      try { return new Date(t.convertedAt) >= thirtyDaysAgo; } catch { return false; }
+    }).length;
+
     return {
       contactsToday: contactsToday.length,
       contactsPct,
@@ -98,6 +108,9 @@ export default function AttendantProgress() {
       productivity,
       overdueToday,
       weekContacts,
+      convertedCount,
+      conversionRate,
+      convertedThisMonth,
       weekDays,
       maxBar,
       sessionStatus: session?.status ?? null,
@@ -189,6 +202,30 @@ export default function AttendantProgress() {
           <p className="text-xl font-black text-slate-600">{m.hoursWorked}</p>
         </div>
       </div>
+
+      {m.convertedCount > 0 && (
+        <div className="bg-green-50 border border-green-200 rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-base">🎉</span>
+            <p className="text-sm font-semibold text-green-800">Minhas conversões (clientes ativos)</p>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="text-center">
+              <p className="text-xl font-black text-green-700">{m.convertedCount}</p>
+              <p className="text-[10px] text-gray-500 mt-0.5">Total convertidos</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xl font-black text-green-700">{m.conversionRate}%</p>
+              <p className="text-[10px] text-gray-500 mt-0.5">Taxa de conversão</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xl font-black text-green-700">{m.convertedThisMonth}</p>
+              <p className="text-[10px] text-gray-500 mt-0.5">Últimos 30 dias</p>
+            </div>
+          </div>
+          <p className="text-[11px] text-green-600 mt-2 text-center">Continue mantendo contato — cada conversa aproxima de uma nova venda! 💪</p>
+        </div>
+      )}
 
       {m.overdueToday > 0 && (
         <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-xl">
