@@ -25,6 +25,8 @@ interface Task {
   status?: "pending" | "completed" | "cancelled" | null;
   priority?: "low" | "medium" | "high" | null;
   assignedTo?: string | null;
+  convertedAt?: Date | string | null;
+  contactCount?: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -143,6 +145,7 @@ export default function Tasks() {
   const updateMutation = trpc.tasks.update.useMutation();
   const deleteMutation = trpc.tasks.delete.useMutation();
   const deleteManyMutation = trpc.tasks.deleteMany.useMutation();
+  const toggleConvertedMutation = trpc.tasks.toggleConverted.useMutation();
   const suggestMutation = trpc.ai.suggestSalesApproach.useMutation();
 
   const [progressTick, setProgressTick] = useState(0);
@@ -329,6 +332,20 @@ export default function Tasks() {
   const handleDelete = async (id: number) => {
     setDeleteConfirm(id);
     setIsModalOpen(false);
+  };
+
+  // Marca/desmarca o lead como cliente ativo (conversão = virou venda).
+  // Não conclui o lembrete — ele continua recorrente até o atendente decidir parar.
+  const handleToggleConverted = async (task: Task, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const willConvert = !task.convertedAt;
+    try {
+      await toggleConvertedMutation.mutateAsync({ id: task.id, converted: willConvert });
+      toast.success(willConvert ? "🎉 Cliente marcado como ativo!" : "Marcação de cliente ativo removida");
+      refetch();
+    } catch {
+      toast.error("Erro ao atualizar conversão");
+    }
   };
 
   const confirmDelete = async () => {
@@ -858,6 +875,7 @@ export default function Tasks() {
                 <div className="flex gap-1 flex-shrink-0">
                   <span>{statusEmoji[task.status || 'pending']}</span>
                   <span>{priorityEmoji[task.priority || 'medium']}</span>
+                  {task.convertedAt && <span title="Cliente ativo">🎉</span>}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm leading-snug line-clamp-2 md:truncate">{task.title}</p>
@@ -865,6 +883,7 @@ export default function Tasks() {
                     {isAdmin && task.assignedTo && <p className="text-xs text-gray-500">👤 {task.assignedTo}</p>}
                     {hasPhone(`${task.title} ${task.notes ?? ''}`) && <span className="text-xs text-green-600">📱</span>}
                     {hasEmail(`${task.title} ${task.notes ?? ''}`) && <span className="text-xs text-blue-600">📧</span>}
+                    {task.convertedAt && <span className="text-xs text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded font-medium">🎉 Cliente ativo</span>}
                   </div>
                 </div>
                 {task.reminderDate && task.reminderEnabled && (() => {
@@ -890,7 +909,11 @@ export default function Tasks() {
               {expandedTask === task.id && (
                 <div className="p-3 bg-gray-50 border-t space-y-2">
                   {task.notes && <div className="text-sm bg-yellow-50 p-3 rounded border border-yellow-200"><strong>📝 Anotações:</strong><p className="whitespace-pre-wrap mt-2 leading-relaxed">{task.notes}</p></div>}
-                  <p className="text-xs text-gray-500">Criada: {new Date(task.createdAt).toLocaleDateString("pt-BR")}</p>
+                  <p className="text-xs text-gray-500">
+                    Criada: {new Date(task.createdAt).toLocaleDateString("pt-BR")}
+                    {!!task.contactCount && ` · 📞 ${task.contactCount} contato(s)`}
+                    {task.convertedAt && ` · 🎉 Cliente ativo desde ${new Date(task.convertedAt).toLocaleDateString("pt-BR")}`}
+                  </p>
                   {aiSuggestion?.taskId === task.id && (
                     <div className="text-sm bg-purple-50 p-2 rounded border border-purple-200">
                       <strong>🤖 Sugestão de abordagem:</strong>
@@ -898,6 +921,15 @@ export default function Tasks() {
                     </div>
                   )}
                   <div className="flex gap-2 flex-wrap">
+                    <Button
+                      size="sm"
+                      variant={task.convertedAt ? "outline" : "default"}
+                      className={task.convertedAt ? "text-emerald-700 border-emerald-300 hover:bg-emerald-50" : "bg-emerald-600 hover:bg-emerald-700 text-white"}
+                      onClick={(e) => handleToggleConverted(task, e)}
+                      disabled={toggleConvertedMutation.isPending}
+                    >
+                      {task.convertedAt ? "🎉 Cliente ativo — desmarcar" : "🎉 Marcar como Cliente Ativo"}
+                    </Button>
                     <Button size="sm" variant="outline" onClick={() => handleEdit(task)}>✏️ Editar</Button>
                     <Button size="sm" variant="destructive" onClick={() => handleDelete(task.id)}>🗑️ Deletar</Button>
                     <Button size="sm" variant="outline" className="text-purple-700 border-purple-300 hover:bg-purple-50" onClick={() => handleAiSuggest(task)} disabled={loadingSuggestion}>

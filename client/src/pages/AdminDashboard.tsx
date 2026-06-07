@@ -230,6 +230,20 @@ export default function AdminDashboard() {
   const withNotes = (tasks as any[]).filter(t => t.notes && t.notes.trim().length >= 15).length;
   const noteQuality = tasks.length > 0 ? Math.round((withNotes / tasks.length) * 100) : 0;
 
+  // Conversão: leads (lembretes recorrentes) que viraram clientes ativos.
+  // contactCount registra quantos contatos reais foram feitos até a conversão — mede esforço de venda.
+  const convertedTasks = (tasks as any[]).filter(t => t.convertedAt);
+  const convertedCount = convertedTasks.length;
+  const conversionRate = tasks.length > 0 ? Math.round((convertedCount / tasks.length) * 100) : 0;
+  const avgContactsToConvert = convertedCount > 0
+    ? Math.round(convertedTasks.reduce((sum, t) => sum + (t.contactCount || 0), 0) / convertedCount)
+    : 0;
+  const convertedThisMonth = convertedTasks.filter(t => {
+    const d = new Date(t.convertedAt);
+    const now = new Date();
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).length;
+
   // Filter reminders based on selection
   const filteredReminders = (reminders as any[]).filter(r => {
     if (reminderFilter === "all") return true;
@@ -299,6 +313,15 @@ export default function AdminDashboard() {
       color: "text-teal-600",
       bg: "bg-teal-50",
       border: "border-teal-100",
+    },
+    {
+      label: "Conversões",
+      value: convertedCount,
+      sub: `${conversionRate}% taxa · ${convertedThisMonth} este mês · ~${avgContactsToConvert} contatos p/ converter`,
+      icon: <span className="text-[22px]">🎉</span>,
+      color: "text-emerald-600",
+      bg: "bg-emerald-50",
+      border: "border-emerald-100",
     },
   ];
 

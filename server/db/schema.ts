@@ -49,6 +49,11 @@ export const tasks = pgTable('tasks', {
   priority: text('priority').notNull().default('medium'),
   assignedTo: text('assigned_to'),
   lastContactedAt: timestamp('last_contacted_at'),
+  // Lead → cliente ativo: marcado manualmente pelo atendente quando o contato vira venda.
+  // Lembretes continuam recorrentes (não "concluem"); isto é um marco de conversão, não de status.
+  convertedAt: timestamp('converted_at'),
+  // Conta contatos reais (notas relevantes salvas) — usado para medir "quantos contatos até converter"
+  contactCount: integer('contact_count').notNull().default(0),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

@@ -76,6 +76,7 @@ export const tasksRouter = router({
       const setData: Record<string, any> = { ...data, updatedAt: now };
       if (data.notes && data.notes.trim().length > 15) {
         setData.lastContactedAt = now;
+        setData.contactCount = sql`${tasks.contactCount} + 1`;
       }
       const [updated] = await db
         .update(tasks)
@@ -94,6 +95,22 @@ export const tasksRouter = router({
         burstWarning = burstCount >= 10;
       }
       return { ...updated, burstWarning, burstCount };
+    }),
+
+  // Marca/desmarca o lead como cliente ativo (conversão). Não altera status do lembrete —
+  // lembretes continuam recorrentes; isto é apenas um marco de negócio (virou venda).
+  toggleConverted: protectedProcedure
+    .input(z.object({ id: z.number(), converted: z.boolean() }))
+    .mutation(async ({ input, ctx }) => {
+      const ownerFilter = ctx.user.role === 'admin'
+        ? eq(tasks.id, input.id)
+        : and(eq(tasks.id, input.id), await userTaskFilter(ctx.user.id, ctx.user.name ?? ''));
+      const [updated] = await db.update(tasks)
+        .set({ convertedAt: input.converted ? new Date() : null, updatedAt: new Date() })
+        .where(ownerFilter)
+        .returning();
+      if (!updated) throw new TRPCError({ code: 'FORBIDDEN', message: 'Tarefa não encontrada ou sem permissão' });
+      return updated;
     }),
 
   delete: protectedProcedure

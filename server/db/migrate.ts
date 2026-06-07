@@ -183,6 +183,8 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE work_sessions ADD COLUMN IF NOT EXISTS daily_goal_hours INTEGER NOT NULL DEFAULT 8`;
   await sql`ALTER TABLE reminders ADD COLUMN IF NOT EXISTS updated_at         TIMESTAMP DEFAULT NOW()`;
   await sql`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS updated_at         TIMESTAMP DEFAULT NOW()`;
+  await sql`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS converted_at       TIMESTAMP`;
+  await sql`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS contact_count      INTEGER NOT NULL DEFAULT 0`;
 
   // ── Indexes ───────────────────────────────────────────────────────────────
   await sql`CREATE INDEX IF NOT EXISTS tasks_user_id_idx        ON tasks(user_id)`;
