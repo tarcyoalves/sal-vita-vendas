@@ -180,6 +180,7 @@ export default function AdminDashboard() {
   const [monitorReport, setMonitorReport] = useState<any[] | null>(null);
   const [monitorSummary, setMonitorSummary] = useState<string | null>(null);
   const [monitorLoading, setMonitorLoading] = useState(false);
+  const [monitorCached, setMonitorCached] = useState<{ cached: boolean; at: number } | null>(null);
   const [reminderFilter, setReminderFilter] = useState<string>("all");
   const [selectedSeller, setSelectedSeller] = useState<any | null>(null);
 
@@ -194,13 +195,16 @@ export default function AdminDashboard() {
     return undefined;
   };
 
-  const handleRunMonitor = async () => {
+  const handleRunMonitor = async (forceRefresh = false) => {
     setMonitorLoading(true);
     try {
       const aiCfg = getAiConfig();
-      const result = await analyzeAttendantsMutation.mutateAsync(aiCfg);
+      const result: any = await analyzeAttendantsMutation.mutateAsync({ ...aiCfg, forceRefresh });
       setMonitorReport(result.report);
       setMonitorSummary(result.summary);
+      setMonitorCached(typeof result.cached === 'boolean'
+        ? { cached: result.cached, at: result.cachedAt ?? Date.now() }
+        : null);
     } catch (e: any) {
       setMonitorSummary('Erro ao analisar: ' + (e?.message ?? 'Erro desconhecido'));
     } finally {
@@ -733,7 +737,7 @@ export default function AdminDashboard() {
               Monitor IA — Comportamento
             </span>
             <Button
-              onClick={handleRunMonitor}
+              onClick={() => handleRunMonitor(false)}
               disabled={monitorLoading}
               className="bg-purple-600 hover:bg-purple-700 text-white gap-1 text-xs"
               size="sm"
@@ -750,6 +754,21 @@ export default function AdminDashboard() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {monitorCached?.cached && (
+            <div className="flex items-center justify-between gap-2 text-xs bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+              <span className="text-purple-700">
+                📦 Resultado em cache de {new Date(monitorCached.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} — economiza sua cota gratuita de IA
+              </span>
+              <button
+                type="button"
+                className="text-purple-700 font-medium hover:underline whitespace-nowrap"
+                onClick={() => handleRunMonitor(true)}
+                disabled={monitorLoading}
+              >
+                🔄 Forçar nova análise
+              </button>
+            </div>
+          )}
           {!monitorReport && !monitorSummary && !monitorLoading && (
             <div className="text-center py-8 text-gray-400">
               <Scan size={36} className="mx-auto mb-2 opacity-30" />

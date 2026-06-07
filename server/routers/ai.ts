@@ -20,6 +20,17 @@ const DEFAULT_MODELS: Record<string, string> = {
   anthropic: 'claude-3-haiku-20240307',
 };
 
+// ── Proteção de cota gratuita (Groq/Gemini) ─────────────────────────────────
+// Cooldown por usuário: evita spam de mensagens consumindo a cota diária gratuita.
+const CHAT_COOLDOWN_MS = 2500;
+const lastChatAt = new Map<number, number>();
+
+// Cache do relatório de análise de atendentes (admin) — evita reprocessar
+// e rechamar a LLM a cada clique. TTL curto o bastante para refletir o dia,
+// longo o bastante para não desperdiçar a cota gratuita.
+const ANALYZE_CACHE_TTL_MS = 15 * 60 * 1000;
+let analyzeCache: { at: number; data: { report: any[]; summary: string } } | null = null;
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function nextBusinessDay(d: Date): Date {
@@ -670,6 +681,14 @@ export const aiRouter = router({
       model: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
+      // Cooldown — protege a cota gratuita do Groq/Gemini contra spam de mensagens
+      const lastAt = lastChatAt.get(ctx.user.id) ?? 0;
+      const elapsed = Date.now() - lastAt;
+      if (elapsed < CHAT_COOLDOWN_MS) {
+        throw new Error(`Aguarde ${Math.ceil((CHAT_COOLDOWN_MS - elapsed) / 1000)}s antes de enviar outra mensagem.`);
+      }
+      lastChatAt.set(ctx.user.id, Date.now());
+
       try {
         const provider = input.provider ?? (process.env.GROQ_API_KEY ? 'groq' : process.env.GEMINI_API_KEY ? 'gemini' : 'groq');
         const envKey = provider === 'groq' ? process.env.GROQ_API_KEY
@@ -682,10 +701,7 @@ export const aiRouter = router({
           ? DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile'
           : (input.model ?? DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile');
 
-        console.log('[AI_CHAT] uid:', ctx.user.id, 'provider:', provider, 'model:', model, 'hasKey:', !!apiKey);
-
         await db.insert(chatMessages).values({ userId: ctx.user.id, content: input.message, role: 'user' });
-        console.log('[AI_CHAT] msg saved');
 
         if (!apiKey) {
           const reply = 'IA não configurada. Vá em Configurações → IA e adicione uma chave do Groq ou Gemini (ambos gratuitos).';
@@ -697,10 +713,8 @@ export const aiRouter = router({
           .where(eq(chatMessages.userId, ctx.user.id))
           .orderBy(desc(chatMessages.createdAt))
           .limit(4);
-        console.log('[AI_CHAT] history:', history.length, 'rows');
 
         const userContext = await buildUserContext(ctx.user.id, ctx.user.role);
-        console.log('[AI_CHAT] context built');
 
         const systemPrompt = isAdmin
           ? `Gestor Sal Vita. Ferramentas disponíveis:
@@ -731,7 +745,6 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
           ...history.reverse().map(m => ({ role: m.role, content: m.content })),
         ];
 
-        console.log('[AI_CHAT] calling LLM, isAdmin:', isAdmin, 'provider:', provider);
         let reply: string;
         try {
           reply = isAdmin
@@ -741,7 +754,7 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
           if (isRateLimit(primaryErr)) {
             const fb = getFallbackConfig(provider);
             if (fb) {
-              console.log('[AI_CHAT] 429 on', provider, '— falling back to', fb.model);
+              console.warn('[AI_CHAT] 429 on', provider, '— falling back to', fb.model);
               reply = isAdmin
                 ? await callLLMWithTools(fb.apiKey, fb.baseURL, fb.model, messages, TOOLS, 1000, ctx.user.id)
                 : await callLLM(fb.apiKey, fb.baseURL, fb.model, messages, 700, 0.6);
@@ -749,13 +762,12 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
               throw primaryErr;
             }
           } else if (isAdmin && primaryErr.status === 400) {
-            console.log('[AI_CHAT] tool_use 400, retrying without tools');
+            console.warn('[AI_CHAT] tool_use 400, retrying without tools');
             reply = await callLLM(apiKey, baseURL, model, messages, 1000, 0.4);
           } else {
             throw primaryErr;
           }
         }
-        console.log('[AI_CHAT] LLM OK, reply len:', reply.length);
 
         await db.insert(chatMessages).values({ userId: ctx.user.id, content: reply, role: 'assistant' });
         return { reply };
@@ -771,9 +783,15 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
       apiKey: z.string().optional(),
       provider: z.string().optional(),
       model: z.string().optional(),
+      forceRefresh: z.boolean().optional(),
     }).optional())
     .mutation(async ({ input, ctx }) => {
     if (ctx.user.role !== 'admin') throw new Error('Apenas admins podem usar este recurso');
+
+    // Cache (15min): evita reprocessar e regastar a cota gratuita da LLM a cada clique
+    if (!input?.forceRefresh && analyzeCache && (Date.now() - analyzeCache.at) < ANALYZE_CACHE_TTL_MS) {
+      return { ...analyzeCache.data, cached: true, cachedAt: analyzeCache.at };
+    }
 
     const analyzeProvider = input?.provider ?? (process.env.GROQ_API_KEY ? 'groq' : process.env.GEMINI_API_KEY ? 'gemini' : 'groq');
     const envKey = analyzeProvider === 'groq' ? process.env.GROQ_API_KEY : process.env.GEMINI_API_KEY;
@@ -1002,7 +1020,8 @@ REGRAS ABSOLUTAS:
           content: `DADOS COMPLETOS (${allSellers.length} atendentes):\n\n${reportText}\n\nGere análise COMPLETA com todas as 6 seções. Inclua TODOS os atendentes. Não encurte.`,
         },
       ], 8000, 0.3);
-      return { report, summary };
+      analyzeCache = { at: Date.now(), data: { report, summary } };
+      return { report, summary, cached: false };
     } catch (err: any) {
       console.error('[ANALYZE_ERROR]', err?.message);
       return { report, summary: 'Análise indisponível: ' + (err?.message ?? 'erro') };
