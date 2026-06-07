@@ -36,6 +36,7 @@ type SectionTheme = { bg: string; border: string; headerBg: string; headerText: 
 
 function getSectionTheme(h: string): SectionTheme {
   if (h.includes('🏆')) return { bg:'#fffbeb', border:'#f59e0b', headerBg:'#fef3c7', headerText:'#92400e', dot:'#f59e0b' };
+  if (h.includes('💰')) return { bg:'#ecfdf5', border:'#10b981', headerBg:'#d1fae5', headerText:'#065f46', dot:'#10b981' };
   if (h.includes('🔴')) return { bg:'#fef2f2', border:'#ef4444', headerBg:'#fee2e2', headerText:'#991b1b', dot:'#ef4444' };
   if (h.includes('📊')) return { bg:'#eff6ff', border:'#3b82f6', headerBg:'#dbeafe', headerText:'#1e40af', dot:'#3b82f6' };
   if (h.includes('✅')) return { bg:'#f0fdf4', border:'#22c55e', headerBg:'#dcfce7', headerText:'#166534', dot:'#22c55e' };
@@ -244,6 +245,45 @@ export default function AdminDashboard() {
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   }).length;
 
+  // ── Funil de conversão: total de leads → contatados → convertidos ──────────
+  const contactedTasks = (tasks as any[]).filter(t => t.lastContactedAt);
+  const funnel = {
+    total: tasks.length,
+    contacted: contactedTasks.length,
+    converted: convertedCount,
+  };
+
+  // ── Tempo médio até o 1º contato (createdAt → lastContactedAt) ──────────────
+  const firstContactDeltas = contactedTasks
+    .map(t => new Date(t.lastContactedAt).getTime() - new Date(t.createdAt).getTime())
+    .filter(d => d > 0);
+  const avgFirstContactMs = firstContactDeltas.length > 0
+    ? firstContactDeltas.reduce((a, b) => a + b, 0) / firstContactDeltas.length
+    : 0;
+  const avgFirstContactDays = avgFirstContactMs > 0 ? (avgFirstContactMs / 86400000) : 0;
+  const staleNoContact = (tasks as any[]).filter(t => {
+    if (t.lastContactedAt || t.convertedAt) return false;
+    const ageMs = Date.now() - new Date(t.createdAt).getTime();
+    return ageMs > 48 * 3600000; // > 48h sem nenhum contato
+  });
+
+  // ── Leads "quentes": contactCount próximo da média necessária para converter, ainda não convertidos ─
+  const hotLeads = avgContactsToConvert > 0
+    ? (tasks as any[])
+        .filter(t => !t.convertedAt && (t.contactCount || 0) >= Math.max(1, avgContactsToConvert - 1))
+        .sort((a, b) => (b.contactCount || 0) - (a.contactCount || 0))
+        .slice(0, 8)
+    : [];
+
+  // ── Ranking de conversão por atendente ──────────────────────────────────────
+  const conversionRanking = (sellers as any[] || []).map((seller: any) => {
+    const mine = (tasks as any[]).filter(t => t.assignedTo === seller.name || t.userId === seller.userId);
+    const minePending = mine.length;
+    const mineConverted = mine.filter(t => t.convertedAt).length;
+    const rate = minePending > 0 ? Math.round((mineConverted / minePending) * 100) : 0;
+    return { name: seller.name, total: minePending, converted: mineConverted, rate };
+  }).filter(r => r.total > 0).sort((a, b) => b.converted - a.converted || b.rate - a.rate);
+
   // Filter reminders based on selection
   const filteredReminders = (reminders as any[]).filter(r => {
     if (reminderFilter === "all") return true;
@@ -435,6 +475,99 @@ export default function AdminDashboard() {
           </Card>
         ))}
       </div>
+
+      {/* Funil de Conversão & Performance de Vendas */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <span className="text-lg">🎯</span>
+            Funil de Conversão & Performance de Vendas
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {/* Funil visual */}
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-2">Funil — do lead ao cliente ativo</p>
+            <div className="flex items-center gap-2">
+              {[
+                { label: 'Leads', value: funnel.total, color: 'bg-slate-500' },
+                { label: 'Contatados', value: funnel.contacted, color: 'bg-blue-500' },
+                { label: 'Convertidos', value: funnel.converted, color: 'bg-emerald-500' },
+              ].map((stage, i, arr) => {
+                const pct = funnel.total > 0 ? Math.round((stage.value / funnel.total) * 100) : 0;
+                return (
+                  <div key={stage.label} className="flex-1 flex items-center gap-2">
+                    <div className="flex-1">
+                      <div className="flex justify-between text-[11px] text-gray-500 mb-1">
+                        <span>{stage.label}</span>
+                        <span className="font-semibold text-gray-700">{stage.value} ({pct}%)</span>
+                      </div>
+                      <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className={`h-full ${stage.color} rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                    {i < arr.length - 1 && <ArrowRight size={14} className="text-gray-300 flex-shrink-0" />}
+                  </div>
+                );
+              })}
+            </div>
+            {staleNoContact.length > 0 && (
+              <p className="text-[11px] text-amber-600 mt-2">
+                ⚠️ {staleNoContact.length} lead(s) há mais de 48h sem nenhum contato — esfriando
+              </p>
+            )}
+            {avgFirstContactDays > 0 && (
+              <p className="text-[11px] text-gray-400 mt-1">
+                ⏱️ Tempo médio até o 1º contato: <strong className="text-gray-600">{avgFirstContactDays < 1 ? `${Math.round(avgFirstContactMs / 3600000)}h` : `${avgFirstContactDays.toFixed(1)} dias`}</strong>
+              </p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Ranking de conversão */}
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-2">🏆 Ranking de conversão por atendente</p>
+              {conversionRanking.length > 0 ? (
+                <div className="space-y-1.5">
+                  {conversionRanking.slice(0, 6).map((r, i) => (
+                    <div key={r.name} className="flex items-center gap-2 text-sm">
+                      <span className="text-xs text-gray-400 w-4">{i + 1}º</span>
+                      <span className="flex-1 truncate text-gray-700">{r.name}</span>
+                      <span className="text-emerald-700 font-semibold text-xs">{r.converted} 🎉</span>
+                      <span className="text-[11px] text-gray-400 w-12 text-right">{r.rate}%</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400">Sem conversões registradas ainda.</p>
+              )}
+            </div>
+
+            {/* Leads quentes */}
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-2">
+                🔥 Leads quentes — perto de converter
+                {avgContactsToConvert > 0 && <span className="text-gray-400 font-normal"> (≥ {Math.max(1, avgContactsToConvert - 1)} contatos)</span>}
+              </p>
+              {hotLeads.length > 0 ? (
+                <div className="space-y-1.5">
+                  {hotLeads.map((t: any) => (
+                    <div key={t.id} className="flex items-center gap-2 text-sm">
+                      <span className="truncate flex-1 text-gray-700">{(t.title || '').split(' - ')[0].slice(0, 36)}</span>
+                      {t.assignedTo && <span className="text-[11px] text-gray-400 truncate max-w-[80px]">👤 {t.assignedTo}</span>}
+                      <span className="text-orange-600 font-semibold text-xs flex-shrink-0">📞 {t.contactCount}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400">
+                  {avgContactsToConvert > 0 ? 'Nenhum lead próximo do ponto médio de conversão agora.' : 'Ainda sem dados suficientes de conversão para calcular.'}
+                </p>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Attendants overview */}
       <Card>

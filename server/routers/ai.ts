@@ -898,11 +898,22 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
 
       const sess = sessionSummary(seller.userId);
 
+      // Performance de vendas (conversão lead → cliente ativo)
+      const converted = st.filter(t => t.convertedAt);
+      const convertedCount = converted.length;
+      const conversionRate = total > 0 ? Math.round((convertedCount / total) * 100) : 0;
+      const avgContactsToConvert = convertedCount > 0
+        ? Math.round(converted.reduce((acc, t) => acc + (t.contactCount || 0), 0) / convertedCount)
+        : 0;
+
       return {
         sellerId: seller.id,
         name: seller.name,
         email: seller.email,
         total,
+        convertedCount,
+        conversionRate,
+        avgContactsToConvert,
         withReminder: withReminder.length,
         overdue: overdue.length,
         noNotes: noNotes.length,
@@ -926,7 +937,7 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
     });
 
     const reportText = report.map(r =>
-      `${r.name}: ${r.total} clientes, ${r.withReminder} com lembrete ativo, ${r.overdue} vencidos, sem_anotação=${r.noNotes}, desativados=${r.disabledReminders}, sem_data=${r.noReminderDate}, nunca_atualizado=${r.neverUpdated}, status=${r.status} | CHURN: ghost_clientes=${r.ghostCount} (sem contato 30d+), reagendado_sem_contato=${r.reschedNoContact} | FRAUDE: burst=${r.hasBurst ? `SIM(${r.burstMax} em 10min)` : 'não'} | QUALIDADE: media_nota=${r.avgNoteLen}chars | ACESSO: hoje=[${r.sessaoHoje}], dias_ativos_7d=${r.diasAtivos7}, total_trabalhado_7d=${r.totalTrabalhado7dias}, ultimo_acesso=${r.ultimoAcesso} | flags=${r.flags.join('; ') || 'nenhuma'}`
+      `${r.name}: ${r.total} clientes, ${r.withReminder} com lembrete ativo, ${r.overdue} vencidos, sem_anotação=${r.noNotes}, desativados=${r.disabledReminders}, sem_data=${r.noReminderDate}, nunca_atualizado=${r.neverUpdated}, status=${r.status} | VENDAS: convertidos=${r.convertedCount} (${r.conversionRate}% taxa), media_contatos_p/_converter=${r.avgContactsToConvert} | CHURN: ghost_clientes=${r.ghostCount} (sem contato 30d+), reagendado_sem_contato=${r.reschedNoContact} | FRAUDE: burst=${r.hasBurst ? `SIM(${r.burstMax} em 10min)` : 'não'} | QUALIDADE: media_nota=${r.avgNoteLen}chars | ACESSO: hoje=[${r.sessaoHoje}], dias_ativos_7d=${r.diasAtivos7}, total_trabalhado_7d=${r.totalTrabalhado7dias}, ultimo_acesso=${r.ultimoAcesso} | flags=${r.flags.join('; ') || 'nenhuma'}`
     ).join('\n');
 
     try {
@@ -943,6 +954,8 @@ INTERPRETAÇÃO DOS DADOS:
 - lembrete desativado manualmente = atendente tentou esconder inadimplência
 - tarefa nunca atualizada = cliente ignorado desde importação
 - taxa de lembretes ativos baixa = carteira sendo negligenciada
+- convertidos / taxa de conversão = leads que viraram CLIENTES ATIVOS (venda real concretizada) — é a métrica mais importante de resultado
+- media_contatos_p/_converter = quantos contatos o atendente precisa em média até fechar uma venda. Quanto MENOR, melhor a técnica de abordagem (mais eficiente). Valores muito altos podem indicar dificuldade de fechamento ou leads de baixa qualidade
 - ghost_clientes = clientes sem NENHUM contato real nos últimos 30+ dias → risco churn alto
 - burst=SIM (N em 10min) = possível fraude: clientes "marcados" em massa em poucos minutos, sem contato real
 - reagendado_sem_contato = tarefa atualizada recentemente mas sem contato registrado → simulação de atividade
@@ -952,14 +965,18 @@ INTERPRETAÇÃO DOS DADOS:
 SEU PAPEL:
 1. Classificar cada atendente: 🟢 Ativo / 🟡 Atenção / 🔴 Crítico
 2. Identificar padrões de negligência vs. engajamento real
-3. Calcular risco de churn por atendente (clientes sem contato)
-4. Dar recomendações concretas e acionáveis imediatamente
-5. Destacar quem merece reconhecimento e quem precisa de intervenção
+3. Avaliar performance REAL DE VENDAS — quem converte, com que eficiência (contatos por venda)
+4. Calcular risco de churn por atendente (clientes sem contato)
+5. Dar recomendações concretas e acionáveis imediatamente
+6. Destacar quem merece reconhecimento (inclusive por VENDER, não só por estar ativo) e quem precisa de intervenção
 
-FORMATO OBRIGATÓRIO (markdown completo — NÃO PARE antes de terminar todas as 4 seções):
+FORMATO OBRIGATÓRIO (markdown completo — NÃO PARE antes de terminar todas as 6 seções):
 
 ## 🏆 Ranking de Desempenho
-[tabela markdown com todos os atendentes: Nome | Clientes | Vencidos | Sem nota | Status]
+[tabela markdown com todos os atendentes: Nome | Clientes | Convertidos | Taxa Conversão | Vencidos | Status]
+
+## 💰 Performance de Conversão (Resultado de Vendas)
+[CADA atendente: convertidos, taxa de conversão %, média de contatos até fechar — compare quem converte com poucos contatos (técnica eficiente, deve ser referência) vs. quem gasta muitos contatos sem fechar (precisa de treino de abordagem/fechamento)]
 
 ## 🔴 Alertas Críticos
 [CADA atendente com problema: nome, números exatos, impacto em churn, gravidade]
@@ -968,21 +985,21 @@ FORMATO OBRIGATÓRIO (markdown completo — NÃO PARE antes de terminar todas as
 [CADA atendente: clientes em risco (número), percentual da carteira, nível de urgência]
 
 ## ✅ Plano de Ação — Próximos 7 dias
-[CADA atendente: ações específicas e prioritárias, da mais urgente à menos urgente]
+[CADA atendente: ações específicas e prioritárias, da mais urgente à menos urgente — inclua metas de conversão quando fizer sentido]
 
 ## 🌟 Reconhecimentos
-[atendentes com desempenho positivo, métricas concretas]
+[atendentes com desempenho positivo — tanto por atividade/cuidado com a carteira QUANTO por resultado de vendas (conversões, eficiência), com métricas concretas]
 
 REGRAS ABSOLUTAS:
 - Inclua TODOS os ${allSellers.length} atendentes em TODAS as seções
 - Use números exatos dos dados fornecidos
 - NÃO encurte, NÃO resuma, NÃO pule atendentes
-- Complete TODAS as 5 seções antes de parar
+- Complete TODAS as 6 seções antes de parar
 - Português BR`,
         },
         {
           role: 'user',
-          content: `DADOS COMPLETOS (${allSellers.length} atendentes):\n\n${reportText}\n\nGere análise COMPLETA com todas as 5 seções. Inclua TODOS os atendentes. Não encurte.`,
+          content: `DADOS COMPLETOS (${allSellers.length} atendentes):\n\n${reportText}\n\nGere análise COMPLETA com todas as 6 seções. Inclua TODOS os atendentes. Não encurte.`,
         },
       ], 8000, 0.3);
       return { report, summary };
