@@ -293,11 +293,13 @@ export default function Tasks() {
     }
   }, []);
 
-  const doSave = async () => {
+  const doSave = async (overrides?: { reminderDate: string; reminderTime: string }) => {
     try {
+      const reminderDateStr = overrides?.reminderDate ?? formData.reminderDate;
+      const reminderTimeStr = overrides?.reminderTime ?? formData.reminderTime;
       let reminderDateTime: Date | undefined;
-      if (formData.reminderDate && formData.reminderTime) {
-        reminderDateTime = new Date(`${formData.reminderDate}T${formData.reminderTime}:00`);
+      if (reminderDateStr && reminderTimeStr) {
+        reminderDateTime = new Date(`${reminderDateStr}T${reminderTimeStr}:00`);
       }
       if (editingTask) {
         const result = await updateMutation.mutateAsync({ id: editingTask.id, title: formData.title, description: formData.description, notes: formData.notes, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
@@ -316,6 +318,19 @@ export default function Tasks() {
       const { data: fresh } = await refetch();
       if (!isAdmin && fresh) highlightNextUrgent(fresh as any[]);
     } catch { toast.error("Erro ao salvar tarefa"); }
+  };
+
+  // Atalho: ajusta a data/hora do lembrete (30min ou amanhã, mantendo a hora atual) e já salva.
+  const handleQuickReminder = async (mode: '30min' | 'tomorrow') => {
+    if (!formData.title.trim()) { toast.error("Título é obrigatório"); return; }
+    const target = new Date();
+    if (mode === '30min') target.setMinutes(target.getMinutes() + 30);
+    else target.setDate(target.getDate() + 1);
+    const p = (n: number) => String(n).padStart(2, '0');
+    const reminderDate = `${target.getFullYear()}-${p(target.getMonth() + 1)}-${p(target.getDate())}`;
+    const reminderTime = `${p(target.getHours())}:${p(target.getMinutes())}`;
+    setFormData(prev => ({ ...prev, reminderDate, reminderTime }));
+    await doSave({ reminderDate, reminderTime });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -810,6 +825,14 @@ export default function Tasks() {
               <input type="checkbox" id="reminderEnabled" checked={formData.reminderEnabled} onChange={(e) => setFormData({ ...formData, reminderEnabled: e.target.checked })} className="w-3.5 h-3.5" />
               <label htmlFor="reminderEnabled" className="text-xs font-medium text-blue-800">🔔 Ativar notificação no navegador</label>
             </div>
+            <div className="flex gap-2">
+              <Button type="button" size="sm" variant="outline" className="flex-1 text-xs" onClick={() => handleQuickReminder('30min')}>
+                ⏱️ Lembrar em 30 min
+              </Button>
+              <Button type="button" size="sm" variant="outline" className="flex-1 text-xs" onClick={() => handleQuickReminder('tomorrow')}>
+                📆 Lembrar amanhã
+              </Button>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs font-medium mb-1 text-gray-600">Prioridade</label>
@@ -831,7 +854,7 @@ export default function Tasks() {
               )}
             </div>
             <DialogFooter className="flex gap-2 pt-1">
-              <Button type="submit" size="sm" className="flex-1 bg-blue-600 hover:bg-blue-700">{editingTask ? "Atualizar" : "Criar Tarefa"}</Button>
+              <Button type="submit" size="sm" className="flex-1 bg-blue-600 hover:bg-blue-700">{editingTask ? "Salvar" : "Criar Tarefa"}</Button>
               {editingTask && <Button type="button" size="sm" variant="destructive" onClick={() => handleDelete(editingTask.id)}>🗑️</Button>}
               <Button type="button" size="sm" variant="outline" onClick={() => { setIsModalOpen(false); resetForm(); }}>Cancelar</Button>
             </DialogFooter>
