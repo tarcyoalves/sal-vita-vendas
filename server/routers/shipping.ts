@@ -152,32 +152,32 @@ export const shippingRouter = router({
       }
 
       const total = +(subtotal + shipping).toFixed(2);
-      const [order] = await db.transaction(async (tx) => {
-        if (appliedCoupon && foundCouponId !== null) {
-          await tx.update(coupons).set({ usedCount: sql`used_count + 1` }).where(eq(coupons.id, foundCouponId));
-        }
-        return tx.insert(siteOrders).values({
-          customerName: input.customerName,
-          customerPhone: input.customerPhone,
-          customerEmail: input.customerEmail || null,
-          customerCpf: input.customerCpf ? input.customerCpf.replace(/\D/g,'') : null,
-          postalCode: input.postalCode.replace(/\D/g,''),
-          address: input.address,
-          number: input.number,
-          complement: input.complement || null,
-          neighborhood: input.neighborhood,
-          city: input.city,
-          state: input.state.toUpperCase(),
-          quantity: input.quantity,
-          shippingServiceId: input.shippingServiceId ?? null,
-          shippingServiceName: input.shippingServiceName ?? null,
-          shippingPrice: shipping > 0 ? String(shipping) : null,
-          totalPrice: String(total),
-          couponCode: appliedCoupon,
-          couponDiscount: couponDiscount > 0 ? String(couponDiscount) : null,
-        }).returning();
-      });
+      // neon-http driver has no transaction support — insert the order first,
+      // then bump coupon usage only after the order is confirmed
+      const [order] = await db.insert(siteOrders).values({
+        customerName: input.customerName,
+        customerPhone: input.customerPhone,
+        customerEmail: input.customerEmail || null,
+        customerCpf: input.customerCpf ? input.customerCpf.replace(/\D/g,'') : null,
+        postalCode: input.postalCode.replace(/\D/g,''),
+        address: input.address,
+        number: input.number,
+        complement: input.complement || null,
+        neighborhood: input.neighborhood,
+        city: input.city,
+        state: input.state.toUpperCase(),
+        quantity: input.quantity,
+        shippingServiceId: input.shippingServiceId ?? null,
+        shippingServiceName: input.shippingServiceName ?? null,
+        shippingPrice: shipping > 0 ? String(shipping) : null,
+        totalPrice: String(total),
+        couponCode: appliedCoupon,
+        couponDiscount: couponDiscount > 0 ? String(couponDiscount) : null,
+      }).returning();
       if (!order?.id) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Erro ao criar pedido. Tente novamente.' });
+      if (appliedCoupon && foundCouponId !== null) {
+        await db.update(coupons).set({ usedCount: sql`used_count + 1` }).where(eq(coupons.id, foundCouponId));
+      }
       return { id: order.id, total, couponDiscount, couponApplied: appliedCoupon };
     }),
 
