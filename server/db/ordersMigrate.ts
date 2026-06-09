@@ -68,6 +68,7 @@ export async function ensureOrdersTablesExist(): Promise<Step[]> {
   await run('site_orders.mp_preference_id', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_preference_id TEXT`);
   await run('site_orders.mp_payment_id', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_payment_id TEXT`);
   await run('site_orders.tracking_code', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS tracking_code TEXT`);
+  await run('site_orders.unpaid_followup_sent_at', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS unpaid_followup_sent_at TIMESTAMP`);
   await run('site_orders_status_idx', () => sql`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`);
   await run('site_orders_phone_idx', () => sql`CREATE INDEX IF NOT EXISTS site_orders_phone_idx ON site_orders(customer_phone)`);
 

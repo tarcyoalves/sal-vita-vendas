@@ -132,6 +132,7 @@ export const siteOrders = pgTable('site_orders', {
   notes: text('notes'),
   couponCode: text('coupon_code'),
   couponDiscount: text('coupon_discount'),
+  unpaidFollowupSentAt: timestamp('unpaid_followup_sent_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

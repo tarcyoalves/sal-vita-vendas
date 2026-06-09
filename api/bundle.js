@@ -42786,6 +42786,7 @@ var init_schema2 = __esm({
       notes: text("notes"),
       couponCode: text("coupon_code"),
       couponDiscount: text("coupon_discount"),
+      unpaidFollowupSentAt: timestamp("unpaid_followup_sent_at"),
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
@@ -57258,14 +57259,22 @@ var recoveryRouter = router({
     if (newStep >= 2) {
       const existingRun = await ordersDb.select({ id: automationRuns.id }).from(automationRuns).where(and(eq(automationRuns.cartId, cartId), eq(automationRuns.status, "scheduled"))).limit(1);
       if (existingRun.length === 0) {
-        const scheduledFor = new Date(Date.now() + 30 * 60 * 1e3);
-        await ordersDb.insert(automationRuns).values({
+        const base = Date.now();
+        const touches = [
+          { rule: "abandoned_t1", delayMs: 30 * 60 * 1e3 },
+          // 30 min
+          { rule: "abandoned_t2", delayMs: 4 * 60 * 60 * 1e3 },
+          // 4 h
+          { rule: "abandoned_t3", delayMs: 24 * 60 * 60 * 1e3 }
+          // 24 h
+        ];
+        await ordersDb.insert(automationRuns).values(touches.map((t2) => ({
           cartId,
           customerPhone: phone,
-          ruleName: "abandoned_cart_30m",
+          ruleName: t2.rule,
           status: "scheduled",
-          scheduledFor
-        });
+          scheduledFor: new Date(base + t2.delayMs)
+        })));
       }
     }
     return { tracked: true, cartId };
@@ -58189,6 +58198,7 @@ async function ensureOrdersTablesExist() {
   await run2("site_orders.mp_preference_id", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_preference_id TEXT`);
   await run2("site_orders.mp_payment_id", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_payment_id TEXT`);
   await run2("site_orders.tracking_code", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS tracking_code TEXT`);
+  await run2("site_orders.unpaid_followup_sent_at", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS unpaid_followup_sent_at TIMESTAMP`);
   await run2("site_orders_status_idx", () => sql5`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`);
   await run2("site_orders_phone_idx", () => sql5`CREATE INDEX IF NOT EXISTS site_orders_phone_idx ON site_orders(customer_phone)`);
   await run2("abandoned_carts", () => sql5`
@@ -58692,6 +58702,121 @@ app.use(
     createContext
   })
 );
+async function fetchPixCode2(mpPaymentId) {
+  if (!mpPaymentId)
+    return null;
+  const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+  if (!token)
+    return null;
+  try {
+    const r = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    if (!r.ok)
+      return null;
+    const p2 = await r.json();
+    return p2?.point_of_interaction?.transaction_data?.qr_code ?? null;
+  } catch {
+    return null;
+  }
+}
+async function processUnpaidFollowups() {
+  let sent = 0;
+  try {
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1e3);
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1e3);
+    const orders = await ordersDb.select().from(siteOrders).where(and(
+      inArray(siteOrders.paymentStatus, ["awaiting", "failed"]),
+      isNull2(siteOrders.unpaidFollowupSentAt),
+      lte(siteOrders.createdAt, twoHoursAgo),
+      gte(siteOrders.createdAt, threeDaysAgo)
+    )).limit(20);
+    if (orders.length === 0)
+      return { sent };
+    const tpls = await ordersDb.select().from(msgTemplates).where(inArray(msgTemplates.type, ["unpaid", "failed"]));
+    const defaultByType = (type) => tpls.find((t2) => t2.type === type && t2.isDefault) ?? tpls.find((t2) => t2.type === type);
+    const pixTpl = tpls.find((t2) => t2.slug === "unpaid_pix");
+    const link = "https://premium.salvitarn.com.br";
+    for (const o of orders) {
+      await ordersDb.update(siteOrders).set({ unpaidFollowupSentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, o.id));
+      let tpl = o.paymentStatus === "failed" ? defaultByType("failed") : defaultByType("unpaid");
+      let pix = "";
+      if (o.paymentStatus === "awaiting") {
+        const code = await fetchPixCode2(o.mpPaymentId);
+        if (code && pixTpl) {
+          tpl = pixTpl;
+          pix = code;
+        }
+      }
+      const vars = { nome: o.customerName, pedido: String(o.id), valor: o.totalPrice ?? "0", link, pix };
+      const msg = tpl ? renderTemplate2(tpl.body, vars) : o.paymentStatus === "failed" ? `Ol\xE1 *${o.customerName}*! \u{1F615} Houve um problema no pagamento do pedido *#${o.id}*. Tente novamente: ${link}` : `Ol\xE1 *${o.customerName}*! \u{1F4B8} Seu pedido *#${o.id}* (R$ ${o.totalPrice}) ainda est\xE1 aguardando pagamento. Finalize: ${link}`;
+      const ok = await sendWhatsApp(o.customerPhone, msg);
+      if (ok)
+        sent++;
+      await new Promise((r) => setTimeout(r, 1e3));
+    }
+  } catch (e) {
+    console.error("[cron] unpaid-followup error:", e);
+  }
+  return { sent };
+}
+async function reconcileAwaitingOrders() {
+  let confirmed = 0;
+  const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+  if (!token)
+    return { confirmed };
+  try {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1e3);
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1e3);
+    const orders = await ordersDb.select().from(siteOrders).where(and(
+      eq(siteOrders.paymentStatus, "awaiting"),
+      lte(siteOrders.createdAt, oneHourAgo),
+      gte(siteOrders.createdAt, threeDaysAgo)
+    )).limit(15);
+    for (const o of orders) {
+      try {
+        let approved = false;
+        let payId = o.mpPaymentId ?? "";
+        if (payId) {
+          const r = await fetch(`https://api.mercadopago.com/v1/payments/${payId}`, { headers: { "Authorization": `Bearer ${token}` } });
+          if (r.ok)
+            approved = (await r.json())?.status === "approved";
+        } else {
+          const r = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${o.id}&sort=date_created&criteria=desc`, { headers: { "Authorization": `Bearer ${token}` } });
+          if (r.ok) {
+            const results = (await r.json())?.results ?? [];
+            const ap = results.find((p2) => p2.status === "approved");
+            if (ap) {
+              approved = true;
+              payId = String(ap.id);
+            }
+          }
+        }
+        if (!approved)
+          continue;
+        await ordersDb.update(siteOrders).set({ status: "confirmed", paymentStatus: "confirmed", mpPaymentId: payId, updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, o.id));
+        const phone = o.customerPhone.replace(/\D/g, "");
+        await ordersDb.update(automationRuns).set({ status: "cancelled", cancelledAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(and(eq(automationRuns.customerPhone, phone), eq(automationRuns.status, "scheduled")));
+        await ordersDb.update(abandonedCarts).set({ status: "converted", recovered: true, convertedAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.customerPhone, phone));
+        const msg = `Ol\xE1 *${o.customerName}*! \u{1F389}
+
+Seu pagamento foi *confirmado*! \u2705
+
+\u{1F4E6} Pedido *#${o.id}* \u2014 R$ ${o.totalPrice}
+
+J\xE1 estamos preparando seu envio. \u{1F69A}
+
+_Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
+        await sendWhatsApp(o.customerPhone, msg);
+        confirmed++;
+      } catch {
+      }
+    }
+  } catch (e) {
+    console.error("[cron] reconcile error:", e);
+  }
+  return { confirmed };
+}
 app.all("/api/cron/abandoned-cart", import_express.default.json(), async (req, res) => {
   const secret = process.env.CRON_SECRET;
   const provided = req.headers["x-cron-secret"] ?? req.headers["authorization"]?.replace("Bearer ", "");
@@ -58706,9 +58831,16 @@ app.all("/api/cron/abandoned-cart", import_express.default.json(), async (req, r
     const due = await ordersDb.select().from(runs).where(
       and(eq(runs.status, "scheduled"), lte2(runs.scheduledFor, now))
     ).limit(50);
-    const waUrl = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
-    const waKey = process.env.WA_API_KEY || "MinhaChaveSuperSegura123456";
-    const [defaultTemplate] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.type, "abandoned"), eq(msgTemplates.isDefault, true))).limit(1);
+    const abandonedTpls = await ordersDb.select().from(msgTemplates).where(eq(msgTemplates.type, "abandoned"));
+    const tplBySlug = {};
+    for (const t2 of abandonedTpls)
+      tplBySlug[t2.slug] = t2;
+    const RULE_MAP = {
+      abandoned_t1: { slug: "abandoned_simples", coupon: "" },
+      abandoned_t2: { slug: "abandoned_urgencia", coupon: "" },
+      abandoned_t3: { slug: "abandoned_cupom", coupon: "VOLTA10" }
+    };
+    const fallbackTpl = tplBySlug["abandoned_simples"] ?? abandonedTpls.find((t2) => t2.isDefault);
     let sent = 0, cancelled = 0, failed = 0;
     for (const run2 of due) {
       const [cart] = await ordersDb.select().from(carts).where(eq(carts.id, run2.cartId)).limit(1);
@@ -58719,11 +58851,13 @@ app.all("/api/cron/abandoned-cart", import_express.default.json(), async (req, r
       }
       const name2 = cart.customerName;
       const link = "https://premium.salvitarn.com.br";
+      const ruleCfg = RULE_MAP[run2.ruleName] ?? { slug: "abandoned_simples", coupon: "" };
+      const tpl = tplBySlug[ruleCfg.slug] ?? fallbackTpl;
       let msg;
       if (run2.aiBody) {
         msg = run2.aiBody;
-      } else if (defaultTemplate) {
-        msg = renderTemplate2(defaultTemplate.body, { nome: name2, link, cupom: "" });
+      } else if (tpl) {
+        msg = renderTemplate2(tpl.body, { nome: name2, link, cupom: ruleCfg.coupon });
       } else {
         msg = `Ol\xE1 *${name2}*! \u{1F30A}
 
@@ -58735,15 +58869,9 @@ Qualquer d\xFAvida \xE9 s\xF3 chamar! \u{1F60A}
 _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
       }
       try {
-        const phone = run2.customerPhone.replace(/\D/g, "");
-        const fmtPhone2 = phone.startsWith("55") ? phone : `55${phone}`;
-        const r = await fetch(`${waUrl}/send`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "apikey": waKey },
-          body: JSON.stringify({ phone: fmtPhone2, message: msg })
-        });
-        if (r.ok) {
-          await ordersDb.update(runs).set({ status: "sent", sentAt: /* @__PURE__ */ new Date(), providerResponse: JSON.stringify(await r.json()), updatedAt: /* @__PURE__ */ new Date() }).where(eq(runs.id, run2.id));
+        const ok = await sendWhatsApp(run2.customerPhone, msg);
+        if (ok) {
+          await ordersDb.update(runs).set({ status: "sent", sentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(runs.id, run2.id));
           await ordersDb.update(carts).set({ recoverySentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(carts.id, run2.cartId));
           sent++;
         } else {
@@ -58756,7 +58884,9 @@ _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
       }
       await new Promise((r) => setTimeout(r, 1e3));
     }
-    res.json({ ok: true, processed: due.length, sent, cancelled, failed });
+    const unpaid = await processUnpaidFollowups();
+    const reconciled = await reconcileAwaitingOrders();
+    res.json({ ok: true, processed: due.length, sent, cancelled, failed, unpaid, reconciled });
   } catch (err) {
     console.error("[cron] abandoned-cart error:", err);
     res.status(500).json({ error: String(err) });

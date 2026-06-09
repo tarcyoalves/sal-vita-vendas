@@ -13,7 +13,7 @@ import { ensureOrdersTablesExist } from '../server/db/ordersMigrate';
 import { ordersDb } from '../server/db/ordersDb';
 import { sql as sqlClient } from '../server/db/index';
 import { siteOrders, abandonedCarts, automationRuns, msgTemplates } from '../server/db/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, lte, gte, isNull, inArray } from 'drizzle-orm';
 
 function renderTemplate(body: string, vars: Record<string, string>): string {
   return body.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
@@ -430,6 +430,119 @@ app.use(
   }),
 );
 
+// Fetch a PIX copy-paste code from Mercado Pago for a given payment id (best effort).
+async function fetchPixCode(mpPaymentId: string | null): Promise<string | null> {
+  if (!mpPaymentId) return null;
+  const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+  if (!token) return null;
+  try {
+    const r = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (!r.ok) return null;
+    const p = await r.json() as any;
+    return p?.point_of_interaction?.transaction_data?.qr_code ?? null;
+  } catch { return null; }
+}
+
+// One-shot WhatsApp follow-up for unpaid (awaiting PIX/boleto) and failed (rejected) orders.
+// Free-tier safe: small LIMIT, marks unpaid_followup_sent_at on attempt so it never reprocesses.
+async function processUnpaidFollowups(): Promise<{ sent: number }> {
+  let sent = 0;
+  try {
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const orders = await ordersDb.select().from(siteOrders).where(and(
+      inArray(siteOrders.paymentStatus, ['awaiting', 'failed']),
+      isNull(siteOrders.unpaidFollowupSentAt),
+      lte(siteOrders.createdAt, twoHoursAgo),
+      gte(siteOrders.createdAt, threeDaysAgo),
+    )).limit(20);
+    if (orders.length === 0) return { sent };
+
+    const tpls = await ordersDb.select().from(msgTemplates).where(inArray(msgTemplates.type, ['unpaid', 'failed']));
+    const defaultByType = (type: string) => tpls.find(t => t.type === type && t.isDefault) ?? tpls.find(t => t.type === type);
+    const pixTpl = tpls.find(t => t.slug === 'unpaid_pix');
+    const link = 'https://premium.salvitarn.com.br';
+
+    for (const o of orders) {
+      // Mark first so a transient WA outage never causes reprocessing / repeated MP calls.
+      await ordersDb.update(siteOrders).set({ unpaidFollowupSentAt: new Date(), updatedAt: new Date() })
+        .where(eq(siteOrders.id, o.id));
+
+      let tpl = o.paymentStatus === 'failed' ? defaultByType('failed') : defaultByType('unpaid');
+      let pix = '';
+      if (o.paymentStatus === 'awaiting') {
+        const code = await fetchPixCode(o.mpPaymentId);
+        if (code && pixTpl) { tpl = pixTpl; pix = code; }
+      }
+      const vars = { nome: o.customerName, pedido: String(o.id), valor: o.totalPrice ?? '0', link, pix };
+      const msg = tpl
+        ? renderTemplate(tpl.body, vars)
+        : (o.paymentStatus === 'failed'
+            ? `Olá *${o.customerName}*! 😕 Houve um problema no pagamento do pedido *#${o.id}*. Tente novamente: ${link}`
+            : `Olá *${o.customerName}*! 💸 Seu pedido *#${o.id}* (R$ ${o.totalPrice}) ainda está aguardando pagamento. Finalize: ${link}`);
+      const ok = await sendWhatsApp(o.customerPhone, msg);
+      if (ok) sent++;
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  } catch (e) { console.error('[cron] unpaid-followup error:', e); }
+  return { sent };
+}
+
+// Reconcile awaiting orders whose webhook may never have arrived: ask Mercado Pago directly.
+// Free-tier safe: small LIMIT, narrow time window (1h–3d old).
+async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
+  let confirmed = 0;
+  const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+  if (!token) return { confirmed };
+  try {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const orders = await ordersDb.select().from(siteOrders).where(and(
+      eq(siteOrders.paymentStatus, 'awaiting'),
+      lte(siteOrders.createdAt, oneHourAgo),
+      gte(siteOrders.createdAt, threeDaysAgo),
+    )).limit(15);
+
+    for (const o of orders) {
+      try {
+        // Find an approved payment for this order (by saved id, else search by reference).
+        let approved = false;
+        let payId = o.mpPaymentId ?? '';
+        if (payId) {
+          const r = await fetch(`https://api.mercadopago.com/v1/payments/${payId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+          if (r.ok) approved = ((await r.json()) as any)?.status === 'approved';
+        } else {
+          const r = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${o.id}&sort=date_created&criteria=desc`, { headers: { 'Authorization': `Bearer ${token}` } });
+          if (r.ok) {
+            const results = ((await r.json()) as any)?.results ?? [];
+            const ap = results.find((p: any) => p.status === 'approved');
+            if (ap) { approved = true; payId = String(ap.id); }
+          }
+        }
+        if (!approved) continue;
+
+        await ordersDb.update(siteOrders)
+          .set({ status: 'confirmed', paymentStatus: 'confirmed', mpPaymentId: payId, updatedAt: new Date() })
+          .where(eq(siteOrders.id, o.id));
+        const phone = o.customerPhone.replace(/\D/g, '');
+        await ordersDb.update(automationRuns)
+          .set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
+          .where(and(eq(automationRuns.customerPhone, phone), eq(automationRuns.status, 'scheduled')));
+        await ordersDb.update(abandonedCarts)
+          .set({ status: 'converted', recovered: true, convertedAt: new Date(), updatedAt: new Date() })
+          .where(eq(abandonedCarts.customerPhone, phone));
+        // Confirmation WhatsApp (best effort)
+        const msg = `Olá *${o.customerName}*! 🎉\n\nSeu pagamento foi *confirmado*! ✅\n\n📦 Pedido *#${o.id}* — R$ ${o.totalPrice}\n\nJá estamos preparando seu envio. 🚚\n\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
+        await sendWhatsApp(o.customerPhone, msg);
+        confirmed++;
+      } catch { /* skip this order */ }
+    }
+  } catch (e) { console.error('[cron] reconcile error:', e); }
+  return { confirmed };
+}
+
 // Cron endpoint — Vercel Cron sends GET; external callers may use POST
 app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
   const secret = process.env.CRON_SECRET;
@@ -446,13 +559,17 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
       and(eq(runs.status, 'scheduled'), lte(runs.scheduledFor, now))
     ).limit(50);
 
-    const waUrl = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
-    const waKey = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
-
-    // Load default abandoned template once for all runs
-    const [defaultTemplate] = await ordersDb.select().from(msgTemplates)
-      .where(and(eq(msgTemplates.type, 'abandoned'), eq(msgTemplates.isDefault, true)))
-      .limit(1);
+    // Load all abandoned templates once (small table) and index by slug for the cadence.
+    const abandonedTpls = await ordersDb.select().from(msgTemplates).where(eq(msgTemplates.type, 'abandoned'));
+    const tplBySlug: Record<string, typeof abandonedTpls[number]> = {};
+    for (const t of abandonedTpls) tplBySlug[t.slug] = t;
+    // Map each cadence touch to a template + whether it carries a coupon (coupon only on last touch).
+    const RULE_MAP: Record<string, { slug: string; coupon: string }> = {
+      abandoned_t1: { slug: 'abandoned_simples',  coupon: '' },
+      abandoned_t2: { slug: 'abandoned_urgencia', coupon: '' },
+      abandoned_t3: { slug: 'abandoned_cupom',    coupon: 'VOLTA10' },
+    };
+    const fallbackTpl = tplBySlug['abandoned_simples'] ?? abandonedTpls.find(t => t.isDefault);
 
     let sent = 0, cancelled = 0, failed = 0;
     for (const run of due) {
@@ -465,25 +582,20 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
       }
       const name = cart.customerName;
       const link = 'https://premium.salvitarn.com.br';
+      const ruleCfg = RULE_MAP[run.ruleName] ?? { slug: 'abandoned_simples', coupon: '' };
+      const tpl = tplBySlug[ruleCfg.slug] ?? fallbackTpl;
       let msg: string;
       if (run.aiBody) {
-        // AI-generated personalized message takes priority
-        msg = run.aiBody;
-      } else if (defaultTemplate) {
-        msg = renderTemplate(defaultTemplate.body, { nome: name, link, cupom: '' });
+        msg = run.aiBody; // AI-generated personalized message takes priority
+      } else if (tpl) {
+        msg = renderTemplate(tpl.body, { nome: name, link, cupom: ruleCfg.coupon });
       } else {
         msg = `Olá *${name}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou o pedido.\n\n👉 Finalize agora: ${link}\n\nQualquer dúvida é só chamar! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
       }
       try {
-        const phone = run.customerPhone.replace(/\D/g, '');
-        const fmtPhone = phone.startsWith('55') ? phone : `55${phone}`;
-        const r = await fetch(`${waUrl}/send`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': waKey },
-          body: JSON.stringify({ phone: fmtPhone, message: msg }),
-        });
-        if (r.ok) {
-          await ordersDb.update(runs).set({ status: 'sent', sentAt: new Date(), providerResponse: JSON.stringify(await r.json()), updatedAt: new Date() })
+        const ok = await sendWhatsApp(run.customerPhone, msg);
+        if (ok) {
+          await ordersDb.update(runs).set({ status: 'sent', sentAt: new Date(), updatedAt: new Date() })
             .where(eq(runs.id, run.id));
           await ordersDb.update(carts).set({ recoverySentAt: new Date(), updatedAt: new Date() })
             .where(eq(carts.id, run.cartId));
@@ -498,7 +610,13 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
       }
       await new Promise(r => setTimeout(r, 1000));
     }
-    res.json({ ok: true, processed: due.length, sent, cancelled, failed });
+
+    // ── Follow-up for unpaid / failed orders (runs in the same cron pass) ──────
+    const unpaid = await processUnpaidFollowups();
+    // ── Reconcile awaiting orders whose webhook may never have arrived ─────────
+    const reconciled = await reconcileAwaitingOrders();
+
+    res.json({ ok: true, processed: due.length, sent, cancelled, failed, unpaid, reconciled });
   } catch (err) {
     console.error('[cron] abandoned-cart error:', err);
     res.status(500).json({ error: String(err) });

@@ -123,22 +123,30 @@ export const recoveryRouter = router({
         cartId = inserted.id;
       }
 
-      // Schedule 30-min abandonment automation when customer reaches shipping step
-      // Only if no pending automation exists for this cart yet
+      // Schedule a 3-touch recovery cadence when the customer reaches the shipping step.
+      // Only if no pending automation exists yet (cheap single-row probe — free-tier friendly).
       if (newStep >= 2) {
         const existingRun = await db.select({ id: automationRuns.id })
           .from(automationRuns)
           .where(and(eq(automationRuns.cartId, cartId), eq(automationRuns.status, 'scheduled')))
           .limit(1);
         if (existingRun.length === 0) {
-          const scheduledFor = new Date(Date.now() + 30 * 60 * 1000);
-          await db.insert(automationRuns).values({
+          const base = Date.now();
+          // Touch 1: gentle reminder (no discount — protect margin)
+          // Touch 2: urgency + social proof
+          // Touch 3: coupon as last resort
+          const touches = [
+            { rule: 'abandoned_t1', delayMs: 30 * 60 * 1000 },        // 30 min
+            { rule: 'abandoned_t2', delayMs: 4 * 60 * 60 * 1000 },    // 4 h
+            { rule: 'abandoned_t3', delayMs: 24 * 60 * 60 * 1000 },   // 24 h
+          ];
+          await db.insert(automationRuns).values(touches.map(t => ({
             cartId,
             customerPhone: phone,
-            ruleName: 'abandoned_cart_30m',
-            status: 'scheduled',
-            scheduledFor,
-          });
+            ruleName: t.rule,
+            status: 'scheduled' as const,
+            scheduledFor: new Date(base + t.delayMs),
+          })));
         }
       }
 
