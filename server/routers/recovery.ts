@@ -4,6 +4,7 @@ import { ordersDb as db } from '../db/ordersDb';
 import { abandonedCarts, automationRuns, coupons, msgTemplates, siteOrders } from '../db/schema';
 import { desc, eq, and, sql, lte } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
+import { sendEmail, abandonedCartHtml, unpaidOrderHtml } from '../email/resend';
 
 // Sends to both 9th-digit variants with a short delay between them.
 // wa-server blindly returns success:true, so we try both to guarantee delivery
@@ -374,6 +375,15 @@ export const recoveryRouter = router({
         await db.update(abandonedCarts)
           .set({ recoverySentAt: new Date(), updatedAt: new Date() })
           .where(eq(abandonedCarts.id, input.id));
+        // Best-effort email recovery (non-blocking)
+        if (cart.customerEmail) {
+          const coupon = input.coupon || undefined;
+          const emailHtml = abandonedCartHtml(cart.customerName, 'https://premium.salvitarn.com.br', coupon);
+          const emailSubject = coupon
+            ? `Seu cupom ${coupon} — finalize seu pedido Sal Vita`
+            : 'Você esqueceu algo — finalize seu pedido Sal Vita';
+          sendEmail(cart.customerEmail, emailSubject, emailHtml).catch(() => {});
+        }
       }
       return { ok, phone: usedPhone, preview: msg, waLink: waLink(cart.customerPhone, msg) };
     }),
@@ -420,6 +430,18 @@ export const recoveryRouter = router({
       }
 
       const { ok, usedPhone } = await sendViaWhatsApp(order.customerPhone, msg);
+      // Best-effort email follow-up (non-blocking)
+      if (order.customerEmail) {
+        const emailHtml = unpaidOrderHtml(
+          order.customerName,
+          order.id,
+          parseFloat(order.totalPrice ?? '0').toFixed(2).replace('.', ','),
+          orderLink,
+          pixCode ?? undefined,
+        );
+        const emailSubject = `Pedido #${order.id} aguardando pagamento — R$ ${parseFloat(order.totalPrice ?? '0').toFixed(2).replace('.', ',')}`;
+        sendEmail(order.customerEmail, emailSubject, emailHtml).catch(() => {});
+      }
       return { ok, phone: usedPhone, hasPix: !!pixCode, preview: msg, waLink: waLink(order.customerPhone, msg) };
     }),
 

@@ -14,6 +14,7 @@ import { ordersDb } from '../server/db/ordersDb';
 import { sql as sqlClient } from '../server/db/index';
 import { siteOrders, abandonedCarts, automationRuns, msgTemplates } from '../server/db/schema';
 import { eq, and, sql, lte, gte, isNull, inArray } from 'drizzle-orm';
+import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
 
 function renderTemplate(body: string, vars: Record<string, string>): string {
   return body.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
@@ -347,6 +348,15 @@ app.post('/api/mp-webhook', express.raw({ type: 'application/json' }), async (re
           ? renderTemplate(tpl.body, vars)
           : `Olá *${order.customerName}*! 🎉\n\nSeu pagamento foi *confirmado*! ✅\n\n📦 Pedido *#${order.id}* — R$ ${order.totalPrice}\n\nJá estamos preparando seu envio. Você receberá o código de rastreio assim que postarmos. 🚚\n\nObrigado por escolher a Sal Vita! 🌊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
         await sendWhatsApp(order.customerPhone, msg);
+        // Best-effort confirmation email (non-blocking)
+        if (order.customerEmail) {
+          const emailHtml = orderConfirmedHtml(order.customerName, order.id, order.totalPrice ?? '0');
+          sendEmail(
+            order.customerEmail,
+            `Pedido #${order.id} confirmado — obrigado, ${order.customerName}!`,
+            emailHtml,
+          ).catch(() => {});
+        }
       } catch (e) { console.error('[mp-webhook] confirmation WA failed:', e); }
 
     } else if (payment.status === 'pending' || payment.status === 'in_process' || payment.status === 'authorized') {
@@ -511,6 +521,20 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
             : `Olá *${o.customerName}*! 💸 Seu pedido *#${o.id}* (R$ ${o.totalPrice}) ainda está aguardando pagamento. Finalize: ${link}`);
       const ok = await sendWhatsApp(o.customerPhone, msg);
       if (ok) sent++;
+      // Best-effort email follow-up (non-blocking)
+      if (o.customerEmail) {
+        const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${o.id}`;
+        const emailHtml = unpaidOrderHtml(
+          o.customerName,
+          o.id,
+          o.totalPrice ?? '0',
+          orderLink,
+        );
+        const emailSubject = o.paymentStatus === 'failed'
+          ? `Problema no pagamento do pedido #${o.id} — tente novamente`
+          : `Pedido #${o.id} aguardando pagamento — R$ ${o.totalPrice}`;
+        sendEmail(o.customerEmail, emailSubject, emailHtml).catch(() => {});
+      }
       await new Promise(r => setTimeout(r, 1000));
     }
   } catch (e) { console.error('[cron] unpaid-followup error:', e); }
@@ -632,6 +656,15 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
           await ordersDb.update(carts).set({ recoverySentAt: new Date(), updatedAt: new Date() })
             .where(eq(carts.id, run.cartId));
           sent++;
+          // Best-effort email recovery (non-blocking)
+          if (cart.customerEmail) {
+            const coupon = ruleCfg.coupon || undefined;
+            const emailHtml = abandonedCartHtml(cart.customerName, 'https://premium.salvitarn.com.br', coupon);
+            const emailSubject = coupon
+              ? `Seu cupom ${coupon} — finalize seu pedido Sal Vita`
+              : 'Você esqueceu algo — finalize seu pedido Sal Vita';
+            sendEmail(cart.customerEmail, emailSubject, emailHtml).catch(() => {});
+          }
         } else {
           await ordersDb.update(runs).set({ status: 'failed', updatedAt: new Date() }).where(eq(runs.id, run.id));
           failed++;
