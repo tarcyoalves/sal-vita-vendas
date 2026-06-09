@@ -241,10 +241,27 @@ export default function SalVitaLanding() {
     setCheckoutForm({customerName:'',customerPhone:'',customerEmail:'',customerCpf:'',postalCode:'',address:'',number:'',complement:'',neighborhood:'',city:'',state:''});
     setCouponState(null); setCouponCode('');
     cartTrackRef.current = false;
-    localStorage.removeItem('sv_pending_order');
-    setPendingOrder(null);
+    // Keep sv_pending_order intact so a customer with an unpaid order can resume it.
     document.body.style.overflow='hidden';
   },[]);
+
+  // Resume a previously-created but unpaid order: regenerate the MP payment link.
+  const [resumeLoading,setResumeLoading] = useState(false);
+  async function resumePendingOrder(){
+    if(!pendingOrder) return;
+    setResumeLoading(true);
+    try {
+      const res = await fetch('/api/trpc/shipping.createPayment',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({json:{ orderId: pendingOrder.id }}),
+      });
+      const data = await res.json();
+      const initPoint = data?.result?.data?.json?.initPoint;
+      if(initPoint){ window.location.href = initPoint; }
+      else { alert('Não foi possível retomar o pagamento. Tente refazer o pedido.'); setResumeLoading(false); }
+    } catch { alert('Erro de conexão. Tente novamente.'); setResumeLoading(false); }
+  }
+  function dismissPendingOrder(){ localStorage.removeItem('sv_pending_order'); setPendingOrder(null); }
   const closeBuy=useCallback(()=>{ setShowModal(false); setShowCheckout(false); setOrderDone(null); document.body.style.overflow=''; if(payTimerRef.current) clearInterval(payTimerRef.current); },[]);
 
   useEffect(()=>{
@@ -346,6 +363,11 @@ export default function SalVitaLanding() {
   async function handleCheckout(e:React.FormEvent) {
     e.preventDefault();
     if(!selProd||!selShip) return;
+    // Block invalid CPF before hitting the backend / Mercado Pago
+    if(checkoutForm.customerCpf && !isValidCpf(checkoutForm.customerCpf)){
+      setCpfError('CPF inválido — confira os números');
+      return;
+    }
     setCheckoutLoading(true);
     // Track step 3 (attempting payment)
     fetch('/api/trpc/recovery.trackCart', {
@@ -392,7 +414,9 @@ export default function SalVitaLanding() {
       const data = await res.json();
       const initPoint = data?.result?.data?.json?.initPoint;
       if(initPoint) {
-        try { (window as any).fbq?.('track','Purchase',{ value: orderDone.total, currency: 'BRL', content_name: 'SAL VITA PREMIUM 1kg', content_ids: ['salvita-001'], content_type: 'product', num_items: 1 }); } catch {}
+        // NOTE: Purchase event fires on the confirmation page (TrackOrder) after the
+        // payment is actually approved — not here, to avoid inflating ad metrics.
+        try { (window as any).fbq?.('track','InitiateCheckout',{ value: orderDone.total, currency: 'BRL', content_ids: ['salvita-001'], content_type: 'product' }); } catch {}
         window.location.href = initPoint;
       }
       else { alert('Erro ao gerar link de pagamento. Tente novamente.'); }
@@ -411,6 +435,17 @@ export default function SalVitaLanding() {
 
   return (
     <>
+      {/* ── Pending unpaid order banner — lets a returning customer resume payment ── */}
+      {pendingOrder && (
+        <div style={{position:'fixed',top:0,left:0,right:0,zIndex:100000,background:'linear-gradient(135deg,#0b1d3a,#1a3a6b)',color:'white',padding:'10px 16px',display:'flex',alignItems:'center',justifyContent:'center',gap:14,flexWrap:'wrap',boxShadow:'0 4px 20px rgba(0,0,0,.25)'}}>
+          <span style={{fontSize:'.86rem',fontWeight:600}}>🛒 Você tem o pedido <strong>#{pendingOrder.id}</strong> aguardando pagamento (R$ {pendingOrder.total.toFixed(2).replace('.',',')})</span>
+          <button onClick={resumePendingOrder} disabled={resumeLoading}
+            style={{background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:9,padding:'8px 18px',fontWeight:800,fontSize:'.82rem',cursor:resumeLoading?'wait':'pointer',textTransform:'uppercase',letterSpacing:'.04em'}}>
+            {resumeLoading?'Gerando...':'Finalizar pagamento'}
+          </button>
+          <button onClick={dismissPendingOrder} aria-label="Dispensar" style={{background:'transparent',color:'rgba(255,255,255,.6)',border:'none',fontSize:'1.1rem',cursor:'pointer',lineHeight:1}}>×</button>
+        </div>
+      )}
       {/* ── Social proof toast ── */}
       {spToast && (
         <div style={{
@@ -1398,7 +1433,7 @@ export default function SalVitaLanding() {
 
       {/* ══════ STICKY BOTTOM CTA (mobile) ══════ */}
       <div className="sticky-bar" style={{gap:10,alignItems:'center'}}>
-        <button onClick={()=>{ document.getElementById('preco')?.scrollIntoView({behavior:'smooth'}); }} className="pulse" style={{flex:1,background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:12,padding:'14px 0',fontSize:'.93rem',fontWeight:800,letterSpacing:'.06em',textTransform:'uppercase',cursor:'pointer'}}>
+        <button onClick={()=>{ openBuy(products[0]); }} className="pulse" style={{flex:1,background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:12,padding:'14px 0',fontSize:'.93rem',fontWeight:800,letterSpacing:'.06em',textTransform:'uppercase',cursor:'pointer'}}>
           Comprar Agora
         </button>
       </div>
@@ -1514,8 +1549,8 @@ export default function SalVitaLanding() {
                 </div>
                 <div>
                   <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>Telefone/WhatsApp *</label>
-                  <input required value={checkoutForm.customerPhone} onChange={e=>setCheckoutForm(f=>({...f,customerPhone:e.target.value}))}
-                    placeholder="(84) 99999-9999" minLength={10}
+                  <input required type="tel" inputMode="numeric" value={checkoutForm.customerPhone} onChange={e=>setCheckoutForm(f=>({...f,customerPhone:maskPhone(e.target.value)}))}
+                    placeholder="(84) 99999-9999" minLength={14}
                     style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
                     onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
                     onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
@@ -1530,11 +1565,13 @@ export default function SalVitaLanding() {
                 </div>
                 <div>
                   <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>CPF *</label>
-                  <input required type="text" inputMode="numeric" autoComplete="off" value={checkoutForm.customerCpf} onChange={e=>setCheckoutForm(f=>({...f,customerCpf:e.target.value}))}
+                  <input required type="text" inputMode="numeric" autoComplete="off" value={checkoutForm.customerCpf}
+                    onChange={e=>{ setCheckoutForm(f=>({...f,customerCpf:maskCpf(e.target.value)})); if(cpfError) setCpfError(''); }}
                     placeholder="000.000.000-00" maxLength={14}
-                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
+                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:`2px solid ${cpfError?'#dc2626':'transparent'}`,borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
                     onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
-                    onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
+                    onBlur={e=>{ e.currentTarget.style.borderColor=cpfError?'#dc2626':'transparent'; const v=checkoutForm.customerCpf; if(v && !isValidCpf(v)) setCpfError('CPF inválido — confira os números'); }}/>
+                  {cpfError && <p style={{margin:'4px 0 0',fontSize:'.74rem',color:'#dc2626',fontWeight:600}}>{cpfError}</p>}
                 </div>
                 <div>
                   <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>CEP *</label>

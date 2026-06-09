@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { trpc } from '../lib/trpc';
 
 const STATUS_STEPS = [
@@ -67,6 +67,26 @@ export default function TrackOrder() {
     setQueryInput({ orderId: id, phone: phone.trim() });
     setSubmitted(true);
   };
+
+  // Fire the Facebook Pixel Purchase event only when a real, confirmed payment is
+  // observed here (post-redirect / confirmed order) — not at checkout click. This keeps
+  // ad-campaign optimization tied to actual buyers.
+  const purchaseFired = useRef(false);
+  useEffect(() => {
+    if (order && !purchaseFired.current && (order.paymentStatus === 'confirmed' || mpStatus === 'pago')) {
+      purchaseFired.current = true;
+      try {
+        (window as any).fbq?.('track', 'Purchase', {
+          value: parseFloat(order.totalPrice ?? '0'),
+          currency: 'BRL',
+          content_name: 'SAL VITA PREMIUM',
+          content_ids: ['salvita-001'],
+          content_type: 'product',
+          num_items: order.quantity,
+        });
+      } catch {}
+    }
+  }, [order, mpStatus]);
 
   const stepIndex = order ? getStepIndex(order.status) : -1;
 
