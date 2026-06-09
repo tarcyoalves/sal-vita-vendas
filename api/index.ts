@@ -457,6 +457,31 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
 
+// Diagnostic: runs the orders-DB migration and reports per-step status + which
+// tables exist. Helps debug the recovery panel when tables are missing.
+app.get('/api/orders-health', async (_req, res) => {
+  try {
+    const steps = await ensureOrdersTablesExist();
+    const { neon } = await import('@neondatabase/serverless');
+    const url = process.env.ORDERS_DATABASE_URL ?? process.env.DATABASE_URL!;
+    const sql = neon(url);
+    const tables = await sql`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_name IN ('site_orders','abandoned_carts','automation_runs','coupons','msg_templates')
+      ORDER BY table_name
+    `;
+    res.json({
+      ok: steps.every((s: any) => s.ok),
+      usingOrdersUrl: !!process.env.ORDERS_DATABASE_URL,
+      tablesPresent: (tables as any[]).map(t => t.table_name),
+      steps,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? String(err) });
+  }
+});
+
 // One-time migration: copy all data from Neon → Supabase
 // Protected by ADMIN_RESET_SECRET. Remove after migration is done.
 app.post('/api/migrate-from-neon', express.json(), async (req, res) => {

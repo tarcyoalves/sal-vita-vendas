@@ -1,11 +1,33 @@
 import { neon } from '@neondatabase/serverless';
 
-export async function ensureOrdersTablesExist() {
+type Step = { name: string; ok: boolean; error?: string };
+
+/**
+ * Ensures all e-commerce/recovery tables exist in the ORDERS database.
+ * Each statement runs in isolation so a single failure never blocks the rest.
+ * Returns a per-step report (used by the /api/orders-health diagnostic endpoint).
+ */
+export async function ensureOrdersTablesExist(): Promise<Step[]> {
   const url = process.env.ORDERS_DATABASE_URL ?? process.env.DATABASE_URL;
-  if (!url) return;
+  const steps: Step[] = [];
+  if (!url) {
+    steps.push({ name: 'config', ok: false, error: 'ORDERS_DATABASE_URL and DATABASE_URL are both unset' });
+    return steps;
+  }
   const sql = neon(url);
 
-  await sql`
+  async function run(name: string, fn: () => Promise<unknown>) {
+    try {
+      await fn();
+      steps.push({ name, ok: true });
+    } catch (err: any) {
+      const msg = err?.message ?? String(err);
+      steps.push({ name, ok: false, error: msg });
+      console.error(`[orders-migrate] step "${name}" failed:`, msg);
+    }
+  }
+
+  await run('site_orders', () => sql`
     CREATE TABLE IF NOT EXISTS site_orders (
       id SERIAL PRIMARY KEY,
       customer_name TEXT NOT NULL,
@@ -39,22 +61,11 @@ export async function ensureOrdersTablesExist() {
       created_at TIMESTAMP DEFAULT NOW() NOT NULL,
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
-  `;
+  `);
+  await run('site_orders_status_idx', () => sql`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`);
+  await run('site_orders_phone_idx', () => sql`CREATE INDEX IF NOT EXISTS site_orders_phone_idx ON site_orders(customer_phone)`);
 
-  await sql`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`;
-  await sql`CREATE INDEX IF NOT EXISTS site_orders_phone_idx  ON site_orders(customer_phone)`;
-
-  try {
-    await sql`
-      SELECT setval(
-        pg_get_serial_sequence('site_orders','id'),
-        GREATEST((SELECT COALESCE(MAX(id),0) FROM site_orders), 9999),
-        true
-      )
-    `;
-  } catch { /* non-critical */ }
-
-  await sql`
+  await run('abandoned_carts', () => sql`
     CREATE TABLE IF NOT EXISTS abandoned_carts (
       id SERIAL PRIMARY KEY,
       customer_name TEXT NOT NULL,
@@ -71,11 +82,11 @@ export async function ensureOrdersTablesExist() {
       created_at TIMESTAMP DEFAULT NOW() NOT NULL,
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
-  `;
-  await sql`CREATE INDEX IF NOT EXISTS abandoned_carts_phone_idx  ON abandoned_carts(customer_phone)`;
-  await sql`CREATE INDEX IF NOT EXISTS abandoned_carts_status_idx ON abandoned_carts(status)`;
+  `);
+  await run('abandoned_carts_phone_idx', () => sql`CREATE INDEX IF NOT EXISTS abandoned_carts_phone_idx ON abandoned_carts(customer_phone)`);
+  await run('abandoned_carts_status_idx', () => sql`CREATE INDEX IF NOT EXISTS abandoned_carts_status_idx ON abandoned_carts(status)`);
 
-  await sql`
+  await run('automation_runs', () => sql`
     CREATE TABLE IF NOT EXISTS automation_runs (
       id SERIAL PRIMARY KEY,
       cart_id INTEGER NOT NULL,
@@ -92,12 +103,12 @@ export async function ensureOrdersTablesExist() {
       created_at TIMESTAMP DEFAULT NOW() NOT NULL,
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
-  `;
-  await sql`CREATE INDEX IF NOT EXISTS automation_runs_status_idx        ON automation_runs(status)`;
-  await sql`CREATE INDEX IF NOT EXISTS automation_runs_scheduled_for_idx ON automation_runs(scheduled_for)`;
-  await sql`CREATE INDEX IF NOT EXISTS automation_runs_cart_id_idx       ON automation_runs(cart_id)`;
+  `);
+  await run('automation_runs_status_idx', () => sql`CREATE INDEX IF NOT EXISTS automation_runs_status_idx ON automation_runs(status)`);
+  await run('automation_runs_scheduled_idx', () => sql`CREATE INDEX IF NOT EXISTS automation_runs_scheduled_for_idx ON automation_runs(scheduled_for)`);
+  await run('automation_runs_cart_idx', () => sql`CREATE INDEX IF NOT EXISTS automation_runs_cart_id_idx ON automation_runs(cart_id)`);
 
-  await sql`
+  await run('coupons', () => sql`
     CREATE TABLE IF NOT EXISTS coupons (
       id SERIAL PRIMARY KEY,
       code TEXT NOT NULL UNIQUE,
@@ -111,9 +122,9 @@ export async function ensureOrdersTablesExist() {
       active BOOLEAN NOT NULL DEFAULT TRUE,
       created_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
-  `;
+  `);
 
-  await sql`
+  await run('msg_templates', () => sql`
     CREATE TABLE IF NOT EXISTS msg_templates (
       id SERIAL PRIMARY KEY,
       slug TEXT NOT NULL UNIQUE,
@@ -125,10 +136,10 @@ export async function ensureOrdersTablesExist() {
       created_at TIMESTAMP DEFAULT NOW() NOT NULL,
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
-  `;
-  await sql`CREATE INDEX IF NOT EXISTS msg_templates_type_idx ON msg_templates(type)`;
+  `);
+  await run('msg_templates_type_idx', () => sql`CREATE INDEX IF NOT EXISTS msg_templates_type_idx ON msg_templates(type)`);
 
-  await sql`
+  await run('seed_templates', () => sql`
     INSERT INTO msg_templates (slug, type, label, body, active, is_default) VALUES
     ('abandoned_simples', 'abandoned', 'Abandono – Simples',
      'Olá *{nome}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou.\n\n👉 Finalize agora: {link}\n\nQualquer dúvida, é só chamar! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_',
@@ -149,7 +160,9 @@ export async function ensureOrdersTablesExist() {
      'Olá *{nome}*! 😕\n\nHouve um problema no pagamento do pedido *#{pedido}*.\n\nTente com outro método de pagamento:\n👉 {link}\n\nAceitamos *PIX*, *Cartão* e *Boleto* 💳\n_Sal Vita — Mossoró/RN_',
      true, true)
     ON CONFLICT (slug) DO NOTHING
-  `;
+  `);
 
-  console.log('[orders-migrate] tables OK');
+  const failed = steps.filter(s => !s.ok);
+  console.log(`[orders-migrate] done: ${steps.length - failed.length}/${steps.length} ok` + (failed.length ? `, failed: ${failed.map(f => f.name).join(', ')}` : ''));
+  return steps;
 }
