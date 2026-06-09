@@ -30830,10 +30830,10 @@ var init_subquery = __esm({
     init_entity();
     Subquery = class {
       static [entityKind] = "Subquery";
-      constructor(sql4, selection, alias, isWith = false) {
+      constructor(sql5, selection, alias, isWith = false) {
         this._ = {
           brand: "Subquery",
-          sql: sql4,
+          sql: sql5,
           selectedFields: selection,
           alias,
           isWith
@@ -36022,10 +36022,10 @@ var init_raw = __esm({
     init_entity();
     init_query_promise();
     PgRaw = class extends QueryPromise {
-      constructor(execute, sql4, query, mapBatchResult) {
+      constructor(execute, sql5, query, mapBatchResult) {
         super();
         this.execute = execute;
-        this.sql = sql4;
+        this.sql = sql5;
         this.query = query;
         this.mapBatchResult = mapBatchResult;
       }
@@ -36308,8 +36308,8 @@ var init_db = __esm({
         return new PgRefreshMaterializedView(view, this.session, this.dialect);
       }
       execute(query) {
-        const sql4 = query.getSQL();
-        const builtQuery = this.dialect.sqlToQuery(sql4);
+        const sql5 = query.getSQL();
+        const builtQuery = this.dialect.sqlToQuery(sql5);
         const prepared = this.session.prepareQuery(
           builtQuery,
           void 0,
@@ -36318,7 +36318,7 @@ var init_db = __esm({
         );
         return new PgRaw(
           () => prepared.execute(),
-          sql4,
+          sql5,
           builtQuery,
           (result) => prepared.mapResult(result, true)
         );
@@ -38764,7 +38764,7 @@ var noop2 = () => {
 function Subscribe(postgres2, options) {
   const subscribers = /* @__PURE__ */ new Map(), slot = "postgresjs_" + Math.random().toString(36).slice(2), state = {};
   let connection2, stream, ended = false;
-  const sql4 = subscribe.sql = postgres2({
+  const sql5 = subscribe.sql = postgres2({
     ...options,
     transform: { column: {}, value: {}, row: {} },
     max: 1,
@@ -38780,18 +38780,18 @@ function Subscribe(postgres2, options) {
         return;
       stream = null;
       state.pid = state.secret = void 0;
-      connected(await init(sql4, slot, options.publications));
+      connected(await init(sql5, slot, options.publications));
       subscribers.forEach((event) => event.forEach(({ onsubscribe }) => onsubscribe()));
     },
     no_subscribe: true
   });
-  const end = sql4.end, close = sql4.close;
-  sql4.end = async () => {
+  const end = sql5.end, close = sql5.close;
+  sql5.end = async () => {
     ended = true;
     stream && await new Promise((r) => (stream.once("close", r), stream.end()));
     return end();
   };
-  sql4.close = async () => {
+  sql5.close = async () => {
     stream && await new Promise((r) => (stream.once("close", r), stream.end()));
     return close();
   };
@@ -38799,7 +38799,7 @@ function Subscribe(postgres2, options) {
   async function subscribe(event, fn, onsubscribe = noop2, onerror = noop2) {
     event = parseEvent(event);
     if (!connection2)
-      connection2 = init(sql4, slot, options.publications);
+      connection2 = init(sql5, slot, options.publications);
     const subscriber = { fn, onsubscribe };
     const fns = subscribers.has(event) ? subscribers.get(event).add(subscriber) : subscribers.set(event, /* @__PURE__ */ new Set([subscriber])).get(event);
     const unsubscribe = () => {
@@ -38810,7 +38810,7 @@ function Subscribe(postgres2, options) {
       connected(x2);
       onsubscribe();
       stream && stream.on("error", onerror);
-      return { unsubscribe, state, sql: sql4 };
+      return { unsubscribe, state, sql: sql5 };
     });
   }
   function connected(x2) {
@@ -38818,14 +38818,14 @@ function Subscribe(postgres2, options) {
     state.pid = x2.state.pid;
     state.secret = x2.state.secret;
   }
-  async function init(sql5, slot2, publications) {
+  async function init(sql6, slot2, publications) {
     if (!publications)
       throw new Error("Missing publication names");
-    const xs = await sql5.unsafe(
+    const xs = await sql6.unsafe(
       `CREATE_REPLICATION_SLOT ${slot2} TEMPORARY LOGICAL pgoutput NOEXPORT_SNAPSHOT`
     );
     const [x2] = xs;
-    const stream2 = await sql5.unsafe(
+    const stream2 = await sql6.unsafe(
       `START_REPLICATION SLOT ${slot2} LOGICAL ${x2.consistent_point} (proto_version '1', publication_names '${publications}')`
     ).writable();
     const state2 = {
@@ -38833,14 +38833,14 @@ function Subscribe(postgres2, options) {
     };
     stream2.on("data", data);
     stream2.on("error", error);
-    stream2.on("close", sql5.close);
+    stream2.on("close", sql6.close);
     return { stream: stream2, state: xs.state };
     function error(e) {
       console.error("Unexpected error during logical streaming - reconnecting", e);
     }
     function data(x3) {
       if (x3[0] === 119) {
-        parse(x3.subarray(25), state2, sql5.options.parsers, handle, options.transform);
+        parse(x3.subarray(25), state2, sql6.options.parsers, handle, options.transform);
       } else if (x3[0] === 107 && x3[17]) {
         state2.lsn = x3.subarray(1, 9);
         pong();
@@ -38972,22 +38972,22 @@ function parseEvent(x2) {
 
 // node_modules/postgres/src/large.js
 var import_stream2 = __toESM(require("stream"), 1);
-function largeObject(sql4, oid, mode = 131072 | 262144) {
+function largeObject(sql5, oid, mode = 131072 | 262144) {
   return new Promise(async (resolve, reject) => {
-    await sql4.begin(async (sql5) => {
+    await sql5.begin(async (sql6) => {
       let finish;
-      !oid && ([{ oid }] = await sql5`select lo_creat(-1) as oid`);
-      const [{ fd }] = await sql5`select lo_open(${oid}, ${mode}) as fd`;
+      !oid && ([{ oid }] = await sql6`select lo_creat(-1) as oid`);
+      const [{ fd }] = await sql6`select lo_open(${oid}, ${mode}) as fd`;
       const lo = {
         writable,
         readable,
-        close: () => sql5`select lo_close(${fd})`.then(finish),
-        tell: () => sql5`select lo_tell64(${fd})`,
-        read: (x2) => sql5`select loread(${fd}, ${x2}) as data`,
-        write: (x2) => sql5`select lowrite(${fd}, ${x2})`,
-        truncate: (x2) => sql5`select lo_truncate64(${fd}, ${x2})`,
-        seek: (x2, whence = 0) => sql5`select lo_lseek64(${fd}, ${x2}, ${whence})`,
-        size: () => sql5`
+        close: () => sql6`select lo_close(${fd})`.then(finish),
+        tell: () => sql6`select lo_tell64(${fd})`,
+        read: (x2) => sql6`select loread(${fd}, ${x2}) as data`,
+        write: (x2) => sql6`select lowrite(${fd}, ${x2})`,
+        truncate: (x2) => sql6`select lo_truncate64(${fd}, ${x2})`,
+        seek: (x2, whence = 0) => sql6`select lo_lseek64(${fd}, ${x2}, ${whence})`,
+        size: () => sql6`
           select
             lo_lseek64(${fd}, location, 0) as position,
             seek.size
@@ -39062,12 +39062,12 @@ function Postgres(a2, b2) {
   let ending = false;
   const queries = queue_default(), connecting = queue_default(), reserved = queue_default(), closed = queue_default(), ended = queue_default(), open = queue_default(), busy = queue_default(), full = queue_default(), queues = { connecting, reserved, closed, ended, open, busy, full };
   const connections = [...Array(options.max)].map(() => connection_default(options, queues, { onopen, onend, onclose }));
-  const sql4 = Sql(handler);
-  Object.assign(sql4, {
+  const sql5 = Sql(handler);
+  Object.assign(sql5, {
     get parameters() {
       return options.parameters;
     },
-    largeObject: largeObject.bind(null, sql4),
+    largeObject: largeObject.bind(null, sql5),
     subscribe,
     CLOSE,
     END: CLOSE,
@@ -39079,14 +39079,14 @@ function Postgres(a2, b2) {
     close,
     end
   });
-  return sql4;
+  return sql5;
   function Sql(handler2) {
     handler2.debug = options.debug;
     Object.entries(options.types).reduce((acc, [name2, type]) => {
       acc[name2] = (x2) => new Parameter(x2, type.to);
       return acc;
     }, typed);
-    Object.assign(sql5, {
+    Object.assign(sql6, {
       types: typed,
       typed,
       unsafe,
@@ -39095,11 +39095,11 @@ function Postgres(a2, b2) {
       json,
       file
     });
-    return sql5;
+    return sql6;
     function typed(value, type) {
       return new Parameter(value, type);
     }
-    function sql5(strings, ...args) {
+    function sql6(strings, ...args) {
       const query = strings && Array.isArray(strings.raw) ? new Query(strings, args, handler2, cancel) : typeof strings === "string" && !args.length ? new Identifier(options.transform.column.to ? options.transform.column.to(strings) : strings) : new Builder(strings, args);
       return query;
     }
@@ -39130,7 +39130,7 @@ function Postgres(a2, b2) {
   }
   async function listen(name2, fn, onlisten) {
     const listener = { fn, onlisten };
-    const sql5 = listen.sql || (listen.sql = Postgres({
+    const sql6 = listen.sql || (listen.sql = Postgres({
       ...options,
       max: 1,
       idle_timeout: null,
@@ -39154,7 +39154,7 @@ function Postgres(a2, b2) {
       listener.onlisten && listener.onlisten();
       return { state: result2.state, unlisten };
     }
-    channels[name2] = { result: sql5`listen ${sql5.unsafe('"' + name2.replace(/"/g, '""') + '"')}`, listeners: [listener] };
+    channels[name2] = { result: sql6`listen ${sql6.unsafe('"' + name2.replace(/"/g, '""') + '"')}`, listeners: [listener] };
     const result = await channels[name2].result;
     listener.onlisten && listener.onlisten();
     return { state: result.state, unlisten };
@@ -39165,11 +39165,11 @@ function Postgres(a2, b2) {
       if (channels[name2].listeners.length)
         return;
       delete channels[name2];
-      return sql5`unlisten ${sql5.unsafe('"' + name2.replace(/"/g, '""') + '"')}`;
+      return sql6`unlisten ${sql6.unsafe('"' + name2.replace(/"/g, '""') + '"')}`;
     }
   }
   async function notify(channel, payload) {
-    return await sql4`select pg_notify(${channel}, ${"" + payload})`;
+    return await sql5`select pg_notify(${channel}, ${"" + payload})`;
   }
   async function reserve() {
     const queue = queue_default();
@@ -39181,12 +39181,12 @@ function Postgres(a2, b2) {
     move(c, reserved);
     c.reserved = () => queue.length ? c.execute(queue.shift()) : move(c, reserved);
     c.reserved.release = true;
-    const sql5 = Sql(handler2);
-    sql5.release = () => {
+    const sql6 = Sql(handler2);
+    sql6.release = () => {
       c.reserved = null;
       onopen(c);
     };
-    return sql5;
+    return sql6;
     function handler2(q) {
       c.queue === full ? queue.push(q) : c.execute(q) || move(c, full);
     }
@@ -39196,7 +39196,7 @@ function Postgres(a2, b2) {
     const queries2 = queue_default();
     let savepoints = 0, connection2, prepare = null;
     try {
-      await sql4.unsafe("begin " + options2.replace(/[^a-z ]/ig, ""), [], { onexecute }).execute();
+      await sql5.unsafe("begin " + options2.replace(/[^a-z ]/ig, ""), [], { onexecute }).execute();
       return await Promise.race([
         scope(connection2, fn),
         new Promise((_2, reject) => connection2.onclose = reject)
@@ -39205,29 +39205,29 @@ function Postgres(a2, b2) {
       throw error;
     }
     async function scope(c, fn2, name2) {
-      const sql5 = Sql(handler2);
-      sql5.savepoint = savepoint;
-      sql5.prepare = (x2) => prepare = x2.replace(/[^a-z0-9$-_. ]/gi);
+      const sql6 = Sql(handler2);
+      sql6.savepoint = savepoint;
+      sql6.prepare = (x2) => prepare = x2.replace(/[^a-z0-9$-_. ]/gi);
       let uncaughtError, result;
-      name2 && await sql5`savepoint ${sql5(name2)}`;
+      name2 && await sql6`savepoint ${sql6(name2)}`;
       try {
         result = await new Promise((resolve, reject) => {
-          const x2 = fn2(sql5);
+          const x2 = fn2(sql6);
           Promise.resolve(Array.isArray(x2) ? Promise.all(x2) : x2).then(resolve, reject);
         });
         if (uncaughtError)
           throw uncaughtError;
       } catch (e) {
-        await (name2 ? sql5`rollback to ${sql5(name2)}` : sql5`rollback`);
+        await (name2 ? sql6`rollback to ${sql6(name2)}` : sql6`rollback`);
         throw e instanceof PostgresError && e.code === "25P02" && uncaughtError || e;
       }
       if (!name2) {
-        prepare ? await sql5`prepare transaction '${sql5.unsafe(prepare)}'` : await sql5`commit`;
+        prepare ? await sql6`prepare transaction '${sql6.unsafe(prepare)}'` : await sql6`commit`;
       }
       return result;
       function savepoint(name3, fn3) {
         if (name3 && Array.isArray(name3.raw))
-          return savepoint((sql6) => sql6.apply(sql6, arguments));
+          return savepoint((sql7) => sql7.apply(sql7, arguments));
         arguments.length === 1 && (fn3 = name3, name3 = null);
         return scope(c, fn3, "s" + savepoints++ + (name3 ? "_" + name3 : ""));
       }
@@ -40049,13 +40049,13 @@ var MemoryStore = class {
    * @public
    */
   async increment(key) {
-    const client2 = this.getClient(key);
+    const client = this.getClient(key);
     const now = Date.now();
-    if (client2.resetTime.getTime() <= now) {
-      this.resetClient(client2, now);
+    if (client.resetTime.getTime() <= now) {
+      this.resetClient(client, now);
     }
-    client2.totalHits++;
-    return client2;
+    client.totalHits++;
+    return client;
   }
   /**
    * Method to decrement a client's hit counter.
@@ -40065,9 +40065,9 @@ var MemoryStore = class {
    * @public
    */
   async decrement(key) {
-    const client2 = this.getClient(key);
-    if (client2.totalHits > 0)
-      client2.totalHits--;
+    const client = this.getClient(key);
+    if (client.totalHits > 0)
+      client.totalHits--;
   }
   /**
    * Method to reset a client's hit counter.
@@ -40111,10 +40111,10 @@ var MemoryStore = class {
    *
    * @return {Client} - The modified client that was passed in, to allow for chaining.
    */
-  resetClient(client2, now = Date.now()) {
-    client2.totalHits = 0;
-    client2.resetTime.setTime(now + this.windowMs);
-    return client2;
+  resetClient(client, now = Date.now()) {
+    client.totalHits = 0;
+    client.resetTime.setTime(now + this.windowMs);
+    return client;
   }
   /**
    * Retrieves or creates a client, given a key. Also ensures that the client being
@@ -40127,16 +40127,16 @@ var MemoryStore = class {
   getClient(key) {
     if (this.current.has(key))
       return this.current.get(key);
-    let client2;
+    let client;
     if (this.previous.has(key)) {
-      client2 = this.previous.get(key);
+      client = this.previous.get(key);
       this.previous.delete(key);
     } else {
-      client2 = { totalHits: 0, resetTime: /* @__PURE__ */ new Date() };
-      this.resetClient(client2);
+      client = { totalHits: 0, resetTime: /* @__PURE__ */ new Date() };
+      this.resetClient(client);
     }
-    this.current.set(key, client2);
-    return client2;
+    this.current.set(key, client);
+    return client;
   }
   /**
    * Move current clients to previous, create a new map for current.
@@ -42802,9 +42802,9 @@ function sseStreamProducer(opts) {
     enabled: (_opts$ping$enabled = (_opts$ping = opts.ping) === null || _opts$ping === void 0 ? void 0 : _opts$ping.enabled) !== null && _opts$ping$enabled !== void 0 ? _opts$ping$enabled : false,
     intervalMs: (_opts$ping$intervalMs = (_opts$ping2 = opts.ping) === null || _opts$ping2 === void 0 ? void 0 : _opts$ping2.intervalMs) !== null && _opts$ping$intervalMs !== void 0 ? _opts$ping$intervalMs : 1e3
   };
-  const client2 = (_opts$client = opts.client) !== null && _opts$client !== void 0 ? _opts$client : {};
-  if (ping.enabled && client2.reconnectAfterInactivityMs && ping.intervalMs > client2.reconnectAfterInactivityMs)
-    throw new Error(`Ping interval must be less than client reconnect interval to prevent unnecessary reconnection - ping.intervalMs: ${ping.intervalMs} client.reconnectAfterInactivityMs: ${client2.reconnectAfterInactivityMs}`);
+  const client = (_opts$client = opts.client) !== null && _opts$client !== void 0 ? _opts$client : {};
+  if (ping.enabled && client.reconnectAfterInactivityMs && ping.intervalMs > client.reconnectAfterInactivityMs)
+    throw new Error(`Ping interval must be less than client reconnect interval to prevent unnecessary reconnection - ping.intervalMs: ${ping.intervalMs} client.reconnectAfterInactivityMs: ${client.reconnectAfterInactivityMs}`);
   function generator() {
     return _generator.apply(this, arguments);
   }
@@ -42812,7 +42812,7 @@ function sseStreamProducer(opts) {
     _generator = (0, import_wrapAsyncGenerator$1.default)(function* () {
       yield {
         event: CONNECTED_EVENT,
-        data: JSON.stringify(client2)
+        data: JSON.stringify(client)
       };
       let iterable = opts.data;
       if (opts.emitAndEndImmediately)
@@ -50554,9 +50554,9 @@ var queryConfig = {
   fullResults: true
 };
 var NeonHttpPreparedQuery = class extends PgPreparedQuery {
-  constructor(client2, query, logger, fields, _isResponseInArrayMode, customResultMapper) {
+  constructor(client, query, logger, fields, _isResponseInArrayMode, customResultMapper) {
     super(query);
-    this.client = client2;
+    this.client = client;
     this.logger = logger;
     this.fields = fields;
     this._isResponseInArrayMode = _isResponseInArrayMode;
@@ -50566,11 +50566,11 @@ var NeonHttpPreparedQuery = class extends PgPreparedQuery {
   async execute(placeholderValues = {}) {
     const params = fillPlaceholders(this.query.params, placeholderValues);
     this.logger.logQuery(this.query.sql, params);
-    const { fields, client: client2, query, customResultMapper } = this;
+    const { fields, client, query, customResultMapper } = this;
     if (!fields && !customResultMapper) {
-      return client2(query.sql, params, rawQueryConfig);
+      return client(query.sql, params, rawQueryConfig);
     }
-    const result = await client2(query.sql, params, queryConfig);
+    const result = await client(query.sql, params, queryConfig);
     return this.mapResult(result);
   }
   mapResult(result) {
@@ -50599,9 +50599,9 @@ var NeonHttpPreparedQuery = class extends PgPreparedQuery {
   }
 };
 var NeonHttpSession = class extends PgSession {
-  constructor(client2, dialect, schema, options = {}) {
+  constructor(client, dialect, schema, options = {}) {
     super(dialect);
-    this.client = client2;
+    this.client = client;
     this.schema = schema;
     this.options = options;
     this.logger = options.logger ?? new NoopLogger();
@@ -50658,8 +50658,8 @@ var NeonTransaction = class extends PgTransaction {
 
 // node_modules/drizzle-orm/neon-http/driver.js
 var NeonHttpDriver = class {
-  constructor(client2, dialect, options = {}) {
-    this.client = client2;
+  constructor(client, dialect, options = {}) {
+    this.client = client;
     this.dialect = dialect;
     this.options = options;
     this.initMappers();
@@ -50681,7 +50681,7 @@ var NeonHttpDatabase = class extends PgDatabase {
     return this.session.batch(batch);
   }
 };
-function drizzle(client2, config = {}) {
+function drizzle(client, config = {}) {
   const dialect = new PgDialect();
   let logger;
   if (config.logger === true) {
@@ -50701,7 +50701,7 @@ function drizzle(client2, config = {}) {
       tableNamesMap: tablesConfig.tableNamesMap
     };
   }
-  const driver = new NeonHttpDriver(client2, dialect, { logger });
+  const driver = new NeonHttpDriver(client, dialect, { logger });
   const session = driver.createSession(schema);
   return new NeonHttpDatabase(
     dialect,
@@ -56497,183 +56497,11 @@ var tvRouter = router({
   })
 });
 
-// node_modules/drizzle-orm/postgres-js/driver.js
-init_logger();
-init_db();
-init_dialect();
-init_relations();
-
-// node_modules/drizzle-orm/postgres-js/session.js
-init_entity();
-init_logger();
-init_pg_core();
-init_session();
-init_sql();
-init_tracing();
-init_utils();
-var PostgresJsPreparedQuery = class extends PgPreparedQuery {
-  constructor(client2, queryString, params, logger, fields, _isResponseInArrayMode, customResultMapper) {
-    super({ sql: queryString, params });
-    this.client = client2;
-    this.queryString = queryString;
-    this.params = params;
-    this.logger = logger;
-    this.fields = fields;
-    this._isResponseInArrayMode = _isResponseInArrayMode;
-    this.customResultMapper = customResultMapper;
-  }
-  static [entityKind] = "PostgresJsPreparedQuery";
-  async execute(placeholderValues = {}) {
-    return tracer.startActiveSpan("drizzle.execute", async (span) => {
-      const params = fillPlaceholders(this.params, placeholderValues);
-      span?.setAttributes({
-        "drizzle.query.text": this.queryString,
-        "drizzle.query.params": JSON.stringify(params)
-      });
-      this.logger.logQuery(this.queryString, params);
-      const { fields, queryString: query, client: client2, joinsNotNullableMap, customResultMapper } = this;
-      if (!fields && !customResultMapper) {
-        return tracer.startActiveSpan("drizzle.driver.execute", () => {
-          return client2.unsafe(query, params);
-        });
-      }
-      const rows = await tracer.startActiveSpan("drizzle.driver.execute", () => {
-        span?.setAttributes({
-          "drizzle.query.text": query,
-          "drizzle.query.params": JSON.stringify(params)
-        });
-        return client2.unsafe(query, params).values();
-      });
-      return tracer.startActiveSpan("drizzle.mapResponse", () => {
-        return customResultMapper ? customResultMapper(rows) : rows.map((row) => mapResultRow(fields, row, joinsNotNullableMap));
-      });
-    });
-  }
-  all(placeholderValues = {}) {
-    return tracer.startActiveSpan("drizzle.execute", async (span) => {
-      const params = fillPlaceholders(this.params, placeholderValues);
-      span?.setAttributes({
-        "drizzle.query.text": this.queryString,
-        "drizzle.query.params": JSON.stringify(params)
-      });
-      this.logger.logQuery(this.queryString, params);
-      return tracer.startActiveSpan("drizzle.driver.execute", () => {
-        span?.setAttributes({
-          "drizzle.query.text": this.queryString,
-          "drizzle.query.params": JSON.stringify(params)
-        });
-        return this.client.unsafe(this.queryString, params);
-      });
-    });
-  }
-  /** @internal */
-  isResponseInArrayMode() {
-    return this._isResponseInArrayMode;
-  }
-};
-var PostgresJsSession = class _PostgresJsSession extends PgSession {
-  constructor(client2, dialect, schema, options = {}) {
-    super(dialect);
-    this.client = client2;
-    this.schema = schema;
-    this.options = options;
-    this.logger = options.logger ?? new NoopLogger();
-  }
-  static [entityKind] = "PostgresJsSession";
-  logger;
-  prepareQuery(query, fields, name2, isResponseInArrayMode, customResultMapper) {
-    return new PostgresJsPreparedQuery(
-      this.client,
-      query.sql,
-      query.params,
-      this.logger,
-      fields,
-      isResponseInArrayMode,
-      customResultMapper
-    );
-  }
-  query(query, params) {
-    this.logger.logQuery(query, params);
-    return this.client.unsafe(query, params).values();
-  }
-  queryObjects(query, params) {
-    return this.client.unsafe(query, params);
-  }
-  transaction(transaction, config) {
-    return this.client.begin(async (client2) => {
-      const session = new _PostgresJsSession(
-        client2,
-        this.dialect,
-        this.schema,
-        this.options
-      );
-      const tx = new PostgresJsTransaction(this.dialect, session, this.schema);
-      if (config) {
-        await tx.setTransaction(config);
-      }
-      return transaction(tx);
-    });
-  }
-};
-var PostgresJsTransaction = class _PostgresJsTransaction extends PgTransaction {
-  constructor(dialect, session, schema, nestedIndex = 0) {
-    super(dialect, session, schema, nestedIndex);
-    this.session = session;
-  }
-  static [entityKind] = "PostgresJsTransaction";
-  transaction(transaction) {
-    return this.session.client.savepoint((client2) => {
-      const session = new PostgresJsSession(
-        client2,
-        this.dialect,
-        this.schema,
-        this.session.options
-      );
-      const tx = new _PostgresJsTransaction(this.dialect, session, this.schema);
-      return transaction(tx);
-    });
-  }
-};
-
-// node_modules/drizzle-orm/postgres-js/driver.js
-function drizzle2(client2, config = {}) {
-  const transparentParser = (val) => val;
-  for (const type of ["1184", "1082", "1083", "1114"]) {
-    client2.options.parsers[type] = transparentParser;
-    client2.options.serializers[type] = transparentParser;
-  }
-  client2.options.serializers["114"] = transparentParser;
-  client2.options.serializers["3802"] = transparentParser;
-  const dialect = new PgDialect();
-  let logger;
-  if (config.logger === true) {
-    logger = new DefaultLogger();
-  } else if (config.logger !== false) {
-    logger = config.logger;
-  }
-  let schema;
-  if (config.schema) {
-    const tablesConfig = extractTablesRelationalConfig(
-      config.schema,
-      createTableRelationsHelpers
-    );
-    schema = {
-      fullSchema: config.schema,
-      schema: tablesConfig.tables,
-      tableNamesMap: tablesConfig.tableNamesMap
-    };
-  }
-  const session = new PostgresJsSession(client2, dialect, schema, { logger });
-  return new PgDatabase(dialect, session, schema);
-}
-
 // server/db/ordersDb.ts
 init_schema2();
 var url = process.env.ORDERS_DATABASE_URL ?? process.env.DATABASE_URL;
-var client = src_default(url, { max: 5, idle_timeout: 60, prepare: false, ssl: "require", connect_timeout: 15 });
-var ordersDb = drizzle2(client, { schema: schema_exports });
-client`SELECT 1`.catch(() => {
-});
+var sql3 = Ys(url);
+var ordersDb = drizzle(sql3, { schema: schema_exports });
 
 // server/routers/shipping.ts
 init_schema2();
@@ -58058,13 +57886,13 @@ var appRouter = router({
 
 // server/db/migrate.ts
 var DATABASE_URL = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL;
-var sql3 = Ys(DATABASE_URL);
+var sql4 = Ys(DATABASE_URL);
 async function seedAdminIfNeeded() {
-  const rows = await sql3`SELECT id FROM users WHERE role = 'admin' LIMIT 1`;
+  const rows = await sql4`SELECT id FROM users WHERE role = 'admin' LIMIT 1`;
   if (rows.length > 0)
     return;
   const hash = hashPassword("admin123");
-  await sql3`
+  await sql4`
     INSERT INTO users (name, email, password_hash, role, must_change_password)
     VALUES ('Admin', 'tarcyo.alves@gmail.com', ${hash}, 'admin', false)
     ON CONFLICT (email) DO NOTHING
@@ -58078,7 +57906,7 @@ async function ensureTablesExist() {
   }
   let skipDDL = false;
   try {
-    const probe = await sql3`
+    const probe = await sql4`
       SELECT COUNT(*)::int AS cnt FROM information_schema.tables
       WHERE table_schema = 'public'
         AND table_name IN ('users','sellers','tasks','clients','reminders')
@@ -58093,7 +57921,7 @@ async function ensureTablesExist() {
     console.log("[migrate] probe failed, running full DDL:", err.message);
   }
   if (!skipDDL) {
-    await sql3`
+    await sql4`
       CREATE TABLE IF NOT EXISTS users (
         id               SERIAL PRIMARY KEY,
         name             TEXT NOT NULL,
@@ -58104,7 +57932,7 @@ async function ensureTablesExist() {
         created_at       TIMESTAMP DEFAULT NOW()
       )
     `;
-    await sql3`
+    await sql4`
       CREATE TABLE IF NOT EXISTS sellers (
         id              SERIAL PRIMARY KEY,
         user_id         INTEGER NOT NULL DEFAULT 0,
@@ -58119,7 +57947,7 @@ async function ensureTablesExist() {
         updated_at      TIMESTAMP DEFAULT NOW()
       )
     `;
-    await sql3`
+    await sql4`
       CREATE TABLE IF NOT EXISTS clients (
         id         SERIAL PRIMARY KEY,
         name       TEXT NOT NULL,
@@ -58133,7 +57961,7 @@ async function ensureTablesExist() {
         updated_at TIMESTAMP DEFAULT NOW()
       )
     `;
-    await sql3`
+    await sql4`
       CREATE TABLE IF NOT EXISTS tasks (
         id              SERIAL PRIMARY KEY,
         user_id         INTEGER,
@@ -58152,7 +57980,7 @@ async function ensureTablesExist() {
         updated_at      TIMESTAMP DEFAULT NOW()
       )
     `;
-    await sql3`
+    await sql4`
       CREATE TABLE IF NOT EXISTS reminders (
         id             SERIAL PRIMARY KEY,
         user_id        INTEGER,
@@ -58165,7 +57993,7 @@ async function ensureTablesExist() {
         updated_at     TIMESTAMP DEFAULT NOW()
       )
     `;
-    await sql3`
+    await sql4`
       CREATE TABLE IF NOT EXISTS chat_messages (
         id         SERIAL PRIMARY KEY,
         user_id    INTEGER,
@@ -58174,7 +58002,7 @@ async function ensureTablesExist() {
         created_at TIMESTAMP DEFAULT NOW()
       )
     `;
-    await sql3`
+    await sql4`
       CREATE TABLE IF NOT EXISTS knowledge_documents (
         id         SERIAL PRIMARY KEY,
         user_id    INTEGER,
@@ -58186,7 +58014,7 @@ async function ensureTablesExist() {
         updated_at TIMESTAMP DEFAULT NOW()
       )
     `;
-    await sql3`
+    await sql4`
       CREATE TABLE IF NOT EXISTS work_sessions (
         id               SERIAL PRIMARY KEY,
         user_id          INTEGER NOT NULL,
@@ -58200,7 +58028,7 @@ async function ensureTablesExist() {
       )
     `;
   }
-  await sql3`
+  await sql4`
     CREATE TABLE IF NOT EXISTS task_deletion_logs (
       id                   SERIAL PRIMARY KEY,
       task_id              INTEGER NOT NULL,
@@ -58213,37 +58041,37 @@ async function ensureTablesExist() {
       created_at           TIMESTAMP DEFAULT NOW()
     )
   `;
-  await sql3`CREATE INDEX IF NOT EXISTS task_del_logs_reviewed_idx ON task_deletion_logs(reviewed_by_admin)`;
-  await sql3`CREATE INDEX IF NOT EXISTS task_del_logs_user_idx     ON task_deletion_logs(deleted_by_user_id)`;
-  await sql3`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS assigned_to       TEXT`;
-  await sql3`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS order_value        NUMERIC(10,2)`;
-  await sql3`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS order_id           TEXT`;
-  await sql3`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS last_contacted_at  TIMESTAMP`;
-  await sql3`ALTER TABLE sellers   ADD COLUMN IF NOT EXISTS user_id            INTEGER NOT NULL DEFAULT 0`;
-  await sql3`ALTER TABLE sellers   ADD COLUMN IF NOT EXISTS work_hours_goal    INTEGER NOT NULL DEFAULT 8`;
-  await sql3`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS file_url TEXT`;
-  await sql3`ALTER TABLE work_sessions ADD COLUMN IF NOT EXISTS daily_goal_hours INTEGER NOT NULL DEFAULT 8`;
-  await sql3`ALTER TABLE reminders ADD COLUMN IF NOT EXISTS updated_at         TIMESTAMP DEFAULT NOW()`;
-  await sql3`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS updated_at         TIMESTAMP DEFAULT NOW()`;
-  await sql3`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS converted_at       TIMESTAMP`;
-  await sql3`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS contact_count      INTEGER NOT NULL DEFAULT 0`;
-  await sql3`CREATE INDEX IF NOT EXISTS tasks_user_id_idx        ON tasks(user_id)`;
-  await sql3`CREATE INDEX IF NOT EXISTS tasks_status_idx         ON tasks(status)`;
-  await sql3`CREATE INDEX IF NOT EXISTS tasks_reminder_date_idx     ON tasks(reminder_date)`;
-  await sql3`CREATE INDEX IF NOT EXISTS tasks_last_contacted_at_idx ON tasks(last_contacted_at)`;
-  await sql3`CREATE INDEX IF NOT EXISTS work_sessions_user_id_idx   ON work_sessions(user_id)`;
-  await sql3`CREATE INDEX IF NOT EXISTS work_sessions_status_idx    ON work_sessions(status)`;
-  await sql3`CREATE INDEX IF NOT EXISTS work_sessions_started_at_idx ON work_sessions(started_at)`;
-  await sql3`CREATE INDEX IF NOT EXISTS chat_messages_user_id_idx   ON chat_messages(user_id)`;
-  await sql3`CREATE INDEX IF NOT EXISTS knowledge_docs_user_id_idx  ON knowledge_documents(user_id)`;
-  await sql3`CREATE INDEX IF NOT EXISTS sellers_status_idx          ON sellers(status)`;
-  await sql3`CREATE INDEX IF NOT EXISTS sellers_user_id_idx         ON sellers(user_id)`;
+  await sql4`CREATE INDEX IF NOT EXISTS task_del_logs_reviewed_idx ON task_deletion_logs(reviewed_by_admin)`;
+  await sql4`CREATE INDEX IF NOT EXISTS task_del_logs_user_idx     ON task_deletion_logs(deleted_by_user_id)`;
+  await sql4`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS assigned_to       TEXT`;
+  await sql4`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS order_value        NUMERIC(10,2)`;
+  await sql4`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS order_id           TEXT`;
+  await sql4`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS last_contacted_at  TIMESTAMP`;
+  await sql4`ALTER TABLE sellers   ADD COLUMN IF NOT EXISTS user_id            INTEGER NOT NULL DEFAULT 0`;
+  await sql4`ALTER TABLE sellers   ADD COLUMN IF NOT EXISTS work_hours_goal    INTEGER NOT NULL DEFAULT 8`;
+  await sql4`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS file_url TEXT`;
+  await sql4`ALTER TABLE work_sessions ADD COLUMN IF NOT EXISTS daily_goal_hours INTEGER NOT NULL DEFAULT 8`;
+  await sql4`ALTER TABLE reminders ADD COLUMN IF NOT EXISTS updated_at         TIMESTAMP DEFAULT NOW()`;
+  await sql4`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS updated_at         TIMESTAMP DEFAULT NOW()`;
+  await sql4`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS converted_at       TIMESTAMP`;
+  await sql4`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS contact_count      INTEGER NOT NULL DEFAULT 0`;
+  await sql4`CREATE INDEX IF NOT EXISTS tasks_user_id_idx        ON tasks(user_id)`;
+  await sql4`CREATE INDEX IF NOT EXISTS tasks_status_idx         ON tasks(status)`;
+  await sql4`CREATE INDEX IF NOT EXISTS tasks_reminder_date_idx     ON tasks(reminder_date)`;
+  await sql4`CREATE INDEX IF NOT EXISTS tasks_last_contacted_at_idx ON tasks(last_contacted_at)`;
+  await sql4`CREATE INDEX IF NOT EXISTS work_sessions_user_id_idx   ON work_sessions(user_id)`;
+  await sql4`CREATE INDEX IF NOT EXISTS work_sessions_status_idx    ON work_sessions(status)`;
+  await sql4`CREATE INDEX IF NOT EXISTS work_sessions_started_at_idx ON work_sessions(started_at)`;
+  await sql4`CREATE INDEX IF NOT EXISTS chat_messages_user_id_idx   ON chat_messages(user_id)`;
+  await sql4`CREATE INDEX IF NOT EXISTS knowledge_docs_user_id_idx  ON knowledge_documents(user_id)`;
+  await sql4`CREATE INDEX IF NOT EXISTS sellers_status_idx          ON sellers(status)`;
+  await sql4`CREATE INDEX IF NOT EXISTS sellers_user_id_idx         ON sellers(user_id)`;
   try {
-    await sql3`DELETE FROM chat_messages WHERE created_at < CURRENT_DATE`;
+    await sql4`DELETE FROM chat_messages WHERE created_at < CURRENT_DATE`;
   } catch {
   }
   try {
-    await sql3`DELETE FROM work_sessions WHERE status = 'completed' AND ended_at < NOW() - INTERVAL '90 days'`;
+    await sql4`DELETE FROM work_sessions WHERE status = 'completed' AND ended_at < NOW() - INTERVAL '90 days'`;
   } catch {
   }
 }
@@ -58253,8 +58081,8 @@ async function ensureOrdersTablesExist() {
   const url2 = process.env.ORDERS_DATABASE_URL ?? process.env.DATABASE_URL;
   if (!url2)
     return;
-  const sql4 = Ys(url2);
-  await sql4`
+  const sql5 = Ys(url2);
+  await sql5`
     CREATE TABLE IF NOT EXISTS site_orders (
       id SERIAL PRIMARY KEY,
       customer_name TEXT NOT NULL,
@@ -58289,10 +58117,10 @@ async function ensureOrdersTablesExist() {
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `;
-  await sql4`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`;
-  await sql4`CREATE INDEX IF NOT EXISTS site_orders_phone_idx  ON site_orders(customer_phone)`;
+  await sql5`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`;
+  await sql5`CREATE INDEX IF NOT EXISTS site_orders_phone_idx  ON site_orders(customer_phone)`;
   try {
-    await sql4`
+    await sql5`
       SELECT setval(
         pg_get_serial_sequence('site_orders','id'),
         GREATEST((SELECT COALESCE(MAX(id),0) FROM site_orders), 9999),
@@ -58301,7 +58129,7 @@ async function ensureOrdersTablesExist() {
     `;
   } catch {
   }
-  await sql4`
+  await sql5`
     CREATE TABLE IF NOT EXISTS abandoned_carts (
       id SERIAL PRIMARY KEY,
       customer_name TEXT NOT NULL,
@@ -58319,9 +58147,9 @@ async function ensureOrdersTablesExist() {
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `;
-  await sql4`CREATE INDEX IF NOT EXISTS abandoned_carts_phone_idx  ON abandoned_carts(customer_phone)`;
-  await sql4`CREATE INDEX IF NOT EXISTS abandoned_carts_status_idx ON abandoned_carts(status)`;
-  await sql4`
+  await sql5`CREATE INDEX IF NOT EXISTS abandoned_carts_phone_idx  ON abandoned_carts(customer_phone)`;
+  await sql5`CREATE INDEX IF NOT EXISTS abandoned_carts_status_idx ON abandoned_carts(status)`;
+  await sql5`
     CREATE TABLE IF NOT EXISTS automation_runs (
       id SERIAL PRIMARY KEY,
       cart_id INTEGER NOT NULL,
@@ -58339,10 +58167,10 @@ async function ensureOrdersTablesExist() {
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `;
-  await sql4`CREATE INDEX IF NOT EXISTS automation_runs_status_idx        ON automation_runs(status)`;
-  await sql4`CREATE INDEX IF NOT EXISTS automation_runs_scheduled_for_idx ON automation_runs(scheduled_for)`;
-  await sql4`CREATE INDEX IF NOT EXISTS automation_runs_cart_id_idx       ON automation_runs(cart_id)`;
-  await sql4`
+  await sql5`CREATE INDEX IF NOT EXISTS automation_runs_status_idx        ON automation_runs(status)`;
+  await sql5`CREATE INDEX IF NOT EXISTS automation_runs_scheduled_for_idx ON automation_runs(scheduled_for)`;
+  await sql5`CREATE INDEX IF NOT EXISTS automation_runs_cart_id_idx       ON automation_runs(cart_id)`;
+  await sql5`
     CREATE TABLE IF NOT EXISTS coupons (
       id SERIAL PRIMARY KEY,
       code TEXT NOT NULL UNIQUE,
@@ -58357,7 +58185,7 @@ async function ensureOrdersTablesExist() {
       created_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `;
-  await sql4`
+  await sql5`
     CREATE TABLE IF NOT EXISTS msg_templates (
       id SERIAL PRIMARY KEY,
       slug TEXT NOT NULL UNIQUE,
@@ -58370,8 +58198,8 @@ async function ensureOrdersTablesExist() {
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `;
-  await sql4`CREATE INDEX IF NOT EXISTS msg_templates_type_idx ON msg_templates(type)`;
-  await sql4`
+  await sql5`CREATE INDEX IF NOT EXISTS msg_templates_type_idx ON msg_templates(type)`;
+  await sql5`
     INSERT INTO msg_templates (slug, type, label, body, active, is_default) VALUES
     ('abandoned_simples', 'abandoned', 'Abandono – Simples',
      'Olá *{nome}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou.\n\n👉 Finalize agora: {link}\n\nQualquer dúvida, é só chamar! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_',
