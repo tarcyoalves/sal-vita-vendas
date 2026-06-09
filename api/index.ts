@@ -463,17 +463,33 @@ app.use(
 );
 
 // Fetch a PIX copy-paste code from Mercado Pago for a given payment id (best effort).
-async function fetchPixCode(mpPaymentId: string | null): Promise<string | null> {
-  if (!mpPaymentId) return null;
+async function fetchPixCode(mpPaymentId: string | null, orderId?: number): Promise<string | null> {
   const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
   if (!token) return null;
   try {
-    const r = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
-      headers: { 'Authorization': `Bearer ${token}` },
-    });
-    if (!r.ok) return null;
-    const p = await r.json() as any;
-    return p?.point_of_interaction?.transaction_data?.qr_code ?? null;
+    if (mpPaymentId) {
+      const r = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (r.ok) {
+        const p = await r.json() as any;
+        const qr = p?.point_of_interaction?.transaction_data?.qr_code ?? null;
+        if (qr) return qr;
+      }
+    }
+    if (orderId) {
+      const r = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${orderId}&sort=date_created&criteria=desc`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (r.ok) {
+        const results = ((await r.json()) as any)?.results ?? [];
+        for (const p of results) {
+          const qr = p?.point_of_interaction?.transaction_data?.qr_code;
+          if (qr) return qr;
+        }
+      }
+    }
+    return null;
   } catch { return null; }
 }
 
@@ -506,7 +522,7 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
       let tpl = o.paymentStatus === 'failed' ? defaultByType('failed') : defaultByType('unpaid');
       let pix = '';
       if (o.paymentStatus === 'awaiting') {
-        const code = await fetchPixCode(o.mpPaymentId);
+        const code = await fetchPixCode(o.mpPaymentId, o.id);
         if (code && pixTpl) { tpl = pixTpl; pix = code; }
       }
       const vars = { nome: o.customerName, pedido: String(o.id), valor: o.totalPrice ?? '0', link, pix };
