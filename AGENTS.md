@@ -1,4 +1,4 @@
-<!-- code-review-graph MCP tools -->
+<!-- code-review-graph MCP tools --> 
 ## MCP Tools: code-review-graph
 
 **IMPORTANT: This project has a knowledge graph. ALWAYS use the
