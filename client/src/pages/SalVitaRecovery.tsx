@@ -121,18 +121,35 @@ function LoginForm() {
 
 /* ── Tab 1: Carrinhos Abandonados ────────────────────────── */
 function WaStatusBadge() {
-  const { data, isLoading } = trpc.recovery.waStatus.useQuery(undefined, { refetchInterval: 300000, retry: 0 });
+  const { data, isLoading, refetch } = trpc.recovery.waStatus.useQuery(undefined, { refetchInterval: 300000, retry: 0 });
+  const reconnectMut = trpc.recovery.waReconnect.useMutation({
+    onSuccess: (d: any) => {
+      toast.success(d.ok ? `WA reconectado via ${d.path}` : 'WA: nenhum endpoint de reconexão disponível');
+      setTimeout(() => refetch(), 3000);
+    },
+    onError: () => toast.error('Falha ao reconectar WA'),
+  });
   if (isLoading) return null;
   const connected = (data as any)?.connected;
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 5,
-      background: connected ? '#dcfce7' : '#fee2e2',
-      color: connected ? '#166534' : '#991b1b',
-      borderRadius: 999, padding: '4px 12px', fontSize: '.75rem', fontWeight: 700,
-    }}>
-      <span style={{ width: 7, height: 7, borderRadius: '50%', background: connected ? '#22c55e' : '#ef4444', display: 'inline-block' }} />
-      WA {connected ? 'Conectado' : 'Desconectado'}
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        background: connected ? '#dcfce7' : '#fee2e2',
+        color: connected ? '#166534' : '#991b1b',
+        borderRadius: 999, padding: '4px 12px', fontSize: '.75rem', fontWeight: 700,
+      }}>
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: connected ? '#22c55e' : '#ef4444', display: 'inline-block' }} />
+        WA {connected ? 'Conectado' : 'Desconectado'}
+      </span>
+      <button
+        onClick={() => reconnectMut.mutate()}
+        disabled={reconnectMut.isPending}
+        title="Forçar reconexão do WhatsApp (útil se mensagens não estão chegando)"
+        style={{ padding: '4px 10px', background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', borderRadius: 999, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer', opacity: reconnectMut.isPending ? .6 : 1 }}
+      >
+        {reconnectMut.isPending ? '...' : '🔄'}
+      </button>
     </span>
   );
 }

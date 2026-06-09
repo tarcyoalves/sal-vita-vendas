@@ -5,26 +5,25 @@ import { abandonedCarts, automationRuns, coupons, msgTemplates, siteOrders } fro
 import { desc, eq, and, sql, lte } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 
-// Returns { ok, usedPhone } — tries both 9th-digit variants for Brazilian numbers
-// because WhatsApp stores some old numbers without the 9th digit.
-// wa-server may return HTTP 200 with { success: false } on failure, so we check the body too.
+// Sends to BOTH 9th-digit variants IN PARALLEL so one always hits the correct JID.
+// wa-server returns HTTP 200 { success:true } even on Baileys failure, so we can't
+// detect which variant worked — but sending both guarantees at least one delivers.
 async function sendViaWhatsApp(phone: string, message: string): Promise<{ ok: boolean; usedPhone: string }> {
   const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
   const key = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
 
   const primary = fmtPhone(phone);
-  // Brazilian mobile: 55 + 2-digit DDD + 9-digit (starts with 9) = 13 digits
-  // Old format: 55 + 2-digit DDD + 8-digit = 12 digits
-  const fallback = primary.length === 13
-    ? primary.slice(0, 4) + primary.slice(5)   // drop 9th digit: 5584986207841 → 558486207841
-    : primary.length === 12
-      ? primary.slice(0, 4) + '9' + primary.slice(4) // add 9th digit
-      : null;
+  // 5584986207841 (13-digit, with 9) ↔ 558486207841 (12-digit, without 9)
+  const alt = primary.length === 13
+    ? primary.slice(0, 4) + primary.slice(5)
+    : primary.length === 12 ? primary.slice(0, 4) + '9' + primary.slice(4) : null;
 
-  for (const phoneNum of [primary, fallback].filter(Boolean) as string[]) {
+  const variants = [primary, alt].filter(Boolean) as string[];
+
+  async function tryOne(phoneNum: string): Promise<boolean> {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 9000);
     try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 9000);
       const res = await fetch(`${url}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': key },
@@ -32,22 +31,23 @@ async function sendViaWhatsApp(phone: string, message: string): Promise<{ ok: bo
         signal: ctrl.signal,
       });
       clearTimeout(timer);
-      if (!res.ok) continue;
-      // Parse body to catch { success: false } responses
+      if (!res.ok) return false;
       let body: Record<string, unknown> = {};
       try { body = await res.json() as Record<string, unknown>; } catch {}
-      if (body.success === false) {
-        console.warn(`[wa] send to ${phoneNum} returned success:false`, body.error ?? '');
-        continue;
-      }
-      console.log(`[wa] sent to ${phoneNum}`);
-      return { ok: true, usedPhone: phoneNum };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[wa] send to ${phoneNum} failed:`, msg);
+      if (body.success === false) return false;
+      console.log(`[wa] dispatched to ${phoneNum}`);
+      return true;
+    } catch {
+      clearTimeout(timer);
+      return false;
     }
   }
-  return { ok: false, usedPhone: primary };
+
+  // Fire all variants simultaneously — whichever JID is real will deliver
+  const results = await Promise.all(variants.map(n => tryOne(n)));
+  const ok = results.some(Boolean);
+  if (!ok) console.warn(`[wa] all variants failed for ${primary}`);
+  return { ok, usedPhone: primary };
 }
 
 function fmtPhone(raw: string) {
@@ -461,6 +461,32 @@ export const recoveryRouter = router({
       } catch {
         return { status: 'error', connected: false };
       }
+    }),
+
+  // Admin: force WA reconnect — tries /reconnect then /restart endpoints on the wa-server
+  waReconnect: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
+      const key = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
+      const headers = { 'Content-Type': 'application/json', 'apikey': key };
+      const tried: string[] = [];
+      for (const path of ['/reconnect', '/restart', '/connect', '/logout']) {
+        try {
+          const ac = new AbortController();
+          setTimeout(() => ac.abort(), 6000);
+          const r = await fetch(`${url}${path}`, { method: 'POST', headers, signal: ac.signal });
+          tried.push(`${path}:${r.status}`);
+          if (r.ok) {
+            console.log(`[wa-reconnect] ${path} returned ${r.status}`);
+            return { ok: true, path, tried };
+          }
+        } catch {
+          tried.push(`${path}:error`);
+        }
+      }
+      console.warn('[wa-reconnect] no reconnect endpoint found, tried:', tried);
+      return { ok: false, path: null, tried };
     }),
 
   // Admin: list message templates

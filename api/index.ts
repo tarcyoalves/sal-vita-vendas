@@ -19,21 +19,22 @@ function renderTemplate(body: string, vars: Record<string, string>): string {
   return body.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
 }
 
-// Shared WhatsApp sender. Tries both 9th-digit variants (Brazil mobile numbers
-// can be registered with or without the 9th digit). Checks response body for
-// { success: false } since wa-server returns HTTP 200 even on Baileys failures.
+// Sends to BOTH 9th-digit variants IN PARALLEL — wa-server blindly returns
+// success:true so we can't detect which variant is the real JID. Sending both
+// guarantees delivery as long as one format matches WhatsApp registration.
 async function sendWhatsApp(phone: string, message: string): Promise<boolean> {
   const waUrl = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
   const waKey = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
   const digits = phone.replace(/\D/g, '');
   const primary = digits.startsWith('55') ? digits : `55${digits}`;
-  const fallback = primary.length === 13
+  const alt = primary.length === 13
     ? primary.slice(0, 4) + primary.slice(5)
     : primary.length === 12 ? primary.slice(0, 4) + '9' + primary.slice(4) : null;
-  for (const phoneNum of [primary, fallback].filter(Boolean) as string[]) {
+  const variants = [primary, alt].filter(Boolean) as string[];
+  const results = await Promise.all(variants.map(async phoneNum => {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 9000);
     try {
-      const ac = new AbortController();
-      const timer = setTimeout(() => ac.abort(), 9000);
       const r = await fetch(`${waUrl}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': waKey },
@@ -41,17 +42,15 @@ async function sendWhatsApp(phone: string, message: string): Promise<boolean> {
         signal: ac.signal,
       });
       clearTimeout(timer);
-      if (!r.ok) continue;
+      if (!r.ok) return false;
       let body: Record<string, unknown> = {};
       try { body = await r.json() as Record<string, unknown>; } catch {}
-      if (body.success === false) { console.warn(`[wa] ${phoneNum} success:false`, body.error ?? ''); continue; }
-      console.log(`[wa] sent to ${phoneNum}`);
+      if (body.success === false) return false;
+      console.log(`[wa] dispatched to ${phoneNum}`);
       return true;
-    } catch (err: unknown) {
-      console.warn(`[wa] ${phoneNum} error:`, err instanceof Error ? err.message : String(err));
-    }
-  }
-  return false;
+    } catch { clearTimeout(timer); return false; }
+  }));
+  return results.some(Boolean);
 }
 
 const app = express();
