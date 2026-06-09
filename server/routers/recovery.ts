@@ -85,16 +85,34 @@ function failedMsg(name: string, id: number) {
   return `Olá *${name}*! 🌊\n\nHouve um problema com o pagamento do pedido *#${id}*.\n\nTente novamente com outro método:\n👉 https://premium.salvitarn.com.br/meu-pedido?pedido=${id}\n\nAceitamos Cartão, PIX e Boleto 💳\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
 }
 
-async function fetchPixCode(mpPaymentId: string): Promise<string | null> {
+async function fetchPixCode(mpPaymentId: string | null, orderId?: number): Promise<string | null> {
   const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
-  if (!token || !mpPaymentId) return null;
+  if (!token) return null;
   try {
-    const res = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return null;
-    const data = await res.json() as Record<string, any>;
-    return data?.point_of_interaction?.transaction_data?.qr_code ?? null;
+    if (mpPaymentId) {
+      const res = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json() as Record<string, any>;
+        const qr = data?.point_of_interaction?.transaction_data?.qr_code ?? null;
+        if (qr) return qr;
+      }
+    }
+    // Fallback: search Mercado Pago for any payment linked to this order via external_reference
+    if (orderId) {
+      const res = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${orderId}&sort=date_created&criteria=desc`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json() as Record<string, any>;
+        for (const p of data?.results ?? []) {
+          const qr = p?.point_of_interaction?.transaction_data?.qr_code;
+          if (qr) return qr;
+        }
+      }
+    }
+    return null;
   } catch {
     return null;
   }
@@ -401,7 +419,7 @@ export const recoveryRouter = router({
         .from(abandonedCarts).where(eq(abandonedCarts.customerPhone, phone)).limit(1);
       if (cartRecord?.optedOut) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cliente optou por não receber mensagens (PARAR)' });
 
-      const pixCode = order.mpPaymentId ? await fetchPixCode(order.mpPaymentId) : null;
+      const pixCode = await fetchPixCode(order.mpPaymentId, order.id);
       const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}`;
       const vars = {
         nome: order.customerName,
@@ -451,21 +469,43 @@ export const recoveryRouter = router({
     .query(async ({ ctx, input }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const [order] = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
-      if (!order?.mpPaymentId) return { pixCode: null, boletoUrl: null };
+      if (!order) return { pixCode: null, boletoUrl: null };
       const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
       if (!token) return { pixCode: null, boletoUrl: null };
       try {
-        const res = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, {
+        if (order.mpPaymentId) {
+          const res = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const data = await res.json() as Record<string, any>;
+            return {
+              pixCode: data?.point_of_interaction?.transaction_data?.qr_code ?? null,
+              boletoUrl: data?.transaction_details?.external_resource_url ?? null,
+              paymentMethod: data?.payment_method_id ?? null,
+              status: data?.status ?? null,
+            };
+          }
+        }
+        // Fallback: search Mercado Pago for any payment linked to this order via external_reference
+        const searchRes = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${order.id}&sort=date_created&criteria=desc`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!res.ok) return { pixCode: null, boletoUrl: null };
-        const data = await res.json() as Record<string, any>;
-        return {
-          pixCode: data?.point_of_interaction?.transaction_data?.qr_code ?? null,
-          boletoUrl: data?.transaction_details?.external_resource_url ?? null,
-          paymentMethod: data?.payment_method_id ?? null,
-          status: data?.status ?? null,
-        };
+        if (searchRes.ok) {
+          const data = await searchRes.json() as Record<string, any>;
+          for (const p of data?.results ?? []) {
+            const qr = p?.point_of_interaction?.transaction_data?.qr_code;
+            if (qr) {
+              return {
+                pixCode: qr,
+                boletoUrl: p?.transaction_details?.external_resource_url ?? null,
+                paymentMethod: p?.payment_method_id ?? null,
+                status: p?.status ?? null,
+              };
+            }
+          }
+        }
+        return { pixCode: null, boletoUrl: null };
       } catch {
         return { pixCode: null, boletoUrl: null };
       }
@@ -722,7 +762,7 @@ Responda SOMENTE com JSON válido neste formato exato:
       const [order] = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
       if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
 
-      const pixCode = order.mpPaymentId ? await fetchPixCode(order.mpPaymentId) : null;
+      const pixCode = await fetchPixCode(order.mpPaymentId, order.id);
       const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}`;
 
       const prompt = `Você é especialista em recuperação de vendas para Sal Vita (sal marinho premium de Mossoró/RN).

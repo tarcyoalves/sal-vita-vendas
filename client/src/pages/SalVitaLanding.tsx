@@ -223,7 +223,7 @@ export default function SalVitaLanding() {
   useEffect(() => {
     const { customerName, customerPhone } = checkoutForm;
     const phoneDigits = customerPhone.replace(/\D/g,'');
-    if (!cartTrackRef.current && customerName.length >= 3 && phoneDigits.length >= 10) {
+    if (!cartTrackRef.current && customerName.length >= 3 && phoneDigits.length >= 11) {
       cartTrackRef.current = true;
       fetch('/api/trpc/recovery.trackCart', {
         method:'POST', headers:{'Content-Type':'application/json'},
