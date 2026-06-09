@@ -622,10 +622,14 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
     };
     const fallbackTpl = tplBySlug['abandoned_simples'] ?? abandonedTpls.find(t => t.isDefault);
 
+    // ── Always run these regardless of business hours ────────────────────────
+    const unpaid = await processUnpaidFollowups();      // has its own hours check
+    const reconciled = await reconcileAwaitingOrders(); // no WA sends, pure DB/API
+
+    // ── Abandoned cart automation: only during business hours ─────────────────
     let sent = 0, cancelled = 0, failed = 0;
-    // Skip automated sends outside business hours (08:00–21:00 BRT) to avoid policy violations
     if (!isBusinessHours()) {
-      res.json({ ok: true, processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: 'outside business hours' });
+      res.json({ ok: true, processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: 'outside business hours', unpaid, reconciled });
       return;
     }
     for (const run of due) {
@@ -675,11 +679,6 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
       }
       await new Promise(r => setTimeout(r, 1000));
     }
-
-    // ── Follow-up for unpaid / failed orders (runs in the same cron pass) ──────
-    const unpaid = await processUnpaidFollowups();
-    // ── Reconcile awaiting orders whose webhook may never have arrived ─────────
-    const reconciled = await reconcileAwaitingOrders();
 
     res.json({ ok: true, processed: due.length, sent, cancelled, failed, unpaid, reconciled });
   } catch (err) {
