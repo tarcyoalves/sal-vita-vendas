@@ -136,13 +136,21 @@ export const shippingRouter = router({
       city: z.string().min(2).max(100),
       state: z.string().length(2),
       quantity: z.number().int().min(1).max(100),
+      productId: z.enum(['1kg', 'caixa']).optional().default('1kg'),
       shippingServiceId: z.string().optional(),
       shippingServiceName: z.string().optional(),
       shippingPrice: z.number().min(0).optional(),
       couponCode: z.string().max(20).optional(),
     }))
     .mutation(async ({ input }) => {
-      const unitPrice = 29.90;
+      // Server-authoritative price catalog. `quantity` is the number of 1kg units
+      // (kg units): 1kg product = 1 unit each, box = 10 units each.
+      const CATALOG: Record<string, { price: number; kgPerUnit: number }> = {
+        '1kg':   { price: 29.90,  kgPerUnit: 1 },
+        'caixa': { price: 149.90, kgPerUnit: 10 },
+      };
+      const prod = CATALOG[input.productId] ?? CATALOG['1kg'];
+      const productCount = Math.max(1, Math.round(input.quantity / prod.kgPerUnit));
       const shipping = input.shippingPrice ?? 0;
 
       // Validate shipping price server-side
@@ -150,7 +158,7 @@ export const shippingRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Valor de frete inválido.' });
       }
 
-      let subtotal = +(unitPrice * input.quantity).toFixed(2);
+      let subtotal = +(prod.price * productCount).toFixed(2);
       let couponDiscount = 0;
       let appliedCoupon: string | null = null;
       let foundCouponId: number | null = null;

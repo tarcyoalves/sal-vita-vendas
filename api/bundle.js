@@ -56656,17 +56656,23 @@ var shippingRouter = router({
     city: external_exports.string().min(2).max(100),
     state: external_exports.string().length(2),
     quantity: external_exports.number().int().min(1).max(100),
+    productId: external_exports.enum(["1kg", "caixa"]).optional().default("1kg"),
     shippingServiceId: external_exports.string().optional(),
     shippingServiceName: external_exports.string().optional(),
     shippingPrice: external_exports.number().min(0).optional(),
     couponCode: external_exports.string().max(20).optional()
   })).mutation(async ({ input }) => {
-    const unitPrice = 29.9;
+    const CATALOG = {
+      "1kg": { price: 29.9, kgPerUnit: 1 },
+      "caixa": { price: 149.9, kgPerUnit: 10 }
+    };
+    const prod = CATALOG[input.productId] ?? CATALOG["1kg"];
+    const productCount = Math.max(1, Math.round(input.quantity / prod.kgPerUnit));
     const shipping = input.shippingPrice ?? 0;
     if (input.shippingPrice !== void 0 && (input.shippingPrice < 0 || input.shippingPrice > 200)) {
       throw new TRPCError({ code: "BAD_REQUEST", message: "Valor de frete inv\xE1lido." });
     }
-    let subtotal = +(unitPrice * input.quantity).toFixed(2);
+    let subtotal = +(prod.price * productCount).toFixed(2);
     let couponDiscount = 0;
     let appliedCoupon = null;
     let foundCouponId = null;
