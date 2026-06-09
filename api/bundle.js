@@ -57610,7 +57610,10 @@ var recoveryRouter = router({
     const url2 = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
     const key = process.env.WA_API_KEY || "MinhaChaveSuperSegura123456";
     try {
-      const res = await fetch(`${url2}/status`, { headers: { "apikey": key } });
+      const ac = new AbortController();
+      const timer2 = setTimeout(() => ac.abort(), 5e3);
+      const res = await fetch(`${url2}/status`, { headers: { "apikey": key }, signal: ac.signal });
+      clearTimeout(timer2);
       return await res.json();
     } catch {
       return { status: "error", connected: false };
