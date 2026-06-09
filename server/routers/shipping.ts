@@ -466,6 +466,81 @@ Seja direto e use emojis para facilitar leitura.`;
       return { initPoint: data.init_point as string };
     }),
 
+  // Create a PIX payment directly (inline QR + copy-paste) so the customer never leaves the site.
+  createPixPayment: publicProcedure
+    .input(z.object({ orderId: z.number() }))
+    .mutation(async ({ input }) => {
+      const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+      if (!token) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Configure MERCADO_PAGO_ACCESS_TOKEN' });
+      const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
+      const order = orders[0];
+      if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+      if (order.paymentStatus === 'confirmed') throw new TRPCError({ code: 'CONFLICT', message: 'Este pedido já foi pago.' });
+
+      const amount = parseFloat(order.totalPrice ?? '0');
+      const email = (order.customerEmail && order.customerEmail.includes('@')) ? order.customerEmail : `cliente${order.id}@salvitarn.com.br`;
+      const body: any = {
+        transaction_amount: amount,
+        description: `Pedido #${order.id} — Sal Vita`,
+        payment_method_id: 'pix',
+        payer: {
+          email,
+          first_name: order.customerName.split(' ')[0],
+          last_name: order.customerName.split(' ').slice(1).join(' ') || '-',
+        },
+        external_reference: String(order.id),
+        notification_url: 'https://premium.salvitarn.com.br/api/mp-webhook',
+      };
+      if (order.customerCpf) body.payer.identification = { type: 'CPF', number: order.customerCpf.replace(/\D/g, '') };
+
+      const res = await fetch('https://api.mercadopago.com/v1/payments', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'X-Idempotency-Key': `pix-${order.id}-${Date.now()}`,
+        },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro PIX MP: ${txt}` });
+      }
+      const data = await res.json();
+      const td = data?.point_of_interaction?.transaction_data;
+      if (!td?.qr_code) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'PIX não retornou QR code.' });
+
+      await db.update(siteOrders).set({ mpPaymentId: String(data.id), updatedAt: new Date() }).where(eq(siteOrders.id, order.id));
+
+      return {
+        paymentId: String(data.id),
+        qrCode: td.qr_code as string,                 // copy-paste code
+        qrCodeBase64: (td.qr_code_base64 ?? '') as string, // PNG base64
+        amount,
+      };
+    }),
+
+  // Lightweight poll for the PIX/checkout payment status (read-only — webhook does the writes).
+  pixStatus: publicProcedure
+    .input(z.object({ orderId: z.number() }))
+    .query(async ({ input }) => {
+      const orders = await db.select({ id: siteOrders.id, paymentStatus: siteOrders.paymentStatus, mpPaymentId: siteOrders.mpPaymentId })
+        .from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
+      const order = orders[0];
+      if (!order) return { paid: false, status: 'not_found' };
+      if (order.paymentStatus === 'confirmed') return { paid: true, status: 'approved' };
+      const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+      if (!token || !order.mpPaymentId) return { paid: false, status: order.paymentStatus };
+      try {
+        const r = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!r.ok) return { paid: false, status: order.paymentStatus };
+        const p = await r.json() as any;
+        return { paid: p.status === 'approved', status: p.status as string };
+      } catch {
+        return { paid: false, status: order.paymentStatus };
+      }
+    }),
+
   generateLabel: protectedProcedure
     .input(z.object({ orderId: z.number() }))
     .mutation(async ({ ctx, input }) => {

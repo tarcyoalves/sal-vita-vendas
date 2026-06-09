@@ -173,6 +173,10 @@ export default function SalVitaLanding() {
   const [couponLoading,setCouponLoading]   = useState(false);
   const [cpfError,setCpfError]             = useState('');
   const [qty,setQty]                       = useState(1);
+  const [pixData,setPixData]               = useState<{paymentId:string;qrCode:string;qrCodeBase64:string;amount:number}|null>(null);
+  const [pixLoading,setPixLoading]         = useState(false);
+  const [pixPaid,setPixPaid]               = useState(false);
+  const [pixCopied,setPixCopied]           = useState(false);
   const [pendingOrder,setPendingOrder]     = useState<{id:number;total:number}|null>(null);
   const obs = useRef<IntersectionObserver|null>(null);
   const spToast = useSocialProof();
@@ -242,6 +246,7 @@ export default function SalVitaLanding() {
     setCheckoutForm({customerName:'',customerPhone:'',customerEmail:'',customerCpf:'',postalCode:'',address:'',number:'',complement:'',neighborhood:'',city:'',state:''});
     setCouponState(null); setCouponCode('');
     setQty(1);
+    setPixData(null); setPixPaid(false); setPixLoading(false);
     cartTrackRef.current = false;
     // Keep sv_pending_order intact so a customer with an unpaid order can resume it.
     document.body.style.overflow='hidden';
@@ -272,7 +277,7 @@ export default function SalVitaLanding() {
     } catch { alert('Erro de conexão. Tente novamente.'); setResumeLoading(false); }
   }
   function dismissPendingOrder(){ localStorage.removeItem('sv_pending_order'); setPendingOrder(null); }
-  const closeBuy=useCallback(()=>{ setShowModal(false); setShowCheckout(false); setOrderDone(null); document.body.style.overflow=''; if(payTimerRef.current) clearInterval(payTimerRef.current); },[]);
+  const closeBuy=useCallback(()=>{ setShowModal(false); setShowCheckout(false); setOrderDone(null); setPixData(null); setPixPaid(false); setPixLoading(false); document.body.style.overflow=''; if(payTimerRef.current) clearInterval(payTimerRef.current); },[]);
 
   useEffect(()=>{
     if(orderDone){
@@ -434,6 +439,49 @@ export default function SalVitaLanding() {
     } catch { alert('Erro ao conectar com Mercado Pago. Tente novamente.'); }
     setMpLoading(false);
   }
+
+  // ── PIX inline: generate the QR + copy-paste code without leaving the site ──
+  async function handlePixPay(){
+    if(!orderDone) return;
+    setPixLoading(true);
+    try{
+      const res = await fetch('/api/trpc/shipping.createPixPayment',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({json:{ orderId: orderDone.id }}),
+      });
+      const data = await res.json();
+      const d = data?.result?.data?.json;
+      if(d?.qrCode){ setPixData(d); }
+      else { alert('Não foi possível gerar o PIX agora. Tente "Cartão ou Boleto".'); }
+    }catch{ alert('Erro ao gerar o PIX. Tente novamente.'); }
+    setPixLoading(false);
+  }
+  function copyPix(){
+    if(!pixData) return;
+    navigator.clipboard?.writeText(pixData.qrCode)
+      .then(()=>{ setPixCopied(true); setTimeout(()=>setPixCopied(false),2200); })
+      .catch(()=>{});
+  }
+  // Poll payment status while the PIX QR is shown; confirm automatically when paid.
+  // Capped at ~15 min (180 polls) to avoid endless background requests on the free tier.
+  useEffect(()=>{
+    if(!pixData || pixPaid || !orderDone) return;
+    let polls = 0;
+    const iv = setInterval(async ()=>{
+      if(++polls > 180){ clearInterval(iv); return; }
+      try{
+        const res = await fetch(`/api/trpc/shipping.pixStatus?input=${encodeURIComponent(JSON.stringify({json:{orderId:orderDone.id}}))}`);
+        const data = await res.json();
+        if(data?.result?.data?.json?.paid){
+          setPixPaid(true);
+          clearInterval(iv);
+          try { (window as any).fbq?.('track','Purchase',{ value: orderDone.total, currency:'BRL', content_name:'SAL VITA PREMIUM', content_ids:['salvita-001'], content_type:'product' }); } catch {}
+          localStorage.removeItem('sv_pending_order'); setPendingOrder(null);
+        }
+      }catch{}
+    }, 5000);
+    return ()=>clearInterval(iv);
+  }, [pixData, pixPaid, orderDone]);
 
   /* ── Logo real ── */
   const Logo=({size=40,white=false}:{size?:number;white?:boolean})=>(
@@ -1492,19 +1540,61 @@ export default function SalVitaLanding() {
                 </div>
               </div>
 
-              {/* CTA button */}
-              <button onClick={handleMpPay} disabled={mpLoading}
-                style={{width:'100%',background:mpLoading?'#9bb3d0':'#009ee3',color:'white',border:'none',borderRadius:12,padding:'16px',fontSize:'1.05rem',fontWeight:800,cursor:mpLoading?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:10,transition:'all .2s',boxShadow:mpLoading?'none':'0 4px 14px rgba(0,158,227,.35)',letterSpacing:'.01em'}}>
-                {mpLoading
-                  ? <><svg width="18" height="18" viewBox="0 0 24 24" fill="white" style={{animation:'spin 1s linear infinite'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Gerando link seguro...</>
-                  : <>💳 Pagar com Mercado Pago</>}
-              </button>
-
-              {/* payment methods — purely informational */}
-              <div style={{textAlign:'center',marginTop:10}}>
-                <p style={{fontSize:'.75rem',color:'#94a3b8',margin:'0 0 4px'}}>Pagamento processado com segurança pelo Mercado Pago</p>
-                <p style={{fontSize:'.75rem',color:'#64748b',margin:0}}>💳 Cartão de crédito/débito · PIX · Boleto · Parcelamento 3×</p>
-              </div>
+              {/* ── Payment area ── */}
+              {pixPaid ? (
+                <div style={{textAlign:'center',padding:'18px 8px'}}>
+                  <div style={{fontSize:'3rem',marginBottom:6}}>🎉</div>
+                  <p style={{fontSize:'1.25rem',fontWeight:800,color:'#16a34a',margin:'0 0 6px'}}>Pagamento confirmado!</p>
+                  <p style={{fontSize:'.9rem',color:'var(--muted)',margin:'0 0 16px'}}>Recebemos seu PIX. Já estamos preparando o pedido <strong>#{orderDone.id}</strong>. Você receberá tudo no WhatsApp. 🚚</p>
+                  <a href={`/meu-pedido?pedido=${orderDone.id}&status=pago`}
+                    style={{display:'inline-block',background:'var(--brand)',color:'white',borderRadius:12,padding:'14px 28px',fontWeight:700,fontSize:'.95rem',textDecoration:'none'}}>
+                    Acompanhar meu pedido →
+                  </a>
+                </div>
+              ) : pixData ? (
+                <div>
+                  {pixData.qrCodeBase64 && (
+                    <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="QR Code PIX"
+                      style={{width:198,height:198,display:'block',margin:'0 auto 10px',borderRadius:12,border:'1px solid #e2e8f0',background:'white'}}/>
+                  )}
+                  <p style={{textAlign:'center',fontSize:'.85rem',color:'var(--muted)',margin:'0 0 10px'}}>
+                    Escaneie o QR no app do seu banco ou copie o código abaixo:
+                  </p>
+                  <div style={{display:'flex',gap:8,marginBottom:12}}>
+                    <input readOnly value={pixData.qrCode} onFocus={e=>e.currentTarget.select()}
+                      style={{flex:1,minWidth:0,fontSize:'.72rem',fontFamily:'monospace',padding:'11px',borderRadius:8,border:'1px solid #e2e8f0',background:'#f8fafc',color:'var(--mid)',outline:'none'}}/>
+                    <button onClick={copyPix}
+                      style={{background:pixCopied?'#16a34a':'var(--brand)',color:'white',border:'none',borderRadius:8,padding:'0 16px',fontWeight:700,fontSize:'.82rem',cursor:'pointer',whiteSpace:'nowrap',transition:'background .2s'}}>
+                      {pixCopied?'✓ Copiado':'Copiar'}
+                    </button>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'11px',background:'#fffbeb',borderRadius:8,border:'1px solid #fde68a'}}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" style={{animation:'spin 1s linear infinite'}}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                    <span style={{fontSize:'.8rem',color:'#92400e',fontWeight:600}}>Aguardando pagamento — confirma automaticamente</span>
+                  </div>
+                  <p style={{textAlign:'center',fontSize:'.74rem',color:'#94a3b8',margin:'10px 0 0'}}>Valor: <strong>R$ {pixData.amount.toFixed(2).replace('.',',')}</strong> · O PIX é aprovado em segundos</p>
+                </div>
+              ) : (
+                <>
+                  {/* PIX — primary */}
+                  <button onClick={handlePixPay} disabled={pixLoading||mpLoading}
+                    style={{width:'100%',background:pixLoading?'#86efac':'#16a34a',color:'white',border:'none',borderRadius:12,padding:'16px',fontSize:'1.05rem',fontWeight:800,cursor:pixLoading?'wait':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:10,boxShadow:'0 4px 14px rgba(22,163,74,.3)',letterSpacing:'.01em'}}>
+                    {pixLoading
+                      ? <><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" style={{animation:'spin 1s linear infinite'}}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Gerando PIX...</>
+                      : <>⚡ Pagar com PIX — aprovação na hora</>}
+                  </button>
+                  {/* Card / boleto — secondary (Mercado Pago hosted) */}
+                  <button onClick={handleMpPay} disabled={mpLoading||pixLoading}
+                    style={{width:'100%',marginTop:10,background:'white',color:'#009ee3',border:'2px solid #009ee3',borderRadius:12,padding:'14px',fontSize:'.95rem',fontWeight:700,cursor:mpLoading?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
+                    {mpLoading
+                      ? <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009ee3" strokeWidth="2.5" style={{animation:'spin 1s linear infinite'}}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Gerando link...</>
+                      : <>💳 Cartão ou Boleto (até 3×)</>}
+                  </button>
+                  <div style={{textAlign:'center',marginTop:10}}>
+                    <p style={{fontSize:'.75rem',color:'#64748b',margin:0}}>Pagamento seguro · PIX, Cartão e Boleto via Mercado Pago</p>
+                  </div>
+                </>
+              )}
 
               {/* trust badges */}
               <div style={{display:'flex',justifyContent:'center',gap:20,marginTop:14,paddingTop:14,borderTop:'1px solid #f1f5f9'}}>

@@ -395,6 +395,13 @@ const couponCheckLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 
+// PIX status is polled every 5s while the QR is shown — allow up to ~the 15-min poll cap.
+const pixStatusLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 220,
+  validate: { xForwardedForHeader: false },
+});
+
 const chatLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 15,
@@ -408,6 +415,8 @@ app.use('/api/trpc/shipping.calculate', storeLimiter);
 app.use('/api/trpc/shipping.trackOrder', storeLimiter);
 app.use('/api/trpc/shipping.createOrder', orderLimiter);
 app.use('/api/trpc/shipping.createPayment', orderLimiter);
+app.use('/api/trpc/shipping.createPixPayment', orderLimiter);
+app.use('/api/trpc/shipping.pixStatus', pixStatusLimiter);
 app.use('/api/trpc/recovery.trackCart', cartTrackLimiter);
 app.use('/api/trpc/recovery.validateCoupon', couponCheckLimiter);
 app.use('/api/trpc/recovery.chat', chatLimiter);

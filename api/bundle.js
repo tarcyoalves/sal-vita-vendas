@@ -56964,6 +56964,81 @@ _Sal Vita \u2014 Mossor\xF3/RN_`;
     await ordersDb.update(siteOrders).set({ mpPreferenceId: data.id, updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, input.orderId));
     return { initPoint: data.init_point };
   }),
+  // Create a PIX payment directly (inline QR + copy-paste) so the customer never leaves the site.
+  createPixPayment: publicProcedure.input(external_exports.object({ orderId: external_exports.number() })).mutation(async ({ input }) => {
+    const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+    if (!token)
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Configure MERCADO_PAGO_ACCESS_TOKEN" });
+    const orders = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
+    const order = orders[0];
+    if (!order)
+      throw new TRPCError({ code: "NOT_FOUND" });
+    if (order.paymentStatus === "confirmed")
+      throw new TRPCError({ code: "CONFLICT", message: "Este pedido j\xE1 foi pago." });
+    const amount = parseFloat(order.totalPrice ?? "0");
+    const email = order.customerEmail && order.customerEmail.includes("@") ? order.customerEmail : `cliente${order.id}@salvitarn.com.br`;
+    const body = {
+      transaction_amount: amount,
+      description: `Pedido #${order.id} \u2014 Sal Vita`,
+      payment_method_id: "pix",
+      payer: {
+        email,
+        first_name: order.customerName.split(" ")[0],
+        last_name: order.customerName.split(" ").slice(1).join(" ") || "-"
+      },
+      external_reference: String(order.id),
+      notification_url: "https://premium.salvitarn.com.br/api/mp-webhook"
+    };
+    if (order.customerCpf)
+      body.payer.identification = { type: "CPF", number: order.customerCpf.replace(/\D/g, "") };
+    const res = await fetch("https://api.mercadopago.com/v1/payments", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "X-Idempotency-Key": `pix-${order.id}-${Date.now()}`
+      },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro PIX MP: ${txt}` });
+    }
+    const data = await res.json();
+    const td = data?.point_of_interaction?.transaction_data;
+    if (!td?.qr_code)
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "PIX n\xE3o retornou QR code." });
+    await ordersDb.update(siteOrders).set({ mpPaymentId: String(data.id), updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, order.id));
+    return {
+      paymentId: String(data.id),
+      qrCode: td.qr_code,
+      // copy-paste code
+      qrCodeBase64: td.qr_code_base64 ?? "",
+      // PNG base64
+      amount
+    };
+  }),
+  // Lightweight poll for the PIX/checkout payment status (read-only — webhook does the writes).
+  pixStatus: publicProcedure.input(external_exports.object({ orderId: external_exports.number() })).query(async ({ input }) => {
+    const orders = await ordersDb.select({ id: siteOrders.id, paymentStatus: siteOrders.paymentStatus, mpPaymentId: siteOrders.mpPaymentId }).from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
+    const order = orders[0];
+    if (!order)
+      return { paid: false, status: "not_found" };
+    if (order.paymentStatus === "confirmed")
+      return { paid: true, status: "approved" };
+    const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+    if (!token || !order.mpPaymentId)
+      return { paid: false, status: order.paymentStatus };
+    try {
+      const r = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, { headers: { "Authorization": `Bearer ${token}` } });
+      if (!r.ok)
+        return { paid: false, status: order.paymentStatus };
+      const p2 = await r.json();
+      return { paid: p2.status === "approved", status: p2.status };
+    } catch {
+      return { paid: false, status: order.paymentStatus };
+    }
+  }),
   generateLabel: protectedProcedure.input(external_exports.object({ orderId: external_exports.number() })).mutation(async ({ ctx, input }) => {
     if (ctx.user.role !== "admin")
       throw new TRPCError({ code: "FORBIDDEN" });
@@ -58679,6 +58754,11 @@ var couponCheckLimiter = rate_limit_default({
   max: 20,
   validate: { xForwardedForHeader: false }
 });
+var pixStatusLimiter = rate_limit_default({
+  windowMs: 15 * 60 * 1e3,
+  max: 220,
+  validate: { xForwardedForHeader: false }
+});
 var chatLimiter = rate_limit_default({
   windowMs: 60 * 1e3,
   max: 15,
@@ -58691,6 +58771,8 @@ app.use("/api/trpc/shipping.calculate", storeLimiter);
 app.use("/api/trpc/shipping.trackOrder", storeLimiter);
 app.use("/api/trpc/shipping.createOrder", orderLimiter);
 app.use("/api/trpc/shipping.createPayment", orderLimiter);
+app.use("/api/trpc/shipping.createPixPayment", orderLimiter);
+app.use("/api/trpc/shipping.pixStatus", pixStatusLimiter);
 app.use("/api/trpc/recovery.trackCart", cartTrackLimiter);
 app.use("/api/trpc/recovery.validateCoupon", couponCheckLimiter);
 app.use("/api/trpc/recovery.chat", chatLimiter);
