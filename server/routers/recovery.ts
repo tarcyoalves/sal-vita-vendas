@@ -106,7 +106,7 @@ export const recoveryRouter = router({
   trackCart: publicProcedure
     .input(z.object({
       customerName: z.string().min(2).max(100),
-      customerPhone: z.string().min(10).max(20),
+      customerPhone: z.string().min(10).max(20).refine(v => v.replace(/\D/g,'').length >= 10, 'Telefone inválido'),
       customerEmail: z.string().optional(),
       postalCode: z.string().optional(),
       quantity: z.number().int().min(1).max(100).default(1),

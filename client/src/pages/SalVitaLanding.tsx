@@ -172,11 +172,6 @@ export default function SalVitaLanding() {
   const [couponState,setCouponState]       = useState<{valid:boolean;message:string;discountValue?:number;discountType?:string}|null>(null);
   const [couponLoading,setCouponLoading]   = useState(false);
   const [cpfError,setCpfError]             = useState('');
-  const [qty,setQty]                       = useState(1);
-  const [pixData,setPixData]               = useState<{paymentId:string;qrCode:string;qrCodeBase64:string;amount:number}|null>(null);
-  const [pixLoading,setPixLoading]         = useState(false);
-  const [pixPaid,setPixPaid]               = useState(false);
-  const [pixCopied,setPixCopied]           = useState(false);
   const [pendingOrder,setPendingOrder]     = useState<{id:number;total:number}|null>(null);
   const obs = useRef<IntersectionObserver|null>(null);
   const spToast = useSocialProof();
@@ -227,11 +222,12 @@ export default function SalVitaLanding() {
   const cartTrackRef = useRef(false);
   useEffect(() => {
     const { customerName, customerPhone } = checkoutForm;
-    if (!cartTrackRef.current && customerName.length >= 3 && customerPhone.length >= 10) {
+    const phoneDigits = customerPhone.replace(/\D/g,'');
+    if (!cartTrackRef.current && customerName.length >= 3 && phoneDigits.length >= 10) {
       cartTrackRef.current = true;
       fetch('/api/trpc/recovery.trackCart', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({json:{ customerName, customerPhone, customerEmail: checkoutForm.customerEmail||undefined, quantity:(selProd?.weightKg>=10?10:1)*qty, stepReached:1 }}),
+        body:JSON.stringify({json:{ customerName, customerPhone: phoneDigits, customerEmail: checkoutForm.customerEmail||undefined, quantity:selProd?.weightKg>=10?10:1, stepReached:1 }}),
       }).catch(()=>{});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -245,39 +241,12 @@ export default function SalVitaLanding() {
     setShowCheckout(false); setOrderDone(null);
     setCheckoutForm({customerName:'',customerPhone:'',customerEmail:'',customerCpf:'',postalCode:'',address:'',number:'',complement:'',neighborhood:'',city:'',state:''});
     setCouponState(null); setCouponCode('');
-    setQty(1);
-    setPixData(null); setPixPaid(false); setPixLoading(false);
     cartTrackRef.current = false;
-    // Keep sv_pending_order intact so a customer with an unpaid order can resume it.
+    localStorage.removeItem('sv_pending_order');
+    setPendingOrder(null);
     document.body.style.overflow='hidden';
   },[]);
-
-  // Change product quantity; clears the calculated shipping so it is recomputed for the new weight.
-  function changeQty(delta:number){
-    const n = Math.max(1, Math.min(10, qty + delta));
-    if (n === qty) return;
-    setQty(n);
-    if (cepData) { setShipping([]); setSelShip(null); }
-  }
-
-  // Resume a previously-created but unpaid order: regenerate the MP payment link.
-  const [resumeLoading,setResumeLoading] = useState(false);
-  async function resumePendingOrder(){
-    if(!pendingOrder) return;
-    setResumeLoading(true);
-    try {
-      const res = await fetch('/api/trpc/shipping.createPayment',{
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({json:{ orderId: pendingOrder.id }}),
-      });
-      const data = await res.json();
-      const initPoint = data?.result?.data?.json?.initPoint;
-      if(initPoint){ window.location.href = initPoint; }
-      else { alert('Não foi possível retomar o pagamento. Tente refazer o pedido.'); setResumeLoading(false); }
-    } catch { alert('Erro de conexão. Tente novamente.'); setResumeLoading(false); }
-  }
-  function dismissPendingOrder(){ localStorage.removeItem('sv_pending_order'); setPendingOrder(null); }
-  const closeBuy=useCallback(()=>{ setShowModal(false); setShowCheckout(false); setOrderDone(null); setPixData(null); setPixPaid(false); setPixLoading(false); document.body.style.overflow=''; if(payTimerRef.current) clearInterval(payTimerRef.current); },[]);
+  const closeBuy=useCallback(()=>{ setShowModal(false); setShowCheckout(false); setOrderDone(null); document.body.style.overflow=''; if(payTimerRef.current) clearInterval(payTimerRef.current); },[]);
 
   useEffect(()=>{
     if(orderDone){
@@ -300,20 +269,21 @@ export default function SalVitaLanding() {
       setCheckoutForm(f=>({...f, postalCode:c, city:d.localidade??'', state:d.uf??'', neighborhood:d.bairro??'', address:d.logradouro??f.address}));
       // Track cart abandonment at step 2 (shipping selection)
       if (checkoutForm.customerName && checkoutForm.customerPhone) {
+        const p2 = checkoutForm.customerPhone.replace(/\D/g,'');
         fetch('/api/trpc/recovery.trackCart', {
           method:'POST', headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({json:{ customerName:checkoutForm.customerName, customerPhone:checkoutForm.customerPhone, customerEmail:checkoutForm.customerEmail||undefined, postalCode:c, quantity:(selProd?.weightKg>=10?10:1)*qty, stepReached:2 }}),
+          body:JSON.stringify({json:{ customerName:checkoutForm.customerName, customerPhone:p2, customerEmail:checkoutForm.customerEmail||undefined, postalCode:c, quantity:selProd?.weightKg>=10?10:1, stepReached:2 }}),
         }).catch(()=>{});
       }
 
       // Call backend — tries Melhor Envio API first, falls back to static table
       let opts: ShipOpt[] = [];
       try {
-        const kgUnits = (selProd!.weightKg >= 10 ? 10 : 1) * qty;
+        const qty = selProd!.weightKg >= 10 ? 10 : 1;
         const r = await fetch('/api/trpc/shipping.calculate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ json: { cep: c, quantity: kgUnits } }),
+          body: JSON.stringify({ json: { cep: c, quantity: qty } }),
         });
         const data = await r.json();
         const source = data?.result?.data?.json?.source;
@@ -378,26 +348,21 @@ export default function SalVitaLanding() {
   async function handleCheckout(e:React.FormEvent) {
     e.preventDefault();
     if(!selProd||!selShip) return;
-    // Block invalid CPF before hitting the backend / Mercado Pago
-    if(checkoutForm.customerCpf && !isValidCpf(checkoutForm.customerCpf)){
-      setCpfError('CPF inválido — confira os números');
-      return;
-    }
     setCheckoutLoading(true);
     // Track step 3 (attempting payment)
+    const p3 = checkoutForm.customerPhone.replace(/\D/g,'');
     fetch('/api/trpc/recovery.trackCart', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({json:{ customerName:checkoutForm.customerName, customerPhone:checkoutForm.customerPhone, customerEmail:checkoutForm.customerEmail||undefined, postalCode:checkoutForm.postalCode, quantity:(selProd.weightKg>=10?10:1)*qty, stepReached:3 }}),
+      body:JSON.stringify({json:{ customerName:checkoutForm.customerName, customerPhone:p3, customerEmail:checkoutForm.customerEmail||undefined, postalCode:checkoutForm.postalCode, quantity:selProd.weightKg>=10?10:1, stepReached:3 }}),
     }).catch(()=>{});
     try {
-      const kgUnits = (selProd.weightKg>=10?10:1)*qty;
+      const qty = selProd.weightKg>=10?10:1;
       const res = await fetch('/api/trpc/shipping.createOrder', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({json:{
           ...checkoutForm,
-          quantity:kgUnits,
-          productId: selProd.id,
+          quantity:qty,
           shippingServiceId:selShip.serviceId ?? (selShip.service==='PAC'?'1':'2'),
           shippingServiceName:selShip.service,
           shippingPrice:selShip.price,
@@ -406,7 +371,7 @@ export default function SalVitaLanding() {
       });
       const data = await res.json();
       const orderId = data?.result?.data?.json?.id;
-      const total   = data?.result?.data?.json?.total ?? (selProd.price*qty+selShip.price);
+      const total   = data?.result?.data?.json?.total ?? (selProd.price+selShip.price);
       setOrderDone({ id: orderId, total });
       localStorage.setItem('sv_pending_order', JSON.stringify({ id: orderId, total, ts: Date.now() }));
       try { (window as any).fbq?.('track','AddPaymentInfo',{ value: total, currency: 'BRL', content_name: 'SAL VITA PREMIUM 1kg', content_ids: ['salvita-001'], content_type: 'product', num_items: qty }); } catch {}
@@ -430,58 +395,13 @@ export default function SalVitaLanding() {
       const data = await res.json();
       const initPoint = data?.result?.data?.json?.initPoint;
       if(initPoint) {
-        // NOTE: Purchase event fires on the confirmation page (TrackOrder) after the
-        // payment is actually approved — not here, to avoid inflating ad metrics.
-        try { (window as any).fbq?.('track','InitiateCheckout',{ value: orderDone.total, currency: 'BRL', content_ids: ['salvita-001'], content_type: 'product' }); } catch {}
+        try { (window as any).fbq?.('track','Purchase',{ value: orderDone.total, currency: 'BRL', content_name: 'SAL VITA PREMIUM 1kg', content_ids: ['salvita-001'], content_type: 'product', num_items: 1 }); } catch {}
         window.location.href = initPoint;
       }
       else { alert('Erro ao gerar link de pagamento. Tente novamente.'); }
     } catch { alert('Erro ao conectar com Mercado Pago. Tente novamente.'); }
     setMpLoading(false);
   }
-
-  // ── PIX inline: generate the QR + copy-paste code without leaving the site ──
-  async function handlePixPay(){
-    if(!orderDone) return;
-    setPixLoading(true);
-    try{
-      const res = await fetch('/api/trpc/shipping.createPixPayment',{
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({json:{ orderId: orderDone.id }}),
-      });
-      const data = await res.json();
-      const d = data?.result?.data?.json;
-      if(d?.qrCode){ setPixData(d); }
-      else { alert('Não foi possível gerar o PIX agora. Tente "Cartão ou Boleto".'); }
-    }catch{ alert('Erro ao gerar o PIX. Tente novamente.'); }
-    setPixLoading(false);
-  }
-  function copyPix(){
-    if(!pixData) return;
-    navigator.clipboard?.writeText(pixData.qrCode)
-      .then(()=>{ setPixCopied(true); setTimeout(()=>setPixCopied(false),2200); })
-      .catch(()=>{});
-  }
-  // Poll payment status while the PIX QR is shown; confirm automatically when paid.
-  // Capped at ~15 min (180 polls) to avoid endless background requests on the free tier.
-  useEffect(()=>{
-    if(!pixData || pixPaid || !orderDone) return;
-    let polls = 0;
-    const iv = setInterval(async ()=>{
-      if(++polls > 180){ clearInterval(iv); return; }
-      try{
-        const res = await fetch(`/api/trpc/shipping.pixStatus?input=${encodeURIComponent(JSON.stringify({json:{orderId:orderDone.id}}))}`);
-        const data = await res.json();
-        if(data?.result?.data?.json?.paid){
-          setPixPaid(true);
-          clearInterval(iv);
-          try { (window as any).fbq?.('track','Purchase',{ value: orderDone.total, currency:'BRL', content_name:'SAL VITA PREMIUM', content_ids:['salvita-001'], content_type:'product' }); } catch {}
-          localStorage.removeItem('sv_pending_order'); setPendingOrder(null);
-        }
-      }catch{}
-    }, 5000);
-    return ()=>clearInterval(iv);
-  }, [pixData, pixPaid, orderDone]);
 
   /* ── Logo real ── */
   const Logo=({size=40,white=false}:{size?:number;white?:boolean})=>(
@@ -494,17 +414,6 @@ export default function SalVitaLanding() {
 
   return (
     <>
-      {/* ── Pending unpaid order banner — lets a returning customer resume payment ── */}
-      {pendingOrder && (
-        <div style={{position:'fixed',top:0,left:0,right:0,zIndex:100000,background:'linear-gradient(135deg,#0b1d3a,#1a3a6b)',color:'white',padding:'10px 16px',display:'flex',alignItems:'center',justifyContent:'center',gap:14,flexWrap:'wrap',boxShadow:'0 4px 20px rgba(0,0,0,.25)'}}>
-          <span style={{fontSize:'.86rem',fontWeight:600}}>🛒 Você tem o pedido <strong>#{pendingOrder.id}</strong> aguardando pagamento (R$ {pendingOrder.total.toFixed(2).replace('.',',')})</span>
-          <button onClick={resumePendingOrder} disabled={resumeLoading}
-            style={{background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:9,padding:'8px 18px',fontWeight:800,fontSize:'.82rem',cursor:resumeLoading?'wait':'pointer',textTransform:'uppercase',letterSpacing:'.04em'}}>
-            {resumeLoading?'Gerando...':'Finalizar pagamento'}
-          </button>
-          <button onClick={dismissPendingOrder} aria-label="Dispensar" style={{background:'transparent',color:'rgba(255,255,255,.6)',border:'none',fontSize:'1.1rem',cursor:'pointer',lineHeight:1}}>×</button>
-        </div>
-      )}
       {/* ── Social proof toast ── */}
       {spToast && (
         <div style={{
@@ -1492,7 +1401,7 @@ export default function SalVitaLanding() {
 
       {/* ══════ STICKY BOTTOM CTA (mobile) ══════ */}
       <div className="sticky-bar" style={{gap:10,alignItems:'center'}}>
-        <button onClick={()=>{ openBuy(products[0]); }} className="pulse" style={{flex:1,background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:12,padding:'14px 0',fontSize:'.93rem',fontWeight:800,letterSpacing:'.06em',textTransform:'uppercase',cursor:'pointer'}}>
+        <button onClick={()=>{ document.getElementById('preco')?.scrollIntoView({behavior:'smooth'}); }} className="pulse" style={{flex:1,background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:12,padding:'14px 0',fontSize:'.93rem',fontWeight:800,letterSpacing:'.06em',textTransform:'uppercase',cursor:'pointer'}}>
           Comprar Agora
         </button>
       </div>
@@ -1540,61 +1449,19 @@ export default function SalVitaLanding() {
                 </div>
               </div>
 
-              {/* ── Payment area ── */}
-              {pixPaid ? (
-                <div style={{textAlign:'center',padding:'18px 8px'}}>
-                  <div style={{fontSize:'3rem',marginBottom:6}}>🎉</div>
-                  <p style={{fontSize:'1.25rem',fontWeight:800,color:'#16a34a',margin:'0 0 6px'}}>Pagamento confirmado!</p>
-                  <p style={{fontSize:'.9rem',color:'var(--muted)',margin:'0 0 16px'}}>Recebemos seu PIX. Já estamos preparando o pedido <strong>#{orderDone.id}</strong>. Você receberá tudo no WhatsApp. 🚚</p>
-                  <a href={`/meu-pedido?pedido=${orderDone.id}&status=pago`}
-                    style={{display:'inline-block',background:'var(--brand)',color:'white',borderRadius:12,padding:'14px 28px',fontWeight:700,fontSize:'.95rem',textDecoration:'none'}}>
-                    Acompanhar meu pedido →
-                  </a>
-                </div>
-              ) : pixData ? (
-                <div>
-                  {pixData.qrCodeBase64 && (
-                    <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="QR Code PIX"
-                      style={{width:198,height:198,display:'block',margin:'0 auto 10px',borderRadius:12,border:'1px solid #e2e8f0',background:'white'}}/>
-                  )}
-                  <p style={{textAlign:'center',fontSize:'.85rem',color:'var(--muted)',margin:'0 0 10px'}}>
-                    Escaneie o QR no app do seu banco ou copie o código abaixo:
-                  </p>
-                  <div style={{display:'flex',gap:8,marginBottom:12}}>
-                    <input readOnly value={pixData.qrCode} onFocus={e=>e.currentTarget.select()}
-                      style={{flex:1,minWidth:0,fontSize:'.72rem',fontFamily:'monospace',padding:'11px',borderRadius:8,border:'1px solid #e2e8f0',background:'#f8fafc',color:'var(--mid)',outline:'none'}}/>
-                    <button onClick={copyPix}
-                      style={{background:pixCopied?'#16a34a':'var(--brand)',color:'white',border:'none',borderRadius:8,padding:'0 16px',fontWeight:700,fontSize:'.82rem',cursor:'pointer',whiteSpace:'nowrap',transition:'background .2s'}}>
-                      {pixCopied?'✓ Copiado':'Copiar'}
-                    </button>
-                  </div>
-                  <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'11px',background:'#fffbeb',borderRadius:8,border:'1px solid #fde68a'}}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" style={{animation:'spin 1s linear infinite'}}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-                    <span style={{fontSize:'.8rem',color:'#92400e',fontWeight:600}}>Aguardando pagamento — confirma automaticamente</span>
-                  </div>
-                  <p style={{textAlign:'center',fontSize:'.74rem',color:'#94a3b8',margin:'10px 0 0'}}>Valor: <strong>R$ {pixData.amount.toFixed(2).replace('.',',')}</strong> · O PIX é aprovado em segundos</p>
-                </div>
-              ) : (
-                <>
-                  {/* PIX — primary */}
-                  <button onClick={handlePixPay} disabled={pixLoading||mpLoading}
-                    style={{width:'100%',background:pixLoading?'#86efac':'#16a34a',color:'white',border:'none',borderRadius:12,padding:'16px',fontSize:'1.05rem',fontWeight:800,cursor:pixLoading?'wait':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:10,boxShadow:'0 4px 14px rgba(22,163,74,.3)',letterSpacing:'.01em'}}>
-                    {pixLoading
-                      ? <><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" style={{animation:'spin 1s linear infinite'}}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Gerando PIX...</>
-                      : <>⚡ Pagar com PIX — aprovação na hora</>}
-                  </button>
-                  {/* Card / boleto — secondary (Mercado Pago hosted) */}
-                  <button onClick={handleMpPay} disabled={mpLoading||pixLoading}
-                    style={{width:'100%',marginTop:10,background:'white',color:'#009ee3',border:'2px solid #009ee3',borderRadius:12,padding:'14px',fontSize:'.95rem',fontWeight:700,cursor:mpLoading?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
-                    {mpLoading
-                      ? <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009ee3" strokeWidth="2.5" style={{animation:'spin 1s linear infinite'}}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Gerando link...</>
-                      : <>💳 Cartão ou Boleto (até 3×)</>}
-                  </button>
-                  <div style={{textAlign:'center',marginTop:10}}>
-                    <p style={{fontSize:'.75rem',color:'#64748b',margin:0}}>Pagamento seguro · PIX, Cartão e Boleto via Mercado Pago</p>
-                  </div>
-                </>
-              )}
+              {/* CTA button */}
+              <button onClick={handleMpPay} disabled={mpLoading}
+                style={{width:'100%',background:mpLoading?'#9bb3d0':'#009ee3',color:'white',border:'none',borderRadius:12,padding:'16px',fontSize:'1.05rem',fontWeight:800,cursor:mpLoading?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:10,transition:'all .2s',boxShadow:mpLoading?'none':'0 4px 14px rgba(0,158,227,.35)',letterSpacing:'.01em'}}>
+                {mpLoading
+                  ? <><svg width="18" height="18" viewBox="0 0 24 24" fill="white" style={{animation:'spin 1s linear infinite'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Gerando link seguro...</>
+                  : <>💳 Pagar com Mercado Pago</>}
+              </button>
+
+              {/* payment methods — purely informational */}
+              <div style={{textAlign:'center',marginTop:10}}>
+                <p style={{fontSize:'.75rem',color:'#94a3b8',margin:'0 0 4px'}}>Pagamento processado com segurança pelo Mercado Pago</p>
+                <p style={{fontSize:'.75rem',color:'#64748b',margin:0}}>💳 Cartão de crédito/débito · PIX · Boleto · Parcelamento 3×</p>
+              </div>
 
               {/* trust badges */}
               <div style={{display:'flex',justifyContent:'center',gap:20,marginTop:14,paddingTop:14,borderTop:'1px solid #f1f5f9'}}>
@@ -1650,8 +1517,8 @@ export default function SalVitaLanding() {
                 </div>
                 <div>
                   <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>Telefone/WhatsApp *</label>
-                  <input required type="tel" inputMode="numeric" value={checkoutForm.customerPhone} onChange={e=>setCheckoutForm(f=>({...f,customerPhone:maskPhone(e.target.value)}))}
-                    placeholder="(84) 99999-9999" minLength={14}
+                  <input required value={checkoutForm.customerPhone} onChange={e=>setCheckoutForm(f=>({...f,customerPhone:e.target.value}))}
+                    placeholder="(84) 99999-9999" minLength={10}
                     style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
                     onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
                     onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
@@ -1666,13 +1533,11 @@ export default function SalVitaLanding() {
                 </div>
                 <div>
                   <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>CPF *</label>
-                  <input required type="text" inputMode="numeric" autoComplete="off" value={checkoutForm.customerCpf}
-                    onChange={e=>{ setCheckoutForm(f=>({...f,customerCpf:maskCpf(e.target.value)})); if(cpfError) setCpfError(''); }}
+                  <input required type="text" inputMode="numeric" autoComplete="off" value={checkoutForm.customerCpf} onChange={e=>setCheckoutForm(f=>({...f,customerCpf:e.target.value}))}
                     placeholder="000.000.000-00" maxLength={14}
-                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:`2px solid ${cpfError?'#dc2626':'transparent'}`,borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
+                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
                     onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
-                    onBlur={e=>{ e.currentTarget.style.borderColor=cpfError?'#dc2626':'transparent'; const v=checkoutForm.customerCpf; if(v && !isValidCpf(v)) setCpfError('CPF inválido — confira os números'); }}/>
-                  {cpfError && <p style={{margin:'4px 0 0',fontSize:'.74rem',color:'#dc2626',fontWeight:600}}>{cpfError}</p>}
+                    onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
                 </div>
                 <div>
                   <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>CEP *</label>
@@ -1742,7 +1607,7 @@ export default function SalVitaLanding() {
                     style={{flex:1,background:'var(--offwhite)',border:`2px solid ${couponState?.valid?'#16a34a':couponState?.valid===false?'#ef4444':'transparent'}`,borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',fontFamily:'monospace',letterSpacing:'.1em'}}
                   />
                   <button type="button"
-                    onClick={()=>validateCoupon(couponCode, selProd.price * qty)}
+                    onClick={()=>validateCoupon(couponCode, selProd.price * (selProd.weightKg>=10?10:1))}
                     disabled={!couponCode.trim() || couponLoading}
                     style={{padding:'0 16px',background:'var(--brand)',color:'white',border:'none',borderRadius:10,fontSize:'.85rem',fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
                     {couponLoading?'...':'Aplicar'}
@@ -1758,14 +1623,14 @@ export default function SalVitaLanding() {
               <div style={{background:'var(--sky)',borderRadius:10,padding:'12px 16px',marginTop:4}}>
                 <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
                   <span style={{fontSize:'.9rem',color:'var(--muted)'}}>Produto</span>
-                  <span style={{fontSize:'.9rem',color:'var(--mid)'}}>R$ {(selProd.price*qty).toFixed(2)}</span>
+                  <span style={{fontSize:'.9rem',color:'var(--mid)'}}>R$ {(selProd.price*(selProd.weightKg>=10?10:1)).toFixed(2)}</span>
                 </div>
                 {couponState?.valid && couponState.discountValue && (
                   <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
                     <span style={{fontSize:'.9rem',color:'#16a34a',fontWeight:600}}>🎁 Desconto {couponCode}</span>
                     <span style={{fontSize:'.9rem',color:'#16a34a',fontWeight:700}}>
                       -{couponState.discountType==='percent'
-                        ? `R$ ${((selProd.price*qty)*couponState.discountValue/100).toFixed(2)}`
+                        ? `R$ ${((selProd.price*(selProd.weightKg>=10?10:1))*couponState.discountValue/100).toFixed(2)}`
                         : `R$ ${couponState.discountValue.toFixed(2)}`}
                     </span>
                   </div>
@@ -1778,7 +1643,7 @@ export default function SalVitaLanding() {
                   <span style={{fontWeight:700,color:'var(--text)'}}>Total</span>
                   <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.3rem',fontWeight:700,color:'var(--brand)'}}>
                     {(() => {
-                      let subtotal = selProd.price*qty;
+                      let subtotal = selProd.price*(selProd.weightKg>=10?10:1);
                       if (couponState?.valid && couponState.discountValue) {
                         const disc = couponState.discountType==='percent'
                           ? subtotal*couponState.discountValue/100
@@ -1818,25 +1683,14 @@ export default function SalVitaLanding() {
               </div>
               <button onClick={closeBuy} style={{background:'var(--sky)',border:'none',borderRadius:8,width:36,height:36,color:'var(--mid)',fontSize:'1.3rem',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>×</button>
             </div>
-            <div style={{background:'var(--sky)',borderRadius:12,padding:'16px 20px',marginBottom:14,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div style={{background:'var(--sky)',borderRadius:12,padding:'16px 20px',marginBottom:20,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               <div>
                 <p style={{fontSize:'.9rem',color:'var(--muted)',marginBottom:2}}>Subtotal</p>
-                <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.9rem',fontWeight:700,color:'var(--brand)'}}>R$ {(selProd.price*qty).toFixed(2).replace('.',',')}</p>
+                <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.9rem',fontWeight:700,color:'var(--brand)'}}>R$ {selProd.price.toFixed(2).replace('.',',')}</p>
               </div>
               <div style={{textAlign:'right'}}>
                 <p style={{fontSize:'.87rem',color:'var(--muted)'}}>Peso aprox.</p>
-                <p style={{fontSize:'.93rem',color:'var(--mid)',fontWeight:500}}>{(selProd.weightKg*qty).toFixed(1)}kg</p>
-              </div>
-            </div>
-            {/* Quantity stepper */}
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20,padding:'4px 2px'}}>
-              <span style={{fontSize:'.9rem',fontWeight:700,letterSpacing:'.06em',color:'var(--mid)',textTransform:'uppercase'}}>Quantidade</span>
-              <div style={{display:'flex',alignItems:'center',gap:14}}>
-                <button type="button" onClick={()=>changeQty(-1)} disabled={qty<=1} aria-label="Diminuir"
-                  style={{width:38,height:38,borderRadius:10,border:'2px solid var(--brand)',background:'white',color:'var(--brand)',fontSize:'1.4rem',fontWeight:700,lineHeight:1,cursor:qty<=1?'not-allowed':'pointer',opacity:qty<=1?.4:1,display:'flex',alignItems:'center',justifyContent:'center'}}>−</button>
-                <span style={{fontSize:'1.3rem',fontWeight:800,color:'var(--text)',minWidth:28,textAlign:'center'}}>{qty}</span>
-                <button type="button" onClick={()=>changeQty(1)} disabled={qty>=10} aria-label="Aumentar"
-                  style={{width:38,height:38,borderRadius:10,border:'2px solid var(--brand)',background:'var(--brand)',color:'white',fontSize:'1.4rem',fontWeight:700,lineHeight:1,cursor:qty>=10?'not-allowed':'pointer',opacity:qty>=10?.4:1,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
+                <p style={{fontSize:'.93rem',color:'var(--mid)',fontWeight:500}}>{selProd.weightKg}kg</p>
               </div>
             </div>
             <div style={{marginBottom:18}}>
@@ -1885,7 +1739,7 @@ export default function SalVitaLanding() {
                 </div>
                 {selShip&&(
                   <div style={{background:'var(--sky)',borderRadius:12,padding:'15px 18px',marginBottom:18,borderTop:'3px solid var(--brand)'}}>
-                    {[['Produto',selProd.price*qty],[`Frete (${selShip.service})`,selShip.price]].map(([l,val])=>(
+                    {[['Produto',selProd.price],[`Frete (${selShip.service})`,selShip.price]].map(([l,val])=>(
                       <div key={String(l)} style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
                         <span style={{fontSize:'.95rem',color:'var(--muted)'}}>{l}</span>
                         <span style={{fontSize:'.95rem',color:'var(--mid)'}}>R$ {Number(val).toFixed(2).replace('.',',')}</span>
@@ -1893,7 +1747,7 @@ export default function SalVitaLanding() {
                     ))}
                     <div style={{display:'flex',justifyContent:'space-between',paddingTop:10,borderTop:'1px solid rgba(26,58,138,.12)',marginTop:4}}>
                       <span style={{fontWeight:700,color:'var(--text)'}}>Total estimado</span>
-                      <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.4rem',fontWeight:700,color:'var(--brand)'}}>R$ {(selProd.price*qty+selShip.price).toFixed(2).replace('.',',')}</span>
+                      <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.4rem',fontWeight:700,color:'var(--brand)'}}>R$ {(selProd.price+selShip.price).toFixed(2).replace('.',',')}</span>
                     </div>
                   </div>
                 )}
@@ -1901,7 +1755,7 @@ export default function SalVitaLanding() {
             )}
 
             <div style={{display:'flex',flexDirection:'column',gap:10}}>
-              <button onClick={()=>{ setShowCheckout(true); try { (window as any).fbq?.('track','InitiateCheckout',{ content_name: 'SAL VITA PREMIUM 1kg', content_ids: ['salvita-001'], value: selProd?.price*qty, currency: 'BRL', num_items: qty }); } catch {} }}
+              <button onClick={()=>{ setShowCheckout(true); try { (window as any).fbq?.('track','InitiateCheckout',{ content_name: 'SAL VITA PREMIUM 1kg', content_ids: ['salvita-001'], value: selProd?.price, currency: 'BRL', num_items: 1 }); } catch {} }}
                 style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,background:'var(--brand)',color:'white',border:'none',borderRadius:12,padding:'16px',fontSize:'.93rem',fontWeight:700,cursor:'pointer',letterSpacing:'.04em',transition:'background .2s,transform .2s'}}
                 onMouseEnter={e=>{e.currentTarget.style.background='#1a4aad';e.currentTarget.style.transform='scale(1.02)';}}
                 onMouseLeave={e=>{e.currentTarget.style.background='var(--brand)';e.currentTarget.style.transform='scale(1)';}}>
