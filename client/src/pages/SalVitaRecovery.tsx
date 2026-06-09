@@ -121,7 +121,7 @@ function LoginForm() {
 
 /* ── Tab 1: Carrinhos Abandonados ────────────────────────── */
 function WaStatusBadge() {
-  const { data, isLoading } = trpc.recovery.waStatus.useQuery(undefined, { refetchInterval: 60000 });
+  const { data, isLoading } = trpc.recovery.waStatus.useQuery(undefined, { refetchInterval: 60000, retry: 0 });
   if (isLoading) return null;
   const connected = (data as any)?.connected;
   return (
