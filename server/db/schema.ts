@@ -147,6 +147,7 @@ export const abandonedCarts = pgTable('abandoned_carts', {
   stepReached: integer('step_reached').default(1), // 1=form 2=shipping 3=payment
   status: text('status').notNull().default('checkout_started'), // checkout_started | redirected_to_payment | abandoned | converted | cancelled
   recovered: boolean('recovered').default(false).notNull(),
+  optedOut: boolean('opted_out').default(false).notNull(),
   recoverySentAt: timestamp('recovery_sent_at'),
   abandonedAt: timestamp('abandoned_at'),
   convertedAt: timestamp('converted_at'),

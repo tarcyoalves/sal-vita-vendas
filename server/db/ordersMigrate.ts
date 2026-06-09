@@ -102,6 +102,7 @@ export async function ensureOrdersTablesExist(): Promise<Step[]> {
   await run('abandoned_carts.abandoned_at', () => sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS abandoned_at TIMESTAMP`);
   await run('abandoned_carts.converted_at', () => sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS converted_at TIMESTAMP`);
   await run('abandoned_carts.updated_at', () => sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW() NOT NULL`);
+  await run('abandoned_carts.opted_out', () => sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS opted_out BOOLEAN NOT NULL DEFAULT FALSE`);
   await run('abandoned_carts_phone_idx', () => sql`CREATE INDEX IF NOT EXISTS abandoned_carts_phone_idx ON abandoned_carts(customer_phone)`);
   await run('abandoned_carts_status_idx', () => sql`CREATE INDEX IF NOT EXISTS abandoned_carts_status_idx ON abandoned_carts(status)`);
 
@@ -165,26 +166,32 @@ export async function ensureOrdersTablesExist(): Promise<Step[]> {
     )
   `);
   await run('msg_templates_type_idx', () => sql`CREATE INDEX IF NOT EXISTS msg_templates_type_idx ON msg_templates(type)`);
+  // Append opt-out footer to all existing templates that don't already include it (idempotent)
+  await run('msg_templates.opt_out_footer', () => sql`
+    UPDATE msg_templates
+    SET body = body || E'\n\n_Para não receber mais mensagens, responda PARAR._'
+    WHERE body NOT LIKE '%PARAR%'
+  `);
 
   await run('seed_templates', () => sql`
     INSERT INTO msg_templates (slug, type, label, body, active, is_default) VALUES
     ('abandoned_simples', 'abandoned', 'Abandono – Simples',
-     'Olá *{nome}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou.\n\n👉 Finalize agora: {link}\n\nQualquer dúvida, é só chamar! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_',
+     'Olá *{nome}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou.\n\n👉 Finalize agora: {link}\n\nQualquer dúvida, é só chamar! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_\n\n_Para não receber mais mensagens, responda PARAR._',
      true, true),
     ('abandoned_urgencia', 'abandoned', 'Abandono – Urgência',
-     'Olá *{nome}*! 🧂\n\n⚠️ Seu sal ainda está no carrinho, mas o estoque é limitado!\n\nGaranta agora antes de esgotar:\n👉 {link}\n\n_Sal Vita — Mossoró/RN_',
+     'Olá *{nome}*! 🧂\n\n⚠️ Seu sal ainda está no carrinho, mas o estoque é limitado!\n\nGaranta agora antes de esgotar:\n👉 {link}\n\n_Sal Vita — Mossoró/RN_\n\n_Para não receber mais mensagens, responda PARAR._',
      true, false),
     ('abandoned_cupom', 'abandoned', 'Abandono – Com Cupom',
-     'Olá *{nome}*! 🎁\n\nVimos que você ficou interessado no *Sal Vita Premium* e queremos te ajudar a finalizar.\n\nUse o cupom *{cupom}* e ganhe desconto especial:\n👉 {link}\n\nOfertas por tempo limitado!\n_Sal Vita — Sal Marinho de Mossoró/RN_',
+     'Olá *{nome}*! 🎁\n\nVimos que você ficou interessado no *Sal Vita Premium* e queremos te ajudar a finalizar.\n\nUse o cupom *{cupom}* e ganhe desconto especial:\n👉 {link}\n\nOfertas por tempo limitado!\n_Sal Vita — Sal Marinho de Mossoró/RN_\n\n_Para não receber mais mensagens, responda PARAR._',
      true, false),
     ('unpaid_pix', 'unpaid', 'Não Pago – PIX Copia e Cola',
-     'Olá *{nome}*! 💸\n\nSeu pedido *#{pedido}* — R$ {valor} — ainda está aguardando pagamento.\n\n✅ Pague agora via *PIX Copia e Cola*:\n\n{pix}\n\nCopie o código acima e cole no seu banco!\n\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_',
+     'Olá *{nome}*! 💸\n\nSeu pedido *#{pedido}* — R$ {valor} — ainda está aguardando pagamento.\n\n✅ Pague agora via *PIX Copia e Cola*:\n\n{pix}\n\nCopie o código acima e cole no seu banco!\n\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_\n\n_Para não receber mais mensagens, responda PARAR._',
      true, true),
     ('unpaid_lembrete', 'unpaid', 'Não Pago – Lembrete Geral',
-     'Olá *{nome}*! 🌊\n\nSeu pedido *#{pedido}* do Sal Vita ainda está aguardando pagamento.\n\n💰 Total: R$ {valor}\n\nFinalize aqui:\n👉 {link}\n\n_Pedido reservado por tempo limitado!_\n_Sal Vita — Mossoró/RN_',
+     'Olá *{nome}*! 🌊\n\nSeu pedido *#{pedido}* do Sal Vita ainda está aguardando pagamento.\n\n💰 Total: R$ {valor}\n\nFinalize aqui:\n👉 {link}\n\n_Pedido reservado por tempo limitado!_\n_Sal Vita — Mossoró/RN_\n\n_Para não receber mais mensagens, responda PARAR._',
      true, false),
     ('failed_tentar_novamente', 'failed', 'Pagamento Falhou – Tentar Novamente',
-     'Olá *{nome}*! 😕\n\nHouve um problema no pagamento do pedido *#{pedido}*.\n\nTente com outro método de pagamento:\n👉 {link}\n\nAceitamos *PIX*, *Cartão* e *Boleto* 💳\n_Sal Vita — Mossoró/RN_',
+     'Olá *{nome}*! 😕\n\nHouve um problema no pagamento do pedido *#{pedido}*.\n\nTente com outro método de pagamento:\n👉 {link}\n\nAceitamos *PIX*, *Cartão* e *Boleto* 💳\n_Sal Vita — Mossoró/RN_\n\n_Para não receber mais mensagens, responda PARAR._',
      true, true),
     ('confirmed_padrao', 'confirmed', 'Compra Confirmada',
      'Olá *{nome}*! 🎉\n\nSeu pagamento foi *confirmado*! ✅\n\n📦 Pedido *#{pedido}* — R$ {valor}\n\nJá estamos preparando seu envio. Você receberá o código de rastreio assim que postarmos. 🚚\n\nObrigado por escolher a Sal Vita! 🌊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_',

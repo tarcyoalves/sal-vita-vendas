@@ -19,6 +19,11 @@ function renderTemplate(body: string, vars: Record<string, string>): string {
   return body.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
 }
 
+function isBusinessHours(): boolean {
+  const brHour = (new Date().getUTCHours() - 3 + 24) % 24;
+  return brHour >= 8 && brHour < 21;
+}
+
 // Sends to BOTH 9th-digit variants IN PARALLEL — wa-server blindly returns
 // success:true so we can't detect which variant is the real JID. Sending both
 // guarantees delivery as long as one format matches WhatsApp registration.
@@ -470,6 +475,7 @@ async function fetchPixCode(mpPaymentId: string | null): Promise<string | null> 
 // Free-tier safe: small LIMIT, marks unpaid_followup_sent_at on attempt so it never reprocesses.
 async function processUnpaidFollowups(): Promise<{ sent: number }> {
   let sent = 0;
+  if (!isBusinessHours()) return { sent };
   try {
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
@@ -593,9 +599,14 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
     const fallbackTpl = tplBySlug['abandoned_simples'] ?? abandonedTpls.find(t => t.isDefault);
 
     let sent = 0, cancelled = 0, failed = 0;
+    // Skip automated sends outside business hours (08:00–21:00 BRT) to avoid policy violations
+    if (!isBusinessHours()) {
+      res.json({ ok: true, processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: 'outside business hours' });
+      return;
+    }
     for (const run of due) {
       const [cart] = await ordersDb.select().from(carts).where(eq(carts.id, run.cartId)).limit(1);
-      if (!cart || cart.status === 'converted' || cart.recovered) {
+      if (!cart || cart.status === 'converted' || cart.recovered || cart.optedOut) {
         await ordersDb.update(runs).set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
           .where(eq(runs.id, run.id));
         cancelled++;

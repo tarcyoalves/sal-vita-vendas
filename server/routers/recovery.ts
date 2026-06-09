@@ -5,20 +5,17 @@ import { abandonedCarts, automationRuns, coupons, msgTemplates, siteOrders } fro
 import { desc, eq, and, sql, lte } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 
-// Sends to BOTH 9th-digit variants IN PARALLEL so one always hits the correct JID.
-// wa-server returns HTTP 200 { success:true } even on Baileys failure, so we can't
-// detect which variant worked — but sending both guarantees at least one delivers.
+// Sends to both 9th-digit variants with a short delay between them.
+// wa-server blindly returns success:true, so we try both to guarantee delivery
+// regardless of which JID format the number is registered under on WhatsApp.
 async function sendViaWhatsApp(phone: string, message: string): Promise<{ ok: boolean; usedPhone: string }> {
   const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
   const key = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
 
   const primary = fmtPhone(phone);
-  // 5584986207841 (13-digit, with 9) ↔ 558486207841 (12-digit, without 9)
   const alt = primary.length === 13
     ? primary.slice(0, 4) + primary.slice(5)
     : primary.length === 12 ? primary.slice(0, 4) + '9' + primary.slice(4) : null;
-
-  const variants = [primary, alt].filter(Boolean) as string[];
 
   async function tryOne(phoneNum: string): Promise<boolean> {
     const ctrl = new AbortController();
@@ -43,12 +40,23 @@ async function sendViaWhatsApp(phone: string, message: string): Promise<{ ok: bo
     }
   }
 
-  // Fire all variants simultaneously — whichever JID is real will deliver
-  const results = await Promise.all(variants.map(n => tryOne(n)));
-  const ok = results.some(Boolean);
-  if (!ok) console.warn(`[wa] all variants failed for ${primary}`);
-  return { ok, usedPhone: primary };
+  const ok1 = await tryOne(primary);
+  if (alt) {
+    await new Promise(r => setTimeout(r, 2000)); // 2s delay between variants
+    await tryOne(alt);
+  }
+  return { ok: ok1, usedPhone: primary };
 }
+
+// Returns true if current time is within business hours (08:00–21:00 Brazil BRT = UTC-3)
+function isBusinessHours(): boolean {
+  const now = new Date();
+  const brHour = (now.getUTCHours() - 3 + 24) % 24;
+  return brHour >= 8 && brHour < 21;
+}
+
+// Opt-out footer appended to all outbound recovery messages
+const OPT_OUT = '\n\n_Para não receber mais mensagens, responda PARAR._';
 
 function fmtPhone(raw: string) {
   const d = raw.replace(/\D/g, '');
@@ -63,17 +71,17 @@ function renderTemplate(body: string, vars: Record<string, string>): string {
   return body.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
 }
 
-// Fallback messages (used when no template found)
+// Fallback messages (used when no template found) — all include opt-out footer
 function recoveryMsg(name: string, coupon?: string) {
-  return `Olá *${name}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou o pedido.\n\n${coupon ? `🎁 Use o cupom *${coupon}* e ganhe desconto especial!\n\n` : ''}👉 Finalize agora: https://premium.salvitarn.com.br\n\nQualquer dúvida é só chamar aqui! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
+  return `Olá *${name}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou o pedido.\n\n${coupon ? `🎁 Use o cupom *${coupon}* e ganhe desconto especial!\n\n` : ''}👉 Finalize agora: https://premium.salvitarn.com.br\n\nQualquer dúvida é só chamar aqui! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
 }
 
 function unpaidMsg(name: string, id: number, qty: number, total: string) {
-  return `Olá *${name}*! 🌊\n\nSeu pedido *#${id}* do Sal Vita ainda está aguardando pagamento.\n\n📦 ${qty}x Sal Marinho Integral 1kg\n💰 Total: R$ ${total}\n\nFinalize o pagamento aqui:\n👉 https://premium.salvitarn.com.br/meu-pedido?pedido=${id}\n\n_Pedido reservado por tempo limitado!_\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
+  return `Olá *${name}*! 🌊\n\nSeu pedido *#${id}* do Sal Vita ainda está aguardando pagamento.\n\n📦 ${qty}x Sal Marinho Integral 1kg\n💰 Total: R$ ${total}\n\nFinalize o pagamento aqui:\n👉 https://premium.salvitarn.com.br/meu-pedido?pedido=${id}\n\n_Pedido reservado por tempo limitado!_\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
 }
 
 function failedMsg(name: string, id: number) {
-  return `Olá *${name}*! 🌊\n\nHouve um problema com o pagamento do pedido *#${id}*.\n\nTente novamente com outro método:\n👉 https://premium.salvitarn.com.br/meu-pedido?pedido=${id}\n\nAceitamos Cartão, PIX e Boleto 💳\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
+  return `Olá *${name}*! 🌊\n\nHouve um problema com o pagamento do pedido *#${id}*.\n\nTente novamente com outro método:\n👉 https://premium.salvitarn.com.br/meu-pedido?pedido=${id}\n\nAceitamos Cartão, PIX e Boleto 💳\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
 }
 
 async function fetchPixCode(mpPaymentId: string): Promise<string | null> {
@@ -314,6 +322,21 @@ export const recoveryRouter = router({
       return { ok: true };
     }),
 
+  // Admin: mark cart customer as opted out (no more automated messages)
+  markOptedOut: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      await db.update(abandonedCarts)
+        .set({ optedOut: true, updatedAt: new Date() })
+        .where(eq(abandonedCarts.id, input.id));
+      // Cancel any pending automation runs for this cart
+      await db.update(automationRuns)
+        .set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(automationRuns.cartId, input.id), eq(automationRuns.status, 'scheduled')));
+      return { ok: true };
+    }),
+
   // Admin: send WhatsApp recovery message to specific cart
   sendRecovery: protectedProcedure
     .input(z.object({ id: z.number(), coupon: z.string().optional(), templateId: z.number().optional() }))
@@ -321,6 +344,7 @@ export const recoveryRouter = router({
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const [cart] = await db.select().from(abandonedCarts).where(eq(abandonedCarts.id, input.id)).limit(1);
       if (!cart) throw new TRPCError({ code: 'NOT_FOUND' });
+      if (cart.optedOut) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cliente optou por não receber mensagens (PARAR)' });
 
       let msg: string;
       if (input.templateId) {
@@ -361,6 +385,11 @@ export const recoveryRouter = router({
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const [order] = await db.select().from(siteOrders).where(eq(siteOrders.id, input.id)).limit(1);
       if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+      // Check opt-out via the matching abandoned cart record (if any)
+      const phone = order.customerPhone.replace(/\D/g, '');
+      const [cartRecord] = await db.select({ optedOut: abandonedCarts.optedOut })
+        .from(abandonedCarts).where(eq(abandonedCarts.customerPhone, phone)).limit(1);
+      if (cartRecord?.optedOut) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cliente optou por não receber mensagens (PARAR)' });
 
       const pixCode = order.mpPaymentId ? await fetchPixCode(order.mpPaymentId) : null;
       const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}`;
@@ -424,10 +453,12 @@ export const recoveryRouter = router({
   autoSendAbandoned: protectedProcedure
     .mutation(async ({ ctx }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      if (!isBusinessHours()) return { sent: 0, total: 0, skipped: 'outside business hours (08:00–21:00 BRT)' };
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const pending = await db.select().from(abandonedCarts).where(
         and(
           eq(abandonedCarts.recovered, false),
+          eq(abandonedCarts.optedOut, false),
           sql`(${abandonedCarts.recoverySentAt} IS NULL OR ${abandonedCarts.recoverySentAt} < ${oneDayAgo})`,
         )
       ).limit(50);
@@ -771,6 +802,7 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
   runAutomationJob: protectedProcedure
     .mutation(async ({ ctx }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      if (!isBusinessHours()) return { processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: 'outside business hours (08:00–21:00 BRT)' };
       const now = new Date();
       const due = await db.select().from(automationRuns).where(
         and(eq(automationRuns.status, 'scheduled'), lte(automationRuns.scheduledFor, now))
@@ -778,10 +810,10 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
 
       let sent = 0, cancelled = 0, failed = 0;
       for (const run of due) {
-        // Verify cart is not converted and has no confirmed payment
+        // Verify cart is not converted, not recovered, and not opted out
         const [cart] = await db.select().from(abandonedCarts)
           .where(eq(abandonedCarts.id, run.cartId)).limit(1);
-        if (!cart || cart.status === 'converted' || cart.recovered) {
+        if (!cart || cart.status === 'converted' || cart.recovered || cart.optedOut) {
           await db.update(automationRuns).set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
             .where(eq(automationRuns.id, run.id));
           cancelled++;

@@ -193,6 +193,10 @@ function AbandonedTab() {
     },
     onError: (e) => toast.error('IA: ' + e.message),
   });
+  const optOutMut = trpc.recovery.markOptedOut.useMutation({
+    onSuccess: () => { toast.success('🚫 Opt-out registrado — automações canceladas'); refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
 
   if (isLoading) return <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Carregando...</div>;
 
@@ -250,7 +254,7 @@ function AbandonedTab() {
           <p style={{ fontSize: '.85rem', color: '#94a3b8', marginTop: 6 }}>Todos os clientes finalizaram suas compras.</p>
         </div>
       ) : rows.map((row: any) => (
-        <div key={row.id} style={{ ...card, borderLeft: '4px solid #f59e0b' }}>
+        <div key={row.id} style={{ ...card, borderLeft: `4px solid ${row.optedOut ? '#94a3b8' : '#f59e0b'}`, opacity: row.optedOut ? 0.7 : 1 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -258,7 +262,12 @@ function AbandonedTab() {
                 <span style={{ background: '#fef3c7', color: '#92400e', borderRadius: 999, padding: '2px 9px', fontSize: '.72rem', fontWeight: 700 }}>
                   {stepLabel(row.stepReached ?? 1)}
                 </span>
-                {row.status && row.status !== 'checkout_started' && (
+                {row.optedOut && (
+                  <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 999, padding: '2px 9px', fontSize: '.7rem', fontWeight: 600 }}>
+                    🚫 PAROU
+                  </span>
+                )}
+                {!row.optedOut && row.status && row.status !== 'checkout_started' && (
                   <span style={{ background: '#f0fdf4', color: '#15803d', borderRadius: 999, padding: '2px 9px', fontSize: '.7rem', fontWeight: 600 }}>
                     {row.status === 'converted' ? '✓ Convertido' : row.status === 'redirected_to_payment' ? '→ No Pagamento' : row.status}
                   </span>
@@ -316,6 +325,16 @@ function AbandonedTab() {
               >
                 ✓ Recuperado
               </button>
+              {!row.optedOut && (
+                <button
+                  onClick={() => { if (confirm(`Registrar opt-out para ${row.customerName}? Isso cancelará todas as automações para este contato.`)) optOutMut.mutate({ id: row.id }); }}
+                  disabled={optOutMut.isPending}
+                  title="Cliente pediu para parar — cancela todas as automações e bloqueia futuros envios"
+                  style={btnDanger}
+                >
+                  🚫 Parou
+                </button>
+              )}
             </div>
           </div>
         </div>
