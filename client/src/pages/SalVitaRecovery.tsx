@@ -121,7 +121,7 @@ function LoginForm() {
 
 /* ── Tab 1: Carrinhos Abandonados ────────────────────────── */
 function WaStatusBadge() {
-  const { data, isLoading } = trpc.recovery.waStatus.useQuery(undefined, { refetchInterval: 60000, retry: 0 });
+  const { data, isLoading } = trpc.recovery.waStatus.useQuery(undefined, { refetchInterval: 300000, retry: 0 });
   if (isLoading) return null;
   const connected = (data as any)?.connected;
   return (
@@ -138,7 +138,7 @@ function WaStatusBadge() {
 }
 
 function AbandonedTab() {
-  const { data, isLoading, refetch } = trpc.recovery.listAbandoned.useQuery(undefined, { refetchInterval: 30000, retry: 0 });
+  const { data, isLoading, refetch } = trpc.recovery.listAbandoned.useQuery(undefined, { refetchInterval: 300000, retry: 0 });
   const [aiPreviews, setAiPreviews] = useState<Record<number, string>>({});
   const markRecovered = trpc.recovery.markRecovered.useMutation({
     onSuccess: () => { toast.success('Marcado como recuperado!'); refetch(); },
@@ -293,7 +293,7 @@ function AbandonedTab() {
 
 /* ── Tab 2: Pedidos Não Pagos ────────────────────────────── */
 function UnpaidTab() {
-  const { data, isLoading, refetch } = trpc.recovery.listUnpaid.useQuery(undefined, { refetchInterval: 30000, retry: 0 });
+  const { data, isLoading, refetch } = trpc.recovery.listUnpaid.useQuery(undefined, { refetchInterval: 300000, retry: 0 });
   const templatesQ = trpc.recovery.listTemplates.useQuery();
   const [selectedTemplates, setSelectedTemplates] = useState<Record<number, number>>({});
   const [previews, setPreviews] = useState<Record<number, string>>({});
@@ -764,7 +764,7 @@ function CouponsTab() {
 
 /* ── Tab 4: Automações ───────────────────────────────────── */
 function AutomationTab() {
-  const { data, isLoading, refetch } = trpc.recovery.listAutomationRuns.useQuery(undefined, { refetchInterval: 20000, retry: 0 });
+  const { data, isLoading, refetch } = trpc.recovery.listAutomationRuns.useQuery(undefined, { refetchInterval: 300000, retry: 0 });
   const jobMut = trpc.recovery.runAutomationJob.useMutation({
     onSuccess: (d: any) => { toast.success(`Job: ${d.sent} enviados, ${d.cancelled} cancelados, ${d.failed} falhas`); refetch(); },
     onError: (e) => toast.error(e.message),
