@@ -76,11 +76,7 @@ const dbReady = Promise.all([
 
 // Set once dbReady settles so the guard middleware only blocks the very first request
 let migrationSettled = false;
-dbReady.then(() => {
-  migrationSettled = true;
-  // Keep orders DB connection warm — ping every 4 min so Neon doesn't auto-suspend mid-session
-  setInterval(() => { ordersDb.execute(sql`SELECT 1`).catch(() => {}); }, 4 * 60 * 1000);
-});
+dbReady.then(() => { migrationSettled = true; });
 
 // CRM data auto-migration: only runs if a source DB with a 'sellers' table is available.
 // ORDERS_DATABASE_URL is the e-commerce DB (no CRM tables) so it is skipped automatically.
@@ -494,7 +490,7 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
       isNull(siteOrders.unpaidFollowupSentAt),
       lte(siteOrders.createdAt, twoHoursAgo),
       gte(siteOrders.createdAt, threeDaysAgo),
-    )).limit(20);
+    )).limit(2); // max 2 per cron run — keeps execution within Hobby 10s budget
     if (orders.length === 0) return { sent };
 
     const tpls = await ordersDb.select().from(msgTemplates).where(inArray(msgTemplates.type, ['unpaid', 'failed']));
@@ -554,7 +550,7 @@ async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
       eq(siteOrders.paymentStatus, 'awaiting'),
       lte(siteOrders.createdAt, oneHourAgo),
       gte(siteOrders.createdAt, threeDaysAgo),
-    )).limit(15);
+    )).limit(5); // lightweight DB/API check only — no WA sends
 
     for (const o of orders) {
       try {
@@ -606,9 +602,10 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
     const { lte } = await import('drizzle-orm');
     const { automationRuns: runs, abandonedCarts: carts } = await import('../server/db/schema');
     const now = new Date();
+    // Limit to 3 per cron run — keeps total execution under Vercel Hobby 10s budget
     const due = await ordersDb.select().from(runs).where(
       and(eq(runs.status, 'scheduled'), lte(runs.scheduledFor, now))
-    ).limit(50);
+    ).limit(3);
 
     // Load all abandoned templates once (small table) and index by slug for the cadence.
     const abandonedTpls = await ordersDb.select().from(msgTemplates).where(eq(msgTemplates.type, 'abandoned'));
@@ -660,14 +657,10 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
           await ordersDb.update(carts).set({ recoverySentAt: new Date(), updatedAt: new Date() })
             .where(eq(carts.id, run.cartId));
           sent++;
-          // Best-effort email recovery (non-blocking)
-          if (cart.customerEmail) {
-            const coupon = ruleCfg.coupon || undefined;
-            const emailHtml = abandonedCartHtml(cart.customerName, 'https://premium.salvitarn.com.br', coupon);
-            const emailSubject = coupon
-              ? `Seu cupom ${coupon} — finalize seu pedido Sal Vita`
-              : 'Você esqueceu algo — finalize seu pedido Sal Vita';
-            sendEmail(cart.customerEmail, emailSubject, emailHtml).catch(() => {});
+          // Email only on 3rd touch (cupom) to save Resend daily quota for confirmations
+          if (cart.customerEmail && ruleCfg.coupon) {
+            const emailHtml = abandonedCartHtml(cart.customerName, 'https://premium.salvitarn.com.br', ruleCfg.coupon);
+            sendEmail(cart.customerEmail, `Seu cupom ${ruleCfg.coupon} — finalize seu pedido Sal Vita`, emailHtml).catch(() => {});
           }
         } else {
           await ordersDb.update(runs).set({ status: 'failed', updatedAt: new Date() }).where(eq(runs.id, run.id));
@@ -677,7 +670,6 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
         await ordersDb.update(runs).set({ status: 'failed', updatedAt: new Date() }).where(eq(runs.id, run.id));
         failed++;
       }
-      await new Promise(r => setTimeout(r, 1000));
     }
 
     res.json({ ok: true, processed: due.length, sent, cancelled, failed, unpaid, reconciled });

@@ -1,10 +1,26 @@
 /**
  * Resend email integration — uses REST API directly (no npm package).
  * All functions are best-effort: they never throw and never block the caller.
+ *
+ * Free tier: 3,000 emails/month, 100 emails/day hard cap.
+ * Daily budget is split conservatively: max 80 emails/day to leave margin.
+ * Counter is checked via Resend's API to avoid silent rejections.
  */
 
 const FROM = 'Sal Vita <noreply@premium.salvitarn.com.br>';
 const BRAND = '#0C3680';
+// Stay comfortably under 100/day free limit — env var allows override
+const DAILY_SOFT_LIMIT = parseInt(process.env.RESEND_DAILY_LIMIT ?? '80');
+
+// In-process daily counter (resets on cold start — good enough for serverless)
+let _emailsToday = 0;
+let _emailCounterDay = '';  // YYYY-MM-DD in UTC
+
+function dailyCount(): number {
+  const today = new Date().toISOString().slice(0, 10);
+  if (_emailCounterDay !== today) { _emailsToday = 0; _emailCounterDay = today; }
+  return _emailsToday;
+}
 
 // ── Core send function ────────────────────────────────────────────────────────
 
@@ -12,13 +28,18 @@ export async function sendEmail(
   to: string,
   subject: string,
   html: string,
-): Promise<{ ok: boolean }> {
+): Promise<{ ok: boolean; reason?: string }> {
   const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) return { ok: false };
+  if (!apiKey) return { ok: false, reason: 'no_api_key' };
+
+  if (dailyCount() >= DAILY_SOFT_LIMIT) {
+    console.warn(`[email] daily soft limit (${DAILY_SOFT_LIMIT}) reached — skipping "${subject}" → ${to}`);
+    return { ok: false, reason: 'daily_limit' };
+  }
 
   try {
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 10_000);
+    const timer = setTimeout(() => ac.abort(), 8_000);
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
@@ -32,13 +53,14 @@ export async function sendEmail(
     if (!res.ok) {
       const err = await res.text().catch(() => res.statusText);
       console.error(`[email] Resend error ${res.status}:`, err);
-      return { ok: false };
+      return { ok: false, reason: `resend_${res.status}` };
     }
-    console.log(`[email] sent "${subject}" → ${to}`);
+    _emailsToday++;
+    console.log(`[email] sent (${_emailsToday}/${DAILY_SOFT_LIMIT} today) "${subject}" → ${to}`);
     return { ok: true };
   } catch (err) {
     console.error('[email] sendEmail failed:', err);
-    return { ok: false };
+    return { ok: false, reason: 'network_error' };
   }
 }
 

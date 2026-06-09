@@ -202,6 +202,19 @@ export async function ensureOrdersTablesExist(): Promise<Step[]> {
     ON CONFLICT (slug) DO NOTHING
   `);
 
+  // Auto-cleanup: keep Neon storage well under the 0.5 GB free limit.
+  // Runs on every cold start — cheap scans with index support, idempotent.
+  await run('cleanup_automation_runs', () => sql`
+    DELETE FROM automation_runs
+    WHERE status IN ('sent', 'cancelled', 'failed')
+      AND updated_at < NOW() - INTERVAL '60 days'
+  `);
+  await run('cleanup_abandoned_carts', () => sql`
+    DELETE FROM abandoned_carts
+    WHERE (recovered = TRUE OR opted_out = TRUE)
+      AND updated_at < NOW() - INTERVAL '90 days'
+  `);
+
   const failed = steps.filter(s => !s.ok);
   console.log(`[orders-migrate] done: ${steps.length - failed.length}/${steps.length} ok` + (failed.length ? `, failed: ${failed.map(f => f.name).join(', ')}` : ''));
   return steps;
