@@ -58137,6 +58137,11 @@ async function ensureOrdersTablesExist() {
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `);
+  await run2("site_orders.coupon_code", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS coupon_code TEXT`);
+  await run2("site_orders.coupon_discount", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS coupon_discount TEXT`);
+  await run2("site_orders.mp_preference_id", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_preference_id TEXT`);
+  await run2("site_orders.mp_payment_id", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_payment_id TEXT`);
+  await run2("site_orders.tracking_code", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS tracking_code TEXT`);
   await run2("site_orders_status_idx", () => sql5`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`);
   await run2("site_orders_phone_idx", () => sql5`CREATE INDEX IF NOT EXISTS site_orders_phone_idx ON site_orders(customer_phone)`);
   await run2("abandoned_carts", () => sql5`
@@ -58157,6 +58162,16 @@ async function ensureOrdersTablesExist() {
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `);
+  await run2("abandoned_carts.customer_email", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS customer_email TEXT`);
+  await run2("abandoned_carts.postal_code", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS postal_code TEXT`);
+  await run2("abandoned_carts.quantity", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1`);
+  await run2("abandoned_carts.step_reached", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS step_reached INTEGER DEFAULT 1`);
+  await run2("abandoned_carts.status", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'checkout_started'`);
+  await run2("abandoned_carts.recovered", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS recovered BOOLEAN NOT NULL DEFAULT FALSE`);
+  await run2("abandoned_carts.recovery_sent_at", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS recovery_sent_at TIMESTAMP`);
+  await run2("abandoned_carts.abandoned_at", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS abandoned_at TIMESTAMP`);
+  await run2("abandoned_carts.converted_at", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS converted_at TIMESTAMP`);
+  await run2("abandoned_carts.updated_at", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW() NOT NULL`);
   await run2("abandoned_carts_phone_idx", () => sql5`CREATE INDEX IF NOT EXISTS abandoned_carts_phone_idx ON abandoned_carts(customer_phone)`);
   await run2("abandoned_carts_status_idx", () => sql5`CREATE INDEX IF NOT EXISTS abandoned_carts_status_idx ON abandoned_carts(status)`);
   await run2("automation_runs", () => sql5`
@@ -58177,6 +58192,13 @@ async function ensureOrdersTablesExist() {
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `);
+  await run2("automation_runs.provider_response", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS provider_response TEXT`);
+  await run2("automation_runs.ai_body", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_body TEXT`);
+  await run2("automation_runs.ai_reasoning", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_reasoning TEXT`);
+  await run2("automation_runs.ai_processed_at", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_processed_at TIMESTAMP`);
+  await run2("automation_runs.sent_at", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP`);
+  await run2("automation_runs.cancelled_at", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP`);
+  await run2("automation_runs.updated_at", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW() NOT NULL`);
   await run2("automation_runs_status_idx", () => sql5`CREATE INDEX IF NOT EXISTS automation_runs_status_idx ON automation_runs(status)`);
   await run2("automation_runs_scheduled_idx", () => sql5`CREATE INDEX IF NOT EXISTS automation_runs_scheduled_for_idx ON automation_runs(scheduled_for)`);
   await run2("automation_runs_cart_idx", () => sql5`CREATE INDEX IF NOT EXISTS automation_runs_cart_id_idx ON automation_runs(cart_id)`);

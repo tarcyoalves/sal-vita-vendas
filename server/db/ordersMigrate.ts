@@ -62,6 +62,12 @@ export async function ensureOrdersTablesExist(): Promise<Step[]> {
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `);
+  // Backfill columns on pre-existing site_orders tables
+  await run('site_orders.coupon_code', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS coupon_code TEXT`);
+  await run('site_orders.coupon_discount', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS coupon_discount TEXT`);
+  await run('site_orders.mp_preference_id', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_preference_id TEXT`);
+  await run('site_orders.mp_payment_id', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_payment_id TEXT`);
+  await run('site_orders.tracking_code', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS tracking_code TEXT`);
   await run('site_orders_status_idx', () => sql`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`);
   await run('site_orders_phone_idx', () => sql`CREATE INDEX IF NOT EXISTS site_orders_phone_idx ON site_orders(customer_phone)`);
 
@@ -83,6 +89,18 @@ export async function ensureOrdersTablesExist(): Promise<Step[]> {
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `);
+  // Backfill columns on pre-existing abandoned_carts tables (older partial migrations
+  // created the table without these columns). ADD COLUMN IF NOT EXISTS is idempotent.
+  await run('abandoned_carts.customer_email', () => sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS customer_email TEXT`);
+  await run('abandoned_carts.postal_code', () => sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS postal_code TEXT`);
+  await run('abandoned_carts.quantity', () => sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1`);
+  await run('abandoned_carts.step_reached', () => sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS step_reached INTEGER DEFAULT 1`);
+  await run('abandoned_carts.status', () => sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'checkout_started'`);
+  await run('abandoned_carts.recovered', () => sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS recovered BOOLEAN NOT NULL DEFAULT FALSE`);
+  await run('abandoned_carts.recovery_sent_at', () => sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS recovery_sent_at TIMESTAMP`);
+  await run('abandoned_carts.abandoned_at', () => sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS abandoned_at TIMESTAMP`);
+  await run('abandoned_carts.converted_at', () => sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS converted_at TIMESTAMP`);
+  await run('abandoned_carts.updated_at', () => sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW() NOT NULL`);
   await run('abandoned_carts_phone_idx', () => sql`CREATE INDEX IF NOT EXISTS abandoned_carts_phone_idx ON abandoned_carts(customer_phone)`);
   await run('abandoned_carts_status_idx', () => sql`CREATE INDEX IF NOT EXISTS abandoned_carts_status_idx ON abandoned_carts(status)`);
 
@@ -104,6 +122,14 @@ export async function ensureOrdersTablesExist(): Promise<Step[]> {
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `);
+  // Backfill AI/automation columns on pre-existing tables
+  await run('automation_runs.provider_response', () => sql`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS provider_response TEXT`);
+  await run('automation_runs.ai_body', () => sql`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_body TEXT`);
+  await run('automation_runs.ai_reasoning', () => sql`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_reasoning TEXT`);
+  await run('automation_runs.ai_processed_at', () => sql`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_processed_at TIMESTAMP`);
+  await run('automation_runs.sent_at', () => sql`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP`);
+  await run('automation_runs.cancelled_at', () => sql`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP`);
+  await run('automation_runs.updated_at', () => sql`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW() NOT NULL`);
   await run('automation_runs_status_idx', () => sql`CREATE INDEX IF NOT EXISTS automation_runs_status_idx ON automation_runs(status)`);
   await run('automation_runs_scheduled_idx', () => sql`CREATE INDEX IF NOT EXISTS automation_runs_scheduled_for_idx ON automation_runs(scheduled_for)`);
   await run('automation_runs_cart_idx', () => sql`CREATE INDEX IF NOT EXISTS automation_runs_cart_id_idx ON automation_runs(cart_id)`);
