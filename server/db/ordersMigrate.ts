@@ -184,6 +184,12 @@ export async function ensureOrdersTablesExist(): Promise<Step[]> {
      true, false),
     ('failed_tentar_novamente', 'failed', 'Pagamento Falhou – Tentar Novamente',
      'Olá *{nome}*! 😕\n\nHouve um problema no pagamento do pedido *#{pedido}*.\n\nTente com outro método de pagamento:\n👉 {link}\n\nAceitamos *PIX*, *Cartão* e *Boleto* 💳\n_Sal Vita — Mossoró/RN_',
+     true, true),
+    ('confirmed_padrao', 'confirmed', 'Compra Confirmada',
+     'Olá *{nome}*! 🎉\n\nSeu pagamento foi *confirmado*! ✅\n\n📦 Pedido *#{pedido}* — R$ {valor}\n\nJá estamos preparando seu envio. Você receberá o código de rastreio assim que postarmos. 🚚\n\nObrigado por escolher a Sal Vita! 🌊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_',
+     true, true),
+    ('shipped_padrao', 'shipped', 'Pedido Enviado – Rastreio',
+     'Olá *{nome}*! 📦\n\nBoa notícia: seu pedido *#{pedido}* foi *enviado*! 🚚\n\n🔎 Código de rastreio: *{rastreio}*\n\nAcompanhe a entrega em:\n👉 {link}\n\nQualquer dúvida, é só chamar! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_',
      true, true)
     ON CONFLICT (slug) DO NOTHING
   `);

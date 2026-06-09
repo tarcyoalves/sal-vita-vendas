@@ -56518,6 +56518,30 @@ var PKG_10KG = { height: 21, width: 24, length: 27 };
 function getPkg(qty) {
   return qty >= 10 ? PKG_10KG : PKG_1KG;
 }
+function renderTpl(body, vars) {
+  return body.replace(/\{(\w+)\}/g, (_2, k) => vars[k] ?? `{${k}}`);
+}
+async function sendWhatsAppMsg(phone, message) {
+  const url2 = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
+  const key = process.env.WA_API_KEY || "MinhaChaveSuperSegura123456";
+  const digits = phone.replace(/\D/g, "");
+  const fmt = digits.startsWith("55") ? digits : `55${digits}`;
+  try {
+    const ac = new AbortController();
+    const timer2 = setTimeout(() => ac.abort(), 8e3);
+    const r = await fetch(`${url2}/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": key },
+      body: JSON.stringify({ phone: fmt, message }),
+      signal: ac.signal
+    });
+    clearTimeout(timer2);
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+var correiosLink = (code) => `https://rastreamento.correios.com.br/app/index.php?objeto=${encodeURIComponent(code)}`;
 var STATIC_REGIONS = {
   RN: { pac: [14, "3\u20135"], sedex: [27, "1\u20132"] },
   CE: { pac: [15, "3\u20135"], sedex: [28, "1\u20132"] },
@@ -56854,6 +56878,28 @@ Seja direto e use emojis para facilitar leitura.`;
     if (ctx.user.role !== "admin")
       throw new TRPCError({ code: "FORBIDDEN" });
     const [updated] = await ordersDb.update(siteOrders).set({ trackingCode: input.trackingCode, status: "shipped", updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, input.id)).returning();
+    if (updated) {
+      try {
+        const [tpl] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.type, "shipped"), eq(msgTemplates.isDefault, true))).limit(1);
+        const vars = {
+          nome: updated.customerName,
+          pedido: String(updated.id),
+          rastreio: input.trackingCode,
+          link: correiosLink(input.trackingCode)
+        };
+        const msg = tpl ? renderTpl(tpl.body, vars) : `Ol\xE1 *${updated.customerName}*! \u{1F4E6}
+
+Seu pedido *#${updated.id}* foi *enviado*! \u{1F69A}
+
+\u{1F50E} Rastreio: *${input.trackingCode}*
+\u{1F449} ${correiosLink(input.trackingCode)}
+
+_Sal Vita \u2014 Mossor\xF3/RN_`;
+        await sendWhatsAppMsg(updated.customerPhone, msg);
+      } catch (e) {
+        console.error("[updateTracking] WA notify failed:", e);
+      }
+    }
     return updated;
   }),
   createPayment: publicProcedure.input(external_exports.object({ orderId: external_exports.number(), phone: external_exports.string().min(4).optional() })).mutation(async ({ input }) => {
@@ -57001,6 +57047,7 @@ Seja direto e use emojis para facilitar leitura.`;
       }
       throw err;
     }
+    await ordersDb.update(siteOrders).set({ meOrderId, updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, input.orderId));
     const genRes = await fetch(`${ME_BASE}/api/v2/me/shipment/generate`, {
       method: "POST",
       headers,
@@ -57021,7 +57068,7 @@ Seja direto e use emojis para facilitar leitura.`;
     }
     const printData = await printRes.json();
     const labelUrl = printData.url;
-    const [updated] = await ordersDb.update(siteOrders).set({ meOrderId, meLabelUrl: labelUrl, status: "shipped", updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, input.orderId)).returning();
+    const [updated] = await ordersDb.update(siteOrders).set({ meOrderId, meLabelUrl: labelUrl, status: "label_generated", updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, input.orderId)).returning();
     return { labelUrl, meOrderId, order: updated };
   }),
   cancelOrder: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
@@ -58250,6 +58297,12 @@ async function ensureOrdersTablesExist() {
      true, false),
     ('failed_tentar_novamente', 'failed', 'Pagamento Falhou – Tentar Novamente',
      'Olá *{nome}*! 😕\n\nHouve um problema no pagamento do pedido *#{pedido}*.\n\nTente com outro método de pagamento:\n👉 {link}\n\nAceitamos *PIX*, *Cartão* e *Boleto* 💳\n_Sal Vita — Mossoró/RN_',
+     true, true),
+    ('confirmed_padrao', 'confirmed', 'Compra Confirmada',
+     'Olá *{nome}*! 🎉\n\nSeu pagamento foi *confirmado*! ✅\n\n📦 Pedido *#{pedido}* — R$ {valor}\n\nJá estamos preparando seu envio. Você receberá o código de rastreio assim que postarmos. 🚚\n\nObrigado por escolher a Sal Vita! 🌊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_',
+     true, true),
+    ('shipped_padrao', 'shipped', 'Pedido Enviado – Rastreio',
+     'Olá *{nome}*! 📦\n\nBoa notícia: seu pedido *#{pedido}* foi *enviado*! 🚚\n\n🔎 Código de rastreio: *{rastreio}*\n\nAcompanhe a entrega em:\n👉 {link}\n\nQualquer dúvida, é só chamar! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_',
      true, true)
     ON CONFLICT (slug) DO NOTHING
   `);
@@ -58263,6 +58316,26 @@ init_schema2();
 init_drizzle_orm();
 function renderTemplate2(body, vars) {
   return body.replace(/\{(\w+)\}/g, (_2, k) => vars[k] ?? `{${k}}`);
+}
+async function sendWhatsApp(phone, message) {
+  const waUrl = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
+  const waKey = process.env.WA_API_KEY || "MinhaChaveSuperSegura123456";
+  const digits = phone.replace(/\D/g, "");
+  const fmtPhone2 = digits.startsWith("55") ? digits : `55${digits}`;
+  try {
+    const ac = new AbortController();
+    const timer2 = setTimeout(() => ac.abort(), 8e3);
+    const r = await fetch(`${waUrl}/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": waKey },
+      body: JSON.stringify({ phone: fmtPhone2, message }),
+      signal: ac.signal
+    });
+    clearTimeout(timer2);
+    return r.ok;
+  } catch {
+    return false;
+  }
 }
 var app = (0, import_express.default)();
 app.set("trust proxy", 1);
@@ -58496,25 +58569,55 @@ app.post("/api/mp-webhook", import_express.default.raw({ type: "application/json
       res.json({ ok: true });
       return;
     }
+    const orderRows = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, orderId));
+    const order = orderRows[0];
+    if (!order) {
+      res.json({ ok: true });
+      return;
+    }
+    if (order.paymentStatus === "confirmed") {
+      res.json({ ok: true, already: true });
+      return;
+    }
+    const mpId = String(payment.id ?? "");
     if (payment.status === "approved") {
-      const orderRows = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, orderId));
-      const order = orderRows[0];
-      if (order && payment.transaction_amount !== void 0) {
+      if (payment.transaction_amount !== void 0) {
         const expectedTotal = parseFloat(order.totalPrice ?? "0");
-        if (Math.abs(payment.transaction_amount - expectedTotal) > 0.01) {
+        if (expectedTotal > 0 && Math.abs(payment.transaction_amount - expectedTotal) > 0.01) {
           console.warn(`[mp-webhook] Amount mismatch for order ${orderId}: expected ${expectedTotal}, got ${payment.transaction_amount}`);
-          res.status(400).json({ error: "Payment amount does not match order total" });
+          res.json({ ok: true, mismatch: true });
           return;
         }
       }
-      await ordersDb.update(siteOrders).set({ paymentStatus: "confirmed", mpPaymentId: String(payment.id), updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, orderId));
-      if (order) {
-        const phone = order.customerPhone.replace(/\D/g, "");
-        await ordersDb.update(automationRuns).set({ status: "cancelled", cancelledAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(and(eq(automationRuns.customerPhone, phone), eq(automationRuns.status, "scheduled")));
-        await ordersDb.update(abandonedCarts).set({ status: "converted", recovered: true, convertedAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.customerPhone, phone));
+      await ordersDb.update(siteOrders).set({ status: "confirmed", paymentStatus: "confirmed", mpPaymentId: mpId, updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, orderId));
+      const phone = order.customerPhone.replace(/\D/g, "");
+      await ordersDb.update(automationRuns).set({ status: "cancelled", cancelledAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(and(eq(automationRuns.customerPhone, phone), eq(automationRuns.status, "scheduled")));
+      await ordersDb.update(abandonedCarts).set({ status: "converted", recovered: true, convertedAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.customerPhone, phone));
+      try {
+        const [tpl] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.type, "confirmed"), eq(msgTemplates.isDefault, true))).limit(1);
+        const vars = {
+          nome: order.customerName,
+          pedido: String(order.id),
+          valor: order.totalPrice ?? "0"
+        };
+        const msg = tpl ? renderTemplate2(tpl.body, vars) : `Ol\xE1 *${order.customerName}*! \u{1F389}
+
+Seu pagamento foi *confirmado*! \u2705
+
+\u{1F4E6} Pedido *#${order.id}* \u2014 R$ ${order.totalPrice}
+
+J\xE1 estamos preparando seu envio. Voc\xEA receber\xE1 o c\xF3digo de rastreio assim que postarmos. \u{1F69A}
+
+Obrigado por escolher a Sal Vita! \u{1F30A}
+_Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
+        await sendWhatsApp(order.customerPhone, msg);
+      } catch (e) {
+        console.error("[mp-webhook] confirmation WA failed:", e);
       }
-    } else if (payment.status === "rejected") {
-      await ordersDb.update(siteOrders).set({ paymentStatus: "failed", mpPaymentId: String(payment.id), updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, orderId));
+    } else if (payment.status === "pending" || payment.status === "in_process" || payment.status === "authorized") {
+      await ordersDb.update(siteOrders).set({ mpPaymentId: mpId, updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, orderId));
+    } else if (payment.status === "rejected" || payment.status === "cancelled" || payment.status === "refunded" || payment.status === "charged_back") {
+      await ordersDb.update(siteOrders).set({ paymentStatus: "failed", mpPaymentId: mpId, updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, orderId));
     }
     res.json({ ok: true });
   } catch (err) {

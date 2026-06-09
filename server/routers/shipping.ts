@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { router, publicProcedure, protectedProcedure } from '../trpc';
 import { ordersDb as db } from '../db/ordersDb';
-import { siteOrders, coupons } from '../db/schema';
+import { siteOrders, coupons, msgTemplates } from '../db/schema';
 import { desc, eq, and, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 
@@ -12,6 +12,33 @@ const PKG_1KG  = { height: 7, width: 15, length: 24 };
 const PKG_10KG = { height: 21, width: 24, length: 27 };
 
 function getPkg(qty: number) { return qty >= 10 ? PKG_10KG : PKG_1KG; }
+
+function renderTpl(body: string, vars: Record<string, string>): string {
+  return body.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
+}
+
+// Best-effort WhatsApp send via the Baileys wa-server on the VPS (non-throwing).
+async function sendWhatsAppMsg(phone: string, message: string): Promise<boolean> {
+  const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
+  const key = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
+  const digits = phone.replace(/\D/g, '');
+  const fmt = digits.startsWith('55') ? digits : `55${digits}`;
+  try {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 8000);
+    const r = await fetch(`${url}/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': key },
+      body: JSON.stringify({ phone: fmt, message }),
+      signal: ac.signal,
+    });
+    clearTimeout(timer);
+    return r.ok;
+  } catch { return false; }
+}
+
+const correiosLink = (code: string) =>
+  `https://rastreamento.correios.com.br/app/index.php?objeto=${encodeURIComponent(code)}`;
 
 const STATIC_REGIONS: Record<string, { pac:[number,string]; sedex:[number,string] }> = {
   RN:{pac:[14,'3–5'],sedex:[27,'1–2']}, CE:{pac:[15,'3–5'],sedex:[28,'1–2']},
@@ -346,6 +373,24 @@ Seja direto e use emojis para facilitar leitura.`;
         .set({ trackingCode: input.trackingCode, status: 'shipped', updatedAt: new Date() })
         .where(eq(siteOrders.id, input.id))
         .returning();
+
+      // Auto-notify the customer of the tracking code via WhatsApp (best effort)
+      if (updated) {
+        try {
+          const [tpl] = await db.select().from(msgTemplates)
+            .where(and(eq(msgTemplates.type, 'shipped'), eq(msgTemplates.isDefault, true))).limit(1);
+          const vars = {
+            nome: updated.customerName,
+            pedido: String(updated.id),
+            rastreio: input.trackingCode,
+            link: correiosLink(input.trackingCode),
+          };
+          const msg = tpl
+            ? renderTpl(tpl.body, vars)
+            : `Olá *${updated.customerName}*! 📦\n\nSeu pedido *#${updated.id}* foi *enviado*! 🚚\n\n🔎 Rastreio: *${input.trackingCode}*\n👉 ${correiosLink(input.trackingCode)}\n\n_Sal Vita — Mossoró/RN_`;
+          await sendWhatsAppMsg(updated.customerPhone, msg);
+        } catch (e) { console.error('[updateTracking] WA notify failed:', e); }
+      }
       return updated;
     }),
 
@@ -507,6 +552,10 @@ Seja direto e use emojis para facilitar leitura.`;
         throw err; // re-throw original error
       }
 
+      // Persist meOrderId right after checkout succeeds (label is now paid) so it can be
+      // cancelled/reprinted later even if generate/print below fails.
+      await db.update(siteOrders).set({ meOrderId, updatedAt: new Date() }).where(eq(siteOrders.id, input.orderId));
+
       const genRes = await fetch(`${ME_BASE}/api/v2/me/shipment/generate`, {
         method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }),
       });
@@ -525,8 +574,10 @@ Seja direto e use emojis para facilitar leitura.`;
       const printData = await printRes.json();
       const labelUrl: string = printData.url;
 
+      // Label generated but NOT yet physically posted — use 'label_generated' so the
+      // "Pendentes Envio" admin tab works and we don't tell the customer it shipped early.
       const [updated] = await db.update(siteOrders)
-        .set({ meOrderId, meLabelUrl: labelUrl, status: 'shipped', updatedAt: new Date() })
+        .set({ meOrderId, meLabelUrl: labelUrl, status: 'label_generated', updatedAt: new Date() })
         .where(eq(siteOrders.id, input.orderId))
         .returning();
 

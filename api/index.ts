@@ -19,6 +19,28 @@ function renderTemplate(body: string, vars: Record<string, string>): string {
   return body.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
 }
 
+// Shared WhatsApp sender (Baileys wa-server on the VPS). Non-throwing.
+async function sendWhatsApp(phone: string, message: string): Promise<boolean> {
+  const waUrl = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
+  const waKey = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
+  const digits = phone.replace(/\D/g, '');
+  const fmtPhone = digits.startsWith('55') ? digits : `55${digits}`;
+  try {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 8000);
+    const r = await fetch(`${waUrl}/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': waKey },
+      body: JSON.stringify({ phone: fmtPhone, message }),
+      signal: ac.signal,
+    });
+    clearTimeout(timer);
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 const app = express();
 
 // Vercel sits behind a proxy — trust first hop so rate limiters see real client IPs
@@ -260,34 +282,64 @@ app.post('/api/mp-webhook', express.raw({ type: 'application/json' }), async (re
     const orderId = parseInt(payment.external_reference ?? '');
     if (!orderId) { res.json({ ok: true }); return; }
 
+    const orderRows = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, orderId));
+    const order = orderRows[0];
+    if (!order) { res.json({ ok: true }); return; }
+
+    // Idempotency: if already confirmed, don't reprocess (avoids duplicate WhatsApp/side effects)
+    if (order.paymentStatus === 'confirmed') { res.json({ ok: true, already: true }); return; }
+
+    // Always persist the payment id (even while pending) so PIX follow-up can fetch the QR code later
+    const mpId = String(payment.id ?? '');
+
     if (payment.status === 'approved') {
-      // Fetch order to validate payment amount before marking as paid
-      const orderRows = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, orderId));
-      const order = orderRows[0];
-      if (order && payment.transaction_amount !== undefined) {
+      // Validate payment amount before marking as paid
+      if (payment.transaction_amount !== undefined) {
         const expectedTotal = parseFloat(order.totalPrice ?? '0');
-        if (Math.abs(payment.transaction_amount - expectedTotal) > 0.01) {
+        if (expectedTotal > 0 && Math.abs(payment.transaction_amount - expectedTotal) > 0.01) {
           console.warn(`[mp-webhook] Amount mismatch for order ${orderId}: expected ${expectedTotal}, got ${payment.transaction_amount}`);
-          res.status(400).json({ error: 'Payment amount does not match order total' }); return;
+          // Return 200 (not 400) so MP doesn't retry forever; flag for manual review.
+          res.json({ ok: true, mismatch: true }); return;
         }
       }
+      // Mark BOTH status and paymentStatus so the admin panel shows the order as paid + ready to ship
       await ordersDb.update(siteOrders)
-        .set({ paymentStatus: 'confirmed', mpPaymentId: String(payment.id), updatedAt: new Date() })
+        .set({ status: 'confirmed', paymentStatus: 'confirmed', mpPaymentId: mpId, updatedAt: new Date() })
         .where(eq(siteOrders.id, orderId));
-      // Cancel pending WA automations for this customer's phone
-      if (order) {
-        const phone = order.customerPhone.replace(/\D/g, '');
-        await ordersDb.update(automationRuns)
-          .set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
-          .where(and(eq(automationRuns.customerPhone, phone), eq(automationRuns.status, 'scheduled')));
-        // Mark cart as converted if exists
-        await ordersDb.update(abandonedCarts)
-          .set({ status: 'converted', recovered: true, convertedAt: new Date(), updatedAt: new Date() })
-          .where(eq(abandonedCarts.customerPhone, phone));
-      }
-    } else if (payment.status === 'rejected') {
+
+      const phone = order.customerPhone.replace(/\D/g, '');
+      // Cancel pending WA recovery automations for this customer
+      await ordersDb.update(automationRuns)
+        .set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(automationRuns.customerPhone, phone), eq(automationRuns.status, 'scheduled')));
+      // Mark abandoned cart as converted (recovered)
+      await ordersDb.update(abandonedCarts)
+        .set({ status: 'converted', recovered: true, convertedAt: new Date(), updatedAt: new Date() })
+        .where(eq(abandonedCarts.customerPhone, phone));
+
+      // Send purchase confirmation via WhatsApp (non-blocking, best effort)
+      try {
+        const [tpl] = await ordersDb.select().from(msgTemplates)
+          .where(and(eq(msgTemplates.type, 'confirmed'), eq(msgTemplates.isDefault, true))).limit(1);
+        const vars = {
+          nome: order.customerName,
+          pedido: String(order.id),
+          valor: order.totalPrice ?? '0',
+        };
+        const msg = tpl
+          ? renderTemplate(tpl.body, vars)
+          : `Olá *${order.customerName}*! 🎉\n\nSeu pagamento foi *confirmado*! ✅\n\n📦 Pedido *#${order.id}* — R$ ${order.totalPrice}\n\nJá estamos preparando seu envio. Você receberá o código de rastreio assim que postarmos. 🚚\n\nObrigado por escolher a Sal Vita! 🌊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
+        await sendWhatsApp(order.customerPhone, msg);
+      } catch (e) { console.error('[mp-webhook] confirmation WA failed:', e); }
+
+    } else if (payment.status === 'pending' || payment.status === 'in_process' || payment.status === 'authorized') {
+      // PIX/boleto awaiting payment — keep awaiting but persist the payment id for follow-up
       await ordersDb.update(siteOrders)
-        .set({ paymentStatus: 'failed', mpPaymentId: String(payment.id), updatedAt: new Date() })
+        .set({ mpPaymentId: mpId, updatedAt: new Date() })
+        .where(eq(siteOrders.id, orderId));
+    } else if (payment.status === 'rejected' || payment.status === 'cancelled' || payment.status === 'refunded' || payment.status === 'charged_back') {
+      await ordersDb.update(siteOrders)
+        .set({ paymentStatus: 'failed', mpPaymentId: mpId, updatedAt: new Date() })
         .where(eq(siteOrders.id, orderId));
     }
 
