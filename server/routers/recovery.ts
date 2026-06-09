@@ -180,9 +180,11 @@ export const recoveryRouter = router({
         cartId = inserted.id;
       }
 
-      // Schedule a 3-touch recovery cadence when the customer reaches the shipping step.
+      // Schedule a recovery cadence as soon as we have name + phone.
+      // Step 1 (form started, no shipping calc) gets a lighter 2-touch cadence;
+      // step 2+ (shipping calculated) gets the full 3-touch cadence.
       // Only if no pending automation exists yet (cheap single-row probe — free-tier friendly).
-      if (newStep >= 2) {
+      {
         const existingRun = await db.select({ id: automationRuns.id })
           .from(automationRuns)
           .where(and(eq(automationRuns.cartId, cartId), eq(automationRuns.status, 'scheduled')))
@@ -192,11 +194,18 @@ export const recoveryRouter = router({
           // Touch 1: gentle reminder (no discount — protect margin)
           // Touch 2: urgency + social proof
           // Touch 3: coupon as last resort
-          const touches = [
+          const fullCadence = [
             { rule: 'abandoned_t1', delayMs: 30 * 60 * 1000 },        // 30 min
             { rule: 'abandoned_t2', delayMs: 4 * 60 * 60 * 1000 },    // 4 h
             { rule: 'abandoned_t3', delayMs: 24 * 60 * 60 * 1000 },   // 24 h
           ];
+          // Lighter cadence for low-intent (step 1) carts: just a gentle nudge
+          // followed by a coupon as last resort, skipping the urgency touch.
+          const lightCadence = [
+            { rule: 'abandoned_t1', delayMs: 30 * 60 * 1000 },        // 30 min
+            { rule: 'abandoned_t3', delayMs: 24 * 60 * 60 * 1000 },   // 24 h
+          ];
+          const touches = newStep >= 2 ? fullCadence : lightCadence;
           await db.insert(automationRuns).values(touches.map(t => ({
             cartId,
             customerPhone: phone,
@@ -668,8 +677,8 @@ export const recoveryRouter = router({
           continue;
         }
 
-        const stepDesc = cart.stepReached === 1 ? 'preencheu o formulário mas não calculou frete'
-          : cart.stepReached === 2 ? 'calculou o frete mas não foi para o pagamento'
+        const stepDesc = cart.stepReached === 1 ? 'já calculou o frete e começou a preencher os dados de entrega, mas não finalizou'
+          : cart.stepReached === 2 ? 'calculou o frete e confirmou o endereço, mas não foi para o pagamento'
           : 'chegou até a etapa de pagamento mas não concluiu';
 
         const prompt = `Você é especialista em conversão de e-commerce para a Sal Vita (sal marinho premium de Mossoró/RN).
@@ -822,8 +831,8 @@ Responda SOMENTE em JSON: {"mensagem": "texto aqui", "raciocinio": "motivo"}`;
       const [cart] = await db.select().from(abandonedCarts).where(eq(abandonedCarts.id, input.cartId)).limit(1);
       if (!cart) throw new TRPCError({ code: 'NOT_FOUND' });
 
-      const stepDesc = cart.stepReached === 1 ? 'preencheu o formulário mas não calculou frete'
-        : cart.stepReached === 2 ? 'calculou o frete mas não foi para o pagamento'
+      const stepDesc = cart.stepReached === 1 ? 'já calculou o frete e começou a preencher os dados de entrega, mas não finalizou'
+        : cart.stepReached === 2 ? 'calculou o frete e confirmou o endereço, mas não foi para o pagamento'
         : 'chegou até a etapa de pagamento mas não concluiu';
 
       const prompt = `Gere uma mensagem de recuperação de carrinho para WhatsApp para o cliente ${cart.customerName} da Sal Vita (sal marinho de Mossoró/RN, R$29,90/kg).
