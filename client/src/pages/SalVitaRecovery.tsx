@@ -140,12 +140,17 @@ function WaStatusBadge() {
 function AbandonedTab() {
   const { data, isLoading, refetch } = trpc.recovery.listAbandoned.useQuery(undefined, { refetchInterval: 300000, retry: 0 });
   const [aiPreviews, setAiPreviews] = useState<Record<number, string>>({});
+  const [waFallbacks, setWaFallbacks] = useState<Record<number, string>>({});
   const markRecovered = trpc.recovery.markRecovered.useMutation({
     onSuccess: () => { toast.success('Marcado como recuperado!'); refetch(); },
     onError: (e) => toast.error(e.message),
   });
   const sendMut = trpc.recovery.sendRecovery.useMutation({
-    onSuccess: (d: any) => { toast.success(`✅ Enviado para ${d.phone}`); refetch(); },
+    onSuccess: (d: any, vars: any) => {
+      toast.success(`✅ Enviado para ${d.phone}`);
+      if (d.waLink) setWaFallbacks(p => ({ ...p, [vars.id]: d.waLink }));
+      refetch();
+    },
     onError: (e) => toast.error('Falha no envio: ' + e.message),
   });
   const sendCouponMut = trpc.recovery.sendRecovery.useMutation({
@@ -269,6 +274,17 @@ function AbandonedTab() {
               >
                 📤 Template
               </button>
+              {waFallbacks[row.id] && (
+                <a
+                  href={waFallbacks[row.id]}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Abrir no WhatsApp Web — use se a mensagem automática não chegou"
+                  style={{ padding: '7px 11px', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: 8, fontSize: '.78rem', fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                >
+                  📱 WA Manual
+                </a>
+              )}
               <button
                 onClick={() => sendCouponMut.mutate({ id: row.id, coupon: 'VOLTA10' })}
                 disabled={sendCouponMut.isPending}

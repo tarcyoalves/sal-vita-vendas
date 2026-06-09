@@ -5,19 +5,49 @@ import { abandonedCarts, automationRuns, coupons, msgTemplates, siteOrders } fro
 import { desc, eq, and, sql, lte } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 
-async function sendViaWhatsApp(phone: string, message: string): Promise<boolean> {
+// Returns { ok, usedPhone } — tries both 9th-digit variants for Brazilian numbers
+// because WhatsApp stores some old numbers without the 9th digit.
+// wa-server may return HTTP 200 with { success: false } on failure, so we check the body too.
+async function sendViaWhatsApp(phone: string, message: string): Promise<{ ok: boolean; usedPhone: string }> {
   const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
   const key = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
-  try {
-    const res = await fetch(`${url}/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': key },
-      body: JSON.stringify({ phone: fmtPhone(phone), message }),
-    });
-    return res.ok;
-  } catch {
-    return false;
+
+  const primary = fmtPhone(phone);
+  // Brazilian mobile: 55 + 2-digit DDD + 9-digit (starts with 9) = 13 digits
+  // Old format: 55 + 2-digit DDD + 8-digit = 12 digits
+  const fallback = primary.length === 13
+    ? primary.slice(0, 4) + primary.slice(5)   // drop 9th digit: 5584986207841 → 558486207841
+    : primary.length === 12
+      ? primary.slice(0, 4) + '9' + primary.slice(4) // add 9th digit
+      : null;
+
+  for (const phoneNum of [primary, fallback].filter(Boolean) as string[]) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 9000);
+      const res = await fetch(`${url}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': key },
+        body: JSON.stringify({ phone: phoneNum, message }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) continue;
+      // Parse body to catch { success: false } responses
+      let body: Record<string, unknown> = {};
+      try { body = await res.json() as Record<string, unknown>; } catch {}
+      if (body.success === false) {
+        console.warn(`[wa] send to ${phoneNum} returned success:false`, body.error ?? '');
+        continue;
+      }
+      console.log(`[wa] sent to ${phoneNum}`);
+      return { ok: true, usedPhone: phoneNum };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[wa] send to ${phoneNum} failed:`, msg);
+    }
   }
+  return { ok: false, usedPhone: primary };
 }
 
 function fmtPhone(raw: string) {
@@ -315,13 +345,13 @@ export const recoveryRouter = router({
           : recoveryMsg(cart.customerName, input.coupon);
       }
 
-      const ok = await sendViaWhatsApp(cart.customerPhone, msg);
+      const { ok, usedPhone } = await sendViaWhatsApp(cart.customerPhone, msg);
       if (ok) {
         await db.update(abandonedCarts)
           .set({ recoverySentAt: new Date(), updatedAt: new Date() })
           .where(eq(abandonedCarts.id, input.id));
       }
-      return { ok, phone: fmtPhone(cart.customerPhone), preview: msg };
+      return { ok, phone: usedPhone, preview: msg, waLink: waLink(cart.customerPhone, msg) };
     }),
 
   // Admin: send WhatsApp to unpaid order (with optional template + PIX fetch)
@@ -360,8 +390,8 @@ export const recoveryRouter = router({
         msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0');
       }
 
-      const ok = await sendViaWhatsApp(order.customerPhone, msg);
-      return { ok, phone: fmtPhone(order.customerPhone), hasPix: !!pixCode, preview: msg };
+      const { ok, usedPhone } = await sendViaWhatsApp(order.customerPhone, msg);
+      return { ok, phone: usedPhone, hasPix: !!pixCode, preview: msg, waLink: waLink(order.customerPhone, msg) };
     }),
 
   // Admin: get payment info (PIX code / boleto) for unpaid order
@@ -404,7 +434,7 @@ export const recoveryRouter = router({
 
       let sent = 0;
       for (const cart of pending) {
-        const ok = await sendViaWhatsApp(cart.customerPhone, recoveryMsg(cart.customerName));
+        const { ok } = await sendViaWhatsApp(cart.customerPhone, recoveryMsg(cart.customerName));
         if (ok) {
           await db.update(abandonedCarts)
             .set({ recoverySentAt: new Date(), updatedAt: new Date() })
@@ -698,7 +728,7 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
       const parsed = JSON.parse(data.choices?.[0]?.message?.content ?? '{}') as { mensagem?: string };
       if (!parsed.mensagem) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'IA não gerou mensagem' });
 
-      const ok = await sendViaWhatsApp(cart.customerPhone, parsed.mensagem);
+      const { ok, usedPhone: aiPhone } = await sendViaWhatsApp(cart.customerPhone, parsed.mensagem);
       if (ok) {
         await db.update(abandonedCarts).set({ recoverySentAt: new Date(), updatedAt: new Date() })
           .where(eq(abandonedCarts.id, input.cartId));
@@ -707,7 +737,7 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
           .set({ status: 'sent', sentAt: new Date(), aiBody: parsed.mensagem, updatedAt: new Date() })
           .where(and(eq(automationRuns.cartId, input.cartId), eq(automationRuns.status, 'scheduled')));
       }
-      return { ok, phone: fmtPhone(cart.customerPhone), preview: parsed.mensagem };
+      return { ok, phone: aiPhone, preview: parsed.mensagem };
     }),
 
   // Internal/Admin: run automation job — sends scheduled WA messages for abandoned carts
@@ -743,7 +773,7 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
             ? renderTemplate(tpl.body, { nome: cart.customerName, link: 'https://premium.salvitarn.com.br', cupom: 'VOLTA10', produto: 'Sal Marinho Integral 1kg' })
             : recoveryMsg(cart.customerName);
         }
-        const ok = await sendViaWhatsApp(run.customerPhone, msg);
+        const { ok } = await sendViaWhatsApp(run.customerPhone, msg);
         if (ok) {
           await db.update(automationRuns).set({ status: 'sent', sentAt: new Date(), updatedAt: new Date() })
             .where(eq(automationRuns.id, run.id));
