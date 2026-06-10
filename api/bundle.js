@@ -57900,9 +57900,10 @@ var recoveryRouter = router({
       pedido: String(order.id),
       valor: parseFloat(order.totalPrice ?? "0").toFixed(2).replace(".", ","),
       link: orderLink,
-      // Wrap the PIX code in a monospace block so WhatsApp renders it as a
-      // visually distinct, easy-to-select chunk separate from the surrounding text.
-      pix: pixCode ? `\`\`\`${pixCode}\`\`\`` : "",
+      // Leave as the raw copy-paste code — WhatsApp copies messages as literal
+      // text, so wrapping it in ``` would put backtick characters into whatever
+      // the customer pastes into their bank app.
+      pix: pixCode ?? "",
       produto: "Sal Marinho Integral 1kg"
     };
     let msg;
@@ -57917,15 +57918,20 @@ var recoveryRouter = router({
       msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? "0", tel);
     }
     const { ok, usedPhone } = await sendViaWhatsApp(order.customerPhone, msg);
+    if (ok && pixCode) {
+      await new Promise((r) => setTimeout(r, 1e3));
+      await waSendRaw(usedPhone, pixCode);
+    }
     if (order.customerEmail) {
       const emailHtml = unpaidOrderHtml(
         order.customerName,
         order.id,
         parseFloat(order.totalPrice ?? "0").toFixed(2).replace(".", ","),
         orderLink,
-        pixCode ?? void 0
+        pixCode ?? void 0,
+        order.paymentStatus === "failed"
       );
-      const emailSubject = `Pedido #${order.id} aguardando pagamento \u2014 R$ ${parseFloat(order.totalPrice ?? "0").toFixed(2).replace(".", ",")}`;
+      const emailSubject = order.paymentStatus === "failed" ? `Problema no pagamento do pedido #${order.id} \u2014 tente novamente` : `Pedido #${order.id} aguardando pagamento \u2014 R$ ${parseFloat(order.totalPrice ?? "0").toFixed(2).replace(".", ",")}`;
       sendEmail(order.customerEmail, emailSubject, emailHtml).catch(() => {
       });
     }
@@ -59361,11 +59367,15 @@ async function processUnpaidFollowups() {
           pix = code;
         }
       }
-      const vars = { nome: o.customerName, pedido: String(o.id), valor: brl(o.totalPrice), link, pix: pix ? `\`\`\`${pix}\`\`\`` : "" };
+      const vars = { nome: o.customerName, pedido: String(o.id), valor: brl(o.totalPrice), link, pix };
       const msg = tpl ? renderTemplate2(tpl.body, vars) : o.paymentStatus === "failed" ? `Ol\xE1 *${o.customerName}*! \u{1F615} Houve um problema no pagamento do pedido *#${o.id}*. Tente novamente: ${link}` : `Ol\xE1 *${o.customerName}*! \u{1F4B8} Seu pedido *#${o.id}* (R$ ${brl(o.totalPrice)}) ainda est\xE1 aguardando pagamento. Finalize: ${link}`;
       const ok = await sendWhatsApp(o.customerPhone, msg);
       if (ok)
         sent++;
+      if (ok && pix) {
+        await new Promise((r) => setTimeout(r, 1e3));
+        await sendWhatsApp(o.customerPhone, pix);
+      }
       if (o.customerEmail) {
         const emailHtml = unpaidOrderHtml(
           o.customerName,

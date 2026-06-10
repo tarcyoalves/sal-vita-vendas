@@ -544,9 +544,10 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
         const code = await fetchPixCode(o);
         if (code && pixTpl) { tpl = pixTpl; pix = code; }
       }
-      // Wrap the PIX code in a monospace block so WhatsApp renders it as a
-      // visually distinct, easy-to-select chunk separate from the surrounding text.
-      const vars = { nome: o.customerName, pedido: String(o.id), valor: brl(o.totalPrice), link, pix: pix ? `\`\`\`${pix}\`\`\`` : '' };
+      // Leave {pix} as the raw copy-paste code in the main message — WhatsApp
+      // copies messages as literal text, so wrapping it in ``` would put those
+      // backtick characters into whatever the customer pastes into their bank app.
+      const vars = { nome: o.customerName, pedido: String(o.id), valor: brl(o.totalPrice), link, pix };
       const msg = tpl
         ? renderTemplate(tpl.body, vars)
         : (o.paymentStatus === 'failed'
@@ -554,6 +555,12 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
             : `Olá *${o.customerName}*! 💸 Seu pedido *#${o.id}* (R$ ${brl(o.totalPrice)}) ainda está aguardando pagamento. Finalize: ${link}`);
       const ok = await sendWhatsApp(o.customerPhone, msg);
       if (ok) sent++;
+      // Follow up with the PIX code as its own message — lets the customer
+      // long-press → copy and get exactly the code, nothing else.
+      if (ok && pix) {
+        await new Promise(r => setTimeout(r, 1000));
+        await sendWhatsApp(o.customerPhone, pix);
+      }
       // Best-effort email follow-up (non-blocking)
       if (o.customerEmail) {
         const emailHtml = unpaidOrderHtml(

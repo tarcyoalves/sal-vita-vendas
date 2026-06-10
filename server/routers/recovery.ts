@@ -454,9 +454,10 @@ export const recoveryRouter = router({
         pedido: String(order.id),
         valor: parseFloat(order.totalPrice ?? '0').toFixed(2).replace('.', ','),
         link: orderLink,
-        // Wrap the PIX code in a monospace block so WhatsApp renders it as a
-        // visually distinct, easy-to-select chunk separate from the surrounding text.
-        pix: pixCode ? `\`\`\`${pixCode}\`\`\`` : '',
+        // Leave as the raw copy-paste code — WhatsApp copies messages as literal
+        // text, so wrapping it in ``` would put backtick characters into whatever
+        // the customer pastes into their bank app.
+        pix: pixCode ?? '',
         produto: 'Sal Marinho Integral 1kg',
       };
 
@@ -478,6 +479,12 @@ export const recoveryRouter = router({
       }
 
       const { ok, usedPhone } = await sendViaWhatsApp(order.customerPhone, msg);
+      // Follow up with the PIX code as its own message — lets the customer
+      // long-press → copy and get exactly the code, nothing else.
+      if (ok && pixCode) {
+        await new Promise(r => setTimeout(r, 1000));
+        await waSendRaw(usedPhone, pixCode);
+      }
       // Best-effort email follow-up (non-blocking)
       if (order.customerEmail) {
         const emailHtml = unpaidOrderHtml(
@@ -486,8 +493,11 @@ export const recoveryRouter = router({
           parseFloat(order.totalPrice ?? '0').toFixed(2).replace('.', ','),
           orderLink,
           pixCode ?? undefined,
+          order.paymentStatus === 'failed',
         );
-        const emailSubject = `Pedido #${order.id} aguardando pagamento — R$ ${parseFloat(order.totalPrice ?? '0').toFixed(2).replace('.', ',')}`;
+        const emailSubject = order.paymentStatus === 'failed'
+          ? `Problema no pagamento do pedido #${order.id} — tente novamente`
+          : `Pedido #${order.id} aguardando pagamento — R$ ${parseFloat(order.totalPrice ?? '0').toFixed(2).replace('.', ',')}`;
         sendEmail(order.customerEmail, emailSubject, emailHtml).catch(() => {});
       }
       return { ok, phone: usedPhone, hasPix: !!pixCode, preview: msg, waLink: waLink(order.customerPhone, msg) };
