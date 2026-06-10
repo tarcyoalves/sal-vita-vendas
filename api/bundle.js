@@ -57565,27 +57565,6 @@ async function sendViaWhatsApp(phone, message) {
   }
   return { ok: ok1, usedPhone: primary };
 }
-function splitForPix(msg, pixCode) {
-  if (!pixCode)
-    return [msg];
-  const idx = msg.indexOf(pixCode);
-  if (idx === -1)
-    return [msg];
-  const before = msg.slice(0, idx).trim();
-  const after = msg.slice(idx + pixCode.length).trim();
-  return [before, pixCode, after].filter(Boolean);
-}
-async function sendWhatsAppMessage(phone, msg, pixCode = null) {
-  const chunks = splitForPix(msg, pixCode);
-  const first = await sendViaWhatsApp(phone, chunks[0]);
-  for (let i = 1; i < chunks.length; i++) {
-    if (!first.ok)
-      break;
-    await new Promise((r) => setTimeout(r, 800));
-    await waSendRaw(first.usedPhone, chunks[i]);
-  }
-  return first;
-}
 function isBusinessHours() {
   const now = /* @__PURE__ */ new Date();
   const brHour = (now.getUTCHours() - 3 + 24) % 24;
@@ -57919,7 +57898,9 @@ var recoveryRouter = router({
       pedido: String(order.id),
       valor: parseFloat(order.totalPrice ?? "0").toFixed(2).replace(".", ","),
       link: orderLink,
-      pix: pixCode ?? "",
+      // Wrap the PIX code in a monospace block so WhatsApp renders it as a
+      // visually distinct, easy-to-select chunk separate from the surrounding text.
+      pix: pixCode ? `\`\`\`${pixCode}\`\`\`` : "",
       produto: "Sal Marinho Integral 1kg"
     };
     let msg;
@@ -57933,7 +57914,7 @@ var recoveryRouter = router({
       const [tpl] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.type, "unpaid"), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true))).limit(1);
       msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? "0", tel);
     }
-    const { ok, usedPhone } = await sendWhatsAppMessage(order.customerPhone, msg, pixCode);
+    const { ok, usedPhone } = await sendViaWhatsApp(order.customerPhone, msg);
     if (order.customerEmail) {
       const emailHtml = unpaidOrderHtml(
         order.customerName,
@@ -58938,25 +58919,6 @@ async function sendWhatsApp(phone, message) {
   }));
   return results.some(Boolean);
 }
-function splitForPix2(msg, pixCode) {
-  const idx = msg.indexOf(pixCode);
-  if (idx === -1)
-    return [msg];
-  const before = msg.slice(0, idx).trim();
-  const after = msg.slice(idx + pixCode.length).trim();
-  return [before, pixCode, after].filter(Boolean);
-}
-async function sendWhatsAppWithPix(phone, msg, pixCode) {
-  const chunks = pixCode ? splitForPix2(msg, pixCode) : [msg];
-  const first = await sendWhatsApp(phone, chunks[0]);
-  for (let i = 1; i < chunks.length; i++) {
-    if (!first)
-      break;
-    await new Promise((r) => setTimeout(r, 800));
-    await sendWhatsApp(phone, chunks[i]);
-  }
-  return first;
-}
 var app = (0, import_express.default)();
 app.set("trust proxy", 1);
 function withTimeout(p2, ms2) {
@@ -59390,9 +59352,9 @@ async function processUnpaidFollowups() {
           pix = code;
         }
       }
-      const vars = { nome: o.customerName, pedido: String(o.id), valor: o.totalPrice ?? "0", link, pix };
+      const vars = { nome: o.customerName, pedido: String(o.id), valor: o.totalPrice ?? "0", link, pix: pix ? `\`\`\`${pix}\`\`\`` : "" };
       const msg = tpl ? renderTemplate2(tpl.body, vars) : o.paymentStatus === "failed" ? `Ol\xE1 *${o.customerName}*! \u{1F615} Houve um problema no pagamento do pedido *#${o.id}*. Tente novamente: ${link}` : `Ol\xE1 *${o.customerName}*! \u{1F4B8} Seu pedido *#${o.id}* (R$ ${o.totalPrice}) ainda est\xE1 aguardando pagamento. Finalize: ${link}`;
-      const ok = await sendWhatsAppWithPix(o.customerPhone, msg, pix);
+      const ok = await sendWhatsApp(o.customerPhone, msg);
       if (ok)
         sent++;
       if (o.customerEmail) {
