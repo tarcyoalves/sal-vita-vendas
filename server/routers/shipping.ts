@@ -237,7 +237,9 @@ export const shippingRouter = router({
 
       const orders = await db.select().from(siteOrders).orderBy(desc(siteOrders.createdAt));
 
-      const paid = orders.filter(o => o.paymentStatus === 'confirmed');
+      // Cancelled orders shouldn't count as revenue even if they were paid
+      // before being cancelled/refunded.
+      const paid = orders.filter(o => o.paymentStatus === 'confirmed' && o.status !== 'cancelled');
       const revenue = paid.reduce((s, o) => s + parseFloat(o.totalPrice ?? '0'), 0);
       const cityCount: Record<string, number> = {};
       orders.forEach(o => {
@@ -728,5 +730,16 @@ Seja direto e use emojis para facilitar leitura.`;
 
       results.push('Pedido cancelado');
       return { order: updated, actions: results };
+    }),
+
+  // Admin: permanently remove an order (e.g. test orders). No refund/label
+  // cancellation is attempted — use cancelOrder first for real orders.
+  deleteOrder: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      const [deleted] = await db.delete(siteOrders).where(eq(siteOrders.id, input.id)).returning();
+      if (!deleted) throw new TRPCError({ code: 'NOT_FOUND' });
+      return { ok: true };
     }),
 });

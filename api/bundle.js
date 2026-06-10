@@ -56738,7 +56738,7 @@ var shippingRouter = router({
     if (!apiKey)
       throw new TRPCError({ code: "PRECONDITION_FAILED", message: "GROQ_API_KEY n\xE3o configurado" });
     const orders = await ordersDb.select().from(siteOrders).orderBy(desc(siteOrders.createdAt));
-    const paid = orders.filter((o) => o.paymentStatus === "confirmed");
+    const paid = orders.filter((o) => o.paymentStatus === "confirmed" && o.status !== "cancelled");
     const revenue = paid.reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0);
     const cityCount = {};
     orders.forEach((o) => {
@@ -57210,6 +57210,16 @@ _Sal Vita \u2014 Mossor\xF3/RN_`;
     const [updated] = await ordersDb.update(siteOrders).set({ status: "cancelled", updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, input.id)).returning();
     results.push("Pedido cancelado");
     return { order: updated, actions: results };
+  }),
+  // Admin: permanently remove an order (e.g. test orders). No refund/label
+  // cancellation is attempted — use cancelOrder first for real orders.
+  deleteOrder: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const [deleted] = await ordersDb.delete(siteOrders).where(eq(siteOrders.id, input.id)).returning();
+    if (!deleted)
+      throw new TRPCError({ code: "NOT_FOUND" });
+    return { ok: true };
   })
 });
 

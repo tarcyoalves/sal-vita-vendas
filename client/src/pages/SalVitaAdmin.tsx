@@ -211,9 +211,17 @@ function OrderCard({ order, onRefetch }: { order: any; onRefetch: ()=>void }) {
     onSuccess: (d) => { toast.success(d.actions.join(' · ')); onRefetch(); },
     onError: (e) => toast.error(e.message),
   });
+  const deleteMut = trpc.shipping.deleteOrder.useMutation({
+    onSuccess: () => { toast.success('Pedido excluído!'); onRefetch(); },
+    onError: (e) => toast.error(e.message),
+  });
 
   const sColor = S_COLOR[order.status] ?? { bg:'#f1f5f9', text:'#475569', dot:'#94a3b8' };
-  const pColor = P_COLOR[order.paymentStatus] ?? { bg:'#f1f5f9', text:'#475569' };
+  // A cancelled order that was paid still has paymentStatus='confirmed' (refund may
+  // have been requested separately) — flag it instead of showing a plain "Pago ✓".
+  const wasPaidButCancelled = order.status === 'cancelled' && order.paymentStatus === 'confirmed';
+  const pLabel = wasPaidButCancelled ? 'Pago (cancelado)' : (P_LABEL[order.paymentStatus] ?? order.paymentStatus);
+  const pColor = wasPaidButCancelled ? { bg:'#fef3c7', text:'#92400e' } : (P_COLOR[order.paymentStatus] ?? { bg:'#f1f5f9', text:'#475569' });
   const isUrgent = order.paymentStatus === 'confirmed' && !['shipped','delivered','cancelled'].includes(order.status);
   const date = new Date(order.createdAt);
 
@@ -228,7 +236,7 @@ function OrderCard({ order, onRefetch }: { order: any; onRefetch: ()=>void }) {
           <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
             <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
               <span style={{ fontWeight:800, fontSize:'1rem', color:'#0b1d3a' }}>#{order.id} — {order.customerName}</span>
-              <Badge label={P_LABEL[order.paymentStatus]??order.paymentStatus} bg={pColor.bg} text={pColor.text}/>
+              <Badge label={pLabel} bg={pColor.bg} text={pColor.text}/>
               <Badge label={S_LABEL[order.status]??order.status} bg={sColor.bg} text={sColor.text}/>
             </div>
             <div style={{ display:'flex', flexWrap:'wrap', gap:'4px 16px', fontSize:'.82rem', color:'#64748b' }}>
@@ -302,6 +310,11 @@ function OrderCard({ order, onRefetch }: { order: any; onRefetch: ()=>void }) {
               ✕ Cancelar
             </button>
           )}
+          <button onClick={()=>{ if(window.confirm(`Excluir PERMANENTEMENTE o pedido #${order.id}? Use isso só para pedidos de teste — esta ação não pode ser desfeita.`)) deleteMut.mutate({ id:order.id }); }}
+            disabled={deleteMut.isPending}
+            style={{ padding:'8px 14px', background:'white', color:'#94a3b8', border:'1.5px solid #e2e8f0', borderRadius:10, fontSize:'.83rem', fontWeight:700, cursor:'pointer' }}>
+            🗑️ Excluir
+          </button>
         </div>
 
         {/* Tracking input */}
@@ -418,7 +431,9 @@ function OrdersPanel() {
   });
 
   const todayOrders = orders.filter(o => new Date(o.createdAt).toDateString() === new Date().toDateString());
-  const revenue = orders.filter(o=>o.paymentStatus==='confirmed').reduce((s,o)=>s+parseFloat(o.totalPrice??'0'),0);
+  // Cancelled orders don't count as revenue, even if they were paid before being cancelled/refunded.
+  const paidOrders = orders.filter(o=>o.paymentStatus==='confirmed' && o.status!=='cancelled');
+  const revenue = paidOrders.reduce((s,o)=>s+parseFloat(o.totalPrice??'0'),0);
   const awaitingCount = orders.filter(o=>o.paymentStatus==='awaiting' && o.status!=='cancelled').length;
   const toShipCount = orders.filter(o=>o.status==='label_generated' && o.paymentStatus==='confirmed').length;
 
@@ -481,7 +496,7 @@ function OrdersPanel() {
           <KpiCard icon="📦" label="Total Pedidos" value={orders.length} sub={`${todayOrders.length} hoje`} accent="#3b82f6"/>
           <KpiCard icon="⏳" label="Aguard. Pagamento" value={awaitingCount} accent="#f59e0b" urgent={awaitingCount > 0}/>
           <KpiCard icon="🚚" label="Pendentes Envio" value={toShipCount} accent="#8b5cf6" urgent={toShipCount > 0} sub={toShipCount > 0 ? 'Ação necessária' : 'Em dia'}/>
-          <KpiCard icon="💰" label="Receita Confirmada" value={`R$ ${revenue.toFixed(2).replace('.',',')}`} accent="#10b981" sub={`${orders.filter(o=>o.paymentStatus==='confirmed').length} pedidos pagos`}/>
+          <KpiCard icon="💰" label="Receita Confirmada" value={`R$ ${revenue.toFixed(2).replace('.',',')}`} accent="#10b981" sub={`${paidOrders.length} pedidos pagos`}/>
         </div>
 
         {/* AI Panel */}
