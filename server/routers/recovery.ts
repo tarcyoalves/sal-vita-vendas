@@ -5,6 +5,9 @@ import { abandonedCarts, automationRuns, coupons, msgTemplates, siteOrders } fro
 import { desc, eq, and, sql, lte } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml } from '../email/resend';
+import { createPixPaymentForOrder } from '../lib/mercadopago';
+
+type SiteOrder = typeof siteOrders.$inferSelect;
 
 // Sends to both 9th-digit variants with a short delay between them.
 // wa-server blindly returns success:true, so we try both to guarantee delivery
@@ -77,31 +80,33 @@ function recoveryMsg(name: string, coupon?: string) {
   return `Olá *${name}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou o pedido.\n\n${coupon ? `🎁 Use o cupom *${coupon}* e ganhe desconto especial!\n\n` : ''}👉 Finalize agora: https://premium.salvitarn.com.br\n\nQualquer dúvida é só chamar aqui! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
 }
 
-function unpaidMsg(name: string, id: number, qty: number, total: string) {
-  return `Olá *${name}*! 🌊\n\nSeu pedido *#${id}* do Sal Vita ainda está aguardando pagamento.\n\n📦 ${qty}x Sal Marinho Integral 1kg\n💰 Total: R$ ${total}\n\nFinalize o pagamento aqui:\n👉 https://premium.salvitarn.com.br/meu-pedido?pedido=${id}\n\n_Pedido reservado por tempo limitado!_\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
+function unpaidMsg(name: string, id: number, qty: number, total: string, tel: string) {
+  return `Olá *${name}*! 🌊\n\nSeu pedido *#${id}* do Sal Vita ainda está aguardando pagamento.\n\n📦 ${qty}x Sal Marinho Integral 1kg\n💰 Total: R$ ${total}\n\nFinalize o pagamento aqui:\n👉 https://premium.salvitarn.com.br/meu-pedido?pedido=${id}&tel=${tel}\n\n_Pedido reservado por tempo limitado!_\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
 }
 
-function failedMsg(name: string, id: number) {
-  return `Olá *${name}*! 🌊\n\nHouve um problema com o pagamento do pedido *#${id}*.\n\nTente novamente com outro método:\n👉 https://premium.salvitarn.com.br/meu-pedido?pedido=${id}\n\nAceitamos Cartão, PIX e Boleto 💳\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
+function failedMsg(name: string, id: number, tel: string) {
+  return `Olá *${name}*! 🌊\n\nHouve um problema com o pagamento do pedido *#${id}*.\n\nTente novamente com outro método:\n👉 https://premium.salvitarn.com.br/meu-pedido?pedido=${id}&tel=${tel}\n\nAceitamos Cartão, PIX e Boleto 💳\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
 }
 
-async function fetchPixCode(mpPaymentId: string | null, orderId?: number): Promise<string | null> {
+// Fetches a real PIX copy-paste code for an order: tries the stored MP payment,
+// then searches MP by external_reference, and finally — if none exists yet —
+// generates a brand-new PIX payment so the customer always has something to pay.
+async function fetchPixCode(order: SiteOrder): Promise<string | null> {
   const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
-  if (!token) return null;
-  try {
-    if (mpPaymentId) {
-      const res = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json() as Record<string, any>;
-        const qr = data?.point_of_interaction?.transaction_data?.qr_code ?? null;
-        if (qr) return qr;
+  if (token) {
+    try {
+      if (order.mpPaymentId) {
+        const res = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json() as Record<string, any>;
+          const qr = data?.point_of_interaction?.transaction_data?.qr_code ?? null;
+          if (qr) return qr;
+        }
       }
-    }
-    // Fallback: search Mercado Pago for any payment linked to this order via external_reference
-    if (orderId) {
-      const res = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${orderId}&sort=date_created&criteria=desc`, {
+      // Fallback: search Mercado Pago for any payment linked to this order via external_reference
+      const res = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${order.id}&sort=date_created&criteria=desc`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -111,11 +116,16 @@ async function fetchPixCode(mpPaymentId: string | null, orderId?: number): Promi
           if (qr) return qr;
         }
       }
+    } catch {
+      // fall through to generating a fresh PIX below
     }
-    return null;
-  } catch {
-    return null;
   }
+  // No PIX found anywhere — generate a fresh one so the message can always include a working code.
+  if (order.paymentStatus !== 'confirmed') {
+    const created = await createPixPaymentForOrder(order);
+    if (created) return created.qrCode;
+  }
+  return null;
 }
 
 export const recoveryRouter = router({
@@ -282,8 +292,8 @@ export const recoveryRouter = router({
         .orderBy(desc(siteOrders.createdAt));
       return rows.map(r => ({
         ...r,
-        waLinkUnpaid: waLink(r.customerPhone, unpaidMsg(r.customerName, r.id, r.quantity, r.totalPrice ?? '0')),
-        waLinkFailed: waLink(r.customerPhone, failedMsg(r.customerName, r.id)),
+        waLinkUnpaid: waLink(r.customerPhone, unpaidMsg(r.customerName, r.id, r.quantity, r.totalPrice ?? '0', r.customerPhone.replace(/\D/g, '').slice(-4))),
+        waLinkFailed: waLink(r.customerPhone, failedMsg(r.customerName, r.id, r.customerPhone.replace(/\D/g, '').slice(-4))),
       }));
     }),
 
@@ -428,8 +438,9 @@ export const recoveryRouter = router({
         .from(abandonedCarts).where(eq(abandonedCarts.customerPhone, phone)).limit(1);
       if (cartRecord?.optedOut) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cliente optou por não receber mensagens (PARAR)' });
 
-      const pixCode = await fetchPixCode(order.mpPaymentId, order.id);
-      const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}`;
+      const pixCode = await fetchPixCode(order);
+      const tel = phone.slice(-4);
+      const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${tel}`;
       const vars = {
         nome: order.customerName,
         pedido: String(order.id),
@@ -442,18 +453,18 @@ export const recoveryRouter = router({
       let msg: string;
       if (input.templateId) {
         const [tpl] = await db.select().from(msgTemplates).where(eq(msgTemplates.id, input.templateId)).limit(1);
-        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0');
+        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0', tel);
       } else if (pixCode) {
         // Auto-select PIX template when PIX code is available
         const [tpl] = await db.select().from(msgTemplates)
           .where(and(eq(msgTemplates.slug, 'unpaid_pix'), eq(msgTemplates.active, true)))
           .limit(1);
-        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0');
+        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0', tel);
       } else {
         const [tpl] = await db.select().from(msgTemplates)
           .where(and(eq(msgTemplates.type, 'unpaid'), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true)))
           .limit(1);
-        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0');
+        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0', tel);
       }
 
       const { ok, usedPhone } = await sendViaWhatsApp(order.customerPhone, msg);
@@ -771,8 +782,8 @@ Responda SOMENTE com JSON válido neste formato exato:
       const [order] = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
       if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
 
-      const pixCode = await fetchPixCode(order.mpPaymentId, order.id);
-      const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}`;
+      const pixCode = await fetchPixCode(order);
+      const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${order.customerPhone.replace(/\D/g, '').slice(-4)}`;
 
       const prompt = `Você é especialista em recuperação de vendas para Sal Vita (sal marinho premium de Mossoró/RN).
 

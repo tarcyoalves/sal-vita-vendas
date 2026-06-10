@@ -15,36 +15,43 @@ function getStepIndex(status: string) {
   return STATUS_ORDER.indexOf(status);
 }
 
-// MP redirects with ?pedido=ID&status=pago after payment
+// MP redirects with ?pedido=ID&status=pago after payment.
+// Recovery emails/WhatsApp links also include ?tel=XXXX (last 4 digits) so the
+// customer can land directly on their order without retyping anything.
 function getUrlParams() {
   const p = new URLSearchParams(window.location.search);
-  return { pedido: p.get('pedido'), status: p.get('status') };
+  return { pedido: p.get('pedido'), status: p.get('status'), tel: p.get('tel') };
 }
 
 export default function TrackOrder() {
   const urlParams = getUrlParams();
   const [orderId, setOrderId] = useState(urlParams.pedido ?? '');
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState(urlParams.tel ?? '');
   const [submitted, setSubmitted] = useState(false);
-  const [queryInput, setQueryInput] = useState<{ orderId: number; phone: string } | null>(null);
+  const [queryInput, setQueryInput] = useState<{ orderId: number; phone: string } | null>(
+    urlParams.pedido && urlParams.tel ? { orderId: parseInt(urlParams.pedido), phone: urlParams.tel } : null
+  );
   const [mpStatus] = useState(urlParams.status);
-  const [retryLoading, setRetryLoading] = useState(false);
+  const [payLoading, setPayLoading] = useState(false);
 
-  async function handleRetryPayment() {
-    const id = parseInt(urlParams.pedido ?? '');
+  // Used to verify ownership when generating a payment link.
+  const payerPhone = phone || urlParams.tel || '';
+
+  async function handlePay() {
+    const id = queryInput?.orderId ?? parseInt(urlParams.pedido ?? '');
     if (!id) return;
-    setRetryLoading(true);
+    setPayLoading(true);
     try {
       const res = await fetch('/api/trpc/shipping.createPayment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ json: { orderId: id } }),
+        body: JSON.stringify({ json: { orderId: id, phone: payerPhone || undefined } }),
       });
       const data = await res.json();
       const initPoint = data?.result?.data?.json?.initPoint;
       if (initPoint) { window.location.href = initPoint; }
-      else { alert('Erro ao gerar link. Tente novamente.'); setRetryLoading(false); }
-    } catch { alert('Erro de conexão. Tente novamente.'); setRetryLoading(false); }
+      else { alert('Erro ao gerar link. Tente novamente.'); setPayLoading(false); }
+    } catch { alert('Erro de conexão. Tente novamente.'); setPayLoading(false); }
   }
 
   const { data: order, isLoading, error } = trpc.shipping.trackOrder.useQuery(
@@ -52,12 +59,15 @@ export default function TrackOrder() {
     { enabled: !!queryInput, retry: false }
   );
 
-  // If MP redirected here with pedido param, focus the phone field
+  // If we have both order + phone from the link, search automatically.
   useEffect(() => {
-    if (urlParams.pedido) {
+    if (urlParams.pedido && urlParams.tel) {
+      setSubmitted(true);
+    } else if (urlParams.pedido) {
       const el = document.getElementById('track-phone');
       if (el) el.focus();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSearch = (e: React.FormEvent) => {
@@ -127,9 +137,9 @@ export default function TrackOrder() {
             <p style={{ margin: 0, fontWeight: 700, color: '#fca5a5' }}>❌ Pagamento não aprovado.</p>
             <p style={{ margin: '6px 0 14px', fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>Não se preocupe — seu pedido foi salvo. Clique abaixo para tentar novamente com outro método de pagamento.</p>
             {urlParams.pedido && (
-              <button onClick={handleRetryPayment} disabled={retryLoading}
-                style={{ background: retryLoading ? '#475569' : '#009ee3', color: 'white', border: 'none', borderRadius: '10px', padding: '12px 24px', fontWeight: 700, fontSize: '14px', cursor: retryLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-                {retryLoading ? '⟳ Gerando link...' : '💳 Tentar pagamento novamente'}
+              <button onClick={handlePay} disabled={payLoading}
+                style={{ background: payLoading ? '#475569' : '#009ee3', color: 'white', border: 'none', borderRadius: '10px', padding: '12px 24px', fontWeight: 700, fontSize: '14px', cursor: payLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                {payLoading ? '⟳ Gerando link...' : '💳 Tentar pagamento novamente'}
               </button>
             )}
           </div>
@@ -354,26 +364,42 @@ export default function TrackOrder() {
             )}
 
             {/* Payment status */}
-            {order.paymentStatus === 'awaiting' && (
+            {(order.paymentStatus === 'awaiting' || order.paymentStatus === 'failed') && (
               <div style={{
-                background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.3)',
+                background: order.paymentStatus === 'failed' ? 'rgba(239,68,68,0.1)' : 'rgba(234,179,8,0.1)',
+                border: order.paymentStatus === 'failed' ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(234,179,8,0.3)',
                 borderRadius: '16px', padding: '20px',
               }}>
-                <p style={{ margin: 0, fontSize: '14px', color: '#fde68a' }}>
-                  ⏳ <strong>Aguardando confirmação de pagamento.</strong> Envie o comprovante PIX pelo WhatsApp para agilizar.
+                <p style={{ margin: 0, fontSize: '14px', color: order.paymentStatus === 'failed' ? '#fca5a5' : '#fde68a' }}>
+                  {order.paymentStatus === 'failed'
+                    ? <><strong>❌ Pagamento não aprovado.</strong> Tente novamente com outro método de pagamento.</>
+                    : <>⏳ <strong>Aguardando confirmação de pagamento.</strong> Conclua o pagamento abaixo para garantir seu pedido.</>
+                  }
                 </p>
-                <a
-                  href="https://wa.me/558421408212"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    display: 'inline-block', marginTop: '12px', padding: '10px 20px',
-                    borderRadius: '10px', background: '#16a34a', color: 'white',
-                    fontWeight: 600, fontSize: '14px', textDecoration: 'none',
-                  }}
-                >
-                  📱 Enviar comprovante no WhatsApp
-                </a>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '12px' }}>
+                  <button onClick={handlePay} disabled={payLoading}
+                    style={{
+                      padding: '10px 20px', borderRadius: '10px',
+                      background: payLoading ? '#475569' : '#009ee3', color: 'white',
+                      fontWeight: 700, fontSize: '14px', border: 'none',
+                      cursor: payLoading ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {payLoading ? '⟳ Gerando link...' : '💳 Pagar agora (Cartão, PIX ou Boleto)'}
+                  </button>
+                  <a
+                    href="https://wa.me/558421408212"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-block', padding: '10px 20px',
+                      borderRadius: '10px', background: '#16a34a', color: 'white',
+                      fontWeight: 600, fontSize: '14px', textDecoration: 'none',
+                    }}
+                  >
+                    📱 Enviar comprovante no WhatsApp
+                  </a>
+                </div>
               </div>
             )}
           </div>

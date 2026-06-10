@@ -15,6 +15,7 @@ import { sql as sqlClient } from '../server/db/index';
 import { siteOrders, abandonedCarts, automationRuns, msgTemplates } from '../server/db/schema';
 import { eq, and, sql, lte, gte, isNull, inArray } from 'drizzle-orm';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
+import { createPixPaymentForOrder } from '../server/lib/mercadopago';
 
 function renderTemplate(body: string, vars: Record<string, string>): string {
   return body.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
@@ -462,23 +463,24 @@ app.use(
   }),
 );
 
-// Fetch a PIX copy-paste code from Mercado Pago for a given payment id (best effort).
-async function fetchPixCode(mpPaymentId: string | null, orderId?: number): Promise<string | null> {
+// Fetch a PIX copy-paste code from Mercado Pago for an order: tries the stored
+// payment, then searches by external_reference, and finally generates a brand-new
+// PIX payment if none exists yet — so follow-up messages always have a working code.
+async function fetchPixCode(order: typeof siteOrders.$inferSelect): Promise<string | null> {
   const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
-  if (!token) return null;
-  try {
-    if (mpPaymentId) {
-      const r = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (r.ok) {
-        const p = await r.json() as any;
-        const qr = p?.point_of_interaction?.transaction_data?.qr_code ?? null;
-        if (qr) return qr;
+  if (token) {
+    try {
+      if (order.mpPaymentId) {
+        const r = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (r.ok) {
+          const p = await r.json() as any;
+          const qr = p?.point_of_interaction?.transaction_data?.qr_code ?? null;
+          if (qr) return qr;
+        }
       }
-    }
-    if (orderId) {
-      const r = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${orderId}&sort=date_created&criteria=desc`, {
+      const r = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${order.id}&sort=date_created&criteria=desc`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       if (r.ok) {
@@ -488,9 +490,15 @@ async function fetchPixCode(mpPaymentId: string | null, orderId?: number): Promi
           if (qr) return qr;
         }
       }
+    } catch {
+      // fall through to generating a fresh PIX below
     }
-    return null;
-  } catch { return null; }
+  }
+  if (order.paymentStatus !== 'confirmed') {
+    const created = await createPixPaymentForOrder(order);
+    if (created) return created.qrCode;
+  }
+  return null;
 }
 
 // One-shot WhatsApp follow-up for unpaid (awaiting PIX/boleto) and failed (rejected) orders.
@@ -512,17 +520,17 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
     const tpls = await ordersDb.select().from(msgTemplates).where(inArray(msgTemplates.type, ['unpaid', 'failed']));
     const defaultByType = (type: string) => tpls.find(t => t.type === type && t.isDefault) ?? tpls.find(t => t.type === type);
     const pixTpl = tpls.find(t => t.slug === 'unpaid_pix');
-    const link = 'https://premium.salvitarn.com.br';
 
     for (const o of orders) {
       // Mark first so a transient WA outage never causes reprocessing / repeated MP calls.
       await ordersDb.update(siteOrders).set({ unpaidFollowupSentAt: new Date(), updatedAt: new Date() })
         .where(eq(siteOrders.id, o.id));
 
+      const link = `https://premium.salvitarn.com.br/meu-pedido?pedido=${o.id}&tel=${o.customerPhone.replace(/\D/g, '').slice(-4)}`;
       let tpl = o.paymentStatus === 'failed' ? defaultByType('failed') : defaultByType('unpaid');
       let pix = '';
       if (o.paymentStatus === 'awaiting') {
-        const code = await fetchPixCode(o.mpPaymentId, o.id);
+        const code = await fetchPixCode(o);
         if (code && pixTpl) { tpl = pixTpl; pix = code; }
       }
       const vars = { nome: o.customerName, pedido: String(o.id), valor: o.totalPrice ?? '0', link, pix };
@@ -535,12 +543,12 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
       if (ok) sent++;
       // Best-effort email follow-up (non-blocking)
       if (o.customerEmail) {
-        const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${o.id}`;
         const emailHtml = unpaidOrderHtml(
           o.customerName,
           o.id,
           o.totalPrice ?? '0',
-          orderLink,
+          link,
+          pix || undefined,
         );
         const emailSubject = o.paymentStatus === 'failed'
           ? `Problema no pagamento do pedido #${o.id} — tente novamente`
