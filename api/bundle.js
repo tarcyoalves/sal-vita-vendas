@@ -18166,8 +18166,8 @@ var require_escape_html = __commonJS({
   "node_modules/escape-html/index.js"(exports2, module2) {
     "use strict";
     var matchHtmlRegExp = /["'&<>]/;
-    module2.exports = escapeHtml;
-    function escapeHtml(string) {
+    module2.exports = escapeHtml2;
+    function escapeHtml2(string) {
       var str = "" + string;
       var match = matchHtmlRegExp.exec(str);
       if (!match) {
@@ -18292,7 +18292,7 @@ var require_finalhandler = __commonJS({
     "use strict";
     var debug = require_src2()("finalhandler");
     var encodeUrl = require_encodeurl();
-    var escapeHtml = require_escape_html();
+    var escapeHtml2 = require_escape_html();
     var onFinished = require_on_finished();
     var parseUrl2 = require_parseurl();
     var statuses = require_statuses();
@@ -18304,7 +18304,7 @@ var require_finalhandler = __commonJS({
     };
     var isFinished = onFinished.isFinished;
     function createHtmlDocument(message) {
-      var body = escapeHtml(message).replace(NEWLINE_REGEXP, "<br>").replace(DOUBLE_SPACE_REGEXP, " &nbsp;");
+      var body = escapeHtml2(message).replace(NEWLINE_REGEXP, "<br>").replace(DOUBLE_SPACE_REGEXP, " &nbsp;");
       return '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<title>Error</title>\n</head>\n<body>\n<pre>' + body + "</pre>\n</body>\n</html>\n";
     }
     module2.exports = finalhandler;
@@ -20834,7 +20834,7 @@ var require_send = __commonJS({
     var deprecate = require_depd()("send");
     var destroy = require_destroy();
     var encodeUrl = require_encodeurl();
-    var escapeHtml = require_escape_html();
+    var escapeHtml2 = require_escape_html();
     var etag = require_etag();
     var fresh = require_fresh();
     var fs2 = require("fs");
@@ -20934,7 +20934,7 @@ var require_send = __commonJS({
       }
       var res = this.res;
       var msg = statuses.message[status] || String(status);
-      var doc = createHtmlDocument("Error", escapeHtml(msg));
+      var doc = createHtmlDocument("Error", escapeHtml2(msg));
       clearHeaders(res);
       if (err && err.headers) {
         setHeaders(res, err.headers);
@@ -21034,7 +21034,7 @@ var require_send = __commonJS({
         return;
       }
       var loc = encodeUrl(collapseLeadingSlashes(this.path + "/"));
-      var doc = createHtmlDocument("Redirecting", "Redirecting to " + escapeHtml(loc));
+      var doc = createHtmlDocument("Redirecting", "Redirecting to " + escapeHtml2(loc));
       res.statusCode = 301;
       res.setHeader("Content-Type", "text/html; charset=UTF-8");
       res.setHeader("Content-Length", Buffer.byteLength(doc));
@@ -23662,7 +23662,7 @@ var require_response = __commonJS({
     var createError = require_http_errors();
     var deprecate = require_depd()("express");
     var encodeUrl = require_encodeurl();
-    var escapeHtml = require_escape_html();
+    var escapeHtml2 = require_escape_html();
     var http = require("http");
     var isAbsolute = require_utils2().isAbsolute;
     var onFinished = require_on_finished();
@@ -24074,7 +24074,7 @@ var require_response = __commonJS({
           body = statuses.message[status] + ". Redirecting to " + address;
         },
         html: function() {
-          var u = escapeHtml(address);
+          var u = escapeHtml2(address);
           body = "<p>" + statuses.message[status] + ". Redirecting to " + u + "</p>";
         },
         default: function() {
@@ -24214,7 +24214,7 @@ var require_serve_static = __commonJS({
   "node_modules/serve-static/index.js"(exports2, module2) {
     "use strict";
     var encodeUrl = require_encodeurl();
-    var escapeHtml = require_escape_html();
+    var escapeHtml2 = require_escape_html();
     var parseUrl2 = require_parseurl();
     var resolve = require("path").resolve;
     var send = require_send();
@@ -24301,7 +24301,7 @@ var require_serve_static = __commonJS({
         originalUrl.path = null;
         originalUrl.pathname = collapseLeadingSlashes(originalUrl.pathname + "/");
         var loc = encodeUrl(url2.format(originalUrl));
-        var doc = createHtmlDocument("Redirecting", "Redirecting to " + escapeHtml(loc));
+        var doc = createHtmlDocument("Redirecting", "Redirecting to " + escapeHtml2(loc));
         res.statusCode = 301;
         res.setHeader("Content-Type", "text/html; charset=UTF-8");
         res.setHeader("Content-Length", Buffer.byteLength(doc));
@@ -36556,10 +36556,10 @@ var init_subquery = __esm({
     init_entity();
     Subquery = class {
       static [entityKind] = "Subquery";
-      constructor(sql5, selection, alias, isWith = false) {
+      constructor(sql6, selection, alias, isWith = false) {
         this._ = {
           brand: "Subquery",
-          sql: sql5,
+          sql: sql6,
           selectedFields: selection,
           alias,
           isWith
@@ -41748,10 +41748,10 @@ var init_raw = __esm({
     init_entity();
     init_query_promise();
     PgRaw = class extends QueryPromise {
-      constructor(execute, sql5, query, mapBatchResult) {
+      constructor(execute, sql6, query, mapBatchResult) {
         super();
         this.execute = execute;
-        this.sql = sql5;
+        this.sql = sql6;
         this.query = query;
         this.mapBatchResult = mapBatchResult;
       }
@@ -42034,8 +42034,8 @@ var init_db = __esm({
         return new PgRefreshMaterializedView(view, this.session, this.dialect);
       }
       execute(query) {
-        const sql5 = query.getSQL();
-        const builtQuery = this.dialect.sqlToQuery(sql5);
+        const sql6 = query.getSQL();
+        const builtQuery = this.dialect.sqlToQuery(sql6);
         const prepared = this.session.prepareQuery(
           builtQuery,
           void 0,
@@ -42044,7 +42044,7 @@ var init_db = __esm({
         );
         return new PgRaw(
           () => prepared.execute(),
-          sql5,
+          sql6,
           builtQuery,
           (result) => prepared.mapResult(result, true)
         );
@@ -42802,6 +42802,7 @@ var init_schema2 = __esm({
       status: text("status").notNull().default("checkout_started"),
       // checkout_started | redirected_to_payment | abandoned | converted | cancelled
       recovered: boolean("recovered").default(false).notNull(),
+      optedOut: boolean("opted_out").default(false).notNull(),
       recoverySentAt: timestamp("recovery_sent_at"),
       abandonedAt: timestamp("abandoned_at"),
       convertedAt: timestamp("converted_at"),
@@ -44491,7 +44492,7 @@ var noop2 = () => {
 function Subscribe(postgres2, options) {
   const subscribers = /* @__PURE__ */ new Map(), slot = "postgresjs_" + Math.random().toString(36).slice(2), state = {};
   let connection2, stream, ended = false;
-  const sql5 = subscribe.sql = postgres2({
+  const sql6 = subscribe.sql = postgres2({
     ...options,
     transform: { column: {}, value: {}, row: {} },
     max: 1,
@@ -44507,18 +44508,18 @@ function Subscribe(postgres2, options) {
         return;
       stream = null;
       state.pid = state.secret = void 0;
-      connected(await init(sql5, slot, options.publications));
+      connected(await init(sql6, slot, options.publications));
       subscribers.forEach((event) => event.forEach(({ onsubscribe }) => onsubscribe()));
     },
     no_subscribe: true
   });
-  const end = sql5.end, close = sql5.close;
-  sql5.end = async () => {
+  const end = sql6.end, close = sql6.close;
+  sql6.end = async () => {
     ended = true;
     stream && await new Promise((r) => (stream.once("close", r), stream.end()));
     return end();
   };
-  sql5.close = async () => {
+  sql6.close = async () => {
     stream && await new Promise((r) => (stream.once("close", r), stream.end()));
     return close();
   };
@@ -44526,7 +44527,7 @@ function Subscribe(postgres2, options) {
   async function subscribe(event, fn, onsubscribe = noop2, onerror = noop2) {
     event = parseEvent(event);
     if (!connection2)
-      connection2 = init(sql5, slot, options.publications);
+      connection2 = init(sql6, slot, options.publications);
     const subscriber = { fn, onsubscribe };
     const fns = subscribers.has(event) ? subscribers.get(event).add(subscriber) : subscribers.set(event, /* @__PURE__ */ new Set([subscriber])).get(event);
     const unsubscribe = () => {
@@ -44537,7 +44538,7 @@ function Subscribe(postgres2, options) {
       connected(x2);
       onsubscribe();
       stream && stream.on("error", onerror);
-      return { unsubscribe, state, sql: sql5 };
+      return { unsubscribe, state, sql: sql6 };
     });
   }
   function connected(x2) {
@@ -44545,14 +44546,14 @@ function Subscribe(postgres2, options) {
     state.pid = x2.state.pid;
     state.secret = x2.state.secret;
   }
-  async function init(sql6, slot2, publications) {
+  async function init(sql7, slot2, publications) {
     if (!publications)
       throw new Error("Missing publication names");
-    const xs = await sql6.unsafe(
+    const xs = await sql7.unsafe(
       `CREATE_REPLICATION_SLOT ${slot2} TEMPORARY LOGICAL pgoutput NOEXPORT_SNAPSHOT`
     );
     const [x2] = xs;
-    const stream2 = await sql6.unsafe(
+    const stream2 = await sql7.unsafe(
       `START_REPLICATION SLOT ${slot2} LOGICAL ${x2.consistent_point} (proto_version '1', publication_names '${publications}')`
     ).writable();
     const state2 = {
@@ -44560,14 +44561,14 @@ function Subscribe(postgres2, options) {
     };
     stream2.on("data", data);
     stream2.on("error", error);
-    stream2.on("close", sql6.close);
+    stream2.on("close", sql7.close);
     return { stream: stream2, state: xs.state };
     function error(e) {
       console.error("Unexpected error during logical streaming - reconnecting", e);
     }
     function data(x3) {
       if (x3[0] === 119) {
-        parse(x3.subarray(25), state2, sql6.options.parsers, handle, options.transform);
+        parse(x3.subarray(25), state2, sql7.options.parsers, handle, options.transform);
       } else if (x3[0] === 107 && x3[17]) {
         state2.lsn = x3.subarray(1, 9);
         pong();
@@ -44699,22 +44700,22 @@ function parseEvent(x2) {
 
 // node_modules/postgres/src/large.js
 var import_stream2 = __toESM(require("stream"), 1);
-function largeObject(sql5, oid, mode = 131072 | 262144) {
+function largeObject(sql6, oid, mode = 131072 | 262144) {
   return new Promise(async (resolve, reject) => {
-    await sql5.begin(async (sql6) => {
+    await sql6.begin(async (sql7) => {
       let finish;
-      !oid && ([{ oid }] = await sql6`select lo_creat(-1) as oid`);
-      const [{ fd }] = await sql6`select lo_open(${oid}, ${mode}) as fd`;
+      !oid && ([{ oid }] = await sql7`select lo_creat(-1) as oid`);
+      const [{ fd }] = await sql7`select lo_open(${oid}, ${mode}) as fd`;
       const lo = {
         writable,
         readable,
-        close: () => sql6`select lo_close(${fd})`.then(finish),
-        tell: () => sql6`select lo_tell64(${fd})`,
-        read: (x2) => sql6`select loread(${fd}, ${x2}) as data`,
-        write: (x2) => sql6`select lowrite(${fd}, ${x2})`,
-        truncate: (x2) => sql6`select lo_truncate64(${fd}, ${x2})`,
-        seek: (x2, whence = 0) => sql6`select lo_lseek64(${fd}, ${x2}, ${whence})`,
-        size: () => sql6`
+        close: () => sql7`select lo_close(${fd})`.then(finish),
+        tell: () => sql7`select lo_tell64(${fd})`,
+        read: (x2) => sql7`select loread(${fd}, ${x2}) as data`,
+        write: (x2) => sql7`select lowrite(${fd}, ${x2})`,
+        truncate: (x2) => sql7`select lo_truncate64(${fd}, ${x2})`,
+        seek: (x2, whence = 0) => sql7`select lo_lseek64(${fd}, ${x2}, ${whence})`,
+        size: () => sql7`
           select
             lo_lseek64(${fd}, location, 0) as position,
             seek.size
@@ -44789,12 +44790,12 @@ function Postgres(a2, b2) {
   let ending = false;
   const queries = queue_default(), connecting = queue_default(), reserved = queue_default(), closed = queue_default(), ended = queue_default(), open = queue_default(), busy = queue_default(), full = queue_default(), queues = { connecting, reserved, closed, ended, open, busy, full };
   const connections = [...Array(options.max)].map(() => connection_default(options, queues, { onopen, onend, onclose }));
-  const sql5 = Sql(handler);
-  Object.assign(sql5, {
+  const sql6 = Sql(handler);
+  Object.assign(sql6, {
     get parameters() {
       return options.parameters;
     },
-    largeObject: largeObject.bind(null, sql5),
+    largeObject: largeObject.bind(null, sql6),
     subscribe,
     CLOSE,
     END: CLOSE,
@@ -44806,14 +44807,14 @@ function Postgres(a2, b2) {
     close,
     end
   });
-  return sql5;
+  return sql6;
   function Sql(handler2) {
     handler2.debug = options.debug;
     Object.entries(options.types).reduce((acc, [name2, type]) => {
       acc[name2] = (x2) => new Parameter(x2, type.to);
       return acc;
     }, typed);
-    Object.assign(sql6, {
+    Object.assign(sql7, {
       types: typed,
       typed,
       unsafe,
@@ -44822,11 +44823,11 @@ function Postgres(a2, b2) {
       json,
       file
     });
-    return sql6;
+    return sql7;
     function typed(value, type) {
       return new Parameter(value, type);
     }
-    function sql6(strings, ...args) {
+    function sql7(strings, ...args) {
       const query = strings && Array.isArray(strings.raw) ? new Query(strings, args, handler2, cancel) : typeof strings === "string" && !args.length ? new Identifier(options.transform.column.to ? options.transform.column.to(strings) : strings) : new Builder(strings, args);
       return query;
     }
@@ -44857,7 +44858,7 @@ function Postgres(a2, b2) {
   }
   async function listen(name2, fn, onlisten) {
     const listener = { fn, onlisten };
-    const sql6 = listen.sql || (listen.sql = Postgres({
+    const sql7 = listen.sql || (listen.sql = Postgres({
       ...options,
       max: 1,
       idle_timeout: null,
@@ -44881,7 +44882,7 @@ function Postgres(a2, b2) {
       listener.onlisten && listener.onlisten();
       return { state: result2.state, unlisten };
     }
-    channels[name2] = { result: sql6`listen ${sql6.unsafe('"' + name2.replace(/"/g, '""') + '"')}`, listeners: [listener] };
+    channels[name2] = { result: sql7`listen ${sql7.unsafe('"' + name2.replace(/"/g, '""') + '"')}`, listeners: [listener] };
     const result = await channels[name2].result;
     listener.onlisten && listener.onlisten();
     return { state: result.state, unlisten };
@@ -44892,11 +44893,11 @@ function Postgres(a2, b2) {
       if (channels[name2].listeners.length)
         return;
       delete channels[name2];
-      return sql6`unlisten ${sql6.unsafe('"' + name2.replace(/"/g, '""') + '"')}`;
+      return sql7`unlisten ${sql7.unsafe('"' + name2.replace(/"/g, '""') + '"')}`;
     }
   }
   async function notify(channel, payload) {
-    return await sql5`select pg_notify(${channel}, ${"" + payload})`;
+    return await sql6`select pg_notify(${channel}, ${"" + payload})`;
   }
   async function reserve() {
     const queue = queue_default();
@@ -44908,12 +44909,12 @@ function Postgres(a2, b2) {
     move(c, reserved);
     c.reserved = () => queue.length ? c.execute(queue.shift()) : move(c, reserved);
     c.reserved.release = true;
-    const sql6 = Sql(handler2);
-    sql6.release = () => {
+    const sql7 = Sql(handler2);
+    sql7.release = () => {
       c.reserved = null;
       onopen(c);
     };
-    return sql6;
+    return sql7;
     function handler2(q) {
       c.queue === full ? queue.push(q) : c.execute(q) || move(c, full);
     }
@@ -44923,7 +44924,7 @@ function Postgres(a2, b2) {
     const queries2 = queue_default();
     let savepoints = 0, connection2, prepare = null;
     try {
-      await sql5.unsafe("begin " + options2.replace(/[^a-z ]/ig, ""), [], { onexecute }).execute();
+      await sql6.unsafe("begin " + options2.replace(/[^a-z ]/ig, ""), [], { onexecute }).execute();
       return await Promise.race([
         scope(connection2, fn),
         new Promise((_2, reject) => connection2.onclose = reject)
@@ -44932,29 +44933,29 @@ function Postgres(a2, b2) {
       throw error;
     }
     async function scope(c, fn2, name2) {
-      const sql6 = Sql(handler2);
-      sql6.savepoint = savepoint;
-      sql6.prepare = (x2) => prepare = x2.replace(/[^a-z0-9$-_. ]/gi);
+      const sql7 = Sql(handler2);
+      sql7.savepoint = savepoint;
+      sql7.prepare = (x2) => prepare = x2.replace(/[^a-z0-9$-_. ]/gi);
       let uncaughtError, result;
-      name2 && await sql6`savepoint ${sql6(name2)}`;
+      name2 && await sql7`savepoint ${sql7(name2)}`;
       try {
         result = await new Promise((resolve, reject) => {
-          const x2 = fn2(sql6);
+          const x2 = fn2(sql7);
           Promise.resolve(Array.isArray(x2) ? Promise.all(x2) : x2).then(resolve, reject);
         });
         if (uncaughtError)
           throw uncaughtError;
       } catch (e) {
-        await (name2 ? sql6`rollback to ${sql6(name2)}` : sql6`rollback`);
+        await (name2 ? sql7`rollback to ${sql7(name2)}` : sql7`rollback`);
         throw e instanceof PostgresError && e.code === "25P02" && uncaughtError || e;
       }
       if (!name2) {
-        prepare ? await sql6`prepare transaction '${sql6.unsafe(prepare)}'` : await sql6`commit`;
+        prepare ? await sql7`prepare transaction '${sql7.unsafe(prepare)}'` : await sql7`commit`;
       }
       return result;
       function savepoint(name3, fn3) {
         if (name3 && Array.isArray(name3.raw))
-          return savepoint((sql7) => sql7.apply(sql7, arguments));
+          return savepoint((sql8) => sql8.apply(sql8, arguments));
         arguments.length === 1 && (fn3 = name3, name3 = null);
         return scope(c, fn3, "s" + savepoints++ + (name3 ? "_" + name3 : ""));
       }
@@ -57215,20 +57216,377 @@ _Sal Vita \u2014 Mossor\xF3/RN_`;
 // server/routers/recovery.ts
 init_schema2();
 init_drizzle_orm();
-async function sendViaWhatsApp(phone, message) {
+
+// server/email/resend.ts
+var FROM = "Sal Vita <noreply@premium.salvitarn.com.br>";
+var BRAND2 = "#0C3680";
+var DAILY_SOFT_LIMIT = parseInt(process.env.RESEND_DAILY_LIMIT ?? "80");
+var _emailsToday = 0;
+var _emailCounterDay = "";
+function dailyCount() {
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  if (_emailCounterDay !== today) {
+    _emailsToday = 0;
+    _emailCounterDay = today;
+  }
+  return _emailsToday;
+}
+async function sendEmail(to2, subject, html) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey)
+    return { ok: false, reason: "no_api_key" };
+  if (dailyCount() >= DAILY_SOFT_LIMIT) {
+    console.warn(`[email] daily soft limit (${DAILY_SOFT_LIMIT}) reached \u2014 skipping "${subject}" \u2192 ${to2}`);
+    return { ok: false, reason: "daily_limit" };
+  }
+  try {
+    const ac = new AbortController();
+    const timer2 = setTimeout(() => ac.abort(), 8e3);
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({ from: FROM, to: to2, subject, html }),
+      signal: ac.signal
+    });
+    clearTimeout(timer2);
+    if (!res.ok) {
+      const err = await res.text().catch(() => res.statusText);
+      console.error(`[email] Resend error ${res.status}:`, err);
+      return { ok: false, reason: `resend_${res.status}` };
+    }
+    _emailsToday++;
+    console.log(`[email] sent (${_emailsToday}/${DAILY_SOFT_LIMIT} today) "${subject}" \u2192 ${to2}`);
+    return { ok: true };
+  } catch (err) {
+    console.error("[email] sendEmail failed:", err);
+    return { ok: false, reason: "network_error" };
+  }
+}
+function layout(preheader, body) {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sal Vita</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:system-ui,Arial,sans-serif;">
+  <!-- preheader -->
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${preheader}&nbsp;&zwnj;&zwnj;&zwnj;&zwnj;&zwnj;</div>
+
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f4;">
+    <tr>
+      <td align="center" style="padding:24px 8px;">
+
+        <!-- card -->
+        <table width="600" cellpadding="0" cellspacing="0" border="0"
+               style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
+
+          <!-- header -->
+          <tr>
+            <td style="background:${BRAND2};padding:24px 32px;text-align:center;">
+              <span style="font-family:'Pacifico',system-ui,Arial,sans-serif;font-size:28px;color:#ffffff;letter-spacing:1px;">
+                &#127754; Sal Vita
+              </span>
+            </td>
+          </tr>
+
+          <!-- body -->
+          <tr>
+            <td style="padding:32px;">
+              ${body}
+            </td>
+          </tr>
+
+          <!-- footer -->
+          <tr>
+            <td style="background:#f4f4f4;padding:20px 32px;border-top:1px solid #e0e0e0;text-align:center;">
+              <p style="margin:0;font-size:12px;color:#888;">
+                <strong>Sal Vita &mdash; Sal Marinho Premium de Mossor\xF3/RN</strong>
+              </p>
+              <p style="margin:8px 0 0;font-size:11px;color:#aaa;">
+                Para cancelar emails, responda com <strong>PARAR</strong>.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+        <!-- /card -->
+
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+function ctaButton(label, href) {
+  return `<table cellpadding="0" cellspacing="0" border="0" style="margin:24px auto;">
+    <tr>
+      <td style="background:${BRAND2};border-radius:6px;">
+        <a href="${href}"
+           style="display:block;padding:14px 32px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:bold;">
+          ${label}
+        </a>
+      </td>
+    </tr>
+  </table>`;
+}
+function abandonedCartHtml(name2, link, coupon) {
+  const couponBlock = coupon ? `<tr>
+        <td style="background:#eef3ff;border:1px dashed ${BRAND2};border-radius:6px;padding:16px;text-align:center;margin-bottom:16px;">
+          <p style="margin:0;font-size:13px;color:#555;">Seu cupom exclusivo:</p>
+          <p style="margin:8px 0 0;font-size:22px;font-weight:bold;color:${BRAND2};letter-spacing:2px;">${coupon}</p>
+          <p style="margin:6px 0 0;font-size:12px;color:#888;">Use no checkout e ganhe desconto especial!</p>
+        </td>
+      </tr>` : "";
+  const body = `<table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td>
+        <h2 style="margin:0 0 8px;font-size:22px;color:#222;">Ol&aacute;, ${escapeHtml(name2)}! &#128075;</h2>
+        <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;">
+          Notamos que voc&ecirc; se interessou pelo <strong>Sal Marinho Integral Sal Vita</strong> mas n&atilde;o finalizou o pedido.
+        </p>
+        <p style="margin:0 0 24px;font-size:15px;color:#444;line-height:1.6;">
+          Nosso sal &eacute; colhido artesanalmente em Mossor&oacute;/RN, sem refino &mdash; preservando os 84+ minerais naturais do mar. &#127754;
+        </p>
+      </td>
+    </tr>
+    ${couponBlock}
+    <tr>
+      <td>${ctaButton("Finalizar meu pedido &rarr;", link)}</td>
+    </tr>
+    <tr>
+      <td>
+        <p style="margin:16px 0 0;font-size:13px;color:#888;text-align:center;">
+          Qualquer d&uacute;vida &eacute; s&oacute; responder este e-mail ou chamar no WhatsApp. &#128522;
+        </p>
+      </td>
+    </tr>
+  </table>`;
+  return layout(
+    `Voc\xEA esqueceu algo \u2014 finalize seu pedido Sal Vita${coupon ? ` e use o cupom ${coupon}` : ""}.`,
+    body
+  );
+}
+function unpaidOrderHtml(name2, orderId, total, link, pixCode) {
+  const pixBlock = pixCode ? `<tr>
+        <td style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:16px;margin-bottom:16px;">
+          <p style="margin:0 0 8px;font-size:14px;color:#166534;font-weight:bold;">&#128241; Pague com PIX agora:</p>
+          <p style="margin:0;font-size:11px;color:#555;word-break:break-all;font-family:monospace;background:#fff;padding:8px;border-radius:4px;">${escapeHtml(pixCode)}</p>
+          <p style="margin:8px 0 0;font-size:12px;color:#888;">Copie o c&oacute;digo acima e cole no app do seu banco.</p>
+        </td>
+      </tr>` : "";
+  const body = `<table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td>
+        <h2 style="margin:0 0 8px;font-size:22px;color:#222;">Ol&aacute;, ${escapeHtml(name2)}! &#128184;</h2>
+        <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;">
+          Seu pedido <strong>#${orderId}</strong> est&aacute; aguardando pagamento.
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding-bottom:16px;">
+        <table width="100%" cellpadding="8" cellspacing="0" border="0"
+               style="border:1px solid #e0e0e0;border-radius:6px;font-size:14px;color:#444;">
+          <tr style="background:#f9f9f9;">
+            <td><strong>Pedido</strong></td>
+            <td style="text-align:right;"><strong>#${orderId}</strong></td>
+          </tr>
+          <tr>
+            <td>Total</td>
+            <td style="text-align:right;color:${BRAND2};font-weight:bold;">R$ ${escapeHtml(total)}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    ${pixBlock}
+    <tr>
+      <td>${ctaButton("Concluir pagamento &rarr;", link)}</td>
+    </tr>
+    <tr>
+      <td>
+        <p style="margin:16px 0 0;font-size:13px;color:#888;text-align:center;">
+          Aceitamos Cart&atilde;o, PIX e Boleto. Pedido reservado por tempo limitado!
+        </p>
+      </td>
+    </tr>
+  </table>`;
+  return layout(`Seu pedido #${orderId} est\xE1 aguardando pagamento \u2014 R$ ${total}.`, body);
+}
+function orderConfirmedHtml(name2, orderId, total) {
+  const body = `<table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td style="text-align:center;padding-bottom:16px;">
+        <span style="font-size:48px;">&#127881;</span>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <h2 style="margin:0 0 8px;font-size:22px;color:#222;text-align:center;">
+          Pagamento confirmado!
+        </h2>
+        <p style="margin:0 0 24px;font-size:15px;color:#444;line-height:1.6;text-align:center;">
+          Obrigado, <strong>${escapeHtml(name2)}</strong>! Seu pedido foi aprovado e j&aacute; estamos preparando o envio. &#128230;
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding-bottom:24px;">
+        <table width="100%" cellpadding="8" cellspacing="0" border="0"
+               style="border:1px solid #e0e0e0;border-radius:6px;font-size:14px;color:#444;">
+          <tr style="background:#f9f9f9;">
+            <td><strong>Pedido</strong></td>
+            <td style="text-align:right;"><strong>#${orderId}</strong></td>
+          </tr>
+          <tr>
+            <td>Total pago</td>
+            <td style="text-align:right;color:${BRAND2};font-weight:bold;">R$ ${escapeHtml(total)}</td>
+          </tr>
+          <tr style="background:#f9f9f9;">
+            <td>Status</td>
+            <td style="text-align:right;color:#16a34a;font-weight:bold;">&#10003; Confirmado</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <p style="margin:0;font-size:14px;color:#555;line-height:1.6;text-align:center;">
+          Voc&ecirc; receber&aacute; o c&oacute;digo de rastreio assim que postarmos o pacote. &#128666;<br />
+          Em caso de d&uacute;vidas, basta responder este e-mail.
+        </p>
+      </td>
+    </tr>
+  </table>`;
+  return layout(`Pedido #${orderId} confirmado \u2014 R$ ${total}. Obrigado pela compra!`, body);
+}
+function escapeHtml(str) {
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// server/lib/mercadopago.ts
+init_schema2();
+init_drizzle_orm();
+async function createPixPaymentForOrder(order) {
+  const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+  if (!token)
+    return null;
+  const amount = parseFloat(order.totalPrice ?? "0");
+  if (!(amount > 0))
+    return null;
+  const email = order.customerEmail && order.customerEmail.includes("@") ? order.customerEmail : `cliente${order.id}@salvitarn.com.br`;
+  const body = {
+    transaction_amount: amount,
+    description: `Pedido #${order.id} \u2014 Sal Vita`,
+    payment_method_id: "pix",
+    payer: {
+      email,
+      first_name: order.customerName.split(" ")[0],
+      last_name: order.customerName.split(" ").slice(1).join(" ") || "-"
+    },
+    external_reference: String(order.id),
+    notification_url: "https://premium.salvitarn.com.br/api/mp-webhook"
+  };
+  if (order.customerCpf)
+    body.payer.identification = { type: "CPF", number: order.customerCpf.replace(/\D/g, "") };
+  try {
+    const res = await fetch("https://api.mercadopago.com/v1/payments", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "X-Idempotency-Key": `pix-${order.id}-${Date.now()}`
+      },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok)
+      return null;
+    const data = await res.json();
+    const td = data?.point_of_interaction?.transaction_data;
+    if (!td?.qr_code)
+      return null;
+    await ordersDb.update(siteOrders).set({ mpPaymentId: String(data.id), updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, order.id));
+    return {
+      paymentId: String(data.id),
+      qrCode: td.qr_code,
+      qrCodeBase64: td.qr_code_base64 ?? ""
+    };
+  } catch {
+    return null;
+  }
+}
+
+// server/routers/recovery.ts
+async function waSendRaw(phone, message) {
   const url2 = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
   const key = process.env.WA_API_KEY || "MinhaChaveSuperSegura123456";
+  const ctrl = new AbortController();
+  const timer2 = setTimeout(() => ctrl.abort(), 9e3);
   try {
     const res = await fetch(`${url2}/send`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "apikey": key },
-      body: JSON.stringify({ phone: fmtPhone(phone), message })
+      body: JSON.stringify({ phone, message }),
+      signal: ctrl.signal
     });
-    return res.ok;
+    clearTimeout(timer2);
+    if (!res.ok)
+      return false;
+    let body = {};
+    try {
+      body = await res.json();
+    } catch {
+    }
+    if (body.success === false)
+      return false;
+    console.log(`[wa] dispatched to ${phone}`);
+    return true;
   } catch {
+    clearTimeout(timer2);
     return false;
   }
 }
+async function sendViaWhatsApp(phone, message) {
+  const primary = fmtPhone(phone);
+  const alt = primary.length === 13 ? primary.slice(0, 4) + primary.slice(5) : primary.length === 12 ? primary.slice(0, 4) + "9" + primary.slice(4) : null;
+  const ok1 = await waSendRaw(primary, message);
+  if (alt) {
+    await new Promise((r) => setTimeout(r, 2e3));
+    await waSendRaw(alt, message);
+  }
+  return { ok: ok1, usedPhone: primary };
+}
+function splitForPix(msg, pixCode) {
+  if (!pixCode)
+    return [msg];
+  const idx = msg.indexOf(pixCode);
+  if (idx === -1)
+    return [msg];
+  const before = msg.slice(0, idx).trim();
+  const after = msg.slice(idx + pixCode.length).trim();
+  return [before, pixCode, after].filter(Boolean);
+}
+async function sendWhatsAppMessage(phone, msg, pixCode = null) {
+  const chunks = splitForPix(msg, pixCode);
+  const first = await sendViaWhatsApp(phone, chunks[0]);
+  for (let i = 1; i < chunks.length; i++) {
+    if (!first.ok)
+      break;
+    await new Promise((r) => setTimeout(r, 800));
+    await waSendRaw(first.usedPhone, chunks[i]);
+  }
+  return first;
+}
+function isBusinessHours() {
+  const now = /* @__PURE__ */ new Date();
+  const brHour = (now.getUTCHours() - 3 + 24) % 24;
+  return brHour >= 8 && brHour < 21;
+}
+var OPT_OUT = "\n\n_Para n\xE3o receber mais mensagens, responda PARAR._";
 function fmtPhone(raw) {
   const d = raw.replace(/\D/g, "");
   return d.startsWith("55") ? d : `55${d}`;
@@ -57249,9 +57607,9 @@ ${coupon ? `\u{1F381} Use o cupom *${coupon}* e ganhe desconto especial!
 ` : ""}\u{1F449} Finalize agora: https://premium.salvitarn.com.br
 
 Qualquer d\xFAvida \xE9 s\xF3 chamar aqui! \u{1F60A}
-_Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
+_Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_${OPT_OUT}`;
 }
-function unpaidMsg(name2, id, qty, total) {
+function unpaidMsg(name2, id, qty, total, tel) {
   return `Ol\xE1 *${name2}*! \u{1F30A}
 
 Seu pedido *#${id}* do Sal Vita ainda est\xE1 aguardando pagamento.
@@ -57260,43 +57618,63 @@ Seu pedido *#${id}* do Sal Vita ainda est\xE1 aguardando pagamento.
 \u{1F4B0} Total: R$ ${total}
 
 Finalize o pagamento aqui:
-\u{1F449} https://premium.salvitarn.com.br/meu-pedido?pedido=${id}
+\u{1F449} https://premium.salvitarn.com.br/meu-pedido?pedido=${id}&tel=${tel}
 
 _Pedido reservado por tempo limitado!_
-_Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
+_Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_${OPT_OUT}`;
 }
-function failedMsg(name2, id) {
+function failedMsg(name2, id, tel) {
   return `Ol\xE1 *${name2}*! \u{1F30A}
 
 Houve um problema com o pagamento do pedido *#${id}*.
 
 Tente novamente com outro m\xE9todo:
-\u{1F449} https://premium.salvitarn.com.br/meu-pedido?pedido=${id}
+\u{1F449} https://premium.salvitarn.com.br/meu-pedido?pedido=${id}&tel=${tel}
 
 Aceitamos Cart\xE3o, PIX e Boleto \u{1F4B3}
-_Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
+_Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_${OPT_OUT}`;
 }
-async function fetchPixCode(mpPaymentId) {
+async function fetchPixCode(order) {
   const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
-  if (!token || !mpPaymentId)
-    return null;
-  try {
-    const res = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (!res.ok)
-      return null;
-    const data = await res.json();
-    return data?.point_of_interaction?.transaction_data?.qr_code ?? null;
-  } catch {
-    return null;
+  if (token) {
+    try {
+      if (order.mpPaymentId) {
+        const res2 = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res2.ok) {
+          const data = await res2.json();
+          const qr = data?.point_of_interaction?.transaction_data?.qr_code ?? null;
+          if (qr)
+            return qr;
+        }
+      }
+      const res = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${order.id}&sort=date_created&criteria=desc`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        for (const p2 of data?.results ?? []) {
+          const qr = p2?.point_of_interaction?.transaction_data?.qr_code;
+          if (qr)
+            return qr;
+        }
+      }
+    } catch {
+    }
   }
+  if (order.paymentStatus !== "confirmed") {
+    const created = await createPixPaymentForOrder(order);
+    if (created)
+      return created.qrCode;
+  }
+  return null;
 }
 var recoveryRouter = router({
   // Public: track cart step from landing page
   trackCart: publicProcedure.input(external_exports.object({
     customerName: external_exports.string().min(2).max(100),
-    customerPhone: external_exports.string().min(10).max(20),
+    customerPhone: external_exports.string().min(10).max(20).refine((v2) => v2.replace(/\D/g, "").length >= 10, "Telefone inv\xE1lido"),
     customerEmail: external_exports.string().optional(),
     postalCode: external_exports.string().optional(),
     quantity: external_exports.number().int().min(1).max(100).default(1),
@@ -57337,11 +57715,11 @@ var recoveryRouter = router({
       }).returning({ id: abandonedCarts.id });
       cartId = inserted.id;
     }
-    if (newStep >= 2) {
+    {
       const existingRun = await ordersDb.select({ id: automationRuns.id }).from(automationRuns).where(and(eq(automationRuns.cartId, cartId), eq(automationRuns.status, "scheduled"))).limit(1);
       if (existingRun.length === 0) {
         const base = Date.now();
-        const touches = [
+        const fullCadence = [
           { rule: "abandoned_t1", delayMs: 30 * 60 * 1e3 },
           // 30 min
           { rule: "abandoned_t2", delayMs: 4 * 60 * 60 * 1e3 },
@@ -57349,6 +57727,13 @@ var recoveryRouter = router({
           { rule: "abandoned_t3", delayMs: 24 * 60 * 60 * 1e3 }
           // 24 h
         ];
+        const lightCadence = [
+          { rule: "abandoned_t1", delayMs: 30 * 60 * 1e3 },
+          // 30 min
+          { rule: "abandoned_t3", delayMs: 24 * 60 * 60 * 1e3 }
+          // 24 h
+        ];
+        const touches = newStep >= 2 ? fullCadence : lightCadence;
         await ordersDb.insert(automationRuns).values(touches.map((t2) => ({
           cartId,
           customerPhone: phone,
@@ -57409,8 +57794,8 @@ var recoveryRouter = router({
     )).orderBy(desc(siteOrders.createdAt));
     return rows.map((r) => ({
       ...r,
-      waLinkUnpaid: waLink(r.customerPhone, unpaidMsg(r.customerName, r.id, r.quantity, r.totalPrice ?? "0")),
-      waLinkFailed: waLink(r.customerPhone, failedMsg(r.customerName, r.id))
+      waLinkUnpaid: waLink(r.customerPhone, unpaidMsg(r.customerName, r.id, r.quantity, r.totalPrice ?? "0", r.customerPhone.replace(/\D/g, "").slice(-4))),
+      waLinkFailed: waLink(r.customerPhone, failedMsg(r.customerName, r.id, r.customerPhone.replace(/\D/g, "").slice(-4)))
     }));
   }),
   // Admin: mark abandoned cart as recovered
@@ -57463,6 +57848,14 @@ var recoveryRouter = router({
     await ordersDb.update(coupons).set({ active: input.active }).where(eq(coupons.id, input.id));
     return { ok: true };
   }),
+  // Admin: mark cart customer as opted out (no more automated messages)
+  markOptedOut: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    await ordersDb.update(abandonedCarts).set({ optedOut: true, updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.id, input.id));
+    await ordersDb.update(automationRuns).set({ status: "cancelled", cancelledAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(and(eq(automationRuns.cartId, input.id), eq(automationRuns.status, "scheduled")));
+    return { ok: true };
+  }),
   // Admin: send WhatsApp recovery message to specific cart
   sendRecovery: protectedProcedure.input(external_exports.object({ id: external_exports.number(), coupon: external_exports.string().optional(), templateId: external_exports.number().optional() })).mutation(async ({ ctx, input }) => {
     if (ctx.user.role !== "admin")
@@ -57470,6 +57863,8 @@ var recoveryRouter = router({
     const [cart] = await ordersDb.select().from(abandonedCarts).where(eq(abandonedCarts.id, input.id)).limit(1);
     if (!cart)
       throw new TRPCError({ code: "NOT_FOUND" });
+    if (cart.optedOut)
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Cliente optou por n\xE3o receber mensagens (PARAR)" });
     let msg;
     if (input.templateId) {
       const [tpl] = await ordersDb.select().from(msgTemplates).where(eq(msgTemplates.id, input.templateId)).limit(1);
@@ -57487,11 +57882,18 @@ var recoveryRouter = router({
       const [tpl] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.type, "abandoned"), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true))).limit(1);
       msg = tpl ? renderTemplate(tpl.body, { nome: cart.customerName, cupom: input.coupon ?? "VOLTA10", link: "https://premium.salvitarn.com.br", produto: "Sal Marinho Integral 1kg" }) : recoveryMsg(cart.customerName, input.coupon);
     }
-    const ok = await sendViaWhatsApp(cart.customerPhone, msg);
+    const { ok, usedPhone } = await sendViaWhatsApp(cart.customerPhone, msg);
     if (ok) {
       await ordersDb.update(abandonedCarts).set({ recoverySentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.id, input.id));
+      if (cart.customerEmail) {
+        const coupon = input.coupon || void 0;
+        const emailHtml = abandonedCartHtml(cart.customerName, "https://premium.salvitarn.com.br", coupon);
+        const emailSubject = coupon ? `Seu cupom ${coupon} \u2014 finalize seu pedido Sal Vita` : "Voc\xEA esqueceu algo \u2014 finalize seu pedido Sal Vita";
+        sendEmail(cart.customerEmail, emailSubject, emailHtml).catch(() => {
+        });
+      }
     }
-    return { ok, phone: fmtPhone(cart.customerPhone), preview: msg };
+    return { ok, phone: usedPhone, preview: msg, waLink: waLink(cart.customerPhone, msg) };
   }),
   // Admin: send WhatsApp to unpaid order (with optional template + PIX fetch)
   sendUnpaid: protectedProcedure.input(external_exports.object({ id: external_exports.number(), templateId: external_exports.number().optional() })).mutation(async ({ ctx, input }) => {
@@ -57500,8 +57902,13 @@ var recoveryRouter = router({
     const [order] = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.id)).limit(1);
     if (!order)
       throw new TRPCError({ code: "NOT_FOUND" });
-    const pixCode = order.mpPaymentId ? await fetchPixCode(order.mpPaymentId) : null;
-    const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}`;
+    const phone = order.customerPhone.replace(/\D/g, "");
+    const [cartRecord] = await ordersDb.select({ optedOut: abandonedCarts.optedOut }).from(abandonedCarts).where(eq(abandonedCarts.customerPhone, phone)).limit(1);
+    if (cartRecord?.optedOut)
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Cliente optou por n\xE3o receber mensagens (PARAR)" });
+    const pixCode = await fetchPixCode(order);
+    const tel = phone.slice(-4);
+    const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${tel}`;
     const vars = {
       nome: order.customerName,
       pedido: String(order.id),
@@ -57513,40 +57920,72 @@ var recoveryRouter = router({
     let msg;
     if (input.templateId) {
       const [tpl] = await ordersDb.select().from(msgTemplates).where(eq(msgTemplates.id, input.templateId)).limit(1);
-      msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? "0");
+      msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? "0", tel);
     } else if (pixCode) {
       const [tpl] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.slug, "unpaid_pix"), eq(msgTemplates.active, true))).limit(1);
-      msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? "0");
+      msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? "0", tel);
     } else {
       const [tpl] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.type, "unpaid"), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true))).limit(1);
-      msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? "0");
+      msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? "0", tel);
     }
-    const ok = await sendViaWhatsApp(order.customerPhone, msg);
-    return { ok, phone: fmtPhone(order.customerPhone), hasPix: !!pixCode, preview: msg };
+    const { ok, usedPhone } = await sendWhatsAppMessage(order.customerPhone, msg, pixCode);
+    if (order.customerEmail) {
+      const emailHtml = unpaidOrderHtml(
+        order.customerName,
+        order.id,
+        parseFloat(order.totalPrice ?? "0").toFixed(2).replace(".", ","),
+        orderLink,
+        pixCode ?? void 0
+      );
+      const emailSubject = `Pedido #${order.id} aguardando pagamento \u2014 R$ ${parseFloat(order.totalPrice ?? "0").toFixed(2).replace(".", ",")}`;
+      sendEmail(order.customerEmail, emailSubject, emailHtml).catch(() => {
+      });
+    }
+    return { ok, phone: usedPhone, hasPix: !!pixCode, preview: msg, waLink: waLink(order.customerPhone, msg) };
   }),
   // Admin: get payment info (PIX code / boleto) for unpaid order
   getPaymentInfo: protectedProcedure.input(external_exports.object({ orderId: external_exports.number() })).query(async ({ ctx, input }) => {
     if (ctx.user.role !== "admin")
       throw new TRPCError({ code: "FORBIDDEN" });
     const [order] = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
-    if (!order?.mpPaymentId)
+    if (!order)
       return { pixCode: null, boletoUrl: null };
     const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
     if (!token)
       return { pixCode: null, boletoUrl: null };
     try {
-      const res = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, {
+      if (order.mpPaymentId) {
+        const res = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          return {
+            pixCode: data?.point_of_interaction?.transaction_data?.qr_code ?? null,
+            boletoUrl: data?.transaction_details?.external_resource_url ?? null,
+            paymentMethod: data?.payment_method_id ?? null,
+            status: data?.status ?? null
+          };
+        }
+      }
+      const searchRes = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${order.id}&sort=date_created&criteria=desc`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (!res.ok)
-        return { pixCode: null, boletoUrl: null };
-      const data = await res.json();
-      return {
-        pixCode: data?.point_of_interaction?.transaction_data?.qr_code ?? null,
-        boletoUrl: data?.transaction_details?.external_resource_url ?? null,
-        paymentMethod: data?.payment_method_id ?? null,
-        status: data?.status ?? null
-      };
+      if (searchRes.ok) {
+        const data = await searchRes.json();
+        for (const p2 of data?.results ?? []) {
+          const qr = p2?.point_of_interaction?.transaction_data?.qr_code;
+          if (qr) {
+            return {
+              pixCode: qr,
+              boletoUrl: p2?.transaction_details?.external_resource_url ?? null,
+              paymentMethod: p2?.payment_method_id ?? null,
+              status: p2?.status ?? null
+            };
+          }
+        }
+      }
+      return { pixCode: null, boletoUrl: null };
     } catch {
       return { pixCode: null, boletoUrl: null };
     }
@@ -57555,16 +57994,19 @@ var recoveryRouter = router({
   autoSendAbandoned: protectedProcedure.mutation(async ({ ctx }) => {
     if (ctx.user.role !== "admin")
       throw new TRPCError({ code: "FORBIDDEN" });
+    if (!isBusinessHours())
+      return { sent: 0, total: 0, skipped: "outside business hours (08:00\u201321:00 BRT)" };
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1e3);
     const pending = await ordersDb.select().from(abandonedCarts).where(
       and(
         eq(abandonedCarts.recovered, false),
+        eq(abandonedCarts.optedOut, false),
         sql`(${abandonedCarts.recoverySentAt} IS NULL OR ${abandonedCarts.recoverySentAt} < ${oneDayAgo})`
       )
     ).limit(50);
     let sent = 0;
     for (const cart of pending) {
-      const ok = await sendViaWhatsApp(cart.customerPhone, recoveryMsg(cart.customerName));
+      const { ok } = await sendViaWhatsApp(cart.customerPhone, recoveryMsg(cart.customerName));
       if (ok) {
         await ordersDb.update(abandonedCarts).set({ recoverySentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.id, cart.id));
         sent++;
@@ -57588,6 +58030,31 @@ var recoveryRouter = router({
     } catch {
       return { status: "error", connected: false };
     }
+  }),
+  // Admin: force WA reconnect — tries /reconnect then /restart endpoints on the wa-server
+  waReconnect: protectedProcedure.mutation(async ({ ctx }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    const url2 = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
+    const key = process.env.WA_API_KEY || "MinhaChaveSuperSegura123456";
+    const headers = { "Content-Type": "application/json", "apikey": key };
+    const tried = [];
+    for (const path of ["/reconnect", "/restart", "/connect", "/logout"]) {
+      try {
+        const ac = new AbortController();
+        setTimeout(() => ac.abort(), 6e3);
+        const r = await fetch(`${url2}${path}`, { method: "POST", headers, signal: ac.signal });
+        tried.push(`${path}:${r.status}`);
+        if (r.ok) {
+          console.log(`[wa-reconnect] ${path} returned ${r.status}`);
+          return { ok: true, path, tried };
+        }
+      } catch {
+        tried.push(`${path}:error`);
+      }
+    }
+    console.warn("[wa-reconnect] no reconnect endpoint found, tried:", tried);
+    return { ok: false, path: null, tried };
   }),
   // Admin: list message templates
   listTemplates: protectedProcedure.query(async ({ ctx }) => {
@@ -57666,7 +58133,7 @@ var recoveryRouter = router({
         await ordersDb.update(automationRuns).set({ status: "cancelled", cancelledAt: /* @__PURE__ */ new Date(), aiProcessedAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(automationRuns.id, run2.id));
         continue;
       }
-      const stepDesc = cart.stepReached === 1 ? "preencheu o formul\xE1rio mas n\xE3o calculou frete" : cart.stepReached === 2 ? "calculou o frete mas n\xE3o foi para o pagamento" : "chegou at\xE9 a etapa de pagamento mas n\xE3o concluiu";
+      const stepDesc = cart.stepReached === 1 ? "j\xE1 calculou o frete e come\xE7ou a preencher os dados de entrega, mas n\xE3o finalizou" : cart.stepReached === 2 ? "calculou o frete e confirmou o endere\xE7o, mas n\xE3o foi para o pagamento" : "chegou at\xE9 a etapa de pagamento mas n\xE3o concluiu";
       const prompt = `Voc\xEA \xE9 especialista em convers\xE3o de e-commerce para a Sal Vita (sal marinho premium de Mossor\xF3/RN).
 
 DADOS DO LEAD:
@@ -57757,8 +58224,8 @@ Responda SOMENTE com JSON v\xE1lido neste formato exato:
     const [order] = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
     if (!order)
       throw new TRPCError({ code: "NOT_FOUND" });
-    const pixCode = order.mpPaymentId ? await fetchPixCode(order.mpPaymentId) : null;
-    const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}`;
+    const pixCode = await fetchPixCode(order);
+    const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${order.customerPhone.replace(/\D/g, "").slice(-4)}`;
     const prompt = `Voc\xEA \xE9 especialista em recupera\xE7\xE3o de vendas para Sal Vita (sal marinho premium de Mossor\xF3/RN).
 
 PEDIDO N\xC3O PAGO:
@@ -57811,7 +58278,7 @@ Responda SOMENTE em JSON: {"mensagem": "texto aqui", "raciocinio": "motivo"}`;
     const [cart] = await ordersDb.select().from(abandonedCarts).where(eq(abandonedCarts.id, input.cartId)).limit(1);
     if (!cart)
       throw new TRPCError({ code: "NOT_FOUND" });
-    const stepDesc = cart.stepReached === 1 ? "preencheu o formul\xE1rio mas n\xE3o calculou frete" : cart.stepReached === 2 ? "calculou o frete mas n\xE3o foi para o pagamento" : "chegou at\xE9 a etapa de pagamento mas n\xE3o concluiu";
+    const stepDesc = cart.stepReached === 1 ? "j\xE1 calculou o frete e come\xE7ou a preencher os dados de entrega, mas n\xE3o finalizou" : cart.stepReached === 2 ? "calculou o frete e confirmou o endere\xE7o, mas n\xE3o foi para o pagamento" : "chegou at\xE9 a etapa de pagamento mas n\xE3o concluiu";
     const prompt = `Gere uma mensagem de recupera\xE7\xE3o de carrinho para WhatsApp para o cliente ${cart.customerName} da Sal Vita (sal marinho de Mossor\xF3/RN, R$29,90/kg).
 O cliente ${stepDesc}. Quantidade: ${cart.quantity ?? 1}kg.
 M\xE1ximo 3 par\xE1grafos, tom amig\xE1vel, use *negrito*, inclua https://premium.salvitarn.com.br ao final.
@@ -57833,18 +58300,20 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
     const parsed = JSON.parse(data.choices?.[0]?.message?.content ?? "{}");
     if (!parsed.mensagem)
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "IA n\xE3o gerou mensagem" });
-    const ok = await sendViaWhatsApp(cart.customerPhone, parsed.mensagem);
+    const { ok, usedPhone: aiPhone } = await sendViaWhatsApp(cart.customerPhone, parsed.mensagem);
     if (ok) {
       await ordersDb.update(abandonedCarts).set({ recoverySentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.id, input.cartId));
       await ordersDb.update(automationRuns).set({ status: "sent", sentAt: /* @__PURE__ */ new Date(), aiBody: parsed.mensagem, updatedAt: /* @__PURE__ */ new Date() }).where(and(eq(automationRuns.cartId, input.cartId), eq(automationRuns.status, "scheduled")));
     }
-    return { ok, phone: fmtPhone(cart.customerPhone), preview: parsed.mensagem };
+    return { ok, phone: aiPhone, preview: parsed.mensagem };
   }),
   // Internal/Admin: run automation job — sends scheduled WA messages for abandoned carts
   // Called by cron (/api/cron/abandoned-cart) or manually from admin UI
   runAutomationJob: protectedProcedure.mutation(async ({ ctx }) => {
     if (ctx.user.role !== "admin")
       throw new TRPCError({ code: "FORBIDDEN" });
+    if (!isBusinessHours())
+      return { processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: "outside business hours (08:00\u201321:00 BRT)" };
     const now = /* @__PURE__ */ new Date();
     const due = await ordersDb.select().from(automationRuns).where(
       and(eq(automationRuns.status, "scheduled"), lte(automationRuns.scheduledFor, now))
@@ -57852,7 +58321,7 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
     let sent = 0, cancelled = 0, failed = 0;
     for (const run2 of due) {
       const [cart] = await ordersDb.select().from(abandonedCarts).where(eq(abandonedCarts.id, run2.cartId)).limit(1);
-      if (!cart || cart.status === "converted" || cart.recovered) {
+      if (!cart || cart.status === "converted" || cart.recovered || cart.optedOut) {
         await ordersDb.update(automationRuns).set({ status: "cancelled", cancelledAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(automationRuns.id, run2.id));
         cancelled++;
         continue;
@@ -57864,7 +58333,7 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
         const [tpl] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.type, "abandoned"), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true))).limit(1);
         msg = tpl ? renderTemplate(tpl.body, { nome: cart.customerName, link: "https://premium.salvitarn.com.br", cupom: "VOLTA10", produto: "Sal Marinho Integral 1kg" }) : recoveryMsg(cart.customerName);
       }
-      const ok = await sendViaWhatsApp(run2.customerPhone, msg);
+      const { ok } = await sendViaWhatsApp(run2.customerPhone, msg);
       if (ok) {
         await ordersDb.update(automationRuns).set({ status: "sent", sentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(automationRuns.id, run2.id));
         await ordersDb.update(abandonedCarts).set({ recoverySentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.id, run2.cartId));
@@ -58228,7 +58697,7 @@ async function ensureOrdersTablesExist() {
     steps.push({ name: "config", ok: false, error: "ORDERS_DATABASE_URL and DATABASE_URL are both unset" });
     return steps;
   }
-  const sql5 = Ys(url2);
+  const sql6 = Ys(url2);
   async function run2(name2, fn) {
     try {
       await fn();
@@ -58239,7 +58708,7 @@ async function ensureOrdersTablesExist() {
       console.error(`[orders-migrate] step "${name2}" failed:`, msg);
     }
   }
-  await run2("site_orders", () => sql5`
+  await run2("site_orders", () => sql6`
     CREATE TABLE IF NOT EXISTS site_orders (
       id SERIAL PRIMARY KEY,
       customer_name TEXT NOT NULL,
@@ -58274,15 +58743,15 @@ async function ensureOrdersTablesExist() {
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `);
-  await run2("site_orders.coupon_code", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS coupon_code TEXT`);
-  await run2("site_orders.coupon_discount", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS coupon_discount TEXT`);
-  await run2("site_orders.mp_preference_id", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_preference_id TEXT`);
-  await run2("site_orders.mp_payment_id", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_payment_id TEXT`);
-  await run2("site_orders.tracking_code", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS tracking_code TEXT`);
-  await run2("site_orders.unpaid_followup_sent_at", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS unpaid_followup_sent_at TIMESTAMP`);
-  await run2("site_orders_status_idx", () => sql5`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`);
-  await run2("site_orders_phone_idx", () => sql5`CREATE INDEX IF NOT EXISTS site_orders_phone_idx ON site_orders(customer_phone)`);
-  await run2("abandoned_carts", () => sql5`
+  await run2("site_orders.coupon_code", () => sql6`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS coupon_code TEXT`);
+  await run2("site_orders.coupon_discount", () => sql6`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS coupon_discount TEXT`);
+  await run2("site_orders.mp_preference_id", () => sql6`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_preference_id TEXT`);
+  await run2("site_orders.mp_payment_id", () => sql6`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_payment_id TEXT`);
+  await run2("site_orders.tracking_code", () => sql6`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS tracking_code TEXT`);
+  await run2("site_orders.unpaid_followup_sent_at", () => sql6`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS unpaid_followup_sent_at TIMESTAMP`);
+  await run2("site_orders_status_idx", () => sql6`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`);
+  await run2("site_orders_phone_idx", () => sql6`CREATE INDEX IF NOT EXISTS site_orders_phone_idx ON site_orders(customer_phone)`);
+  await run2("abandoned_carts", () => sql6`
     CREATE TABLE IF NOT EXISTS abandoned_carts (
       id SERIAL PRIMARY KEY,
       customer_name TEXT NOT NULL,
@@ -58300,19 +58769,20 @@ async function ensureOrdersTablesExist() {
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `);
-  await run2("abandoned_carts.customer_email", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS customer_email TEXT`);
-  await run2("abandoned_carts.postal_code", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS postal_code TEXT`);
-  await run2("abandoned_carts.quantity", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1`);
-  await run2("abandoned_carts.step_reached", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS step_reached INTEGER DEFAULT 1`);
-  await run2("abandoned_carts.status", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'checkout_started'`);
-  await run2("abandoned_carts.recovered", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS recovered BOOLEAN NOT NULL DEFAULT FALSE`);
-  await run2("abandoned_carts.recovery_sent_at", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS recovery_sent_at TIMESTAMP`);
-  await run2("abandoned_carts.abandoned_at", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS abandoned_at TIMESTAMP`);
-  await run2("abandoned_carts.converted_at", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS converted_at TIMESTAMP`);
-  await run2("abandoned_carts.updated_at", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW() NOT NULL`);
-  await run2("abandoned_carts_phone_idx", () => sql5`CREATE INDEX IF NOT EXISTS abandoned_carts_phone_idx ON abandoned_carts(customer_phone)`);
-  await run2("abandoned_carts_status_idx", () => sql5`CREATE INDEX IF NOT EXISTS abandoned_carts_status_idx ON abandoned_carts(status)`);
-  await run2("automation_runs", () => sql5`
+  await run2("abandoned_carts.customer_email", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS customer_email TEXT`);
+  await run2("abandoned_carts.postal_code", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS postal_code TEXT`);
+  await run2("abandoned_carts.quantity", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1`);
+  await run2("abandoned_carts.step_reached", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS step_reached INTEGER DEFAULT 1`);
+  await run2("abandoned_carts.status", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'checkout_started'`);
+  await run2("abandoned_carts.recovered", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS recovered BOOLEAN NOT NULL DEFAULT FALSE`);
+  await run2("abandoned_carts.recovery_sent_at", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS recovery_sent_at TIMESTAMP`);
+  await run2("abandoned_carts.abandoned_at", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS abandoned_at TIMESTAMP`);
+  await run2("abandoned_carts.converted_at", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS converted_at TIMESTAMP`);
+  await run2("abandoned_carts.updated_at", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW() NOT NULL`);
+  await run2("abandoned_carts.opted_out", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS opted_out BOOLEAN NOT NULL DEFAULT FALSE`);
+  await run2("abandoned_carts_phone_idx", () => sql6`CREATE INDEX IF NOT EXISTS abandoned_carts_phone_idx ON abandoned_carts(customer_phone)`);
+  await run2("abandoned_carts_status_idx", () => sql6`CREATE INDEX IF NOT EXISTS abandoned_carts_status_idx ON abandoned_carts(status)`);
+  await run2("automation_runs", () => sql6`
     CREATE TABLE IF NOT EXISTS automation_runs (
       id SERIAL PRIMARY KEY,
       cart_id INTEGER NOT NULL,
@@ -58330,17 +58800,17 @@ async function ensureOrdersTablesExist() {
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `);
-  await run2("automation_runs.provider_response", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS provider_response TEXT`);
-  await run2("automation_runs.ai_body", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_body TEXT`);
-  await run2("automation_runs.ai_reasoning", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_reasoning TEXT`);
-  await run2("automation_runs.ai_processed_at", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_processed_at TIMESTAMP`);
-  await run2("automation_runs.sent_at", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP`);
-  await run2("automation_runs.cancelled_at", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP`);
-  await run2("automation_runs.updated_at", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW() NOT NULL`);
-  await run2("automation_runs_status_idx", () => sql5`CREATE INDEX IF NOT EXISTS automation_runs_status_idx ON automation_runs(status)`);
-  await run2("automation_runs_scheduled_idx", () => sql5`CREATE INDEX IF NOT EXISTS automation_runs_scheduled_for_idx ON automation_runs(scheduled_for)`);
-  await run2("automation_runs_cart_idx", () => sql5`CREATE INDEX IF NOT EXISTS automation_runs_cart_id_idx ON automation_runs(cart_id)`);
-  await run2("coupons", () => sql5`
+  await run2("automation_runs.provider_response", () => sql6`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS provider_response TEXT`);
+  await run2("automation_runs.ai_body", () => sql6`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_body TEXT`);
+  await run2("automation_runs.ai_reasoning", () => sql6`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_reasoning TEXT`);
+  await run2("automation_runs.ai_processed_at", () => sql6`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_processed_at TIMESTAMP`);
+  await run2("automation_runs.sent_at", () => sql6`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP`);
+  await run2("automation_runs.cancelled_at", () => sql6`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP`);
+  await run2("automation_runs.updated_at", () => sql6`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW() NOT NULL`);
+  await run2("automation_runs_status_idx", () => sql6`CREATE INDEX IF NOT EXISTS automation_runs_status_idx ON automation_runs(status)`);
+  await run2("automation_runs_scheduled_idx", () => sql6`CREATE INDEX IF NOT EXISTS automation_runs_scheduled_for_idx ON automation_runs(scheduled_for)`);
+  await run2("automation_runs_cart_idx", () => sql6`CREATE INDEX IF NOT EXISTS automation_runs_cart_id_idx ON automation_runs(cart_id)`);
+  await run2("coupons", () => sql6`
     CREATE TABLE IF NOT EXISTS coupons (
       id SERIAL PRIMARY KEY,
       code TEXT NOT NULL UNIQUE,
@@ -58355,7 +58825,7 @@ async function ensureOrdersTablesExist() {
       created_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `);
-  await run2("msg_templates", () => sql5`
+  await run2("msg_templates", () => sql6`
     CREATE TABLE IF NOT EXISTS msg_templates (
       id SERIAL PRIMARY KEY,
       slug TEXT NOT NULL UNIQUE,
@@ -58368,26 +58838,31 @@ async function ensureOrdersTablesExist() {
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `);
-  await run2("msg_templates_type_idx", () => sql5`CREATE INDEX IF NOT EXISTS msg_templates_type_idx ON msg_templates(type)`);
-  await run2("seed_templates", () => sql5`
+  await run2("msg_templates_type_idx", () => sql6`CREATE INDEX IF NOT EXISTS msg_templates_type_idx ON msg_templates(type)`);
+  await run2("msg_templates.opt_out_footer", () => sql6`
+    UPDATE msg_templates
+    SET body = body || E'\n\n_Para não receber mais mensagens, responda PARAR._'
+    WHERE body NOT LIKE '%PARAR%'
+  `);
+  await run2("seed_templates", () => sql6`
     INSERT INTO msg_templates (slug, type, label, body, active, is_default) VALUES
     ('abandoned_simples', 'abandoned', 'Abandono – Simples',
-     'Olá *{nome}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou.\n\n👉 Finalize agora: {link}\n\nQualquer dúvida, é só chamar! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_',
+     'Olá *{nome}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou.\n\n👉 Finalize agora: {link}\n\nQualquer dúvida, é só chamar! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_\n\n_Para não receber mais mensagens, responda PARAR._',
      true, true),
     ('abandoned_urgencia', 'abandoned', 'Abandono – Urgência',
-     'Olá *{nome}*! 🧂\n\n⚠️ Seu sal ainda está no carrinho, mas o estoque é limitado!\n\nGaranta agora antes de esgotar:\n👉 {link}\n\n_Sal Vita — Mossoró/RN_',
+     'Olá *{nome}*! 🧂\n\n⚠️ Seu sal ainda está no carrinho, mas o estoque é limitado!\n\nGaranta agora antes de esgotar:\n👉 {link}\n\n_Sal Vita — Mossoró/RN_\n\n_Para não receber mais mensagens, responda PARAR._',
      true, false),
     ('abandoned_cupom', 'abandoned', 'Abandono – Com Cupom',
-     'Olá *{nome}*! 🎁\n\nVimos que você ficou interessado no *Sal Vita Premium* e queremos te ajudar a finalizar.\n\nUse o cupom *{cupom}* e ganhe desconto especial:\n👉 {link}\n\nOfertas por tempo limitado!\n_Sal Vita — Sal Marinho de Mossoró/RN_',
+     'Olá *{nome}*! 🎁\n\nVimos que você ficou interessado no *Sal Vita Premium* e queremos te ajudar a finalizar.\n\nUse o cupom *{cupom}* e ganhe desconto especial:\n👉 {link}\n\nOfertas por tempo limitado!\n_Sal Vita — Sal Marinho de Mossoró/RN_\n\n_Para não receber mais mensagens, responda PARAR._',
      true, false),
     ('unpaid_pix', 'unpaid', 'Não Pago – PIX Copia e Cola',
-     'Olá *{nome}*! 💸\n\nSeu pedido *#{pedido}* — R$ {valor} — ainda está aguardando pagamento.\n\n✅ Pague agora via *PIX Copia e Cola*:\n\n{pix}\n\nCopie o código acima e cole no seu banco!\n\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_',
+     'Olá *{nome}*! 💸\n\nSeu pedido *#{pedido}* — R$ {valor} — ainda está aguardando pagamento.\n\n✅ Pague agora via *PIX Copia e Cola*:\n\n{pix}\n\nCopie o código acima e cole no seu banco!\n\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_\n\n_Para não receber mais mensagens, responda PARAR._',
      true, true),
     ('unpaid_lembrete', 'unpaid', 'Não Pago – Lembrete Geral',
-     'Olá *{nome}*! 🌊\n\nSeu pedido *#{pedido}* do Sal Vita ainda está aguardando pagamento.\n\n💰 Total: R$ {valor}\n\nFinalize aqui:\n👉 {link}\n\n_Pedido reservado por tempo limitado!_\n_Sal Vita — Mossoró/RN_',
+     'Olá *{nome}*! 🌊\n\nSeu pedido *#{pedido}* do Sal Vita ainda está aguardando pagamento.\n\n💰 Total: R$ {valor}\n\nFinalize aqui:\n👉 {link}\n\n_Pedido reservado por tempo limitado!_\n_Sal Vita — Mossoró/RN_\n\n_Para não receber mais mensagens, responda PARAR._',
      true, false),
     ('failed_tentar_novamente', 'failed', 'Pagamento Falhou – Tentar Novamente',
-     'Olá *{nome}*! 😕\n\nHouve um problema no pagamento do pedido *#{pedido}*.\n\nTente com outro método de pagamento:\n👉 {link}\n\nAceitamos *PIX*, *Cartão* e *Boleto* 💳\n_Sal Vita — Mossoró/RN_',
+     'Olá *{nome}*! 😕\n\nHouve um problema no pagamento do pedido *#{pedido}*.\n\nTente com outro método de pagamento:\n👉 {link}\n\nAceitamos *PIX*, *Cartão* e *Boleto* 💳\n_Sal Vita — Mossoró/RN_\n\n_Para não receber mais mensagens, responda PARAR._',
      true, true),
     ('confirmed_padrao', 'confirmed', 'Compra Confirmada',
      'Olá *{nome}*! 🎉\n\nSeu pagamento foi *confirmado*! ✅\n\n📦 Pedido *#{pedido}* — R$ {valor}\n\nJá estamos preparando seu envio. Você receberá o código de rastreio assim que postarmos. 🚚\n\nObrigado por escolher a Sal Vita! 🌊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_',
@@ -58396,6 +58871,16 @@ async function ensureOrdersTablesExist() {
      'Olá *{nome}*! 📦\n\nBoa notícia: seu pedido *#{pedido}* foi *enviado*! 🚚\n\n🔎 Código de rastreio: *{rastreio}*\n\nAcompanhe a entrega em:\n👉 {link}\n\nQualquer dúvida, é só chamar! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_',
      true, true)
     ON CONFLICT (slug) DO NOTHING
+  `);
+  await run2("cleanup_automation_runs", () => sql6`
+    DELETE FROM automation_runs
+    WHERE status IN ('sent', 'cancelled', 'failed')
+      AND updated_at < NOW() - INTERVAL '60 days'
+  `);
+  await run2("cleanup_abandoned_carts", () => sql6`
+    DELETE FROM abandoned_carts
+    WHERE (recovered = TRUE OR opted_out = TRUE)
+      AND updated_at < NOW() - INTERVAL '90 days'
   `);
   const failed = steps.filter((s) => !s.ok);
   console.log(`[orders-migrate] done: ${steps.length - failed.length}/${steps.length} ok` + (failed.length ? `, failed: ${failed.map((f) => f.name).join(", ")}` : ""));
@@ -58408,25 +58893,64 @@ init_drizzle_orm();
 function renderTemplate2(body, vars) {
   return body.replace(/\{(\w+)\}/g, (_2, k) => vars[k] ?? `{${k}}`);
 }
+function isBusinessHours2() {
+  const brHour = ((/* @__PURE__ */ new Date()).getUTCHours() - 3 + 24) % 24;
+  return brHour >= 8 && brHour < 21;
+}
 async function sendWhatsApp(phone, message) {
   const waUrl = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
   const waKey = process.env.WA_API_KEY || "MinhaChaveSuperSegura123456";
   const digits = phone.replace(/\D/g, "");
-  const fmtPhone2 = digits.startsWith("55") ? digits : `55${digits}`;
-  try {
+  const primary = digits.startsWith("55") ? digits : `55${digits}`;
+  const alt = primary.length === 13 ? primary.slice(0, 4) + primary.slice(5) : primary.length === 12 ? primary.slice(0, 4) + "9" + primary.slice(4) : null;
+  const variants = [primary, alt].filter(Boolean);
+  const results = await Promise.all(variants.map(async (phoneNum) => {
     const ac = new AbortController();
-    const timer2 = setTimeout(() => ac.abort(), 8e3);
-    const r = await fetch(`${waUrl}/send`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "apikey": waKey },
-      body: JSON.stringify({ phone: fmtPhone2, message }),
-      signal: ac.signal
-    });
-    clearTimeout(timer2);
-    return r.ok;
-  } catch {
-    return false;
+    const timer2 = setTimeout(() => ac.abort(), 9e3);
+    try {
+      const r = await fetch(`${waUrl}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": waKey },
+        body: JSON.stringify({ phone: phoneNum, message }),
+        signal: ac.signal
+      });
+      clearTimeout(timer2);
+      if (!r.ok)
+        return false;
+      let body = {};
+      try {
+        body = await r.json();
+      } catch {
+      }
+      if (body.success === false)
+        return false;
+      console.log(`[wa] dispatched to ${phoneNum}`);
+      return true;
+    } catch {
+      clearTimeout(timer2);
+      return false;
+    }
+  }));
+  return results.some(Boolean);
+}
+function splitForPix2(msg, pixCode) {
+  const idx = msg.indexOf(pixCode);
+  if (idx === -1)
+    return [msg];
+  const before = msg.slice(0, idx).trim();
+  const after = msg.slice(idx + pixCode.length).trim();
+  return [before, pixCode, after].filter(Boolean);
+}
+async function sendWhatsAppWithPix(phone, msg, pixCode) {
+  const chunks = pixCode ? splitForPix2(msg, pixCode) : [msg];
+  const first = await sendWhatsApp(phone, chunks[0]);
+  for (let i = 1; i < chunks.length; i++) {
+    if (!first)
+      break;
+    await new Promise((r) => setTimeout(r, 800));
+    await sendWhatsApp(phone, chunks[i]);
   }
+  return first;
 }
 var app = (0, import_express.default)();
 app.set("trust proxy", 1);
@@ -58440,10 +58964,6 @@ var dbReady = Promise.all([
 var migrationSettled = false;
 dbReady.then(() => {
   migrationSettled = true;
-  setInterval(() => {
-    ordersDb.execute(sql`SELECT 1`).catch(() => {
-    });
-  }, 4 * 60 * 1e3);
 });
 async function autoMigrateIfNeeded() {
   const dstUrl = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL;
@@ -58702,6 +59222,15 @@ J\xE1 estamos preparando seu envio. Voc\xEA receber\xE1 o c\xF3digo de rastreio 
 Obrigado por escolher a Sal Vita! \u{1F30A}
 _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
         await sendWhatsApp(order.customerPhone, msg);
+        if (order.customerEmail) {
+          const emailHtml = orderConfirmedHtml(order.customerName, order.id, order.totalPrice ?? "0");
+          sendEmail(
+            order.customerEmail,
+            `Pedido #${order.id} confirmado \u2014 obrigado, ${order.customerName}!`,
+            emailHtml
+          ).catch(() => {
+          });
+        }
       } catch (e) {
         console.error("[mp-webhook] confirmation WA failed:", e);
       }
@@ -58790,26 +59319,46 @@ app.use(
     createContext
   })
 );
-async function fetchPixCode2(mpPaymentId) {
-  if (!mpPaymentId)
-    return null;
+async function fetchPixCode2(order) {
   const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
-  if (!token)
-    return null;
-  try {
-    const r = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
-      headers: { "Authorization": `Bearer ${token}` }
-    });
-    if (!r.ok)
-      return null;
-    const p2 = await r.json();
-    return p2?.point_of_interaction?.transaction_data?.qr_code ?? null;
-  } catch {
-    return null;
+  if (token) {
+    try {
+      if (order.mpPaymentId) {
+        const r2 = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (r2.ok) {
+          const p2 = await r2.json();
+          const qr = p2?.point_of_interaction?.transaction_data?.qr_code ?? null;
+          if (qr)
+            return qr;
+        }
+      }
+      const r = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${order.id}&sort=date_created&criteria=desc`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (r.ok) {
+        const results = (await r.json())?.results ?? [];
+        for (const p2 of results) {
+          const qr = p2?.point_of_interaction?.transaction_data?.qr_code;
+          if (qr)
+            return qr;
+        }
+      }
+    } catch {
+    }
   }
+  if (order.paymentStatus !== "confirmed") {
+    const created = await createPixPaymentForOrder(order);
+    if (created)
+      return created.qrCode;
+  }
+  return null;
 }
 async function processUnpaidFollowups() {
   let sent = 0;
+  if (!isBusinessHours2())
+    return { sent };
   try {
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1e3);
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1e3);
@@ -58818,19 +59367,19 @@ async function processUnpaidFollowups() {
       isNull2(siteOrders.unpaidFollowupSentAt),
       lte(siteOrders.createdAt, twoHoursAgo),
       gte(siteOrders.createdAt, threeDaysAgo)
-    )).limit(20);
+    )).limit(2);
     if (orders.length === 0)
       return { sent };
     const tpls = await ordersDb.select().from(msgTemplates).where(inArray(msgTemplates.type, ["unpaid", "failed"]));
     const defaultByType = (type) => tpls.find((t2) => t2.type === type && t2.isDefault) ?? tpls.find((t2) => t2.type === type);
     const pixTpl = tpls.find((t2) => t2.slug === "unpaid_pix");
-    const link = "https://premium.salvitarn.com.br";
     for (const o of orders) {
       await ordersDb.update(siteOrders).set({ unpaidFollowupSentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, o.id));
+      const link = `https://premium.salvitarn.com.br/meu-pedido?pedido=${o.id}&tel=${o.customerPhone.replace(/\D/g, "").slice(-4)}`;
       let tpl = o.paymentStatus === "failed" ? defaultByType("failed") : defaultByType("unpaid");
       let pix = "";
       if (o.paymentStatus === "awaiting") {
-        const code = await fetchPixCode2(o.mpPaymentId);
+        const code = await fetchPixCode2(o);
         if (code && pixTpl) {
           tpl = pixTpl;
           pix = code;
@@ -58838,9 +59387,21 @@ async function processUnpaidFollowups() {
       }
       const vars = { nome: o.customerName, pedido: String(o.id), valor: o.totalPrice ?? "0", link, pix };
       const msg = tpl ? renderTemplate2(tpl.body, vars) : o.paymentStatus === "failed" ? `Ol\xE1 *${o.customerName}*! \u{1F615} Houve um problema no pagamento do pedido *#${o.id}*. Tente novamente: ${link}` : `Ol\xE1 *${o.customerName}*! \u{1F4B8} Seu pedido *#${o.id}* (R$ ${o.totalPrice}) ainda est\xE1 aguardando pagamento. Finalize: ${link}`;
-      const ok = await sendWhatsApp(o.customerPhone, msg);
+      const ok = await sendWhatsAppWithPix(o.customerPhone, msg, pix);
       if (ok)
         sent++;
+      if (o.customerEmail) {
+        const emailHtml = unpaidOrderHtml(
+          o.customerName,
+          o.id,
+          o.totalPrice ?? "0",
+          link,
+          pix || void 0
+        );
+        const emailSubject = o.paymentStatus === "failed" ? `Problema no pagamento do pedido #${o.id} \u2014 tente novamente` : `Pedido #${o.id} aguardando pagamento \u2014 R$ ${o.totalPrice}`;
+        sendEmail(o.customerEmail, emailSubject, emailHtml).catch(() => {
+        });
+      }
       await new Promise((r) => setTimeout(r, 1e3));
     }
   } catch (e) {
@@ -58860,7 +59421,7 @@ async function reconcileAwaitingOrders() {
       eq(siteOrders.paymentStatus, "awaiting"),
       lte(siteOrders.createdAt, oneHourAgo),
       gte(siteOrders.createdAt, threeDaysAgo)
-    )).limit(15);
+    )).limit(5);
     for (const o of orders) {
       try {
         let approved = false;
@@ -58918,7 +59479,7 @@ app.all("/api/cron/abandoned-cart", import_express.default.json(), async (req, r
     const now = /* @__PURE__ */ new Date();
     const due = await ordersDb.select().from(runs).where(
       and(eq(runs.status, "scheduled"), lte2(runs.scheduledFor, now))
-    ).limit(50);
+    ).limit(3);
     const abandonedTpls = await ordersDb.select().from(msgTemplates).where(eq(msgTemplates.type, "abandoned"));
     const tplBySlug = {};
     for (const t2 of abandonedTpls)
@@ -58929,10 +59490,16 @@ app.all("/api/cron/abandoned-cart", import_express.default.json(), async (req, r
       abandoned_t3: { slug: "abandoned_cupom", coupon: "VOLTA10" }
     };
     const fallbackTpl = tplBySlug["abandoned_simples"] ?? abandonedTpls.find((t2) => t2.isDefault);
+    const unpaid = await processUnpaidFollowups();
+    const reconciled = await reconcileAwaitingOrders();
     let sent = 0, cancelled = 0, failed = 0;
+    if (!isBusinessHours2()) {
+      res.json({ ok: true, processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: "outside business hours", unpaid, reconciled });
+      return;
+    }
     for (const run2 of due) {
       const [cart] = await ordersDb.select().from(carts).where(eq(carts.id, run2.cartId)).limit(1);
-      if (!cart || cart.status === "converted" || cart.recovered) {
+      if (!cart || cart.status === "converted" || cart.recovered || cart.optedOut) {
         await ordersDb.update(runs).set({ status: "cancelled", cancelledAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(runs.id, run2.id));
         cancelled++;
         continue;
@@ -58962,6 +59529,11 @@ _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
           await ordersDb.update(runs).set({ status: "sent", sentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(runs.id, run2.id));
           await ordersDb.update(carts).set({ recoverySentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(carts.id, run2.cartId));
           sent++;
+          if (cart.customerEmail && ruleCfg.coupon) {
+            const emailHtml = abandonedCartHtml(cart.customerName, "https://premium.salvitarn.com.br", ruleCfg.coupon);
+            sendEmail(cart.customerEmail, `Seu cupom ${ruleCfg.coupon} \u2014 finalize seu pedido Sal Vita`, emailHtml).catch(() => {
+            });
+          }
         } else {
           await ordersDb.update(runs).set({ status: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq(runs.id, run2.id));
           failed++;
@@ -58970,10 +59542,7 @@ _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
         await ordersDb.update(runs).set({ status: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq(runs.id, run2.id));
         failed++;
       }
-      await new Promise((r) => setTimeout(r, 1e3));
     }
-    const unpaid = await processUnpaidFollowups();
-    const reconciled = await reconcileAwaitingOrders();
     res.json({ ok: true, processed: due.length, sent, cancelled, failed, unpaid, reconciled });
   } catch (err) {
     console.error("[cron] abandoned-cart error:", err);
@@ -58988,8 +59557,8 @@ app.get("/api/orders-health", async (_req, res) => {
     const steps = await ensureOrdersTablesExist();
     const { neon } = await Promise.resolve().then(() => (init_serverless(), serverless_exports));
     const url2 = process.env.ORDERS_DATABASE_URL ?? process.env.DATABASE_URL;
-    const sql5 = neon(url2);
-    const tables = await sql5`
+    const sql6 = neon(url2);
+    const tables = await sql6`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
         AND table_name IN ('site_orders','abandoned_carts','automation_runs','coupons','msg_templates')

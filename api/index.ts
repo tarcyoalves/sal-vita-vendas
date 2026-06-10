@@ -60,6 +60,29 @@ async function sendWhatsApp(phone: string, message: string): Promise<boolean> {
   return results.some(Boolean);
 }
 
+// Splits a message around a PIX copy-paste code so it can be sent as its own
+// message bubble — lets the customer long-press and copy just the code, since
+// WhatsApp never turns the code itself into a tappable link.
+function splitForPix(msg: string, pixCode: string): string[] {
+  const idx = msg.indexOf(pixCode);
+  if (idx === -1) return [msg];
+  const before = msg.slice(0, idx).trim();
+  const after = msg.slice(idx + pixCode.length).trim();
+  return [before, pixCode, after].filter(Boolean);
+}
+
+// Sends a message, splitting out the PIX code (if present) into its own message.
+async function sendWhatsAppWithPix(phone: string, msg: string, pixCode: string): Promise<boolean> {
+  const chunks = pixCode ? splitForPix(msg, pixCode) : [msg];
+  const first = await sendWhatsApp(phone, chunks[0]);
+  for (let i = 1; i < chunks.length; i++) {
+    if (!first) break;
+    await new Promise(r => setTimeout(r, 800));
+    await sendWhatsApp(phone, chunks[i]);
+  }
+  return first;
+}
+
 const app = express();
 
 // Vercel sits behind a proxy — trust first hop so rate limiters see real client IPs
@@ -539,7 +562,7 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
         : (o.paymentStatus === 'failed'
             ? `Olá *${o.customerName}*! 😕 Houve um problema no pagamento do pedido *#${o.id}*. Tente novamente: ${link}`
             : `Olá *${o.customerName}*! 💸 Seu pedido *#${o.id}* (R$ ${o.totalPrice}) ainda está aguardando pagamento. Finalize: ${link}`);
-      const ok = await sendWhatsApp(o.customerPhone, msg);
+      const ok = await sendWhatsAppWithPix(o.customerPhone, msg, pix);
       if (ok) sent++;
       // Best-effort email follow-up (non-blocking)
       if (o.customerEmail) {

@@ -9,47 +9,71 @@ import { createPixPaymentForOrder } from '../lib/mercadopago';
 
 type SiteOrder = typeof siteOrders.$inferSelect;
 
+// Sends a single WhatsApp message to one phone number via the wa-server /send endpoint.
+async function waSendRaw(phone: string, message: string): Promise<boolean> {
+  const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
+  const key = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 9000);
+  try {
+    const res = await fetch(`${url}/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': key },
+      body: JSON.stringify({ phone, message }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return false;
+    let body: Record<string, unknown> = {};
+    try { body = await res.json() as Record<string, unknown>; } catch {}
+    if (body.success === false) return false;
+    console.log(`[wa] dispatched to ${phone}`);
+    return true;
+  } catch {
+    clearTimeout(timer);
+    return false;
+  }
+}
+
 // Sends to both 9th-digit variants with a short delay between them.
 // wa-server blindly returns success:true, so we try both to guarantee delivery
 // regardless of which JID format the number is registered under on WhatsApp.
 async function sendViaWhatsApp(phone: string, message: string): Promise<{ ok: boolean; usedPhone: string }> {
-  const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
-  const key = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
-
   const primary = fmtPhone(phone);
   const alt = primary.length === 13
     ? primary.slice(0, 4) + primary.slice(5)
     : primary.length === 12 ? primary.slice(0, 4) + '9' + primary.slice(4) : null;
 
-  async function tryOne(phoneNum: string): Promise<boolean> {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 9000);
-    try {
-      const res = await fetch(`${url}/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': key },
-        body: JSON.stringify({ phone: phoneNum, message }),
-        signal: ctrl.signal,
-      });
-      clearTimeout(timer);
-      if (!res.ok) return false;
-      let body: Record<string, unknown> = {};
-      try { body = await res.json() as Record<string, unknown>; } catch {}
-      if (body.success === false) return false;
-      console.log(`[wa] dispatched to ${phoneNum}`);
-      return true;
-    } catch {
-      clearTimeout(timer);
-      return false;
-    }
-  }
-
-  const ok1 = await tryOne(primary);
+  const ok1 = await waSendRaw(primary, message);
   if (alt) {
     await new Promise(r => setTimeout(r, 2000)); // 2s delay between variants
-    await tryOne(alt);
+    await waSendRaw(alt, message);
   }
   return { ok: ok1, usedPhone: primary };
+}
+
+// Splits a message around a PIX copy-paste code so it can be sent as its own
+// message bubble — lets the customer long-press and copy just the code, since
+// WhatsApp never turns the code itself into a tappable link.
+function splitForPix(msg: string, pixCode: string | null): string[] {
+  if (!pixCode) return [msg];
+  const idx = msg.indexOf(pixCode);
+  if (idx === -1) return [msg];
+  const before = msg.slice(0, idx).trim();
+  const after = msg.slice(idx + pixCode.length).trim();
+  return [before, pixCode, after].filter(Boolean);
+}
+
+// Sends a message, splitting out the PIX code (if present) into its own message.
+async function sendWhatsAppMessage(phone: string, msg: string, pixCode: string | null = null): Promise<{ ok: boolean; usedPhone: string }> {
+  const chunks = splitForPix(msg, pixCode);
+  const first = await sendViaWhatsApp(phone, chunks[0]);
+  for (let i = 1; i < chunks.length; i++) {
+    if (!first.ok) break;
+    await new Promise(r => setTimeout(r, 800));
+    await waSendRaw(first.usedPhone, chunks[i]);
+  }
+  return first;
 }
 
 // Returns true if current time is within business hours (08:00–21:00 Brazil BRT = UTC-3)
@@ -467,7 +491,7 @@ export const recoveryRouter = router({
         msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0', tel);
       }
 
-      const { ok, usedPhone } = await sendViaWhatsApp(order.customerPhone, msg);
+      const { ok, usedPhone } = await sendWhatsAppMessage(order.customerPhone, msg, pixCode);
       // Best-effort email follow-up (non-blocking)
       if (order.customerEmail) {
         const emailHtml = unpaidOrderHtml(
