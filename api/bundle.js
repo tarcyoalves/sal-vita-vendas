@@ -57534,19 +57534,24 @@ async function waSendRaw(phone, message) {
       signal: ctrl.signal
     });
     clearTimeout(timer2);
-    if (!res.ok)
+    if (!res.ok) {
+      console.warn(`[wa] send to ${phone} failed: HTTP ${res.status}`);
       return false;
+    }
     let body = {};
     try {
       body = await res.json();
     } catch {
     }
-    if (body.success === false)
+    if (body.success === false) {
+      console.warn(`[wa] send to ${phone} failed: ${JSON.stringify(body)}`);
       return false;
+    }
     console.log(`[wa] dispatched to ${phone}`);
     return true;
-  } catch {
+  } catch (err) {
     clearTimeout(timer2);
+    console.warn(`[wa] send to ${phone} error: ${err.message}`);
     return false;
   }
 }

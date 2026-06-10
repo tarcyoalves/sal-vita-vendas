@@ -23,14 +23,21 @@ async function waSendRaw(phone: string, message: string): Promise<boolean> {
       signal: ctrl.signal,
     });
     clearTimeout(timer);
-    if (!res.ok) return false;
+    if (!res.ok) {
+      console.warn(`[wa] send to ${phone} failed: HTTP ${res.status}`);
+      return false;
+    }
     let body: Record<string, unknown> = {};
     try { body = await res.json() as Record<string, unknown>; } catch {}
-    if (body.success === false) return false;
+    if (body.success === false) {
+      console.warn(`[wa] send to ${phone} failed: ${JSON.stringify(body)}`);
+      return false;
+    }
     console.log(`[wa] dispatched to ${phone}`);
     return true;
-  } catch {
+  } catch (err) {
     clearTimeout(timer);
+    console.warn(`[wa] send to ${phone} error: ${(err as Error).message}`);
     return false;
   }
 }
