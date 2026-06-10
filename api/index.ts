@@ -21,6 +21,11 @@ function renderTemplate(body: string, vars: Record<string, string>): string {
   return body.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
 }
 
+// Formats a stored price string ("149.90") as Brazilian currency text ("149,90")
+function brl(price: string | null | undefined): string {
+  return parseFloat(price ?? '0').toFixed(2).replace('.', ',');
+}
+
 function isBusinessHours(): boolean {
   const brHour = (new Date().getUTCHours() - 3 + 24) % 24;
   return brHour >= 8 && brHour < 21;
@@ -339,15 +344,15 @@ app.post('/api/mp-webhook', express.raw({ type: 'application/json' }), async (re
         const vars = {
           nome: order.customerName,
           pedido: String(order.id),
-          valor: order.totalPrice ?? '0',
+          valor: brl(order.totalPrice),
         };
         const msg = tpl
           ? renderTemplate(tpl.body, vars)
-          : `Olá *${order.customerName}*! 🎉\n\nSeu pagamento foi *confirmado*! ✅\n\n📦 Pedido *#${order.id}* — R$ ${order.totalPrice}\n\nJá estamos preparando seu envio. Você receberá o código de rastreio assim que postarmos. 🚚\n\nObrigado por escolher a Sal Vita! 🌊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
+          : `Olá *${order.customerName}*! 🎉\n\nSeu pagamento foi *confirmado*! ✅\n\n📦 Pedido *#${order.id}* — R$ ${brl(order.totalPrice)}\n\nJá estamos preparando seu envio. Você receberá o código de rastreio assim que postarmos. 🚚\n\nObrigado por escolher a Sal Vita! 🌊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
         await sendWhatsApp(order.customerPhone, msg);
         // Best-effort confirmation email (non-blocking)
         if (order.customerEmail) {
-          const emailHtml = orderConfirmedHtml(order.customerName, order.id, order.totalPrice ?? '0');
+          const emailHtml = orderConfirmedHtml(order.customerName, order.id, brl(order.totalPrice));
           sendEmail(
             order.customerEmail,
             `Pedido #${order.id} confirmado — obrigado, ${order.customerName}!`,
@@ -526,6 +531,12 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
       await ordersDb.update(siteOrders).set({ unpaidFollowupSentAt: new Date(), updatedAt: new Date() })
         .where(eq(siteOrders.id, o.id));
 
+      // Honor "responda PARAR" opt-outs — never send automated follow-ups to these customers.
+      const phoneDigits = o.customerPhone.replace(/\D/g, '');
+      const [cartRecord] = await ordersDb.select({ optedOut: abandonedCarts.optedOut })
+        .from(abandonedCarts).where(eq(abandonedCarts.customerPhone, phoneDigits)).limit(1);
+      if (cartRecord?.optedOut) continue;
+
       const link = `https://premium.salvitarn.com.br/meu-pedido?pedido=${o.id}&tel=${o.customerPhone.replace(/\D/g, '').slice(-4)}`;
       let tpl = o.paymentStatus === 'failed' ? defaultByType('failed') : defaultByType('unpaid');
       let pix = '';
@@ -535,12 +546,12 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
       }
       // Wrap the PIX code in a monospace block so WhatsApp renders it as a
       // visually distinct, easy-to-select chunk separate from the surrounding text.
-      const vars = { nome: o.customerName, pedido: String(o.id), valor: o.totalPrice ?? '0', link, pix: pix ? `\`\`\`${pix}\`\`\`` : '' };
+      const vars = { nome: o.customerName, pedido: String(o.id), valor: brl(o.totalPrice), link, pix: pix ? `\`\`\`${pix}\`\`\`` : '' };
       const msg = tpl
         ? renderTemplate(tpl.body, vars)
         : (o.paymentStatus === 'failed'
             ? `Olá *${o.customerName}*! 😕 Houve um problema no pagamento do pedido *#${o.id}*. Tente novamente: ${link}`
-            : `Olá *${o.customerName}*! 💸 Seu pedido *#${o.id}* (R$ ${o.totalPrice}) ainda está aguardando pagamento. Finalize: ${link}`);
+            : `Olá *${o.customerName}*! 💸 Seu pedido *#${o.id}* (R$ ${brl(o.totalPrice)}) ainda está aguardando pagamento. Finalize: ${link}`);
       const ok = await sendWhatsApp(o.customerPhone, msg);
       if (ok) sent++;
       // Best-effort email follow-up (non-blocking)
@@ -548,13 +559,14 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
         const emailHtml = unpaidOrderHtml(
           o.customerName,
           o.id,
-          o.totalPrice ?? '0',
+          brl(o.totalPrice),
           link,
           pix || undefined,
+          o.paymentStatus === 'failed',
         );
         const emailSubject = o.paymentStatus === 'failed'
           ? `Problema no pagamento do pedido #${o.id} — tente novamente`
-          : `Pedido #${o.id} aguardando pagamento — R$ ${o.totalPrice}`;
+          : `Pedido #${o.id} aguardando pagamento — R$ ${brl(o.totalPrice)}`;
         sendEmail(o.customerEmail, emailSubject, emailHtml).catch(() => {});
       }
       await new Promise(r => setTimeout(r, 1000));
@@ -606,9 +618,13 @@ async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
         await ordersDb.update(abandonedCarts)
           .set({ status: 'converted', recovered: true, convertedAt: new Date(), updatedAt: new Date() })
           .where(eq(abandonedCarts.customerPhone, phone));
-        // Confirmation WhatsApp (best effort)
-        const msg = `Olá *${o.customerName}*! 🎉\n\nSeu pagamento foi *confirmado*! ✅\n\n📦 Pedido *#${o.id}* — R$ ${o.totalPrice}\n\nJá estamos preparando seu envio. 🚚\n\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
+        // Confirmation WhatsApp + email (best effort) — same as the mp-webhook path
+        const msg = `Olá *${o.customerName}*! 🎉\n\nSeu pagamento foi *confirmado*! ✅\n\n📦 Pedido *#${o.id}* — R$ ${brl(o.totalPrice)}\n\nJá estamos preparando seu envio. 🚚\n\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
         await sendWhatsApp(o.customerPhone, msg);
+        if (o.customerEmail) {
+          const emailHtml = orderConfirmedHtml(o.customerName, o.id, brl(o.totalPrice));
+          sendEmail(o.customerEmail, `Pedido #${o.id} confirmado — obrigado, ${o.customerName}!`, emailHtml).catch(() => {});
+        }
         confirmed++;
       } catch { /* skip this order */ }
     }

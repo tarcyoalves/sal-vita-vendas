@@ -57308,7 +57308,7 @@ function layout(preheader, body) {
                 <strong>Sal Vita &mdash; Sal Marinho Premium de Mossor\xF3/RN</strong>
               </p>
               <p style="margin:8px 0 0;font-size:11px;color:#aaa;">
-                Para cancelar emails, responda com <strong>PARAR</strong>.
+                Para deixar de receber mensagens, envie <strong>PARAR</strong> pelo WhatsApp.
               </p>
             </td>
           </tr>
@@ -57361,7 +57361,7 @@ function abandonedCartHtml(name2, link, coupon) {
     <tr>
       <td>
         <p style="margin:16px 0 0;font-size:13px;color:#888;text-align:center;">
-          Qualquer d&uacute;vida &eacute; s&oacute; responder este e-mail ou chamar no WhatsApp. &#128522;
+          Qualquer d&uacute;vida &eacute; s&oacute; chamar no WhatsApp. &#128522;
         </p>
       </td>
     </tr>
@@ -57371,7 +57371,7 @@ function abandonedCartHtml(name2, link, coupon) {
     body
   );
 }
-function unpaidOrderHtml(name2, orderId, total, link, pixCode) {
+function unpaidOrderHtml(name2, orderId, total, link, pixCode, failed) {
   const pixBlock = pixCode ? `<tr>
         <td style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:16px;margin-bottom:16px;">
           <p style="margin:0 0 8px;font-size:14px;color:#166534;font-weight:bold;">&#128241; Pague com PIX agora:</p>
@@ -57379,12 +57379,13 @@ function unpaidOrderHtml(name2, orderId, total, link, pixCode) {
           <p style="margin:8px 0 0;font-size:12px;color:#888;">Copie o c&oacute;digo acima e cole no app do seu banco.</p>
         </td>
       </tr>` : "";
+  const introText = failed ? `Houve um problema ao processar o pagamento do seu pedido <strong>#${orderId}</strong>. N&atilde;o se preocupe, voc&ecirc; pode tentar novamente.` : `Seu pedido <strong>#${orderId}</strong> est&aacute; aguardando pagamento.`;
   const body = `<table width="100%" cellpadding="0" cellspacing="0" border="0">
     <tr>
       <td>
         <h2 style="margin:0 0 8px;font-size:22px;color:#222;">Ol&aacute;, ${escapeHtml(name2)}! &#128184;</h2>
         <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;">
-          Seu pedido <strong>#${orderId}</strong> est&aacute; aguardando pagamento.
+          ${introText}
         </p>
       </td>
     </tr>
@@ -57405,7 +57406,7 @@ function unpaidOrderHtml(name2, orderId, total, link, pixCode) {
     </tr>
     ${pixBlock}
     <tr>
-      <td>${ctaButton("Concluir pagamento &rarr;", link)}</td>
+      <td>${ctaButton(failed ? "Tentar novamente &rarr;" : "Concluir pagamento &rarr;", link)}</td>
     </tr>
     <tr>
       <td>
@@ -57415,7 +57416,8 @@ function unpaidOrderHtml(name2, orderId, total, link, pixCode) {
       </td>
     </tr>
   </table>`;
-  return layout(`Seu pedido #${orderId} est\xE1 aguardando pagamento \u2014 R$ ${total}.`, body);
+  const preheader = failed ? `Houve um problema no pagamento do pedido #${orderId} \u2014 tente novamente.` : `Seu pedido #${orderId} est\xE1 aguardando pagamento \u2014 R$ ${total}.`;
+  return layout(preheader, body);
 }
 function orderConfirmedHtml(name2, orderId, total) {
   const body = `<table width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -57457,7 +57459,7 @@ function orderConfirmedHtml(name2, orderId, total) {
       <td>
         <p style="margin:0;font-size:14px;color:#555;line-height:1.6;text-align:center;">
           Voc&ecirc; receber&aacute; o c&oacute;digo de rastreio assim que postarmos o pacote. &#128666;<br />
-          Em caso de d&uacute;vidas, basta responder este e-mail.
+          Em caso de d&uacute;vidas, basta chamar no WhatsApp.
         </p>
       </td>
     </tr>
@@ -58879,6 +58881,9 @@ init_drizzle_orm();
 function renderTemplate2(body, vars) {
   return body.replace(/\{(\w+)\}/g, (_2, k) => vars[k] ?? `{${k}}`);
 }
+function brl(price) {
+  return parseFloat(price ?? "0").toFixed(2).replace(".", ",");
+}
 function isBusinessHours2() {
   const brHour = ((/* @__PURE__ */ new Date()).getUTCHours() - 3 + 24) % 24;
   return brHour >= 8 && brHour < 21;
@@ -59176,13 +59181,13 @@ app.post("/api/mp-webhook", import_express.default.raw({ type: "application/json
         const vars = {
           nome: order.customerName,
           pedido: String(order.id),
-          valor: order.totalPrice ?? "0"
+          valor: brl(order.totalPrice)
         };
         const msg = tpl ? renderTemplate2(tpl.body, vars) : `Ol\xE1 *${order.customerName}*! \u{1F389}
 
 Seu pagamento foi *confirmado*! \u2705
 
-\u{1F4E6} Pedido *#${order.id}* \u2014 R$ ${order.totalPrice}
+\u{1F4E6} Pedido *#${order.id}* \u2014 R$ ${brl(order.totalPrice)}
 
 J\xE1 estamos preparando seu envio. Voc\xEA receber\xE1 o c\xF3digo de rastreio assim que postarmos. \u{1F69A}
 
@@ -59190,7 +59195,7 @@ Obrigado por escolher a Sal Vita! \u{1F30A}
 _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
         await sendWhatsApp(order.customerPhone, msg);
         if (order.customerEmail) {
-          const emailHtml = orderConfirmedHtml(order.customerName, order.id, order.totalPrice ?? "0");
+          const emailHtml = orderConfirmedHtml(order.customerName, order.id, brl(order.totalPrice));
           sendEmail(
             order.customerEmail,
             `Pedido #${order.id} confirmado \u2014 obrigado, ${order.customerName}!`,
@@ -59342,6 +59347,10 @@ async function processUnpaidFollowups() {
     const pixTpl = tpls.find((t2) => t2.slug === "unpaid_pix");
     for (const o of orders) {
       await ordersDb.update(siteOrders).set({ unpaidFollowupSentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, o.id));
+      const phoneDigits = o.customerPhone.replace(/\D/g, "");
+      const [cartRecord] = await ordersDb.select({ optedOut: abandonedCarts.optedOut }).from(abandonedCarts).where(eq(abandonedCarts.customerPhone, phoneDigits)).limit(1);
+      if (cartRecord?.optedOut)
+        continue;
       const link = `https://premium.salvitarn.com.br/meu-pedido?pedido=${o.id}&tel=${o.customerPhone.replace(/\D/g, "").slice(-4)}`;
       let tpl = o.paymentStatus === "failed" ? defaultByType("failed") : defaultByType("unpaid");
       let pix = "";
@@ -59352,8 +59361,8 @@ async function processUnpaidFollowups() {
           pix = code;
         }
       }
-      const vars = { nome: o.customerName, pedido: String(o.id), valor: o.totalPrice ?? "0", link, pix: pix ? `\`\`\`${pix}\`\`\`` : "" };
-      const msg = tpl ? renderTemplate2(tpl.body, vars) : o.paymentStatus === "failed" ? `Ol\xE1 *${o.customerName}*! \u{1F615} Houve um problema no pagamento do pedido *#${o.id}*. Tente novamente: ${link}` : `Ol\xE1 *${o.customerName}*! \u{1F4B8} Seu pedido *#${o.id}* (R$ ${o.totalPrice}) ainda est\xE1 aguardando pagamento. Finalize: ${link}`;
+      const vars = { nome: o.customerName, pedido: String(o.id), valor: brl(o.totalPrice), link, pix: pix ? `\`\`\`${pix}\`\`\`` : "" };
+      const msg = tpl ? renderTemplate2(tpl.body, vars) : o.paymentStatus === "failed" ? `Ol\xE1 *${o.customerName}*! \u{1F615} Houve um problema no pagamento do pedido *#${o.id}*. Tente novamente: ${link}` : `Ol\xE1 *${o.customerName}*! \u{1F4B8} Seu pedido *#${o.id}* (R$ ${brl(o.totalPrice)}) ainda est\xE1 aguardando pagamento. Finalize: ${link}`;
       const ok = await sendWhatsApp(o.customerPhone, msg);
       if (ok)
         sent++;
@@ -59361,11 +59370,12 @@ async function processUnpaidFollowups() {
         const emailHtml = unpaidOrderHtml(
           o.customerName,
           o.id,
-          o.totalPrice ?? "0",
+          brl(o.totalPrice),
           link,
-          pix || void 0
+          pix || void 0,
+          o.paymentStatus === "failed"
         );
-        const emailSubject = o.paymentStatus === "failed" ? `Problema no pagamento do pedido #${o.id} \u2014 tente novamente` : `Pedido #${o.id} aguardando pagamento \u2014 R$ ${o.totalPrice}`;
+        const emailSubject = o.paymentStatus === "failed" ? `Problema no pagamento do pedido #${o.id} \u2014 tente novamente` : `Pedido #${o.id} aguardando pagamento \u2014 R$ ${brl(o.totalPrice)}`;
         sendEmail(o.customerEmail, emailSubject, emailHtml).catch(() => {
         });
       }
@@ -59418,12 +59428,17 @@ async function reconcileAwaitingOrders() {
 
 Seu pagamento foi *confirmado*! \u2705
 
-\u{1F4E6} Pedido *#${o.id}* \u2014 R$ ${o.totalPrice}
+\u{1F4E6} Pedido *#${o.id}* \u2014 R$ ${brl(o.totalPrice)}
 
 J\xE1 estamos preparando seu envio. \u{1F69A}
 
 _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
         await sendWhatsApp(o.customerPhone, msg);
+        if (o.customerEmail) {
+          const emailHtml = orderConfirmedHtml(o.customerName, o.id, brl(o.totalPrice));
+          sendEmail(o.customerEmail, `Pedido #${o.id} confirmado \u2014 obrigado, ${o.customerName}!`, emailHtml).catch(() => {
+          });
+        }
         confirmed++;
       } catch {
       }

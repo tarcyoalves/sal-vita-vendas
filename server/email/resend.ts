@@ -4,7 +4,8 @@
  *
  * Free tier: 3,000 emails/month, 100 emails/day hard cap.
  * Daily budget is split conservatively: max 80 emails/day to leave margin.
- * Counter is checked via Resend's API to avoid silent rejections.
+ * The counter is in-memory only (resets on cold start) — a best-effort
+ * guard, not a hard guarantee against Resend's own daily cap.
  */
 
 const FROM = 'Sal Vita <noreply@premium.salvitarn.com.br>';
@@ -109,7 +110,7 @@ function layout(preheader: string, body: string): string {
                 <strong>Sal Vita &mdash; Sal Marinho Premium de Mossoró/RN</strong>
               </p>
               <p style="margin:8px 0 0;font-size:11px;color:#aaa;">
-                Para cancelar emails, responda com <strong>PARAR</strong>.
+                Para deixar de receber mensagens, envie <strong>PARAR</strong> pelo WhatsApp.
               </p>
             </td>
           </tr>
@@ -172,7 +173,7 @@ export function abandonedCartHtml(name: string, link: string, coupon?: string): 
     <tr>
       <td>
         <p style="margin:16px 0 0;font-size:13px;color:#888;text-align:center;">
-          Qualquer d&uacute;vida &eacute; s&oacute; responder este e-mail ou chamar no WhatsApp. &#128522;
+          Qualquer d&uacute;vida &eacute; s&oacute; chamar no WhatsApp. &#128522;
         </p>
       </td>
     </tr>
@@ -193,6 +194,7 @@ export function unpaidOrderHtml(
   total: string,
   link: string,
   pixCode?: string,
+  failed?: boolean,
 ): string {
   const pixBlock = pixCode
     ? `<tr>
@@ -204,12 +206,16 @@ export function unpaidOrderHtml(
       </tr>`
     : '';
 
+  const introText = failed
+    ? `Houve um problema ao processar o pagamento do seu pedido <strong>#${orderId}</strong>. N&atilde;o se preocupe, voc&ecirc; pode tentar novamente.`
+    : `Seu pedido <strong>#${orderId}</strong> est&aacute; aguardando pagamento.`;
+
   const body = `<table width="100%" cellpadding="0" cellspacing="0" border="0">
     <tr>
       <td>
         <h2 style="margin:0 0 8px;font-size:22px;color:#222;">Ol&aacute;, ${escapeHtml(name)}! &#128184;</h2>
         <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;">
-          Seu pedido <strong>#${orderId}</strong> est&aacute; aguardando pagamento.
+          ${introText}
         </p>
       </td>
     </tr>
@@ -230,7 +236,7 @@ export function unpaidOrderHtml(
     </tr>
     ${pixBlock}
     <tr>
-      <td>${ctaButton('Concluir pagamento &rarr;', link)}</td>
+      <td>${ctaButton(failed ? 'Tentar novamente &rarr;' : 'Concluir pagamento &rarr;', link)}</td>
     </tr>
     <tr>
       <td>
@@ -241,7 +247,11 @@ export function unpaidOrderHtml(
     </tr>
   </table>`;
 
-  return layout(`Seu pedido #${orderId} está aguardando pagamento — R$ ${total}.`, body);
+  const preheader = failed
+    ? `Houve um problema no pagamento do pedido #${orderId} — tente novamente.`
+    : `Seu pedido #${orderId} está aguardando pagamento — R$ ${total}.`;
+
+  return layout(preheader, body);
 }
 
 /**
@@ -287,7 +297,7 @@ export function orderConfirmedHtml(name: string, orderId: number, total: string)
       <td>
         <p style="margin:0;font-size:14px;color:#555;line-height:1.6;text-align:center;">
           Voc&ecirc; receber&aacute; o c&oacute;digo de rastreio assim que postarmos o pacote. &#128666;<br />
-          Em caso de d&uacute;vidas, basta responder este e-mail.
+          Em caso de d&uacute;vidas, basta chamar no WhatsApp.
         </p>
       </td>
     </tr>
