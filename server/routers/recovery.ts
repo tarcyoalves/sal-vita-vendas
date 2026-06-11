@@ -85,7 +85,22 @@ function renderTemplate(body: string, vars: Record<string, string>): string {
 
 // Fallback messages (used when no template found) — all include opt-out footer
 function recoveryMsg(name: string, coupon?: string) {
-  return `Olá *${name}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou o pedido.\n\n${coupon ? `🎁 Use o cupom *${coupon}* e ganhe desconto especial!\n\n` : ''}👉 Finalize agora: https://premium.salvitarn.com.br\n\nQualquer dúvida é só chamar aqui! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
+  // Append ?cupom= so the storefront pre-fills and validates the code automatically
+  const link = coupon ? `https://premium.salvitarn.com.br?cupom=${coupon}` : 'https://premium.salvitarn.com.br';
+  return `Olá *${name}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou o pedido.\n\n${coupon ? `🎁 Use o cupom *${coupon}* e ganhe desconto especial!\n\n` : ''}👉 Finalize agora: ${link}\n\nQualquer dúvida é só chamar aqui! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
+}
+
+// Returns the best active, usable coupon for recovery messages (not expired,
+// not over its usage cap), or null if no coupon is configured/valid.
+async function getActiveRecoveryCoupon(): Promise<{ code: string; discountType: string; discountValue: string } | null> {
+  const all = await db.select().from(coupons).where(eq(coupons.active, true)).orderBy(desc(coupons.createdAt));
+  const now = new Date();
+  for (const c of all) {
+    const notExpired = !c.expiresAt || now < new Date(c.expiresAt);
+    const notMaxed = !c.maxUses || c.usedCount < c.maxUses;
+    if (notExpired && notMaxed) return { code: c.code, discountType: c.discountType, discountValue: c.discountValue };
+  }
+  return null;
 }
 
 function unpaidMsg(name: string, id: number, qty: number, total: string, tel: string) {
@@ -281,10 +296,12 @@ export const recoveryRouter = router({
       const rows = await db.select().from(abandonedCarts)
         .where(eq(abandonedCarts.recovered, false))
         .orderBy(desc(abandonedCarts.updatedAt));
+      const activeCoupon = await getActiveRecoveryCoupon();
       return rows.map(r => ({
         ...r,
         waLink: waLink(r.customerPhone, recoveryMsg(r.customerName)),
-        waLinkWithCoupon: waLink(r.customerPhone, recoveryMsg(r.customerName, 'VOLTA10')),
+        waLinkWithCoupon: activeCoupon ? waLink(r.customerPhone, recoveryMsg(r.customerName, activeCoupon.code)) : null,
+        activeCoupon: activeCoupon?.code ?? null,
       }));
     }),
 
@@ -385,12 +402,27 @@ export const recoveryRouter = router({
 
   // Admin: send WhatsApp recovery message to specific cart
   sendRecovery: protectedProcedure
-    .input(z.object({ id: z.number(), coupon: z.string().optional(), templateId: z.number().optional() }))
+    .input(z.object({ id: z.number(), coupon: z.string().optional(), useCoupon: z.boolean().optional(), templateId: z.number().optional() }))
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const [cart] = await db.select().from(abandonedCarts).where(eq(abandonedCarts.id, input.id)).limit(1);
       if (!cart) throw new TRPCError({ code: 'NOT_FOUND' });
       if (cart.optedOut) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cliente optou por não receber mensagens (PARAR)' });
+
+      // Resolve a real coupon: an explicit code is checked against the active
+      // coupons table; otherwise (when requested) fall back to the best active
+      // coupon. If none exists, the message is sent without a coupon — never
+      // a made-up code that wouldn't validate at checkout.
+      let coupon: string | undefined;
+      if (input.coupon) {
+        const code = input.coupon.toUpperCase().trim();
+        const [found] = await db.select().from(coupons)
+          .where(and(eq(coupons.code, code), eq(coupons.active, true))).limit(1);
+        coupon = found ? code : undefined;
+      } else if (input.useCoupon) {
+        coupon = (await getActiveRecoveryCoupon())?.code;
+      }
+      const link = coupon ? `https://premium.salvitarn.com.br?cupom=${coupon}` : 'https://premium.salvitarn.com.br';
 
       let msg: string;
       if (input.templateId) {
@@ -398,12 +430,12 @@ export const recoveryRouter = router({
         if (tpl) {
           msg = renderTemplate(tpl.body, {
             nome: cart.customerName,
-            cupom: input.coupon ?? 'VOLTA10',
-            link: 'https://premium.salvitarn.com.br',
+            cupom: coupon ?? '',
+            link,
             produto: 'Sal Marinho Integral 1kg',
           });
         } else {
-          msg = recoveryMsg(cart.customerName, input.coupon);
+          msg = recoveryMsg(cart.customerName, coupon);
         }
       } else {
         // Try default template first
@@ -411,8 +443,8 @@ export const recoveryRouter = router({
           .where(and(eq(msgTemplates.type, 'abandoned'), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true)))
           .limit(1);
         msg = tpl
-          ? renderTemplate(tpl.body, { nome: cart.customerName, cupom: input.coupon ?? 'VOLTA10', link: 'https://premium.salvitarn.com.br', produto: 'Sal Marinho Integral 1kg' })
-          : recoveryMsg(cart.customerName, input.coupon);
+          ? renderTemplate(tpl.body, { nome: cart.customerName, cupom: coupon ?? '', link, produto: 'Sal Marinho Integral 1kg' })
+          : recoveryMsg(cart.customerName, coupon);
       }
 
       const { ok, usedPhone } = await sendViaWhatsApp(cart.customerPhone, msg);
@@ -422,15 +454,18 @@ export const recoveryRouter = router({
           .where(eq(abandonedCarts.id, input.id));
         // Best-effort email recovery (non-blocking)
         if (cart.customerEmail) {
-          const coupon = input.coupon || undefined;
-          const emailHtml = abandonedCartHtml(cart.customerName, 'https://premium.salvitarn.com.br', coupon);
+          const emailHtml = abandonedCartHtml(cart.customerName, link, coupon);
           const emailSubject = coupon
             ? `Seu cupom ${coupon} — finalize seu pedido Sal Vita`
             : 'Você esqueceu algo — finalize seu pedido Sal Vita';
           sendEmail(cart.customerEmail, emailSubject, emailHtml).catch(() => {});
         }
       }
-      return { ok, phone: usedPhone, preview: msg, waLink: waLink(cart.customerPhone, msg) };
+      return {
+        ok, phone: usedPhone, preview: msg, waLink: waLink(cart.customerPhone, msg),
+        coupon: coupon ?? null,
+        couponRequested: !!(input.coupon || input.useCoupon),
+      };
     }),
 
   // Admin: send WhatsApp to unpaid order (with optional template + PIX fetch)
@@ -697,6 +732,7 @@ export const recoveryRouter = router({
       const nowBR = new Date(now.getTime() - 3 * 60 * 60 * 1000); // UTC-3
       const hour = nowBR.getUTCHours();
       const weekday = nowBR.getUTCDay(); // 0=sun 6=sat
+      const activeCoupon = await getActiveRecoveryCoupon();
 
       let processed = 0;
       const results: { cartId: number; name: string; scheduledFor: string; reasoning: string }[] = [];
@@ -734,7 +770,7 @@ Regras da mensagem:
 - Use *negrito* para destaque
 - Termine com link do site
 - Adapte ao passo que o cliente alcançou (ex: se chegou no frete, mencione o frete grátis para pedidos maiores)
-- Opcionalmente inclua cupom VOLTA10 se fizer sentido (não para quem já foi ao pagamento)
+${activeCoupon ? `- Opcionalmente inclua o cupom ${activeCoupon.code} se fizer sentido (não para quem já foi ao pagamento)` : '- NÃO mencione nenhum cupom (não há cupom ativo no momento)'}
 - NÃO mencione o número de telefone nem diga "detectamos"
 
 Regras do horário:
@@ -909,6 +945,7 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
       const due = await db.select().from(automationRuns).where(
         and(eq(automationRuns.status, 'scheduled'), lte(automationRuns.scheduledFor, now))
       ).limit(50);
+      const activeCoupon = await getActiveRecoveryCoupon();
 
       let sent = 0, cancelled = 0, failed = 0;
       for (const run of due) {
@@ -930,8 +967,13 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
             .where(and(eq(msgTemplates.type, 'abandoned'), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true)))
             .limit(1);
           msg = tpl
-            ? renderTemplate(tpl.body, { nome: cart.customerName, link: 'https://premium.salvitarn.com.br', cupom: 'VOLTA10', produto: 'Sal Marinho Integral 1kg' })
-            : recoveryMsg(cart.customerName);
+            ? renderTemplate(tpl.body, {
+                nome: cart.customerName,
+                link: activeCoupon ? `https://premium.salvitarn.com.br?cupom=${activeCoupon.code}` : 'https://premium.salvitarn.com.br',
+                cupom: activeCoupon?.code ?? '',
+                produto: 'Sal Marinho Integral 1kg',
+              })
+            : recoveryMsg(cart.customerName, activeCoupon?.code);
         }
         const { ok } = await sendViaWhatsApp(run.customerPhone, msg);
         if (ok) {

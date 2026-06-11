@@ -205,6 +205,14 @@ export default function SalVitaLanding() {
     if (c) setCouponCode(c.toUpperCase().trim());
   }, []);
 
+  // Once a coupon code came from the URL and the customer reaches checkout
+  // (selProd available), validate it automatically — no need to click "Aplicar".
+  useEffect(() => {
+    if (couponCode && selProd && !couponState && !couponLoading) {
+      validateCoupon(couponCode, selProd.price * (selProd.weightKg >= 10 ? 10 : 1));
+    }
+  }, [selProd, couponCode]);
+
   // Check for pending order in localStorage on mount
   useEffect(() => {
     try {

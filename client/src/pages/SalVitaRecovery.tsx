@@ -171,7 +171,10 @@ function AbandonedTab() {
     onError: (e) => toast.error('Falha no envio: ' + e.message),
   });
   const sendCouponMut = trpc.recovery.sendRecovery.useMutation({
-    onSuccess: (d: any) => { toast.success(`🎁 Enviado com cupom para ${d.phone}`); refetch(); },
+    onSuccess: (d: any) => {
+      toast.success(d.coupon ? `🎁 Enviado com cupom ${d.coupon} para ${d.phone}` : `✅ Enviado para ${d.phone} (sem cupom — crie um na aba Cupons)`);
+      refetch();
+    },
     onError: (e) => toast.error('Falha no envio: ' + e.message),
   });
   const jobMut = trpc.recovery.runAutomationJob.useMutation({
@@ -312,11 +315,12 @@ function AbandonedTab() {
                 </a>
               )}
               <button
-                onClick={() => sendCouponMut.mutate({ id: row.id, coupon: 'VOLTA10' })}
+                onClick={() => sendCouponMut.mutate({ id: row.id, useCoupon: true })}
                 disabled={sendCouponMut.isPending}
+                title={row.activeCoupon ? `Enviar com o cupom ${row.activeCoupon}` : 'Nenhum cupom ativo cadastrado — crie um na aba Cupons'}
                 style={{ ...btnWaSecondary, opacity: sendCouponMut.isPending ? .7 : 1 }}
               >
-                🎁 + Cupom
+                🎁 + Cupom{row.activeCoupon ? ` (${row.activeCoupon})` : ''}
               </button>
               <button
                 onClick={() => markRecovered.mutate({ id: row.id })}
@@ -553,6 +557,13 @@ function TemplatesTab() {
                 </button>
               ))}
             </div>
+            {form.type === 'abandoned' && form.body.includes('{cupom}') && (
+              <p style={{ margin: '6px 0 0', fontSize: '.74rem', color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 8px' }}>
+                ⚠️ <strong>{'{cupom}'}</strong> é preenchido automaticamente com o cupom ativo cadastrado na aba <strong>🎟️ Cupons</strong>
+                (o de criação mais recente, dentro da validade e do limite de usos). Se nenhum cupom estiver ativo, esse trecho fica em branco.
+                O <strong>{'{link}'}</strong> já inclui <code>?cupom=CODIGO</code>, então o site preenche e valida o cupom automaticamente para o cliente.
+              </p>
+            )}
           </div>
 
           <div style={{ marginBottom: 12 }}>
@@ -639,7 +650,7 @@ function TemplatesTab() {
 
 function renderTplPreview(body: string, type: string): string {
   const fakeVars: Record<string, string> = {
-    nome: 'João Silva', cupom: 'VOLTA10', link: 'https://premium.salvitarn.com.br',
+    nome: 'João Silva', cupom: 'EXEMPLO10', link: 'https://premium.salvitarn.com.br?cupom=EXEMPLO10',
     produto: 'Sal Marinho Integral 1kg', pedido: '10042', valor: '79,80',
     pix: '00020126580014br.gov.bcb.pix0136abc123...', boleto_url: 'https://mercadopago.com/boleto/...',
   };
