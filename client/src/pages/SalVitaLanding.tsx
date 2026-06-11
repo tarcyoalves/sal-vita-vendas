@@ -173,6 +173,7 @@ export default function SalVitaLanding() {
   const [couponLoading,setCouponLoading]   = useState(false);
   const [cpfError,setCpfError]             = useState('');
   const [pendingOrder,setPendingOrder]     = useState<{id:number;total:number}|null>(null);
+  const autoCouponRef = useRef<string>('');
   const obs = useRef<IntersectionObserver|null>(null);
   const spToast = useSocialProof();
 
@@ -198,20 +199,43 @@ export default function SalVitaLanding() {
 
   const v=(id:string)=>visible.has(id);
 
-  // Read ?cupom= URL param and pre-fill coupon on mount
+  // Read ?cupom= URL param and restore saved customer data on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const c = params.get('cupom') ?? params.get('coupon');
-    if (c) setCouponCode(c.toUpperCase().trim());
+    if (c) {
+      const code = c.toUpperCase().trim();
+      setCouponCode(code);
+      autoCouponRef.current = code; // mark as link-coupon so it auto-applies
+    }
+    // Restore previously typed customer data (saved on THIS device only — no
+    // database storage) so returning shoppers don't retype everything.
+    try {
+      const saved = localStorage.getItem('sv_customer_data');
+      if (saved) {
+        const d = JSON.parse(saved);
+        if (d && typeof d === 'object') {
+          setCheckoutForm(f => ({ ...f, ...d }));
+          if (d.postalCode) setCep(d.postalCode);
+        }
+      }
+    } catch {}
   }, []);
 
-  // Once a coupon code came from the URL and the customer reaches checkout
-  // (selProd available), validate it automatically — no need to click "Aplicar".
+  // Persist customer data locally whenever it changes (device-only, no DB cost)
   useEffect(() => {
-    if (couponCode && selProd && !couponState && !couponLoading) {
-      validateCoupon(couponCode, selProd.price * (selProd.weightKg >= 10 ? 10 : 1));
+    if (!checkoutForm.customerName && !checkoutForm.customerPhone && !checkoutForm.postalCode) return;
+    try { localStorage.setItem('sv_customer_data', JSON.stringify(checkoutForm)); } catch {}
+  }, [checkoutForm]);
+
+  // Auto-validate/apply the coupon that came from a recovery link as soon as the
+  // customer opens checkout — no need to click "Aplicar". Only fires for the
+  // link-coupon (autoCouponRef), so manual typing still uses the button.
+  useEffect(() => {
+    if (showCheckout && selProd && couponCode.trim() && couponCode === autoCouponRef.current && !couponState && !couponLoading) {
+      validateCoupon(couponCode, selProd.price);
     }
-  }, [selProd, couponCode]);
+  }, [showCheckout, selProd, couponCode]);
 
   // Check for pending order in localStorage on mount
   useEffect(() => {
@@ -356,6 +380,7 @@ export default function SalVitaLanding() {
   async function handleCheckout(e:React.FormEvent) {
     e.preventDefault();
     if(!selProd||!selShip) return;
+    if(checkoutLoading) return; // guard against double-submit (mobile double-tap)
     setCheckoutLoading(true);
     // Track step 3 (attempting payment)
     const p3 = checkoutForm.customerPhone.replace(/\D/g,'');
@@ -371,6 +396,7 @@ export default function SalVitaLanding() {
         body:JSON.stringify({json:{
           ...checkoutForm,
           quantity:qty,
+          productId: selProd.id==='caixa'?'caixa':'1kg',
           shippingServiceId:selShip.serviceId ?? (selShip.service==='PAC'?'1':'2'),
           shippingServiceName:selShip.service,
           shippingPrice:selShip.price,
@@ -379,6 +405,14 @@ export default function SalVitaLanding() {
       });
       const data = await res.json();
       const orderId = data?.result?.data?.json?.id;
+      // A tRPC error comes back as a 200/4xx with an `error` envelope (not a
+      // thrown fetch), so guard explicitly — otherwise we'd advance to a
+      // "#undefined confirmado" dead-end the customer could never pay.
+      if (!orderId) {
+        const apiMsg = data?.error?.json?.message ?? data?.error?.message;
+        alert(apiMsg ? `Não foi possível registrar o pedido: ${apiMsg}` : 'Erro ao registrar o pedido. Confira os dados e tente novamente.');
+        return;
+      }
       const total   = data?.result?.data?.json?.total ?? (selProd.price+selShip.price);
       setOrderDone({ id: orderId, total });
       localStorage.setItem('sv_pending_order', JSON.stringify({ id: orderId, total, ts: Date.now() }));
@@ -393,6 +427,7 @@ export default function SalVitaLanding() {
 
   async function handleMpPay() {
     if(!orderDone) return;
+    if(mpLoading) return; // guard against double-tap creating two MP charges
     setMpLoading(true);
     try {
       const res = await fetch('/api/trpc/shipping.createPayment', {
@@ -1615,7 +1650,7 @@ export default function SalVitaLanding() {
                     style={{flex:1,background:'var(--offwhite)',border:`2px solid ${couponState?.valid?'#16a34a':couponState?.valid===false?'#ef4444':'transparent'}`,borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',fontFamily:'monospace',letterSpacing:'.1em'}}
                   />
                   <button type="button"
-                    onClick={()=>validateCoupon(couponCode, selProd.price * (selProd.weightKg>=10?10:1))}
+                    onClick={()=>validateCoupon(couponCode, selProd.price)}
                     disabled={!couponCode.trim() || couponLoading}
                     style={{padding:'0 16px',background:'var(--brand)',color:'white',border:'none',borderRadius:10,fontSize:'.85rem',fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
                     {couponLoading?'...':'Aplicar'}
@@ -1631,14 +1666,14 @@ export default function SalVitaLanding() {
               <div style={{background:'var(--sky)',borderRadius:10,padding:'12px 16px',marginTop:4}}>
                 <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
                   <span style={{fontSize:'.9rem',color:'var(--muted)'}}>Produto</span>
-                  <span style={{fontSize:'.9rem',color:'var(--mid)'}}>R$ {(selProd.price*(selProd.weightKg>=10?10:1)).toFixed(2)}</span>
+                  <span style={{fontSize:'.9rem',color:'var(--mid)'}}>R$ {(selProd.price).toFixed(2)}</span>
                 </div>
                 {couponState?.valid && couponState.discountValue && (
                   <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
                     <span style={{fontSize:'.9rem',color:'#16a34a',fontWeight:600}}>🎁 Desconto {couponCode}</span>
                     <span style={{fontSize:'.9rem',color:'#16a34a',fontWeight:700}}>
                       -{couponState.discountType==='percent'
-                        ? `R$ ${((selProd.price*(selProd.weightKg>=10?10:1))*couponState.discountValue/100).toFixed(2)}`
+                        ? `R$ ${((selProd.price)*couponState.discountValue/100).toFixed(2)}`
                         : `R$ ${couponState.discountValue.toFixed(2)}`}
                     </span>
                   </div>
@@ -1651,7 +1686,7 @@ export default function SalVitaLanding() {
                   <span style={{fontWeight:700,color:'var(--text)'}}>Total</span>
                   <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.3rem',fontWeight:700,color:'var(--brand)'}}>
                     {(() => {
-                      let subtotal = selProd.price*(selProd.weightKg>=10?10:1);
+                      let subtotal = selProd.price;
                       if (couponState?.valid && couponState.discountValue) {
                         const disc = couponState.discountType==='percent'
                           ? subtotal*couponState.discountValue/100
