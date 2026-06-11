@@ -8,3 +8,5 @@ drizzle
 CREDENCIAIS.txt
 # Added by code-review-graph
 .code-review-graph/
+# Leftover git worktrees from background agent sessions
+.claude/worktrees/
