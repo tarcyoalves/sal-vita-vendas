@@ -160,10 +160,16 @@ export default function SalVitaLanding() {
   const [visible,setVisible]               = useState<Set<string>>(new Set());
   const [showCheckout,setShowCheckout]     = useState(false);
   const [checkoutLoading,setCheckoutLoading] = useState(false);
-  const [orderDone,setOrderDone]           = useState<{id:number;total:number}|null>(null);
+  const [orderDone,setOrderDone]           = useState<{id:number;total:number;createdAt:number}|null>(null);
   const [mpLoading,setMpLoading]           = useState(false);
   const [payTimer,setPayTimer]             = useState(900); // 15 min countdown
   const payTimerRef = useRef<ReturnType<typeof setInterval>|null>(null);
+  const [pixLoading,setPixLoading]         = useState(false);
+  const [pixData,setPixData]               = useState<{qrCode:string;qrCodeBase64:string}|null>(null);
+  const [pixCopied,setPixCopied]           = useState(false);
+  const [pixPaid,setPixPaid]               = useState(false);
+  const pixPollRef = useRef<ReturnType<typeof setInterval>|null>(null);
+  const pixPurchaseFiredRef = useRef(false);
   const [checkoutForm,setCheckoutForm]     = useState({
     customerName:'',customerPhone:'',customerEmail:'',customerCpf:'',postalCode:'',address:'',
     number:'',complement:'',neighborhood:'',city:'',state:'',
@@ -289,14 +295,28 @@ export default function SalVitaLanding() {
     cartTrackRef.current = false;
     localStorage.removeItem('sv_pending_order');
     setPendingOrder(null);
+    setPixData(null); setPixPaid(false); setPixCopied(false);
+    pixPurchaseFiredRef.current = false;
+    if(pixPollRef.current) clearInterval(pixPollRef.current);
     document.body.style.overflow='hidden';
   },[]);
-  const closeBuy=useCallback(()=>{ setShowModal(false); setShowCheckout(false); setOrderDone(null); document.body.style.overflow=''; if(payTimerRef.current) clearInterval(payTimerRef.current); },[]);
+  const closeBuy=useCallback(()=>{
+    setShowModal(false); setShowCheckout(false); setOrderDone(null); document.body.style.overflow='';
+    if(payTimerRef.current) clearInterval(payTimerRef.current);
+    if(pixPollRef.current) clearInterval(pixPollRef.current);
+  },[]);
 
+  // Countdown is derived from the real order-creation timestamp (not reset on
+  // every render), so it reflects actual elapsed time even if the tab is
+  // backgrounded/throttled or the page is briefly hidden.
   useEffect(()=>{
     if(orderDone){
-      setPayTimer(900);
-      payTimerRef.current = setInterval(()=>setPayTimer(t=>t>0?t-1:0),1000);
+      const tick=()=>{
+        const elapsed=Math.floor((Date.now()-orderDone.createdAt)/1000);
+        setPayTimer(Math.max(0,900-elapsed));
+      };
+      tick();
+      payTimerRef.current = setInterval(tick,1000);
     } else {
       if(payTimerRef.current) clearInterval(payTimerRef.current);
     }
@@ -438,8 +458,9 @@ export default function SalVitaLanding() {
         return;
       }
       const total   = data?.result?.data?.json?.total ?? (selProd.price+selShip.price);
-      setOrderDone({ id: orderId, total });
-      localStorage.setItem('sv_pending_order', JSON.stringify({ id: orderId, total, ts: Date.now() }));
+      const createdAt = Date.now();
+      setOrderDone({ id: orderId, total, createdAt });
+      localStorage.setItem('sv_pending_order', JSON.stringify({ id: orderId, total, ts: createdAt }));
       try { (window as any).fbq?.('track','AddPaymentInfo',{ value: total, currency: 'BRL', content_name: 'SAL VITA PREMIUM 1kg', content_ids: ['salvita-001'], content_type: 'product', num_items: qty }); } catch {}
     } catch(err) {
       console.error('createOrder error:', err);
@@ -472,6 +493,64 @@ export default function SalVitaLanding() {
       else { alert('Erro ao gerar link de pagamento. Tente novamente.'); }
     } catch { alert('Erro ao conectar com Mercado Pago. Tente novamente.'); }
     setMpLoading(false);
+  }
+
+  // Generates an inline PIX QR code/copy-paste so the customer pays without
+  // leaving the page, then polls for confirmation.
+  async function handlePixPay() {
+    if(!orderDone) return;
+    if(pixLoading || pixData) return;
+    setPixLoading(true);
+    try {
+      const res = await fetch('/api/trpc/shipping.createPixPayment', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({json:{ orderId: orderDone.id }}),
+      });
+      const data = await res.json();
+      const result = data?.result?.data?.json;
+      if(result?.qrCode) {
+        setPixData({ qrCode: result.qrCode, qrCodeBase64: result.qrCodeBase64 ?? '' });
+        try { (window as any).fbq?.('track','AddPaymentInfo',{ value: orderDone.total, currency: 'BRL', content_name: 'SAL VITA PREMIUM 1kg', content_ids: ['salvita-001'], content_type: 'product' }); } catch {}
+        // Poll payment status every 5s — webhook does the actual confirmation;
+        // this just lets us reflect it on-screen without a reload.
+        pixPollRef.current = setInterval(async () => {
+          try {
+            const r = await fetch('/api/trpc/shipping.pixStatus', {
+              method:'POST', headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({json:{ orderId: orderDone.id }}),
+            });
+            const d = await r.json();
+            if(d?.result?.data?.json?.paid) {
+              setPixPaid(true);
+              if(pixPollRef.current) clearInterval(pixPollRef.current);
+              if(!pixPurchaseFiredRef.current) {
+                pixPurchaseFiredRef.current = true;
+                try {
+                  (window as any).fbq?.('track','Purchase',{
+                    value: orderDone.total, currency: 'BRL', content_name: 'SAL VITA PREMIUM',
+                    content_ids: ['salvita-001'], content_type: 'product',
+                  }, { eventID: `purchase-${orderDone.id}` });
+                } catch {}
+              }
+            }
+          } catch {}
+        }, 5000);
+      } else {
+        const apiMsg = data?.error?.json?.message ?? data?.error?.message;
+        alert(apiMsg ? `Não foi possível gerar o PIX: ${apiMsg}` : 'Erro ao gerar PIX. Tente novamente.');
+      }
+    } catch { alert('Erro ao conectar com Mercado Pago. Tente novamente.'); }
+    setPixLoading(false);
+  }
+
+  async function copyPixCode() {
+    if(!pixData) return;
+    try {
+      await navigator.clipboard.writeText(pixData.qrCode);
+      setPixCopied(true);
+      setTimeout(()=>setPixCopied(false), 3000);
+    } catch {}
   }
 
   /* ── Logo real ── */
@@ -1494,10 +1573,15 @@ export default function SalVitaLanding() {
           <div className="mb" style={{maxWidth:460,padding:0,overflow:'hidden'}}>
             <div className="mb-drag" style={{margin:'0 auto',paddingTop:8}}/>
 
-            {/* urgency bar */}
-            <div style={{background:payTimer<120?'#dc2626':'#f59e0b',padding:'8px 20px',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+            {/* urgency bar — countdown reflects real elapsed time since the order
+                was created. We never claim the order/reservation "expires": it
+                doesn't, payment remains available afterwards (avoids false
+                urgency claims). */}
+            <div style={{background:payTimer===0?'var(--brand)':payTimer<120?'#dc2626':'#f59e0b',padding:'8px 20px',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/></svg>
-              <span style={{color:'white',fontWeight:700,fontSize:'.82rem'}}>⏳ Reserva expira em <strong>{mm}:{ss}</strong> — conclua seu pedido agora</span>
+              {payTimer>0
+                ? <span style={{color:'white',fontWeight:700,fontSize:'.82rem'}}>⏳ Finalize em <strong>{mm}:{ss}</strong> para garantir o processamento mais rápido</span>
+                : <span style={{color:'white',fontWeight:700,fontSize:'.82rem'}}>✅ Pedido #{orderDone.id} continua disponível — finalize o pagamento quando quiser</span>}
             </div>
 
             <div style={{padding:'20px 24px 24px'}}>
@@ -1526,13 +1610,46 @@ export default function SalVitaLanding() {
                 </div>
               </div>
 
-              {/* CTA button */}
-              <button onClick={handleMpPay} disabled={mpLoading}
-                style={{width:'100%',background:mpLoading?'#9bb3d0':'#009ee3',color:'white',border:'none',borderRadius:12,padding:'16px',fontSize:'1.05rem',fontWeight:800,cursor:mpLoading?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:10,transition:'all .2s',boxShadow:mpLoading?'none':'0 4px 14px rgba(0,158,227,.35)',letterSpacing:'.01em'}}>
-                {mpLoading
-                  ? <><svg width="18" height="18" viewBox="0 0 24 24" fill="white" style={{animation:'spin 1s linear infinite'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Gerando link seguro...</>
-                  : <>💳 Pagar com Mercado Pago</>}
-              </button>
+              {/* CTA buttons / PIX inline flow */}
+              {pixPaid ? (
+                <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:12,padding:'18px',textAlign:'center'}}>
+                  <p style={{fontSize:'1.05rem',fontWeight:800,color:'#16a34a',margin:'0 0 4px'}}>✅ Pagamento confirmado!</p>
+                  <p style={{fontSize:'.85rem',color:'var(--muted)',margin:0}}>Recebemos seu PIX. Já estamos preparando seu pedido 🚚</p>
+                </div>
+              ) : pixData ? (
+                <div style={{textAlign:'center'}}>
+                  {pixData.qrCodeBase64 && (
+                    <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="QR Code PIX" style={{width:180,height:180,margin:'0 auto 12px',borderRadius:8,border:'1px solid #e2e8f0'}}/>
+                  )}
+                  <p style={{fontSize:'.82rem',color:'var(--muted)',margin:'0 0 8px'}}>Escaneie o QR Code ou copie o código PIX abaixo:</p>
+                  <div style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:8,padding:'10px 12px',fontSize:'.7rem',wordBreak:'break-all',color:'var(--muted)',marginBottom:10,maxHeight:70,overflow:'hidden'}}>
+                    {pixData.qrCode}
+                  </div>
+                  <button onClick={copyPixCode}
+                    style={{width:'100%',background:pixCopied?'#16a34a':'#009ee3',color:'white',border:'none',borderRadius:12,padding:'14px',fontSize:'.95rem',fontWeight:800,cursor:'pointer',marginBottom:10}}>
+                    {pixCopied ? '✅ Código copiado!' : '📋 Copiar código PIX'}
+                  </button>
+                  <p style={{fontSize:'.78rem',color:'#94a3b8',margin:0,display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{animation:'spin 1.4s linear infinite'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                    Aguardando confirmação do pagamento...
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <button onClick={handlePixPay} disabled={pixLoading}
+                    style={{width:'100%',background:pixLoading?'#9bb3d0':'#009ee3',color:'white',border:'none',borderRadius:12,padding:'16px',fontSize:'1.05rem',fontWeight:800,cursor:pixLoading?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:10,transition:'all .2s',boxShadow:pixLoading?'none':'0 4px 14px rgba(0,158,227,.35)',letterSpacing:'.01em',marginBottom:10}}>
+                    {pixLoading
+                      ? <><svg width="18" height="18" viewBox="0 0 24 24" fill="white" style={{animation:'spin 1s linear infinite'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Gerando QR Code...</>
+                      : <>🔑 Pagar com PIX (instantâneo)</>}
+                  </button>
+                  <button onClick={handleMpPay} disabled={mpLoading}
+                    style={{width:'100%',background:'transparent',color:'var(--brand)',border:'1px solid var(--brand)',borderRadius:12,padding:'14px',fontSize:'.95rem',fontWeight:700,cursor:mpLoading?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:10,opacity:mpLoading?.6:1}}>
+                    {mpLoading
+                      ? <><svg width="18" height="18" viewBox="0 0 24 24" fill="var(--brand)" style={{animation:'spin 1s linear infinite'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Gerando link seguro...</>
+                      : <>💳 Cartão, boleto ou outros (Mercado Pago)</>}
+                  </button>
+                </>
+              )}
 
               {/* payment methods — purely informational */}
               <div style={{textAlign:'center',marginTop:10}}>

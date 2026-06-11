@@ -330,8 +330,16 @@ app.get('/api/db-stats', async (req, res) => {
   }
 });
 
+// Mercado Pago retries notifications, but never at high volume from a single
+// IP for a small store — this only blocks abuse/floods, not legitimate retries.
+const webhookLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  validate: { xForwardedForHeader: false },
+});
+
 // Raw body must be captured before express.json() for HMAC verification
-app.post('/api/mp-webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/json' }), async (req, res) => {
   try {
     const rawBody = (req.body as Buffer).toString('utf8');
     let body: { type?: string; data?: { id?: string } };
@@ -732,6 +740,52 @@ async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
   return { confirmed };
 }
 
+// Retention: nudge past customers to buy again once a 1kg order is likely
+// running low (~45 days). One-shot per order via reorder_reminded_at — never
+// reprocesses. Free-tier safe: small LIMIT, runs only during business hours.
+async function processReorderReminders(): Promise<{ sent: number }> {
+  let sent = 0;
+  if (!isBusinessHours()) return { sent };
+  try {
+    const fortyFiveDaysAgo = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const orders = await ordersDb.select().from(siteOrders).where(and(
+      eq(siteOrders.paymentStatus, 'confirmed'),
+      isNull(siteOrders.reorderRemindedAt),
+      lte(siteOrders.createdAt, fortyFiveDaysAgo),
+      gte(siteOrders.createdAt, ninetyDaysAgo),
+    )).limit(2); // max 2 per cron run — keeps execution within Hobby 10s budget
+    if (orders.length === 0) return { sent };
+
+    const [tpl] = await ordersDb.select().from(msgTemplates)
+      .where(and(eq(msgTemplates.type, 'reorder'), eq(msgTemplates.active, true)));
+    const activeCoupon = await getActiveRecoveryCouponCode();
+
+    for (const o of orders) {
+      // Mark first so a transient WA outage never causes reprocessing.
+      await ordersDb.update(siteOrders).set({ reorderRemindedAt: new Date(), updatedAt: new Date() })
+        .where(eq(siteOrders.id, o.id));
+
+      // Honor "responda PARAR" opt-outs.
+      const phoneDigits = o.customerPhone.replace(/\D/g, '');
+      const [cartRecord] = await ordersDb.select({ optedOut: abandonedCarts.optedOut })
+        .from(abandonedCarts).where(eq(abandonedCarts.customerPhone, phoneDigits)).limit(1);
+      if (cartRecord?.optedOut) continue;
+
+      const link = activeCoupon ? `https://premium.salvitarn.com.br?cupom=${activeCoupon}` : 'https://premium.salvitarn.com.br';
+      const cupomTexto = activeCoupon ? `Use o cupom *${activeCoupon}* e ganhe desconto especial!\n\n` : '';
+      const vars = { nome: o.customerName, pedido: String(o.id), link, cupom_texto: cupomTexto };
+      const msg = tpl
+        ? renderTemplate(tpl.body, vars)
+        : `Olá *${o.customerName}*! 🌊\n\nJá faz um tempinho desde o seu pedido *#${o.id}* do *Sal Marinho Integral Sal Vita* — será que está na hora de repor? 🧂\n\n${cupomTexto}👉 Faça seu novo pedido: ${link}\n\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
+      const ok = await sendWhatsApp(o.customerPhone, msg);
+      if (ok) sent++;
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  } catch (e) { console.error('[cron] reorder-reminder error:', e); }
+  return { sent };
+}
+
 // Cron endpoint — Vercel Cron sends GET; external callers may use POST
 app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
   const secret = process.env.CRON_SECRET;
@@ -767,11 +821,12 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
     // ── Always run these regardless of business hours ────────────────────────
     const unpaid = await processUnpaidFollowups();      // has its own hours check
     const reconciled = await reconcileAwaitingOrders(); // no WA sends, pure DB/API
+    const reorder = await processReorderReminders();    // has its own hours check
 
     // ── Abandoned cart automation: only during business hours ─────────────────
     let sent = 0, cancelled = 0, failed = 0;
     if (!isBusinessHours()) {
-      res.json({ ok: true, processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: 'outside business hours', unpaid, reconciled });
+      res.json({ ok: true, processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: 'outside business hours', unpaid, reconciled, reorder });
       return;
     }
     for (const run of due) {
@@ -818,7 +873,7 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
       }
     }
 
-    res.json({ ok: true, processed: due.length, sent, cancelled, failed, unpaid, reconciled });
+    res.json({ ok: true, processed: due.length, sent, cancelled, failed, unpaid, reconciled, reorder });
   } catch (err) {
     console.error('[cron] abandoned-cart error:', err);
     res.status(500).json({ error: String(err) });

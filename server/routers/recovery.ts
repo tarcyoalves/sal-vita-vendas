@@ -789,7 +789,8 @@ Regras da mensagem:
 - Tom amigável e natural, NÃO insistente
 - Use *negrito* para destaque
 - Termine com link do site
-- Adapte ao passo que o cliente alcançou (ex: se chegou no frete, mencione o frete grátis para pedidos maiores)
+- Adapte ao passo que o cliente alcançou (ex: se chegou no frete, reforce a qualidade do produto e a facilidade de finalizar a compra)
+- NÃO mencione frete grátis em hipótese alguma (não existe essa promoção)
 ${activeCoupon ? `- Opcionalmente inclua o cupom ${activeCoupon.code} se fizer sentido (não para quem já foi ao pagamento)` : '- NÃO mencione nenhum cupom (não há cupom ativo no momento)'}
 - NÃO mencione o número de telefone nem diga "detectamos"
 

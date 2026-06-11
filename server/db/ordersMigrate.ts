@@ -207,6 +207,9 @@ export async function ensureOrdersTablesExist(): Promise<Step[]> {
      true, true),
     ('shipped_padrao', 'shipped', 'Pedido Enviado – Rastreio',
      'Olá *{nome}*! 📦\n\nBoa notícia: seu pedido *#{pedido}* foi *enviado*! 🚚\n\n🔎 Código de rastreio: *{rastreio}*\n\nAcompanhe a entrega em:\n👉 {link}\n\nQualquer dúvida, é só chamar! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_',
+     true, true),
+    ('reorder_lembrete', 'reorder', 'Recompra – Lembrete',
+     'Olá *{nome}*! 🌊\n\nJá faz um tempinho desde o seu pedido *#{pedido}* do *Sal Marinho Integral Sal Vita* — será que está na hora de repor? 🧂\n\n{cupom_texto}👉 Faça seu novo pedido: {link}\n\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_\n\n_Para não receber mais mensagens, responda PARAR._',
      true, true)
     ON CONFLICT (slug) DO NOTHING
   `);
