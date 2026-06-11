@@ -20,7 +20,8 @@ function renderTpl(body: string, vars: Record<string, string>): string {
 // Best-effort WhatsApp send via the Baileys wa-server on the VPS (non-throwing).
 async function sendWhatsAppMsg(phone: string, message: string): Promise<boolean> {
   const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
-  const key = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
+  const key = process.env.WA_API_KEY;
+  if (!key) { console.warn('[wa] WA_API_KEY not configured — skipping'); return false; }
   const digits = phone.replace(/\D/g, '');
   const fmt = digits.startsWith('55') ? digits : `55${digits}`;
   try {
@@ -161,9 +162,10 @@ export const shippingRouter = router({
       let subtotal = +(prod.price * productCount).toFixed(2);
       let couponDiscount = 0;
       let appliedCoupon: string | null = null;
-      let foundCouponId: number | null = null;
 
-      // Apply coupon if provided (lookup only — increment happens inside transaction)
+      // Apply coupon if provided (lookup + discount only). The coupon's used_count
+      // is incremented ONLY when the payment is confirmed (in the mp-webhook /
+      // reconcile path), so abandoned/unpaid orders never burn a coupon's uses.
       if (input.couponCode) {
         const code = input.couponCode.toUpperCase().trim();
         const found = await db.select().from(coupons)
@@ -181,14 +183,11 @@ export const shippingRouter = router({
             }
             subtotal = +(subtotal - couponDiscount).toFixed(2);
             appliedCoupon = code;
-            foundCouponId = c.id;
           }
         }
       }
 
       const total = +(subtotal + shipping).toFixed(2);
-      // neon-http driver has no transaction support — insert the order first,
-      // then bump coupon usage only after the order is confirmed
       const [order] = await db.insert(siteOrders).values({
         customerName: input.customerName,
         customerPhone: input.customerPhone,
@@ -210,9 +209,6 @@ export const shippingRouter = router({
         couponDiscount: couponDiscount > 0 ? String(couponDiscount) : null,
       }).returning();
       if (!order?.id) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Erro ao criar pedido. Tente novamente.' });
-      if (appliedCoupon && foundCouponId !== null) {
-        await db.update(coupons).set({ usedCount: sql`used_count + 1` }).where(eq(coupons.id, foundCouponId));
-      }
       return { id: order.id, total, couponDiscount, couponApplied: appliedCoupon };
     }),
 
@@ -439,9 +435,10 @@ Seja direto e use emojis para facilitar leitura.`;
           phone: { number: order.customerPhone.replace(/\D/g,'') },
         },
         back_urls: {
-          success: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&status=pago`,
-          failure: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&status=falhou`,
-          pending: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&status=pendente`,
+          // Include &tel=<last4> so the tracking page auto-loads the order on return.
+          success: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${order.customerPhone.replace(/\D/g,'').slice(-4)}&status=pago`,
+          failure: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${order.customerPhone.replace(/\D/g,'').slice(-4)}&status=falhou`,
+          pending: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${order.customerPhone.replace(/\D/g,'').slice(-4)}&status=pendente`,
         },
         auto_return: 'approved',
         notification_url: `https://premium.salvitarn.com.br/api/mp-webhook`,
@@ -553,6 +550,11 @@ Seja direto e use emojis para facilitar leitura.`;
       const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
       const order = orders[0];
       if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+      // Never spend a paid shipping label on an order that hasn't been paid for
+      // (or was refunded/cancelled). Avoids shipping cost on unpaid/charged-back orders.
+      if (order.paymentStatus !== 'confirmed') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Pagamento não confirmado — não é possível gerar etiqueta para este pedido.' });
+      }
 
       const headers = {
         'Authorization': `Bearer ${token}`,

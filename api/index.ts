@@ -12,8 +12,8 @@ import { ensureTablesExist } from '../server/db/migrate';
 import { ensureOrdersTablesExist } from '../server/db/ordersMigrate';
 import { ordersDb } from '../server/db/ordersDb';
 import { sql as sqlClient } from '../server/db/index';
-import { siteOrders, abandonedCarts, automationRuns, msgTemplates } from '../server/db/schema';
-import { eq, and, sql, lte, gte, isNull, inArray } from 'drizzle-orm';
+import { siteOrders, abandonedCarts, automationRuns, msgTemplates, coupons } from '../server/db/schema';
+import { eq, and, sql, lte, gte, isNull, inArray, desc } from 'drizzle-orm';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
 import { createPixPaymentForOrder } from '../server/lib/mercadopago';
 
@@ -31,12 +31,36 @@ function isBusinessHours(): boolean {
   return brHour >= 8 && brHour < 21;
 }
 
+// Adjusts a coupon's used_count. Called +1 only when a payment is CONFIRMED (so
+// abandoned/unpaid orders never burn a coupon's max uses) and -1 on refund.
+async function bumpCouponUsage(code: string | null | undefined, delta: 1 | -1): Promise<void> {
+  if (!code) return;
+  try {
+    await ordersDb.update(coupons)
+      .set({ usedCount: delta > 0 ? sql`used_count + 1` : sql`GREATEST(used_count - 1, 0)` })
+      .where(eq(coupons.code, code));
+  } catch (e) { console.error('[coupon] usage bump failed:', e); }
+}
+
+// Best active coupon for automated recovery messages: prefers the admin-flagged
+// recovery coupon, else the newest active/valid one. Returns '' when none.
+async function getActiveRecoveryCouponCode(): Promise<string> {
+  try {
+    const rows = await ordersDb.select().from(coupons).where(eq(coupons.active, true)).orderBy(desc(coupons.createdAt));
+    const now = new Date();
+    const usable = (c: typeof rows[number]) =>
+      (!c.expiresAt || now < new Date(c.expiresAt)) && (!c.maxUses || c.usedCount < c.maxUses);
+    return (rows.find(c => c.useForRecovery && usable(c)) ?? rows.find(usable))?.code ?? '';
+  } catch { return ''; }
+}
+
 // Sends to BOTH 9th-digit variants IN PARALLEL — wa-server blindly returns
 // success:true so we can't detect which variant is the real JID. Sending both
 // guarantees delivery as long as one format matches WhatsApp registration.
 async function sendWhatsApp(phone: string, message: string): Promise<boolean> {
   const waUrl = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
-  const waKey = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
+  const waKey = process.env.WA_API_KEY;
+  if (!waKey) { console.warn('[wa] WA_API_KEY not configured — skipping WhatsApp send'); return false; }
   const digits = phone.replace(/\D/g, '');
   const primary = digits.startsWith('55') ? digits : `55${digits}`;
   const alt = primary.length === 13
@@ -221,7 +245,8 @@ dbReady.catch(err => console.error('Background dbReady failed:', err));
 // DB storage and row-count monitor — admin only
 app.get('/api/db-stats', async (req, res) => {
   const secret = process.env.ADMIN_RESET_SECRET;
-  if (secret && req.headers['x-admin-secret'] !== secret) {
+  // Fail closed: if no secret is configured, deny (don't leak DB stats publicly).
+  if (!secret || req.headers['x-admin-secret'] !== secret) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   try {
@@ -306,13 +331,12 @@ app.post('/api/mp-webhook', express.raw({ type: 'application/json' }), async (re
     const order = orderRows[0];
     if (!order) { res.json({ ok: true }); return; }
 
-    // Idempotency: if already confirmed, don't reprocess (avoids duplicate WhatsApp/side effects)
-    if (order.paymentStatus === 'confirmed') { res.json({ ok: true, already: true }); return; }
-
     // Always persist the payment id (even while pending) so PIX follow-up can fetch the QR code later
     const mpId = String(payment.id ?? '');
 
     if (payment.status === 'approved') {
+      // Idempotency: don't reprocess an already-confirmed order (avoids duplicate side effects)
+      if (order.paymentStatus === 'confirmed') { res.json({ ok: true, already: true }); return; }
       // Validate payment amount before marking as paid
       if (payment.transaction_amount !== undefined) {
         const expectedTotal = parseFloat(order.totalPrice ?? '0');
@@ -326,6 +350,10 @@ app.post('/api/mp-webhook', express.raw({ type: 'application/json' }), async (re
       await ordersDb.update(siteOrders)
         .set({ status: 'confirmed', paymentStatus: 'confirmed', mpPaymentId: mpId, updatedAt: new Date() })
         .where(eq(siteOrders.id, orderId));
+
+      // Count the coupon use only now that payment is confirmed (not at order
+      // creation), so abandoned/unpaid orders never burn a coupon's max uses.
+      await bumpCouponUsage(order.couponCode, 1);
 
       const phone = order.customerPhone.replace(/\D/g, '');
       // Cancel pending WA recovery automations for this customer
@@ -366,10 +394,18 @@ app.post('/api/mp-webhook', express.raw({ type: 'application/json' }), async (re
       await ordersDb.update(siteOrders)
         .set({ mpPaymentId: mpId, updatedAt: new Date() })
         .where(eq(siteOrders.id, orderId));
-    } else if (payment.status === 'rejected' || payment.status === 'cancelled' || payment.status === 'refunded' || payment.status === 'charged_back') {
+    } else if (payment.status === 'rejected' || payment.status === 'cancelled') {
+      // Payment attempt failed/expired — order stays recoverable for a retry.
       await ordersDb.update(siteOrders)
         .set({ paymentStatus: 'failed', mpPaymentId: mpId, updatedAt: new Date() })
         .where(eq(siteOrders.id, orderId));
+    } else if (payment.status === 'refunded' || payment.status === 'charged_back') {
+      // Money reversed after payment — cancel the order and return the coupon use.
+      const wasConfirmed = order.paymentStatus === 'confirmed';
+      await ordersDb.update(siteOrders)
+        .set({ status: 'cancelled', paymentStatus: 'failed', mpPaymentId: mpId, updatedAt: new Date() })
+        .where(eq(siteOrders.id, orderId));
+      if (wasConfirmed) await bumpCouponUsage(order.couponCode, -1);
     }
 
     res.json({ ok: true });
@@ -590,11 +626,14 @@ async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
   if (!token) return { confirmed };
   try {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    // Widened from 3 to 30 days: boleto/late-PIX payments can land days after the
+    // order, and a missed webhook must still be reconciled or the paid order is
+    // stuck "awaiting" forever (never ships, no confirmation sent).
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const orders = await ordersDb.select().from(siteOrders).where(and(
       eq(siteOrders.paymentStatus, 'awaiting'),
       lte(siteOrders.createdAt, oneHourAgo),
-      gte(siteOrders.createdAt, threeDaysAgo),
+      gte(siteOrders.createdAt, thirtyDaysAgo),
     )).limit(5); // lightweight DB/API check only — no WA sends
 
     for (const o of orders) {
@@ -618,6 +657,7 @@ async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
         await ordersDb.update(siteOrders)
           .set({ status: 'confirmed', paymentStatus: 'confirmed', mpPaymentId: payId, updatedAt: new Date() })
           .where(eq(siteOrders.id, o.id));
+        await bumpCouponUsage(o.couponCode, 1);
         const phone = o.customerPhone.replace(/\D/g, '');
         await ordersDb.update(automationRuns)
           .set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
@@ -661,10 +701,13 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
     const tplBySlug: Record<string, typeof abandonedTpls[number]> = {};
     for (const t of abandonedTpls) tplBySlug[t.slug] = t;
     // Map each cadence touch to a template + whether it carries a coupon (coupon only on last touch).
+    // Resolve a REAL active coupon from the coupons table for the last touch —
+    // never the old hardcoded 'VOLTA10' that may not exist/be active at checkout.
+    const activeCoupon = await getActiveRecoveryCouponCode();
     const RULE_MAP: Record<string, { slug: string; coupon: string }> = {
       abandoned_t1: { slug: 'abandoned_simples',  coupon: '' },
       abandoned_t2: { slug: 'abandoned_urgencia', coupon: '' },
-      abandoned_t3: { slug: 'abandoned_cupom',    coupon: 'VOLTA10' },
+      abandoned_t3: { slug: 'abandoned_cupom',    coupon: activeCoupon },
     };
     const fallbackTpl = tplBySlug['abandoned_simples'] ?? abandonedTpls.find(t => t.isDefault);
 
@@ -687,14 +730,15 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
         continue;
       }
       const name = cart.customerName;
-      const link = 'https://premium.salvitarn.com.br';
       const ruleCfg = RULE_MAP[run.ruleName] ?? { slug: 'abandoned_simples', coupon: '' };
+      // Append ?cupom= so the storefront pre-fills and auto-applies the code.
+      const link = ruleCfg.coupon ? `https://premium.salvitarn.com.br?cupom=${ruleCfg.coupon}` : 'https://premium.salvitarn.com.br';
       const tpl = tplBySlug[ruleCfg.slug] ?? fallbackTpl;
       let msg: string;
       if (run.aiBody) {
         msg = run.aiBody; // AI-generated personalized message takes priority
       } else if (tpl) {
-        msg = renderTemplate(tpl.body, { nome: name, link, cupom: ruleCfg.coupon });
+        msg = renderTemplate(tpl.body, { nome: name, link, cupom: ruleCfg.coupon, produto: 'Sal Marinho Integral 1kg' });
       } else {
         msg = `Olá *${name}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou o pedido.\n\n👉 Finalize agora: ${link}\n\nQualquer dúvida é só chamar! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
       }

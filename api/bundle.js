@@ -36556,10 +36556,10 @@ var init_subquery = __esm({
     init_entity();
     Subquery = class {
       static [entityKind] = "Subquery";
-      constructor(sql6, selection, alias, isWith = false) {
+      constructor(sql5, selection, alias, isWith = false) {
         this._ = {
           brand: "Subquery",
-          sql: sql6,
+          sql: sql5,
           selectedFields: selection,
           alias,
           isWith
@@ -41748,10 +41748,10 @@ var init_raw = __esm({
     init_entity();
     init_query_promise();
     PgRaw = class extends QueryPromise {
-      constructor(execute, sql6, query, mapBatchResult) {
+      constructor(execute, sql5, query, mapBatchResult) {
         super();
         this.execute = execute;
-        this.sql = sql6;
+        this.sql = sql5;
         this.query = query;
         this.mapBatchResult = mapBatchResult;
       }
@@ -42034,8 +42034,8 @@ var init_db = __esm({
         return new PgRefreshMaterializedView(view, this.session, this.dialect);
       }
       execute(query) {
-        const sql6 = query.getSQL();
-        const builtQuery = this.dialect.sqlToQuery(sql6);
+        const sql5 = query.getSQL();
+        const builtQuery = this.dialect.sqlToQuery(sql5);
         const prepared = this.session.prepareQuery(
           builtQuery,
           void 0,
@@ -42044,7 +42044,7 @@ var init_db = __esm({
         );
         return new PgRaw(
           () => prepared.execute(),
-          sql6,
+          sql5,
           builtQuery,
           (result) => prepared.mapResult(result, true)
         );
@@ -44493,7 +44493,7 @@ var noop2 = () => {
 function Subscribe(postgres2, options) {
   const subscribers = /* @__PURE__ */ new Map(), slot = "postgresjs_" + Math.random().toString(36).slice(2), state = {};
   let connection2, stream, ended = false;
-  const sql6 = subscribe.sql = postgres2({
+  const sql5 = subscribe.sql = postgres2({
     ...options,
     transform: { column: {}, value: {}, row: {} },
     max: 1,
@@ -44509,18 +44509,18 @@ function Subscribe(postgres2, options) {
         return;
       stream = null;
       state.pid = state.secret = void 0;
-      connected(await init(sql6, slot, options.publications));
+      connected(await init(sql5, slot, options.publications));
       subscribers.forEach((event) => event.forEach(({ onsubscribe }) => onsubscribe()));
     },
     no_subscribe: true
   });
-  const end = sql6.end, close = sql6.close;
-  sql6.end = async () => {
+  const end = sql5.end, close = sql5.close;
+  sql5.end = async () => {
     ended = true;
     stream && await new Promise((r) => (stream.once("close", r), stream.end()));
     return end();
   };
-  sql6.close = async () => {
+  sql5.close = async () => {
     stream && await new Promise((r) => (stream.once("close", r), stream.end()));
     return close();
   };
@@ -44528,7 +44528,7 @@ function Subscribe(postgres2, options) {
   async function subscribe(event, fn, onsubscribe = noop2, onerror = noop2) {
     event = parseEvent(event);
     if (!connection2)
-      connection2 = init(sql6, slot, options.publications);
+      connection2 = init(sql5, slot, options.publications);
     const subscriber = { fn, onsubscribe };
     const fns = subscribers.has(event) ? subscribers.get(event).add(subscriber) : subscribers.set(event, /* @__PURE__ */ new Set([subscriber])).get(event);
     const unsubscribe = () => {
@@ -44539,7 +44539,7 @@ function Subscribe(postgres2, options) {
       connected(x2);
       onsubscribe();
       stream && stream.on("error", onerror);
-      return { unsubscribe, state, sql: sql6 };
+      return { unsubscribe, state, sql: sql5 };
     });
   }
   function connected(x2) {
@@ -44547,14 +44547,14 @@ function Subscribe(postgres2, options) {
     state.pid = x2.state.pid;
     state.secret = x2.state.secret;
   }
-  async function init(sql7, slot2, publications) {
+  async function init(sql6, slot2, publications) {
     if (!publications)
       throw new Error("Missing publication names");
-    const xs = await sql7.unsafe(
+    const xs = await sql6.unsafe(
       `CREATE_REPLICATION_SLOT ${slot2} TEMPORARY LOGICAL pgoutput NOEXPORT_SNAPSHOT`
     );
     const [x2] = xs;
-    const stream2 = await sql7.unsafe(
+    const stream2 = await sql6.unsafe(
       `START_REPLICATION SLOT ${slot2} LOGICAL ${x2.consistent_point} (proto_version '1', publication_names '${publications}')`
     ).writable();
     const state2 = {
@@ -44562,14 +44562,14 @@ function Subscribe(postgres2, options) {
     };
     stream2.on("data", data);
     stream2.on("error", error);
-    stream2.on("close", sql7.close);
+    stream2.on("close", sql6.close);
     return { stream: stream2, state: xs.state };
     function error(e) {
       console.error("Unexpected error during logical streaming - reconnecting", e);
     }
     function data(x3) {
       if (x3[0] === 119) {
-        parse(x3.subarray(25), state2, sql7.options.parsers, handle, options.transform);
+        parse(x3.subarray(25), state2, sql6.options.parsers, handle, options.transform);
       } else if (x3[0] === 107 && x3[17]) {
         state2.lsn = x3.subarray(1, 9);
         pong();
@@ -44701,22 +44701,22 @@ function parseEvent(x2) {
 
 // node_modules/postgres/src/large.js
 var import_stream2 = __toESM(require("stream"), 1);
-function largeObject(sql6, oid, mode = 131072 | 262144) {
+function largeObject(sql5, oid, mode = 131072 | 262144) {
   return new Promise(async (resolve, reject) => {
-    await sql6.begin(async (sql7) => {
+    await sql5.begin(async (sql6) => {
       let finish;
-      !oid && ([{ oid }] = await sql7`select lo_creat(-1) as oid`);
-      const [{ fd }] = await sql7`select lo_open(${oid}, ${mode}) as fd`;
+      !oid && ([{ oid }] = await sql6`select lo_creat(-1) as oid`);
+      const [{ fd }] = await sql6`select lo_open(${oid}, ${mode}) as fd`;
       const lo = {
         writable,
         readable,
-        close: () => sql7`select lo_close(${fd})`.then(finish),
-        tell: () => sql7`select lo_tell64(${fd})`,
-        read: (x2) => sql7`select loread(${fd}, ${x2}) as data`,
-        write: (x2) => sql7`select lowrite(${fd}, ${x2})`,
-        truncate: (x2) => sql7`select lo_truncate64(${fd}, ${x2})`,
-        seek: (x2, whence = 0) => sql7`select lo_lseek64(${fd}, ${x2}, ${whence})`,
-        size: () => sql7`
+        close: () => sql6`select lo_close(${fd})`.then(finish),
+        tell: () => sql6`select lo_tell64(${fd})`,
+        read: (x2) => sql6`select loread(${fd}, ${x2}) as data`,
+        write: (x2) => sql6`select lowrite(${fd}, ${x2})`,
+        truncate: (x2) => sql6`select lo_truncate64(${fd}, ${x2})`,
+        seek: (x2, whence = 0) => sql6`select lo_lseek64(${fd}, ${x2}, ${whence})`,
+        size: () => sql6`
           select
             lo_lseek64(${fd}, location, 0) as position,
             seek.size
@@ -44791,12 +44791,12 @@ function Postgres(a2, b2) {
   let ending = false;
   const queries = queue_default(), connecting = queue_default(), reserved = queue_default(), closed = queue_default(), ended = queue_default(), open = queue_default(), busy = queue_default(), full = queue_default(), queues = { connecting, reserved, closed, ended, open, busy, full };
   const connections = [...Array(options.max)].map(() => connection_default(options, queues, { onopen, onend, onclose }));
-  const sql6 = Sql(handler);
-  Object.assign(sql6, {
+  const sql5 = Sql(handler);
+  Object.assign(sql5, {
     get parameters() {
       return options.parameters;
     },
-    largeObject: largeObject.bind(null, sql6),
+    largeObject: largeObject.bind(null, sql5),
     subscribe,
     CLOSE,
     END: CLOSE,
@@ -44808,14 +44808,14 @@ function Postgres(a2, b2) {
     close,
     end
   });
-  return sql6;
+  return sql5;
   function Sql(handler2) {
     handler2.debug = options.debug;
     Object.entries(options.types).reduce((acc, [name2, type]) => {
       acc[name2] = (x2) => new Parameter(x2, type.to);
       return acc;
     }, typed);
-    Object.assign(sql7, {
+    Object.assign(sql6, {
       types: typed,
       typed,
       unsafe,
@@ -44824,11 +44824,11 @@ function Postgres(a2, b2) {
       json,
       file
     });
-    return sql7;
+    return sql6;
     function typed(value, type) {
       return new Parameter(value, type);
     }
-    function sql7(strings, ...args) {
+    function sql6(strings, ...args) {
       const query = strings && Array.isArray(strings.raw) ? new Query(strings, args, handler2, cancel) : typeof strings === "string" && !args.length ? new Identifier(options.transform.column.to ? options.transform.column.to(strings) : strings) : new Builder(strings, args);
       return query;
     }
@@ -44859,7 +44859,7 @@ function Postgres(a2, b2) {
   }
   async function listen(name2, fn, onlisten) {
     const listener = { fn, onlisten };
-    const sql7 = listen.sql || (listen.sql = Postgres({
+    const sql6 = listen.sql || (listen.sql = Postgres({
       ...options,
       max: 1,
       idle_timeout: null,
@@ -44883,7 +44883,7 @@ function Postgres(a2, b2) {
       listener.onlisten && listener.onlisten();
       return { state: result2.state, unlisten };
     }
-    channels[name2] = { result: sql7`listen ${sql7.unsafe('"' + name2.replace(/"/g, '""') + '"')}`, listeners: [listener] };
+    channels[name2] = { result: sql6`listen ${sql6.unsafe('"' + name2.replace(/"/g, '""') + '"')}`, listeners: [listener] };
     const result = await channels[name2].result;
     listener.onlisten && listener.onlisten();
     return { state: result.state, unlisten };
@@ -44894,11 +44894,11 @@ function Postgres(a2, b2) {
       if (channels[name2].listeners.length)
         return;
       delete channels[name2];
-      return sql7`unlisten ${sql7.unsafe('"' + name2.replace(/"/g, '""') + '"')}`;
+      return sql6`unlisten ${sql6.unsafe('"' + name2.replace(/"/g, '""') + '"')}`;
     }
   }
   async function notify(channel, payload) {
-    return await sql6`select pg_notify(${channel}, ${"" + payload})`;
+    return await sql5`select pg_notify(${channel}, ${"" + payload})`;
   }
   async function reserve() {
     const queue = queue_default();
@@ -44910,12 +44910,12 @@ function Postgres(a2, b2) {
     move(c, reserved);
     c.reserved = () => queue.length ? c.execute(queue.shift()) : move(c, reserved);
     c.reserved.release = true;
-    const sql7 = Sql(handler2);
-    sql7.release = () => {
+    const sql6 = Sql(handler2);
+    sql6.release = () => {
       c.reserved = null;
       onopen(c);
     };
-    return sql7;
+    return sql6;
     function handler2(q) {
       c.queue === full ? queue.push(q) : c.execute(q) || move(c, full);
     }
@@ -44925,7 +44925,7 @@ function Postgres(a2, b2) {
     const queries2 = queue_default();
     let savepoints = 0, connection2, prepare = null;
     try {
-      await sql6.unsafe("begin " + options2.replace(/[^a-z ]/ig, ""), [], { onexecute }).execute();
+      await sql5.unsafe("begin " + options2.replace(/[^a-z ]/ig, ""), [], { onexecute }).execute();
       return await Promise.race([
         scope(connection2, fn),
         new Promise((_2, reject) => connection2.onclose = reject)
@@ -44934,29 +44934,29 @@ function Postgres(a2, b2) {
       throw error;
     }
     async function scope(c, fn2, name2) {
-      const sql7 = Sql(handler2);
-      sql7.savepoint = savepoint;
-      sql7.prepare = (x2) => prepare = x2.replace(/[^a-z0-9$-_. ]/gi);
+      const sql6 = Sql(handler2);
+      sql6.savepoint = savepoint;
+      sql6.prepare = (x2) => prepare = x2.replace(/[^a-z0-9$-_. ]/gi);
       let uncaughtError, result;
-      name2 && await sql7`savepoint ${sql7(name2)}`;
+      name2 && await sql6`savepoint ${sql6(name2)}`;
       try {
         result = await new Promise((resolve, reject) => {
-          const x2 = fn2(sql7);
+          const x2 = fn2(sql6);
           Promise.resolve(Array.isArray(x2) ? Promise.all(x2) : x2).then(resolve, reject);
         });
         if (uncaughtError)
           throw uncaughtError;
       } catch (e) {
-        await (name2 ? sql7`rollback to ${sql7(name2)}` : sql7`rollback`);
+        await (name2 ? sql6`rollback to ${sql6(name2)}` : sql6`rollback`);
         throw e instanceof PostgresError && e.code === "25P02" && uncaughtError || e;
       }
       if (!name2) {
-        prepare ? await sql7`prepare transaction '${sql7.unsafe(prepare)}'` : await sql7`commit`;
+        prepare ? await sql6`prepare transaction '${sql6.unsafe(prepare)}'` : await sql6`commit`;
       }
       return result;
       function savepoint(name3, fn3) {
         if (name3 && Array.isArray(name3.raw))
-          return savepoint((sql8) => sql8.apply(sql8, arguments));
+          return savepoint((sql7) => sql7.apply(sql7, arguments));
         arguments.length === 1 && (fn3 = name3, name3 = null);
         return scope(c, fn3, "s" + savepoints++ + (name3 ? "_" + name3 : ""));
       }
@@ -56526,7 +56526,11 @@ function renderTpl(body, vars) {
 }
 async function sendWhatsAppMsg(phone, message) {
   const url2 = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
-  const key = process.env.WA_API_KEY || "MinhaChaveSuperSegura123456";
+  const key = process.env.WA_API_KEY;
+  if (!key) {
+    console.warn("[wa] WA_API_KEY not configured \u2014 skipping");
+    return false;
+  }
   const digits = phone.replace(/\D/g, "");
   const fmt = digits.startsWith("55") ? digits : `55${digits}`;
   try {
@@ -56677,7 +56681,6 @@ var shippingRouter = router({
     let subtotal = +(prod.price * productCount).toFixed(2);
     let couponDiscount = 0;
     let appliedCoupon = null;
-    let foundCouponId = null;
     if (input.couponCode) {
       const code = input.couponCode.toUpperCase().trim();
       const found = await ordersDb.select().from(coupons).where(and(eq(coupons.code, code), eq(coupons.active, true))).limit(1);
@@ -56693,7 +56696,6 @@ var shippingRouter = router({
           }
           subtotal = +(subtotal - couponDiscount).toFixed(2);
           appliedCoupon = code;
-          foundCouponId = c.id;
         }
       }
     }
@@ -56720,9 +56722,6 @@ var shippingRouter = router({
     }).returning();
     if (!order?.id)
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao criar pedido. Tente novamente." });
-    if (appliedCoupon && foundCouponId !== null) {
-      await ordersDb.update(coupons).set({ usedCount: sql`used_count + 1` }).where(eq(coupons.id, foundCouponId));
-    }
     return { id: order.id, total, couponDiscount, couponApplied: appliedCoupon };
   }),
   listOrders: protectedProcedure.input(external_exports.object({ status: external_exports.string().optional() }).optional()).query(async ({ ctx }) => {
@@ -56943,9 +56942,10 @@ _Sal Vita \u2014 Mossor\xF3/RN_`;
         phone: { number: order.customerPhone.replace(/\D/g, "") }
       },
       back_urls: {
-        success: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&status=pago`,
-        failure: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&status=falhou`,
-        pending: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&status=pendente`
+        // Include &tel=<last4> so the tracking page auto-loads the order on return.
+        success: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${order.customerPhone.replace(/\D/g, "").slice(-4)}&status=pago`,
+        failure: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${order.customerPhone.replace(/\D/g, "").slice(-4)}&status=falhou`,
+        pending: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${order.customerPhone.replace(/\D/g, "").slice(-4)}&status=pendente`
       },
       auto_return: "approved",
       notification_url: `https://premium.salvitarn.com.br/api/mp-webhook`,
@@ -57051,6 +57051,9 @@ _Sal Vita \u2014 Mossor\xF3/RN_`;
     const order = orders[0];
     if (!order)
       throw new TRPCError({ code: "NOT_FOUND" });
+    if (order.paymentStatus !== "confirmed") {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Pagamento n\xE3o confirmado \u2014 n\xE3o \xE9 poss\xEDvel gerar etiqueta para este pedido." });
+    }
     const headers = {
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -57536,7 +57539,11 @@ async function createPixPaymentForOrder(order) {
 // server/routers/recovery.ts
 async function waSendRaw(phone, message) {
   const url2 = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
-  const key = process.env.WA_API_KEY || "MinhaChaveSuperSegura123456";
+  const key = process.env.WA_API_KEY;
+  if (!key) {
+    console.warn("[wa] WA_API_KEY not configured \u2014 skipping");
+    return false;
+  }
   const ctrl = new AbortController();
   const timer2 = setTimeout(() => ctrl.abort(), 9e3);
   try {
@@ -58068,7 +58075,9 @@ var recoveryRouter = router({
     if (ctx.user.role !== "admin")
       throw new TRPCError({ code: "FORBIDDEN" });
     const url2 = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
-    const key = process.env.WA_API_KEY || "MinhaChaveSuperSegura123456";
+    const key = process.env.WA_API_KEY;
+    if (!key)
+      return { status: "no_api_key", connected: false };
     try {
       const ac = new AbortController();
       const timer2 = setTimeout(() => ac.abort(), 5e3);
@@ -58084,7 +58093,9 @@ var recoveryRouter = router({
     if (ctx.user.role !== "admin")
       throw new TRPCError({ code: "FORBIDDEN" });
     const url2 = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
-    const key = process.env.WA_API_KEY || "MinhaChaveSuperSegura123456";
+    const key = process.env.WA_API_KEY;
+    if (!key)
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "WA_API_KEY n\xE3o configurado" });
     const headers = { "Content-Type": "application/json", "apikey": key };
     const tried = [];
     for (const path of ["/reconnect", "/restart", "/connect", "/logout"]) {
@@ -58752,7 +58763,7 @@ async function ensureOrdersTablesExist() {
     steps.push({ name: "config", ok: false, error: "ORDERS_DATABASE_URL and DATABASE_URL are both unset" });
     return steps;
   }
-  const sql6 = Ys(url2);
+  const sql5 = Ys(url2);
   async function run2(name2, fn) {
     try {
       await fn();
@@ -58763,7 +58774,7 @@ async function ensureOrdersTablesExist() {
       console.error(`[orders-migrate] step "${name2}" failed:`, msg);
     }
   }
-  await run2("site_orders", () => sql6`
+  await run2("site_orders", () => sql5`
     CREATE TABLE IF NOT EXISTS site_orders (
       id SERIAL PRIMARY KEY,
       customer_name TEXT NOT NULL,
@@ -58798,15 +58809,15 @@ async function ensureOrdersTablesExist() {
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `);
-  await run2("site_orders.coupon_code", () => sql6`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS coupon_code TEXT`);
-  await run2("site_orders.coupon_discount", () => sql6`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS coupon_discount TEXT`);
-  await run2("site_orders.mp_preference_id", () => sql6`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_preference_id TEXT`);
-  await run2("site_orders.mp_payment_id", () => sql6`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_payment_id TEXT`);
-  await run2("site_orders.tracking_code", () => sql6`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS tracking_code TEXT`);
-  await run2("site_orders.unpaid_followup_sent_at", () => sql6`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS unpaid_followup_sent_at TIMESTAMP`);
-  await run2("site_orders_status_idx", () => sql6`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`);
-  await run2("site_orders_phone_idx", () => sql6`CREATE INDEX IF NOT EXISTS site_orders_phone_idx ON site_orders(customer_phone)`);
-  await run2("abandoned_carts", () => sql6`
+  await run2("site_orders.coupon_code", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS coupon_code TEXT`);
+  await run2("site_orders.coupon_discount", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS coupon_discount TEXT`);
+  await run2("site_orders.mp_preference_id", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_preference_id TEXT`);
+  await run2("site_orders.mp_payment_id", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_payment_id TEXT`);
+  await run2("site_orders.tracking_code", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS tracking_code TEXT`);
+  await run2("site_orders.unpaid_followup_sent_at", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS unpaid_followup_sent_at TIMESTAMP`);
+  await run2("site_orders_status_idx", () => sql5`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`);
+  await run2("site_orders_phone_idx", () => sql5`CREATE INDEX IF NOT EXISTS site_orders_phone_idx ON site_orders(customer_phone)`);
+  await run2("abandoned_carts", () => sql5`
     CREATE TABLE IF NOT EXISTS abandoned_carts (
       id SERIAL PRIMARY KEY,
       customer_name TEXT NOT NULL,
@@ -58824,20 +58835,20 @@ async function ensureOrdersTablesExist() {
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `);
-  await run2("abandoned_carts.customer_email", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS customer_email TEXT`);
-  await run2("abandoned_carts.postal_code", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS postal_code TEXT`);
-  await run2("abandoned_carts.quantity", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1`);
-  await run2("abandoned_carts.step_reached", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS step_reached INTEGER DEFAULT 1`);
-  await run2("abandoned_carts.status", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'checkout_started'`);
-  await run2("abandoned_carts.recovered", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS recovered BOOLEAN NOT NULL DEFAULT FALSE`);
-  await run2("abandoned_carts.recovery_sent_at", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS recovery_sent_at TIMESTAMP`);
-  await run2("abandoned_carts.abandoned_at", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS abandoned_at TIMESTAMP`);
-  await run2("abandoned_carts.converted_at", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS converted_at TIMESTAMP`);
-  await run2("abandoned_carts.updated_at", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW() NOT NULL`);
-  await run2("abandoned_carts.opted_out", () => sql6`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS opted_out BOOLEAN NOT NULL DEFAULT FALSE`);
-  await run2("abandoned_carts_phone_idx", () => sql6`CREATE INDEX IF NOT EXISTS abandoned_carts_phone_idx ON abandoned_carts(customer_phone)`);
-  await run2("abandoned_carts_status_idx", () => sql6`CREATE INDEX IF NOT EXISTS abandoned_carts_status_idx ON abandoned_carts(status)`);
-  await run2("automation_runs", () => sql6`
+  await run2("abandoned_carts.customer_email", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS customer_email TEXT`);
+  await run2("abandoned_carts.postal_code", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS postal_code TEXT`);
+  await run2("abandoned_carts.quantity", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1`);
+  await run2("abandoned_carts.step_reached", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS step_reached INTEGER DEFAULT 1`);
+  await run2("abandoned_carts.status", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'checkout_started'`);
+  await run2("abandoned_carts.recovered", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS recovered BOOLEAN NOT NULL DEFAULT FALSE`);
+  await run2("abandoned_carts.recovery_sent_at", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS recovery_sent_at TIMESTAMP`);
+  await run2("abandoned_carts.abandoned_at", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS abandoned_at TIMESTAMP`);
+  await run2("abandoned_carts.converted_at", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS converted_at TIMESTAMP`);
+  await run2("abandoned_carts.updated_at", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW() NOT NULL`);
+  await run2("abandoned_carts.opted_out", () => sql5`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS opted_out BOOLEAN NOT NULL DEFAULT FALSE`);
+  await run2("abandoned_carts_phone_idx", () => sql5`CREATE INDEX IF NOT EXISTS abandoned_carts_phone_idx ON abandoned_carts(customer_phone)`);
+  await run2("abandoned_carts_status_idx", () => sql5`CREATE INDEX IF NOT EXISTS abandoned_carts_status_idx ON abandoned_carts(status)`);
+  await run2("automation_runs", () => sql5`
     CREATE TABLE IF NOT EXISTS automation_runs (
       id SERIAL PRIMARY KEY,
       cart_id INTEGER NOT NULL,
@@ -58855,17 +58866,17 @@ async function ensureOrdersTablesExist() {
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `);
-  await run2("automation_runs.provider_response", () => sql6`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS provider_response TEXT`);
-  await run2("automation_runs.ai_body", () => sql6`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_body TEXT`);
-  await run2("automation_runs.ai_reasoning", () => sql6`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_reasoning TEXT`);
-  await run2("automation_runs.ai_processed_at", () => sql6`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_processed_at TIMESTAMP`);
-  await run2("automation_runs.sent_at", () => sql6`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP`);
-  await run2("automation_runs.cancelled_at", () => sql6`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP`);
-  await run2("automation_runs.updated_at", () => sql6`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW() NOT NULL`);
-  await run2("automation_runs_status_idx", () => sql6`CREATE INDEX IF NOT EXISTS automation_runs_status_idx ON automation_runs(status)`);
-  await run2("automation_runs_scheduled_idx", () => sql6`CREATE INDEX IF NOT EXISTS automation_runs_scheduled_for_idx ON automation_runs(scheduled_for)`);
-  await run2("automation_runs_cart_idx", () => sql6`CREATE INDEX IF NOT EXISTS automation_runs_cart_id_idx ON automation_runs(cart_id)`);
-  await run2("coupons", () => sql6`
+  await run2("automation_runs.provider_response", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS provider_response TEXT`);
+  await run2("automation_runs.ai_body", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_body TEXT`);
+  await run2("automation_runs.ai_reasoning", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_reasoning TEXT`);
+  await run2("automation_runs.ai_processed_at", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ai_processed_at TIMESTAMP`);
+  await run2("automation_runs.sent_at", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP`);
+  await run2("automation_runs.cancelled_at", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP`);
+  await run2("automation_runs.updated_at", () => sql5`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW() NOT NULL`);
+  await run2("automation_runs_status_idx", () => sql5`CREATE INDEX IF NOT EXISTS automation_runs_status_idx ON automation_runs(status)`);
+  await run2("automation_runs_scheduled_idx", () => sql5`CREATE INDEX IF NOT EXISTS automation_runs_scheduled_for_idx ON automation_runs(scheduled_for)`);
+  await run2("automation_runs_cart_idx", () => sql5`CREATE INDEX IF NOT EXISTS automation_runs_cart_id_idx ON automation_runs(cart_id)`);
+  await run2("coupons", () => sql5`
     CREATE TABLE IF NOT EXISTS coupons (
       id SERIAL PRIMARY KEY,
       code TEXT NOT NULL UNIQUE,
@@ -58881,8 +58892,8 @@ async function ensureOrdersTablesExist() {
       created_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `);
-  await run2("coupons.use_for_recovery", () => sql6`ALTER TABLE coupons ADD COLUMN IF NOT EXISTS use_for_recovery BOOLEAN NOT NULL DEFAULT FALSE`);
-  await run2("msg_templates", () => sql6`
+  await run2("coupons.use_for_recovery", () => sql5`ALTER TABLE coupons ADD COLUMN IF NOT EXISTS use_for_recovery BOOLEAN NOT NULL DEFAULT FALSE`);
+  await run2("msg_templates", () => sql5`
     CREATE TABLE IF NOT EXISTS msg_templates (
       id SERIAL PRIMARY KEY,
       slug TEXT NOT NULL UNIQUE,
@@ -58895,13 +58906,13 @@ async function ensureOrdersTablesExist() {
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `);
-  await run2("msg_templates_type_idx", () => sql6`CREATE INDEX IF NOT EXISTS msg_templates_type_idx ON msg_templates(type)`);
-  await run2("msg_templates.opt_out_footer", () => sql6`
+  await run2("msg_templates_type_idx", () => sql5`CREATE INDEX IF NOT EXISTS msg_templates_type_idx ON msg_templates(type)`);
+  await run2("msg_templates.opt_out_footer", () => sql5`
     UPDATE msg_templates
     SET body = body || E'\n\n_Para não receber mais mensagens, responda PARAR._'
     WHERE body NOT LIKE '%PARAR%'
   `);
-  await run2("seed_templates", () => sql6`
+  await run2("seed_templates", () => sql5`
     INSERT INTO msg_templates (slug, type, label, body, active, is_default) VALUES
     ('abandoned_simples', 'abandoned', 'Abandono – Simples',
      'Olá *{nome}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou.\n\n👉 Finalize agora: {link}\n\nQualquer dúvida, é só chamar! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_\n\n_Para não receber mais mensagens, responda PARAR._',
@@ -58929,12 +58940,12 @@ async function ensureOrdersTablesExist() {
      true, true)
     ON CONFLICT (slug) DO NOTHING
   `);
-  await run2("cleanup_automation_runs", () => sql6`
+  await run2("cleanup_automation_runs", () => sql5`
     DELETE FROM automation_runs
     WHERE status IN ('sent', 'cancelled', 'failed')
       AND updated_at < NOW() - INTERVAL '60 days'
   `);
-  await run2("cleanup_abandoned_carts", () => sql6`
+  await run2("cleanup_abandoned_carts", () => sql5`
     DELETE FROM abandoned_carts
     WHERE (recovered = TRUE OR opted_out = TRUE)
       AND updated_at < NOW() - INTERVAL '90 days'
@@ -58957,9 +58968,32 @@ function isBusinessHours2() {
   const brHour = ((/* @__PURE__ */ new Date()).getUTCHours() - 3 + 24) % 24;
   return brHour >= 8 && brHour < 21;
 }
+async function bumpCouponUsage(code, delta) {
+  if (!code)
+    return;
+  try {
+    await ordersDb.update(coupons).set({ usedCount: delta > 0 ? sql`used_count + 1` : sql`GREATEST(used_count - 1, 0)` }).where(eq(coupons.code, code));
+  } catch (e) {
+    console.error("[coupon] usage bump failed:", e);
+  }
+}
+async function getActiveRecoveryCouponCode() {
+  try {
+    const rows = await ordersDb.select().from(coupons).where(eq(coupons.active, true)).orderBy(desc(coupons.createdAt));
+    const now = /* @__PURE__ */ new Date();
+    const usable = (c) => (!c.expiresAt || now < new Date(c.expiresAt)) && (!c.maxUses || c.usedCount < c.maxUses);
+    return (rows.find((c) => c.useForRecovery && usable(c)) ?? rows.find(usable))?.code ?? "";
+  } catch {
+    return "";
+  }
+}
 async function sendWhatsApp(phone, message) {
   const waUrl = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
-  const waKey = process.env.WA_API_KEY || "MinhaChaveSuperSegura123456";
+  const waKey = process.env.WA_API_KEY;
+  if (!waKey) {
+    console.warn("[wa] WA_API_KEY not configured \u2014 skipping WhatsApp send");
+    return false;
+  }
   const digits = phone.replace(/\D/g, "");
   const primary = digits.startsWith("55") ? digits : `55${digits}`;
   const alt = primary.length === 13 ? primary.slice(0, 4) + primary.slice(5) : primary.length === 12 ? primary.slice(0, 4) + "9" + primary.slice(4) : null;
@@ -59130,7 +59164,7 @@ app.get("/api/db-health", async (_req, res) => {
 dbReady.catch((err) => console.error("Background dbReady failed:", err));
 app.get("/api/db-stats", async (req, res) => {
   const secret = process.env.ADMIN_RESET_SECRET;
-  if (secret && req.headers["x-admin-secret"] !== secret) {
+  if (!secret || req.headers["x-admin-secret"] !== secret) {
     return res.status(401).json({ error: "Unauthorized" });
   }
   try {
@@ -59227,12 +59261,12 @@ app.post("/api/mp-webhook", import_express.default.raw({ type: "application/json
       res.json({ ok: true });
       return;
     }
-    if (order.paymentStatus === "confirmed") {
-      res.json({ ok: true, already: true });
-      return;
-    }
     const mpId = String(payment.id ?? "");
     if (payment.status === "approved") {
+      if (order.paymentStatus === "confirmed") {
+        res.json({ ok: true, already: true });
+        return;
+      }
       if (payment.transaction_amount !== void 0) {
         const expectedTotal = parseFloat(order.totalPrice ?? "0");
         if (expectedTotal > 0 && Math.abs(payment.transaction_amount - expectedTotal) > 0.01) {
@@ -59242,6 +59276,7 @@ app.post("/api/mp-webhook", import_express.default.raw({ type: "application/json
         }
       }
       await ordersDb.update(siteOrders).set({ status: "confirmed", paymentStatus: "confirmed", mpPaymentId: mpId, updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, orderId));
+      await bumpCouponUsage(order.couponCode, 1);
       const phone = order.customerPhone.replace(/\D/g, "");
       await ordersDb.update(automationRuns).set({ status: "cancelled", cancelledAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(and(eq(automationRuns.customerPhone, phone), eq(automationRuns.status, "scheduled")));
       await ordersDb.update(abandonedCarts).set({ status: "converted", recovered: true, convertedAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.customerPhone, phone));
@@ -59277,8 +59312,13 @@ _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
       }
     } else if (payment.status === "pending" || payment.status === "in_process" || payment.status === "authorized") {
       await ordersDb.update(siteOrders).set({ mpPaymentId: mpId, updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, orderId));
-    } else if (payment.status === "rejected" || payment.status === "cancelled" || payment.status === "refunded" || payment.status === "charged_back") {
+    } else if (payment.status === "rejected" || payment.status === "cancelled") {
       await ordersDb.update(siteOrders).set({ paymentStatus: "failed", mpPaymentId: mpId, updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, orderId));
+    } else if (payment.status === "refunded" || payment.status === "charged_back") {
+      const wasConfirmed = order.paymentStatus === "confirmed";
+      await ordersDb.update(siteOrders).set({ status: "cancelled", paymentStatus: "failed", mpPaymentId: mpId, updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, orderId));
+      if (wasConfirmed)
+        await bumpCouponUsage(order.couponCode, -1);
     }
     res.json({ ok: true });
   } catch (err) {
@@ -59466,11 +59506,11 @@ async function reconcileAwaitingOrders() {
     return { confirmed };
   try {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1e3);
-    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1e3);
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1e3);
     const orders = await ordersDb.select().from(siteOrders).where(and(
       eq(siteOrders.paymentStatus, "awaiting"),
       lte(siteOrders.createdAt, oneHourAgo),
-      gte(siteOrders.createdAt, threeDaysAgo)
+      gte(siteOrders.createdAt, thirtyDaysAgo)
     )).limit(5);
     for (const o of orders) {
       try {
@@ -59494,6 +59534,7 @@ async function reconcileAwaitingOrders() {
         if (!approved)
           continue;
         await ordersDb.update(siteOrders).set({ status: "confirmed", paymentStatus: "confirmed", mpPaymentId: payId, updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, o.id));
+        await bumpCouponUsage(o.couponCode, 1);
         const phone = o.customerPhone.replace(/\D/g, "");
         await ordersDb.update(automationRuns).set({ status: "cancelled", cancelledAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(and(eq(automationRuns.customerPhone, phone), eq(automationRuns.status, "scheduled")));
         await ordersDb.update(abandonedCarts).set({ status: "converted", recovered: true, convertedAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.customerPhone, phone));
@@ -59539,10 +59580,11 @@ app.all("/api/cron/abandoned-cart", import_express.default.json(), async (req, r
     const tplBySlug = {};
     for (const t2 of abandonedTpls)
       tplBySlug[t2.slug] = t2;
+    const activeCoupon = await getActiveRecoveryCouponCode();
     const RULE_MAP = {
       abandoned_t1: { slug: "abandoned_simples", coupon: "" },
       abandoned_t2: { slug: "abandoned_urgencia", coupon: "" },
-      abandoned_t3: { slug: "abandoned_cupom", coupon: "VOLTA10" }
+      abandoned_t3: { slug: "abandoned_cupom", coupon: activeCoupon }
     };
     const fallbackTpl = tplBySlug["abandoned_simples"] ?? abandonedTpls.find((t2) => t2.isDefault);
     const unpaid = await processUnpaidFollowups();
@@ -59560,14 +59602,14 @@ app.all("/api/cron/abandoned-cart", import_express.default.json(), async (req, r
         continue;
       }
       const name2 = cart.customerName;
-      const link = "https://premium.salvitarn.com.br";
       const ruleCfg = RULE_MAP[run2.ruleName] ?? { slug: "abandoned_simples", coupon: "" };
+      const link = ruleCfg.coupon ? `https://premium.salvitarn.com.br?cupom=${ruleCfg.coupon}` : "https://premium.salvitarn.com.br";
       const tpl = tplBySlug[ruleCfg.slug] ?? fallbackTpl;
       let msg;
       if (run2.aiBody) {
         msg = run2.aiBody;
       } else if (tpl) {
-        msg = renderTemplate2(tpl.body, { nome: name2, link, cupom: ruleCfg.coupon });
+        msg = renderTemplate2(tpl.body, { nome: name2, link, cupom: ruleCfg.coupon, produto: "Sal Marinho Integral 1kg" });
       } else {
         msg = `Ol\xE1 *${name2}*! \u{1F30A}
 
@@ -59612,8 +59654,8 @@ app.get("/api/orders-health", async (_req, res) => {
     const steps = await ensureOrdersTablesExist();
     const { neon } = await Promise.resolve().then(() => (init_serverless(), serverless_exports));
     const url2 = process.env.ORDERS_DATABASE_URL ?? process.env.DATABASE_URL;
-    const sql6 = neon(url2);
-    const tables = await sql6`
+    const sql5 = neon(url2);
+    const tables = await sql5`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
         AND table_name IN ('site_orders','abandoned_carts','automation_runs','coupons','msg_templates')

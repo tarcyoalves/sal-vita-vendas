@@ -438,7 +438,11 @@ export default function SalVitaLanding() {
       const data = await res.json();
       const initPoint = data?.result?.data?.json?.initPoint;
       if(initPoint) {
-        try { (window as any).fbq?.('track','Purchase',{ value: orderDone.total, currency: 'BRL', content_name: 'SAL VITA PREMIUM 1kg', content_ids: ['salvita-001'], content_type: 'product', num_items: 1 }); } catch {}
+        // Do NOT fire the Purchase pixel here — the customer is only being SENT to
+        // Mercado Pago and hasn't paid yet (PIX/boleto/card can still fail/expire).
+        // Firing Purchase on intent inflates conversions 2–4x and poisons ad
+        // optimization + lookalikes. Purchase is fired only on CONFIRMED payment
+        // (TrackOrder, on status=pago / confirmed) and server-side via the webhook.
         window.location.href = initPoint;
       }
       else { alert('Erro ao gerar link de pagamento. Tente novamente.'); }
@@ -1528,7 +1532,7 @@ export default function SalVitaLanding() {
 
               {/* track link */}
               <p style={{textAlign:'center',fontSize:'.75rem',color:'var(--muted)',marginTop:12}}>
-                Após pagar, rastreie em: <a href="/meu-pedido" style={{color:'var(--brand)',fontWeight:600}}>Pedido #{orderDone.id}</a>
+                Após pagar, rastreie em: <a href={`/meu-pedido?pedido=${orderDone.id}&tel=${checkoutForm.customerPhone.replace(/\D/g,'').slice(-4)}`} style={{color:'var(--brand)',fontWeight:600}}>Pedido #{orderDone.id}</a>
               </p>
             </div>
           </div>

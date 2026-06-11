@@ -12,7 +12,8 @@ type SiteOrder = typeof siteOrders.$inferSelect;
 // Sends a single WhatsApp message to one phone number via the wa-server /send endpoint.
 async function waSendRaw(phone: string, message: string): Promise<boolean> {
   const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
-  const key = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
+  const key = process.env.WA_API_KEY;
+  if (!key) { console.warn('[wa] WA_API_KEY not configured — skipping'); return false; }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 9000);
   try {
@@ -636,7 +637,8 @@ export const recoveryRouter = router({
     .query(async ({ ctx }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
-      const key = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
+      const key = process.env.WA_API_KEY;
+      if (!key) return { status: 'no_api_key', connected: false };
       try {
         const ac = new AbortController();
         const timer = setTimeout(() => ac.abort(), 5000);
@@ -653,7 +655,8 @@ export const recoveryRouter = router({
     .mutation(async ({ ctx }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
-      const key = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
+      const key = process.env.WA_API_KEY;
+      if (!key) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'WA_API_KEY não configurado' });
       const headers = { 'Content-Type': 'application/json', 'apikey': key };
       const tried: string[] = [];
       for (const path of ['/reconnect', '/restart', '/connect', '/logout']) {
