@@ -394,6 +394,10 @@ export default function SalVitaLanding() {
     e.preventDefault();
     if(!selProd||!selShip) return;
     if(checkoutLoading) return; // guard against double-submit (mobile double-tap)
+    // Validate CPF before creating the order — a bad CPF only fails later at
+    // Mercado Pago / Melhor Envio, after the sale, which loses the customer.
+    if(!isValidCpf(checkoutForm.customerCpf)) { setCpfError('CPF inválido — confira os números.'); return; }
+    setCpfError('');
     setCheckoutLoading(true);
     // Track step 3 (attempting payment)
     const p3 = checkoutForm.customerPhone.replace(/\D/g,'');
@@ -1289,11 +1293,17 @@ export default function SalVitaLanding() {
                   <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.7rem',fontWeight:700,color:p.highlight?'white':'var(--text)',marginBottom:4,marginTop:8}}>{p.name}</h3>
                   <p style={{fontSize:'.9rem',color:p.highlight?'rgba(255,255,255,.5)':'var(--muted)',marginBottom:20}}>{p.weight}</p>
 
-                  {/* preço */}
+                  {/* preço — âncora de economia na caixa (loss-aversion) */}
+                  {p.highlight&&(
+                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6,flexWrap:'wrap'}}>
+                      <span style={{fontSize:'1.15rem',textDecoration:'line-through',color:'rgba(255,255,255,.45)'}}>R$ 299,00</span>
+                      <span style={{background:'#16a34a',color:'white',fontSize:'.72rem',fontWeight:800,padding:'3px 9px',borderRadius:999,letterSpacing:'.03em'}}>−50% · ECONOMIZE R$ 149,10</span>
+                    </div>
+                  )}
                   <div style={{marginBottom:4}}>
                     <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'3.4rem',fontWeight:700,color:p.highlight?'var(--gold)':'var(--brand)',lineHeight:1}}>R$ {p.price.toFixed(2).replace('.',',')}</span>
                   </div>
-                  <p style={{fontSize:'.9rem',color:p.highlight?'rgba(255,255,255,.45)':'var(--muted)',marginBottom:24}}>R$ {p.pricePerKg.toFixed(2).replace('.',',')}/kg</p>
+                  <p style={{fontSize:'.9rem',color:p.highlight?'rgba(255,255,255,.45)':'var(--muted)',marginBottom:24}}>R$ {p.pricePerKg.toFixed(2).replace('.',',')}/kg{p.highlight?' · metade do preço por kg':''}</p>
 
                   {/* features — 4 itens máximo */}
                   <ul style={{listStyle:'none',padding:0,marginBottom:28}}>
@@ -1583,8 +1593,8 @@ export default function SalVitaLanding() {
                 </div>
                 <div>
                   <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>Telefone/WhatsApp *</label>
-                  <input required value={checkoutForm.customerPhone} onChange={e=>setCheckoutForm(f=>({...f,customerPhone:e.target.value}))}
-                    placeholder="(84) 99999-9999" minLength={10}
+                  <input required type="tel" inputMode="numeric" value={checkoutForm.customerPhone} onChange={e=>setCheckoutForm(f=>({...f,customerPhone:maskPhone(e.target.value)}))}
+                    placeholder="(84) 99999-9999" minLength={14}
                     style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
                     onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
                     onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
@@ -1599,11 +1609,13 @@ export default function SalVitaLanding() {
                 </div>
                 <div>
                   <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>CPF *</label>
-                  <input required type="text" inputMode="numeric" autoComplete="off" value={checkoutForm.customerCpf} onChange={e=>setCheckoutForm(f=>({...f,customerCpf:e.target.value}))}
+                  <input required type="text" inputMode="numeric" autoComplete="off" value={checkoutForm.customerCpf}
+                    onChange={e=>{ const m=maskCpf(e.target.value); setCheckoutForm(f=>({...f,customerCpf:m})); setCpfError(m.replace(/\D/g,'').length===11 && !isValidCpf(m) ? 'CPF inválido' : ''); }}
                     placeholder="000.000.000-00" maxLength={14}
-                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
-                    onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
-                    onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
+                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:`2px solid ${cpfError?'#ef4444':'transparent'}`,borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
+                    onFocus={e=>{ if(!cpfError) e.currentTarget.style.borderColor='var(--brand)'; }}
+                    onBlur={e=>{ if(!cpfError) e.currentTarget.style.borderColor='transparent'; }}/>
+                  {cpfError && <p style={{fontSize:'.78rem',color:'#ef4444',margin:'4px 0 0',fontWeight:600}}>{cpfError}</p>}
                 </div>
                 <div>
                   <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>CEP *</label>
@@ -1720,6 +1732,10 @@ export default function SalVitaLanding() {
                     })()}
                   </span>
                 </div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:8,background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:10,padding:'10px 12px'}}>
+                <span style={{fontSize:'1.1rem'}}>🛡️</span>
+                <span style={{fontSize:'.82rem',color:'#15803d',fontWeight:600,lineHeight:1.4}}>Garantia de 7 dias — não gostou, devolvemos 100%. Pague em segundos no PIX.</span>
               </div>
               <p style={{fontSize:'.82rem',color:'var(--muted)',lineHeight:1.5}}>Após confirmar, você será redirecionado para o Mercado Pago para pagar com cartão, PIX ou boleto.</p>
               <div style={{display:'flex',gap:10}}>
