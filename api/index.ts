@@ -16,80 +16,11 @@ import { siteOrders, abandonedCarts, automationRuns, msgTemplates, coupons } fro
 import { eq, and, sql, lte, gte, isNull, inArray, desc } from 'drizzle-orm';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
 import { createPixPaymentForOrder } from '../server/lib/mercadopago';
-
-function renderTemplate(body: string, vars: Record<string, string>): string {
-  return body.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
-}
-
-// Formats a stored price string ("149.90") as Brazilian currency text ("149,90")
-function brl(price: string | null | undefined): string {
-  return parseFloat(price ?? '0').toFixed(2).replace('.', ',');
-}
+import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid } from '../server/lib/orderConfirmation';
 
 function isBusinessHours(): boolean {
   const brHour = (new Date().getUTCHours() - 3 + 24) % 24;
   return brHour >= 8 && brHour < 21;
-}
-
-// Adjusts a coupon's used_count. Called +1 only when a payment is CONFIRMED (so
-// abandoned/unpaid orders never burn a coupon's max uses) and -1 on refund.
-async function bumpCouponUsage(code: string | null | undefined, delta: 1 | -1): Promise<void> {
-  if (!code) return;
-  try {
-    await ordersDb.update(coupons)
-      .set({ usedCount: delta > 0 ? sql`used_count + 1` : sql`GREATEST(used_count - 1, 0)` })
-      .where(eq(coupons.code, code));
-  } catch (e) { console.error('[coupon] usage bump failed:', e); }
-}
-
-// Server-side Meta Conversions API (CAPI) Purchase — iOS/adblock-proof, fired on
-// CONFIRMED payment with the same event_id as the browser pixel (dedup). No-ops
-// unless FB_CAPI_TOKEN is configured. PII is SHA-256 hashed per Meta's spec.
-async function sendCapiPurchase(order: typeof siteOrders.$inferSelect): Promise<void> {
-  const token = process.env.FB_CAPI_TOKEN;
-  const pixelId = process.env.FB_PIXEL_ID || '2209017296169541';
-  if (!token) return; // CAPI not configured — skip silently
-  try {
-    const sha = (v: string) => crypto.createHash('sha256').update(v.trim().toLowerCase()).digest('hex');
-    const user_data: Record<string, unknown> = {};
-    const phoneDigits = order.customerPhone.replace(/\D/g, '');
-    if (phoneDigits) user_data.ph = [sha(phoneDigits.startsWith('55') ? phoneDigits : `55${phoneDigits}`)];
-    if (order.customerEmail && order.customerEmail.includes('@')) user_data.em = [sha(order.customerEmail)];
-    if (order.customerName) {
-      const parts = order.customerName.trim().split(/\s+/);
-      user_data.fn = [sha(parts[0])];
-      if (parts.length > 1) user_data.ln = [sha(parts[parts.length - 1])];
-    }
-    if (order.state) user_data.st = [sha(order.state)];
-    if (order.city) user_data.ct = [sha(order.city.replace(/\s+/g, ''))];
-    if (order.fbclid) user_data.fbc = `fb.1.${Date.now()}.${order.fbclid}`;
-    const event = {
-      event_name: 'Purchase',
-      event_time: Math.floor(Date.now() / 1000),
-      event_id: `purchase-${order.id}`,
-      action_source: 'website',
-      event_source_url: 'https://premium.salvitarn.com.br',
-      user_data,
-      custom_data: {
-        currency: 'BRL',
-        value: parseFloat(order.totalPrice ?? '0'),
-        content_ids: ['salvita-001'],
-        content_type: 'product',
-        order_id: String(order.id),
-      },
-    };
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 6000);
-    const r = await fetch(`https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${token}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: [event] }),
-      signal: ac.signal,
-    });
-    clearTimeout(timer);
-    if (!r.ok) console.error('[capi] Purchase failed', r.status, await r.text().catch(() => ''));
-    else console.log(`[capi] Purchase sent for order ${order.id}`);
-  } catch (e) { console.error('[capi] error:', e); }
 }
 
 // Best active coupon for automated recovery messages: prefers the admin-flagged
@@ -102,41 +33,6 @@ async function getActiveRecoveryCouponCode(): Promise<string> {
       (!c.expiresAt || now < new Date(c.expiresAt)) && (!c.maxUses || c.usedCount < c.maxUses);
     return (rows.find(c => c.useForRecovery && usable(c)) ?? rows.find(usable))?.code ?? '';
   } catch { return ''; }
-}
-
-// Sends to BOTH 9th-digit variants IN PARALLEL — wa-server blindly returns
-// success:true so we can't detect which variant is the real JID. Sending both
-// guarantees delivery as long as one format matches WhatsApp registration.
-async function sendWhatsApp(phone: string, message: string): Promise<boolean> {
-  const waUrl = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
-  const waKey = process.env.WA_API_KEY;
-  if (!waKey) { console.warn('[wa] WA_API_KEY not configured — skipping WhatsApp send'); return false; }
-  const digits = phone.replace(/\D/g, '');
-  const primary = digits.startsWith('55') ? digits : `55${digits}`;
-  const alt = primary.length === 13
-    ? primary.slice(0, 4) + primary.slice(5)
-    : primary.length === 12 ? primary.slice(0, 4) + '9' + primary.slice(4) : null;
-  const variants = [primary, alt].filter(Boolean) as string[];
-  const results = await Promise.all(variants.map(async phoneNum => {
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 9000);
-    try {
-      const r = await fetch(`${waUrl}/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': waKey },
-        body: JSON.stringify({ phone: phoneNum, message }),
-        signal: ac.signal,
-      });
-      clearTimeout(timer);
-      if (!r.ok) return false;
-      let body: Record<string, unknown> = {};
-      try { body = await r.json() as Record<string, unknown>; } catch {}
-      if (body.success === false) return false;
-      console.log(`[wa] dispatched to ${phoneNum}`);
-      return true;
-    } catch { clearTimeout(timer); return false; }
-  }));
-  return results.some(Boolean);
 }
 
 const app = express();
@@ -409,45 +305,10 @@ app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/jso
         .set({ status: 'confirmed', paymentStatus: 'confirmed', mpPaymentId: mpId, updatedAt: new Date() })
         .where(eq(siteOrders.id, orderId));
 
-      // Count the coupon use only now that payment is confirmed (not at order
-      // creation), so abandoned/unpaid orders never burn a coupon's max uses.
-      await bumpCouponUsage(order.couponCode, 1);
-      // Server-side Purchase to Meta CAPI (deduped with the browser pixel).
-      await sendCapiPurchase(order);
-
-      const phone = order.customerPhone.replace(/\D/g, '');
-      // Cancel pending WA recovery automations for this customer
-      await ordersDb.update(automationRuns)
-        .set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
-        .where(and(eq(automationRuns.customerPhone, phone), eq(automationRuns.status, 'scheduled')));
-      // Mark abandoned cart as converted (recovered)
-      await ordersDb.update(abandonedCarts)
-        .set({ status: 'converted', recovered: true, convertedAt: new Date(), updatedAt: new Date() })
-        .where(eq(abandonedCarts.customerPhone, phone));
-
-      // Send purchase confirmation via WhatsApp (non-blocking, best effort)
-      try {
-        const [tpl] = await ordersDb.select().from(msgTemplates)
-          .where(and(eq(msgTemplates.type, 'confirmed'), eq(msgTemplates.isDefault, true))).limit(1);
-        const vars = {
-          nome: order.customerName,
-          pedido: String(order.id),
-          valor: brl(order.totalPrice),
-        };
-        const msg = tpl
-          ? renderTemplate(tpl.body, vars)
-          : `Olá *${order.customerName}*! 🎉\n\nSeu pagamento foi *confirmado*! ✅\n\n📦 Pedido *#${order.id}* — R$ ${brl(order.totalPrice)}\n\nJá estamos preparando seu envio. Você receberá o código de rastreio assim que postarmos. 🚚\n\nObrigado por escolher a Sal Vita! 🌊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
-        await sendWhatsApp(order.customerPhone, msg);
-        // Best-effort confirmation email (non-blocking)
-        if (order.customerEmail) {
-          const emailHtml = orderConfirmedHtml(order.customerName, order.id, brl(order.totalPrice));
-          sendEmail(
-            order.customerEmail,
-            `Pedido #${order.id} confirmado — obrigado, ${order.customerName}!`,
-            emailHtml,
-          ).catch(() => {});
-        }
-      } catch (e) { console.error('[mp-webhook] confirmation WA failed:', e); }
+      // Coupon bump, CAPI Purchase, automation cancellation, abandoned-cart
+      // conversion, and WhatsApp/email confirmation — shared with the
+      // reconciliation cron and the admin's manual confirm action.
+      await confirmOrderPaid(order);
 
     } else if (payment.status === 'pending' || payment.status === 'in_process' || payment.status === 'authorized') {
       // PIX/boleto awaiting payment — keep awaiting but persist the payment id for follow-up
@@ -717,22 +578,9 @@ async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
         await ordersDb.update(siteOrders)
           .set({ status: 'confirmed', paymentStatus: 'confirmed', mpPaymentId: payId, updatedAt: new Date() })
           .where(eq(siteOrders.id, o.id));
-        await bumpCouponUsage(o.couponCode, 1);
-        await sendCapiPurchase(o);
-        const phone = o.customerPhone.replace(/\D/g, '');
-        await ordersDb.update(automationRuns)
-          .set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
-          .where(and(eq(automationRuns.customerPhone, phone), eq(automationRuns.status, 'scheduled')));
-        await ordersDb.update(abandonedCarts)
-          .set({ status: 'converted', recovered: true, convertedAt: new Date(), updatedAt: new Date() })
-          .where(eq(abandonedCarts.customerPhone, phone));
-        // Confirmation WhatsApp + email (best effort) — same as the mp-webhook path
-        const msg = `Olá *${o.customerName}*! 🎉\n\nSeu pagamento foi *confirmado*! ✅\n\n📦 Pedido *#${o.id}* — R$ ${brl(o.totalPrice)}\n\nJá estamos preparando seu envio. 🚚\n\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
-        await sendWhatsApp(o.customerPhone, msg);
-        if (o.customerEmail) {
-          const emailHtml = orderConfirmedHtml(o.customerName, o.id, brl(o.totalPrice));
-          sendEmail(o.customerEmail, `Pedido #${o.id} confirmado — obrigado, ${o.customerName}!`, emailHtml).catch(() => {});
-        }
+        // Coupon bump, CAPI Purchase, automation cancellation, abandoned-cart
+        // conversion, and WhatsApp/email confirmation — same as the mp-webhook path
+        await confirmOrderPaid(o);
         confirmed++;
       } catch { /* skip this order */ }
     }

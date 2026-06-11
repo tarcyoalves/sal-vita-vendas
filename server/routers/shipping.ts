@@ -4,6 +4,7 @@ import { ordersDb as db } from '../db/ordersDb';
 import { siteOrders, coupons, msgTemplates } from '../db/schema';
 import { desc, eq, and, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
+import { confirmOrderPaid } from '../lib/orderConfirmation';
 
 const ME_BASE = 'https://melhorenvio.com.br';
 const ORIGIN_CEP = process.env.MELHOR_ENVIO_ORIGIN_CEP ?? '59600000';
@@ -340,6 +341,7 @@ Seja direto e use emojis para facilitar leitura.`;
     }))
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      const [before] = await db.select().from(siteOrders).where(eq(siteOrders.id, input.id)).limit(1);
       const updates: Record<string,unknown> = { updatedAt: new Date() };
       if (input.status) updates.status = input.status;
       if (input.paymentStatus) updates.paymentStatus = input.paymentStatus;
@@ -347,6 +349,12 @@ Seja direto e use emojis para facilitar leitura.`;
         .set(updates)
         .where(eq(siteOrders.id, input.id))
         .returning();
+      // Manually confirming a payment must produce the same customer-facing
+      // result as an automatic confirmation (WhatsApp + email + CAPI + coupon
+      // + cancel pending follow-ups) — only run once per order.
+      if (updated && input.paymentStatus === 'confirmed' && before?.paymentStatus !== 'confirmed') {
+        await confirmOrderPaid(updated);
+      }
       return updated;
     }),
 
