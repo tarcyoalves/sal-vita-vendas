@@ -148,9 +148,11 @@ export async function ensureOrdersTablesExist(): Promise<Step[]> {
       used_count INTEGER NOT NULL DEFAULT 0,
       expires_at TIMESTAMP,
       active BOOLEAN NOT NULL DEFAULT TRUE,
+      use_for_recovery BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `);
+  await run('coupons.use_for_recovery', () => sql`ALTER TABLE coupons ADD COLUMN IF NOT EXISTS use_for_recovery BOOLEAN NOT NULL DEFAULT FALSE`);
 
   await run('msg_templates', () => sql`
     CREATE TABLE IF NOT EXISTS msg_templates (

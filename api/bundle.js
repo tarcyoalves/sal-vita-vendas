@@ -42841,6 +42841,7 @@ var init_schema2 = __esm({
       usedCount: integer("used_count").default(0).notNull(),
       expiresAt: timestamp("expires_at"),
       active: boolean("active").default(true).notNull(),
+      useForRecovery: boolean("use_for_recovery").default(false).notNull(),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     msgTemplates = pgTable("msg_templates", {
@@ -57609,13 +57610,16 @@ _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_${OPT_OUT}`;
 async function getActiveRecoveryCoupon() {
   const all = await ordersDb.select().from(coupons).where(eq(coupons.active, true)).orderBy(desc(coupons.createdAt));
   const now = /* @__PURE__ */ new Date();
-  for (const c of all) {
+  const usable = (c) => {
     const notExpired = !c.expiresAt || now < new Date(c.expiresAt);
     const notMaxed = !c.maxUses || c.usedCount < c.maxUses;
-    if (notExpired && notMaxed)
-      return { code: c.code, discountType: c.discountType, discountValue: c.discountValue };
-  }
-  return null;
+    return notExpired && notMaxed;
+  };
+  const designated = all.find((c) => c.useForRecovery && usable(c));
+  if (designated)
+    return { code: designated.code, discountType: designated.discountType, discountValue: designated.discountValue };
+  const fallback = all.find(usable);
+  return fallback ? { code: fallback.code, discountType: fallback.discountType, discountValue: fallback.discountValue } : null;
 }
 function unpaidMsg(name2, id, qty, total, tel) {
   return `Ol\xE1 *${name2}*! \u{1F30A}
@@ -57856,6 +57860,17 @@ var recoveryRouter = router({
     if (ctx.user.role !== "admin")
       throw new TRPCError({ code: "FORBIDDEN" });
     await ordersDb.update(coupons).set({ active: input.active }).where(eq(coupons.id, input.id));
+    return { ok: true };
+  }),
+  // Admin: designate the coupon used by default in automated/AI recovery
+  // messages ({cupom} placeholder, "+ Cupom" button when no coupon is chosen).
+  // Only one coupon can be the recovery default at a time.
+  setRecoveryCoupon: protectedProcedure.input(external_exports.object({ id: external_exports.number(), enabled: external_exports.boolean() })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN" });
+    if (input.enabled)
+      await ordersDb.update(coupons).set({ useForRecovery: false });
+    await ordersDb.update(coupons).set({ useForRecovery: input.enabled }).where(eq(coupons.id, input.id));
     return { ok: true };
   }),
   // Admin: mark cart customer as opted out (no more automated messages)
@@ -58862,9 +58877,11 @@ async function ensureOrdersTablesExist() {
       used_count INTEGER NOT NULL DEFAULT 0,
       expires_at TIMESTAMP,
       active BOOLEAN NOT NULL DEFAULT TRUE,
+      use_for_recovery BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TIMESTAMP DEFAULT NOW() NOT NULL
     )
   `);
+  await run2("coupons.use_for_recovery", () => sql6`ALTER TABLE coupons ADD COLUMN IF NOT EXISTS use_for_recovery BOOLEAN NOT NULL DEFAULT FALSE`);
   await run2("msg_templates", () => sql6`
     CREATE TABLE IF NOT EXISTS msg_templates (
       id SERIAL PRIMARY KEY,

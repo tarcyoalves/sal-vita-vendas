@@ -95,12 +95,17 @@ function recoveryMsg(name: string, coupon?: string) {
 async function getActiveRecoveryCoupon(): Promise<{ code: string; discountType: string; discountValue: string } | null> {
   const all = await db.select().from(coupons).where(eq(coupons.active, true)).orderBy(desc(coupons.createdAt));
   const now = new Date();
-  for (const c of all) {
+  const usable = (c: typeof all[number]) => {
     const notExpired = !c.expiresAt || now < new Date(c.expiresAt);
     const notMaxed = !c.maxUses || c.usedCount < c.maxUses;
-    if (notExpired && notMaxed) return { code: c.code, discountType: c.discountType, discountValue: c.discountValue };
-  }
-  return null;
+    return notExpired && notMaxed;
+  };
+  // Prefer the coupon the admin explicitly designated for recovery messages
+  const designated = all.find(c => c.useForRecovery && usable(c));
+  if (designated) return { code: designated.code, discountType: designated.discountType, discountValue: designated.discountValue };
+  // Fall back to the most recently created active, usable coupon
+  const fallback = all.find(usable);
+  return fallback ? { code: fallback.code, discountType: fallback.discountType, discountValue: fallback.discountValue } : null;
 }
 
 function unpaidMsg(name: string, id: number, qty: number, total: string, tel: string) {
@@ -382,6 +387,18 @@ export const recoveryRouter = router({
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       await db.update(coupons).set({ active: input.active }).where(eq(coupons.id, input.id));
+      return { ok: true };
+    }),
+
+  // Admin: designate the coupon used by default in automated/AI recovery
+  // messages ({cupom} placeholder, "+ Cupom" button when no coupon is chosen).
+  // Only one coupon can be the recovery default at a time.
+  setRecoveryCoupon: protectedProcedure
+    .input(z.object({ id: z.number(), enabled: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      if (input.enabled) await db.update(coupons).set({ useForRecovery: false });
+      await db.update(coupons).set({ useForRecovery: input.enabled }).where(eq(coupons.id, input.id));
       return { ok: true };
     }),
 

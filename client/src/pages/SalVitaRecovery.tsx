@@ -156,6 +156,8 @@ function WaStatusBadge() {
 
 function AbandonedTab() {
   const { data, isLoading, refetch } = trpc.recovery.listAbandoned.useQuery(undefined, { refetchInterval: 300000, retry: 0 });
+  const couponsQ = trpc.recovery.listCoupons.useQuery();
+  const [selectedCoupon, setSelectedCoupon] = useState<string>('');
   const [aiPreviews, setAiPreviews] = useState<Record<number, string>>({});
   const [waFallbacks, setWaFallbacks] = useState<Record<number, string>>({});
   const markRecovered = trpc.recovery.markRecovered.useMutation({
@@ -204,6 +206,12 @@ function AbandonedTab() {
   if (isLoading) return <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Carregando...</div>;
 
   const rows = data ?? [];
+  const now = Date.now();
+  const usableCoupons = (couponsQ.data ?? []).filter((c: any) =>
+    c.active
+    && (!c.expiresAt || new Date(c.expiresAt).getTime() > now)
+    && (!c.maxUses || c.usedCount < c.maxUses)
+  );
 
   return (
     <div>
@@ -229,6 +237,24 @@ function AbandonedTab() {
             {jobMut.isPending ? '⏳ Executando...' : '▶ Executar Job'}
           </button>
         </div>
+      </div>
+
+      {/* Coupon selector for the "+ Cupom" button */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
+        <span style={{ fontSize: '.82rem', fontWeight: 700, color: '#92400e' }}>🎁 Cupom para o botão "+ Cupom":</span>
+        <select
+          value={selectedCoupon}
+          onChange={e => setSelectedCoupon(e.target.value)}
+          style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #fcd34d', background: '#fff', fontSize: '.82rem', fontFamily: 'monospace' }}
+        >
+          <option value="">🤖 Automático ({rows[0]?.activeCoupon ?? 'nenhum cupom ativo'})</option>
+          {usableCoupons.map((c: any) => (
+            <option key={c.id} value={c.code}>{c.code} — {c.discountType === 'percent' ? `${c.discountValue}%` : `R$ ${parseFloat(c.discountValue).toFixed(2)}`}{c.useForRecovery ? ' ⭐' : ''}</option>
+          ))}
+        </select>
+        {usableCoupons.length === 0 && (
+          <span style={{ fontSize: '.78rem', color: '#92400e' }}>Nenhum cupom ativo — crie um na aba 🎟️ Cupons</span>
+        )}
       </div>
 
       {aiProcessMut.data && (
@@ -315,12 +341,16 @@ function AbandonedTab() {
                 </a>
               )}
               <button
-                onClick={() => sendCouponMut.mutate({ id: row.id, useCoupon: true })}
+                onClick={() => sendCouponMut.mutate(selectedCoupon ? { id: row.id, coupon: selectedCoupon } : { id: row.id, useCoupon: true })}
                 disabled={sendCouponMut.isPending}
-                title={row.activeCoupon ? `Enviar com o cupom ${row.activeCoupon}` : 'Nenhum cupom ativo cadastrado — crie um na aba Cupons'}
+                title={
+                  selectedCoupon ? `Enviar com o cupom ${selectedCoupon}`
+                    : row.activeCoupon ? `Enviar com o cupom ${row.activeCoupon} (automático)`
+                    : 'Nenhum cupom ativo cadastrado — crie um na aba Cupons'
+                }
                 style={{ ...btnWaSecondary, opacity: sendCouponMut.isPending ? .7 : 1 }}
               >
-                🎁 + Cupom{row.activeCoupon ? ` (${row.activeCoupon})` : ''}
+                🎁 + Cupom{(selectedCoupon || row.activeCoupon) ? ` (${selectedCoupon || row.activeCoupon})` : ''}
               </button>
               <button
                 onClick={() => markRecovered.mutate({ id: row.id })}
@@ -686,6 +716,11 @@ function CouponsTab() {
     onError: (e) => toast.error(e.message),
   });
 
+  const setRecoveryMut = trpc.recovery.setRecoveryCoupon.useMutation({
+    onSuccess: () => { toast.success('Cupom de recuperação atualizado!'); refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
+
   const deleteMut = trpc.recovery.deleteCoupon.useMutation({
     onSuccess: () => { toast.success('Cupom removido'); refetch(); },
     onError: (e) => toast.error(e.message),
@@ -789,6 +824,11 @@ function CouponsTab() {
                     <span style={{ background: isActive ? '#dcfce7' : '#f1f5f9', color: isActive ? '#166534' : '#64748b', borderRadius: 999, padding: '2px 9px', fontSize: '.72rem', fontWeight: 700 }}>
                       {isActive ? 'Ativo' : 'Inativo'}
                     </span>
+                    {c.useForRecovery && (
+                      <span style={{ background: '#fef9c3', color: '#854d0e', borderRadius: 999, padding: '2px 9px', fontSize: '.72rem', fontWeight: 700 }}>
+                        ⭐ Usado em recuperação
+                      </span>
+                    )}
                   </div>
                   {c.description && <p style={{ margin: '0 0 4px', fontSize: '.85rem', color: '#334155' }}>{c.description}</p>}
                   <p style={{ margin: '0 0 2px', fontSize: '.82rem', color: '#64748b' }}>
@@ -800,9 +840,17 @@ function CouponsTab() {
                     {c.expiresAt ? ` · Expira ${new Date(c.expiresAt).toLocaleDateString('pt-BR')}` : ''}
                   </p>
                 </div>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <button
-                    onClick={() => toggleMut.mutate({ id: c.id })}
+                    onClick={() => setRecoveryMut.mutate({ id: c.id, enabled: !c.useForRecovery })}
+                    disabled={setRecoveryMut.isPending || !isActive}
+                    title={isActive ? 'Usar este cupom automaticamente nas mensagens de recuperação ({cupom})' : 'Ative o cupom para usá-lo na recuperação'}
+                    style={{ ...btnGhost, fontSize: '.75rem', background: c.useForRecovery ? '#fef9c3' : undefined, borderColor: c.useForRecovery ? '#fde047' : undefined }}
+                  >
+                    {c.useForRecovery ? '⭐ Recuperação' : '☆ Usar em recuperação'}
+                  </button>
+                  <button
+                    onClick={() => toggleMut.mutate({ id: c.id, active: !isActive })}
                     disabled={toggleMut.isPending}
                     style={{ ...btnGhost, fontSize: '.75rem' }}
                   >

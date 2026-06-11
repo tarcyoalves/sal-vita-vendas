@@ -184,6 +184,7 @@ export const coupons = pgTable('coupons', {
   usedCount: integer('used_count').default(0).notNull(),
   expiresAt: timestamp('expires_at'),
   active: boolean('active').default(true).notNull(),
+  useForRecovery: boolean('use_for_recovery').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
