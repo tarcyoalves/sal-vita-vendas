@@ -12,6 +12,12 @@ import {
   DialogFooter,
 } from '../components/ui/dialog';
 
+// Sellers created before dailyGoal was wired up still carry the old default of 10
+// while the gamification has always targeted 100 — treat 10 as "not customized".
+function effectiveDailyGoal(dailyGoal?: number | null): number {
+  return dailyGoal && dailyGoal !== 10 ? dailyGoal : 100;
+}
+
 interface Attendant {
   id: number;
   userId: number;
@@ -40,7 +46,7 @@ export default function Attendants() {
     name: "",
     phone: "",
     department: "",
-    dailyGoal: 10,
+    dailyGoal: 100,
     workHoursGoal: 8,
     status: "active" as "active" | "inactive",
   });
@@ -77,7 +83,7 @@ export default function Attendants() {
     email: "",
     phone: "",
     department: "",
-    dailyGoal: 10,
+    dailyGoal: 100,
     workHoursGoal: 8,
     status: "active" as "active" | "inactive",
   });
@@ -88,7 +94,7 @@ export default function Attendants() {
       name: attendant.name,
       phone: attendant.phone ?? "",
       department: attendant.department ?? "",
-      dailyGoal: attendant.dailyGoal ?? 10,
+      dailyGoal: effectiveDailyGoal(attendant.dailyGoal),
       workHoursGoal: attendant.workHoursGoal ?? 8,
       status: (attendant.status ?? "active") as "active" | "inactive",
     });
@@ -136,7 +142,7 @@ export default function Attendants() {
         setCreatedInfo({ name: result.name, email: result.email, password: result.generatedPassword });
       }
 
-      setFormData({ name: "", email: "", phone: "", department: "", dailyGoal: 10, workHoursGoal: 8, status: "active" });
+      setFormData({ name: "", email: "", phone: "", department: "", dailyGoal: 100, workHoursGoal: 8, status: "active" });
       setShowForm(false);
       refetch();
     } catch (error: any) {
@@ -283,7 +289,7 @@ export default function Attendants() {
           <h2 className="text-lg font-semibold text-gray-700">
             {attendants.length} atendente{attendants.length !== 1 ? 's' : ''} cadastrado{attendants.length !== 1 ? 's' : ''}
           </h2>
-          <Button onClick={() => { setFormData({ name: "", email: "", phone: "", department: "", dailyGoal: 10, workHoursGoal: 8, status: "active" }); setShowForm(!showForm); }}>
+          <Button onClick={() => { setFormData({ name: "", email: "", phone: "", department: "", dailyGoal: 100, workHoursGoal: 8, status: "active" }); setShowForm(!showForm); }}>
             {showForm ? "❌ Cancelar" : "➕ Novo Atendente"}
           </Button>
         </div>
@@ -436,7 +442,7 @@ export default function Attendants() {
                     <div className="space-y-1 text-sm text-gray-600">
                       {attendant.phone && <p>📱 {attendant.phone}</p>}
                       {attendant.department && <p>🏢 {attendant.department}</p>}
-                      <p>🎯 Meta: {attendant.dailyGoal} tarefas/dia</p>
+                      <p>🎯 Meta: {effectiveDailyGoal(attendant.dailyGoal)} contatos/dia</p>
                       <p>🕐 Expediente: {attendant.workHoursGoal ?? 8}h</p>
                       <div className="flex gap-2 flex-wrap">
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${attendant.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>

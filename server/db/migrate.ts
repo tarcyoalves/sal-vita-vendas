@@ -60,7 +60,7 @@ export async function ensureTablesExist() {
         email           TEXT NOT NULL,
         phone           TEXT,
         department      TEXT,
-        daily_goal      INTEGER NOT NULL DEFAULT 10,
+        daily_goal      INTEGER NOT NULL DEFAULT 100,
         work_hours_goal INTEGER NOT NULL DEFAULT 8,
         status          TEXT NOT NULL DEFAULT 'active',
         created_at      TIMESTAMP DEFAULT NOW(),

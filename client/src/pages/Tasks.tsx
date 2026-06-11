@@ -27,6 +27,8 @@ interface Task {
   assignedTo?: string | null;
   convertedAt?: Date | string | null;
   contactCount?: number | null;
+  orderValue?: string | null;
+  orderId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -37,6 +39,32 @@ function hasPhone(text: string): boolean {
 }
 function hasEmail(text: string): boolean {
   return /[\w.+-]+@[\w-]+\.[a-z]{2,}/i.test(text);
+}
+
+// Extracts the first phone number found in a string, returning only digits (or null)
+function extractPhone(text: string): string | null {
+  const m = text.match(/\(?\d{2}\)?[\s.]*\d{4,5}[-\s]?\d{4}/);
+  if (!m) return null;
+  const digits = m[0].replace(/\D/g, '');
+  return digits.length >= 10 ? digits : null;
+}
+
+// Extracts the first email found in a string (or null)
+function extractEmail(text: string): string | null {
+  const m = text.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
+  return m ? m[0] : null;
+}
+
+// Builds a wa.me link from a Brazilian phone number, adding the 55 country code if missing
+function waLink(digits: string): string {
+  const withCountry = digits.length <= 11 ? `55${digits}` : digits;
+  return `https://wa.me/${withCountry}`;
+}
+
+// Sellers created before dailyGoal was wired up still carry the old default of 10
+// while the gamification has always targeted 100 — treat 10 as "not customized".
+function effectiveDailyGoal(dailyGoal?: number | null): number {
+  return dailyGoal && dailyGoal !== 10 ? dailyGoal : 100;
 }
 
 // Parser for dash-separated customer records
@@ -132,6 +160,8 @@ export default function Tasks() {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
+  const [convertModalTask, setConvertModalTask] = useState<Task | null>(null);
+  const [orderValueInput, setOrderValueInput] = useState("");
   // ID da tarefa mais urgente a destacar após salvar
   const [highlightTaskId, setHighlightTaskId] = useState<number | null>(null);
   // Ref para controlar alerta de ociosidade (último contato feito)
@@ -159,7 +189,7 @@ export default function Tasks() {
 
   const dailyProgress = useMemo(() => {
     if (isAdmin) return null;
-    const GOAL = 100;
+    const GOAL = effectiveDailyGoal(sellerProfile?.dailyGoal);
     const todayStart = new Date(); todayStart.setHours(0,0,0,0);
     const contacts = (tasks as any[]).filter(t => t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart).length;
     const pct = Math.min(Math.round((contacts / GOAL) * 100), 100);
@@ -179,7 +209,7 @@ export default function Tasks() {
     const h = Math.floor(workedMs / 3600000), mn = Math.floor((workedMs % 3600000) / 60000);
 
     const color = pct >= 100 ? '#16a34a' : pct >= 60 ? '#2563eb' : pct >= 30 ? '#d97706' : '#dc2626';
-    return { contacts, pct, hoursPct, hoursLabel: `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}`, color, remaining: GOAL - contacts };
+    return { contacts, pct, hoursPct, hoursLabel: `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}`, color, remaining: GOAL - contacts, goal: GOAL };
   }, [tasks, workSession, sellerProfile, isAdmin, progressTick]);
 
   const prevContactsRef = useRef<number>(-1);
@@ -188,12 +218,14 @@ export default function Tasks() {
     const prev = prevContactsRef.current;
     const cur  = dailyProgress.contacts;
     if (prev < 0) { prevContactsRef.current = cur; return; }
-    if (prev < 25  && cur >= 25)  toast.success('🎯 25 contatos! Ótimo começo!');
-    if (prev < 50  && cur >= 50)  toast.success('🔥 Metade da meta! 50 contatos!');
-    if (prev < 75  && cur >= 75)  toast.success('⚡ 75 contatos! Faltam só 25!');
-    if (prev < 100 && cur >= 100) toast.success('🏆 META BATIDA! 100 contatos hoje!', { duration: 6000 });
+    const goal = effectiveDailyGoal(sellerProfile?.dailyGoal);
+    const q1 = Math.round(goal * 0.25), half = Math.round(goal * 0.5), q3 = Math.round(goal * 0.75);
+    if (prev < q1   && cur >= q1)   toast.success(`🎯 ${q1} contatos! Ótimo começo!`);
+    if (prev < half && cur >= half) toast.success(`🔥 Metade da meta! ${half} contatos!`);
+    if (prev < q3   && cur >= q3)   toast.success(`⚡ ${q3} contatos! Faltam só ${goal - q3}!`);
+    if (prev < goal && cur >= goal) toast.success(`🏆 META BATIDA! ${goal} contatos hoje!`, { duration: 6000 });
     prevContactsRef.current = cur;
-  }, [dailyProgress?.contacts, isAdmin]);
+  }, [dailyProgress?.contacts, isAdmin, sellerProfile?.dailyGoal]);
 
   // ─── 1. NOTIFICAÇÕES DE LEMBRETE NO HORÁRIO EXATO ──────────────────────────
   // Agenda setTimeout para cada tarefa com lembrete nas próximas 4h.
@@ -354,10 +386,32 @@ export default function Tasks() {
   // Não conclui o lembrete — ele continua recorrente até o atendente decidir parar.
   const handleToggleConverted = async (task: Task, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    const willConvert = !task.convertedAt;
+    if (!task.convertedAt) {
+      setOrderValueInput("");
+      setConvertModalTask(task);
+      return;
+    }
     try {
-      await toggleConvertedMutation.mutateAsync({ id: task.id, converted: willConvert });
-      toast.success(willConvert ? "🎉 Cliente marcado como ativo!" : "Marcação de cliente ativo removida");
+      await toggleConvertedMutation.mutateAsync({ id: task.id, converted: false });
+      toast.success("Marcação de cliente ativo removida");
+      refetch();
+    } catch {
+      toast.error("Erro ao atualizar conversão");
+    }
+  };
+
+  const confirmConvert = async () => {
+    if (!convertModalTask) return;
+    const trimmed = orderValueInput.trim().replace(',', '.');
+    const orderValue = trimmed ? Number(trimmed) : undefined;
+    if (trimmed && (isNaN(orderValue!) || orderValue! < 0)) {
+      toast.error("Valor da venda inválido");
+      return;
+    }
+    try {
+      await toggleConvertedMutation.mutateAsync({ id: convertModalTask.id, converted: true, ...(orderValue !== undefined ? { orderValue } : {}) });
+      toast.success("🎉 Cliente marcado como ativo!");
+      setConvertModalTask(null);
       refetch();
     } catch {
       toast.error("Erro ao atualizar conversão");
@@ -671,7 +725,7 @@ export default function Tasks() {
               <span className="text-base">📞</span>
               <span className="text-sm font-semibold text-gray-700">Contatos hoje</span>
               <span className="text-lg font-black" style={{ color: dailyProgress.color }}>{dailyProgress.contacts}</span>
-              <span className="text-xs text-gray-400">/ 100</span>
+              <span className="text-xs text-gray-400">/ {dailyProgress.goal}</span>
             </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5">
@@ -693,7 +747,7 @@ export default function Tasks() {
             />
           </div>
           <div className="flex items-center justify-between mt-1.5">
-            {dailyProgress.contacts >= 100 ? (
+            {dailyProgress.contacts >= dailyProgress.goal ? (
               <p className="text-xs text-green-600 font-semibold">🏆 Meta atingida! Excelente trabalho!</p>
             ) : (
               <p className="text-xs text-gray-400">Faltam <strong>{dailyProgress.remaining}</strong> contatos para a meta de hoje</p>
@@ -952,6 +1006,7 @@ export default function Tasks() {
                     Criada: {new Date(task.createdAt).toLocaleDateString("pt-BR")}
                     {!!task.contactCount && ` · 📞 ${task.contactCount} contato(s)`}
                     {task.convertedAt && ` · 🎉 Cliente ativo desde ${new Date(task.convertedAt).toLocaleDateString("pt-BR")}`}
+                    {task.orderValue && ` · 💰 R$ ${Number(task.orderValue).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
                   </p>
                   {aiSuggestion?.taskId === task.id && (
                     <div className="text-sm bg-purple-50 p-2 rounded border border-purple-200">
@@ -960,6 +1015,29 @@ export default function Tasks() {
                     </div>
                   )}
                   <div className="flex gap-2 flex-wrap">
+                    {(() => {
+                      const phone = extractPhone(`${task.title} ${task.notes ?? ''}`);
+                      const email = extractEmail(`${task.title} ${task.notes ?? ''}`);
+                      return (
+                        <>
+                          {phone && (
+                            <Button asChild size="sm" variant="outline" className="text-green-700 border-green-300 hover:bg-green-50" onClick={(e) => e.stopPropagation()}>
+                              <a href={waLink(phone)} target="_blank" rel="noopener noreferrer">📱 WhatsApp</a>
+                            </Button>
+                          )}
+                          {phone && (
+                            <Button asChild size="sm" variant="outline" onClick={(e) => e.stopPropagation()}>
+                              <a href={`tel:+${phone.length <= 11 ? `55${phone}` : phone}`}>📞 Ligar</a>
+                            </Button>
+                          )}
+                          {email && (
+                            <Button asChild size="sm" variant="outline" className="text-blue-700 border-blue-300 hover:bg-blue-50" onClick={(e) => e.stopPropagation()}>
+                              <a href={`mailto:${email}`}>📧 E-mail</a>
+                            </Button>
+                          )}
+                        </>
+                      );
+                    })()}
                     <Button
                       size="sm"
                       variant={task.convertedAt ? "outline" : "default"}
@@ -1023,6 +1101,50 @@ export default function Tasks() {
                 className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold transition"
               >
                 Deletar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Convert to active client modal */}
+      {convertModalTask && (
+        <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
+            <div className="text-center mb-4">
+              <div className="text-4xl mb-2">🎉</div>
+              <h3 className="text-base font-bold text-gray-800">Marcar como Cliente Ativo</h3>
+              <p className="text-sm text-gray-500 mt-1">{convertModalTask.title}</p>
+            </div>
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Valor da venda (R$) <span className="text-gray-400 font-normal">(opcional)</span>
+              </label>
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                placeholder="Ex: 299.90"
+                value={orderValueInput}
+                onChange={e => setOrderValueInput(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConvertModalTask(null)}
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmConvert}
+                disabled={toggleConvertedMutation.isPending}
+                className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold transition"
+              >
+                Confirmar
               </button>
             </div>
           </div>

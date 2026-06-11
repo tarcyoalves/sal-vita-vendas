@@ -100,13 +100,26 @@ export const tasksRouter = router({
   // Marca/desmarca o lead como cliente ativo (conversão). Não altera status do lembrete —
   // lembretes continuam recorrentes; isto é apenas um marco de negócio (virou venda).
   toggleConverted: protectedProcedure
-    .input(z.object({ id: z.number(), converted: z.boolean() }))
+    .input(z.object({
+      id: z.number(),
+      converted: z.boolean(),
+      orderValue: z.number().min(0).max(999999.99).optional(),
+      orderId: z.string().max(100).optional(),
+    }))
     .mutation(async ({ input, ctx }) => {
       const ownerFilter = ctx.user.role === 'admin'
         ? eq(tasks.id, input.id)
         : and(eq(tasks.id, input.id), await userTaskFilter(ctx.user.id, ctx.user.name ?? ''));
+      const setData: Record<string, any> = { convertedAt: input.converted ? new Date() : null, updatedAt: new Date() };
+      if (input.converted) {
+        if (input.orderValue !== undefined) setData.orderValue = input.orderValue.toFixed(2);
+        if (input.orderId !== undefined) setData.orderId = input.orderId;
+      } else {
+        setData.orderValue = null;
+        setData.orderId = null;
+      }
       const [updated] = await db.update(tasks)
-        .set({ convertedAt: input.converted ? new Date() : null, updatedAt: new Date() })
+        .set(setData)
         .where(ownerFilter)
         .returning();
       if (!updated) throw new TRPCError({ code: 'FORBIDDEN', message: 'Tarefa não encontrada ou sem permissão' });

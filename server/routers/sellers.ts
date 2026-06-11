@@ -27,7 +27,7 @@ export const sellersRouter = router({
       email: z.string().email(),
       phone: z.string().optional(),
       department: z.string().optional(),
-      dailyGoal: z.number().optional().default(10),
+      dailyGoal: z.number().optional().default(100),
       workHoursGoal: z.number().min(1).max(24).optional().default(8),
       status: z.enum(['active', 'inactive']).optional().default('active'),
     }))

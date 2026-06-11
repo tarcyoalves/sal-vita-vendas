@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, boolean, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, boolean, timestamp, numeric } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
@@ -17,7 +17,7 @@ export const sellers = pgTable('sellers', {
   email: text('email').notNull(),
   phone: text('phone'),
   department: text('department'),
-  dailyGoal: integer('daily_goal').default(10),
+  dailyGoal: integer('daily_goal').default(100),
   workHoursGoal: integer('work_hours_goal').default(8).notNull(),
   status: text('status').notNull().default('active'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -54,6 +54,9 @@ export const tasks = pgTable('tasks', {
   convertedAt: timestamp('converted_at'),
   // Conta contatos reais (notas relevantes salvas) — usado para medir "quantos contatos até converter"
   contactCount: integer('contact_count').notNull().default(0),
+  // Valor da venda quando o lead é convertido em cliente ativo (ticket médio, faturamento)
+  orderValue: numeric('order_value', { precision: 10, scale: 2 }),
+  orderId: text('order_id'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

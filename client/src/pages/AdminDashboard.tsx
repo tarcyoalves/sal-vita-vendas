@@ -25,8 +25,35 @@ import {
   Phone,
   RefreshCw,
   NotebookPen,
+  DollarSign,
+  Download,
 } from "lucide-react";
 import AttendantDetailModal from '../components/AttendantDetailModal';
+
+// Sellers created before dailyGoal was wired up still carry the old default of 10
+// while the gamification has always targeted 100 — treat 10 as "not customized".
+function effectiveDailyGoal(dailyGoal?: number | null): number {
+  return dailyGoal && dailyGoal !== 10 ? dailyGoal : 100;
+}
+
+// ── CSV export helper ────────────────────────────────────────────────────────
+function exportCsv(filename: string, headers: string[], rows: (string | number)[][]) {
+  const escapeCell = (cell: string | number) => {
+    const s = String(cell ?? '');
+    return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [headers, ...rows].map(row => row.map(escapeCell).join(';'));
+  const csv = '﻿' + lines.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 // ── AI Analysis Report ───────────────────────────────────────────────────────
 // Uses inline styles (not Tailwind dynamic classes) + manual table parser
@@ -249,6 +276,12 @@ export default function AdminDashboard() {
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   }).length;
 
+  // ── Faturamento e ticket médio (a partir do valor de venda informado na conversão) ──
+  const tasksWithRevenue = convertedTasks.filter(t => t.orderValue != null && !isNaN(Number(t.orderValue)));
+  const totalRevenue = tasksWithRevenue.reduce((sum, t) => sum + Number(t.orderValue), 0);
+  const avgTicket = tasksWithRevenue.length > 0 ? totalRevenue / tasksWithRevenue.length : 0;
+  const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
   // ── Funil de conversão: total de leads → contatados → convertidos ──────────
   const contactedTasks = (tasks as any[]).filter(t => t.lastContactedAt);
   const funnel = {
@@ -265,6 +298,15 @@ export default function AdminDashboard() {
     ? firstContactDeltas.reduce((a, b) => a + b, 0) / firstContactDeltas.length
     : 0;
   const avgFirstContactDays = avgFirstContactMs > 0 ? (avgFirstContactMs / 86400000) : 0;
+
+  // ── Tempo médio até a conversão (createdAt → convertedAt) ───────────────────
+  const conversionTimeDeltas = convertedTasks
+    .map(t => new Date(t.convertedAt).getTime() - new Date(t.createdAt).getTime())
+    .filter(d => d > 0);
+  const avgConversionMs = conversionTimeDeltas.length > 0
+    ? conversionTimeDeltas.reduce((a, b) => a + b, 0) / conversionTimeDeltas.length
+    : 0;
+  const avgConversionDays = avgConversionMs > 0 ? (avgConversionMs / 86400000) : 0;
   const staleNoContact = (tasks as any[]).filter(t => {
     if (t.lastContactedAt || t.convertedAt) return false;
     const ageMs = Date.now() - new Date(t.createdAt).getTime();
@@ -294,7 +336,8 @@ export default function AdminDashboard() {
     // Taxa de leads perdidos: cancelados em relação ao que já teve um desfecho (convertido ou cancelado)
     const decided = mineConverted + mineCancelled;
     const lostRate = decided > 0 ? Math.round((mineCancelled / decided) * 100) : 0;
-    return { name: seller.name, total: minePending, converted: mineConverted, rate, myAvgContacts, cancelled: mineCancelled, lostRate };
+    const myRevenue = mineConvertedTasks.reduce((acc, t) => acc + (t.orderValue != null && !isNaN(Number(t.orderValue)) ? Number(t.orderValue) : 0), 0);
+    return { name: seller.name, total: minePending, converted: mineConverted, rate, myAvgContacts, cancelled: mineCancelled, lostRate, myRevenue };
   }).filter(r => r.total > 0).sort((a, b) => b.converted - a.converted || b.rate - a.rate);
 
   // ── Tendência semanal de conversões (últimas 8 semanas, agrupado por convertedAt) ──
@@ -338,11 +381,13 @@ export default function AdminDashboard() {
   const upcomingReminders = filteredReminders.filter(r => new Date(r.reminderDate) > now && r.status === 'pending');
   const overdueReminders = filteredReminders.filter(r => new Date(r.reminderDate) <= now && r.status === 'pending');
 
+  const teamDailyGoal = (sellers as any[] || []).reduce((sum, s) => sum + effectiveDailyGoal(s.dailyGoal), 0);
+
   const kpis = [
     {
       label: "Contatos hoje",
       value: contactsToday,
-      sub: `meta: ${(sellers?.length || 0) * 100}`,
+      sub: `meta: ${teamDailyGoal}`,
       icon: <Phone size={22} />,
       color: "text-blue-600",
       bg: "bg-blue-50",
@@ -398,6 +443,15 @@ export default function AdminDashboard() {
       value: convertedCount,
       sub: `${conversionRate}% taxa · ${convertedThisMonth} este mês · ~${avgContactsToConvert} contatos p/ converter`,
       icon: <span className="text-[22px]">🎉</span>,
+      color: "text-emerald-600",
+      bg: "bg-emerald-50",
+      border: "border-emerald-100",
+    },
+    {
+      label: "Faturamento",
+      value: fmtBRL(totalRevenue),
+      sub: tasksWithRevenue.length > 0 ? `ticket médio: ${fmtBRL(avgTicket)}` : "sem vendas com valor informado",
+      icon: <DollarSign size={22} />,
       color: "text-emerald-600",
       bg: "bg-emerald-50",
       border: "border-emerald-100",
@@ -560,6 +614,11 @@ export default function AdminDashboard() {
                 ⏱️ Tempo médio até o 1º contato: <strong className="text-gray-600">{avgFirstContactDays < 1 ? `${Math.round(avgFirstContactMs / 3600000)}h` : `${avgFirstContactDays.toFixed(1)} dias`}</strong>
               </p>
             )}
+            {avgConversionDays > 0 && (
+              <p className="text-[11px] text-gray-400 mt-1">
+                🎯 Tempo médio até a conversão: <strong className="text-gray-600">{avgConversionDays < 1 ? `${Math.round(avgConversionMs / 3600000)}h` : `${avgConversionDays.toFixed(1)} dias`}</strong>
+              </p>
+            )}
           </div>
 
           {/* Tendência semanal de conversões */}
@@ -591,7 +650,22 @@ export default function AdminDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Ranking de conversão */}
             <div>
-              <p className="text-xs font-medium text-gray-500 mb-2">🏆 Ranking de conversão por atendente</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-gray-500">🏆 Ranking de conversão por atendente</p>
+                {conversionRanking.length > 0 && (
+                  <button
+                    onClick={() => exportCsv(
+                      `ranking-conversao-${new Date().toISOString().slice(0, 10)}.csv`,
+                      ['Atendente', 'Total leads', 'Convertidos', 'Taxa (%)', 'Contatos médios/venda', 'Faturamento (R$)', 'Perdidos', 'Taxa perdidos (%)'],
+                      conversionRanking.map(r => [r.name, r.total, r.converted, r.rate, r.myAvgContacts, r.myRevenue.toFixed(2), r.cancelled, r.lostRate])
+                    )}
+                    className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-emerald-600 transition"
+                    title="Exportar CSV"
+                  >
+                    <Download size={12} /> CSV
+                  </button>
+                )}
+              </div>
               {conversionRanking.length > 0 ? (
                 <div className="space-y-2">
                   {conversionRanking.slice(0, 6).map((r, i) => (
@@ -604,6 +678,7 @@ export default function AdminDashboard() {
                       </div>
                       <div className="flex items-center gap-3 pl-6 mt-0.5 text-[10px] text-gray-400">
                         {r.myAvgContacts > 0 && <span>📞 ~{r.myAvgContacts} contatos/venda</span>}
+                        {r.myRevenue > 0 && <span className="text-emerald-600">💰 {fmtBRL(r.myRevenue)}</span>}
                         {r.cancelled > 0 && <span className={r.lostRate >= 50 ? 'text-red-500' : ''}>❌ {r.cancelled} perdido(s) ({r.lostRate}%)</span>}
                       </div>
                     </div>
@@ -665,7 +740,7 @@ export default function AdminDashboard() {
               {sellers.map((seller: any) => {
                 const sellerTasks = (tasks as any[]).filter(t => t.assignedTo === seller.name || t.userId === seller.userId);
                 const sellerContactsToday = sellerTasks.filter(t => t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart).length;
-                const GOAL = 100;
+                const GOAL = effectiveDailyGoal(seller.dailyGoal);
                 const pct = Math.min(Math.round((sellerContactsToday / GOAL) * 100), 100);
                 const sellerOverdue = sellerTasks.filter(t => {
                   if (t.status !== 'pending' || !t.reminderDate || !t.reminderEnabled) return false;

@@ -4,7 +4,11 @@ import { useMemo, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Phone, Clock, Zap, TrendingUp, AlertCircle, Trophy } from 'lucide-react';
 
-const DAILY_GOAL = 100;
+// Sellers created before dailyGoal was wired up still carry the old default of 10
+// while the gamification has always targeted 100 — treat 10 as "not customized".
+function effectiveDailyGoal(dailyGoal?: number | null): number {
+  return dailyGoal && dailyGoal !== 10 ? dailyGoal : 100;
+}
 
 function pad(n: number) { return String(n).padStart(2, '0'); }
 function fmtDate(d: Date) { return `${pad(d.getDate())}/${pad(d.getMonth()+1)}`; }
@@ -77,7 +81,8 @@ export default function AttendantProgress() {
     const goalMs  = (sellerProfile?.workHoursGoal ?? 8) * 3600000;
     const hoursWorked = workedMs / 3600000;
     const hoursPct = Math.min(Math.round((workedMs / goalMs) * 100), 100);
-    const contactsPct = Math.min(Math.round((contactsToday.length / DAILY_GOAL) * 100), 100);
+    const dailyGoal = effectiveDailyGoal(sellerProfile?.dailyGoal);
+    const contactsPct = Math.min(Math.round((contactsToday.length / dailyGoal) * 100), 100);
     const productivity = hoursWorked > 0.1 ? (contactsToday.length / hoursWorked).toFixed(1) : '--';
 
     const overdueToday = (tasks as any[]).filter(t =>
@@ -102,6 +107,7 @@ export default function AttendantProgress() {
     return {
       contactsToday: contactsToday.length,
       contactsPct,
+      dailyGoal,
       hoursPct,
       hoursWorked: fmtMs(workedMs),
       hoursGoal: fmtMs(goalMs),
@@ -121,12 +127,14 @@ export default function AttendantProgress() {
     const prev = prevContactsRef.current;
     const cur  = m.contactsToday;
     if (prev < 0) { prevContactsRef.current = cur; return; }
-    if (prev < 25  && cur >= 25)  toast.success('🎯 25 contatos! Ótimo começo!');
-    if (prev < 50  && cur >= 50)  toast.success('🔥 50 contatos! Você está na metade da meta!');
-    if (prev < 75  && cur >= 75)  toast.success('⚡ 75 contatos! Falta só 25 pra fechar!');
-    if (prev < 100 && cur >= 100) toast.success('🏆 META BATIDA! 100 contatos hoje!', { duration: 6000 });
+    const goal = m.dailyGoal;
+    const q1 = Math.round(goal * 0.25), half = Math.round(goal * 0.5), q3 = Math.round(goal * 0.75);
+    if (prev < q1   && cur >= q1)   toast.success(`🎯 ${q1} contatos! Ótimo começo!`);
+    if (prev < half && cur >= half) toast.success(`🔥 ${half} contatos! Você está na metade da meta!`);
+    if (prev < q3   && cur >= q3)   toast.success(`⚡ ${q3} contatos! Falta só ${goal - q3} pra fechar!`);
+    if (prev < goal && cur >= goal) toast.success(`🏆 META BATIDA! ${goal} contatos hoje!`, { duration: 6000 });
     prevContactsRef.current = cur;
-  }, [m.contactsToday]);
+  }, [m.contactsToday, m.dailyGoal]);
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
@@ -149,7 +157,7 @@ export default function AttendantProgress() {
              : '⚪ Sem sessão ativa'}
           </p>
         </div>
-        {m.contactsToday >= 100 && (
+        {m.contactsToday >= m.dailyGoal && (
           <div className="flex items-center gap-1.5 bg-green-100 text-green-700 px-3 py-1.5 rounded-full text-sm font-bold">
             <Trophy size={15} /> META BATIDA!
           </div>
@@ -163,12 +171,12 @@ export default function AttendantProgress() {
             <ProgressRing pct={m.contactsPct} size={100} stroke={9} color={contactColor} />
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <span className="text-2xl font-black" style={{ color: contactColor }}>{m.contactsToday}</span>
-              <span className="text-[10px] text-gray-400 font-medium">/ {DAILY_GOAL}</span>
+              <span className="text-[10px] text-gray-400 font-medium">/ {m.dailyGoal}</span>
             </div>
           </div>
           <div className="text-center">
             <p className="text-sm font-bold" style={{ color: contactColor }}>{m.contactsPct}%</p>
-            <p className="text-xs text-gray-400">{DAILY_GOAL - m.contactsToday > 0 ? `faltam ${DAILY_GOAL - m.contactsToday}` : '✅ completo'}</p>
+            <p className="text-xs text-gray-400">{m.dailyGoal - m.contactsToday > 0 ? `faltam ${m.dailyGoal - m.contactsToday}` : '✅ completo'}</p>
           </div>
         </div>
 
@@ -246,7 +254,7 @@ export default function AttendantProgress() {
           {m.weekDays.map((day, i) => {
             const isToday = i === 6;
             const pct = m.maxBar > 0 ? (day.count / m.maxBar) * 100 : 0;
-            const barColor = isToday ? (day.count >= DAILY_GOAL ? '#16a34a' : '#2563eb') : '#93c5fd';
+            const barColor = isToday ? (day.count >= m.dailyGoal ? '#16a34a' : '#2563eb') : '#93c5fd';
             return (
               <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0">
                 {day.count > 0 && (
@@ -267,31 +275,31 @@ export default function AttendantProgress() {
         </div>
         <div className="mt-3 flex items-center gap-2">
           <div className="w-3 h-3 rounded-sm bg-green-500" />
-          <span className="text-xs text-gray-500">Meta diária: <strong>{DAILY_GOAL} contatos</strong></span>
+          <span className="text-xs text-gray-500">Meta diária: <strong>{m.dailyGoal} contatos</strong></span>
         </div>
       </div>
 
-      <div className={`rounded-2xl p-4 text-center ${m.contactsToday >= 100 ? 'bg-green-50 border border-green-200' : 'bg-blue-50 border border-blue-100'}`}>
-        {m.contactsToday >= 100 ? (
+      <div className={`rounded-2xl p-4 text-center ${m.contactsToday >= m.dailyGoal ? 'bg-green-50 border border-green-200' : 'bg-blue-50 border border-blue-100'}`}>
+        {m.contactsToday >= m.dailyGoal ? (
           <>
             <p className="text-2xl mb-1">🏆</p>
-            <p className="font-bold text-green-700">Parabéns! Meta de {DAILY_GOAL} contatos atingida!</p>
+            <p className="font-bold text-green-700">Parabéns! Meta de {m.dailyGoal} contatos atingida!</p>
             <p className="text-xs text-green-600 mt-0.5">Excelente trabalho hoje, {user?.name?.split(' ')[0]}!</p>
           </>
-        ) : m.contactsToday >= 75 ? (
+        ) : m.contactsToday >= Math.round(m.dailyGoal * 0.75) ? (
           <>
             <p className="text-2xl mb-1">⚡</p>
-            <p className="font-bold text-blue-700">Quase lá! Só faltam {DAILY_GOAL - m.contactsToday} contatos!</p>
+            <p className="font-bold text-blue-700">Quase lá! Só faltam {m.dailyGoal - m.contactsToday} contatos!</p>
           </>
-        ) : m.contactsToday >= 50 ? (
+        ) : m.contactsToday >= Math.round(m.dailyGoal * 0.5) ? (
           <>
             <p className="text-2xl mb-1">🔥</p>
-            <p className="font-bold text-blue-700">Na metade! {DAILY_GOAL - m.contactsToday} contatos pra fechar.</p>
+            <p className="font-bold text-blue-700">Na metade! {m.dailyGoal - m.contactsToday} contatos pra fechar.</p>
           </>
         ) : (
           <>
             <p className="text-2xl mb-1">🎯</p>
-            <p className="font-bold text-blue-700">Meta de hoje: {DAILY_GOAL} contatos</p>
+            <p className="font-bold text-blue-700">Meta de hoje: {m.dailyGoal} contatos</p>
             <p className="text-xs text-blue-500 mt-0.5">Cada anotação salva conta como um contato!</p>
           </>
         )}
