@@ -133,7 +133,7 @@ function isValidCpf(cpf: string): boolean {
   return r === parseInt(d[10]);
 }
 
-interface Product {id:string;name:string;subtitle:string;weight:string;weightKg:number;price:number;pricePerKg:number;tag:string;highlight:boolean;savings?:string}
+interface Product {id:string;name:string;subtitle:string;weight:string;weightKg:number;units:number;price:number;pricePerKg:number;tag:string;highlight:boolean;savings?:string}
 interface ShipOpt  {serviceId?:string;service:string;price:number;days:string;icon:string;description:string}
 interface CepData  {localidade:string;uf:string;bairro:string}
 
@@ -272,7 +272,7 @@ export default function SalVitaLanding() {
       cartTrackRef.current = true;
       fetch('/api/trpc/recovery.trackCart', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({json:{ customerName, customerPhone: phoneDigits, customerEmail: checkoutForm.customerEmail||undefined, quantity:selProd?.weightKg>=10?10:1, stepReached:1 }}),
+        body:JSON.stringify({json:{ customerName, customerPhone: phoneDigits, customerEmail: checkoutForm.customerEmail||undefined, quantity:selProd?.units ?? 1, stepReached:1 }}),
       }).catch(()=>{});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -317,14 +317,14 @@ export default function SalVitaLanding() {
         const p2 = checkoutForm.customerPhone.replace(/\D/g,'');
         fetch('/api/trpc/recovery.trackCart', {
           method:'POST', headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({json:{ customerName:checkoutForm.customerName, customerPhone:p2, customerEmail:checkoutForm.customerEmail||undefined, postalCode:c, quantity:selProd?.weightKg>=10?10:1, stepReached:2 }}),
+          body:JSON.stringify({json:{ customerName:checkoutForm.customerName, customerPhone:p2, customerEmail:checkoutForm.customerEmail||undefined, postalCode:c, quantity:selProd?.units ?? 1, stepReached:2 }}),
         }).catch(()=>{});
       }
 
       // Call backend — tries Melhor Envio API first, falls back to static table
       let opts: ShipOpt[] = [];
       try {
-        const qty = selProd!.weightKg >= 10 ? 10 : 1;
+        const qty = selProd!.units;
         const r = await fetch('/api/trpc/shipping.calculate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -371,8 +371,9 @@ export default function SalVitaLanding() {
   };
 
   const products:Product[]=[
-    {id:'1kg',  name:'SAL VITA PREMIUM',      subtitle:'Embalagem zip lock com janela',      weight:'1kg',          weightKg:1.2, price:29.90, pricePerKg:29.90, tag:'Mais Vendido',          highlight:false},
-    {id:'caixa',name:'CAIXA SAL VITA PREMIUM',subtitle:'10 embalagens zip lock de 1kg cada', weight:'10kg (10×1kg)',weightKg:12,  price:149.90,pricePerKg:14.99, tag:'Melhor Custo-Benefício', highlight:true, savings:'Economize R$ 149,10'},
+    {id:'1kg',  name:'SAL VITA PREMIUM',      subtitle:'Embalagem zip lock com janela',      weight:'1kg',          weightKg:1.2, units:1,  price:29.90, pricePerKg:29.90, tag:'Mais Vendido',          highlight:false},
+    {id:'3kg',  name:'TRIO SAL VITA',         subtitle:'3 embalagens zip lock de 1kg cada',  weight:'3kg (3×1kg)',  weightKg:3.6, units:3,  price:74.90, pricePerKg:24.97, tag:'Ideal para a Família', highlight:false},
+    {id:'caixa',name:'CAIXA SAL VITA PREMIUM',subtitle:'10 embalagens zip lock de 1kg cada', weight:'10kg (10×1kg)',weightKg:12,  units:10, price:149.90,pricePerKg:14.99, tag:'Melhor Custo-Benefício', highlight:true, savings:'Economize R$ 149,10'},
   ];
 
   async function validateCoupon(code: string, orderVal: number) {
@@ -406,14 +407,14 @@ export default function SalVitaLanding() {
       body:JSON.stringify({json:{ customerName:checkoutForm.customerName, customerPhone:p3, customerEmail:checkoutForm.customerEmail||undefined, postalCode:checkoutForm.postalCode, quantity:selProd.weightKg>=10?10:1, stepReached:3 }}),
     }).catch(()=>{});
     try {
-      const qty = selProd.weightKg>=10?10:1;
+      const qty = selProd.units;
       const res = await fetch('/api/trpc/shipping.createOrder', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({json:{
           ...checkoutForm,
           quantity:qty,
-          productId: selProd.id==='caixa'?'caixa':'1kg',
+          productId: (['1kg','3kg','caixa'] as const).includes(selProd.id as any) ? selProd.id : '1kg',
           shippingServiceId:selShip.serviceId ?? (selShip.service==='PAC'?'1':'2'),
           shippingServiceName:selShip.service,
           shippingPrice:selShip.price,
@@ -1281,7 +1282,7 @@ export default function SalVitaLanding() {
               <p style={{color:'rgba(255,255,255,.55)',fontSize:'1.05rem'}}>Frete calculado por CEP via Melhor Envio · Enviamos para todo o Brasil</p>
             </div>
 
-            <div id="price-c" data-reveal className={`rev price-grid${v('price-c')?' on':''}`} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))',gap:24,maxWidth:820,margin:'0 auto'}}>
+            <div id="price-c" data-reveal className={`rev price-grid${v('price-c')?' on':''}`} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:24,maxWidth:1040,margin:'0 auto'}}>
               {products.map(p=>(
                 <div key={p.id} className={p.highlight?'pc-hi':'pc-lo'} style={{borderRadius:24,padding:'36px 32px',position:'relative',overflow:'hidden',transition:'transform .3s'}}
                   onMouseEnter={e=>e.currentTarget.style.transform='translateY(-6px)'}

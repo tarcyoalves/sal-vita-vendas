@@ -56672,7 +56672,7 @@ var shippingRouter = router({
     city: external_exports.string().min(2).max(100),
     state: external_exports.string().length(2),
     quantity: external_exports.number().int().min(1).max(100),
-    productId: external_exports.enum(["1kg", "caixa"]).optional().default("1kg"),
+    productId: external_exports.enum(["1kg", "3kg", "caixa"]).optional().default("1kg"),
     shippingServiceId: external_exports.string().optional(),
     shippingServiceName: external_exports.string().optional(),
     shippingPrice: external_exports.number().min(0).optional(),
@@ -56687,6 +56687,7 @@ var shippingRouter = router({
   })).mutation(async ({ input }) => {
     const CATALOG = {
       "1kg": { price: 29.9, kgPerUnit: 1 },
+      "3kg": { price: 74.9, kgPerUnit: 3 },
       "caixa": { price: 149.9, kgPerUnit: 10 }
     };
     const prod = CATALOG[input.productId] ?? CATALOG["1kg"];

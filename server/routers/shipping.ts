@@ -137,7 +137,7 @@ export const shippingRouter = router({
       city: z.string().min(2).max(100),
       state: z.string().length(2),
       quantity: z.number().int().min(1).max(100),
-      productId: z.enum(['1kg', 'caixa']).optional().default('1kg'),
+      productId: z.enum(['1kg', '3kg', 'caixa']).optional().default('1kg'),
       shippingServiceId: z.string().optional(),
       shippingServiceName: z.string().optional(),
       shippingPrice: z.number().min(0).optional(),
@@ -155,6 +155,7 @@ export const shippingRouter = router({
       // (kg units): 1kg product = 1 unit each, box = 10 units each.
       const CATALOG: Record<string, { price: number; kgPerUnit: number }> = {
         '1kg':   { price: 29.90,  kgPerUnit: 1 },
+        '3kg':   { price: 74.90,  kgPerUnit: 3 },
         'caixa': { price: 149.90, kgPerUnit: 10 },
       };
       const prod = CATALOG[input.productId] ?? CATALOG['1kg'];
