@@ -133,6 +133,16 @@ export const siteOrders = pgTable('site_orders', {
   couponCode: text('coupon_code'),
   couponDiscount: text('coupon_discount'),
   unpaidFollowupSentAt: timestamp('unpaid_followup_sent_at'),
+  // Marketing attribution (captured from the landing URL) so we know which ad
+  // drove each sale, and to feed Meta CAPI with click/source data.
+  utmSource: text('utm_source'),
+  utmMedium: text('utm_medium'),
+  utmCampaign: text('utm_campaign'),
+  utmContent: text('utm_content'),
+  utmTerm: text('utm_term'),
+  fbclid: text('fbclid'),
+  // Reorder reminder (retention): set when the ~45-day "buy again" nudge is sent.
+  reorderRemindedAt: timestamp('reorder_reminded_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

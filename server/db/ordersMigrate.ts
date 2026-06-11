@@ -69,6 +69,13 @@ export async function ensureOrdersTablesExist(): Promise<Step[]> {
   await run('site_orders.mp_payment_id', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_payment_id TEXT`);
   await run('site_orders.tracking_code', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS tracking_code TEXT`);
   await run('site_orders.unpaid_followup_sent_at', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS unpaid_followup_sent_at TIMESTAMP`);
+  await run('site_orders.utm_source', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS utm_source TEXT`);
+  await run('site_orders.utm_medium', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS utm_medium TEXT`);
+  await run('site_orders.utm_campaign', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS utm_campaign TEXT`);
+  await run('site_orders.utm_content', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS utm_content TEXT`);
+  await run('site_orders.utm_term', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS utm_term TEXT`);
+  await run('site_orders.fbclid', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS fbclid TEXT`);
+  await run('site_orders.reorder_reminded_at', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS reorder_reminded_at TIMESTAMP`);
   await run('site_orders_status_idx', () => sql`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`);
   await run('site_orders_phone_idx', () => sql`CREATE INDEX IF NOT EXISTS site_orders_phone_idx ON site_orders(customer_phone)`);
 

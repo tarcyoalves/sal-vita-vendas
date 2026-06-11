@@ -42,6 +42,56 @@ async function bumpCouponUsage(code: string | null | undefined, delta: 1 | -1): 
   } catch (e) { console.error('[coupon] usage bump failed:', e); }
 }
 
+// Server-side Meta Conversions API (CAPI) Purchase — iOS/adblock-proof, fired on
+// CONFIRMED payment with the same event_id as the browser pixel (dedup). No-ops
+// unless FB_CAPI_TOKEN is configured. PII is SHA-256 hashed per Meta's spec.
+async function sendCapiPurchase(order: typeof siteOrders.$inferSelect): Promise<void> {
+  const token = process.env.FB_CAPI_TOKEN;
+  const pixelId = process.env.FB_PIXEL_ID || '2209017296169541';
+  if (!token) return; // CAPI not configured — skip silently
+  try {
+    const sha = (v: string) => crypto.createHash('sha256').update(v.trim().toLowerCase()).digest('hex');
+    const user_data: Record<string, unknown> = {};
+    const phoneDigits = order.customerPhone.replace(/\D/g, '');
+    if (phoneDigits) user_data.ph = [sha(phoneDigits.startsWith('55') ? phoneDigits : `55${phoneDigits}`)];
+    if (order.customerEmail && order.customerEmail.includes('@')) user_data.em = [sha(order.customerEmail)];
+    if (order.customerName) {
+      const parts = order.customerName.trim().split(/\s+/);
+      user_data.fn = [sha(parts[0])];
+      if (parts.length > 1) user_data.ln = [sha(parts[parts.length - 1])];
+    }
+    if (order.state) user_data.st = [sha(order.state)];
+    if (order.city) user_data.ct = [sha(order.city.replace(/\s+/g, ''))];
+    if (order.fbclid) user_data.fbc = `fb.1.${Date.now()}.${order.fbclid}`;
+    const event = {
+      event_name: 'Purchase',
+      event_time: Math.floor(Date.now() / 1000),
+      event_id: `purchase-${order.id}`,
+      action_source: 'website',
+      event_source_url: 'https://premium.salvitarn.com.br',
+      user_data,
+      custom_data: {
+        currency: 'BRL',
+        value: parseFloat(order.totalPrice ?? '0'),
+        content_ids: ['salvita-001'],
+        content_type: 'product',
+        order_id: String(order.id),
+      },
+    };
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 6000);
+    const r = await fetch(`https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: [event] }),
+      signal: ac.signal,
+    });
+    clearTimeout(timer);
+    if (!r.ok) console.error('[capi] Purchase failed', r.status, await r.text().catch(() => ''));
+    else console.log(`[capi] Purchase sent for order ${order.id}`);
+  } catch (e) { console.error('[capi] error:', e); }
+}
+
 // Best active coupon for automated recovery messages: prefers the admin-flagged
 // recovery coupon, else the newest active/valid one. Returns '' when none.
 async function getActiveRecoveryCouponCode(): Promise<string> {
@@ -354,6 +404,8 @@ app.post('/api/mp-webhook', express.raw({ type: 'application/json' }), async (re
       // Count the coupon use only now that payment is confirmed (not at order
       // creation), so abandoned/unpaid orders never burn a coupon's max uses.
       await bumpCouponUsage(order.couponCode, 1);
+      // Server-side Purchase to Meta CAPI (deduped with the browser pixel).
+      await sendCapiPurchase(order);
 
       const phone = order.customerPhone.replace(/\D/g, '');
       // Cancel pending WA recovery automations for this customer
@@ -658,6 +710,7 @@ async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
           .set({ status: 'confirmed', paymentStatus: 'confirmed', mpPaymentId: payId, updatedAt: new Date() })
           .where(eq(siteOrders.id, o.id));
         await bumpCouponUsage(o.couponCode, 1);
+        await sendCapiPurchase(o);
         const phone = o.customerPhone.replace(/\D/g, '');
         await ordersDb.update(automationRuns)
           .set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })

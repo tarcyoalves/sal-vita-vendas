@@ -42787,6 +42787,16 @@ var init_schema2 = __esm({
       couponCode: text("coupon_code"),
       couponDiscount: text("coupon_discount"),
       unpaidFollowupSentAt: timestamp("unpaid_followup_sent_at"),
+      // Marketing attribution (captured from the landing URL) so we know which ad
+      // drove each sale, and to feed Meta CAPI with click/source data.
+      utmSource: text("utm_source"),
+      utmMedium: text("utm_medium"),
+      utmCampaign: text("utm_campaign"),
+      utmContent: text("utm_content"),
+      utmTerm: text("utm_term"),
+      fbclid: text("fbclid"),
+      // Reorder reminder (retention): set when the ~45-day "buy again" nudge is sent.
+      reorderRemindedAt: timestamp("reorder_reminded_at"),
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
@@ -56666,7 +56676,14 @@ var shippingRouter = router({
     shippingServiceId: external_exports.string().optional(),
     shippingServiceName: external_exports.string().optional(),
     shippingPrice: external_exports.number().min(0).optional(),
-    couponCode: external_exports.string().max(20).optional()
+    couponCode: external_exports.string().max(20).optional(),
+    // Marketing attribution from the landing URL (best-effort, optional).
+    utmSource: external_exports.string().max(120).optional(),
+    utmMedium: external_exports.string().max(120).optional(),
+    utmCampaign: external_exports.string().max(180).optional(),
+    utmContent: external_exports.string().max(180).optional(),
+    utmTerm: external_exports.string().max(180).optional(),
+    fbclid: external_exports.string().max(400).optional()
   })).mutation(async ({ input }) => {
     const CATALOG = {
       "1kg": { price: 29.9, kgPerUnit: 1 },
@@ -56718,7 +56735,13 @@ var shippingRouter = router({
       shippingPrice: shipping > 0 ? String(shipping) : null,
       totalPrice: String(total),
       couponCode: appliedCoupon,
-      couponDiscount: couponDiscount > 0 ? String(couponDiscount) : null
+      couponDiscount: couponDiscount > 0 ? String(couponDiscount) : null,
+      utmSource: input.utmSource ?? null,
+      utmMedium: input.utmMedium ?? null,
+      utmCampaign: input.utmCampaign ?? null,
+      utmContent: input.utmContent ?? null,
+      utmTerm: input.utmTerm ?? null,
+      fbclid: input.fbclid ?? null
     }).returning();
     if (!order?.id)
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao criar pedido. Tente novamente." });
@@ -58815,6 +58838,13 @@ async function ensureOrdersTablesExist() {
   await run2("site_orders.mp_payment_id", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS mp_payment_id TEXT`);
   await run2("site_orders.tracking_code", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS tracking_code TEXT`);
   await run2("site_orders.unpaid_followup_sent_at", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS unpaid_followup_sent_at TIMESTAMP`);
+  await run2("site_orders.utm_source", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS utm_source TEXT`);
+  await run2("site_orders.utm_medium", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS utm_medium TEXT`);
+  await run2("site_orders.utm_campaign", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS utm_campaign TEXT`);
+  await run2("site_orders.utm_content", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS utm_content TEXT`);
+  await run2("site_orders.utm_term", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS utm_term TEXT`);
+  await run2("site_orders.fbclid", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS fbclid TEXT`);
+  await run2("site_orders.reorder_reminded_at", () => sql5`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS reorder_reminded_at TIMESTAMP`);
   await run2("site_orders_status_idx", () => sql5`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`);
   await run2("site_orders_phone_idx", () => sql5`CREATE INDEX IF NOT EXISTS site_orders_phone_idx ON site_orders(customer_phone)`);
   await run2("abandoned_carts", () => sql5`
@@ -58975,6 +59005,63 @@ async function bumpCouponUsage(code, delta) {
     await ordersDb.update(coupons).set({ usedCount: delta > 0 ? sql`used_count + 1` : sql`GREATEST(used_count - 1, 0)` }).where(eq(coupons.code, code));
   } catch (e) {
     console.error("[coupon] usage bump failed:", e);
+  }
+}
+async function sendCapiPurchase(order) {
+  const token = process.env.FB_CAPI_TOKEN;
+  const pixelId = process.env.FB_PIXEL_ID || "2209017296169541";
+  if (!token)
+    return;
+  try {
+    const sha = (v2) => import_crypto3.default.createHash("sha256").update(v2.trim().toLowerCase()).digest("hex");
+    const user_data = {};
+    const phoneDigits = order.customerPhone.replace(/\D/g, "");
+    if (phoneDigits)
+      user_data.ph = [sha(phoneDigits.startsWith("55") ? phoneDigits : `55${phoneDigits}`)];
+    if (order.customerEmail && order.customerEmail.includes("@"))
+      user_data.em = [sha(order.customerEmail)];
+    if (order.customerName) {
+      const parts = order.customerName.trim().split(/\s+/);
+      user_data.fn = [sha(parts[0])];
+      if (parts.length > 1)
+        user_data.ln = [sha(parts[parts.length - 1])];
+    }
+    if (order.state)
+      user_data.st = [sha(order.state)];
+    if (order.city)
+      user_data.ct = [sha(order.city.replace(/\s+/g, ""))];
+    if (order.fbclid)
+      user_data.fbc = `fb.1.${Date.now()}.${order.fbclid}`;
+    const event = {
+      event_name: "Purchase",
+      event_time: Math.floor(Date.now() / 1e3),
+      event_id: `purchase-${order.id}`,
+      action_source: "website",
+      event_source_url: "https://premium.salvitarn.com.br",
+      user_data,
+      custom_data: {
+        currency: "BRL",
+        value: parseFloat(order.totalPrice ?? "0"),
+        content_ids: ["salvita-001"],
+        content_type: "product",
+        order_id: String(order.id)
+      }
+    };
+    const ac = new AbortController();
+    const timer2 = setTimeout(() => ac.abort(), 6e3);
+    const r = await fetch(`https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${token}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: [event] }),
+      signal: ac.signal
+    });
+    clearTimeout(timer2);
+    if (!r.ok)
+      console.error("[capi] Purchase failed", r.status, await r.text().catch(() => ""));
+    else
+      console.log(`[capi] Purchase sent for order ${order.id}`);
+  } catch (e) {
+    console.error("[capi] error:", e);
   }
 }
 async function getActiveRecoveryCouponCode() {
@@ -59277,6 +59364,7 @@ app.post("/api/mp-webhook", import_express.default.raw({ type: "application/json
       }
       await ordersDb.update(siteOrders).set({ status: "confirmed", paymentStatus: "confirmed", mpPaymentId: mpId, updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, orderId));
       await bumpCouponUsage(order.couponCode, 1);
+      await sendCapiPurchase(order);
       const phone = order.customerPhone.replace(/\D/g, "");
       await ordersDb.update(automationRuns).set({ status: "cancelled", cancelledAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(and(eq(automationRuns.customerPhone, phone), eq(automationRuns.status, "scheduled")));
       await ordersDb.update(abandonedCarts).set({ status: "converted", recovered: true, convertedAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.customerPhone, phone));
@@ -59535,6 +59623,7 @@ async function reconcileAwaitingOrders() {
           continue;
         await ordersDb.update(siteOrders).set({ status: "confirmed", paymentStatus: "confirmed", mpPaymentId: payId, updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, o.id));
         await bumpCouponUsage(o.couponCode, 1);
+        await sendCapiPurchase(o);
         const phone = o.customerPhone.replace(/\D/g, "");
         await ordersDb.update(automationRuns).set({ status: "cancelled", cancelledAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(and(eq(automationRuns.customerPhone, phone), eq(automationRuns.status, "scheduled")));
         await ordersDb.update(abandonedCarts).set({ status: "converted", recovered: true, convertedAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.customerPhone, phone));

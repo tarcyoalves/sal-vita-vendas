@@ -174,6 +174,7 @@ export default function SalVitaLanding() {
   const [cpfError,setCpfError]             = useState('');
   const [pendingOrder,setPendingOrder]     = useState<{id:number;total:number}|null>(null);
   const autoCouponRef = useRef<string>('');
+  const attributionRef = useRef<Record<string,string>>({});
   const obs = useRef<IntersectionObserver|null>(null);
   const spToast = useSocialProof();
 
@@ -208,6 +209,18 @@ export default function SalVitaLanding() {
       setCouponCode(code);
       autoCouponRef.current = code; // mark as link-coupon so it auto-applies
     }
+    // Capture ad attribution (UTM + fbclid) for first-touch — so each order
+    // records which campaign/ad drove it and can feed Meta CAPI.
+    try {
+      const attr: Record<string,string> = {};
+      ['utm_source','utm_medium','utm_campaign','utm_content','utm_term'].forEach(k => {
+        const val = params.get(k); if (val) attr[k] = val.slice(0,180);
+      });
+      const fb = params.get('fbclid'); if (fb) attr.fbclid = fb.slice(0,400);
+      if (Object.keys(attr).length) localStorage.setItem('sv_attribution', JSON.stringify(attr));
+      else { const s = localStorage.getItem('sv_attribution'); if (s) Object.assign(attr, JSON.parse(s)); }
+      attributionRef.current = attr;
+    } catch {}
     // Restore previously typed customer data (saved on THIS device only — no
     // database storage) so returning shoppers don't retype everything.
     try {
@@ -401,6 +414,12 @@ export default function SalVitaLanding() {
           shippingServiceName:selShip.service,
           shippingPrice:selShip.price,
           couponCode: couponCode && couponState?.valid ? couponCode.toUpperCase().trim() : undefined,
+          utmSource: attributionRef.current.utm_source,
+          utmMedium: attributionRef.current.utm_medium,
+          utmCampaign: attributionRef.current.utm_campaign,
+          utmContent: attributionRef.current.utm_content,
+          utmTerm: attributionRef.current.utm_term,
+          fbclid: attributionRef.current.fbclid,
         }}),
       });
       const data = await res.json();

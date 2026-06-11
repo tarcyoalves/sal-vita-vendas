@@ -93,7 +93,9 @@ export default function TrackOrder() {
           content_ids: ['salvita-001'],
           content_type: 'product',
           num_items: order.quantity,
-        });
+        // eventID dedupes this browser event against the server-side CAPI event
+        // (api/index.ts fires Purchase with the same id on payment confirmation).
+        }, { eventID: `purchase-${order.id}` });
       } catch {}
     }
   }, [order, mpStatus]);

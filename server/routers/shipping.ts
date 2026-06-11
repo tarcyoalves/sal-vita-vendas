@@ -142,6 +142,13 @@ export const shippingRouter = router({
       shippingServiceName: z.string().optional(),
       shippingPrice: z.number().min(0).optional(),
       couponCode: z.string().max(20).optional(),
+      // Marketing attribution from the landing URL (best-effort, optional).
+      utmSource: z.string().max(120).optional(),
+      utmMedium: z.string().max(120).optional(),
+      utmCampaign: z.string().max(180).optional(),
+      utmContent: z.string().max(180).optional(),
+      utmTerm: z.string().max(180).optional(),
+      fbclid: z.string().max(400).optional(),
     }))
     .mutation(async ({ input }) => {
       // Server-authoritative price catalog. `quantity` is the number of 1kg units
@@ -207,6 +214,12 @@ export const shippingRouter = router({
         totalPrice: String(total),
         couponCode: appliedCoupon,
         couponDiscount: couponDiscount > 0 ? String(couponDiscount) : null,
+        utmSource: input.utmSource ?? null,
+        utmMedium: input.utmMedium ?? null,
+        utmCampaign: input.utmCampaign ?? null,
+        utmContent: input.utmContent ?? null,
+        utmTerm: input.utmTerm ?? null,
+        fbclid: input.fbclid ?? null,
       }).returning();
       if (!order?.id) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Erro ao criar pedido. Tente novamente.' });
       return { id: order.id, total, couponDiscount, couponApplied: appliedCoupon };
