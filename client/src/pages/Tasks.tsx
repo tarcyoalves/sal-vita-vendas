@@ -19,6 +19,7 @@ interface Task {
   title: string;
   description?: string | null;
   notes?: string | null;
+  email?: string | null;
   reminderDate?: Date | null;
   reminderEnabled?: boolean | null;
   status?: "pending" | "completed" | "cancelled" | null;
@@ -136,11 +137,30 @@ export default function Tasks() {
   const deleteManyMutation = trpc.tasks.deleteMany.useMutation();
   const suggestMutation = trpc.ai.suggestSalesApproach.useMutation();
 
+  // ── E-mail Marketing: add task(s) to a draft campaign ──────────────────────
+  const [campaignPickerTaskIds, setCampaignPickerTaskIds] = useState<number[] | null>(null);
+  const { data: emailCampaigns } = trpc.emailMarketing.listCampaigns.useQuery(undefined, { enabled: campaignPickerTaskIds !== null });
+  const addToCampaignMutation = trpc.emailMarketing.addRecipientsFromTasks.useMutation();
+  const draftCampaigns = (emailCampaigns ?? []).filter(c => c.status === 'draft');
+
+  const handleAddToCampaign = async (campaignId: number) => {
+    if (!campaignPickerTaskIds) return;
+    try {
+      const res = await addToCampaignMutation.mutateAsync({ campaignId, taskIds: campaignPickerTaskIds });
+      const skipped = res.skippedNoEmail + res.skippedDuplicateOrSuppressed;
+      toast.success(`✅ ${res.added} adicionado(s) à campanha` + (skipped > 0 ? ` (${skipped} ignorado(s): sem e-mail, duplicado ou descadastrado)` : ''));
+      setCampaignPickerTaskIds(null);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao adicionar à campanha");
+    }
+  };
+
   const [formData, setFormData] = useState<{
     clientId: number;
     title: string;
     description: string;
     notes: string;
+    email: string;
     reminderDate: string;
     reminderTime: string;
     reminderEnabled: boolean;
@@ -151,6 +171,7 @@ export default function Tasks() {
     title: "",
     description: "",
     notes: "",
+    email: "",
     reminderDate: "",
     reminderTime: "09:00",
     reminderEnabled: true,
@@ -159,7 +180,7 @@ export default function Tasks() {
   });
 
   const resetForm = useCallback(() => {
-    setFormData({ clientId: 0, title: "", description: "", notes: "", reminderDate: "", reminderTime: "09:00", reminderEnabled: true, priority: "medium", assignedTo: "" });
+    setFormData({ clientId: 0, title: "", description: "", notes: "", email: "", reminderDate: "", reminderTime: "09:00", reminderEnabled: true, priority: "medium", assignedTo: "" });
     setEditingTask(null);
   }, []);
 
@@ -170,13 +191,13 @@ export default function Tasks() {
         reminderDateTime = new Date(`${formData.reminderDate}T${formData.reminderTime}:00`);
       }
       if (editingTask) {
-        const result = await updateMutation.mutateAsync({ id: editingTask.id, title: formData.title, description: formData.description, notes: formData.notes, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
+        const result = await updateMutation.mutateAsync({ id: editingTask.id, title: formData.title, description: formData.description, notes: formData.notes, email: formData.email, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
         toast.success("Tarefa atualizada!");
         if (!isAdmin && result.burstWarning) {
           toast.warning(`⚠️ Atenção: ${result.burstCount} contatos registrados em menos de 10 minutos. Certifique-se de que cada anotação representa um contato real — a gestão monitora esse indicador.`, { duration: 12000 });
         }
       } else {
-        await createMutation.mutateAsync({ clientId: formData.clientId || 0, title: formData.title, description: formData.description, notes: formData.notes, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
+        await createMutation.mutateAsync({ clientId: formData.clientId || 0, title: formData.title, description: formData.description, notes: formData.notes, email: formData.email, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
         toast.success("Tarefa criada! Lembrete ativado ✅");
       }
       setShowNotesWarning(false);
@@ -296,7 +317,7 @@ export default function Tasks() {
     const reminderTime = d
       ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
       : "09:00";
-    setFormData({ clientId: task.clientId, title: task.title, description: task.description || "", notes: task.notes || "", reminderDate, reminderTime, reminderEnabled: task.reminderEnabled ?? true, priority: (task.priority as "low" | "medium" | "high") || "medium", assignedTo: task.assignedTo || "" });
+    setFormData({ clientId: task.clientId, title: task.title, description: task.description || "", notes: task.notes || "", email: task.email || "", reminderDate, reminderTime, reminderEnabled: task.reminderEnabled ?? true, priority: (task.priority as "low" | "medium" | "high") || "medium", assignedTo: task.assignedTo || "" });
     setIsModalOpen(true);
   }, []);
 
@@ -523,6 +544,7 @@ export default function Tasks() {
                 {attendants.map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
               </select>
               <Button size="sm" onClick={handleBulkAssign} variant="outline">👤 Designar ({selectedTasks.size})</Button>
+              <Button size="sm" variant="outline" onClick={() => setCampaignPickerTaskIds(Array.from(selectedTasks))}>📧 Campanha ({selectedTasks.size})</Button>
               <Button size="sm" variant="destructive" onClick={handleBulkDelete}>🗑️ Deletar ({selectedTasks.size})</Button>
             </>
           )}
@@ -574,6 +596,10 @@ export default function Tasks() {
             <div>
               <label className="block text-xs font-medium mb-1 text-gray-600">Anotações</label>
               <textarea ref={notesRef} value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Anotações, telefone, email..." className="w-full px-3 py-2 border rounded-lg text-sm" style={{ height: 'clamp(120px, 30vh, 260px)', resize: 'vertical' }} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1 text-gray-600">📧 E-mail (e-mail marketing)</label>
+              <input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="cliente@exemplo.com" className="w-full px-3 py-1.5 border rounded-lg text-sm" />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -711,6 +737,9 @@ export default function Tasks() {
                   <div className="flex gap-2 flex-wrap">
                     <Button size="sm" variant="outline" onClick={() => handleEdit(task)}>✏️ Editar</Button>
                     <Button size="sm" variant="destructive" onClick={() => handleDelete(task.id)}>🗑️ Deletar</Button>
+                    {isAdmin && task.email && (
+                      <Button size="sm" variant="outline" onClick={() => setCampaignPickerTaskIds([task.id])}>📧 Campanha</Button>
+                    )}
                     <Button size="sm" variant="outline" className="text-purple-700 border-purple-300 hover:bg-purple-50" onClick={() => handleAiSuggest(task)} disabled={loadingSuggestion}>
                       {loadingSuggestion && aiSuggestion === null ? "⏳ Gerando..." : "🤖 Sugestão IA"}
                     </Button>
@@ -817,6 +846,41 @@ export default function Tasks() {
           </div>
         </div>
       )}
+
+      {/* Add to campaign modal */}
+      <Dialog open={campaignPickerTaskIds !== null} onOpenChange={(open) => { if (!open) setCampaignPickerTaskIds(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>📧 Adicionar à campanha de e-mail</DialogTitle></DialogHeader>
+          <div className="space-y-2">
+            <p className="text-sm text-gray-500">
+              {campaignPickerTaskIds?.length === 1 ? "1 tarefa selecionada" : `${campaignPickerTaskIds?.length ?? 0} tarefas selecionadas`}. Apenas tarefas com e-mail cadastrado serão adicionadas.
+            </p>
+            {draftCampaigns.length > 0 ? (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {draftCampaigns.map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => handleAddToCampaign(c.id)}
+                    disabled={addToCampaignMutation.isPending}
+                    className="w-full text-left px-3 py-2 border rounded-lg hover:bg-blue-50 transition disabled:opacity-50"
+                  >
+                    <p className="font-medium text-sm">{c.name}</p>
+                    <p className="text-xs text-gray-500">{c.totalRecipients} destinatário(s) · rascunho</p>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">
+                Nenhuma campanha em rascunho. Crie uma campanha na aba{' '}
+                <a href="/admin/email-marketing" className="text-blue-600 underline">E-mail Marketing</a>.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" className="w-full" onClick={() => setCampaignPickerTaskIds(null)}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

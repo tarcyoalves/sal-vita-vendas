@@ -32,6 +32,7 @@ export const tasksRouter = router({
       title: z.string().min(1).max(500),
       description: z.string().max(2000).optional(),
       notes: z.string().max(5000).optional(),
+      email: z.string().email().max(200).optional().or(z.literal('')),
       reminderDate: z.date().optional(),
       reminderEnabled: z.boolean().optional().default(true),
       priority: z.enum(['low', 'medium', 'high']).optional().default('medium'),
@@ -45,6 +46,7 @@ export const tasksRouter = router({
         title: input.title,
         description: input.description,
         notes: input.notes,
+        email: input.email ? input.email.toLowerCase().trim() : undefined,
         reminderDate: input.reminderDate,
         reminderEnabled: input.reminderEnabled,
         priority: input.priority,
@@ -60,6 +62,7 @@ export const tasksRouter = router({
       title: z.string().max(500).optional(),
       description: z.string().max(2000).optional(),
       notes: z.string().max(5000).optional(),
+      email: z.string().email().max(200).optional().or(z.literal('')),
       reminderDate: z.date().optional().nullable(),
       reminderEnabled: z.boolean().optional(),
       priority: z.enum(['low', 'medium', 'high']).optional(),
@@ -74,6 +77,9 @@ export const tasksRouter = router({
       // Mark real contact: attendant manually saved notes (>15 chars = real annotation)
       const now = new Date();
       const setData: Record<string, any> = { ...data, updatedAt: now };
+      if (data.email !== undefined) {
+        setData.email = data.email ? data.email.toLowerCase().trim() : null;
+      }
       if (data.notes && data.notes.trim().length > 15) {
         setData.lastContactedAt = now;
       }

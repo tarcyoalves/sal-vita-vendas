@@ -11,8 +11,8 @@ import { createContext } from '../server/trpc';
 import { ensureTablesExist } from '../server/db/migrate';
 import { ensureOrdersTablesExist } from '../server/db/ordersMigrate';
 import { ordersDb } from '../server/db/ordersDb';
-import { sql as sqlClient } from '../server/db/index';
-import { siteOrders, abandonedCarts, automationRuns, msgTemplates } from '../server/db/schema';
+import { sql as sqlClient, db } from '../server/db/index';
+import { siteOrders, abandonedCarts, automationRuns, msgTemplates, emailCampaignRecipients, emailSuppressions, clients } from '../server/db/schema';
 import { eq, and } from 'drizzle-orm';
 
 function renderTemplate(body: string, vars: Record<string, string>): string {
@@ -168,6 +168,67 @@ app.get('/api/db-health', async (_req, res) => {
     res.status(500).json({ db: 'error', message: err.message });
   }
 });
+
+// ── Public unsubscribe link (e-mail marketing footer / List-Unsubscribe header) ──
+function unsubscribePage(message: string): string {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sal Vita</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:system-ui,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f4;">
+    <tr>
+      <td align="center" style="padding:24px 8px;">
+        <table width="600" cellpadding="0" cellspacing="0" border="0"
+               style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
+          <tr>
+            <td style="background:#0C3680;padding:24px 32px;text-align:center;">
+              <span style="font-family:'Pacifico',system-ui,Arial,sans-serif;font-size:28px;color:#ffffff;letter-spacing:1px;">
+                &#127754; Sal Vita
+              </span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px;text-align:center;">
+              <p style="margin:0;font-size:16px;color:#333;">${message}</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+async function handleUnsubscribe(req: express.Request, res: express.Response) {
+  const token = String(req.query.t ?? '').trim();
+  if (!token) {
+    res.status(400).send(unsubscribePage('Link de descadastro inválido.'));
+    return;
+  }
+  try {
+    const [recipient] = await db.select().from(emailCampaignRecipients)
+      .where(eq(emailCampaignRecipients.unsubToken, token));
+    if (!recipient) {
+      res.status(404).send(unsubscribePage('Link de descadastro inválido ou expirado.'));
+      return;
+    }
+    await db.insert(emailSuppressions)
+      .values({ email: recipient.email, reason: 'unsubscribe' })
+      .onConflictDoNothing();
+    await db.update(clients).set({ unsubscribed: true }).where(eq(clients.email, recipient.email));
+    res.send(unsubscribePage('Você foi descadastrado(a) com sucesso e não receberá mais e-mails da Sal Vita.'));
+  } catch (err) {
+    console.error('[unsubscribe] error:', err);
+    res.status(500).send(unsubscribePage('Erro ao processar seu pedido. Tente novamente mais tarde.'));
+  }
+}
+
+app.get('/api/unsubscribe', handleUnsubscribe);
 
 // Run schema migration in background — do NOT block requests.
 // Tables already exist from prior successful migration; new instances

@@ -10,10 +10,11 @@ export async function ensureTablesExist() {
     connect_timeout: 20,  // Neon auto-suspend wake-up can take up to 15 s
   });
   try {
-    // Fast-path: probe all critical tables. Only skip DDL when ALL 5 core
-    // tables exist — guards against Lambda-freeze mid-migration leaving a
-    // partial schema (e.g. 'users' created but 'sellers' not).
+    // Fast-path: probe all critical tables. Only skip the full DDL block when
+    // ALL 5 core tables exist — guards against Lambda-freeze mid-migration
+    // leaving a partial schema (e.g. 'users' created but 'sellers' not).
     // All DDL uses CREATE TABLE IF NOT EXISTS so re-running is always safe.
+    let skipDDL = false;
     try {
       const check = await sql`
         SELECT COUNT(*)::int AS cnt
@@ -22,17 +23,19 @@ export async function ensureTablesExist() {
           AND table_name IN ('users', 'sellers', 'tasks', 'clients', 'reminders')
       `;
       if ((check[0]?.cnt ?? 0) >= 5) {
-        console.log('✅ Tables already exist — skipping DDL');
-        return;
+        skipDDL = true;
+        console.log('✅ Core tables already exist — skipping full DDL');
+      } else {
+        console.log(`⚠️ Only ${check[0]?.cnt ?? 0}/5 core tables found — running DDL`);
       }
-      console.log(`⚠️ Only ${check[0]?.cnt ?? 0}/5 core tables found — running DDL`);
     } catch (probeErr: any) {
-      // Probe failed — log but do NOT return early. On a fresh Neon DB the
-      // compute may still be waking up when the probe fires; returning here
-      // would permanently skip DDL and leave the DB with no tables.
+      // Probe failed — log but do NOT skip. On a fresh Neon DB the compute may
+      // still be waking up when the probe fires; skipping here would
+      // permanently leave the DB with no tables.
       console.warn('⚠️ DB probe failed, proceeding to DDL:', probeErr?.message ?? probeErr);
     }
 
+    if (!skipDDL) {
     // Full schema migration only runs on fresh databases
     await sql`
       CREATE TABLE IF NOT EXISTS users (
@@ -194,6 +197,90 @@ export async function ensureTablesExist() {
     }
 
     console.log('✅ Database tables, indexes, and RLS ensured');
+    }
+
+    // ── Incremental migrations (always run, idempotent) ──────────────────────
+    await sql`ALTER TABLE tasks   ADD COLUMN IF NOT EXISTS email TEXT`;
+    await sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS unsubscribed BOOLEAN NOT NULL DEFAULT false`;
+
+    // Backfill: extract the first e-mail found in tasks.notes for tasks that don't have one yet
+    await sql`
+      UPDATE tasks
+      SET email = lower(substring(notes from '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}'))
+      WHERE email IS NULL
+        AND notes ~* '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}'
+    `;
+
+    // ── E-mail Marketing tables (Lembretes CRM) ───────────────────────────────
+    await sql`
+      CREATE TABLE IF NOT EXISTS email_templates (
+        id         SERIAL PRIMARY KEY,
+        slug       TEXT NOT NULL UNIQUE,
+        name       TEXT NOT NULL,
+        subject    TEXT NOT NULL,
+        html_body  TEXT NOT NULL,
+        active     BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS email_campaigns (
+        id                  SERIAL PRIMARY KEY,
+        name                TEXT NOT NULL,
+        subject             TEXT NOT NULL,
+        html_body           TEXT NOT NULL,
+        status              TEXT NOT NULL DEFAULT 'draft',
+        total_recipients    INTEGER NOT NULL DEFAULT 0,
+        sent_count          INTEGER NOT NULL DEFAULT 0,
+        failed_count        INTEGER NOT NULL DEFAULT 0,
+        created_by_user_id  INTEGER NOT NULL,
+        created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS email_campaign_recipients (
+        id           SERIAL PRIMARY KEY,
+        campaign_id  INTEGER NOT NULL,
+        email        TEXT NOT NULL,
+        name         TEXT,
+        reply_to     TEXT,
+        task_id      INTEGER,
+        status       TEXT NOT NULL DEFAULT 'pending',
+        account_key  TEXT,
+        message_id   TEXT,
+        unsub_token  TEXT NOT NULL,
+        error        TEXT,
+        sent_at      TIMESTAMP,
+        created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS email_suppressions (
+        id         SERIAL PRIMARY KEY,
+        email      TEXT NOT NULL UNIQUE,
+        reason     TEXT NOT NULL DEFAULT 'unsubscribe',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS email_send_counters (
+        id          SERIAL PRIMARY KEY,
+        account_key TEXT NOT NULL,
+        day         TEXT NOT NULL,
+        sent        INTEGER NOT NULL DEFAULT 0
+      )
+    `;
+
+    await sql`CREATE INDEX IF NOT EXISTS email_recipients_campaign_idx ON email_campaign_recipients(campaign_id, status)`;
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS email_counter_key_day_idx ON email_send_counters(account_key, day)`;
+    await sql`CREATE INDEX IF NOT EXISTS tasks_email_idx ON tasks(email)`;
+
   } catch (err) {
     console.error('❌ Migration error:', err);
     throw err;

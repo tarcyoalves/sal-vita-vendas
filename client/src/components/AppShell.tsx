@@ -15,6 +15,7 @@ import {
   TrendingUp,
   KeyRound,
   Tv,
+  Mail,
 } from "lucide-react";
 import { useAuth } from "../_core/hooks/useAuth";
 import { trpc } from "../lib/trpc";
@@ -47,6 +48,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "Atendentes",
     path: "/attendants",
     icon: <Users size={18} />,
+    roles: ["admin"],
+  },
+  {
+    label: "E-mail Marketing",
+    path: "/admin/email-marketing",
+    icon: <Mail size={18} />,
     roles: ["admin"],
   },
   {
@@ -98,6 +105,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/dashboard": "Dashboard",
   "/tasks": "Tarefas",
   "/attendants": "Atendentes",
+  "/admin/email-marketing": "E-mail Marketing",
   "/ai-chat": "Chat IA",
   "/ai-settings": "Configurações IA",
   "/knowledge-base": "Base de Conhecimento",

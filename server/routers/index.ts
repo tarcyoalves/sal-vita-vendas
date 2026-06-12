@@ -10,6 +10,7 @@ import { workSessionsRouter } from './workSessions';
 import { tvRouter } from './tv';
 import { shippingRouter } from './shipping';
 import { recoveryRouter } from './recovery';
+import { emailMarketingRouter } from './emailMarketing';
 
 export const appRouter = router({
   auth: authRouter,
@@ -23,6 +24,7 @@ export const appRouter = router({
   tv: tvRouter,
   shipping: shippingRouter,
   recovery: recoveryRouter,
+  emailMarketing: emailMarketingRouter,
 });
 
 export type AppRouter = typeof appRouter;

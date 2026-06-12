@@ -33,6 +33,7 @@ export const clients = pgTable('clients', {
   city: text('city'),
   state: text('state'),
   status: text('status').notNull().default('active'),
+  unsubscribed: boolean('unsubscribed').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -43,6 +44,7 @@ export const tasks = pgTable('tasks', {
   title: text('title').notNull(),
   description: text('description'),
   notes: text('notes'),
+  email: text('email'),
   reminderDate: timestamp('reminder_date'),
   reminderEnabled: boolean('reminder_enabled').default(true),
   status: text('status').notNull().default('pending'),
@@ -197,6 +199,67 @@ export type AbandonedCart = typeof abandonedCarts.$inferSelect;
 export type Coupon = typeof coupons.$inferSelect;
 export type AutomationRun = typeof automationRuns.$inferSelect;
 export type MsgTemplate = typeof msgTemplates.$inferSelect;
+
+// ── E-mail Marketing (Lembretes CRM) ──────────────────────────────────────────
+
+export const emailTemplates = pgTable('email_templates', {
+  id: serial('id').primaryKey(),
+  slug: text('slug').notNull().unique(),
+  name: text('name').notNull(),
+  subject: text('subject').notNull(),
+  htmlBody: text('html_body').notNull(),
+  active: boolean('active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const emailCampaigns = pgTable('email_campaigns', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  subject: text('subject').notNull(),
+  htmlBody: text('html_body').notNull(),
+  status: text('status').notNull().default('draft'), // draft|sending|paused|sent
+  totalRecipients: integer('total_recipients').default(0).notNull(),
+  sentCount: integer('sent_count').default(0).notNull(),
+  failedCount: integer('failed_count').default(0).notNull(),
+  createdByUserId: integer('created_by_user_id').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const emailCampaignRecipients = pgTable('email_campaign_recipients', {
+  id: serial('id').primaryKey(),
+  campaignId: integer('campaign_id').notNull(),
+  email: text('email').notNull(),
+  name: text('name'),
+  replyTo: text('reply_to'),
+  taskId: integer('task_id'),
+  status: text('status').notNull().default('pending'), // pending|sent|failed|skipped
+  accountKey: text('account_key'),
+  messageId: text('message_id'),
+  unsubToken: text('unsub_token').notNull(),
+  error: text('error'),
+  sentAt: timestamp('sent_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const emailSuppressions = pgTable('email_suppressions', {
+  id: serial('id').primaryKey(),
+  email: text('email').notNull().unique(),
+  reason: text('reason').notNull().default('unsubscribe'), // unsubscribe|bounce|complaint|manual
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const emailSendCounters = pgTable('email_send_counters', {
+  id: serial('id').primaryKey(),
+  accountKey: text('account_key').notNull(),
+  day: text('day').notNull(), // 'YYYY-MM-DD' UTC
+  sent: integer('sent').default(0).notNull(),
+});
+
+export type EmailTemplate = typeof emailTemplates.$inferSelect;
+export type EmailCampaign = typeof emailCampaigns.$inferSelect;
+export type EmailCampaignRecipient = typeof emailCampaignRecipients.$inferSelect;
 
 export type User = typeof users.$inferSelect;
 export type Seller = typeof sellers.$inferSelect;
