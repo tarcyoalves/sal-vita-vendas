@@ -11,8 +11,14 @@ function generatePassword(length = 8): string {
 }
 
 export const sellersRouter = router({
-  list: protectedProcedure.query(async () => {
-    return db.select().from(sellers).orderBy(sellers.name);
+  // Non-admins only receive name + id (needed for assignedTo display).
+  // Admins receive full rows.
+  list: protectedProcedure.query(async ({ ctx }) => {
+    if (ctx.user.role === 'admin') {
+      return db.select().from(sellers).orderBy(sellers.name);
+    }
+    return db.select({ id: sellers.id, name: sellers.name, status: sellers.status })
+      .from(sellers).where(eq(sellers.status, 'active')).orderBy(sellers.name);
   }),
 
   create: adminProcedure
@@ -21,7 +27,7 @@ export const sellersRouter = router({
       email: z.string().email(),
       phone: z.string().optional(),
       department: z.string().optional(),
-      dailyGoal: z.number().optional().default(10),
+      dailyGoal: z.number().optional().default(100),
       workHoursGoal: z.number().min(1).max(24).optional().default(8),
       status: z.enum(['active', 'inactive']).optional().default('active'),
     }))
@@ -36,24 +42,26 @@ export const sellersRouter = router({
       const generatedPassword = generatePassword();
       const passwordHash = hashPassword(generatedPassword);
 
-      const result = await db.transaction(async (tx) => {
-        const [newUser] = await tx.insert(users).values({
-          name: input.name,
-          email: input.email,
-          passwordHash,
-          role: 'user',
-          mustChangePassword: true,
-        }).returning();
+      const [newUser] = await db.insert(users).values({
+        name: input.name,
+        email: input.email,
+        passwordHash,
+        role: 'user',
+        mustChangePassword: true,
+      }).returning();
 
-        const [created] = await tx.insert(sellers).values({
+      let created;
+      try {
+        [created] = await db.insert(sellers).values({
           ...input,
           userId: newUser.id,
         }).returning();
+      } catch (err) {
+        await db.delete(users).where(eq(users.id, newUser.id)).catch(() => {});
+        throw err;
+      }
 
-        return { ...created, generatedPassword };
-      });
-
-      return result;
+      return { ...created, generatedPassword };
     }),
 
   delete: adminProcedure

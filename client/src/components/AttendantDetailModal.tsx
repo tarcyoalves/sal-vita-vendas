@@ -16,6 +16,8 @@ interface Task {
   updatedAt: Date | string;
   createdAt: Date | string;
   lastContactedAt?: Date | string | null;
+  convertedAt?: Date | string | null;
+  contactCount?: number | null;
 }
 
 interface Seller {
@@ -136,6 +138,33 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
 
     const maxDay = Math.max(1, ...days30.map(d => d.count));
 
+    // ── Conversão (clientes ativos / vendas) ────────────────────────────────
+    const thirtyDaysAgoConv = new Date(now.getTime() - 30 * 86400000);
+    const convertedTasks = myTasks.filter(t => !!t.convertedAt);
+    const convertedCount = convertedTasks.length;
+    const conversionRate = myTasks.length > 0 ? Math.round((convertedCount / myTasks.length) * 100) : 0;
+    const convertedThisMonth = convertedTasks.filter(t => {
+      try { return new Date(t.convertedAt as string) >= thirtyDaysAgoConv; } catch { return false; }
+    }).length;
+    const contactsToConvert = convertedTasks
+      .map(t => t.contactCount ?? 0)
+      .filter(c => c > 0);
+    const avgContactsToConvert = contactsToConvert.length > 0
+      ? Math.round((contactsToConvert.reduce((a, b) => a + b, 0) / contactsToConvert.length) * 10) / 10
+      : 0;
+    const cancelledCount = myTasks.filter(t => t.status === 'cancelled').length;
+    const decided = convertedCount + cancelledCount;
+    const lostRate = decided > 0 ? Math.round((cancelledCount / decided) * 100) : 0;
+
+    // Team conversion comparison
+    const teamConversion = allSellers.map(s => {
+      const st = allTasks.filter(t => t.assignedTo === s.name || t.userId === s.userId);
+      const conv = st.filter(t => !!t.convertedAt).length;
+      const rate = st.length > 0 ? Math.round((conv / st.length) * 100) : 0;
+      return { name: s.name, total: st.length, converted: conv, rate };
+    }).sort((a, b) => b.rate - a.rate);
+    const myConversionRank = teamConversion.findIndex(s => s.name === seller.name) + 1;
+
     // Team comparison
     const teamStats = allSellers.map(s => {
       const st = allTasks.filter(t => t.assignedTo === s.name || t.userId === s.userId);
@@ -152,6 +181,8 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
       days30, maxDay, teamStats,
       total: myTasks.length,
       ghostClients, avgNoteLen, hasBurst, burstMax, reschedNoContact,
+      convertedCount, conversionRate, convertedThisMonth, avgContactsToConvert,
+      cancelledCount, lostRate, teamConversion, myConversionRank,
     };
   }, [allTasks, allSellers, seller]);
 
@@ -261,6 +292,43 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
                     </CardContent>
                   </Card>
                 ))}
+              </div>
+
+              {/* 🎉 Performance de conversão (vendas) */}
+              <div className="p-3 bg-green-50 border border-green-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-green-800 flex items-center gap-1.5">
+                    🎉 Performance de Conversão (Vendas)
+                  </p>
+                  {m.teamConversion.length > 0 && (
+                    <span className="text-[11px] text-green-700 bg-green-100 px-2 py-0.5 rounded-full font-medium">
+                      #{m.myConversionRank} da equipe
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div>
+                    <p className="text-lg font-bold text-green-700">{m.convertedCount}</p>
+                    <p className="text-[11px] text-gray-500">Clientes ativos</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-green-700">{m.conversionRate}%</p>
+                    <p className="text-[11px] text-gray-500">Taxa de conversão</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-green-700">{m.convertedThisMonth}</p>
+                    <p className="text-[11px] text-gray-500">Convertidos (30d)</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-green-700">{m.avgContactsToConvert || '—'}</p>
+                    <p className="text-[11px] text-gray-500">Média de contatos p/ converter</p>
+                  </div>
+                </div>
+                {m.cancelledCount > 0 && (
+                  <p className="text-[11px] text-gray-500">
+                    📉 Taxa de leads perdidos: <span className={`font-semibold ${m.lostRate > 50 ? 'text-red-600' : 'text-gray-600'}`}>{m.lostRate}%</span> ({m.cancelledCount} cancelado{m.cancelledCount !== 1 ? 's' : ''})
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">

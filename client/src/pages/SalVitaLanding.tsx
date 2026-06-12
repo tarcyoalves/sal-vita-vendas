@@ -133,7 +133,7 @@ function isValidCpf(cpf: string): boolean {
   return r === parseInt(d[10]);
 }
 
-interface Product {id:string;name:string;subtitle:string;weight:string;weightKg:number;price:number;pricePerKg:number;tag:string;highlight:boolean;savings?:string}
+interface Product {id:string;name:string;subtitle:string;weight:string;weightKg:number;units:number;price:number;pricePerKg:number;tag:string;highlight:boolean;savings?:string}
 interface ShipOpt  {serviceId?:string;service:string;price:number;days:string;icon:string;description:string}
 interface CepData  {localidade:string;uf:string;bairro:string}
 
@@ -160,10 +160,16 @@ export default function SalVitaLanding() {
   const [visible,setVisible]               = useState<Set<string>>(new Set());
   const [showCheckout,setShowCheckout]     = useState(false);
   const [checkoutLoading,setCheckoutLoading] = useState(false);
-  const [orderDone,setOrderDone]           = useState<{id:number;total:number}|null>(null);
+  const [orderDone,setOrderDone]           = useState<{id:number;total:number;createdAt:number}|null>(null);
   const [mpLoading,setMpLoading]           = useState(false);
   const [payTimer,setPayTimer]             = useState(900); // 15 min countdown
   const payTimerRef = useRef<ReturnType<typeof setInterval>|null>(null);
+  const [pixLoading,setPixLoading]         = useState(false);
+  const [pixData,setPixData]               = useState<{qrCode:string;qrCodeBase64:string}|null>(null);
+  const [pixCopied,setPixCopied]           = useState(false);
+  const [pixPaid,setPixPaid]               = useState(false);
+  const pixPollRef = useRef<ReturnType<typeof setInterval>|null>(null);
+  const pixPurchaseFiredRef = useRef(false);
   const [checkoutForm,setCheckoutForm]     = useState({
     customerName:'',customerPhone:'',customerEmail:'',customerCpf:'',postalCode:'',address:'',
     number:'',complement:'',neighborhood:'',city:'',state:'',
@@ -173,6 +179,8 @@ export default function SalVitaLanding() {
   const [couponLoading,setCouponLoading]   = useState(false);
   const [cpfError,setCpfError]             = useState('');
   const [pendingOrder,setPendingOrder]     = useState<{id:number;total:number}|null>(null);
+  const autoCouponRef = useRef<string>('');
+  const attributionRef = useRef<Record<string,string>>({});
   const obs = useRef<IntersectionObserver|null>(null);
   const spToast = useSocialProof();
 
@@ -198,12 +206,55 @@ export default function SalVitaLanding() {
 
   const v=(id:string)=>visible.has(id);
 
-  // Read ?cupom= URL param and pre-fill coupon on mount
+  // Read ?cupom= URL param and restore saved customer data on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const c = params.get('cupom') ?? params.get('coupon');
-    if (c) setCouponCode(c.toUpperCase().trim());
+    if (c) {
+      const code = c.toUpperCase().trim();
+      setCouponCode(code);
+      autoCouponRef.current = code; // mark as link-coupon so it auto-applies
+    }
+    // Capture ad attribution (UTM + fbclid) for first-touch — so each order
+    // records which campaign/ad drove it and can feed Meta CAPI.
+    try {
+      const attr: Record<string,string> = {};
+      ['utm_source','utm_medium','utm_campaign','utm_content','utm_term'].forEach(k => {
+        const val = params.get(k); if (val) attr[k] = val.slice(0,180);
+      });
+      const fb = params.get('fbclid'); if (fb) attr.fbclid = fb.slice(0,400);
+      if (Object.keys(attr).length) localStorage.setItem('sv_attribution', JSON.stringify(attr));
+      else { const s = localStorage.getItem('sv_attribution'); if (s) Object.assign(attr, JSON.parse(s)); }
+      attributionRef.current = attr;
+    } catch {}
+    // Restore previously typed customer data (saved on THIS device only — no
+    // database storage) so returning shoppers don't retype everything.
+    try {
+      const saved = localStorage.getItem('sv_customer_data');
+      if (saved) {
+        const d = JSON.parse(saved);
+        if (d && typeof d === 'object') {
+          setCheckoutForm(f => ({ ...f, ...d }));
+          if (d.postalCode) setCep(d.postalCode);
+        }
+      }
+    } catch {}
   }, []);
+
+  // Persist customer data locally whenever it changes (device-only, no DB cost)
+  useEffect(() => {
+    if (!checkoutForm.customerName && !checkoutForm.customerPhone && !checkoutForm.postalCode) return;
+    try { localStorage.setItem('sv_customer_data', JSON.stringify(checkoutForm)); } catch {}
+  }, [checkoutForm]);
+
+  // Auto-validate/apply the coupon that came from a recovery link as soon as the
+  // customer opens checkout — no need to click "Aplicar". Only fires for the
+  // link-coupon (autoCouponRef), so manual typing still uses the button.
+  useEffect(() => {
+    if (showCheckout && selProd && couponCode.trim() && couponCode === autoCouponRef.current && !couponState && !couponLoading) {
+      validateCoupon(couponCode, selProd.price);
+    }
+  }, [showCheckout, selProd, couponCode]);
 
   // Check for pending order in localStorage on mount
   useEffect(() => {
@@ -222,11 +273,12 @@ export default function SalVitaLanding() {
   const cartTrackRef = useRef(false);
   useEffect(() => {
     const { customerName, customerPhone } = checkoutForm;
-    if (!cartTrackRef.current && customerName.length >= 3 && customerPhone.length >= 10) {
+    const phoneDigits = customerPhone.replace(/\D/g,'');
+    if (!cartTrackRef.current && customerName.length >= 3 && phoneDigits.length >= 11) {
       cartTrackRef.current = true;
       fetch('/api/trpc/recovery.trackCart', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({json:{ customerName, customerPhone, customerEmail: checkoutForm.customerEmail||undefined, quantity:selProd?.weightKg>=10?10:1, stepReached:1 }}),
+        body:JSON.stringify({json:{ customerName, customerPhone: phoneDigits, customerEmail: checkoutForm.customerEmail||undefined, quantity:selProd?.units ?? 1, stepReached:1 }}),
       }).catch(()=>{});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -243,14 +295,28 @@ export default function SalVitaLanding() {
     cartTrackRef.current = false;
     localStorage.removeItem('sv_pending_order');
     setPendingOrder(null);
+    setPixData(null); setPixPaid(false); setPixCopied(false);
+    pixPurchaseFiredRef.current = false;
+    if(pixPollRef.current) clearInterval(pixPollRef.current);
     document.body.style.overflow='hidden';
   },[]);
-  const closeBuy=useCallback(()=>{ setShowModal(false); setShowCheckout(false); setOrderDone(null); document.body.style.overflow=''; if(payTimerRef.current) clearInterval(payTimerRef.current); },[]);
+  const closeBuy=useCallback(()=>{
+    setShowModal(false); setShowCheckout(false); setOrderDone(null); document.body.style.overflow='';
+    if(payTimerRef.current) clearInterval(payTimerRef.current);
+    if(pixPollRef.current) clearInterval(pixPollRef.current);
+  },[]);
 
+  // Countdown is derived from the real order-creation timestamp (not reset on
+  // every render), so it reflects actual elapsed time even if the tab is
+  // backgrounded/throttled or the page is briefly hidden.
   useEffect(()=>{
     if(orderDone){
-      setPayTimer(900);
-      payTimerRef.current = setInterval(()=>setPayTimer(t=>t>0?t-1:0),1000);
+      const tick=()=>{
+        const elapsed=Math.floor((Date.now()-orderDone.createdAt)/1000);
+        setPayTimer(Math.max(0,900-elapsed));
+      };
+      tick();
+      payTimerRef.current = setInterval(tick,1000);
     } else {
       if(payTimerRef.current) clearInterval(payTimerRef.current);
     }
@@ -268,16 +334,17 @@ export default function SalVitaLanding() {
       setCheckoutForm(f=>({...f, postalCode:c, city:d.localidade??'', state:d.uf??'', neighborhood:d.bairro??'', address:d.logradouro??f.address}));
       // Track cart abandonment at step 2 (shipping selection)
       if (checkoutForm.customerName && checkoutForm.customerPhone) {
+        const p2 = checkoutForm.customerPhone.replace(/\D/g,'');
         fetch('/api/trpc/recovery.trackCart', {
           method:'POST', headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({json:{ customerName:checkoutForm.customerName, customerPhone:checkoutForm.customerPhone, customerEmail:checkoutForm.customerEmail||undefined, postalCode:c, quantity:selProd?.weightKg>=10?10:1, stepReached:2 }}),
+          body:JSON.stringify({json:{ customerName:checkoutForm.customerName, customerPhone:p2, customerEmail:checkoutForm.customerEmail||undefined, postalCode:c, quantity:selProd?.units ?? 1, stepReached:2 }}),
         }).catch(()=>{});
       }
 
       // Call backend — tries Melhor Envio API first, falls back to static table
       let opts: ShipOpt[] = [];
       try {
-        const qty = selProd!.weightKg >= 10 ? 10 : 1;
+        const qty = selProd!.units;
         const r = await fetch('/api/trpc/shipping.calculate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -324,8 +391,9 @@ export default function SalVitaLanding() {
   };
 
   const products:Product[]=[
-    {id:'1kg',  name:'SAL VITA PREMIUM',      subtitle:'Embalagem zip lock com janela',      weight:'1kg',          weightKg:1.2, price:29.90, pricePerKg:29.90, tag:'Mais Vendido',          highlight:false},
-    {id:'caixa',name:'CAIXA SAL VITA PREMIUM',subtitle:'10 embalagens zip lock de 1kg cada', weight:'10kg (10×1kg)',weightKg:12,  price:149.90,pricePerKg:14.99, tag:'Melhor Custo-Benefício', highlight:true, savings:'Economize R$ 149,10'},
+    {id:'1kg',  name:'SAL VITA PREMIUM',      subtitle:'Embalagem zip lock com janela',      weight:'1kg',          weightKg:1.2, units:1,  price:29.90, pricePerKg:29.90, tag:'Mais Vendido',          highlight:false},
+    {id:'3kg',  name:'TRIO SAL VITA',         subtitle:'3 embalagens zip lock de 1kg cada',  weight:'3kg (3×1kg)',  weightKg:3.6, units:3,  price:74.90, pricePerKg:24.97, tag:'Ideal para a Família', highlight:false},
+    {id:'caixa',name:'CAIXA SAL VITA PREMIUM',subtitle:'10 embalagens zip lock de 1kg cada', weight:'10kg (10×1kg)',weightKg:12,  units:10, price:149.90,pricePerKg:14.99, tag:'Melhor Custo-Benefício', highlight:true, savings:'Economize R$ 149,10'},
   ];
 
   async function validateCoupon(code: string, orderVal: number) {
@@ -346,31 +414,53 @@ export default function SalVitaLanding() {
   async function handleCheckout(e:React.FormEvent) {
     e.preventDefault();
     if(!selProd||!selShip) return;
+    if(checkoutLoading) return; // guard against double-submit (mobile double-tap)
+    // Validate CPF before creating the order — a bad CPF only fails later at
+    // Mercado Pago / Melhor Envio, after the sale, which loses the customer.
+    if(!isValidCpf(checkoutForm.customerCpf)) { setCpfError('CPF inválido — confira os números.'); return; }
+    setCpfError('');
     setCheckoutLoading(true);
     // Track step 3 (attempting payment)
+    const p3 = checkoutForm.customerPhone.replace(/\D/g,'');
     fetch('/api/trpc/recovery.trackCart', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({json:{ customerName:checkoutForm.customerName, customerPhone:checkoutForm.customerPhone, customerEmail:checkoutForm.customerEmail||undefined, postalCode:checkoutForm.postalCode, quantity:selProd.weightKg>=10?10:1, stepReached:3 }}),
+      body:JSON.stringify({json:{ customerName:checkoutForm.customerName, customerPhone:p3, customerEmail:checkoutForm.customerEmail||undefined, postalCode:checkoutForm.postalCode, quantity:selProd.weightKg>=10?10:1, stepReached:3 }}),
     }).catch(()=>{});
     try {
-      const qty = selProd.weightKg>=10?10:1;
+      const qty = selProd.units;
       const res = await fetch('/api/trpc/shipping.createOrder', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({json:{
           ...checkoutForm,
           quantity:qty,
+          productId: (['1kg','3kg','caixa'] as const).includes(selProd.id as any) ? selProd.id : '1kg',
           shippingServiceId:selShip.serviceId ?? (selShip.service==='PAC'?'1':'2'),
           shippingServiceName:selShip.service,
           shippingPrice:selShip.price,
           couponCode: couponCode && couponState?.valid ? couponCode.toUpperCase().trim() : undefined,
+          utmSource: attributionRef.current.utm_source,
+          utmMedium: attributionRef.current.utm_medium,
+          utmCampaign: attributionRef.current.utm_campaign,
+          utmContent: attributionRef.current.utm_content,
+          utmTerm: attributionRef.current.utm_term,
+          fbclid: attributionRef.current.fbclid,
         }}),
       });
       const data = await res.json();
       const orderId = data?.result?.data?.json?.id;
+      // A tRPC error comes back as a 200/4xx with an `error` envelope (not a
+      // thrown fetch), so guard explicitly — otherwise we'd advance to a
+      // "#undefined confirmado" dead-end the customer could never pay.
+      if (!orderId) {
+        const apiMsg = data?.error?.json?.message ?? data?.error?.message;
+        alert(apiMsg ? `Não foi possível registrar o pedido: ${apiMsg}` : 'Erro ao registrar o pedido. Confira os dados e tente novamente.');
+        return;
+      }
       const total   = data?.result?.data?.json?.total ?? (selProd.price+selShip.price);
-      setOrderDone({ id: orderId, total });
-      localStorage.setItem('sv_pending_order', JSON.stringify({ id: orderId, total, ts: Date.now() }));
+      const createdAt = Date.now();
+      setOrderDone({ id: orderId, total, createdAt });
+      localStorage.setItem('sv_pending_order', JSON.stringify({ id: orderId, total, ts: createdAt }));
       try { (window as any).fbq?.('track','AddPaymentInfo',{ value: total, currency: 'BRL', content_name: 'SAL VITA PREMIUM 1kg', content_ids: ['salvita-001'], content_type: 'product', num_items: qty }); } catch {}
     } catch(err) {
       console.error('createOrder error:', err);
@@ -382,6 +472,7 @@ export default function SalVitaLanding() {
 
   async function handleMpPay() {
     if(!orderDone) return;
+    if(mpLoading) return; // guard against double-tap creating two MP charges
     setMpLoading(true);
     try {
       const res = await fetch('/api/trpc/shipping.createPayment', {
@@ -392,12 +483,74 @@ export default function SalVitaLanding() {
       const data = await res.json();
       const initPoint = data?.result?.data?.json?.initPoint;
       if(initPoint) {
-        try { (window as any).fbq?.('track','Purchase',{ value: orderDone.total, currency: 'BRL', content_name: 'SAL VITA PREMIUM 1kg', content_ids: ['salvita-001'], content_type: 'product', num_items: 1 }); } catch {}
+        // Do NOT fire the Purchase pixel here — the customer is only being SENT to
+        // Mercado Pago and hasn't paid yet (PIX/boleto/card can still fail/expire).
+        // Firing Purchase on intent inflates conversions 2–4x and poisons ad
+        // optimization + lookalikes. Purchase is fired only on CONFIRMED payment
+        // (TrackOrder, on status=pago / confirmed) and server-side via the webhook.
         window.location.href = initPoint;
       }
       else { alert('Erro ao gerar link de pagamento. Tente novamente.'); }
     } catch { alert('Erro ao conectar com Mercado Pago. Tente novamente.'); }
     setMpLoading(false);
+  }
+
+  // Generates an inline PIX QR code/copy-paste so the customer pays without
+  // leaving the page, then polls for confirmation.
+  async function handlePixPay() {
+    if(!orderDone) return;
+    if(pixLoading || pixData) return;
+    setPixLoading(true);
+    try {
+      const res = await fetch('/api/trpc/shipping.createPixPayment', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({json:{ orderId: orderDone.id }}),
+      });
+      const data = await res.json();
+      const result = data?.result?.data?.json;
+      if(result?.qrCode) {
+        setPixData({ qrCode: result.qrCode, qrCodeBase64: result.qrCodeBase64 ?? '' });
+        try { (window as any).fbq?.('track','AddPaymentInfo',{ value: orderDone.total, currency: 'BRL', content_name: 'SAL VITA PREMIUM 1kg', content_ids: ['salvita-001'], content_type: 'product' }); } catch {}
+        // Poll payment status every 5s — webhook does the actual confirmation;
+        // this just lets us reflect it on-screen without a reload.
+        pixPollRef.current = setInterval(async () => {
+          try {
+            const r = await fetch('/api/trpc/shipping.pixStatus', {
+              method:'POST', headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({json:{ orderId: orderDone.id }}),
+            });
+            const d = await r.json();
+            if(d?.result?.data?.json?.paid) {
+              setPixPaid(true);
+              if(pixPollRef.current) clearInterval(pixPollRef.current);
+              if(!pixPurchaseFiredRef.current) {
+                pixPurchaseFiredRef.current = true;
+                try {
+                  (window as any).fbq?.('track','Purchase',{
+                    value: orderDone.total, currency: 'BRL', content_name: 'SAL VITA PREMIUM',
+                    content_ids: ['salvita-001'], content_type: 'product',
+                  }, { eventID: `purchase-${orderDone.id}` });
+                } catch {}
+              }
+            }
+          } catch {}
+        }, 5000);
+      } else {
+        const apiMsg = data?.error?.json?.message ?? data?.error?.message;
+        alert(apiMsg ? `Não foi possível gerar o PIX: ${apiMsg}` : 'Erro ao gerar PIX. Tente novamente.');
+      }
+    } catch { alert('Erro ao conectar com Mercado Pago. Tente novamente.'); }
+    setPixLoading(false);
+  }
+
+  async function copyPixCode() {
+    if(!pixData) return;
+    try {
+      await navigator.clipboard.writeText(pixData.qrCode);
+      setPixCopied(true);
+      setTimeout(()=>setPixCopied(false), 3000);
+    } catch {}
   }
 
   /* ── Logo real ── */
@@ -1208,7 +1361,7 @@ export default function SalVitaLanding() {
               <p style={{color:'rgba(255,255,255,.55)',fontSize:'1.05rem'}}>Frete calculado por CEP via Melhor Envio · Enviamos para todo o Brasil</p>
             </div>
 
-            <div id="price-c" data-reveal className={`rev price-grid${v('price-c')?' on':''}`} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))',gap:24,maxWidth:820,margin:'0 auto'}}>
+            <div id="price-c" data-reveal className={`rev price-grid${v('price-c')?' on':''}`} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:24,maxWidth:1040,margin:'0 auto'}}>
               {products.map(p=>(
                 <div key={p.id} className={p.highlight?'pc-hi':'pc-lo'} style={{borderRadius:24,padding:'36px 32px',position:'relative',overflow:'hidden',transition:'transform .3s'}}
                   onMouseEnter={e=>e.currentTarget.style.transform='translateY(-6px)'}
@@ -1220,11 +1373,17 @@ export default function SalVitaLanding() {
                   <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.7rem',fontWeight:700,color:p.highlight?'white':'var(--text)',marginBottom:4,marginTop:8}}>{p.name}</h3>
                   <p style={{fontSize:'.9rem',color:p.highlight?'rgba(255,255,255,.5)':'var(--muted)',marginBottom:20}}>{p.weight}</p>
 
-                  {/* preço */}
+                  {/* preço — âncora de economia na caixa (loss-aversion) */}
+                  {p.highlight&&(
+                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6,flexWrap:'wrap'}}>
+                      <span style={{fontSize:'1.15rem',textDecoration:'line-through',color:'rgba(255,255,255,.45)'}}>R$ 299,00</span>
+                      <span style={{background:'#16a34a',color:'white',fontSize:'.72rem',fontWeight:800,padding:'3px 9px',borderRadius:999,letterSpacing:'.03em'}}>−50% · ECONOMIZE R$ 149,10</span>
+                    </div>
+                  )}
                   <div style={{marginBottom:4}}>
                     <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'3.4rem',fontWeight:700,color:p.highlight?'var(--gold)':'var(--brand)',lineHeight:1}}>R$ {p.price.toFixed(2).replace('.',',')}</span>
                   </div>
-                  <p style={{fontSize:'.9rem',color:p.highlight?'rgba(255,255,255,.45)':'var(--muted)',marginBottom:24}}>R$ {p.pricePerKg.toFixed(2).replace('.',',')}/kg</p>
+                  <p style={{fontSize:'.9rem',color:p.highlight?'rgba(255,255,255,.45)':'var(--muted)',marginBottom:24}}>R$ {p.pricePerKg.toFixed(2).replace('.',',')}/kg{p.highlight?' · metade do preço por kg':''}</p>
 
                   {/* features — 4 itens máximo */}
                   <ul style={{listStyle:'none',padding:0,marginBottom:28}}>
@@ -1414,10 +1573,15 @@ export default function SalVitaLanding() {
           <div className="mb" style={{maxWidth:460,padding:0,overflow:'hidden'}}>
             <div className="mb-drag" style={{margin:'0 auto',paddingTop:8}}/>
 
-            {/* urgency bar */}
-            <div style={{background:payTimer<120?'#dc2626':'#f59e0b',padding:'8px 20px',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+            {/* urgency bar — countdown reflects real elapsed time since the order
+                was created. We never claim the order/reservation "expires": it
+                doesn't, payment remains available afterwards (avoids false
+                urgency claims). */}
+            <div style={{background:payTimer===0?'var(--brand)':payTimer<120?'#dc2626':'#f59e0b',padding:'8px 20px',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/></svg>
-              <span style={{color:'white',fontWeight:700,fontSize:'.82rem'}}>⏳ Reserva expira em <strong>{mm}:{ss}</strong> — conclua seu pedido agora</span>
+              {payTimer>0
+                ? <span style={{color:'white',fontWeight:700,fontSize:'.82rem'}}>⏳ Finalize em <strong>{mm}:{ss}</strong> para garantir o processamento mais rápido</span>
+                : <span style={{color:'white',fontWeight:700,fontSize:'.82rem'}}>✅ Pedido #{orderDone.id} continua disponível — finalize o pagamento quando quiser</span>}
             </div>
 
             <div style={{padding:'20px 24px 24px'}}>
@@ -1446,13 +1610,46 @@ export default function SalVitaLanding() {
                 </div>
               </div>
 
-              {/* CTA button */}
-              <button onClick={handleMpPay} disabled={mpLoading}
-                style={{width:'100%',background:mpLoading?'#9bb3d0':'#009ee3',color:'white',border:'none',borderRadius:12,padding:'16px',fontSize:'1.05rem',fontWeight:800,cursor:mpLoading?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:10,transition:'all .2s',boxShadow:mpLoading?'none':'0 4px 14px rgba(0,158,227,.35)',letterSpacing:'.01em'}}>
-                {mpLoading
-                  ? <><svg width="18" height="18" viewBox="0 0 24 24" fill="white" style={{animation:'spin 1s linear infinite'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Gerando link seguro...</>
-                  : <>💳 Pagar com Mercado Pago</>}
-              </button>
+              {/* CTA buttons / PIX inline flow */}
+              {pixPaid ? (
+                <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:12,padding:'18px',textAlign:'center'}}>
+                  <p style={{fontSize:'1.05rem',fontWeight:800,color:'#16a34a',margin:'0 0 4px'}}>✅ Pagamento confirmado!</p>
+                  <p style={{fontSize:'.85rem',color:'var(--muted)',margin:0}}>Recebemos seu PIX. Já estamos preparando seu pedido 🚚</p>
+                </div>
+              ) : pixData ? (
+                <div style={{textAlign:'center'}}>
+                  {pixData.qrCodeBase64 && (
+                    <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="QR Code PIX" style={{width:180,height:180,margin:'0 auto 12px',borderRadius:8,border:'1px solid #e2e8f0'}}/>
+                  )}
+                  <p style={{fontSize:'.82rem',color:'var(--muted)',margin:'0 0 8px'}}>Escaneie o QR Code ou copie o código PIX abaixo:</p>
+                  <div style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:8,padding:'10px 12px',fontSize:'.7rem',wordBreak:'break-all',color:'var(--muted)',marginBottom:10,maxHeight:70,overflow:'hidden'}}>
+                    {pixData.qrCode}
+                  </div>
+                  <button onClick={copyPixCode}
+                    style={{width:'100%',background:pixCopied?'#16a34a':'#009ee3',color:'white',border:'none',borderRadius:12,padding:'14px',fontSize:'.95rem',fontWeight:800,cursor:'pointer',marginBottom:10}}>
+                    {pixCopied ? '✅ Código copiado!' : '📋 Copiar código PIX'}
+                  </button>
+                  <p style={{fontSize:'.78rem',color:'#94a3b8',margin:0,display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{animation:'spin 1.4s linear infinite'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                    Aguardando confirmação do pagamento...
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <button onClick={handlePixPay} disabled={pixLoading}
+                    style={{width:'100%',background:pixLoading?'#9bb3d0':'#009ee3',color:'white',border:'none',borderRadius:12,padding:'16px',fontSize:'1.05rem',fontWeight:800,cursor:pixLoading?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:10,transition:'all .2s',boxShadow:pixLoading?'none':'0 4px 14px rgba(0,158,227,.35)',letterSpacing:'.01em',marginBottom:10}}>
+                    {pixLoading
+                      ? <><svg width="18" height="18" viewBox="0 0 24 24" fill="white" style={{animation:'spin 1s linear infinite'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Gerando QR Code...</>
+                      : <>🔑 Pagar com PIX (instantâneo)</>}
+                  </button>
+                  <button onClick={handleMpPay} disabled={mpLoading}
+                    style={{width:'100%',background:'transparent',color:'var(--brand)',border:'1px solid var(--brand)',borderRadius:12,padding:'14px',fontSize:'.95rem',fontWeight:700,cursor:mpLoading?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:10,opacity:mpLoading?.6:1}}>
+                    {mpLoading
+                      ? <><svg width="18" height="18" viewBox="0 0 24 24" fill="var(--brand)" style={{animation:'spin 1s linear infinite'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Gerando link seguro...</>
+                      : <>💳 Cartão, boleto ou outros (Mercado Pago)</>}
+                  </button>
+                </>
+              )}
 
               {/* payment methods — purely informational */}
               <div style={{textAlign:'center',marginTop:10}}>
@@ -1482,7 +1679,7 @@ export default function SalVitaLanding() {
 
               {/* track link */}
               <p style={{textAlign:'center',fontSize:'.75rem',color:'var(--muted)',marginTop:12}}>
-                Após pagar, rastreie em: <a href="/meu-pedido" style={{color:'var(--brand)',fontWeight:600}}>Pedido #{orderDone.id}</a>
+                Após pagar, rastreie em: <a href={`/meu-pedido?pedido=${orderDone.id}&tel=${checkoutForm.customerPhone.replace(/\D/g,'').slice(-4)}`} style={{color:'var(--brand)',fontWeight:600}}>Pedido #{orderDone.id}</a>
               </p>
             </div>
           </div>
@@ -1514,8 +1711,8 @@ export default function SalVitaLanding() {
                 </div>
                 <div>
                   <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>Telefone/WhatsApp *</label>
-                  <input required value={checkoutForm.customerPhone} onChange={e=>setCheckoutForm(f=>({...f,customerPhone:e.target.value}))}
-                    placeholder="(84) 99999-9999" minLength={10}
+                  <input required type="tel" inputMode="numeric" value={checkoutForm.customerPhone} onChange={e=>setCheckoutForm(f=>({...f,customerPhone:maskPhone(e.target.value)}))}
+                    placeholder="(84) 99999-9999" minLength={14}
                     style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
                     onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
                     onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
@@ -1530,11 +1727,13 @@ export default function SalVitaLanding() {
                 </div>
                 <div>
                   <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>CPF *</label>
-                  <input required type="text" inputMode="numeric" autoComplete="off" value={checkoutForm.customerCpf} onChange={e=>setCheckoutForm(f=>({...f,customerCpf:e.target.value}))}
+                  <input required type="text" inputMode="numeric" autoComplete="off" value={checkoutForm.customerCpf}
+                    onChange={e=>{ const m=maskCpf(e.target.value); setCheckoutForm(f=>({...f,customerCpf:m})); setCpfError(m.replace(/\D/g,'').length===11 && !isValidCpf(m) ? 'CPF inválido' : ''); }}
                     placeholder="000.000.000-00" maxLength={14}
-                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:'2px solid transparent',borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
-                    onFocus={e=>e.currentTarget.style.borderColor='var(--brand)'}
-                    onBlur={e=>e.currentTarget.style.borderColor='transparent'}/>
+                    style={{width:'100%',boxSizing:'border-box',background:'var(--offwhite)',border:`2px solid ${cpfError?'#ef4444':'transparent'}`,borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',transition:'border-color .2s'}}
+                    onFocus={e=>{ if(!cpfError) e.currentTarget.style.borderColor='var(--brand)'; }}
+                    onBlur={e=>{ if(!cpfError) e.currentTarget.style.borderColor='transparent'; }}/>
+                  {cpfError && <p style={{fontSize:'.78rem',color:'#ef4444',margin:'4px 0 0',fontWeight:600}}>{cpfError}</p>}
                 </div>
                 <div>
                   <label style={{display:'block',fontSize:'.8rem',fontWeight:700,color:'var(--mid)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.08em'}}>CEP *</label>
@@ -1604,7 +1803,7 @@ export default function SalVitaLanding() {
                     style={{flex:1,background:'var(--offwhite)',border:`2px solid ${couponState?.valid?'#16a34a':couponState?.valid===false?'#ef4444':'transparent'}`,borderRadius:10,padding:'11px 14px',fontSize:'.95rem',outline:'none',fontFamily:'monospace',letterSpacing:'.1em'}}
                   />
                   <button type="button"
-                    onClick={()=>validateCoupon(couponCode, selProd.price * (selProd.weightKg>=10?10:1))}
+                    onClick={()=>validateCoupon(couponCode, selProd.price)}
                     disabled={!couponCode.trim() || couponLoading}
                     style={{padding:'0 16px',background:'var(--brand)',color:'white',border:'none',borderRadius:10,fontSize:'.85rem',fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
                     {couponLoading?'...':'Aplicar'}
@@ -1620,14 +1819,14 @@ export default function SalVitaLanding() {
               <div style={{background:'var(--sky)',borderRadius:10,padding:'12px 16px',marginTop:4}}>
                 <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
                   <span style={{fontSize:'.9rem',color:'var(--muted)'}}>Produto</span>
-                  <span style={{fontSize:'.9rem',color:'var(--mid)'}}>R$ {(selProd.price*(selProd.weightKg>=10?10:1)).toFixed(2)}</span>
+                  <span style={{fontSize:'.9rem',color:'var(--mid)'}}>R$ {(selProd.price).toFixed(2)}</span>
                 </div>
                 {couponState?.valid && couponState.discountValue && (
                   <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
                     <span style={{fontSize:'.9rem',color:'#16a34a',fontWeight:600}}>🎁 Desconto {couponCode}</span>
                     <span style={{fontSize:'.9rem',color:'#16a34a',fontWeight:700}}>
                       -{couponState.discountType==='percent'
-                        ? `R$ ${((selProd.price*(selProd.weightKg>=10?10:1))*couponState.discountValue/100).toFixed(2)}`
+                        ? `R$ ${((selProd.price)*couponState.discountValue/100).toFixed(2)}`
                         : `R$ ${couponState.discountValue.toFixed(2)}`}
                     </span>
                   </div>
@@ -1640,7 +1839,7 @@ export default function SalVitaLanding() {
                   <span style={{fontWeight:700,color:'var(--text)'}}>Total</span>
                   <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.3rem',fontWeight:700,color:'var(--brand)'}}>
                     {(() => {
-                      let subtotal = selProd.price*(selProd.weightKg>=10?10:1);
+                      let subtotal = selProd.price;
                       if (couponState?.valid && couponState.discountValue) {
                         const disc = couponState.discountType==='percent'
                           ? subtotal*couponState.discountValue/100
@@ -1651,6 +1850,10 @@ export default function SalVitaLanding() {
                     })()}
                   </span>
                 </div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:8,background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:10,padding:'10px 12px'}}>
+                <span style={{fontSize:'1.1rem'}}>🛡️</span>
+                <span style={{fontSize:'.82rem',color:'#15803d',fontWeight:600,lineHeight:1.4}}>Garantia de 7 dias — não gostou, devolvemos 100%. Pague em segundos no PIX.</span>
               </div>
               <p style={{fontSize:'.82rem',color:'var(--muted)',lineHeight:1.5}}>Após confirmar, você será redirecionado para o Mercado Pago para pagar com cartão, PIX ou boleto.</p>
               <div style={{display:'flex',gap:10}}>

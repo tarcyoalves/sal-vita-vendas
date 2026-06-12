@@ -127,8 +127,9 @@ export const workSessionsRouter = router({
 
     const [allSellers, todaySessions, todayTasks, allRecentSessions, ghostCounts, burstTasks] = await Promise.all([
       db.select().from(sellers).where(eq(sellers.status, 'active')),
+      // Include active AND paused sessions — paused attendant must still appear on admin view
       db.select().from(workSessions)
-        .where(gte(workSessions.startedAt, todayStart))
+        .where(and(gte(workSessions.startedAt, todayStart), or(eq(workSessions.status, 'active'), eq(workSessions.status, 'paused'))))
         .orderBy(desc(workSessions.startedAt)),
       // Today's edited tasks — include title so we can show what they worked on
       db.select({
@@ -138,15 +139,16 @@ export const workSessionsRouter = router({
         lastContactedAt: tasks.lastContactedAt,
       }).from(tasks).where(gte(tasks.lastContactedAt, todayStart))
         .orderBy(desc(tasks.lastContactedAt)),
-      // Most recent session per seller across all days — for "last online" info
+      // Most recent session per seller in the last 90 days — for "last online" info
       db.select({
         userId: workSessions.userId,
         startedAt: workSessions.startedAt,
         endedAt: workSessions.endedAt,
         status: workSessions.status,
       }).from(workSessions)
+        .where(gte(workSessions.startedAt, new Date(Date.now() - 90 * 86400000)))
         .orderBy(desc(workSessions.startedAt))
-        .limit(500),
+        .limit(200),
       // Ghost count: tasks not contacted in 30+ days (aggregated, no row scan)
       db.select({
         userId: tasks.userId,

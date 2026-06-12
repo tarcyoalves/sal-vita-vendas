@@ -121,35 +121,62 @@ function LoginForm() {
 
 /* ── Tab 1: Carrinhos Abandonados ────────────────────────── */
 function WaStatusBadge() {
-  const { data, isLoading } = trpc.recovery.waStatus.useQuery(undefined, { refetchInterval: 60000 });
+  const { data, isLoading, refetch } = trpc.recovery.waStatus.useQuery(undefined, { refetchInterval: 300000, retry: 0 });
+  const reconnectMut = trpc.recovery.waReconnect.useMutation({
+    onSuccess: (d: any) => {
+      toast.success(d.ok ? `WA reconectado via ${d.path}` : 'WA: nenhum endpoint de reconexão disponível');
+      setTimeout(() => refetch(), 3000);
+    },
+    onError: () => toast.error('Falha ao reconectar WA'),
+  });
   if (isLoading) return null;
   const connected = (data as any)?.connected;
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 5,
-      background: connected ? '#dcfce7' : '#fee2e2',
-      color: connected ? '#166534' : '#991b1b',
-      borderRadius: 999, padding: '4px 12px', fontSize: '.75rem', fontWeight: 700,
-    }}>
-      <span style={{ width: 7, height: 7, borderRadius: '50%', background: connected ? '#22c55e' : '#ef4444', display: 'inline-block' }} />
-      WA {connected ? 'Conectado' : 'Desconectado'}
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        background: connected ? '#dcfce7' : '#fee2e2',
+        color: connected ? '#166534' : '#991b1b',
+        borderRadius: 999, padding: '4px 12px', fontSize: '.75rem', fontWeight: 700,
+      }}>
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: connected ? '#22c55e' : '#ef4444', display: 'inline-block' }} />
+        WA {connected ? 'Conectado' : 'Desconectado'}
+      </span>
+      <button
+        onClick={() => reconnectMut.mutate()}
+        disabled={reconnectMut.isPending}
+        title="Forçar reconexão do WhatsApp (útil se mensagens não estão chegando)"
+        style={{ padding: '4px 10px', background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', borderRadius: 999, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer', opacity: reconnectMut.isPending ? .6 : 1 }}
+      >
+        {reconnectMut.isPending ? '...' : '🔄'}
+      </button>
     </span>
   );
 }
 
 function AbandonedTab() {
-  const { data, isLoading, refetch } = trpc.recovery.listAbandoned.useQuery(undefined, { refetchInterval: 30000 });
+  const { data, isLoading, refetch } = trpc.recovery.listAbandoned.useQuery(undefined, { refetchInterval: 300000, retry: 0 });
+  const couponsQ = trpc.recovery.listCoupons.useQuery();
+  const [selectedCoupon, setSelectedCoupon] = useState<string>('');
   const [aiPreviews, setAiPreviews] = useState<Record<number, string>>({});
+  const [waFallbacks, setWaFallbacks] = useState<Record<number, string>>({});
   const markRecovered = trpc.recovery.markRecovered.useMutation({
     onSuccess: () => { toast.success('Marcado como recuperado!'); refetch(); },
     onError: (e) => toast.error(e.message),
   });
   const sendMut = trpc.recovery.sendRecovery.useMutation({
-    onSuccess: (d: any) => { toast.success(`✅ Enviado para ${d.phone}`); refetch(); },
+    onSuccess: (d: any, vars: any) => {
+      toast.success(`✅ Enviado para ${d.phone}`);
+      if (d.waLink) setWaFallbacks(p => ({ ...p, [vars.id]: d.waLink }));
+      refetch();
+    },
     onError: (e) => toast.error('Falha no envio: ' + e.message),
   });
   const sendCouponMut = trpc.recovery.sendRecovery.useMutation({
-    onSuccess: (d: any) => { toast.success(`🎁 Enviado com cupom para ${d.phone}`); refetch(); },
+    onSuccess: (d: any) => {
+      toast.success(d.coupon ? `🎁 Enviado com cupom ${d.coupon} para ${d.phone}` : `✅ Enviado para ${d.phone} (sem cupom — crie um na aba Cupons)`);
+      refetch();
+    },
     onError: (e) => toast.error('Falha no envio: ' + e.message),
   });
   const jobMut = trpc.recovery.runAutomationJob.useMutation({
@@ -171,10 +198,20 @@ function AbandonedTab() {
     },
     onError: (e) => toast.error('IA: ' + e.message),
   });
+  const optOutMut = trpc.recovery.markOptedOut.useMutation({
+    onSuccess: () => { toast.success('🚫 Opt-out registrado — automações canceladas'); refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
 
   if (isLoading) return <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Carregando...</div>;
 
   const rows = data ?? [];
+  const now = Date.now();
+  const usableCoupons = (couponsQ.data ?? []).filter((c: any) =>
+    c.active
+    && (!c.expiresAt || new Date(c.expiresAt).getTime() > now)
+    && (!c.maxUses || c.usedCount < c.maxUses)
+  );
 
   return (
     <div>
@@ -200,6 +237,24 @@ function AbandonedTab() {
             {jobMut.isPending ? '⏳ Executando...' : '▶ Executar Job'}
           </button>
         </div>
+      </div>
+
+      {/* Coupon selector for the "+ Cupom" button */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
+        <span style={{ fontSize: '.82rem', fontWeight: 700, color: '#92400e' }}>🎁 Cupom para o botão "+ Cupom":</span>
+        <select
+          value={selectedCoupon}
+          onChange={e => setSelectedCoupon(e.target.value)}
+          style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #fcd34d', background: '#fff', fontSize: '.82rem', fontFamily: 'monospace' }}
+        >
+          <option value="">🤖 Automático ({rows[0]?.activeCoupon ?? 'nenhum cupom ativo'})</option>
+          {usableCoupons.map((c: any) => (
+            <option key={c.id} value={c.code}>{c.code} — {c.discountType === 'percent' ? `${c.discountValue}%` : `R$ ${parseFloat(c.discountValue).toFixed(2)}`}{c.useForRecovery ? ' ⭐' : ''}</option>
+          ))}
+        </select>
+        {usableCoupons.length === 0 && (
+          <span style={{ fontSize: '.78rem', color: '#92400e' }}>Nenhum cupom ativo — crie um na aba 🎟️ Cupons</span>
+        )}
       </div>
 
       {aiProcessMut.data && (
@@ -228,7 +283,7 @@ function AbandonedTab() {
           <p style={{ fontSize: '.85rem', color: '#94a3b8', marginTop: 6 }}>Todos os clientes finalizaram suas compras.</p>
         </div>
       ) : rows.map((row: any) => (
-        <div key={row.id} style={{ ...card, borderLeft: '4px solid #f59e0b' }}>
+        <div key={row.id} style={{ ...card, borderLeft: `4px solid ${row.optedOut ? '#94a3b8' : '#f59e0b'}`, opacity: row.optedOut ? 0.7 : 1 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -236,7 +291,12 @@ function AbandonedTab() {
                 <span style={{ background: '#fef3c7', color: '#92400e', borderRadius: 999, padding: '2px 9px', fontSize: '.72rem', fontWeight: 700 }}>
                   {stepLabel(row.stepReached ?? 1)}
                 </span>
-                {row.status && row.status !== 'checkout_started' && (
+                {row.optedOut && (
+                  <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 999, padding: '2px 9px', fontSize: '.7rem', fontWeight: 600 }}>
+                    🚫 PAROU
+                  </span>
+                )}
+                {!row.optedOut && row.status && row.status !== 'checkout_started' && (
                   <span style={{ background: '#f0fdf4', color: '#15803d', borderRadius: 999, padding: '2px 9px', fontSize: '.7rem', fontWeight: 600 }}>
                     {row.status === 'converted' ? '✓ Convertido' : row.status === 'redirected_to_payment' ? '→ No Pagamento' : row.status}
                   </span>
@@ -269,12 +329,28 @@ function AbandonedTab() {
               >
                 📤 Template
               </button>
+              {waFallbacks[row.id] && (
+                <a
+                  href={waFallbacks[row.id]}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Abrir no WhatsApp Web — use se a mensagem automática não chegou"
+                  style={{ padding: '7px 11px', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: 8, fontSize: '.78rem', fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                >
+                  📱 WA Manual
+                </a>
+              )}
               <button
-                onClick={() => sendCouponMut.mutate({ id: row.id, coupon: 'VOLTA10' })}
+                onClick={() => sendCouponMut.mutate(selectedCoupon ? { id: row.id, coupon: selectedCoupon } : { id: row.id, useCoupon: true })}
                 disabled={sendCouponMut.isPending}
+                title={
+                  selectedCoupon ? `Enviar com o cupom ${selectedCoupon}`
+                    : row.activeCoupon ? `Enviar com o cupom ${row.activeCoupon} (automático)`
+                    : 'Nenhum cupom ativo cadastrado — crie um na aba Cupons'
+                }
                 style={{ ...btnWaSecondary, opacity: sendCouponMut.isPending ? .7 : 1 }}
               >
-                🎁 + Cupom
+                🎁 + Cupom{(selectedCoupon || row.activeCoupon) ? ` (${selectedCoupon || row.activeCoupon})` : ''}
               </button>
               <button
                 onClick={() => markRecovered.mutate({ id: row.id })}
@@ -283,6 +359,16 @@ function AbandonedTab() {
               >
                 ✓ Recuperado
               </button>
+              {!row.optedOut && (
+                <button
+                  onClick={() => { if (confirm(`Registrar opt-out para ${row.customerName}? Isso cancelará todas as automações para este contato.`)) optOutMut.mutate({ id: row.id }); }}
+                  disabled={optOutMut.isPending}
+                  title="Cliente pediu para parar — cancela todas as automações e bloqueia futuros envios"
+                  style={btnDanger}
+                >
+                  🚫 Parou
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -293,7 +379,7 @@ function AbandonedTab() {
 
 /* ── Tab 2: Pedidos Não Pagos ────────────────────────────── */
 function UnpaidTab() {
-  const { data, isLoading, refetch } = trpc.recovery.listUnpaid.useQuery(undefined, { refetchInterval: 30000 });
+  const { data, isLoading, refetch } = trpc.recovery.listUnpaid.useQuery(undefined, { refetchInterval: 300000, retry: 0 });
   const templatesQ = trpc.recovery.listTemplates.useQuery();
   const [selectedTemplates, setSelectedTemplates] = useState<Record<number, number>>({});
   const [previews, setPreviews] = useState<Record<number, string>>({});
@@ -501,6 +587,13 @@ function TemplatesTab() {
                 </button>
               ))}
             </div>
+            {form.type === 'abandoned' && form.body.includes('{cupom}') && (
+              <p style={{ margin: '6px 0 0', fontSize: '.74rem', color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 8px' }}>
+                ⚠️ <strong>{'{cupom}'}</strong> é preenchido automaticamente com o cupom ativo cadastrado na aba <strong>🎟️ Cupons</strong>
+                (o de criação mais recente, dentro da validade e do limite de usos). Se nenhum cupom estiver ativo, esse trecho fica em branco.
+                O <strong>{'{link}'}</strong> já inclui <code>?cupom=CODIGO</code>, então o site preenche e valida o cupom automaticamente para o cliente.
+              </p>
+            )}
           </div>
 
           <div style={{ marginBottom: 12 }}>
@@ -587,7 +680,7 @@ function TemplatesTab() {
 
 function renderTplPreview(body: string, type: string): string {
   const fakeVars: Record<string, string> = {
-    nome: 'João Silva', cupom: 'VOLTA10', link: 'https://premium.salvitarn.com.br',
+    nome: 'João Silva', cupom: 'EXEMPLO10', link: 'https://premium.salvitarn.com.br?cupom=EXEMPLO10',
     produto: 'Sal Marinho Integral 1kg', pedido: '10042', valor: '79,80',
     pix: '00020126580014br.gov.bcb.pix0136abc123...', boleto_url: 'https://mercadopago.com/boleto/...',
   };
@@ -620,6 +713,11 @@ function CouponsTab() {
 
   const toggleMut = trpc.recovery.toggleCoupon.useMutation({
     onSuccess: () => refetch(),
+    onError: (e) => toast.error(e.message),
+  });
+
+  const setRecoveryMut = trpc.recovery.setRecoveryCoupon.useMutation({
+    onSuccess: () => { toast.success('Cupom de recuperação atualizado!'); refetch(); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -726,6 +824,11 @@ function CouponsTab() {
                     <span style={{ background: isActive ? '#dcfce7' : '#f1f5f9', color: isActive ? '#166534' : '#64748b', borderRadius: 999, padding: '2px 9px', fontSize: '.72rem', fontWeight: 700 }}>
                       {isActive ? 'Ativo' : 'Inativo'}
                     </span>
+                    {c.useForRecovery && (
+                      <span style={{ background: '#fef9c3', color: '#854d0e', borderRadius: 999, padding: '2px 9px', fontSize: '.72rem', fontWeight: 700 }}>
+                        ⭐ Usado em recuperação
+                      </span>
+                    )}
                   </div>
                   {c.description && <p style={{ margin: '0 0 4px', fontSize: '.85rem', color: '#334155' }}>{c.description}</p>}
                   <p style={{ margin: '0 0 2px', fontSize: '.82rem', color: '#64748b' }}>
@@ -737,9 +840,17 @@ function CouponsTab() {
                     {c.expiresAt ? ` · Expira ${new Date(c.expiresAt).toLocaleDateString('pt-BR')}` : ''}
                   </p>
                 </div>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <button
-                    onClick={() => toggleMut.mutate({ id: c.id })}
+                    onClick={() => setRecoveryMut.mutate({ id: c.id, enabled: !c.useForRecovery })}
+                    disabled={setRecoveryMut.isPending || !isActive}
+                    title={isActive ? 'Usar este cupom automaticamente nas mensagens de recuperação ({cupom})' : 'Ative o cupom para usá-lo na recuperação'}
+                    style={{ ...btnGhost, fontSize: '.75rem', background: c.useForRecovery ? '#fef9c3' : undefined, borderColor: c.useForRecovery ? '#fde047' : undefined }}
+                  >
+                    {c.useForRecovery ? '⭐ Recuperação' : '☆ Usar em recuperação'}
+                  </button>
+                  <button
+                    onClick={() => toggleMut.mutate({ id: c.id, active: !isActive })}
                     disabled={toggleMut.isPending}
                     style={{ ...btnGhost, fontSize: '.75rem' }}
                   >
@@ -764,7 +875,7 @@ function CouponsTab() {
 
 /* ── Tab 4: Automações ───────────────────────────────────── */
 function AutomationTab() {
-  const { data, isLoading, refetch } = trpc.recovery.listAutomationRuns.useQuery(undefined, { refetchInterval: 20000 });
+  const { data, isLoading, refetch } = trpc.recovery.listAutomationRuns.useQuery(undefined, { refetchInterval: 300000, retry: 0 });
   const jobMut = trpc.recovery.runAutomationJob.useMutation({
     onSuccess: (d: any) => { toast.success(`Job: ${d.sent} enviados, ${d.cancelled} cancelados, ${d.failed} falhas`); refetch(); },
     onError: (e) => toast.error(e.message),

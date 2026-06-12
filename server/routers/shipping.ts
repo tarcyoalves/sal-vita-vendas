@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { router, publicProcedure, protectedProcedure } from '../trpc';
 import { ordersDb as db } from '../db/ordersDb';
-import { siteOrders, coupons } from '../db/schema';
+import { siteOrders, coupons, msgTemplates } from '../db/schema';
 import { desc, eq, and, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
+import { confirmOrderPaid } from '../lib/orderConfirmation';
 
 const ME_BASE = 'https://melhorenvio.com.br';
 const ORIGIN_CEP = process.env.MELHOR_ENVIO_ORIGIN_CEP ?? '59600000';
@@ -12,6 +13,34 @@ const PKG_1KG  = { height: 7, width: 15, length: 24 };
 const PKG_10KG = { height: 21, width: 24, length: 27 };
 
 function getPkg(qty: number) { return qty >= 10 ? PKG_10KG : PKG_1KG; }
+
+function renderTpl(body: string, vars: Record<string, string>): string {
+  return body.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
+}
+
+// Best-effort WhatsApp send via the Baileys wa-server on the VPS (non-throwing).
+async function sendWhatsAppMsg(phone: string, message: string): Promise<boolean> {
+  const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
+  const key = process.env.WA_API_KEY;
+  if (!key) { console.warn('[wa] WA_API_KEY not configured — skipping'); return false; }
+  const digits = phone.replace(/\D/g, '');
+  const fmt = digits.startsWith('55') ? digits : `55${digits}`;
+  try {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 8000);
+    const r = await fetch(`${url}/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': key },
+      body: JSON.stringify({ phone: fmt, message }),
+      signal: ac.signal,
+    });
+    clearTimeout(timer);
+    return r.ok;
+  } catch { return false; }
+}
+
+const correiosLink = (code: string) =>
+  `https://rastreamento.correios.com.br/app/index.php?objeto=${encodeURIComponent(code)}`;
 
 const STATIC_REGIONS: Record<string, { pac:[number,string]; sedex:[number,string] }> = {
   RN:{pac:[14,'3–5'],sedex:[27,'1–2']}, CE:{pac:[15,'3–5'],sedex:[28,'1–2']},
@@ -109,13 +138,29 @@ export const shippingRouter = router({
       city: z.string().min(2).max(100),
       state: z.string().length(2),
       quantity: z.number().int().min(1).max(100),
+      productId: z.enum(['1kg', '3kg', 'caixa']).optional().default('1kg'),
       shippingServiceId: z.string().optional(),
       shippingServiceName: z.string().optional(),
       shippingPrice: z.number().min(0).optional(),
       couponCode: z.string().max(20).optional(),
+      // Marketing attribution from the landing URL (best-effort, optional).
+      utmSource: z.string().max(120).optional(),
+      utmMedium: z.string().max(120).optional(),
+      utmCampaign: z.string().max(180).optional(),
+      utmContent: z.string().max(180).optional(),
+      utmTerm: z.string().max(180).optional(),
+      fbclid: z.string().max(400).optional(),
     }))
     .mutation(async ({ input }) => {
-      const unitPrice = 29.90;
+      // Server-authoritative price catalog. `quantity` is the number of 1kg units
+      // (kg units): 1kg product = 1 unit each, box = 10 units each.
+      const CATALOG: Record<string, { price: number; kgPerUnit: number }> = {
+        '1kg':   { price: 29.90,  kgPerUnit: 1 },
+        '3kg':   { price: 74.90,  kgPerUnit: 3 },
+        'caixa': { price: 149.90, kgPerUnit: 10 },
+      };
+      const prod = CATALOG[input.productId] ?? CATALOG['1kg'];
+      const productCount = Math.max(1, Math.round(input.quantity / prod.kgPerUnit));
       const shipping = input.shippingPrice ?? 0;
 
       // Validate shipping price server-side
@@ -123,12 +168,13 @@ export const shippingRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Valor de frete inválido.' });
       }
 
-      let subtotal = +(unitPrice * input.quantity).toFixed(2);
+      let subtotal = +(prod.price * productCount).toFixed(2);
       let couponDiscount = 0;
       let appliedCoupon: string | null = null;
-      let foundCouponId: number | null = null;
 
-      // Apply coupon if provided (lookup only — increment happens inside transaction)
+      // Apply coupon if provided (lookup + discount only). The coupon's used_count
+      // is incremented ONLY when the payment is confirmed (in the mp-webhook /
+      // reconcile path), so abandoned/unpaid orders never burn a coupon's uses.
       if (input.couponCode) {
         const code = input.couponCode.toUpperCase().trim();
         const found = await db.select().from(coupons)
@@ -146,37 +192,37 @@ export const shippingRouter = router({
             }
             subtotal = +(subtotal - couponDiscount).toFixed(2);
             appliedCoupon = code;
-            foundCouponId = c.id;
           }
         }
       }
 
       const total = +(subtotal + shipping).toFixed(2);
-      const [order] = await db.transaction(async (tx) => {
-        if (appliedCoupon && foundCouponId !== null) {
-          await tx.update(coupons).set({ usedCount: sql`used_count + 1` }).where(eq(coupons.id, foundCouponId));
-        }
-        return tx.insert(siteOrders).values({
-          customerName: input.customerName,
-          customerPhone: input.customerPhone,
-          customerEmail: input.customerEmail || null,
-          customerCpf: input.customerCpf ? input.customerCpf.replace(/\D/g,'') : null,
-          postalCode: input.postalCode.replace(/\D/g,''),
-          address: input.address,
-          number: input.number,
-          complement: input.complement || null,
-          neighborhood: input.neighborhood,
-          city: input.city,
-          state: input.state.toUpperCase(),
-          quantity: input.quantity,
-          shippingServiceId: input.shippingServiceId ?? null,
-          shippingServiceName: input.shippingServiceName ?? null,
-          shippingPrice: shipping > 0 ? String(shipping) : null,
-          totalPrice: String(total),
-          couponCode: appliedCoupon,
-          couponDiscount: couponDiscount > 0 ? String(couponDiscount) : null,
-        }).returning();
-      });
+      const [order] = await db.insert(siteOrders).values({
+        customerName: input.customerName,
+        customerPhone: input.customerPhone,
+        customerEmail: input.customerEmail || null,
+        customerCpf: input.customerCpf ? input.customerCpf.replace(/\D/g,'') : null,
+        postalCode: input.postalCode.replace(/\D/g,''),
+        address: input.address,
+        number: input.number,
+        complement: input.complement || null,
+        neighborhood: input.neighborhood,
+        city: input.city,
+        state: input.state.toUpperCase(),
+        quantity: input.quantity,
+        shippingServiceId: input.shippingServiceId ?? null,
+        shippingServiceName: input.shippingServiceName ?? null,
+        shippingPrice: shipping > 0 ? String(shipping) : null,
+        totalPrice: String(total),
+        couponCode: appliedCoupon,
+        couponDiscount: couponDiscount > 0 ? String(couponDiscount) : null,
+        utmSource: input.utmSource ?? null,
+        utmMedium: input.utmMedium ?? null,
+        utmCampaign: input.utmCampaign ?? null,
+        utmContent: input.utmContent ?? null,
+        utmTerm: input.utmTerm ?? null,
+        fbclid: input.fbclid ?? null,
+      }).returning();
       if (!order?.id) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Erro ao criar pedido. Tente novamente.' });
       return { id: order.id, total, couponDiscount, couponApplied: appliedCoupon };
     }),
@@ -202,7 +248,9 @@ export const shippingRouter = router({
 
       const orders = await db.select().from(siteOrders).orderBy(desc(siteOrders.createdAt));
 
-      const paid = orders.filter(o => o.paymentStatus === 'confirmed');
+      // Cancelled orders shouldn't count as revenue even if they were paid
+      // before being cancelled/refunded.
+      const paid = orders.filter(o => o.paymentStatus === 'confirmed' && o.status !== 'cancelled');
       const revenue = paid.reduce((s, o) => s + parseFloat(o.totalPrice ?? '0'), 0);
       const cityCount: Record<string, number> = {};
       orders.forEach(o => {
@@ -293,6 +341,7 @@ Seja direto e use emojis para facilitar leitura.`;
     }))
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      const [before] = await db.select().from(siteOrders).where(eq(siteOrders.id, input.id)).limit(1);
       const updates: Record<string,unknown> = { updatedAt: new Date() };
       if (input.status) updates.status = input.status;
       if (input.paymentStatus) updates.paymentStatus = input.paymentStatus;
@@ -300,6 +349,12 @@ Seja direto e use emojis para facilitar leitura.`;
         .set(updates)
         .where(eq(siteOrders.id, input.id))
         .returning();
+      // Manually confirming a payment must produce the same customer-facing
+      // result as an automatic confirmation (WhatsApp + email + CAPI + coupon
+      // + cancel pending follow-ups) — only run once per order.
+      if (updated && input.paymentStatus === 'confirmed' && before?.paymentStatus !== 'confirmed') {
+        await confirmOrderPaid(updated);
+      }
       return updated;
     }),
 
@@ -346,6 +401,24 @@ Seja direto e use emojis para facilitar leitura.`;
         .set({ trackingCode: input.trackingCode, status: 'shipped', updatedAt: new Date() })
         .where(eq(siteOrders.id, input.id))
         .returning();
+
+      // Auto-notify the customer of the tracking code via WhatsApp (best effort)
+      if (updated) {
+        try {
+          const [tpl] = await db.select().from(msgTemplates)
+            .where(and(eq(msgTemplates.type, 'shipped'), eq(msgTemplates.isDefault, true))).limit(1);
+          const vars = {
+            nome: updated.customerName,
+            pedido: String(updated.id),
+            rastreio: input.trackingCode,
+            link: correiosLink(input.trackingCode),
+          };
+          const msg = tpl
+            ? renderTpl(tpl.body, vars)
+            : `Olá *${updated.customerName}*! 📦\n\nSeu pedido *#${updated.id}* foi *enviado*! 🚚\n\n🔎 Rastreio: *${input.trackingCode}*\n👉 ${correiosLink(input.trackingCode)}\n\n_Sal Vita — Mossoró/RN_`;
+          await sendWhatsAppMsg(updated.customerPhone, msg);
+        } catch (e) { console.error('[updateTracking] WA notify failed:', e); }
+      }
       return updated;
     }),
 
@@ -384,12 +457,13 @@ Seja direto e use emojis para facilitar leitura.`;
           phone: { number: order.customerPhone.replace(/\D/g,'') },
         },
         back_urls: {
-          success: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&status=pago`,
-          failure: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&status=falhou`,
-          pending: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&status=pendente`,
+          // Include &tel=<last4> so the tracking page auto-loads the order on return.
+          success: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${order.customerPhone.replace(/\D/g,'').slice(-4)}&status=pago`,
+          failure: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${order.customerPhone.replace(/\D/g,'').slice(-4)}&status=falhou`,
+          pending: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${order.customerPhone.replace(/\D/g,'').slice(-4)}&status=pendente`,
         },
         auto_return: 'approved',
-        notification_url: `https://lembretes.salvitarn.com.br/api/mp-webhook`,
+        notification_url: `https://premium.salvitarn.com.br/api/mp-webhook`,
         external_reference: String(order.id),
         statement_descriptor: 'SAL VITA',
         payment_methods: { installments: 3 },
@@ -413,6 +487,81 @@ Seja direto e use emojis para facilitar leitura.`;
       return { initPoint: data.init_point as string };
     }),
 
+  // Create a PIX payment directly (inline QR + copy-paste) so the customer never leaves the site.
+  createPixPayment: publicProcedure
+    .input(z.object({ orderId: z.number() }))
+    .mutation(async ({ input }) => {
+      const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+      if (!token) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Configure MERCADO_PAGO_ACCESS_TOKEN' });
+      const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
+      const order = orders[0];
+      if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+      if (order.paymentStatus === 'confirmed') throw new TRPCError({ code: 'CONFLICT', message: 'Este pedido já foi pago.' });
+
+      const amount = parseFloat(order.totalPrice ?? '0');
+      const email = (order.customerEmail && order.customerEmail.includes('@')) ? order.customerEmail : `cliente${order.id}@salvitarn.com.br`;
+      const body: any = {
+        transaction_amount: amount,
+        description: `Pedido #${order.id} — Sal Vita`,
+        payment_method_id: 'pix',
+        payer: {
+          email,
+          first_name: order.customerName.split(' ')[0],
+          last_name: order.customerName.split(' ').slice(1).join(' ') || '-',
+        },
+        external_reference: String(order.id),
+        notification_url: 'https://premium.salvitarn.com.br/api/mp-webhook',
+      };
+      if (order.customerCpf) body.payer.identification = { type: 'CPF', number: order.customerCpf.replace(/\D/g, '') };
+
+      const res = await fetch('https://api.mercadopago.com/v1/payments', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'X-Idempotency-Key': `pix-${order.id}-${Date.now()}`,
+        },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro PIX MP: ${txt}` });
+      }
+      const data = await res.json();
+      const td = data?.point_of_interaction?.transaction_data;
+      if (!td?.qr_code) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'PIX não retornou QR code.' });
+
+      await db.update(siteOrders).set({ mpPaymentId: String(data.id), updatedAt: new Date() }).where(eq(siteOrders.id, order.id));
+
+      return {
+        paymentId: String(data.id),
+        qrCode: td.qr_code as string,                 // copy-paste code
+        qrCodeBase64: (td.qr_code_base64 ?? '') as string, // PNG base64
+        amount,
+      };
+    }),
+
+  // Lightweight poll for the PIX/checkout payment status (read-only — webhook does the writes).
+  pixStatus: publicProcedure
+    .input(z.object({ orderId: z.number() }))
+    .query(async ({ input }) => {
+      const orders = await db.select({ id: siteOrders.id, paymentStatus: siteOrders.paymentStatus, mpPaymentId: siteOrders.mpPaymentId })
+        .from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
+      const order = orders[0];
+      if (!order) return { paid: false, status: 'not_found' };
+      if (order.paymentStatus === 'confirmed') return { paid: true, status: 'approved' };
+      const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+      if (!token || !order.mpPaymentId) return { paid: false, status: order.paymentStatus };
+      try {
+        const r = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!r.ok) return { paid: false, status: order.paymentStatus };
+        const p = await r.json() as any;
+        return { paid: p.status === 'approved', status: p.status as string };
+      } catch {
+        return { paid: false, status: order.paymentStatus };
+      }
+    }),
+
   generateLabel: protectedProcedure
     .input(z.object({ orderId: z.number() }))
     .mutation(async ({ ctx, input }) => {
@@ -423,6 +572,11 @@ Seja direto e use emojis para facilitar leitura.`;
       const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
       const order = orders[0];
       if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+      // Never spend a paid shipping label on an order that hasn't been paid for
+      // (or was refunded/cancelled). Avoids shipping cost on unpaid/charged-back orders.
+      if (order.paymentStatus !== 'confirmed') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Pagamento não confirmado — não é possível gerar etiqueta para este pedido.' });
+      }
 
       const headers = {
         'Authorization': `Bearer ${token}`,
@@ -507,6 +661,10 @@ Seja direto e use emojis para facilitar leitura.`;
         throw err; // re-throw original error
       }
 
+      // Persist meOrderId right after checkout succeeds (label is now paid) so it can be
+      // cancelled/reprinted later even if generate/print below fails.
+      await db.update(siteOrders).set({ meOrderId, updatedAt: new Date() }).where(eq(siteOrders.id, input.orderId));
+
       const genRes = await fetch(`${ME_BASE}/api/v2/me/shipment/generate`, {
         method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }),
       });
@@ -525,8 +683,10 @@ Seja direto e use emojis para facilitar leitura.`;
       const printData = await printRes.json();
       const labelUrl: string = printData.url;
 
+      // Label generated but NOT yet physically posted — use 'label_generated' so the
+      // "Pendentes Envio" admin tab works and we don't tell the customer it shipped early.
       const [updated] = await db.update(siteOrders)
-        .set({ meOrderId, meLabelUrl: labelUrl, status: 'shipped', updatedAt: new Date() })
+        .set({ meOrderId, meLabelUrl: labelUrl, status: 'label_generated', updatedAt: new Date() })
         .where(eq(siteOrders.id, input.orderId))
         .returning();
 
@@ -594,5 +754,16 @@ Seja direto e use emojis para facilitar leitura.`;
 
       results.push('Pedido cancelado');
       return { order: updated, actions: results };
+    }),
+
+  // Admin: permanently remove an order (e.g. test orders). No refund/label
+  // cancellation is attempted — use cancelOrder first for real orders.
+  deleteOrder: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      const [deleted] = await db.delete(siteOrders).where(eq(siteOrders.id, input.id)).returning();
+      if (!deleted) throw new TRPCError({ code: 'NOT_FOUND' });
+      return { ok: true };
     }),
 });

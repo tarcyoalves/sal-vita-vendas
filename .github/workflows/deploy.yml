@@ -1,0 +1,34 @@
+name: Deploy to Vercel
+
+on:
+  workflow_dispatch:
+
+env:
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+  VERCEL_ORG_ID: team_ZHn6TWGLumT9fkcooDeIbHD8
+  VERCEL_PROJECT_ID: prj_xpZOPvJsMdf7uEs6LX67fx5i0Ro8
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=production
+
+      - name: Build project
+        run: vercel build --prod
+
+      - name: Deploy to Vercel Production
+        run: vercel deploy --prod --prebuilt

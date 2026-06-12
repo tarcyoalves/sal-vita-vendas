@@ -19,8 +19,41 @@ import {
   ChevronDown,
   ChevronRight,
   FileText,
+  Trash2,
+  AlertTriangle,
+  Eye,
+  Phone,
+  RefreshCw,
+  NotebookPen,
+  DollarSign,
+  Download,
 } from "lucide-react";
 import AttendantDetailModal from '../components/AttendantDetailModal';
+
+// Sellers created before dailyGoal was wired up still carry the old default of 10
+// while the gamification has always targeted 100 — treat 10 as "not customized".
+function effectiveDailyGoal(dailyGoal?: number | null): number {
+  return dailyGoal && dailyGoal !== 10 ? dailyGoal : 100;
+}
+
+// ── CSV export helper ────────────────────────────────────────────────────────
+function exportCsv(filename: string, headers: string[], rows: (string | number)[][]) {
+  const escapeCell = (cell: string | number) => {
+    const s = String(cell ?? '');
+    return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [headers, ...rows].map(row => row.map(escapeCell).join(';'));
+  const csv = '﻿' + lines.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 // ── AI Analysis Report ───────────────────────────────────────────────────────
 // Uses inline styles (not Tailwind dynamic classes) + manual table parser
@@ -30,6 +63,7 @@ type SectionTheme = { bg: string; border: string; headerBg: string; headerText: 
 
 function getSectionTheme(h: string): SectionTheme {
   if (h.includes('🏆')) return { bg:'#fffbeb', border:'#f59e0b', headerBg:'#fef3c7', headerText:'#92400e', dot:'#f59e0b' };
+  if (h.includes('💰')) return { bg:'#ecfdf5', border:'#10b981', headerBg:'#d1fae5', headerText:'#065f46', dot:'#10b981' };
   if (h.includes('🔴')) return { bg:'#fef2f2', border:'#ef4444', headerBg:'#fee2e2', headerText:'#991b1b', dot:'#ef4444' };
   if (h.includes('📊')) return { bg:'#eff6ff', border:'#3b82f6', headerBg:'#dbeafe', headerText:'#1e40af', dot:'#3b82f6' };
   if (h.includes('✅')) return { bg:'#f0fdf4', border:'#22c55e', headerBg:'#dcfce7', headerText:'#166534', dot:'#22c55e' };
@@ -156,11 +190,14 @@ function AiAnalysisReport({ markdown }: { markdown: string }) {
 export default function AdminDashboard() {
   const { user, loading } = useAuth();
   const [, setLocation] = useLocation();
-  const { data: sellers = [], isLoading } = trpc.sellers.list.useQuery();
-  const { data: tasks = [] } = trpc.tasks.list.useQuery();
-  const { data: reminders = [] } = trpc.tasks.reminders.useQuery();
+  const { data: sellers = [], isLoading } = trpc.sellers.list.useQuery(undefined, { staleTime: 300_000 });
+  const { data: tasks = [] } = trpc.tasks.list.useQuery(undefined, { staleTime: 120_000 });
+  const { data: reminders = [] } = trpc.tasks.reminders.useQuery(undefined, { staleTime: 120_000 });
+  const { data: deletionLogs = [], refetch: refetchDeletionLogs } = trpc.tasks.deletionLogs.useQuery({ onlyUnreviewed: true }, { staleTime: 120_000 });
+  const markDeletionReviewedMutation = trpc.tasks.markDeletionReviewed.useMutation({ onSuccess: () => refetchDeletionLogs() });
+  const [showDeletionLogs, setShowDeletionLogs] = useState(false);
   const analyzeAttendantsMutation = trpc.ai.analyzeAttendants.useMutation();
-  const { data: sessionData = [] } = trpc.workSessions.allActiveToday.useQuery(undefined, { refetchInterval: 60_000 });
+  const { data: sessionData = [], refetch: refetchSessions, isFetching: sessionsFetching } = trpc.workSessions.allActiveToday.useQuery(undefined, { staleTime: 90_000 });
   const [expandedSessions, setExpandedSessions] = useState<Set<number>>(new Set());
   const toggleSession = (id: number) => setExpandedSessions(prev => {
     const next = new Set(prev);
@@ -170,6 +207,7 @@ export default function AdminDashboard() {
   const [monitorReport, setMonitorReport] = useState<any[] | null>(null);
   const [monitorSummary, setMonitorSummary] = useState<string | null>(null);
   const [monitorLoading, setMonitorLoading] = useState(false);
+  const [monitorCached, setMonitorCached] = useState<{ cached: boolean; at: number } | null>(null);
   const [reminderFilter, setReminderFilter] = useState<string>("all");
   const [selectedSeller, setSelectedSeller] = useState<any | null>(null);
 
@@ -184,13 +222,16 @@ export default function AdminDashboard() {
     return undefined;
   };
 
-  const handleRunMonitor = async () => {
+  const handleRunMonitor = async (forceRefresh = false) => {
     setMonitorLoading(true);
     try {
       const aiCfg = getAiConfig();
-      const result = await analyzeAttendantsMutation.mutateAsync(aiCfg);
+      const result: any = await analyzeAttendantsMutation.mutateAsync({ ...aiCfg, forceRefresh });
       setMonitorReport(result.report);
       setMonitorSummary(result.summary);
+      setMonitorCached(typeof result.cached === 'boolean'
+        ? { cached: result.cached, at: result.cachedAt ?? Date.now() }
+        : null);
     } catch (e: any) {
       setMonitorSummary('Erro ao analisar: ' + (e?.message ?? 'Erro desconhecido'));
     } finally {
@@ -211,11 +252,119 @@ export default function AdminDashboard() {
   const pending = (tasks as any[]).filter(t => t.status === 'pending');
   const completed = (tasks as any[]).filter(t => t.status === 'completed');
   const overdue = (tasks as any[]).filter(t => {
-    if (t.status === 'completed') return false;
+    if (t.status !== 'pending') return false;
     if (!t.reminderDate) return false;
     return new Date(t.reminderDate) < new Date();
   });
   const completionRate = tasks.length > 0 ? Math.round((completed.length / tasks.length) * 100) : 0;
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const contactsToday = (tasks as any[]).filter(t => t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart).length;
+  const withNotes = (tasks as any[]).filter(t => t.notes && t.notes.trim().length >= 15).length;
+  const noteQuality = tasks.length > 0 ? Math.round((withNotes / tasks.length) * 100) : 0;
+
+  // Conversão: leads (lembretes recorrentes) que viraram clientes ativos.
+  // contactCount registra quantos contatos reais foram feitos até a conversão — mede esforço de venda.
+  const convertedTasks = (tasks as any[]).filter(t => t.convertedAt);
+  const convertedCount = convertedTasks.length;
+  const conversionRate = tasks.length > 0 ? Math.round((convertedCount / tasks.length) * 100) : 0;
+  const avgContactsToConvert = convertedCount > 0
+    ? Math.round(convertedTasks.reduce((sum, t) => sum + (t.contactCount || 0), 0) / convertedCount)
+    : 0;
+  const convertedThisMonth = convertedTasks.filter(t => {
+    const d = new Date(t.convertedAt);
+    const now = new Date();
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).length;
+
+  // ── Faturamento e ticket médio (a partir do valor de venda informado na conversão) ──
+  const tasksWithRevenue = convertedTasks.filter(t => t.orderValue != null && !isNaN(Number(t.orderValue)));
+  const totalRevenue = tasksWithRevenue.reduce((sum, t) => sum + Number(t.orderValue), 0);
+  const avgTicket = tasksWithRevenue.length > 0 ? totalRevenue / tasksWithRevenue.length : 0;
+  const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+  // ── Funil de conversão: total de leads → contatados → convertidos ──────────
+  const contactedTasks = (tasks as any[]).filter(t => t.lastContactedAt);
+  const funnel = {
+    total: tasks.length,
+    contacted: contactedTasks.length,
+    converted: convertedCount,
+  };
+
+  // ── Tempo médio até o 1º contato (createdAt → lastContactedAt) ──────────────
+  const firstContactDeltas = contactedTasks
+    .map(t => new Date(t.lastContactedAt).getTime() - new Date(t.createdAt).getTime())
+    .filter(d => d > 0);
+  const avgFirstContactMs = firstContactDeltas.length > 0
+    ? firstContactDeltas.reduce((a, b) => a + b, 0) / firstContactDeltas.length
+    : 0;
+  const avgFirstContactDays = avgFirstContactMs > 0 ? (avgFirstContactMs / 86400000) : 0;
+
+  // ── Tempo médio até a conversão (createdAt → convertedAt) ───────────────────
+  const conversionTimeDeltas = convertedTasks
+    .map(t => new Date(t.convertedAt).getTime() - new Date(t.createdAt).getTime())
+    .filter(d => d > 0);
+  const avgConversionMs = conversionTimeDeltas.length > 0
+    ? conversionTimeDeltas.reduce((a, b) => a + b, 0) / conversionTimeDeltas.length
+    : 0;
+  const avgConversionDays = avgConversionMs > 0 ? (avgConversionMs / 86400000) : 0;
+  const staleNoContact = (tasks as any[]).filter(t => {
+    if (t.lastContactedAt || t.convertedAt) return false;
+    const ageMs = Date.now() - new Date(t.createdAt).getTime();
+    return ageMs > 48 * 3600000; // > 48h sem nenhum contato
+  });
+
+  // ── Leads "quentes": contactCount próximo da média necessária para converter, ainda não convertidos ─
+  const hotLeads = avgContactsToConvert > 0
+    ? (tasks as any[])
+        .filter(t => !t.convertedAt && (t.contactCount || 0) >= Math.max(1, avgContactsToConvert - 1))
+        .sort((a, b) => (b.contactCount || 0) - (a.contactCount || 0))
+        .slice(0, 8)
+    : [];
+
+  // ── Ranking de conversão por atendente (+ ticket de esforço individual e taxa de perdidos) ─
+  const conversionRanking = (sellers as any[] || []).map((seller: any) => {
+    const mine = (tasks as any[]).filter(t => t.assignedTo === seller.name || t.userId === seller.userId);
+    const minePending = mine.length;
+    const mineConvertedTasks = mine.filter(t => t.convertedAt);
+    const mineConverted = mineConvertedTasks.length;
+    const mineCancelled = mine.filter(t => t.status === 'cancelled').length;
+    const rate = minePending > 0 ? Math.round((mineConverted / minePending) * 100) : 0;
+    // Ticket de esforço individual: quantos contatos esse atendente precisa, em média, até converter
+    const myAvgContacts = mineConverted > 0
+      ? Math.round(mineConvertedTasks.reduce((acc, t) => acc + (t.contactCount || 0), 0) / mineConverted)
+      : 0;
+    // Taxa de leads perdidos: cancelados em relação ao que já teve um desfecho (convertido ou cancelado)
+    const decided = mineConverted + mineCancelled;
+    const lostRate = decided > 0 ? Math.round((mineCancelled / decided) * 100) : 0;
+    const myRevenue = mineConvertedTasks.reduce((acc, t) => acc + (t.orderValue != null && !isNaN(Number(t.orderValue)) ? Number(t.orderValue) : 0), 0);
+    return { name: seller.name, total: minePending, converted: mineConverted, rate, myAvgContacts, cancelled: mineCancelled, lostRate, myRevenue };
+  }).filter(r => r.total > 0).sort((a, b) => b.converted - a.converted || b.rate - a.rate);
+
+  // ── Tendência semanal de conversões (últimas 8 semanas, agrupado por convertedAt) ──
+  const weeklyTrend = (() => {
+    const weeks: { label: string; start: number; end: number; count: number }[] = [];
+    const now = new Date();
+    const startOfWeek = (d: Date) => { const x = new Date(d); const day = x.getDay(); x.setDate(x.getDate() - day); x.setHours(0, 0, 0, 0); return x; };
+    let cursor = startOfWeek(now);
+    for (let i = 7; i >= 0; i--) {
+      const start = new Date(cursor); start.setDate(start.getDate() - i * 7);
+      const end = new Date(start); end.setDate(end.getDate() + 7);
+      const p = (n: number) => String(n).padStart(2, '0');
+      weeks.push({ label: `${p(start.getDate())}/${p(start.getMonth() + 1)}`, start: start.getTime(), end: end.getTime(), count: 0 });
+    }
+    for (const t of convertedTasks) {
+      const ts = new Date(t.convertedAt).getTime();
+      const wk = weeks.find(w => ts >= w.start && ts < w.end);
+      if (wk) wk.count++;
+    }
+    return weeks;
+  })();
+  const weeklyTrendMax = Math.max(1, ...weeklyTrend.map(w => w.count));
+
+  // ── Taxa geral de leads perdidos (cancelados vs. convertidos — leads com desfecho) ──
+  const cancelledTotal = (tasks as any[]).filter(t => t.status === 'cancelled').length;
+  const decidedTotal = convertedCount + cancelledTotal;
+  const lostRateGlobal = decidedTotal > 0 ? Math.round((cancelledTotal / decidedTotal) * 100) : 0;
 
   // Filter reminders based on selection
   const filteredReminders = (reminders as any[]).filter(r => {
@@ -232,38 +381,80 @@ export default function AdminDashboard() {
   const upcomingReminders = filteredReminders.filter(r => new Date(r.reminderDate) > now && r.status === 'pending');
   const overdueReminders = filteredReminders.filter(r => new Date(r.reminderDate) <= now && r.status === 'pending');
 
+  const teamDailyGoal = (sellers as any[] || []).reduce((sum, s) => sum + effectiveDailyGoal(s.dailyGoal), 0);
+
   const kpis = [
     {
-      label: "Atendentes",
-      value: sellers?.length || 0,
-      icon: <Users size={22} />,
+      label: "Contatos hoje",
+      value: contactsToday,
+      sub: `meta: ${teamDailyGoal}`,
+      icon: <Phone size={22} />,
       color: "text-blue-600",
       bg: "bg-blue-50",
       border: "border-blue-100",
     },
     {
+      label: "Atendentes",
+      value: sellers?.length || 0,
+      sub: `${(sessionData as any[]).filter((s: any) => s.session?.status === 'active').length} ativos agora`,
+      icon: <Users size={22} />,
+      color: "text-indigo-600",
+      bg: "bg-indigo-50",
+      border: "border-indigo-100",
+    },
+    {
       label: "Pendentes",
       value: pending.length,
+      sub: `${completionRate}% concluídos`,
       icon: <ClipboardList size={22} />,
       color: "text-orange-500",
       bg: "bg-orange-50",
       border: "border-orange-100",
     },
     {
-      label: "Com lembrete",
-      value: (tasks as any[]).filter(t => t.reminderDate && t.reminderEnabled).length,
-      icon: <CheckCircle2 size={22} />,
-      color: "text-green-600",
-      bg: "bg-green-50",
-      border: "border-green-100",
-    },
-    {
       label: "Atrasados",
       value: overdue.length,
-      icon: <TrendingUp size={22} />,
-      color: "text-purple-600",
-      bg: "bg-purple-50",
-      border: "border-purple-100",
+      sub: overdue.length > 0 ? "precisam de ação" : "tudo em dia ✓",
+      icon: <AlertTriangle size={22} />,
+      color: overdue.length > 0 ? "text-red-600" : "text-green-600",
+      bg: overdue.length > 0 ? "bg-red-50" : "bg-green-50",
+      border: overdue.length > 0 ? "border-red-100" : "border-green-100",
+    },
+    {
+      label: "Qualidade notas",
+      value: `${noteQuality}%`,
+      sub: `${withNotes} com anotação`,
+      icon: <NotebookPen size={22} />,
+      color: noteQuality >= 70 ? "text-green-600" : noteQuality >= 40 ? "text-amber-600" : "text-red-600",
+      bg: noteQuality >= 70 ? "bg-green-50" : noteQuality >= 40 ? "bg-amber-50" : "bg-red-50",
+      border: noteQuality >= 70 ? "border-green-100" : noteQuality >= 40 ? "border-amber-100" : "border-red-100",
+    },
+    {
+      label: "Com lembrete",
+      value: (tasks as any[]).filter(t => t.reminderDate && t.reminderEnabled).length,
+      sub: `de ${tasks.length} total`,
+      icon: <CheckCircle2 size={22} />,
+      color: "text-teal-600",
+      bg: "bg-teal-50",
+      border: "border-teal-100",
+    },
+    {
+      label: "Conversões",
+      value: convertedCount,
+      sub: `${conversionRate}% taxa · ${convertedThisMonth} este mês · ~${avgContactsToConvert} contatos p/ converter`,
+      icon: <span className="text-[22px]">🎉</span>,
+      color: "text-emerald-600",
+      bg: "bg-emerald-50",
+      border: "border-emerald-100",
+    },
+    {
+      label: "Faturamento",
+      value: fmtBRL(totalRevenue),
+      sub: tasksWithRevenue.length > 0 ? `ticket médio: ${fmtBRL(avgTicket)}` : "sem vendas com valor informado",
+      icon: <DollarSign size={22} />,
+      color: "text-emerald-600",
+      bg: "bg-emerald-50",
+      border: "border-emerald-100",
     },
   ];
 
@@ -292,17 +483,84 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      {/* Task Deletion Alert Banner */}
+      {deletionLogs.length > 0 && (
+        <div
+          className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 cursor-pointer hover:bg-amber-100 transition-colors"
+          onClick={() => setShowDeletionLogs(v => !v)}
+        >
+          <div className="flex items-center gap-2 text-amber-800">
+            <AlertTriangle size={18} className="text-amber-500 shrink-0" />
+            <span className="font-semibold text-sm">
+              {deletionLogs.length} tarefa{deletionLogs.length > 1 ? 's' : ''} excluída{deletionLogs.length > 1 ? 's' : ''} aguarda{deletionLogs.length > 1 ? 'm' : ''} revisão
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-bold">
+              {deletionLogs.length}
+            </span>
+            {showDeletionLogs ? <ChevronDown size={16} className="text-amber-600" /> : <ChevronRight size={16} className="text-amber-600" />}
+          </div>
+        </div>
+      )}
+
+      {/* Task Deletion Logs Panel */}
+      {showDeletionLogs && deletionLogs.length > 0 && (
+        <Card className="border-amber-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base text-amber-800">
+              <Trash2 size={16} />
+              Tarefas Excluídas — Pendentes de Revisão
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-amber-100">
+              {deletionLogs.map((log: any) => (
+                <div key={log.id} className="px-4 py-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-sm text-gray-800 truncate">{log.taskTitle}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Excluída por <span className="font-semibold text-gray-700">{log.deletedByName}</span>
+                      {' · '}
+                      {new Date(log.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                    <div className="mt-1.5 flex items-start gap-1.5">
+                      <span className="text-xs text-amber-700 font-medium shrink-0">Motivo:</span>
+                      <span className="text-xs text-gray-700 break-words">{log.reason}</span>
+                    </div>
+                    {log.taskNotes && (
+                      <p className="text-xs text-gray-400 mt-1 italic truncate">Nota: {log.taskNotes.slice(0, 80)}</p>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 text-xs border-green-300 text-green-700 hover:bg-green-50"
+                    onClick={() => markDeletionReviewedMutation.mutate({ id: log.id })}
+                    disabled={markDeletionReviewedMutation.isPending}
+                  >
+                    <Eye size={13} className="mr-1" />
+                    Revisei
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {kpis.map((kpi) => (
           <Card key={kpi.label} className={`border ${kpi.border}`}>
-            <CardContent className="pt-5 px-5 pb-4">
+            <CardContent className="pt-4 px-4 pb-3">
               <div className="flex items-start justify-between">
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className={`text-2xl font-bold ${kpi.color}`}>{kpi.value}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{kpi.label}</p>
+                  <p className="text-xs font-medium text-gray-600 mt-0.5">{kpi.label}</p>
+                  {(kpi as any).sub && <p className="text-[11px] text-gray-400 mt-0.5">{(kpi as any).sub}</p>}
                 </div>
-                <div className={`${kpi.bg} ${kpi.color} p-2 rounded-lg`}>
+                <div className={`${kpi.bg} ${kpi.color} p-2 rounded-lg flex-shrink-0 ml-2`}>
                   {kpi.icon}
                 </div>
               </div>
@@ -310,6 +568,152 @@ export default function AdminDashboard() {
           </Card>
         ))}
       </div>
+
+      {/* Funil de Conversão & Performance de Vendas */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <span className="text-lg">🎯</span>
+            Funil de Conversão & Performance de Vendas
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {/* Funil visual */}
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-2">Funil — do lead ao cliente ativo</p>
+            <div className="flex items-center gap-2">
+              {[
+                { label: 'Leads', value: funnel.total, color: 'bg-slate-500' },
+                { label: 'Contatados', value: funnel.contacted, color: 'bg-blue-500' },
+                { label: 'Convertidos', value: funnel.converted, color: 'bg-emerald-500' },
+              ].map((stage, i, arr) => {
+                const pct = funnel.total > 0 ? Math.round((stage.value / funnel.total) * 100) : 0;
+                return (
+                  <div key={stage.label} className="flex-1 flex items-center gap-2">
+                    <div className="flex-1">
+                      <div className="flex justify-between text-[11px] text-gray-500 mb-1">
+                        <span>{stage.label}</span>
+                        <span className="font-semibold text-gray-700">{stage.value} ({pct}%)</span>
+                      </div>
+                      <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className={`h-full ${stage.color} rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                    {i < arr.length - 1 && <ArrowRight size={14} className="text-gray-300 flex-shrink-0" />}
+                  </div>
+                );
+              })}
+            </div>
+            {staleNoContact.length > 0 && (
+              <p className="text-[11px] text-amber-600 mt-2">
+                ⚠️ {staleNoContact.length} lead(s) há mais de 48h sem nenhum contato — esfriando
+              </p>
+            )}
+            {avgFirstContactDays > 0 && (
+              <p className="text-[11px] text-gray-400 mt-1">
+                ⏱️ Tempo médio até o 1º contato: <strong className="text-gray-600">{avgFirstContactDays < 1 ? `${Math.round(avgFirstContactMs / 3600000)}h` : `${avgFirstContactDays.toFixed(1)} dias`}</strong>
+              </p>
+            )}
+            {avgConversionDays > 0 && (
+              <p className="text-[11px] text-gray-400 mt-1">
+                🎯 Tempo médio até a conversão: <strong className="text-gray-600">{avgConversionDays < 1 ? `${Math.round(avgConversionMs / 3600000)}h` : `${avgConversionDays.toFixed(1)} dias`}</strong>
+              </p>
+            )}
+          </div>
+
+          {/* Tendência semanal de conversões */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-gray-500">📈 Tendência de conversões — últimas 8 semanas</p>
+              {decidedTotal > 0 && (
+                <p className="text-[11px] text-gray-400">
+                  Taxa de leads perdidos: <strong className={lostRateGlobal >= 50 ? 'text-red-500' : lostRateGlobal >= 25 ? 'text-amber-600' : 'text-gray-600'}>{lostRateGlobal}%</strong>
+                  <span className="text-gray-300"> ({cancelledTotal} cancelado{cancelledTotal !== 1 ? 's' : ''} de {decidedTotal} com desfecho)</span>
+                </p>
+              )}
+            </div>
+            <div className="flex items-end gap-2 h-20">
+              {weeklyTrend.map(w => (
+                <div key={w.label} className="flex-1 flex flex-col items-center justify-end gap-1">
+                  <span className="text-[10px] text-gray-500 font-medium">{w.count > 0 ? w.count : ''}</span>
+                  <div
+                    className={`w-full rounded-t ${w.count > 0 ? 'bg-emerald-400' : 'bg-gray-100'} transition-all`}
+                    style={{ height: `${Math.max(4, Math.round((w.count / weeklyTrendMax) * 64))}px` }}
+                  />
+                  <span className="text-[9px] text-gray-400">{w.label}</span>
+                </div>
+              ))}
+            </div>
+            {convertedCount === 0 && <p className="text-xs text-gray-400 mt-1">Sem conversões registradas ainda — o gráfico vai ganhar vida conforme as vendas acontecerem.</p>}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Ranking de conversão */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-gray-500">🏆 Ranking de conversão por atendente</p>
+                {conversionRanking.length > 0 && (
+                  <button
+                    onClick={() => exportCsv(
+                      `ranking-conversao-${new Date().toISOString().slice(0, 10)}.csv`,
+                      ['Atendente', 'Total leads', 'Convertidos', 'Taxa (%)', 'Contatos médios/venda', 'Faturamento (R$)', 'Perdidos', 'Taxa perdidos (%)'],
+                      conversionRanking.map(r => [r.name, r.total, r.converted, r.rate, r.myAvgContacts, r.myRevenue.toFixed(2), r.cancelled, r.lostRate])
+                    )}
+                    className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-emerald-600 transition"
+                    title="Exportar CSV"
+                  >
+                    <Download size={12} /> CSV
+                  </button>
+                )}
+              </div>
+              {conversionRanking.length > 0 ? (
+                <div className="space-y-2">
+                  {conversionRanking.slice(0, 6).map((r, i) => (
+                    <div key={r.name} className="text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400 w-4">{i + 1}º</span>
+                        <span className="flex-1 truncate text-gray-700">{r.name}</span>
+                        <span className="text-emerald-700 font-semibold text-xs">{r.converted} 🎉</span>
+                        <span className="text-[11px] text-gray-400 w-12 text-right">{r.rate}%</span>
+                      </div>
+                      <div className="flex items-center gap-3 pl-6 mt-0.5 text-[10px] text-gray-400">
+                        {r.myAvgContacts > 0 && <span>📞 ~{r.myAvgContacts} contatos/venda</span>}
+                        {r.myRevenue > 0 && <span className="text-emerald-600">💰 {fmtBRL(r.myRevenue)}</span>}
+                        {r.cancelled > 0 && <span className={r.lostRate >= 50 ? 'text-red-500' : ''}>❌ {r.cancelled} perdido(s) ({r.lostRate}%)</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400">Sem conversões registradas ainda.</p>
+              )}
+            </div>
+
+            {/* Leads quentes */}
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-2">
+                🔥 Leads quentes — perto de converter
+                {avgContactsToConvert > 0 && <span className="text-gray-400 font-normal"> (≥ {Math.max(1, avgContactsToConvert - 1)} contatos)</span>}
+              </p>
+              {hotLeads.length > 0 ? (
+                <div className="space-y-1.5">
+                  {hotLeads.map((t: any) => (
+                    <div key={t.id} className="flex items-center gap-2 text-sm">
+                      <span className="truncate flex-1 text-gray-700">{(t.title || '').split(' - ')[0].slice(0, 36)}</span>
+                      {t.assignedTo && <span className="text-[11px] text-gray-400 truncate max-w-[80px]">👤 {t.assignedTo}</span>}
+                      <span className="text-orange-600 font-semibold text-xs flex-shrink-0">📞 {t.contactCount}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400">
+                  {avgContactsToConvert > 0 ? 'Nenhum lead próximo do ponto médio de conversão agora.' : 'Ainda sem dados suficientes de conversão para calcular.'}
+                </p>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Attendants overview */}
       <Card>
@@ -333,19 +737,27 @@ export default function AdminDashboard() {
             </div>
           ) : sellers && sellers.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {sellers.map((seller) => {
+              {sellers.map((seller: any) => {
                 const sellerTasks = (tasks as any[]).filter(t => t.assignedTo === seller.name || t.userId === seller.userId);
-                const withReminder = sellerTasks.filter(t => t.reminderDate && t.reminderEnabled).length;
-                const rate = sellerTasks.length > 0 ? Math.round((withReminder / sellerTasks.length) * 100) : 0;
+                const sellerContactsToday = sellerTasks.filter(t => t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart).length;
+                const GOAL = effectiveDailyGoal(seller.dailyGoal);
+                const pct = Math.min(Math.round((sellerContactsToday / GOAL) * 100), 100);
                 const sellerOverdue = sellerTasks.filter(t => {
-                  if (!t.reminderDate || !t.reminderEnabled) return false;
+                  if (t.status !== 'pending' || !t.reminderDate || !t.reminderEnabled) return false;
                   return new Date(t.reminderDate) < new Date();
                 }).length;
+                const sessionRow = (sessionData as any[]).find((s: any) => s.name === seller.name);
+                const isActive = sessionRow?.session?.status === 'active';
+                const isPaused = sessionRow?.session?.status === 'paused';
+                const barColor = pct >= 100 ? 'bg-green-500' : pct >= 60 ? 'bg-blue-500' : pct >= 30 ? 'bg-amber-400' : 'bg-red-400';
                 return (
                   <div key={seller.id} className="p-4 border rounded-xl bg-white hover:shadow-sm transition-shadow">
                     <div className="flex items-center gap-3 mb-3">
-                      <div className="w-9 h-9 rounded-full bg-slate-700 text-white flex items-center justify-center text-sm font-bold flex-shrink-0">
-                        {seller.name.charAt(0).toUpperCase()}
+                      <div className="relative flex-shrink-0">
+                        <div className="w-9 h-9 rounded-full bg-slate-700 text-white flex items-center justify-center text-sm font-bold">
+                          {seller.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${isActive ? 'bg-green-500' : isPaused ? 'bg-yellow-400' : 'bg-gray-300'}`} />
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="font-semibold text-sm text-gray-800 truncate">{seller.name}</p>
@@ -360,20 +772,31 @@ export default function AdminDashboard() {
                         Analisar
                       </button>
                     </div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="flex-1 bg-gray-100 rounded-full h-1.5">
-                        <div
-                          className={`h-1.5 rounded-full transition-all ${rate >= 70 ? 'bg-green-500' : rate >= 40 ? 'bg-orange-400' : 'bg-red-400'}`}
-                          style={{ width: `${rate}%` }}
-                        />
+                    {/* Contatos hoje vs meta */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="flex-1 bg-gray-100 rounded-full h-2">
+                        <div className={`h-2 rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
                       </div>
-                      <span className="text-xs font-semibold text-gray-700 w-8 text-right">{rate}%</span>
+                      <span className="text-xs font-bold text-gray-700 w-14 text-right tabular-nums">
+                        {sellerContactsToday}/{GOAL}
+                      </span>
                     </div>
-                    <div className="flex items-center justify-between text-xs text-gray-400">
-                      <span>{withReminder}/{sellerTasks.length} com lembrete</span>
-                      {sellerOverdue > 0 && (
-                        <span className="text-red-500 font-medium">⚠️ {sellerOverdue} atrasada{sellerOverdue > 1 ? 's' : ''}</span>
-                      )}
+                    {/* Carteira: total / contatos hoje / atrasados */}
+                    <div className="grid grid-cols-3 gap-1.5 text-center">
+                      <div className="bg-slate-50 rounded-lg py-1.5 px-1">
+                        <p className="text-sm font-bold text-slate-700 tabular-nums">{sellerTasks.length}</p>
+                        <p className="text-[10px] text-gray-400 flex items-center justify-center gap-0.5"><Users size={9} /> total</p>
+                      </div>
+                      <div className="bg-blue-50 rounded-lg py-1.5 px-1">
+                        <p className="text-sm font-bold text-blue-700 tabular-nums">{sellerContactsToday}</p>
+                        <p className="text-[10px] text-gray-400 flex items-center justify-center gap-0.5"><Phone size={9} /> hoje</p>
+                      </div>
+                      <div className={`rounded-lg py-1.5 px-1 ${sellerOverdue > 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
+                        <p className={`text-sm font-bold tabular-nums ${sellerOverdue > 0 ? 'text-red-600' : 'text-gray-400'}`}>{sellerOverdue}</p>
+                        <p className={`text-[10px] flex items-center justify-center gap-0.5 ${sellerOverdue > 0 ? 'text-red-400' : 'text-gray-400'}`}>
+                          <AlertTriangle size={9} /> atrasado{sellerOverdue !== 1 ? 's' : ''}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 );
@@ -400,7 +823,7 @@ export default function AdminDashboard() {
               Monitor IA — Comportamento
             </span>
             <Button
-              onClick={handleRunMonitor}
+              onClick={() => handleRunMonitor(false)}
               disabled={monitorLoading}
               className="bg-purple-600 hover:bg-purple-700 text-white gap-1 text-xs"
               size="sm"
@@ -417,6 +840,21 @@ export default function AdminDashboard() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {monitorCached?.cached && (
+            <div className="flex items-center justify-between gap-2 text-xs bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+              <span className="text-purple-700">
+                📦 Resultado em cache de {new Date(monitorCached.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} — economiza sua cota gratuita de IA
+              </span>
+              <button
+                type="button"
+                className="text-purple-700 font-medium hover:underline whitespace-nowrap"
+                onClick={() => handleRunMonitor(true)}
+                disabled={monitorLoading}
+              >
+                🔄 Forçar nova análise
+              </button>
+            </div>
+          )}
           {!monitorReport && !monitorSummary && !monitorLoading && (
             <div className="text-center py-8 text-gray-400">
               <Scan size={36} className="mx-auto mb-2 opacity-30" />
@@ -480,7 +918,15 @@ export default function AdminDashboard() {
               <Timer size={18} className="text-cyan-600" />
               Sessões de Trabalho Hoje
             </span>
-            <span className="text-xs text-gray-400 font-normal">atualiza a cada 60s · clique para detalhar</span>
+            <button
+              onClick={() => refetchSessions()}
+              disabled={sessionsFetching}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-cyan-600 transition disabled:opacity-50"
+              title="Atualizar"
+            >
+              <RefreshCw size={13} className={sessionsFetching ? 'animate-spin' : ''} />
+              {sessionsFetching ? 'Atualizando...' : 'Atualizar'}
+            </button>
           </CardTitle>
         </CardHeader>
         <CardContent>

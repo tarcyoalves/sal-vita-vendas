@@ -4,21 +4,72 @@ import { ordersDb as db } from '../db/ordersDb';
 import { abandonedCarts, automationRuns, coupons, msgTemplates, siteOrders } from '../db/schema';
 import { desc, eq, and, sql, lte } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
+import { sendEmail, abandonedCartHtml, unpaidOrderHtml } from '../email/resend';
+import { createPixPaymentForOrder } from '../lib/mercadopago';
 
-async function sendViaWhatsApp(phone: string, message: string): Promise<boolean> {
+type SiteOrder = typeof siteOrders.$inferSelect;
+
+// Sends a single WhatsApp message to one phone number via the wa-server /send endpoint.
+async function waSendRaw(phone: string, message: string): Promise<boolean> {
   const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
-  const key = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
+  const key = process.env.WA_API_KEY;
+  if (!key) { console.warn('[wa] WA_API_KEY not configured — skipping'); return false; }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 9000);
   try {
     const res = await fetch(`${url}/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': key },
-      body: JSON.stringify({ phone: fmtPhone(phone), message }),
+      body: JSON.stringify({ phone, message }),
+      signal: ctrl.signal,
     });
-    return res.ok;
-  } catch {
+    clearTimeout(timer);
+    if (!res.ok) {
+      console.warn(`[wa] send to ${phone} failed: HTTP ${res.status}`);
+      return false;
+    }
+    let body: Record<string, unknown> = {};
+    try { body = await res.json() as Record<string, unknown>; } catch {}
+    if (body.success === false) {
+      console.warn(`[wa] send to ${phone} failed: ${JSON.stringify(body)}`);
+      return false;
+    }
+    console.log(`[wa] dispatched to ${phone}`);
+    return true;
+  } catch (err) {
+    clearTimeout(timer);
+    console.warn(`[wa] send to ${phone} error: ${(err as Error).message}`);
     return false;
   }
 }
+
+// Sends to both 9th-digit variants with a short delay between them.
+// wa-server blindly returns success:true, so we try both to guarantee delivery
+// regardless of which JID format the number is registered under on WhatsApp.
+async function sendViaWhatsApp(phone: string, message: string): Promise<{ ok: boolean; usedPhone: string }> {
+  const primary = fmtPhone(phone);
+  const alt = primary.length === 13
+    ? primary.slice(0, 4) + primary.slice(5)
+    : primary.length === 12 ? primary.slice(0, 4) + '9' + primary.slice(4) : null;
+
+  const ok1 = await waSendRaw(primary, message);
+  if (alt) {
+    await new Promise(r => setTimeout(r, 2000)); // 2s delay between variants
+    await waSendRaw(alt, message);
+  }
+  return { ok: ok1, usedPhone: primary };
+}
+
+
+// Returns true if current time is within business hours (08:00–21:00 Brazil BRT = UTC-3)
+function isBusinessHours(): boolean {
+  const now = new Date();
+  const brHour = (now.getUTCHours() - 3 + 24) % 24;
+  return brHour >= 8 && brHour < 21;
+}
+
+// Opt-out footer appended to all outbound recovery messages
+const OPT_OUT = '\n\n_Para não receber mais mensagens, responda PARAR._';
 
 function fmtPhone(raw: string) {
   const d = raw.replace(/\D/g, '');
@@ -33,32 +84,77 @@ function renderTemplate(body: string, vars: Record<string, string>): string {
   return body.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
 }
 
-// Fallback messages (used when no template found)
+// Fallback messages (used when no template found) — all include opt-out footer
 function recoveryMsg(name: string, coupon?: string) {
-  return `Olá *${name}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou o pedido.\n\n${coupon ? `🎁 Use o cupom *${coupon}* e ganhe desconto especial!\n\n` : ''}👉 Finalize agora: https://premium.salvitarn.com.br\n\nQualquer dúvida é só chamar aqui! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
+  // Append ?cupom= so the storefront pre-fills and validates the code automatically
+  const link = coupon ? `https://premium.salvitarn.com.br?cupom=${coupon}` : 'https://premium.salvitarn.com.br';
+  return `Olá *${name}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou o pedido.\n\n${coupon ? `🎁 Use o cupom *${coupon}* e ganhe desconto especial!\n\n` : ''}👉 Finalize agora: ${link}\n\nQualquer dúvida é só chamar aqui! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
 }
 
-function unpaidMsg(name: string, id: number, qty: number, total: string) {
-  return `Olá *${name}*! 🌊\n\nSeu pedido *#${id}* do Sal Vita ainda está aguardando pagamento.\n\n📦 ${qty}x Sal Marinho Integral 1kg\n💰 Total: R$ ${total}\n\nFinalize o pagamento aqui:\n👉 https://premium.salvitarn.com.br/meu-pedido?pedido=${id}\n\n_Pedido reservado por tempo limitado!_\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
+// Returns the best active, usable coupon for recovery messages (not expired,
+// not over its usage cap), or null if no coupon is configured/valid.
+async function getActiveRecoveryCoupon(): Promise<{ code: string; discountType: string; discountValue: string } | null> {
+  const all = await db.select().from(coupons).where(eq(coupons.active, true)).orderBy(desc(coupons.createdAt));
+  const now = new Date();
+  const usable = (c: typeof all[number]) => {
+    const notExpired = !c.expiresAt || now < new Date(c.expiresAt);
+    const notMaxed = !c.maxUses || c.usedCount < c.maxUses;
+    return notExpired && notMaxed;
+  };
+  // Prefer the coupon the admin explicitly designated for recovery messages
+  const designated = all.find(c => c.useForRecovery && usable(c));
+  if (designated) return { code: designated.code, discountType: designated.discountType, discountValue: designated.discountValue };
+  // Fall back to the most recently created active, usable coupon
+  const fallback = all.find(usable);
+  return fallback ? { code: fallback.code, discountType: fallback.discountType, discountValue: fallback.discountValue } : null;
 }
 
-function failedMsg(name: string, id: number) {
-  return `Olá *${name}*! 🌊\n\nHouve um problema com o pagamento do pedido *#${id}*.\n\nTente novamente com outro método:\n👉 https://premium.salvitarn.com.br/meu-pedido?pedido=${id}\n\nAceitamos Cartão, PIX e Boleto 💳\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
+function unpaidMsg(name: string, id: number, qty: number, total: string, tel: string) {
+  return `Olá *${name}*! 🌊\n\nSeu pedido *#${id}* do Sal Vita ainda está aguardando pagamento.\n\n📦 ${qty}x Sal Marinho Integral 1kg\n💰 Total: R$ ${total}\n\nFinalize o pagamento aqui:\n👉 https://premium.salvitarn.com.br/meu-pedido?pedido=${id}&tel=${tel}\n\n_Pedido reservado por tempo limitado!_\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
 }
 
-async function fetchPixCode(mpPaymentId: string): Promise<string | null> {
+function failedMsg(name: string, id: number, tel: string) {
+  return `Olá *${name}*! 🌊\n\nHouve um problema com o pagamento do pedido *#${id}*.\n\nTente novamente com outro método:\n👉 https://premium.salvitarn.com.br/meu-pedido?pedido=${id}&tel=${tel}\n\nAceitamos Cartão, PIX e Boleto 💳\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
+}
+
+// Fetches a real PIX copy-paste code for an order: tries the stored MP payment,
+// then searches MP by external_reference, and finally — if none exists yet —
+// generates a brand-new PIX payment so the customer always has something to pay.
+async function fetchPixCode(order: SiteOrder): Promise<string | null> {
   const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
-  if (!token || !mpPaymentId) return null;
-  try {
-    const res = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return null;
-    const data = await res.json() as Record<string, any>;
-    return data?.point_of_interaction?.transaction_data?.qr_code ?? null;
-  } catch {
-    return null;
+  if (token) {
+    try {
+      if (order.mpPaymentId) {
+        const res = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json() as Record<string, any>;
+          const qr = data?.point_of_interaction?.transaction_data?.qr_code ?? null;
+          if (qr) return qr;
+        }
+      }
+      // Fallback: search Mercado Pago for any payment linked to this order via external_reference
+      const res = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${order.id}&sort=date_created&criteria=desc`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json() as Record<string, any>;
+        for (const p of data?.results ?? []) {
+          const qr = p?.point_of_interaction?.transaction_data?.qr_code;
+          if (qr) return qr;
+        }
+      }
+    } catch {
+      // fall through to generating a fresh PIX below
+    }
   }
+  // No PIX found anywhere — generate a fresh one so the message can always include a working code.
+  if (order.paymentStatus !== 'confirmed') {
+    const created = await createPixPaymentForOrder(order);
+    if (created) return created.qrCode;
+  }
+  return null;
 }
 
 export const recoveryRouter = router({
@@ -67,7 +163,7 @@ export const recoveryRouter = router({
   trackCart: publicProcedure
     .input(z.object({
       customerName: z.string().min(2).max(100),
-      customerPhone: z.string().min(10).max(20),
+      customerPhone: z.string().min(10).max(20).refine(v => v.replace(/\D/g,'').length >= 10, 'Telefone inválido'),
       customerEmail: z.string().optional(),
       postalCode: z.string().optional(),
       quantity: z.number().int().min(1).max(100).default(1),
@@ -123,22 +219,39 @@ export const recoveryRouter = router({
         cartId = inserted.id;
       }
 
-      // Schedule 30-min abandonment automation when customer reaches shipping step
-      // Only if no pending automation exists for this cart yet
-      if (newStep >= 2) {
+      // Schedule a recovery cadence as soon as we have name + phone.
+      // Step 1 (form started, no shipping calc) gets a lighter 2-touch cadence;
+      // step 2+ (shipping calculated) gets the full 3-touch cadence.
+      // Only if no pending automation exists yet (cheap single-row probe — free-tier friendly).
+      {
         const existingRun = await db.select({ id: automationRuns.id })
           .from(automationRuns)
           .where(and(eq(automationRuns.cartId, cartId), eq(automationRuns.status, 'scheduled')))
           .limit(1);
         if (existingRun.length === 0) {
-          const scheduledFor = new Date(Date.now() + 30 * 60 * 1000);
-          await db.insert(automationRuns).values({
+          const base = Date.now();
+          // Touch 1: gentle reminder (no discount — protect margin)
+          // Touch 2: urgency + social proof
+          // Touch 3: coupon as last resort
+          const fullCadence = [
+            { rule: 'abandoned_t1', delayMs: 30 * 60 * 1000 },        // 30 min
+            { rule: 'abandoned_t2', delayMs: 4 * 60 * 60 * 1000 },    // 4 h
+            { rule: 'abandoned_t3', delayMs: 24 * 60 * 60 * 1000 },   // 24 h
+          ];
+          // Lighter cadence for low-intent (step 1) carts: just a gentle nudge
+          // followed by a coupon as last resort, skipping the urgency touch.
+          const lightCadence = [
+            { rule: 'abandoned_t1', delayMs: 30 * 60 * 1000 },        // 30 min
+            { rule: 'abandoned_t3', delayMs: 24 * 60 * 60 * 1000 },   // 24 h
+          ];
+          const touches = newStep >= 2 ? fullCadence : lightCadence;
+          await db.insert(automationRuns).values(touches.map(t => ({
             cartId,
             customerPhone: phone,
-            ruleName: 'abandoned_cart_30m',
-            status: 'scheduled',
-            scheduledFor,
-          });
+            ruleName: t.rule,
+            status: 'scheduled' as const,
+            scheduledFor: new Date(base + t.delayMs),
+          })));
         }
       }
 
@@ -189,10 +302,12 @@ export const recoveryRouter = router({
       const rows = await db.select().from(abandonedCarts)
         .where(eq(abandonedCarts.recovered, false))
         .orderBy(desc(abandonedCarts.updatedAt));
+      const activeCoupon = await getActiveRecoveryCoupon();
       return rows.map(r => ({
         ...r,
         waLink: waLink(r.customerPhone, recoveryMsg(r.customerName)),
-        waLinkWithCoupon: waLink(r.customerPhone, recoveryMsg(r.customerName, 'VOLTA10')),
+        waLinkWithCoupon: activeCoupon ? waLink(r.customerPhone, recoveryMsg(r.customerName, activeCoupon.code)) : null,
+        activeCoupon: activeCoupon?.code ?? null,
       }));
     }),
 
@@ -208,8 +323,8 @@ export const recoveryRouter = router({
         .orderBy(desc(siteOrders.createdAt));
       return rows.map(r => ({
         ...r,
-        waLinkUnpaid: waLink(r.customerPhone, unpaidMsg(r.customerName, r.id, r.quantity, r.totalPrice ?? '0')),
-        waLinkFailed: waLink(r.customerPhone, failedMsg(r.customerName, r.id)),
+        waLinkUnpaid: waLink(r.customerPhone, unpaidMsg(r.customerName, r.id, r.quantity, r.totalPrice ?? '0', r.customerPhone.replace(/\D/g, '').slice(-4))),
+        waLinkFailed: waLink(r.customerPhone, failedMsg(r.customerName, r.id, r.customerPhone.replace(/\D/g, '').slice(-4))),
       }));
     }),
 
@@ -276,13 +391,56 @@ export const recoveryRouter = router({
       return { ok: true };
     }),
 
+  // Admin: designate the coupon used by default in automated/AI recovery
+  // messages ({cupom} placeholder, "+ Cupom" button when no coupon is chosen).
+  // Only one coupon can be the recovery default at a time.
+  setRecoveryCoupon: protectedProcedure
+    .input(z.object({ id: z.number(), enabled: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      if (input.enabled) await db.update(coupons).set({ useForRecovery: false });
+      await db.update(coupons).set({ useForRecovery: input.enabled }).where(eq(coupons.id, input.id));
+      return { ok: true };
+    }),
+
+  // Admin: mark cart customer as opted out (no more automated messages)
+  markOptedOut: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      await db.update(abandonedCarts)
+        .set({ optedOut: true, updatedAt: new Date() })
+        .where(eq(abandonedCarts.id, input.id));
+      // Cancel any pending automation runs for this cart
+      await db.update(automationRuns)
+        .set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(automationRuns.cartId, input.id), eq(automationRuns.status, 'scheduled')));
+      return { ok: true };
+    }),
+
   // Admin: send WhatsApp recovery message to specific cart
   sendRecovery: protectedProcedure
-    .input(z.object({ id: z.number(), coupon: z.string().optional(), templateId: z.number().optional() }))
+    .input(z.object({ id: z.number(), coupon: z.string().optional(), useCoupon: z.boolean().optional(), templateId: z.number().optional() }))
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const [cart] = await db.select().from(abandonedCarts).where(eq(abandonedCarts.id, input.id)).limit(1);
       if (!cart) throw new TRPCError({ code: 'NOT_FOUND' });
+      if (cart.optedOut) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cliente optou por não receber mensagens (PARAR)' });
+
+      // Resolve a real coupon: an explicit code is checked against the active
+      // coupons table; otherwise (when requested) fall back to the best active
+      // coupon. If none exists, the message is sent without a coupon — never
+      // a made-up code that wouldn't validate at checkout.
+      let coupon: string | undefined;
+      if (input.coupon) {
+        const code = input.coupon.toUpperCase().trim();
+        const [found] = await db.select().from(coupons)
+          .where(and(eq(coupons.code, code), eq(coupons.active, true))).limit(1);
+        coupon = found ? code : undefined;
+      } else if (input.useCoupon) {
+        coupon = (await getActiveRecoveryCoupon())?.code;
+      }
+      const link = coupon ? `https://premium.salvitarn.com.br?cupom=${coupon}` : 'https://premium.salvitarn.com.br';
 
       let msg: string;
       if (input.templateId) {
@@ -290,12 +448,12 @@ export const recoveryRouter = router({
         if (tpl) {
           msg = renderTemplate(tpl.body, {
             nome: cart.customerName,
-            cupom: input.coupon ?? 'VOLTA10',
-            link: 'https://premium.salvitarn.com.br',
+            cupom: coupon ?? '',
+            link,
             produto: 'Sal Marinho Integral 1kg',
           });
         } else {
-          msg = recoveryMsg(cart.customerName, input.coupon);
+          msg = recoveryMsg(cart.customerName, coupon);
         }
       } else {
         // Try default template first
@@ -303,17 +461,29 @@ export const recoveryRouter = router({
           .where(and(eq(msgTemplates.type, 'abandoned'), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true)))
           .limit(1);
         msg = tpl
-          ? renderTemplate(tpl.body, { nome: cart.customerName, cupom: input.coupon ?? 'VOLTA10', link: 'https://premium.salvitarn.com.br', produto: 'Sal Marinho Integral 1kg' })
-          : recoveryMsg(cart.customerName, input.coupon);
+          ? renderTemplate(tpl.body, { nome: cart.customerName, cupom: coupon ?? '', link, produto: 'Sal Marinho Integral 1kg' })
+          : recoveryMsg(cart.customerName, coupon);
       }
 
-      const ok = await sendViaWhatsApp(cart.customerPhone, msg);
+      const { ok, usedPhone } = await sendViaWhatsApp(cart.customerPhone, msg);
       if (ok) {
         await db.update(abandonedCarts)
           .set({ recoverySentAt: new Date(), updatedAt: new Date() })
           .where(eq(abandonedCarts.id, input.id));
+        // Best-effort email recovery (non-blocking)
+        if (cart.customerEmail) {
+          const emailHtml = abandonedCartHtml(cart.customerName, link, coupon);
+          const emailSubject = coupon
+            ? `Seu cupom ${coupon} — finalize seu pedido Sal Vita`
+            : 'Você esqueceu algo — finalize seu pedido Sal Vita';
+          sendEmail(cart.customerEmail, emailSubject, emailHtml).catch(() => {});
+        }
       }
-      return { ok, phone: fmtPhone(cart.customerPhone), preview: msg };
+      return {
+        ok, phone: usedPhone, preview: msg, waLink: waLink(cart.customerPhone, msg),
+        coupon: coupon ?? null,
+        couponRequested: !!(input.coupon || input.useCoupon),
+      };
     }),
 
   // Admin: send WhatsApp to unpaid order (with optional template + PIX fetch)
@@ -323,14 +493,23 @@ export const recoveryRouter = router({
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const [order] = await db.select().from(siteOrders).where(eq(siteOrders.id, input.id)).limit(1);
       if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+      // Check opt-out via the matching abandoned cart record (if any)
+      const phone = order.customerPhone.replace(/\D/g, '');
+      const [cartRecord] = await db.select({ optedOut: abandonedCarts.optedOut })
+        .from(abandonedCarts).where(eq(abandonedCarts.customerPhone, phone)).limit(1);
+      if (cartRecord?.optedOut) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cliente optou por não receber mensagens (PARAR)' });
 
-      const pixCode = order.mpPaymentId ? await fetchPixCode(order.mpPaymentId) : null;
-      const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}`;
+      const pixCode = await fetchPixCode(order);
+      const tel = phone.slice(-4);
+      const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${tel}`;
       const vars = {
         nome: order.customerName,
         pedido: String(order.id),
         valor: parseFloat(order.totalPrice ?? '0').toFixed(2).replace('.', ','),
         link: orderLink,
+        // Leave as the raw copy-paste code — WhatsApp copies messages as literal
+        // text, so wrapping it in ``` would put backtick characters into whatever
+        // the customer pastes into their bank app.
         pix: pixCode ?? '',
         produto: 'Sal Marinho Integral 1kg',
       };
@@ -338,22 +517,43 @@ export const recoveryRouter = router({
       let msg: string;
       if (input.templateId) {
         const [tpl] = await db.select().from(msgTemplates).where(eq(msgTemplates.id, input.templateId)).limit(1);
-        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0');
+        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0', tel);
       } else if (pixCode) {
         // Auto-select PIX template when PIX code is available
         const [tpl] = await db.select().from(msgTemplates)
           .where(and(eq(msgTemplates.slug, 'unpaid_pix'), eq(msgTemplates.active, true)))
           .limit(1);
-        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0');
+        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0', tel);
       } else {
         const [tpl] = await db.select().from(msgTemplates)
           .where(and(eq(msgTemplates.type, 'unpaid'), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true)))
           .limit(1);
-        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0');
+        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0', tel);
       }
 
-      const ok = await sendViaWhatsApp(order.customerPhone, msg);
-      return { ok, phone: fmtPhone(order.customerPhone), hasPix: !!pixCode, preview: msg };
+      const { ok, usedPhone } = await sendViaWhatsApp(order.customerPhone, msg);
+      // Follow up with the PIX code as its own message — lets the customer
+      // long-press → copy and get exactly the code, nothing else.
+      if (ok && pixCode) {
+        await new Promise(r => setTimeout(r, 1000));
+        await waSendRaw(usedPhone, pixCode);
+      }
+      // Best-effort email follow-up (non-blocking)
+      if (order.customerEmail) {
+        const emailHtml = unpaidOrderHtml(
+          order.customerName,
+          order.id,
+          parseFloat(order.totalPrice ?? '0').toFixed(2).replace('.', ','),
+          orderLink,
+          pixCode ?? undefined,
+          order.paymentStatus === 'failed',
+        );
+        const emailSubject = order.paymentStatus === 'failed'
+          ? `Problema no pagamento do pedido #${order.id} — tente novamente`
+          : `Pedido #${order.id} aguardando pagamento — R$ ${parseFloat(order.totalPrice ?? '0').toFixed(2).replace('.', ',')}`;
+        sendEmail(order.customerEmail, emailSubject, emailHtml).catch(() => {});
+      }
+      return { ok, phone: usedPhone, hasPix: !!pixCode, preview: msg, waLink: waLink(order.customerPhone, msg) };
     }),
 
   // Admin: get payment info (PIX code / boleto) for unpaid order
@@ -362,21 +562,43 @@ export const recoveryRouter = router({
     .query(async ({ ctx, input }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const [order] = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
-      if (!order?.mpPaymentId) return { pixCode: null, boletoUrl: null };
+      if (!order) return { pixCode: null, boletoUrl: null };
       const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
       if (!token) return { pixCode: null, boletoUrl: null };
       try {
-        const res = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, {
+        if (order.mpPaymentId) {
+          const res = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const data = await res.json() as Record<string, any>;
+            return {
+              pixCode: data?.point_of_interaction?.transaction_data?.qr_code ?? null,
+              boletoUrl: data?.transaction_details?.external_resource_url ?? null,
+              paymentMethod: data?.payment_method_id ?? null,
+              status: data?.status ?? null,
+            };
+          }
+        }
+        // Fallback: search Mercado Pago for any payment linked to this order via external_reference
+        const searchRes = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${order.id}&sort=date_created&criteria=desc`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!res.ok) return { pixCode: null, boletoUrl: null };
-        const data = await res.json() as Record<string, any>;
-        return {
-          pixCode: data?.point_of_interaction?.transaction_data?.qr_code ?? null,
-          boletoUrl: data?.transaction_details?.external_resource_url ?? null,
-          paymentMethod: data?.payment_method_id ?? null,
-          status: data?.status ?? null,
-        };
+        if (searchRes.ok) {
+          const data = await searchRes.json() as Record<string, any>;
+          for (const p of data?.results ?? []) {
+            const qr = p?.point_of_interaction?.transaction_data?.qr_code;
+            if (qr) {
+              return {
+                pixCode: qr,
+                boletoUrl: p?.transaction_details?.external_resource_url ?? null,
+                paymentMethod: p?.payment_method_id ?? null,
+                status: p?.status ?? null,
+              };
+            }
+          }
+        }
+        return { pixCode: null, boletoUrl: null };
       } catch {
         return { pixCode: null, boletoUrl: null };
       }
@@ -386,17 +608,19 @@ export const recoveryRouter = router({
   autoSendAbandoned: protectedProcedure
     .mutation(async ({ ctx }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      if (!isBusinessHours()) return { sent: 0, total: 0, skipped: 'outside business hours (08:00–21:00 BRT)' };
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const pending = await db.select().from(abandonedCarts).where(
         and(
           eq(abandonedCarts.recovered, false),
+          eq(abandonedCarts.optedOut, false),
           sql`(${abandonedCarts.recoverySentAt} IS NULL OR ${abandonedCarts.recoverySentAt} < ${oneDayAgo})`,
         )
       ).limit(50);
 
       let sent = 0;
       for (const cart of pending) {
-        const ok = await sendViaWhatsApp(cart.customerPhone, recoveryMsg(cart.customerName));
+        const { ok } = await sendViaWhatsApp(cart.customerPhone, recoveryMsg(cart.customerName));
         if (ok) {
           await db.update(abandonedCarts)
             .set({ recoverySentAt: new Date(), updatedAt: new Date() })
@@ -413,13 +637,44 @@ export const recoveryRouter = router({
     .query(async ({ ctx }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
-      const key = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
+      const key = process.env.WA_API_KEY;
+      if (!key) return { status: 'no_api_key', connected: false };
       try {
-        const res = await fetch(`${url}/status`, { headers: { 'apikey': key } });
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), 5000);
+        const res = await fetch(`${url}/status`, { headers: { 'apikey': key }, signal: ac.signal });
+        clearTimeout(timer);
         return await res.json() as { status: string; connected: boolean };
       } catch {
         return { status: 'error', connected: false };
       }
+    }),
+
+  // Admin: force WA reconnect — tries /reconnect then /restart endpoints on the wa-server
+  waReconnect: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
+      const key = process.env.WA_API_KEY;
+      if (!key) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'WA_API_KEY não configurado' });
+      const headers = { 'Content-Type': 'application/json', 'apikey': key };
+      const tried: string[] = [];
+      for (const path of ['/reconnect', '/restart', '/connect', '/logout']) {
+        try {
+          const ac = new AbortController();
+          setTimeout(() => ac.abort(), 6000);
+          const r = await fetch(`${url}${path}`, { method: 'POST', headers, signal: ac.signal });
+          tried.push(`${path}:${r.status}`);
+          if (r.ok) {
+            console.log(`[wa-reconnect] ${path} returned ${r.status}`);
+            return { ok: true, path, tried };
+          }
+        } catch {
+          tried.push(`${path}:error`);
+        }
+      }
+      console.warn('[wa-reconnect] no reconnect endpoint found, tried:', tried);
+      return { ok: false, path: null, tried };
     }),
 
   // Admin: list message templates
@@ -497,6 +752,7 @@ export const recoveryRouter = router({
       const nowBR = new Date(now.getTime() - 3 * 60 * 60 * 1000); // UTC-3
       const hour = nowBR.getUTCHours();
       const weekday = nowBR.getUTCDay(); // 0=sun 6=sat
+      const activeCoupon = await getActiveRecoveryCoupon();
 
       let processed = 0;
       const results: { cartId: number; name: string; scheduledFor: string; reasoning: string }[] = [];
@@ -508,8 +764,8 @@ export const recoveryRouter = router({
           continue;
         }
 
-        const stepDesc = cart.stepReached === 1 ? 'preencheu o formulário mas não calculou frete'
-          : cart.stepReached === 2 ? 'calculou o frete mas não foi para o pagamento'
+        const stepDesc = cart.stepReached === 1 ? 'já calculou o frete e começou a preencher os dados de entrega, mas não finalizou'
+          : cart.stepReached === 2 ? 'calculou o frete e confirmou o endereço, mas não foi para o pagamento'
           : 'chegou até a etapa de pagamento mas não concluiu';
 
         const prompt = `Você é especialista em conversão de e-commerce para a Sal Vita (sal marinho premium de Mossoró/RN).
@@ -533,8 +789,9 @@ Regras da mensagem:
 - Tom amigável e natural, NÃO insistente
 - Use *negrito* para destaque
 - Termine com link do site
-- Adapte ao passo que o cliente alcançou (ex: se chegou no frete, mencione o frete grátis para pedidos maiores)
-- Opcionalmente inclua cupom VOLTA10 se fizer sentido (não para quem já foi ao pagamento)
+- Adapte ao passo que o cliente alcançou (ex: se chegou no frete, reforce a qualidade do produto e a facilidade de finalizar a compra)
+- NÃO mencione frete grátis em hipótese alguma (não existe essa promoção)
+${activeCoupon ? `- Opcionalmente inclua o cupom ${activeCoupon.code} se fizer sentido (não para quem já foi ao pagamento)` : '- NÃO mencione nenhum cupom (não há cupom ativo no momento)'}
 - NÃO mencione o número de telefone nem diga "detectamos"
 
 Regras do horário:
@@ -602,8 +859,8 @@ Responda SOMENTE com JSON válido neste formato exato:
       const [order] = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
       if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
 
-      const pixCode = order.mpPaymentId ? await fetchPixCode(order.mpPaymentId) : null;
-      const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}`;
+      const pixCode = await fetchPixCode(order);
+      const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${order.customerPhone.replace(/\D/g, '').slice(-4)}`;
 
       const prompt = `Você é especialista em recuperação de vendas para Sal Vita (sal marinho premium de Mossoró/RN).
 
@@ -662,8 +919,8 @@ Responda SOMENTE em JSON: {"mensagem": "texto aqui", "raciocinio": "motivo"}`;
       const [cart] = await db.select().from(abandonedCarts).where(eq(abandonedCarts.id, input.cartId)).limit(1);
       if (!cart) throw new TRPCError({ code: 'NOT_FOUND' });
 
-      const stepDesc = cart.stepReached === 1 ? 'preencheu o formulário mas não calculou frete'
-        : cart.stepReached === 2 ? 'calculou o frete mas não foi para o pagamento'
+      const stepDesc = cart.stepReached === 1 ? 'já calculou o frete e começou a preencher os dados de entrega, mas não finalizou'
+        : cart.stepReached === 2 ? 'calculou o frete e confirmou o endereço, mas não foi para o pagamento'
         : 'chegou até a etapa de pagamento mas não concluiu';
 
       const prompt = `Gere uma mensagem de recuperação de carrinho para WhatsApp para o cliente ${cart.customerName} da Sal Vita (sal marinho de Mossoró/RN, R$29,90/kg).
@@ -687,7 +944,7 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
       const parsed = JSON.parse(data.choices?.[0]?.message?.content ?? '{}') as { mensagem?: string };
       if (!parsed.mensagem) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'IA não gerou mensagem' });
 
-      const ok = await sendViaWhatsApp(cart.customerPhone, parsed.mensagem);
+      const { ok, usedPhone: aiPhone } = await sendViaWhatsApp(cart.customerPhone, parsed.mensagem);
       if (ok) {
         await db.update(abandonedCarts).set({ recoverySentAt: new Date(), updatedAt: new Date() })
           .where(eq(abandonedCarts.id, input.cartId));
@@ -696,7 +953,7 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
           .set({ status: 'sent', sentAt: new Date(), aiBody: parsed.mensagem, updatedAt: new Date() })
           .where(and(eq(automationRuns.cartId, input.cartId), eq(automationRuns.status, 'scheduled')));
       }
-      return { ok, phone: fmtPhone(cart.customerPhone), preview: parsed.mensagem };
+      return { ok, phone: aiPhone, preview: parsed.mensagem };
     }),
 
   // Internal/Admin: run automation job — sends scheduled WA messages for abandoned carts
@@ -704,17 +961,19 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
   runAutomationJob: protectedProcedure
     .mutation(async ({ ctx }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      if (!isBusinessHours()) return { processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: 'outside business hours (08:00–21:00 BRT)' };
       const now = new Date();
       const due = await db.select().from(automationRuns).where(
         and(eq(automationRuns.status, 'scheduled'), lte(automationRuns.scheduledFor, now))
       ).limit(50);
+      const activeCoupon = await getActiveRecoveryCoupon();
 
       let sent = 0, cancelled = 0, failed = 0;
       for (const run of due) {
-        // Verify cart is not converted and has no confirmed payment
+        // Verify cart is not converted, not recovered, and not opted out
         const [cart] = await db.select().from(abandonedCarts)
           .where(eq(abandonedCarts.id, run.cartId)).limit(1);
-        if (!cart || cart.status === 'converted' || cart.recovered) {
+        if (!cart || cart.status === 'converted' || cart.recovered || cart.optedOut) {
           await db.update(automationRuns).set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
             .where(eq(automationRuns.id, run.id));
           cancelled++;
@@ -729,10 +988,15 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
             .where(and(eq(msgTemplates.type, 'abandoned'), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true)))
             .limit(1);
           msg = tpl
-            ? renderTemplate(tpl.body, { nome: cart.customerName, link: 'https://premium.salvitarn.com.br', cupom: 'VOLTA10', produto: 'Sal Marinho Integral 1kg' })
-            : recoveryMsg(cart.customerName);
+            ? renderTemplate(tpl.body, {
+                nome: cart.customerName,
+                link: activeCoupon ? `https://premium.salvitarn.com.br?cupom=${activeCoupon.code}` : 'https://premium.salvitarn.com.br',
+                cupom: activeCoupon?.code ?? '',
+                produto: 'Sal Marinho Integral 1kg',
+              })
+            : recoveryMsg(cart.customerName, activeCoupon?.code);
         }
-        const ok = await sendViaWhatsApp(run.customerPhone, msg);
+        const { ok } = await sendViaWhatsApp(run.customerPhone, msg);
         if (ok) {
           await db.update(automationRuns).set({ status: 'sent', sentAt: new Date(), updatedAt: new Date() })
             .where(eq(automationRuns.id, run.id));

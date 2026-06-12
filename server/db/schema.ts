@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, boolean, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, boolean, timestamp, numeric } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
@@ -17,7 +17,7 @@ export const sellers = pgTable('sellers', {
   email: text('email').notNull(),
   phone: text('phone'),
   department: text('department'),
-  dailyGoal: integer('daily_goal').default(10),
+  dailyGoal: integer('daily_goal').default(100),
   workHoursGoal: integer('work_hours_goal').default(8).notNull(),
   status: text('status').notNull().default('active'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -51,6 +51,14 @@ export const tasks = pgTable('tasks', {
   priority: text('priority').notNull().default('medium'),
   assignedTo: text('assigned_to'),
   lastContactedAt: timestamp('last_contacted_at'),
+  // Lead → cliente ativo: marcado manualmente pelo atendente quando o contato vira venda.
+  // Lembretes continuam recorrentes (não "concluem"); isto é um marco de conversão, não de status.
+  convertedAt: timestamp('converted_at'),
+  // Conta contatos reais (notas relevantes salvas) — usado para medir "quantos contatos até converter"
+  contactCount: integer('contact_count').notNull().default(0),
+  // Valor da venda quando o lead é convertido em cliente ativo (ticket médio, faturamento)
+  orderValue: numeric('order_value', { precision: 10, scale: 2 }),
+  orderId: text('order_id'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -129,6 +137,17 @@ export const siteOrders = pgTable('site_orders', {
   notes: text('notes'),
   couponCode: text('coupon_code'),
   couponDiscount: text('coupon_discount'),
+  unpaidFollowupSentAt: timestamp('unpaid_followup_sent_at'),
+  // Marketing attribution (captured from the landing URL) so we know which ad
+  // drove each sale, and to feed Meta CAPI with click/source data.
+  utmSource: text('utm_source'),
+  utmMedium: text('utm_medium'),
+  utmCampaign: text('utm_campaign'),
+  utmContent: text('utm_content'),
+  utmTerm: text('utm_term'),
+  fbclid: text('fbclid'),
+  // Reorder reminder (retention): set when the ~45-day "buy again" nudge is sent.
+  reorderRemindedAt: timestamp('reorder_reminded_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -143,6 +162,7 @@ export const abandonedCarts = pgTable('abandoned_carts', {
   stepReached: integer('step_reached').default(1), // 1=form 2=shipping 3=payment
   status: text('status').notNull().default('checkout_started'), // checkout_started | redirected_to_payment | abandoned | converted | cancelled
   recovered: boolean('recovered').default(false).notNull(),
+  optedOut: boolean('opted_out').default(false).notNull(),
   recoverySentAt: timestamp('recovery_sent_at'),
   abandonedAt: timestamp('abandoned_at'),
   convertedAt: timestamp('converted_at'),
@@ -179,6 +199,7 @@ export const coupons = pgTable('coupons', {
   usedCount: integer('used_count').default(0).notNull(),
   expiresAt: timestamp('expires_at'),
   active: boolean('active').default(true).notNull(),
+  useForRecovery: boolean('use_for_recovery').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -261,9 +282,22 @@ export type EmailTemplate = typeof emailTemplates.$inferSelect;
 export type EmailCampaign = typeof emailCampaigns.$inferSelect;
 export type EmailCampaignRecipient = typeof emailCampaignRecipients.$inferSelect;
 
+export const taskDeletionLogs = pgTable('task_deletion_logs', {
+  id: serial('id').primaryKey(),
+  taskId: integer('task_id').notNull(),
+  taskTitle: text('task_title').notNull(),
+  taskNotes: text('task_notes'),
+  deletedByUserId: integer('deleted_by_user_id').notNull(),
+  deletedByName: text('deleted_by_name').notNull(),
+  reason: text('reason').notNull(),
+  reviewedByAdmin: boolean('reviewed_by_admin').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Seller = typeof sellers.$inferSelect;
 export type Client = typeof clients.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type Reminder = typeof reminders.$inferSelect;
 export type KnowledgeDocument = typeof knowledgeDocuments.$inferSelect;
+export type TaskDeletionLog = typeof taskDeletionLogs.$inferSelect;

@@ -2,7 +2,7 @@ import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -11,6 +11,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from '../components/ui/dialog';
+
+// Sellers created before dailyGoal was wired up still carry the old default of 10
+// while the gamification has always targeted 100 — treat 10 as "not customized".
+function effectiveDailyGoal(dailyGoal?: number | null): number {
+  return dailyGoal && dailyGoal !== 10 ? dailyGoal : 100;
+}
 
 interface Attendant {
   id: number;
@@ -40,7 +46,7 @@ export default function Attendants() {
     name: "",
     phone: "",
     department: "",
-    dailyGoal: 10,
+    dailyGoal: 100,
     workHoursGoal: 8,
     status: "active" as "active" | "inactive",
   });
@@ -48,7 +54,14 @@ export default function Attendants() {
   const [resetInfo, setResetInfo] = useState<{ name: string; email: string; password: string } | null>(null);
 
   const { data: attendants = [], isLoading, refetch } = trpc.sellers.listWithRole.useQuery();
-  const { data: fraudAlerts = [] } = trpc.tasks.fraudAlerts.useQuery(undefined, { refetchInterval: 60_000 });
+  // Sem polling — protege o plano free do Neon/Vercel. Cache válido por 2min.
+  const { data: fraudAlerts = [] } = trpc.tasks.fraudAlerts.useQuery(undefined, { staleTime: 120_000 });
+
+  // ── Filtro avançado ──────────────────────────────────────────────────────
+  const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all");
+  const [filterRole, setFilterRole] = useState<"all" | "admin" | "user">("all");
+  const [onlyAlerts, setOnlyAlerts] = useState(false);
   const createMutation = trpc.sellers.create.useMutation();
   const updateMutation = trpc.sellers.update.useMutation();
   const deleteMutation = trpc.sellers.delete.useMutation();
@@ -70,7 +83,7 @@ export default function Attendants() {
     email: "",
     phone: "",
     department: "",
-    dailyGoal: 10,
+    dailyGoal: 100,
     workHoursGoal: 8,
     status: "active" as "active" | "inactive",
   });
@@ -81,7 +94,7 @@ export default function Attendants() {
       name: attendant.name,
       phone: attendant.phone ?? "",
       department: attendant.department ?? "",
-      dailyGoal: attendant.dailyGoal ?? 10,
+      dailyGoal: effectiveDailyGoal(attendant.dailyGoal),
       workHoursGoal: attendant.workHoursGoal ?? 8,
       status: (attendant.status ?? "active") as "active" | "inactive",
     });
@@ -129,7 +142,7 @@ export default function Attendants() {
         setCreatedInfo({ name: result.name, email: result.email, password: result.generatedPassword });
       }
 
-      setFormData({ name: "", email: "", phone: "", department: "", dailyGoal: 10, workHoursGoal: 8, status: "active" });
+      setFormData({ name: "", email: "", phone: "", department: "", dailyGoal: 100, workHoursGoal: 8, status: "active" });
       setShowForm(false);
       refetch();
     } catch (error: any) {
@@ -169,6 +182,36 @@ export default function Attendants() {
   }
 
   if (!user || user.role !== "admin") return null;
+
+  // ── Aplica filtro avançado (tudo client-side, sem novas queries) ──────────
+  const filteredAttendants = useMemo(() => {
+    let result = attendants as Attendant[];
+    if (filterStatus !== "all") {
+      result = result.filter(a => (a.status ?? "active") === filterStatus);
+    }
+    if (filterRole !== "all") {
+      result = result.filter(a => (a.userRole === "admin" ? "admin" : "user") === filterRole);
+    }
+    if (onlyAlerts) {
+      result = result.filter(a => fraudAlerts.some(al => al.sellerName === a.name));
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      result = result.filter(a =>
+        a.name.toLowerCase().includes(q) ||
+        a.email.toLowerCase().includes(q) ||
+        (a.department ?? "").toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [attendants, filterStatus, filterRole, onlyAlerts, search, fraudAlerts]);
+
+  const activeFilterCount = [
+    filterStatus !== "all",
+    filterRole !== "all",
+    onlyAlerts,
+    search.trim().length > 0,
+  ].filter(Boolean).length;
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -246,10 +289,74 @@ export default function Attendants() {
           <h2 className="text-lg font-semibold text-gray-700">
             {attendants.length} atendente{attendants.length !== 1 ? 's' : ''} cadastrado{attendants.length !== 1 ? 's' : ''}
           </h2>
-          <Button onClick={() => { setFormData({ name: "", email: "", phone: "", department: "", dailyGoal: 10, workHoursGoal: 8, status: "active" }); setShowForm(!showForm); }}>
+          <Button onClick={() => { setFormData({ name: "", email: "", phone: "", department: "", dailyGoal: 100, workHoursGoal: 8, status: "active" }); setShowForm(!showForm); }}>
             {showForm ? "❌ Cancelar" : "➕ Novo Atendente"}
           </Button>
         </div>
+
+        {/* Filtro avançado */}
+        <Card>
+          <CardContent className="pt-4 pb-4 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                🔍 Filtro avançado
+                {activeFilterCount > 0 && (
+                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                    {activeFilterCount} ativo{activeFilterCount > 1 ? 's' : ''}
+                  </span>
+                )}
+              </h3>
+              {activeFilterCount > 0 && (
+                <button
+                  type="button"
+                  className="text-xs text-blue-600 hover:underline"
+                  onClick={() => { setSearch(""); setFilterStatus("all"); setFilterRole("all"); setOnlyAlerts(false); }}
+                >
+                  ✖️ Limpar filtros
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div>
+                <label className="block text-xs font-medium mb-1 text-gray-600">Buscar</label>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Nome, email ou departamento..."
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1 text-gray-600">Status</label>
+                <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as any)} className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <option value="all">Todos</option>
+                  <option value="active">✅ Ativos</option>
+                  <option value="inactive">❌ Inativos</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1 text-gray-600">Permissão</label>
+                <select value={filterRole} onChange={(e) => setFilterRole(e.target.value as any)} className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <option value="all">Todas</option>
+                  <option value="admin">👑 Admins</option>
+                  <option value="user">👤 Atendentes</option>
+                </select>
+              </div>
+              <div className="flex items-end">
+                <label className="flex items-center gap-2 text-sm cursor-pointer select-none px-3 py-2 border rounded-lg w-full hover:bg-gray-50">
+                  <input type="checkbox" checked={onlyAlerts} onChange={(e) => setOnlyAlerts(e.target.checked)} className="h-4 w-4" />
+                  🚨 Só com alerta de fraude
+                </label>
+              </div>
+            </div>
+            {activeFilterCount > 0 && (
+              <p className="text-xs text-gray-500">
+                Mostrando {filteredAttendants.length} de {attendants.length} atendente{attendants.length !== 1 ? 's' : ''}
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
         {showForm && (
           <Card>
@@ -314,9 +421,11 @@ export default function Attendants() {
           <p className="text-center text-gray-500 py-8">Carregando...</p>
         ) : attendants.length === 0 ? (
           <Card><CardContent className="pt-6 text-center text-gray-500">Nenhum atendente cadastrado</CardContent></Card>
+        ) : filteredAttendants.length === 0 ? (
+          <Card><CardContent className="pt-6 text-center text-gray-500">Nenhum atendente encontrado com esse filtro</CardContent></Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {attendants.map((attendant: Attendant) => {
+            {filteredAttendants.map((attendant: Attendant) => {
               const alert = fraudAlerts.find(a => a.sellerName === attendant.name);
               return (
               <Card key={attendant.id} className={alert ? 'border-red-400' : ''}>
@@ -333,7 +442,7 @@ export default function Attendants() {
                     <div className="space-y-1 text-sm text-gray-600">
                       {attendant.phone && <p>📱 {attendant.phone}</p>}
                       {attendant.department && <p>🏢 {attendant.department}</p>}
-                      <p>🎯 Meta: {attendant.dailyGoal} tarefas/dia</p>
+                      <p>🎯 Meta: {effectiveDailyGoal(attendant.dailyGoal)} contatos/dia</p>
                       <p>🕐 Expediente: {attendant.workHoursGoal ?? 8}h</p>
                       <div className="flex gap-2 flex-wrap">
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${attendant.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>

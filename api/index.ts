@@ -12,11 +12,27 @@ import { ensureTablesExist } from '../server/db/migrate';
 import { ensureOrdersTablesExist } from '../server/db/ordersMigrate';
 import { ordersDb } from '../server/db/ordersDb';
 import { sql as sqlClient, db } from '../server/db/index';
-import { siteOrders, abandonedCarts, automationRuns, msgTemplates, emailCampaignRecipients, emailSuppressions, clients } from '../server/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { siteOrders, abandonedCarts, automationRuns, msgTemplates, coupons, emailCampaignRecipients, emailSuppressions, clients } from '../server/db/schema';
+import { eq, and, sql, lte, gte, isNull, inArray, desc } from 'drizzle-orm';
+import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
+import { createPixPaymentForOrder } from '../server/lib/mercadopago';
+import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid } from '../server/lib/orderConfirmation';
 
-function renderTemplate(body: string, vars: Record<string, string>): string {
-  return body.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
+function isBusinessHours(): boolean {
+  const brHour = (new Date().getUTCHours() - 3 + 24) % 24;
+  return brHour >= 8 && brHour < 21;
+}
+
+// Best active coupon for automated recovery messages: prefers the admin-flagged
+// recovery coupon, else the newest active/valid one. Returns '' when none.
+async function getActiveRecoveryCouponCode(): Promise<string> {
+  try {
+    const rows = await ordersDb.select().from(coupons).where(eq(coupons.active, true)).orderBy(desc(coupons.createdAt));
+    const now = new Date();
+    const usable = (c: typeof rows[number]) =>
+      (!c.expiresAt || now < new Date(c.expiresAt)) && (!c.maxUses || c.usedCount < c.maxUses);
+    return (rows.find(c => c.useForRecovery && usable(c)) ?? rows.find(usable))?.code ?? '';
+  } catch { return ''; }
 }
 
 const app = express();
@@ -30,9 +46,13 @@ function withTimeout(p: Promise<unknown>, ms: number): Promise<unknown> {
 }
 
 const dbReady = Promise.all([
-  withTimeout(ensureTablesExist(), 30_000).catch(err => console.error('DB init error:', err)),
+  withTimeout(ensureTablesExist(), 20_000).catch(err => console.error('DB init error:', err)),
   withTimeout(ensureOrdersTablesExist(), 10_000).catch(err => console.error('Orders DB init error:', err)),
 ]);
+
+// Set once dbReady settles so the guard middleware only blocks the very first request
+let migrationSettled = false;
+dbReady.then(() => { migrationSettled = true; });
 
 // CRM data auto-migration: only runs if a source DB with a 'sellers' table is available.
 // ORDERS_DATABASE_URL is the e-commerce DB (no CRM tables) so it is skipped automatically.
@@ -159,11 +179,8 @@ app.use(cors({
 app.get('/api/db-health', async (_req, res) => {
   try {
     const t0 = Date.now();
-    const [, sellersRes] = await Promise.all([
-      sqlClient`SELECT 1`,
-      sqlClient`SELECT COUNT(*)::int AS cnt FROM sellers`,
-    ]);
-    res.json({ db: 'ok', ms: Date.now() - t0, sellers: (sellersRes as unknown as Array<{cnt:number}>)[0]?.cnt ?? 0 });
+    await sqlClient`SELECT 1`;
+    res.json({ db: 'ok', ms: Date.now() - t0 });
   } catch (err: any) {
     res.status(500).json({ db: 'error', message: err.message });
   }
@@ -235,8 +252,54 @@ app.get('/api/unsubscribe', handleUnsubscribe);
 // should not wait 10s for migration before serving any tRPC call.
 dbReady.catch(err => console.error('Background dbReady failed:', err));
 
+// DB storage and row-count monitor — admin only
+app.get('/api/db-stats', async (req, res) => {
+  const secret = process.env.ADMIN_RESET_SECRET;
+  // Fail closed: if no secret is configured, deny (don't leak DB stats publicly).
+  if (!secret || req.headers['x-admin-secret'] !== secret) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const [sizes, counts] = await Promise.all([
+      sqlClient`
+        SELECT
+          pg_size_pretty(pg_database_size(current_database())) AS total_db_size,
+          pg_size_pretty(pg_total_relation_size('chat_messages'))    AS chat_messages,
+          pg_size_pretty(pg_total_relation_size('tasks'))            AS tasks,
+          pg_size_pretty(pg_total_relation_size('reminders'))        AS reminders,
+          pg_size_pretty(pg_total_relation_size('work_sessions'))    AS work_sessions,
+          pg_size_pretty(pg_total_relation_size('knowledge_documents')) AS knowledge_documents,
+          pg_size_pretty(pg_total_relation_size('clients'))          AS clients,
+          pg_size_pretty(pg_total_relation_size('sellers'))          AS sellers,
+          pg_size_pretty(pg_total_relation_size('users'))            AS users
+      `,
+      sqlClient`
+        SELECT
+          (SELECT COUNT(*) FROM chat_messages)      AS chat_messages,
+          (SELECT COUNT(*) FROM tasks)              AS tasks,
+          (SELECT COUNT(*) FROM reminders)          AS reminders,
+          (SELECT COUNT(*) FROM work_sessions)      AS work_sessions,
+          (SELECT COUNT(*) FROM knowledge_documents) AS knowledge_documents,
+          (SELECT COUNT(*) FROM clients)            AS clients,
+          (SELECT COUNT(*) FROM sellers)            AS sellers
+      `,
+    ]);
+    res.json({ sizes: (sizes as any[])[0], rows: (counts as any[])[0] });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Mercado Pago retries notifications, but never at high volume from a single
+// IP for a small store — this only blocks abuse/floods, not legitimate retries.
+const webhookLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  validate: { xForwardedForHeader: false },
+});
+
 // Raw body must be captured before express.json() for HMAC verification
-app.post('/api/mp-webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/json' }), async (req, res) => {
   try {
     const rawBody = (req.body as Buffer).toString('utf8');
     let body: { type?: string; data?: { id?: string } };
@@ -246,21 +309,25 @@ app.post('/api/mp-webhook', express.raw({ type: 'application/json' }), async (re
     if (webhookSecret) {
       const xSig = req.headers['x-signature'] as string | undefined;
       const xReqId = req.headers['x-request-id'] as string | undefined;
-      if (!xSig || !xReqId) { res.status(401).json({ error: 'Missing signature headers' }); return; }
-      const parts = Object.fromEntries(xSig.split(',').map(p => { const [k,...v]=p.split('='); return [k,v.join('=')]; }));
-      const { ts, v1 } = parts;
-      if (!ts || !v1) { res.status(401).json({ error: 'Malformed x-signature' }); return; }
-      const manifest = `id:${body?.data?.id ?? ''};request-id:${xReqId};ts:${ts}`;
-      const expected = crypto.createHmac('sha256', webhookSecret).update(manifest).digest('hex');
-      if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1))) {
-        res.status(401).json({ error: 'Invalid signature' }); return;
+      // Signature headers only present when webhook is configured in MP developer panel.
+      // When notification_url is used in preferences, MP may not send x-signature yet —
+      // in that case we skip validation and rely on the payment lookup to confirm legitimacy.
+      if (xSig && xReqId) {
+        const parts = Object.fromEntries(xSig.split(',').map(p => { const [k,...v]=p.split('='); return [k,v.join('=')]; }));
+        const { ts, v1 } = parts;
+        if (ts && v1) {
+          const manifest = `id:${body?.data?.id ?? ''};request-id:${xReqId};ts:${ts}`;
+          const expected = crypto.createHmac('sha256', webhookSecret).update(manifest).digest('hex');
+          if (expected.length !== v1.length || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1))) {
+            console.warn('[mp-webhook] Invalid HMAC signature — ignoring notification');
+            res.status(401).json({ error: 'Invalid signature' }); return;
+          }
+        }
+      } else {
+        console.log('[mp-webhook] No x-signature headers — processing without HMAC (IPN-style notification)');
       }
     } else {
-      if (IS_PROD) {
-        console.error('[mp-webhook] MERCADO_PAGO_WEBHOOK_SECRET not set in production — rejecting request');
-        res.status(401).json({ error: 'Webhook secret not configured' }); return;
-      }
-      console.warn('[mp-webhook] MERCADO_PAGO_WEBHOOK_SECRET not set — skipping signature check');
+      console.log('[mp-webhook] MERCADO_PAGO_WEBHOOK_SECRET not set — skipping signature check');
     }
 
     const { type, data } = body;
@@ -278,35 +345,52 @@ app.post('/api/mp-webhook', express.raw({ type: 'application/json' }), async (re
     const orderId = parseInt(payment.external_reference ?? '');
     if (!orderId) { res.json({ ok: true }); return; }
 
+    const orderRows = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, orderId));
+    const order = orderRows[0];
+    if (!order) { res.json({ ok: true }); return; }
+
+    // Always persist the payment id (even while pending) so PIX follow-up can fetch the QR code later
+    const mpId = String(payment.id ?? '');
+
     if (payment.status === 'approved') {
-      // Fetch order to validate payment amount before marking as paid
-      const orderRows = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, orderId));
-      const order = orderRows[0];
-      if (order && payment.transaction_amount !== undefined) {
+      // Idempotency: don't reprocess an already-confirmed order (avoids duplicate side effects)
+      if (order.paymentStatus === 'confirmed') { res.json({ ok: true, already: true }); return; }
+      // Validate payment amount before marking as paid
+      if (payment.transaction_amount !== undefined) {
         const expectedTotal = parseFloat(order.totalPrice ?? '0');
-        if (Math.abs(payment.transaction_amount - expectedTotal) > 0.01) {
+        if (expectedTotal > 0 && Math.abs(payment.transaction_amount - expectedTotal) > 0.01) {
           console.warn(`[mp-webhook] Amount mismatch for order ${orderId}: expected ${expectedTotal}, got ${payment.transaction_amount}`);
-          res.status(400).json({ error: 'Payment amount does not match order total' }); return;
+          // Return 200 (not 400) so MP doesn't retry forever; flag for manual review.
+          res.json({ ok: true, mismatch: true }); return;
         }
       }
+      // Mark BOTH status and paymentStatus so the admin panel shows the order as paid + ready to ship
       await ordersDb.update(siteOrders)
-        .set({ paymentStatus: 'confirmed', mpPaymentId: String(payment.id), updatedAt: new Date() })
+        .set({ status: 'confirmed', paymentStatus: 'confirmed', mpPaymentId: mpId, updatedAt: new Date() })
         .where(eq(siteOrders.id, orderId));
-      // Cancel pending WA automations for this customer's phone
-      if (order) {
-        const phone = order.customerPhone.replace(/\D/g, '');
-        await ordersDb.update(automationRuns)
-          .set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
-          .where(and(eq(automationRuns.customerPhone, phone), eq(automationRuns.status, 'scheduled')));
-        // Mark cart as converted if exists
-        await ordersDb.update(abandonedCarts)
-          .set({ status: 'converted', recovered: true, convertedAt: new Date(), updatedAt: new Date() })
-          .where(eq(abandonedCarts.customerPhone, phone));
-      }
-    } else if (payment.status === 'rejected') {
+
+      // Coupon bump, CAPI Purchase, automation cancellation, abandoned-cart
+      // conversion, and WhatsApp/email confirmation — shared with the
+      // reconciliation cron and the admin's manual confirm action.
+      await confirmOrderPaid(order);
+
+    } else if (payment.status === 'pending' || payment.status === 'in_process' || payment.status === 'authorized') {
+      // PIX/boleto awaiting payment — keep awaiting but persist the payment id for follow-up
       await ordersDb.update(siteOrders)
-        .set({ paymentStatus: 'failed', mpPaymentId: String(payment.id), updatedAt: new Date() })
+        .set({ mpPaymentId: mpId, updatedAt: new Date() })
         .where(eq(siteOrders.id, orderId));
+    } else if (payment.status === 'rejected' || payment.status === 'cancelled') {
+      // Payment attempt failed/expired — order stays recoverable for a retry.
+      await ordersDb.update(siteOrders)
+        .set({ paymentStatus: 'failed', mpPaymentId: mpId, updatedAt: new Date() })
+        .where(eq(siteOrders.id, orderId));
+    } else if (payment.status === 'refunded' || payment.status === 'charged_back') {
+      // Money reversed after payment — cancel the order and return the coupon use.
+      const wasConfirmed = order.paymentStatus === 'confirmed';
+      await ordersDb.update(siteOrders)
+        .set({ status: 'cancelled', paymentStatus: 'failed', mpPaymentId: mpId, updatedAt: new Date() })
+        .where(eq(siteOrders.id, orderId));
+      if (wasConfirmed) await bumpCouponUsage(order.couponCode, -1);
     }
 
     res.json({ ok: true });
@@ -361,6 +445,13 @@ const couponCheckLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 
+// PIX status is polled every 5s while the QR is shown — allow up to ~the 15-min poll cap.
+const pixStatusLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 220,
+  validate: { xForwardedForHeader: false },
+});
+
 const chatLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 15,
@@ -374,9 +465,21 @@ app.use('/api/trpc/shipping.calculate', storeLimiter);
 app.use('/api/trpc/shipping.trackOrder', storeLimiter);
 app.use('/api/trpc/shipping.createOrder', orderLimiter);
 app.use('/api/trpc/shipping.createPayment', orderLimiter);
+app.use('/api/trpc/shipping.createPixPayment', orderLimiter);
+app.use('/api/trpc/shipping.pixStatus', pixStatusLimiter);
 app.use('/api/trpc/recovery.trackCart', cartTrackLimiter);
 app.use('/api/trpc/recovery.validateCoupon', couponCheckLimiter);
 app.use('/api/trpc/recovery.chat', chatLimiter);
+app.use('/api/trpc/ai.chat', chatLimiter);
+app.use('/api/trpc/ai.testConnection', authLimiter);
+
+// On the very first request after a cold start, wait for migration to settle
+// so the admin seed and schema exist before any login attempt.
+// After the first request, migrationSettled=true and all subsequent requests skip the wait.
+app.use('/api/trpc', async (_req, _res, next) => {
+  if (!migrationSettled) await dbReady;
+  next();
+});
 
 app.use(
   '/api/trpc',
@@ -386,8 +489,217 @@ app.use(
   }),
 );
 
-// Cron endpoint — called by Vercel Cron or external scheduler every 5 min
-app.post('/api/cron/abandoned-cart', express.json(), async (req, res) => {
+// Fetch a PIX copy-paste code from Mercado Pago for an order: tries the stored
+// payment, then searches by external_reference, and finally generates a brand-new
+// PIX payment if none exists yet — so follow-up messages always have a working code.
+async function fetchPixCode(order: typeof siteOrders.$inferSelect): Promise<string | null> {
+  const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+  if (token) {
+    try {
+      if (order.mpPaymentId) {
+        const r = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (r.ok) {
+          const p = await r.json() as any;
+          const qr = p?.point_of_interaction?.transaction_data?.qr_code ?? null;
+          if (qr) return qr;
+        }
+      }
+      const r = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${order.id}&sort=date_created&criteria=desc`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (r.ok) {
+        const results = ((await r.json()) as any)?.results ?? [];
+        for (const p of results) {
+          const qr = p?.point_of_interaction?.transaction_data?.qr_code;
+          if (qr) return qr;
+        }
+      }
+    } catch {
+      // fall through to generating a fresh PIX below
+    }
+  }
+  if (order.paymentStatus !== 'confirmed') {
+    const created = await createPixPaymentForOrder(order);
+    if (created) return created.qrCode;
+  }
+  return null;
+}
+
+// One-shot WhatsApp follow-up for unpaid (awaiting PIX/boleto) and failed (rejected) orders.
+// Free-tier safe: small LIMIT, marks unpaid_followup_sent_at on attempt so it never reprocesses.
+async function processUnpaidFollowups(): Promise<{ sent: number }> {
+  let sent = 0;
+  if (!isBusinessHours()) return { sent };
+  try {
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const orders = await ordersDb.select().from(siteOrders).where(and(
+      inArray(siteOrders.paymentStatus, ['awaiting', 'failed']),
+      isNull(siteOrders.unpaidFollowupSentAt),
+      lte(siteOrders.createdAt, twoHoursAgo),
+      gte(siteOrders.createdAt, threeDaysAgo),
+    )).limit(2); // max 2 per cron run — keeps execution within Hobby 10s budget
+    if (orders.length === 0) return { sent };
+
+    const tpls = await ordersDb.select().from(msgTemplates).where(inArray(msgTemplates.type, ['unpaid', 'failed']));
+    const defaultByType = (type: string) => tpls.find(t => t.type === type && t.isDefault) ?? tpls.find(t => t.type === type);
+    const pixTpl = tpls.find(t => t.slug === 'unpaid_pix');
+
+    for (const o of orders) {
+      // Mark first so a transient WA outage never causes reprocessing / repeated MP calls.
+      await ordersDb.update(siteOrders).set({ unpaidFollowupSentAt: new Date(), updatedAt: new Date() })
+        .where(eq(siteOrders.id, o.id));
+
+      // Honor "responda PARAR" opt-outs — never send automated follow-ups to these customers.
+      const phoneDigits = o.customerPhone.replace(/\D/g, '');
+      const [cartRecord] = await ordersDb.select({ optedOut: abandonedCarts.optedOut })
+        .from(abandonedCarts).where(eq(abandonedCarts.customerPhone, phoneDigits)).limit(1);
+      if (cartRecord?.optedOut) continue;
+
+      const link = `https://premium.salvitarn.com.br/meu-pedido?pedido=${o.id}&tel=${o.customerPhone.replace(/\D/g, '').slice(-4)}`;
+      let tpl = o.paymentStatus === 'failed' ? defaultByType('failed') : defaultByType('unpaid');
+      let pix = '';
+      if (o.paymentStatus === 'awaiting') {
+        const code = await fetchPixCode(o);
+        if (code && pixTpl) { tpl = pixTpl; pix = code; }
+      }
+      // Leave {pix} as the raw copy-paste code in the main message — WhatsApp
+      // copies messages as literal text, so wrapping it in ``` would put those
+      // backtick characters into whatever the customer pastes into their bank app.
+      const vars = { nome: o.customerName, pedido: String(o.id), valor: brl(o.totalPrice), link, pix };
+      const msg = tpl
+        ? renderTemplate(tpl.body, vars)
+        : (o.paymentStatus === 'failed'
+            ? `Olá *${o.customerName}*! 😕 Houve um problema no pagamento do pedido *#${o.id}*. Tente novamente: ${link}`
+            : `Olá *${o.customerName}*! 💸 Seu pedido *#${o.id}* (R$ ${brl(o.totalPrice)}) ainda está aguardando pagamento. Finalize: ${link}`);
+      const ok = await sendWhatsApp(o.customerPhone, msg);
+      if (ok) sent++;
+      // Follow up with the PIX code as its own message — lets the customer
+      // long-press → copy and get exactly the code, nothing else.
+      if (ok && pix) {
+        await new Promise(r => setTimeout(r, 1000));
+        await sendWhatsApp(o.customerPhone, pix);
+      }
+      // Best-effort email follow-up (non-blocking)
+      if (o.customerEmail) {
+        const emailHtml = unpaidOrderHtml(
+          o.customerName,
+          o.id,
+          brl(o.totalPrice),
+          link,
+          pix || undefined,
+          o.paymentStatus === 'failed',
+        );
+        const emailSubject = o.paymentStatus === 'failed'
+          ? `Problema no pagamento do pedido #${o.id} — tente novamente`
+          : `Pedido #${o.id} aguardando pagamento — R$ ${brl(o.totalPrice)}`;
+        sendEmail(o.customerEmail, emailSubject, emailHtml).catch(() => {});
+      }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  } catch (e) { console.error('[cron] unpaid-followup error:', e); }
+  return { sent };
+}
+
+// Reconcile awaiting orders whose webhook may never have arrived: ask Mercado Pago directly.
+// Free-tier safe: small LIMIT, narrow time window (1h–3d old).
+async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
+  let confirmed = 0;
+  const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+  if (!token) return { confirmed };
+  try {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    // Widened from 3 to 30 days: boleto/late-PIX payments can land days after the
+    // order, and a missed webhook must still be reconciled or the paid order is
+    // stuck "awaiting" forever (never ships, no confirmation sent).
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const orders = await ordersDb.select().from(siteOrders).where(and(
+      eq(siteOrders.paymentStatus, 'awaiting'),
+      lte(siteOrders.createdAt, oneHourAgo),
+      gte(siteOrders.createdAt, thirtyDaysAgo),
+    )).limit(5); // lightweight DB/API check only — no WA sends
+
+    for (const o of orders) {
+      try {
+        // Find an approved payment for this order (by saved id, else search by reference).
+        let approved = false;
+        let payId = o.mpPaymentId ?? '';
+        if (payId) {
+          const r = await fetch(`https://api.mercadopago.com/v1/payments/${payId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+          if (r.ok) approved = ((await r.json()) as any)?.status === 'approved';
+        } else {
+          const r = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${o.id}&sort=date_created&criteria=desc`, { headers: { 'Authorization': `Bearer ${token}` } });
+          if (r.ok) {
+            const results = ((await r.json()) as any)?.results ?? [];
+            const ap = results.find((p: any) => p.status === 'approved');
+            if (ap) { approved = true; payId = String(ap.id); }
+          }
+        }
+        if (!approved) continue;
+
+        await ordersDb.update(siteOrders)
+          .set({ status: 'confirmed', paymentStatus: 'confirmed', mpPaymentId: payId, updatedAt: new Date() })
+          .where(eq(siteOrders.id, o.id));
+        // Coupon bump, CAPI Purchase, automation cancellation, abandoned-cart
+        // conversion, and WhatsApp/email confirmation — same as the mp-webhook path
+        await confirmOrderPaid(o);
+        confirmed++;
+      } catch { /* skip this order */ }
+    }
+  } catch (e) { console.error('[cron] reconcile error:', e); }
+  return { confirmed };
+}
+
+// Retention: nudge past customers to buy again once a 1kg order is likely
+// running low (~45 days). One-shot per order via reorder_reminded_at — never
+// reprocesses. Free-tier safe: small LIMIT, runs only during business hours.
+async function processReorderReminders(): Promise<{ sent: number }> {
+  let sent = 0;
+  if (!isBusinessHours()) return { sent };
+  try {
+    const fortyFiveDaysAgo = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const orders = await ordersDb.select().from(siteOrders).where(and(
+      eq(siteOrders.paymentStatus, 'confirmed'),
+      isNull(siteOrders.reorderRemindedAt),
+      lte(siteOrders.createdAt, fortyFiveDaysAgo),
+      gte(siteOrders.createdAt, ninetyDaysAgo),
+    )).limit(2); // max 2 per cron run — keeps execution within Hobby 10s budget
+    if (orders.length === 0) return { sent };
+
+    const [tpl] = await ordersDb.select().from(msgTemplates)
+      .where(and(eq(msgTemplates.type, 'reorder'), eq(msgTemplates.active, true)));
+    const activeCoupon = await getActiveRecoveryCouponCode();
+
+    for (const o of orders) {
+      // Mark first so a transient WA outage never causes reprocessing.
+      await ordersDb.update(siteOrders).set({ reorderRemindedAt: new Date(), updatedAt: new Date() })
+        .where(eq(siteOrders.id, o.id));
+
+      // Honor "responda PARAR" opt-outs.
+      const phoneDigits = o.customerPhone.replace(/\D/g, '');
+      const [cartRecord] = await ordersDb.select({ optedOut: abandonedCarts.optedOut })
+        .from(abandonedCarts).where(eq(abandonedCarts.customerPhone, phoneDigits)).limit(1);
+      if (cartRecord?.optedOut) continue;
+
+      const link = activeCoupon ? `https://premium.salvitarn.com.br?cupom=${activeCoupon}` : 'https://premium.salvitarn.com.br';
+      const cupomTexto = activeCoupon ? `Use o cupom *${activeCoupon}* e ganhe desconto especial!\n\n` : '';
+      const vars = { nome: o.customerName, pedido: String(o.id), link, cupom_texto: cupomTexto };
+      const msg = tpl
+        ? renderTemplate(tpl.body, vars)
+        : `Olá *${o.customerName}*! 🌊\n\nJá faz um tempinho desde o seu pedido *#${o.id}* do *Sal Marinho Integral Sal Vita* — será que está na hora de repor? 🧂\n\n${cupomTexto}👉 Faça seu novo pedido: ${link}\n\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
+      const ok = await sendWhatsApp(o.customerPhone, msg);
+      if (ok) sent++;
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  } catch (e) { console.error('[cron] reorder-reminder error:', e); }
+  return { sent };
+}
+
+// Cron endpoint — Vercel Cron sends GET; external callers may use POST
+app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
   const secret = process.env.CRON_SECRET;
   const provided = req.headers['x-cron-secret'] ?? req.headers['authorization']?.replace('Bearer ', '');
   if (secret && provided !== secret) {
@@ -398,52 +710,71 @@ app.post('/api/cron/abandoned-cart', express.json(), async (req, res) => {
     const { lte } = await import('drizzle-orm');
     const { automationRuns: runs, abandonedCarts: carts } = await import('../server/db/schema');
     const now = new Date();
+    // Limit to 3 per cron run — keeps total execution under Vercel Hobby 10s budget
     const due = await ordersDb.select().from(runs).where(
       and(eq(runs.status, 'scheduled'), lte(runs.scheduledFor, now))
-    ).limit(50);
+    ).limit(3);
 
-    const waUrl = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
-    const waKey = process.env.WA_API_KEY || 'MinhaChaveSuperSegura123456';
+    // Load all abandoned templates once (small table) and index by slug for the cadence.
+    const abandonedTpls = await ordersDb.select().from(msgTemplates).where(eq(msgTemplates.type, 'abandoned'));
+    const tplBySlug: Record<string, typeof abandonedTpls[number]> = {};
+    for (const t of abandonedTpls) tplBySlug[t.slug] = t;
+    // Map each cadence touch to a template + whether it carries a coupon (coupon only on last touch).
+    // Resolve a REAL active coupon from the coupons table for the last touch —
+    // never the old hardcoded 'VOLTA10' that may not exist/be active at checkout.
+    const activeCoupon = await getActiveRecoveryCouponCode();
+    const RULE_MAP: Record<string, { slug: string; coupon: string }> = {
+      abandoned_t1: { slug: 'abandoned_simples',  coupon: '' },
+      abandoned_t2: { slug: 'abandoned_urgencia', coupon: '' },
+      abandoned_t3: { slug: 'abandoned_cupom',    coupon: activeCoupon },
+    };
+    const fallbackTpl = tplBySlug['abandoned_simples'] ?? abandonedTpls.find(t => t.isDefault);
 
-    // Load default abandoned template once for all runs
-    const [defaultTemplate] = await ordersDb.select().from(msgTemplates)
-      .where(and(eq(msgTemplates.type, 'abandoned'), eq(msgTemplates.isDefault, true)))
-      .limit(1);
+    // ── Always run these regardless of business hours ────────────────────────
+    const unpaid = await processUnpaidFollowups();      // has its own hours check
+    const reconciled = await reconcileAwaitingOrders(); // no WA sends, pure DB/API
+    const reorder = await processReorderReminders();    // has its own hours check
 
+    // ── Abandoned cart automation: only during business hours ─────────────────
     let sent = 0, cancelled = 0, failed = 0;
+    if (!isBusinessHours()) {
+      res.json({ ok: true, processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: 'outside business hours', unpaid, reconciled, reorder });
+      return;
+    }
     for (const run of due) {
       const [cart] = await ordersDb.select().from(carts).where(eq(carts.id, run.cartId)).limit(1);
-      if (!cart || cart.status === 'converted' || cart.recovered) {
+      if (!cart || cart.status === 'converted' || cart.recovered || cart.optedOut) {
         await ordersDb.update(runs).set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
           .where(eq(runs.id, run.id));
         cancelled++;
         continue;
       }
       const name = cart.customerName;
-      const link = 'https://premium.salvitarn.com.br';
+      const ruleCfg = RULE_MAP[run.ruleName] ?? { slug: 'abandoned_simples', coupon: '' };
+      // Append ?cupom= so the storefront pre-fills and auto-applies the code.
+      const link = ruleCfg.coupon ? `https://premium.salvitarn.com.br?cupom=${ruleCfg.coupon}` : 'https://premium.salvitarn.com.br';
+      const tpl = tplBySlug[ruleCfg.slug] ?? fallbackTpl;
       let msg: string;
       if (run.aiBody) {
-        // AI-generated personalized message takes priority
-        msg = run.aiBody;
-      } else if (defaultTemplate) {
-        msg = renderTemplate(defaultTemplate.body, { nome: name, link, cupom: '' });
+        msg = run.aiBody; // AI-generated personalized message takes priority
+      } else if (tpl) {
+        msg = renderTemplate(tpl.body, { nome: name, link, cupom: ruleCfg.coupon, produto: 'Sal Marinho Integral 1kg' });
       } else {
         msg = `Olá *${name}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou o pedido.\n\n👉 Finalize agora: ${link}\n\nQualquer dúvida é só chamar! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
       }
       try {
-        const phone = run.customerPhone.replace(/\D/g, '');
-        const fmtPhone = phone.startsWith('55') ? phone : `55${phone}`;
-        const r = await fetch(`${waUrl}/send`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': waKey },
-          body: JSON.stringify({ phone: fmtPhone, message: msg }),
-        });
-        if (r.ok) {
-          await ordersDb.update(runs).set({ status: 'sent', sentAt: new Date(), providerResponse: JSON.stringify(await r.json()), updatedAt: new Date() })
+        const ok = await sendWhatsApp(run.customerPhone, msg);
+        if (ok) {
+          await ordersDb.update(runs).set({ status: 'sent', sentAt: new Date(), updatedAt: new Date() })
             .where(eq(runs.id, run.id));
           await ordersDb.update(carts).set({ recoverySentAt: new Date(), updatedAt: new Date() })
             .where(eq(carts.id, run.cartId));
           sent++;
+          // Email only on 3rd touch (cupom) to save Resend daily quota for confirmations
+          if (cart.customerEmail && ruleCfg.coupon) {
+            const emailHtml = abandonedCartHtml(cart.customerName, 'https://premium.salvitarn.com.br', ruleCfg.coupon);
+            sendEmail(cart.customerEmail, `Seu cupom ${ruleCfg.coupon} — finalize seu pedido Sal Vita`, emailHtml).catch(() => {});
+          }
         } else {
           await ordersDb.update(runs).set({ status: 'failed', updatedAt: new Date() }).where(eq(runs.id, run.id));
           failed++;
@@ -452,9 +783,9 @@ app.post('/api/cron/abandoned-cart', express.json(), async (req, res) => {
         await ordersDb.update(runs).set({ status: 'failed', updatedAt: new Date() }).where(eq(runs.id, run.id));
         failed++;
       }
-      await new Promise(r => setTimeout(r, 1000));
     }
-    res.json({ ok: true, processed: due.length, sent, cancelled, failed });
+
+    res.json({ ok: true, processed: due.length, sent, cancelled, failed, unpaid, reconciled, reorder });
   } catch (err) {
     console.error('[cron] abandoned-cart error:', err);
     res.status(500).json({ error: String(err) });
@@ -465,11 +796,39 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
 
+// Diagnostic: runs the orders-DB migration and reports per-step status + which
+// tables exist. Helps debug the recovery panel when tables are missing.
+app.get('/api/orders-health', async (_req, res) => {
+  try {
+    const steps = await ensureOrdersTablesExist();
+    const { neon } = await import('@neondatabase/serverless');
+    const url = process.env.ORDERS_DATABASE_URL ?? process.env.DATABASE_URL!;
+    const sql = neon(url);
+    const tables = await sql`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_name IN ('site_orders','abandoned_carts','automation_runs','coupons','msg_templates')
+      ORDER BY table_name
+    `;
+    res.json({
+      ok: steps.every((s: any) => s.ok),
+      usingOrdersUrl: !!process.env.ORDERS_DATABASE_URL,
+      tablesPresent: (tables as any[]).map(t => t.table_name),
+      steps,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? String(err) });
+  }
+});
+
 // One-time migration: copy all data from Neon → Supabase
 // Protected by ADMIN_RESET_SECRET. Remove after migration is done.
 app.post('/api/migrate-from-neon', express.json(), async (req, res) => {
   const secret = process.env.ADMIN_RESET_SECRET;
-  if (!secret || req.body?.secret !== secret) {
+  if (!secret) {
+    return res.status(503).json({ error: 'Migration endpoint disabled: configure ADMIN_RESET_SECRET to enable' });
+  }
+  if (req.body?.secret !== secret) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 

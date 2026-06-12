@@ -20,6 +20,17 @@ const DEFAULT_MODELS: Record<string, string> = {
   anthropic: 'claude-3-haiku-20240307',
 };
 
+// ── Proteção de cota gratuita (Groq/Gemini) ─────────────────────────────────
+// Cooldown por usuário: evita spam de mensagens consumindo a cota diária gratuita.
+const CHAT_COOLDOWN_MS = 2500;
+const lastChatAt = new Map<number, number>();
+
+// Cache do relatório de análise de atendentes (admin) — evita reprocessar
+// e rechamar a LLM a cada clique. TTL curto o bastante para refletir o dia,
+// longo o bastante para não desperdiçar a cota gratuita.
+const ANALYZE_CACHE_TTL_MS = 15 * 60 * 1000;
+let analyzeCache: { at: number; data: { report: any[]; summary: string } } | null = null;
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function nextBusinessDay(d: Date): Date {
@@ -34,7 +45,8 @@ function addMinutes(d: Date, mins: number): Date {
 
 async function callLLMWithTools(
   apiKey: string, baseURL: string, model: string,
-  messages: any[], tools: any[], maxTokens = 1000
+  messages: any[], tools: any[], maxTokens = 1000,
+  callerUserId?: number
 ): Promise<string> {
   const loop = async (msgs: any[]): Promise<string> => {
     const body: any = { model, messages: msgs, max_tokens: maxTokens, temperature: 0.4, parallel_tool_calls: false };
@@ -61,7 +73,7 @@ async function callLLMWithTools(
       for (const tc of msg.tool_calls) {
         let args: any = {};
         try { args = JSON.parse(tc.function.arguments ?? '{}'); } catch { /* truncated args, use empty */ }
-        const result = await executeTool(tc.function.name, args);
+        const result = await executeTool(tc.function.name, args, callerUserId);
         newMsgs.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result) });
       }
       return loop(newMsgs);
@@ -213,7 +225,7 @@ Esta ação é IRREVERSÍVEL — os lembretes serão redistribuídos para datas 
   },
 ];
 
-async function executeTool(name: string, args: any): Promise<any> {
+async function executeTool(name: string, args: any, callerUserId?: number): Promise<any> {
   if (name === 'list_tasks') {
     const name_ = String(args.attendant_name ?? '');
     const [seller] = await db.select().from(sellers).where(ilike(sellers.name, `%${name_}%`)).limit(1);
@@ -319,17 +331,24 @@ async function executeTool(name: string, args: any): Promise<any> {
     const query = String(args.query ?? '');
     const category = args.category ? String(args.category) : null;
 
+    // Always scope to the caller's own documents to prevent cross-user leakage
+    const userFilter = callerUserId ? eq(knowledgeDocuments.userId, callerUserId) : undefined;
+
     const searchWhere = category
       ? and(
+          userFilter,
           or(ilike(knowledgeDocuments.title, `%${query}%`), ilike(knowledgeDocuments.content, `%${query}%`)),
           ilike(knowledgeDocuments.category, `%${category}%`)
         )
-      : or(ilike(knowledgeDocuments.title, `%${query}%`), ilike(knowledgeDocuments.content, `%${query}%`));
+      : and(
+          userFilter,
+          or(ilike(knowledgeDocuments.title, `%${query}%`), ilike(knowledgeDocuments.content, `%${query}%`))
+        );
 
     const matched = await db.select().from(knowledgeDocuments).where(searchWhere).limit(5);
 
     if (matched.length === 0) {
-      const fallback = await db.select().from(knowledgeDocuments).limit(3);
+      const fallback = await db.select().from(knowledgeDocuments).where(userFilter).limit(3);
       return { encontrados: 0, mensagem: `Nenhum documento encontrado para "${query}". Documentos disponíveis:`, documentos: fallback.map(d => ({ titulo: d.title, categoria: d.category, conteudo: d.content.slice(0, 800) })) };
     }
 
@@ -662,6 +681,14 @@ export const aiRouter = router({
       model: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
+      // Cooldown — protege a cota gratuita do Groq/Gemini contra spam de mensagens
+      const lastAt = lastChatAt.get(ctx.user.id) ?? 0;
+      const elapsed = Date.now() - lastAt;
+      if (elapsed < CHAT_COOLDOWN_MS) {
+        throw new Error(`Aguarde ${Math.ceil((CHAT_COOLDOWN_MS - elapsed) / 1000)}s antes de enviar outra mensagem.`);
+      }
+      lastChatAt.set(ctx.user.id, Date.now());
+
       try {
         const provider = input.provider ?? (process.env.GROQ_API_KEY ? 'groq' : process.env.GEMINI_API_KEY ? 'gemini' : 'groq');
         const envKey = provider === 'groq' ? process.env.GROQ_API_KEY
@@ -674,10 +701,7 @@ export const aiRouter = router({
           ? DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile'
           : (input.model ?? DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile');
 
-        console.log('[AI_CHAT] uid:', ctx.user.id, 'provider:', provider, 'model:', model, 'hasKey:', !!apiKey);
-
         await db.insert(chatMessages).values({ userId: ctx.user.id, content: input.message, role: 'user' });
-        console.log('[AI_CHAT] msg saved');
 
         if (!apiKey) {
           const reply = 'IA não configurada. Vá em Configurações → IA e adicione uma chave do Groq ou Gemini (ambos gratuitos).';
@@ -689,10 +713,8 @@ export const aiRouter = router({
           .where(eq(chatMessages.userId, ctx.user.id))
           .orderBy(desc(chatMessages.createdAt))
           .limit(4);
-        console.log('[AI_CHAT] history:', history.length, 'rows');
 
         const userContext = await buildUserContext(ctx.user.id, ctx.user.role);
-        console.log('[AI_CHAT] context built');
 
         const systemPrompt = isAdmin
           ? `Gestor Sal Vita. Ferramentas disponíveis:
@@ -723,31 +745,29 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
           ...history.reverse().map(m => ({ role: m.role, content: m.content })),
         ];
 
-        console.log('[AI_CHAT] calling LLM, isAdmin:', isAdmin, 'provider:', provider);
         let reply: string;
         try {
           reply = isAdmin
-            ? await callLLMWithTools(apiKey, baseURL, model, messages, TOOLS, 1000)
+            ? await callLLMWithTools(apiKey, baseURL, model, messages, TOOLS, 1000, ctx.user.id)
             : await callLLM(apiKey, baseURL, model, messages, 700, 0.6);
         } catch (primaryErr: any) {
           if (isRateLimit(primaryErr)) {
             const fb = getFallbackConfig(provider);
             if (fb) {
-              console.log('[AI_CHAT] 429 on', provider, '— falling back to', fb.model);
+              console.warn('[AI_CHAT] 429 on', provider, '— falling back to', fb.model);
               reply = isAdmin
-                ? await callLLMWithTools(fb.apiKey, fb.baseURL, fb.model, messages, TOOLS, 1000)
+                ? await callLLMWithTools(fb.apiKey, fb.baseURL, fb.model, messages, TOOLS, 1000, ctx.user.id)
                 : await callLLM(fb.apiKey, fb.baseURL, fb.model, messages, 700, 0.6);
             } else {
               throw primaryErr;
             }
           } else if (isAdmin && primaryErr.status === 400) {
-            console.log('[AI_CHAT] tool_use 400, retrying without tools');
+            console.warn('[AI_CHAT] tool_use 400, retrying without tools');
             reply = await callLLM(apiKey, baseURL, model, messages, 1000, 0.4);
           } else {
             throw primaryErr;
           }
         }
-        console.log('[AI_CHAT] LLM OK, reply len:', reply.length);
 
         await db.insert(chatMessages).values({ userId: ctx.user.id, content: reply, role: 'assistant' });
         return { reply };
@@ -763,9 +783,15 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
       apiKey: z.string().optional(),
       provider: z.string().optional(),
       model: z.string().optional(),
+      forceRefresh: z.boolean().optional(),
     }).optional())
     .mutation(async ({ input, ctx }) => {
     if (ctx.user.role !== 'admin') throw new Error('Apenas admins podem usar este recurso');
+
+    // Cache (15min): evita reprocessar e regastar a cota gratuita da LLM a cada clique
+    if (!input?.forceRefresh && analyzeCache && (Date.now() - analyzeCache.at) < ANALYZE_CACHE_TTL_MS) {
+      return { ...analyzeCache.data, cached: true, cachedAt: analyzeCache.at };
+    }
 
     const analyzeProvider = input?.provider ?? (process.env.GROQ_API_KEY ? 'groq' : process.env.GEMINI_API_KEY ? 'gemini' : 'groq');
     const envKey = analyzeProvider === 'groq' ? process.env.GROQ_API_KEY : process.env.GEMINI_API_KEY;
@@ -778,7 +804,8 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
     const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
 
     const allSellers = await db.select().from(sellers);
-    const allTasks = await db.select().from(tasks);
+    // Limit to 5000 most-recent tasks to protect Neon free tier on large datasets
+    const allTasks = await db.select().from(tasks).orderBy(desc(tasks.updatedAt)).limit(5000);
     const recentSessions = await db.select().from(workSessions)
       .where(gte(workSessions.startedAt, sevenDaysAgo))
       .orderBy(desc(workSessions.startedAt));
@@ -889,11 +916,22 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
 
       const sess = sessionSummary(seller.userId);
 
+      // Performance de vendas (conversão lead → cliente ativo)
+      const converted = st.filter(t => t.convertedAt);
+      const convertedCount = converted.length;
+      const conversionRate = total > 0 ? Math.round((convertedCount / total) * 100) : 0;
+      const avgContactsToConvert = convertedCount > 0
+        ? Math.round(converted.reduce((acc, t) => acc + (t.contactCount || 0), 0) / convertedCount)
+        : 0;
+
       return {
         sellerId: seller.id,
         name: seller.name,
         email: seller.email,
         total,
+        convertedCount,
+        conversionRate,
+        avgContactsToConvert,
         withReminder: withReminder.length,
         overdue: overdue.length,
         noNotes: noNotes.length,
@@ -917,7 +955,7 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
     });
 
     const reportText = report.map(r =>
-      `${r.name}: ${r.total} clientes, ${r.withReminder} com lembrete ativo, ${r.overdue} vencidos, sem_anotação=${r.noNotes}, desativados=${r.disabledReminders}, sem_data=${r.noReminderDate}, nunca_atualizado=${r.neverUpdated}, status=${r.status} | CHURN: ghost_clientes=${r.ghostCount} (sem contato 30d+), reagendado_sem_contato=${r.reschedNoContact} | FRAUDE: burst=${r.hasBurst ? `SIM(${r.burstMax} em 10min)` : 'não'} | QUALIDADE: media_nota=${r.avgNoteLen}chars | ACESSO: hoje=[${r.sessaoHoje}], dias_ativos_7d=${r.diasAtivos7}, total_trabalhado_7d=${r.totalTrabalhado7dias}, ultimo_acesso=${r.ultimoAcesso} | flags=${r.flags.join('; ') || 'nenhuma'}`
+      `${r.name}: ${r.total} clientes, ${r.withReminder} com lembrete ativo, ${r.overdue} vencidos, sem_anotação=${r.noNotes}, desativados=${r.disabledReminders}, sem_data=${r.noReminderDate}, nunca_atualizado=${r.neverUpdated}, status=${r.status} | VENDAS: convertidos=${r.convertedCount} (${r.conversionRate}% taxa), media_contatos_p/_converter=${r.avgContactsToConvert} | CHURN: ghost_clientes=${r.ghostCount} (sem contato 30d+), reagendado_sem_contato=${r.reschedNoContact} | FRAUDE: burst=${r.hasBurst ? `SIM(${r.burstMax} em 10min)` : 'não'} | QUALIDADE: media_nota=${r.avgNoteLen}chars | ACESSO: hoje=[${r.sessaoHoje}], dias_ativos_7d=${r.diasAtivos7}, total_trabalhado_7d=${r.totalTrabalhado7dias}, ultimo_acesso=${r.ultimoAcesso} | flags=${r.flags.join('; ') || 'nenhuma'}`
     ).join('\n');
 
     try {
@@ -934,6 +972,8 @@ INTERPRETAÇÃO DOS DADOS:
 - lembrete desativado manualmente = atendente tentou esconder inadimplência
 - tarefa nunca atualizada = cliente ignorado desde importação
 - taxa de lembretes ativos baixa = carteira sendo negligenciada
+- convertidos / taxa de conversão = leads que viraram CLIENTES ATIVOS (venda real concretizada) — é a métrica mais importante de resultado
+- media_contatos_p/_converter = quantos contatos o atendente precisa em média até fechar uma venda. Quanto MENOR, melhor a técnica de abordagem (mais eficiente). Valores muito altos podem indicar dificuldade de fechamento ou leads de baixa qualidade
 - ghost_clientes = clientes sem NENHUM contato real nos últimos 30+ dias → risco churn alto
 - burst=SIM (N em 10min) = possível fraude: clientes "marcados" em massa em poucos minutos, sem contato real
 - reagendado_sem_contato = tarefa atualizada recentemente mas sem contato registrado → simulação de atividade
@@ -943,14 +983,18 @@ INTERPRETAÇÃO DOS DADOS:
 SEU PAPEL:
 1. Classificar cada atendente: 🟢 Ativo / 🟡 Atenção / 🔴 Crítico
 2. Identificar padrões de negligência vs. engajamento real
-3. Calcular risco de churn por atendente (clientes sem contato)
-4. Dar recomendações concretas e acionáveis imediatamente
-5. Destacar quem merece reconhecimento e quem precisa de intervenção
+3. Avaliar performance REAL DE VENDAS — quem converte, com que eficiência (contatos por venda)
+4. Calcular risco de churn por atendente (clientes sem contato)
+5. Dar recomendações concretas e acionáveis imediatamente
+6. Destacar quem merece reconhecimento (inclusive por VENDER, não só por estar ativo) e quem precisa de intervenção
 
-FORMATO OBRIGATÓRIO (markdown completo — NÃO PARE antes de terminar todas as 4 seções):
+FORMATO OBRIGATÓRIO (markdown completo — NÃO PARE antes de terminar todas as 6 seções):
 
 ## 🏆 Ranking de Desempenho
-[tabela markdown com todos os atendentes: Nome | Clientes | Vencidos | Sem nota | Status]
+[tabela markdown com todos os atendentes: Nome | Clientes | Convertidos | Taxa Conversão | Vencidos | Status]
+
+## 💰 Performance de Conversão (Resultado de Vendas)
+[CADA atendente: convertidos, taxa de conversão %, média de contatos até fechar — compare quem converte com poucos contatos (técnica eficiente, deve ser referência) vs. quem gasta muitos contatos sem fechar (precisa de treino de abordagem/fechamento)]
 
 ## 🔴 Alertas Críticos
 [CADA atendente com problema: nome, números exatos, impacto em churn, gravidade]
@@ -959,24 +1003,25 @@ FORMATO OBRIGATÓRIO (markdown completo — NÃO PARE antes de terminar todas as
 [CADA atendente: clientes em risco (número), percentual da carteira, nível de urgência]
 
 ## ✅ Plano de Ação — Próximos 7 dias
-[CADA atendente: ações específicas e prioritárias, da mais urgente à menos urgente]
+[CADA atendente: ações específicas e prioritárias, da mais urgente à menos urgente — inclua metas de conversão quando fizer sentido]
 
 ## 🌟 Reconhecimentos
-[atendentes com desempenho positivo, métricas concretas]
+[atendentes com desempenho positivo — tanto por atividade/cuidado com a carteira QUANTO por resultado de vendas (conversões, eficiência), com métricas concretas]
 
 REGRAS ABSOLUTAS:
 - Inclua TODOS os ${allSellers.length} atendentes em TODAS as seções
 - Use números exatos dos dados fornecidos
 - NÃO encurte, NÃO resuma, NÃO pule atendentes
-- Complete TODAS as 5 seções antes de parar
+- Complete TODAS as 6 seções antes de parar
 - Português BR`,
         },
         {
           role: 'user',
-          content: `DADOS COMPLETOS (${allSellers.length} atendentes):\n\n${reportText}\n\nGere análise COMPLETA com todas as 5 seções. Inclua TODOS os atendentes. Não encurte.`,
+          content: `DADOS COMPLETOS (${allSellers.length} atendentes):\n\n${reportText}\n\nGere análise COMPLETA com todas as 6 seções. Inclua TODOS os atendentes. Não encurte.`,
         },
       ], 8000, 0.3);
-      return { report, summary };
+      analyzeCache = { at: Date.now(), data: { report, summary } };
+      return { report, summary, cached: false };
     } catch (err: any) {
       console.error('[ANALYZE_ERROR]', err?.message);
       return { report, summary: 'Análise indisponível: ' + (err?.message ?? 'erro') };

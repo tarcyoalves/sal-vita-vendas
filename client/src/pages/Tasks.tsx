@@ -1,4 +1,5 @@
 import { useAuth } from '../_core/hooks/useAuth';
+import { Link } from 'wouter';
 import { trpc } from '../lib/trpc';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -25,6 +26,10 @@ interface Task {
   status?: "pending" | "completed" | "cancelled" | null;
   priority?: "low" | "medium" | "high" | null;
   assignedTo?: string | null;
+  convertedAt?: Date | string | null;
+  contactCount?: number | null;
+  orderValue?: string | null;
+  orderId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -35,6 +40,32 @@ function hasPhone(text: string): boolean {
 }
 function hasEmail(text: string): boolean {
   return /[\w.+-]+@[\w-]+\.[a-z]{2,}/i.test(text);
+}
+
+// Extracts the first phone number found in a string, returning only digits (or null)
+function extractPhone(text: string): string | null {
+  const m = text.match(/\(?\d{2}\)?[\s.]*\d{4,5}[-\s]?\d{4}/);
+  if (!m) return null;
+  const digits = m[0].replace(/\D/g, '');
+  return digits.length >= 10 ? digits : null;
+}
+
+// Extracts the first email found in a string (or null)
+function extractEmail(text: string): string | null {
+  const m = text.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
+  return m ? m[0] : null;
+}
+
+// Builds a wa.me link from a Brazilian phone number, adding the 55 country code if missing
+function waLink(digits: string): string {
+  const withCountry = digits.length <= 11 ? `55${digits}` : digits;
+  return `https://wa.me/${withCountry}`;
+}
+
+// Sellers created before dailyGoal was wired up still carry the old default of 10
+// while the gamification has always targeted 100 — treat 10 as "not customized".
+function effectiveDailyGoal(dailyGoal?: number | null): number {
+  return dailyGoal && dailyGoal !== 10 ? dailyGoal : 100;
 }
 
 // Parser for dash-separated customer records
@@ -110,6 +141,7 @@ export default function Tasks() {
   const [filterAssignee, setFilterAssignee] = useState<string>("all");
   const [filterContact, setFilterContact] = useState<"all" | "whatsapp" | "email">("all");
   const [filterReminder, setFilterReminder] = useState<"all" | "active" | "inactive">("all");
+  const [filterConverted, setFilterConverted] = useState<"all" | "active_clients" | "leads">("all");
   const [reminderTab, setReminderTab] = useState<"all" | "today" | "yesterday" | "lastWeek" | "lastMonth">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [importedTasks, setImportedTasks] = useState<{ title: string; description: string; notes: string }[]>([]);
@@ -128,13 +160,24 @@ export default function Tasks() {
   const [showMonitorBanner, setShowMonitorBanner] = useState(() => sessionStorage.getItem('monitorBannerDismissed') !== '1');
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [convertModalTask, setConvertModalTask] = useState<Task | null>(null);
+  const [orderValueInput, setOrderValueInput] = useState("");
+  // ID da tarefa mais urgente a destacar após salvar
+  const [highlightTaskId, setHighlightTaskId] = useState<number | null>(null);
+  // Ref para controlar alerta de ociosidade (último contato feito)
+  const lastContactTimeRef = useRef<number>(Date.now());
 
   const { data: tasks = [], isLoading, refetch } = trpc.tasks.list.useQuery();
   const { data: attendants = [] } = trpc.sellers.list.useQuery();
+  // staleTime: avoids redundant server calls; session/profile rarely change
+  const { data: workSession } = trpc.workSessions.current.useQuery(undefined, { enabled: !isAdmin, staleTime: 60_000 });
+  const { data: sellerProfile } = trpc.sellers.myProfile.useQuery(undefined, { enabled: !isAdmin, staleTime: 300_000 });
   const createMutation = trpc.tasks.create.useMutation();
   const updateMutation = trpc.tasks.update.useMutation();
   const deleteMutation = trpc.tasks.delete.useMutation();
   const deleteManyMutation = trpc.tasks.deleteMany.useMutation();
+  const toggleConvertedMutation = trpc.tasks.toggleConverted.useMutation();
   const suggestMutation = trpc.ai.suggestSalesApproach.useMutation();
 
   // ── E-mail Marketing: add task(s) to a draft campaign ──────────────────────
@@ -154,6 +197,111 @@ export default function Tasks() {
       toast.error(e?.message ?? "Erro ao adicionar à campanha");
     }
   };
+
+  const [progressTick, setProgressTick] = useState(0);
+  useEffect(() => {
+    if (!workSession || workSession.status !== 'active') return;
+    const id = setInterval(() => setProgressTick(t => t + 1), 60_000);
+    return () => clearInterval(id);
+  // workSession inteiro: recria o interval se startedAt/pausedMs mudar
+  }, [workSession]);
+
+  const dailyProgress = useMemo(() => {
+    if (isAdmin) return null;
+    const GOAL = effectiveDailyGoal(sellerProfile?.dailyGoal);
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+    const contacts = (tasks as any[]).filter(t => t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart).length;
+    const pct = Math.min(Math.round((contacts / GOAL) * 100), 100);
+
+    let workedMs = 0;
+    if (workSession) {
+      const now = Date.now();
+      const start = new Date(workSession.startedAt).getTime();
+      const end   = workSession.endedAt ? new Date(workSession.endedAt).getTime() : now;
+      const paused = workSession.totalPausedMs ?? 0;
+      const extraPause = (workSession.status === 'paused' && workSession.pausedAt)
+        ? now - new Date(workSession.pausedAt).getTime() : 0;
+      workedMs = Math.max(0, end - start - paused - extraPause);
+    }
+    const goalMs = (sellerProfile?.workHoursGoal ?? 8) * 3600000;
+    const hoursPct = Math.min(Math.round((workedMs / goalMs) * 100), 100);
+    const h = Math.floor(workedMs / 3600000), mn = Math.floor((workedMs % 3600000) / 60000);
+
+    const color = pct >= 100 ? '#16a34a' : pct >= 60 ? '#2563eb' : pct >= 30 ? '#d97706' : '#dc2626';
+    return { contacts, pct, hoursPct, hoursLabel: `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}`, color, remaining: GOAL - contacts, goal: GOAL };
+  }, [tasks, workSession, sellerProfile, isAdmin, progressTick]);
+
+  const prevContactsRef = useRef<number>(-1);
+  useEffect(() => {
+    if (isAdmin || !dailyProgress) return;
+    const prev = prevContactsRef.current;
+    const cur  = dailyProgress.contacts;
+    if (prev < 0) { prevContactsRef.current = cur; return; }
+    const goal = effectiveDailyGoal(sellerProfile?.dailyGoal);
+    const q1 = Math.round(goal * 0.25), half = Math.round(goal * 0.5), q3 = Math.round(goal * 0.75);
+    if (prev < q1   && cur >= q1)   toast.success(`🎯 ${q1} contatos! Ótimo começo!`);
+    if (prev < half && cur >= half) toast.success(`🔥 Metade da meta! ${half} contatos!`);
+    if (prev < q3   && cur >= q3)   toast.success(`⚡ ${q3} contatos! Faltam só ${goal - q3}!`);
+    if (prev < goal && cur >= goal) toast.success(`🏆 META BATIDA! ${goal} contatos hoje!`, { duration: 6000 });
+    prevContactsRef.current = cur;
+  }, [dailyProgress?.contacts, isAdmin, sellerProfile?.dailyGoal]);
+
+  // ─── 1. NOTIFICAÇÕES DE LEMBRETE NO HORÁRIO EXATO ──────────────────────────
+  // Agenda setTimeout para cada tarefa com lembrete nas próximas 4h.
+  // Dispara Notification API nativa — zero custo de servidor.
+  const scheduledRemindersRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    if (isAdmin || !('Notification' in window)) return;
+    if (Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+    if (Notification.permission !== 'granted') return;
+
+    const now = Date.now();
+    const fourHours = 4 * 3600_000;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    (tasks as any[]).forEach((t: any) => {
+      if (!t.reminderDate || t.reminderEnabled === false || t.status !== 'pending') return;
+      if (scheduledRemindersRef.current.has(t.id)) return; // já agendado
+      const fireAt = new Date(t.reminderDate).getTime();
+      const delay  = fireAt - now;
+      if (delay <= 0 || delay > fourHours) return; // só agenda os próximos 4h
+
+      scheduledRemindersRef.current.add(t.id);
+      timers.push(setTimeout(() => {
+        new Notification('🔔 Lembrete Sal Vita', {
+          body: t.title,
+          icon: '/favicon.ico',
+          tag: `reminder-${t.id}`,
+        });
+        scheduledRemindersRef.current.delete(t.id);
+      }, delay));
+    });
+
+    return () => timers.forEach(clearTimeout);
+  }, [tasks, isAdmin]);
+
+  // ─── 2. ALERTA DE OCIOSIDADE ───────────────────────────────────────────────
+  // A cada 15 min verifica se o atendente ainda não registrou nenhum contato.
+  // Só dispara se a sessão estiver ativa e tiver tarefas pendentes.
+  const IDLE_MS = 15 * 60_000;
+  useEffect(() => {
+    if (isAdmin) return;
+    const id = setInterval(() => {
+      if (workSession?.status !== 'active') return;
+      const idleMs = Date.now() - lastContactTimeRef.current;
+      if (idleMs < IDLE_MS) return;
+      const pending = (tasks as any[]).filter(t => t.status === 'pending').length;
+      if (pending === 0) return;
+      const idleMin = Math.round(idleMs / 60_000);
+      toast.warning(
+        `⏰ ${idleMin} min sem contatos! Você tem ${pending} tarefa${pending > 1 ? 's' : ''} pendente${pending > 1 ? 's' : ''}.`,
+        { duration: 8000, id: 'idle-alert' }
+      );
+    }, IDLE_MS);
+    return () => clearInterval(id);
+  }, [isAdmin, tasks, workSession?.status]);
 
   const [formData, setFormData] = useState<{
     clientId: number;
@@ -184,11 +332,27 @@ export default function Tasks() {
     setEditingTask(null);
   }, []);
 
-  const doSave = async () => {
+  // ─── 3. PRÓXIMA TAREFA URGENTE ────────────────────────────────────────────
+  // Após salvar, encontra a tarefa pendente com lembrete mais próximo e destaca.
+  const highlightNextUrgent = useCallback((updatedTasks: any[]) => {
+    const now = new Date();
+    const next = updatedTasks
+      .filter(t => t.status === 'pending' && t.reminderDate && t.reminderEnabled !== false)
+      .sort((a, b) => new Date(a.reminderDate).getTime() - new Date(b.reminderDate).getTime())
+      .find(t => new Date(t.reminderDate) >= now);
+    if (next) {
+      setHighlightTaskId(next.id);
+      setTimeout(() => setHighlightTaskId(null), 6000);
+    }
+  }, []);
+
+  const doSave = async (overrides?: { reminderDate: string; reminderTime: string }) => {
     try {
+      const reminderDateStr = overrides?.reminderDate ?? formData.reminderDate;
+      const reminderTimeStr = overrides?.reminderTime ?? formData.reminderTime;
       let reminderDateTime: Date | undefined;
-      if (formData.reminderDate && formData.reminderTime) {
-        reminderDateTime = new Date(`${formData.reminderDate}T${formData.reminderTime}:00`);
+      if (reminderDateStr && reminderTimeStr) {
+        reminderDateTime = new Date(`${reminderDateStr}T${reminderTimeStr}:00`);
       }
       if (editingTask) {
         const result = await updateMutation.mutateAsync({ id: editingTask.id, title: formData.title, description: formData.description, notes: formData.notes, email: formData.email, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
@@ -197,17 +361,36 @@ export default function Tasks() {
           toast.warning(`⚠️ Atenção: ${result.burstCount} contatos registrados em menos de 10 minutos. Certifique-se de que cada anotação representa um contato real — a gestão monitora esse indicador.`, { duration: 12000 });
         }
       } else {
+        if (!reminderDateTime) { toast.error("📅 Data do lembrete é obrigatória"); return; }
         await createMutation.mutateAsync({ clientId: formData.clientId || 0, title: formData.title, description: formData.description, notes: formData.notes, email: formData.email, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
         toast.success("Tarefa criada! Lembrete ativado ✅");
       }
+      // Atualiza o timestamp do último contato para o alerta de ociosidade
+      if (!isAdmin) lastContactTimeRef.current = Date.now();
       setShowNotesWarning(false);
-      resetForm(); setIsModalOpen(false); refetch();
+      resetForm(); setIsModalOpen(false);
+      const { data: fresh } = await refetch();
+      if (!isAdmin && fresh) highlightNextUrgent(fresh as any[]);
     } catch { toast.error("Erro ao salvar tarefa"); }
+  };
+
+  // Atalho: ajusta a data/hora do lembrete (30min ou amanhã, mantendo a hora atual) e já salva.
+  const handleQuickReminder = async (mode: '30min' | 'tomorrow') => {
+    if (!formData.title.trim()) { toast.error("Título é obrigatório"); return; }
+    const target = new Date();
+    if (mode === '30min') target.setMinutes(target.getMinutes() + 30);
+    else target.setDate(target.getDate() + 1);
+    const p = (n: number) => String(n).padStart(2, '0');
+    const reminderDate = `${target.getFullYear()}-${p(target.getMonth() + 1)}-${p(target.getDate())}`;
+    const reminderTime = `${p(target.getHours())}:${p(target.getMinutes())}`;
+    setFormData(prev => ({ ...prev, reminderDate, reminderTime }));
+    await doSave({ reminderDate, reminderTime });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim()) { toast.error("Título é obrigatório"); return; }
+    if (!formData.reminderDate) { toast.error("📅 Data do lembrete é obrigatória"); return; }
     if (!editingTask && !formData.notes.trim()) {
       setIsModalOpen(false);
       setShowNotesWarning(true);
@@ -221,27 +404,65 @@ export default function Tasks() {
     setIsModalOpen(false);
   };
 
+  // Marca/desmarca o lead como cliente ativo (conversão = virou venda).
+  // Não conclui o lembrete — ele continua recorrente até o atendente decidir parar.
+  const handleToggleConverted = async (task: Task, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!task.convertedAt) {
+      setOrderValueInput("");
+      setConvertModalTask(task);
+      return;
+    }
+    try {
+      await toggleConvertedMutation.mutateAsync({ id: task.id, converted: false });
+      toast.success("Marcação de cliente ativo removida");
+      refetch();
+    } catch {
+      toast.error("Erro ao atualizar conversão");
+    }
+  };
+
+  const confirmConvert = async () => {
+    if (!convertModalTask) return;
+    const trimmed = orderValueInput.trim().replace(',', '.');
+    const orderValue = trimmed ? Number(trimmed) : undefined;
+    if (trimmed && (isNaN(orderValue!) || orderValue! < 0)) {
+      toast.error("Valor da venda inválido");
+      return;
+    }
+    try {
+      await toggleConvertedMutation.mutateAsync({ id: convertModalTask.id, converted: true, ...(orderValue !== undefined ? { orderValue } : {}) });
+      toast.success("🎉 Cliente marcado como ativo!");
+      setConvertModalTask(null);
+      refetch();
+    } catch {
+      toast.error("Erro ao atualizar conversão");
+    }
+  };
+
   const confirmDelete = async () => {
     if (deleteConfirm === null) return;
+    if (deleteReason.trim().length < 5) { toast.error("Informe o motivo da exclusão (mínimo 5 caracteres)"); return; }
     try {
-      await deleteMutation.mutateAsync({ id: deleteConfirm });
+      await deleteMutation.mutateAsync({ id: deleteConfirm, reason: deleteReason.trim() });
       toast.success("Tarefa deletada");
       resetForm();
       refetch();
     } catch { toast.error("Erro ao deletar"); }
-    finally { setDeleteConfirm(null); }
+    finally { setDeleteConfirm(null); setDeleteReason(""); }
   };
 
   const handleBulkDelete = () => setBulkDeleteConfirm(true);
 
   const confirmBulkDelete = async () => {
+    if (deleteReason.trim().length < 5) { toast.error("Informe o motivo da exclusão (mínimo 5 caracteres)"); return; }
     try {
-      await deleteManyMutation.mutateAsync({ ids: Array.from(selectedTasks) });
+      await deleteManyMutation.mutateAsync({ ids: Array.from(selectedTasks), reason: deleteReason.trim() });
       toast.success(`${selectedTasks.size} tarefa(s) deletada(s)!`);
       setSelectedTasks(new Set());
       refetch();
     } catch { toast.error("Erro ao deletar tarefas"); }
-    finally { setBulkDeleteConfirm(false); }
+    finally { setBulkDeleteConfirm(false); setDeleteReason(""); }
   };
 
   const filteredTasks = useMemo(() => {
@@ -259,7 +480,7 @@ export default function Tasks() {
         if (!t.reminderDate) return false;
         const rd = new Date(t.reminderDate);
         const rdDay = new Date(rd.getFullYear(), rd.getMonth(), rd.getDate());
-        if (reminderTab === "overdue") return rd < now && t.reminderEnabled !== false;
+        if (reminderTab === "overdue") return rd < now && t.reminderEnabled !== false && t.status === 'pending';
         if (reminderTab === "upcoming") return rd >= now && t.reminderEnabled !== false;
         if (reminderTab === "today") return rdDay.getTime() === today.getTime();
         if (reminderTab === "yesterday") return rdDay.getTime() === yesterday.getTime();
@@ -284,6 +505,11 @@ export default function Tasks() {
     } else if (filterReminder === "inactive") {
       result = result.filter(t => t.reminderEnabled === false || !t.reminderDate);
     }
+    if (filterConverted === "active_clients") {
+      result = result.filter(t => !!t.convertedAt);
+    } else if (filterConverted === "leads") {
+      result = result.filter(t => !t.convertedAt);
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(t => t.title.toLowerCase().includes(q) || t.notes?.toLowerCase().includes(q) || t.assignedTo?.toLowerCase().includes(q));
@@ -306,7 +532,7 @@ export default function Tasks() {
       if (aOverdue && bOverdue) return bDate! - aDate!;
       return 0;
     });
-  }, [tasks, filterStatus, filterAssignee, filterContact, filterReminder, reminderTab, isAdmin, searchQuery]);
+  }, [tasks, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, reminderTab, isAdmin, searchQuery]);
 
   const handleEdit = useCallback((task: Task) => {
     setEditingTask(task);
@@ -500,6 +726,61 @@ export default function Tasks() {
           <button onClick={() => { setShowMonitorBanner(false); sessionStorage.setItem('monitorBannerDismissed', '1'); }} className="text-amber-600 hover:text-amber-900 font-bold text-base leading-none flex-shrink-0 mt-0.5" title="Fechar">✕</button>
         </div>
       )}
+      {!isAdmin && 'Notification' in window && Notification.permission === 'default' && (
+        <div className="flex items-center gap-3 bg-blue-50 border border-blue-300 rounded-xl px-4 py-3 text-sm text-blue-900">
+          <span className="text-lg flex-shrink-0">🔔</span>
+          <div className="flex-1">
+            <strong>Ative as notificações</strong> para receber lembretes no horário certo, mesmo com o celular bloqueado.
+          </div>
+          <button
+            onClick={() => Notification.requestPermission()}
+            className="flex-shrink-0 px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition"
+          >
+            Ativar
+          </button>
+        </div>
+      )}
+      {dailyProgress && (
+        <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-base">📞</span>
+              <span className="text-sm font-semibold text-gray-700">Contatos hoje</span>
+              <span className="text-lg font-black" style={{ color: dailyProgress.color }}>{dailyProgress.contacts}</span>
+              <span className="text-xs text-gray-400">/ {dailyProgress.goal}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-gray-400">⏱</span>
+                <span className="text-xs font-semibold text-gray-600">{dailyProgress.hoursLabel}</span>
+                {dailyProgress.hoursPct > 0 && (
+                  <div className="w-12 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-slate-500 rounded-full transition-all" style={{ width: `${dailyProgress.hoursPct}%` }} />
+                  </div>
+                )}
+              </div>
+              <span className="text-sm font-bold" style={{ color: dailyProgress.color }}>{dailyProgress.pct}%</span>
+            </div>
+          </div>
+          <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-700"
+              style={{ width: `${dailyProgress.pct}%`, backgroundColor: dailyProgress.color }}
+            />
+          </div>
+          <div className="flex items-center justify-between mt-1.5">
+            {dailyProgress.contacts >= dailyProgress.goal ? (
+              <p className="text-xs text-green-600 font-semibold">🏆 Meta atingida! Excelente trabalho!</p>
+            ) : (
+              <p className="text-xs text-gray-400">Faltam <strong>{dailyProgress.remaining}</strong> contatos para a meta de hoje</p>
+            )}
+            <Link href="/meu-progresso" className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 shrink-0 ml-3">
+              📊 Ver meu desempenho
+            </Link>
+          </div>
+        </div>
+      )}
+
       <input type="text" placeholder="🔍 Pesquisar tarefas..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full px-3 py-2.5 border rounded-lg text-sm" />
 
       <div className="flex justify-between items-center flex-wrap gap-2">
@@ -534,6 +815,16 @@ export default function Tasks() {
           >
             {filterReminder === "inactive" ? "🔕 Sem lembrete" : "🔔 Lembrete"}
           </button>
+          <select
+            value={filterConverted}
+            onChange={(e) => setFilterConverted(e.target.value as "all" | "active_clients" | "leads")}
+            className={`px-3 py-2 border rounded-lg text-sm font-medium ${filterConverted === "active_clients" ? "bg-emerald-500 text-white border-emerald-500" : filterConverted === "leads" ? "bg-amber-500 text-white border-amber-500" : "bg-white text-gray-700"}`}
+            title="Filtrar por situação do cliente"
+          >
+            <option value="all">🎯 Todos (leads + clientes)</option>
+            <option value="active_clients">🎉 Só clientes ativos</option>
+            <option value="leads">🌱 Só leads (não convertidos)</option>
+          </select>
         </div>
         <div className="flex gap-2 flex-wrap">
           {isAdmin && selectedTasks.size > 0 && (
@@ -603,8 +894,8 @@ export default function Tasks() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs font-medium mb-1 text-gray-600">🗓️ Data</label>
-                <input type="date" value={formData.reminderDate} onChange={(e) => setFormData({ ...formData, reminderDate: e.target.value })} className="w-full px-2 py-1.5 border rounded-lg text-sm" />
+                <label className="block text-xs font-medium mb-1 text-gray-600">🗓️ Data <span className="text-red-500">*</span></label>
+                <input type="date" value={formData.reminderDate} onChange={(e) => setFormData({ ...formData, reminderDate: e.target.value })} className={`w-full px-2 py-1.5 border rounded-lg text-sm ${!formData.reminderDate ? 'border-red-300 bg-red-50' : 'border-gray-300'}`} required />
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1 text-gray-600">⏰ Hora</label>
@@ -614,6 +905,14 @@ export default function Tasks() {
             <div className="flex items-center gap-2 bg-blue-50 px-2 py-1.5 rounded-lg">
               <input type="checkbox" id="reminderEnabled" checked={formData.reminderEnabled} onChange={(e) => setFormData({ ...formData, reminderEnabled: e.target.checked })} className="w-3.5 h-3.5" />
               <label htmlFor="reminderEnabled" className="text-xs font-medium text-blue-800">🔔 Ativar notificação no navegador</label>
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" size="sm" variant="outline" className="flex-1 text-xs" onClick={() => handleQuickReminder('30min')}>
+                ⏱️ Lembrar em 30 min
+              </Button>
+              <Button type="button" size="sm" variant="outline" className="flex-1 text-xs" onClick={() => handleQuickReminder('tomorrow')}>
+                📆 Lembrar amanhã
+              </Button>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -636,7 +935,7 @@ export default function Tasks() {
               )}
             </div>
             <DialogFooter className="flex gap-2 pt-1">
-              <Button type="submit" size="sm" className="flex-1 bg-blue-600 hover:bg-blue-700">{editingTask ? "Atualizar" : "Criar Tarefa"}</Button>
+              <Button type="submit" size="sm" className="flex-1 bg-blue-600 hover:bg-blue-700">{editingTask ? "Salvar" : "Criar Tarefa"}</Button>
               {editingTask && <Button type="button" size="sm" variant="destructive" onClick={() => handleDelete(editingTask.id)}>🗑️</Button>}
               <Button type="button" size="sm" variant="outline" onClick={() => { setIsModalOpen(false); resetForm(); }}>Cancelar</Button>
             </DialogFooter>
@@ -687,7 +986,8 @@ export default function Tasks() {
             {selectedTasks.size > 0 && <span className="text-sm text-blue-600 font-medium ml-2">{selectedTasks.size} selecionada(s)</span>}
           </div>
           {filteredTasks.map((task: Task) => (
-            <div key={task.id} className="border rounded-lg overflow-hidden shadow-sm">
+            <div key={task.id} className={`border rounded-lg overflow-hidden shadow-sm transition-all duration-300 ${highlightTaskId === task.id ? 'ring-2 ring-blue-500 ring-offset-1 shadow-blue-200 shadow-md' : ''}`}
+              style={highlightTaskId === task.id ? { animation: 'pulse-highlight 1s ease-in-out 3' } : {}}>
               <div className="flex items-center gap-2 md:gap-3 p-3 bg-white hover:bg-gray-50 transition cursor-pointer" onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)}>
                 <label className="flex-shrink-0 p-1 -m-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
                   <input type="checkbox" checked={selectedTasks.has(task.id)} onChange={() => handleSelectTask(task.id)} className="w-5 h-5 cursor-pointer" />
@@ -695,6 +995,7 @@ export default function Tasks() {
                 <div className="flex gap-1 flex-shrink-0">
                   <span>{statusEmoji[task.status || 'pending']}</span>
                   <span>{priorityEmoji[task.priority || 'medium']}</span>
+                  {task.convertedAt && <span title="Cliente ativo">🎉</span>}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm leading-snug line-clamp-2 md:truncate">{task.title}</p>
@@ -702,6 +1003,7 @@ export default function Tasks() {
                     {isAdmin && task.assignedTo && <p className="text-xs text-gray-500">👤 {task.assignedTo}</p>}
                     {hasPhone(`${task.title} ${task.notes ?? ''}`) && <span className="text-xs text-green-600">📱</span>}
                     {hasEmail(`${task.title} ${task.notes ?? ''}`) && <span className="text-xs text-blue-600">📧</span>}
+                    {task.convertedAt && <span className="text-xs text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded font-medium">🎉 Cliente ativo</span>}
                   </div>
                 </div>
                 {task.reminderDate && task.reminderEnabled && (() => {
@@ -727,7 +1029,12 @@ export default function Tasks() {
               {expandedTask === task.id && (
                 <div className="p-3 bg-gray-50 border-t space-y-2">
                   {task.notes && <div className="text-sm bg-yellow-50 p-3 rounded border border-yellow-200"><strong>📝 Anotações:</strong><p className="whitespace-pre-wrap mt-2 leading-relaxed">{task.notes}</p></div>}
-                  <p className="text-xs text-gray-500">Criada: {new Date(task.createdAt).toLocaleDateString("pt-BR")}</p>
+                  <p className="text-xs text-gray-500">
+                    Criada: {new Date(task.createdAt).toLocaleDateString("pt-BR")}
+                    {!!task.contactCount && ` · 📞 ${task.contactCount} contato(s)`}
+                    {task.convertedAt && ` · 🎉 Cliente ativo desde ${new Date(task.convertedAt).toLocaleDateString("pt-BR")}`}
+                    {task.orderValue && ` · 💰 R$ ${Number(task.orderValue).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                  </p>
                   {aiSuggestion?.taskId === task.id && (
                     <div className="text-sm bg-purple-50 p-2 rounded border border-purple-200">
                       <strong>🤖 Sugestão de abordagem:</strong>
@@ -735,6 +1042,38 @@ export default function Tasks() {
                     </div>
                   )}
                   <div className="flex gap-2 flex-wrap">
+                    {(() => {
+                      const phone = extractPhone(`${task.title} ${task.notes ?? ''}`);
+                      const email = extractEmail(`${task.title} ${task.notes ?? ''}`);
+                      return (
+                        <>
+                          {phone && (
+                            <Button asChild size="sm" variant="outline" className="text-green-700 border-green-300 hover:bg-green-50" onClick={(e) => e.stopPropagation()}>
+                              <a href={waLink(phone)} target="_blank" rel="noopener noreferrer">📱 WhatsApp</a>
+                            </Button>
+                          )}
+                          {phone && (
+                            <Button asChild size="sm" variant="outline" onClick={(e) => e.stopPropagation()}>
+                              <a href={`tel:+${phone.length <= 11 ? `55${phone}` : phone}`}>📞 Ligar</a>
+                            </Button>
+                          )}
+                          {email && (
+                            <Button asChild size="sm" variant="outline" className="text-blue-700 border-blue-300 hover:bg-blue-50" onClick={(e) => e.stopPropagation()}>
+                              <a href={`mailto:${email}`}>📧 E-mail</a>
+                            </Button>
+                          )}
+                        </>
+                      );
+                    })()}
+                    <Button
+                      size="sm"
+                      variant={task.convertedAt ? "outline" : "default"}
+                      className={task.convertedAt ? "text-emerald-700 border-emerald-300 hover:bg-emerald-50" : "bg-emerald-600 hover:bg-emerald-700 text-white"}
+                      onClick={(e) => handleToggleConverted(task, e)}
+                      disabled={toggleConvertedMutation.isPending}
+                    >
+                      {task.convertedAt ? "🎉 Cliente ativo — desmarcar" : "🎉 Marcar como Cliente Ativo"}
+                    </Button>
                     <Button size="sm" variant="outline" onClick={() => handleEdit(task)}>✏️ Editar</Button>
                     <Button size="sm" variant="destructive" onClick={() => handleDelete(task.id)}>🗑️ Deletar</Button>
                     {isAdmin && task.email && (
@@ -754,26 +1093,88 @@ export default function Tasks() {
       {/* Delete confirmation modal */}
       {(deleteConfirm !== null || bulkDeleteConfirm) && (
         <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-xs w-full p-6 text-center">
-            <div className="text-4xl mb-3">🗑️</div>
-            <h3 className="text-base font-bold text-gray-800 mb-2">Confirmar exclusão</h3>
-            <p className="text-sm text-gray-500 mb-5">
-              {bulkDeleteConfirm
-                ? `Deletar ${selectedTasks.size} tarefa(s) selecionada(s)?`
-                : "Tem certeza que deseja deletar esta tarefa?"}
-            </p>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
+            <div className="text-center mb-4">
+              <div className="text-4xl mb-2">🗑️</div>
+              <h3 className="text-base font-bold text-gray-800">Confirmar exclusão</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                {bulkDeleteConfirm
+                  ? `Deletar ${selectedTasks.size} tarefa(s) selecionada(s)?`
+                  : "Tem certeza que deseja deletar esta tarefa?"}
+              </p>
+            </div>
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Motivo da exclusão <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-300"
+                rows={3}
+                placeholder="Descreva o motivo (ex: tarefa duplicada, cliente cancelou...)"
+                value={deleteReason}
+                onChange={e => setDeleteReason(e.target.value)}
+                maxLength={500}
+                autoFocus
+              />
+              <p className="text-xs text-gray-400 mt-0.5 text-right">{deleteReason.length}/500</p>
+            </div>
             <div className="flex gap-3">
               <button
-                onClick={() => { setDeleteConfirm(null); setBulkDeleteConfirm(false); }}
+                onClick={() => { setDeleteConfirm(null); setBulkDeleteConfirm(false); setDeleteReason(""); }}
                 className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition"
               >
                 Cancelar
               </button>
               <button
                 onClick={bulkDeleteConfirm ? confirmBulkDelete : confirmDelete}
-                className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold transition"
+                disabled={deleteReason.trim().length < 5}
+                className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold transition"
               >
                 Deletar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Convert to active client modal */}
+      {convertModalTask && (
+        <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
+            <div className="text-center mb-4">
+              <div className="text-4xl mb-2">🎉</div>
+              <h3 className="text-base font-bold text-gray-800">Marcar como Cliente Ativo</h3>
+              <p className="text-sm text-gray-500 mt-1">{convertModalTask.title}</p>
+            </div>
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Valor da venda (R$) <span className="text-gray-400 font-normal">(opcional)</span>
+              </label>
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                placeholder="Ex: 299.90"
+                value={orderValueInput}
+                onChange={e => setOrderValueInput(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConvertModalTask(null)}
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmConvert}
+                disabled={toggleConvertedMutation.isPending}
+                className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold transition"
+              >
+                Confirmar
               </button>
             </div>
           </div>
@@ -836,7 +1237,7 @@ export default function Tasks() {
                   Voltar e Anotar
                 </button>
                 <button
-                  onClick={doSave}
+                  onClick={() => doSave()}
                   className="w-full py-3.5 bg-green-50 active:bg-green-100 hover:bg-green-100 text-green-700 text-sm font-semibold rounded-2xl border border-green-200 transition-all active:scale-[0.98]"
                 >
                   Já documentei — Salvar

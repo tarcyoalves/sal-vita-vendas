@@ -1,5 +1,5 @@
-<!-- code-review-graph MCP tools -->
-## MCP Tools: code-review-graph
+<!-- code-review-graph MCP tools --> 
+## MCP Tools: code-review-graph 
 
 **IMPORTANT: This project has a knowledge graph. ALWAYS use the
 code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
