@@ -4,6 +4,7 @@ import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { TRPCError } from '@trpc/server';
 import { db } from '../db';
 import { tasks, sellers, taskDeletionLogs } from '../db/schema';
+import { runTriggerNow } from '../email/automations';
 
 // Build the assignedTo filter for a non-admin user.
 // Uses case-insensitive comparison: tasks imported via CSV often have different
@@ -33,6 +34,7 @@ export const tasksRouter = router({
       description: z.string().max(2000).optional(),
       notes: z.string().max(5000).optional(),
       email: z.string().email().max(200).optional().or(z.literal('')),
+      tags: z.array(z.string()).optional(),
       reminderDate: z.date({ required_error: 'Data do lembrete é obrigatória' }),
       reminderEnabled: z.boolean().optional().default(true),
       priority: z.enum(['low', 'medium', 'high']).optional().default('medium'),
@@ -47,12 +49,27 @@ export const tasksRouter = router({
         description: input.description,
         notes: input.notes,
         email: input.email ? input.email.toLowerCase().trim() : undefined,
+        tags: input.tags,
         reminderDate: input.reminderDate,
         reminderEnabled: input.reminderEnabled,
         priority: input.priority,
         assignedTo,
         status: 'pending',
       }).returning();
+
+      if (created?.email) {
+        try {
+          await runTriggerNow('lead_created', {
+            id: created.id,
+            email: created.email,
+            title: created.title,
+            assignedTo: created.assignedTo,
+          });
+        } catch (err) {
+          console.error('[tasks.create] runTriggerNow(lead_created) failed:', err);
+        }
+      }
+
       return created;
     }),
 
@@ -63,6 +80,7 @@ export const tasksRouter = router({
       description: z.string().max(2000).optional(),
       notes: z.string().max(5000).optional(),
       email: z.string().email().max(200).optional().or(z.literal('')),
+      tags: z.array(z.string()).optional(),
       reminderDate: z.date().optional().nullable(),
       reminderEnabled: z.boolean().optional(),
       priority: z.enum(['low', 'medium', 'high']).optional(),
@@ -129,6 +147,20 @@ export const tasksRouter = router({
         .where(ownerFilter)
         .returning();
       if (!updated) throw new TRPCError({ code: 'FORBIDDEN', message: 'Tarefa não encontrada ou sem permissão' });
+
+      if (input.converted && updated.email) {
+        try {
+          await runTriggerNow('lead_converted', {
+            id: updated.id,
+            email: updated.email,
+            title: updated.title,
+            assignedTo: updated.assignedTo,
+          });
+        } catch (err) {
+          console.error('[tasks.toggleConverted] runTriggerNow(lead_converted) failed:', err);
+        }
+      }
+
       return updated;
     }),
 

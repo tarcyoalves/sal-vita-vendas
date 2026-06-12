@@ -10,6 +10,7 @@
  * starts). When account N hits RESEND_MKT_DAILY_LIMIT, account N+1 is used.
  */
 
+import crypto from 'crypto';
 import { sql } from '../db';
 import { emailSendCounters } from '../db/schema';
 
@@ -69,6 +70,91 @@ export interface BatchMessage {
   unsubToken: string;
 }
 
+/** Strips HTML tags/entities down to plain text — used as the `text` alternative in sendBatch (improves deliverability). */
+export function renderPlainText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|tr|table|h[1-6]|li)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
+/**
+ * Validates a Resend webhook's Svix signature against one or more webhook secrets
+ * (RESEND_MKT_WEBHOOK_SECRET_1..5, one per multi-account Resend project). Tries each
+ * secret until one matches. Returns false if no secret is configured or none match.
+ */
+export function verifyResendWebhook(
+  rawBody: string,
+  headers: { 'svix-id'?: string; 'svix-timestamp'?: string; 'svix-signature'?: string },
+  secrets?: string[],
+): boolean {
+  const svixId = headers['svix-id'];
+  const svixTimestamp = headers['svix-timestamp'];
+  const svixSignature = headers['svix-signature'];
+  if (!svixId || !svixTimestamp || !svixSignature) return false;
+
+  const candidateSecrets = secrets ?? (() => {
+    const list: string[] = [];
+    for (let i = 1; i <= 5; i++) {
+      const s = process.env[`RESEND_MKT_WEBHOOK_SECRET_${i}`];
+      if (s) list.push(s);
+    }
+    return list;
+  })();
+  if (candidateSecrets.length === 0) return false;
+
+  const signedContent = `${svixId}.${svixTimestamp}.${rawBody}`;
+  // svix-signature header format: "v1,<base64sig> v1,<base64sig2> ..."
+  const providedSigs = svixSignature
+    .split(' ')
+    .map(part => part.split(',')[1])
+    .filter(Boolean) as string[];
+  if (providedSigs.length === 0) return false;
+
+  for (const secret of candidateSecrets) {
+    try {
+      const secretKey = secret.startsWith('whsec_') ? secret.slice('whsec_'.length) : secret;
+      const secretBytes = Buffer.from(secretKey, 'base64');
+      const expected = crypto.createHmac('sha256', secretBytes).update(signedContent).digest('base64');
+      for (const sig of providedSigs) {
+        try {
+          if (expected.length === sig.length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) {
+            return true;
+          }
+        } catch {
+          // length mismatch or invalid base64 — try next
+        }
+      }
+    } catch {
+      // invalid secret format — try next
+    }
+  }
+  return false;
+}
+
+/**
+ * Computes the next send timestamp for a sequence enrollment, based on `enrolledAt`
+ * and the delay (in days) of the step at index `currentStep` (0-based: the NEXT
+ * step to send). Returns null when there is no such step (sequence completed).
+ */
+export function computeNextSendAt(enrolledAt: Date, steps: { delayDays: number }[], currentStep: number): Date | null {
+  const nextStep = steps[currentStep];
+  if (!nextStep) return null;
+  return new Date(enrolledAt.getTime() + nextStep.delayDays * 24 * 60 * 60 * 1000);
+}
+
 export interface BatchResult {
   to: string;
   ok: boolean;
@@ -87,6 +173,7 @@ export async function sendBatch(account: MarketingAccount, messages: BatchMessag
     to: [m.to],
     subject: m.subject,
     html: m.html,
+    text: renderPlainText(m.html),
     ...(m.replyTo ? { reply_to: [m.replyTo] } : {}),
     headers: {
       'List-Unsubscribe': `<${unsubBase}/api/unsubscribe?t=${m.unsubToken}>`,

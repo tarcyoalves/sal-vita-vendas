@@ -12,6 +12,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from '../components/ui/dialog';
+import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
+import { Label } from '../components/ui/label';
 
 interface Task {
   id: number;
@@ -21,6 +23,7 @@ interface Task {
   description?: string | null;
   notes?: string | null;
   email?: string | null;
+  tags?: string[] | null;
   reminderDate?: Date | null;
   reminderEnabled?: boolean | null;
   status?: "pending" | "completed" | "cancelled" | null;
@@ -198,6 +201,33 @@ export default function Tasks() {
     }
   };
 
+  // ── E-mail Marketing: tags autocomplete ─────────────────────────────────────
+  const { data: availableTags = [] } = trpc.emailMarketing.listTags.useQuery(undefined, { enabled: isAdmin });
+  const [tagInput, setTagInput] = useState("");
+
+  // ── E-mail Marketing: enroll task(s) in a sequence ──────────────────────────
+  const [sequencePickerTaskIds, setSequencePickerTaskIds] = useState<number[] | null>(null);
+  const { data: emailSequences } = trpc.emailMarketing.listSequences.useQuery(undefined, { enabled: sequencePickerTaskIds !== null });
+  const activeSequences = (emailSequences ?? []).filter(s => s.active);
+  const enrollInSequenceMutation = trpc.emailMarketing.enrollTasksInSequence.useMutation();
+  const [selectedSequenceId, setSelectedSequenceId] = useState<number | null>(null);
+
+  const handleEnrollInSequence = async () => {
+    if (!sequencePickerTaskIds || !selectedSequenceId) return;
+    try {
+      const res = await enrollInSequenceMutation.mutateAsync({ sequenceId: selectedSequenceId, taskIds: sequencePickerTaskIds });
+      const skipped = res.skippedNoEmail + res.skippedDuplicateOrSuppressed;
+      toast.success(`✅ ${res.enrolled} inscrito(s) na sequência` + (skipped > 0 ? ` (${skipped} ignorado(s): sem e-mail, duplicado ou descadastrado)` : ''));
+      setSequencePickerTaskIds(null);
+      setSelectedSequenceId(null);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao inscrever na sequência");
+    }
+  };
+
+  // ── E-mail Marketing: tag filter ────────────────────────────────────────────
+  const [filterTag, setFilterTag] = useState<string>("all");
+
   const [progressTick, setProgressTick] = useState(0);
   useEffect(() => {
     if (!workSession || workSession.status !== 'active') return;
@@ -309,6 +339,7 @@ export default function Tasks() {
     description: string;
     notes: string;
     email: string;
+    tags: string[];
     reminderDate: string;
     reminderTime: string;
     reminderEnabled: boolean;
@@ -320,6 +351,7 @@ export default function Tasks() {
     description: "",
     notes: "",
     email: "",
+    tags: [],
     reminderDate: "",
     reminderTime: "09:00",
     reminderEnabled: true,
@@ -328,7 +360,7 @@ export default function Tasks() {
   });
 
   const resetForm = useCallback(() => {
-    setFormData({ clientId: 0, title: "", description: "", notes: "", email: "", reminderDate: "", reminderTime: "09:00", reminderEnabled: true, priority: "medium", assignedTo: "" });
+    setFormData({ clientId: 0, title: "", description: "", notes: "", email: "", tags: [], reminderDate: "", reminderTime: "09:00", reminderEnabled: true, priority: "medium", assignedTo: "" });
     setEditingTask(null);
   }, []);
 
@@ -355,14 +387,14 @@ export default function Tasks() {
         reminderDateTime = new Date(`${reminderDateStr}T${reminderTimeStr}:00`);
       }
       if (editingTask) {
-        const result = await updateMutation.mutateAsync({ id: editingTask.id, title: formData.title, description: formData.description, notes: formData.notes, email: formData.email, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
+        const result = await updateMutation.mutateAsync({ id: editingTask.id, title: formData.title, description: formData.description, notes: formData.notes, email: formData.email, tags: formData.tags, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
         toast.success("Tarefa atualizada!");
         if (!isAdmin && result.burstWarning) {
           toast.warning(`⚠️ Atenção: ${result.burstCount} contatos registrados em menos de 10 minutos. Certifique-se de que cada anotação representa um contato real — a gestão monitora esse indicador.`, { duration: 12000 });
         }
       } else {
         if (!reminderDateTime) { toast.error("📅 Data do lembrete é obrigatória"); return; }
-        await createMutation.mutateAsync({ clientId: formData.clientId || 0, title: formData.title, description: formData.description, notes: formData.notes, email: formData.email, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
+        await createMutation.mutateAsync({ clientId: formData.clientId || 0, title: formData.title, description: formData.description, notes: formData.notes, email: formData.email, tags: formData.tags, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
         toast.success("Tarefa criada! Lembrete ativado ✅");
       }
       // Atualiza o timestamp do último contato para o alerta de ociosidade
@@ -510,6 +542,9 @@ export default function Tasks() {
     } else if (filterConverted === "leads") {
       result = result.filter(t => !t.convertedAt);
     }
+    if (filterTag !== "all") {
+      result = result.filter(t => t.tags?.includes(filterTag));
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(t => t.title.toLowerCase().includes(q) || t.notes?.toLowerCase().includes(q) || t.assignedTo?.toLowerCase().includes(q));
@@ -532,7 +567,14 @@ export default function Tasks() {
       if (aOverdue && bOverdue) return bDate! - aDate!;
       return 0;
     });
-  }, [tasks, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, reminderTab, isAdmin, searchQuery]);
+  }, [tasks, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTag, reminderTab, isAdmin, searchQuery]);
+
+  // ── E-mail Marketing: engagement badges (single batched query for visible tasks) ──
+  const visibleTaskIds = useMemo(() => filteredTasks.map((t: Task) => t.id), [filteredTasks]);
+  const { data: engagementData } = trpc.emailMarketing.engagementByTaskIds.useQuery(
+    { taskIds: visibleTaskIds },
+    { enabled: visibleTaskIds.length > 0 }
+  );
 
   const handleEdit = useCallback((task: Task) => {
     setEditingTask(task);
@@ -543,7 +585,7 @@ export default function Tasks() {
     const reminderTime = d
       ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
       : "09:00";
-    setFormData({ clientId: task.clientId, title: task.title, description: task.description || "", notes: task.notes || "", email: task.email || "", reminderDate, reminderTime, reminderEnabled: task.reminderEnabled ?? true, priority: (task.priority as "low" | "medium" | "high") || "medium", assignedTo: task.assignedTo || "" });
+    setFormData({ clientId: task.clientId, title: task.title, description: task.description || "", notes: task.notes || "", email: task.email || "", tags: task.tags ?? [], reminderDate, reminderTime, reminderEnabled: task.reminderEnabled ?? true, priority: (task.priority as "low" | "medium" | "high") || "medium", assignedTo: task.assignedTo || "" });
     setIsModalOpen(true);
   }, []);
 
@@ -825,6 +867,17 @@ export default function Tasks() {
             <option value="active_clients">🎉 Só clientes ativos</option>
             <option value="leads">🌱 Só leads (não convertidos)</option>
           </select>
+          {availableTags.length > 0 && (
+            <select
+              value={filterTag}
+              onChange={(e) => setFilterTag(e.target.value)}
+              className={`px-3 py-2 border rounded-lg text-sm font-medium ${filterTag !== "all" ? "bg-indigo-500 text-white border-indigo-500" : "bg-white text-gray-700"}`}
+              title="Filtrar por tag"
+            >
+              <option value="all">🏷️ Todas as tags</option>
+              {availableTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
+            </select>
+          )}
         </div>
         <div className="flex gap-2 flex-wrap">
           {isAdmin && selectedTasks.size > 0 && (
@@ -836,6 +889,7 @@ export default function Tasks() {
               </select>
               <Button size="sm" onClick={handleBulkAssign} variant="outline">👤 Designar ({selectedTasks.size})</Button>
               <Button size="sm" variant="outline" onClick={() => setCampaignPickerTaskIds(Array.from(selectedTasks))}>📧 Campanha ({selectedTasks.size})</Button>
+              <Button size="sm" variant="outline" onClick={() => setSequencePickerTaskIds(Array.from(selectedTasks))}>🔁 Sequência ({selectedTasks.size})</Button>
               <Button size="sm" variant="destructive" onClick={handleBulkDelete}>🗑️ Deletar ({selectedTasks.size})</Button>
             </>
           )}
@@ -891,6 +945,58 @@ export default function Tasks() {
             <div>
               <label className="block text-xs font-medium mb-1 text-gray-600">📧 E-mail (e-mail marketing)</label>
               <input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="cliente@exemplo.com" className="w-full px-3 py-1.5 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1 text-gray-600">🏷️ Tags (segmentação de e-mail marketing)</label>
+              <div className="flex flex-wrap gap-1.5 mb-1.5">
+                {formData.tags.map(tag => (
+                  <span key={tag} className="inline-flex items-center gap-1 bg-indigo-100 text-indigo-800 text-xs font-medium px-2 py-1 rounded-full">
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => setFormData(f => ({ ...f, tags: f.tags.filter(t => t !== tag) }))}
+                      className="text-indigo-500 hover:text-indigo-900 leading-none"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <input
+                type="text"
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault();
+                    const value = tagInput.trim();
+                    if (value && !formData.tags.includes(value)) {
+                      setFormData(f => ({ ...f, tags: [...f.tags, value] }));
+                    }
+                    setTagInput("");
+                  }
+                }}
+                placeholder="Digite uma tag e pressione Enter"
+                className="w-full px-3 py-1.5 border rounded-lg text-sm"
+                list="tag-suggestions"
+              />
+              <datalist id="tag-suggestions">
+                {availableTags.filter(t => !formData.tags.includes(t)).map(tag => <option key={tag} value={tag} />)}
+              </datalist>
+              {availableTags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {availableTags.filter(t => !formData.tags.includes(t)).slice(0, 8).map(tag => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => setFormData(f => ({ ...f, tags: [...f.tags, tag] }))}
+                      className="text-xs px-2 py-0.5 rounded-full border border-gray-200 text-gray-600 hover:bg-indigo-50 hover:border-indigo-300"
+                    >
+                      + {tag}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -1004,6 +1110,28 @@ export default function Tasks() {
                     {hasPhone(`${task.title} ${task.notes ?? ''}`) && <span className="text-xs text-green-600">📱</span>}
                     {hasEmail(`${task.title} ${task.notes ?? ''}`) && <span className="text-xs text-blue-600">📧</span>}
                     {task.convertedAt && <span className="text-xs text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded font-medium">🎉 Cliente ativo</span>}
+                    {(() => {
+                      const eng = engagementData?.[task.id];
+                      if (!eng || (eng.opens === 0 && eng.clicks === 0)) return null;
+                      const title = `Último engajamento: ${eng.lastEventAt ? new Date(eng.lastEventAt).toLocaleString('pt-BR') : '--'}`;
+                      return (
+                        <span
+                          className="text-xs text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-medium"
+                          title={title}
+                        >
+                          {eng.opens > 0 && `👁 ${eng.opens}x`}
+                          {eng.opens > 0 && eng.clicks > 0 && ' · '}
+                          {eng.clicks > 0 && '🔗 clicou'}
+                        </span>
+                      );
+                    })()}
+                    {task.tags && task.tags.length > 0 && (
+                      <span className="flex gap-1 flex-wrap">
+                        {task.tags.map(tag => (
+                          <span key={tag} className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full font-medium">{tag}</span>
+                        ))}
+                      </span>
+                    )}
                   </div>
                 </div>
                 {task.reminderDate && task.reminderEnabled && (() => {
@@ -1078,6 +1206,9 @@ export default function Tasks() {
                     <Button size="sm" variant="destructive" onClick={() => handleDelete(task.id)}>🗑️ Deletar</Button>
                     {isAdmin && task.email && (
                       <Button size="sm" variant="outline" onClick={() => setCampaignPickerTaskIds([task.id])}>📧 Campanha</Button>
+                    )}
+                    {isAdmin && task.email && (
+                      <Button size="sm" variant="outline" onClick={() => setSequencePickerTaskIds([task.id])}>🔁 Sequência</Button>
                     )}
                     <Button size="sm" variant="outline" className="text-purple-700 border-purple-300 hover:bg-purple-50" onClick={() => handleAiSuggest(task)} disabled={loadingSuggestion}>
                       {loadingSuggestion && aiSuggestion === null ? "⏳ Gerando..." : "🤖 Sugestão IA"}
@@ -1279,6 +1410,47 @@ export default function Tasks() {
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" className="w-full" onClick={() => setCampaignPickerTaskIds(null)}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Enroll in sequence modal */}
+      <Dialog open={sequencePickerTaskIds !== null} onOpenChange={(open) => { if (!open) { setSequencePickerTaskIds(null); setSelectedSequenceId(null); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>🔁 Inscrever em sequência de e-mail</DialogTitle></DialogHeader>
+          <div className="space-y-2">
+            <p className="text-sm text-gray-500">
+              {sequencePickerTaskIds?.length === 1 ? "1 tarefa selecionada" : `${sequencePickerTaskIds?.length ?? 0} tarefas selecionadas`}. Apenas tarefas com e-mail cadastrado serão inscritas.
+            </p>
+            {activeSequences.length > 0 ? (
+              <RadioGroup value={selectedSequenceId !== null ? String(selectedSequenceId) : ""} onValueChange={(v: string) => setSelectedSequenceId(Number(v))} className="max-h-64 overflow-y-auto">
+                {activeSequences.map(s => (
+                  <label key={s.id} className="flex items-start gap-2 px-3 py-2 border rounded-lg hover:bg-indigo-50 transition cursor-pointer">
+                    <RadioGroupItem value={String(s.id)} className="mt-0.5" />
+                    <div>
+                      <p className="font-medium text-sm">{s.name}</p>
+                      <p className="text-xs text-gray-500">{s.stepCount} passo(s) · {s.activeEnrollments} inscrito(s) ativo(s)</p>
+                    </div>
+                  </label>
+                ))}
+              </RadioGroup>
+            ) : (
+              <p className="text-sm text-gray-500">
+                Nenhuma sequência ativa. Crie uma sequência na aba{' '}
+                <a href="/admin/email-marketing" className="text-blue-600 underline">E-mail Marketing</a>.
+              </p>
+            )}
+          </div>
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button
+              type="button"
+              className="flex-1"
+              onClick={handleEnrollInSequence}
+              disabled={enrollInSequenceMutation.isPending || selectedSequenceId === null}
+            >
+              {enrollInSequenceMutation.isPending ? "Inscrevendo..." : "✅ Inscrever"}
+            </Button>
+            <Button type="button" variant="outline" className="flex-1" onClick={() => { setSequencePickerTaskIds(null); setSelectedSequenceId(null); }}>Cancelar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

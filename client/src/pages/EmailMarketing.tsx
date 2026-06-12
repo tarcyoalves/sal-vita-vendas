@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useAuth } from "../_core/hooks/useAuth";
 import { trpc } from "../lib/trpc";
 import { toast } from "sonner";
@@ -9,6 +9,7 @@ import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
 import { Badge } from "../components/ui/badge";
 import { Progress } from "../components/ui/progress";
+import { Switch } from "../components/ui/switch";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "../components/ui/dialog";
@@ -18,7 +19,8 @@ import {
 import {
   Tabs, TabsContent, TabsList, TabsTrigger,
 } from "../components/ui/tabs";
-import { Mail, Plus, Send, Trash2, Eye, Pencil } from "lucide-react";
+import { Checkbox } from "../components/ui/checkbox";
+import { Mail, Plus, Send, Trash2, Eye, Pencil, Workflow, Zap, Tag, BarChart3, Users, Pause, Play, X } from "lucide-react";
 
 type Source = "leads" | "clients" | "both";
 
@@ -43,6 +45,61 @@ const RECIPIENT_STATUS_LABELS: Record<string, string> = {
 
 const TEMPLATE_HINT = "Use {nome}, {empresa} e {unsubscribe} no corpo do e-mail. {unsubscribe} é substituído pelo link de descadastro.";
 
+const ENROLLMENT_STATUS_LABELS: Record<string, string> = {
+  active: "Ativa",
+  paused: "Pausada",
+  completed: "Concluída",
+  cancelled: "Cancelada",
+};
+
+const ENROLLMENT_STATUS_VARIANTS: Record<string, "secondary" | "default" | "outline" | "destructive"> = {
+  active: "default",
+  paused: "secondary",
+  completed: "outline",
+  cancelled: "destructive",
+};
+
+const TRIGGER_TYPE_LABELS: Record<string, string> = {
+  lead_created: "Novo lead criado",
+  lead_converted: "Lead convertido em cliente",
+  inactive_days: "Sem contato há N dias",
+};
+
+const ACTION_TYPE_LABELS: Record<string, string> = {
+  enroll_sequence: "Inscrever em sequência",
+  add_tag: "Adicionar tag",
+};
+
+function formatDateTime(value: string | Date | null | undefined): string {
+  if (!value) return "--";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return "--";
+  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+// Human-readable description of an automation rule's trigger, including config (e.g. days).
+function describeTrigger(rule: { triggerType: string; triggerConfig?: any }): string {
+  const base = TRIGGER_TYPE_LABELS[rule.triggerType] ?? rule.triggerType;
+  if (rule.triggerType === 'inactive_days') {
+    const days = rule.triggerConfig?.days;
+    return days ? `Sem contato há ${days} dia(s)` : base;
+  }
+  return base;
+}
+
+// Human-readable description of an automation rule's action, resolving sequence names by id.
+function describeAction(rule: { actionType: string; actionConfig?: any }, sequences?: { id: number; name: string }[]): string {
+  if (rule.actionType === 'enroll_sequence') {
+    const seqId = rule.actionConfig?.sequenceId;
+    const seq = sequences?.find(s => s.id === seqId);
+    return `Inscrever em sequência "${seq?.name ?? `#${seqId}`}"`;
+  }
+  if (rule.actionType === 'add_tag') {
+    return `Adicionar tag "${rule.actionConfig?.tag ?? ''}"`;
+  }
+  return ACTION_TYPE_LABELS[rule.actionType] ?? rule.actionType;
+}
+
 export default function EmailMarketing() {
   const { user } = useAuth();
 
@@ -58,20 +115,36 @@ export default function EmailMarketing() {
       </div>
 
       <Tabs defaultValue="campaigns">
-        <TabsList>
+        <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="campaigns">Campanhas</TabsTrigger>
+          <TabsTrigger value="sequences">Sequências</TabsTrigger>
+          <TabsTrigger value="automations">Automações</TabsTrigger>
           <TabsTrigger value="templates">Templates</TabsTrigger>
+          <TabsTrigger value="tags">Tags</TabsTrigger>
           <TabsTrigger value="suppressions">Descadastrados</TabsTrigger>
+          <TabsTrigger value="stats">Estatísticas</TabsTrigger>
         </TabsList>
 
         <TabsContent value="campaigns" className="mt-4">
           <CampaignsTab />
         </TabsContent>
+        <TabsContent value="sequences" className="mt-4">
+          <SequencesTab />
+        </TabsContent>
+        <TabsContent value="automations" className="mt-4">
+          <AutomationsTab />
+        </TabsContent>
         <TabsContent value="templates" className="mt-4">
           <TemplatesTab />
         </TabsContent>
+        <TabsContent value="tags" className="mt-4">
+          <TagsTab />
+        </TabsContent>
         <TabsContent value="suppressions" className="mt-4">
           <SuppressionsTab />
+        </TabsContent>
+        <TabsContent value="stats" className="mt-4">
+          <StatsTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -596,6 +669,932 @@ function SuppressionsTab() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// ── Sequências ─────────────────────────────────────────────────────────────
+
+function SequencesTab() {
+  const utils = trpc.useUtils();
+  const { data: sequences, isLoading } = trpc.emailMarketing.listSequences.useQuery();
+  const upsertMutation = trpc.emailMarketing.upsertSequence.useMutation();
+  const deleteMutation = trpc.emailMarketing.deleteSequence.useMutation();
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [form, setForm] = useState({ name: "", description: "", active: true });
+  const [detailSequenceId, setDetailSequenceId] = useState<number | null>(null);
+
+  const handleCreate = async () => {
+    if (!form.name.trim()) { toast.error("Informe o nome da sequência"); return; }
+    try {
+      await upsertMutation.mutateAsync({ name: form.name, description: form.description || undefined, active: form.active });
+      toast.success("Sequência criada!");
+      setShowCreate(false);
+      setForm({ name: "", description: "", active: true });
+      utils.emailMarketing.listSequences.invalidate();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao criar sequência");
+    }
+  };
+
+  const handleToggleActive = async (id: number, active: boolean) => {
+    try {
+      await upsertMutation.mutateAsync({ id, name: sequences?.find(s => s.id === id)?.name ?? "", active });
+      utils.emailMarketing.listSequences.invalidate();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao atualizar sequência");
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("Excluir esta sequência e todos os seus passos?")) return;
+    try {
+      await deleteMutation.mutateAsync({ id });
+      toast.success("Sequência excluída");
+      utils.emailMarketing.listSequences.invalidate();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao excluir sequência");
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button onClick={() => setShowCreate(true)}>
+          <Plus size={16} className="mr-1" /> Nova sequência
+        </Button>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Sequências ({sequences?.length ?? 0})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <p>Carregando...</p>
+          ) : sequences && sequences.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[640px]">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="p-2 text-left">Nome</th>
+                    <th className="p-2 text-left">Status</th>
+                    <th className="p-2 text-left">Inscritos ativos</th>
+                    <th className="p-2 text-left">Passos</th>
+                    <th className="p-2 text-left">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sequences.map(s => (
+                    <tr key={s.id} className="border-b hover:bg-gray-50">
+                      <td className="p-2 font-medium">
+                        <button className="text-left hover:underline" onClick={() => setDetailSequenceId(s.id)}>
+                          {s.name}
+                        </button>
+                        {s.description && <p className="text-xs text-gray-500">{s.description}</p>}
+                      </td>
+                      <td className="p-2">
+                        <div className="flex items-center gap-2">
+                          <Switch checked={s.active} onCheckedChange={(checked) => handleToggleActive(s.id, checked)} />
+                          <span className="text-xs text-gray-500">{s.active ? "Ativa" : "Pausada"}</span>
+                        </div>
+                      </td>
+                      <td className="p-2">{s.activeEnrollments}</td>
+                      <td className="p-2">{s.stepCount}</td>
+                      <td className="p-2">
+                        <div className="flex gap-1 flex-wrap">
+                          <Button size="sm" variant="outline" onClick={() => setDetailSequenceId(s.id)}>
+                            <Eye size={14} className="mr-1" /> Ver
+                          </Button>
+                          <Button size="sm" variant="destructive" onClick={() => handleDelete(s.id)}>
+                            <Trash2 size={14} />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-gray-500 text-sm">Nenhuma sequência criada ainda.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Create sequence dialog */}
+      <Dialog open={showCreate} onOpenChange={(open) => { setShowCreate(open); if (!open) setForm({ name: "", description: "", active: true }); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>🔁 Nova sequência</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Nome</Label>
+              <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Ex: Boas-vindas Lead Novo" />
+            </div>
+            <div>
+              <Label>Descrição (opcional)</Label>
+              <Textarea rows={3} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Para que serve esta sequência" />
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={form.active} onCheckedChange={(checked) => setForm(f => ({ ...f, active: checked }))} />
+              <Label className="!mb-0">Ativa</Label>
+            </div>
+          </div>
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button className="flex-1" onClick={handleCreate} disabled={upsertMutation.isPending}>
+              {upsertMutation.isPending ? "Criando..." : "✅ Criar"}
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setShowCreate(false)}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sequence detail dialog */}
+      <SequenceDetailDialog sequenceId={detailSequenceId} onClose={() => setDetailSequenceId(null)} />
+    </div>
+  );
+}
+
+function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | null; onClose: () => void }) {
+  const utils = trpc.useUtils();
+  const { data: sequences } = trpc.emailMarketing.listSequences.useQuery(undefined, { enabled: sequenceId !== null });
+  const sequence = sequences?.find(s => s.id === sequenceId);
+
+  const { data: steps } = trpc.emailMarketing.listSequenceSteps.useQuery(
+    { sequenceId: sequenceId ?? 0 },
+    { enabled: sequenceId !== null }
+  );
+  const { data: stats } = trpc.emailMarketing.sequenceStats.useQuery(
+    { sequenceId: sequenceId ?? 0 },
+    { enabled: sequenceId !== null }
+  );
+
+  const [enrollStatus, setEnrollStatus] = useState<"active" | "paused" | "completed" | "cancelled" | undefined>(undefined);
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 20;
+  const { data: enrollments } = trpc.emailMarketing.listEnrollments.useQuery(
+    { sequenceId: sequenceId ?? 0, status: enrollStatus, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+    { enabled: sequenceId !== null }
+  );
+
+  const upsertStepMutation = trpc.emailMarketing.upsertSequenceStep.useMutation();
+  const deleteStepMutation = trpc.emailMarketing.deleteSequenceStep.useMutation();
+  const pauseMutation = trpc.emailMarketing.pauseEnrollment.useMutation();
+  const resumeMutation = trpc.emailMarketing.resumeEnrollment.useMutation();
+  const cancelMutation = trpc.emailMarketing.cancelEnrollment.useMutation();
+
+  const [editingStep, setEditingStep] = useState<{ id?: number; stepOrder: number; delayDays: number; subject: string; htmlBody: string } | null>(null);
+  const [showEnroll, setShowEnroll] = useState(false);
+
+  const statsByStepId = useMemo(() => {
+    const map = new Map<number, { sent: number; opened: number; clicked: number }>();
+    (stats ?? []).forEach(s => map.set(s.stepId, { sent: s.sent, opened: s.opened, clicked: s.clicked }));
+    return map;
+  }, [stats]);
+
+  const refreshAll = () => {
+    utils.emailMarketing.listSequenceSteps.invalidate({ sequenceId: sequenceId ?? 0 });
+    utils.emailMarketing.listSequences.invalidate();
+    utils.emailMarketing.sequenceStats.invalidate({ sequenceId: sequenceId ?? 0 });
+  };
+
+  const handleSaveStep = async () => {
+    if (!editingStep || !sequenceId) return;
+    if (!editingStep.subject.trim() || !editingStep.htmlBody.trim()) {
+      toast.error("Preencha assunto e corpo do e-mail");
+      return;
+    }
+    try {
+      await upsertStepMutation.mutateAsync({
+        id: editingStep.id,
+        sequenceId,
+        stepOrder: editingStep.stepOrder,
+        delayDays: editingStep.delayDays,
+        subject: editingStep.subject,
+        htmlBody: editingStep.htmlBody,
+      });
+      toast.success("Passo salvo!");
+      setEditingStep(null);
+      refreshAll();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao salvar passo");
+    }
+  };
+
+  const handleDeleteStep = async (id: number) => {
+    if (!confirm("Excluir este passo?")) return;
+    try {
+      await deleteStepMutation.mutateAsync({ id });
+      toast.success("Passo excluído");
+      refreshAll();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao excluir passo");
+    }
+  };
+
+  const handleEnrollmentAction = async (id: number, action: "pause" | "resume" | "cancel") => {
+    try {
+      if (action === "pause") await pauseMutation.mutateAsync({ id });
+      else if (action === "resume") await resumeMutation.mutateAsync({ id });
+      else await cancelMutation.mutateAsync({ id });
+      utils.emailMarketing.listEnrollments.invalidate();
+      utils.emailMarketing.listSequences.invalidate();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao atualizar inscrição");
+    }
+  };
+
+  if (!sequenceId) return null;
+
+  return (
+    <Dialog open={sequenceId !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>{sequence?.name ?? "Sequência"}</DialogTitle></DialogHeader>
+        {sequence?.description && <p className="text-sm text-gray-500">{sequence.description}</p>}
+
+        <div className="space-y-4">
+          {/* Steps timeline */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-semibold text-sm">📅 Passos da sequência</h3>
+              <Button
+                size="sm"
+                onClick={() => setEditingStep({ stepOrder: (steps?.length ?? 0) + 1, delayDays: 0, subject: "", htmlBody: "" })}
+              >
+                <Plus size={14} className="mr-1" /> Adicionar passo
+              </Button>
+            </div>
+            {steps && steps.length > 0 ? (
+              <div className="space-y-2">
+                {steps.map(step => {
+                  const stepStats = statsByStepId.get(step.id);
+                  return (
+                    <div key={step.id} className="border rounded-lg p-3 bg-white">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge variant="secondary">Dia {step.delayDays}</Badge>
+                            <span className="font-medium text-sm">{step.subject}</span>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                            {step.htmlBody.replace(/<[^>]*>/g, ' ').trim().slice(0, 160)}
+                          </p>
+                          {stepStats && (
+                            <div className="flex gap-2 mt-2">
+                              <Badge variant="outline" className="text-xs">📤 {stepStats.sent} enviados</Badge>
+                              <Badge variant="outline" className="text-xs">👁 {stepStats.opened} abertos</Badge>
+                              <Badge variant="outline" className="text-xs">🔗 {stepStats.clicked} clicados</Badge>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-1 flex-shrink-0">
+                          <Button size="sm" variant="outline" onClick={() => setEditingStep({ id: step.id, stepOrder: step.stepOrder, delayDays: step.delayDays, subject: step.subject, htmlBody: step.htmlBody })}>
+                            <Pencil size={14} />
+                          </Button>
+                          <Button size="sm" variant="destructive" onClick={() => handleDeleteStep(step.id)}>
+                            <Trash2 size={14} />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">Nenhum passo cadastrado ainda.</p>
+            )}
+          </div>
+
+          {/* Enrollments */}
+          <div>
+            <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+              <h3 className="font-semibold text-sm">👥 Inscritos ({enrollments?.total ?? 0})</h3>
+              <div className="flex items-center gap-2">
+                <Select value={enrollStatus ?? "__all__"} onValueChange={(v) => { setEnrollStatus(v === "__all__" ? undefined : v as any); setPage(0); }}>
+                  <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Todos status</SelectItem>
+                    <SelectItem value="active">Ativa</SelectItem>
+                    <SelectItem value="paused">Pausada</SelectItem>
+                    <SelectItem value="completed">Concluída</SelectItem>
+                    <SelectItem value="cancelled">Cancelada</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button size="sm" onClick={() => setShowEnroll(true)}>
+                  <Users size={14} className="mr-1" /> Inscrever leads
+                </Button>
+              </div>
+            </div>
+            {enrollments && enrollments.rows.length > 0 ? (
+              <div className="overflow-x-auto max-h-72">
+                <table className="w-full text-sm min-w-[560px]">
+                  <thead className="bg-gray-100 sticky top-0">
+                    <tr>
+                      <th className="p-2 text-left">E-mail</th>
+                      <th className="p-2 text-left">Nome</th>
+                      <th className="p-2 text-left">Passo</th>
+                      <th className="p-2 text-left">Próximo envio</th>
+                      <th className="p-2 text-left">Status</th>
+                      <th className="p-2 text-left">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {enrollments.rows.map(e => (
+                      <tr key={e.id} className="border-b">
+                        <td className="p-2">{e.email}</td>
+                        <td className="p-2">{e.name ?? "--"}</td>
+                        <td className="p-2">{e.currentStep}/{steps?.length ?? 0}</td>
+                        <td className="p-2 text-xs">{formatDateTime(e.nextSendAt)}</td>
+                        <td className="p-2">
+                          <Badge variant={ENROLLMENT_STATUS_VARIANTS[e.status] ?? "secondary"}>
+                            {ENROLLMENT_STATUS_LABELS[e.status] ?? e.status}
+                          </Badge>
+                        </td>
+                        <td className="p-2">
+                          <div className="flex gap-1">
+                            {e.status === "active" && (
+                              <Button size="sm" variant="outline" onClick={() => handleEnrollmentAction(e.id, "pause")} title="Pausar">
+                                <Pause size={14} />
+                              </Button>
+                            )}
+                            {e.status === "paused" && (
+                              <Button size="sm" variant="outline" onClick={() => handleEnrollmentAction(e.id, "resume")} title="Retomar">
+                                <Play size={14} />
+                              </Button>
+                            )}
+                            {(e.status === "active" || e.status === "paused") && (
+                              <Button size="sm" variant="destructive" onClick={() => handleEnrollmentAction(e.id, "cancel")} title="Cancelar">
+                                <X size={14} />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {enrollments.total > PAGE_SIZE && (
+                  <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
+                    <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>Anterior</Button>
+                    <span>Página {page + 1} de {Math.ceil(enrollments.total / PAGE_SIZE)}</span>
+                    <Button size="sm" variant="outline" disabled={(page + 1) * PAGE_SIZE >= enrollments.total} onClick={() => setPage(p => p + 1)}>Próxima</Button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">Nenhum inscrito {enrollStatus ? `com status "${ENROLLMENT_STATUS_LABELS[enrollStatus]}"` : ""}.</p>
+            )}
+          </div>
+        </div>
+
+        {/* Step editor dialog */}
+        <Dialog open={editingStep !== null} onOpenChange={(open) => { if (!open) setEditingStep(null); }}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader><DialogTitle>{editingStep?.id ? "✏️ Editar passo" : "➕ Novo passo"}</DialogTitle></DialogHeader>
+            {editingStep && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Ordem do passo</Label>
+                    <Input type="number" min={1} value={editingStep.stepOrder} onChange={e => setEditingStep(s => s && ({ ...s, stepOrder: Number(e.target.value) }))} />
+                  </div>
+                  <div>
+                    <Label>Dias após inscrição</Label>
+                    <Input type="number" min={0} value={editingStep.delayDays} onChange={e => setEditingStep(s => s && ({ ...s, delayDays: Number(e.target.value) }))} />
+                  </div>
+                </div>
+                <div>
+                  <Label>Assunto</Label>
+                  <Input value={editingStep.subject} onChange={e => setEditingStep(s => s && ({ ...s, subject: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Corpo do e-mail (HTML)</Label>
+                  <Textarea rows={8} value={editingStep.htmlBody} onChange={e => setEditingStep(s => s && ({ ...s, htmlBody: e.target.value }))} />
+                  <p className="text-xs text-gray-500 mt-1">{TEMPLATE_HINT}</p>
+                </div>
+              </div>
+            )}
+            <DialogFooter className="flex gap-2 pt-2">
+              <Button className="flex-1" onClick={handleSaveStep} disabled={upsertStepMutation.isPending}>
+                {upsertStepMutation.isPending ? "Salvando..." : "✅ Salvar"}
+              </Button>
+              <Button variant="outline" className="flex-1" onClick={() => setEditingStep(null)}>Cancelar</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Enroll leads dialog */}
+        {sequenceId !== null && (
+          <EnrollLeadsDialog
+            sequenceId={sequenceId}
+            open={showEnroll}
+            onClose={() => setShowEnroll(false)}
+            onEnrolled={() => {
+              utils.emailMarketing.listEnrollments.invalidate();
+              utils.emailMarketing.listSequences.invalidate();
+            }}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Lightweight task picker: lists tasks with a registered email, with checkboxes
+// and an optional tag filter, used to enroll leads in a sequence manually.
+function EnrollLeadsDialog({ sequenceId, open, onClose, onEnrolled }: { sequenceId: number; open: boolean; onClose: () => void; onEnrolled: () => void }) {
+  const { data: tasks } = trpc.tasks.list.useQuery(undefined, { enabled: open });
+  const { data: tags } = trpc.emailMarketing.listTags.useQuery(undefined, { enabled: open });
+  const enrollMutation = trpc.emailMarketing.enrollTasksInSequence.useMutation();
+
+  const [tagFilter, setTagFilter] = useState<string>("__all__");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  const tasksWithEmail = useMemo(() => {
+    const list = (tasks ?? []).filter((t: any) => !!t.email);
+    if (tagFilter === "__all__") return list;
+    return list.filter((t: any) => (t.tags ?? []).includes(tagFilter));
+  }, [tasks, tagFilter]);
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds(prev => prev.size === tasksWithEmail.length ? new Set() : new Set(tasksWithEmail.map((t: any) => t.id)));
+  };
+
+  const handleEnroll = async () => {
+    if (selectedIds.size === 0) { toast.error("Selecione ao menos um lead"); return; }
+    try {
+      const res = await enrollMutation.mutateAsync({ sequenceId, taskIds: Array.from(selectedIds) });
+      const skipped = res.skippedNoEmail + res.skippedDuplicateOrSuppressed;
+      toast.success(`✅ ${res.enrolled} inscrito(s) na sequência` + (skipped > 0 ? ` (${skipped} ignorado(s): sem e-mail, duplicado ou descadastrado)` : ''));
+      setSelectedIds(new Set());
+      onEnrolled();
+      onClose();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao inscrever leads");
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>👥 Inscrever leads na sequência</DialogTitle></DialogHeader>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Label className="!mb-0 flex-shrink-0">Filtrar por tag</Label>
+            <Select value={tagFilter} onValueChange={setTagFilter}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Todas as tags</SelectItem>
+                {(tags ?? []).map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <Checkbox checked={tasksWithEmail.length > 0 && selectedIds.size === tasksWithEmail.length} onCheckedChange={toggleSelectAll} />
+            Selecionar todos ({tasksWithEmail.length})
+          </label>
+          <div className="border rounded-lg max-h-72 overflow-y-auto divide-y">
+            {tasksWithEmail.length > 0 ? tasksWithEmail.map((t: any) => (
+              <label key={t.id} className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-gray-50">
+                <Checkbox checked={selectedIds.has(t.id)} onCheckedChange={() => toggleSelect(t.id)} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate">{t.title}</p>
+                  <p className="text-xs text-gray-500 truncate">{t.email}</p>
+                </div>
+              </label>
+            )) : (
+              <p className="text-sm text-gray-500 p-3">Nenhum lead com e-mail cadastrado{tagFilter !== "__all__" ? ` para a tag "${tagFilter}"` : ""}.</p>
+            )}
+          </div>
+        </div>
+        <DialogFooter className="flex gap-2 pt-2">
+          <Button className="flex-1" onClick={handleEnroll} disabled={enrollMutation.isPending || selectedIds.size === 0}>
+            {enrollMutation.isPending ? "Inscrevendo..." : `✅ Inscrever (${selectedIds.size})`}
+          </Button>
+          <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Automações ─────────────────────────────────────────────────────────────
+
+function AutomationsTab() {
+  const utils = trpc.useUtils();
+  const { data: rules, isLoading } = trpc.emailMarketing.listAutomationRules.useQuery();
+  const { data: sequences } = trpc.emailMarketing.listSequences.useQuery();
+  const upsertMutation = trpc.emailMarketing.upsertAutomationRule.useMutation();
+  const deleteMutation = trpc.emailMarketing.deleteAutomationRule.useMutation();
+
+  const [editing, setEditing] = useState<{
+    id?: number;
+    name: string;
+    triggerType: "lead_created" | "lead_converted" | "inactive_days";
+    days: string;
+    actionType: "enroll_sequence" | "add_tag";
+    sequenceId: string;
+    tag: string;
+    active: boolean;
+  } | null>(null);
+
+  // Parse triggerConfig/actionConfig JSON strings into objects for display.
+  const parsedRules = useMemo(() => {
+    return (rules ?? []).map(r => ({
+      ...r,
+      triggerConfig: r.triggerConfig ? JSON.parse(r.triggerConfig) : null,
+      actionConfig: r.actionConfig ? JSON.parse(r.actionConfig) : {},
+    }));
+  }, [rules]);
+
+  const handleSave = async () => {
+    if (!editing) return;
+    if (!editing.name.trim()) { toast.error("Informe o nome da regra"); return; }
+    if (editing.triggerType === 'inactive_days' && !editing.days.trim()) {
+      toast.error("Informe o número de dias sem contato");
+      return;
+    }
+    if (editing.actionType === 'enroll_sequence' && !editing.sequenceId) {
+      toast.error("Selecione a sequência");
+      return;
+    }
+    if (editing.actionType === 'add_tag' && !editing.tag.trim()) {
+      toast.error("Informe a tag");
+      return;
+    }
+    try {
+      await upsertMutation.mutateAsync({
+        id: editing.id,
+        name: editing.name,
+        triggerType: editing.triggerType,
+        triggerConfig: editing.triggerType === 'inactive_days' ? { days: Number(editing.days) } : undefined,
+        actionType: editing.actionType,
+        actionConfig: editing.actionType === 'enroll_sequence' ? { sequenceId: Number(editing.sequenceId) } : { tag: editing.tag.trim() },
+        active: editing.active,
+      });
+      toast.success("Automação salva!");
+      setEditing(null);
+      utils.emailMarketing.listAutomationRules.invalidate();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao salvar automação");
+    }
+  };
+
+  const handleToggleActive = async (rule: typeof parsedRules[number], active: boolean) => {
+    try {
+      await upsertMutation.mutateAsync({
+        id: rule.id,
+        name: rule.name,
+        triggerType: rule.triggerType as any,
+        triggerConfig: rule.triggerConfig ?? undefined,
+        actionType: rule.actionType as any,
+        actionConfig: rule.actionConfig,
+        active,
+      });
+      utils.emailMarketing.listAutomationRules.invalidate();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao atualizar automação");
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("Excluir esta automação?")) return;
+    try {
+      await deleteMutation.mutateAsync({ id });
+      toast.success("Automação excluída");
+      utils.emailMarketing.listAutomationRules.invalidate();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao excluir automação");
+    }
+  };
+
+  const openNew = () => setEditing({
+    name: "", triggerType: "lead_created", days: "30",
+    actionType: "enroll_sequence", sequenceId: "", tag: "", active: true,
+  });
+
+  const openEdit = (rule: typeof parsedRules[number]) => setEditing({
+    id: rule.id,
+    name: rule.name,
+    triggerType: rule.triggerType as any,
+    days: rule.triggerConfig?.days ? String(rule.triggerConfig.days) : "30",
+    actionType: rule.actionType as any,
+    sequenceId: rule.actionConfig?.sequenceId ? String(rule.actionConfig.sequenceId) : "",
+    tag: rule.actionConfig?.tag ?? "",
+    active: rule.active,
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button onClick={openNew}>
+          <Plus size={16} className="mr-1" /> Nova automação
+        </Button>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Automações ({parsedRules.length})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <p>Carregando...</p>
+          ) : parsedRules.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[640px]">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="p-2 text-left">Nome</th>
+                    <th className="p-2 text-left">Gatilho</th>
+                    <th className="p-2 text-left">Ação</th>
+                    <th className="p-2 text-left">Ativa</th>
+                    <th className="p-2 text-left">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {parsedRules.map(r => (
+                    <tr key={r.id} className="border-b hover:bg-gray-50">
+                      <td className="p-2 font-medium">{r.name}</td>
+                      <td className="p-2 text-xs">{describeTrigger(r)}</td>
+                      <td className="p-2 text-xs">{describeAction(r, sequences)}</td>
+                      <td className="p-2">
+                        <Switch checked={r.active} onCheckedChange={(checked) => handleToggleActive(r, checked)} />
+                      </td>
+                      <td className="p-2">
+                        <div className="flex gap-1">
+                          <Button size="sm" variant="outline" onClick={() => openEdit(r)}>
+                            <Pencil size={14} />
+                          </Button>
+                          <Button size="sm" variant="destructive" onClick={() => handleDelete(r.id)}>
+                            <Trash2 size={14} />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-gray-500 text-sm">Nenhuma automação criada ainda.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={editing !== null} onOpenChange={(open) => { if (!open) setEditing(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>{editing?.id ? "✏️ Editar automação" : "⚡ Nova automação"}</DialogTitle></DialogHeader>
+          {editing && (
+            <div className="space-y-3">
+              <div>
+                <Label>Nome</Label>
+                <Input value={editing.name} onChange={e => setEditing(s => s && ({ ...s, name: e.target.value }))} placeholder="Ex: Reativação de leads frios" />
+              </div>
+              <div>
+                <Label>Gatilho</Label>
+                <Select value={editing.triggerType} onValueChange={(v: any) => setEditing(s => s && ({ ...s, triggerType: v }))}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="lead_created">Novo lead criado</SelectItem>
+                    <SelectItem value="lead_converted">Lead convertido em cliente</SelectItem>
+                    <SelectItem value="inactive_days">Sem contato há N dias</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {editing.triggerType === 'inactive_days' && (
+                <div>
+                  <Label>Dias sem contato</Label>
+                  <Input type="number" min={1} value={editing.days} onChange={e => setEditing(s => s && ({ ...s, days: e.target.value }))} />
+                </div>
+              )}
+              <div>
+                <Label>Ação</Label>
+                <Select value={editing.actionType} onValueChange={(v: any) => setEditing(s => s && ({ ...s, actionType: v }))}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="enroll_sequence">Inscrever em sequência</SelectItem>
+                    <SelectItem value="add_tag">Adicionar tag</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {editing.actionType === 'enroll_sequence' ? (
+                <div>
+                  <Label>Sequência</Label>
+                  <Select value={editing.sequenceId} onValueChange={(v) => setEditing(s => s && ({ ...s, sequenceId: v }))}>
+                    <SelectTrigger className="w-full"><SelectValue placeholder="Selecionar sequência..." /></SelectTrigger>
+                    <SelectContent>
+                      {(sequences ?? []).map(seq => (
+                        <SelectItem key={seq.id} value={String(seq.id)}>{seq.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <div>
+                  <Label>Tag</Label>
+                  <Input value={editing.tag} onChange={e => setEditing(s => s && ({ ...s, tag: e.target.value }))} placeholder="Ex: cliente-vip" />
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <Switch checked={editing.active} onCheckedChange={(checked) => setEditing(s => s && ({ ...s, active: checked }))} />
+                <Label className="!mb-0">Ativa</Label>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button className="flex-1" onClick={handleSave} disabled={upsertMutation.isPending}>
+              {upsertMutation.isPending ? "Salvando..." : "✅ Salvar"}
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setEditing(null)}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ── Tags ───────────────────────────────────────────────────────────────────
+
+function TagsTab() {
+  const { data: tags, isLoading } = trpc.emailMarketing.listTags.useQuery();
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Tags ({tags?.length ?? 0})</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-gray-500">
+            Use as tags na tela de Tarefas para segmentar leads. Tags são criadas diretamente
+            no formulário de tarefas e aparecem aqui automaticamente.
+          </p>
+          {isLoading ? (
+            <p>Carregando...</p>
+          ) : tags && tags.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {tags.map(tag => (
+                <Badge key={tag} variant="secondary" className="text-sm px-3 py-1">
+                  <Tag size={12} className="mr-1" /> {tag}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-sm">Nenhuma tag cadastrada ainda.</p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── Estatísticas ───────────────────────────────────────────────────────────
+
+function StatsTab() {
+  const { data: overview, isLoading } = trpc.emailMarketing.overviewStats.useQuery();
+  const { data: campaigns } = trpc.emailMarketing.listCampaigns.useQuery();
+  const { data: sequences } = trpc.emailMarketing.listSequences.useQuery();
+
+  return (
+    <div className="space-y-4">
+      {isLoading ? (
+        <p>Carregando...</p>
+      ) : overview && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <Card>
+            <CardContent className="p-3 text-center">
+              <p className="text-xs text-gray-500">Enviados (30d)</p>
+              <p className="text-xl font-bold text-blue-900">{overview.totalSent30d}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3 text-center">
+              <p className="text-xs text-gray-500">Taxa de abertura</p>
+              <p className="text-xl font-bold text-green-700">{(overview.openRate * 100).toFixed(1)}%</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3 text-center">
+              <p className="text-xs text-gray-500">Taxa de clique</p>
+              <p className="text-xl font-bold text-purple-700">{(overview.clickRate * 100).toFixed(1)}%</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3 text-center">
+              <p className="text-xs text-gray-500">Descadastros (30d)</p>
+              <p className="text-xl font-bold text-red-600">{overview.unsubscribed30d}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3 text-center">
+              <p className="text-xs text-gray-500">Cota Resend hoje</p>
+              <p className="text-xl font-bold text-orange-600">{overview.quotaUsedToday}/{overview.quotaTotalToday}</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      <Card>
+        <CardHeader><CardTitle>Campanhas</CardTitle></CardHeader>
+        <CardContent>
+          {campaigns && campaigns.length > 0 ? (
+            <div className="space-y-2">
+              {campaigns.map(c => <CampaignStatsRow key={c.id} campaignId={c.id} name={c.name} />)}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-sm">Nenhuma campanha criada ainda.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Sequências</CardTitle></CardHeader>
+        <CardContent>
+          {sequences && sequences.length > 0 ? (
+            <div className="space-y-2">
+              {sequences.map(s => <SequenceStatsRow key={s.id} sequenceId={s.id} name={s.name} />)}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-sm">Nenhuma sequência criada ainda.</p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Lazy-loaded stats row for a single campaign — query only runs after "Ver stats" is clicked,
+// to avoid firing N parallel queries when the page has many campaigns.
+function CampaignStatsRow({ campaignId, name }: { campaignId: number; name: string }) {
+  const [show, setShow] = useState(false);
+  const { data: stats, isLoading } = trpc.emailMarketing.campaignStats.useQuery({ campaignId }, { enabled: show });
+
+  return (
+    <div className="border rounded-lg p-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-medium text-sm">{name}</p>
+        <Button size="sm" variant="outline" onClick={() => setShow(true)} disabled={show}>
+          <BarChart3 size={14} className="mr-1" /> Ver stats
+        </Button>
+      </div>
+      {show && (
+        isLoading ? (
+          <p className="text-xs text-gray-500 mt-1">Carregando...</p>
+        ) : stats && (
+          <div className="flex gap-2 mt-2 flex-wrap">
+            <Badge variant="outline" className="text-xs">📬 {stats.delivered} entregues</Badge>
+            <Badge variant="outline" className="text-xs">👁 {stats.opened} abertos</Badge>
+            <Badge variant="outline" className="text-xs">🔗 {stats.clicked} clicados</Badge>
+            <Badge variant="outline" className="text-xs">⚠️ {stats.bounced} bounce</Badge>
+            <Badge variant="outline" className="text-xs">🚫 {stats.complained} reclamações</Badge>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+// Lazy-loaded per-step stats row for a single sequence.
+function SequenceStatsRow({ sequenceId, name }: { sequenceId: number; name: string }) {
+  const [show, setShow] = useState(false);
+  const { data: stats, isLoading } = trpc.emailMarketing.sequenceStats.useQuery({ sequenceId }, { enabled: show });
+
+  return (
+    <div className="border rounded-lg p-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-medium text-sm">{name}</p>
+        <Button size="sm" variant="outline" onClick={() => setShow(true)} disabled={show}>
+          <BarChart3 size={14} className="mr-1" /> Ver stats
+        </Button>
+      </div>
+      {show && (
+        isLoading ? (
+          <p className="text-xs text-gray-500 mt-1">Carregando...</p>
+        ) : stats && stats.length > 0 ? (
+          <div className="space-y-1 mt-2">
+            {stats.map(s => (
+              <div key={s.stepId} className="flex items-center gap-2 flex-wrap text-xs">
+                <Badge variant="secondary">Dia {s.delayDays}</Badge>
+                <span className="text-gray-600 truncate">{s.subject}</span>
+                <Badge variant="outline">📤 {s.sent}</Badge>
+                <Badge variant="outline">👁 {s.opened}</Badge>
+                <Badge variant="outline">🔗 {s.clicked}</Badge>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500 mt-1">Sem passos cadastrados.</p>
+        )
+      )}
     </div>
   );
 }

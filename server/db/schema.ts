@@ -45,6 +45,7 @@ export const tasks = pgTable('tasks', {
   description: text('description'),
   notes: text('notes'),
   email: text('email'),
+  tags: text('tags').array().default([]).notNull(),
   reminderDate: timestamp('reminder_date'),
   reminderEnabled: boolean('reminder_enabled').default(true),
   status: text('status').notNull().default('pending'),
@@ -301,3 +302,75 @@ export type Task = typeof tasks.$inferSelect;
 export type Reminder = typeof reminders.$inferSelect;
 export type KnowledgeDocument = typeof knowledgeDocuments.$inferSelect;
 export type TaskDeletionLog = typeof taskDeletionLogs.$inferSelect;
+
+// ── E-mail Marketing Fase 2 — Sequências, Automações, Tags, Eventos ─────────
+
+export const emailSequences = pgTable('email_sequences', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description'),
+  active: boolean('active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const emailSequenceSteps = pgTable('email_sequence_steps', {
+  id: serial('id').primaryKey(),
+  sequenceId: integer('sequence_id').notNull(),
+  stepOrder: integer('step_order').notNull(),      // 1, 2, 3...
+  delayDays: integer('delay_days').notNull(),       // dias após a inscrição
+  subject: text('subject').notNull(),
+  htmlBody: text('html_body').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const emailSequenceEnrollments = pgTable('email_sequence_enrollments', {
+  id: serial('id').primaryKey(),
+  sequenceId: integer('sequence_id').notNull(),
+  email: text('email').notNull(),
+  name: text('name'),
+  replyTo: text('reply_to'),
+  taskId: integer('task_id'),
+  currentStep: integer('current_step').default(0).notNull(), // último passo enviado (0 = nenhum)
+  status: text('status').notNull().default('active'),         // active|paused|completed|cancelled
+  unsubToken: text('unsub_token').notNull(),
+  enrolledAt: timestamp('enrolled_at').defaultNow().notNull(),
+  nextSendAt: timestamp('next_send_at'),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const emailSequenceSends = pgTable('email_sequence_sends', {
+  id: serial('id').primaryKey(),
+  enrollmentId: integer('enrollment_id').notNull(),
+  stepId: integer('step_id').notNull(),
+  status: text('status').notNull().default('sent'), // sent|failed
+  accountKey: text('account_key'),
+  messageId: text('message_id'),
+  error: text('error'),
+  sentAt: timestamp('sent_at').defaultNow().notNull(),
+});
+
+export const emailEvents = pgTable('email_events', {
+  id: serial('id').primaryKey(),
+  messageId: text('message_id').notNull(),
+  recipientEmail: text('recipient_email').notNull(),
+  eventType: text('event_type').notNull(), // delivered|opened|clicked|bounced|complained
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const automationRules = pgTable('automation_rules', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  triggerType: text('trigger_type').notNull(),   // lead_created|lead_converted|inactive_days
+  triggerConfig: text('trigger_config'),          // JSON, ex: {"days":30}
+  actionType: text('action_type').notNull(),     // enroll_sequence|add_tag
+  actionConfig: text('action_config').notNull(), // JSON, ex: {"sequenceId":3} ou {"tag":"cliente"}
+  active: boolean('active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type EmailSequence = typeof emailSequences.$inferSelect;
+export type EmailSequenceStep = typeof emailSequenceSteps.$inferSelect;
+export type EmailSequenceEnrollment = typeof emailSequenceEnrollments.$inferSelect;
+export type AutomationRule = typeof automationRules.$inferSelect;

@@ -12,11 +12,19 @@ import { ensureTablesExist } from '../server/db/migrate';
 import { ensureOrdersTablesExist } from '../server/db/ordersMigrate';
 import { ordersDb } from '../server/db/ordersDb';
 import { sql as sqlClient, db } from '../server/db/index';
-import { siteOrders, abandonedCarts, automationRuns, msgTemplates, coupons, emailCampaignRecipients, emailSuppressions, clients } from '../server/db/schema';
-import { eq, and, sql, lte, gte, isNull, inArray, desc } from 'drizzle-orm';
+import {
+  siteOrders, abandonedCarts, automationRuns, msgTemplates, coupons, emailCampaignRecipients, emailSuppressions, clients,
+  emailSequenceEnrollments, emailSequenceSteps, emailSequenceSends, emailEvents,
+} from '../server/db/schema';
+import { eq, and, sql, lte, gte, isNull, isNotNull, inArray, desc, asc, lt } from 'drizzle-orm';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
 import { createPixPaymentForOrder } from '../server/lib/mercadopago';
 import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid } from '../server/lib/orderConfirmation';
+import {
+  verifyResendWebhook, pickAccount, sendBatch, layout, computeNextSendAt,
+  renderTemplate as renderMktTemplate, type BatchMessage,
+} from '../server/email/marketing';
+import { evaluateInactiveDaysRules } from '../server/email/automations';
 
 function isBusinessHours(): boolean {
   const brHour = (new Date().getUTCHours() - 3 + 24) % 24;
@@ -397,6 +405,68 @@ app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/jso
   } catch (err) {
     console.error('MP webhook error:', err);
     res.json({ ok: true }); // Always 200 so MP doesn't retry endlessly
+  }
+});
+
+// ── Resend webhook (e-mail marketing — delivered/opened/clicked/bounced/complained) ──
+// Raw body must be captured before express.json() for Svix signature verification.
+const resendWebhookLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  validate: { xForwardedForHeader: false },
+});
+
+app.post('/api/resend-webhook', resendWebhookLimiter, express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const rawBody = (req.body as Buffer).toString('utf8');
+    const valid = verifyResendWebhook(rawBody, {
+      'svix-id': req.headers['svix-id'] as string | undefined,
+      'svix-timestamp': req.headers['svix-timestamp'] as string | undefined,
+      'svix-signature': req.headers['svix-signature'] as string | undefined,
+    });
+    if (!valid) {
+      res.status(401).json({ error: 'Invalid signature' });
+      return;
+    }
+
+    let payload: { type?: string; data?: { email_id?: string; to?: string[] } };
+    try { payload = JSON.parse(rawBody); } catch { res.status(200).json({ ok: true }); return; }
+
+    const eventType = payload.type ?? '';
+    const messageId = payload.data?.email_id ?? '';
+    const recipientEmail = (payload.data?.to?.[0] ?? '').toLowerCase().trim();
+
+    // Always respond 200 fast — Resend retries on non-2xx.
+    res.status(200).json({ ok: true });
+
+    if (!recipientEmail) return;
+
+    switch (eventType) {
+      case 'email.bounced':
+      case 'email.complained': {
+        const reason = eventType === 'email.bounced' ? 'bounce' : 'complaint';
+        await db.insert(emailSuppressions).values({ email: recipientEmail, reason }).onConflictDoNothing();
+        await db.update(clients).set({ unsubscribed: true }).where(eq(clients.email, recipientEmail));
+        break;
+      }
+      case 'email.delivered':
+      case 'email.opened':
+      case 'email.clicked': {
+        if (!messageId) return;
+        const shortType = eventType.replace('email.', '');
+        await db.insert(emailEvents).values({
+          messageId,
+          recipientEmail,
+          eventType: shortType,
+        });
+        break;
+      }
+      default:
+        break;
+    }
+  } catch (err) {
+    console.error('[resend-webhook] error:', err);
+    if (!res.headersSent) res.status(200).json({ ok: true });
   }
 });
 
@@ -794,6 +864,160 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
+});
+
+// ── E-mail Marketing Fase 2 — motor diário (sequências + automações) ────────
+// Protected by CRON_SECRET: Vercel injects `Authorization: Bearer <CRON_SECRET>`
+// automatically for configured crons. Refuses (401) if CRON_SECRET is unset —
+// never run this unprotected.
+app.get('/api/cron/email-daily', async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  const provided = (req.headers['authorization'] as string | undefined)?.replace('Bearer ', '');
+  if (!secret || provided !== secret) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const summary = {
+    inactiveDaysRules: 0,
+    inactiveDaysEnrolled: 0,
+    enrollmentsDue: 0,
+    sent: 0,
+    failed: 0,
+    completed: 0,
+    quotaExhausted: false,
+    eventsDeleted: 0,
+  };
+
+  try {
+    // 1. Avalia automações inactive_days → cria novos enrollments.
+    try {
+      const result = await evaluateInactiveDaysRules();
+      summary.inactiveDaysRules = result.rulesEvaluated;
+      summary.inactiveDaysEnrolled = result.enrolled;
+    } catch (err) {
+      console.error('[cron/email-daily] evaluateInactiveDaysRules error:', err);
+    }
+
+    // 2. Busca enrollments ativos com next_send_at <= now(), limit 300.
+    const now = new Date();
+    const dueEnrollments = await db.select().from(emailSequenceEnrollments)
+      .where(and(
+        eq(emailSequenceEnrollments.status, 'active'),
+        isNotNull(emailSequenceEnrollments.nextSendAt),
+        lte(emailSequenceEnrollments.nextSendAt, now),
+      ))
+      .orderBy(asc(emailSequenceEnrollments.nextSendAt))
+      .limit(300);
+    summary.enrollmentsDue = dueEnrollments.length;
+
+    if (dueEnrollments.length > 0) {
+      // Pré-carrega os passos de todas as sequências envolvidas (evita N+1).
+      const sequenceIds = [...new Set(dueEnrollments.map(e => e.sequenceId))];
+      const allSteps = await db.select().from(emailSequenceSteps)
+        .where(inArray(emailSequenceSteps.sequenceId, sequenceIds))
+        .orderBy(asc(emailSequenceSteps.stepOrder));
+      const stepsBySequence = new Map<number, typeof allSteps>();
+      for (const step of allSteps) {
+        const list = stepsBySequence.get(step.sequenceId) ?? [];
+        list.push(step);
+        stepsBySequence.set(step.sequenceId, list);
+      }
+
+      const unsubBase = process.env.PUBLIC_APP_URL ?? 'https://lembretes.salvitarn.com.br';
+
+      // Processa em lotes de até 100, respeitando a cota diária compartilhada.
+      let i = 0;
+      while (i < dueEnrollments.length) {
+        const picked = await pickAccount();
+        if (!picked) {
+          summary.quotaExhausted = true;
+          break;
+        }
+
+        const batchSize = Math.min(100, picked.remaining, dueEnrollments.length - i);
+        const batch = dueEnrollments.slice(i, i + batchSize);
+        i += batchSize;
+
+        // Monta as mensagens do passo (current_step + 1) para cada enrollment do lote.
+        const messages: BatchMessage[] = [];
+        const batchMeta: { enrollment: typeof dueEnrollments[number]; step: typeof allSteps[number] }[] = [];
+
+        for (const enrollment of batch) {
+          const steps = stepsBySequence.get(enrollment.sequenceId) ?? [];
+          const step = steps[enrollment.currentStep];
+          if (!step) {
+            // Sem próximo passo — marca como concluída e segue.
+            await db.update(emailSequenceEnrollments)
+              .set({ status: 'completed', nextSendAt: null, updatedAt: new Date() })
+              .where(eq(emailSequenceEnrollments.id, enrollment.id));
+            summary.completed++;
+            continue;
+          }
+          const unsubUrl = `${unsubBase}/api/unsubscribe?t=${enrollment.unsubToken}`;
+          messages.push({
+            to: enrollment.email,
+            subject: renderMktTemplate(step.subject, { nome: enrollment.name ?? '' }),
+            html: layout(renderMktTemplate(step.htmlBody, { nome: enrollment.name ?? '', unsubscribe: unsubUrl }), unsubUrl),
+            replyTo: enrollment.replyTo ?? undefined,
+            unsubToken: enrollment.unsubToken,
+          });
+          batchMeta.push({ enrollment, step });
+        }
+
+        if (messages.length > 0) {
+          const results = await sendBatch(picked.account, messages);
+          for (let j = 0; j < batchMeta.length; j++) {
+            const { enrollment, step } = batchMeta[j];
+            const result = results[j];
+            const steps = stepsBySequence.get(enrollment.sequenceId) ?? [];
+            const newCurrentStep = enrollment.currentStep + 1;
+            const nextSendAt = computeNextSendAt(enrollment.enrolledAt, steps, newCurrentStep);
+            const newStatus = nextSendAt ? 'active' : 'completed';
+
+            if (result.ok) {
+              summary.sent++;
+            } else {
+              summary.failed++;
+            }
+            if (newStatus === 'completed') summary.completed++;
+
+            await db.update(emailSequenceEnrollments)
+              .set({ currentStep: newCurrentStep, nextSendAt, status: newStatus, updatedAt: new Date() })
+              .where(eq(emailSequenceEnrollments.id, enrollment.id));
+
+            await db.insert(emailSequenceSends).values({
+              enrollmentId: enrollment.id,
+              stepId: step.id,
+              status: result.ok ? 'sent' : 'failed',
+              accountKey: picked.account.key,
+              messageId: result.messageId,
+              error: result.error,
+            });
+          }
+        }
+
+        // Se o lote não esgotou a cota da conta, ainda há mais devidos? continua;
+        // se pickAccount ficar null no próximo loop, paramos com early-exit acima.
+        if (i >= dueEnrollments.length) break;
+      }
+    }
+
+    // 6. Limpeza: remove email_events com mais de 90 dias.
+    try {
+      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+      const deleted = await db.delete(emailEvents).where(lt(emailEvents.createdAt, ninetyDaysAgo)).returning({ id: emailEvents.id });
+      summary.eventsDeleted = deleted.length;
+    } catch (err) {
+      console.error('[cron/email-daily] cleanup error:', err);
+    }
+
+    console.log('[cron/email-daily] summary:', summary);
+    res.json({ ok: true, ...summary });
+  } catch (err) {
+    console.error('[cron/email-daily] error:', err);
+    res.status(500).json({ error: String(err), ...summary });
+  }
 });
 
 // Diagnostic: runs the orders-DB migration and reports per-step status + which

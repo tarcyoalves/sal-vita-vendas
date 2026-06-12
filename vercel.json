@@ -2,6 +2,12 @@
   "version": 2,
   "buildCommand": "npm install && node node_modules/vite/bin/vite.js build client -c vite.config.ts && node_modules/.bin/esbuild api/index.ts --bundle --platform=node --target=node20 --outfile=api/bundle.js --external:pg-native --external:fsevents",
   "outputDirectory": "client/dist",
+  "functions": {
+    "api/index.ts": { "maxDuration": 60 }
+  },
+  "crons": [
+    { "path": "/api/cron/email-daily", "schedule": "0 11 * * *" }
+  ],
   "headers": [
     {
       "source": "/(.*)",

@@ -1,16 +1,20 @@
 import { z } from 'zod';
 import crypto from 'crypto';
-import { eq, and, inArray, isNotNull, ne, desc, count, sql } from 'drizzle-orm';
+import { eq, and, or, inArray, isNotNull, isNull, ne, desc, asc, count, gte, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
-import { router, adminProcedure } from '../trpc';
+import { router, adminProcedure, protectedProcedure } from '../trpc';
 import { db } from '../db';
 import {
   emailTemplates, emailCampaigns, emailCampaignRecipients, emailSuppressions,
+  emailSequences, emailSequenceSteps, emailSequenceEnrollments, emailSequenceSends,
+  emailEvents, automationRules, emailSendCounters,
   tasks, clients, sellers,
 } from '../db/schema';
 import { pickAccount, sendBatch, layout, renderTemplate, type BatchMessage } from '../email/marketing';
+import { enrollInSequence } from '../email/automations';
 
 const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL ?? 'https://lembretes.salvitarn.com.br';
+const MKT_DAILY_LIMIT = parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? '90');
 
 // Tasks are titled "NOME - EMPRESA - telefone - email - cidade - UF" — use the
 // first segment as the recipient's display name for {nome} personalization.
@@ -28,9 +32,10 @@ interface AudienceRow {
 const audienceInput = z.object({
   source: z.enum(['leads', 'clients', 'both']).default('leads'),
   assignedTo: z.string().optional(),
+  tags: z.array(z.string()).optional(),
 });
 
-async function buildAudience(opts: { source: 'leads' | 'clients' | 'both'; assignedTo?: string }): Promise<AudienceRow[]> {
+async function buildAudience(opts: { source: 'leads' | 'clients' | 'both'; assignedTo?: string; tags?: string[] }): Promise<AudienceRow[]> {
   const rows: AudienceRow[] = [];
 
   if (opts.source === 'leads' || opts.source === 'both') {
@@ -39,6 +44,10 @@ async function buildAudience(opts: { source: 'leads' | 'clients' | 'both'; assig
 
     const conditions = [isNotNull(tasks.email), ne(tasks.email, '')];
     if (opts.assignedTo) conditions.push(eq(tasks.assignedTo, opts.assignedTo));
+    // Postgres array overlap operator: matches tasks that have at least one of the given tags.
+    if (opts.tags && opts.tags.length > 0) {
+      conditions.push(sql`${tasks.tags} && ARRAY[${sql.join(opts.tags.map(t => sql`${t}`), sql`, `)}]::text[]`);
+    }
     const taskRows = await db.select({
       id: tasks.id, email: tasks.email, title: tasks.title, assignedTo: tasks.assignedTo,
     }).from(tasks).where(and(...conditions));
@@ -134,6 +143,7 @@ export const emailMarketingRouter = router({
       htmlBody: z.string().min(1),
       source: z.enum(['leads', 'clients', 'both']).default('leads'),
       assignedTo: z.string().optional(),
+      tags: z.array(z.string()).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       const audience = await buildAudience(input);
@@ -331,5 +341,413 @@ export const emailMarketingRouter = router({
         .values({ email: input.email.toLowerCase().trim(), reason: input.reason })
         .onConflictDoNothing();
       return { ok: true };
+    }),
+
+  // ── Tags ───────────────────────────────────────────────────────────────────
+  // Autocomplete: distinct tags currently used across tasks.tags.
+  listTags: adminProcedure.query(async () => {
+    const result = await db.execute<{ tag: string }>(sql`
+      SELECT DISTINCT unnest(${tasks.tags}) AS tag
+      FROM ${tasks}
+      WHERE array_length(${tasks.tags}, 1) > 0
+      ORDER BY 1
+    `);
+    return result.rows.map(r => r.tag);
+  }),
+
+  // ── Sequências ────────────────────────────────────────────────────────────
+  listSequences: adminProcedure.query(async () => {
+    const sequencesRows = await db.select().from(emailSequences).orderBy(desc(emailSequences.createdAt));
+    if (sequencesRows.length === 0) return [];
+
+    const [activeCounts, stepCounts] = await Promise.all([
+      db.select({ sequenceId: emailSequenceEnrollments.sequenceId, cnt: count() })
+        .from(emailSequenceEnrollments)
+        .where(eq(emailSequenceEnrollments.status, 'active'))
+        .groupBy(emailSequenceEnrollments.sequenceId),
+      db.select({ sequenceId: emailSequenceSteps.sequenceId, cnt: count() })
+        .from(emailSequenceSteps)
+        .groupBy(emailSequenceSteps.sequenceId),
+    ]);
+    const activeMap = new Map(activeCounts.map(r => [r.sequenceId, Number(r.cnt)]));
+    const stepMap = new Map(stepCounts.map(r => [r.sequenceId, Number(r.cnt)]));
+
+    return sequencesRows.map(s => ({
+      ...s,
+      activeEnrollments: activeMap.get(s.id) ?? 0,
+      stepCount: stepMap.get(s.id) ?? 0,
+    }));
+  }),
+
+  upsertSequence: adminProcedure
+    .input(z.object({
+      id: z.number().optional(),
+      name: z.string().min(1).max(200),
+      description: z.string().max(2000).optional(),
+      active: z.boolean().optional().default(true),
+    }))
+    .mutation(async ({ input }) => {
+      if (input.id) {
+        const { id, ...data } = input;
+        const [updated] = await db.update(emailSequences)
+          .set({ ...data, updatedAt: new Date() })
+          .where(eq(emailSequences.id, id))
+          .returning();
+        if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'Sequência não encontrada' });
+        return updated;
+      }
+      const [created] = await db.insert(emailSequences).values(input).returning();
+      return created;
+    }),
+
+  deleteSequence: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const [activeRow] = await db.select({ cnt: count() })
+        .from(emailSequenceEnrollments)
+        .where(and(eq(emailSequenceEnrollments.sequenceId, input.id), eq(emailSequenceEnrollments.status, 'active')));
+      if (Number(activeRow?.cnt ?? 0) > 0) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Não é possível excluir: há inscrições ativas nesta sequência. Cancele-as primeiro.' });
+      }
+      await db.delete(emailSequenceSends).where(
+        inArray(emailSequenceSends.enrollmentId,
+          db.select({ id: emailSequenceEnrollments.id }).from(emailSequenceEnrollments).where(eq(emailSequenceEnrollments.sequenceId, input.id)),
+        ),
+      );
+      await db.delete(emailSequenceEnrollments).where(eq(emailSequenceEnrollments.sequenceId, input.id));
+      await db.delete(emailSequenceSteps).where(eq(emailSequenceSteps.sequenceId, input.id));
+      await db.delete(emailSequences).where(eq(emailSequences.id, input.id));
+      return { ok: true };
+    }),
+
+  // ── Passos da sequência ───────────────────────────────────────────────────
+  listSequenceSteps: adminProcedure
+    .input(z.object({ sequenceId: z.number() }))
+    .query(async ({ input }) => {
+      return db.select().from(emailSequenceSteps)
+        .where(eq(emailSequenceSteps.sequenceId, input.sequenceId))
+        .orderBy(asc(emailSequenceSteps.stepOrder));
+    }),
+
+  upsertSequenceStep: adminProcedure
+    .input(z.object({
+      id: z.number().optional(),
+      sequenceId: z.number(),
+      stepOrder: z.number().int().min(1),
+      delayDays: z.number().int().min(0),
+      subject: z.string().min(1).max(300),
+      htmlBody: z.string().min(1),
+    }))
+    .mutation(async ({ input }) => {
+      if (input.id) {
+        const { id, ...data } = input;
+        const [updated] = await db.update(emailSequenceSteps)
+          .set(data)
+          .where(eq(emailSequenceSteps.id, id))
+          .returning();
+        if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'Passo não encontrado' });
+        return updated;
+      }
+      const [created] = await db.insert(emailSequenceSteps).values(input).returning();
+      return created;
+    }),
+
+  deleteSequenceStep: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.delete(emailSequenceSteps).where(eq(emailSequenceSteps.id, input.id));
+      return { ok: true };
+    }),
+
+  // ── Inscrição manual de leads ────────────────────────────────────────────
+  enrollTasksInSequence: adminProcedure
+    .input(z.object({ sequenceId: z.number(), taskIds: z.array(z.number()).min(1) }))
+    .mutation(async ({ input }) => {
+      const [sequence] = await db.select().from(emailSequences).where(eq(emailSequences.id, input.sequenceId));
+      if (!sequence) throw new TRPCError({ code: 'NOT_FOUND', message: 'Sequência não encontrada' });
+
+      const sellerRows = await db.select({ name: sellers.name, email: sellers.email }).from(sellers);
+      const sellerMap = new Map(sellerRows.map(s => [s.name.toLowerCase(), s.email]));
+
+      const taskRows = await db.select({ id: tasks.id, email: tasks.email, title: tasks.title, assignedTo: tasks.assignedTo })
+        .from(tasks).where(inArray(tasks.id, input.taskIds));
+
+      let enrolled = 0;
+      let skippedNoEmail = 0;
+      let skippedDuplicateOrSuppressed = 0;
+
+      for (const t of taskRows) {
+        if (!t.email) { skippedNoEmail++; continue; }
+        const result = await enrollInSequence(input.sequenceId, {
+          email: t.email,
+          name: firstPart(t.title),
+          replyTo: t.assignedTo ? sellerMap.get(t.assignedTo.toLowerCase()) : undefined,
+          taskId: t.id,
+        });
+        if (result.enrolled) enrolled++;
+        else skippedDuplicateOrSuppressed++;
+      }
+
+      return { enrolled, skippedNoEmail, skippedDuplicateOrSuppressed };
+    }),
+
+  // ── Inscrições ────────────────────────────────────────────────────────────
+  listEnrollments: adminProcedure
+    .input(z.object({
+      sequenceId: z.number(),
+      status: z.enum(['active', 'paused', 'completed', 'cancelled']).optional(),
+      limit: z.number().int().min(1).max(500).optional().default(100),
+      offset: z.number().int().min(0).optional().default(0),
+    }))
+    .query(async ({ input }) => {
+      const conditions = [eq(emailSequenceEnrollments.sequenceId, input.sequenceId)];
+      if (input.status) conditions.push(eq(emailSequenceEnrollments.status, input.status));
+
+      const [rows, totalRow] = await Promise.all([
+        db.select().from(emailSequenceEnrollments)
+          .where(and(...conditions))
+          .orderBy(desc(emailSequenceEnrollments.enrolledAt))
+          .limit(input.limit)
+          .offset(input.offset),
+        db.select({ cnt: count() }).from(emailSequenceEnrollments).where(and(...conditions)),
+      ]);
+
+      return { rows, total: Number(totalRow[0]?.cnt ?? 0) };
+    }),
+
+  pauseEnrollment: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const [updated] = await db.update(emailSequenceEnrollments)
+        .set({ status: 'paused', updatedAt: new Date() })
+        .where(eq(emailSequenceEnrollments.id, input.id))
+        .returning();
+      if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'Inscrição não encontrada' });
+      return updated;
+    }),
+
+  resumeEnrollment: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const [enrollment] = await db.select().from(emailSequenceEnrollments).where(eq(emailSequenceEnrollments.id, input.id));
+      if (!enrollment) throw new TRPCError({ code: 'NOT_FOUND', message: 'Inscrição não encontrada' });
+
+      // Recompute nextSendAt from the current step so a long pause doesn't
+      // cause a flood of overdue sends the moment it's resumed.
+      const steps = await db.select({ delayDays: emailSequenceSteps.delayDays })
+        .from(emailSequenceSteps)
+        .where(eq(emailSequenceSteps.sequenceId, enrollment.sequenceId))
+        .orderBy(asc(emailSequenceSteps.stepOrder));
+
+      const now = new Date();
+      const hasNextStep = enrollment.currentStep < steps.length;
+      const nextSendAt = hasNextStep ? now : null;
+      const status = hasNextStep ? 'active' : 'completed';
+
+      const [updated] = await db.update(emailSequenceEnrollments)
+        .set({ status, nextSendAt, updatedAt: now })
+        .where(eq(emailSequenceEnrollments.id, input.id))
+        .returning();
+      return updated;
+    }),
+
+  cancelEnrollment: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const [updated] = await db.update(emailSequenceEnrollments)
+        .set({ status: 'cancelled', nextSendAt: null, updatedAt: new Date() })
+        .where(eq(emailSequenceEnrollments.id, input.id))
+        .returning();
+      if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'Inscrição não encontrada' });
+      return updated;
+    }),
+
+  // ── Automações ────────────────────────────────────────────────────────────
+  listAutomationRules: adminProcedure.query(async () => {
+    return db.select().from(automationRules).orderBy(desc(automationRules.createdAt));
+  }),
+
+  upsertAutomationRule: adminProcedure
+    .input(z.object({
+      id: z.number().optional(),
+      name: z.string().min(1).max(200),
+      triggerType: z.enum(['lead_created', 'lead_converted', 'inactive_days']),
+      triggerConfig: z.record(z.any()).optional(),
+      actionType: z.enum(['enroll_sequence', 'add_tag']),
+      actionConfig: z.record(z.any()),
+      active: z.boolean().optional().default(true),
+    }))
+    .mutation(async ({ input }) => {
+      const data = {
+        name: input.name,
+        triggerType: input.triggerType,
+        triggerConfig: input.triggerConfig ? JSON.stringify(input.triggerConfig) : null,
+        actionType: input.actionType,
+        actionConfig: JSON.stringify(input.actionConfig),
+        active: input.active,
+      };
+      if (input.id) {
+        const [updated] = await db.update(automationRules)
+          .set({ ...data, updatedAt: new Date() })
+          .where(eq(automationRules.id, input.id))
+          .returning();
+        if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'Regra não encontrada' });
+        return updated;
+      }
+      const [created] = await db.insert(automationRules).values(data).returning();
+      return created;
+    }),
+
+  deleteAutomationRule: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.delete(automationRules).where(eq(automationRules.id, input.id));
+      return { ok: true };
+    }),
+
+  // ── Estatísticas ──────────────────────────────────────────────────────────
+  campaignStats: adminProcedure
+    .input(z.object({ campaignId: z.number() }))
+    .query(async ({ input }) => {
+      const result = await db.execute<{ event_type: string; cnt: number }>(sql`
+        SELECT e.event_type, COUNT(*)::int AS cnt
+        FROM ${emailEvents} e
+        INNER JOIN ${emailCampaignRecipients} r ON r.message_id = e.message_id
+        WHERE r.campaign_id = ${input.campaignId}
+        GROUP BY e.event_type
+      `);
+      const counts: Record<string, number> = {};
+      for (const row of result.rows) counts[row.event_type] = Number(row.cnt);
+      return {
+        delivered: counts.delivered ?? 0,
+        opened: counts.opened ?? 0,
+        clicked: counts.clicked ?? 0,
+        bounced: counts.bounced ?? 0,
+        complained: counts.complained ?? 0,
+      };
+    }),
+
+  sequenceStats: adminProcedure
+    .input(z.object({ sequenceId: z.number() }))
+    .query(async ({ input }) => {
+      const steps = await db.select().from(emailSequenceSteps)
+        .where(eq(emailSequenceSteps.sequenceId, input.sequenceId))
+        .orderBy(asc(emailSequenceSteps.stepOrder));
+      if (steps.length === 0) return [];
+
+      const result = await db.execute<{ step_id: number; sent: number; opened: number; clicked: number }>(sql`
+        SELECT
+          s.step_id,
+          COUNT(*) FILTER (WHERE s.status = 'sent')::int AS sent,
+          COUNT(DISTINCT e_opened.id)::int AS opened,
+          COUNT(DISTINCT e_clicked.id)::int AS clicked
+        FROM ${emailSequenceSends} s
+        LEFT JOIN ${emailEvents} e_opened
+          ON e_opened.message_id = s.message_id AND e_opened.event_type = 'opened'
+        LEFT JOIN ${emailEvents} e_clicked
+          ON e_clicked.message_id = s.message_id AND e_clicked.event_type = 'clicked'
+        WHERE s.step_id IN (${sql.join(steps.map(st => sql`${st.id}`), sql`, `)})
+        GROUP BY s.step_id
+      `);
+      const statsMap = new Map(result.rows.map(r => [Number(r.step_id), { sent: Number(r.sent), opened: Number(r.opened), clicked: Number(r.clicked) }]));
+
+      return steps.map(step => ({
+        stepId: step.id,
+        stepOrder: step.stepOrder,
+        delayDays: step.delayDays,
+        subject: step.subject,
+        ...(statsMap.get(step.id) ?? { sent: 0, opened: 0, clicked: 0 }),
+      }));
+    }),
+
+  overviewStats: adminProcedure.query(async () => {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const [campaignSentRow] = await db.select({ cnt: count() })
+      .from(emailCampaignRecipients)
+      .where(and(eq(emailCampaignRecipients.status, 'sent'), gte(emailCampaignRecipients.sentAt, thirtyDaysAgo)));
+
+    const [sequenceSentRow] = await db.select({ cnt: count() })
+      .from(emailSequenceSends)
+      .where(and(eq(emailSequenceSends.status, 'sent'), gte(emailSequenceSends.sentAt, thirtyDaysAgo)));
+
+    const eventCountsResult = await db.execute<{ event_type: string; cnt: number }>(sql`
+      SELECT event_type, COUNT(*)::int AS cnt
+      FROM ${emailEvents}
+      WHERE created_at >= ${thirtyDaysAgo}
+      GROUP BY event_type
+    `);
+    const eventCounts: Record<string, number> = {};
+    for (const row of eventCountsResult.rows) eventCounts[row.event_type] = Number(row.cnt);
+
+    const [unsubRow] = await db.select({ cnt: count() })
+      .from(emailSuppressions)
+      .where(and(eq(emailSuppressions.reason, 'unsubscribe'), gte(emailSuppressions.createdAt, thirtyDaysAgo)));
+
+    const totalSent = Number(campaignSentRow?.cnt ?? 0) + Number(sequenceSentRow?.cnt ?? 0);
+    const opened = eventCounts.opened ?? 0;
+    const clicked = eventCounts.clicked ?? 0;
+
+    // Quota usada hoje: soma de email_send_counters de hoje, sobre nº de contas * limite diário
+    const today = new Date().toISOString().slice(0, 10);
+    const countersToday = await db.select({ accountKey: emailSendCounters.accountKey, sent: emailSendCounters.sent })
+      .from(emailSendCounters)
+      .where(eq(emailSendCounters.day, today));
+    const usedToday = countersToday.reduce((sum, c) => sum + (c.sent ?? 0), 0);
+    const accountCount = Math.max(1, countersToday.length || 1);
+    const quotaToday = accountCount * MKT_DAILY_LIMIT;
+
+    return {
+      totalSent30d: totalSent,
+      campaignSent30d: Number(campaignSentRow?.cnt ?? 0),
+      sequenceSent30d: Number(sequenceSentRow?.cnt ?? 0),
+      openRate: totalSent > 0 ? opened / totalSent : 0,
+      clickRate: totalSent > 0 ? clicked / totalSent : 0,
+      unsubscribed30d: Number(unsubRow?.cnt ?? 0),
+      quotaUsedToday: usedToday,
+      quotaTotalToday: quotaToday,
+    };
+  }),
+
+  // ── Engajamento por lead (usado na tela de Tarefas) ──────────────────────
+  // Single batched query — no N+1: for each taskId, aggregates opens/clicks
+  // from email_events joined via message_id with both email_campaign_recipients
+  // and email_sequence_sends (via email_sequence_enrollments).
+  engagementByTaskIds: protectedProcedure
+    .input(z.object({ taskIds: z.array(z.number()).max(500) }))
+    .query(async ({ input }) => {
+      if (input.taskIds.length === 0) return {};
+
+      const result = await db.execute<{ task_id: number; opens: number; clicks: number; last_event_at: string }>(sql`
+        WITH msgs AS (
+          SELECT task_id, message_id FROM ${emailCampaignRecipients}
+          WHERE task_id IN (${sql.join(input.taskIds.map(id => sql`${id}`), sql`, `)})
+            AND message_id IS NOT NULL
+          UNION ALL
+          SELECT en.task_id, sd.message_id
+          FROM ${emailSequenceSends} sd
+          INNER JOIN ${emailSequenceEnrollments} en ON en.id = sd.enrollment_id
+          WHERE en.task_id IN (${sql.join(input.taskIds.map(id => sql`${id}`), sql`, `)})
+            AND sd.message_id IS NOT NULL
+        )
+        SELECT
+          m.task_id,
+          COUNT(*) FILTER (WHERE e.event_type = 'opened')::int AS opens,
+          COUNT(*) FILTER (WHERE e.event_type = 'clicked')::int AS clicks,
+          MAX(e.created_at) AS last_event_at
+        FROM msgs m
+        INNER JOIN ${emailEvents} e ON e.message_id = m.message_id
+        GROUP BY m.task_id
+      `);
+
+      const out: Record<number, { opens: number; clicks: number; lastEventAt: string | null }> = {};
+      for (const row of result.rows) {
+        out[Number(row.task_id)] = {
+          opens: Number(row.opens),
+          clicks: Number(row.clicks),
+          lastEventAt: row.last_event_at ?? null,
+        };
+      }
+      return out;
     }),
 });

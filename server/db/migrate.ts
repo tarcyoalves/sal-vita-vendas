@@ -241,6 +241,84 @@ export async function ensureTablesExist() {
   await sql`CREATE INDEX IF NOT EXISTS email_recipients_campaign_idx ON email_campaign_recipients(campaign_id, status)`;
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS email_counter_key_day_idx ON email_send_counters(account_key, day)`;
 
+  // ── E-mail Marketing Fase 2 — Sequências, Automações, Tags, Eventos ────────
+  await sql`
+    CREATE TABLE IF NOT EXISTS email_sequences (
+      id         SERIAL PRIMARY KEY,
+      name       TEXT NOT NULL,
+      description TEXT,
+      active     BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS email_sequence_steps (
+      id          SERIAL PRIMARY KEY,
+      sequence_id INTEGER NOT NULL,
+      step_order  INTEGER NOT NULL,
+      delay_days  INTEGER NOT NULL,
+      subject     TEXT NOT NULL,
+      html_body   TEXT NOT NULL,
+      created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS email_sequence_enrollments (
+      id           SERIAL PRIMARY KEY,
+      sequence_id  INTEGER NOT NULL,
+      email        TEXT NOT NULL,
+      name         TEXT,
+      reply_to     TEXT,
+      task_id      INTEGER,
+      current_step INTEGER NOT NULL DEFAULT 0,
+      status       TEXT NOT NULL DEFAULT 'active',
+      unsub_token  TEXT NOT NULL,
+      enrolled_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      next_send_at TIMESTAMP,
+      updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS email_sequence_sends (
+      id            SERIAL PRIMARY KEY,
+      enrollment_id INTEGER NOT NULL,
+      step_id       INTEGER NOT NULL,
+      status        TEXT NOT NULL DEFAULT 'sent',
+      account_key   TEXT,
+      message_id    TEXT,
+      error         TEXT,
+      sent_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS email_events (
+      id              SERIAL PRIMARY KEY,
+      message_id      TEXT NOT NULL,
+      recipient_email TEXT NOT NULL,
+      event_type      TEXT NOT NULL,
+      created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS automation_rules (
+      id             SERIAL PRIMARY KEY,
+      name           TEXT NOT NULL,
+      trigger_type   TEXT NOT NULL,
+      trigger_config TEXT,
+      action_type    TEXT NOT NULL,
+      action_config  TEXT NOT NULL,
+      active         BOOLEAN NOT NULL DEFAULT true,
+      created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `;
+
   // ── Incremental migrations (always run, idempotent) ───────────────────────
   await sql`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS assigned_to       TEXT`;
   await sql`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS order_value        NUMERIC(10,2)`;
@@ -256,6 +334,7 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS converted_at       TIMESTAMP`;
   await sql`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS contact_count      INTEGER NOT NULL DEFAULT 0`;
   await sql`ALTER TABLE clients   ADD COLUMN IF NOT EXISTS unsubscribed       BOOLEAN NOT NULL DEFAULT false`;
+  await sql`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS tags               TEXT[] NOT NULL DEFAULT '{}'`;
 
   // Backfill: extract the first e-mail found in tasks.notes for tasks that don't have one yet
   await sql`
@@ -278,6 +357,15 @@ export async function ensureTablesExist() {
   await sql`CREATE INDEX IF NOT EXISTS knowledge_docs_user_id_idx  ON knowledge_documents(user_id)`;
   await sql`CREATE INDEX IF NOT EXISTS sellers_status_idx          ON sellers(status)`;
   await sql`CREATE INDEX IF NOT EXISTS sellers_user_id_idx         ON sellers(user_id)`;
+
+  // ── E-mail Marketing Fase 2 indexes ─────────────────────────────────────────
+  await sql`CREATE INDEX IF NOT EXISTS tasks_tags_idx ON tasks USING GIN (tags)`;
+  await sql`CREATE INDEX IF NOT EXISTS email_seq_steps_seq_idx ON email_sequence_steps(sequence_id, step_order)`;
+  await sql`CREATE INDEX IF NOT EXISTS email_seq_enroll_due_idx ON email_sequence_enrollments(status, next_send_at)`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS email_seq_enroll_unique_idx ON email_sequence_enrollments(sequence_id, email)`;
+  await sql`CREATE INDEX IF NOT EXISTS email_seq_sends_enrollment_idx ON email_sequence_sends(enrollment_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS email_events_message_idx ON email_events(message_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS email_events_created_idx ON email_events(created_at)`;
 
   // Purge old data to stay within Neon free-tier limits (512 MB storage, ~5 GB transfer/month)
   // Chat: keep only today's messages — each session starts fresh, old history wastes storage+transfer
