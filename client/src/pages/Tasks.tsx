@@ -168,7 +168,6 @@ export default function Tasks() {
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
   const [convertModalTask, setConvertModalTask] = useState<Task | null>(null);
-  const [orderValueInput, setOrderValueInput] = useState("");
   // ID da tarefa mais urgente a destacar após salvar
   const [highlightTaskId, setHighlightTaskId] = useState<number | null>(null);
   // Ref para controlar alerta de ociosidade (último contato feito)
@@ -460,14 +459,8 @@ export default function Tasks() {
 
   const confirmConvert = async () => {
     if (!convertModalTask) return;
-    const trimmed = orderValueInput.trim().replace(',', '.');
-    const orderValue = trimmed ? Number(trimmed) : undefined;
-    if (trimmed && (isNaN(orderValue!) || orderValue! < 0)) {
-      toast.error("Valor da venda inválido");
-      return;
-    }
     try {
-      await toggleConvertedMutation.mutateAsync({ id: convertModalTask.id, converted: true, ...(orderValue !== undefined ? { orderValue } : {}) });
+      await toggleConvertedMutation.mutateAsync({ id: convertModalTask.id, converted: true });
       toast.success("🎉 Cliente marcado como ativo!");
       setConvertModalTask(null);
       refetch();
@@ -1180,7 +1173,6 @@ export default function Tasks() {
                     Criada: {new Date(task.createdAt).toLocaleDateString("pt-BR")}
                     {!!task.contactCount && ` · 📞 ${task.contactCount} contato(s)`}
                     {task.convertedAt && ` · 🎉 Cliente ativo desde ${new Date(task.convertedAt).toLocaleDateString("pt-BR")}`}
-                    {task.orderValue && ` · 💰 R$ ${Number(task.orderValue).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
                   </p>
                   {aiSuggestion?.taskId === task.id && (
                     <div className="text-sm bg-purple-50 p-2 rounded border border-purple-200">
@@ -1291,26 +1283,10 @@ export default function Tasks() {
       {convertModalTask && (
         <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
-            <div className="text-center mb-4">
+            <div className="text-center mb-5">
               <div className="text-4xl mb-2">🎉</div>
               <h3 className="text-base font-bold text-gray-800">Marcar como Cliente Ativo</h3>
               <p className="text-sm text-gray-500 mt-1">{convertModalTask.title}</p>
-            </div>
-            <div className="mb-5">
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Valor da venda (R$) <span className="text-gray-400 font-normal">(opcional)</span>
-              </label>
-              <input
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="0.01"
-                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
-                placeholder="Ex: 299.90"
-                value={orderValueInput}
-                onChange={e => setOrderValueInput(e.target.value)}
-                autoFocus
-              />
             </div>
             <div className="flex gap-3">
               <button

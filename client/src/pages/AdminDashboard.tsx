@@ -25,7 +25,6 @@ import {
   Phone,
   RefreshCw,
   NotebookPen,
-  DollarSign,
   Download,
 } from "lucide-react";
 import AttendantDetailModal from '../components/AttendantDetailModal';
@@ -276,12 +275,6 @@ export default function AdminDashboard() {
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   }).length;
 
-  // ── Faturamento e ticket médio (a partir do valor de venda informado na conversão) ──
-  const tasksWithRevenue = convertedTasks.filter(t => t.orderValue != null && !isNaN(Number(t.orderValue)));
-  const totalRevenue = tasksWithRevenue.reduce((sum, t) => sum + Number(t.orderValue), 0);
-  const avgTicket = tasksWithRevenue.length > 0 ? totalRevenue / tasksWithRevenue.length : 0;
-  const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-
   // ── Funil de conversão: total de leads → contatados → convertidos ──────────
   const contactedTasks = (tasks as any[]).filter(t => t.lastContactedAt);
   const funnel = {
@@ -336,8 +329,7 @@ export default function AdminDashboard() {
     // Taxa de leads perdidos: cancelados em relação ao que já teve um desfecho (convertido ou cancelado)
     const decided = mineConverted + mineCancelled;
     const lostRate = decided > 0 ? Math.round((mineCancelled / decided) * 100) : 0;
-    const myRevenue = mineConvertedTasks.reduce((acc, t) => acc + (t.orderValue != null && !isNaN(Number(t.orderValue)) ? Number(t.orderValue) : 0), 0);
-    return { name: seller.name, total: minePending, converted: mineConverted, rate, myAvgContacts, cancelled: mineCancelled, lostRate, myRevenue };
+    return { name: seller.name, total: minePending, converted: mineConverted, rate, myAvgContacts, cancelled: mineCancelled, lostRate };
   }).filter(r => r.total > 0).sort((a, b) => b.converted - a.converted || b.rate - a.rate);
 
   // ── Tendência semanal de conversões (últimas 8 semanas, agrupado por convertedAt) ──
@@ -443,15 +435,6 @@ export default function AdminDashboard() {
       value: convertedCount,
       sub: `${conversionRate}% taxa · ${convertedThisMonth} este mês · ~${avgContactsToConvert} contatos p/ converter`,
       icon: <span className="text-[22px]">🎉</span>,
-      color: "text-emerald-600",
-      bg: "bg-emerald-50",
-      border: "border-emerald-100",
-    },
-    {
-      label: "Faturamento",
-      value: fmtBRL(totalRevenue),
-      sub: tasksWithRevenue.length > 0 ? `ticket médio: ${fmtBRL(avgTicket)}` : "sem vendas com valor informado",
-      icon: <DollarSign size={22} />,
       color: "text-emerald-600",
       bg: "bg-emerald-50",
       border: "border-emerald-100",
@@ -656,8 +639,8 @@ export default function AdminDashboard() {
                   <button
                     onClick={() => exportCsv(
                       `ranking-conversao-${new Date().toISOString().slice(0, 10)}.csv`,
-                      ['Atendente', 'Total leads', 'Convertidos', 'Taxa (%)', 'Contatos médios/venda', 'Faturamento (R$)', 'Perdidos', 'Taxa perdidos (%)'],
-                      conversionRanking.map(r => [r.name, r.total, r.converted, r.rate, r.myAvgContacts, r.myRevenue.toFixed(2), r.cancelled, r.lostRate])
+                      ['Atendente', 'Total leads', 'Convertidos', 'Taxa (%)', 'Contatos médios/venda', 'Perdidos', 'Taxa perdidos (%)'],
+                      conversionRanking.map(r => [r.name, r.total, r.converted, r.rate, r.myAvgContacts, r.cancelled, r.lostRate])
                     )}
                     className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-emerald-600 transition"
                     title="Exportar CSV"
@@ -678,7 +661,6 @@ export default function AdminDashboard() {
                       </div>
                       <div className="flex items-center gap-3 pl-6 mt-0.5 text-[10px] text-gray-400">
                         {r.myAvgContacts > 0 && <span>📞 ~{r.myAvgContacts} contatos/venda</span>}
-                        {r.myRevenue > 0 && <span className="text-emerald-600">💰 {fmtBRL(r.myRevenue)}</span>}
                         {r.cancelled > 0 && <span className={r.lostRate >= 50 ? 'text-red-500' : ''}>❌ {r.cancelled} perdido(s) ({r.lostRate}%)</span>}
                       </div>
                     </div>
