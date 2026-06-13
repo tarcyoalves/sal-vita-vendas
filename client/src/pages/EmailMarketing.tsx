@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import type { ReactNode } from "react";
 import { useAuth } from "../_core/hooks/useAuth";
 import { trpc } from "../lib/trpc";
 import { toast } from "sonner";
@@ -20,7 +21,11 @@ import {
   Tabs, TabsContent, TabsList, TabsTrigger,
 } from "../components/ui/tabs";
 import { Checkbox } from "../components/ui/checkbox";
-import { Mail, Plus, Send, Trash2, Eye, Pencil, Workflow, Zap, Tag, BarChart3, Users, Pause, Play, X, Download } from "lucide-react";
+import {
+  Mail, Plus, Send, Trash2, Eye, Pencil, Workflow, Zap, Tag, BarChart3, Users, Pause, Play, X, Download,
+  LayoutTemplate, MailX, Filter, Sparkles, Inbox,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 type Source = "leads" | "clients" | "both";
 
@@ -28,12 +33,6 @@ const STATUS_LABELS: Record<string, string> = {
   draft: "Rascunho",
   sending: "Enviando",
   sent: "Enviado",
-};
-
-const STATUS_VARIANTS: Record<string, "secondary" | "default" | "outline"> = {
-  draft: "secondary",
-  sending: "default",
-  sent: "outline",
 };
 
 const RECIPIENT_STATUS_LABELS: Record<string, string> = {
@@ -83,13 +82,6 @@ const ENROLLMENT_STATUS_LABELS: Record<string, string> = {
   cancelled: "Cancelada",
 };
 
-const ENROLLMENT_STATUS_VARIANTS: Record<string, "secondary" | "default" | "outline" | "destructive"> = {
-  active: "default",
-  paused: "secondary",
-  completed: "outline",
-  cancelled: "destructive",
-};
-
 const TRIGGER_TYPE_LABELS: Record<string, string> = {
   lead_created: "Novo lead criado",
   lead_converted: "Lead convertido em cliente",
@@ -100,6 +92,57 @@ const ACTION_TYPE_LABELS: Record<string, string> = {
   enroll_sequence: "Inscrever em sequência",
   add_tag: "Adicionar tag",
 };
+
+// Vivid color treatments layered on top of the base badge variants, keyed by status value.
+const STATUS_BADGE_CLASS: Record<string, string> = {
+  draft: "bg-slate-100 text-slate-600 border-slate-200",
+  sending: "bg-amber-100 text-amber-700 border-amber-200",
+  sent: "bg-emerald-100 text-emerald-700 border-emerald-200",
+};
+
+const RECIPIENT_STATUS_BADGE_CLASS: Record<string, string> = {
+  pending: "bg-slate-100 text-slate-600 border-slate-200",
+  sent: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  failed: "bg-red-100 text-red-700 border-red-200",
+  skipped: "bg-slate-100 text-slate-500 border-slate-200",
+};
+
+const ENROLLMENT_STATUS_BADGE_CLASS: Record<string, string> = {
+  active: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  paused: "bg-amber-100 text-amber-700 border-amber-200",
+  completed: "bg-blue-100 text-blue-700 border-blue-200",
+  cancelled: "bg-red-100 text-red-700 border-red-200",
+};
+
+// Shared table chrome classes used across every list/table in this page.
+const THEAD_CLASS = "bg-slate-50 border-b border-slate-200";
+const TH_CLASS = "px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500";
+const TR_CLASS = "border-b border-slate-100 hover:bg-blue-50/50 transition-colors";
+
+// Friendly placeholder shown when a table/list has no rows yet.
+function EmptyState({ icon: Icon, message }: { icon: LucideIcon; message: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 py-10 px-4 text-center">
+      <Icon size={28} className="text-slate-300" />
+      <p className="text-sm text-slate-500 max-w-sm">{message}</p>
+    </div>
+  );
+}
+
+// Small stat tile with an icon accent, used in stat grids and detail dialogs.
+function StatTile({ icon: Icon, label, value, accent }: { icon: LucideIcon; label: string; value: ReactNode; accent: string }) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+      <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg ${accent}`}>
+        <Icon size={16} />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] uppercase tracking-wide text-slate-400">{label}</p>
+        <p className="text-lg font-bold text-slate-800 truncate">{value}</p>
+      </div>
+    </div>
+  );
+}
 
 function formatDateTime(value: string | Date | null | undefined): string {
   if (!value) return "--";
@@ -138,23 +181,56 @@ export default function EmailMarketing() {
     return <div className="p-4">Acesso negado</div>;
   }
 
+  const TAB_TRIGGER_CLASS =
+    "gap-1.5 rounded-xl px-3 py-2 text-slate-500 data-[state=active]:bg-blue-900 data-[state=active]:text-white data-[state=active]:shadow-md";
+
   return (
     <div className="p-4 md:p-6 space-y-4 md:space-y-6">
-      <div className="flex items-center gap-3 pb-4 border-b">
-        <Mail className="text-blue-900" size={28} />
-        <h1 className="text-xl md:text-3xl font-bold text-blue-900">E-mail Marketing</h1>
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-950 via-blue-900 to-blue-800 px-5 py-5 md:px-7 md:py-6 text-white shadow-lg">
+        <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-white/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-16 left-1/4 h-48 w-48 rounded-full bg-sky-400/10 blur-3xl" />
+        <div className="relative flex items-center gap-3 md:gap-4">
+          <div className="flex h-11 w-11 md:h-14 md:w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/20">
+            <Mail size={26} />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg md:text-2xl font-bold tracking-tight">E-mail Marketing</h1>
+              <Sparkles size={16} className="text-sky-300 hidden sm:block" />
+            </div>
+            <p className="text-xs md:text-sm text-blue-200/80 mt-0.5">
+              Campanhas, sequências automáticas e automações para nutrir e converter leads
+            </p>
+          </div>
+        </div>
       </div>
 
       <Tabs defaultValue="campaigns">
-        <TabsList className="flex-wrap h-auto">
-          <TabsTrigger value="campaigns">Campanhas</TabsTrigger>
-          <TabsTrigger value="sequences">Sequências</TabsTrigger>
-          <TabsTrigger value="automations">Automações</TabsTrigger>
-          <TabsTrigger value="templates">Templates</TabsTrigger>
-          <TabsTrigger value="tags">Tags</TabsTrigger>
-          <TabsTrigger value="suppressions">Descadastrados</TabsTrigger>
-          <TabsTrigger value="export">Exportar</TabsTrigger>
-          <TabsTrigger value="stats">Estatísticas</TabsTrigger>
+        <TabsList className="flex-wrap h-auto justify-start gap-1 rounded-2xl bg-slate-100 p-1.5">
+          <TabsTrigger value="campaigns" className={TAB_TRIGGER_CLASS}>
+            <Send size={14} /> Campanhas
+          </TabsTrigger>
+          <TabsTrigger value="sequences" className={TAB_TRIGGER_CLASS}>
+            <Workflow size={14} /> Sequências
+          </TabsTrigger>
+          <TabsTrigger value="automations" className={TAB_TRIGGER_CLASS}>
+            <Zap size={14} /> Automações
+          </TabsTrigger>
+          <TabsTrigger value="templates" className={TAB_TRIGGER_CLASS}>
+            <LayoutTemplate size={14} /> Templates
+          </TabsTrigger>
+          <TabsTrigger value="tags" className={TAB_TRIGGER_CLASS}>
+            <Tag size={14} /> Tags
+          </TabsTrigger>
+          <TabsTrigger value="suppressions" className={TAB_TRIGGER_CLASS}>
+            <MailX size={14} /> Descadastrados
+          </TabsTrigger>
+          <TabsTrigger value="export" className={TAB_TRIGGER_CLASS}>
+            <Download size={14} /> Exportar
+          </TabsTrigger>
+          <TabsTrigger value="stats" className={TAB_TRIGGER_CLASS}>
+            <BarChart3 size={14} /> Estatísticas
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="campaigns" className="mt-4">
@@ -276,44 +352,46 @@ function CampaignsTab() {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button onClick={() => setShowCreate(true)}>
+        <Button className="bg-blue-900 hover:bg-blue-800 shadow-sm" onClick={() => setShowCreate(true)}>
           <Plus size={16} className="mr-1" /> Nova Campanha
         </Button>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Campanhas ({campaigns?.length ?? 0})</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Send size={16} className="text-blue-900" /> Campanhas <span className="text-slate-400 font-normal">({campaigns?.length ?? 0})</span>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p>Carregando...</p>
+            <p className="text-sm text-slate-500">Carregando...</p>
           ) : campaigns && campaigns.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-sm min-w-[640px]">
-                <thead className="bg-gray-100">
+                <thead className={THEAD_CLASS}>
                   <tr>
-                    <th className="p-2 text-left">Nome</th>
-                    <th className="p-2 text-left">Status</th>
-                    <th className="p-2 text-left">Destinatários</th>
-                    <th className="p-2 text-left">Enviados</th>
-                    <th className="p-2 text-left">Falhas</th>
-                    <th className="p-2 text-left">Ações</th>
+                    <th className={TH_CLASS}>Nome</th>
+                    <th className={TH_CLASS}>Status</th>
+                    <th className={TH_CLASS}>Destinatários</th>
+                    <th className={TH_CLASS}>Enviados</th>
+                    <th className={TH_CLASS}>Falhas</th>
+                    <th className={TH_CLASS}>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
                   {campaigns.map(c => (
-                    <tr key={c.id} className="border-b hover:bg-gray-50">
-                      <td className="p-2 font-medium">{c.name}</td>
-                      <td className="p-2">
-                        <Badge variant={STATUS_VARIANTS[c.status] ?? "secondary"}>
+                    <tr key={c.id} className={TR_CLASS}>
+                      <td className="px-3 py-2.5 font-medium text-slate-700">{c.name}</td>
+                      <td className="px-3 py-2.5">
+                        <Badge variant="outline" className={STATUS_BADGE_CLASS[c.status] ?? ""}>
                           {STATUS_LABELS[c.status] ?? c.status}
                         </Badge>
                       </td>
-                      <td className="p-2">{c.totalRecipients}</td>
-                      <td className="p-2 text-green-700">{c.sentCount}</td>
-                      <td className="p-2 text-red-600">{c.failedCount}</td>
-                      <td className="p-2">
+                      <td className="px-3 py-2.5">{c.totalRecipients}</td>
+                      <td className="px-3 py-2.5 text-emerald-700 font-medium">{c.sentCount}</td>
+                      <td className="px-3 py-2.5 text-red-600 font-medium">{c.failedCount}</td>
+                      <td className="px-3 py-2.5">
                         <div className="flex gap-1 flex-wrap">
                           <Button size="sm" variant="outline" onClick={() => setDetailCampaignId(c.id)}>
                             <Eye size={14} className="mr-1" /> Ver
@@ -321,6 +399,7 @@ function CampaignsTab() {
                           {c.status !== "sent" && (
                             <Button
                               size="sm"
+                              className="bg-blue-900 hover:bg-blue-800"
                               onClick={() => handleSend(c.id)}
                               disabled={sendingId !== null}
                             >
@@ -347,7 +426,7 @@ function CampaignsTab() {
               </table>
             </div>
           ) : (
-            <p className="text-gray-500 text-sm">Nenhuma campanha criada ainda.</p>
+            <EmptyState icon={Send} message="Nenhuma campanha criada ainda. Clique em “Nova Campanha” para enviar seu primeiro disparo." />
           )}
         </CardContent>
       </Card>
@@ -355,7 +434,12 @@ function CampaignsTab() {
       {/* Create campaign dialog */}
       <Dialog open={showCreate} onOpenChange={(open) => { setShowCreate(open); if (!open) resetForm(); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>📧 Nova Campanha</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Mail size={16} /></span>
+              Nova Campanha
+            </DialogTitle>
+          </DialogHeader>
           <div className="space-y-3">
             <div>
               <Label>Nome da campanha</Label>
@@ -420,19 +504,22 @@ function CampaignsTab() {
               )}
             </div>
 
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-900">
-              📊 Público estimado: <strong>{preview?.count ?? 0}</strong> destinatário(s)
-              {preview?.sample && preview.sample.length > 0 && (
-                <p className="text-xs text-blue-700 mt-1">
-                  Exemplos: {preview.sample.slice(0, 5).map(s => s.name || s.email).join(", ")}
-                  {preview.count > 5 ? "..." : ""}
-                </p>
-              )}
+            <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+              <Users size={18} className="mt-0.5 flex-shrink-0 text-blue-700" />
+              <div>
+                Público estimado: <strong>{preview?.count ?? 0}</strong> destinatário(s)
+                {preview?.sample && preview.sample.length > 0 && (
+                  <p className="text-xs text-blue-700/80 mt-1">
+                    Exemplos: {preview.sample.slice(0, 5).map(s => s.name || s.email).join(", ")}
+                    {preview.count > 5 ? "..." : ""}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
           <DialogFooter className="flex gap-2 pt-2">
-            <Button className="flex-1" onClick={handleCreate} disabled={createMutation.isPending}>
-              {createMutation.isPending ? "Criando..." : "✅ Criar Campanha"}
+            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleCreate} disabled={createMutation.isPending}>
+              {createMutation.isPending ? "Criando..." : "Criar Campanha"}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => { setShowCreate(false); resetForm(); }}>Cancelar</Button>
           </DialogFooter>
@@ -454,54 +541,47 @@ function CampaignDetailDialog({ campaignId, onClose }: { campaignId: number | nu
   return (
     <Dialog open={campaignId !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>{data?.campaign.name ?? "Campanha"}</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Send size={16} /></span>
+            {data?.campaign.name ?? "Campanha"}
+          </DialogTitle>
+        </DialogHeader>
         {data && (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
-              <div className="bg-gray-50 rounded p-2 text-center">
-                <p className="text-gray-500 text-xs">Total</p>
-                <p className="font-bold">{data.campaign.totalRecipients}</p>
-              </div>
-              <div className="bg-green-50 rounded p-2 text-center">
-                <p className="text-gray-500 text-xs">Enviados</p>
-                <p className="font-bold text-green-700">{data.campaign.sentCount}</p>
-              </div>
-              <div className="bg-red-50 rounded p-2 text-center">
-                <p className="text-gray-500 text-xs">Falhas</p>
-                <p className="font-bold text-red-600">{data.campaign.failedCount}</p>
-              </div>
-              <div className="bg-blue-50 rounded p-2 text-center">
-                <p className="text-gray-500 text-xs">Status</p>
-                <p className="font-bold">{STATUS_LABELS[data.campaign.status] ?? data.campaign.status}</p>
-              </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <StatTile icon={Users} label="Total" value={data.campaign.totalRecipients} accent="bg-slate-100 text-slate-600" />
+              <StatTile icon={Send} label="Enviados" value={data.campaign.sentCount} accent="bg-emerald-100 text-emerald-700" />
+              <StatTile icon={X} label="Falhas" value={data.campaign.failedCount} accent="bg-red-100 text-red-600" />
+              <StatTile icon={Mail} label="Status" value={STATUS_LABELS[data.campaign.status] ?? data.campaign.status} accent="bg-blue-100 text-blue-900" />
             </div>
 
-            <div className="border rounded-lg overflow-hidden">
-              <div className="bg-gray-100 p-2 text-xs font-medium text-gray-600">Assunto</div>
-              <div className="p-2 text-sm">{data.campaign.subject}</div>
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="bg-slate-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Assunto</div>
+              <div className="px-3 py-2 text-sm text-slate-700">{data.campaign.subject}</div>
             </div>
 
-            <div className="overflow-x-auto max-h-80">
+            <div className="overflow-x-auto max-h-80 rounded-xl border border-slate-200">
               <table className="w-full text-sm min-w-[480px]">
-                <thead className="bg-gray-100 sticky top-0">
+                <thead className={`${THEAD_CLASS} sticky top-0`}>
                   <tr>
-                    <th className="p-2 text-left">E-mail</th>
-                    <th className="p-2 text-left">Nome</th>
-                    <th className="p-2 text-left">Status</th>
-                    <th className="p-2 text-left">Erro</th>
+                    <th className={TH_CLASS}>E-mail</th>
+                    <th className={TH_CLASS}>Nome</th>
+                    <th className={TH_CLASS}>Status</th>
+                    <th className={TH_CLASS}>Erro</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.recipients.map(r => (
-                    <tr key={r.id} className="border-b">
-                      <td className="p-2">{r.email}</td>
-                      <td className="p-2">{r.name ?? "--"}</td>
-                      <td className="p-2">
-                        <Badge variant={r.status === "sent" ? "outline" : r.status === "failed" ? "destructive" : "secondary"}>
+                    <tr key={r.id} className={TR_CLASS}>
+                      <td className="px-3 py-2.5">{r.email}</td>
+                      <td className="px-3 py-2.5">{r.name ?? "--"}</td>
+                      <td className="px-3 py-2.5">
+                        <Badge variant="outline" className={RECIPIENT_STATUS_BADGE_CLASS[r.status] ?? ""}>
                           {RECIPIENT_STATUS_LABELS[r.status] ?? r.status}
                         </Badge>
                       </td>
-                      <td className="p-2 text-xs text-red-500">{r.error ?? ""}</td>
+                      <td className="px-3 py-2.5 text-xs text-red-500">{r.error ?? ""}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -553,38 +633,44 @@ function TemplatesTab() {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button onClick={() => setEditing({ slug: "", name: "", subject: "", htmlBody: "", active: true })}>
+        <Button className="bg-blue-900 hover:bg-blue-800 shadow-sm" onClick={() => setEditing({ slug: "", name: "", subject: "", htmlBody: "", active: true })}>
           <Plus size={16} className="mr-1" /> Novo Template
         </Button>
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Templates ({templates?.length ?? 0})</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <LayoutTemplate size={16} className="text-blue-900" /> Templates <span className="text-slate-400 font-normal">({templates?.length ?? 0})</span>
+          </CardTitle>
+        </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p>Carregando...</p>
+            <p className="text-sm text-slate-500">Carregando...</p>
           ) : templates && templates.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-sm min-w-[480px]">
-                <thead className="bg-gray-100">
+                <thead className={THEAD_CLASS}>
                   <tr>
-                    <th className="p-2 text-left">Nome</th>
-                    <th className="p-2 text-left">Slug</th>
-                    <th className="p-2 text-left">Assunto</th>
-                    <th className="p-2 text-left">Status</th>
-                    <th className="p-2 text-left">Ações</th>
+                    <th className={TH_CLASS}>Nome</th>
+                    <th className={TH_CLASS}>Slug</th>
+                    <th className={TH_CLASS}>Assunto</th>
+                    <th className={TH_CLASS}>Status</th>
+                    <th className={TH_CLASS}>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
                   {templates.map(t => (
-                    <tr key={t.id} className="border-b hover:bg-gray-50">
-                      <td className="p-2 font-medium">{t.name}</td>
-                      <td className="p-2 text-gray-500 text-xs">{t.slug}</td>
-                      <td className="p-2 text-xs">{t.subject}</td>
-                      <td className="p-2">
-                        <Badge variant={t.active ? "outline" : "secondary"}>{t.active ? "Ativo" : "Inativo"}</Badge>
+                    <tr key={t.id} className={TR_CLASS}>
+                      <td className="px-3 py-2.5 font-medium text-slate-700">{t.name}</td>
+                      <td className="px-3 py-2.5 text-slate-400 text-xs font-mono">{t.slug}</td>
+                      <td className="px-3 py-2.5 text-xs text-slate-500">{t.subject}</td>
+                      <td className="px-3 py-2.5">
+                        <Badge variant="outline" className={t.active ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200"}>
+                          {t.active ? "Ativo" : "Inativo"}
+                        </Badge>
                       </td>
-                      <td className="p-2">
+                      <td className="px-3 py-2.5">
                         <div className="flex gap-1">
                           <Button size="sm" variant="outline" onClick={() => setEditing({ id: t.id, slug: t.slug, name: t.name, subject: t.subject, htmlBody: t.htmlBody, active: t.active })}>
                             <Pencil size={14} />
@@ -600,14 +686,19 @@ function TemplatesTab() {
               </table>
             </div>
           ) : (
-            <p className="text-gray-500 text-sm">Nenhum template cadastrado.</p>
+            <EmptyState icon={LayoutTemplate} message="Nenhum template cadastrado. Crie modelos reutilizáveis para suas campanhas e sequências." />
           )}
         </CardContent>
       </Card>
 
       <Dialog open={editing !== null} onOpenChange={(open) => { if (!open) setEditing(null); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing?.id ? "✏️ Editar Template" : "📄 Novo Template"}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><LayoutTemplate size={16} /></span>
+              {editing?.id ? "Editar Template" : "Novo Template"}
+            </DialogTitle>
+          </DialogHeader>
           {editing && (
             <div className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -632,8 +723,8 @@ function TemplatesTab() {
             </div>
           )}
           <DialogFooter className="flex gap-2 pt-2">
-            <Button className="flex-1" onClick={handleSave} disabled={upsertMutation.isPending}>
-              {upsertMutation.isPending ? "Salvando..." : "✅ Salvar"}
+            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleSave} disabled={upsertMutation.isPending}>
+              {upsertMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => setEditing(null)}>Cancelar</Button>
           </DialogFooter>
@@ -666,41 +757,51 @@ function SuppressionsTab() {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader><CardTitle>Adicionar e-mail manualmente</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MailX size={16} className="text-blue-900" /> Adicionar e-mail manualmente
+          </CardTitle>
+        </CardHeader>
         <CardContent className="flex gap-2">
           <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="email@exemplo.com" type="email" />
-          <Button onClick={handleAdd} disabled={addMutation.isPending}>Adicionar</Button>
+          <Button className="bg-blue-900 hover:bg-blue-800 shadow-sm flex-shrink-0" onClick={handleAdd} disabled={addMutation.isPending}>
+            <Plus size={16} className="mr-1" /> Adicionar
+          </Button>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Descadastrados ({suppressions?.length ?? 0})</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MailX size={16} className="text-blue-900" /> Descadastrados <span className="text-slate-400 font-normal">({suppressions?.length ?? 0})</span>
+          </CardTitle>
+        </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p>Carregando...</p>
+            <p className="text-sm text-slate-500">Carregando...</p>
           ) : suppressions && suppressions.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-sm min-w-[420px]">
-                <thead className="bg-gray-100">
+                <thead className={THEAD_CLASS}>
                   <tr>
-                    <th className="p-2 text-left">E-mail</th>
-                    <th className="p-2 text-left">Motivo</th>
-                    <th className="p-2 text-left">Data</th>
+                    <th className={TH_CLASS}>E-mail</th>
+                    <th className={TH_CLASS}>Motivo</th>
+                    <th className={TH_CLASS}>Data</th>
                   </tr>
                 </thead>
                 <tbody>
                   {suppressions.map(s => (
-                    <tr key={s.id} className="border-b hover:bg-gray-50">
-                      <td className="p-2">{s.email}</td>
-                      <td className="p-2 text-gray-500 text-xs">{s.reason}</td>
-                      <td className="p-2 text-gray-500 text-xs">{new Date(s.createdAt).toLocaleDateString('pt-BR')}</td>
+                    <tr key={s.id} className={TR_CLASS}>
+                      <td className="px-3 py-2.5">{s.email}</td>
+                      <td className="px-3 py-2.5 text-slate-500 text-xs">{s.reason}</td>
+                      <td className="px-3 py-2.5 text-slate-500 text-xs">{new Date(s.createdAt).toLocaleDateString('pt-BR')}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           ) : (
-            <p className="text-gray-500 text-sm">Nenhum e-mail descadastrado.</p>
+            <EmptyState icon={MailX} message="Nenhum e-mail descadastrado por aqui." />
           )}
         </CardContent>
       </Card>
@@ -766,51 +867,55 @@ function SequencesTab() {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button onClick={() => setShowCreate(true)}>
+        <Button className="bg-blue-900 hover:bg-blue-800 shadow-sm" onClick={() => setShowCreate(true)}>
           <Plus size={16} className="mr-1" /> Nova sequência
         </Button>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Sequências ({sequences?.length ?? 0})</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Workflow size={16} className="text-blue-900" /> Sequências <span className="text-slate-400 font-normal">({sequences?.length ?? 0})</span>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p>Carregando...</p>
+            <p className="text-sm text-slate-500">Carregando...</p>
           ) : sequences && sequences.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-sm min-w-[640px]">
-                <thead className="bg-gray-100">
+                <thead className={THEAD_CLASS}>
                   <tr>
-                    <th className="p-2 text-left">Nome</th>
-                    <th className="p-2 text-left">Status</th>
-                    <th className="p-2 text-left">Inscritos ativos</th>
-                    <th className="p-2 text-left">Passos</th>
-                    <th className="p-2 text-left">Ações</th>
+                    <th className={TH_CLASS}>Nome</th>
+                    <th className={TH_CLASS}>Status</th>
+                    <th className={TH_CLASS}>Inscritos ativos</th>
+                    <th className={TH_CLASS}>Passos</th>
+                    <th className={TH_CLASS}>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sequences.map(s => (
-                    <tr key={s.id} className="border-b hover:bg-gray-50">
-                      <td className="p-2 font-medium">
+                    <tr key={s.id} className={TR_CLASS}>
+                      <td className="px-3 py-2.5 font-medium">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <button className="text-left hover:underline" onClick={() => setDetailSequenceId(s.id)}>
+                          <button className="text-left text-slate-700 hover:text-blue-900 hover:underline" onClick={() => setDetailSequenceId(s.id)}>
                             {s.name}
                           </button>
-                          {(s as any).repeat && <Badge variant="outline" className="text-xs">🔁 mensal</Badge>}
+                          {(s as any).repeat && <Badge variant="outline" className="text-xs bg-violet-100 text-violet-700 border-violet-200">🔁 mensal</Badge>}
                         </div>
                         {s.description && <p className="text-xs text-gray-500">{s.description}</p>}
                       </td>
-                      <td className="p-2">
+                      <td className="px-3 py-2.5">
                         <div className="flex items-center gap-2">
                           <Switch checked={s.active} onCheckedChange={(checked) => handleToggleActive(s.id, checked)} />
                           <span className="text-xs text-gray-500">{s.active ? "Ativa" : "Pausada"}</span>
                         </div>
                       </td>
-                      <td className="p-2">{s.activeEnrollments}</td>
-                      <td className="p-2">{s.stepCount}</td>
-                      <td className="p-2">
+                      <td className="px-3 py-2.5">
+                        <Badge variant="outline" className="bg-blue-50 text-blue-900 border-blue-200">{s.activeEnrollments}</Badge>
+                      </td>
+                      <td className="px-3 py-2.5">{s.stepCount}</td>
+                      <td className="px-3 py-2.5">
                         <div className="flex gap-1 flex-wrap">
                           <Button size="sm" variant="outline" onClick={() => setDetailSequenceId(s.id)}>
                             <Eye size={14} className="mr-1" /> Ver
@@ -826,7 +931,7 @@ function SequencesTab() {
               </table>
             </div>
           ) : (
-            <p className="text-gray-500 text-sm">Nenhuma sequência criada ainda.</p>
+            <EmptyState icon={Workflow} message="Nenhuma sequência criada ainda. Crie uma série de e-mails automáticos para nutrir seus leads." />
           )}
         </CardContent>
       </Card>
@@ -834,7 +939,12 @@ function SequencesTab() {
       {/* Create sequence dialog */}
       <Dialog open={showCreate} onOpenChange={(open) => { setShowCreate(open); if (!open) setForm({ name: "", description: "", active: true, repeat: false, repeatIntervalDays: "30" }); }}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>🔁 Nova sequência</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Workflow size={16} /></span>
+              Nova sequência
+            </DialogTitle>
+          </DialogHeader>
           <div className="space-y-3">
             <div>
               <Label>Nome</Label>
@@ -861,8 +971,8 @@ function SequencesTab() {
             {form.repeat && <p className="text-xs text-gray-500">{REPEAT_HINT}</p>}
           </div>
           <DialogFooter className="flex gap-2 pt-2">
-            <Button className="flex-1" onClick={handleCreate} disabled={upsertMutation.isPending}>
-              {upsertMutation.isPending ? "Criando..." : "✅ Criar"}
+            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleCreate} disabled={upsertMutation.isPending}>
+              {upsertMutation.isPending ? "Criando..." : "Criar"}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => setShowCreate(false)}>Cancelar</Button>
           </DialogFooter>
@@ -970,55 +1080,70 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
   return (
     <Dialog open={sequenceId !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>{sequence?.name ?? "Sequência"}</DialogTitle></DialogHeader>
-        {sequence?.description && <p className="text-sm text-gray-500">{sequence.description}</p>}
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Workflow size={16} /></span>
+            {sequence?.name ?? "Sequência"}
+          </DialogTitle>
+        </DialogHeader>
+        {sequence?.description && <p className="text-sm text-gray-500 -mt-1">{sequence.description}</p>}
 
         <div className="space-y-4">
           {/* Steps timeline */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold text-sm">📅 Passos da sequência</h3>
+              <h3 className="font-semibold text-sm flex items-center gap-2 text-slate-700">
+                <Workflow size={14} className="text-blue-900" /> Passos da sequência
+              </h3>
               <Button
                 size="sm"
+                className="bg-blue-900 hover:bg-blue-800"
                 onClick={() => setEditingStep({ stepOrder: (steps?.length ?? 0) + 1, delayDays: 0, subject: "", htmlBody: "", sendCondition: "always" })}
               >
                 <Plus size={14} className="mr-1" /> Adicionar passo
               </Button>
             </div>
             {steps && steps.length > 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-2 relative">
                 {steps.map(step => {
                   const stepStats = statsByStepId.get(step.id);
                   return (
-                    <div key={step.id} className="border rounded-lg p-3 bg-white">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Badge variant="secondary">Dia {step.delayDays}</Badge>
-                            <span className="font-medium text-sm">{step.subject}</span>
-                            {(step as any).sendCondition && (step as any).sendCondition !== 'always' && (
-                              <Badge variant="outline" className="text-xs">{SEND_CONDITION_BADGES[(step as any).sendCondition] ?? (step as any).sendCondition}</Badge>
+                    <div key={step.id} className="flex gap-3">
+                      <div className="flex flex-col items-center pt-3.5 flex-shrink-0">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-900 text-white text-xs font-bold">
+                          {step.stepOrder}
+                        </div>
+                      </div>
+                      <div className="flex-1 border border-slate-200 rounded-xl p-3 bg-white shadow-sm">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Badge variant="outline" className="bg-slate-100 text-slate-600 border-slate-200">Dia {step.delayDays}</Badge>
+                              <span className="font-medium text-sm text-slate-700">{step.subject}</span>
+                              {(step as any).sendCondition && (step as any).sendCondition !== 'always' && (
+                                <Badge variant="outline" className="text-xs bg-amber-100 text-amber-700 border-amber-200">{SEND_CONDITION_BADGES[(step as any).sendCondition] ?? (step as any).sendCondition}</Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                              {step.htmlBody.replace(/<[^>]*>/g, ' ').trim().slice(0, 160)}
+                            </p>
+                            {stepStats && (
+                              <div className="flex gap-1.5 mt-2 flex-wrap">
+                                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">📤 {stepStats.sent} enviados</Badge>
+                                <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">👁 {stepStats.opened} abertos</Badge>
+                                <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200">🔗 {stepStats.clicked} clicados</Badge>
+                                <Badge variant="outline" className="text-xs bg-slate-100 text-slate-500 border-slate-200">⏭ {stepStats.skipped} pulados</Badge>
+                              </div>
                             )}
                           </div>
-                          <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-                            {step.htmlBody.replace(/<[^>]*>/g, ' ').trim().slice(0, 160)}
-                          </p>
-                          {stepStats && (
-                            <div className="flex gap-2 mt-2 flex-wrap">
-                              <Badge variant="outline" className="text-xs">📤 {stepStats.sent} enviados</Badge>
-                              <Badge variant="outline" className="text-xs">👁 {stepStats.opened} abertos</Badge>
-                              <Badge variant="outline" className="text-xs">🔗 {stepStats.clicked} clicados</Badge>
-                              <Badge variant="outline" className="text-xs">⏭ {stepStats.skipped} pulados</Badge>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex gap-1 flex-shrink-0">
-                          <Button size="sm" variant="outline" onClick={() => setEditingStep({ id: step.id, stepOrder: step.stepOrder, delayDays: step.delayDays, subject: step.subject, htmlBody: step.htmlBody, sendCondition: (step as any).sendCondition ?? 'always' })}>
-                            <Pencil size={14} />
-                          </Button>
-                          <Button size="sm" variant="destructive" onClick={() => handleDeleteStep(step.id)}>
-                            <Trash2 size={14} />
-                          </Button>
+                          <div className="flex gap-1 flex-shrink-0">
+                            <Button size="sm" variant="outline" onClick={() => setEditingStep({ id: step.id, stepOrder: step.stepOrder, delayDays: step.delayDays, subject: step.subject, htmlBody: step.htmlBody, sendCondition: (step as any).sendCondition ?? 'always' })}>
+                              <Pencil size={14} />
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => handleDeleteStep(step.id)}>
+                              <Trash2 size={14} />
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1026,14 +1151,16 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                 })}
               </div>
             ) : (
-              <p className="text-gray-500 text-sm">Nenhum passo cadastrado ainda.</p>
+              <EmptyState icon={Workflow} message="Nenhum passo cadastrado ainda. Adicione o primeiro e-mail da sequência." />
             )}
           </div>
 
           {/* Enrollments */}
           <div>
             <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-              <h3 className="font-semibold text-sm">👥 Inscritos ({enrollments?.total ?? 0})</h3>
+              <h3 className="font-semibold text-sm flex items-center gap-2 text-slate-700">
+                <Users size={14} className="text-blue-900" /> Inscritos <span className="text-slate-400 font-normal">({enrollments?.total ?? 0})</span>
+              </h3>
               <div className="flex items-center gap-2">
                 <Select value={enrollStatus ?? "__all__"} onValueChange={(v) => { setEnrollStatus(v === "__all__" ? undefined : v as any); setPage(0); }}>
                   <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
@@ -1045,37 +1172,37 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                     <SelectItem value="cancelled">Cancelada</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button size="sm" onClick={() => setShowEnroll(true)}>
+                <Button size="sm" className="bg-blue-900 hover:bg-blue-800" onClick={() => setShowEnroll(true)}>
                   <Users size={14} className="mr-1" /> Inscrever leads
                 </Button>
               </div>
             </div>
             {enrollments && enrollments.rows.length > 0 ? (
-              <div className="overflow-x-auto max-h-72">
+              <div className="overflow-x-auto max-h-72 rounded-xl border border-slate-200">
                 <table className="w-full text-sm min-w-[560px]">
-                  <thead className="bg-gray-100 sticky top-0">
+                  <thead className={`${THEAD_CLASS} sticky top-0`}>
                     <tr>
-                      <th className="p-2 text-left">E-mail</th>
-                      <th className="p-2 text-left">Nome</th>
-                      <th className="p-2 text-left">Passo</th>
-                      <th className="p-2 text-left">Próximo envio</th>
-                      <th className="p-2 text-left">Status</th>
-                      <th className="p-2 text-left">Ações</th>
+                      <th className={TH_CLASS}>E-mail</th>
+                      <th className={TH_CLASS}>Nome</th>
+                      <th className={TH_CLASS}>Passo</th>
+                      <th className={TH_CLASS}>Próximo envio</th>
+                      <th className={TH_CLASS}>Status</th>
+                      <th className={TH_CLASS}>Ações</th>
                     </tr>
                   </thead>
                   <tbody>
                     {enrollments.rows.map(e => (
-                      <tr key={e.id} className="border-b">
-                        <td className="p-2">{e.email}</td>
-                        <td className="p-2">{e.name ?? "--"}</td>
-                        <td className="p-2">{e.currentStep}/{steps?.length ?? 0}</td>
-                        <td className="p-2 text-xs">{formatDateTime(e.nextSendAt)}</td>
-                        <td className="p-2">
-                          <Badge variant={ENROLLMENT_STATUS_VARIANTS[e.status] ?? "secondary"}>
+                      <tr key={e.id} className={TR_CLASS}>
+                        <td className="px-3 py-2.5">{e.email}</td>
+                        <td className="px-3 py-2.5">{e.name ?? "--"}</td>
+                        <td className="px-3 py-2.5">{e.currentStep}/{steps?.length ?? 0}</td>
+                        <td className="px-3 py-2.5 text-xs">{formatDateTime(e.nextSendAt)}</td>
+                        <td className="px-3 py-2.5">
+                          <Badge variant="outline" className={ENROLLMENT_STATUS_BADGE_CLASS[e.status] ?? ""}>
                             {ENROLLMENT_STATUS_LABELS[e.status] ?? e.status}
                           </Badge>
                         </td>
-                        <td className="p-2">
+                        <td className="px-3 py-2.5">
                           <div className="flex gap-1">
                             {e.status === "active" && (
                               <Button size="sm" variant="outline" onClick={() => handleEnrollmentAction(e.id, "pause")} title="Pausar">
@@ -1099,7 +1226,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                   </tbody>
                 </table>
                 {enrollments.total > PAGE_SIZE && (
-                  <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
+                  <div className="flex items-center justify-between px-3 py-2 text-xs text-gray-500 border-t border-slate-200 bg-slate-50">
                     <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>Anterior</Button>
                     <span>Página {page + 1} de {Math.ceil(enrollments.total / PAGE_SIZE)}</span>
                     <Button size="sm" variant="outline" disabled={(page + 1) * PAGE_SIZE >= enrollments.total} onClick={() => setPage(p => p + 1)}>Próxima</Button>
@@ -1107,7 +1234,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                 )}
               </div>
             ) : (
-              <p className="text-gray-500 text-sm">Nenhum inscrito {enrollStatus ? `com status "${ENROLLMENT_STATUS_LABELS[enrollStatus]}"` : ""}.</p>
+              <EmptyState icon={Users} message={`Nenhum inscrito ${enrollStatus ? `com status "${ENROLLMENT_STATUS_LABELS[enrollStatus]}"` : "ainda"}.`} />
             )}
           </div>
         </div>
@@ -1115,7 +1242,12 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
         {/* Step editor dialog */}
         <Dialog open={editingStep !== null} onOpenChange={(open) => { if (!open) setEditingStep(null); }}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader><DialogTitle>{editingStep?.id ? "✏️ Editar passo" : "➕ Novo passo"}</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900">{editingStep?.id ? <Pencil size={16} /> : <Plus size={16} />}</span>
+                {editingStep?.id ? "Editar passo" : "Novo passo"}
+              </DialogTitle>
+            </DialogHeader>
             {editingStep && (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
@@ -1152,8 +1284,8 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
               </div>
             )}
             <DialogFooter className="flex gap-2 pt-2">
-              <Button className="flex-1" onClick={handleSaveStep} disabled={upsertStepMutation.isPending}>
-                {upsertStepMutation.isPending ? "Salvando..." : "✅ Salvar"}
+              <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleSaveStep} disabled={upsertStepMutation.isPending}>
+                {upsertStepMutation.isPending ? "Salvando..." : "Salvar"}
               </Button>
               <Button variant="outline" className="flex-1" onClick={() => setEditingStep(null)}>Cancelar</Button>
             </DialogFooter>
@@ -1222,10 +1354,15 @@ function EnrollLeadsDialog({ sequenceId, open, onClose, onEnrolled }: { sequence
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>👥 Inscrever leads na sequência</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Users size={16} /></span>
+            Inscrever leads na sequência
+          </DialogTitle>
+        </DialogHeader>
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <Label className="!mb-0 flex-shrink-0">Filtrar por tag</Label>
+            <Label className="!mb-0 flex-shrink-0 flex items-center gap-1"><Filter size={12} /> Filtrar por tag</Label>
             <Select value={tagFilter} onValueChange={setTagFilter}>
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -1234,16 +1371,16 @@ function EnrollLeadsDialog({ sequenceId, open, onClose, onEnrolled }: { sequence
               </SelectContent>
             </Select>
           </div>
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <label className="flex items-center gap-2 text-sm cursor-pointer text-slate-600">
             <Checkbox checked={tasksWithEmail.length > 0 && selectedIds.size === tasksWithEmail.length} onCheckedChange={toggleSelectAll} />
             Selecionar todos ({tasksWithEmail.length})
           </label>
-          <div className="border rounded-lg max-h-72 overflow-y-auto divide-y">
+          <div className="rounded-xl border border-slate-200 max-h-72 overflow-y-auto divide-y divide-slate-100">
             {tasksWithEmail.length > 0 ? tasksWithEmail.map((t: any) => (
-              <label key={t.id} className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-gray-50">
+              <label key={t.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-blue-50/50 transition-colors">
                 <Checkbox checked={selectedIds.has(t.id)} onCheckedChange={() => toggleSelect(t.id)} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate">{t.title}</p>
+                  <p className="truncate text-slate-700">{t.title}</p>
                   <p className="text-xs text-gray-500 truncate">{t.email}</p>
                 </div>
               </label>
@@ -1253,8 +1390,8 @@ function EnrollLeadsDialog({ sequenceId, open, onClose, onEnrolled }: { sequence
           </div>
         </div>
         <DialogFooter className="flex gap-2 pt-2">
-          <Button className="flex-1" onClick={handleEnroll} disabled={enrollMutation.isPending || selectedIds.size === 0}>
-            {enrollMutation.isPending ? "Inscrevendo..." : `✅ Inscrever (${selectedIds.size})`}
+          <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleEnroll} disabled={enrollMutation.isPending || selectedIds.size === 0}>
+            {enrollMutation.isPending ? "Inscrevendo..." : `Inscrever (${selectedIds.size})`}
           </Button>
           <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
         </DialogFooter>
@@ -1372,40 +1509,42 @@ function AutomationsTab() {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button onClick={openNew}>
+        <Button className="bg-blue-900 hover:bg-blue-800 shadow-sm" onClick={openNew}>
           <Plus size={16} className="mr-1" /> Nova automação
         </Button>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Automações ({parsedRules.length})</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Zap size={16} className="text-blue-900" /> Automações <span className="text-slate-400 font-normal">({parsedRules.length})</span>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p>Carregando...</p>
+            <p className="text-sm text-slate-500">Carregando...</p>
           ) : parsedRules.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-sm min-w-[640px]">
-                <thead className="bg-gray-100">
+                <thead className={THEAD_CLASS}>
                   <tr>
-                    <th className="p-2 text-left">Nome</th>
-                    <th className="p-2 text-left">Gatilho</th>
-                    <th className="p-2 text-left">Ação</th>
-                    <th className="p-2 text-left">Ativa</th>
-                    <th className="p-2 text-left">Ações</th>
+                    <th className={TH_CLASS}>Nome</th>
+                    <th className={TH_CLASS}>Gatilho</th>
+                    <th className={TH_CLASS}>Ação</th>
+                    <th className={TH_CLASS}>Ativa</th>
+                    <th className={TH_CLASS}>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
                   {parsedRules.map(r => (
-                    <tr key={r.id} className="border-b hover:bg-gray-50">
-                      <td className="p-2 font-medium">{r.name}</td>
-                      <td className="p-2 text-xs">{describeTrigger(r)}</td>
-                      <td className="p-2 text-xs">{describeAction(r, sequences)}</td>
-                      <td className="p-2">
+                    <tr key={r.id} className={TR_CLASS}>
+                      <td className="px-3 py-2.5 font-medium text-slate-700">{r.name}</td>
+                      <td className="px-3 py-2.5 text-xs text-slate-500">{describeTrigger(r)}</td>
+                      <td className="px-3 py-2.5 text-xs text-slate-500">{describeAction(r, sequences)}</td>
+                      <td className="px-3 py-2.5">
                         <Switch checked={r.active} onCheckedChange={(checked) => handleToggleActive(r, checked)} />
                       </td>
-                      <td className="p-2">
+                      <td className="px-3 py-2.5">
                         <div className="flex gap-1">
                           <Button size="sm" variant="outline" onClick={() => openEdit(r)}>
                             <Pencil size={14} />
@@ -1421,14 +1560,19 @@ function AutomationsTab() {
               </table>
             </div>
           ) : (
-            <p className="text-gray-500 text-sm">Nenhuma automação criada ainda.</p>
+            <EmptyState icon={Zap} message="Nenhuma automação criada ainda. Crie regras para inscrever leads em sequências ou marcar tags automaticamente." />
           )}
         </CardContent>
       </Card>
 
       <Dialog open={editing !== null} onOpenChange={(open) => { if (!open) setEditing(null); }}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{editing?.id ? "✏️ Editar automação" : "⚡ Nova automação"}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Zap size={16} /></span>
+              {editing?.id ? "Editar automação" : "Nova automação"}
+            </DialogTitle>
+          </DialogHeader>
           {editing && (
             <div className="space-y-3">
               <div>
@@ -1487,8 +1631,8 @@ function AutomationsTab() {
             </div>
           )}
           <DialogFooter className="flex gap-2 pt-2">
-            <Button className="flex-1" onClick={handleSave} disabled={upsertMutation.isPending}>
-              {upsertMutation.isPending ? "Salvando..." : "✅ Salvar"}
+            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleSave} disabled={upsertMutation.isPending}>
+              {upsertMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => setEditing(null)}>Cancelar</Button>
           </DialogFooter>
@@ -1507,25 +1651,27 @@ function TagsTab() {
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>Tags ({tags?.length ?? 0})</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Tag size={16} className="text-blue-900" /> Tags <span className="text-slate-400 font-normal">({tags?.length ?? 0})</span>
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-slate-500">
             Use as tags na tela de Tarefas para segmentar leads. Tags são criadas diretamente
             no formulário de tarefas e aparecem aqui automaticamente.
           </p>
           {isLoading ? (
-            <p>Carregando...</p>
+            <p className="text-sm text-slate-500">Carregando...</p>
           ) : tags && tags.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {tags.map(tag => (
-                <Badge key={tag} variant="secondary" className="text-sm px-3 py-1">
-                  <Tag size={12} className="mr-1" /> {tag}
+                <Badge key={tag} variant="outline" className="text-sm px-3 py-1.5 bg-blue-50 text-blue-900 border-blue-200 gap-1.5">
+                  <Tag size={12} /> {tag}
                 </Badge>
               ))}
             </div>
           ) : (
-            <p className="text-gray-500 text-sm">Nenhuma tag cadastrada ainda.</p>
+            <EmptyState icon={Tag} message="Nenhuma tag cadastrada ainda. Adicione tags às tarefas para segmentar seus leads." />
           )}
         </CardContent>
       </Card>
@@ -1680,24 +1826,26 @@ function ExportTab() {
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>📤 Exportar leads</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Download size={16} className="text-blue-900" /> Exportar leads
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-slate-500">
             Filtre os leads e exporte para CSV (Excel). Útil para campanhas externas,
             limpeza de base (quem não abriu / não respondeu) e priorização de telefonemas (quem está quente 🔥).
           </p>
 
           {tags && tags.length > 0 && (
             <div>
-              <Label>Tags</Label>
+              <Label className="flex items-center gap-1"><Filter size={12} /> Tags</Label>
               <div className="flex flex-wrap gap-2 mt-1">
                 {tags.map(tag => (
                   <button
                     key={tag}
                     type="button"
                     onClick={() => toggleTag(tag)}
-                    className={`text-xs px-2 py-1 rounded-full border font-medium transition ${filters.tags.includes(tag) ? "bg-blue-900 text-white border-blue-900" : "bg-white text-gray-600 border-gray-200 hover:bg-blue-50"}`}
+                    className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors ${filters.tags.includes(tag) ? "bg-blue-900 text-white border-blue-900 shadow-sm" : "bg-white text-slate-600 border-slate-200 hover:bg-blue-50 hover:border-blue-200"}`}
                   >
                     {tag}
                   </button>
@@ -1756,11 +1904,11 @@ function ExportTab() {
             </div>
           </div>
 
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap pt-1">
             <Button variant="outline" onClick={handlePreview} disabled={exportQuery.isFetching}>
               <Eye size={14} className="mr-1" /> {exportQuery.isFetching ? "Buscando..." : "Pré-visualizar"}
             </Button>
-            <Button onClick={handleDownload} disabled={exportQuery.isFetching}>
+            <Button className="bg-blue-900 hover:bg-blue-800 shadow-sm" onClick={handleDownload} disabled={exportQuery.isFetching}>
               <Download size={14} className="mr-1" /> {exportQuery.isFetching ? "Gerando..." : "Baixar CSV"}
             </Button>
           </div>
@@ -1770,46 +1918,48 @@ function ExportTab() {
       {result !== null && (
         <Card>
           <CardHeader>
-            <CardTitle>Resultado ({result.length} lead{result.length === 1 ? "" : "s"})</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Inbox size={16} className="text-blue-900" /> Resultado <span className="text-slate-400 font-normal">({result.length} lead{result.length === 1 ? "" : "s"})</span>
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {result.length > 0 ? (
-              <div className="overflow-x-auto max-h-96">
+              <div className="overflow-x-auto max-h-96 rounded-xl border border-slate-200">
                 <table className="w-full text-sm min-w-[720px]">
-                  <thead className="bg-gray-100 sticky top-0">
+                  <thead className={`${THEAD_CLASS} sticky top-0`}>
                     <tr>
-                      <th className="p-2 text-left">Nome</th>
-                      <th className="p-2 text-left">E-mail</th>
-                      <th className="p-2 text-left">Telefone</th>
-                      <th className="p-2 text-left">Tags</th>
-                      <th className="p-2 text-left">Atendente</th>
-                      <th className="p-2 text-left">Último contato</th>
-                      <th className="p-2 text-left">Convertido em</th>
-                      <th className="p-2 text-left">Aberturas</th>
-                      <th className="p-2 text-left">Cliques</th>
-                      <th className="p-2 text-left">Último evento</th>
+                      <th className={TH_CLASS}>Nome</th>
+                      <th className={TH_CLASS}>E-mail</th>
+                      <th className={TH_CLASS}>Telefone</th>
+                      <th className={TH_CLASS}>Tags</th>
+                      <th className={TH_CLASS}>Atendente</th>
+                      <th className={TH_CLASS}>Último contato</th>
+                      <th className={TH_CLASS}>Convertido em</th>
+                      <th className={TH_CLASS}>Aberturas</th>
+                      <th className={TH_CLASS}>Cliques</th>
+                      <th className={TH_CLASS}>Último evento</th>
                     </tr>
                   </thead>
                   <tbody>
                     {result.slice(0, 20).map((r, i) => (
-                      <tr key={`${r.email}-${i}`} className="border-b hover:bg-gray-50">
-                        <td className="p-2">{r.name ?? "--"}</td>
-                        <td className="p-2">{r.email}</td>
-                        <td className="p-2">{r.phone ?? "--"}</td>
-                        <td className="p-2 text-xs">{(r.tags ?? []).join(", ")}</td>
-                        <td className="p-2">{r.assignedTo ?? "--"}</td>
-                        <td className="p-2 text-xs">{formatDateTime(r.lastContactedAt)}</td>
-                        <td className="p-2 text-xs">{formatDateTime(r.convertedAt)}</td>
-                        <td className="p-2">{r.opens ?? 0}</td>
-                        <td className="p-2">{r.clicks ?? 0}</td>
-                        <td className="p-2 text-xs">{formatDateTime(r.lastEventAt)}</td>
+                      <tr key={`${r.email}-${i}`} className={TR_CLASS}>
+                        <td className="px-3 py-2.5">{r.name ?? "--"}</td>
+                        <td className="px-3 py-2.5">{r.email}</td>
+                        <td className="px-3 py-2.5">{r.phone ?? "--"}</td>
+                        <td className="px-3 py-2.5 text-xs">{(r.tags ?? []).join(", ")}</td>
+                        <td className="px-3 py-2.5">{r.assignedTo ?? "--"}</td>
+                        <td className="px-3 py-2.5 text-xs">{formatDateTime(r.lastContactedAt)}</td>
+                        <td className="px-3 py-2.5 text-xs">{formatDateTime(r.convertedAt)}</td>
+                        <td className="px-3 py-2.5 font-medium text-emerald-700">{r.opens ?? 0}</td>
+                        <td className="px-3 py-2.5 font-medium text-violet-700">{r.clicks ?? 0}</td>
+                        <td className="px-3 py-2.5 text-xs">{formatDateTime(r.lastEventAt)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             ) : (
-              <p className="text-gray-500 text-sm">Nenhum lead encontrado com esses filtros.</p>
+              <EmptyState icon={Inbox} message="Nenhum lead encontrado com esses filtros." />
             )}
             {result.length > 20 && (
               <p className="text-xs text-gray-500 mt-2">Mostrando os primeiros 20 de {result.length} leads. O CSV completo terá todos os {result.length}.</p>
@@ -1831,64 +1981,47 @@ function StatsTab() {
   return (
     <div className="space-y-4">
       {isLoading ? (
-        <p>Carregando...</p>
+        <p className="text-sm text-slate-500">Carregando...</p>
       ) : overview && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          <Card>
-            <CardContent className="p-3 text-center">
-              <p className="text-xs text-gray-500">Enviados (30d)</p>
-              <p className="text-xl font-bold text-blue-900">{overview.totalSent30d}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 text-center">
-              <p className="text-xs text-gray-500">Taxa de abertura</p>
-              <p className="text-xl font-bold text-green-700">{(overview.openRate * 100).toFixed(1)}%</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 text-center">
-              <p className="text-xs text-gray-500">Taxa de clique</p>
-              <p className="text-xl font-bold text-purple-700">{(overview.clickRate * 100).toFixed(1)}%</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 text-center">
-              <p className="text-xs text-gray-500">Descadastros (30d)</p>
-              <p className="text-xl font-bold text-red-600">{overview.unsubscribed30d}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 text-center">
-              <p className="text-xs text-gray-500">Cota Resend hoje</p>
-              <p className="text-xl font-bold text-orange-600">{overview.quotaUsedToday}/{overview.quotaTotalToday}</p>
-            </CardContent>
-          </Card>
+          <StatTile icon={Send} label="Enviados (30d)" value={overview.totalSent30d} accent="bg-blue-100 text-blue-900" />
+          <StatTile icon={Eye} label="Taxa de abertura" value={`${(overview.openRate * 100).toFixed(1)}%`} accent="bg-emerald-100 text-emerald-700" />
+          <StatTile icon={Workflow} label="Taxa de clique" value={`${(overview.clickRate * 100).toFixed(1)}%`} accent="bg-violet-100 text-violet-700" />
+          <StatTile icon={MailX} label="Descadastros (30d)" value={overview.unsubscribed30d} accent="bg-red-100 text-red-600" />
+          <StatTile icon={Zap} label="Cota Resend hoje" value={`${overview.quotaUsedToday}/${overview.quotaTotalToday}`} accent="bg-orange-100 text-orange-600" />
         </div>
       )}
 
       <Card>
-        <CardHeader><CardTitle>Campanhas</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Send size={16} className="text-blue-900" /> Campanhas
+          </CardTitle>
+        </CardHeader>
         <CardContent>
           {campaigns && campaigns.length > 0 ? (
             <div className="space-y-2">
               {campaigns.map(c => <CampaignStatsRow key={c.id} campaignId={c.id} name={c.name} />)}
             </div>
           ) : (
-            <p className="text-gray-500 text-sm">Nenhuma campanha criada ainda.</p>
+            <EmptyState icon={Send} message="Nenhuma campanha criada ainda." />
           )}
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Sequências</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Workflow size={16} className="text-blue-900" /> Sequências
+          </CardTitle>
+        </CardHeader>
         <CardContent>
           {sequences && sequences.length > 0 ? (
             <div className="space-y-2">
               {sequences.map(s => <SequenceStatsRow key={s.id} sequenceId={s.id} name={s.name} />)}
             </div>
           ) : (
-            <p className="text-gray-500 text-sm">Nenhuma sequência criada ainda.</p>
+            <EmptyState icon={Workflow} message="Nenhuma sequência criada ainda." />
           )}
         </CardContent>
       </Card>
@@ -1903,9 +2036,9 @@ function CampaignStatsRow({ campaignId, name }: { campaignId: number; name: stri
   const { data: stats, isLoading } = trpc.emailMarketing.campaignStats.useQuery({ campaignId }, { enabled: show });
 
   return (
-    <div className="border rounded-lg p-2">
+    <div className="rounded-xl border border-slate-200 p-3 hover:border-blue-200 transition-colors">
       <div className="flex items-center justify-between gap-2">
-        <p className="font-medium text-sm">{name}</p>
+        <p className="font-medium text-sm text-slate-700">{name}</p>
         <Button size="sm" variant="outline" onClick={() => setShow(true)} disabled={show}>
           <BarChart3 size={14} className="mr-1" /> Ver stats
         </Button>
@@ -1914,12 +2047,12 @@ function CampaignStatsRow({ campaignId, name }: { campaignId: number; name: stri
         isLoading ? (
           <p className="text-xs text-gray-500 mt-1">Carregando...</p>
         ) : stats && (
-          <div className="flex gap-2 mt-2 flex-wrap">
-            <Badge variant="outline" className="text-xs">📬 {stats.delivered} entregues</Badge>
-            <Badge variant="outline" className="text-xs">👁 {stats.opened} abertos</Badge>
-            <Badge variant="outline" className="text-xs">🔗 {stats.clicked} clicados</Badge>
-            <Badge variant="outline" className="text-xs">⚠️ {stats.bounced} bounce</Badge>
-            <Badge variant="outline" className="text-xs">🚫 {stats.complained} reclamações</Badge>
+          <div className="flex gap-1.5 mt-2 flex-wrap">
+            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">📬 {stats.delivered} entregues</Badge>
+            <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">👁 {stats.opened} abertos</Badge>
+            <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200">🔗 {stats.clicked} clicados</Badge>
+            <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">⚠️ {stats.bounced} bounce</Badge>
+            <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">🚫 {stats.complained} reclamações</Badge>
           </div>
         )
       )}
@@ -1933,9 +2066,9 @@ function SequenceStatsRow({ sequenceId, name }: { sequenceId: number; name: stri
   const { data: stats, isLoading } = trpc.emailMarketing.sequenceStats.useQuery({ sequenceId }, { enabled: show });
 
   return (
-    <div className="border rounded-lg p-2">
+    <div className="rounded-xl border border-slate-200 p-3 hover:border-blue-200 transition-colors">
       <div className="flex items-center justify-between gap-2">
-        <p className="font-medium text-sm">{name}</p>
+        <p className="font-medium text-sm text-slate-700">{name}</p>
         <Button size="sm" variant="outline" onClick={() => setShow(true)} disabled={show}>
           <BarChart3 size={14} className="mr-1" /> Ver stats
         </Button>
@@ -1944,15 +2077,15 @@ function SequenceStatsRow({ sequenceId, name }: { sequenceId: number; name: stri
         isLoading ? (
           <p className="text-xs text-gray-500 mt-1">Carregando...</p>
         ) : stats && stats.length > 0 ? (
-          <div className="space-y-1 mt-2">
+          <div className="space-y-1.5 mt-2">
             {stats.map(s => (
-              <div key={s.stepId} className="flex items-center gap-2 flex-wrap text-xs">
-                <Badge variant="secondary">Dia {s.delayDays}</Badge>
+              <div key={s.stepId} className="flex items-center gap-1.5 flex-wrap text-xs">
+                <Badge variant="outline" className="bg-slate-100 text-slate-600 border-slate-200">Dia {s.delayDays}</Badge>
                 <span className="text-gray-600 truncate">{s.subject}</span>
-                <Badge variant="outline">📤 {s.sent}</Badge>
-                <Badge variant="outline">👁 {s.opened}</Badge>
-                <Badge variant="outline">🔗 {s.clicked}</Badge>
-                <Badge variant="outline">⏭ {(s as any).skipped ?? 0} pulados</Badge>
+                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">📤 {s.sent}</Badge>
+                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">👁 {s.opened}</Badge>
+                <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-200">🔗 {s.clicked}</Badge>
+                <Badge variant="outline" className="bg-slate-100 text-slate-500 border-slate-200">⏭ {(s as any).skipped ?? 0} pulados</Badge>
               </div>
             ))}
           </div>
