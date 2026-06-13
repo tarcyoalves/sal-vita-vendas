@@ -9,7 +9,7 @@ import { runTriggerNow } from '../email/automations';
 // Build the assignedTo filter for a non-admin user.
 // Uses case-insensitive comparison: tasks imported via CSV often have different
 // capitalization than the seller name stored in the DB (e.g. "MATHEUS" vs "Matheus").
-async function userTaskFilter(userId: number, userName: string) {
+export async function userTaskFilter(userId: number, userName: string) {
   const sellerRows = await db.select({ name: sellers.name }).from(sellers).where(eq(sellers.userId, userId));
   const sellerName = sellerRows[0]?.name;
   const conditions: SQL<unknown>[] = [eq(tasks.userId, userId)];

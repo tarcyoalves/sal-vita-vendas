@@ -30,6 +30,8 @@ interface Task {
   priority?: "low" | "medium" | "high" | null;
   assignedTo?: string | null;
   convertedAt?: Date | string | null;
+  hotLead?: boolean | null;
+  lastEngagementAt?: Date | string | null;
   contactCount?: number | null;
   orderValue?: string | null;
   orderId?: string | null;
@@ -145,6 +147,7 @@ export default function Tasks() {
   const [filterContact, setFilterContact] = useState<"all" | "whatsapp" | "email">("all");
   const [filterReminder, setFilterReminder] = useState<"all" | "active" | "inactive">("all");
   const [filterConverted, setFilterConverted] = useState<"all" | "active_clients" | "leads">("all");
+  const [filterHot, setFilterHot] = useState(false);
   const [reminderTab, setReminderTab] = useState<"all" | "today" | "yesterday" | "lastWeek" | "lastMonth">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [importedTasks, setImportedTasks] = useState<{ title: string; description: string; notes: string }[]>([]);
@@ -185,6 +188,7 @@ export default function Tasks() {
 
   // ── E-mail Marketing: add task(s) to a draft campaign ──────────────────────
   const [campaignPickerTaskIds, setCampaignPickerTaskIds] = useState<number[] | null>(null);
+  const { data: hotLeadsData } = trpc.emailMarketing.hotLeadsCount.useQuery();
   const { data: emailCampaigns } = trpc.emailMarketing.listCampaigns.useQuery(undefined, { enabled: campaignPickerTaskIds !== null });
   const addToCampaignMutation = trpc.emailMarketing.addRecipientsFromTasks.useMutation();
   const draftCampaigns = (emailCampaigns ?? []).filter(c => c.status === 'draft');
@@ -545,13 +549,17 @@ export default function Tasks() {
     if (filterTag !== "all") {
       result = result.filter(t => t.tags?.includes(filterTag));
     }
+    if (filterHot) {
+      result = result.filter(t => t.hotLead);
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(t => t.title.toLowerCase().includes(q) || t.notes?.toLowerCase().includes(q) || t.assignedTo?.toLowerCase().includes(q));
     }
 
-    // Sort: upcoming reminders first (soonest), then overdue (most recent), then no reminder
+    // Sort: hot leads first, then upcoming reminders (soonest), then overdue (most recent), then no reminder
     return [...result].sort((a, b) => {
+      if (!!a.hotLead !== !!b.hotLead) return a.hotLead ? -1 : 1;
       const nowMs = now.getTime();
       const aDate = a.reminderDate && a.reminderEnabled !== false ? new Date(a.reminderDate).getTime() : null;
       const bDate = b.reminderDate && b.reminderEnabled !== false ? new Date(b.reminderDate).getTime() : null;
@@ -567,7 +575,7 @@ export default function Tasks() {
       if (aOverdue && bOverdue) return bDate! - aDate!;
       return 0;
     });
-  }, [tasks, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTag, reminderTab, isAdmin, searchQuery]);
+  }, [tasks, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTag, filterHot, reminderTab, isAdmin, searchQuery]);
 
   // ── E-mail Marketing: engagement badges (single batched query for visible tasks) ──
   const visibleTaskIds = useMemo(() => filteredTasks.map((t: Task) => t.id), [filteredTasks]);
@@ -878,6 +886,15 @@ export default function Tasks() {
               {availableTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
             </select>
           )}
+          {!!hotLeadsData?.count && (
+            <button
+              onClick={() => setFilterHot(h => !h)}
+              className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterHot ? "bg-red-500 text-white border-red-500" : "bg-white text-red-600 border-red-200 hover:bg-red-50"}`}
+              title="Leads que abriram ou clicaram em e-mails recentemente"
+            >
+              🔥 {filterHot ? "Só quentes" : `${hotLeadsData.count} quente${hotLeadsData.count === 1 ? "" : "s"}`}
+            </button>
+          )}
         </div>
         <div className="flex gap-2 flex-wrap">
           {isAdmin && selectedTasks.size > 0 && (
@@ -1092,9 +1109,9 @@ export default function Tasks() {
             {selectedTasks.size > 0 && <span className="text-sm text-blue-600 font-medium ml-2">{selectedTasks.size} selecionada(s)</span>}
           </div>
           {filteredTasks.map((task: Task) => (
-            <div key={task.id} className={`border rounded-lg overflow-hidden shadow-sm transition-all duration-300 ${highlightTaskId === task.id ? 'ring-2 ring-blue-500 ring-offset-1 shadow-blue-200 shadow-md' : ''}`}
+            <div key={task.id} className={`border rounded-lg overflow-hidden shadow-sm transition-all duration-300 ${highlightTaskId === task.id ? 'ring-2 ring-blue-500 ring-offset-1 shadow-blue-200 shadow-md' : task.hotLead ? 'ring-1 ring-red-300 border-red-200' : ''}`}
               style={highlightTaskId === task.id ? { animation: 'pulse-highlight 1s ease-in-out 3' } : {}}>
-              <div className="flex items-center gap-2 md:gap-3 p-3 bg-white hover:bg-gray-50 transition cursor-pointer" onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)}>
+              <div className={`flex items-center gap-2 md:gap-3 p-3 hover:bg-gray-50 transition cursor-pointer ${task.hotLead ? 'bg-red-50' : 'bg-white'}`} onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)}>
                 <label className="flex-shrink-0 p-1 -m-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
                   <input type="checkbox" checked={selectedTasks.has(task.id)} onChange={() => handleSelectTask(task.id)} className="w-5 h-5 cursor-pointer" />
                 </label>
@@ -1102,6 +1119,7 @@ export default function Tasks() {
                   <span>{statusEmoji[task.status || 'pending']}</span>
                   <span>{priorityEmoji[task.priority || 'medium']}</span>
                   {task.convertedAt && <span title="Cliente ativo">🎉</span>}
+                  {task.hotLead && <span title="Lead quente: abriu/clicou em e-mail recentemente">🔥</span>}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm leading-snug line-clamp-2 md:truncate">{task.title}</p>
@@ -1110,6 +1128,7 @@ export default function Tasks() {
                     {hasPhone(`${task.title} ${task.notes ?? ''}`) && <span className="text-xs text-green-600">📱</span>}
                     {hasEmail(`${task.title} ${task.notes ?? ''}`) && <span className="text-xs text-blue-600">📧</span>}
                     {task.convertedAt && <span className="text-xs text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded font-medium">🎉 Cliente ativo</span>}
+                    {task.hotLead && <span className="text-xs text-red-700 bg-red-100 px-1.5 py-0.5 rounded font-medium">🔥 Lead quente</span>}
                     {(() => {
                       const eng = engagementData?.[task.id];
                       if (!eng || (eng.opens === 0 && eng.clicks === 0)) return null;

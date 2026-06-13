@@ -155,6 +155,52 @@ export function computeNextSendAt(enrolledAt: Date, steps: { delayDays: number }
   return new Date(enrolledAt.getTime() + nextStep.delayDays * 24 * 60 * 60 * 1000);
 }
 
+/**
+ * Batched (no N+1) lookup of engagement (opened/clicked) per sequence enrollment,
+ * based on the `email_sequence_sends` → `email_events` join via `message_id`.
+ * Enrollments with no events at all simply don't appear in the result — callers
+ * should treat a missing entry as `{ opened: false, clicked: false }`.
+ */
+export async function enrollmentEngagementBatch(
+  enrollmentIds: number[],
+): Promise<Map<number, { opened: boolean; clicked: boolean }>> {
+  const out = new Map<number, { opened: boolean; clicked: boolean }>();
+  if (enrollmentIds.length === 0) return out;
+
+  const rows = await sql`
+    SELECT sd.enrollment_id,
+      bool_or(e.event_type = 'opened')  AS opened,
+      bool_or(e.event_type = 'clicked') AS clicked
+    FROM email_sequence_sends sd
+    INNER JOIN email_events e ON e.message_id = sd.message_id
+    WHERE sd.enrollment_id = ANY(${enrollmentIds})
+    GROUP BY sd.enrollment_id
+  ` as unknown as Array<{ enrollment_id: number; opened: boolean; clicked: boolean }>;
+
+  for (const row of rows) {
+    out.set(Number(row.enrollment_id), { opened: !!row.opened, clicked: !!row.clicked });
+  }
+  return out;
+}
+
+/**
+ * Pure helper (no DB access) — evaluates a sequence step's `sendCondition`
+ * against an enrollment's prior engagement.
+ */
+export function conditionMet(
+  condition: string,
+  eng: { opened: boolean; clicked: boolean },
+): boolean {
+  switch (condition) {
+    case 'if_opened':      return eng.opened;
+    case 'if_not_opened':  return !eng.opened;
+    case 'if_clicked':     return eng.clicked;
+    case 'if_not_clicked': return !eng.clicked;
+    case 'always':
+    default:               return true;
+  }
+}
+
 export interface BatchResult {
   to: string;
   ok: boolean;

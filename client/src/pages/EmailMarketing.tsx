@@ -20,7 +20,7 @@ import {
   Tabs, TabsContent, TabsList, TabsTrigger,
 } from "../components/ui/tabs";
 import { Checkbox } from "../components/ui/checkbox";
-import { Mail, Plus, Send, Trash2, Eye, Pencil, Workflow, Zap, Tag, BarChart3, Users, Pause, Play, X } from "lucide-react";
+import { Mail, Plus, Send, Trash2, Eye, Pencil, Workflow, Zap, Tag, BarChart3, Users, Pause, Play, X, Download } from "lucide-react";
 
 type Source = "leads" | "clients" | "both";
 
@@ -44,6 +44,37 @@ const RECIPIENT_STATUS_LABELS: Record<string, string> = {
 };
 
 const TEMPLATE_HINT = "Use {nome}, {empresa} e {unsubscribe} no corpo do e-mail. {unsubscribe} é substituído pelo link de descadastro.";
+
+const SEND_CONDITION_LABELS: Record<string, string> = {
+  always: "Sempre",
+  if_opened: "Se abriu algum anterior",
+  if_not_opened: "Se NÃO abriu nenhum",
+  if_clicked: "Se clicou em algum",
+  if_not_clicked: "Se NÃO clicou em nenhum",
+};
+
+const SEND_CONDITION_BADGES: Record<string, string> = {
+  if_opened: "🔀 se abriu",
+  if_not_opened: "🔀 se não abriu",
+  if_clicked: "🔀 se clicou",
+  if_not_clicked: "🔀 se não clicou",
+};
+
+const SEND_CONDITION_HINT = "Para ramificar (abriu vs. não abriu), crie dois passos com o MESMO atraso (delay) — um com 'Se abriu' e outro com 'Se NÃO abriu'. O sistema envia o que casa e pula o outro.";
+
+const REPEAT_HINT = "Útil para e-mails recorrentes de marca. Ao terminar o último passo, recomeça do início após o intervalo.";
+
+const EXPORT_CONVERTED_LABELS: Record<string, string> = {
+  yes: "Sim",
+  no: "Não",
+};
+
+const EXPORT_ENGAGEMENT_LABELS: Record<string, string> = {
+  opened: "Abriu",
+  not_opened: "Não abriu",
+  clicked: "Clicou",
+  not_clicked: "Não clicou",
+};
 
 const ENROLLMENT_STATUS_LABELS: Record<string, string> = {
   active: "Ativa",
@@ -122,6 +153,7 @@ export default function EmailMarketing() {
           <TabsTrigger value="templates">Templates</TabsTrigger>
           <TabsTrigger value="tags">Tags</TabsTrigger>
           <TabsTrigger value="suppressions">Descadastrados</TabsTrigger>
+          <TabsTrigger value="export">Exportar</TabsTrigger>
           <TabsTrigger value="stats">Estatísticas</TabsTrigger>
         </TabsList>
 
@@ -142,6 +174,9 @@ export default function EmailMarketing() {
         </TabsContent>
         <TabsContent value="suppressions" className="mt-4">
           <SuppressionsTab />
+        </TabsContent>
+        <TabsContent value="export" className="mt-4">
+          <ExportTab />
         </TabsContent>
         <TabsContent value="stats" className="mt-4">
           <StatsTab />
@@ -682,16 +717,26 @@ function SequencesTab() {
   const deleteMutation = trpc.emailMarketing.deleteSequence.useMutation();
 
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ name: "", description: "", active: true });
+  const [form, setForm] = useState({ name: "", description: "", active: true, repeat: false, repeatIntervalDays: "30" });
   const [detailSequenceId, setDetailSequenceId] = useState<number | null>(null);
 
   const handleCreate = async () => {
     if (!form.name.trim()) { toast.error("Informe o nome da sequência"); return; }
+    if (form.repeat && (!form.repeatIntervalDays.trim() || Number(form.repeatIntervalDays) < 1)) {
+      toast.error("Informe o intervalo (em dias) para repetir a sequência");
+      return;
+    }
     try {
-      await upsertMutation.mutateAsync({ name: form.name, description: form.description || undefined, active: form.active });
+      await upsertMutation.mutateAsync({
+        name: form.name,
+        description: form.description || undefined,
+        active: form.active,
+        repeat: form.repeat,
+        repeatIntervalDays: form.repeat ? Number(form.repeatIntervalDays) : undefined,
+      });
       toast.success("Sequência criada!");
       setShowCreate(false);
-      setForm({ name: "", description: "", active: true });
+      setForm({ name: "", description: "", active: true, repeat: false, repeatIntervalDays: "30" });
       utils.emailMarketing.listSequences.invalidate();
     } catch (e: any) {
       toast.error(e?.message ?? "Erro ao criar sequência");
@@ -749,9 +794,12 @@ function SequencesTab() {
                   {sequences.map(s => (
                     <tr key={s.id} className="border-b hover:bg-gray-50">
                       <td className="p-2 font-medium">
-                        <button className="text-left hover:underline" onClick={() => setDetailSequenceId(s.id)}>
-                          {s.name}
-                        </button>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button className="text-left hover:underline" onClick={() => setDetailSequenceId(s.id)}>
+                            {s.name}
+                          </button>
+                          {(s as any).repeat && <Badge variant="outline" className="text-xs">🔁 mensal</Badge>}
+                        </div>
                         {s.description && <p className="text-xs text-gray-500">{s.description}</p>}
                       </td>
                       <td className="p-2">
@@ -784,7 +832,7 @@ function SequencesTab() {
       </Card>
 
       {/* Create sequence dialog */}
-      <Dialog open={showCreate} onOpenChange={(open) => { setShowCreate(open); if (!open) setForm({ name: "", description: "", active: true }); }}>
+      <Dialog open={showCreate} onOpenChange={(open) => { setShowCreate(open); if (!open) setForm({ name: "", description: "", active: true, repeat: false, repeatIntervalDays: "30" }); }}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>🔁 Nova sequência</DialogTitle></DialogHeader>
           <div className="space-y-3">
@@ -800,6 +848,17 @@ function SequencesTab() {
               <Switch checked={form.active} onCheckedChange={(checked) => setForm(f => ({ ...f, active: checked }))} />
               <Label className="!mb-0">Ativa</Label>
             </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={form.repeat} onCheckedChange={(checked) => setForm(f => ({ ...f, repeat: checked }))} />
+              <Label className="!mb-0">🔁 Repetir continuamente (loop)</Label>
+            </div>
+            {form.repeat && (
+              <div>
+                <Label>Reiniciar a cada N dias</Label>
+                <Input type="number" min={1} value={form.repeatIntervalDays} onChange={e => setForm(f => ({ ...f, repeatIntervalDays: e.target.value }))} placeholder="30" />
+              </div>
+            )}
+            {form.repeat && <p className="text-xs text-gray-500">{REPEAT_HINT}</p>}
           </div>
           <DialogFooter className="flex gap-2 pt-2">
             <Button className="flex-1" onClick={handleCreate} disabled={upsertMutation.isPending}>
@@ -844,12 +903,12 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
   const resumeMutation = trpc.emailMarketing.resumeEnrollment.useMutation();
   const cancelMutation = trpc.emailMarketing.cancelEnrollment.useMutation();
 
-  const [editingStep, setEditingStep] = useState<{ id?: number; stepOrder: number; delayDays: number; subject: string; htmlBody: string } | null>(null);
+  const [editingStep, setEditingStep] = useState<{ id?: number; stepOrder: number; delayDays: number; subject: string; htmlBody: string; sendCondition: string } | null>(null);
   const [showEnroll, setShowEnroll] = useState(false);
 
   const statsByStepId = useMemo(() => {
-    const map = new Map<number, { sent: number; opened: number; clicked: number }>();
-    (stats ?? []).forEach(s => map.set(s.stepId, { sent: s.sent, opened: s.opened, clicked: s.clicked }));
+    const map = new Map<number, { sent: number; opened: number; clicked: number; skipped: number }>();
+    (stats ?? []).forEach(s => map.set(s.stepId, { sent: s.sent, opened: s.opened, clicked: s.clicked, skipped: (s as any).skipped ?? 0 }));
     return map;
   }, [stats]);
 
@@ -873,6 +932,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
         delayDays: editingStep.delayDays,
         subject: editingStep.subject,
         htmlBody: editingStep.htmlBody,
+        sendCondition: editingStep.sendCondition as any,
       });
       toast.success("Passo salvo!");
       setEditingStep(null);
@@ -920,7 +980,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
               <h3 className="font-semibold text-sm">📅 Passos da sequência</h3>
               <Button
                 size="sm"
-                onClick={() => setEditingStep({ stepOrder: (steps?.length ?? 0) + 1, delayDays: 0, subject: "", htmlBody: "" })}
+                onClick={() => setEditingStep({ stepOrder: (steps?.length ?? 0) + 1, delayDays: 0, subject: "", htmlBody: "", sendCondition: "always" })}
               >
                 <Plus size={14} className="mr-1" /> Adicionar passo
               </Button>
@@ -936,20 +996,24 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                           <div className="flex items-center gap-2 flex-wrap">
                             <Badge variant="secondary">Dia {step.delayDays}</Badge>
                             <span className="font-medium text-sm">{step.subject}</span>
+                            {(step as any).sendCondition && (step as any).sendCondition !== 'always' && (
+                              <Badge variant="outline" className="text-xs">{SEND_CONDITION_BADGES[(step as any).sendCondition] ?? (step as any).sendCondition}</Badge>
+                            )}
                           </div>
                           <p className="text-xs text-gray-500 mt-1 line-clamp-2">
                             {step.htmlBody.replace(/<[^>]*>/g, ' ').trim().slice(0, 160)}
                           </p>
                           {stepStats && (
-                            <div className="flex gap-2 mt-2">
+                            <div className="flex gap-2 mt-2 flex-wrap">
                               <Badge variant="outline" className="text-xs">📤 {stepStats.sent} enviados</Badge>
                               <Badge variant="outline" className="text-xs">👁 {stepStats.opened} abertos</Badge>
                               <Badge variant="outline" className="text-xs">🔗 {stepStats.clicked} clicados</Badge>
+                              <Badge variant="outline" className="text-xs">⏭ {stepStats.skipped} pulados</Badge>
                             </div>
                           )}
                         </div>
                         <div className="flex gap-1 flex-shrink-0">
-                          <Button size="sm" variant="outline" onClick={() => setEditingStep({ id: step.id, stepOrder: step.stepOrder, delayDays: step.delayDays, subject: step.subject, htmlBody: step.htmlBody })}>
+                          <Button size="sm" variant="outline" onClick={() => setEditingStep({ id: step.id, stepOrder: step.stepOrder, delayDays: step.delayDays, subject: step.subject, htmlBody: step.htmlBody, sendCondition: (step as any).sendCondition ?? 'always' })}>
                             <Pencil size={14} />
                           </Button>
                           <Button size="sm" variant="destructive" onClick={() => handleDeleteStep(step.id)}>
@@ -1072,6 +1136,18 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                   <Label>Corpo do e-mail (HTML)</Label>
                   <Textarea rows={8} value={editingStep.htmlBody} onChange={e => setEditingStep(s => s && ({ ...s, htmlBody: e.target.value }))} />
                   <p className="text-xs text-gray-500 mt-1">{TEMPLATE_HINT}</p>
+                </div>
+                <div>
+                  <Label>Condição de envio</Label>
+                  <Select value={editingStep.sendCondition} onValueChange={(v) => setEditingStep(s => s && ({ ...s, sendCondition: v }))}>
+                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(SEND_CONDITION_LABELS).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-500 mt-1">{SEND_CONDITION_HINT}</p>
                 </div>
               </div>
             )}
@@ -1457,6 +1533,294 @@ function TagsTab() {
   );
 }
 
+// ── Exportar ───────────────────────────────────────────────────────────────
+
+type ExportRow = {
+  name: string | null;
+  email: string;
+  phone: string | null;
+  tags: string[] | null;
+  assignedTo: string | null;
+  lastContactedAt: string | Date | null;
+  convertedAt: string | Date | null;
+  opens: number;
+  clicks: number;
+  lastEventAt: string | Date | null;
+};
+
+// Escapes a single CSV field for Excel PT-BR (`;` separator): wraps in quotes
+// when the value contains `;`, `"` or a newline, doubling internal quotes.
+function csvEscape(value: string): string {
+  if (/[;"\n\r]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function csvDate(value: string | Date | null | undefined): string {
+  if (!value) return "";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function ExportTab() {
+  const { data: tags } = trpc.emailMarketing.listTags.useQuery();
+
+  const [filters, setFilters] = useState<{
+    tags: string[];
+    converted: "all" | "yes" | "no";
+    engagement: "all" | "opened" | "not_opened" | "clicked" | "not_clicked";
+    engagementWindowDays: string;
+    inactiveDays: string;
+    hotOnly: boolean;
+    assignedTo: string;
+  }>({
+    tags: [],
+    converted: "all",
+    engagement: "all",
+    engagementWindowDays: "90",
+    inactiveDays: "",
+    hotOnly: false,
+    assignedTo: "",
+  });
+
+  const [result, setResult] = useState<ExportRow[] | null>(null);
+
+  const exportInput = useMemo(() => {
+    const input: Record<string, unknown> = {};
+    if (filters.tags.length > 0) input.tags = filters.tags;
+    if (filters.converted !== "all") input.converted = filters.converted;
+    if (filters.engagement !== "all") {
+      input.engagement = filters.engagement;
+      const win = Number(filters.engagementWindowDays);
+      if (filters.engagementWindowDays.trim() && !isNaN(win) && win > 0) {
+        input.engagementWindowDays = win;
+      }
+    }
+    if (filters.inactiveDays.trim()) {
+      const days = Number(filters.inactiveDays);
+      if (!isNaN(days) && days > 0) input.inactiveDays = days;
+    }
+    if (filters.hotOnly) input.hotOnly = true;
+    if (filters.assignedTo.trim()) input.assignedTo = filters.assignedTo.trim();
+    return input;
+  }, [filters]);
+
+  const exportQuery = trpc.emailMarketing.exportLeads.useQuery(exportInput as any, { enabled: false });
+
+  const toggleTag = (tag: string) => {
+    setFilters(f => ({
+      ...f,
+      tags: f.tags.includes(tag) ? f.tags.filter(t => t !== tag) : [...f.tags, tag],
+    }));
+  };
+
+  const handlePreview = async () => {
+    try {
+      const res = await exportQuery.refetch();
+      if (res.error) {
+        toast.error(res.error.message ?? "Erro ao buscar leads");
+        return;
+      }
+      setResult((res.data as ExportRow[]) ?? []);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao buscar leads");
+    }
+  };
+
+  const handleDownload = async () => {
+    try {
+      const res = await exportQuery.refetch();
+      if (res.error) {
+        toast.error(res.error.message ?? "Erro ao buscar leads");
+        return;
+      }
+      const rows = (res.data as ExportRow[]) ?? [];
+      setResult(rows);
+      if (rows.length === 0) {
+        toast.warning("Nenhum lead encontrado com esses filtros");
+        return;
+      }
+
+      const header = ["Nome", "Email", "Telefone", "Tags", "Atendente", "Último contato", "Convertido em", "Aberturas", "Cliques", "Último evento"];
+      const lines = rows.map(r => [
+        r.name ?? "",
+        r.email,
+        r.phone ?? "",
+        (r.tags ?? []).join(", "),
+        r.assignedTo ?? "",
+        csvDate(r.lastContactedAt),
+        csvDate(r.convertedAt),
+        String(r.opens ?? 0),
+        String(r.clicks ?? 0),
+        csvDate(r.lastEventAt),
+      ].map(v => csvEscape(String(v))).join(";"));
+
+      const csv = [header.join(";"), ...lines].join("\r\n");
+      const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const today = new Date();
+      const p = (n: number) => String(n).padStart(2, '0');
+      const dateStr = `${today.getFullYear()}-${p(today.getMonth() + 1)}-${p(today.getDate())}`;
+      a.href = url;
+      a.download = `leads-export-${dateStr}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success(`✅ CSV gerado com ${rows.length} lead(s)`);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao gerar CSV");
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>📤 Exportar leads</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-gray-500">
+            Filtre os leads e exporte para CSV (Excel). Útil para campanhas externas,
+            limpeza de base (quem não abriu / não respondeu) e priorização de telefonemas (quem está quente 🔥).
+          </p>
+
+          {tags && tags.length > 0 && (
+            <div>
+              <Label>Tags</Label>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {tags.map(tag => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => toggleTag(tag)}
+                    className={`text-xs px-2 py-1 rounded-full border font-medium transition ${filters.tags.includes(tag) ? "bg-blue-900 text-white border-blue-900" : "bg-white text-gray-600 border-gray-200 hover:bg-blue-50"}`}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Label>Convertido em cliente?</Label>
+              <Select value={filters.converted} onValueChange={(v: any) => setFilters(f => ({ ...f, converted: v }))}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="yes">Sim</SelectItem>
+                  <SelectItem value="no">Não</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Atendente (opcional)</Label>
+              <Input value={filters.assignedTo} onChange={e => setFilters(f => ({ ...f, assignedTo: e.target.value }))} placeholder="Nome do atendente" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Label>Engajamento</Label>
+              <Select value={filters.engagement} onValueChange={(v: any) => setFilters(f => ({ ...f, engagement: v }))}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Qualquer</SelectItem>
+                  {Object.entries(EXPORT_ENGAGEMENT_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {filters.engagement !== "all" && (
+              <div>
+                <Label>Janela (dias)</Label>
+                <Input type="number" min={1} value={filters.engagementWindowDays} onChange={e => setFilters(f => ({ ...f, engagementWindowDays: e.target.value }))} placeholder="90" />
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Label>Sem contato há N dias (opcional)</Label>
+              <Input type="number" min={1} value={filters.inactiveDays} onChange={e => setFilters(f => ({ ...f, inactiveDays: e.target.value }))} placeholder="Ex: 30" />
+            </div>
+            <div className="flex items-center gap-2 pt-6">
+              <Checkbox checked={filters.hotOnly} onCheckedChange={(checked) => setFilters(f => ({ ...f, hotOnly: checked === true }))} />
+              <Label className="!mb-0">🔥 Só quentes</Label>
+            </div>
+          </div>
+
+          <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" onClick={handlePreview} disabled={exportQuery.isFetching}>
+              <Eye size={14} className="mr-1" /> {exportQuery.isFetching ? "Buscando..." : "Pré-visualizar"}
+            </Button>
+            <Button onClick={handleDownload} disabled={exportQuery.isFetching}>
+              <Download size={14} className="mr-1" /> {exportQuery.isFetching ? "Gerando..." : "Baixar CSV"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {result !== null && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Resultado ({result.length} lead{result.length === 1 ? "" : "s"})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {result.length > 0 ? (
+              <div className="overflow-x-auto max-h-96">
+                <table className="w-full text-sm min-w-[720px]">
+                  <thead className="bg-gray-100 sticky top-0">
+                    <tr>
+                      <th className="p-2 text-left">Nome</th>
+                      <th className="p-2 text-left">E-mail</th>
+                      <th className="p-2 text-left">Telefone</th>
+                      <th className="p-2 text-left">Tags</th>
+                      <th className="p-2 text-left">Atendente</th>
+                      <th className="p-2 text-left">Último contato</th>
+                      <th className="p-2 text-left">Convertido em</th>
+                      <th className="p-2 text-left">Aberturas</th>
+                      <th className="p-2 text-left">Cliques</th>
+                      <th className="p-2 text-left">Último evento</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.slice(0, 20).map((r, i) => (
+                      <tr key={`${r.email}-${i}`} className="border-b hover:bg-gray-50">
+                        <td className="p-2">{r.name ?? "--"}</td>
+                        <td className="p-2">{r.email}</td>
+                        <td className="p-2">{r.phone ?? "--"}</td>
+                        <td className="p-2 text-xs">{(r.tags ?? []).join(", ")}</td>
+                        <td className="p-2">{r.assignedTo ?? "--"}</td>
+                        <td className="p-2 text-xs">{formatDateTime(r.lastContactedAt)}</td>
+                        <td className="p-2 text-xs">{formatDateTime(r.convertedAt)}</td>
+                        <td className="p-2">{r.opens ?? 0}</td>
+                        <td className="p-2">{r.clicks ?? 0}</td>
+                        <td className="p-2 text-xs">{formatDateTime(r.lastEventAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">Nenhum lead encontrado com esses filtros.</p>
+            )}
+            {result.length > 20 && (
+              <p className="text-xs text-gray-500 mt-2">Mostrando os primeiros 20 de {result.length} leads. O CSV completo terá todos os {result.length}.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ── Estatísticas ───────────────────────────────────────────────────────────
 
 function StatsTab() {
@@ -1588,6 +1952,7 @@ function SequenceStatsRow({ sequenceId, name }: { sequenceId: number; name: stri
                 <Badge variant="outline">📤 {s.sent}</Badge>
                 <Badge variant="outline">👁 {s.opened}</Badge>
                 <Badge variant="outline">🔗 {s.clicked}</Badge>
+                <Badge variant="outline">⏭ {(s as any).skipped ?? 0} pulados</Badge>
               </div>
             ))}
           </div>

@@ -12,8 +12,8 @@ import crypto from 'crypto';
 import { and, eq, isNull, isNotNull, ne, sql } from 'drizzle-orm';
 import { db } from '../db';
 import {
-  automationRules, emailSequenceSteps, emailSequenceEnrollments,
-  emailSuppressions, tasks,
+  automationRules, emailSequenceSteps, emailSequenceEnrollments, emailSequenceSends,
+  emailCampaignRecipients, emailSuppressions, tasks,
 } from '../db/schema';
 import { computeNextSendAt } from './marketing';
 
@@ -70,6 +70,7 @@ export async function enrollInSequence(
       unsubToken: crypto.randomUUID(),
       enrolledAt,
       nextSendAt,
+      cycleStartedAt: enrolledAt,
     }).onConflictDoNothing().returning({ id: emailSequenceEnrollments.id });
 
     return { enrolled: inserted.length > 0 };
@@ -182,4 +183,66 @@ export async function evaluateInactiveDaysRules(): Promise<{ rulesEvaluated: num
     console.error('[automations] evaluateInactiveDaysRules failed:', err);
   }
   return { rulesEvaluated, enrolled };
+}
+
+/**
+ * E-mail Marketing Fase 3 — lead scoring.
+ *
+ * Resolves the `taskId` linked to a `messageId` (campaign recipient OR
+ * sequence send → enrollment, same UNION used by `engagementByTaskIds`, but
+ * in reverse: from message_id to task_id) and updates `tasks.lastEngagementAt`.
+ * Clicks are a strong signal of interest: mark the task `hotLead`, raise its
+ * `priority` to `high`, tag it with `🔥 quente`, and bring its `reminderDate`
+ * to now if it's null or already past. Opens only update `lastEngagementAt`
+ * (opens are noisy due to Apple Mail Privacy Protection).
+ *
+ * Never throws — fire-and-forget after the webhook already responded 200.
+ */
+export async function flagEngagementByMessageId(
+  messageId: string,
+  eventType: 'opened' | 'clicked',
+): Promise<void> {
+  try {
+    if (!messageId) return;
+
+    // Resolve taskId: campaign recipients first, then sequence sends → enrollments.
+    const [campaignRow] = await db.select({ taskId: emailCampaignRecipients.taskId })
+      .from(emailCampaignRecipients)
+      .where(and(eq(emailCampaignRecipients.messageId, messageId), isNotNull(emailCampaignRecipients.taskId)))
+      .limit(1);
+
+    let taskId = campaignRow?.taskId ?? null;
+
+    if (!taskId) {
+      const [sequenceRow] = await db.select({ taskId: emailSequenceEnrollments.taskId })
+        .from(emailSequenceSends)
+        .innerJoin(emailSequenceEnrollments, eq(emailSequenceEnrollments.id, emailSequenceSends.enrollmentId))
+        .where(and(eq(emailSequenceSends.messageId, messageId), isNotNull(emailSequenceEnrollments.taskId)))
+        .limit(1);
+      taskId = sequenceRow?.taskId ?? null;
+    }
+
+    if (!taskId) return; // standalone e-mail, not linked to a task
+
+    const now = new Date();
+
+    if (eventType === 'clicked') {
+      await db.update(tasks)
+        .set({
+          hotLead: true,
+          priority: 'high',
+          lastEngagementAt: now,
+          reminderDate: sql`CASE WHEN ${tasks.reminderDate} IS NULL OR ${tasks.reminderDate} <= ${now} THEN ${now} ELSE ${tasks.reminderDate} END`,
+          updatedAt: now,
+        })
+        .where(eq(tasks.id, taskId));
+      await addTagToTask(taskId, '🔥 quente');
+    } else {
+      await db.update(tasks)
+        .set({ lastEngagementAt: now, updatedAt: now })
+        .where(eq(tasks.id, taskId));
+    }
+  } catch (err) {
+    console.error('[automations] flagEngagementByMessageId failed:', err);
+  }
 }

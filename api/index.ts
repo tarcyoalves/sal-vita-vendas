@@ -14,7 +14,7 @@ import { ordersDb } from '../server/db/ordersDb';
 import { sql as sqlClient, db } from '../server/db/index';
 import {
   siteOrders, abandonedCarts, automationRuns, msgTemplates, coupons, emailCampaignRecipients, emailSuppressions, clients,
-  emailSequenceEnrollments, emailSequenceSteps, emailSequenceSends, emailEvents,
+  emailSequences, emailSequenceEnrollments, emailSequenceSteps, emailSequenceSends, emailEvents,
 } from '../server/db/schema';
 import { eq, and, sql, lte, gte, isNull, isNotNull, inArray, desc, asc, lt } from 'drizzle-orm';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
@@ -22,9 +22,10 @@ import { createPixPaymentForOrder } from '../server/lib/mercadopago';
 import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid } from '../server/lib/orderConfirmation';
 import {
   verifyResendWebhook, pickAccount, sendBatch, layout, computeNextSendAt,
+  enrollmentEngagementBatch, conditionMet,
   renderTemplate as renderMktTemplate, type BatchMessage,
 } from '../server/email/marketing';
-import { evaluateInactiveDaysRules } from '../server/email/automations';
+import { evaluateInactiveDaysRules, flagEngagementByMessageId } from '../server/email/automations';
 
 function isBusinessHours(): boolean {
   const brHour = (new Date().getUTCHours() - 3 + 24) % 24;
@@ -459,6 +460,12 @@ app.post('/api/resend-webhook', resendWebhookLimiter, express.raw({ type: 'appli
           recipientEmail,
           eventType: shortType,
         });
+        // E-mail Marketing Fase 3 — lead scoring: flag the linked task as a hot
+        // lead on click (opens only bump lastEngagementAt). The 200 response
+        // was already sent above; this never throws (try/catch inside).
+        if (shortType === 'opened' || shortType === 'clicked') {
+          await flagEngagementByMessageId(messageId, shortType as 'opened' | 'clicked');
+        }
         break;
       }
       default:
@@ -885,6 +892,7 @@ app.get('/api/cron/email-daily', async (req, res) => {
     sent: 0,
     failed: 0,
     completed: 0,
+    skipped: 0,
     quotaExhausted: false,
     eventsDeleted: 0,
   };
@@ -924,36 +932,104 @@ app.get('/api/cron/email-daily', async (req, res) => {
         stepsBySequence.set(step.sequenceId, list);
       }
 
+      // E-mail Marketing Fase 3 — pré-carrega as sequências (repeat/repeatIntervalDays)
+      // para o loop de recorrência, sem N+1.
+      const allSequences = await db.select().from(emailSequences)
+        .where(inArray(emailSequences.id, sequenceIds));
+      const sequenceById = new Map(allSequences.map(s => [s.id, s]));
+
       const unsubBase = process.env.PUBLIC_APP_URL ?? 'https://lembretes.salvitarn.com.br';
+
+      // E-mail Marketing Fase 3 — sequências condicionais: avalia o engajamento
+      // prévio de TODAS as inscrições devidas numa única query (sem N+1).
+      const engMap = await enrollmentEngagementBatch(dueEnrollments.map(e => e.id));
+
+      // Skip-loop: para cada inscrição devida, avança por passos cuja condição
+      // não bate (registrando 'skipped', sem gastar cota) até achar um passo que
+      // deva ser enviado, ou até a inscrição ser concluída/reiniciar o ciclo
+      // (sequência recorrente). Cap de 10 iterações por segurança.
+      type Enrollment = typeof dueEnrollments[number];
+      const sendable: { enrollment: Enrollment; step: typeof allSteps[number] }[] = [];
+
+      for (const original of dueEnrollments) {
+        let enrollment: Enrollment = original;
+        const steps = stepsBySequence.get(enrollment.sequenceId) ?? [];
+        const seq = sequenceById.get(enrollment.sequenceId);
+
+        for (let iter = 0; iter < 10; iter++) {
+          const step = steps[enrollment.currentStep];
+
+          if (!step) {
+            // Sem próximo passo.
+            if (seq?.repeat && seq.repeatIntervalDays) {
+              // Sequência recorrente: reinicia o ciclo após repeatIntervalDays.
+              const newCycleStart = new Date(now.getTime() + seq.repeatIntervalDays * 24 * 60 * 60 * 1000);
+              const nextSendAt = computeNextSendAt(newCycleStart, steps, 0);
+              enrollment = {
+                ...enrollment,
+                currentStep: 0,
+                cycleStartedAt: newCycleStart,
+                nextSendAt,
+                status: 'active',
+              };
+              await db.update(emailSequenceEnrollments)
+                .set({ currentStep: 0, cycleStartedAt: newCycleStart, nextSendAt, status: 'active', updatedAt: new Date() })
+                .where(eq(emailSequenceEnrollments.id, enrollment.id));
+              continue; // re-avalia a condição do novo passo 0
+            }
+            // Não é recorrente — marca como concluída e segue.
+            await db.update(emailSequenceEnrollments)
+              .set({ status: 'completed', nextSendAt: null, updatedAt: new Date() })
+              .where(eq(emailSequenceEnrollments.id, enrollment.id));
+            summary.completed++;
+            break;
+          }
+
+          const eng = engMap.get(enrollment.id) ?? { opened: false, clicked: false };
+          if (conditionMet(step.sendCondition, eng)) {
+            sendable.push({ enrollment, step });
+            break;
+          }
+
+          // Condição não satisfeita — pula este passo sem gastar cota.
+          await db.insert(emailSequenceSends).values({
+            enrollmentId: enrollment.id,
+            stepId: step.id,
+            status: 'skipped',
+            messageId: null,
+          });
+          summary.skipped++;
+
+          const newCurrentStep = enrollment.currentStep + 1;
+          const cycleStart = enrollment.cycleStartedAt ?? enrollment.enrolledAt;
+          const nextSendAt = computeNextSendAt(cycleStart, steps, newCurrentStep);
+          const newStatus = nextSendAt ? 'active' : 'completed';
+          enrollment = { ...enrollment, currentStep: newCurrentStep, nextSendAt, status: newStatus };
+          await db.update(emailSequenceEnrollments)
+            .set({ currentStep: newCurrentStep, nextSendAt, status: newStatus, updatedAt: new Date() })
+            .where(eq(emailSequenceEnrollments.id, enrollment.id));
+          // continua o laço — avalia o próximo passo no mesmo run
+        }
+      }
 
       // Processa em lotes de até 100, respeitando a cota diária compartilhada.
       let i = 0;
-      while (i < dueEnrollments.length) {
+      while (i < sendable.length) {
         const picked = await pickAccount();
         if (!picked) {
           summary.quotaExhausted = true;
           break;
         }
 
-        const batchSize = Math.min(100, picked.remaining, dueEnrollments.length - i);
-        const batch = dueEnrollments.slice(i, i + batchSize);
+        const batchSize = Math.min(100, picked.remaining, sendable.length - i);
+        const batch = sendable.slice(i, i + batchSize);
         i += batchSize;
 
-        // Monta as mensagens do passo (current_step + 1) para cada enrollment do lote.
+        // Monta as mensagens do passo já resolvido pelo skip-loop para cada inscrição do lote.
         const messages: BatchMessage[] = [];
-        const batchMeta: { enrollment: typeof dueEnrollments[number]; step: typeof allSteps[number] }[] = [];
+        const batchMeta: { enrollment: Enrollment; step: typeof allSteps[number] }[] = [];
 
-        for (const enrollment of batch) {
-          const steps = stepsBySequence.get(enrollment.sequenceId) ?? [];
-          const step = steps[enrollment.currentStep];
-          if (!step) {
-            // Sem próximo passo — marca como concluída e segue.
-            await db.update(emailSequenceEnrollments)
-              .set({ status: 'completed', nextSendAt: null, updatedAt: new Date() })
-              .where(eq(emailSequenceEnrollments.id, enrollment.id));
-            summary.completed++;
-            continue;
-          }
+        for (const { enrollment, step } of batch) {
           const unsubUrl = `${unsubBase}/api/unsubscribe?t=${enrollment.unsubToken}`;
           messages.push({
             to: enrollment.email,
@@ -972,7 +1048,8 @@ app.get('/api/cron/email-daily', async (req, res) => {
             const result = results[j];
             const steps = stepsBySequence.get(enrollment.sequenceId) ?? [];
             const newCurrentStep = enrollment.currentStep + 1;
-            const nextSendAt = computeNextSendAt(enrollment.enrolledAt, steps, newCurrentStep);
+            const cycleStart = enrollment.cycleStartedAt ?? enrollment.enrolledAt;
+            const nextSendAt = computeNextSendAt(cycleStart, steps, newCurrentStep);
             const newStatus = nextSendAt ? 'active' : 'completed';
 
             if (result.ok) {
@@ -997,9 +1074,9 @@ app.get('/api/cron/email-daily', async (req, res) => {
           }
         }
 
-        // Se o lote não esgotou a cota da conta, ainda há mais devidos? continua;
+        // Se o lote não esgotou a cota da conta, ainda há mais a enviar? continua;
         // se pickAccount ficar null no próximo loop, paramos com early-exit acima.
-        if (i >= dueEnrollments.length) break;
+        if (i >= sendable.length) break;
       }
     }
 

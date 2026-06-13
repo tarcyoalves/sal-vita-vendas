@@ -60,6 +60,10 @@ export const tasks = pgTable('tasks', {
   // Valor da venda quando o lead é convertido em cliente ativo (ticket médio, faturamento)
   orderValue: numeric('order_value', { precision: 10, scale: 2 }),
   orderId: text('order_id'),
+  // E-mail Marketing Fase 3 — lead scoring: marcado quando o lead clica em algum
+  // e-mail de campanha/sequência (sinal forte de interesse).
+  hotLead: boolean('hot_lead').notNull().default(false),
+  lastEngagementAt: timestamp('last_engagement_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -310,6 +314,10 @@ export const emailSequences = pgTable('email_sequences', {
   name: text('name').notNull(),
   description: text('description'),
   active: boolean('active').default(true).notNull(),
+  // E-mail Marketing Fase 3 — sequências recorrentes (loop): ao terminar o
+  // último passo, reinicia do passo 1 após `repeatIntervalDays` dias.
+  repeat: boolean('repeat').notNull().default(false),
+  repeatIntervalDays: integer('repeat_interval_days'), // gap antes de reiniciar o ciclo (nullable)
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -321,6 +329,9 @@ export const emailSequenceSteps = pgTable('email_sequence_steps', {
   delayDays: integer('delay_days').notNull(),       // dias após a inscrição
   subject: text('subject').notNull(),
   htmlBody: text('html_body').notNull(),
+  // E-mail Marketing Fase 3 — condição de envio avaliada contra o engajamento
+  // anterior da inscrição: always | if_opened | if_not_opened | if_clicked | if_not_clicked
+  sendCondition: text('send_condition').notNull().default('always'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -336,6 +347,9 @@ export const emailSequenceEnrollments = pgTable('email_sequence_enrollments', {
   unsubToken: text('unsub_token').notNull(),
   enrolledAt: timestamp('enrolled_at').defaultNow().notNull(),
   nextSendAt: timestamp('next_send_at'),
+  // E-mail Marketing Fase 3 — base de tempo para sequências recorrentes (loop):
+  // inicializado = enrolledAt; reiniciado a cada novo ciclo de uma sequência repeat=true.
+  cycleStartedAt: timestamp('cycle_started_at'),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
@@ -343,7 +357,7 @@ export const emailSequenceSends = pgTable('email_sequence_sends', {
   id: serial('id').primaryKey(),
   enrollmentId: integer('enrollment_id').notNull(),
   stepId: integer('step_id').notNull(),
-  status: text('status').notNull().default('sent'), // sent|failed
+  status: text('status').notNull().default('sent'), // sent|failed|skipped
   accountKey: text('account_key'),
   messageId: text('message_id'),
   error: text('error'),

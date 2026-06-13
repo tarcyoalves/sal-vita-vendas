@@ -12,6 +12,7 @@ import {
 } from '../db/schema';
 import { pickAccount, sendBatch, layout, renderTemplate, type BatchMessage } from '../email/marketing';
 import { enrollInSequence } from '../email/automations';
+import { userTaskFilter } from './tasks';
 
 const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL ?? 'https://lembretes.salvitarn.com.br';
 const MKT_DAILY_LIMIT = parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? '90');
@@ -20,6 +21,11 @@ const MKT_DAILY_LIMIT = parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? '90');
 // first segment as the recipient's display name for {nome} personalization.
 function firstPart(title: string): string {
   return (title.split(' - ')[0] || title).trim();
+}
+
+// Third segment of the title is the phone number (same convention as firstPart).
+function phonePart(title: string): string | null {
+  return title.split(' - ')[2]?.trim() || null;
 }
 
 interface AudienceRow {
@@ -85,6 +91,47 @@ async function buildAudience(opts: { source: 'leads' | 'clients' | 'both'; assig
   const suppressed = await db.select({ email: emailSuppressions.email }).from(emailSuppressions);
   const suppressedSet = new Set(suppressed.map(s => s.email.toLowerCase()));
   return deduped.filter(r => !suppressedSet.has(r.email));
+}
+
+// Same UNION-join used by `engagementByTaskIds`, but restricted to events on or
+// after `windowStart` — used by `exportLeads` to filter by recent engagement.
+async function exportEngagementBatch(
+  taskIds: number[],
+  windowStart: Date,
+): Promise<Map<number, { opens: number; clicks: number; lastEventAt: string | null }>> {
+  const out = new Map<number, { opens: number; clicks: number; lastEventAt: string | null }>();
+  if (taskIds.length === 0) return out;
+
+  const result = await db.execute<{ task_id: number; opens: number; clicks: number; last_event_at: string }>(sql`
+    WITH msgs AS (
+      SELECT task_id, message_id FROM ${emailCampaignRecipients}
+      WHERE task_id IN (${sql.join(taskIds.map(id => sql`${id}`), sql`, `)})
+        AND message_id IS NOT NULL
+      UNION ALL
+      SELECT en.task_id, sd.message_id
+      FROM ${emailSequenceSends} sd
+      INNER JOIN ${emailSequenceEnrollments} en ON en.id = sd.enrollment_id
+      WHERE en.task_id IN (${sql.join(taskIds.map(id => sql`${id}`), sql`, `)})
+        AND sd.message_id IS NOT NULL
+    )
+    SELECT
+      m.task_id,
+      COUNT(*) FILTER (WHERE e.event_type = 'opened')::int AS opens,
+      COUNT(*) FILTER (WHERE e.event_type = 'clicked')::int AS clicks,
+      MAX(e.created_at) AS last_event_at
+    FROM msgs m
+    INNER JOIN ${emailEvents} e ON e.message_id = m.message_id AND e.created_at >= ${windowStart}
+    GROUP BY m.task_id
+  `);
+
+  for (const row of result.rows) {
+    out.set(Number(row.task_id), {
+      opens: Number(row.opens),
+      clicks: Number(row.clicks),
+      lastEventAt: row.last_event_at ?? null,
+    });
+  }
+  return out;
 }
 
 export const emailMarketingRouter = router({
@@ -385,8 +432,14 @@ export const emailMarketingRouter = router({
       name: z.string().min(1).max(200),
       description: z.string().max(2000).optional(),
       active: z.boolean().optional().default(true),
+      // E-mail Marketing Fase 3 — sequências recorrentes (loop mensal).
+      repeat: z.boolean().optional().default(false),
+      repeatIntervalDays: z.number().int().min(1).max(365).optional(),
     }))
     .mutation(async ({ input }) => {
+      if (input.repeat && !input.repeatIntervalDays) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Informe o intervalo (em dias) para reiniciar a sequência.' });
+      }
       if (input.id) {
         const { id, ...data } = input;
         const [updated] = await db.update(emailSequences)
@@ -437,6 +490,8 @@ export const emailMarketingRouter = router({
       delayDays: z.number().int().min(0),
       subject: z.string().min(1).max(300),
       htmlBody: z.string().min(1),
+      // E-mail Marketing Fase 3 — condição de envio (ramificação por engajamento).
+      sendCondition: z.enum(['always', 'if_opened', 'if_not_opened', 'if_clicked', 'if_not_clicked']).optional().default('always'),
     }))
     .mutation(async ({ input }) => {
       if (input.id) {
@@ -635,10 +690,11 @@ export const emailMarketingRouter = router({
         .orderBy(asc(emailSequenceSteps.stepOrder));
       if (steps.length === 0) return [];
 
-      const result = await db.execute<{ step_id: number; sent: number; opened: number; clicked: number }>(sql`
+      const result = await db.execute<{ step_id: number; sent: number; skipped: number; opened: number; clicked: number }>(sql`
         SELECT
           s.step_id,
           COUNT(*) FILTER (WHERE s.status = 'sent')::int AS sent,
+          COUNT(*) FILTER (WHERE s.status = 'skipped')::int AS skipped,
           COUNT(DISTINCT e_opened.id)::int AS opened,
           COUNT(DISTINCT e_clicked.id)::int AS clicked
         FROM ${emailSequenceSends} s
@@ -649,14 +705,17 @@ export const emailMarketingRouter = router({
         WHERE s.step_id IN (${sql.join(steps.map(st => sql`${st.id}`), sql`, `)})
         GROUP BY s.step_id
       `);
-      const statsMap = new Map(result.rows.map(r => [Number(r.step_id), { sent: Number(r.sent), opened: Number(r.opened), clicked: Number(r.clicked) }]));
+      const statsMap = new Map(result.rows.map(r => [Number(r.step_id), {
+        sent: Number(r.sent), skipped: Number(r.skipped), opened: Number(r.opened), clicked: Number(r.clicked),
+      }]));
 
       return steps.map(step => ({
         stepId: step.id,
         stepOrder: step.stepOrder,
         delayDays: step.delayDays,
         subject: step.subject,
-        ...(statsMap.get(step.id) ?? { sent: 0, opened: 0, clicked: 0 }),
+        sendCondition: step.sendCondition,
+        ...(statsMap.get(step.id) ?? { sent: 0, skipped: 0, opened: 0, clicked: 0 }),
       }));
     }),
 
@@ -748,6 +807,94 @@ export const emailMarketingRouter = router({
           lastEventAt: row.last_event_at ?? null,
         };
       }
+      return out;
+    }),
+
+  // ── Leads quentes (Fase 3, Pilar 3) ──────────────────────────────────────
+  // Total de tarefas com hotLead=true visíveis ao usuário (admin vê todas).
+  hotLeadsCount: protectedProcedure.query(async ({ ctx }) => {
+    const filter = ctx.user.role === 'admin'
+      ? eq(tasks.hotLead, true)
+      : and(eq(tasks.hotLead, true), await userTaskFilter(ctx.user.id, ctx.user.name ?? ''));
+
+    const [row] = await db.select({ cnt: count() }).from(tasks).where(filter);
+    return { count: Number(row?.cnt ?? 0) };
+  }),
+
+  // ── Exportar leads (Fase 3, Pilar 4) ─────────────────────────────────────
+  // CSV de leads com filtros avançados (tags, conversão, inatividade,
+  // engajamento de e-mail e leads quentes). Sem N+1: uma query para as tasks
+  // e uma query batched para o engajamento.
+  exportLeads: adminProcedure
+    .input(z.object({
+      tags: z.array(z.string()).optional(),
+      converted: z.enum(['yes', 'no']).optional(),
+      engagement: z.enum(['opened', 'not_opened', 'clicked', 'not_clicked']).optional(),
+      engagementWindowDays: z.number().int().min(1).max(365).optional().default(90),
+      inactiveDays: z.number().int().min(1).max(365).optional(),
+      hotOnly: z.boolean().optional(),
+      assignedTo: z.string().optional(),
+      limit: z.number().int().min(1).max(5000).optional().default(5000),
+    }))
+    .query(async ({ input }) => {
+      const conditions = [isNotNull(tasks.email), ne(tasks.email, '')];
+
+      if (input.tags && input.tags.length > 0) {
+        conditions.push(sql`${tasks.tags} && ARRAY[${sql.join(input.tags.map(t => sql`${t}`), sql`, `)}]::text[]`);
+      }
+      if (input.converted === 'yes') conditions.push(isNotNull(tasks.convertedAt));
+      if (input.converted === 'no') conditions.push(isNull(tasks.convertedAt));
+      if (input.hotOnly) conditions.push(eq(tasks.hotLead, true));
+      if (input.assignedTo) conditions.push(sql`lower(${tasks.assignedTo}) = ${input.assignedTo.toLowerCase()}`);
+      if (input.inactiveDays) {
+        const cutoff = new Date(Date.now() - input.inactiveDays * 24 * 60 * 60 * 1000);
+        conditions.push(sql`COALESCE(${tasks.lastContactedAt}, ${tasks.createdAt}) < ${cutoff}`);
+      }
+
+      const rows = await db.select({
+        id: tasks.id,
+        title: tasks.title,
+        email: tasks.email,
+        tags: tasks.tags,
+        assignedTo: tasks.assignedTo,
+        lastContactedAt: tasks.lastContactedAt,
+        convertedAt: tasks.convertedAt,
+      }).from(tasks).where(and(...conditions)).limit(5000);
+
+      const windowStart = new Date(Date.now() - input.engagementWindowDays * 24 * 60 * 60 * 1000);
+      const engMap = await exportEngagementBatch(rows.map(r => r.id), windowStart);
+
+      const out: Array<{
+        name: string; email: string; phone: string | null; tags: string[];
+        assignedTo: string | null; lastContactedAt: Date | null; convertedAt: Date | null;
+        opens: number; clicks: number; lastEventAt: string | null;
+      }> = [];
+
+      for (const r of rows) {
+        if (!r.email) continue;
+        const eng = engMap.get(r.id) ?? { opens: 0, clicks: 0, lastEventAt: null };
+
+        if (input.engagement === 'opened' && eng.opens === 0) continue;
+        if (input.engagement === 'not_opened' && eng.opens > 0) continue;
+        if (input.engagement === 'clicked' && eng.clicks === 0) continue;
+        if (input.engagement === 'not_clicked' && eng.clicks > 0) continue;
+
+        out.push({
+          name: firstPart(r.title),
+          email: r.email,
+          phone: phonePart(r.title),
+          tags: r.tags ?? [],
+          assignedTo: r.assignedTo,
+          lastContactedAt: r.lastContactedAt,
+          convertedAt: r.convertedAt,
+          opens: eng.opens,
+          clicks: eng.clicks,
+          lastEventAt: eng.lastEventAt,
+        });
+
+        if (out.length >= input.limit) break;
+      }
+
       return out;
     }),
 });

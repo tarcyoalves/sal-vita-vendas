@@ -336,6 +336,17 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE clients   ADD COLUMN IF NOT EXISTS unsubscribed       BOOLEAN NOT NULL DEFAULT false`;
   await sql`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS tags               TEXT[] NOT NULL DEFAULT '{}'`;
 
+  // ── E-mail Marketing Fase 3 — sequências condicionais, recorrentes, lead scoring ──
+  await sql`ALTER TABLE email_sequence_steps ADD COLUMN IF NOT EXISTS send_condition TEXT NOT NULL DEFAULT 'always'`;
+  await sql`ALTER TABLE email_sequences ADD COLUMN IF NOT EXISTS repeat BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql`ALTER TABLE email_sequences ADD COLUMN IF NOT EXISTS repeat_interval_days INTEGER`;
+  await sql`ALTER TABLE email_sequence_enrollments ADD COLUMN IF NOT EXISTS cycle_started_at TIMESTAMP`;
+  // Backfill: inscrições antigas usam enrolled_at como base do ciclo.
+  await sql`UPDATE email_sequence_enrollments SET cycle_started_at = enrolled_at WHERE cycle_started_at IS NULL`;
+  await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS hot_lead BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_engagement_at TIMESTAMP`;
+  await sql`CREATE INDEX IF NOT EXISTS tasks_hot_lead_idx ON tasks (hot_lead) WHERE hot_lead = TRUE`;
+
   // Backfill: extract the first e-mail found in tasks.notes for tasks that don't have one yet
   await sql`
     UPDATE tasks
