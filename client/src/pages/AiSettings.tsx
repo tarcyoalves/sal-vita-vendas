@@ -76,8 +76,26 @@ export default function AiSettings() {
     } catch { return {}; }
   });
   const testConnectionMutation = trpc.ai.testConnection.useMutation();
+  const listModelsMutation = trpc.ai.listModels.useMutation();
+  const [availableModels, setAvailableModels] = useState<{ id: string; contextLength: number | null; ownedBy: string | null }[] | null>(null);
 
   const currentProvider = AI_PROVIDERS.find((p) => p.id === selectedProvider);
+
+  const handleListModels = async () => {
+    setError("");
+    setAvailableModels(null);
+    if (!apiKey.trim()) {
+      setError("Cole a chave de API antes de listar os modelos");
+      return;
+    }
+    try {
+      const result = await listModelsMutation.mutateAsync({ provider: selectedProvider, apiKey });
+      setAvailableModels(result.models);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError(`❌ Erro ao listar modelos: ${errorMessage}`);
+    }
+  };
 
   const handleSaveAndTest = async () => {
     setError("");
@@ -271,10 +289,39 @@ export default function AiSettings() {
                   onClick={() => {
                     setApiKey("");
                     setError("");
+                    setAvailableModels(null);
                   }}
                 >
                   🔄 Limpar
                 </Button>
+              </div>
+
+              {/* List models available for this key */}
+              <div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleListModels}
+                  disabled={!apiKey.trim() || listModelsMutation.isPending}
+                >
+                  {listModelsMutation.isPending ? "🔄 Listando..." : "📋 Ver todos os modelos desta chave"}
+                </Button>
+                {availableModels && (
+                  <div className="mt-3 border rounded-lg divide-y max-h-64 overflow-y-auto">
+                    {availableModels.length === 0 ? (
+                      <p className="text-sm text-gray-600 p-3">Nenhum modelo retornado para essa chave.</p>
+                    ) : (
+                      availableModels.map((m) => (
+                        <div key={m.id} className="flex items-center justify-between p-2 text-sm">
+                          <span className="font-mono">{m.id}</span>
+                          <span className="text-xs text-gray-500">
+                            {m.ownedBy ? `${m.ownedBy} · ` : ""}{m.contextLength ? `${m.contextLength.toLocaleString("pt-BR")} tokens` : ""}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { router, protectedProcedure } from '../trpc';
+import { TRPCError } from '@trpc/server';
+import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { chatMessages, tasks, clients, sellers, workSessions, knowledgeDocuments } from '../db/schema';
 import { eq, desc, or, gte, and, ilike } from 'drizzle-orm';
@@ -703,6 +704,32 @@ export const aiRouter = router({
         start_hour: input.startHour,
         dry_run: input.dryRun,
       });
+    }),
+
+  // Lists every model this API key has access to, straight from the
+  // provider's /models endpoint — useful to discover better fallback
+  // options than whatever default model was guessed.
+  listModels: adminProcedure
+    .input(z.object({
+      provider: z.string(),
+      apiKey: z.string().min(1),
+    }))
+    .mutation(async ({ input }) => {
+      const baseURL = BASE_URLS[input.provider] ?? BASE_URLS.openai;
+      const res = await fetch(`${baseURL}/models`, {
+        headers: { 'Authorization': `Bearer ${input.apiKey}` },
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new TRPCError({ code: 'BAD_REQUEST', message: `Models API ${res.status}: ${text.slice(0, 300)}` });
+      }
+      const data = await res.json() as any;
+      const models = (data?.data ?? []).map((m: any) => ({
+        id: m.id,
+        contextLength: m.context_length ?? m.max_seq_length ?? null,
+        ownedBy: m.owned_by ?? null,
+      }));
+      return { models };
     }),
 
   testConnection: protectedProcedure
