@@ -208,6 +208,17 @@ export default function Tasks() {
   const { data: availableTags = [] } = trpc.emailMarketing.listTags.useQuery(undefined, { enabled: isAdmin });
   const [tagInput, setTagInput] = useState("");
 
+  const addTag = (raw: string) => {
+    const value = raw.trim();
+    if (!value) return;
+    setFormData(f => f.tags.includes(value) ? f : { ...f, tags: [...f.tags, value] });
+    setTagInput("");
+  };
+
+  const removeTag = (tag: string) => {
+    setFormData(f => ({ ...f, tags: f.tags.filter(t => t !== tag) }));
+  };
+
   // ── E-mail Marketing: enroll task(s) in a sequence ──────────────────────────
   const [sequencePickerTaskIds, setSequencePickerTaskIds] = useState<number[] | null>(null);
   const { data: emailSequences } = trpc.emailMarketing.listSequences.useQuery(undefined, { enabled: sequencePickerTaskIds !== null });
@@ -958,55 +969,73 @@ export default function Tasks() {
             </div>
             <div>
               <label className="block text-xs font-medium mb-1 text-gray-600">🏷️ Tags (segmentação de e-mail marketing)</label>
-              <div className="flex flex-wrap gap-1.5 mb-1.5">
-                {formData.tags.map(tag => (
-                  <span key={tag} className="inline-flex items-center gap-1 bg-indigo-100 text-indigo-800 text-xs font-medium px-2 py-1 rounded-full">
-                    {tag}
-                    <button
-                      type="button"
-                      onClick={() => setFormData(f => ({ ...f, tags: f.tags.filter(t => t !== tag) }))}
-                      className="text-indigo-500 hover:text-indigo-900 leading-none"
-                    >
-                      ✕
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <input
-                type="text"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ',') {
-                    e.preventDefault();
-                    const value = tagInput.trim();
-                    if (value && !formData.tags.includes(value)) {
-                      setFormData(f => ({ ...f, tags: [...f.tags, value] }));
-                    }
-                    setTagInput("");
-                  }
-                }}
-                placeholder="Digite uma tag e pressione Enter"
-                className="w-full px-3 py-1.5 border rounded-lg text-sm"
-                list="tag-suggestions"
-              />
-              <datalist id="tag-suggestions">
-                {availableTags.filter(t => !formData.tags.includes(t)).map(tag => <option key={tag} value={tag} />)}
-              </datalist>
-              {availableTags.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-1.5">
-                  {availableTags.filter(t => !formData.tags.includes(t)).slice(0, 8).map(tag => (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() => setFormData(f => ({ ...f, tags: [...f.tags, tag] }))}
-                      className="text-xs px-2 py-0.5 rounded-full border border-gray-200 text-gray-600 hover:bg-indigo-50 hover:border-indigo-300"
-                    >
-                      + {tag}
-                    </button>
-                  ))}
+              <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-2.5">
+                {formData.tags.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {formData.tags.map(tag => (
+                      <span
+                        key={tag}
+                        className="group inline-flex items-center gap-1.5 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white text-xs font-semibold pl-2.5 pr-1.5 py-1 rounded-full shadow-sm animate-in fade-in zoom-in-95 duration-150"
+                      >
+                        {tag}
+                        <button
+                          type="button"
+                          onClick={() => removeTag(tag)}
+                          title="Remover tag"
+                          className="flex items-center justify-center w-4 h-4 rounded-full bg-white/15 hover:bg-white/30 text-white leading-none transition-colors"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400 italic mb-2">Nenhuma tag adicionada ainda.</p>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ',') {
+                        e.preventDefault();
+                        addTag(tagInput);
+                      }
+                    }}
+                    placeholder="Digite uma tag e clique em Adicionar"
+                    className="flex-1 px-3 py-1.5 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400"
+                    list="tag-suggestions"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => addTag(tagInput)}
+                    disabled={!tagInput.trim()}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white shrink-0"
+                  >
+                    ➕ Adicionar
+                  </Button>
                 </div>
-              )}
+                <datalist id="tag-suggestions">
+                  {availableTags.filter(t => !formData.tags.includes(t)).map(tag => <option key={tag} value={tag} />)}
+                </datalist>
+                {availableTags.filter(t => !formData.tags.includes(t)).length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1 mt-2 pt-2 border-t border-gray-200/70">
+                    <span className="text-[11px] text-gray-400 mr-1">Sugestões:</span>
+                    {availableTags.filter(t => !formData.tags.includes(t)).slice(0, 8).map(tag => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => addTag(tag)}
+                        className="text-xs px-2 py-0.5 rounded-full border border-gray-200 bg-white text-gray-600 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 transition-colors"
+                      >
+                        + {tag}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
