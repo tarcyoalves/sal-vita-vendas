@@ -717,7 +717,22 @@ export const aiRouter = router({
         await callLLM(input.apiKey, baseURL, input.model, [{ role: 'user', content: 'ping' }], 5, 0);
         return { success: true, message: 'Conexão bem-sucedida!' };
       } catch (err: any) {
-        return { success: false, message: err?.message ?? 'Erro desconhecido' };
+        let message = err?.message ?? 'Erro desconhecido';
+        // On "model not found", list the models this key actually has access
+        // to, so the admin can pick a valid one instead of guessing.
+        if (err?.status === 404) {
+          try {
+            const res = await fetch(`${baseURL}/models`, {
+              headers: { 'Authorization': `Bearer ${input.apiKey}` },
+            });
+            if (res.ok) {
+              const data = await res.json() as any;
+              const ids = (data?.data ?? []).map((m: any) => m.id).join(', ');
+              if (ids) message += ` — Modelos disponíveis para essa chave: ${ids}`;
+            }
+          } catch { /* best effort */ }
+        }
+        return { success: false, message };
       }
     }),
 
