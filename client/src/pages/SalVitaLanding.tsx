@@ -1403,7 +1403,7 @@ export default function SalVitaLanding() {
                   <button className="pulse" onClick={()=>openBuy(p)} style={{width:'100%',background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:12,padding:'16px',fontSize:'1rem',fontWeight:800,letterSpacing:'.06em',textTransform:'uppercase',cursor:'pointer',transition:'background .2s,transform .15s'}}
                     onMouseEnter={e=>{e.currentTarget.style.background='#e8bc2a';e.currentTarget.style.transform='scale(1.02)';}}
                     onMouseLeave={e=>{e.currentTarget.style.background='var(--gold)';e.currentTarget.style.transform='scale(1)';}}>
-                    {p.weight==='1kg'?'Comprar 1kg':'Comprar Caixa 10kg'}
+                    {p.id==='1kg'?'Comprar 1kg':p.id==='3kg'?'Comprar Trio 3kg':'Comprar Caixa 10kg'}
                   </button>
                 </div>
               ))}
