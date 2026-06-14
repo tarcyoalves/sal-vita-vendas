@@ -1644,34 +1644,166 @@ function AutomationsTab() {
 
 // ── Tags ───────────────────────────────────────────────────────────────────
 
+const TAG_COLOR_PRESETS = [
+  '#6366f1', '#ec4899', '#f59e0b', '#10b981',
+  '#3b82f6', '#ef4444', '#8b5cf6', '#14b8a6',
+];
+
 function TagsTab() {
-  const { data: tags, isLoading } = trpc.emailMarketing.listTags.useQuery();
+  const utils = trpc.useUtils();
+  const { data: tagList, isLoading } = trpc.tags.list.useQuery();
+
+  const [newName, setNewName] = useState("");
+  const [newColor, setNewColor] = useState(TAG_COLOR_PRESETS[0]);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editColor, setEditColor] = useState("");
+
+  const invalidateTags = () => {
+    utils.tags.list.invalidate();
+    utils.emailMarketing.listTags.invalidate();
+  };
+
+  const createMutation = trpc.tags.create.useMutation({
+    onSuccess: () => {
+      invalidateTags();
+      setNewName("");
+      setNewColor(TAG_COLOR_PRESETS[0]);
+      toast.success("Tag criada");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const updateMutation = trpc.tags.update.useMutation({
+    onSuccess: () => {
+      invalidateTags();
+      setEditingId(null);
+      toast.success("Tag atualizada");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const deleteMutation = trpc.tags.delete.useMutation({
+    onSuccess: () => {
+      invalidateTags();
+      toast.success("Tag excluída");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const handleCreate = () => {
+    const name = newName.trim();
+    if (!name) return;
+    createMutation.mutate({ name, color: newColor });
+  };
+
+  const startEdit = (tag: { id: number; name: string; color: string }) => {
+    setEditingId(tag.id);
+    setEditName(tag.name);
+    setEditColor(tag.color);
+  };
+
+  const saveEdit = () => {
+    if (editingId == null) return;
+    const name = editName.trim();
+    if (!name) return;
+    updateMutation.mutate({ id: editingId, name, color: editColor });
+  };
 
   return (
     <div className="space-y-4">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Tag size={16} className="text-blue-900" /> Tags <span className="text-slate-400 font-normal">({tags?.length ?? 0})</span>
+            <Tag size={16} className="text-blue-900" /> Tags <span className="text-slate-400 font-normal">({tagList?.length ?? 0})</span>
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4">
           <p className="text-sm text-slate-500">
-            Use as tags na tela de Tarefas para segmentar leads. Tags são criadas diretamente
-            no formulário de tarefas e aparecem aqui automaticamente.
+            Cadastre aqui as tags que os atendentes poderão escolher ao classificar tarefas.
+            Assim todo mundo usa o mesmo padrão, sem variações ou duplicatas.
           </p>
+
+          <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl border border-dashed border-slate-300 bg-slate-50">
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); }}
+              placeholder="Nome da nova tag (ex: cliente-vip)"
+              className="flex-1 min-w-[180px] bg-white"
+            />
+            <div className="flex items-center gap-1">
+              {TAG_COLOR_PRESETS.map(c => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setNewColor(c)}
+                  className={`w-6 h-6 rounded-full border-2 transition ${newColor === c ? 'border-slate-900 scale-110' : 'border-white'}`}
+                  style={{ backgroundColor: c }}
+                  title={c}
+                />
+              ))}
+            </div>
+            <Button size="sm" className="bg-blue-900 hover:bg-blue-800 shadow-sm gap-1.5" onClick={handleCreate} disabled={!newName.trim() || createMutation.isPending}>
+              <Plus size={14} /> Adicionar
+            </Button>
+          </div>
+
           {isLoading ? (
             <p className="text-sm text-slate-500">Carregando...</p>
-          ) : tags && tags.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {tags.map(tag => (
-                <Badge key={tag} variant="outline" className="text-sm px-3 py-1.5 bg-blue-50 text-blue-900 border-blue-200 gap-1.5">
-                  <Tag size={12} /> {tag}
-                </Badge>
+          ) : tagList && tagList.length > 0 ? (
+            <div className="rounded-xl border border-slate-200 divide-y divide-slate-100">
+              {tagList.map(tag => (
+                <div key={tag.id} className="flex items-center gap-2 p-2.5 group">
+                  {editingId === tag.id ? (
+                    <>
+                      <div className="flex items-center gap-1">
+                        {TAG_COLOR_PRESETS.map(c => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => setEditColor(c)}
+                            className={`w-5 h-5 rounded-full border-2 transition ${editColor === c ? 'border-slate-900 scale-110' : 'border-white'}`}
+                            style={{ backgroundColor: c }}
+                            title={c}
+                          />
+                        ))}
+                      </div>
+                      <Input
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditingId(null); }}
+                        className="flex-1 h-8"
+                        autoFocus
+                      />
+                      <Button size="sm" className="bg-blue-900 hover:bg-blue-800 shadow-sm" onClick={saveEdit} disabled={!editName.trim() || updateMutation.isPending}>Salvar</Button>
+                      <Button size="sm" variant="outline" onClick={() => setEditingId(null)}>Cancelar</Button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: tag.color }} />
+                      <span className="flex-1 text-sm font-medium text-slate-700">{tag.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => startEdit(tag)}
+                        className="p-1.5 rounded-md text-slate-400 hover:text-blue-700 hover:bg-blue-50 opacity-0 group-hover:opacity-100 transition"
+                        title="Renomear / cor"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { if (confirm(`Excluir a tag "${tag.name}"? Ela será removida de todas as tarefas.`)) deleteMutation.mutate({ id: tag.id }); }}
+                        className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition"
+                        title="Excluir"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </>
+                  )}
+                </div>
               ))}
             </div>
           ) : (
-            <EmptyState icon={Tag} message="Nenhuma tag cadastrada ainda. Adicione tags às tarefas para segmentar seus leads." />
+            <EmptyState icon={Tag} message="Nenhuma tag cadastrada ainda. Crie tags acima para que os atendentes possam usá-las nas tarefas." />
           )}
         </CardContent>
       </Card>

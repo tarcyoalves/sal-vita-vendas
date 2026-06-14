@@ -164,6 +164,24 @@ export async function ensureTablesExist() {
     )
   `;
 
+  // tags: admin-curated catalog so attendants pick from a fixed list instead
+  // of free-typing tags on tasks
+  await sql`
+    CREATE TABLE IF NOT EXISTS tags (
+      id         SERIAL PRIMARY KEY,
+      name       TEXT NOT NULL UNIQUE,
+      color      TEXT NOT NULL DEFAULT '#6366f1',
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+  // Seed from tags already used on tasks, so existing tags keep working as
+  // admin-curated entries from the start.
+  await sql`
+    INSERT INTO tags (name)
+    SELECT DISTINCT unnest(tags) FROM tasks WHERE array_length(tags, 1) > 0
+    ON CONFLICT (name) DO NOTHING
+  `;
+
   // task_deletion_logs: audit trail for task deletions made by attendants
   await sql`
     CREATE TABLE IF NOT EXISTS task_deletion_logs (

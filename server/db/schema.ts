@@ -7,6 +7,15 @@ export const appSettings = pgTable('app_settings', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+// Admin-curated catalog of tags. Attendants pick from this list when tagging
+// tasks, instead of free-typing new tags (avoids duplicates/inconsistent naming).
+export const tags = pgTable('tags', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull().unique(),
+  color: text('color').notNull().default('#6366f1'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
   name: text('name').notNull(),

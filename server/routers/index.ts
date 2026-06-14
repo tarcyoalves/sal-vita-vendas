@@ -11,6 +11,7 @@ import { tvRouter } from './tv';
 import { shippingRouter } from './shipping';
 import { recoveryRouter } from './recovery';
 import { emailMarketingRouter } from './emailMarketing';
+import { tagsRouter } from './tags';
 
 export const appRouter = router({
   auth: authRouter,
@@ -25,6 +26,7 @@ export const appRouter = router({
   shipping: shippingRouter,
   recovery: recoveryRouter,
   emailMarketing: emailMarketingRouter,
+  tags: tagsRouter,
 });
 
 export type AppRouter = typeof appRouter;
