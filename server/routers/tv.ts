@@ -21,7 +21,8 @@ export const tvRouter = router({
     fourWeeksAgo.setDate(todayStart.getDate() - 28);
 
     const [allSellers, allTasks, activeSessions, clientCount] = await Promise.all([
-      db.select().from(sellers).where(eq(sellers.status, 'active')),
+      db.select({ id: sellers.id, name: sellers.name, userId: sellers.userId })
+        .from(sellers).where(eq(sellers.status, 'active')),
       db.select({
         id: tasks.id, title: tasks.title, notes: tasks.notes,
         assignedTo: tasks.assignedTo, status: tasks.status,

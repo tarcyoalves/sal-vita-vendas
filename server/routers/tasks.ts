@@ -280,7 +280,9 @@ export const tasksRouter = router({
     const reminderFields = {
       id: tasks.id, title: tasks.title, reminderDate: tasks.reminderDate,
       reminderEnabled: tasks.reminderEnabled, status: tasks.status,
-      notes: tasks.notes, assignedTo: tasks.assignedTo,
+      // Truncated: only used for short notification bodies, no need for the full text.
+      notes: sql<string | null>`substring(${tasks.notes}, 1, 300)`,
+      assignedTo: tasks.assignedTo,
     };
     if (ctx.user.role === 'admin') {
       return db.select(reminderFields).from(tasks)

@@ -97,7 +97,17 @@ async function buildAudience(opts: { source: 'leads' | 'clients' | 'both'; assig
 // (lowercase) — matches `replyTo`, which is already resolved from `assignedTo`
 // via `sellerMap` at audience-build time. Used to inject `signatureHtml` into
 // `layout()` at send time, for both campaigns and sequences.
+// Cached briefly: campaign/sequence sends call this once per batch, and a warm
+// serverless instance would otherwise re-fetch all signature HTML from `sellers`
+// on every batch of the same run.
+let signatureMapCache: { map: Map<string, string>; expiresAt: number } | null = null;
+const SIGNATURE_MAP_TTL_MS = 5 * 60 * 1000;
+
 async function buildSignatureMap(): Promise<Map<string, string>> {
+  if (signatureMapCache && signatureMapCache.expiresAt > Date.now()) {
+    return signatureMapCache.map;
+  }
+
   const rows = await db.select({
     name: sellers.name, email: sellers.email, phone: sellers.phone, department: sellers.department,
     sig: sellers.emailSignatureHtml, sigOn: sellers.emailSignatureEnabled,
@@ -108,6 +118,8 @@ async function buildSignatureMap(): Promise<Map<string, string>> {
     if (!s.sigOn || !s.sig) continue;
     map.set(s.email.toLowerCase(), renderSignature(s.sig, s));
   }
+
+  signatureMapCache = { map, expiresAt: Date.now() + SIGNATURE_MAP_TTL_MS };
   return map;
 }
 

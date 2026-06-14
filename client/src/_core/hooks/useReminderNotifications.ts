@@ -26,7 +26,7 @@ const markFired = (key: string) => {
 export function useReminderNotifications(enabled: boolean, userName: string = '', isAdmin: boolean = false) {
   const { data: reminders } = trpc.tasks.reminders.useQuery(undefined, {
     enabled,
-    refetchInterval: 60_000,
+    refetchInterval: 120_000,
     refetchIntervalInBackground: false,
   });
 
