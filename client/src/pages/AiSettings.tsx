@@ -301,6 +301,9 @@ export default function AiSettings() {
                         {config.provider === "gemini" && <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">👑 Líder</span>}
                       </p>
                       <p className="text-sm text-gray-600">{config.model}</p>
+                      {config.status === "error" && config.errorMessage && (
+                        <p className="text-xs text-red-600 mt-1 break-all">{config.errorMessage}</p>
+                      )}
                     </div>
                     <div className="flex items-center gap-3">
                       {config.status === "configured" && (
