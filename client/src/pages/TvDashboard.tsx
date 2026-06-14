@@ -181,9 +181,17 @@ function ChartTooltip({ active, payload, label }: any) {
 
 /* ─── Main Dashboard ─────────────────────────────────────── */
 export default function TvDashboard() {
+  // Cheap, lightweight check — polled on its own so the heavy dashboard query
+  // can be turned off entirely (no DB load) when the panel is switched off.
+  const { data: panelStatus } = trpc.tv.getPanelStatus.useQuery(undefined, {
+    refetchInterval: 30_000,
+  });
+  const panelEnabled = panelStatus?.enabled !== false;
+
   const { data, isLoading, dataUpdatedAt } = trpc.tv.dashboard.useQuery(undefined, {
     refetchInterval: 180_000,
     retry: 3,
+    enabled: panelEnabled,
   });
 
   useEffect(() => {
@@ -257,6 +265,18 @@ export default function TvDashboard() {
     return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   }, [dataUpdatedAt]);
 
+  if (!panelEnabled) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-slate-900 text-center px-6">
+        <img src="/sal-vita-logo.svg" alt="Sal Vita" className="h-14 opacity-40" />
+        <p className="text-slate-300 text-lg font-bold tracking-wide mt-2">Painel desligado</p>
+        <p className="text-slate-500 text-sm max-w-xs">
+          Um administrador desligou este painel para economizar recursos.
+        </p>
+      </div>
+    );
+  }
+
   if (isLoading || !data) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-5 bg-slate-50">
@@ -280,7 +300,7 @@ export default function TvDashboard() {
             <span className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="text-[10px] md:text-[11px] font-bold text-emerald-700 uppercase tracking-widest">Ao Vivo</span>
           </div>
-          <span className="hidden md:block text-xs text-slate-400">↻ atualiza a cada 30s</span>
+          <span className="hidden md:block text-xs text-slate-400">↻ atualiza a cada 3 min</span>
         </div>
         <Clock />
       </header>

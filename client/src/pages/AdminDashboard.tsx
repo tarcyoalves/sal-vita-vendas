@@ -2,6 +2,7 @@ import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import { Switch } from '../components/ui/switch';
 import { useState } from "react";
 import { useLocation } from "wouter";
 import {
@@ -196,6 +197,8 @@ export default function AdminDashboard() {
   const markDeletionReviewedMutation = trpc.tasks.markDeletionReviewed.useMutation({ onSuccess: () => refetchDeletionLogs() });
   const [showDeletionLogs, setShowDeletionLogs] = useState(false);
   const analyzeAttendantsMutation = trpc.ai.analyzeAttendants.useMutation();
+  const { data: tvPanelStatus, refetch: refetchTvPanelStatus } = trpc.tv.getPanelStatus.useQuery();
+  const setTvPanelMutation = trpc.tv.setPanelStatus.useMutation({ onSuccess: () => refetchTvPanelStatus() });
   const { data: sessionData = [], refetch: refetchSessions, isFetching: sessionsFetching } = trpc.workSessions.allActiveToday.useQuery(undefined, { staleTime: 90_000 });
   const [expandedSessions, setExpandedSessions] = useState<Set<number>>(new Set());
   const toggleSession = (id: number) => setExpandedSessions(prev => {
@@ -461,8 +464,20 @@ export default function AdminDashboard() {
               : 'Tudo em ordem no sistema'}
           </p>
         </div>
-        <div className="hidden md:flex items-center gap-2 text-slate-400 text-sm">
-          <span>{(() => { try { return new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }); } catch { const d = new Date(); return `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`; } })()}</span>
+        <div className="flex items-center gap-3 md:gap-4">
+          <div className="hidden md:flex items-center gap-2 text-slate-400 text-sm">
+            <span>{(() => { try { return new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }); } catch { const d = new Date(); return `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`; } })()}</span>
+          </div>
+          <div className="flex items-center gap-2 bg-white/10 rounded-full pl-3 pr-1 py-1">
+            <span className="text-xs font-medium text-slate-200 whitespace-nowrap">
+              📺 Painel TV {tvPanelStatus?.enabled === false ? 'desligado' : 'ligado'}
+            </span>
+            <Switch
+              checked={tvPanelStatus?.enabled !== false}
+              disabled={setTvPanelMutation.isPending}
+              onCheckedChange={(checked) => setTvPanelMutation.mutate({ enabled: checked })}
+            />
+          </div>
         </div>
       </div>
 

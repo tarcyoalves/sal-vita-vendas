@@ -1,7 +1,10 @@
-import { router, protectedProcedure } from '../trpc';
+import { z } from 'zod';
+import { router, publicProcedure, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
-import { sellers, tasks, workSessions, clients } from '../db/schema';
+import { sellers, tasks, workSessions, clients, appSettings } from '../db/schema';
 import { eq, or, and, gte, sql, isNotNull } from 'drizzle-orm';
+
+const TV_PANEL_SETTING_KEY = 'tv_panel_enabled';
 
 const HOT_KEYWORDS = [
   'orçamento', 'orcamento', 'interessad', 'confirmar', 'confirmo',
@@ -11,6 +14,23 @@ const HOT_KEYWORDS = [
 ];
 
 export const tvRouter = router({
+  // Public + cheap: the TV kiosk polls this on its own, lighter, interval to
+  // decide whether to load (and keep polling) the heavy `dashboard` query.
+  getPanelStatus: publicProcedure.query(async () => {
+    const [row] = await db.select({ value: appSettings.value })
+      .from(appSettings).where(eq(appSettings.key, TV_PANEL_SETTING_KEY));
+    return { enabled: row ? row.value === 'true' : true };
+  }),
+
+  setPanelStatus: adminProcedure
+    .input(z.object({ enabled: z.boolean() }))
+    .mutation(async ({ input }) => {
+      await db.insert(appSettings)
+        .values({ key: TV_PANEL_SETTING_KEY, value: String(input.enabled), updatedAt: new Date() })
+        .onConflictDoUpdate({ target: appSettings.key, set: { value: String(input.enabled), updatedAt: new Date() } });
+      return { enabled: input.enabled };
+    }),
+
   dashboard: protectedProcedure.query(async () => {
     const now = new Date();
     const todayStart = new Date(now);

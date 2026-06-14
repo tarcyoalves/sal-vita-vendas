@@ -155,6 +155,15 @@ export async function ensureTablesExist() {
     `;
   }
 
+  // app_settings: small global key/value toggles (e.g. TV panel on/off)
+  await sql`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key        TEXT PRIMARY KEY,
+      value      TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+
   // task_deletion_logs: audit trail for task deletions made by attendants
   await sql`
     CREATE TABLE IF NOT EXISTS task_deletion_logs (
