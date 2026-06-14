@@ -842,6 +842,79 @@ export const emailMarketingRouter = router({
       return out;
     }),
 
+  // ── Campanhas/sequências por lead (usado na tela de Tarefas) ────────────
+  // Single batched query — no N+1: lista, para cada taskId, as campanhas em
+  // que o lead é destinatário e as sequências em que está inscrito, para
+  // exibir badges e permitir remoção direto no card da tarefa.
+  enrollmentsByTaskIds: protectedProcedure
+    .input(z.object({ taskIds: z.array(z.number()).max(500) }))
+    .query(async ({ input }) => {
+      const out: Record<number, {
+        campaigns: { recipientId: number; campaignId: number; name: string; status: string }[];
+        sequences: { enrollmentId: number; sequenceId: number; name: string; status: string; currentStep: number }[];
+      }> = {};
+      if (input.taskIds.length === 0) return out;
+
+      const campaignRows = await db.select({
+        recipientId: emailCampaignRecipients.id,
+        campaignId: emailCampaignRecipients.campaignId,
+        taskId: emailCampaignRecipients.taskId,
+        status: emailCampaignRecipients.status,
+        name: emailCampaigns.name,
+      })
+        .from(emailCampaignRecipients)
+        .innerJoin(emailCampaigns, eq(emailCampaigns.id, emailCampaignRecipients.campaignId))
+        .where(inArray(emailCampaignRecipients.taskId, input.taskIds));
+
+      const sequenceRows = await db.select({
+        enrollmentId: emailSequenceEnrollments.id,
+        sequenceId: emailSequenceEnrollments.sequenceId,
+        taskId: emailSequenceEnrollments.taskId,
+        status: emailSequenceEnrollments.status,
+        currentStep: emailSequenceEnrollments.currentStep,
+        name: emailSequences.name,
+      })
+        .from(emailSequenceEnrollments)
+        .innerJoin(emailSequences, eq(emailSequences.id, emailSequenceEnrollments.sequenceId))
+        .where(inArray(emailSequenceEnrollments.taskId, input.taskIds));
+
+      for (const row of campaignRows) {
+        if (row.taskId == null) continue;
+        const entry = out[row.taskId] ?? (out[row.taskId] = { campaigns: [], sequences: [] });
+        entry.campaigns.push({ recipientId: row.recipientId, campaignId: row.campaignId, name: row.name, status: row.status });
+      }
+      for (const row of sequenceRows) {
+        if (row.taskId == null) continue;
+        const entry = out[row.taskId] ?? (out[row.taskId] = { campaigns: [], sequences: [] });
+        entry.sequences.push({ enrollmentId: row.enrollmentId, sequenceId: row.sequenceId, name: row.name, status: row.status, currentStep: row.currentStep });
+      }
+      return out;
+    }),
+
+  // Remove um destinatário de campanha (admin) — usado para "desfazer" a
+  // associação de um lead a uma campanha direto no card da tarefa. Ajusta os
+  // contadores desnormalizados de email_campaigns para manter as estatísticas
+  // consistentes.
+  removeCampaignRecipient: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const [recipient] = await db.select().from(emailCampaignRecipients).where(eq(emailCampaignRecipients.id, input.id));
+      if (!recipient) throw new TRPCError({ code: 'NOT_FOUND', message: 'Destinatário não encontrado' });
+
+      await db.delete(emailCampaignRecipients).where(eq(emailCampaignRecipients.id, input.id));
+
+      await db.update(emailCampaigns)
+        .set({
+          totalRecipients: sql`GREATEST(${emailCampaigns.totalRecipients} - 1, 0)`,
+          ...(recipient.status === 'sent' && { sentCount: sql`GREATEST(${emailCampaigns.sentCount} - 1, 0)` }),
+          ...(recipient.status === 'failed' && { failedCount: sql`GREATEST(${emailCampaigns.failedCount} - 1, 0)` }),
+          updatedAt: new Date(),
+        })
+        .where(eq(emailCampaigns.id, recipient.campaignId));
+
+      return { ok: true };
+    }),
+
   // ── Leads quentes (Fase 3, Pilar 3) ──────────────────────────────────────
   // Total de tarefas com hotLead=true visíveis ao usuário (admin vê todas).
   hotLeadsCount: protectedProcedure.query(async ({ ctx }) => {

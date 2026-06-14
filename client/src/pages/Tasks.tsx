@@ -142,6 +142,7 @@ function parseImportLine(line: string): { title: string; description: string; no
 export default function Tasks() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const utils = trpc.useUtils();
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterAssignee, setFilterAssignee] = useState<string>("all");
@@ -589,6 +590,36 @@ export default function Tasks() {
     { taskIds: visibleTaskIds },
     { enabled: visibleTaskIds.length > 0 }
   );
+
+  // ── E-mail Marketing: campanhas/sequências em que o lead está inscrito ──
+  const { data: enrollmentsData } = trpc.emailMarketing.enrollmentsByTaskIds.useQuery(
+    { taskIds: visibleTaskIds },
+    { enabled: visibleTaskIds.length > 0 }
+  );
+  const cancelEnrollmentMutation = trpc.emailMarketing.cancelEnrollment.useMutation();
+  const removeCampaignRecipientMutation = trpc.emailMarketing.removeCampaignRecipient.useMutation();
+
+  const handleCancelEnrollment = useCallback(async (enrollmentId: number) => {
+    if (!confirm("Remover este lead da sequência?")) return;
+    try {
+      await cancelEnrollmentMutation.mutateAsync({ id: enrollmentId });
+      await utils.emailMarketing.enrollmentsByTaskIds.invalidate();
+      toast.success("Inscrição cancelada");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao cancelar inscrição");
+    }
+  }, [cancelEnrollmentMutation]);
+
+  const handleRemoveCampaignRecipient = useCallback(async (recipientId: number) => {
+    if (!confirm("Remover este lead da campanha?")) return;
+    try {
+      await removeCampaignRecipientMutation.mutateAsync({ id: recipientId });
+      await utils.emailMarketing.enrollmentsByTaskIds.invalidate();
+      toast.success("Removido da campanha");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao remover da campanha");
+    }
+  }, [removeCampaignRecipientMutation]);
 
   const handleEdit = useCallback((task: Task) => {
     setEditingTask(task);
@@ -1162,6 +1193,54 @@ export default function Tasks() {
                         })}
                       </span>
                     )}
+                    {(() => {
+                      const enr = enrollmentsData?.[task.id];
+                      if (!enr || (enr.campaigns.length === 0 && enr.sequences.length === 0)) return null;
+                      const seqStatusLabel: Record<string, string> = { active: 'ativa', paused: 'pausada', completed: 'concluída', cancelled: 'cancelada' };
+                      const seqStatusColor: Record<string, string> = {
+                        active: 'bg-blue-100 text-blue-700',
+                        paused: 'bg-amber-100 text-amber-700',
+                        completed: 'bg-gray-100 text-gray-600',
+                        cancelled: 'bg-gray-100 text-gray-400 line-through',
+                      };
+                      const campStatusLabel: Record<string, string> = { pending: 'pendente', sent: 'enviada', failed: 'falhou', skipped: 'pulada' };
+                      const campStatusColor: Record<string, string> = {
+                        pending: 'bg-purple-100 text-purple-700',
+                        sent: 'bg-emerald-100 text-emerald-700',
+                        failed: 'bg-red-100 text-red-700',
+                        skipped: 'bg-gray-100 text-gray-500',
+                      };
+                      return (
+                        <span className="flex gap-1 flex-wrap">
+                          {enr.sequences.map(seq => (
+                            <span key={`seq-${seq.enrollmentId}`} className={`text-xs px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-1 ${seqStatusColor[seq.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                              🔁 {seq.name} · {seqStatusLabel[seq.status] ?? seq.status}
+                              {isAdmin && (seq.status === 'active' || seq.status === 'paused') && (
+                                <button
+                                  type="button"
+                                  title="Remover da sequência"
+                                  className="hover:text-red-600"
+                                  onClick={(e) => { e.stopPropagation(); handleCancelEnrollment(seq.enrollmentId); }}
+                                >✕</button>
+                              )}
+                            </span>
+                          ))}
+                          {enr.campaigns.map(camp => (
+                            <span key={`camp-${camp.recipientId}`} className={`text-xs px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-1 ${campStatusColor[camp.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                              📧 {camp.name} · {campStatusLabel[camp.status] ?? camp.status}
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  title="Remover da campanha"
+                                  className="hover:text-red-600"
+                                  onClick={(e) => { e.stopPropagation(); handleRemoveCampaignRecipient(camp.recipientId); }}
+                                >✕</button>
+                              )}
+                            </span>
+                          ))}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
                 {task.reminderDate && task.reminderEnabled && (() => {
