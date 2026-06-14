@@ -29,7 +29,7 @@ SaaS interno de gestão de vendas e lembretes da empresa **Sal Vita** (sal marin
 | Backend | Express.js serverless (Vercel Functions) |
 | Banco | PostgreSQL Neon (serverless) + Drizzle ORM |
 | Auth | JWT em cookie HttpOnly (30 dias) |
-| IA | Google Gemini + Groq |
+| IA | Groq + Cerebras + Google Gemini (fallback em cadeia) |
 | PWA | vite-plugin-pwa (iOS e Android) |
 
 ## Estrutura de pastas
@@ -68,8 +68,9 @@ Configuradas no painel Vercel (Settings → Environment Variables):
 | `DATABASE_URL` | Connection string Neon PostgreSQL |
 | `JWT_SECRET` | Segredo JWT (string longa aleatória) |
 | `ADMIN_RESET_SECRET` | Chave para recuperação de emergência de senha admin |
-| `GEMINI_API_KEY` | Google Gemini (IA) |
-| `GROQ_API_KEY` | Groq (IA alternativa) |
+| `GEMINI_API_KEY` | Google Gemini (IA — fallback 3) |
+| `GROQ_API_KEY` | Groq (IA principal) |
+| `CEREBRAS_API_KEY` | Cerebras (IA — fallback 2, opcional) |
 | `ALLOWED_ORIGINS` | Origens CORS extras, separadas por vírgula |
 | `NODE_ENV` | `production` |
 

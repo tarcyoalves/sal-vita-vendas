@@ -11,6 +11,7 @@ const BASE_URLS: Record<string, string> = {
   openai:  'https://api.openai.com/v1',
   gemini:  'https://generativelanguage.googleapis.com/v1beta/openai',
   anthropic: 'https://api.anthropic.com/v1',
+  cerebras: 'https://api.cerebras.ai/v1',
 };
 
 const DEFAULT_MODELS: Record<string, string> = {
@@ -18,6 +19,7 @@ const DEFAULT_MODELS: Record<string, string> = {
   openai:  'gpt-3.5-turbo',
   gemini:  'gemini-2.5-flash',
   anthropic: 'claude-3-haiku-20240307',
+  cerebras: 'llama-3.3-70b',
 };
 
 // ── Proteção de cota gratuita (Groq/Gemini) ─────────────────────────────────
@@ -103,14 +105,60 @@ function isRateLimit(err: any): boolean {
   return err?.status === 429 || /429|rate.?limit|quota/i.test(err?.message ?? '');
 }
 
-function getFallbackConfig(primaryProvider: string): { apiKey: string; baseURL: string; model: string } | null {
-  if (primaryProvider !== 'groq' && process.env.GROQ_API_KEY) {
-    return { apiKey: process.env.GROQ_API_KEY, baseURL: BASE_URLS.groq, model: DEFAULT_MODELS.groq };
+function envKeyFor(provider: string): string | undefined {
+  if (provider === 'groq') return process.env.GROQ_API_KEY;
+  if (provider === 'cerebras') return process.env.CEREBRAS_API_KEY;
+  if (provider === 'gemini') return process.env.GEMINI_API_KEY;
+  return undefined;
+}
+
+function defaultProvider(): string {
+  if (process.env.GROQ_API_KEY) return 'groq';
+  if (process.env.CEREBRAS_API_KEY) return 'cerebras';
+  if (process.env.GEMINI_API_KEY) return 'gemini';
+  return 'groq';
+}
+
+// Free-tier provider fallback order: Groq → Cerebras → Gemini.
+// Each quota resets independently, so chaining them multiplies the daily
+// free budget before the user sees an error.
+function getFallbackChain(primaryProvider: string): { provider: string; apiKey: string; baseURL: string; model: string }[] {
+  const candidates: { provider: string; apiKey?: string }[] = [
+    { provider: 'groq', apiKey: process.env.GROQ_API_KEY },
+    { provider: 'cerebras', apiKey: process.env.CEREBRAS_API_KEY },
+    { provider: 'gemini', apiKey: process.env.GEMINI_API_KEY },
+  ];
+  return candidates
+    .filter(c => c.provider !== primaryProvider && c.apiKey)
+    .map(c => ({ provider: c.provider, apiKey: c.apiKey!, baseURL: BASE_URLS[c.provider], model: DEFAULT_MODELS[c.provider] }));
+}
+
+// Runs `fn` against the primary provider; on a 429/rate-limit error, retries
+// against each fallback provider in order until one succeeds.
+async function callWithFallback(
+  primaryProvider: string,
+  primaryApiKey: string,
+  primaryBaseURL: string,
+  primaryModel: string,
+  fn: (apiKey: string, baseURL: string, model: string) => Promise<string>,
+  logLabel: string,
+): Promise<string> {
+  try {
+    return await fn(primaryApiKey, primaryBaseURL, primaryModel);
+  } catch (primaryErr: any) {
+    if (!isRateLimit(primaryErr)) throw primaryErr;
+    let lastErr = primaryErr;
+    for (const fb of getFallbackChain(primaryProvider)) {
+      try {
+        console.warn(`[${logLabel}] 429 on ${primaryProvider} — falling back to ${fb.provider}`);
+        return await fn(fb.apiKey, fb.baseURL, fb.model);
+      } catch (fbErr: any) {
+        lastErr = fbErr;
+        if (!isRateLimit(fbErr)) throw fbErr;
+      }
+    }
+    throw lastErr;
   }
-  if (primaryProvider !== 'gemini' && process.env.GEMINI_API_KEY) {
-    return { apiKey: process.env.GEMINI_API_KEY, baseURL: BASE_URLS.gemini, model: DEFAULT_MODELS.gemini };
-  }
-  return null;
 }
 
 // ── Tool definitions (OpenAI-compatible) ─────────────────────────────────────
@@ -690,11 +738,8 @@ export const aiRouter = router({
       lastChatAt.set(ctx.user.id, Date.now());
 
       try {
-        const provider = input.provider ?? (process.env.GROQ_API_KEY ? 'groq' : process.env.GEMINI_API_KEY ? 'gemini' : 'groq');
-        const envKey = provider === 'groq' ? process.env.GROQ_API_KEY
-          : provider === 'gemini' ? process.env.GEMINI_API_KEY
-          : undefined;
-        const apiKey = input.apiKey || envKey || '';
+        const provider = input.provider ?? defaultProvider();
+        const apiKey = input.apiKey || envKeyFor(provider) || '';
         const baseURL = BASE_URLS[provider] ?? BASE_URLS.groq;
         const isAdmin = ctx.user.role === 'admin';
         const model = isAdmin
@@ -747,21 +792,13 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
 
         let reply: string;
         try {
-          reply = isAdmin
-            ? await callLLMWithTools(apiKey, baseURL, model, messages, TOOLS, 1000, ctx.user.id)
-            : await callLLM(apiKey, baseURL, model, messages, 700, 0.6);
+          reply = await callWithFallback(provider, apiKey, baseURL, model, (k, b, m) =>
+            isAdmin
+              ? callLLMWithTools(k, b, m, messages, TOOLS, 1000, ctx.user.id)
+              : callLLM(k, b, m, messages, 700, 0.6),
+          'AI_CHAT');
         } catch (primaryErr: any) {
-          if (isRateLimit(primaryErr)) {
-            const fb = getFallbackConfig(provider);
-            if (fb) {
-              console.warn('[AI_CHAT] 429 on', provider, '— falling back to', fb.model);
-              reply = isAdmin
-                ? await callLLMWithTools(fb.apiKey, fb.baseURL, fb.model, messages, TOOLS, 1000, ctx.user.id)
-                : await callLLM(fb.apiKey, fb.baseURL, fb.model, messages, 700, 0.6);
-            } else {
-              throw primaryErr;
-            }
-          } else if (isAdmin && primaryErr.status === 400) {
+          if (isAdmin && primaryErr.status === 400) {
             console.warn('[AI_CHAT] tool_use 400, retrying without tools');
             reply = await callLLM(apiKey, baseURL, model, messages, 1000, 0.4);
           } else {
@@ -793,11 +830,10 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
       return { ...analyzeCache.data, cached: true, cachedAt: analyzeCache.at };
     }
 
-    const analyzeProvider = input?.provider ?? (process.env.GROQ_API_KEY ? 'groq' : process.env.GEMINI_API_KEY ? 'gemini' : 'groq');
-    const envKey = analyzeProvider === 'groq' ? process.env.GROQ_API_KEY : process.env.GEMINI_API_KEY;
-    const apiKey = input?.apiKey || envKey || '';
+    const analyzeProvider = input?.provider ?? defaultProvider();
+    const apiKey = input?.apiKey || envKeyFor(analyzeProvider) || '';
     const analyzeModel = DEFAULT_MODELS[analyzeProvider] ?? 'llama-3.3-70b-versatile';
-    if (!apiKey) return { report: [], summary: 'IA não configurada. Vá em Configurações → IA e configure Groq (recomendado) ou Gemini.' };
+    if (!apiKey) return { report: [], summary: 'IA não configurada. Vá em Configurações → IA e configure Groq (recomendado), Cerebras ou Gemini.' };
 
     const now = new Date();
     const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
@@ -959,7 +995,8 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
     ).join('\n');
 
     try {
-      const summary = await callLLM(apiKey, BASE_URLS[analyzeProvider], analyzeModel, [
+      const summary = await callWithFallback(analyzeProvider, apiKey, BASE_URLS[analyzeProvider], analyzeModel, (k, b, m) =>
+        callLLM(k, b, m, [
         {
           role: 'system',
           content: `Você é um analista sênior de desempenho de equipes de vendas B2B da empresa Sal Vita — Sal do Brasil.
@@ -1019,7 +1056,8 @@ REGRAS ABSOLUTAS:
           role: 'user',
           content: `DADOS COMPLETOS (${allSellers.length} atendentes):\n\n${reportText}\n\nGere análise COMPLETA com todas as 6 seções. Inclua TODOS os atendentes. Não encurte.`,
         },
-      ], 8000, 0.3);
+        ], 8000, 0.3),
+      'ANALYZE');
       analyzeCache = { at: Date.now(), data: { report, summary } };
       return { report, summary, cached: false };
     } catch (err: any) {
@@ -1031,14 +1069,16 @@ REGRAS ABSOLUTAS:
   suggestSalesApproach: protectedProcedure
     .input(z.object({ title: z.string().min(1), notes: z.string() }))
     .mutation(async ({ input }) => {
-      const apiKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
-      const suggestProvider = process.env.GROQ_API_KEY ? 'groq' : 'gemini';
+      const suggestProvider = defaultProvider();
+      const apiKey = envKeyFor(suggestProvider) || '';
       if (!apiKey) return { suggestion: 'IA não configurada.' };
       try {
-        const suggestion = await callLLM(apiKey, BASE_URLS[suggestProvider], DEFAULT_MODELS[suggestProvider], [
+        const suggestion = await callWithFallback(suggestProvider, apiKey, BASE_URLS[suggestProvider], DEFAULT_MODELS[suggestProvider], (k, b, m) =>
+          callLLM(k, b, m, [
           { role: 'system', content: 'Vendas B2B de sal. Sugira 1 abordagem prática em 2-3 frases. Direto, sem introdução. Português BR.' },
           { role: 'user', content: `Cliente: ${input.title}\nObservações: ${input.notes || 'sem observações'}` },
-        ], 150, 0.7);
+          ], 150, 0.7),
+        'AI_SUGGEST');
         return { suggestion };
       } catch (err: any) {
         return { suggestion: 'Erro ao gerar sugestão: ' + (err?.message ?? 'tente novamente') };
