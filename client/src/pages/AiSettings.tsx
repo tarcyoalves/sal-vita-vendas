@@ -32,6 +32,14 @@ const AI_PROVIDERS: AIProvider[] = [
     requiresKey: true,
   },
   {
+    id: "cerebras",
+    name: "Cerebras",
+    icon: "⚡",
+    description: "Llama 3.3 70B — Fallback ultra-rápido, tier grátis generoso",
+    defaultModel: "llama-3.3-70b",
+    requiresKey: true,
+  },
+  {
     id: "gemini",
     name: "Google Gemini",
     icon: "✨",
@@ -339,13 +347,20 @@ export default function AiSettings() {
               <p>4. Cole aqui — modelo: <span className="font-mono">llama-3.3-70b-versatile</span></p>
             </div>
             <div className="p-3 bg-white rounded-lg border border-green-200">
+              <p className="font-bold">⚡ Cerebras</p>
+              <p className="mt-1">1. Acesse <span className="font-mono font-bold">cloud.cerebras.ai</span></p>
+              <p>2. Crie conta grátis</p>
+              <p>3. Vá em <strong>API Keys → Create API Key</strong></p>
+              <p>4. Cole aqui — modelo: <span className="font-mono">llama-3.3-70b</span></p>
+            </div>
+            <div className="p-3 bg-white rounded-lg border border-green-200">
               <p className="font-bold">✨ Google Gemini</p>
               <p className="mt-1">1. Acesse <span className="font-mono font-bold">aistudio.google.com</span></p>
               <p>2. Login com conta Google</p>
               <p>3. Clique em <strong>Get API Key → Create API key</strong></p>
               <p>4. Cole aqui — modelo: <span className="font-mono">gemini-2.5-flash</span></p>
             </div>
-            <p className="text-xs text-green-700">• Ambos têm tier gratuito generoso para uso diário</p>
+            <p className="text-xs text-green-700">• Todos têm tier gratuito generoso para uso diário</p>
             <p className="text-xs text-green-700">• Chaves ficam salvas no seu navegador (localStorage)</p>
           </CardContent>
         </Card>
@@ -356,7 +371,8 @@ export default function AiSettings() {
             <CardTitle className="text-yellow-900">ℹ️ Como funciona</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-yellow-800 space-y-2">
-            <p>• Configure Groq (líder) + Gemini (backup) para máxima disponibilidade</p>
+            <p>• O servidor já tenta automaticamente Groq → Cerebras → Gemini, na ordem, sempre que uma IA atinge o limite gratuito do dia</p>
+            <p>• Configurar uma chave aqui é opcional — use para ter uma chave pessoal própria além da configuração do servidor</p>
             <p>• Groq tem prioridade — 14.400 req/dia grátis, sem risco de quota</p>
             <p>• Clique "Salvar e Testar" para validar antes de usar</p>
             <p>• Se der erro 404 no Gemini: chave errada ou modelo não existe</p>

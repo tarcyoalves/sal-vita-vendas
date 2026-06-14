@@ -64,7 +64,7 @@ export default function AiChat() {
   const getApiConfig = (preferProvider?: string) => {
     try {
       const configs = JSON.parse(localStorage.getItem('aiConfigs') || '{}') as Record<string, any>;
-      const order = preferProvider ? [preferProvider, 'groq', 'gemini'] : ['groq', 'gemini'];
+      const order = preferProvider ? [preferProvider, 'groq', 'cerebras', 'gemini'] : ['groq', 'cerebras', 'gemini'];
       for (const id of order) {
         const c = configs[id];
         if (c?.status === 'configured') return { apiKey: c.apiKey, provider: c.provider };
