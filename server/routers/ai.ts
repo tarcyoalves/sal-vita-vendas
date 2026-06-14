@@ -19,7 +19,7 @@ const DEFAULT_MODELS: Record<string, string> = {
   openai:  'gpt-3.5-turbo',
   gemini:  'gemini-2.5-flash',
   anthropic: 'claude-3-haiku-20240307',
-  cerebras: 'llama-4-scout-17b-16e-instruct',
+  cerebras: 'gpt-oss-120b',
 };
 
 // ── Proteção de cota gratuita (Groq/Gemini) ─────────────────────────────────

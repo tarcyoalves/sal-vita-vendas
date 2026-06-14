@@ -35,8 +35,8 @@ const AI_PROVIDERS: AIProvider[] = [
     id: "cerebras",
     name: "Cerebras",
     icon: "⚡",
-    description: "Llama 4 Scout 17B — Fallback ultra-rápido, tier grátis generoso",
-    defaultModel: "llama-4-scout-17b-16e-instruct",
+    description: "GPT-OSS 120B — Fallback ultra-rápido, tier grátis generoso",
+    defaultModel: "gpt-oss-120b",
     requiresKey: true,
   },
   {
@@ -170,9 +170,9 @@ export default function AiSettings() {
           </div>
         )}
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg flex items-center gap-2">
+          <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg flex items-start gap-2">
             <span>❌</span>
-            <span>{error}</span>
+            <span className="break-all">{error}</span>
           </div>
         )}
 
@@ -354,7 +354,7 @@ export default function AiSettings() {
               <p className="mt-1">1. Acesse <span className="font-mono font-bold">cloud.cerebras.ai</span></p>
               <p>2. Crie conta grátis</p>
               <p>3. Vá em <strong>API Keys → Create API Key</strong></p>
-              <p>4. Cole aqui — modelo: <span className="font-mono">llama-4-scout-17b-16e-instruct</span></p>
+              <p>4. Cole aqui — modelo: <span className="font-mono">gpt-oss-120b</span></p>
             </div>
             <div className="p-3 bg-white rounded-lg border border-green-200">
               <p className="font-bold">✨ Google Gemini</p>
