@@ -4,6 +4,7 @@ import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { sellers, users, tasks } from '../db/schema';
 import { hashPassword } from '../auth';
+import { sanitizeSignatureHtml } from '../email/marketing';
 
 function generatePassword(length = 8): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
@@ -87,6 +88,9 @@ export const sellersRouter = router({
       dailyGoal: z.number().optional(),
       workHoursGoal: z.number().min(1).max(24).optional(),
       status: z.enum(['active', 'inactive']).optional(),
+      emailSignatureHtml: z.string().max(10000).optional(),
+      emailSignatureImageUrl: z.string().max(1000).optional(),
+      emailSignatureEnabled: z.boolean().optional(),
     }))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
@@ -96,6 +100,9 @@ export const sellersRouter = router({
         if (existing && existing.name !== data.name) {
           await db.update(tasks).set({ assignedTo: data.name }).where(eq(tasks.assignedTo, existing.name));
         }
+      }
+      if (data.emailSignatureHtml !== undefined) {
+        data.emailSignatureHtml = sanitizeSignatureHtml(data.emailSignatureHtml);
       }
       const [updated] = await db.update(sellers).set(data).where(eq(sellers.id, id)).returning();
       return updated;
@@ -125,6 +132,9 @@ export const sellersRouter = router({
         dailyGoal: sellers.dailyGoal,
         workHoursGoal: sellers.workHoursGoal,
         status: sellers.status,
+        emailSignatureHtml: sellers.emailSignatureHtml,
+        emailSignatureImageUrl: sellers.emailSignatureImageUrl,
+        emailSignatureEnabled: sellers.emailSignatureEnabled,
         createdAt: sellers.createdAt,
         updatedAt: sellers.updatedAt,
         userRole: users.role,

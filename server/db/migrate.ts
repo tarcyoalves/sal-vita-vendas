@@ -336,6 +336,11 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE clients   ADD COLUMN IF NOT EXISTS unsubscribed       BOOLEAN NOT NULL DEFAULT false`;
   await sql`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS tags               TEXT[] NOT NULL DEFAULT '{}'`;
 
+  // ── Assinatura de e-mail por atendente (E-mail Marketing — Fase 1) ─────────
+  await sql`ALTER TABLE sellers   ADD COLUMN IF NOT EXISTS email_signature_html       TEXT`;
+  await sql`ALTER TABLE sellers   ADD COLUMN IF NOT EXISTS email_signature_image_url  TEXT`;
+  await sql`ALTER TABLE sellers   ADD COLUMN IF NOT EXISTS email_signature_enabled    BOOLEAN NOT NULL DEFAULT true`;
+
   // ── E-mail Marketing Fase 3 — sequências condicionais, recorrentes, lead scoring ──
   await sql`ALTER TABLE email_sequence_steps ADD COLUMN IF NOT EXISTS send_condition TEXT NOT NULL DEFAULT 'always'`;
   await sql`ALTER TABLE email_sequences ADD COLUMN IF NOT EXISTS repeat BOOLEAN NOT NULL DEFAULT FALSE`;

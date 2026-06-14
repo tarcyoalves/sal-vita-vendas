@@ -11,6 +11,7 @@
  */
 
 import crypto from 'crypto';
+import sanitizeHtml from 'sanitize-html';
 import { sql } from '../db';
 import { emailSendCounters } from '../db/schema';
 
@@ -269,8 +270,70 @@ export function renderTemplate(text: string, vars: { nome?: string; empresa?: st
     .replace(/\{unsubscribe\}/g, vars.unsubscribe || '#');
 }
 
+/**
+ * Sanitizes admin-provided signature HTML before it's stored/sent in e-mails.
+ * Only a small set of safe inline tags/attrs are allowed — strips
+ * <script>, event handlers (on*), javascript: URLs, <style>, etc.
+ */
+export function sanitizeSignatureHtml(html: string): string {
+  return sanitizeHtml(html, {
+    allowedTags: ['a', 'b', 'strong', 'i', 'em', 'u', 'br', 'span', 'div', 'p', 'table', 'tbody', 'tr', 'td', 'font', 'img'],
+    allowedAttributes: {
+      a: ['href', 'target', 'rel', 'style'],
+      img: ['src', 'alt', 'width', 'height', 'style'],
+      font: ['color', 'size', 'face'],
+      td: ['style', 'colspan', 'rowspan', 'width', 'align', 'valign'],
+      '*': ['style'],
+    },
+    allowedSchemes: ['http', 'https', 'mailto', 'tel'],
+    transformTags: {
+      a: sanitizeHtml.simpleTransform('a', { rel: 'noopener noreferrer' }),
+    },
+  }).trim();
+}
+
+/**
+ * Replaces `{atendente_*}` tokens in a signature HTML with the seller's data.
+ * If a token resolves to an empty value, the whole line (segment between
+ * <br> tags) containing it is dropped — avoids dangling labels like "Tel: ".
+ */
+export function renderSignature(html: string, seller: { name: string; email: string; phone?: string | null; department?: string | null }): string {
+  const tokens: Record<string, string> = {
+    '{atendente_nome}': seller.name || '',
+    '{atendente_telefone}': seller.phone || '',
+    '{atendente_email}': seller.email || '',
+    '{atendente_cargo}': seller.department || '',
+  };
+
+  const segments = html.split(/(<br\s*\/?>)/i);
+  const out = segments.map(segment => {
+    if (/^<br\s*\/?>$/i.test(segment)) return segment;
+    let hasEmptyToken = false;
+    let replaced = segment;
+    for (const [token, value] of Object.entries(tokens)) {
+      if (replaced.includes(token)) {
+        if (!value) hasEmptyToken = true;
+        replaced = replaced.split(token).join(value);
+      }
+    }
+    return hasEmptyToken ? '' : replaced;
+  });
+
+  return out.join('')
+    .replace(/(<br\s*\/?>\s*){2,}/gi, '<br>')
+    .replace(/^(\s*<br\s*\/?>\s*)+/i, '')
+    .replace(/(\s*<br\s*\/?>\s*)+$/i, '');
+}
+
 /** Branded HTML layout with a real, LGPD-compliant unsubscribe link in the footer. */
-export function layout(body: string, unsubUrl: string): string {
+export function layout(body: string, unsubUrl: string, signatureHtml?: string): string {
+  const sigBlock = signatureHtml
+    ? `<tr>
+            <td style="padding:0 32px 24px;border-top:1px solid #eee;">
+              <div style="padding-top:16px;font-size:13px;color:#444;line-height:1.6;">${signatureHtml}</div>
+            </td>
+          </tr>`
+    : '';
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -296,6 +359,7 @@ export function layout(body: string, unsubUrl: string): string {
               ${body}
             </td>
           </tr>
+          ${sigBlock}
           <tr>
             <td style="background:#f4f4f4;padding:20px 32px;border-top:1px solid #e0e0e0;text-align:center;">
               <p style="margin:0;font-size:12px;color:#888;">

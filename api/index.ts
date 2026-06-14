@@ -14,7 +14,7 @@ import { ordersDb } from '../server/db/ordersDb';
 import { sql as sqlClient, db } from '../server/db/index';
 import {
   siteOrders, abandonedCarts, automationRuns, msgTemplates, coupons, emailCampaignRecipients, emailSuppressions, clients,
-  emailSequences, emailSequenceEnrollments, emailSequenceSteps, emailSequenceSends, emailEvents,
+  emailSequences, emailSequenceEnrollments, emailSequenceSteps, emailSequenceSends, emailEvents, sellers,
 } from '../server/db/schema';
 import { eq, and, sql, lte, gte, isNull, isNotNull, inArray, desc, asc, lt } from 'drizzle-orm';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
@@ -22,7 +22,7 @@ import { createPixPaymentForOrder } from '../server/lib/mercadopago';
 import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid } from '../server/lib/orderConfirmation';
 import {
   verifyResendWebhook, pickAccount, sendBatch, layout, computeNextSendAt,
-  enrollmentEngagementBatch, conditionMet,
+  enrollmentEngagementBatch, conditionMet, renderSignature,
   renderTemplate as renderMktTemplate, type BatchMessage,
 } from '../server/email/marketing';
 import { evaluateInactiveDaysRules, flagEngagementByMessageId } from '../server/email/automations';
@@ -1012,6 +1012,21 @@ app.get('/api/cron/email-daily', async (req, res) => {
         }
       }
 
+      // Carrega a assinatura de e-mail de cada atendente (quando habilitada),
+      // indexada por e-mail — `enrollment.replyTo` já é o e-mail do atendente
+      // dono do lead (resolvido na inscrição via sellerMap).
+      const signatureMap = new Map<string, string>();
+      if (sendable.length > 0) {
+        const sellerRows = await db.select({
+          name: sellers.name, email: sellers.email, phone: sellers.phone, department: sellers.department,
+          sig: sellers.emailSignatureHtml, sigOn: sellers.emailSignatureEnabled,
+        }).from(sellers);
+        for (const s of sellerRows) {
+          if (!s.sigOn || !s.sig) continue;
+          signatureMap.set(s.email.toLowerCase(), renderSignature(s.sig, s));
+        }
+      }
+
       // Processa em lotes de até 100, respeitando a cota diária compartilhada.
       let i = 0;
       while (i < sendable.length) {
@@ -1031,10 +1046,11 @@ app.get('/api/cron/email-daily', async (req, res) => {
 
         for (const { enrollment, step } of batch) {
           const unsubUrl = `${unsubBase}/api/unsubscribe?t=${enrollment.unsubToken}`;
+          const signatureHtml = enrollment.replyTo ? signatureMap.get(enrollment.replyTo.toLowerCase()) : undefined;
           messages.push({
             to: enrollment.email,
             subject: renderMktTemplate(step.subject, { nome: enrollment.name ?? '' }),
-            html: layout(renderMktTemplate(step.htmlBody, { nome: enrollment.name ?? '', unsubscribe: unsubUrl }), unsubUrl),
+            html: layout(renderMktTemplate(step.htmlBody, { nome: enrollment.name ?? '', unsubscribe: unsubUrl }), unsubUrl, signatureHtml),
             replyTo: enrollment.replyTo ?? undefined,
             unsubToken: enrollment.unsubToken,
           });

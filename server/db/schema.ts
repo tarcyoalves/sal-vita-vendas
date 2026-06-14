@@ -20,6 +20,11 @@ export const sellers = pgTable('sellers', {
   dailyGoal: integer('daily_goal').default(100),
   workHoursGoal: integer('work_hours_goal').default(8).notNull(),
   status: text('status').notNull().default('active'),
+  // Assinatura de e-mail (E-mail Marketing) — HTML final injetado nas campanhas/sequências.
+  // Pode conter um <img> apontando para emailSignatureImageUrl (origem da imagem enviada).
+  emailSignatureHtml: text('email_signature_html'),
+  emailSignatureImageUrl: text('email_signature_image_url'),
+  emailSignatureEnabled: boolean('email_signature_enabled').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

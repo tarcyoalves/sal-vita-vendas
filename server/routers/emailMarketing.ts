@@ -10,7 +10,7 @@ import {
   emailEvents, automationRules, emailSendCounters,
   tasks, clients, sellers,
 } from '../db/schema';
-import { pickAccount, sendBatch, layout, renderTemplate, type BatchMessage } from '../email/marketing';
+import { pickAccount, sendBatch, layout, renderTemplate, renderSignature, type BatchMessage } from '../email/marketing';
 import { enrollInSequence } from '../email/automations';
 import { userTaskFilter } from './tasks';
 
@@ -91,6 +91,24 @@ async function buildAudience(opts: { source: 'leads' | 'clients' | 'both'; assig
   const suppressed = await db.select({ email: emailSuppressions.email }).from(emailSuppressions);
   const suppressedSet = new Set(suppressed.map(s => s.email.toLowerCase()));
   return deduped.filter(r => !suppressedSet.has(r.email));
+}
+
+// Loads each seller's e-mail signature (when enabled) keyed by their e-mail
+// (lowercase) — matches `replyTo`, which is already resolved from `assignedTo`
+// via `sellerMap` at audience-build time. Used to inject `signatureHtml` into
+// `layout()` at send time, for both campaigns and sequences.
+async function buildSignatureMap(): Promise<Map<string, string>> {
+  const rows = await db.select({
+    name: sellers.name, email: sellers.email, phone: sellers.phone, department: sellers.department,
+    sig: sellers.emailSignatureHtml, sigOn: sellers.emailSignatureEnabled,
+  }).from(sellers);
+
+  const map = new Map<string, string>();
+  for (const s of rows) {
+    if (!s.sigOn || !s.sig) continue;
+    map.set(s.email.toLowerCase(), renderSignature(s.sig, s));
+  }
+  return map;
 }
 
 // Same UNION-join used by `engagementByTaskIds`, but restricted to events on or
@@ -332,12 +350,14 @@ export const emailMarketingRouter = router({
 
       let sentNow = 0, failedNow = 0;
       if (toSend.length > 0) {
+        const signatureMap = await buildSignatureMap();
         const messages: BatchMessage[] = toSend.map(r => {
           const unsubUrl = `${PUBLIC_APP_URL}/api/unsubscribe?t=${r.unsubToken}`;
+          const signatureHtml = r.replyTo ? signatureMap.get(r.replyTo.toLowerCase()) : undefined;
           return {
             to: r.email,
             subject: renderTemplate(campaign.subject, { nome: r.name ?? '' }),
-            html: layout(renderTemplate(campaign.htmlBody, { nome: r.name ?? '', unsubscribe: unsubUrl }), unsubUrl),
+            html: layout(renderTemplate(campaign.htmlBody, { nome: r.name ?? '', unsubscribe: unsubUrl }), unsubUrl, signatureHtml),
             replyTo: r.replyTo ?? undefined,
             unsubToken: r.unsubToken,
           };

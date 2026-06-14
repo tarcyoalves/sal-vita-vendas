@@ -28,6 +28,9 @@ interface Attendant {
   dailyGoal: number | null;
   workHoursGoal: number | null;
   status: string | null;
+  emailSignatureHtml?: string | null;
+  emailSignatureImageUrl?: string | null;
+  emailSignatureEnabled?: boolean | null;
   createdAt: Date;
   updatedAt: Date;
   userRole?: string | null;
@@ -52,6 +55,11 @@ export default function Attendants() {
   });
 
   const [resetInfo, setResetInfo] = useState<{ name: string; email: string; password: string } | null>(null);
+
+  // ── Assinatura de e-mail (admin) ─────────────────────────────────────────
+  const [signatureAttendant, setSignatureAttendant] = useState<Attendant | null>(null);
+  const [signatureForm, setSignatureForm] = useState({ enabled: true, html: "", imageUrl: "" });
+  const signatureMutation = trpc.sellers.update.useMutation();
 
   const { data: attendants = [], isLoading, refetch } = trpc.sellers.listWithRole.useQuery();
   // Sem polling — protege o plano free do Neon/Vercel. Cache válido por 2min.
@@ -170,6 +178,61 @@ export default function Attendants() {
       refetch();
     } catch {
       toast.error("Erro ao deletar atendente");
+    }
+  };
+
+  const handleSignatureOpen = (attendant: Attendant) => {
+    setSignatureAttendant(attendant);
+    setSignatureForm({
+      enabled: attendant.emailSignatureEnabled ?? true,
+      html: attendant.emailSignatureHtml ?? "",
+      imageUrl: attendant.emailSignatureImageUrl ?? "",
+    });
+  };
+
+  const handleSignatureGenerate = () => {
+    if (!signatureAttendant) return;
+    const imgLine = signatureForm.imageUrl.trim()
+      ? `<br><img src="${signatureForm.imageUrl.trim()}" alt="Assinatura de {atendente_nome}" style="max-width:220px;display:block;margin-top:8px;">`
+      : '';
+    const html = `<p style="margin:0;font-weight:bold;color:#0C3680;">{atendente_nome}</p>` +
+      `<br><p style="margin:0;">{atendente_cargo}</p>` +
+      `<br><p style="margin:0;">📞 {atendente_telefone}</p>` +
+      `<br><p style="margin:0;">✉️ {atendente_email}</p>` +
+      `<br><p style="margin:8px 0 0;font-size:11px;color:#888;"><strong>Sal Vita</strong> — Sal Marinho Premium de Mossoró/RN</p>` +
+      imgLine;
+    setSignatureForm(f => ({ ...f, html }));
+  };
+
+  const signaturePreviewHtml = (() => {
+    if (!signatureAttendant) return "";
+    const tokens: Record<string, string> = {
+      '{atendente_nome}': signatureAttendant.name || '',
+      '{atendente_telefone}': signatureAttendant.phone || '',
+      '{atendente_email}': signatureAttendant.email || '',
+      '{atendente_cargo}': signatureAttendant.department || '',
+    };
+    let preview = signatureForm.html;
+    for (const [token, value] of Object.entries(tokens)) {
+      preview = preview.split(token).join(value);
+    }
+    return preview;
+  })();
+
+  const handleSignatureSave = async () => {
+    if (!signatureAttendant) return;
+    try {
+      await signatureMutation.mutateAsync({
+        id: signatureAttendant.id,
+        emailSignatureHtml: signatureForm.html,
+        emailSignatureImageUrl: signatureForm.imageUrl,
+        emailSignatureEnabled: signatureForm.enabled,
+      });
+      toast.success("Assinatura de e-mail salva!");
+      setSignatureAttendant(null);
+      refetch();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Erro ao salvar assinatura");
     }
   };
 
@@ -465,6 +528,14 @@ export default function Attendants() {
                       <Button
                         size="sm"
                         variant="outline"
+                        className="w-full border-blue-300 text-blue-700 hover:bg-blue-50"
+                        onClick={() => handleSignatureOpen(attendant)}
+                      >
+                        ✉️ Assinatura de e-mail
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
                         className="w-full border-orange-300 text-orange-700 hover:bg-orange-50"
                         onClick={() => handleResetPassword(attendant)}
                         disabled={resetPasswordMutation.isPending}
@@ -538,6 +609,86 @@ export default function Attendants() {
                 <Button type="button" variant="outline" onClick={() => setEditingAttendant(null)}>Cancelar</Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Email Signature Modal */}
+        <Dialog open={!!signatureAttendant} onOpenChange={(open) => { if (!open) setSignatureAttendant(null); }}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>✉️ Assinatura de e-mail — {signatureAttendant?.name}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none px-3 py-2 border rounded-lg hover:bg-gray-50">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={signatureForm.enabled}
+                  onChange={(e) => setSignatureForm(f => ({ ...f, enabled: e.target.checked }))}
+                />
+                Anexar esta assinatura nos e-mails enviados para os leads/clientes deste atendente
+              </label>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">URL de uma imagem (opcional)</label>
+                <input
+                  type="text"
+                  value={signatureForm.imageUrl}
+                  onChange={(e) => setSignatureForm(f => ({ ...f, imageUrl: e.target.value }))}
+                  placeholder="https://exemplo.com/assinatura.png"
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Se você já tem uma imagem hospedada (ex: foto/logo), cole a URL aqui e use o botão abaixo para
+                  inseri-la no HTML. Imagens vêm bloqueadas por padrão em vários e-mails (Gmail, Outlook) — por isso
+                  recomendamos manter também a versão em texto.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={handleSignatureGenerate}>
+                  ✨ Gerar HTML a partir dos dados do atendente
+                </Button>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">HTML da assinatura</label>
+                <textarea
+                  value={signatureForm.html}
+                  onChange={(e) => setSignatureForm(f => ({ ...f, html: e.target.value }))}
+                  rows={8}
+                  className="w-full px-3 py-2 border rounded-lg text-sm font-mono"
+                  placeholder="<p>{atendente_nome}</p><br><p>{atendente_telefone}</p>"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Tokens disponíveis: <code>{'{atendente_nome}'}</code>, <code>{'{atendente_telefone}'}</code>,{' '}
+                  <code>{'{atendente_email}'}</code>, <code>{'{atendente_cargo}'}</code>. Se um campo do atendente
+                  estiver vazio, a linha (separada por <code>&lt;br&gt;</code>) que contém o token é removida
+                  automaticamente. Tags e atributos não permitidos são removidos ao salvar.
+                </p>
+              </div>
+
+              {signatureForm.html.trim() && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Pré-visualização</label>
+                  <div
+                    className="border rounded-lg p-4 bg-gray-50 text-sm"
+                    dangerouslySetInnerHTML={{ __html: signaturePreviewHtml }}
+                  />
+                </div>
+              )}
+            </div>
+            <DialogFooter className="flex gap-2 pt-2">
+              <Button
+                type="button"
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                onClick={handleSignatureSave}
+                disabled={signatureMutation.isPending}
+              >
+                {signatureMutation.isPending ? "Salvando..." : "✅ Salvar assinatura"}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setSignatureAttendant(null)}>Cancelar</Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
     </div>
