@@ -35,8 +35,8 @@ const AI_PROVIDERS: AIProvider[] = [
     id: "cerebras",
     name: "Cerebras",
     icon: "⚡",
-    description: "Llama 3.3 70B — Fallback ultra-rápido, tier grátis generoso",
-    defaultModel: "llama-3.3-70b",
+    description: "Llama 4 Scout 17B — Fallback ultra-rápido, tier grátis generoso",
+    defaultModel: "llama-4-scout-17b-16e-instruct",
     requiresKey: true,
   },
   {
@@ -354,7 +354,7 @@ export default function AiSettings() {
               <p className="mt-1">1. Acesse <span className="font-mono font-bold">cloud.cerebras.ai</span></p>
               <p>2. Crie conta grátis</p>
               <p>3. Vá em <strong>API Keys → Create API Key</strong></p>
-              <p>4. Cole aqui — modelo: <span className="font-mono">llama-3.3-70b</span></p>
+              <p>4. Cole aqui — modelo: <span className="font-mono">llama-4-scout-17b-16e-instruct</span></p>
             </div>
             <div className="p-3 bg-white rounded-lg border border-green-200">
               <p className="font-bold">✨ Google Gemini</p>
