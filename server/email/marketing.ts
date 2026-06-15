@@ -1,13 +1,16 @@
 /**
- * Resend integration for the E-mail Marketing tab (Lembretes CRM).
+ * Resend + Brevo integration for the E-mail Marketing tab (Lembretes CRM).
  *
  * Separate from server/email/resend.ts, which belongs to the Sal Vita
  * Premium e-commerce project and must not be touched here.
  *
- * Multi-account waterfall: accounts are read from env vars
- * RESEND_MKT_API_KEY_1 / RESEND_MKT_FROM_1, _2, _3, ... Each account has its
- * own daily counter persisted in email_send_counters (DB — survives cold
- * starts). When account N hits RESEND_MKT_DAILY_LIMIT, account N+1 is used.
+ * Multi-account waterfall: Resend accounts are read from env vars
+ * RESEND_MKT_API_KEY_1 / RESEND_MKT_FROM_1, _2, _3, ... Brevo accounts from
+ * BREVO_API_KEY_1 / BREVO_FROM_1, _2, ... (Brevo accounts are appended after
+ * the Resend ones, so they act as overflow once Resend is exhausted). Each
+ * account has its own daily counter persisted in email_send_counters (DB —
+ * survives cold starts). When an account hits RESEND_MKT_DAILY_LIMIT, the
+ * next one in the waterfall is used.
  */
 
 import crypto from 'crypto';
@@ -19,7 +22,8 @@ export const BRAND = '#0C3680';
 const MKT_DAILY_LIMIT = parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? '90');
 
 export interface MarketingAccount {
-  key: string;       // 'mkt_1', 'mkt_2', ...
+  key: string;       // 'mkt_1', 'mkt_2', ... (Resend) or 'brevo_1', 'brevo_2', ...
+  provider: 'resend' | 'brevo';
   apiKey: string;
   from: string;       // e.g. "Sal Vita <contato@news.salvitarn.com.br>"
 }
@@ -29,9 +33,24 @@ export function getAccounts(): MarketingAccount[] {
   for (let i = 1; i <= 5; i++) {
     const apiKey = process.env[`RESEND_MKT_API_KEY_${i}`];
     const from = process.env[`RESEND_MKT_FROM_${i}`];
-    if (apiKey && from) accounts.push({ key: `mkt_${i}`, apiKey, from });
+    if (apiKey && from) accounts.push({ key: `mkt_${i}`, provider: 'resend', apiKey, from });
+  }
+  for (let i = 1; i <= 5; i++) {
+    const apiKey = process.env[`BREVO_API_KEY_${i}`];
+    const from = process.env[`BREVO_FROM_${i}`];
+    if (apiKey && from) accounts.push({ key: `brevo_${i}`, provider: 'brevo', apiKey, from });
   }
   return accounts;
+}
+
+/** Splits a "Name <email@domain>" string into its parts (Brevo's `sender` field needs them separate). */
+function parseFromAddress(from: string): { name?: string; email: string } {
+  const match = from.match(/^(.*)<(.+)>$/);
+  if (match) {
+    const name = match[1].trim().replace(/^"|"$/g, '');
+    return { name: name || undefined, email: match[2].trim() };
+  }
+  return { email: from.trim() };
 }
 
 function today(): string {
@@ -209,10 +228,14 @@ export interface BatchResult {
   error?: string;
 }
 
-/** Sends up to 100 personalized messages via Resend's Batch API and updates the account's daily counter. */
+/** Sends up to 100 personalized messages via the account's provider (Resend or Brevo) and updates the daily counter. */
 export async function sendBatch(account: MarketingAccount, messages: BatchMessage[]): Promise<BatchResult[]> {
   if (messages.length === 0) return [];
+  if (account.provider === 'brevo') return sendBatchBrevo(account, messages);
+  return sendBatchResend(account, messages);
+}
 
+async function sendBatchResend(account: MarketingAccount, messages: BatchMessage[]): Promise<BatchResult[]> {
   const unsubBase = process.env.PUBLIC_APP_URL ?? 'https://lembretes.salvitarn.com.br';
 
   const payload = messages.map(m => ({
@@ -258,6 +281,78 @@ export async function sendBatch(account: MarketingAccount, messages: BatchMessag
     return results;
   } catch (err) {
     console.error('[email-marketing] sendBatch failed:', err);
+    return messages.map(m => ({ to: m.to, ok: false, error: 'network_error' }));
+  }
+}
+
+// Brevo's transactional API caps `messageVersions` at 99 per call.
+const BREVO_MAX_VERSIONS = 99;
+
+/** Sends personalized messages via Brevo's /v3/smtp/email `messageVersions`, chunked to BREVO_MAX_VERSIONS. */
+async function sendBatchBrevo(account: MarketingAccount, messages: BatchMessage[]): Promise<BatchResult[]> {
+  if (messages.length > BREVO_MAX_VERSIONS) {
+    const results: BatchResult[] = [];
+    for (let i = 0; i < messages.length; i += BREVO_MAX_VERSIONS) {
+      results.push(...await sendBatchBrevo(account, messages.slice(i, i + BREVO_MAX_VERSIONS)));
+    }
+    return results;
+  }
+
+  const unsubBase = process.env.PUBLIC_APP_URL ?? 'https://lembretes.salvitarn.com.br';
+  const sender = parseFromAddress(account.from);
+
+  const messageVersions = messages.map(m => ({
+    to: [{ email: m.to }],
+    subject: m.subject,
+    htmlContent: m.html,
+    textContent: renderPlainText(m.html),
+    ...(m.replyTo ? { replyTo: { email: m.replyTo } } : {}),
+    headers: {
+      'List-Unsubscribe': `<${unsubBase}/api/unsubscribe?t=${m.unsubToken}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    },
+  }));
+
+  try {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 15_000);
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'api-key': account.apiKey,
+      },
+      body: JSON.stringify({
+        sender,
+        // Top-level subject/htmlContent/to are required by the API but get
+        // overridden per-recipient by messageVersions below.
+        subject: messages[0].subject,
+        htmlContent: messages[0].html,
+        to: [{ email: messages[0].to }],
+        messageVersions,
+      }),
+      signal: ac.signal,
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      const err = await res.text().catch(() => res.statusText);
+      console.error(`[email-marketing] Brevo batch error ${res.status}:`, err);
+      return messages.map(m => ({ to: m.to, ok: false, error: `brevo_${res.status}` }));
+    }
+
+    const body = await res.json() as { messageId?: string; messageIds?: string[] };
+    const ids = body.messageIds ?? (body.messageId ? [body.messageId] : []);
+    const results: BatchResult[] = messages.map((m, i) => ({
+      to: m.to,
+      ok: true,
+      messageId: ids[i],
+    }));
+    await incrementCounter(account.key, results.filter(r => r.ok).length);
+    return results;
+  } catch (err) {
+    console.error('[email-marketing] Brevo sendBatch failed:', err);
     return messages.map(m => ({ to: m.to, ok: false, error: 'network_error' }));
   }
 }

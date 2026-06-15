@@ -280,10 +280,17 @@ c) **Seleção em massa:** já existe "Selecionar tudo (1875)". Quando houver se
 | `RESEND_MKT_FROM_1` | `Sal Vita <contato@news.salvitarn.com.br>` | subdomínio verificado conta 1 |
 | `RESEND_MKT_API_KEY_2` | `re_yyy` | conta 2 (opcional) |
 | `RESEND_MKT_FROM_2` | `Sal Vita <contato@news2.salvitarn.com.br>` | subdomínio verificado conta 2 |
-| `RESEND_MKT_DAILY_LIMIT` | `90` | margem sob o cap de 100 |
+| `RESEND_MKT_DAILY_LIMIT` | `90` | margem sob o cap de 100 (compartilhado por todas as contas, Resend e Brevo) |
+| `BREVO_API_KEY_1` | `xkeysib-xxx` | conta Brevo 1 — entra na cascata **depois** das contas Resend (overflow) |
+| `BREVO_FROM_1` | `Sal Vita <contato@mkt.salvitarn.com.br>` | remetente verificado no domínio Brevo (`mkt.salvitarn.com.br`) |
+| `BREVO_API_KEY_2..5` / `BREVO_FROM_2..5` | — | contas Brevo extras (opcional), mesmo padrão |
 
-> Código deve **degradar com elegância**: se nenhuma `RESEND_MKT_API_KEY_*` existir,
+> Código deve **degradar com elegância**: se nenhuma `RESEND_MKT_API_KEY_*`/`BREVO_API_KEY_*` existir,
 > a página funciona (criar campanhas/templates) mas "Enviar" retorna aviso "sem conta configurada".
+>
+> Brevo entra como **fallback automático**: a cascata em `getAccounts()` (server/email/marketing.ts)
+> percorre primeiro `RESEND_MKT_*` e só depois `BREVO_*`. Sem as env vars `BREVO_*` configuradas,
+> nada muda no comportamento atual — pode ser ligado a qualquer momento sem deploy adicional.
 
 ---
 
