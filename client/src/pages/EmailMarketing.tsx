@@ -1341,8 +1341,9 @@ function EnrollLeadsDialog({ sequenceId, open, onClose, onEnrolled }: { sequence
     if (selectedIds.size === 0) { toast.error("Selecione ao menos um lead"); return; }
     try {
       const res = await enrollMutation.mutateAsync({ sequenceId, taskIds: Array.from(selectedIds) });
-      const skipped = res.skippedNoEmail + res.skippedDuplicateOrSuppressed;
-      toast.success(`✅ ${res.enrolled} inscrito(s) na sequência` + (skipped > 0 ? ` (${skipped} ignorado(s): sem e-mail, duplicado ou descadastrado)` : ''));
+      const skipped = res.skippedNoEmail + res.skippedDuplicateOrSuppressed + (res.skippedUnconfirmed ?? 0);
+      toast.success(`✅ ${res.enrolled} inscrito(s) na sequência` + (skipped > 0 ? ` (${skipped} ignorado(s): sem e-mail, não-confirmado, duplicado ou descadastrado)` : ''));
+      if (res.skippedUnconfirmed > 0) toast.warning(`✉️ ${res.skippedUnconfirmed} lead(s) ignorado(s) por e-mail não confirmado.`, { duration: 9000 });
       setSelectedIds(new Set());
       onEnrolled();
       onClose();

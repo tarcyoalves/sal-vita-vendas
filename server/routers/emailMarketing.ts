@@ -48,7 +48,8 @@ async function buildAudience(opts: { source: 'leads' | 'clients' | 'both'; assig
     const sellerRows = await db.select({ name: sellers.name, email: sellers.email }).from(sellers);
     const sellerMap = new Map(sellerRows.map(s => [s.name.toLowerCase(), s.email]));
 
-    const conditions = [isNotNull(tasks.email), ne(tasks.email, '')];
+    // Só e-mails confirmados manualmente pelo atendente entram no público.
+    const conditions = [isNotNull(tasks.email), ne(tasks.email, ''), eq(tasks.emailConfirmed, true)];
     if (opts.assignedTo) conditions.push(eq(tasks.assignedTo, opts.assignedTo));
     // Postgres array overlap operator: matches tasks that have at least one of the given tags.
     if (opts.tags && opts.tags.length > 0) {
@@ -257,7 +258,7 @@ export const emailMarketingRouter = router({
       const sellerRows = await db.select({ name: sellers.name, email: sellers.email }).from(sellers);
       const sellerMap = new Map(sellerRows.map(s => [s.name.toLowerCase(), s.email]));
 
-      const taskRows = await db.select({ id: tasks.id, email: tasks.email, title: tasks.title, assignedTo: tasks.assignedTo })
+      const taskRows = await db.select({ id: tasks.id, email: tasks.email, title: tasks.title, assignedTo: tasks.assignedTo, emailConfirmed: tasks.emailConfirmed })
         .from(tasks).where(inArray(tasks.id, input.taskIds));
 
       const existing = await db.select({ email: emailCampaignRecipients.email })
@@ -270,9 +271,11 @@ export const emailMarketingRouter = router({
       const toInsert: (typeof emailCampaignRecipients.$inferInsert)[] = [];
       const seen = new Set<string>();
       let skippedNoEmail = 0;
+      let skippedUnconfirmed = 0;
 
       for (const t of taskRows) {
         if (!t.email) { skippedNoEmail++; continue; }
+        if (!t.emailConfirmed) { skippedUnconfirmed++; continue; }
         const email = t.email.toLowerCase().trim();
         if (existingSet.has(email) || suppressedSet.has(email) || seen.has(email)) continue;
         seen.add(email);
@@ -296,7 +299,8 @@ export const emailMarketingRouter = router({
       return {
         added: toInsert.length,
         skippedNoEmail,
-        skippedDuplicateOrSuppressed: taskRows.length - toInsert.length - skippedNoEmail,
+        skippedUnconfirmed,
+        skippedDuplicateOrSuppressed: taskRows.length - toInsert.length - skippedNoEmail - skippedUnconfirmed,
       };
     }),
 
@@ -556,15 +560,17 @@ export const emailMarketingRouter = router({
       const sellerRows = await db.select({ name: sellers.name, email: sellers.email }).from(sellers);
       const sellerMap = new Map(sellerRows.map(s => [s.name.toLowerCase(), s.email]));
 
-      const taskRows = await db.select({ id: tasks.id, email: tasks.email, title: tasks.title, assignedTo: tasks.assignedTo })
+      const taskRows = await db.select({ id: tasks.id, email: tasks.email, title: tasks.title, assignedTo: tasks.assignedTo, emailConfirmed: tasks.emailConfirmed })
         .from(tasks).where(inArray(tasks.id, input.taskIds));
 
       let enrolled = 0;
       let skippedNoEmail = 0;
+      let skippedUnconfirmed = 0;
       let skippedDuplicateOrSuppressed = 0;
 
       for (const t of taskRows) {
         if (!t.email) { skippedNoEmail++; continue; }
+        if (!t.emailConfirmed) { skippedUnconfirmed++; continue; }
         const result = await enrollInSequence(input.sequenceId, {
           email: t.email,
           name: firstPart(t.title),
@@ -575,7 +581,7 @@ export const emailMarketingRouter = router({
         else skippedDuplicateOrSuppressed++;
       }
 
-      return { enrolled, skippedNoEmail, skippedDuplicateOrSuppressed };
+      return { enrolled, skippedNoEmail, skippedUnconfirmed, skippedDuplicateOrSuppressed };
     }),
 
   // ── Inscrições ────────────────────────────────────────────────────────────

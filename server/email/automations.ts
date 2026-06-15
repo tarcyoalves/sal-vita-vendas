@@ -172,6 +172,7 @@ export async function evaluateInactiveDaysRules(): Promise<{ rulesEvaluated: num
         }).from(tasks).where(and(
           isNotNull(tasks.email),
           ne(tasks.email, ''),
+          eq(tasks.emailConfirmed, true), // só e-mails confirmados manualmente
           isNull(tasks.convertedAt),
           sql`COALESCE(${tasks.lastContactedAt}, ${tasks.createdAt}) < ${cutoff}`,
         )).limit(300);

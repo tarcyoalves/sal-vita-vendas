@@ -24,6 +24,7 @@ interface Task {
   description?: string | null;
   notes?: string | null;
   email?: string | null;
+  emailConfirmed?: boolean | null;
   tags?: string[] | null;
   reminderDate?: Date | null;
   reminderEnabled?: boolean | null;
@@ -219,8 +220,9 @@ export default function Tasks() {
     if (!campaignPickerTaskIds) return;
     try {
       const res = await addToCampaignMutation.mutateAsync({ campaignId, taskIds: campaignPickerTaskIds });
-      const skipped = res.skippedNoEmail + res.skippedDuplicateOrSuppressed;
-      toast.success(`✅ ${res.added} adicionado(s) à campanha` + (skipped > 0 ? ` (${skipped} ignorado(s): sem e-mail, duplicado ou descadastrado)` : ''));
+      const skipped = res.skippedNoEmail + res.skippedDuplicateOrSuppressed + (res.skippedUnconfirmed ?? 0);
+      toast.success(`✅ ${res.added} adicionado(s) à campanha` + (skipped > 0 ? ` (${skipped} ignorado(s): sem e-mail, não-confirmado, duplicado ou descadastrado)` : ''));
+      if (res.skippedUnconfirmed > 0) toast.warning(`✉️ ${res.skippedUnconfirmed} lead(s) ignorado(s) por e-mail não confirmado. Confirme o e-mail na tarefa antes de usá-lo.`, { duration: 9000 });
       setCampaignPickerTaskIds(null);
     } catch (e: any) {
       toast.error(e?.message ?? "Erro ao adicionar à campanha");
@@ -254,8 +256,9 @@ export default function Tasks() {
     if (!sequencePickerTaskIds || !selectedSequenceId) return;
     try {
       const res = await enrollInSequenceMutation.mutateAsync({ sequenceId: selectedSequenceId, taskIds: sequencePickerTaskIds });
-      const skipped = res.skippedNoEmail + res.skippedDuplicateOrSuppressed;
-      toast.success(`✅ ${res.enrolled} inscrito(s) na sequência` + (skipped > 0 ? ` (${skipped} ignorado(s): sem e-mail, duplicado ou descadastrado)` : ''));
+      const skipped = res.skippedNoEmail + res.skippedDuplicateOrSuppressed + (res.skippedUnconfirmed ?? 0);
+      toast.success(`✅ ${res.enrolled} inscrito(s) na sequência` + (skipped > 0 ? ` (${skipped} ignorado(s): sem e-mail, não-confirmado, duplicado ou descadastrado)` : ''));
+      if (res.skippedUnconfirmed > 0) toast.warning(`✉️ ${res.skippedUnconfirmed} lead(s) ignorado(s) por e-mail não confirmado. Confirme o e-mail na tarefa antes de usá-lo.`, { duration: 9000 });
       setSequencePickerTaskIds(null);
       setSelectedSequenceId(null);
     } catch (e: any) {
@@ -425,7 +428,12 @@ export default function Tasks() {
         reminderDateTime = new Date(`${reminderDateStr}T${reminderTimeStr}:00`);
       }
       if (editingTask) {
-        const result = await updateMutation.mutateAsync({ id: editingTask.id, title: formData.title, description: formData.description, notes: formData.notes, email: formData.email, tags: formData.tags, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
+        // E-mail digitado/alterado à mão = confirmado. Se não mudou, não mexe na
+        // confirmação (passa undefined) — evita confirmar importados num save qualquer.
+        const trimmedEmail = (formData.email || '').trim().toLowerCase();
+        const originalEmail = (editingTask.email || '').trim().toLowerCase();
+        const emailConfirmed = trimmedEmail && trimmedEmail !== originalEmail ? true : undefined;
+        const result = await updateMutation.mutateAsync({ id: editingTask.id, title: formData.title, description: formData.description, notes: formData.notes, email: formData.email, tags: formData.tags, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined, emailConfirmed });
         toast.success("Tarefa atualizada!");
         if (!isAdmin && result.burstWarning) {
           toast.warning(`⚠️ Atenção: ${result.burstCount} contatos registrados em menos de 10 minutos. Certifique-se de que cada anotação representa um contato real — a gestão monitora esse indicador.`, { duration: 12000 });
@@ -643,6 +651,21 @@ export default function Tasks() {
       toast.error(err?.message ?? "Erro ao remover da campanha");
     }
   }, [removeCampaignRecipientMutation]);
+
+  // Confirma manualmente o e-mail de um lead importado — só após isso ele pode
+  // ser usado em campanhas/sequências/automações.
+  const confirmEmailMutation = trpc.tasks.confirmEmail.useMutation();
+  const handleConfirmEmail = useCallback(async (taskId: number, email?: string | null) => {
+    if (!confirm(`Confirmar que o e-mail "${email ?? ''}" está correto?\n\nApós confirmar, ele poderá ser usado em campanhas e sequências de e-mail.`)) return;
+    try {
+      await confirmEmailMutation.mutateAsync({ id: taskId });
+      setEditingTask(prev => (prev && prev.id === taskId ? { ...prev, emailConfirmed: true } : prev));
+      await refetch();
+      toast.success("✅ E-mail confirmado — já pode ser usado para e-mail marketing");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao confirmar e-mail");
+    }
+  }, [confirmEmailMutation]);
 
   const handleEdit = useCallback((task: Task) => {
     setEditingTask(task);
@@ -1061,6 +1084,19 @@ export default function Tasks() {
             <div>
               <label className="block text-xs font-medium mb-1 text-gray-600">📧 E-mail (e-mail marketing)</label>
               <input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="cliente@exemplo.com" className="w-full px-3 py-1.5 border rounded-lg text-sm" />
+              {editingTask?.email && !editingTask.emailConfirmed && (
+                (formData.email || '').trim().toLowerCase() !== (editingTask.email || '').trim().toLowerCase()
+                  ? <p className="mt-1 text-xs text-green-700">✓ E-mail alterado — será confirmado ao salvar.</p>
+                  : (
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-amber-700">⚠️ E-mail não confirmado — não será usado em e-mail marketing.</span>
+                      <button type="button" onClick={() => handleConfirmEmail(editingTask.id, editingTask.email)} className="px-2 py-0.5 rounded-md bg-green-600 text-white text-xs font-medium hover:bg-green-700">✓ Confirmar agora</button>
+                    </div>
+                  )
+              )}
+              {editingTask?.email && editingTask.emailConfirmed && (
+                <p className="mt-1 text-xs text-green-700">✓ E-mail confirmado — usável em e-mail marketing.</p>
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium mb-1 text-gray-600">
@@ -1234,6 +1270,19 @@ export default function Tasks() {
                     {hasEmail(`${task.title} ${task.notes ?? ''}`) && <span className="text-xs text-blue-600">📧</span>}
                     {task.convertedAt && <span className="text-xs text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded font-medium">🎉 Cliente ativo</span>}
                     {task.hotLead && <span className="text-xs text-red-700 bg-red-100 px-1.5 py-0.5 rounded font-medium">🔥 Lead quente</span>}
+                    {task.email && !task.emailConfirmed && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleConfirmEmail(task.id, task.email); }}
+                        title="E-mail não confirmado — clique para confirmar e liberar para e-mail marketing"
+                        className="text-xs text-amber-800 bg-amber-100 hover:bg-amber-200 px-1.5 py-0.5 rounded font-medium transition-colors"
+                      >
+                        ✉️ confirmar e-mail
+                      </button>
+                    )}
+                    {task.email && task.emailConfirmed && (
+                      <span title="E-mail confirmado — usável em e-mail marketing" className="text-xs text-green-700 bg-green-100 px-1.5 py-0.5 rounded font-medium">✉️ ✓</span>
+                    )}
                     {(() => {
                       const eng = engagementData?.[task.id];
                       if (!eng || (eng.opens === 0 && eng.clicks === 0)) return null;

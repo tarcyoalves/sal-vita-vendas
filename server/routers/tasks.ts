@@ -58,13 +58,18 @@ export const tasksRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const assignedTo = input.assignedTo || (ctx.user.role !== 'admin' ? ctx.user.name : undefined);
+      const email = input.email ? input.email.toLowerCase().trim() : undefined;
+      // E-mail digitado à mão pelo atendente já entra confirmado (importações não
+      // passam o campo `email` — elas o preenchem depois via backfill, logo ficam
+      // não-confirmadas até o atendente editar/confirmar).
+      const emailConfirmer = ctx.user.name ?? ctx.user.email;
       const [created] = await db.insert(tasks).values({
         userId: ctx.user.id,
         clientId: input.clientId,
         title: input.title,
         description: input.description,
         notes: input.notes,
-        email: input.email ? input.email.toLowerCase().trim() : undefined,
+        email,
         tags: input.tags,
         reminderDate: input.reminderDate,
         reminderEnabled: input.reminderEnabled,
@@ -73,6 +78,9 @@ export const tasksRouter = router({
         status: 'pending',
         cnpj: normalizeCnpj(input.cnpj),
         phone: normalizePhone(input.phone),
+        emailConfirmed: !!email,
+        emailConfirmedAt: email ? new Date() : null,
+        emailConfirmedBy: email ? emailConfirmer : null,
       }).returning();
 
       if (created?.email) {
@@ -104,17 +112,39 @@ export const tasksRouter = router({
       priority: z.enum(['low', 'medium', 'high']).optional(),
       assignedTo: z.string().optional(),
       status: z.enum(['pending', 'completed', 'cancelled']).optional(),
+      // Quando o atendente edita o e-mail para um novo valor, o front envia
+      // `emailConfirmed: true` (e-mail digitado = confirmado). Em saves que não
+      // mexem no e-mail, o campo vem `undefined` e a confirmação não é tocada.
+      emailConfirmed: z.boolean().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const { id, ...data } = input;
+      const { id, emailConfirmed, ...data } = input;
       const ownerFilter = ctx.user.role === 'admin'
         ? eq(tasks.id, id)
         : and(eq(tasks.id, id), await userTaskFilter(ctx.user.id, ctx.user.name ?? ''));
       // Mark real contact: attendant manually saved notes (>15 chars = real annotation)
       const now = new Date();
       const setData: Record<string, any> = { ...data, updatedAt: now };
+      let confirmedNow = false;
       if (data.email !== undefined) {
-        setData.email = data.email ? data.email.toLowerCase().trim() : null;
+        const newEmail = data.email ? data.email.toLowerCase().trim() : null;
+        setData.email = newEmail;
+        if (!newEmail) {
+          // E-mail removido → deixa de ser confirmado.
+          setData.emailConfirmed = false;
+          setData.emailConfirmedAt = null;
+          setData.emailConfirmedBy = null;
+        } else if (emailConfirmed === true) {
+          setData.emailConfirmed = true;
+          setData.emailConfirmedAt = now;
+          setData.emailConfirmedBy = ctx.user.name ?? ctx.user.email;
+          confirmedNow = true;
+        } else if (emailConfirmed === false) {
+          setData.emailConfirmed = false;
+          setData.emailConfirmedAt = null;
+          setData.emailConfirmedBy = null;
+        }
+        // emailConfirmed === undefined → e-mail inalterado: não mexe na confirmação.
       }
       if (data.notes && data.notes.trim().length > 15) {
         setData.lastContactedAt = now;
@@ -126,6 +156,18 @@ export const tasksRouter = router({
         .where(ownerFilter)
         .returning();
       if (!updated) throw new TRPCError({ code: 'FORBIDDEN', message: 'Tarefa não encontrada ou sem permissão' });
+
+      // E-mail recém-confirmado via edição → dispara a automação "lead criado"
+      // (idempotente por UNIQUE(sequence_id, email), seguro re-disparar).
+      if (confirmedNow && updated.email) {
+        try {
+          await runTriggerNow('lead_created', {
+            id: updated.id, email: updated.email, title: updated.title, assignedTo: updated.assignedTo,
+          });
+        } catch (err) {
+          console.error('[tasks.update] runTriggerNow(lead_created) failed:', err);
+        }
+      }
       let burstWarning = false;
       let burstCount = 0;
       if (ctx.user.role !== 'admin' && setData.lastContactedAt) {
@@ -137,6 +179,45 @@ export const tasksRouter = router({
         burstWarning = burstCount >= 10;
       }
       return { ...updated, burstWarning, burstCount };
+    }),
+
+  // Confirma manualmente o e-mail de uma tarefa (sem alterar o valor) — usado para
+  // liberar e-mails IMPORTADOS, que começam não-confirmados. Só após isso o e-mail
+  // pode ser usado em campanhas/sequências/automações.
+  confirmEmail: protectedProcedure
+    .input(z.object({ id: z.number(), confirmed: z.boolean().optional().default(true) }))
+    .mutation(async ({ input, ctx }) => {
+      const ownerFilter = ctx.user.role === 'admin'
+        ? eq(tasks.id, input.id)
+        : and(eq(tasks.id, input.id), await userTaskFilter(ctx.user.id, ctx.user.name ?? ''));
+
+      const [task] = await db.select({ id: tasks.id, email: tasks.email }).from(tasks).where(ownerFilter).limit(1);
+      if (!task) throw new TRPCError({ code: 'NOT_FOUND', message: 'Tarefa não encontrada ou sem permissão' });
+      if (input.confirmed && !task.email) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta tarefa não tem e-mail para confirmar' });
+      }
+
+      const now = new Date();
+      const [updated] = await db.update(tasks)
+        .set(input.confirmed
+          ? { emailConfirmed: true, emailConfirmedAt: now, emailConfirmedBy: ctx.user.name ?? ctx.user.email, updatedAt: now }
+          : { emailConfirmed: false, emailConfirmedAt: null, emailConfirmedBy: null, updatedAt: now })
+        .where(ownerFilter)
+        .returning();
+
+      // Ao confirmar, o lead "entra" de fato no marketing → dispara a automação
+      // "lead criado" (idempotente, seguro re-disparar).
+      if (input.confirmed && updated?.email) {
+        try {
+          await runTriggerNow('lead_created', {
+            id: updated.id, email: updated.email, title: updated.title, assignedTo: updated.assignedTo,
+          });
+        } catch (err) {
+          console.error('[tasks.confirmEmail] runTriggerNow(lead_created) failed:', err);
+        }
+      }
+
+      return updated;
     }),
 
   // Marca/desmarca o lead como cliente ativo (conversão). Não altera status do lembrete —

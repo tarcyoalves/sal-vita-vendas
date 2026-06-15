@@ -89,6 +89,12 @@ export const tasks = pgTable('tasks', {
   // de leads já excluídos — ver task_deletion_logs.
   cnpj: text('cnpj'),
   phone: text('phone'),
+  // Confirmação manual do e-mail: só e-mails confirmados pelo atendente entram em
+  // qualquer disparo (campanhas, sequências, automações). E-mails importados começam
+  // como não-confirmados; digitar/editar o e-mail à mão confirma automaticamente.
+  emailConfirmed: boolean('email_confirmed').notNull().default(false),
+  emailConfirmedAt: timestamp('email_confirmed_at'),
+  emailConfirmedBy: text('email_confirmed_by'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
