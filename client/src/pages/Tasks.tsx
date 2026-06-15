@@ -68,6 +68,15 @@ function waLink(digits: string): string {
   return `https://wa.me/${withCountry}`;
 }
 
+// Normaliza telefone para casar com o backend (somente dígitos, sem DDI 55) —
+// usado para detectar reimportação de leads já excluídos.
+function normalizePhoneDigits(digits: string): string {
+  if ((digits.length === 12 || digits.length === 13) && digits.startsWith('55')) {
+    return digits.slice(2);
+  }
+  return digits;
+}
+
 // Sellers created before dailyGoal was wired up still carry the old default of 10
 // while the gamification has always targeted 100 — treat 10 as "not customized".
 function effectiveDailyGoal(dailyGoal?: number | null): number {
@@ -76,12 +85,16 @@ function effectiveDailyGoal(dailyGoal?: number | null): number {
 
 // Parser for dash-separated customer records
 // Handles: NOME - EMPRESA - (DD)NNNN-NNNN - email - CIDADE - UF
-function parseImportLine(line: string): { title: string; description: string; notes: string } | null {
+function parseImportLine(line: string): { title: string; description: string; notes: string; cnpj?: string; phone?: string } | null {
   const raw = line.replace(/^[-\s]+/, '').trim();
   if (!raw || raw.length < 3) return null;
 
   const emailRx = /[\w.+-]+@[\w-]+\.[a-z]{2,}/gi;
   const emails = [...new Set(raw.match(emailRx) ?? [])];
+
+  // CNPJ, se houver, para detectar reimportação de leads já excluídos
+  const cnpjMatch = raw.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/);
+  const cnpj = cnpjMatch ? cnpjMatch[0].replace(/\D/g, '') : undefined;
 
   // Remove CPF/CNPJ/RG before phone matching to avoid false positives
   const noDocs = raw
@@ -136,7 +149,14 @@ function parseImportLine(line: string): { title: string; description: string; no
   const titleEmail = emails[0] ?? '';
   const titlePhone = mobiles[0] ?? landlines[0] ?? '';
   const fullTitle = [title || raw, titleEmail, titlePhone, city, state].filter(Boolean).join(' - ');
-  return { title: fullTitle, description: [city, state].filter(Boolean).join(' - '), notes: noteLines.join('\n') };
+  const phoneDigits = titlePhone.replace(/\D/g, '');
+  return {
+    title: fullTitle,
+    description: [city, state].filter(Boolean).join(' - '),
+    notes: noteLines.join('\n'),
+    cnpj,
+    phone: phoneDigits ? normalizePhoneDigits(phoneDigits) : undefined,
+  };
 }
 
 export default function Tasks() {
@@ -152,7 +172,8 @@ export default function Tasks() {
   const [filterHot, setFilterHot] = useState(false);
   const [reminderTab, setReminderTab] = useState<"all" | "today" | "yesterday" | "lastWeek" | "lastMonth">("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [importedTasks, setImportedTasks] = useState<{ title: string; description: string; notes: string }[]>([]);
+  const [importedTasks, setImportedTasks] = useState<{ title: string; description: string; notes: string; cnpj?: string; phone?: string }[]>([]);
+  const [importSkipped, setImportSkipped] = useState(0);
   const [selectedRepresentative, setSelectedRepresentative] = useState("");
   const [selectedTasks, setSelectedTasks] = useState<Set<number>>(new Set());
   const [expandedTask, setExpandedTask] = useState<number | null>(null);
@@ -659,7 +680,7 @@ export default function Tasks() {
   const handleCSVImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       try {
         const text = ev.target?.result as string;
         const lines = text.split(/\r?\n/).filter(l => l.trim());
@@ -668,7 +689,7 @@ export default function Tasks() {
         const sep = lines[0]?.includes('\t') ? '\t' : lines[0]?.includes(';') ? ';' : null;
         const isStructured = sep !== null;
 
-        let parsed: { title: string; description: string; notes: string }[];
+        let parsed: { title: string; description: string; notes: string; cnpj?: string; phone?: string }[];
 
         if (isStructured) {
           // Parse header to find column indices by name (handles all CSV/TSV variants)
@@ -747,7 +768,15 @@ export default function Tasks() {
               `WHATSAPP: ${fone}`,
               `FONE: ${fone}`,
             ].filter(Boolean).join('\n');
-            return { title, description: [cidade, uf].filter(Boolean).join(' - '), notes };
+            const cnpjDigits = cnpj.replace(/\D/g, '');
+            const foneDigits = fone.replace(/\D/g, '');
+            return {
+              title,
+              description: [cidade, uf].filter(Boolean).join(' - '),
+              notes,
+              cnpj: cnpjDigits || undefined,
+              phone: foneDigits.length >= 10 ? normalizePhoneDigits(foneDigits) : undefined,
+            };
           }).filter(t => t.title);
         } else {
           // Dash-separated format
@@ -755,9 +784,34 @@ export default function Tasks() {
         }
 
         if (parsed.length === 0) { toast.error("Nenhum dado válido encontrado no arquivo"); return; }
-        setImportedTasks(parsed);
+
+        // Verifica se algum CNPJ/telefone já corresponde a um lead excluído antes —
+        // evita reimportar quem o atendente já removeu.
+        let toImport = parsed;
+        let skipped = 0;
+        try {
+          const matches = await utils.tasks.checkCancelledMatches.fetch({
+            items: parsed.map(t => ({ cnpj: t.cnpj, phone: t.phone })),
+          });
+          const cnpjSet = new Set(matches.cnpjs);
+          const phoneSet = new Set(matches.phones);
+          if (cnpjSet.size > 0 || phoneSet.size > 0) {
+            toImport = parsed.filter(t => !((t.cnpj && cnpjSet.has(t.cnpj)) || (t.phone && phoneSet.has(t.phone))));
+            skipped = parsed.length - toImport.length;
+          }
+        } catch {
+          // Se a verificação falhar, segue com a importação normal (sem bloquear o atendente)
+        }
+
+        if (toImport.length === 0) { toast.error(`Todos os ${parsed.length} registros já foram excluídos anteriormente — nada a importar.`); return; }
+        setImportedTasks(toImport);
+        setImportSkipped(skipped);
         setShowImport(true);
-        toast.success(`${parsed.length} registros carregados — selecione o atendente para importar`);
+        toast.success(
+          skipped > 0
+            ? `${toImport.length} registros carregados (${skipped} ignorados — já excluídos antes) — selecione o atendente para importar`
+            : `${toImport.length} registros carregados — selecione o atendente para importar`
+        );
       } catch { toast.error("Erro ao processar arquivo"); }
     };
     reader.readAsText(file, 'UTF-8');
@@ -770,11 +824,12 @@ export default function Tasks() {
     try {
       const importReminderDate = new Date(Date.now() + 5 * 60 * 1000); // hoje + 5 min
       for (const t of importedTasks) {
-        await createMutation.mutateAsync({ clientId: 0, title: t.title, description: t.description, notes: t.notes, reminderDate: importReminderDate, reminderEnabled: true, priority: "medium", assignedTo: selectedRepresentative });
+        await createMutation.mutateAsync({ clientId: 0, title: t.title, description: t.description, notes: t.notes, reminderDate: importReminderDate, reminderEnabled: true, priority: "medium", assignedTo: selectedRepresentative, cnpj: t.cnpj, phone: t.phone });
         success++;
       }
       toast.success(`✅ ${success} tarefas importadas com sucesso para ${selectedRepresentative}!`, { duration: 8000 });
       setImportedTasks([]);
+      setImportSkipped(0);
       setShowImport(false);
       setSelectedRepresentative("");
       refetch();
@@ -962,6 +1017,11 @@ export default function Tasks() {
             <input type="file" accept=".csv,.txt" onChange={handleCSVImport} className="w-full px-3 py-2 border rounded-lg bg-white" />
             {importedTasks.length > 0 && (
               <>
+                {importSkipped > 0 && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
+                    ⚠️ {importSkipped} registro{importSkipped > 1 ? 's' : ''} ignorado{importSkipped > 1 ? 's' : ''} — já {importSkipped > 1 ? 'foram excluídos' : 'foi excluído'} anteriormente.
+                  </p>
+                )}
                 <div className="bg-white rounded-lg border p-3 max-h-40 overflow-y-auto space-y-1">
                   {importedTasks.slice(0, 10).map((t, i) => (
                     <div key={i} className="text-xs text-gray-700 border-b pb-1">

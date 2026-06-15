@@ -6,6 +6,20 @@ import { db } from '../db';
 import { tasks, sellers, taskDeletionLogs } from '../db/schema';
 import { runTriggerNow } from '../email/automations';
 
+// Normaliza CNPJ/telefone para somente dígitos. Para telefone, remove o código
+// do país (55) quando presente, para casar números digitados com ou sem DDI.
+function normalizeCnpj(value?: string | null): string | undefined {
+  const digits = (value ?? '').replace(/\D/g, '');
+  return digits || undefined;
+}
+function normalizePhone(value?: string | null): string | undefined {
+  let digits = (value ?? '').replace(/\D/g, '');
+  if ((digits.length === 12 || digits.length === 13) && digits.startsWith('55')) {
+    digits = digits.slice(2);
+  }
+  return digits || undefined;
+}
+
 // Build the assignedTo filter for a non-admin user.
 // Uses case-insensitive comparison: tasks imported via CSV often have different
 // capitalization than the seller name stored in the DB (e.g. "MATHEUS" vs "Matheus").
@@ -39,6 +53,8 @@ export const tasksRouter = router({
       reminderEnabled: z.boolean().optional().default(true),
       priority: z.enum(['low', 'medium', 'high']).optional().default('medium'),
       assignedTo: z.string().optional(),
+      cnpj: z.string().optional(),
+      phone: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       const assignedTo = input.assignedTo || (ctx.user.role !== 'admin' ? ctx.user.name : undefined);
@@ -55,6 +71,8 @@ export const tasksRouter = router({
         priority: input.priority,
         assignedTo,
         status: 'pending',
+        cnpj: normalizeCnpj(input.cnpj),
+        phone: normalizePhone(input.phone),
       }).returning();
 
       if (created?.email) {
@@ -174,7 +192,7 @@ export const tasksRouter = router({
         ? eq(tasks.id, input.id)
         : and(eq(tasks.id, input.id), await userTaskFilter(ctx.user.id, ctx.user.name ?? ''));
 
-      const [task] = await db.select({ id: tasks.id, title: tasks.title, notes: tasks.notes })
+      const [task] = await db.select({ id: tasks.id, title: tasks.title, notes: tasks.notes, cnpj: tasks.cnpj, phone: tasks.phone })
         .from(tasks).where(ownerFilter).limit(1);
       if (!task) throw new TRPCError({ code: 'NOT_FOUND', message: 'Tarefa não encontrada ou sem permissão' });
 
@@ -186,6 +204,8 @@ export const tasksRouter = router({
         deletedByName: ctx.user.name ?? ctx.user.email,
         reason: input.reason,
         reviewedByAdmin: ctx.user.role === 'admin',
+        cnpj: task.cnpj,
+        phone: task.phone,
       });
 
       await db.delete(tasks).where(eq(tasks.id, task.id));
@@ -202,7 +222,7 @@ export const tasksRouter = router({
         ? inArray(tasks.id, input.ids)
         : and(inArray(tasks.id, input.ids), await userTaskFilter(ctx.user.id, ctx.user.name ?? ''));
 
-      const found = await db.select({ id: tasks.id, title: tasks.title, notes: tasks.notes })
+      const found = await db.select({ id: tasks.id, title: tasks.title, notes: tasks.notes, cnpj: tasks.cnpj, phone: tasks.phone })
         .from(tasks).where(ownerFilter);
       if (found.length === 0) throw new TRPCError({ code: 'NOT_FOUND', message: 'Nenhuma tarefa encontrada ou sem permissão' });
 
@@ -214,10 +234,38 @@ export const tasksRouter = router({
         deletedByName: ctx.user.name ?? ctx.user.email,
         reason: input.reason,
         reviewedByAdmin: ctx.user.role === 'admin',
+        cnpj: t.cnpj,
+        phone: t.phone,
       })));
 
       await db.delete(tasks).where(inArray(tasks.id, found.map(t => t.id)));
       return { ok: true, count: found.length };
+    }),
+
+  // Verifica, antes de importar, quais CNPJs/telefones já correspondem a uma tarefa
+  // excluída anteriormente (task_deletion_logs) — usado para não reimportar leads
+  // que um atendente já removeu.
+  checkCancelledMatches: protectedProcedure
+    .input(z.object({
+      items: z.array(z.object({ cnpj: z.string().optional(), phone: z.string().optional() })).max(2000),
+    }))
+    .query(async ({ input }) => {
+      const cnpjs = [...new Set(input.items.map(i => normalizeCnpj(i.cnpj)).filter((v): v is string => !!v))];
+      const phones = [...new Set(input.items.map(i => normalizePhone(i.phone)).filter((v): v is string => !!v))];
+      if (cnpjs.length === 0 && phones.length === 0) return { cnpjs: [], phones: [] };
+
+      const conditions: SQL<unknown>[] = [];
+      if (cnpjs.length) conditions.push(inArray(taskDeletionLogs.cnpj, cnpjs));
+      if (phones.length) conditions.push(inArray(taskDeletionLogs.phone, phones));
+
+      const rows = await db.select({ cnpj: taskDeletionLogs.cnpj, phone: taskDeletionLogs.phone })
+        .from(taskDeletionLogs)
+        .where(or(...conditions));
+
+      return {
+        cnpjs: [...new Set(rows.map(r => r.cnpj).filter((v): v is string => !!v))],
+        phones: [...new Set(rows.map(r => r.phone).filter((v): v is string => !!v))],
+      };
     }),
 
   // Admin: list pending deletion log reviews

@@ -379,6 +379,14 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_engagement_at TIMESTAMP`;
   await sql`CREATE INDEX IF NOT EXISTS tasks_hot_lead_idx ON tasks (hot_lead) WHERE hot_lead = TRUE`;
 
+  // ── Reimportação de leads excluídos — CNPJ/telefone normalizados ───────────
+  await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS cnpj TEXT`;
+  await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS phone TEXT`;
+  await sql`ALTER TABLE task_deletion_logs ADD COLUMN IF NOT EXISTS cnpj TEXT`;
+  await sql`ALTER TABLE task_deletion_logs ADD COLUMN IF NOT EXISTS phone TEXT`;
+  await sql`CREATE INDEX IF NOT EXISTS task_deletion_logs_cnpj_idx  ON task_deletion_logs (cnpj)  WHERE cnpj  IS NOT NULL`;
+  await sql`CREATE INDEX IF NOT EXISTS task_deletion_logs_phone_idx ON task_deletion_logs (phone) WHERE phone IS NOT NULL`;
+
   // Backfill: extract the first e-mail found in tasks.notes for tasks that don't have one yet
   await sql`
     UPDATE tasks

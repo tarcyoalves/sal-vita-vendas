@@ -85,6 +85,10 @@ export const tasks = pgTable('tasks', {
   // e-mail de campanha/sequência (sinal forte de interesse).
   hotLead: boolean('hot_lead').notNull().default(false),
   lastEngagementAt: timestamp('last_engagement_at'),
+  // Identificadores normalizados (somente dígitos) usados para detectar reimportação
+  // de leads já excluídos — ver task_deletion_logs.
+  cnpj: text('cnpj'),
+  phone: text('phone'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -317,6 +321,10 @@ export const taskDeletionLogs = pgTable('task_deletion_logs', {
   deletedByName: text('deleted_by_name').notNull(),
   reason: text('reason').notNull(),
   reviewedByAdmin: boolean('reviewed_by_admin').default(false).notNull(),
+  // Identificadores normalizados (somente dígitos) — usados para detectar reimportação
+  // do mesmo lead via CNPJ ou telefone.
+  cnpj: text('cnpj'),
+  phone: text('phone'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
