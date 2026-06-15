@@ -426,6 +426,7 @@ export default function Tasks() {
   // Atalho: ajusta a data/hora do lembrete (30min ou amanhã, mantendo a hora atual) e já salva.
   const handleQuickReminder = async (mode: '30min' | 'tomorrow') => {
     if (!formData.title.trim()) { toast.error("Título é obrigatório"); return; }
+    if (tagCatalog.length > 0 && formData.tags.length === 0) { toast.error("🏷️ Selecione ao menos uma tag"); return; }
     const target = new Date();
     if (mode === '30min') target.setMinutes(target.getMinutes() + 30);
     else target.setDate(target.getDate() + 1);
@@ -440,6 +441,7 @@ export default function Tasks() {
     e.preventDefault();
     if (!formData.title.trim()) { toast.error("Título é obrigatório"); return; }
     if (!formData.reminderDate) { toast.error("📅 Data do lembrete é obrigatória"); return; }
+    if (tagCatalog.length > 0 && formData.tags.length === 0) { toast.error("🏷️ Selecione ao menos uma tag"); return; }
     if (!editingTask && !formData.notes.trim()) {
       setIsModalOpen(false);
       setShowNotesWarning(true);
@@ -1001,8 +1003,10 @@ export default function Tasks() {
               <input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="cliente@exemplo.com" className="w-full px-3 py-1.5 border rounded-lg text-sm" />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1 text-gray-600">🏷️ Tags (segmentação de e-mail marketing)</label>
-              <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-2.5">
+              <label className="block text-xs font-medium mb-1 text-gray-600">
+                🏷️ Tags (segmentação de e-mail marketing) {tagCatalog.length > 0 && <span className="text-red-500">*</span>}
+              </label>
+              <div className={`rounded-xl border p-2.5 ${tagCatalog.length > 0 && formData.tags.length === 0 ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50/60'}`}>
                 {formData.tags.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5 mb-2">
                     {formData.tags.map(tag => (
@@ -1024,7 +1028,9 @@ export default function Tasks() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-gray-400 italic mb-2">Nenhuma tag adicionada ainda.</p>
+                  <p className="text-xs text-gray-400 italic mb-2">
+                    {tagCatalog.length > 0 ? "Nenhuma tag selecionada. Escolha ao menos uma abaixo." : "Nenhuma tag adicionada ainda."}
+                  </p>
                 )}
                 <DropdownMenu open={tagPickerOpen} onOpenChange={setTagPickerOpen}>
                   <DropdownMenuTrigger asChild>
