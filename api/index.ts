@@ -1094,8 +1094,11 @@ app.get('/api/admin/recover-old-db', async (req, res) => {
 //   apply:    GET /api/admin/cleanup-duplicates?secret=XXX&mode=apply
 app.get('/api/admin/cleanup-duplicates', async (req, res) => {
   const secret = process.env.ADMIN_RESET_SECRET;
-  if (!secret || req.query.secret !== secret) {
-    return res.status(401).json({ error: 'Unauthorized' });
+  if (!secret) {
+    return res.status(503).json({ error: 'disabled: configure ADMIN_RESET_SECRET' });
+  }
+  if (req.query.secret !== secret) {
+    return res.status(401).json({ error: 'Unauthorized', hint: 'secret mismatch' });
   }
   const mode = req.query.mode === 'apply' ? 'apply' : 'inspect';
   const dstUrl = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL!;
