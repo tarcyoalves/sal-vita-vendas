@@ -1057,11 +1057,10 @@ app.post('/api/migrate-from-neon', express.json(), async (req, res) => {
 });
 
 // ── Recuperação ADITIVA do banco antigo → banco atual ───────────────────────
-// One-time. Lê OLD_DATABASE_URL (variável temporária no Vercel) e mescla no
-// banco atual SEM apagar nada, religando tarefas ao atendente por e-mail e
-// deduplicando por atendente. Protegido por ADMIN_RESET_SECRET.
-//   inspect (só leitura):  GET /api/admin/recover-old-db?secret=XXX
-//   aplicar (grava):       GET /api/admin/recover-old-db?secret=XXX&mode=apply
+// One-time recovery: merges OLD_DATABASE_URL → current DB additively.
+// Protected by ADMIN_RESET_SECRET. Remove after recovery is complete.
+//   inspect:  GET /api/admin/recover-old-db?secret=XXX
+//   apply:    GET /api/admin/recover-old-db?secret=XXX&mode=apply
 // Remover este endpoint após concluir a recuperação.
 app.get('/api/admin/recover-old-db', async (req, res) => {
   const secret = process.env.ADMIN_RESET_SECRET;
