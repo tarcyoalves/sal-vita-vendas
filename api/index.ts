@@ -1057,8 +1057,7 @@ app.post('/api/migrate-from-neon', express.json(), async (req, res) => {
 });
 
 // ── Recuperação ADITIVA do banco antigo → banco atual ───────────────────────
-// One-time recovery: merges OLD_DATABASE_URL → current DB additively.
-// Protected by ADMIN_RESET_SECRET. Remove after recovery is complete.
+// One-time recovery endpoint. Remove after recovery is complete.
 //   inspect:  GET /api/admin/recover-old-db?secret=XXX
 //   apply:    GET /api/admin/recover-old-db?secret=XXX&mode=apply
 // Remover este endpoint após concluir a recuperação.
