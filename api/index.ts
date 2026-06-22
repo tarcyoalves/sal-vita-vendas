@@ -1069,6 +1069,38 @@ app.get('/api/admin/recover-old-db', async (req, res) => {
   if (req.query.secret !== secret) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
+
+  // ?action=cleanup → remove duplicate tasks (same user_id + title), keeps lowest id
+  if (req.query.action === 'cleanup') {
+    const dstUrl = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL!;
+    const db = postgres(dstUrl, { max: 1, prepare: false, ssl: 'require' });
+    try {
+      const dupes = await db`
+        SELECT id, user_id, title FROM tasks t
+        WHERE EXISTS (
+          SELECT 1 FROM tasks t2
+          WHERE t2.user_id = t.user_id AND LOWER(t2.title) = LOWER(t.title) AND t2.id < t.id
+        )
+        ORDER BY user_id, title, id
+      `;
+      const byUser: Record<number, number> = {};
+      for (const d of dupes) byUser[d.user_id] = (byUser[d.user_id] || 0) + 1;
+
+      if (req.query.mode !== 'apply') {
+        return res.json({ action: 'cleanup-inspect', totalDuplicates: dupes.length, byUserId: byUser,
+          samples: dupes.slice(0, 10).map((d: any) => ({ id: d.id, user_id: d.user_id, title: d.title.substring(0, 80) })),
+        });
+      }
+      const ids = dupes.map((d: any) => d.id);
+      if (ids.length > 0) await db`DELETE FROM tasks WHERE id = ANY(${ids})`;
+      return res.json({ action: 'cleanup-applied', deleted: ids.length, byUserId: byUser });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? String(err) });
+    } finally {
+      await db.end();
+    }
+  }
+
   const oldUrl = process.env.OLD_DATABASE_URL;
   if (!oldUrl) {
     return res.status(400).json({ error: 'set OLD_DATABASE_URL env var (temporary) first' });
