@@ -133,12 +133,23 @@ export async function recoverOldDb(src: Db, dst: Db, mode: RecoverMode) {
     const old = oldUsers.find((u: any) => u.id === oldId);
     return { oldId, newId, name: old?.name, email: old?.email };
   });
-  report.tasksByUser = {};
-  for (const t of tasksToInsert) {
-    const uid = remapUser(t.user_id);
-    const old = oldUsers.find((u: any) => userMap.get(u.id) === uid || u.id === uid);
-    const key = old?.email ?? `uid:${uid}`;
-    report.tasksByUser[key] = (report.tasksByUser[key] || 0) + 1;
+  const findEmail = (uid: number) => {
+    const u = oldUsers.find((u: any) => u.id === uid) ?? oldUsers.find((u: any) => userMap.get(u.id) === uid);
+    return u?.email ?? `uid:${uid}`;
+  };
+  report.taskAnalysis = {};
+  for (const u of oldUsers) {
+    const newUid = remapUser(u.id);
+    const inOld = oldTasks.filter((t: any) => t.user_id === u.id).length;
+    const inNew = newTasks.filter((t: any) => t.user_id === newUid).length;
+    const toInsert = tasksToInsert.filter((t: any) => t.user_id === u.id).length;
+    const skipped = inOld - toInsert;
+    report.taskAnalysis[u.email] = {
+      name: u.name, oldUserId: u.id, newUserId: newUid,
+      tasksInOldDb: inOld, tasksAlreadyInNewDb: inNew,
+      toInsert, skippedAsDuplicate: skipped,
+      totalAfterMerge: inNew + toInsert,
+    };
   }
 
   if (mode === 'inspect') { report.applied = false; return report; }
