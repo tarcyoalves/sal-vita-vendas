@@ -1070,28 +1070,55 @@ app.get('/api/admin/recover-old-db', async (req, res) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  // ?action=cleanup → remove duplicate tasks (same user_id + title), keeps lowest id
+  // ?action=cleanup → remove duplicate tasks, keeps lowest id per group
+  // Step 1: same user_id + same title
+  // Step 2: admin tasks (user_id=1) that match an attendant's task by title
   if (req.query.action === 'cleanup') {
     const dstUrl = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL!;
     const db = postgres(dstUrl, { max: 1, prepare: false, ssl: 'require' });
     try {
-      const dupes = await db`
+      // 1) Same user_id + same title duplicates (keeps lowest id)
+      const sameUserDupes = await db`
         SELECT id, user_id, title FROM tasks t
         WHERE EXISTS (
           SELECT 1 FROM tasks t2
           WHERE t2.user_id = t.user_id AND LOWER(t2.title) = LOWER(t.title) AND t2.id < t.id
         )
-        ORDER BY user_id, title, id
+        ORDER BY user_id, id
       `;
+
+      // 2) Admin (user_id=1) tasks that also exist under an attendant
+      const adminOrphans = await db`
+        SELECT t.id, t.user_id, t.title FROM tasks t
+        WHERE t.user_id = 1
+          AND EXISTS (
+            SELECT 1 FROM tasks t2
+            WHERE t2.user_id != 1 AND LOWER(t2.title) = LOWER(t.title)
+          )
+      `;
+
+      const allIds = new Set([
+        ...sameUserDupes.map((d: any) => d.id),
+        ...adminOrphans.map((d: any) => d.id),
+      ]);
+
       const byUser: Record<number, number> = {};
-      for (const d of dupes) byUser[d.user_id] = (byUser[d.user_id] || 0) + 1;
+      for (const d of [...sameUserDupes, ...adminOrphans]) {
+        if (allIds.has(d.id)) byUser[d.user_id] = (byUser[d.user_id] || 0) + 1;
+      }
 
       if (req.query.mode !== 'apply') {
-        return res.json({ action: 'cleanup-inspect', totalDuplicates: dupes.length, byUserId: byUser,
-          samples: dupes.slice(0, 10).map((d: any) => ({ id: d.id, user_id: d.user_id, title: d.title.substring(0, 80) })),
+        return res.json({
+          action: 'cleanup-inspect',
+          sameUserDuplicates: sameUserDupes.length,
+          adminOrphanTasks: adminOrphans.length,
+          totalToRemove: allIds.size,
+          byUserId: byUser,
+          sampleSameUser: sameUserDupes.slice(0, 5).map((d: any) => ({ id: d.id, user_id: d.user_id, title: d.title.substring(0, 80) })),
+          sampleAdminOrphans: adminOrphans.slice(0, 5).map((d: any) => ({ id: d.id, title: d.title.substring(0, 80) })),
         });
       }
-      const ids = dupes.map((d: any) => d.id);
+      const ids = [...allIds];
       if (ids.length > 0) await db`DELETE FROM tasks WHERE id = ANY(${ids})`;
       return res.json({ action: 'cleanup-applied', deleted: ids.length, byUserId: byUser });
     } catch (err: any) {
