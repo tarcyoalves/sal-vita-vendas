@@ -153,6 +153,21 @@ export async function recoverOldDb(src: Db, dst: Db, mode: RecoverMode) {
     };
   }
 
+  // Analisa assigned_to nas tarefas do admin para ver distribuição real
+  const adminTasks = oldTasks.filter((t: any) => t.user_id === 1);
+  const assignedDist: Record<string, number> = {};
+  for (const t of adminTasks) {
+    const key = t.assigned_to || '(vazio)';
+    assignedDist[key] = (assignedDist[key] || 0) + 1;
+  }
+  report.adminTasksAssignedTo = assignedDist;
+
+  // Amostra de tarefas do admin para inspeção
+  report.sampleAdminTasks = adminTasks.slice(0, 5).map((t: any) => ({
+    title: t.title, assigned_to: t.assigned_to, email: t.email, phone: t.phone,
+    cnpj: t.cnpj, status: t.status, user_id: t.user_id,
+  }));
+
   if (mode === 'inspect') { report.applied = false; return report; }
 
   // ── APPLY (aditivo; sem DELETE). Insere sem 'id' → serial gera id novo. ──
