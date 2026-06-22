@@ -86,19 +86,35 @@ export async function recoverOldDb(src: Db, dst: Db, mode: RecoverMode) {
   const remapUser = (id: number) => (userMap.has(id) ? userMap.get(id)! : id);
   const remapClient = (id: number) => (clientMap.has(id) ? clientMap.get(id)! : 0);
 
-  // ── 3) TASKS → dedupe POR ATENDENTE (inclui created_at para não descartar tarefas com mesmo título) ──
+  // Mapa nome → oldUserId para redistribuir tarefas do admin ao atendente real
+  const nameToOldUserId = new Map<string, number>(
+    oldUsers.map((u: any) => [lc(u.name), u.id as number])
+  );
+
+  // ── 3) TASKS → redistribui admin tasks pelo assigned_to, dedupe por atendente ──
   const oldTasks = srcCols.tasks.length ? await src`SELECT * FROM tasks` : [];
   const newTasks = await dst`SELECT user_id, title, cnpj, phone, email, created_at FROM tasks`;
   const ident = (t: any) => norm(t.cnpj) || normPhone(t.phone) || lc(t.email) || '';
   const tdate = (t: any) => t.created_at ? new Date(t.created_at).toISOString() : '';
   const tkey = (uid: number, t: any) => `${uid}|${lc(t.title)}|${ident(t)}|${tdate(t)}`;
   const existingTaskKeys = new Set<string>(newTasks.map((t: any) => tkey(t.user_id, t)));
+
+  // Resolve o user_id real: se é tarefa do admin com assigned_to, usa o atendente
+  const resolveTaskOwner = (t: any): number => {
+    if (t.assigned_to && nameToOldUserId.has(lc(t.assigned_to))) {
+      return nameToOldUserId.get(lc(t.assigned_to))!;
+    }
+    return t.user_id;
+  };
+
   const tasksToInsert: any[] = [];
   for (const t of oldTasks) {
-    const uid = remapUser(t.user_id);
+    const realOldUid = resolveTaskOwner(t);
+    const uid = remapUser(realOldUid);
     const k = tkey(uid, t);
     if (existingTaskKeys.has(k)) continue;
     existingTaskKeys.add(k);
+    t._resolvedUserId = realOldUid; // guarda para usar no apply
     tasksToInsert.push(t);
   }
 
@@ -141,13 +157,14 @@ export async function recoverOldDb(src: Db, dst: Db, mode: RecoverMode) {
   report.taskAnalysis = {};
   for (const u of oldUsers) {
     const newUid = remapUser(u.id);
-    const inOld = oldTasks.filter((t: any) => t.user_id === u.id).length;
+    // Conta tarefas APÓS redistribuição (usando _resolvedUserId)
+    const resolvedInOld = oldTasks.filter((t: any) => resolveTaskOwner(t) === u.id).length;
     const inNew = newTasks.filter((t: any) => t.user_id === newUid).length;
-    const toInsert = tasksToInsert.filter((t: any) => t.user_id === u.id).length;
-    const skipped = inOld - toInsert;
+    const toInsert = tasksToInsert.filter((t: any) => (t._resolvedUserId ?? t.user_id) === u.id).length;
+    const skipped = resolvedInOld - toInsert;
     report.taskAnalysis[u.email] = {
       name: u.name, oldUserId: u.id, newUserId: newUid,
-      tasksInOldDb: inOld, tasksAlreadyInNewDb: inNew,
+      tasksInOldDb: resolvedInOld, tasksAlreadyInNewDb: inNew,
       toInsert, skippedAsDuplicate: skipped,
       totalAfterMerge: inNew + toInsert,
     };
@@ -192,7 +209,11 @@ export async function recoverOldDb(src: Db, dst: Db, mode: RecoverMode) {
   for (const c of clientsToInsert) { const id = await insert('clients', c); if (id != null) clientMap.set(c.id, id); }
   for (const s of sellersToInsert) { await insert('sellers', s, { user_id: remapUser(s.user_id) }); }
   let tIns = 0;
-  for (const t of tasksToInsert) { const id = await insert('tasks', t, { user_id: remapUser(t.user_id), client_id: remapClient(t.client_id) }); if (id != null) tIns++; }
+  for (const t of tasksToInsert) {
+    const realOldUid = t._resolvedUserId ?? t.user_id;
+    const id = await insert('tasks', t, { user_id: remapUser(realOldUid), client_id: remapClient(t.client_id) });
+    if (id != null) tIns++;
+  }
   let rIns = 0;
   for (const r of remToInsert) { const id = await insert('reminders', r, { user_id: remapUser(r.user_id) }); if (id != null) rIns++; }
 
