@@ -86,11 +86,12 @@ export async function recoverOldDb(src: Db, dst: Db, mode: RecoverMode) {
   const remapUser = (id: number) => (userMap.has(id) ? userMap.get(id)! : id);
   const remapClient = (id: number) => (clientMap.has(id) ? clientMap.get(id)! : 0);
 
-  // ── 3) TASKS → dedupe POR ATENDENTE ──
+  // ── 3) TASKS → dedupe POR ATENDENTE (inclui created_at para não descartar tarefas com mesmo título) ──
   const oldTasks = srcCols.tasks.length ? await src`SELECT * FROM tasks` : [];
-  const newTasks = await dst`SELECT user_id, title, cnpj, phone, email FROM tasks`;
+  const newTasks = await dst`SELECT user_id, title, cnpj, phone, email, created_at FROM tasks`;
   const ident = (t: any) => norm(t.cnpj) || normPhone(t.phone) || lc(t.email) || '';
-  const tkey = (uid: number, t: any) => `${uid}|${lc(t.title)}|${ident(t)}`;
+  const tdate = (t: any) => t.created_at ? new Date(t.created_at).toISOString() : '';
+  const tkey = (uid: number, t: any) => `${uid}|${lc(t.title)}|${ident(t)}|${tdate(t)}`;
   const existingTaskKeys = new Set<string>(newTasks.map((t: any) => tkey(t.user_id, t)));
   const tasksToInsert: any[] = [];
   for (const t of oldTasks) {
