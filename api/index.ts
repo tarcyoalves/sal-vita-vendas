@@ -21,6 +21,7 @@ import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } fro
 import { createPixPaymentForOrder } from '../server/lib/mercadopago';
 import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid } from '../server/lib/orderConfirmation';
 import { verifyResendWebhook } from '../server/email/marketing';
+import { recoverOldDb } from '../server/recovery/recoverOldDb';
 import { evaluateInactiveDaysRules, flagEngagementByMessageId, processSequenceEnrollments } from '../server/email/automations';
 
 function isBusinessHours(): boolean {
@@ -1049,6 +1050,41 @@ app.post('/api/migrate-from-neon', express.json(), async (req, res) => {
     res.json({ success: true, migrated: counts });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  } finally {
+    await src.end();
+    await dst.end();
+  }
+});
+
+// ── Recuperação ADITIVA do banco antigo → banco atual ───────────────────────
+// One-time. Lê OLD_DATABASE_URL (variável temporária no Vercel) e mescla no
+// banco atual SEM apagar nada, religando tarefas ao atendente por e-mail e
+// deduplicando por atendente. Protegido por ADMIN_RESET_SECRET.
+//   inspect (só leitura):  GET /api/admin/recover-old-db?secret=XXX
+//   aplicar (grava):       GET /api/admin/recover-old-db?secret=XXX&mode=apply
+// Remover este endpoint após concluir a recuperação.
+app.get('/api/admin/recover-old-db', async (req, res) => {
+  const secret = process.env.ADMIN_RESET_SECRET;
+  if (!secret) {
+    return res.status(503).json({ error: 'disabled: configure ADMIN_RESET_SECRET' });
+  }
+  if (req.query.secret !== secret) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const oldUrl = process.env.OLD_DATABASE_URL;
+  if (!oldUrl) {
+    return res.status(400).json({ error: 'set OLD_DATABASE_URL env var (temporary) first' });
+  }
+  const mode = req.query.mode === 'apply' ? 'apply' : 'inspect';
+
+  const src = postgres(oldUrl, { max: 1, prepare: false, ssl: 'require' });
+  const dstUrl = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL!;
+  const dst = postgres(dstUrl, { max: 1, prepare: false, ssl: 'require' });
+  try {
+    const report = await recoverOldDb(src, dst, mode);
+    res.json(report);
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? String(err) });
   } finally {
     await src.end();
     await dst.end();
