@@ -14,6 +14,7 @@
  *  - Copia apenas colunas presentes nos DOIS bancos (tolera schema antigo menor).
  *  - Insere SEM o id (deixa o serial gerar id novo) → nunca colide com o que já existe.
  *  - Tags NOT NULL: garante [] default para tasks sem tags.
+ *  - Admin tasks redistribuídas ao atendente real via assigned_to.
  *
  * mode 'inspect' = só leitura (devolve o plano). mode 'apply' = grava.
  * Idempotente: rodar de novo só insere o que ainda falta.

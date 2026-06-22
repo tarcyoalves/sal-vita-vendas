@@ -1089,4 +1089,61 @@ app.get('/api/admin/recover-old-db', async (req, res) => {
   }
 });
 
+// Cleanup: remove duplicate tasks created by recovery (keeps lowest id per group)
+//   inspect:  GET /api/admin/cleanup-duplicates?secret=XXX
+//   apply:    GET /api/admin/cleanup-duplicates?secret=XXX&mode=apply
+app.get('/api/admin/cleanup-duplicates', async (req, res) => {
+  const secret = process.env.ADMIN_RESET_SECRET;
+  if (!secret || req.query.secret !== secret) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const mode = req.query.mode === 'apply' ? 'apply' : 'inspect';
+  const dstUrl = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL!;
+  const db = postgres(dstUrl, { max: 1, prepare: false, ssl: 'require' });
+  try {
+    // Find duplicate tasks: same user_id + LOWER(title), keep the one with lowest id
+    const dupes = await db`
+      SELECT id, user_id, title
+      FROM tasks t
+      WHERE EXISTS (
+        SELECT 1 FROM tasks t2
+        WHERE t2.user_id = t.user_id
+          AND LOWER(t2.title) = LOWER(t.title)
+          AND t2.id < t.id
+      )
+      ORDER BY user_id, title, id
+    `;
+
+    // Group by user for report
+    const byUser: Record<number, number> = {};
+    for (const d of dupes) {
+      byUser[d.user_id] = (byUser[d.user_id] || 0) + 1;
+    }
+
+    if (mode === 'inspect') {
+      return res.json({
+        mode: 'inspect',
+        totalDuplicatesToRemove: dupes.length,
+        byUserId: byUser,
+        sampleDuplicates: dupes.slice(0, 10).map((d: any) => ({ id: d.id, user_id: d.user_id, title: d.title })),
+      });
+    }
+
+    // Apply: delete duplicates
+    const ids = dupes.map((d: any) => d.id);
+    if (ids.length > 0) {
+      await db`DELETE FROM tasks WHERE id = ANY(${ids})`;
+    }
+    return res.json({
+      mode: 'apply',
+      deleted: ids.length,
+      byUserId: byUser,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? String(err) });
+  } finally {
+    await db.end();
+  }
+});
+
 export default app;
