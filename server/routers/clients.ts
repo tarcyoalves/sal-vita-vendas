@@ -5,11 +5,11 @@ import { db } from '../db';
 import { clients } from '../db/schema';
 
 export const clientsRouter = router({
-  list: protectedProcedure.query(async () => {
+  list: adminProcedure.query(async () => {
     return db.select().from(clients).orderBy(clients.name);
   }),
 
-  create: protectedProcedure
+  create: adminProcedure
     .input(z.object({
       name: z.string().min(1),
       email: z.string().optional(),

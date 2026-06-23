@@ -8,10 +8,12 @@ import { hashPassword, verifyPassword, signToken, DUMMY_HASH } from '../auth';
 import { COOKIE_NAME } from '../../shared/const';
 import { cached, cacheInvalidate } from '../lib/cache';
 
-function generatePassword(length = 8): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+function generatePassword(length = 12): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
   return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
+
+const emergencyAttempts = new Map<string, { count: number; blockedUntil: number }>();
 
 export const authRouter = router({
   me: publicProcedure.query(async ({ ctx }) => {
@@ -41,7 +43,7 @@ export const authRouter = router({
       const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
       ctx.res.setHeader(
         'Set-Cookie',
-        `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly${secure}; Path=/; Max-Age=${30 * 24 * 60 * 60}; SameSite=Lax`,
+        `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly${secure}; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax`,
       );
       return { id: user.id, name: user.name, email: user.email, role: user.role };
     }),
@@ -99,15 +101,32 @@ export const authRouter = router({
       return { name: user.name, email: user.email, generatedPassword: generated };
     }),
 
-  // Emergency recovery for admin who lost their own password
   emergencyReset: publicProcedure
     .input(z.object({ email: z.string().email(), secret: z.string().min(1) }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const ip = ctx.req.ip ?? ctx.req.socket.remoteAddress ?? 'unknown';
+      const attempt = emergencyAttempts.get(ip);
+      if (attempt && Date.now() < attempt.blockedUntil) {
+        throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Muitas tentativas. Tente novamente em alguns minutos.' });
+      }
+
       const envSecret = process.env.ADMIN_RESET_SECRET;
-      if (!envSecret || input.secret !== envSecret) throw new Error('Chave de recuperação inválida');
+      const genericError = 'Credenciais de recuperação inválidas';
+
+      if (!envSecret || input.secret !== envSecret) {
+        const prev = emergencyAttempts.get(ip) ?? { count: 0, blockedUntil: 0 };
+        prev.count++;
+        prev.blockedUntil = Date.now() + Math.min(prev.count * 30_000, 300_000);
+        emergencyAttempts.set(ip, prev);
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: genericError });
+      }
+
       const [user] = await db.select().from(users).where(eq(users.email, input.email));
-      if (!user) throw new Error('Email não encontrado');
-      if (user.role !== 'admin') throw new Error('Apenas admins podem usar recuperação de emergência');
+      if (!user || user.role !== 'admin') {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: genericError });
+      }
+
+      emergencyAttempts.delete(ip);
       const generated = generatePassword();
       await db.update(users)
         .set({ passwordHash: hashPassword(generated), mustChangePassword: true })

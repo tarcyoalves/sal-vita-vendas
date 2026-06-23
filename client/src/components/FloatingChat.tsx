@@ -6,15 +6,6 @@ import { toast } from 'sonner';
 
 interface Msg { role: 'user' | 'assistant'; content: string; ts: Date; }
 
-function getStoredApiConfig(): { apiKey: string; provider: string } | null {
-  try {
-    const configs = JSON.parse(localStorage.getItem('aiConfigs') || '{}');
-    const entry = Object.values(configs as Record<string, any>).find((c: any) => c.status === 'configured');
-    if (entry) return { apiKey: (entry as any).apiKey, provider: (entry as any).provider };
-  } catch { /* ignore */ }
-  return null;
-}
-
 export default function FloatingChat() {
   const { user } = useAuth();
   const [location] = useLocation();
@@ -56,12 +47,7 @@ export default function FloatingChat() {
     setMsgs(prev => [...prev, { role: 'user', content: text, ts: new Date() }]);
     setLoading(true);
     try {
-      const cfg = getStoredApiConfig();
-      const res = await chatMutation.mutateAsync({
-        message: text,
-        apiKey: cfg?.apiKey,
-        provider: cfg?.provider,
-      });
+      const res = await chatMutation.mutateAsync({ message: text });
       setMsgs(prev => [...prev, { role: 'assistant', content: res.reply, ts: new Date() }]);
     } catch (e: any) {
       const err = e?.message ?? 'Erro ao contatar IA';

@@ -61,18 +61,6 @@ export default function AiChat() {
     toast.success("Histórico limpo");
   };
 
-  const getApiConfig = (preferProvider?: string) => {
-    try {
-      const configs = JSON.parse(localStorage.getItem('aiConfigs') || '{}') as Record<string, any>;
-      const order = preferProvider ? [preferProvider, 'groq', 'cerebras', 'gemini'] : ['groq', 'cerebras', 'gemini'];
-      for (const id of order) {
-        const c = configs[id];
-        if (c?.status === 'configured') return { apiKey: c.apiKey, provider: c.provider };
-      }
-    } catch { /* ignore */ }
-    return null;
-  };
-
   const handleSendMessage = async () => {
     if (!input.trim() || isLoading) return;
     const userMessage: Message = { role: "user", content: input, timestamp: new Date() };
@@ -81,8 +69,7 @@ export default function AiChat() {
     setInput("");
     setIsLoading(true);
     try {
-      const cfg = getApiConfig();
-      const response = await chatMutation.mutateAsync({ message: currentInput, apiKey: cfg?.apiKey, provider: cfg?.provider });
+      const response = await chatMutation.mutateAsync({ message: currentInput });
       setMessages(prev => [...prev, { role: "assistant", content: response.reply, timestamp: new Date() }]);
     } catch (error: any) {
       const errMsg = error?.message ?? "Erro ao processar mensagem";

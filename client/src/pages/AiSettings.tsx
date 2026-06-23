@@ -51,6 +51,14 @@ const AI_PROVIDERS: AIProvider[] = [
 
 export default function AiSettings() {
   const { user } = useAuth();
+
+  if (user?.role !== 'admin') {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <p className="text-slate-500">Apenas administradores podem acessar configurações de IA.</p>
+      </div>
+    );
+  }
   const [selectedProvider, setSelectedProvider] = useState<string>("groq");
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
