@@ -260,15 +260,16 @@ export const emailMarketingRouter = router({
       recipients: z.array(z.object({
         email: z.string().email(),
         name: z.string().optional(),
-      })).min(1).max(2000),
+      })).max(2000).optional(),
+      audienceSource: z.enum(['leads', 'clients', 'both']).optional(),
+      audienceAssignedTo: z.string().optional(),
+      audienceTags: z.array(z.string()).optional(),
       attachments: z.array(z.object({
         filename: z.string().min(1).max(255),
         content: z.string().min(1), // base64
       })).max(10).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      // Anexos: respeita o teto de body da plataforma (Vercel ~4.5MB). base64
-      // infla ~33%, então limitamos a soma do conteúdo a ~3.5MB.
       if (input.attachments && input.attachments.length > 0) {
         const totalBase64 = input.attachments.reduce((sum, a) => sum + a.content.length, 0);
         if (totalBase64 > 3_500_000) {
@@ -276,7 +277,25 @@ export const emailMarketingRouter = router({
         }
       }
 
-      // Dedupe por e-mail (case-insensitive) e remove descadastrados.
+      let allRecipients: { email: string; name?: string }[] = [];
+
+      if (input.audienceSource) {
+        const audience = await buildAudience({
+          source: input.audienceSource,
+          assignedTo: input.audienceAssignedTo,
+          tags: input.audienceTags,
+        });
+        allRecipients.push(...audience.map(r => ({ email: r.email, name: r.name })));
+      }
+
+      if (input.recipients && input.recipients.length > 0) {
+        allRecipients.push(...input.recipients);
+      }
+
+      if (allRecipients.length === 0) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Nenhum destinatário. Adicione e-mails manualmente ou selecione uma audiência.' });
+      }
+
       const suppressed = await db.select({ email: emailSuppressions.email }).from(emailSuppressions);
       const suppressedSet = new Set(suppressed.map(s => s.email.toLowerCase()));
 
@@ -284,7 +303,7 @@ export const emailMarketingRouter = router({
       const clean: { email: string; name?: string }[] = [];
       let skippedSuppressed = 0;
       let skippedDuplicate = 0;
-      for (const r of input.recipients) {
+      for (const r of allRecipients) {
         const email = r.email.toLowerCase().trim();
         if (seen.has(email)) { skippedDuplicate++; continue; }
         seen.add(email);
@@ -1010,6 +1029,151 @@ export const emailMarketingRouter = router({
     const [row] = await db.select({ cnt: count() }).from(tasks).where(filter);
     return { count: Number(row?.cnt ?? 0) };
   }),
+
+  // ── Contatos (agregação de todos os e-mails do sistema) ─────────────────
+  contactStats: adminProcedure.query(async () => {
+    const [leadRow] = await db.select({ cnt: sql<number>`COUNT(DISTINCT lower(trim(${tasks.email})))::int` })
+      .from(tasks)
+      .where(and(isNotNull(tasks.email), ne(tasks.email, '')));
+
+    const [clientRow] = await db.select({ cnt: sql<number>`COUNT(DISTINCT lower(trim(${clients.email})))::int` })
+      .from(clients)
+      .where(and(isNotNull(clients.email), ne(clients.email, '')));
+
+    const suppByReason = await db.select({ reason: emailSuppressions.reason, cnt: count() })
+      .from(emailSuppressions)
+      .groupBy(emailSuppressions.reason);
+
+    const suppMap: Record<string, number> = {};
+    let totalSuppressed = 0;
+    for (const r of suppByReason) {
+      suppMap[r.reason] = Number(r.cnt);
+      totalSuppressed += Number(r.cnt);
+    }
+
+    const [confirmedRow] = await db.select({ cnt: count() })
+      .from(tasks)
+      .where(and(isNotNull(tasks.email), ne(tasks.email, ''), eq(tasks.emailConfirmed, true)));
+
+    return {
+      totalLeads: Number(leadRow?.cnt ?? 0),
+      totalClients: Number(clientRow?.cnt ?? 0),
+      totalSuppressed,
+      unsubscribed: suppMap['unsubscribe'] ?? 0,
+      bounced: suppMap['bounce'] ?? 0,
+      complained: suppMap['complaint'] ?? 0,
+      manualSuppressed: suppMap['manual'] ?? 0,
+      confirmedEmails: Number(confirmedRow?.cnt ?? 0),
+    };
+  }),
+
+  listContacts: adminProcedure
+    .input(z.object({
+      search: z.string().optional(),
+      source: z.enum(['all', 'leads', 'clients']).default('all'),
+      status: z.enum(['all', 'active', 'suppressed']).default('all'),
+      suppressionReason: z.string().optional(),
+      assignedTo: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      confirmed: z.enum(['all', 'yes', 'no']).optional().default('all'),
+      limit: z.number().int().min(1).max(200).optional().default(50),
+      offset: z.number().int().min(0).optional().default(0),
+    }))
+    .query(async ({ input }) => {
+      const suppRows = await db.select().from(emailSuppressions);
+      const suppressionMap = new Map(suppRows.map(s => [s.email.toLowerCase(), s.reason]));
+
+      type ContactRow = {
+        email: string;
+        name: string;
+        source: 'lead' | 'client';
+        assignedTo: string | null;
+        tags: string[];
+        emailConfirmed: boolean;
+        taskId: number | null;
+        createdAt: Date;
+        suppressionReason: string | null;
+      };
+
+      const contactMap = new Map<string, ContactRow>();
+
+      if (input.source !== 'clients') {
+        const conds: any[] = [isNotNull(tasks.email), ne(tasks.email, '')];
+        if (input.assignedTo) conds.push(eq(tasks.assignedTo, input.assignedTo));
+        if (input.tags && input.tags.length > 0) {
+          conds.push(sql`${tasks.tags} && ARRAY[${sql.join(input.tags.map(t => sql`${t}`), sql`, `)}]::text[]`);
+        }
+        if (input.confirmed === 'yes') conds.push(eq(tasks.emailConfirmed, true));
+        if (input.confirmed === 'no') conds.push(eq(tasks.emailConfirmed, false));
+        if (input.search) {
+          const s = `%${input.search.toLowerCase()}%`;
+          conds.push(sql`(lower(${tasks.email}) LIKE ${s} OR lower(${tasks.title}) LIKE ${s})`);
+        }
+
+        const rows = await db.select({
+          id: tasks.id, email: tasks.email, title: tasks.title,
+          assignedTo: tasks.assignedTo, tags: tasks.tags,
+          emailConfirmed: tasks.emailConfirmed, createdAt: tasks.createdAt,
+        }).from(tasks).where(and(...conds));
+
+        for (const r of rows) {
+          if (!r.email) continue;
+          const key = r.email.toLowerCase().trim();
+          if (contactMap.has(key)) continue;
+          contactMap.set(key, {
+            email: key, name: firstPart(r.title), source: 'lead',
+            assignedTo: r.assignedTo, tags: r.tags ?? [],
+            emailConfirmed: r.emailConfirmed, taskId: r.id,
+            createdAt: r.createdAt, suppressionReason: suppressionMap.get(key) ?? null,
+          });
+        }
+      }
+
+      if (input.source !== 'leads') {
+        const conds: any[] = [isNotNull(clients.email), ne(clients.email, '')];
+        if (input.search) {
+          const s = `%${input.search.toLowerCase()}%`;
+          conds.push(sql`(lower(${clients.email}) LIKE ${s} OR lower(${clients.name}) LIKE ${s})`);
+        }
+
+        const rows = await db.select({
+          email: clients.email, name: clients.name,
+          createdAt: clients.createdAt, unsubscribed: clients.unsubscribed,
+        }).from(clients).where(and(...conds));
+
+        for (const r of rows) {
+          if (!r.email) continue;
+          const key = r.email.toLowerCase().trim();
+          if (contactMap.has(key)) continue;
+          contactMap.set(key, {
+            email: key, name: r.name, source: 'client',
+            assignedTo: null, tags: [], emailConfirmed: true, taskId: null,
+            createdAt: r.createdAt,
+            suppressionReason: r.unsubscribed ? 'unsubscribe' : (suppressionMap.get(key) ?? null),
+          });
+        }
+      }
+
+      let list = Array.from(contactMap.values());
+      if (input.status === 'active') list = list.filter(c => !c.suppressionReason);
+      else if (input.status === 'suppressed') {
+        list = list.filter(c => !!c.suppressionReason);
+        if (input.suppressionReason) list = list.filter(c => c.suppressionReason === input.suppressionReason);
+      }
+
+      list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const total = list.length;
+      const page = list.slice(input.offset, input.offset + input.limit);
+
+      return { contacts: page, total };
+    }),
+
+  removeSuppression: adminProcedure
+    .input(z.object({ email: z.string().email() }))
+    .mutation(async ({ input }) => {
+      await db.delete(emailSuppressions).where(eq(emailSuppressions.email, input.email.toLowerCase().trim()));
+      return { ok: true };
+    }),
 
   // ── Exportar leads (Fase 3, Pilar 4) ─────────────────────────────────────
   // CSV de leads com filtros avançados (tags, conversão, inatividade,

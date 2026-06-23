@@ -23,7 +23,8 @@ import {
 import { Checkbox } from "../components/ui/checkbox";
 import {
   Mail, Plus, Send, Trash2, Eye, Pencil, Workflow, Zap, Tag, BarChart3, Users, Pause, Play, X, Download,
-  LayoutTemplate, MailX, Filter, Sparkles, Inbox, Megaphone, Paperclip, FileText,
+  LayoutTemplate, MailX, Filter, Sparkles, Inbox, Megaphone, Paperclip, FileText, Contact, Search,
+  CheckCircle, XCircle, AlertTriangle, RotateCcw,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -222,6 +223,9 @@ export default function EmailMarketing() {
           <TabsTrigger value="tags" className={TAB_TRIGGER_CLASS}>
             <Tag size={14} /> Tags
           </TabsTrigger>
+          <TabsTrigger value="contacts" className={TAB_TRIGGER_CLASS}>
+            <Contact size={14} /> Contatos
+          </TabsTrigger>
           <TabsTrigger value="suppressions" className={TAB_TRIGGER_CLASS}>
             <MailX size={14} /> Descadastrados
           </TabsTrigger>
@@ -247,6 +251,9 @@ export default function EmailMarketing() {
         </TabsContent>
         <TabsContent value="tags" className="mt-4">
           <TagsTab />
+        </TabsContent>
+        <TabsContent value="contacts" className="mt-4">
+          <ContactsTab />
         </TabsContent>
         <TabsContent value="suppressions" className="mt-4">
           <SuppressionsTab />
@@ -283,13 +290,16 @@ function CampaignsTab() {
 
   // ── Disparo Rápido (Broadcast) ──
   const [showBroadcast, setShowBroadcast] = useState(false);
+  const [bcastMode, setBcastMode] = useState<"manual" | "audience">("manual");
   const [bcast, setBcast] = useState({
     name: "", subject: "", htmlBody: "", replyTo: "", recipientsRaw: "",
+    audSource: "leads" as Source, audAssignedTo: "", audTags: [] as string[],
   });
   const [bcastFiles, setBcastFiles] = useState<{ filename: string; content: string; size: number }[]>([]);
   const resetBroadcast = () => {
-    setBcast({ name: "", subject: "", htmlBody: "", replyTo: "", recipientsRaw: "" });
+    setBcast({ name: "", subject: "", htmlBody: "", replyTo: "", recipientsRaw: "", audSource: "leads", audAssignedTo: "", audTags: [] });
     setBcastFiles([]);
+    setBcastMode("manual");
   };
 
   // Parse emails pasted in any separator (comma, semicolon, space, newline).
@@ -309,6 +319,13 @@ function CampaignsTab() {
     }
     return { valid, invalid };
   }, [bcast.recipientsRaw]);
+
+  const { data: availTags } = trpc.emailMarketing.listTags.useQuery(undefined, { enabled: showBroadcast && bcastMode === 'audience' });
+
+  const { data: bcastAudiencePreview } = trpc.emailMarketing.audiencePreview.useQuery(
+    { source: bcast.audSource, assignedTo: bcast.audAssignedTo || undefined, tags: bcast.audTags.length > 0 ? bcast.audTags : undefined },
+    { enabled: showBroadcast && bcastMode === 'audience' }
+  );
 
   const totalAttachBytes = bcastFiles.reduce((s, f) => s + f.size, 0);
 
@@ -342,8 +359,12 @@ function CampaignsTab() {
       toast.error("Preencha assunto e corpo do e-mail");
       return;
     }
-    if (parsedEmails.valid.length === 0) {
+    if (bcastMode === 'manual' && parsedEmails.valid.length === 0) {
       toast.error("Adicione ao menos um e-mail válido");
+      return;
+    }
+    if (bcastMode === 'audience' && (!bcastAudiencePreview || bcastAudiencePreview.count === 0)) {
+      toast.error("Nenhum destinatário encontrado com os filtros selecionados");
       return;
     }
     if (totalAttachBytes > 3_500_000) {
@@ -351,14 +372,21 @@ function CampaignsTab() {
       return;
     }
     try {
-      const res = await broadcastMutation.mutateAsync({
+      const payload: Parameters<typeof broadcastMutation.mutateAsync>[0] = {
         name: bcast.name || undefined,
         subject: bcast.subject,
         htmlBody: bcast.htmlBody,
         replyTo: bcast.replyTo || undefined,
-        recipients: parsedEmails.valid.map(email => ({ email })),
         attachments: bcastFiles.length > 0 ? bcastFiles.map(f => ({ filename: f.filename, content: f.content })) : undefined,
-      });
+      };
+      if (bcastMode === 'manual') {
+        payload.recipients = parsedEmails.valid.map(email => ({ email }));
+      } else {
+        payload.audienceSource = bcast.audSource;
+        if (bcast.audAssignedTo) payload.audienceAssignedTo = bcast.audAssignedTo;
+        if (bcast.audTags.length > 0) payload.audienceTags = bcast.audTags;
+      }
+      const res = await broadcastMutation.mutateAsync(payload);
       toast.success(`Disparo criado: ${res.recipientCount} destinatário(s). Enviando...`);
       setShowBroadcast(false);
       resetBroadcast();
@@ -643,28 +671,106 @@ function CampaignsTab() {
           <div className="space-y-3">
             <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
               <Sparkles size={16} className="mt-0.5 flex-shrink-0" />
-              <p>Envie um e-mail avulso para uma lista colada manualmente, com anexos opcionais. Ideal para comunicados pontuais sem montar uma campanha completa.</p>
+              <p>Envie um e-mail avulso com anexos opcionais. Selecione destinatários manualmente ou use filtros da sua base de contatos.</p>
             </div>
 
             <div>
-              <Label>Destinatários</Label>
-              <Textarea
-                rows={3}
-                value={bcast.recipientsRaw}
-                onChange={e => setBcast(b => ({ ...b, recipientsRaw: e.target.value }))}
-                placeholder="Cole os e-mails separados por vírgula, espaço ou quebra de linha"
-              />
-              <div className="flex flex-wrap items-center gap-2 mt-1 text-xs">
-                <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
-                  {parsedEmails.valid.length} válido(s)
-                </Badge>
-                {parsedEmails.invalid.length > 0 && (
-                  <Badge variant="outline" className="border-red-200 bg-red-50 text-red-600">
-                    {parsedEmails.invalid.length} inválido(s): {parsedEmails.invalid.slice(0, 3).join(", ")}{parsedEmails.invalid.length > 3 ? "…" : ""}
-                  </Badge>
-                )}
+              <Label className="mb-1.5 block">Selecionar destinatários</Label>
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setBcastMode("manual")}
+                  className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition-all ${bcastMode === "manual" ? "border-blue-300 bg-blue-50 text-blue-900 shadow-sm" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}
+                >
+                  <Pencil size={14} className="inline mr-1.5 -mt-0.5" />
+                  Manual
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBcastMode("audience")}
+                  className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition-all ${bcastMode === "audience" ? "border-blue-300 bg-blue-50 text-blue-900 shadow-sm" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}
+                >
+                  <Users size={14} className="inline mr-1.5 -mt-0.5" />
+                  Audiência (filtros)
+                </button>
               </div>
             </div>
+
+            {bcastMode === "manual" ? (
+              <div>
+                <Label>Destinatários</Label>
+                <Textarea
+                  rows={3}
+                  value={bcast.recipientsRaw}
+                  onChange={e => setBcast(b => ({ ...b, recipientsRaw: e.target.value }))}
+                  placeholder="Cole os e-mails separados por vírgula, espaço ou quebra de linha"
+                />
+                <div className="flex flex-wrap items-center gap-2 mt-1 text-xs">
+                  <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                    {parsedEmails.valid.length} válido(s)
+                  </Badge>
+                  {parsedEmails.invalid.length > 0 && (
+                    <Badge variant="outline" className="border-red-200 bg-red-50 text-red-600">
+                      {parsedEmails.invalid.length} inválido(s): {parsedEmails.invalid.slice(0, 3).join(", ")}{parsedEmails.invalid.length > 3 ? "…" : ""}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3 rounded-xl border border-blue-200 bg-blue-50/50 p-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label>Público</Label>
+                    <Select value={bcast.audSource} onValueChange={(v: Source) => setBcast(b => ({ ...b, audSource: v }))}>
+                      <SelectTrigger className="w-full bg-white"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="leads">Leads (Tarefas)</SelectItem>
+                        <SelectItem value="clients">Clientes</SelectItem>
+                        <SelectItem value="both">Ambos</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {bcast.audSource !== "clients" && (
+                    <div>
+                      <Label>Atendente</Label>
+                      <Select value={bcast.audAssignedTo || "__all__"} onValueChange={(v) => setBcast(b => ({ ...b, audAssignedTo: v === "__all__" ? "" : v }))}>
+                        <SelectTrigger className="w-full bg-white"><SelectValue placeholder="Todos" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__all__">Todos</SelectItem>
+                          {sellers?.map(s => (
+                            <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+                {availTags && availTags.length > 0 && bcast.audSource !== "clients" && (
+                  <div>
+                    <Label className="flex items-center gap-1"><Tag size={12} /> Tags</Label>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {availTags.map(tag => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => setBcast(b => ({
+                            ...b,
+                            audTags: b.audTags.includes(tag) ? b.audTags.filter(t => t !== tag) : [...b.audTags, tag],
+                          }))}
+                          className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${bcast.audTags.includes(tag) ? "bg-blue-900 text-white border-blue-900" : "bg-white text-slate-600 border-slate-200 hover:bg-blue-50"}`}
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-white p-2.5 text-sm text-blue-900">
+                  <Users size={16} className="flex-shrink-0 text-blue-700" />
+                  <span>Público estimado: <strong>{bcastAudiencePreview?.count ?? 0}</strong> destinatário(s)</span>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
@@ -744,7 +850,7 @@ function CampaignsTab() {
               disabled={broadcastMutation.isPending || sendingId !== null}
             >
               <Send size={16} className="mr-1" />
-              {broadcastMutation.isPending ? "Enviando..." : `Enviar para ${parsedEmails.valid.length}`}
+              {broadcastMutation.isPending ? "Enviando..." : `Enviar para ${bcastMode === 'audience' ? (bcastAudiencePreview?.count ?? 0) : parsedEmails.valid.length}`}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => { setShowBroadcast(false); resetBroadcast(); }}>Cancelar</Button>
           </DialogFooter>
@@ -2030,6 +2136,265 @@ function TagsTab() {
             </div>
           ) : (
             <EmptyState icon={Tag} message="Nenhuma tag cadastrada ainda. Crie tags acima para que os atendentes possam usá-las nas tarefas." />
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── Contatos ──────────────────────────────────────────────────────────────
+
+const SUPPRESSION_REASON_LABELS: Record<string, string> = {
+  unsubscribe: "Descadastrado",
+  bounce: "Bounce",
+  complaint: "Reclamação",
+  manual: "Manual",
+};
+
+function ContactsTab() {
+  const utils = trpc.useUtils();
+  const { data: stats } = trpc.emailMarketing.contactStats.useQuery();
+  const { data: sellers } = trpc.sellers.list.useQuery();
+  const { data: tags } = trpc.emailMarketing.listTags.useQuery();
+
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [source, setSource] = useState<"all" | "leads" | "clients">("all");
+  const [status, setStatus] = useState<"all" | "active" | "suppressed">("all");
+  const [assignedTo, setAssignedTo] = useState("");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [confirmed, setConfirmed] = useState<"all" | "yes" | "no">("all");
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 50;
+
+  const removeSuppMutation = trpc.emailMarketing.removeSuppression.useMutation();
+
+  const [searchTimer, setSearchTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const handleSearch = (v: string) => {
+    setSearch(v);
+    if (searchTimer) clearTimeout(searchTimer);
+    setSearchTimer(setTimeout(() => { setDebouncedSearch(v); setPage(0); }, 350));
+  };
+
+  const { data: contactsData, isLoading } = trpc.emailMarketing.listContacts.useQuery({
+    search: debouncedSearch || undefined,
+    source,
+    status,
+    assignedTo: assignedTo || undefined,
+    tags: selectedTags.length > 0 ? selectedTags : undefined,
+    confirmed,
+    limit: PAGE_SIZE,
+    offset: page * PAGE_SIZE,
+  });
+
+  const handleRemoveSuppression = async (email: string) => {
+    if (!confirm(`Reativar o e-mail "${email}"? Ele voltará a receber disparos.`)) return;
+    try {
+      await removeSuppMutation.mutateAsync({ email });
+      toast.success("E-mail reativado com sucesso");
+      utils.emailMarketing.listContacts.invalidate();
+      utils.emailMarketing.contactStats.invalidate();
+      utils.emailMarketing.listSuppressions.invalidate();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao reativar e-mail");
+    }
+  };
+
+  const totalPages = Math.ceil((contactsData?.total ?? 0) / PAGE_SIZE);
+
+  return (
+    <div className="space-y-4">
+      {stats && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+          <StatTile icon={Mail} label="Leads" value={stats.totalLeads} accent="bg-blue-100 text-blue-900" />
+          <StatTile icon={Users} label="Clientes" value={stats.totalClients} accent="bg-slate-100 text-slate-600" />
+          <StatTile icon={CheckCircle} label="Confirmados" value={stats.confirmedEmails} accent="bg-emerald-100 text-emerald-700" />
+          <StatTile icon={MailX} label="Descadastrados" value={stats.unsubscribed} accent="bg-amber-100 text-amber-700" />
+          <StatTile icon={AlertTriangle} label="Bounced" value={stats.bounced} accent="bg-red-100 text-red-600" />
+          <StatTile icon={XCircle} label="Reclamações" value={stats.complained} accent="bg-rose-100 text-rose-600" />
+        </div>
+      )}
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2">
+            <Contact size={16} className="text-blue-900" /> Contatos
+            <span className="text-slate-400 font-normal">({contactsData?.total ?? 0})</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-col gap-2.5">
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={search}
+                onChange={e => handleSearch(e.target.value)}
+                placeholder="Buscar por e-mail ou nome..."
+                className="pl-9"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Select value={source} onValueChange={(v: any) => { setSource(v); setPage(0); }}>
+                <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas origens</SelectItem>
+                  <SelectItem value="leads">Leads</SelectItem>
+                  <SelectItem value="clients">Clientes</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={status} onValueChange={(v: any) => { setStatus(v); setPage(0); }}>
+                <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos status</SelectItem>
+                  <SelectItem value="active">Ativos</SelectItem>
+                  <SelectItem value="suppressed">Suprimidos</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={confirmed} onValueChange={(v: any) => { setConfirmed(v); setPage(0); }}>
+                <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Confirmação</SelectItem>
+                  <SelectItem value="yes">Confirmados</SelectItem>
+                  <SelectItem value="no">Não confirmados</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {source !== "clients" && sellers && sellers.length > 0 && (
+                <Select value={assignedTo || "__all__"} onValueChange={(v) => { setAssignedTo(v === "__all__" ? "" : v); setPage(0); }}>
+                  <SelectTrigger className="w-[140px]"><SelectValue placeholder="Atendente" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Todos atend.</SelectItem>
+                    {sellers.map(s => (
+                      <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            {tags && tags.length > 0 && source !== "clients" && (
+              <div className="flex flex-wrap gap-1.5">
+                {tags.map(tag => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => { setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]); setPage(0); }}
+                    className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${selectedTags.includes(tag) ? "bg-blue-900 text-white border-blue-900 shadow-sm" : "bg-white text-slate-600 border-slate-200 hover:bg-blue-50 hover:border-blue-200"}`}
+                  >
+                    {tag}
+                  </button>
+                ))}
+                {selectedTags.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedTags([]); setPage(0); }}
+                    className="text-xs px-2.5 py-1 rounded-full border border-red-200 text-red-500 hover:bg-red-50 font-medium transition-colors"
+                  >
+                    Limpar tags
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {isLoading ? (
+            <p className="text-sm text-slate-500">Carregando...</p>
+          ) : contactsData && contactsData.contacts.length > 0 ? (
+            <>
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full text-sm min-w-[700px]">
+                  <thead className={THEAD_CLASS}>
+                    <tr>
+                      <th className={TH_CLASS}>E-mail</th>
+                      <th className={TH_CLASS}>Nome</th>
+                      <th className={TH_CLASS}>Origem</th>
+                      <th className={TH_CLASS}>Status</th>
+                      <th className={TH_CLASS}>Tags</th>
+                      <th className={TH_CLASS}>Atendente</th>
+                      <th className={TH_CLASS}>Confirmado</th>
+                      <th className={TH_CLASS}>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {contactsData.contacts.map((c) => (
+                      <tr key={c.email} className={TR_CLASS}>
+                        <td className="px-3 py-2.5 font-medium text-slate-700">{c.email}</td>
+                        <td className="px-3 py-2.5 text-slate-600">{c.name || "--"}</td>
+                        <td className="px-3 py-2.5">
+                          <Badge variant="outline" className={c.source === 'lead' ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-slate-100 text-slate-600 border-slate-200"}>
+                            {c.source === 'lead' ? 'Lead' : 'Cliente'}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {c.suppressionReason ? (
+                            <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200">
+                              {SUPPRESSION_REASON_LABELS[c.suppressionReason] ?? c.suppressionReason}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+                              Ativo
+                            </Badge>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {c.tags && c.tags.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {c.tags.slice(0, 3).map(t => (
+                                <span key={t} className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">{t}</span>
+                              ))}
+                              {c.tags.length > 3 && <span className="text-xs text-slate-400">+{c.tags.length - 3}</span>}
+                            </div>
+                          ) : (
+                            <span className="text-slate-300">--</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-slate-500">{c.assignedTo ?? "--"}</td>
+                        <td className="px-3 py-2.5">
+                          {c.emailConfirmed ? (
+                            <CheckCircle size={16} className="text-emerald-600" />
+                          ) : (
+                            <XCircle size={16} className="text-slate-300" />
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {c.suppressionReason && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1 text-xs"
+                              onClick={() => handleRemoveSuppression(c.email)}
+                              disabled={removeSuppMutation.isPending}
+                              title="Reativar contato"
+                            >
+                              <RotateCcw size={12} /> Reativar
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>
+                    Anterior
+                  </Button>
+                  <span>
+                    Página {page + 1} de {totalPages} ({contactsData.total} contato{contactsData.total === 1 ? "" : "s"})
+                  </span>
+                  <Button size="sm" variant="outline" disabled={page + 1 >= totalPages} onClick={() => setPage(p => p + 1)}>
+                    Próxima
+                  </Button>
+                </div>
+              )}
+            </>
+          ) : (
+            <EmptyState icon={Contact} message={search || selectedTags.length > 0 || status !== 'all' ? "Nenhum contato encontrado com esses filtros." : "Nenhum contato com e-mail cadastrado no sistema."} />
           )}
         </CardContent>
       </Card>
