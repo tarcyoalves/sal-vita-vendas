@@ -689,15 +689,14 @@ ${overdue.slice(0, 5).map(t => `- "${t.title.slice(0, 60)}" (${t.assignedTo ?? '
 
 
 export const aiRouter = router({
-  bulkReschedule: protectedProcedure
+  bulkReschedule: adminProcedure
     .input(z.object({
       sellerName: z.string().min(1),
       tasksPerDay: z.number().min(1).max(200).default(50),
       startHour: z.number().min(6).max(12).default(8),
       dryRun: z.boolean().default(false),
     }))
-    .mutation(async ({ input, ctx }) => {
-      if (ctx.user.role !== 'admin') throw new Error('Apenas admins podem reagendar em massa');
+    .mutation(async ({ input }) => {
       return executeTool('reschedule_tasks', {
         attendant_name: input.sellerName,
         tasks_per_day: input.tasksPerDay,
@@ -732,7 +731,7 @@ export const aiRouter = router({
       return { models };
     }),
 
-  testConnection: protectedProcedure
+  testConnection: adminProcedure
     .input(z.object({
       provider: z.string(),
       model: z.string(),
@@ -766,9 +765,6 @@ export const aiRouter = router({
   chat: protectedProcedure
     .input(z.object({
       message: z.string().min(1).max(4000),
-      apiKey: z.string().optional(),
-      provider: z.string().optional(),
-      model: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       // Cooldown — protege a cota gratuita do Groq/Gemini contra spam de mensagens
@@ -780,13 +776,11 @@ export const aiRouter = router({
       lastChatAt.set(ctx.user.id, Date.now());
 
       try {
-        const provider = input.provider ?? defaultProvider();
-        const apiKey = input.apiKey || envKeyFor(provider) || '';
+        const provider = defaultProvider();
+        const apiKey = envKeyFor(provider) || '';
         const baseURL = BASE_URLS[provider] ?? BASE_URLS.groq;
         const isAdmin = ctx.user.role === 'admin';
-        const model = isAdmin
-          ? DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile'
-          : (input.model ?? DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile');
+        const model = DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile';
 
         await db.insert(chatMessages).values({ userId: ctx.user.id, content: input.message, role: 'user' });
 
@@ -857,7 +851,7 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
       }
     }),
 
-  analyzeAttendants: protectedProcedure
+  analyzeAttendants: adminProcedure
     .input(z.object({
       apiKey: z.string().optional(),
       provider: z.string().optional(),
@@ -865,7 +859,6 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
       forceRefresh: z.boolean().optional(),
     }).optional())
     .mutation(async ({ input, ctx }) => {
-    if (ctx.user.role !== 'admin') throw new Error('Apenas admins podem usar este recurso');
 
     // Cache (15min): evita reprocessar e regastar a cota gratuita da LLM a cada clique
     if (!input?.forceRefresh && analyzeCache && (Date.now() - analyzeCache.at) < ANALYZE_CACHE_TTL_MS) {
