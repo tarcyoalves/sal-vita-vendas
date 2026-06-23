@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
+import { RichTextEditor } from "../components/RichTextEditor";
 import { Label } from "../components/ui/label";
 import { Badge } from "../components/ui/badge";
 import { Progress } from "../components/ui/progress";
@@ -593,12 +594,11 @@ function CampaignsTab() {
             </div>
 
             <div>
-              <Label>Corpo do e-mail (HTML)</Label>
-              <Textarea
-                rows={8}
+              <Label>Corpo do e-mail</Label>
+              <RichTextEditor
                 value={form.htmlBody}
-                onChange={e => setForm(f => ({ ...f, htmlBody: e.target.value }))}
-                placeholder="<p>Olá {nome}, ...</p>"
+                onChange={html => setForm(f => ({ ...f, htmlBody: html }))}
+                placeholder="Olá {nome}, ..."
               />
               <p className="text-xs text-gray-500 mt-1">{TEMPLATE_HINT}</p>
             </div>
@@ -797,12 +797,11 @@ function CampaignsTab() {
             </div>
 
             <div>
-              <Label>Corpo do e-mail (HTML)</Label>
-              <Textarea
-                rows={7}
+              <Label>Corpo do e-mail</Label>
+              <RichTextEditor
                 value={bcast.htmlBody}
-                onChange={e => setBcast(b => ({ ...b, htmlBody: e.target.value }))}
-                placeholder="<p>Olá, ...</p>"
+                onChange={html => setBcast(b => ({ ...b, htmlBody: html }))}
+                placeholder="Olá, ..."
               />
               <p className="text-xs text-gray-500 mt-1">{TEMPLATE_HINT}</p>
             </div>
@@ -1041,8 +1040,8 @@ function TemplatesTab() {
                 <Input value={editing.subject} onChange={e => setEditing(t => t && ({ ...t, subject: e.target.value }))} />
               </div>
               <div>
-                <Label>Corpo do e-mail (HTML)</Label>
-                <Textarea rows={8} value={editing.htmlBody} onChange={e => setEditing(t => t && ({ ...t, htmlBody: e.target.value }))} />
+                <Label>Corpo do e-mail</Label>
+                <RichTextEditor value={editing.htmlBody} onChange={html => setEditing(t => t && ({ ...t, htmlBody: html }))} />
                 <p className="text-xs text-gray-500 mt-1">{TEMPLATE_HINT}</p>
               </div>
             </div>
@@ -1515,8 +1514,8 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                   <Input value={editingStep.subject} onChange={e => setEditingStep(s => s && ({ ...s, subject: e.target.value }))} />
                 </div>
                 <div>
-                  <Label>Corpo do e-mail (HTML)</Label>
-                  <Textarea rows={8} value={editingStep.htmlBody} onChange={e => setEditingStep(s => s && ({ ...s, htmlBody: e.target.value }))} />
+                  <Label>Corpo do e-mail</Label>
+                  <RichTextEditor value={editingStep.htmlBody} onChange={html => setEditingStep(s => s && ({ ...s, htmlBody: html }))} />
                   <p className="text-xs text-gray-500 mt-1">{TEMPLATE_HINT}</p>
                 </div>
                 <div>
