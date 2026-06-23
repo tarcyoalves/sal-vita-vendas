@@ -25,7 +25,7 @@ import { Checkbox } from "../components/ui/checkbox";
 import {
   Mail, Plus, Send, Trash2, Eye, Pencil, Workflow, Zap, Tag, BarChart3, Users, Pause, Play, X, Download,
   LayoutTemplate, MailX, Filter, Sparkles, Inbox, Megaphone, Paperclip, FileText, Contact, Search,
-  CheckCircle, XCircle, AlertTriangle, RotateCcw, Gauge,
+  CheckCircle, XCircle, AlertTriangle, RotateCcw, Gauge, TrendingUp,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -2694,6 +2694,18 @@ function UsageTab() {
   const dailyPct = totals.dailyLimit > 0 ? (totals.sentToday / totals.dailyLimit) * 100 : 0;
   const monthlyPct = totals.monthlyLimit > 0 ? (totals.sentThisMonth / totals.monthlyLimit) * 100 : 0;
 
+  const resendAccounts = accounts.filter((a) => a.provider === 'resend');
+  const brevoAccounts = accounts.filter((a) => a.provider === 'brevo');
+  const resendMonthly = resendAccounts.reduce((s, a) => s + a.sentThisMonth, 0);
+  const brevoMonthly = brevoAccounts.reduce((s, a) => s + a.sentThisMonth, 0);
+
+  const resendFreeLimits = { daily: resendAccounts[0]?.dailyLimit ?? 100, monthly: resendAccounts[0]?.monthlyLimit ?? 3000 };
+  const brevoFreeLimits = { daily: brevoAccounts[0]?.dailyLimit ?? 300, monthly: brevoAccounts[0]?.monthlyLimit ?? 9000 };
+
+  const resendTotalFreeMonthly = resendAccounts.length * resendFreeLimits.monthly;
+  const brevoTotalFreeMonthly = brevoAccounts.length * brevoFreeLimits.monthly;
+  const combinedFreeMonthly = resendTotalFreeMonthly + brevoTotalFreeMonthly;
+
   return (
     <div className="space-y-4">
       {/* Intro / explanation card */}
@@ -2705,9 +2717,9 @@ function UsageTab() {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-slate-600 leading-relaxed">
-            Os e-mails sao enviados pelas contas em cascata: quando uma conta atinge o limite do plano,
-            o sistema passa automaticamente para a proxima. Aqui voce acompanha quanto ja foi consumido
-            de cada plano, hoje e no mes.
+            Os e-mails são enviados pelas contas em cascata: quando uma conta atinge o limite do plano,
+            o sistema passa automaticamente para a próxima. Aqui você acompanha quanto já foi consumido
+            de cada plano, hoje e no mês.
           </p>
         </CardContent>
       </Card>
@@ -2735,7 +2747,7 @@ function UsageTab() {
         <Card className="rounded-2xl border-slate-200">
           <CardContent className="pt-5 pb-4 px-5">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-semibold text-slate-700">Total no mes</span>
+              <span className="text-sm font-semibold text-slate-700">Total no mês</span>
               <span className="text-xs text-slate-500">{fmt(totals.remainingMonth)} restantes</span>
             </div>
             <div className="w-full h-3 rounded-full bg-slate-100 overflow-hidden">
@@ -2751,6 +2763,127 @@ function UsageTab() {
         </Card>
       </div>
 
+      {/* Free plan limits monitor */}
+      <Card className={`rounded-2xl ${monthlyPct > 80 ? 'border-red-300 bg-gradient-to-br from-red-50/80 to-white' : monthlyPct > 60 ? 'border-amber-300 bg-gradient-to-br from-amber-50/80 to-white' : 'border-blue-200 bg-gradient-to-br from-blue-50/80 to-white'}`}>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-blue-900 text-base">
+            <AlertTriangle size={18} className={monthlyPct > 80 ? 'text-red-600' : monthlyPct > 60 ? 'text-amber-600' : 'text-blue-700'} />
+            Limites dos planos gratuitos
+            {monthlyPct > 80 && <Badge className="bg-red-600 text-white border-0 text-[10px]">ATENÇÃO</Badge>}
+            {monthlyPct > 60 && monthlyPct <= 80 && <Badge className="bg-amber-500 text-white border-0 text-[10px]">CUIDADO</Badge>}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-slate-600 leading-relaxed">
+            Monitoramento dos limites free de cada serviço. Quando a cota atinge <strong>70%</strong> o alerta fica amarelo;
+            acima de <strong>90%</strong> fica vermelho. O sistema já bloqueia envios automaticamente ao atingir o limite.
+          </p>
+
+          {/* Provider limit cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {resendAccounts.length > 0 && (() => {
+              const resendDailyUsed = resendAccounts.reduce((s, a) => s + a.sentToday, 0);
+              const resendDailyTotal = resendAccounts.reduce((s, a) => s + a.dailyLimit, 0);
+              const resendDailyPct = resendDailyTotal > 0 ? (resendDailyUsed / resendDailyTotal) * 100 : 0;
+              const resendMonthlyPct = resendTotalFreeMonthly > 0 ? (resendMonthly / resendTotalFreeMonthly) * 100 : 0;
+              return (
+                <div className="rounded-xl bg-white border border-slate-200 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-slate-900 text-white hover:bg-slate-800 border-0">Resend</Badge>
+                    <Badge variant="outline" className="text-[9px] py-0 px-1.5 text-blue-700 border-blue-300">FREE</Badge>
+                    <span className="text-[10px] text-slate-400 ml-auto">{resendAccounts.length} conta{resendAccounts.length > 1 ? 's' : ''}</span>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-slate-600">Hoje: {fmt(resendDailyUsed)} / {fmt(resendDailyTotal)}</span>
+                      <span className={`text-xs font-semibold ${resendDailyPct > 90 ? 'text-red-600' : resendDailyPct > 70 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {fmt(Math.max(0, resendDailyTotal - resendDailyUsed))} restantes
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div className={`h-full rounded-full transition-all ${barColor(resendDailyPct)}`} style={{ width: `${Math.min(100, resendDailyPct)}%` }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-slate-600">Mês: {fmt(resendMonthly)} / {fmt(resendTotalFreeMonthly)}</span>
+                      <span className={`text-xs font-semibold ${resendMonthlyPct > 90 ? 'text-red-600' : resendMonthlyPct > 70 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {fmt(Math.max(0, resendTotalFreeMonthly - resendMonthly))} restantes
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div className={`h-full rounded-full transition-all ${barColor(resendMonthlyPct)}`} style={{ width: `${Math.min(100, resendMonthlyPct)}%` }} />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400">Limite free: {fmt(resendFreeLimits.daily)}/dia &middot; {fmt(resendFreeLimits.monthly)}/mês por conta</p>
+                </div>
+              );
+            })()}
+
+            {brevoAccounts.length > 0 && (() => {
+              const brevoDailyUsed = brevoAccounts.reduce((s, a) => s + a.sentToday, 0);
+              const brevoDailyTotal = brevoAccounts.reduce((s, a) => s + a.dailyLimit, 0);
+              const brevoDailyPct = brevoDailyTotal > 0 ? (brevoDailyUsed / brevoDailyTotal) * 100 : 0;
+              const brevoMonthlyPct = brevoTotalFreeMonthly > 0 ? (brevoMonthly / brevoTotalFreeMonthly) * 100 : 0;
+              return (
+                <div className="rounded-xl bg-white border border-slate-200 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-emerald-600 text-white hover:bg-emerald-700 border-0">Brevo</Badge>
+                    <Badge variant="outline" className="text-[9px] py-0 px-1.5 text-blue-700 border-blue-300">FREE</Badge>
+                    <span className="text-[10px] text-slate-400 ml-auto">{brevoAccounts.length} conta{brevoAccounts.length > 1 ? 's' : ''}</span>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-slate-600">Hoje: {fmt(brevoDailyUsed)} / {fmt(brevoDailyTotal)}</span>
+                      <span className={`text-xs font-semibold ${brevoDailyPct > 90 ? 'text-red-600' : brevoDailyPct > 70 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {fmt(Math.max(0, brevoDailyTotal - brevoDailyUsed))} restantes
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div className={`h-full rounded-full transition-all ${barColor(brevoDailyPct)}`} style={{ width: `${Math.min(100, brevoDailyPct)}%` }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-slate-600">Mês: {fmt(brevoMonthly)} / {fmt(brevoTotalFreeMonthly)}</span>
+                      <span className={`text-xs font-semibold ${(brevoTotalFreeMonthly > 0 ? (brevoMonthly / brevoTotalFreeMonthly) * 100 : 0) > 90 ? 'text-red-600' : (brevoTotalFreeMonthly > 0 ? (brevoMonthly / brevoTotalFreeMonthly) * 100 : 0) > 70 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {fmt(Math.max(0, brevoTotalFreeMonthly - brevoMonthly))} restantes
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div className={`h-full rounded-full transition-all ${barColor(brevoTotalFreeMonthly > 0 ? (brevoMonthly / brevoTotalFreeMonthly) * 100 : 0)}`} style={{ width: `${Math.min(100, brevoTotalFreeMonthly > 0 ? (brevoMonthly / brevoTotalFreeMonthly) * 100 : 0)}%` }} />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400">Limite free: {fmt(brevoFreeLimits.daily)}/dia &middot; {fmt(brevoFreeLimits.monthly)}/mês por conta</p>
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Combined capacity overview */}
+          <div className="rounded-xl bg-white border border-slate-200 p-3">
+            <div className="flex items-center gap-2 mb-3">
+              <TrendingUp size={14} className="text-blue-700" />
+              <span className="text-xs font-semibold text-blue-800">Capacidade total combinada (multi-conta free)</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+              {[
+                { label: 'Capacidade/mês', value: fmt(combinedFreeMonthly), sub: 'emails grátis', color: 'text-blue-900' },
+                { label: 'Usado no mês', value: `${monthlyPct.toFixed(1)}%`, sub: `${fmt(totals.sentThisMonth)} emails`, color: monthlyPct > 80 ? 'text-red-600' : monthlyPct > 60 ? 'text-amber-600' : 'text-blue-900' },
+                { label: 'Restante/mês', value: fmt(Math.max(0, totals.monthlyLimit - totals.sentThisMonth)), sub: 'emails', color: 'text-emerald-700' },
+                { label: 'Capacidade/dia', value: fmt(totals.dailyLimit), sub: `${fmt(totals.remainingToday)} restantes`, color: 'text-blue-900' },
+              ].map((item) => (
+                <div key={item.label} className="rounded-lg bg-slate-50 px-2 py-2.5 border border-slate-100">
+                  <p className="text-[10px] text-slate-500 font-medium mb-0.5">{item.label}</p>
+                  <p className={`text-sm font-bold ${item.color}`}>{item.value}</p>
+                  <p className="text-[10px] text-slate-400">{item.sub}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Per-account cards */}
       <div className="space-y-3">
         {accounts.map((a) => {
@@ -2758,7 +2891,6 @@ function UsageTab() {
           const mPct = a.monthlyLimit > 0 ? (a.sentThisMonth / a.monthlyLimit) * 100 : 0;
           const remainDay = Math.max(0, a.dailyLimit - a.sentToday);
           const remainMonth = Math.max(0, a.monthlyLimit - a.sentThisMonth);
-
           return (
             <Card key={a.key} className="rounded-2xl border-slate-200">
               <CardContent className="pt-4 pb-4 px-5">
@@ -2779,6 +2911,14 @@ function UsageTab() {
                   <span className="text-xs text-slate-500 truncate">
                     {a.fromName ? `${a.fromName} ` : ''}&lt;{a.fromEmail}&gt;
                   </span>
+                  {(() => {
+                    const mPctAccount = a.monthlyLimit > 0 ? (a.sentThisMonth / a.monthlyLimit) * 100 : 0;
+                    return mPctAccount > 70 ? (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full ml-auto ${mPctAccount > 90 ? 'text-red-700 bg-red-50' : 'text-amber-700 bg-amber-50'}`}>
+                        {mPctAccount > 90 ? 'quase no limite!' : 'atenção ao limite'}
+                      </span>
+                    ) : null;
+                  })()}
                 </div>
 
                 {/* Daily progress */}
@@ -2801,8 +2941,8 @@ function UsageTab() {
                 {/* Monthly progress */}
                 <div className="mb-2">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium text-slate-600">Mes</span>
-                    <span className="text-xs text-slate-500">{fmt(remainMonth)} restantes no mes</span>
+                    <span className="text-xs font-medium text-slate-600">Mês</span>
+                    <span className="text-xs text-slate-500">{fmt(remainMonth)} restantes no mês</span>
                   </div>
                   <div className="w-full h-2.5 rounded-full bg-slate-100 overflow-hidden">
                     <div
@@ -2817,7 +2957,7 @@ function UsageTab() {
 
                 {/* Plan caption */}
                 <p className="text-[11px] text-slate-400">
-                  Plano: {fmt(a.dailyLimit)}/dia &middot; {fmt(a.monthlyLimit)}/mes
+                  Plano: {fmt(a.dailyLimit)}/dia &middot; {fmt(a.monthlyLimit)}/mês
                 </p>
               </CardContent>
             </Card>
@@ -2829,9 +2969,10 @@ function UsageTab() {
       <Card className="rounded-2xl border-slate-200 bg-slate-50/60">
         <CardContent className="pt-4 pb-3 px-5">
           <p className="text-xs text-slate-500 leading-relaxed">
-            <strong>Limites de referencia (planos gratuitos):</strong> Resend: 100/dia &middot; 3.000/mes.
-            Brevo: 300/dia. O contador mensal reinicia no primeiro dia de cada mes (UTC).
-            Os limites podem ser ajustados por variaveis de ambiente no painel da Vercel.
+            <strong>Limites dos planos gratuitos:</strong> Resend Free: {fmt(resendFreeLimits.daily)}/dia &middot; {fmt(resendFreeLimits.monthly)}/mês por conta.
+            Brevo Free: {fmt(brevoFreeLimits.daily)}/dia &middot; {fmt(brevoFreeLimits.monthly)}/mês por conta.
+            O contador mensal reinicia no primeiro dia de cada mês (UTC).
+            O sistema bloqueia envios automaticamente ao atingir o limite — nenhum serviço será cobrado.
           </p>
         </CardContent>
       </Card>
