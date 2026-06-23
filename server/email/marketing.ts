@@ -302,8 +302,60 @@ export async function sendBatch(account: MarketingAccount, messages: BatchMessag
   return sendBatchResend(account, messages);
 }
 
+async function sendSingleResend(
+  account: MarketingAccount,
+  m: BatchMessage,
+  unsubBase: string,
+): Promise<BatchResult> {
+  const emailPayload = {
+    from: account.from,
+    to: [m.to],
+    subject: m.subject,
+    html: m.html,
+    text: renderPlainText(m.html),
+    ...(m.replyTo ? { reply_to: [m.replyTo] } : {}),
+    ...(m.attachments && m.attachments.length > 0
+      ? { attachments: m.attachments.map(a => ({ filename: a.filename, content: a.content })) }
+      : {}),
+    headers: {
+      'List-Unsubscribe': `<${unsubBase}/api/unsubscribe?t=${m.unsubToken}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    },
+  };
+  try {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 15_000);
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${account.apiKey}` },
+      body: JSON.stringify(emailPayload),
+      signal: ac.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) {
+      const err = await res.text().catch(() => res.statusText);
+      console.error(`[email-marketing] Resend single error ${res.status}:`, err);
+      return { to: m.to, ok: false, error: `resend_${res.status}` };
+    }
+    const body = await res.json() as { id?: string };
+    return { to: m.to, ok: true, messageId: body.id };
+  } catch (err) {
+    return { to: m.to, ok: false, error: 'network_error' };
+  }
+}
+
 async function sendBatchResend(account: MarketingAccount, messages: BatchMessage[]): Promise<BatchResult[]> {
   const unsubBase = process.env.PUBLIC_APP_URL ?? 'https://lembretes.salvitarn.com.br';
+  const hasAttachments = messages.some(m => m.attachments && m.attachments.length > 0);
+
+  if (hasAttachments) {
+    const results: BatchResult[] = [];
+    for (const m of messages) {
+      results.push(await sendSingleResend(account, m, unsubBase));
+    }
+    await incrementCounter(account.key, results.filter(r => r.ok).length);
+    return results;
+  }
 
   const payload = messages.map(m => ({
     from: account.from,
@@ -312,10 +364,6 @@ async function sendBatchResend(account: MarketingAccount, messages: BatchMessage
     html: m.html,
     text: renderPlainText(m.html),
     ...(m.replyTo ? { reply_to: [m.replyTo] } : {}),
-    // Resend attachments: base64 string in `content`, file name in `filename`.
-    ...(m.attachments && m.attachments.length > 0
-      ? { attachments: m.attachments.map(a => ({ filename: a.filename, content: a.content })) }
-      : {}),
     headers: {
       'List-Unsubscribe': `<${unsubBase}/api/unsubscribe?t=${m.unsubToken}>`,
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',

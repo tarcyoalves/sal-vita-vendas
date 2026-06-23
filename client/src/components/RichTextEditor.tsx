@@ -91,14 +91,18 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight = 220 }
   };
 
   const setFontSize = (px: string) => {
-    applyOnSelection(() => {
-      document.execCommand("fontSize", false, "7");
-      ref.current?.querySelectorAll('font[size="7"]').forEach(node => {
-        const f = node as HTMLElement;
-        f.removeAttribute("size");
-        f.style.fontSize = px;
-      });
+    ref.current?.focus();
+    restoreSelection();
+    document.execCommand("styleWithCSS", false, "false");
+    document.execCommand("fontSize", false, "7");
+    ref.current?.querySelectorAll('font[size="7"]').forEach(node => {
+      const span = document.createElement("span");
+      span.style.fontSize = px;
+      while (node.firstChild) span.appendChild(node.firstChild);
+      node.parentNode?.replaceChild(span, node);
     });
+    document.execCommand("styleWithCSS", false, "true");
+    emit();
   };
 
   const addLink = () => {

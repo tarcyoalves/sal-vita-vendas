@@ -12,8 +12,6 @@ import { shippingRouter } from './shipping';
 import { recoveryRouter } from './recovery';
 import { emailMarketingRouter } from './emailMarketing';
 import { tagsRouter } from './tags';
-import { freePlanMonitorRouter } from './freePlanMonitor';
-
 export const appRouter = router({
   auth: authRouter,
   reminders: remindersRouter,
@@ -28,7 +26,6 @@ export const appRouter = router({
   recovery: recoveryRouter,
   emailMarketing: emailMarketingRouter,
   tags: tagsRouter,
-  freePlan: freePlanMonitorRouter,
 });
 
 export type AppRouter = typeof appRouter;
