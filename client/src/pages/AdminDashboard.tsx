@@ -201,7 +201,7 @@ export default function AdminDashboard() {
   const [showDeletionLogs, setShowDeletionLogs] = useState(false);
   const analyzeAttendantsMutation = trpc.ai.analyzeAttendants.useMutation();
   const { data: sessionData = [], refetch: refetchSessions, isFetching: sessionsFetching } = trpc.workSessions.allActiveToday.useQuery(undefined, { staleTime: 90_000 });
-  const { data: freePlanData } = trpc.freePlan.overview.useQuery(undefined, { staleTime: 300_000 });
+  const { data: freePlanData } = trpc.freePlan.overview.useQuery(undefined, { staleTime: 600_000, refetchOnWindowFocus: false });
   const [expandedSessions, setExpandedSessions] = useState<Set<number>>(new Set());
   const toggleSession = (id: number) => setExpandedSessions(prev => {
     const next = new Set(prev);
@@ -595,8 +595,11 @@ export default function AdminDashboard() {
                   </span>
                 </div>
                 {!freePlanData.neon.hasApiMetrics && (
-                  <span className="text-[9px] text-amber-500" title={`Configure NEON_API_KEY e NEON_PROJECT_ID no Vercel. Debug: ${(freePlanData.neon as any).debug || 'sem info'}`}>
-                    ⚠ API não configurada {(freePlanData.neon as any).debug ? `(${(freePlanData.neon as any).debug})` : ''}
+                  <span className="text-[9px] text-slate-400" title="A API de consumo do Neon só está disponível em planos pagos (Launch+). Consulte o painel Neon para compute e rede.">
+                    {(freePlanData.neon as any).debug === 'free-plan'
+                      ? 'ℹ Compute/Rede: consulte painel Neon'
+                      : `⚠ API não configurada${(freePlanData.neon as any).debug ? ` (${(freePlanData.neon as any).debug})` : ''}`
+                    }
                   </span>
                 )}
               </div>
@@ -642,8 +645,10 @@ export default function AdminDashboard() {
                     </p>
                   </div>
                 ) : (
-                  <div className="rounded-lg bg-white/70 border border-dashed border-slate-200 p-2.5 flex items-center justify-center">
-                    <span className="text-[10px] text-slate-400">Compute —</span>
+                  <div className="rounded-lg bg-white/70 border border-dashed border-slate-200 p-2.5 space-y-1.5">
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Compute</span>
+                    <p className="text-[10px] text-slate-400">Limite: 100h/mês</p>
+                    <a href="https://console.neon.tech" target="_blank" rel="noopener noreferrer" className="text-[9px] text-blue-500 hover:underline">Ver no painel Neon</a>
                   </div>
                 )}
 
@@ -667,8 +672,10 @@ export default function AdminDashboard() {
                     </p>
                   </div>
                 ) : (
-                  <div className="rounded-lg bg-white/70 border border-dashed border-slate-200 p-2.5 flex items-center justify-center">
-                    <span className="text-[10px] text-slate-400">Rede —</span>
+                  <div className="rounded-lg bg-white/70 border border-dashed border-slate-200 p-2.5 space-y-1.5">
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Rede</span>
+                    <p className="text-[10px] text-slate-400">Limite: 5 GB/mês</p>
+                    <a href="https://console.neon.tech" target="_blank" rel="noopener noreferrer" className="text-[9px] text-blue-500 hover:underline">Ver no painel Neon</a>
                   </div>
                 )}
 
@@ -692,8 +699,10 @@ export default function AdminDashboard() {
                     </p>
                   </div>
                 ) : (
-                  <div className="rounded-lg bg-white/70 border border-dashed border-slate-200 p-2.5 flex items-center justify-center">
-                    <span className="text-[10px] text-slate-400">History —</span>
+                  <div className="rounded-lg bg-white/70 border border-dashed border-slate-200 p-2.5 space-y-1.5">
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">History</span>
+                    <p className="text-[10px] text-slate-400">Limite: 30 GB</p>
+                    <a href="https://console.neon.tech" target="_blank" rel="noopener noreferrer" className="text-[9px] text-blue-500 hover:underline">Ver no painel Neon</a>
                   </div>
                 )}
               </div>

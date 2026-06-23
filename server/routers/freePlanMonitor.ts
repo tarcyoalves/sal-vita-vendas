@@ -40,81 +40,76 @@ function buildMetrics(computeSeconds: number, dataTransferBytes: number, written
   };
 }
 
-async function fetchNeonApiMetrics() {
+type MetricsResult = ReturnType<typeof buildMetrics> & { debug?: string };
+
+async function fetchNeonApiMetrics(): Promise<MetricsResult | null> {
   const apiKey = process.env.NEON_API_KEY;
   const projectId = process.env.NEON_PROJECT_ID;
   if (!apiKey || !projectId) {
-    console.error(`[NeonMonitor] Missing env vars: NEON_API_KEY=${apiKey ? 'SET' : 'MISSING'}, NEON_PROJECT_ID=${projectId ? 'SET' : 'MISSING'}`);
     return null;
   }
 
   const headers = { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' };
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const from = encodeURIComponent(startOfMonth.toISOString());
+  const to = encodeURIComponent(now.toISOString());
 
-  try {
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const from = startOfMonth.toISOString();
-    const to = now.toISOString();
+  const endpoints = [
+    `https://console.neon.tech/api/v2/consumption_history/account?from=${from}&to=${to}&granularity=monthly`,
+    `https://console.neon.tech/api/v2/consumption_history/projects?project_ids=${projectId}&from=${from}&to=${to}&granularity=monthly`,
+  ];
 
-    const url = `https://console.neon.tech/api/v2/consumption/projects/${projectId}`;
-    console.log(`[NeonMonitor] Fetching: ${url}`);
+  for (const url of endpoints) {
+    try {
+      console.log(`[NeonMonitor] Trying: ${url}`);
+      const res = await fetch(url, { headers });
+      const body = await res.text();
+      console.log(`[NeonMonitor] ${res.status}: ${body.substring(0, 500)}`);
 
-    const res = await fetch(url, { headers });
-    const body = await res.text();
-    console.log(`[NeonMonitor] Response ${res.status}: ${body.substring(0, 500)}`);
+      if (res.status === 403 || res.status === 401) continue;
+      if (!res.ok) continue;
 
-    if (res.ok) {
       const data = JSON.parse(body) as any;
 
-      const periods = data?.periods ?? data?.data ?? [];
-      const currentPeriod = Array.isArray(periods) ? periods[0] : null;
+      let computeSeconds = 0;
+      let transferBytes = 0;
+      let writtenBytes = 0;
 
-      const computeSeconds = currentPeriod?.active_time_seconds ?? data?.active_time_seconds ?? 0;
-      const dataTransferBytes = currentPeriod?.data_transfer_bytes ?? data?.data_transfer_bytes ?? 0;
-      const writtenDataBytes = currentPeriod?.written_data_bytes ?? data?.written_data_bytes ?? 0;
+      if (data?.periods) {
+        const p = Array.isArray(data.periods) ? data.periods[0] : null;
+        if (p) {
+          computeSeconds = p.active_time_seconds ?? p.compute_time_seconds ?? 0;
+          transferBytes = p.data_transfer_bytes ?? 0;
+          writtenBytes = p.written_data_bytes ?? 0;
+        }
+      } else if (data?.projects) {
+        const proj = Array.isArray(data.projects)
+          ? data.projects.find((p: any) => p.project_id === projectId) ?? data.projects[0]
+          : null;
+        if (proj) {
+          const periods = proj.periods ?? proj.data ?? [];
+          const p = Array.isArray(periods) ? periods[0] : periods;
+          computeSeconds = p?.active_time_seconds ?? p?.compute_time_seconds ?? proj.active_time_seconds ?? 0;
+          transferBytes = p?.data_transfer_bytes ?? proj.data_transfer_bytes ?? 0;
+          writtenBytes = p?.written_data_bytes ?? proj.written_data_bytes ?? 0;
+        }
+      }
 
-      console.log(`[NeonMonitor] Parsed: compute=${computeSeconds}s, transfer=${dataTransferBytes}b, written=${writtenDataBytes}b`);
-      return buildMetrics(computeSeconds, dataTransferBytes, writtenDataBytes);
+      console.log(`[NeonMonitor] OK: compute=${computeSeconds}s, transfer=${transferBytes}b, written=${writtenBytes}b`);
+      return buildMetrics(computeSeconds, transferBytes, writtenBytes);
+    } catch (err) {
+      console.error(`[NeonMonitor] Error on ${url}:`, err);
     }
-
-    console.log(`[NeonMonitor] Project endpoint failed (${res.status}), trying consumption list...`);
-
-    const listUrl = `https://console.neon.tech/api/v2/consumption/projects?project_ids=${projectId}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&granularity=monthly`;
-    const listRes = await fetch(listUrl, { headers });
-    const listBody = await listRes.text();
-    console.log(`[NeonMonitor] Consumption list ${listRes.status}: ${listBody.substring(0, 500)}`);
-
-    if (!listRes.ok) {
-      console.error(`[NeonMonitor] Both endpoints failed`);
-      return null;
-    }
-
-    const listData = JSON.parse(listBody) as any;
-    const projects = listData?.projects ?? [];
-    const project = Array.isArray(projects) ? projects.find((p: any) => p.project_id === projectId) ?? projects[0] : null;
-    if (!project) {
-      console.error(`[NeonMonitor] No project found in response. Keys: ${JSON.stringify(Object.keys(listData))}`);
-      return null;
-    }
-
-    const periods = project?.periods ?? project?.data ?? [];
-    const period = Array.isArray(periods) ? periods[0] : periods;
-
-    const computeSeconds = period?.active_time_seconds ?? project?.active_time_seconds ?? 0;
-    const dataTransferBytes = period?.data_transfer_bytes ?? project?.data_transfer_bytes ?? 0;
-    const writtenDataBytes = period?.written_data_bytes ?? project?.written_data_bytes ?? 0;
-
-    console.log(`[NeonMonitor] Parsed from list: compute=${computeSeconds}s, transfer=${dataTransferBytes}b, written=${writtenDataBytes}b`);
-    return buildMetrics(computeSeconds, dataTransferBytes, writtenDataBytes);
-  } catch (err) {
-    console.error(`[NeonMonitor] Exception:`, err);
-    return null;
   }
+
+  console.error(`[NeonMonitor] All endpoints failed — free plan likely does not expose consumption API`);
+  return null;
 }
 
 export const freePlanMonitorRouter = router({
   overview: adminProcedure.query(async () => {
-    return cached('freePlan:overview', 300_000, async () => {
+    return cached('freePlan:overview', 600_000, async () => {
       const [dbSizeRow, tableRows] = await Promise.all([
         sqlClient`
           SELECT
@@ -151,7 +146,11 @@ export const freePlanMonitorRouter = router({
       if (!neonApiMetrics && !neonDebug) {
         const hasKey = !!process.env.NEON_API_KEY;
         const hasProject = !!process.env.NEON_PROJECT_ID;
-        neonDebug = `key=${hasKey},proj=${hasProject}`;
+        if (hasKey && hasProject) {
+          neonDebug = 'free-plan';
+        } else {
+          neonDebug = `key=${hasKey},proj=${hasProject}`;
+        }
       }
 
       const resendAccounts = emailAccounts.filter(a => a.provider === 'resend');
