@@ -595,8 +595,8 @@ export default function AdminDashboard() {
                   </span>
                 </div>
                 {!freePlanData.neon.hasApiMetrics && (
-                  <span className="text-[9px] text-amber-500" title="Configure NEON_API_KEY e NEON_PROJECT_ID no Vercel para ver compute, rede e histórico">
-                    ⚠ API não configurada
+                  <span className="text-[9px] text-amber-500" title={`Configure NEON_API_KEY e NEON_PROJECT_ID no Vercel. Debug: ${(freePlanData.neon as any).debug || 'sem info'}`}>
+                    ⚠ API não configurada {(freePlanData.neon as any).debug ? `(${(freePlanData.neon as any).debug})` : ''}
                   </span>
                 )}
               </div>

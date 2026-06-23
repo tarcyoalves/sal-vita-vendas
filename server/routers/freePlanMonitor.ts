@@ -3,10 +3,52 @@ import { sql as sqlClient } from '../db/index';
 import { cached } from '../lib/cache';
 import { getUsage, getAccountLimits } from '../email/marketing';
 
+function buildMetrics(computeSeconds: number, dataTransferBytes: number, writtenDataBytes: number) {
+  const COMPUTE_LIMIT_HOURS = 100;
+  const TRANSFER_LIMIT_BYTES = 5 * 1024 * 1024 * 1024;
+  const HISTORY_LIMIT_BYTES = 30 * 1024 * 1024 * 1024;
+
+  const computeHours = computeSeconds / 3600;
+  const computePercent = Math.round((computeHours / COMPUTE_LIMIT_HOURS) * 1000) / 10;
+  const transferPercent = Math.round((dataTransferBytes / TRANSFER_LIMIT_BYTES) * 1000) / 10;
+  const historyPercent = Math.round((writtenDataBytes / HISTORY_LIMIT_BYTES) * 1000) / 10;
+
+  return {
+    compute: {
+      hoursUsed: Math.round(computeHours * 10) / 10,
+      hoursLimit: COMPUTE_LIMIT_HOURS,
+      percent: computePercent,
+      pretty: `${Math.round(computeHours * 10) / 10}h`,
+      status: computePercent > 90 ? 'critical' as const : computePercent > 70 ? 'warning' as const : 'ok' as const,
+    },
+    transfer: {
+      bytesUsed: dataTransferBytes,
+      bytesLimit: TRANSFER_LIMIT_BYTES,
+      percent: transferPercent,
+      pretty: `${(dataTransferBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`,
+      prettyLimit: '5 GB',
+      status: transferPercent > 90 ? 'critical' as const : transferPercent > 70 ? 'warning' as const : 'ok' as const,
+    },
+    history: {
+      bytesUsed: writtenDataBytes,
+      bytesLimit: HISTORY_LIMIT_BYTES,
+      percent: historyPercent,
+      pretty: `${(writtenDataBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`,
+      prettyLimit: '30 GB',
+      status: historyPercent > 90 ? 'critical' as const : historyPercent > 70 ? 'warning' as const : 'ok' as const,
+    },
+  };
+}
+
 async function fetchNeonApiMetrics() {
   const apiKey = process.env.NEON_API_KEY;
   const projectId = process.env.NEON_PROJECT_ID;
-  if (!apiKey || !projectId) return null;
+  if (!apiKey || !projectId) {
+    console.error(`[NeonMonitor] Missing env vars: NEON_API_KEY=${apiKey ? 'SET' : 'MISSING'}, NEON_PROJECT_ID=${projectId ? 'SET' : 'MISSING'}`);
+    return null;
+  }
+
+  const headers = { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' };
 
   try {
     const now = new Date();
@@ -14,20 +56,46 @@ async function fetchNeonApiMetrics() {
     const from = startOfMonth.toISOString();
     const to = now.toISOString();
 
-    const headers = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
-    const url = `https://console.neon.tech/api/v2/consumption/projects?project_ids=${projectId}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&granularity=monthly`;
+    const url = `https://console.neon.tech/api/v2/consumption/projects/${projectId}`;
+    console.log(`[NeonMonitor] Fetching: ${url}`);
 
-    const consumptionRes = await fetch(url, { headers });
+    const res = await fetch(url, { headers });
+    const body = await res.text();
+    console.log(`[NeonMonitor] Response ${res.status}: ${body.substring(0, 500)}`);
 
-    if (!consumptionRes.ok) {
-      console.error(`Neon API ${consumptionRes.status}: ${await consumptionRes.text().catch(() => '')}`);
+    if (res.ok) {
+      const data = JSON.parse(body) as any;
+
+      const periods = data?.periods ?? data?.data ?? [];
+      const currentPeriod = Array.isArray(periods) ? periods[0] : null;
+
+      const computeSeconds = currentPeriod?.active_time_seconds ?? data?.active_time_seconds ?? 0;
+      const dataTransferBytes = currentPeriod?.data_transfer_bytes ?? data?.data_transfer_bytes ?? 0;
+      const writtenDataBytes = currentPeriod?.written_data_bytes ?? data?.written_data_bytes ?? 0;
+
+      console.log(`[NeonMonitor] Parsed: compute=${computeSeconds}s, transfer=${dataTransferBytes}b, written=${writtenDataBytes}b`);
+      return buildMetrics(computeSeconds, dataTransferBytes, writtenDataBytes);
+    }
+
+    console.log(`[NeonMonitor] Project endpoint failed (${res.status}), trying consumption list...`);
+
+    const listUrl = `https://console.neon.tech/api/v2/consumption/projects?project_ids=${projectId}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&granularity=monthly`;
+    const listRes = await fetch(listUrl, { headers });
+    const listBody = await listRes.text();
+    console.log(`[NeonMonitor] Consumption list ${listRes.status}: ${listBody.substring(0, 500)}`);
+
+    if (!listRes.ok) {
+      console.error(`[NeonMonitor] Both endpoints failed`);
       return null;
     }
 
-    const consumptionData = await consumptionRes.json() as any;
-    const projects = consumptionData?.projects ?? [];
+    const listData = JSON.parse(listBody) as any;
+    const projects = listData?.projects ?? [];
     const project = Array.isArray(projects) ? projects.find((p: any) => p.project_id === projectId) ?? projects[0] : null;
-    if (!project) return null;
+    if (!project) {
+      console.error(`[NeonMonitor] No project found in response. Keys: ${JSON.stringify(Object.keys(listData))}`);
+      return null;
+    }
 
     const periods = project?.periods ?? project?.data ?? [];
     const period = Array.isArray(periods) ? periods[0] : periods;
@@ -36,43 +104,10 @@ async function fetchNeonApiMetrics() {
     const dataTransferBytes = period?.data_transfer_bytes ?? project?.data_transfer_bytes ?? 0;
     const writtenDataBytes = period?.written_data_bytes ?? project?.written_data_bytes ?? 0;
 
-    const COMPUTE_LIMIT_HOURS = 100;
-    const TRANSFER_LIMIT_BYTES = 5 * 1024 * 1024 * 1024;
-    const HISTORY_LIMIT_BYTES = 30 * 1024 * 1024 * 1024;
-
-    const computeHours = computeSeconds / 3600;
-    const computePercent = Math.round((computeHours / COMPUTE_LIMIT_HOURS) * 1000) / 10;
-
-    const transferPercent = Math.round((dataTransferBytes / TRANSFER_LIMIT_BYTES) * 1000) / 10;
-
-    const historyPercent = Math.round((writtenDataBytes / HISTORY_LIMIT_BYTES) * 1000) / 10;
-
-    return {
-      compute: {
-        hoursUsed: Math.round(computeHours * 10) / 10,
-        hoursLimit: COMPUTE_LIMIT_HOURS,
-        percent: computePercent,
-        pretty: `${Math.round(computeHours * 10) / 10}h`,
-        status: computePercent > 90 ? 'critical' as const : computePercent > 70 ? 'warning' as const : 'ok' as const,
-      },
-      transfer: {
-        bytesUsed: dataTransferBytes,
-        bytesLimit: TRANSFER_LIMIT_BYTES,
-        percent: transferPercent,
-        pretty: `${(dataTransferBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`,
-        prettyLimit: '5 GB',
-        status: transferPercent > 90 ? 'critical' as const : transferPercent > 70 ? 'warning' as const : 'ok' as const,
-      },
-      history: {
-        bytesUsed: writtenDataBytes,
-        bytesLimit: HISTORY_LIMIT_BYTES,
-        percent: historyPercent,
-        pretty: `${(writtenDataBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`,
-        prettyLimit: '30 GB',
-        status: historyPercent > 90 ? 'critical' as const : historyPercent > 70 ? 'warning' as const : 'ok' as const,
-      },
-    };
-  } catch {
+    console.log(`[NeonMonitor] Parsed from list: compute=${computeSeconds}s, transfer=${dataTransferBytes}b, written=${writtenDataBytes}b`);
+    return buildMetrics(computeSeconds, dataTransferBytes, writtenDataBytes);
+  } catch (err) {
+    console.error(`[NeonMonitor] Exception:`, err);
     return null;
   }
 }
@@ -99,13 +134,25 @@ export const freePlanMonitorRouter = router({
       ]);
 
       const NEON_FREE_STORAGE_BYTES = 512 * 1024 * 1024;
-      const storageBytesUsed = Number(dbSizeRow?.bytes ?? 0);
+      const sizeRow = Array.isArray(dbSizeRow) ? dbSizeRow[0] : dbSizeRow;
+      const storageBytesUsed = Number(sizeRow?.bytes ?? 0);
       const storagePercent = Math.round((storageBytesUsed / NEON_FREE_STORAGE_BYTES) * 1000) / 10;
 
-      const [neonApiMetrics, emailAccounts] = await Promise.all([
-        fetchNeonApiMetrics(),
+      let neonApiMetrics: Awaited<ReturnType<typeof fetchNeonApiMetrics>> = null;
+      let neonDebug = '';
+      const [fetchedMetrics, emailAccounts] = await Promise.all([
+        fetchNeonApiMetrics().catch((e: any) => {
+          neonDebug = `fetch-error: ${e?.message ?? String(e)}`;
+          return null;
+        }),
         getUsage(),
       ]);
+      neonApiMetrics = fetchedMetrics;
+      if (!neonApiMetrics && !neonDebug) {
+        const hasKey = !!process.env.NEON_API_KEY;
+        const hasProject = !!process.env.NEON_PROJECT_ID;
+        neonDebug = `key=${hasKey},proj=${hasProject}`;
+      }
 
       const resendAccounts = emailAccounts.filter(a => a.provider === 'resend');
       const brevoAccounts = emailAccounts.filter(a => a.provider === 'brevo');
@@ -139,7 +186,7 @@ export const freePlanMonitorRouter = router({
         neon: {
           storageBytesUsed,
           storageLimitBytes: NEON_FREE_STORAGE_BYTES,
-          storagePretty: dbSizeRow?.pretty ?? '??',
+          storagePretty: sizeRow?.pretty ?? '??',
           storageLimitPretty: '512 MB',
           storagePercent,
           status: worstNeonStatus,
@@ -153,6 +200,7 @@ export const freePlanMonitorRouter = router({
           transfer: neonApiMetrics?.transfer ?? null,
           history: neonApiMetrics?.history ?? null,
           hasApiMetrics: !!neonApiMetrics,
+          debug: neonDebug || undefined,
         },
         vercel: {
           plan: 'Hobby',
