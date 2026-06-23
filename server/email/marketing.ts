@@ -457,11 +457,14 @@ export function layout(body: string, unsubUrl: string, signatureHtml?: string): 
         <table width="600" cellpadding="0" cellspacing="0" border="0"
                style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
           <tr>
-            <td style="background:${BRAND};padding:24px 32px;text-align:left;">
-              <img src="http://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
-                   alt="Sal Vita" width="150" height="auto"
-                   style="display:inline-block;max-width:150px;height:auto;border:0;" />
+            <td style="background:#ffffff;padding:24px 32px;text-align:left;">
+              <img src="http://salvitarn.com.br/wp-content/uploads/2025/04/logo-SAL-VITA.png"
+                   alt="Sal Vita" width="160" height="auto"
+                   style="display:inline-block;max-width:160px;height:auto;border:0;" />
             </td>
+          </tr>
+          <tr>
+            <td style="background:${BRAND};height:4px;font-size:0;line-height:0;">&nbsp;</td>
           </tr>
           <tr>
             <td style="padding:32px;">

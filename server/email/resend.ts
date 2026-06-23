@@ -89,11 +89,14 @@ function layout(preheader: string, body: string): string {
 
           <!-- header -->
           <tr>
-            <td style="background:${BRAND};padding:24px 32px;text-align:left;">
-              <img src="http://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
-                   alt="Sal Vita" width="150" height="auto"
-                   style="display:inline-block;max-width:150px;height:auto;border:0;" />
+            <td style="background:#ffffff;padding:24px 32px;text-align:left;">
+              <img src="http://salvitarn.com.br/wp-content/uploads/2025/04/logo-SAL-VITA.png"
+                   alt="Sal Vita" width="160" height="auto"
+                   style="display:inline-block;max-width:160px;height:auto;border:0;" />
             </td>
+          </tr>
+          <tr>
+            <td style="background:${BRAND};height:4px;font-size:0;line-height:0;">&nbsp;</td>
           </tr>
 
           <!-- body -->
