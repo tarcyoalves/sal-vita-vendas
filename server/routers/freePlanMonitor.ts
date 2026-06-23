@@ -6,11 +6,23 @@ import { getUsage, getAccountLimits } from '../email/marketing';
 export const freePlanMonitorRouter = router({
   overview: adminProcedure.query(async () => {
     return cached('freePlan:overview', 120_000, async () => {
-      const [dbSizeRow] = await sqlClient`
-        SELECT
-          pg_database_size(current_database())::bigint AS bytes,
-          pg_size_pretty(pg_database_size(current_database())) AS pretty
-      ` as unknown as Array<{ bytes: number; pretty: string }>;
+      const [dbSizeRow, tableRows] = await Promise.all([
+        sqlClient`
+          SELECT
+            pg_database_size(current_database())::bigint AS bytes,
+            pg_size_pretty(pg_database_size(current_database())) AS pretty
+        ` as unknown as Promise<Array<{ bytes: number; pretty: string }>>,
+        sqlClient`
+          SELECT
+            relname AS table,
+            pg_total_relation_size(quote_ident(relname))::bigint AS bytes,
+            pg_size_pretty(pg_total_relation_size(quote_ident(relname))) AS pretty,
+            n_live_tup::int AS rows
+          FROM pg_stat_user_tables
+          ORDER BY pg_total_relation_size(quote_ident(relname)) DESC
+          LIMIT 10
+        ` as unknown as Promise<Array<{ table: string; bytes: number; pretty: string; rows: number }>>,
+      ]);
 
       const NEON_FREE_STORAGE_BYTES = 512 * 1024 * 1024;
       const storageBytesUsed = Number(dbSizeRow?.bytes ?? 0);
@@ -41,6 +53,12 @@ export const freePlanMonitorRouter = router({
           storageLimitPretty: '512 MB',
           storagePercent,
           status: storagePercent > 90 ? 'critical' as const : storagePercent > 70 ? 'warning' as const : 'ok' as const,
+          tables: (tableRows ?? []).map(t => ({
+            name: t.table,
+            sizePretty: t.pretty,
+            sizeBytes: Number(t.bytes),
+            rows: t.rows,
+          })),
         },
         vercel: {
           plan: 'Hobby',
