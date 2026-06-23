@@ -89,10 +89,10 @@ function layout(preheader: string, body: string): string {
 
           <!-- header -->
           <tr>
-            <td style="background:${BRAND};padding:24px 32px;text-align:center;">
-              <span style="font-family:'Pacifico',system-ui,Arial,sans-serif;font-size:28px;color:#ffffff;letter-spacing:1px;">
-                &#127754; Sal Vita
-              </span>
+            <td style="background:${BRAND};padding:28px 32px;text-align:center;">
+              <img src="http://salvitarn.com.br/wp-content/uploads/2025/04/logo-SAL-VITA.png"
+                   alt="Sal Vita" width="180" height="auto"
+                   style="display:inline-block;max-width:180px;height:auto;border:0;" />
             </td>
           </tr>
 
