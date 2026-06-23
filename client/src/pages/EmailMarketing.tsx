@@ -567,7 +567,7 @@ function CampaignsTab() {
 
       {/* Create campaign dialog */}
       <Dialog open={showCreate} onOpenChange={(open) => { setShowCreate(open); if (!open) resetForm(); }}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Mail size={16} /></span>
@@ -605,6 +605,7 @@ function CampaignsTab() {
                 value={form.htmlBody}
                 onChange={html => setForm(f => ({ ...f, htmlBody: html }))}
                 placeholder="Olá {nome}, ..."
+                minHeight={350}
               />
               <p className="text-xs text-gray-500 mt-1">{TEMPLATE_HINT}</p>
             </div>
@@ -661,7 +662,7 @@ function CampaignsTab() {
 
       {/* Disparo Rápido (Broadcast) dialog */}
       <Dialog open={showBroadcast} onOpenChange={(open) => { setShowBroadcast(open); if (!open) resetBroadcast(); }}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-700"><Megaphone size={16} /></span>
@@ -808,6 +809,7 @@ function CampaignsTab() {
                 value={bcast.htmlBody}
                 onChange={html => setBcast(b => ({ ...b, htmlBody: html }))}
                 placeholder="Olá, ..."
+                minHeight={350}
               />
               <p className="text-xs text-gray-500 mt-1">{TEMPLATE_HINT}</p>
             </div>
@@ -1022,7 +1024,7 @@ function TemplatesTab() {
       </Card>
 
       <Dialog open={editing !== null} onOpenChange={(open) => { if (!open) setEditing(null); }}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><LayoutTemplate size={16} /></span>
@@ -1047,7 +1049,7 @@ function TemplatesTab() {
               </div>
               <div>
                 <Label>Corpo do e-mail</Label>
-                <RichTextEditor value={editing.htmlBody} onChange={html => setEditing(t => t && ({ ...t, htmlBody: html }))} />
+                <RichTextEditor value={editing.htmlBody} onChange={html => setEditing(t => t && ({ ...t, htmlBody: html }))} minHeight={350} />
                 <p className="text-xs text-gray-500 mt-1">{TEMPLATE_HINT}</p>
               </div>
             </div>
@@ -1334,7 +1336,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
 
   return (
     <Dialog open={sequenceId !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Workflow size={16} /></span>
@@ -1496,7 +1498,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
 
         {/* Step editor dialog */}
         <Dialog open={editingStep !== null} onOpenChange={(open) => { if (!open) setEditingStep(null); }}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900">{editingStep?.id ? <Pencil size={16} /> : <Plus size={16} />}</span>
@@ -1521,7 +1523,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                 </div>
                 <div>
                   <Label>Corpo do e-mail</Label>
-                  <RichTextEditor value={editingStep.htmlBody} onChange={html => setEditingStep(s => s && ({ ...s, htmlBody: html }))} />
+                  <RichTextEditor value={editingStep.htmlBody} onChange={html => setEditingStep(s => s && ({ ...s, htmlBody: html }))} minHeight={350} />
                   <p className="text-xs text-gray-500 mt-1">{TEMPLATE_HINT}</p>
                 </div>
                 <div>
