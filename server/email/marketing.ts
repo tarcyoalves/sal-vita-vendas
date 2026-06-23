@@ -380,6 +380,42 @@ export function renderTemplate(text: string, vars: { nome?: string; empresa?: st
 }
 
 /**
+ * Converts an admin-written message body into safe email HTML.
+ *
+ * Admins usually paste plain text (with blank lines between paragraphs and
+ * single line breaks inside them). Because the body is dropped straight into
+ * an HTML layout, those line breaks would collapse and everything arrives as
+ * one block. This detects plain text and rebuilds it as <p>/<br>, escaping
+ * HTML and auto-linking URLs. If the body already contains block-level HTML
+ * (a real HTML template), it is left untouched.
+ */
+export function bodyToHtml(text: string): string {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return '';
+
+  // Already HTML (template with block-level structure)? Leave as-is.
+  if (/<(br|p|div|table|ul|ol|h[1-6])[\s>\/]/i.test(trimmed)) return trimmed;
+
+  const escape = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  const linkify = (s: string) =>
+    s
+      .replace(/(https?:\/\/[^\s<]+)/g, url =>
+        `<a href="${url}" style="color:${BRAND};text-decoration:underline;">${url}</a>`)
+      .replace(/(^|[\s(])(www\.[^\s<]+)/g, (_m, pre, host) =>
+        `${pre}<a href="http://${host}" style="color:${BRAND};text-decoration:underline;">${host}</a>`);
+
+  return trimmed
+    .split(/\n{2,}/)
+    .map(block => {
+      const lines = block.split(/\n/).map(line => linkify(escape(line)));
+      return `<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#333;">${lines.join('<br />')}</p>`;
+    })
+    .join('');
+}
+
+/**
  * Sanitizes admin-provided signature HTML before it's stored/sent in e-mails.
  * Only a small set of safe inline tags/attrs are allowed — strips
  * <script>, event handlers (on*), javascript: URLs, <style>, etc.
@@ -468,7 +504,7 @@ export function layout(body: string, unsubUrl: string, signatureHtml?: string): 
           </tr>
           <tr>
             <td style="padding:32px;">
-              ${body}
+              ${bodyToHtml(body)}
             </td>
           </tr>
           ${sigBlock}
