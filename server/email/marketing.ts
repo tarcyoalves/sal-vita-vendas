@@ -18,6 +18,22 @@ import { emailSendCounters } from '../db/schema';
 export const BRAND = '#0C3680';
 const MKT_DAILY_LIMIT = parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? '90');
 
+export interface AccountLimits { daily: number; monthly: number; }
+
+/** Per-provider send limits (free-plan defaults), env-overridable. */
+export function getAccountLimits(provider: 'resend' | 'brevo'): AccountLimits {
+  if (provider === 'brevo') {
+    return {
+      daily: parseInt(process.env.BREVO_DAILY_LIMIT ?? '300'),
+      monthly: parseInt(process.env.BREVO_MONTHLY_LIMIT ?? '9000'),
+    };
+  }
+  return {
+    daily: parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? '90'),
+    monthly: parseInt(process.env.RESEND_MKT_MONTHLY_LIMIT ?? '3000'),
+  };
+}
+
 export interface MarketingAccount {
   key: string;       // 'mkt_1', 'mkt_2', ... (Resend) or 'brevo_1', 'brevo_2', ...
   provider: 'resend' | 'brevo';
@@ -69,14 +85,62 @@ async function incrementCounter(accountKey: string, n: number): Promise<void> {
   `;
 }
 
-/** Picks the first account in the waterfall with remaining quota today. Returns null if all are exhausted. */
+function currentMonth(): string {
+  return new Date().toISOString().slice(0, 7); // 'YYYY-MM'
+}
+
+async function getMonthlyCounter(accountKey: string): Promise<number> {
+  const rows = await sql`
+    SELECT COALESCE(SUM(sent), 0)::int AS total
+    FROM email_send_counters
+    WHERE account_key = ${accountKey} AND day LIKE ${currentMonth() + '%'}
+  `;
+  return (rows as unknown as Array<{ total: number }>)[0]?.total ?? 0;
+}
+
+/** Picks the first account in the waterfall with remaining daily AND monthly quota. Returns null if all are exhausted. */
 export async function pickAccount(): Promise<{ account: MarketingAccount; remaining: number } | null> {
   for (const account of getAccounts()) {
-    const sent = await getCounter(account.key);
-    const remaining = MKT_DAILY_LIMIT - sent;
+    const limits = getAccountLimits(account.provider);
+    const sentToday = await getCounter(account.key);
+    const sentMonth = await getMonthlyCounter(account.key);
+    const remainingDaily = limits.daily - sentToday;
+    const remainingMonthly = limits.monthly - sentMonth;
+    const remaining = Math.min(remainingDaily, remainingMonthly);
     if (remaining > 0) return { account, remaining };
   }
   return null;
+}
+
+export interface AccountUsage {
+  key: string;
+  provider: 'resend' | 'brevo';
+  fromName?: string;
+  fromEmail: string;
+  sentToday: number;
+  dailyLimit: number;
+  sentThisMonth: number;
+  monthlyLimit: number;
+}
+
+/** Per-account consumption snapshot for the admin usage dashboard. */
+export async function getUsage(): Promise<AccountUsage[]> {
+  const out: AccountUsage[] = [];
+  for (const account of getAccounts()) {
+    const limits = getAccountLimits(account.provider);
+    const { name, email } = parseFromAddress(account.from);
+    out.push({
+      key: account.key,
+      provider: account.provider,
+      fromName: name,
+      fromEmail: email,
+      sentToday: await getCounter(account.key),
+      dailyLimit: limits.daily,
+      sentThisMonth: await getMonthlyCounter(account.key),
+      monthlyLimit: limits.monthly,
+    });
+  }
+  return out;
 }
 
 export interface EmailAttachment {

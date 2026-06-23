@@ -10,7 +10,7 @@ import {
   emailEvents, automationRules, emailSendCounters,
   tasks, clients, sellers,
 } from '../db/schema';
-import { pickAccount, sendBatch, layout, renderTemplate, renderSignature, type BatchMessage } from '../email/marketing';
+import { pickAccount, sendBatch, layout, renderTemplate, renderSignature, getUsage, type BatchMessage } from '../email/marketing';
 import { enrollInSequence } from '../email/automations';
 import { userTaskFilter } from './tasks';
 
@@ -854,6 +854,28 @@ export const emailMarketingRouter = router({
         ...(statsMap.get(step.id) ?? { sent: 0, skipped: 0, opened: 0, clicked: 0 }),
       }));
     }),
+
+  usageStats: adminProcedure.query(async () => {
+    const accounts = await getUsage();
+    const totals = accounts.reduce(
+      (acc, a) => ({
+        sentToday: acc.sentToday + a.sentToday,
+        dailyLimit: acc.dailyLimit + a.dailyLimit,
+        sentThisMonth: acc.sentThisMonth + a.sentThisMonth,
+        monthlyLimit: acc.monthlyLimit + a.monthlyLimit,
+      }),
+      { sentToday: 0, dailyLimit: 0, sentThisMonth: 0, monthlyLimit: 0 },
+    );
+    return {
+      accounts,
+      totals: {
+        ...totals,
+        remainingToday: Math.max(0, totals.dailyLimit - totals.sentToday),
+        remainingMonth: Math.max(0, totals.monthlyLimit - totals.sentThisMonth),
+      },
+      hasAccounts: accounts.length > 0,
+    };
+  }),
 
   overviewStats: adminProcedure.query(async () => {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);

@@ -25,7 +25,7 @@ import { Checkbox } from "../components/ui/checkbox";
 import {
   Mail, Plus, Send, Trash2, Eye, Pencil, Workflow, Zap, Tag, BarChart3, Users, Pause, Play, X, Download,
   LayoutTemplate, MailX, Filter, Sparkles, Inbox, Megaphone, Paperclip, FileText, Contact, Search,
-  CheckCircle, XCircle, AlertTriangle, RotateCcw,
+  CheckCircle, XCircle, AlertTriangle, RotateCcw, Gauge,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -230,6 +230,9 @@ export default function EmailMarketing() {
           <TabsTrigger value="export" className={TAB_TRIGGER_CLASS}>
             <Download size={14} /> Exportar
           </TabsTrigger>
+          <TabsTrigger value="usage" className={TAB_TRIGGER_CLASS}>
+            <Gauge size={14} /> Consumo
+          </TabsTrigger>
           <TabsTrigger value="stats" className={TAB_TRIGGER_CLASS}>
             <BarChart3 size={14} /> Estatísticas
           </TabsTrigger>
@@ -255,6 +258,9 @@ export default function EmailMarketing() {
         </TabsContent>
         <TabsContent value="export" className="mt-4">
           <ExportTab />
+        </TabsContent>
+        <TabsContent value="usage" className="mt-4">
+          <UsageTab />
         </TabsContent>
         <TabsContent value="stats" className="mt-4">
           <StatsTab />
@@ -2657,6 +2663,182 @@ function ExportTab() {
   );
 }
 
+// ── Consumo (Usage) ──────────────────────────────────────────────────────
+
+function barColor(pct: number): string {
+  if (pct > 90) return 'bg-red-500';
+  if (pct >= 70) return 'bg-amber-500';
+  return 'bg-emerald-500';
+}
+
+function fmt(n: number): string {
+  return n.toLocaleString('pt-BR');
+}
+
+function UsageTab() {
+  const { data, isLoading } = trpc.emailMarketing.usageStats.useQuery();
+
+  if (isLoading) return <p className="text-sm text-slate-500">Carregando...</p>;
+
+  if (!data?.hasAccounts) {
+    return (
+      <EmptyState
+        icon={Gauge}
+        message="Nenhuma conta de envio configurada. Configure as variáveis RESEND_MKT_API_KEY_1 / BREVO_API_KEY_1 no painel da Vercel."
+      />
+    );
+  }
+
+  const { accounts, totals } = data;
+
+  const dailyPct = totals.dailyLimit > 0 ? (totals.sentToday / totals.dailyLimit) * 100 : 0;
+  const monthlyPct = totals.monthlyLimit > 0 ? (totals.sentThisMonth / totals.monthlyLimit) * 100 : 0;
+
+  return (
+    <div className="space-y-4">
+      {/* Intro / explanation card */}
+      <Card className="rounded-2xl border-slate-200">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-blue-900">
+            <Gauge size={18} /> Consumo de envios
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-slate-600 leading-relaxed">
+            Os e-mails sao enviados pelas contas em cascata: quando uma conta atinge o limite do plano,
+            o sistema passa automaticamente para a proxima. Aqui voce acompanha quanto ja foi consumido
+            de cada plano, hoje e no mes.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Summary strip — two big progress bars */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Card className="rounded-2xl border-slate-200">
+          <CardContent className="pt-5 pb-4 px-5">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-slate-700">Total hoje</span>
+              <span className="text-xs text-slate-500">{fmt(totals.remainingToday)} restantes</span>
+            </div>
+            <div className="w-full h-3 rounded-full bg-slate-100 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${barColor(dailyPct)}`}
+                style={{ width: `${Math.min(100, dailyPct)}%` }}
+              />
+            </div>
+            <p className="text-xs text-slate-500 mt-1.5">
+              {fmt(totals.sentToday)} / {fmt(totals.dailyLimit)} ({dailyPct.toFixed(1)}%)
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border-slate-200">
+          <CardContent className="pt-5 pb-4 px-5">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-slate-700">Total no mes</span>
+              <span className="text-xs text-slate-500">{fmt(totals.remainingMonth)} restantes</span>
+            </div>
+            <div className="w-full h-3 rounded-full bg-slate-100 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${barColor(monthlyPct)}`}
+                style={{ width: `${Math.min(100, monthlyPct)}%` }}
+              />
+            </div>
+            <p className="text-xs text-slate-500 mt-1.5">
+              {fmt(totals.sentThisMonth)} / {fmt(totals.monthlyLimit)} ({monthlyPct.toFixed(1)}%)
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Per-account cards */}
+      <div className="space-y-3">
+        {accounts.map((a) => {
+          const dPct = a.dailyLimit > 0 ? (a.sentToday / a.dailyLimit) * 100 : 0;
+          const mPct = a.monthlyLimit > 0 ? (a.sentThisMonth / a.monthlyLimit) * 100 : 0;
+          const remainDay = Math.max(0, a.dailyLimit - a.sentToday);
+          const remainMonth = Math.max(0, a.monthlyLimit - a.sentThisMonth);
+
+          return (
+            <Card key={a.key} className="rounded-2xl border-slate-200">
+              <CardContent className="pt-4 pb-4 px-5">
+                {/* Header row */}
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <Badge
+                    className={
+                      a.provider === 'brevo'
+                        ? 'bg-emerald-600 text-white hover:bg-emerald-700 border-0'
+                        : 'bg-slate-900 text-white hover:bg-slate-800 border-0'
+                    }
+                  >
+                    {a.provider === 'brevo' ? 'Brevo' : 'Resend'}
+                  </Badge>
+                  <span className="text-xs font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
+                    {a.key}
+                  </span>
+                  <span className="text-xs text-slate-500 truncate">
+                    {a.fromName ? `${a.fromName} ` : ''}&lt;{a.fromEmail}&gt;
+                  </span>
+                </div>
+
+                {/* Daily progress */}
+                <div className="mb-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-slate-600">Hoje</span>
+                    <span className="text-xs text-slate-500">{fmt(remainDay)} restantes hoje</span>
+                  </div>
+                  <div className="w-full h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${barColor(dPct)}`}
+                      style={{ width: `${Math.min(100, dPct)}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {fmt(a.sentToday)} / {fmt(a.dailyLimit)} ({dPct.toFixed(1)}%)
+                  </p>
+                </div>
+
+                {/* Monthly progress */}
+                <div className="mb-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-slate-600">Mes</span>
+                    <span className="text-xs text-slate-500">{fmt(remainMonth)} restantes no mes</span>
+                  </div>
+                  <div className="w-full h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${barColor(mPct)}`}
+                      style={{ width: `${Math.min(100, mPct)}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {fmt(a.sentThisMonth)} / {fmt(a.monthlyLimit)} ({mPct.toFixed(1)}%)
+                  </p>
+                </div>
+
+                {/* Plan caption */}
+                <p className="text-[11px] text-slate-400">
+                  Plano: {fmt(a.dailyLimit)}/dia &middot; {fmt(a.monthlyLimit)}/mes
+                </p>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Legend / help footer */}
+      <Card className="rounded-2xl border-slate-200 bg-slate-50/60">
+        <CardContent className="pt-4 pb-3 px-5">
+          <p className="text-xs text-slate-500 leading-relaxed">
+            <strong>Limites de referencia (planos gratuitos):</strong> Resend: 100/dia &middot; 3.000/mes.
+            Brevo: 300/dia. O contador mensal reinicia no primeiro dia de cada mes (UTC).
+            Os limites podem ser ajustados por variaveis de ambiente no painel da Vercel.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ── Estatísticas ───────────────────────────────────────────────────────────
 
 function StatsTab() {
@@ -2669,12 +2851,11 @@ function StatsTab() {
       {isLoading ? (
         <p className="text-sm text-slate-500">Carregando...</p>
       ) : overview && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <StatTile icon={Send} label="Enviados (30d)" value={overview.totalSent30d} accent="bg-blue-100 text-blue-900" />
           <StatTile icon={Eye} label="Taxa de abertura" value={`${(overview.openRate * 100).toFixed(1)}%`} accent="bg-emerald-100 text-emerald-700" />
           <StatTile icon={Workflow} label="Taxa de clique" value={`${(overview.clickRate * 100).toFixed(1)}%`} accent="bg-violet-100 text-violet-700" />
           <StatTile icon={MailX} label="Descadastros (30d)" value={overview.unsubscribed30d} accent="bg-red-100 text-red-600" />
-          <StatTile icon={Zap} label="Cota Resend hoje" value={`${overview.quotaUsedToday}/${overview.quotaTotalToday}`} accent="bg-orange-100 text-orange-600" />
         </div>
       )}
 
