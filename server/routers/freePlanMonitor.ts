@@ -15,20 +15,26 @@ async function fetchNeonApiMetrics() {
     const to = now.toISOString();
 
     const headers = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+    const url = `https://console.neon.tech/api/v2/consumption/projects?project_ids=${projectId}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&granularity=monthly`;
 
-    const [consumptionRes] = await Promise.all([
-      fetch(`https://console.neon.tech/api/v2/consumption/projects/${projectId}/periods?from=${from}&to=${to}`, { headers }),
-    ]);
+    const consumptionRes = await fetch(url, { headers });
 
-    if (!consumptionRes.ok) return null;
+    if (!consumptionRes.ok) {
+      console.error(`Neon API ${consumptionRes.status}: ${await consumptionRes.text().catch(() => '')}`);
+      return null;
+    }
 
     const consumptionData = await consumptionRes.json() as any;
-    const periods = consumptionData?.periods ?? consumptionData?.data ?? [];
+    const projects = consumptionData?.projects ?? [];
+    const project = Array.isArray(projects) ? projects.find((p: any) => p.project_id === projectId) ?? projects[0] : null;
+    if (!project) return null;
+
+    const periods = project?.periods ?? project?.data ?? [];
     const period = Array.isArray(periods) ? periods[0] : periods;
 
-    const computeSeconds = period?.active_time_seconds ?? period?.compute_time_seconds ?? 0;
-    const dataTransferBytes = period?.data_transfer_bytes ?? 0;
-    const writtenDataBytes = period?.written_data_bytes ?? 0;
+    const computeSeconds = period?.active_time_seconds ?? project?.active_time_seconds ?? 0;
+    const dataTransferBytes = period?.data_transfer_bytes ?? project?.data_transfer_bytes ?? 0;
+    const writtenDataBytes = period?.written_data_bytes ?? project?.written_data_bytes ?? 0;
 
     const COMPUTE_LIMIT_HOURS = 100;
     const TRANSFER_LIMIT_BYTES = 5 * 1024 * 1024 * 1024;
