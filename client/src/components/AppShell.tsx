@@ -129,7 +129,7 @@ export default function AppShell({ children }: AppShellProps) {
   const role = (user?.role ?? "user") as "admin" | "user";
   const { data: pendingDeletions } = trpc.tasks.deletionLogs.useQuery(
     { onlyUnreviewed: true },
-    { enabled: role === "admin", refetchInterval: 60_000, select: (d) => d.length }
+    { enabled: role === "admin", refetchInterval: 120_000, staleTime: 90_000, select: (d) => d.length }
   );
   const visibleItems = NAV_ITEMS.filter((item) => item.roles.includes(role));
   const bottomNavItems = role === "admin" ? BOTTOM_NAV_ADMIN : BOTTOM_NAV_USER;

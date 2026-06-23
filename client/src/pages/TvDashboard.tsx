@@ -184,12 +184,14 @@ export default function TvDashboard() {
   // Cheap, lightweight check — polled on its own so the heavy dashboard query
   // can be turned off entirely (no DB load) when the panel is switched off.
   const { data: panelStatus } = trpc.tv.getPanelStatus.useQuery(undefined, {
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
   });
   const panelEnabled = panelStatus?.enabled !== false;
 
   const { data, isLoading, dataUpdatedAt } = trpc.tv.dashboard.useQuery(undefined, {
-    refetchInterval: 180_000,
+    refetchInterval: 300_000,
+    staleTime: 120_000,
     retry: 3,
     enabled: panelEnabled,
   });
