@@ -27,6 +27,10 @@ import {
   RefreshCw,
   NotebookPen,
   Download,
+  Gauge,
+  Database,
+  Mail,
+  Server,
 } from "lucide-react";
 import AttendantDetailModal from '../components/AttendantDetailModal';
 
@@ -200,6 +204,7 @@ export default function AdminDashboard() {
   const { data: tvPanelStatus, refetch: refetchTvPanelStatus } = trpc.tv.getPanelStatus.useQuery();
   const setTvPanelMutation = trpc.tv.setPanelStatus.useMutation({ onSuccess: () => refetchTvPanelStatus() });
   const { data: sessionData = [], refetch: refetchSessions, isFetching: sessionsFetching } = trpc.workSessions.allActiveToday.useQuery(undefined, { staleTime: 90_000 });
+  const { data: freePlanData } = trpc.freePlan.overview.useQuery(undefined, { staleTime: 300_000 });
   const [expandedSessions, setExpandedSessions] = useState<Set<number>>(new Set());
   const toggleSession = (id: number) => setExpandedSessions(prev => {
     const next = new Set(prev);
@@ -566,6 +571,93 @@ export default function AdminDashboard() {
           </Card>
         ))}
       </div>
+
+      {/* Free Plan Monitor */}
+      {freePlanData && (
+        <Card className={`border ${
+          freePlanData.neon.status === 'critical' || freePlanData.resend.status === 'critical' || freePlanData.brevo.status === 'critical'
+            ? 'border-red-300 bg-red-50/50'
+            : freePlanData.neon.status === 'warning' || freePlanData.resend.status === 'warning' || freePlanData.brevo.status === 'warning'
+            ? 'border-amber-300 bg-amber-50/50'
+            : 'border-slate-200'
+        }`}>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Gauge size={16} className="text-blue-700" />
+              Planos Gratuitos
+              {(freePlanData.neon.status !== 'ok' || freePlanData.resend.status !== 'ok' || freePlanData.brevo.status !== 'ok') && (
+                <AlertTriangle size={14} className={freePlanData.neon.status === 'critical' ? 'text-red-500' : 'text-amber-500'} />
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {/* Neon DB */}
+              <div className="rounded-lg border p-2.5 space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Database size={12} className="text-emerald-600" />
+                  <span className="text-[11px] font-semibold text-slate-700">Neon PostgreSQL</span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      freePlanData.neon.storagePercent > 90 ? 'bg-red-500' : freePlanData.neon.storagePercent > 70 ? 'bg-amber-500' : 'bg-emerald-500'
+                    }`}
+                    style={{ width: `${Math.min(100, freePlanData.neon.storagePercent)}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  {freePlanData.neon.storagePretty} / {freePlanData.neon.storageLimitPretty} ({freePlanData.neon.storagePercent}%)
+                </p>
+              </div>
+
+              {/* Resend */}
+              {freePlanData.resend.accounts > 0 && (
+                <div className="rounded-lg border p-2.5 space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Mail size={12} className="text-slate-700" />
+                    <span className="text-[11px] font-semibold text-slate-700">Resend</span>
+                    <span className="text-[9px] text-slate-400 ml-auto">{freePlanData.resend.accounts}x</span>
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        freePlanData.resend.monthlyPercent > 90 ? 'bg-red-500' : freePlanData.resend.monthlyPercent > 70 ? 'bg-amber-500' : 'bg-emerald-500'
+                      }`}
+                      style={{ width: `${Math.min(100, freePlanData.resend.monthlyPercent)}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    Mês: {freePlanData.resend.monthlyUsed.toLocaleString('pt-BR')} / {freePlanData.resend.monthlyLimit.toLocaleString('pt-BR')} ({freePlanData.resend.monthlyPercent}%)
+                  </p>
+                </div>
+              )}
+
+              {/* Brevo */}
+              {freePlanData.brevo.accounts > 0 && (
+                <div className="rounded-lg border p-2.5 space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Mail size={12} className="text-emerald-600" />
+                    <span className="text-[11px] font-semibold text-slate-700">Brevo</span>
+                    <span className="text-[9px] text-slate-400 ml-auto">{freePlanData.brevo.accounts}x</span>
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        freePlanData.brevo.monthlyPercent > 90 ? 'bg-red-500' : freePlanData.brevo.monthlyPercent > 70 ? 'bg-amber-500' : 'bg-emerald-500'
+                      }`}
+                      style={{ width: `${Math.min(100, freePlanData.brevo.monthlyPercent)}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    Mês: {freePlanData.brevo.monthlyUsed.toLocaleString('pt-BR')} / {freePlanData.brevo.monthlyLimit.toLocaleString('pt-BR')} ({freePlanData.brevo.monthlyPercent}%)
+                  </p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Funil de Conversão & Performance de Vendas */}
       <Card>

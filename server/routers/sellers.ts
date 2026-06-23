@@ -5,21 +5,24 @@ import { db } from '../db';
 import { sellers, users, tasks } from '../db/schema';
 import { hashPassword } from '../auth';
 import { sanitizeSignatureHtml } from '../email/marketing';
+import { cached, cacheInvalidate } from '../lib/cache';
 
 function generatePassword(length = 8): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
   return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
+export function invalidateSellersCache() { cacheInvalidate('sellers:'); }
+
 export const sellersRouter = router({
-  // Non-admins only receive name + id (needed for assignedTo display).
-  // Admins receive full rows.
   list: protectedProcedure.query(async ({ ctx }) => {
     if (ctx.user.role === 'admin') {
-      return db.select().from(sellers).orderBy(sellers.name);
+      return cached('sellers:admin', 60_000, () => db.select().from(sellers).orderBy(sellers.name));
     }
-    return db.select({ id: sellers.id, name: sellers.name, status: sellers.status })
-      .from(sellers).where(eq(sellers.status, 'active')).orderBy(sellers.name);
+    return cached('sellers:user', 60_000, () =>
+      db.select({ id: sellers.id, name: sellers.name, status: sellers.status })
+        .from(sellers).where(eq(sellers.status, 'active')).orderBy(sellers.name)
+    );
   }),
 
   create: adminProcedure
@@ -62,6 +65,7 @@ export const sellersRouter = router({
         throw err;
       }
 
+      invalidateSellersCache();
       return { ...created, generatedPassword };
     }),
 
@@ -76,6 +80,7 @@ export const sellersRouter = router({
         }
       }
       await db.delete(sellers).where(eq(sellers.id, input.id));
+      invalidateSellersCache();
       return { ok: true };
     }),
 
@@ -105,6 +110,7 @@ export const sellersRouter = router({
         data.emailSignatureHtml = sanitizeSignatureHtml(data.emailSignatureHtml);
       }
       const [updated] = await db.update(sellers).set(data).where(eq(sellers.id, id)).returning();
+      invalidateSellersCache();
       return updated;
     }),
 

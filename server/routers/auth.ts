@@ -6,6 +6,7 @@ import { db } from '../db';
 import { users } from '../db/schema';
 import { hashPassword, verifyPassword, signToken, DUMMY_HASH } from '../auth';
 import { COOKIE_NAME } from '../../shared/const';
+import { cached, cacheInvalidate } from '../lib/cache';
 
 function generatePassword(length = 8): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
@@ -15,15 +16,17 @@ function generatePassword(length = 8): string {
 export const authRouter = router({
   me: publicProcedure.query(async ({ ctx }) => {
     if (!ctx.user) return null;
-    const [dbUser] = await db.select().from(users).where(eq(users.id, ctx.user.id));
-    if (!dbUser) return null;
-    return {
-      id: dbUser.id,
-      email: dbUser.email,
-      name: dbUser.name,
-      role: dbUser.role,
-      mustChangePassword: dbUser.mustChangePassword,
-    };
+    return cached(`auth:me:${ctx.user.id}`, 30_000, async () => {
+      const [dbUser] = await db.select().from(users).where(eq(users.id, ctx.user!.id));
+      if (!dbUser) return null;
+      return {
+        id: dbUser.id,
+        email: dbUser.email,
+        name: dbUser.name,
+        role: dbUser.role,
+        mustChangePassword: dbUser.mustChangePassword,
+      };
+    });
   }),
 
   login: publicProcedure
@@ -63,10 +66,11 @@ export const authRouter = router({
       await db.update(users)
         .set({ passwordHash: hashPassword(input.newPassword), mustChangePassword: false })
         .where(eq(users.id, ctx.user.id));
+      cacheInvalidate(`auth:me:${ctx.user.id}`);
+      cacheInvalidate(`user:${ctx.user.id}`);
       return { ok: true };
     }),
 
-  // First-access forced password change — no current password needed (user just authenticated)
   forceChangePassword: protectedProcedure
     .input(z.object({ newPassword: z.string().min(6, 'Mínimo 6 caracteres') }))
     .mutation(async ({ input, ctx }) => {
@@ -76,10 +80,11 @@ export const authRouter = router({
       await db.update(users)
         .set({ passwordHash: hashPassword(input.newPassword), mustChangePassword: false })
         .where(eq(users.id, ctx.user.id));
+      cacheInvalidate(`auth:me:${ctx.user.id}`);
+      cacheInvalidate(`user:${ctx.user.id}`);
       return { ok: true };
     }),
 
-  // Admin resets any user's password (by userId) — returns generated password, forces change on next login
   adminResetPassword: adminProcedure
     .input(z.object({ userId: z.number() }))
     .mutation(async ({ input }) => {
@@ -89,6 +94,8 @@ export const authRouter = router({
       await db.update(users)
         .set({ passwordHash: hashPassword(generated), mustChangePassword: true })
         .where(eq(users.id, input.userId));
+      cacheInvalidate(`auth:me:${input.userId}`);
+      cacheInvalidate(`user:${input.userId}`);
       return { name: user.name, email: user.email, generatedPassword: generated };
     }),
 

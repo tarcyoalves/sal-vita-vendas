@@ -3,6 +3,7 @@ import { router, publicProcedure, protectedProcedure, adminProcedure } from '../
 import { db } from '../db';
 import { sellers, tasks, workSessions, clients, appSettings } from '../db/schema';
 import { eq, or, and, gte, sql, isNotNull } from 'drizzle-orm';
+import { cached, cacheInvalidate } from '../lib/cache';
 
 const TV_PANEL_SETTING_KEY = 'tv_panel_enabled';
 
@@ -17,9 +18,11 @@ export const tvRouter = router({
   // Public + cheap: the TV kiosk polls this on its own, lighter, interval to
   // decide whether to load (and keep polling) the heavy `dashboard` query.
   getPanelStatus: publicProcedure.query(async () => {
-    const [row] = await db.select({ value: appSettings.value })
-      .from(appSettings).where(eq(appSettings.key, TV_PANEL_SETTING_KEY));
-    return { enabled: row ? row.value === 'true' : true };
+    return cached('tv:panelStatus', 30_000, async () => {
+      const [row] = await db.select({ value: appSettings.value })
+        .from(appSettings).where(eq(appSettings.key, TV_PANEL_SETTING_KEY));
+      return { enabled: row ? row.value === 'true' : true };
+    });
   }),
 
   setPanelStatus: adminProcedure
@@ -28,10 +31,16 @@ export const tvRouter = router({
       await db.insert(appSettings)
         .values({ key: TV_PANEL_SETTING_KEY, value: String(input.enabled), updatedAt: new Date() })
         .onConflictDoUpdate({ target: appSettings.key, set: { value: String(input.enabled), updatedAt: new Date() } });
+      cacheInvalidate('tv:');
       return { enabled: input.enabled };
     }),
 
   dashboard: protectedProcedure.query(async () => {
+    return cached('tv:dashboard', 60_000, async () => tvDashboardQuery());
+  }),
+});
+
+async function tvDashboardQuery() {
     const now = new Date();
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
@@ -168,5 +177,4 @@ export const tvRouter = router({
       hotClients,
       alerts: alerts.slice(0, 5),
     };
-  }),
-});
+}

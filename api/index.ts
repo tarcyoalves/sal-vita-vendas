@@ -261,12 +261,11 @@ dbReady.catch(err => console.error('Background dbReady failed:', err));
 // DB storage and row-count monitor — admin only
 app.get('/api/db-stats', async (req, res) => {
   const secret = process.env.ADMIN_RESET_SECRET;
-  // Fail closed: if no secret is configured, deny (don't leak DB stats publicly).
   if (!secret || req.headers['x-admin-secret'] !== secret) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   try {
-    const [sizes, counts] = await Promise.all([
+    const [sizes, counts, dbSizeBytes] = await Promise.all([
       sqlClient`
         SELECT
           pg_size_pretty(pg_database_size(current_database())) AS total_db_size,
@@ -289,8 +288,21 @@ app.get('/api/db-stats', async (req, res) => {
           (SELECT COUNT(*) FROM clients)            AS clients,
           (SELECT COUNT(*) FROM sellers)            AS sellers
       `,
+      sqlClient`SELECT pg_database_size(current_database())::bigint AS bytes`,
     ]);
-    res.json({ sizes: (sizes as any[])[0], rows: (counts as any[])[0] });
+    const totalBytes = Number((dbSizeBytes as any[])[0]?.bytes ?? 0);
+    const NEON_FREE_STORAGE = 512 * 1024 * 1024; // 512 MB
+    res.json({
+      sizes: (sizes as any[])[0],
+      rows: (counts as any[])[0],
+      neonFree: {
+        storageBytesUsed: totalBytes,
+        storageLimitBytes: NEON_FREE_STORAGE,
+        storageUsedPretty: (sizes as any[])[0]?.total_db_size,
+        storageLimitPretty: '512 MB',
+        storagePercent: Math.round((totalBytes / NEON_FREE_STORAGE) * 1000) / 10,
+      },
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
