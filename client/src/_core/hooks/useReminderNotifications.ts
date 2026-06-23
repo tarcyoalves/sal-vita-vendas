@@ -26,8 +26,10 @@ const markFired = (key: string) => {
 export function useReminderNotifications(enabled: boolean, userName: string = '', isAdmin: boolean = false) {
   const { data: reminders } = trpc.tasks.reminders.useQuery(undefined, {
     enabled,
-    refetchInterval: 120_000,
+    refetchInterval: 300_000,
+    staleTime: 120_000,
     refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
   });
 
   useEffect(() => {
@@ -97,7 +99,7 @@ export function useReminderNotifications(enabled: boolean, userName: string = ''
     };
 
     check();
-    const id = setInterval(check, 60000);
+    const id = setInterval(check, 120000);
 
     // Motivational + productivity push tip every 30 min
     const motivationId = setInterval(() => {
@@ -141,7 +143,7 @@ export function useReminderNotifications(enabled: boolean, userName: string = ''
           try { new Notification('💡 Sal Vita', { body: tip, icon: '/favicon.ico' }); } catch (_) {}
         }
       } catch (_) {}
-    }, 30 * 60 * 1000);
+    }, 60 * 60 * 1000);
 
     return () => { clearInterval(id); clearInterval(motivationId); };
   }, [reminders, enabled, userName, isAdmin]);

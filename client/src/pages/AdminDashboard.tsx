@@ -201,7 +201,7 @@ export default function AdminDashboard() {
   const markDeletionReviewedMutation = trpc.tasks.markDeletionReviewed.useMutation({ onSuccess: () => refetchDeletionLogs() });
   const [showDeletionLogs, setShowDeletionLogs] = useState(false);
   const analyzeAttendantsMutation = trpc.ai.analyzeAttendants.useMutation();
-  const { data: tvPanelStatus, refetch: refetchTvPanelStatus } = trpc.tv.getPanelStatus.useQuery();
+  const { data: tvPanelStatus, refetch: refetchTvPanelStatus } = trpc.tv.getPanelStatus.useQuery(undefined, { staleTime: 120_000, refetchOnWindowFocus: false });
   const setTvPanelMutation = trpc.tv.setPanelStatus.useMutation({ onSuccess: () => refetchTvPanelStatus() });
   const { data: sessionData = [], refetch: refetchSessions, isFetching: sessionsFetching } = trpc.workSessions.allActiveToday.useQuery(undefined, { staleTime: 90_000 });
   const { data: freePlanData } = trpc.freePlan.overview.useQuery(undefined, { staleTime: 300_000 });
@@ -589,13 +589,13 @@ export default function AdminDashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Neon PostgreSQL — Principal */}
+            {/* Neon PostgreSQL — all metrics */}
             <div className={`rounded-xl border-2 p-4 ${
               freePlanData.neon.status === 'critical' ? 'border-red-300 bg-red-50'
                 : freePlanData.neon.status === 'warning' ? 'border-amber-300 bg-amber-50'
                 : 'border-emerald-200 bg-emerald-50/50'
             }`}>
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <Database size={16} className={freePlanData.neon.status === 'critical' ? 'text-red-600' : freePlanData.neon.status === 'warning' ? 'text-amber-600' : 'text-emerald-600'} />
                   <span className="font-semibold text-sm text-slate-800">Neon PostgreSQL</span>
@@ -607,23 +607,113 @@ export default function AdminDashboard() {
                     {freePlanData.neon.status === 'critical' ? 'ALERTA' : freePlanData.neon.status === 'warning' ? 'ATENÇÃO' : 'OK'}
                   </span>
                 </div>
-                <span className="text-lg font-bold text-slate-800">{freePlanData.neon.storagePercent}%</span>
+                {!freePlanData.neon.hasApiMetrics && (
+                  <span className="text-[9px] text-amber-500" title="Configure NEON_API_KEY e NEON_PROJECT_ID no Vercel para ver compute, rede e histórico">
+                    ⚠ API não configurada
+                  </span>
+                )}
               </div>
-              <div className="w-full h-3 rounded-full bg-white/80 overflow-hidden border">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    freePlanData.neon.storagePercent > 90 ? 'bg-red-500' : freePlanData.neon.storagePercent > 70 ? 'bg-amber-500' : 'bg-emerald-500'
-                  }`}
-                  style={{ width: `${Math.min(100, freePlanData.neon.storagePercent)}%` }}
-                />
+
+              {/* 4 metric cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                {/* Storage */}
+                <div className="rounded-lg bg-white/70 border border-slate-200 p-2.5 space-y-1.5">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Storage</span>
+                  <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        freePlanData.neon.storagePercent > 90 ? 'bg-red-500' : freePlanData.neon.storagePercent > 70 ? 'bg-amber-500' : 'bg-emerald-500'
+                      }`}
+                      style={{ width: `${Math.min(100, freePlanData.neon.storagePercent)}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    {freePlanData.neon.storagePretty} / {freePlanData.neon.storageLimitPretty}
+                  </p>
+                  <p className={`text-xs font-bold ${freePlanData.neon.storagePercent > 90 ? 'text-red-600' : freePlanData.neon.storagePercent > 70 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                    {freePlanData.neon.storagePercent}%
+                  </p>
+                </div>
+
+                {/* Compute */}
+                {freePlanData.neon.compute ? (
+                  <div className="rounded-lg bg-white/70 border border-slate-200 p-2.5 space-y-1.5">
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Compute</span>
+                    <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          freePlanData.neon.compute.percent > 90 ? 'bg-red-500' : freePlanData.neon.compute.percent > 70 ? 'bg-amber-500' : 'bg-emerald-500'
+                        }`}
+                        style={{ width: `${Math.min(100, freePlanData.neon.compute.percent)}%` }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-500">
+                      {freePlanData.neon.compute.pretty} / {freePlanData.neon.compute.hoursLimit}h
+                    </p>
+                    <p className={`text-xs font-bold ${freePlanData.neon.compute.percent > 90 ? 'text-red-600' : freePlanData.neon.compute.percent > 70 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                      {freePlanData.neon.compute.percent}%
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-lg bg-white/70 border border-dashed border-slate-200 p-2.5 flex items-center justify-center">
+                    <span className="text-[10px] text-slate-400">Compute —</span>
+                  </div>
+                )}
+
+                {/* Network Transfer */}
+                {freePlanData.neon.transfer ? (
+                  <div className={`rounded-lg bg-white/70 border p-2.5 space-y-1.5 ${freePlanData.neon.transfer.percent > 80 ? 'border-red-300 bg-red-50/80' : 'border-slate-200'}`}>
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Rede</span>
+                    <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          freePlanData.neon.transfer.percent > 90 ? 'bg-red-500' : freePlanData.neon.transfer.percent > 70 ? 'bg-amber-500' : 'bg-emerald-500'
+                        }`}
+                        style={{ width: `${Math.min(100, freePlanData.neon.transfer.percent)}%` }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-500">
+                      {freePlanData.neon.transfer.pretty} / {freePlanData.neon.transfer.prettyLimit}
+                    </p>
+                    <p className={`text-xs font-bold ${freePlanData.neon.transfer.percent > 90 ? 'text-red-600' : freePlanData.neon.transfer.percent > 70 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                      {freePlanData.neon.transfer.percent}%
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-lg bg-white/70 border border-dashed border-slate-200 p-2.5 flex items-center justify-center">
+                    <span className="text-[10px] text-slate-400">Rede —</span>
+                  </div>
+                )}
+
+                {/* History */}
+                {freePlanData.neon.history ? (
+                  <div className="rounded-lg bg-white/70 border border-slate-200 p-2.5 space-y-1.5">
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">History</span>
+                    <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          freePlanData.neon.history.percent > 90 ? 'bg-red-500' : freePlanData.neon.history.percent > 70 ? 'bg-amber-500' : 'bg-emerald-500'
+                        }`}
+                        style={{ width: `${Math.min(100, freePlanData.neon.history.percent)}%` }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-500">
+                      {freePlanData.neon.history.pretty} / {freePlanData.neon.history.prettyLimit}
+                    </p>
+                    <p className={`text-xs font-bold ${freePlanData.neon.history.percent > 90 ? 'text-red-600' : freePlanData.neon.history.percent > 70 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                      {freePlanData.neon.history.percent}%
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-lg bg-white/70 border border-dashed border-slate-200 p-2.5 flex items-center justify-center">
+                    <span className="text-[10px] text-slate-400">History —</span>
+                  </div>
+                )}
               </div>
-              <p className="text-xs text-slate-600 mt-1.5 font-medium">
-                {freePlanData.neon.storagePretty} usado de {freePlanData.neon.storageLimitPretty}
-              </p>
 
               {/* Tabelas — detalhamento */}
               {freePlanData.neon.tables && freePlanData.neon.tables.length > 0 && (
-                <div className="mt-3 space-y-1">
+                <div className="space-y-1">
                   <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Maiores tabelas</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                     {freePlanData.neon.tables.slice(0, 6).map((t: { name: string; sizePretty: string; sizeBytes: number; rows: number }) => (

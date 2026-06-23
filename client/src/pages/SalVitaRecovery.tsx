@@ -121,7 +121,7 @@ function LoginForm() {
 
 /* ── Tab 1: Carrinhos Abandonados ────────────────────────── */
 function WaStatusBadge() {
-  const { data, isLoading, refetch } = trpc.recovery.waStatus.useQuery(undefined, { refetchInterval: 300000, retry: 0 });
+  const { data, isLoading, refetch } = trpc.recovery.waStatus.useQuery(undefined, { refetchInterval: 600000, staleTime: 300000, retry: 0, refetchOnWindowFocus: false });
   const reconnectMut = trpc.recovery.waReconnect.useMutation({
     onSuccess: (d: any) => {
       toast.success(d.ok ? `WA reconectado via ${d.path}` : 'WA: nenhum endpoint de reconexão disponível');
@@ -155,8 +155,8 @@ function WaStatusBadge() {
 }
 
 function AbandonedTab() {
-  const { data, isLoading, refetch } = trpc.recovery.listAbandoned.useQuery(undefined, { refetchInterval: 300000, retry: 0 });
-  const couponsQ = trpc.recovery.listCoupons.useQuery();
+  const { data, isLoading, refetch } = trpc.recovery.listAbandoned.useQuery(undefined, { refetchInterval: 600000, staleTime: 300000, retry: 0, refetchOnWindowFocus: false });
+  const couponsQ = trpc.recovery.listCoupons.useQuery(undefined, { staleTime: 300000, refetchOnWindowFocus: false });
   const [selectedCoupon, setSelectedCoupon] = useState<string>('');
   const [aiPreviews, setAiPreviews] = useState<Record<number, string>>({});
   const [waFallbacks, setWaFallbacks] = useState<Record<number, string>>({});
@@ -379,8 +379,8 @@ function AbandonedTab() {
 
 /* ── Tab 2: Pedidos Não Pagos ────────────────────────────── */
 function UnpaidTab() {
-  const { data, isLoading, refetch } = trpc.recovery.listUnpaid.useQuery(undefined, { refetchInterval: 300000, retry: 0 });
-  const templatesQ = trpc.recovery.listTemplates.useQuery();
+  const { data, isLoading, refetch } = trpc.recovery.listUnpaid.useQuery(undefined, { refetchInterval: 600000, staleTime: 300000, retry: 0, refetchOnWindowFocus: false });
+  const templatesQ = trpc.recovery.listTemplates.useQuery(undefined, { staleTime: 300000, refetchOnWindowFocus: false });
   const [selectedTemplates, setSelectedTemplates] = useState<Record<number, number>>({});
   const [previews, setPreviews] = useState<Record<number, string>>({});
   const [aiMsgMap, setAiMsgMap] = useState<Record<number, { message: string; reasoning: string }>>({});
@@ -503,7 +503,7 @@ const VARS_HINT: Record<string, string[]> = {
 };
 
 function TemplatesTab() {
-  const { data, isLoading, refetch } = trpc.recovery.listTemplates.useQuery();
+  const { data, isLoading, refetch } = trpc.recovery.listTemplates.useQuery(undefined, { staleTime: 300000, refetchOnWindowFocus: false });
   const saveMut = trpc.recovery.saveTemplate.useMutation({
     onSuccess: () => { toast.success('Template salvo!'); setEditing(null); refetch(); },
     onError: (e) => toast.error(e.message),
@@ -689,7 +689,7 @@ function renderTplPreview(body: string, type: string): string {
 
 /* ── Tab 5: Cupons ───────────────────────────────────────── */
 function CouponsTab() {
-  const { data, isLoading, refetch } = trpc.recovery.listCoupons.useQuery();
+  const { data, isLoading, refetch } = trpc.recovery.listCoupons.useQuery(undefined, { staleTime: 300000, refetchOnWindowFocus: false });
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     code: '',
@@ -875,7 +875,7 @@ function CouponsTab() {
 
 /* ── Tab 4: Automações ───────────────────────────────────── */
 function AutomationTab() {
-  const { data, isLoading, refetch } = trpc.recovery.listAutomationRuns.useQuery(undefined, { refetchInterval: 300000, retry: 0 });
+  const { data, isLoading, refetch } = trpc.recovery.listAutomationRuns.useQuery(undefined, { refetchInterval: 600000, staleTime: 300000, retry: 0, refetchOnWindowFocus: false });
   const jobMut = trpc.recovery.runAutomationJob.useMutation({
     onSuccess: (d: any) => { toast.success(`Job: ${d.sent} enviados, ${d.cancelled} cancelados, ${d.failed} falhas`); refetch(); },
     onError: (e) => toast.error(e.message),
@@ -962,8 +962,8 @@ function AutomationTab() {
 
 /* ── Tab 5: IA Recuperação ───────────────────────────────── */
 function AiTab() {
-  const abandonedQ = trpc.recovery.listAbandoned.useQuery();
-  const unpaidQ = trpc.recovery.listUnpaid.useQuery();
+  const abandonedQ = trpc.recovery.listAbandoned.useQuery(undefined, { staleTime: 300000, refetchOnWindowFocus: false });
+  const unpaidQ = trpc.recovery.listUnpaid.useQuery(undefined, { staleTime: 300000, refetchOnWindowFocus: false });
   const aiMut = trpc.recovery.aiRecovery.useMutation({
     onError: (e) => toast.error(e.message),
   });

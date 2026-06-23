@@ -17,9 +17,9 @@ export function invalidateSellersCache() { cacheInvalidate('sellers:'); }
 export const sellersRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     if (ctx.user.role === 'admin') {
-      return cached('sellers:admin', 60_000, () => db.select().from(sellers).orderBy(sellers.name));
+      return cached('sellers:admin', 120_000, () => db.select().from(sellers).orderBy(sellers.name));
     }
-    return cached('sellers:user', 60_000, () =>
+    return cached('sellers:user', 120_000, () =>
       db.select({ id: sellers.id, name: sellers.name, status: sellers.status })
         .from(sellers).where(eq(sellers.status, 'active')).orderBy(sellers.name)
     );

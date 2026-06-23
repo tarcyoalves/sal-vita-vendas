@@ -33,8 +33,9 @@ export default function ActiveTimer() {
 
   const { data: session, refetch } = trpc.workSessions.current.useQuery(undefined, {
     enabled: !!user,
-    refetchInterval: 60_000,
-    staleTime: 30_000,
+    refetchInterval: 180_000,
+    staleTime: 120_000,
+    refetchOnWindowFocus: false,
   });
 
   const pauseMut  = trpc.workSessions.pause.useMutation();
