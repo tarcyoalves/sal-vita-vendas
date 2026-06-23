@@ -1032,9 +1032,14 @@ export const emailMarketingRouter = router({
 
   // ── Contatos (agregação de todos os e-mails do sistema) ─────────────────
   contactStats: adminProcedure.query(async () => {
-    const [leadRow] = await db.select({ cnt: sql<number>`COUNT(DISTINCT lower(trim(${tasks.email})))::int` })
+    // Leads confirmados (entram na base de contatos) vs. pendentes de confirmação.
+    const [confirmedRow] = await db.select({ cnt: sql<number>`COUNT(DISTINCT lower(trim(${tasks.email})))::int` })
       .from(tasks)
-      .where(and(isNotNull(tasks.email), ne(tasks.email, '')));
+      .where(and(isNotNull(tasks.email), ne(tasks.email, ''), eq(tasks.emailConfirmed, true)));
+
+    const [unconfirmedRow] = await db.select({ cnt: sql<number>`COUNT(DISTINCT lower(trim(${tasks.email})))::int` })
+      .from(tasks)
+      .where(and(isNotNull(tasks.email), ne(tasks.email, ''), eq(tasks.emailConfirmed, false)));
 
     const [clientRow] = await db.select({ cnt: sql<number>`COUNT(DISTINCT lower(trim(${clients.email})))::int` })
       .from(clients)
@@ -1051,19 +1056,15 @@ export const emailMarketingRouter = router({
       totalSuppressed += Number(r.cnt);
     }
 
-    const [confirmedRow] = await db.select({ cnt: count() })
-      .from(tasks)
-      .where(and(isNotNull(tasks.email), ne(tasks.email, ''), eq(tasks.emailConfirmed, true)));
-
     return {
-      totalLeads: Number(leadRow?.cnt ?? 0),
+      confirmedLeads: Number(confirmedRow?.cnt ?? 0),
+      unconfirmedLeads: Number(unconfirmedRow?.cnt ?? 0),
       totalClients: Number(clientRow?.cnt ?? 0),
       totalSuppressed,
       unsubscribed: suppMap['unsubscribe'] ?? 0,
       bounced: suppMap['bounce'] ?? 0,
       complained: suppMap['complaint'] ?? 0,
       manualSuppressed: suppMap['manual'] ?? 0,
-      confirmedEmails: Number(confirmedRow?.cnt ?? 0),
     };
   }),
 
@@ -1075,7 +1076,6 @@ export const emailMarketingRouter = router({
       suppressionReason: z.string().optional(),
       assignedTo: z.string().optional(),
       tags: z.array(z.string()).optional(),
-      confirmed: z.enum(['all', 'yes', 'no']).optional().default('all'),
       limit: z.number().int().min(1).max(200).optional().default(50),
       offset: z.number().int().min(0).optional().default(0),
     }))
@@ -1098,13 +1098,13 @@ export const emailMarketingRouter = router({
       const contactMap = new Map<string, ContactRow>();
 
       if (input.source !== 'clients') {
-        const conds: any[] = [isNotNull(tasks.email), ne(tasks.email, '')];
+        // Só leads com e-mail confirmado manualmente pelo atendente entram na base
+        // de contatos — e-mails de importação não são confiáveis até serem revisados.
+        const conds: any[] = [isNotNull(tasks.email), ne(tasks.email, ''), eq(tasks.emailConfirmed, true)];
         if (input.assignedTo) conds.push(eq(tasks.assignedTo, input.assignedTo));
         if (input.tags && input.tags.length > 0) {
           conds.push(sql`${tasks.tags} && ARRAY[${sql.join(input.tags.map(t => sql`${t}`), sql`, `)}]::text[]`);
         }
-        if (input.confirmed === 'yes') conds.push(eq(tasks.emailConfirmed, true));
-        if (input.confirmed === 'no') conds.push(eq(tasks.emailConfirmed, false));
         if (input.search) {
           const s = `%${input.search.toLowerCase()}%`;
           conds.push(sql`(lower(${tasks.email}) LIKE ${s} OR lower(${tasks.title}) LIKE ${s})`);

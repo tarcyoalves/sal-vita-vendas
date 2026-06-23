@@ -226,9 +226,6 @@ export default function EmailMarketing() {
           <TabsTrigger value="contacts" className={TAB_TRIGGER_CLASS}>
             <Contact size={14} /> Contatos
           </TabsTrigger>
-          <TabsTrigger value="suppressions" className={TAB_TRIGGER_CLASS}>
-            <MailX size={14} /> Descadastrados
-          </TabsTrigger>
           <TabsTrigger value="export" className={TAB_TRIGGER_CLASS}>
             <Download size={14} /> Exportar
           </TabsTrigger>
@@ -254,9 +251,6 @@ export default function EmailMarketing() {
         </TabsContent>
         <TabsContent value="contacts" className="mt-4">
           <ContactsTab />
-        </TabsContent>
-        <TabsContent value="suppressions" className="mt-4">
-          <SuppressionsTab />
         </TabsContent>
         <TabsContent value="export" className="mt-4">
           <ExportTab />
@@ -1061,81 +1055,6 @@ function TemplatesTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-// ── Descadastrados ─────────────────────────────────────────────────────────
-
-function SuppressionsTab() {
-  const utils = trpc.useUtils();
-  const { data: suppressions, isLoading } = trpc.emailMarketing.listSuppressions.useQuery();
-  const addMutation = trpc.emailMarketing.addSuppression.useMutation();
-  const [email, setEmail] = useState("");
-
-  const handleAdd = async () => {
-    if (!email.trim()) return;
-    try {
-      await addMutation.mutateAsync({ email: email.trim(), reason: "manual" });
-      toast.success("E-mail adicionado à lista de descadastrados");
-      setEmail("");
-      utils.emailMarketing.listSuppressions.invalidate();
-    } catch (e: any) {
-      toast.error(e?.message ?? "Erro ao adicionar e-mail");
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MailX size={16} className="text-blue-900" /> Adicionar e-mail manualmente
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex gap-2">
-          <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="email@exemplo.com" type="email" />
-          <Button className="bg-blue-900 hover:bg-blue-800 shadow-sm flex-shrink-0" onClick={handleAdd} disabled={addMutation.isPending}>
-            <Plus size={16} className="mr-1" /> Adicionar
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MailX size={16} className="text-blue-900" /> Descadastrados <span className="text-slate-400 font-normal">({suppressions?.length ?? 0})</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <p className="text-sm text-slate-500">Carregando...</p>
-          ) : suppressions && suppressions.length > 0 ? (
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full text-sm min-w-[420px]">
-                <thead className={THEAD_CLASS}>
-                  <tr>
-                    <th className={TH_CLASS}>E-mail</th>
-                    <th className={TH_CLASS}>Motivo</th>
-                    <th className={TH_CLASS}>Data</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {suppressions.map(s => (
-                    <tr key={s.id} className={TR_CLASS}>
-                      <td className="px-3 py-2.5">{s.email}</td>
-                      <td className="px-3 py-2.5 text-slate-500 text-xs">{s.reason}</td>
-                      <td className="px-3 py-2.5 text-slate-500 text-xs">{new Date(s.createdAt).toLocaleDateString('pt-BR')}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <EmptyState icon={MailX} message="Nenhum e-mail descadastrado por aqui." />
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -2164,11 +2083,29 @@ function ContactsTab() {
   const [status, setStatus] = useState<"all" | "active" | "suppressed">("all");
   const [assignedTo, setAssignedTo] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [confirmed, setConfirmed] = useState<"all" | "yes" | "no">("all");
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
 
   const removeSuppMutation = trpc.emailMarketing.removeSuppression.useMutation();
+  const addSuppMutation = trpc.emailMarketing.addSuppression.useMutation();
+
+  const [showAddSupp, setShowAddSupp] = useState(false);
+  const [suppEmail, setSuppEmail] = useState("");
+
+  const handleAddSuppression = async () => {
+    if (!suppEmail.trim()) return;
+    try {
+      await addSuppMutation.mutateAsync({ email: suppEmail.trim(), reason: "manual" });
+      toast.success("E-mail descadastrado com sucesso");
+      setSuppEmail("");
+      setShowAddSupp(false);
+      utils.emailMarketing.listContacts.invalidate();
+      utils.emailMarketing.contactStats.invalidate();
+      utils.emailMarketing.listSuppressions.invalidate();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao descadastrar e-mail");
+    }
+  };
 
   const [searchTimer, setSearchTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
   const handleSearch = (v: string) => {
@@ -2183,7 +2120,6 @@ function ContactsTab() {
     status,
     assignedTo: assignedTo || undefined,
     tags: selectedTags.length > 0 ? selectedTags : undefined,
-    confirmed,
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
   });
@@ -2207,10 +2143,10 @@ function ContactsTab() {
     <div className="space-y-4">
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-          <StatTile icon={Mail} label="Leads" value={stats.totalLeads} accent="bg-blue-100 text-blue-900" />
+          <StatTile icon={CheckCircle} label="Leads confirmados" value={stats.confirmedLeads} accent="bg-emerald-100 text-emerald-700" />
           <StatTile icon={Users} label="Clientes" value={stats.totalClients} accent="bg-slate-100 text-slate-600" />
-          <StatTile icon={CheckCircle} label="Confirmados" value={stats.confirmedEmails} accent="bg-emerald-100 text-emerald-700" />
-          <StatTile icon={MailX} label="Descadastrados" value={stats.unsubscribed} accent="bg-amber-100 text-amber-700" />
+          <StatTile icon={XCircle} label="Aguard. confirmação" value={stats.unconfirmedLeads} accent="bg-amber-100 text-amber-700" />
+          <StatTile icon={MailX} label="Descadastrados" value={stats.unsubscribed} accent="bg-orange-100 text-orange-600" />
           <StatTile icon={AlertTriangle} label="Bounced" value={stats.bounced} accent="bg-red-100 text-red-600" />
           <StatTile icon={XCircle} label="Reclamações" value={stats.complained} accent="bg-rose-100 text-rose-600" />
         </div>
@@ -2218,10 +2154,20 @@ function ContactsTab() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2">
-            <Contact size={16} className="text-blue-900" /> Contatos
-            <span className="text-slate-400 font-normal">({contactsData?.total ?? 0})</span>
-          </CardTitle>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <CardTitle className="flex items-center gap-2">
+              <Contact size={16} className="text-blue-900" /> Contatos
+              <span className="text-slate-400 font-normal">({contactsData?.total ?? 0})</span>
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-red-200 text-red-600 hover:bg-red-50 shadow-sm"
+              onClick={() => setShowAddSupp(true)}
+            >
+              <MailX size={14} className="mr-1" /> Descadastrar e-mail
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-col gap-2.5">
@@ -2250,15 +2196,6 @@ function ContactsTab() {
                   <SelectItem value="all">Todos status</SelectItem>
                   <SelectItem value="active">Ativos</SelectItem>
                   <SelectItem value="suppressed">Suprimidos</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Select value={confirmed} onValueChange={(v: any) => { setConfirmed(v); setPage(0); }}>
-                <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Confirmação</SelectItem>
-                  <SelectItem value="yes">Confirmados</SelectItem>
-                  <SelectItem value="no">Não confirmados</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -2314,7 +2251,6 @@ function ContactsTab() {
                       <th className={TH_CLASS}>Status</th>
                       <th className={TH_CLASS}>Tags</th>
                       <th className={TH_CLASS}>Atendente</th>
-                      <th className={TH_CLASS}>Confirmado</th>
                       <th className={TH_CLASS}>Ações</th>
                     </tr>
                   </thead>
@@ -2353,13 +2289,6 @@ function ContactsTab() {
                         </td>
                         <td className="px-3 py-2.5 text-xs text-slate-500">{c.assignedTo ?? "--"}</td>
                         <td className="px-3 py-2.5">
-                          {c.emailConfirmed ? (
-                            <CheckCircle size={16} className="text-emerald-600" />
-                          ) : (
-                            <XCircle size={16} className="text-slate-300" />
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5">
                           {c.suppressionReason && (
                             <Button
                               size="sm"
@@ -2394,10 +2323,45 @@ function ContactsTab() {
               )}
             </>
           ) : (
-            <EmptyState icon={Contact} message={search || selectedTags.length > 0 || status !== 'all' ? "Nenhum contato encontrado com esses filtros." : "Nenhum contato com e-mail cadastrado no sistema."} />
+            <EmptyState icon={Contact} message={search || selectedTags.length > 0 || status !== 'all' ? "Nenhum contato encontrado com esses filtros." : "Nenhum contato confirmado ainda. Os e-mails aparecem aqui após serem confirmados pelo atendente na tela de Tarefas."} />
           )}
         </CardContent>
       </Card>
+
+      {/* Add suppression dialog */}
+      <Dialog open={showAddSupp} onOpenChange={(open) => { setShowAddSupp(open); if (!open) setSuppEmail(""); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-100 text-red-600"><MailX size={16} /></span>
+              Descadastrar e-mail
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+              <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+              <p>O e-mail será adicionado à lista de descadastrados e não receberá mais nenhum disparo (campanhas, sequências ou disparo rápido).</p>
+            </div>
+            <div>
+              <Label>E-mail</Label>
+              <Input
+                value={suppEmail}
+                onChange={e => setSuppEmail(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleAddSuppression(); }}
+                placeholder="email@exemplo.com"
+                type="email"
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button className="flex-1 bg-red-600 hover:bg-red-700" onClick={handleAddSuppression} disabled={addSuppMutation.isPending || !suppEmail.trim()}>
+              {addSuppMutation.isPending ? "Descadastrando..." : "Descadastrar"}
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => { setShowAddSupp(false); setSuppEmail(""); }}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
