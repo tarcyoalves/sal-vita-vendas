@@ -6,11 +6,8 @@
  *
  * Multi-account waterfall: Resend accounts are read from env vars
  * RESEND_MKT_API_KEY_1 / RESEND_MKT_FROM_1, _2, _3, ... Brevo accounts from
- * BREVO_API_KEY_1 / BREVO_FROM_1, _2, ... (Brevo accounts are appended after
- * the Resend ones, so they act as overflow once Resend is exhausted). Each
- * account has its own daily counter persisted in email_send_counters (DB —
- * survives cold starts). When an account hits RESEND_MKT_DAILY_LIMIT, the
- * next one in the waterfall is used.
+ * BREVO_API_KEY_1 / BREVO_FROM_1, _2, ... (appended after Resend as overflow).
+ * Each account has its own daily counter persisted in email_send_counters.
  */
 
 import crypto from 'crypto';
