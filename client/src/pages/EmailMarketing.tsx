@@ -23,7 +23,7 @@ import {
 import { Checkbox } from "../components/ui/checkbox";
 import {
   Mail, Plus, Send, Trash2, Eye, Pencil, Workflow, Zap, Tag, BarChart3, Users, Pause, Play, X, Download,
-  LayoutTemplate, MailX, Filter, Sparkles, Inbox,
+  LayoutTemplate, MailX, Filter, Sparkles, Inbox, Megaphone, Paperclip, FileText,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -273,12 +273,101 @@ function CampaignsTab() {
   const createMutation = trpc.emailMarketing.createCampaign.useMutation();
   const deleteMutation = trpc.emailMarketing.deleteCampaign.useMutation();
   const processBatchMutation = trpc.emailMarketing.processBatch.useMutation();
+  const broadcastMutation = trpc.emailMarketing.sendBroadcast.useMutation();
 
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({
     name: "", subject: "", htmlBody: "",
     source: "leads" as Source, assignedTo: "",
   });
+
+  // ── Disparo Rápido (Broadcast) ──
+  const [showBroadcast, setShowBroadcast] = useState(false);
+  const [bcast, setBcast] = useState({
+    name: "", subject: "", htmlBody: "", replyTo: "", recipientsRaw: "",
+  });
+  const [bcastFiles, setBcastFiles] = useState<{ filename: string; content: string; size: number }[]>([]);
+  const resetBroadcast = () => {
+    setBcast({ name: "", subject: "", htmlBody: "", replyTo: "", recipientsRaw: "" });
+    setBcastFiles([]);
+  };
+
+  // Parse emails pasted in any separator (comma, semicolon, space, newline).
+  const parsedEmails = useMemo(() => {
+    const tokens = bcast.recipientsRaw.split(/[\s,;]+/).map(t => t.trim()).filter(Boolean);
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const valid: string[] = [];
+    const invalid: string[] = [];
+    const seen = new Set<string>();
+    for (const t of tokens) {
+      const lower = t.toLowerCase();
+      if (re.test(t)) {
+        if (!seen.has(lower)) { seen.add(lower); valid.push(lower); }
+      } else {
+        invalid.push(t);
+      }
+    }
+    return { valid, invalid };
+  }, [bcast.recipientsRaw]);
+
+  const totalAttachBytes = bcastFiles.reduce((s, f) => s + f.size, 0);
+
+  const handleApplyTemplateBroadcast = (templateId: string) => {
+    const t = templates?.find(t => t.id === Number(templateId));
+    if (!t) return;
+    setBcast(b => ({ ...b, subject: t.subject, htmlBody: t.htmlBody, name: b.name || t.name }));
+  };
+
+  const handleAddFiles = async (files: FileList | null) => {
+    if (!files) return;
+    const next = [...bcastFiles];
+    for (const file of Array.from(files)) {
+      // Read as base64 (strip the "data:...;base64," prefix).
+      const content = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.includes(",") ? result.split(",")[1] : result);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      next.push({ filename: file.name, content, size: file.size });
+    }
+    setBcastFiles(next);
+  };
+
+  const handleSendBroadcast = async () => {
+    if (!bcast.subject.trim() || !bcast.htmlBody.trim()) {
+      toast.error("Preencha assunto e corpo do e-mail");
+      return;
+    }
+    if (parsedEmails.valid.length === 0) {
+      toast.error("Adicione ao menos um e-mail válido");
+      return;
+    }
+    if (totalAttachBytes > 3_500_000) {
+      toast.error("Anexos muito grandes (máx. ~3,5 MB no total)");
+      return;
+    }
+    try {
+      const res = await broadcastMutation.mutateAsync({
+        name: bcast.name || undefined,
+        subject: bcast.subject,
+        htmlBody: bcast.htmlBody,
+        replyTo: bcast.replyTo || undefined,
+        recipients: parsedEmails.valid.map(email => ({ email })),
+        attachments: bcastFiles.length > 0 ? bcastFiles.map(f => ({ filename: f.filename, content: f.content })) : undefined,
+      });
+      toast.success(`Disparo criado: ${res.recipientCount} destinatário(s). Enviando...`);
+      setShowBroadcast(false);
+      resetBroadcast();
+      await utils.emailMarketing.listCampaigns.invalidate();
+      await handleSend(res.campaignId);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao enviar disparo");
+    }
+  };
 
   const { data: preview } = trpc.emailMarketing.audiencePreview.useQuery(
     { source: form.source, assignedTo: form.assignedTo || undefined },
@@ -351,7 +440,14 @@ function CampaignsTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button
+          variant="outline"
+          className="border-blue-200 text-blue-900 hover:bg-blue-50 shadow-sm"
+          onClick={() => setShowBroadcast(true)}
+        >
+          <Megaphone size={16} className="mr-1" /> Disparo Rápido
+        </Button>
         <Button className="bg-blue-900 hover:bg-blue-800 shadow-sm" onClick={() => setShowCreate(true)}>
           <Plus size={16} className="mr-1" /> Nova Campanha
         </Button>
@@ -382,7 +478,16 @@ function CampaignsTab() {
                 <tbody>
                   {campaigns.map(c => (
                     <tr key={c.id} className={TR_CLASS}>
-                      <td className="px-3 py-2.5 font-medium text-slate-700">{c.name}</td>
+                      <td className="px-3 py-2.5 font-medium text-slate-700">
+                        <span className="flex items-center gap-1.5">
+                          {c.name}
+                          {c.isBroadcast && (
+                            <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 gap-1">
+                              <Megaphone size={11} /> Disparo
+                            </Badge>
+                          )}
+                        </span>
+                      </td>
                       <td className="px-3 py-2.5">
                         <Badge variant="outline" className={STATUS_BADGE_CLASS[c.status] ?? ""}>
                           {STATUS_LABELS[c.status] ?? c.status}
@@ -522,6 +627,126 @@ function CampaignsTab() {
               {createMutation.isPending ? "Criando..." : "Criar Campanha"}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => { setShowCreate(false); resetForm(); }}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Disparo Rápido (Broadcast) dialog */}
+      <Dialog open={showBroadcast} onOpenChange={(open) => { setShowBroadcast(open); if (!open) resetBroadcast(); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-700"><Megaphone size={16} /></span>
+              Disparo Rápido
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              <Sparkles size={16} className="mt-0.5 flex-shrink-0" />
+              <p>Envie um e-mail avulso para uma lista colada manualmente, com anexos opcionais. Ideal para comunicados pontuais sem montar uma campanha completa.</p>
+            </div>
+
+            <div>
+              <Label>Destinatários</Label>
+              <Textarea
+                rows={3}
+                value={bcast.recipientsRaw}
+                onChange={e => setBcast(b => ({ ...b, recipientsRaw: e.target.value }))}
+                placeholder="Cole os e-mails separados por vírgula, espaço ou quebra de linha"
+              />
+              <div className="flex flex-wrap items-center gap-2 mt-1 text-xs">
+                <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                  {parsedEmails.valid.length} válido(s)
+                </Badge>
+                {parsedEmails.invalid.length > 0 && (
+                  <Badge variant="outline" className="border-red-200 bg-red-50 text-red-600">
+                    {parsedEmails.invalid.length} inválido(s): {parsedEmails.invalid.slice(0, 3).join(", ")}{parsedEmails.invalid.length > 3 ? "…" : ""}
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label>Nome do disparo (opcional)</Label>
+                <Input value={bcast.name} onChange={e => setBcast(b => ({ ...b, name: e.target.value }))} placeholder="Ex: Comunicado de feriado" />
+              </div>
+              <div>
+                <Label>Responder para (opcional)</Label>
+                <Input value={bcast.replyTo} onChange={e => setBcast(b => ({ ...b, replyTo: e.target.value }))} placeholder="contato@salvitarn.com.br" />
+              </div>
+            </div>
+
+            {templates && templates.length > 0 && (
+              <div>
+                <Label>Aplicar template (opcional)</Label>
+                <Select onValueChange={handleApplyTemplateBroadcast}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Selecionar template..." /></SelectTrigger>
+                  <SelectContent>
+                    {templates.map(t => (
+                      <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div>
+              <Label>Assunto</Label>
+              <Input value={bcast.subject} onChange={e => setBcast(b => ({ ...b, subject: e.target.value }))} placeholder="Ex: Comunicado importante" />
+            </div>
+
+            <div>
+              <Label>Corpo do e-mail (HTML)</Label>
+              <Textarea
+                rows={7}
+                value={bcast.htmlBody}
+                onChange={e => setBcast(b => ({ ...b, htmlBody: e.target.value }))}
+                placeholder="<p>Olá, ...</p>"
+              />
+              <p className="text-xs text-gray-500 mt-1">{TEMPLATE_HINT}</p>
+            </div>
+
+            <div>
+              <Label>Anexos (opcional)</Label>
+              <label className="mt-1 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500 hover:border-blue-300 hover:bg-blue-50/50 transition">
+                <Paperclip size={16} />
+                <span>Clique para anexar arquivos</span>
+                <input type="file" multiple className="hidden" onChange={e => { handleAddFiles(e.target.files); e.target.value = ""; }} />
+              </label>
+              {bcastFiles.length > 0 && (
+                <div className="mt-2 space-y-1.5">
+                  {bcastFiles.map((f, i) => (
+                    <div key={i} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm">
+                      <FileText size={14} className="flex-shrink-0 text-blue-700" />
+                      <span className="flex-1 truncate text-slate-700">{f.filename}</span>
+                      <span className="text-xs text-slate-400">{(f.size / 1024).toFixed(0)} KB</span>
+                      <button
+                        type="button"
+                        className="text-slate-400 hover:text-red-600"
+                        onClick={() => setBcastFiles(files => files.filter((_, idx) => idx !== i))}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  <p className={`text-xs ${totalAttachBytes > 3_500_000 ? "text-red-600 font-medium" : "text-slate-400"}`}>
+                    Total: {(totalAttachBytes / 1024 / 1024).toFixed(2)} MB / 3,5 MB
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button
+              className="flex-1 bg-blue-900 hover:bg-blue-800"
+              onClick={handleSendBroadcast}
+              disabled={broadcastMutation.isPending || sendingId !== null}
+            >
+              <Send size={16} className="mr-1" />
+              {broadcastMutation.isPending ? "Enviando..." : `Enviar para ${parsedEmails.valid.length}`}
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => { setShowBroadcast(false); resetBroadcast(); }}>Cancelar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -248,6 +248,80 @@ export const emailMarketingRouter = router({
       return campaign;
     }),
 
+  // ── Disparo Rápido (Broadcast) ──────────────────────────────────────────────
+  // Envio avulso: lista manual de e-mails + anexos opcionais. Cria uma campanha
+  // (is_broadcast) e seus destinatários; o envio reusa o motor processBatch.
+  sendBroadcast: adminProcedure
+    .input(z.object({
+      name: z.string().max(200).optional(),
+      subject: z.string().min(1).max(300),
+      htmlBody: z.string().min(1),
+      replyTo: z.string().email().optional(),
+      recipients: z.array(z.object({
+        email: z.string().email(),
+        name: z.string().optional(),
+      })).min(1).max(2000),
+      attachments: z.array(z.object({
+        filename: z.string().min(1).max(255),
+        content: z.string().min(1), // base64
+      })).max(10).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      // Anexos: respeita o teto de body da plataforma (Vercel ~4.5MB). base64
+      // infla ~33%, então limitamos a soma do conteúdo a ~3.5MB.
+      if (input.attachments && input.attachments.length > 0) {
+        const totalBase64 = input.attachments.reduce((sum, a) => sum + a.content.length, 0);
+        if (totalBase64 > 3_500_000) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Anexos muito grandes (máx. ~3,5 MB no total). Reduza ou envie um link.' });
+        }
+      }
+
+      // Dedupe por e-mail (case-insensitive) e remove descadastrados.
+      const suppressed = await db.select({ email: emailSuppressions.email }).from(emailSuppressions);
+      const suppressedSet = new Set(suppressed.map(s => s.email.toLowerCase()));
+
+      const seen = new Set<string>();
+      const clean: { email: string; name?: string }[] = [];
+      let skippedSuppressed = 0;
+      let skippedDuplicate = 0;
+      for (const r of input.recipients) {
+        const email = r.email.toLowerCase().trim();
+        if (seen.has(email)) { skippedDuplicate++; continue; }
+        seen.add(email);
+        if (suppressedSet.has(email)) { skippedSuppressed++; continue; }
+        clean.push({ email, name: r.name?.trim() || undefined });
+      }
+
+      if (clean.length === 0) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Nenhum destinatário válido (todos duplicados ou descadastrados).' });
+      }
+
+      const [campaign] = await db.insert(emailCampaigns).values({
+        name: input.name?.trim() || `Disparo ${new Date().toLocaleDateString('pt-BR')}`,
+        subject: input.subject,
+        htmlBody: input.htmlBody,
+        isBroadcast: true,
+        attachments: input.attachments && input.attachments.length > 0 ? input.attachments : null,
+        totalRecipients: clean.length,
+        createdByUserId: ctx.user.id,
+      }).returning();
+
+      await db.insert(emailCampaignRecipients).values(clean.map(r => ({
+        campaignId: campaign.id,
+        email: r.email,
+        name: r.name,
+        replyTo: input.replyTo,
+        unsubToken: crypto.randomUUID(),
+      })));
+
+      return {
+        campaignId: campaign.id,
+        recipientCount: clean.length,
+        skippedSuppressed,
+        skippedDuplicate,
+      };
+    }),
+
   // Used by the Tasks page: add selected tasks (leads) directly to a draft campaign.
   addRecipientsFromTasks: adminProcedure
     .input(z.object({ campaignId: z.number(), taskIds: z.array(z.number()).min(1) }))
@@ -364,6 +438,9 @@ export const emailMarketingRouter = router({
         await db.update(emailCampaignRecipients).set({ status: 'skipped', error: 'suppressed' }).where(eq(emailCampaignRecipients.id, r.id));
       }
 
+      // Broadcasts may carry file attachments (base64) — applied to every message.
+      const campaignAttachments = (campaign.attachments as { filename: string; content: string }[] | null) ?? undefined;
+
       let sentNow = 0, failedNow = 0;
       if (toSend.length > 0) {
         const signatureMap = await buildSignatureMap();
@@ -376,6 +453,7 @@ export const emailMarketingRouter = router({
             html: layout(renderTemplate(campaign.htmlBody, { nome: r.name ?? '', unsubscribe: unsubUrl }), unsubUrl, signatureHtml),
             replyTo: r.replyTo ?? undefined,
             unsubToken: r.unsubToken,
+            attachments: campaignAttachments,
           };
         });
 
@@ -406,7 +484,8 @@ export const emailMarketingRouter = router({
 
       const remaining = Math.max(0, pendingCount - sentNow - failedNow - toSkip.length);
       if (remaining === 0) {
-        await db.update(emailCampaigns).set({ status: 'sent', updatedAt: new Date() }).where(eq(emailCampaigns.id, input.campaignId));
+        // Clear stored attachments once finished to keep the DB lean.
+        await db.update(emailCampaigns).set({ status: 'sent', attachments: null, updatedAt: new Date() }).where(eq(emailCampaigns.id, input.campaignId));
       }
 
       return { done: remaining === 0, sentNow, failedNow, remaining, account: picked.account.key };

@@ -79,12 +79,18 @@ export async function pickAccount(): Promise<{ account: MarketingAccount; remain
   return null;
 }
 
+export interface EmailAttachment {
+  filename: string;
+  content: string; // base64-encoded file content
+}
+
 export interface BatchMessage {
   to: string;
   subject: string;
   html: string;
   replyTo?: string;
   unsubToken: string;
+  attachments?: EmailAttachment[];
 }
 
 /** Strips HTML tags/entities down to plain text — used as the `text` alternative in sendBatch (improves deliverability). */
@@ -242,6 +248,10 @@ async function sendBatchResend(account: MarketingAccount, messages: BatchMessage
     html: m.html,
     text: renderPlainText(m.html),
     ...(m.replyTo ? { reply_to: [m.replyTo] } : {}),
+    // Resend attachments: base64 string in `content`, file name in `filename`.
+    ...(m.attachments && m.attachments.length > 0
+      ? { attachments: m.attachments.map(a => ({ filename: a.filename, content: a.content })) }
+      : {}),
     headers: {
       'List-Unsubscribe': `<${unsubBase}/api/unsubscribe?t=${m.unsubToken}>`,
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
@@ -310,6 +320,12 @@ async function sendBatchBrevo(account: MarketingAccount, messages: BatchMessage[
     },
   }));
 
+  // Brevo attachments: `name` + base64 `content`. Same for all recipients of
+  // this broadcast, so taken from the first message (all share the same set).
+  const brevoAttachment = messages[0].attachments && messages[0].attachments.length > 0
+    ? messages[0].attachments.map(a => ({ name: a.filename, content: a.content }))
+    : undefined;
+
   try {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), 15_000);
@@ -327,6 +343,7 @@ async function sendBatchBrevo(account: MarketingAccount, messages: BatchMessage[
         subject: messages[0].subject,
         htmlContent: messages[0].html,
         to: [{ email: messages[0].to }],
+        ...(brevoAttachment ? { attachment: brevoAttachment } : {}),
         messageVersions,
       }),
       signal: ac.signal,

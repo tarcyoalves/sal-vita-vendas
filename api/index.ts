@@ -474,7 +474,9 @@ app.post('/api/resend-webhook', resendWebhookLimiter, express.raw({ type: 'appli
   }
 });
 
-app.use(express.json({ limit: '2mb' }));
+// 4mb to accommodate Disparo Rápido (broadcast) attachments sent as base64.
+// (Vercel's serverless request body cap is ~4.5MB; we validate ~3.5MB in the router.)
+app.use(express.json({ limit: '4mb' }));
 
 // ── Rate limiters ─────────────────────────────────────────────────────────────
 const authLimiter = rateLimit({

@@ -387,6 +387,10 @@ export async function ensureTablesExist() {
   await sql`CREATE INDEX IF NOT EXISTS task_deletion_logs_cnpj_idx  ON task_deletion_logs (cnpj)  WHERE cnpj  IS NOT NULL`;
   await sql`CREATE INDEX IF NOT EXISTS task_deletion_logs_phone_idx ON task_deletion_logs (phone) WHERE phone IS NOT NULL`;
 
+  // ── Disparo Rápido (Broadcast) — envio avulso com lista manual + anexos ────
+  await sql`ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS is_broadcast BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql`ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS attachments  JSONB`;
+
   // ── Confirmação manual de e-mail — só e-mails confirmados entram em disparo ─
   // Default FALSE: todos os e-mails existentes (importados) começam não-confirmados.
   await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS email_confirmed    BOOLEAN NOT NULL DEFAULT FALSE`;

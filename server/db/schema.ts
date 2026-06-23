@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, boolean, timestamp, numeric } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, boolean, timestamp, numeric, jsonb } from 'drizzle-orm/pg-core';
 
 // Generic key/value store for small global toggles (e.g. TV panel on/off).
 export const appSettings = pgTable('app_settings', {
@@ -280,6 +280,11 @@ export const emailCampaigns = pgTable('email_campaigns', {
   sentCount: integer('sent_count').default(0).notNull(),
   failedCount: integer('failed_count').default(0).notNull(),
   createdByUserId: integer('created_by_user_id').notNull(),
+  // Disparo Rápido (Broadcast): envio avulso com lista manual de e-mails + anexos.
+  isBroadcast: boolean('is_broadcast').notNull().default(false),
+  // Anexos em base64: [{ filename, content }]. Limpos (null) após o envio concluir
+  // para não inchar o banco. Só usados durante o envio de broadcasts.
+  attachments: jsonb('attachments'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
