@@ -75,7 +75,8 @@ function Router() {
       <Route path="/admin/email-marketing">
         <AppShell><EmailMarketing /></AppShell>
       </Route>
-      <Route path="/tv" component={TvDashboard} />
+      {/* TV dashboard desativado para economizar network transfer Neon */}
+      {/* <Route path="/tv" component={TvDashboard} /> */}
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>

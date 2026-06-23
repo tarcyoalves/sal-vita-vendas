@@ -14,7 +14,6 @@ import {
   ChevronRight,
   TrendingUp,
   KeyRound,
-  Tv,
   Mail,
 } from "lucide-react";
 import { useAuth } from "../_core/hooks/useAuth";
@@ -64,7 +63,6 @@ const NAV_ITEMS: NavItem[] = [
       { label: "Chat IA", path: "/ai-chat", icon: <MessageSquare size={16} /> },
       { label: "Configurações", path: "/ai-settings", icon: <Settings size={16} /> },
       { label: "Base de Conhecimento", path: "/knowledge-base", icon: <BookOpen size={16} /> },
-      { label: "Painel TV", path: "/tv", icon: <Tv size={16} />, external: true },
     ],
   },
   {
