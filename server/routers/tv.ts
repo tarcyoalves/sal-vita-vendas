@@ -18,7 +18,7 @@ export const tvRouter = router({
   // Public + cheap: the TV kiosk polls this on its own, lighter, interval to
   // decide whether to load (and keep polling) the heavy `dashboard` query.
   getPanelStatus: publicProcedure.query(async () => {
-    return cached('tv:panelStatus', 30_000, async () => {
+    return cached('tv:panelStatus', 60_000, async () => {
       const [row] = await db.select({ value: appSettings.value })
         .from(appSettings).where(eq(appSettings.key, TV_PANEL_SETTING_KEY));
       return { enabled: row ? row.value === 'true' : true };
@@ -36,7 +36,7 @@ export const tvRouter = router({
     }),
 
   dashboard: protectedProcedure.query(async () => {
-    return cached('tv:dashboard', 60_000, async () => tvDashboardQuery());
+    return cached('tv:dashboard', 120_000, async () => tvDashboardQuery());
   }),
 });
 

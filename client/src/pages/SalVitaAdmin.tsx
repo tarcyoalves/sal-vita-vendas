@@ -404,7 +404,7 @@ function OrdersPanel() {
   const [filter, setFilter] = useState<FilterTab>('all');
   const [showAi, setShowAi] = useState(false);
   const prevMaxId = useRef(0);
-  const { data: orders = [], isLoading, refetch } = trpc.shipping.listOrders.useQuery(undefined, { refetchInterval: 60_000, staleTime: 30_000, refetchIntervalInBackground: false });
+  const { data: orders = [], isLoading, refetch } = trpc.shipping.listOrders.useQuery(undefined, { refetchInterval: 300_000, staleTime: 120_000, refetchIntervalInBackground: false, refetchOnWindowFocus: false });
   const logoutMut = trpc.auth.logout.useMutation();
 
   // New order notification
