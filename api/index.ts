@@ -434,28 +434,36 @@ const resendWebhookLimiter = rateLimit({
 
 app.post('/api/resend-webhook', resendWebhookLimiter, express.raw({ type: 'application/json' }), async (req, res) => {
   try {
-    const rawBody = (req.body as Buffer).toString('utf8');
+    const rawBody = Buffer.isBuffer(req.body)
+      ? (req.body as Buffer).toString('utf8')
+      : typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
     const valid = verifyResendWebhook(rawBody, {
       'svix-id': req.headers['svix-id'] as string | undefined,
       'svix-timestamp': req.headers['svix-timestamp'] as string | undefined,
       'svix-signature': req.headers['svix-signature'] as string | undefined,
     });
     if (!valid) {
+      console.warn('[resend-webhook] Signature verification failed');
       res.status(401).json({ error: 'Invalid signature' });
       return;
     }
 
-    let payload: { type?: string; data?: { email_id?: string; to?: string[] } };
+    let payload: { type?: string; data?: Record<string, unknown> };
     try { payload = JSON.parse(rawBody); } catch { res.status(200).json({ ok: true }); return; }
 
     const eventType = payload.type ?? '';
-    const messageId = payload.data?.email_id ?? '';
-    const recipientEmail = (payload.data?.to?.[0] ?? '').toLowerCase().trim();
+    const messageId = String(payload.data?.email_id ?? '');
+    const toField = payload.data?.to;
+    const recipientEmail = (
+      Array.isArray(toField) ? String(toField[0] ?? '') : String(toField ?? '')
+    ).toLowerCase().trim();
 
-    // Always respond 200 fast — Resend retries on non-2xx.
-    res.status(200).json({ ok: true });
+    console.log(`[resend-webhook] type=${eventType} msgId=${messageId} to=${recipientEmail}`);
 
-    if (!recipientEmail) return;
+    if (!recipientEmail) {
+      res.status(200).json({ ok: true });
+      return;
+    }
 
     switch (eventType) {
       case 'email.bounced':
@@ -468,24 +476,24 @@ app.post('/api/resend-webhook', resendWebhookLimiter, express.raw({ type: 'appli
       case 'email.delivered':
       case 'email.opened':
       case 'email.clicked': {
-        if (!messageId) return;
+        if (!messageId) break;
         const shortType = eventType.replace('email.', '');
         await db.insert(emailEvents).values({
           messageId,
           recipientEmail,
           eventType: shortType,
         });
-        // E-mail Marketing Fase 3 — lead scoring: flag the linked task as a hot
-        // lead on click (opens only bump lastEngagementAt). The 200 response
-        // was already sent above; this never throws (try/catch inside).
         if (shortType === 'opened' || shortType === 'clicked') {
           await flagEngagementByMessageId(messageId, shortType as 'opened' | 'clicked');
         }
+        console.log(`[resend-webhook] stored ${shortType} for ${recipientEmail}`);
         break;
       }
       default:
         break;
     }
+
+    res.status(200).json({ ok: true });
   } catch (err) {
     console.error('[resend-webhook] error:', err);
     if (!res.headersSent) res.status(200).json({ ok: true });
