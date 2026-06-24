@@ -41,6 +41,7 @@ export const sellers = pgTable('sellers', {
   emailSignatureHtml: text('email_signature_html'),
   emailSignatureImageUrl: text('email_signature_image_url'),
   emailSignatureEnabled: boolean('email_signature_enabled').default(true).notNull(),
+  emailMarketingEnabled: boolean('email_marketing_enabled').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

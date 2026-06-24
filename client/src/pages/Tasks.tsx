@@ -250,10 +250,16 @@ export default function Tasks() {
     setFormData(f => ({ ...f, tags: f.tags.filter(t => t !== tag) }));
   };
 
+  // ── E-mail Marketing: permission check ──────────────────────────────────────
+  const canEmailMarketing = isAdmin || (sellerProfile?.emailMarketingEnabled ?? false);
+
   // ── E-mail Marketing: enroll task(s) in a sequence ──────────────────────────
   const [sequencePickerTaskIds, setSequencePickerTaskIds] = useState<number[] | null>(null);
-  const { data: emailSequences } = trpc.emailMarketing.listSequences.useQuery(undefined, { enabled: sequencePickerTaskIds !== null });
-  const activeSequences = (emailSequences ?? []).filter(s => s.active);
+  const { data: emailSequencesAdmin } = trpc.emailMarketing.listSequences.useQuery(undefined, { enabled: isAdmin && sequencePickerTaskIds !== null });
+  const { data: emailSequencesAtt } = trpc.emailMarketing.listSequencesForAttendant.useQuery(undefined, { enabled: !isAdmin && canEmailMarketing && sequencePickerTaskIds !== null });
+  const activeSequences = isAdmin
+    ? (emailSequencesAdmin ?? []).filter(s => s.active)
+    : (emailSequencesAtt ?? []);
   const enrollInSequenceMutation = trpc.emailMarketing.enrollTasksInSequence.useMutation();
   const [selectedSequenceId, setSelectedSequenceId] = useState<number | null>(null);
 
@@ -275,6 +281,75 @@ export default function Tasks() {
       setSelectedSequenceId(null);
     } catch (e: any) {
       toast.error(e?.message ?? "Erro ao inscrever na sequência");
+    }
+  };
+
+  // ── E-mail Marketing: quick-send for attendants ─────────────────────────────
+  const [quickSendTask, setQuickSendTask] = useState<Task | null>(null);
+  const [quickSendForm, setQuickSendForm] = useState({ subject: '', htmlBody: '', recipientsRaw: '' });
+  const [quickSendFiles, setQuickSendFiles] = useState<{ filename: string; content: string; size: number }[]>([]);
+  const { data: attTemplates } = trpc.emailMarketing.listTemplatesForAttendant.useQuery(undefined, { enabled: canEmailMarketing && !isAdmin && quickSendTask !== null });
+  const attendantBroadcastMutation = trpc.emailMarketing.attendantBroadcast.useMutation();
+  const attendantProcessMutation = trpc.emailMarketing.processBatch.useMutation();
+
+  const handleQuickSendFile = (files: FileList | null) => {
+    if (!files) return;
+    const newFiles: typeof quickSendFiles = [];
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      if (f.size > 3_500_000) { toast.error(`${f.name} muito grande`); continue; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(',')[1] ?? '';
+        setQuickSendFiles(prev => [...prev, { filename: f.name, content: base64, size: f.size }]);
+      };
+      reader.readAsDataURL(f);
+    }
+  };
+
+  const handleQuickSendApplyTemplate = (tplId: string) => {
+    const tpl = attTemplates?.find(t => t.id === Number(tplId));
+    if (!tpl) return;
+    setQuickSendForm(f => ({ ...f, subject: tpl.subject, htmlBody: tpl.htmlBody }));
+    if (tpl.attachments && Array.isArray(tpl.attachments)) {
+      setQuickSendFiles((tpl.attachments as { filename: string; content: string }[]).map(a => ({ ...a, size: Math.ceil(a.content.length * 0.75) })));
+    }
+  };
+
+  const handleQuickSend = async () => {
+    if (!quickSendTask?.email || !quickSendForm.subject.trim() || !quickSendForm.htmlBody.trim()) {
+      toast.error('Preencha assunto e corpo do e-mail'); return;
+    }
+    const extraEmails = quickSendForm.recipientsRaw
+      .split(/[,;\s\n]+/)
+      .map(e => e.trim().toLowerCase())
+      .filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+    const recipients = [
+      { email: quickSendTask.email.toLowerCase().trim(), name: quickSendTask.title.split(' - ')[0]?.trim() },
+      ...extraEmails.map(e => ({ email: e })),
+    ];
+    const seen = new Set<string>();
+    const unique = recipients.filter(r => { if (seen.has(r.email)) return false; seen.add(r.email); return true; });
+
+    try {
+      const res = await attendantBroadcastMutation.mutateAsync({
+        subject: quickSendForm.subject,
+        htmlBody: quickSendForm.htmlBody,
+        recipients: unique,
+        attachments: quickSendFiles.length > 0 ? quickSendFiles.map(f => ({ filename: f.filename, content: f.content })) : undefined,
+      });
+      // Process batch (send the emails)
+      let done = false;
+      while (!done) {
+        const batch = await attendantProcessMutation.mutateAsync({ campaignId: res.campaignId });
+        done = batch.done;
+      }
+      toast.success(`✅ E-mail enviado para ${res.recipientCount} destinatário(s)`);
+      setQuickSendTask(null);
+      setQuickSendForm({ subject: '', htmlBody: '', recipientsRaw: '' });
+      setQuickSendFiles([]);
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Erro ao enviar e-mail');
     }
   };
 
@@ -1043,6 +1118,9 @@ export default function Tasks() {
               <Button size="sm" variant="destructive" onClick={handleBulkDelete}>🗑️ Deletar ({selectedTasks.size})</Button>
             </>
           )}
+          {!isAdmin && canEmailMarketing && selectedTasks.size > 0 && (
+            <Button size="sm" variant="outline" onClick={() => setSequencePickerTaskIds(Array.from(selectedTasks))}>🔁 Sequência ({selectedTasks.size})</Button>
+          )}
           {isAdmin && <Button onClick={() => setShowImport(!showImport)} variant="outline" size="sm">📤 CSV</Button>}
           <Button onClick={handleOpenNewTask} size="sm">➕ Nova</Button>
         </div>
@@ -1447,8 +1525,11 @@ export default function Tasks() {
                     {isAdmin && task.email && (
                       <Button size="sm" variant="outline" onClick={() => setCampaignPickerTaskIds([task.id])}>📧 Campanha</Button>
                     )}
-                    {isAdmin && task.email && (
+                    {canEmailMarketing && task.email && (
                       <Button size="sm" variant="outline" onClick={() => setSequencePickerTaskIds([task.id])}>🔁 Sequência</Button>
+                    )}
+                    {canEmailMarketing && !isAdmin && task.email && (
+                      <Button size="sm" variant="outline" className="text-amber-700 border-amber-300 hover:bg-amber-50" onClick={() => setQuickSendTask(task)}>📨 Disparo Rápido</Button>
                     )}
                     <Button size="sm" variant="outline" className="text-purple-700 border-purple-300 hover:bg-purple-50" onClick={() => handleAiSuggest(task)} disabled={loadingSuggestion}>
                       {loadingSuggestion && aiSuggestion === null ? "⏳ Gerando..." : "🤖 Sugestão IA"}
@@ -1656,15 +1737,14 @@ export default function Tasks() {
                     <RadioGroupItem value={String(s.id)} className="mt-0.5" />
                     <div>
                       <p className="font-medium text-sm">{s.name}</p>
-                      <p className="text-xs text-gray-500">{s.stepCount} passo(s) · {s.activeEnrollments} inscrito(s) ativo(s)</p>
+                      {'stepCount' in s && <p className="text-xs text-gray-500">{(s as any).stepCount} passo(s) · {(s as any).activeEnrollments} inscrito(s) ativo(s)</p>}
                     </div>
                   </label>
                 ))}
               </RadioGroup>
             ) : (
               <p className="text-sm text-gray-500">
-                Nenhuma sequência ativa. Crie uma sequência na aba{' '}
-                <a href="/admin/email-marketing" className="text-blue-600 underline">E-mail Marketing</a>.
+                Nenhuma sequência ativa. Peça ao administrador para criar sequências.
               </p>
             )}
           </div>
@@ -1678,6 +1758,97 @@ export default function Tasks() {
               {enrollInSequenceMutation.isPending ? "Inscrevendo..." : "✅ Inscrever"}
             </Button>
             <Button type="button" variant="outline" className="flex-1" onClick={() => { setSequencePickerTaskIds(null); setSelectedSequenceId(null); }}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Attendant quick-send dialog */}
+      <Dialog open={quickSendTask !== null} onOpenChange={(open) => { if (!open) { setQuickSendTask(null); setQuickSendForm({ subject: '', htmlBody: '', recipientsRaw: '' }); setQuickSendFiles([]); } }}>
+        <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>📨 Disparo Rápido — {quickSendTask?.title.split(' - ')[0]}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              <span className="mt-0.5 flex-shrink-0">✨</span>
+              <p>Envie um e-mail diretamente para <strong>{quickSendTask?.email}</strong>. O e-mail será enviado com sua assinatura pessoal.</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Destinatários extras (opcional)</label>
+              <textarea
+                rows={2}
+                value={quickSendForm.recipientsRaw}
+                onChange={e => setQuickSendForm(f => ({ ...f, recipientsRaw: e.target.value }))}
+                placeholder="Outros e-mails separados por vírgula (opcional)"
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+              />
+            </div>
+
+            {attTemplates && attTemplates.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Aplicar template (opcional)</label>
+                <select
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                  value=""
+                  onChange={e => { if (e.target.value) handleQuickSendApplyTemplate(e.target.value); }}
+                >
+                  <option value="">Selecionar template...</option>
+                  {attTemplates.map(t => <option key={t.id} value={String(t.id)}>{t.name}</option>)}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Assunto *</label>
+              <input
+                type="text"
+                value={quickSendForm.subject}
+                onChange={e => setQuickSendForm(f => ({ ...f, subject: e.target.value }))}
+                placeholder="Ex: Proposta Comercial"
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Corpo do e-mail *</label>
+              <textarea
+                rows={8}
+                value={quickSendForm.htmlBody}
+                onChange={e => setQuickSendForm(f => ({ ...f, htmlBody: e.target.value }))}
+                placeholder="Olá {nome}, ..."
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+              />
+              <p className="text-xs text-gray-500 mt-1">Use {'{nome}'} para personalizar com o nome do destinatário.</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Anexos (opcional)</label>
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-500 hover:border-blue-300 hover:bg-blue-50/50 transition">
+                📎 Clique para anexar arquivos
+                <input type="file" multiple className="hidden" onChange={e => { handleQuickSendFile(e.target.files); e.target.value = ""; }} />
+              </label>
+              {quickSendFiles.length > 0 && (
+                <div className="mt-2 space-y-1.5">
+                  {quickSendFiles.map((f, i) => (
+                    <div key={i} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm">
+                      <span className="flex-1 truncate text-slate-700">{f.filename}</span>
+                      <span className="text-xs text-slate-400">{(f.size / 1024).toFixed(0)} KB</span>
+                      <button type="button" className="text-slate-400 hover:text-red-600" onClick={() => setQuickSendFiles(files => files.filter((_, idx) => idx !== i))}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button
+              type="button"
+              className="flex-1 bg-blue-900 hover:bg-blue-800"
+              onClick={handleQuickSend}
+              disabled={attendantBroadcastMutation.isPending || attendantProcessMutation.isPending}
+            >
+              {attendantBroadcastMutation.isPending || attendantProcessMutation.isPending ? "Enviando..." : "📨 Enviar"}
+            </Button>
+            <Button type="button" variant="outline" className="flex-1" onClick={() => { setQuickSendTask(null); setQuickSendForm({ subject: '', htmlBody: '', recipientsRaw: '' }); setQuickSendFiles([]); }}>Cancelar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

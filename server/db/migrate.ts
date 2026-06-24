@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-06-24e';
+const SCHEMA_VERSION = '2026-06-24f';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -384,6 +384,7 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE sellers   ADD COLUMN IF NOT EXISTS email_signature_html       TEXT`;
   await sql`ALTER TABLE sellers   ADD COLUMN IF NOT EXISTS email_signature_image_url  TEXT`;
   await sql`ALTER TABLE sellers   ADD COLUMN IF NOT EXISTS email_signature_enabled    BOOLEAN NOT NULL DEFAULT true`;
+  await sql`ALTER TABLE sellers   ADD COLUMN IF NOT EXISTS email_marketing_enabled   BOOLEAN NOT NULL DEFAULT false`;
 
   // ── E-mail Marketing Fase 3 — sequências condicionais, recorrentes, lead scoring ──
   await sql`ALTER TABLE email_sequence_steps ADD COLUMN IF NOT EXISTS send_condition TEXT NOT NULL DEFAULT 'always'`;

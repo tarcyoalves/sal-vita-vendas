@@ -96,6 +96,7 @@ export const sellersRouter = router({
       emailSignatureHtml: z.string().max(10000).optional(),
       emailSignatureImageUrl: z.string().max(1000).optional(),
       emailSignatureEnabled: z.boolean().optional(),
+      emailMarketingEnabled: z.boolean().optional(),
     }))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
@@ -141,6 +142,7 @@ export const sellersRouter = router({
         emailSignatureHtml: sellers.emailSignatureHtml,
         emailSignatureImageUrl: sellers.emailSignatureImageUrl,
         emailSignatureEnabled: sellers.emailSignatureEnabled,
+        emailMarketingEnabled: sellers.emailMarketingEnabled,
         createdAt: sellers.createdAt,
         updatedAt: sellers.updatedAt,
         userRole: users.role,

@@ -171,6 +171,13 @@ export const emailMarketingRouter = router({
     return db.select().from(emailTemplates).orderBy(emailTemplates.name);
   }),
 
+  listTemplatesForAttendant: protectedProcedure.query(async ({ ctx }) => {
+    const [seller] = await db.select({ emk: sellers.emailMarketingEnabled }).from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
+    if (ctx.user.role !== 'admin' && !seller?.emk) return [];
+    return db.select({ id: emailTemplates.id, name: emailTemplates.name, slug: emailTemplates.slug, subject: emailTemplates.subject, htmlBody: emailTemplates.htmlBody, attachments: emailTemplates.attachments })
+      .from(emailTemplates).where(eq(emailTemplates.active, true)).orderBy(emailTemplates.name);
+  }),
+
   upsertTemplate: adminProcedure
     .input(z.object({
       id: z.number().optional(),
@@ -348,6 +355,66 @@ export const emailMarketingRouter = router({
       };
     }),
 
+  // ── Disparo Rápido para atendentes ──────────────────────────────────────
+  attendantBroadcast: protectedProcedure
+    .input(z.object({
+      subject: z.string().min(1).max(300),
+      htmlBody: z.string().min(1),
+      recipients: z.array(z.object({
+        email: z.string().email(),
+        name: z.string().optional(),
+      })).min(1).max(50),
+      attachments: z.array(z.object({
+        filename: z.string().min(1).max(255),
+        content: z.string().min(1),
+      })).max(5).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [seller] = await db.select().from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
+      if (ctx.user.role !== 'admin') {
+        if (!seller?.emailMarketingEnabled) throw new TRPCError({ code: 'FORBIDDEN', message: 'Você não tem permissão para Email Marketing' });
+      }
+      if (!seller) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Atendente não encontrado. Peça ao admin para configurar seu cadastro.' });
+
+      input.htmlBody = sanitizeCampaignHtml(input.htmlBody);
+      if (input.attachments && input.attachments.length > 0) {
+        const totalBase64 = input.attachments.reduce((sum, a) => sum + a.content.length, 0);
+        if (totalBase64 > 3_500_000) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Anexos muito grandes (máx. ~3,5 MB).' });
+      }
+
+      const suppressed = await db.select({ email: emailSuppressions.email }).from(emailSuppressions);
+      const suppressedSet = new Set(suppressed.map(s => s.email.toLowerCase()));
+      const seen = new Set<string>();
+      const clean: { email: string; name?: string }[] = [];
+      for (const r of input.recipients) {
+        const email = r.email.toLowerCase().trim();
+        if (seen.has(email) || suppressedSet.has(email)) continue;
+        seen.add(email);
+        clean.push({ email, name: r.name?.trim() || undefined });
+      }
+      if (clean.length === 0) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Nenhum destinatário válido.' });
+
+      const [campaign] = await db.insert(emailCampaigns).values({
+        name: `Disparo ${seller.name} — ${new Date().toLocaleDateString('pt-BR')}`,
+        subject: input.subject,
+        htmlBody: input.htmlBody,
+        isBroadcast: true,
+        attachments: input.attachments?.length ? input.attachments : null,
+        totalRecipients: clean.length,
+        createdByUserId: ctx.user.id,
+      }).returning();
+
+      await db.insert(emailCampaignRecipients).values(clean.map(r => ({
+        campaignId: campaign.id,
+        email: r.email,
+        name: r.name,
+        replyTo: seller.email,
+        unsubToken: crypto.randomUUID(),
+      })));
+
+      return { campaignId: campaign.id, recipientCount: clean.length };
+    }),
+
   // Used by the Tasks page: add selected tasks (leads) directly to a draft campaign.
   addRecipientsFromTasks: adminProcedure
     .input(z.object({ campaignId: z.number(), taskIds: z.array(z.number()).min(1) }))
@@ -428,9 +495,13 @@ export const emailMarketingRouter = router({
   // Sends ONE batch (≤100, bounded by the active account's remaining daily
   // quota) and returns. The frontend calls this in a loop until done:true —
   // this keeps each call well under Vercel's serverless timeout.
-  processBatch: adminProcedure
+  processBatch: protectedProcedure
     .input(z.object({ campaignId: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      if (ctx.user.role !== 'admin') {
+        const [c] = await db.select({ createdByUserId: emailCampaigns.createdByUserId }).from(emailCampaigns).where(eq(emailCampaigns.id, input.campaignId));
+        if (!c || c.createdByUserId !== ctx.user.id) throw new TRPCError({ code: 'FORBIDDEN', message: 'Sem permissão' });
+      }
       const [campaign] = await db.select().from(emailCampaigns).where(eq(emailCampaigns.id, input.campaignId));
       if (!campaign) throw new TRPCError({ code: 'NOT_FOUND', message: 'Campanha não encontrada' });
 
@@ -656,10 +727,23 @@ export const emailMarketingRouter = router({
       return { ok: true };
     }),
 
+  // ── Sequências visíveis para atendentes (leitura simplificada) ─────────
+  listSequencesForAttendant: protectedProcedure.query(async ({ ctx }) => {
+    const [seller] = await db.select({ emk: sellers.emailMarketingEnabled }).from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
+    if (ctx.user.role !== 'admin' && !seller?.emk) return [];
+    const rows = await db.select({ id: emailSequences.id, name: emailSequences.name, active: emailSequences.active })
+      .from(emailSequences).where(eq(emailSequences.active, true)).orderBy(emailSequences.name);
+    return rows;
+  }),
+
   // ── Inscrição manual de leads ────────────────────────────────────────────
-  enrollTasksInSequence: adminProcedure
+  enrollTasksInSequence: protectedProcedure
     .input(z.object({ sequenceId: z.number(), taskIds: z.array(z.number()).min(1) }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      if (ctx.user.role !== 'admin') {
+        const [seller] = await db.select({ emk: sellers.emailMarketingEnabled }).from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
+        if (!seller?.emk) throw new TRPCError({ code: 'FORBIDDEN', message: 'Você não tem permissão para Email Marketing' });
+      }
       const [sequence] = await db.select().from(emailSequences).where(eq(emailSequences.id, input.sequenceId));
       if (!sequence) throw new TRPCError({ code: 'NOT_FOUND', message: 'Sequência não encontrada' });
 

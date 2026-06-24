@@ -31,6 +31,7 @@ interface Attendant {
   emailSignatureHtml?: string | null;
   emailSignatureImageUrl?: string | null;
   emailSignatureEnabled?: boolean | null;
+  emailMarketingEnabled?: boolean | null;
   createdAt: Date;
   updatedAt: Date;
   userRole?: string | null;
@@ -52,6 +53,7 @@ export default function Attendants() {
     dailyGoal: 100,
     workHoursGoal: 8,
     status: "active" as "active" | "inactive",
+    emailMarketingEnabled: false,
   });
 
   const [resetInfo, setResetInfo] = useState<{ name: string; email: string; password: string } | null>(null);
@@ -105,6 +107,7 @@ export default function Attendants() {
       dailyGoal: effectiveDailyGoal(attendant.dailyGoal),
       workHoursGoal: attendant.workHoursGoal ?? 8,
       status: (attendant.status ?? "active") as "active" | "inactive",
+      emailMarketingEnabled: attendant.emailMarketingEnabled ?? false,
     });
   };
 
@@ -120,6 +123,7 @@ export default function Attendants() {
         dailyGoal: editFormData.dailyGoal,
         workHoursGoal: editFormData.workHoursGoal,
         status: editFormData.status,
+        emailMarketingEnabled: editFormData.emailMarketingEnabled,
       });
       toast.success("Atendente atualizado!");
       setEditingAttendant(null);
@@ -514,6 +518,11 @@ export default function Attendants() {
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${attendant.userRole === "admin" ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>
                           {attendant.userRole === "admin" ? "👑 Admin" : "👤 Atendente"}
                         </span>
+                        {attendant.emailMarketingEnabled && (
+                          <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                            ✉️ Email Mkt
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-col gap-2">
@@ -601,6 +610,20 @@ export default function Attendants() {
                     <option value="inactive">Inativo</option>
                   </select>
                 </div>
+              </div>
+              <div>
+                <label className="flex items-center gap-2 text-sm cursor-pointer select-none px-3 py-2 border rounded-lg hover:bg-gray-50">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={editFormData.emailMarketingEnabled}
+                    onChange={(e) => setEditFormData({ ...editFormData, emailMarketingEnabled: e.target.checked })}
+                  />
+                  Liberar Email Marketing (inscrever em sequências + disparo rápido)
+                </label>
+                <p className="text-xs text-gray-500 mt-1 ml-1">
+                  Quando ativo, o atendente poderá inscrever seus leads em sequências e enviar e-mails rápidos usando sua própria assinatura.
+                </p>
               </div>
               <DialogFooter className="flex gap-2 pt-2">
                 <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700" disabled={updateMutation.isPending}>

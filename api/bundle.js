@@ -42715,6 +42715,7 @@ var init_schema2 = __esm({
       emailSignatureHtml: text("email_signature_html"),
       emailSignatureImageUrl: text("email_signature_image_url"),
       emailSignatureEnabled: boolean("email_signature_enabled").default(true).notNull(),
+      emailMarketingEnabled: boolean("email_marketing_enabled").default(false).notNull(),
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
@@ -66716,7 +66717,8 @@ var sellersRouter = router({
     status: external_exports.enum(["active", "inactive"]).optional(),
     emailSignatureHtml: external_exports.string().max(1e4).optional(),
     emailSignatureImageUrl: external_exports.string().max(1e3).optional(),
-    emailSignatureEnabled: external_exports.boolean().optional()
+    emailSignatureEnabled: external_exports.boolean().optional(),
+    emailMarketingEnabled: external_exports.boolean().optional()
   })).mutation(async ({ input }) => {
     const { id, ...data } = input;
     if (data.name) {
@@ -66756,6 +66758,7 @@ var sellersRouter = router({
       emailSignatureHtml: sellers.emailSignatureHtml,
       emailSignatureImageUrl: sellers.emailSignatureImageUrl,
       emailSignatureEnabled: sellers.emailSignatureEnabled,
+      emailMarketingEnabled: sellers.emailMarketingEnabled,
       createdAt: sellers.createdAt,
       updatedAt: sellers.updatedAt,
       userRole: users.role
@@ -70494,6 +70497,12 @@ var emailMarketingRouter = router({
   listTemplates: adminProcedure.query(async () => {
     return db.select().from(emailTemplates).orderBy(emailTemplates.name);
   }),
+  listTemplatesForAttendant: protectedProcedure.query(async ({ ctx }) => {
+    const [seller] = await db.select({ emk: sellers.emailMarketingEnabled }).from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
+    if (ctx.user.role !== "admin" && !seller?.emk)
+      return [];
+    return db.select({ id: emailTemplates.id, name: emailTemplates.name, slug: emailTemplates.slug, subject: emailTemplates.subject, htmlBody: emailTemplates.htmlBody, attachments: emailTemplates.attachments }).from(emailTemplates).where(eq(emailTemplates.active, true)).orderBy(emailTemplates.name);
+  }),
   upsertTemplate: adminProcedure.input(external_exports.object({
     id: external_exports.number().optional(),
     slug: external_exports.string().min(1).max(100),
@@ -70647,6 +70656,63 @@ var emailMarketingRouter = router({
       skippedDuplicate
     };
   }),
+  // ── Disparo Rápido para atendentes ──────────────────────────────────────
+  attendantBroadcast: protectedProcedure.input(external_exports.object({
+    subject: external_exports.string().min(1).max(300),
+    htmlBody: external_exports.string().min(1),
+    recipients: external_exports.array(external_exports.object({
+      email: external_exports.string().email(),
+      name: external_exports.string().optional()
+    })).min(1).max(50),
+    attachments: external_exports.array(external_exports.object({
+      filename: external_exports.string().min(1).max(255),
+      content: external_exports.string().min(1)
+    })).max(5).optional()
+  })).mutation(async ({ input, ctx }) => {
+    const [seller] = await db.select().from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
+    if (ctx.user.role !== "admin") {
+      if (!seller?.emailMarketingEnabled)
+        throw new TRPCError({ code: "FORBIDDEN", message: "Voc\xEA n\xE3o tem permiss\xE3o para Email Marketing" });
+    }
+    if (!seller)
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Atendente n\xE3o encontrado. Pe\xE7a ao admin para configurar seu cadastro." });
+    input.htmlBody = sanitizeCampaignHtml(input.htmlBody);
+    if (input.attachments && input.attachments.length > 0) {
+      const totalBase64 = input.attachments.reduce((sum2, a2) => sum2 + a2.content.length, 0);
+      if (totalBase64 > 35e5)
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Anexos muito grandes (m\xE1x. ~3,5 MB)." });
+    }
+    const suppressed = await db.select({ email: emailSuppressions.email }).from(emailSuppressions);
+    const suppressedSet = new Set(suppressed.map((s) => s.email.toLowerCase()));
+    const seen = /* @__PURE__ */ new Set();
+    const clean = [];
+    for (const r of input.recipients) {
+      const email = r.email.toLowerCase().trim();
+      if (seen.has(email) || suppressedSet.has(email))
+        continue;
+      seen.add(email);
+      clean.push({ email, name: r.name?.trim() || void 0 });
+    }
+    if (clean.length === 0)
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum destinat\xE1rio v\xE1lido." });
+    const [campaign] = await db.insert(emailCampaigns).values({
+      name: `Disparo ${seller.name} \u2014 ${(/* @__PURE__ */ new Date()).toLocaleDateString("pt-BR")}`,
+      subject: input.subject,
+      htmlBody: input.htmlBody,
+      isBroadcast: true,
+      attachments: input.attachments?.length ? input.attachments : null,
+      totalRecipients: clean.length,
+      createdByUserId: ctx.user.id
+    }).returning();
+    await db.insert(emailCampaignRecipients).values(clean.map((r) => ({
+      campaignId: campaign.id,
+      email: r.email,
+      name: r.name,
+      replyTo: seller.email,
+      unsubToken: import_crypto5.default.randomUUID()
+    })));
+    return { campaignId: campaign.id, recipientCount: clean.length };
+  }),
   // Used by the Tasks page: add selected tasks (leads) directly to a draft campaign.
   addRecipientsFromTasks: adminProcedure.input(external_exports.object({ campaignId: external_exports.number(), taskIds: external_exports.array(external_exports.number()).min(1) })).mutation(async ({ input }) => {
     const [campaign] = await db.select().from(emailCampaigns).where(eq(emailCampaigns.id, input.campaignId));
@@ -70712,7 +70778,12 @@ var emailMarketingRouter = router({
   // Sends ONE batch (≤100, bounded by the active account's remaining daily
   // quota) and returns. The frontend calls this in a loop until done:true —
   // this keeps each call well under Vercel's serverless timeout.
-  processBatch: adminProcedure.input(external_exports.object({ campaignId: external_exports.number() })).mutation(async ({ input }) => {
+  processBatch: protectedProcedure.input(external_exports.object({ campaignId: external_exports.number() })).mutation(async ({ input, ctx }) => {
+    if (ctx.user.role !== "admin") {
+      const [c] = await db.select({ createdByUserId: emailCampaigns.createdByUserId }).from(emailCampaigns).where(eq(emailCampaigns.id, input.campaignId));
+      if (!c || c.createdByUserId !== ctx.user.id)
+        throw new TRPCError({ code: "FORBIDDEN", message: "Sem permiss\xE3o" });
+    }
     const [campaign] = await db.select().from(emailCampaigns).where(eq(emailCampaigns.id, input.campaignId));
     if (!campaign)
       throw new TRPCError({ code: "NOT_FOUND", message: "Campanha n\xE3o encontrada" });
@@ -70879,8 +70950,21 @@ var emailMarketingRouter = router({
     await db.delete(emailSequenceSteps).where(eq(emailSequenceSteps.id, input.id));
     return { ok: true };
   }),
+  // ── Sequências visíveis para atendentes (leitura simplificada) ─────────
+  listSequencesForAttendant: protectedProcedure.query(async ({ ctx }) => {
+    const [seller] = await db.select({ emk: sellers.emailMarketingEnabled }).from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
+    if (ctx.user.role !== "admin" && !seller?.emk)
+      return [];
+    const rows = await db.select({ id: emailSequences.id, name: emailSequences.name, active: emailSequences.active }).from(emailSequences).where(eq(emailSequences.active, true)).orderBy(emailSequences.name);
+    return rows;
+  }),
   // ── Inscrição manual de leads ────────────────────────────────────────────
-  enrollTasksInSequence: adminProcedure.input(external_exports.object({ sequenceId: external_exports.number(), taskIds: external_exports.array(external_exports.number()).min(1) })).mutation(async ({ input }) => {
+  enrollTasksInSequence: protectedProcedure.input(external_exports.object({ sequenceId: external_exports.number(), taskIds: external_exports.array(external_exports.number()).min(1) })).mutation(async ({ input, ctx }) => {
+    if (ctx.user.role !== "admin") {
+      const [seller] = await db.select({ emk: sellers.emailMarketingEnabled }).from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
+      if (!seller?.emk)
+        throw new TRPCError({ code: "FORBIDDEN", message: "Voc\xEA n\xE3o tem permiss\xE3o para Email Marketing" });
+    }
     const [sequence] = await db.select().from(emailSequences).where(eq(emailSequences.id, input.sequenceId));
     if (!sequence)
       throw new TRPCError({ code: "NOT_FOUND", message: "Sequ\xEAncia n\xE3o encontrada" });
@@ -71510,7 +71594,7 @@ async function seedAdminIfNeeded() {
   `;
   console.log("[migrate] admin user seeded");
 }
-var SCHEMA_VERSION = "2026-06-24e";
+var SCHEMA_VERSION = "2026-06-24f";
 async function ensureTablesExist() {
   try {
     await seedAdminIfNeeded();
@@ -71841,6 +71925,7 @@ async function ensureTablesExist() {
   await sql4`ALTER TABLE sellers   ADD COLUMN IF NOT EXISTS email_signature_html       TEXT`;
   await sql4`ALTER TABLE sellers   ADD COLUMN IF NOT EXISTS email_signature_image_url  TEXT`;
   await sql4`ALTER TABLE sellers   ADD COLUMN IF NOT EXISTS email_signature_enabled    BOOLEAN NOT NULL DEFAULT true`;
+  await sql4`ALTER TABLE sellers   ADD COLUMN IF NOT EXISTS email_marketing_enabled   BOOLEAN NOT NULL DEFAULT false`;
   await sql4`ALTER TABLE email_sequence_steps ADD COLUMN IF NOT EXISTS send_condition TEXT NOT NULL DEFAULT 'always'`;
   await sql4`ALTER TABLE email_sequences ADD COLUMN IF NOT EXISTS repeat BOOLEAN NOT NULL DEFAULT FALSE`;
   await sql4`ALTER TABLE email_sequences ADD COLUMN IF NOT EXISTS repeat_interval_days INTEGER`;
