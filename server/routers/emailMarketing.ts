@@ -179,6 +179,10 @@ export const emailMarketingRouter = router({
       subject: z.string().min(1).max(300),
       htmlBody: z.string().min(1),
       active: z.boolean().optional().default(true),
+      attachments: z.array(z.object({
+        filename: z.string().max(255),
+        content: z.string(),
+      })).optional(),
     }))
     .mutation(async ({ input }) => {
       input.htmlBody = sanitizeCampaignHtml(input.htmlBody);

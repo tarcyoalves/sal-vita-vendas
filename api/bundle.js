@@ -42930,6 +42930,7 @@ var init_schema2 = __esm({
       name: text("name").notNull(),
       subject: text("subject").notNull(),
       htmlBody: text("html_body").notNull(),
+      attachments: jsonb("attachments"),
       active: boolean("active").default(true).notNull(),
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
@@ -70387,7 +70388,11 @@ var emailMarketingRouter = router({
     name: external_exports.string().min(1).max(200),
     subject: external_exports.string().min(1).max(300),
     htmlBody: external_exports.string().min(1),
-    active: external_exports.boolean().optional().default(true)
+    active: external_exports.boolean().optional().default(true),
+    attachments: external_exports.array(external_exports.object({
+      filename: external_exports.string().max(255),
+      content: external_exports.string()
+    })).optional()
   })).mutation(async ({ input }) => {
     input.htmlBody = sanitizeCampaignHtml(input.htmlBody);
     if (input.id) {
@@ -71381,7 +71386,7 @@ async function seedAdminIfNeeded() {
   `;
   console.log("[migrate] admin user seeded");
 }
-var SCHEMA_VERSION = "2026-06-24c";
+var SCHEMA_VERSION = "2026-06-24d";
 async function ensureTablesExist() {
   try {
     await seedAdminIfNeeded();
@@ -71728,6 +71733,7 @@ async function ensureTablesExist() {
   await sql4`CREATE INDEX IF NOT EXISTS task_deletion_logs_phone_idx ON task_deletion_logs (phone) WHERE phone IS NOT NULL`;
   await sql4`ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS is_broadcast BOOLEAN NOT NULL DEFAULT FALSE`;
   await sql4`ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS attachments  JSONB`;
+  await sql4`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS attachments  JSONB`;
   await sql4`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS email_confirmed    BOOLEAN NOT NULL DEFAULT FALSE`;
   await sql4`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS email_confirmed_at TIMESTAMP`;
   await sql4`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS email_confirmed_by TEXT`;

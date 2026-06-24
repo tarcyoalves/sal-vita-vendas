@@ -334,6 +334,11 @@ function CampaignsTab() {
     const t = templates?.find(t => t.id === Number(templateId));
     if (!t) return;
     setBcast(b => ({ ...b, subject: t.subject, htmlBody: t.htmlBody, name: b.name || t.name }));
+    if ((t as any).attachments?.length) {
+      setBcastFiles((t as any).attachments.map((a: any) => ({ filename: a.filename, content: a.content, size: Math.ceil((a.content.length * 3) / 4) })));
+    } else {
+      setBcastFiles([]);
+    }
   };
 
   const handleAddFiles = async (files: FileList | null) => {
@@ -937,7 +942,27 @@ function TemplatesTab() {
   const upsertMutation = trpc.emailMarketing.upsertTemplate.useMutation();
   const deleteMutation = trpc.emailMarketing.deleteTemplate.useMutation();
 
-  const [editing, setEditing] = useState<{ id?: number; slug: string; name: string; subject: string; htmlBody: string; active: boolean } | null>(null);
+  const [editing, setEditing] = useState<{ id?: number; slug: string; name: string; subject: string; htmlBody: string; active: boolean; attachments?: { filename: string; content: string; size: number }[] } | null>(null);
+
+  const tplAttachBytes = editing?.attachments?.reduce((s, f) => s + f.size, 0) ?? 0;
+
+  const handleAddTplFiles = async (files: FileList | null) => {
+    if (!files || !editing) return;
+    const next = [...(editing.attachments ?? [])];
+    for (const file of Array.from(files)) {
+      const content = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.includes(",") ? result.split(",")[1] : result);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      next.push({ filename: file.name, content, size: file.size });
+    }
+    setEditing(e => e && ({ ...e, attachments: next }));
+  };
 
   const handleSave = async () => {
     if (!editing) return;
@@ -945,8 +970,16 @@ function TemplatesTab() {
       toast.error("Preencha todos os campos");
       return;
     }
+    if (tplAttachBytes > 3_500_000) {
+      toast.error("Anexos muito grandes (max. ~3,5 MB no total)");
+      return;
+    }
     try {
-      await upsertMutation.mutateAsync(editing);
+      const payload: any = { ...editing };
+      if (payload.attachments) {
+        payload.attachments = payload.attachments.map((f: any) => ({ filename: f.filename, content: f.content }));
+      }
+      await upsertMutation.mutateAsync(payload);
       toast.success("Template salvo!");
       setEditing(null);
       utils.emailMarketing.listTemplates.invalidate();
@@ -965,7 +998,7 @@ function TemplatesTab() {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button className="bg-blue-900 hover:bg-blue-800 shadow-sm" onClick={() => setEditing({ slug: "", name: "", subject: "", htmlBody: "", active: true })}>
+        <Button className="bg-blue-900 hover:bg-blue-800 shadow-sm" onClick={() => setEditing({ slug: "", name: "", subject: "", htmlBody: "", active: true, attachments: [] })}>
           <Plus size={16} className="mr-1" /> Novo Template
         </Button>
       </div>
@@ -1004,7 +1037,7 @@ function TemplatesTab() {
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex gap-1">
-                          <Button size="sm" variant="outline" onClick={() => setEditing({ id: t.id, slug: t.slug, name: t.name, subject: t.subject, htmlBody: t.htmlBody, active: t.active })}>
+                          <Button size="sm" variant="outline" onClick={() => setEditing({ id: t.id, slug: t.slug, name: t.name, subject: t.subject, htmlBody: t.htmlBody, active: t.active, attachments: Array.isArray((t as any).attachments) ? (t as any).attachments.map((a: any) => ({ filename: a.filename, content: a.content, size: Math.ceil((a.content?.length ?? 0) * 0.75) })) : [] })}>
                             <Pencil size={14} />
                           </Button>
                           <Button size="sm" variant="destructive" onClick={() => handleDelete(t.id)}>
@@ -1051,6 +1084,35 @@ function TemplatesTab() {
                 <Label>Corpo do e-mail</Label>
                 <RichTextEditor value={editing.htmlBody} onChange={html => setEditing(t => t && ({ ...t, htmlBody: html }))} minHeight={350} />
                 <p className="text-xs text-gray-500 mt-1">{TEMPLATE_HINT}</p>
+              </div>
+              <div>
+                <Label>Anexos (opcional)</Label>
+                <label className="mt-1 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500 hover:border-blue-300 hover:bg-blue-50/50 transition">
+                  <Paperclip size={16} />
+                  <span>Clique para anexar arquivos</span>
+                  <input type="file" multiple className="hidden" onChange={e => { handleAddTplFiles(e.target.files); e.target.value = ""; }} />
+                </label>
+                {editing.attachments && editing.attachments.length > 0 && (
+                  <div className="mt-2 space-y-1.5">
+                    {editing.attachments.map((f, i) => (
+                      <div key={i} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm">
+                        <FileText size={14} className="flex-shrink-0 text-blue-700" />
+                        <span className="flex-1 truncate text-slate-700">{f.filename}</span>
+                        <span className="text-xs text-slate-400">{(f.size / 1024).toFixed(0)} KB</span>
+                        <button
+                          type="button"
+                          className="text-slate-400 hover:text-red-600"
+                          onClick={() => setEditing(e => e && ({ ...e, attachments: e.attachments?.filter((_, idx) => idx !== i) }))}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                    <p className={`text-xs ${tplAttachBytes > 3_500_000 ? "text-red-600 font-medium" : "text-slate-400"}`}>
+                      Total: {(tplAttachBytes / 1024 / 1024).toFixed(2)} MB / 3,5 MB
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
