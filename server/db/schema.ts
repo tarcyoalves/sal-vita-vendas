@@ -265,6 +265,7 @@ export const emailTemplates = pgTable('email_templates', {
   name: text('name').notNull(),
   subject: text('subject').notNull(),
   htmlBody: text('html_body').notNull(),
+  attachments: jsonb('attachments'),
   active: boolean('active').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
