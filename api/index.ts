@@ -20,7 +20,7 @@ import { eq, and, sql, lte, gte, isNull, inArray, desc, asc, lt } from 'drizzle-
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
 import { createPixPaymentForOrder } from '../server/lib/mercadopago';
 import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid } from '../server/lib/orderConfirmation';
-import { verifyResendWebhook, getAllDomainTracking, setDomainTracking, getAccounts } from '../server/email/marketing';
+import { verifyResendWebhook, getAllDomainTracking, setDomainTracking, getAccounts, ensureWebhookEvents } from '../server/email/marketing';
 import { evaluateInactiveDaysRules, flagEngagementByMessageId, processSequenceEnrollments } from '../server/email/automations';
 
 function isBusinessHours(): boolean {
@@ -59,17 +59,24 @@ const dbReady = Promise.all([
 let migrationSettled = false;
 dbReady.then(() => { migrationSettled = true; });
 
-// Auto-enable Resend open/click tracking on cold start (domain-level setting).
+// Auto-enable Resend open/click tracking + fix webhook events on cold start.
 (async () => {
   try {
+    const accounts = getAccounts();
     const domains = await getAllDomainTracking();
     for (const d of domains) {
       if (d.domainId && (!d.openTracking || !d.clickTracking)) {
-        const account = getAccounts().find(a => a.key === d.accountKey);
+        const account = accounts.find(a => a.key === d.accountKey);
         if (!account) continue;
         const r = await setDomainTracking(account, d.domainId, { openTracking: true, clickTracking: true });
         console.log(`[tracking] enabled open+click for ${d.domainName}: ${r.ok ? 'ok' : r.error}`);
       }
+    }
+    for (const account of accounts) {
+      if (account.provider !== 'resend') continue;
+      const r = await ensureWebhookEvents(account, 'resend-webhook');
+      if (r.fixed) console.log(`[tracking] fixed webhook events for ${account.key}`);
+      else if (r.error) console.warn(`[tracking] webhook check ${account.key}: ${r.error}`);
     }
   } catch (err) {
     console.warn('[tracking] auto-enable failed:', err);

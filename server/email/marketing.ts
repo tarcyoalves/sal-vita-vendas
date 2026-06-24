@@ -243,6 +243,55 @@ export async function getAllDomainTracking(): Promise<DomainTrackingInfo[]> {
   return out;
 }
 
+const REQUIRED_WEBHOOK_EVENTS = [
+  'email.sent', 'email.delivered', 'email.opened',
+  'email.clicked', 'email.bounced', 'email.complained',
+];
+
+export interface WebhookInfo {
+  id: string;
+  endpointUrl: string;
+  events: string[];
+  active?: boolean;
+}
+
+export async function listResendWebhooks(account: MarketingAccount): Promise<WebhookInfo[]> {
+  if (account.provider !== 'resend') return [];
+  try {
+    const res = await fetch('https://api.resend.com/webhooks', {
+      headers: { Authorization: `Bearer ${account.apiKey}` },
+    });
+    if (!res.ok) return [];
+    const body = await res.json() as { data?: Array<{ id: string; url: string; events: string[]; active?: boolean }> };
+    return (body.data ?? []).map(w => ({ id: w.id, endpointUrl: w.url, events: w.events ?? [], active: w.active }));
+  } catch { return []; }
+}
+
+export async function ensureWebhookEvents(account: MarketingAccount, webhookUrl: string): Promise<{ fixed: boolean; error?: string }> {
+  if (account.provider !== 'resend') return { fixed: false };
+  const webhooks = await listResendWebhooks(account);
+  const match = webhooks.find(w => webhookUrl && w.endpointUrl.includes('resend-webhook'));
+  if (!match) return { fixed: false, error: 'no_webhook_found' };
+
+  const missing = REQUIRED_WEBHOOK_EVENTS.filter(e => !match.events.includes(e));
+  if (missing.length === 0) return { fixed: false };
+
+  try {
+    const res = await fetch(`https://api.resend.com/webhooks/${match.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${account.apiKey}` },
+      body: JSON.stringify({ url: match.endpointUrl, events: REQUIRED_WEBHOOK_EVENTS }),
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => res.statusText);
+      return { fixed: false, error: `resend_${res.status}: ${err}` };
+    }
+    return { fixed: true };
+  } catch {
+    return { fixed: false, error: 'network_error' };
+  }
+}
+
 export interface EmailAttachment {
   filename: string;
   content: string; // base64-encoded file content
