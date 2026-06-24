@@ -37,9 +37,9 @@ function firstPart(title: string): string {
 }
 
 /**
- * Inscreve um e-mail numa sequência. Idempotente via UNIQUE(sequence_id, email)
- * — usa ON CONFLICT DO NOTHING. Calcula `nextSendAt` a partir do passo 1
- * (currentStep = 0 → próximo passo é o índice 0 = passo 1).
+ * Inscreve um e-mail numa sequência. Permite o mesmo e-mail na mesma sequência
+ * se vier de tarefas diferentes (atendentes distintos trabalhando o mesmo lead).
+ * Duplicata = mesmo (sequenceId, email, taskId) com status ativo.
  */
 export async function enrollInSequence(
   sequenceId: number,
@@ -65,10 +65,28 @@ export async function enrollInSequence(
       return { enrolled: false, reason: 'no_steps' };
     }
 
+    // Check for existing active enrollment for same sequence + email + task
+    const dupConditions = [
+      eq(emailSequenceEnrollments.sequenceId, sequenceId),
+      eq(emailSequenceEnrollments.email, email),
+      eq(emailSequenceEnrollments.status, 'active'),
+    ];
+    if (opts.taskId) {
+      dupConditions.push(eq(emailSequenceEnrollments.taskId, opts.taskId));
+    }
+    const [existing] = await db.select({ id: emailSequenceEnrollments.id })
+      .from(emailSequenceEnrollments)
+      .where(and(...dupConditions))
+      .limit(1);
+    if (existing) {
+      console.log(`[enrollInSequence] SKIPPED ${email}: duplicate (already active in sequence ${sequenceId} for task ${opts.taskId})`);
+      return { enrolled: false, reason: 'duplicate' };
+    }
+
     const enrolledAt = new Date();
     const nextSendAt = computeNextSendAt(enrolledAt, steps, 0);
 
-    const inserted = await db.insert(emailSequenceEnrollments).values({
+    const [inserted] = await db.insert(emailSequenceEnrollments).values({
       sequenceId,
       email,
       name: opts.name ?? null,
@@ -80,15 +98,10 @@ export async function enrollInSequence(
       enrolledAt,
       nextSendAt,
       cycleStartedAt: enrolledAt,
-    }).onConflictDoNothing().returning({ id: emailSequenceEnrollments.id });
-
-    if (inserted.length === 0) {
-      console.log(`[enrollInSequence] SKIPPED ${email}: duplicate (already enrolled in sequence ${sequenceId})`);
-      return { enrolled: false, reason: 'duplicate' };
-    }
+    }).returning({ id: emailSequenceEnrollments.id });
 
     if (nextSendAt && nextSendAt <= new Date()) {
-      await processSequenceEnrollments({ enrollmentIds: [inserted[0].id] });
+      await processSequenceEnrollments({ enrollmentIds: [inserted.id] });
     }
 
     console.log(`[enrollInSequence] OK ${email}: enrolled in sequence ${sequenceId}`);

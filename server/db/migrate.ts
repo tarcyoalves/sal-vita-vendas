@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-06-24f';
+const SCHEMA_VERSION = '2026-06-24g';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -448,7 +448,9 @@ export async function ensureTablesExist() {
   await sql`CREATE INDEX IF NOT EXISTS tasks_tags_idx ON tasks USING GIN (tags)`;
   await sql`CREATE INDEX IF NOT EXISTS email_seq_steps_seq_idx ON email_sequence_steps(sequence_id, step_order)`;
   await sql`CREATE INDEX IF NOT EXISTS email_seq_enroll_due_idx ON email_sequence_enrollments(status, next_send_at)`;
-  await sql`CREATE UNIQUE INDEX IF NOT EXISTS email_seq_enroll_unique_idx ON email_sequence_enrollments(sequence_id, email)`;
+  // Replaced: allow same email in same sequence from different tasks (different attendants)
+  await sql`DROP INDEX IF EXISTS email_seq_enroll_unique_idx`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS email_seq_enroll_unique_v2_idx ON email_sequence_enrollments(sequence_id, email, COALESCE(task_id, 0))`;
   await sql`CREATE INDEX IF NOT EXISTS email_seq_sends_enrollment_idx ON email_sequence_sends(enrollment_id)`;
   await sql`CREATE INDEX IF NOT EXISTS email_events_message_idx ON email_events(message_id)`;
   await sql`CREATE INDEX IF NOT EXISTS email_events_created_idx ON email_events(created_at)`;

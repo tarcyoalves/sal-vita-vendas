@@ -65854,9 +65854,22 @@ async function enrollInSequence(sequenceId, opts) {
       console.log(`[enrollInSequence] SKIPPED ${email}: sequence ${sequenceId} has 0 steps`);
       return { enrolled: false, reason: "no_steps" };
     }
+    const dupConditions = [
+      eq(emailSequenceEnrollments.sequenceId, sequenceId),
+      eq(emailSequenceEnrollments.email, email),
+      eq(emailSequenceEnrollments.status, "active")
+    ];
+    if (opts.taskId) {
+      dupConditions.push(eq(emailSequenceEnrollments.taskId, opts.taskId));
+    }
+    const [existing] = await db.select({ id: emailSequenceEnrollments.id }).from(emailSequenceEnrollments).where(and(...dupConditions)).limit(1);
+    if (existing) {
+      console.log(`[enrollInSequence] SKIPPED ${email}: duplicate (already active in sequence ${sequenceId} for task ${opts.taskId})`);
+      return { enrolled: false, reason: "duplicate" };
+    }
     const enrolledAt = /* @__PURE__ */ new Date();
     const nextSendAt = computeNextSendAt(enrolledAt, steps, 0);
-    const inserted = await db.insert(emailSequenceEnrollments).values({
+    const [inserted] = await db.insert(emailSequenceEnrollments).values({
       sequenceId,
       email,
       name: opts.name ?? null,
@@ -65868,13 +65881,9 @@ async function enrollInSequence(sequenceId, opts) {
       enrolledAt,
       nextSendAt,
       cycleStartedAt: enrolledAt
-    }).onConflictDoNothing().returning({ id: emailSequenceEnrollments.id });
-    if (inserted.length === 0) {
-      console.log(`[enrollInSequence] SKIPPED ${email}: duplicate (already enrolled in sequence ${sequenceId})`);
-      return { enrolled: false, reason: "duplicate" };
-    }
+    }).returning({ id: emailSequenceEnrollments.id });
     if (nextSendAt && nextSendAt <= /* @__PURE__ */ new Date()) {
-      await processSequenceEnrollments({ enrollmentIds: [inserted[0].id] });
+      await processSequenceEnrollments({ enrollmentIds: [inserted.id] });
     }
     console.log(`[enrollInSequence] OK ${email}: enrolled in sequence ${sequenceId}`);
     return { enrolled: true };
@@ -71594,7 +71603,7 @@ async function seedAdminIfNeeded() {
   `;
   console.log("[migrate] admin user seeded");
 }
-var SCHEMA_VERSION = "2026-06-24f";
+var SCHEMA_VERSION = "2026-06-24g";
 async function ensureTablesExist() {
   try {
     await seedAdminIfNeeded();
@@ -71971,7 +71980,8 @@ async function ensureTablesExist() {
   await sql4`CREATE INDEX IF NOT EXISTS tasks_tags_idx ON tasks USING GIN (tags)`;
   await sql4`CREATE INDEX IF NOT EXISTS email_seq_steps_seq_idx ON email_sequence_steps(sequence_id, step_order)`;
   await sql4`CREATE INDEX IF NOT EXISTS email_seq_enroll_due_idx ON email_sequence_enrollments(status, next_send_at)`;
-  await sql4`CREATE UNIQUE INDEX IF NOT EXISTS email_seq_enroll_unique_idx ON email_sequence_enrollments(sequence_id, email)`;
+  await sql4`DROP INDEX IF EXISTS email_seq_enroll_unique_idx`;
+  await sql4`CREATE UNIQUE INDEX IF NOT EXISTS email_seq_enroll_unique_v2_idx ON email_sequence_enrollments(sequence_id, email, COALESCE(task_id, 0))`;
   await sql4`CREATE INDEX IF NOT EXISTS email_seq_sends_enrollment_idx ON email_sequence_sends(enrollment_id)`;
   await sql4`CREATE INDEX IF NOT EXISTS email_events_message_idx ON email_events(message_id)`;
   await sql4`CREATE INDEX IF NOT EXISTS email_events_created_idx ON email_events(created_at)`;
