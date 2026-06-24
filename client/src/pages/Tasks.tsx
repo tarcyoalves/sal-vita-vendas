@@ -500,7 +500,7 @@ export default function Tasks() {
     }
     try {
       await toggleConvertedMutation.mutateAsync({ id: task.id, converted: false });
-      toast.success("Marcação de cliente ativo removida");
+      toast.success("Marcação de cliente ativo removida (tag \"ativo\" retirada)");
       refetch();
     } catch {
       toast.error("Erro ao atualizar conversão");
@@ -511,7 +511,7 @@ export default function Tasks() {
     if (!convertModalTask) return;
     try {
       await toggleConvertedMutation.mutateAsync({ id: convertModalTask.id, converted: true });
-      toast.success("🎉 Cliente marcado como ativo!");
+      toast.success("🎉 Cliente marcado como ativo! Tag \"ativo\" aplicada para o e-mail marketing.");
       setConvertModalTask(null);
       refetch();
     } catch {
@@ -1510,6 +1510,9 @@ export default function Tasks() {
               <div className="text-4xl mb-2">🎉</div>
               <h3 className="text-base font-bold text-gray-800">Marcar como Cliente Ativo</h3>
               <p className="text-sm text-gray-500 mt-1">{convertModalTask.title}</p>
+              <p className="text-xs text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2 mt-3">
+                A tag <strong>"ativo"</strong> será aplicada automaticamente para o e-mail marketing.
+              </p>
             </div>
             <div className="flex gap-3">
               <button

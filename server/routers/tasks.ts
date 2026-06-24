@@ -285,6 +285,13 @@ export const tasksRouter = router({
         setData.orderValue = null;
         setData.orderId = null;
       }
+      // Mantém a tag "ativo" em sincronia com o marcador de cliente ativo: ao marcar,
+      // adiciona a tag (sem duplicar); ao desmarcar, remove só ela (preserva as demais).
+      // Assim a audiência de e-mail marketing (que filtra por tag) reflete as vendas
+      // automaticamente, sem o atendente precisar marcar a tag num segundo passo.
+      setData.tags = input.converted
+        ? sql`CASE WHEN ${tasks.tags} @> ARRAY['ativo']::text[] THEN ${tasks.tags} ELSE array_append(${tasks.tags}, 'ativo') END`
+        : sql`array_remove(${tasks.tags}, 'ativo')`;
       const [updated] = await db.update(tasks)
         .set(setData)
         .where(ownerFilter)
