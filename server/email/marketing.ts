@@ -261,19 +261,38 @@ export async function listResendWebhooks(account: MarketingAccount): Promise<Web
     const res = await fetch('https://api.resend.com/webhooks', {
       headers: { Authorization: `Bearer ${account.apiKey}` },
     });
-    if (!res.ok) return [];
-    const body = await res.json() as { data?: Array<{ id: string; url: string; events: string[]; active?: boolean }> };
-    return (body.data ?? []).map(w => ({ id: w.id, endpointUrl: w.url, events: w.events ?? [], active: w.active }));
-  } catch { return []; }
+    if (!res.ok) {
+      console.warn(`[tracking] GET /webhooks failed: ${res.status}`);
+      return [];
+    }
+    const raw = await res.json();
+    console.log(`[tracking] webhooks response:`, JSON.stringify(raw).slice(0, 500));
+    const items = Array.isArray(raw) ? raw : (raw as any)?.data ?? [];
+    return items.map((w: any) => ({
+      id: String(w.id ?? ''),
+      endpointUrl: String(w.url ?? w.endpoint_url ?? w.endpoint ?? ''),
+      events: Array.isArray(w.events) ? w.events : [],
+      active: w.active,
+    }));
+  } catch (err) {
+    console.warn('[tracking] listWebhooks error:', err);
+    return [];
+  }
 }
 
-export async function ensureWebhookEvents(account: MarketingAccount, webhookUrl: string): Promise<{ fixed: boolean; error?: string }> {
+export async function ensureWebhookEvents(account: MarketingAccount, _webhookUrl: string): Promise<{ fixed: boolean; error?: string }> {
   if (account.provider !== 'resend') return { fixed: false };
   const webhooks = await listResendWebhooks(account);
-  const match = webhooks.find(w => webhookUrl && w.endpointUrl.includes('resend-webhook'));
-  if (!match) return { fixed: false, error: 'no_webhook_found' };
+  if (webhooks.length === 0) return { fixed: false, error: 'no_webhooks' };
+
+  const match = webhooks.find(w => w.endpointUrl && w.endpointUrl.includes('resend-webhook'));
+  if (!match) {
+    console.warn(`[tracking] no webhook matching 'resend-webhook'. Found: ${webhooks.map(w => w.endpointUrl).join(', ')}`);
+    return { fixed: false, error: `no_match. endpoints: ${webhooks.map(w => w.endpointUrl).join(', ')}` };
+  }
 
   const missing = REQUIRED_WEBHOOK_EVENTS.filter(e => !match.events.includes(e));
+  console.log(`[tracking] webhook ${match.id}: events=${JSON.stringify(match.events)}, missing=${JSON.stringify(missing)}`);
   if (missing.length === 0) return { fixed: false };
 
   try {
