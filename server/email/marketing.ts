@@ -143,6 +143,106 @@ export async function getUsage(): Promise<AccountUsage[]> {
   return out;
 }
 
+export interface DomainTrackingInfo {
+  accountKey: string;
+  fromEmail: string;
+  domainId?: string;
+  domainName?: string;
+  openTracking?: boolean;
+  clickTracking?: boolean;
+  status?: string;
+  error?: string;
+}
+
+/**
+ * Lists the Resend domains for one marketing account, returning each domain's
+ * open/click tracking flags. Brevo accounts are skipped (Brevo tracks by default).
+ *
+ * IMPORTANT: open/click tracking in Resend is a DOMAIN-LEVEL setting, not a
+ * per-email one. Enabling `tracking` in the send payload does nothing — the API
+ * silently ignores it. Tracking must be turned on for the sending domain, either
+ * in the dashboard (Domains → Configuration) or via setDomainTracking() below.
+ */
+export async function getDomainTracking(account: MarketingAccount): Promise<DomainTrackingInfo[]> {
+  if (account.provider !== 'resend') return [];
+  const { email } = parseFromAddress(account.from);
+  try {
+    const res = await fetch('https://api.resend.com/domains', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${account.apiKey}` },
+    });
+    if (!res.ok) {
+      return [{ accountKey: account.key, fromEmail: email, error: `resend_${res.status}` }];
+    }
+    const body = await res.json() as {
+      data?: Array<{
+        id: string; name: string; status?: string;
+        open_tracking?: boolean; click_tracking?: boolean;
+      }>;
+    };
+    const domains = body.data ?? [];
+    if (domains.length === 0) {
+      return [{ accountKey: account.key, fromEmail: email, error: 'no_domains' }];
+    }
+    return domains.map(d => ({
+      accountKey: account.key,
+      fromEmail: email,
+      domainId: d.id,
+      domainName: d.name,
+      openTracking: d.open_tracking,
+      clickTracking: d.click_tracking,
+      status: d.status,
+    }));
+  } catch {
+    return [{ accountKey: account.key, fromEmail: email, error: 'network_error' }];
+  }
+}
+
+/**
+ * Enables (or disables) open/click tracking for a specific Resend domain via
+ * PATCH /domains/:id. This is the ONLY programmatic way to turn tracking on —
+ * there is no per-email switch. Returns the updated flags or an error string.
+ *
+ * Note: enabling click tracking rewrites links through a tracking subdomain; for
+ * best deliverability Resend recommends configuring a custom tracking subdomain
+ * (CNAME) in the dashboard, but open tracking works with the default setup.
+ */
+export async function setDomainTracking(
+  account: MarketingAccount,
+  domainId: string,
+  flags: { openTracking?: boolean; clickTracking?: boolean },
+): Promise<{ ok: boolean; openTracking?: boolean; clickTracking?: boolean; error?: string }> {
+  if (account.provider !== 'resend') return { ok: false, error: 'not_resend' };
+  const payload: Record<string, boolean> = {};
+  if (flags.openTracking !== undefined) payload.open_tracking = flags.openTracking;
+  if (flags.clickTracking !== undefined) payload.click_tracking = flags.clickTracking;
+  try {
+    const res = await fetch(`https://api.resend.com/domains/${domainId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${account.apiKey}` },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => res.statusText);
+      console.error(`[email-marketing] Resend domain update error ${res.status}:`, err);
+      return { ok: false, error: `resend_${res.status}` };
+    }
+    return { ok: true, openTracking: flags.openTracking, clickTracking: flags.clickTracking };
+  } catch {
+    return { ok: false, error: 'network_error' };
+  }
+}
+
+/** Tracking status across all Resend marketing accounts (for the admin dashboard). */
+export async function getAllDomainTracking(): Promise<DomainTrackingInfo[]> {
+  const out: DomainTrackingInfo[] = [];
+  for (const account of getAccounts()) {
+    if (account.provider !== 'resend') continue;
+    out.push(...await getDomainTracking(account));
+  }
+  return out;
+}
+
 export interface EmailAttachment {
   filename: string;
   content: string; // base64-encoded file content
@@ -313,7 +413,10 @@ async function sendSingleResend(
     subject: m.subject,
     html: m.html,
     text: renderPlainText(m.html),
-    tracking: { open: true, click: true },
+    // NOTE: Resend has NO per-email tracking parameter — open/click tracking is
+    // configured at the DOMAIN level (dashboard → Domains → Configuration, or
+    // PATCH /domains/:id via setDomainTracking below). Any `tracking` field here
+    // is silently ignored by the API. See setDomainTracking().
     ...(m.replyTo ? { reply_to: [m.replyTo] } : {}),
     ...(m.attachments && m.attachments.length > 0
       ? { attachments: m.attachments.map(a => ({ filename: a.filename, content: a.content })) }
@@ -364,7 +467,8 @@ async function sendBatchResend(account: MarketingAccount, messages: BatchMessage
     subject: m.subject,
     html: m.html,
     text: renderPlainText(m.html),
-    tracking: { open: true, click: true },
+    // Open/click tracking is domain-level only in Resend (see sendSingleResend
+    // note and setDomainTracking) — no per-email tracking field exists.
     ...(m.replyTo ? { reply_to: [m.replyTo] } : {}),
     headers: {
       'List-Unsubscribe': `<${unsubBase}/api/unsubscribe?t=${m.unsubToken}>`,

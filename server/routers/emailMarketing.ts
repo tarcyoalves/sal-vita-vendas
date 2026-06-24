@@ -10,7 +10,7 @@ import {
   emailEvents, automationRules, emailSendCounters,
   tasks, clients, sellers,
 } from '../db/schema';
-import { pickAccount, sendBatch, layout, renderTemplate, renderSignature, getUsage, type BatchMessage } from '../email/marketing';
+import { pickAccount, sendBatch, layout, renderTemplate, renderSignature, getUsage, getAllDomainTracking, setDomainTracking, getAccounts, type BatchMessage } from '../email/marketing';
 import { enrollInSequence } from '../email/automations';
 import { userTaskFilter } from './tasks';
 
@@ -876,6 +876,36 @@ export const emailMarketingRouter = router({
       hasAccounts: accounts.length > 0,
     };
   }),
+
+  // Resend open/click tracking is DOMAIN-LEVEL, not per-email. This surfaces the
+  // current tracking flags per sending domain so the admin can confirm whether
+  // open tracking is actually enabled (the root cause of 0% open rates).
+  domainTrackingStatus: adminProcedure.query(async () => {
+    const domains = await getAllDomainTracking();
+    return { domains, allOpenTrackingOn: domains.length > 0 && domains.every(d => d.openTracking) };
+  }),
+
+  // Enables open/click tracking for a Resend domain via PATCH /domains/:id —
+  // the only programmatic way to turn it on (no per-email switch exists).
+  enableDomainTracking: adminProcedure
+    .input(z.object({
+      accountKey: z.string(),
+      domainId: z.string(),
+      openTracking: z.boolean().optional(),
+      clickTracking: z.boolean().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const account = getAccounts().find(a => a.key === input.accountKey);
+      if (!account) throw new TRPCError({ code: 'NOT_FOUND', message: 'Conta de e-mail não encontrada' });
+      const result = await setDomainTracking(account, input.domainId, {
+        openTracking: input.openTracking ?? true,
+        clickTracking: input.clickTracking ?? true,
+      });
+      if (!result.ok) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Falha ao atualizar rastreamento: ${result.error}` });
+      }
+      return result;
+    }),
 
   overviewStats: adminProcedure.query(async () => {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
