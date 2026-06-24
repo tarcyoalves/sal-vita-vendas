@@ -277,7 +277,18 @@ export const tasksRouter = router({
       const ownerFilter = ctx.user.role === 'admin'
         ? eq(tasks.id, input.id)
         : and(eq(tasks.id, input.id), await userTaskFilter(ctx.user.id, ctx.user.name ?? ''));
-      const setData: Record<string, any> = { convertedAt: input.converted ? new Date() : null, updatedAt: new Date() };
+
+      const [existing] = await db.select({ tags: tasks.tags }).from(tasks).where(eq(tasks.id, input.id));
+      const currentTags = existing?.tags ?? [];
+      const newTags = input.converted
+        ? (currentTags.includes('ativo') ? currentTags : [...currentTags, 'ativo'])
+        : currentTags.filter(t => t !== 'ativo');
+
+      const setData: Record<string, any> = {
+        convertedAt: input.converted ? new Date() : null,
+        updatedAt: new Date(),
+        tags: newTags,
+      };
       if (input.converted) {
         if (input.orderValue !== undefined) setData.orderValue = input.orderValue.toFixed(2);
         if (input.orderId !== undefined) setData.orderId = input.orderId;
@@ -285,13 +296,6 @@ export const tasksRouter = router({
         setData.orderValue = null;
         setData.orderId = null;
       }
-      // Mantém a tag "ativo" em sincronia com o marcador de cliente ativo: ao marcar,
-      // adiciona a tag (sem duplicar); ao desmarcar, remove só ela (preserva as demais).
-      // Assim a audiência de e-mail marketing (que filtra por tag) reflete as vendas
-      // automaticamente, sem o atendente precisar marcar a tag num segundo passo.
-      setData.tags = input.converted
-        ? sql`CASE WHEN ${tasks.tags} @> ARRAY['ativo']::text[] THEN ${tasks.tags} ELSE array_append(${tasks.tags}, 'ativo') END`
-        : sql`array_remove(${tasks.tags}, 'ativo')`;
       const [updated] = await db.update(tasks)
         .set(setData)
         .where(ownerFilter)

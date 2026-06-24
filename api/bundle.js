@@ -66367,7 +66367,14 @@ var tasksRouter = router({
     orderId: external_exports.string().max(100).optional()
   })).mutation(async ({ input, ctx }) => {
     const ownerFilter = ctx.user.role === "admin" ? eq(tasks.id, input.id) : and(eq(tasks.id, input.id), await userTaskFilter(ctx.user.id, ctx.user.name ?? ""));
-    const setData = { convertedAt: input.converted ? /* @__PURE__ */ new Date() : null, updatedAt: /* @__PURE__ */ new Date() };
+    const [existing] = await db.select({ tags: tasks.tags }).from(tasks).where(eq(tasks.id, input.id));
+    const currentTags = existing?.tags ?? [];
+    const newTags = input.converted ? currentTags.includes("ativo") ? currentTags : [...currentTags, "ativo"] : currentTags.filter((t2) => t2 !== "ativo");
+    const setData = {
+      convertedAt: input.converted ? /* @__PURE__ */ new Date() : null,
+      updatedAt: /* @__PURE__ */ new Date(),
+      tags: newTags
+    };
     if (input.converted) {
       if (input.orderValue !== void 0)
         setData.orderValue = input.orderValue.toFixed(2);
@@ -66377,7 +66384,6 @@ var tasksRouter = router({
       setData.orderValue = null;
       setData.orderId = null;
     }
-    setData.tags = input.converted ? sql`CASE WHEN ${tasks.tags} @> ARRAY['ativo']::text[] THEN ${tasks.tags} ELSE array_append(${tasks.tags}, 'ativo') END` : sql`array_remove(${tasks.tags}, 'ativo')`;
     const [updated] = await db.update(tasks).set(setData).where(ownerFilter).returning();
     if (!updated)
       throw new TRPCError({ code: "FORBIDDEN", message: "Tarefa n\xE3o encontrada ou sem permiss\xE3o" });
