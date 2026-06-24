@@ -313,6 +313,7 @@ async function sendSingleResend(
     subject: m.subject,
     html: m.html,
     text: renderPlainText(m.html),
+    tracking: { open: true, click: true },
     ...(m.replyTo ? { reply_to: [m.replyTo] } : {}),
     ...(m.attachments && m.attachments.length > 0
       ? { attachments: m.attachments.map(a => ({ filename: a.filename, content: a.content })) }
@@ -363,6 +364,7 @@ async function sendBatchResend(account: MarketingAccount, messages: BatchMessage
     subject: m.subject,
     html: m.html,
     text: renderPlainText(m.html),
+    tracking: { open: true, click: true },
     ...(m.replyTo ? { reply_to: [m.replyTo] } : {}),
     headers: {
       'List-Unsubscribe': `<${unsubBase}/api/unsubscribe?t=${m.unsubToken}>`,
