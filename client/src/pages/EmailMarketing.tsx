@@ -1332,6 +1332,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
     { enabled: sequenceId !== null }
   );
 
+  const { data: templates } = trpc.emailMarketing.listTemplates.useQuery(undefined, { enabled: sequenceId !== null });
   const upsertStepMutation = trpc.emailMarketing.upsertSequenceStep.useMutation();
   const deleteStepMutation = trpc.emailMarketing.deleteSequenceStep.useMutation();
   const pauseMutation = trpc.emailMarketing.pauseEnrollment.useMutation();
@@ -1585,6 +1586,23 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                     <Input type="number" min={0} value={editingStep.delayDays} onChange={e => setEditingStep(s => s && ({ ...s, delayDays: Number(e.target.value) }))} />
                   </div>
                 </div>
+                {(templates ?? []).length > 0 && (
+                  <div>
+                    <Label>Usar template pronto</Label>
+                    <Select value="" onValueChange={(v) => {
+                      const t = templates?.find(t => t.id === Number(v));
+                      if (t) setEditingStep(s => s && ({ ...s, subject: t.subject, htmlBody: t.htmlBody }));
+                    }}>
+                      <SelectTrigger className="w-full"><SelectValue placeholder="Selecionar template..." /></SelectTrigger>
+                      <SelectContent>
+                        {(templates ?? []).map(t => (
+                          <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500 mt-1">Ao selecionar, o assunto e corpo serão preenchidos com o conteúdo do template.</p>
+                  </div>
+                )}
                 <div>
                   <Label>Assunto</Label>
                   <Input value={editingStep.subject} onChange={e => setEditingStep(s => s && ({ ...s, subject: e.target.value }))} />

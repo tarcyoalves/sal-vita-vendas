@@ -65802,7 +65802,7 @@ function layout(body, unsubUrl, signatureHtml) {
             <td style="background:#ffffff;padding:20px 32px 8px;text-align:left;">
               <img src="https://salvitarn.com.br/wp-content/uploads/2025/04/logo-SAL-VITA.png"
                    alt="Sal Vita" width="160" height="auto"
-                   style="display:inline-block;max-width:160px;height:auto;border:0;" />
+                   style="display:block;max-width:160px;height:auto;border:0;margin:0;" />
             </td>
           </tr>
           <tr>
