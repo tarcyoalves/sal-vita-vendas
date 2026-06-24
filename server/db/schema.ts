@@ -418,8 +418,11 @@ export const automationRules = pgTable('automation_rules', {
   name: text('name').notNull(),
   triggerType: text('trigger_type').notNull(),   // lead_created|lead_converted|inactive_days
   triggerConfig: text('trigger_config'),          // JSON, ex: {"days":30}
-  actionType: text('action_type').notNull(),     // enroll_sequence|add_tag
+  actionType: text('action_type').notNull(),     // enroll_sequence|add_tag|cancel_sequences
   actionConfig: text('action_config').notNull(), // JSON, ex: {"sequenceId":3} ou {"tag":"cliente"}
+  requiredTags: text('required_tags').array(),    // lead MUST have ALL these tags to trigger
+  excludedTags: text('excluded_tags').array(),    // lead MUST NOT have ANY of these tags
+  cancelOtherSequences: boolean('cancel_other_sequences').default(false).notNull(),
   active: boolean('active').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

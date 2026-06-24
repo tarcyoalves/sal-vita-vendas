@@ -43072,9 +43072,14 @@ var init_schema2 = __esm({
       triggerConfig: text("trigger_config"),
       // JSON, ex: {"days":30}
       actionType: text("action_type").notNull(),
-      // enroll_sequence|add_tag
+      // enroll_sequence|add_tag|cancel_sequences
       actionConfig: text("action_config").notNull(),
       // JSON, ex: {"sequenceId":3} ou {"tag":"cliente"}
+      requiredTags: text("required_tags").array(),
+      // lead MUST have ALL these tags to trigger
+      excludedTags: text("excluded_tags").array(),
+      // lead MUST NOT have ANY of these tags
+      cancelOtherSequences: boolean("cancel_other_sequences").default(false).notNull(),
       active: boolean("active").default(true).notNull(),
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
@@ -65892,10 +65897,16 @@ async function runTriggerNow(triggerType, task) {
       return;
     const email = task.email.toLowerCase().trim();
     const name2 = firstPart(task.title);
+    const taskTags = task.tags ?? [];
     for (const rule of rules) {
       try {
+        if (!matchesTagFilters(taskTags, rule.requiredTags, rule.excludedTags))
+          continue;
         const actionConfig = JSON.parse(rule.actionConfig || "{}");
         if (rule.actionType === "enroll_sequence" && actionConfig.sequenceId) {
+          if (rule.cancelOtherSequences) {
+            await cancelActiveEnrollments(email, actionConfig.sequenceId);
+          }
           await enrollInSequence(actionConfig.sequenceId, {
             email,
             name: name2,
@@ -65910,6 +65921,28 @@ async function runTriggerNow(triggerType, task) {
     }
   } catch (err) {
     console.error("[automations] runTriggerNow failed:", err);
+  }
+}
+function matchesTagFilters(taskTags, requiredTags, excludedTags) {
+  if (requiredTags?.length) {
+    if (!requiredTags.every((t2) => taskTags.includes(t2)))
+      return false;
+  }
+  if (excludedTags?.length) {
+    if (excludedTags.some((t2) => taskTags.includes(t2)))
+      return false;
+  }
+  return true;
+}
+async function cancelActiveEnrollments(email, exceptSequenceId) {
+  try {
+    await db.update(emailSequenceEnrollments).set({ status: "cancelled", nextSendAt: null }).where(and(
+      eq(emailSequenceEnrollments.email, email),
+      eq(emailSequenceEnrollments.status, "active"),
+      ne(emailSequenceEnrollments.sequenceId, exceptSequenceId)
+    ));
+  } catch (err) {
+    console.error("[automations] cancelActiveEnrollments failed:", err);
   }
 }
 async function evaluateInactiveDaysRules() {
@@ -65931,18 +65964,23 @@ async function evaluateInactiveDaysRules() {
         const eligible = await db.select({
           id: tasks.id,
           email: tasks.email,
-          title: tasks.title
+          title: tasks.title,
+          tags: tasks.tags
         }).from(tasks).where(and(
           isNotNull(tasks.email),
           ne(tasks.email, ""),
           eq(tasks.emailConfirmed, true),
-          // só e-mails confirmados manualmente
           isNull2(tasks.convertedAt),
           sql`COALESCE(${tasks.lastContactedAt}, ${tasks.createdAt}) < ${cutoff}`
         )).limit(300);
         for (const t2 of eligible) {
           if (!t2.email)
             continue;
+          if (!matchesTagFilters(t2.tags ?? [], rule.requiredTags, rule.excludedTags))
+            continue;
+          if (rule.cancelOtherSequences) {
+            await cancelActiveEnrollments(t2.email, actionConfig.sequenceId);
+          }
           const result = await enrollInSequence(actionConfig.sequenceId, {
             email: t2.email,
             name: firstPart(t2.title),
@@ -66255,6 +66293,7 @@ var tasksRouter = router({
           id: created.id,
           email: created.email,
           title: created.title,
+          tags: created.tags,
           assignedTo: created.assignedTo
         });
       } catch (err) {
@@ -66316,6 +66355,7 @@ var tasksRouter = router({
           id: updated.id,
           email: updated.email,
           title: updated.title,
+          tags: updated.tags,
           assignedTo: updated.assignedTo
         });
       } catch (err) {
@@ -66351,6 +66391,7 @@ var tasksRouter = router({
           id: updated.id,
           email: updated.email,
           title: updated.title,
+          tags: updated.tags,
           assignedTo: updated.assignedTo
         });
       } catch (err) {
@@ -66394,6 +66435,7 @@ var tasksRouter = router({
           id: updated.id,
           email: updated.email,
           title: updated.title,
+          tags: updated.tags,
           assignedTo: updated.assignedTo
         });
       } catch (err) {
@@ -70852,6 +70894,9 @@ var emailMarketingRouter = router({
     triggerConfig: external_exports.record(external_exports.any()).optional(),
     actionType: external_exports.enum(["enroll_sequence", "add_tag"]),
     actionConfig: external_exports.record(external_exports.any()),
+    requiredTags: external_exports.array(external_exports.string()).optional(),
+    excludedTags: external_exports.array(external_exports.string()).optional(),
+    cancelOtherSequences: external_exports.boolean().optional().default(false),
     active: external_exports.boolean().optional().default(true)
   })).mutation(async ({ input }) => {
     const data = {
@@ -70860,6 +70905,9 @@ var emailMarketingRouter = router({
       triggerConfig: input.triggerConfig ? JSON.stringify(input.triggerConfig) : null,
       actionType: input.actionType,
       actionConfig: JSON.stringify(input.actionConfig),
+      requiredTags: input.requiredTags?.length ? input.requiredTags : null,
+      excludedTags: input.excludedTags?.length ? input.excludedTags : null,
+      cancelOtherSequences: input.cancelOtherSequences ?? false,
       active: input.active
     };
     if (input.id) {
@@ -71386,7 +71434,7 @@ async function seedAdminIfNeeded() {
   `;
   console.log("[migrate] admin user seeded");
 }
-var SCHEMA_VERSION = "2026-06-24d";
+var SCHEMA_VERSION = "2026-06-24e";
 async function ensureTablesExist() {
   try {
     await seedAdminIfNeeded();
@@ -71731,6 +71779,9 @@ async function ensureTablesExist() {
   await sql4`ALTER TABLE task_deletion_logs ADD COLUMN IF NOT EXISTS phone TEXT`;
   await sql4`CREATE INDEX IF NOT EXISTS task_deletion_logs_cnpj_idx  ON task_deletion_logs (cnpj)  WHERE cnpj  IS NOT NULL`;
   await sql4`CREATE INDEX IF NOT EXISTS task_deletion_logs_phone_idx ON task_deletion_logs (phone) WHERE phone IS NOT NULL`;
+  await sql4`ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS required_tags TEXT[]`;
+  await sql4`ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS excluded_tags TEXT[]`;
+  await sql4`ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS cancel_other_sequences BOOLEAN NOT NULL DEFAULT FALSE`;
   await sql4`ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS is_broadcast BOOLEAN NOT NULL DEFAULT FALSE`;
   await sql4`ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS attachments  JSONB`;
   await sql4`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS attachments  JSONB`;

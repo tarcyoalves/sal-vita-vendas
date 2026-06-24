@@ -26,6 +26,7 @@ interface TriggerTask {
   id: number;
   email: string | null | undefined;
   title: string;
+  tags?: string[] | null;
   assignedTo?: string | null;
 }
 
@@ -115,7 +116,7 @@ export async function addTagToTask(taskId: number, tag: string): Promise<void> {
  */
 export async function runTriggerNow(triggerType: 'lead_created' | 'lead_converted', task: TriggerTask): Promise<void> {
   try {
-    if (!task.email) return; // sequences/tags require an e-mail address
+    if (!task.email) return;
 
     const rules = await db.select().from(automationRules)
       .where(and(eq(automationRules.triggerType, triggerType), eq(automationRules.active, true)));
@@ -123,11 +124,17 @@ export async function runTriggerNow(triggerType: 'lead_created' | 'lead_converte
 
     const email = task.email.toLowerCase().trim();
     const name = firstPart(task.title);
+    const taskTags = task.tags ?? [];
 
     for (const rule of rules) {
       try {
+        if (!matchesTagFilters(taskTags, rule.requiredTags, rule.excludedTags)) continue;
+
         const actionConfig = JSON.parse(rule.actionConfig || '{}') as { sequenceId?: number; tag?: string };
         if (rule.actionType === 'enroll_sequence' && actionConfig.sequenceId) {
+          if (rule.cancelOtherSequences) {
+            await cancelActiveEnrollments(email, actionConfig.sequenceId);
+          }
           await enrollInSequence(actionConfig.sequenceId, {
             email, name, taskId: task.id,
           });
@@ -140,6 +147,30 @@ export async function runTriggerNow(triggerType: 'lead_created' | 'lead_converte
     }
   } catch (err) {
     console.error('[automations] runTriggerNow failed:', err);
+  }
+}
+
+function matchesTagFilters(taskTags: string[], requiredTags?: string[] | null, excludedTags?: string[] | null): boolean {
+  if (requiredTags?.length) {
+    if (!requiredTags.every(t => taskTags.includes(t))) return false;
+  }
+  if (excludedTags?.length) {
+    if (excludedTags.some(t => taskTags.includes(t))) return false;
+  }
+  return true;
+}
+
+async function cancelActiveEnrollments(email: string, exceptSequenceId: number): Promise<void> {
+  try {
+    await db.update(emailSequenceEnrollments)
+      .set({ status: 'cancelled', nextSendAt: null })
+      .where(and(
+        eq(emailSequenceEnrollments.email, email),
+        eq(emailSequenceEnrollments.status, 'active'),
+        ne(emailSequenceEnrollments.sequenceId, exceptSequenceId),
+      ));
+  } catch (err) {
+    console.error('[automations] cancelActiveEnrollments failed:', err);
   }
 }
 
@@ -168,17 +199,21 @@ export async function evaluateInactiveDaysRules(): Promise<{ rulesEvaluated: num
         const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
         const eligible = await db.select({
-          id: tasks.id, email: tasks.email, title: tasks.title,
+          id: tasks.id, email: tasks.email, title: tasks.title, tags: tasks.tags,
         }).from(tasks).where(and(
           isNotNull(tasks.email),
           ne(tasks.email, ''),
-          eq(tasks.emailConfirmed, true), // só e-mails confirmados manualmente
+          eq(tasks.emailConfirmed, true),
           isNull(tasks.convertedAt),
           sql`COALESCE(${tasks.lastContactedAt}, ${tasks.createdAt}) < ${cutoff}`,
         )).limit(300);
 
         for (const t of eligible) {
           if (!t.email) continue;
+          if (!matchesTagFilters(t.tags ?? [], rule.requiredTags, rule.excludedTags)) continue;
+          if (rule.cancelOtherSequences) {
+            await cancelActiveEnrollments(t.email, actionConfig.sequenceId!);
+          }
           const result = await enrollInSequence(actionConfig.sequenceId, {
             email: t.email,
             name: firstPart(t.title),

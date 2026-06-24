@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-06-24d';
+const SCHEMA_VERSION = '2026-06-24e';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -405,6 +405,11 @@ export async function ensureTablesExist() {
   await sql`CREATE INDEX IF NOT EXISTS task_deletion_logs_phone_idx ON task_deletion_logs (phone) WHERE phone IS NOT NULL`;
 
   // ── Disparo Rápido (Broadcast) — envio avulso com lista manual + anexos ────
+  // ── Automações — filtro por tags e cancelamento de sequências ──────────────
+  await sql`ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS required_tags TEXT[]`;
+  await sql`ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS excluded_tags TEXT[]`;
+  await sql`ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS cancel_other_sequences BOOLEAN NOT NULL DEFAULT FALSE`;
+
   await sql`ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS is_broadcast BOOLEAN NOT NULL DEFAULT FALSE`;
   await sql`ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS attachments  JSONB`;
   await sql`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS attachments  JSONB`;

@@ -133,6 +133,7 @@ export const tasksRouter = router({
             id: created.id,
             email: created.email,
             title: created.title,
+            tags: created.tags,
             assignedTo: created.assignedTo,
           });
         } catch (err) {
@@ -206,7 +207,7 @@ export const tasksRouter = router({
       if (confirmedNow && updated.email) {
         try {
           await runTriggerNow('lead_created', {
-            id: updated.id, email: updated.email, title: updated.title, assignedTo: updated.assignedTo,
+            id: updated.id, email: updated.email, title: updated.title, tags: updated.tags, assignedTo: updated.assignedTo,
           });
         } catch (err) {
           console.error('[tasks.update] runTriggerNow(lead_created) failed:', err);
@@ -254,7 +255,7 @@ export const tasksRouter = router({
       if (input.confirmed && updated?.email) {
         try {
           await runTriggerNow('lead_created', {
-            id: updated.id, email: updated.email, title: updated.title, assignedTo: updated.assignedTo,
+            id: updated.id, email: updated.email, title: updated.title, tags: updated.tags, assignedTo: updated.assignedTo,
           });
         } catch (err) {
           console.error('[tasks.confirmEmail] runTriggerNow(lead_created) failed:', err);
@@ -308,6 +309,7 @@ export const tasksRouter = router({
             id: updated.id,
             email: updated.email,
             title: updated.title,
+            tags: updated.tags,
             assignedTo: updated.assignedTo,
           });
         } catch (err) {

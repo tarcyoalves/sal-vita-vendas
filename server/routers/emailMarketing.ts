@@ -774,6 +774,9 @@ export const emailMarketingRouter = router({
       triggerConfig: z.record(z.any()).optional(),
       actionType: z.enum(['enroll_sequence', 'add_tag']),
       actionConfig: z.record(z.any()),
+      requiredTags: z.array(z.string()).optional(),
+      excludedTags: z.array(z.string()).optional(),
+      cancelOtherSequences: z.boolean().optional().default(false),
       active: z.boolean().optional().default(true),
     }))
     .mutation(async ({ input }) => {
@@ -783,6 +786,9 @@ export const emailMarketingRouter = router({
         triggerConfig: input.triggerConfig ? JSON.stringify(input.triggerConfig) : null,
         actionType: input.actionType,
         actionConfig: JSON.stringify(input.actionConfig),
+        requiredTags: input.requiredTags?.length ? input.requiredTags : null,
+        excludedTags: input.excludedTags?.length ? input.excludedTags : null,
+        cancelOtherSequences: input.cancelOtherSequences ?? false,
         active: input.active,
       };
       if (input.id) {

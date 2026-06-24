@@ -154,21 +154,27 @@ function formatDateTime(value: string | Date | null | undefined): string {
 }
 
 // Human-readable description of an automation rule's trigger, including config (e.g. days).
-function describeTrigger(rule: { triggerType: string; triggerConfig?: any }): string {
+function describeTrigger(rule: { triggerType: string; triggerConfig?: any; requiredTags?: string[] | null; excludedTags?: string[] | null }): string {
   const base = TRIGGER_TYPE_LABELS[rule.triggerType] ?? rule.triggerType;
+  const parts: string[] = [];
   if (rule.triggerType === 'inactive_days') {
     const days = rule.triggerConfig?.days;
-    return days ? `Sem contato há ${days} dia(s)` : base;
+    parts.push(days ? `Sem contato há ${days} dia(s)` : base);
+  } else {
+    parts.push(base);
   }
-  return base;
+  if (rule.requiredTags?.length) parts.push(`✅ tem: ${rule.requiredTags.join(', ')}`);
+  if (rule.excludedTags?.length) parts.push(`🚫 sem: ${rule.excludedTags.join(', ')}`);
+  return parts.join(' · ');
 }
 
-// Human-readable description of an automation rule's action, resolving sequence names by id.
-function describeAction(rule: { actionType: string; actionConfig?: any }, sequences?: { id: number; name: string }[]): string {
+function describeAction(rule: { actionType: string; actionConfig?: any; cancelOtherSequences?: boolean }, sequences?: { id: number; name: string }[]): string {
   if (rule.actionType === 'enroll_sequence') {
     const seqId = rule.actionConfig?.sequenceId;
     const seq = sequences?.find(s => s.id === seqId);
-    return `Inscrever em sequência "${seq?.name ?? `#${seqId}`}"`;
+    let desc = `Inscrever em sequência "${seq?.name ?? `#${seqId}`}"`;
+    if (rule.cancelOtherSequences) desc += ' (cancela outras)';
+    return desc;
   }
   if (rule.actionType === 'add_tag') {
     return `Adicionar tag "${rule.actionConfig?.tag ?? ''}"`;
@@ -1729,6 +1735,8 @@ function AutomationsTab() {
   const upsertMutation = trpc.emailMarketing.upsertAutomationRule.useMutation();
   const deleteMutation = trpc.emailMarketing.deleteAutomationRule.useMutation();
 
+  const { data: availTags } = trpc.emailMarketing.listTags.useQuery();
+
   const [editing, setEditing] = useState<{
     id?: number;
     name: string;
@@ -1737,6 +1745,9 @@ function AutomationsTab() {
     actionType: "enroll_sequence" | "add_tag";
     sequenceId: string;
     tag: string;
+    requiredTags: string[];
+    excludedTags: string[];
+    cancelOtherSequences: boolean;
     active: boolean;
   } | null>(null);
 
@@ -1772,6 +1783,9 @@ function AutomationsTab() {
         triggerConfig: editing.triggerType === 'inactive_days' ? { days: Number(editing.days) } : undefined,
         actionType: editing.actionType,
         actionConfig: editing.actionType === 'enroll_sequence' ? { sequenceId: Number(editing.sequenceId) } : { tag: editing.tag.trim() },
+        requiredTags: editing.requiredTags.filter(t => t.trim()),
+        excludedTags: editing.excludedTags.filter(t => t.trim()),
+        cancelOtherSequences: editing.cancelOtherSequences,
         active: editing.active,
       });
       toast.success("Automação salva!");
@@ -1791,6 +1805,9 @@ function AutomationsTab() {
         triggerConfig: rule.triggerConfig ?? undefined,
         actionType: rule.actionType as any,
         actionConfig: rule.actionConfig,
+        requiredTags: rule.requiredTags ?? [],
+        excludedTags: rule.excludedTags ?? [],
+        cancelOtherSequences: rule.cancelOtherSequences ?? false,
         active,
       });
       utils.emailMarketing.listAutomationRules.invalidate();
@@ -1812,7 +1829,8 @@ function AutomationsTab() {
 
   const openNew = () => setEditing({
     name: "", triggerType: "lead_created", days: "30",
-    actionType: "enroll_sequence", sequenceId: "", tag: "", active: true,
+    actionType: "enroll_sequence", sequenceId: "", tag: "",
+    requiredTags: [], excludedTags: [], cancelOtherSequences: false, active: true,
   });
 
   const openEdit = (rule: typeof parsedRules[number]) => setEditing({
@@ -1823,6 +1841,9 @@ function AutomationsTab() {
     actionType: rule.actionType as any,
     sequenceId: rule.actionConfig?.sequenceId ? String(rule.actionConfig.sequenceId) : "",
     tag: rule.actionConfig?.tag ?? "",
+    requiredTags: rule.requiredTags ?? [],
+    excludedTags: rule.excludedTags ?? [],
+    cancelOtherSequences: rule.cancelOtherSequences ?? false,
     active: rule.active,
   });
 
@@ -1942,6 +1963,52 @@ function AutomationsTab() {
                 <div>
                   <Label>Tag</Label>
                   <Input value={editing.tag} onChange={e => setEditing(s => s && ({ ...s, tag: e.target.value }))} placeholder="Ex: cliente-vip" />
+                </div>
+              )}
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Filtro por tags</p>
+                <div>
+                  <Label className="text-xs">Só dispara se o lead TEM estas tags (todas)</Label>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {(availTags ?? []).map(tag => {
+                      const selected = editing.requiredTags.includes(tag);
+                      return (
+                        <button key={tag} type="button"
+                          className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${selected ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-600 border-slate-300 hover:border-blue-400'}`}
+                          onClick={() => setEditing(s => s && ({
+                            ...s,
+                            requiredTags: selected ? s.requiredTags.filter(t => t !== tag) : [...s.requiredTags, tag],
+                            excludedTags: selected ? s.excludedTags : s.excludedTags.filter(t => t !== tag),
+                          }))}
+                        >{tag}</button>
+                      );
+                    })}
+                    {(availTags ?? []).length === 0 && <span className="text-xs text-slate-400">Nenhuma tag cadastrada</span>}
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">NÃO dispara se o lead TEM alguma destas tags</Label>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {(availTags ?? []).map(tag => {
+                      const selected = editing.excludedTags.includes(tag);
+                      return (
+                        <button key={tag} type="button"
+                          className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${selected ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-600 border-slate-300 hover:border-red-400'}`}
+                          onClick={() => setEditing(s => s && ({
+                            ...s,
+                            excludedTags: selected ? s.excludedTags.filter(t => t !== tag) : [...s.excludedTags, tag],
+                            requiredTags: selected ? s.requiredTags : s.requiredTags.filter(t => t !== tag),
+                          }))}
+                        >{tag}</button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+              {editing.actionType === 'enroll_sequence' && (
+                <div className="flex items-center gap-2">
+                  <Switch checked={editing.cancelOtherSequences} onCheckedChange={(checked) => setEditing(s => s && ({ ...s, cancelOtherSequences: checked }))} />
+                  <Label className="!mb-0 text-xs">Cancelar inscrições ativas em outras sequências ao inscrever</Label>
                 </div>
               )}
               <div className="flex items-center gap-2">
