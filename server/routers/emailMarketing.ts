@@ -10,7 +10,7 @@ import {
   emailEvents, automationRules, emailSendCounters,
   tasks, clients, sellers,
 } from '../db/schema';
-import { pickAccount, sendBatch, layout, renderTemplate, renderSignature, getUsage, getAllDomainTracking, setDomainTracking, getAccounts, type BatchMessage } from '../email/marketing';
+import { pickAccount, sendBatch, layout, renderTemplate, renderSignature, sanitizeCampaignHtml, getUsage, getAllDomainTracking, setDomainTracking, getAccounts, type BatchMessage } from '../email/marketing';
 import { enrollInSequence } from '../email/automations';
 import { userTaskFilter } from './tasks';
 
@@ -181,6 +181,7 @@ export const emailMarketingRouter = router({
       active: z.boolean().optional().default(true),
     }))
     .mutation(async ({ input }) => {
+      input.htmlBody = sanitizeCampaignHtml(input.htmlBody);
       if (input.id) {
         const { id, ...data } = input;
         const [updated] = await db.update(emailTemplates)
@@ -224,6 +225,7 @@ export const emailMarketingRouter = router({
       tags: z.array(z.string()).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
+      input.htmlBody = sanitizeCampaignHtml(input.htmlBody);
       const audience = await buildAudience(input);
 
       const [campaign] = await db.insert(emailCampaigns).values({
@@ -270,6 +272,7 @@ export const emailMarketingRouter = router({
       })).max(10).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
+      input.htmlBody = sanitizeCampaignHtml(input.htmlBody);
       if (input.attachments && input.attachments.length > 0) {
         const totalBase64 = input.attachments.reduce((sum, a) => sum + a.content.length, 0);
         if (totalBase64 > 3_500_000) {
@@ -628,6 +631,7 @@ export const emailMarketingRouter = router({
       sendCondition: z.enum(['always', 'if_opened', 'if_not_opened', 'if_clicked', 'if_not_clicked']).optional().default('always'),
     }))
     .mutation(async ({ input }) => {
+      input.htmlBody = sanitizeCampaignHtml(input.htmlBody);
       if (input.id) {
         const { id, ...data } = input;
         const [updated] = await db.update(emailSequenceSteps)

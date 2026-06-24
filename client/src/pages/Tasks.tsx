@@ -177,7 +177,7 @@ export default function Tasks() {
   const [importSkipped, setImportSkipped] = useState(0);
   const [selectedRepresentative, setSelectedRepresentative] = useState("");
   const [selectedTasks, setSelectedTasks] = useState<Set<number>>(new Set());
-  const [expandedTask, setExpandedTask] = useState<number | null>(null);
+  const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [bulkRepresentative, setBulkRepresentative] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -208,6 +208,11 @@ export default function Tasks() {
   const deleteManyMutation = trpc.tasks.deleteMany.useMutation();
   const toggleConvertedMutation = trpc.tasks.toggleConverted.useMutation();
   const suggestMutation = trpc.ai.suggestSalesApproach.useMutation();
+  // Fetch full task (incl. notes/description) only when a specific task is expanded
+  const { data: fullTask } = trpc.tasks.getById.useQuery(
+    { id: expandedTaskId! },
+    { enabled: !!expandedTaskId }
+  );
 
   // ── E-mail Marketing: add task(s) to a draft campaign ──────────────────────
   const [campaignPickerTaskIds, setCampaignPickerTaskIds] = useState<number[] | null>(null);
@@ -676,9 +681,13 @@ export default function Tasks() {
     const reminderTime = d
       ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
       : "09:00";
-    setFormData({ clientId: task.clientId, title: task.title, description: task.description || "", notes: task.notes || "", email: task.email || "", tags: task.tags ?? [], reminderDate, reminderTime, reminderEnabled: task.reminderEnabled ?? true, priority: (task.priority as "low" | "medium" | "high") || "medium", assignedTo: task.assignedTo || "" });
+    // Use fullTask (from getById) for notes/description when available, since
+    // tasks.list no longer returns those heavy columns.
+    const taskNotes = (fullTask?.id === task.id ? fullTask.notes : task.notes) || "";
+    const taskDesc = (fullTask?.id === task.id ? fullTask.description : task.description) || "";
+    setFormData({ clientId: task.clientId, title: task.title, description: taskDesc, notes: taskNotes, email: task.email || "", tags: task.tags ?? [], reminderDate, reminderTime, reminderEnabled: task.reminderEnabled ?? true, priority: (task.priority as "low" | "medium" | "high") || "medium", assignedTo: task.assignedTo || "" });
     setIsModalOpen(true);
-  }, []);
+  }, [fullTask]);
 
   const handleOpenNewTask = useCallback(() => { resetForm(); setIsModalOpen(true); }, [resetForm]);
 
@@ -868,7 +877,8 @@ export default function Tasks() {
     setLoadingSuggestion(true);
     setAiSuggestion(null);
     try {
-      const result = await suggestMutation.mutateAsync({ title: task.title, notes: task.notes || '' });
+      const notesForAi = (fullTask?.id === task.id ? fullTask.notes : task.notes) || '';
+      const result = await suggestMutation.mutateAsync({ title: task.title, notes: notesForAi });
       setAiSuggestion({ taskId: task.id, text: result.suggestion });
     } catch {
       toast.error("Erro ao gerar sugestão");
@@ -1252,7 +1262,7 @@ export default function Tasks() {
           {filteredTasks.map((task: Task) => (
             <div key={task.id} className={`border rounded-lg overflow-hidden shadow-sm transition-all duration-300 ${highlightTaskId === task.id ? 'ring-2 ring-blue-500 ring-offset-1 shadow-blue-200 shadow-md' : task.hotLead ? 'ring-1 ring-red-300 border-red-200' : ''}`}
               style={highlightTaskId === task.id ? { animation: 'pulse-highlight 1s ease-in-out 3' } : {}}>
-              <div className={`flex items-center gap-2 md:gap-3 p-3 hover:bg-gray-50 transition cursor-pointer ${task.hotLead ? 'bg-red-50' : 'bg-white'}`} onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)}>
+              <div className={`flex items-center gap-2 md:gap-3 p-3 hover:bg-gray-50 transition cursor-pointer ${task.hotLead ? 'bg-red-50' : 'bg-white'}`} onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}>
                 <label className="flex-shrink-0 p-1 -m-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
                   <input type="checkbox" checked={selectedTasks.has(task.id)} onChange={() => handleSelectTask(task.id)} className="w-5 h-5 cursor-pointer" />
                 </label>
@@ -1378,9 +1388,9 @@ export default function Tasks() {
                   } catch { return null; }
                 })()}
               </div>
-              {expandedTask === task.id && (
+              {expandedTaskId === task.id && (
                 <div className="p-3 bg-gray-50 border-t space-y-2">
-                  {task.notes && <div className="text-sm bg-yellow-50 p-3 rounded border border-yellow-200"><strong>📝 Anotações:</strong><p className="whitespace-pre-wrap mt-2 leading-relaxed">{task.notes}</p></div>}
+                  {(fullTask?.notes ?? task.notes) && <div className="text-sm bg-yellow-50 p-3 rounded border border-yellow-200"><strong>📝 Anotações:</strong><p className="whitespace-pre-wrap mt-2 leading-relaxed">{fullTask?.notes ?? task.notes}</p></div>}
                   <p className="text-xs text-gray-500">
                     Criada: {new Date(task.createdAt).toLocaleDateString("pt-BR")}
                     {!!task.contactCount && ` · 📞 ${task.contactCount} contato(s)`}
@@ -1394,8 +1404,9 @@ export default function Tasks() {
                   )}
                   <div className="flex gap-2 flex-wrap">
                     {(() => {
-                      const phone = extractPhone(`${task.title} ${task.notes ?? ''}`);
-                      const email = extractEmail(`${task.title} ${task.notes ?? ''}`);
+                      const notesText = fullTask?.notes ?? task.notes ?? '';
+                      const phone = extractPhone(`${task.title} ${notesText}`);
+                      const email = extractEmail(`${task.title} ${notesText}`);
                       return (
                         <>
                           {phone && (

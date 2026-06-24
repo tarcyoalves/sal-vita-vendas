@@ -32,14 +32,58 @@ export async function userTaskFilter(userId: number, userName: string) {
   return or(...conditions);
 }
 
+// Columns returned by tasks.list — excludes `notes` (up to 5000 chars) and
+// `description` (up to 2000 chars) to reduce transfer payload. Use tasks.getById
+// to fetch the full task when opening a detail view.
+const listColumns = {
+  id: tasks.id,
+  clientId: tasks.clientId,
+  userId: tasks.userId,
+  title: tasks.title,
+  email: tasks.email,
+  tags: tasks.tags,
+  reminderDate: tasks.reminderDate,
+  reminderEnabled: tasks.reminderEnabled,
+  status: tasks.status,
+  priority: tasks.priority,
+  assignedTo: tasks.assignedTo,
+  createdAt: tasks.createdAt,
+  updatedAt: tasks.updatedAt,
+  convertedAt: tasks.convertedAt,
+  contactCount: tasks.contactCount,
+  lastContactedAt: tasks.lastContactedAt,
+  hotLead: tasks.hotLead,
+  lastEngagementAt: tasks.lastEngagementAt,
+  cnpj: tasks.cnpj,
+  phone: tasks.phone,
+  orderValue: tasks.orderValue,
+  orderId: tasks.orderId,
+  emailConfirmed: tasks.emailConfirmed,
+  emailConfirmedAt: tasks.emailConfirmedAt,
+  emailConfirmedBy: tasks.emailConfirmedBy,
+};
+
 export const tasksRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     if (ctx.user.role === 'admin') {
-      return db.select().from(tasks).orderBy(tasks.createdAt);
+      return db.select(listColumns).from(tasks).orderBy(tasks.createdAt);
     }
     const filter = await userTaskFilter(ctx.user.id, ctx.user.name ?? '');
-    return db.select().from(tasks).where(filter).orderBy(tasks.createdAt);
+    return db.select(listColumns).from(tasks).where(filter).orderBy(tasks.createdAt);
   }),
+
+  getById: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const [task] = await db.select().from(tasks).where(eq(tasks.id, input.id));
+      if (!task) throw new TRPCError({ code: 'NOT_FOUND' });
+      if (ctx.user.role !== 'admin') {
+        const filter = await userTaskFilter(ctx.user.id, ctx.user.name ?? '');
+        const [owned] = await db.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.id, input.id), filter));
+        if (!owned) throw new TRPCError({ code: 'FORBIDDEN' });
+      }
+      return task;
+    }),
 
   create: protectedProcedure
     .input(z.object({

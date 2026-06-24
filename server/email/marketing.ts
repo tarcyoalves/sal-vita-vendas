@@ -658,6 +658,14 @@ async function sendBatchBrevo(account: MarketingAccount, messages: BatchMessage[
   }
 }
 
+export function sanitizeCampaignHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]*)/gi, '')
+    .replace(/\bhref\s*=\s*["']?\s*javascript\s*:/gi, 'href="')
+    .replace(/\bsrc\s*=\s*["']?\s*javascript\s*:/gi, 'src="');
+}
+
 /** Replaces {nome}, {empresa}, {unsubscribe} placeholders in a template string. */
 export function renderTemplate(text: string, vars: { nome?: string; empresa?: string; unsubscribe?: string }): string {
   return text
@@ -781,7 +789,7 @@ export function layout(body: string, unsubUrl: string, signatureHtml?: string): 
                style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
           <tr>
             <td style="background:#ffffff;padding:20px 32px 8px;text-align:left;">
-              <img src="http://salvitarn.com.br/wp-content/uploads/2025/04/logo-SAL-VITA.png"
+              <img src="https://salvitarn.com.br/wp-content/uploads/2025/04/logo-SAL-VITA.png"
                    alt="Sal Vita" width="160" height="auto"
                    style="display:inline-block;max-width:160px;height:auto;border:0;" />
             </td>
@@ -804,6 +812,7 @@ export function layout(body: string, unsubUrl: string, signatureHtml?: string): 
                 Você está recebendo este e-mail porque é cliente ou contato da Sal Vita.<br />
                 <a href="${unsubUrl}" style="color:#aaa;text-decoration:underline;">Não quero mais receber e-mails</a>
               </p>
+              <p style="margin:8px 0 0;font-size:11px;color:#aaa;">Sal Vita &middot; Mossor&oacute;/RN &middot; Brasil</p>
             </td>
           </tr>
         </table>

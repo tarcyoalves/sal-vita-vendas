@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import crypto from 'crypto';
-import postgres from 'postgres';
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -14,13 +14,13 @@ import { ordersDb } from '../server/db/ordersDb';
 import { sql as sqlClient, db } from '../server/db/index';
 import {
   siteOrders, abandonedCarts, automationRuns, msgTemplates, coupons, emailCampaignRecipients, emailSuppressions, clients,
-  emailEvents, sellers,
+  emailEvents, sellers, emailSequenceSends, taskDeletionLogs,
 } from '../server/db/schema';
 import { eq, and, sql, lte, gte, isNull, inArray, desc, asc, lt } from 'drizzle-orm';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
 import { createPixPaymentForOrder } from '../server/lib/mercadopago';
 import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid } from '../server/lib/orderConfirmation';
-import { verifyResendWebhook, getAllDomainTracking, setDomainTracking, getAccounts, ensureWebhookEvents } from '../server/email/marketing';
+import { verifyResendWebhook } from '../server/email/marketing';
 import { evaluateInactiveDaysRules, flagEngagementByMessageId, processSequenceEnrollments } from '../server/email/automations';
 
 function isBusinessHours(): boolean {
@@ -59,107 +59,11 @@ const dbReady = Promise.all([
 let migrationSettled = false;
 dbReady.then(() => { migrationSettled = true; });
 
-// Auto-enable Resend open/click tracking + fix webhook events on cold start.
-(async () => {
-  try {
-    const accounts = getAccounts();
-    const domains = await getAllDomainTracking();
-    for (const d of domains) {
-      if (d.domainId && (!d.openTracking || !d.clickTracking)) {
-        const account = accounts.find(a => a.key === d.accountKey);
-        if (!account) continue;
-        const r = await setDomainTracking(account, d.domainId, { openTracking: true, clickTracking: true });
-        console.log(`[tracking] enabled open+click for ${d.domainName}: ${r.ok ? 'ok' : r.error}`);
-      }
-    }
-    for (const account of accounts) {
-      if (account.provider !== 'resend') continue;
-      const r = await ensureWebhookEvents(account, 'resend-webhook');
-      if (r.fixed) console.log(`[tracking] fixed webhook events for ${account.key}`);
-      else if (r.error) console.warn(`[tracking] webhook check ${account.key}: ${r.error}`);
-    }
-  } catch (err) {
-    console.warn('[tracking] auto-enable failed:', err);
-  }
-})();
+// SY4: Resend tracking + webhook events IIFE removed — it ran HTTP calls to
+// Resend API on every cold start unnecessarily (tracking is already configured).
+// Use the admin dashboard's "enableDomainTracking" procedure if needed.
 
-// CRM data auto-migration: only runs if a source DB with a 'sellers' table is available.
-// ORDERS_DATABASE_URL is the e-commerce DB (no CRM tables) so it is skipped automatically.
-// To restore CRM data from an old Neon DB, call POST /api/migrate-from-neon with neonUrl + secret.
-async function autoMigrateIfNeeded(): Promise<void> {
-  const dstUrl = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL!;
-  const candidates: [string, string | undefined][] = [
-    ['CRM_DATABASE_URL',    process.env.CRM_DATABASE_URL],
-    ['SALLOG_DATABASE_URL', process.env.SALLOG_DATABASE_URL],
-    ['NEON_DATABASE_URL',   process.env.NEON_DATABASE_URL],
-  ];
-  const srcEntry = candidates.find(([, v]) => v && v !== dstUrl);
-  if (!srcEntry) return;
-
-  const [srcKey, srcUrl] = srcEntry;
-  // Use isolated pools — never touch the shared main pool (sqlClient) so
-  // real user requests are never blocked waiting for migration connections.
-  let dst: ReturnType<typeof postgres> | null = null;
-  let src: ReturnType<typeof postgres> | null = null;
-  try {
-    dst = postgres(dstUrl, { max: 1, prepare: false, ssl: 'require', connect_timeout: 8 });
-
-    const dstRows = await Promise.race([
-      dst`SELECT COUNT(*)::int AS cnt FROM sellers`,
-      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('dst_timeout')), 10_000)),
-    ]) as unknown as Array<{ cnt: number }>;
-    if ((dstRows[0]?.cnt ?? 0) > 0) return;
-
-    // Neon free-tier may take up to 10 s to wake from auto-suspend
-    src = postgres(srcUrl!, { max: 1, prepare: false, ssl: 'require', connect_timeout: 10 });
-
-    const srcRows = await Promise.race([
-      src`SELECT COUNT(*)::int AS cnt FROM sellers`,
-      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('src_timeout')), 12_000)),
-    ]) as unknown as Array<{ cnt: number }>;
-    const srcCount = srcRows[0]?.cnt ?? 0;
-    if (srcCount === 0) return;
-
-    console.log(`[auto-migrate] migrating ${srcCount} sellers from ${srcKey}...`);
-    const [usrs, slrs, clts, tsks, rmds] = await Promise.all([
-      src`SELECT * FROM users`,
-      src`SELECT * FROM sellers`,
-      src`SELECT * FROM clients`,
-      src`SELECT * FROM tasks`,
-      src`SELECT * FROM reminders`,
-    ]);
-
-    for (const u of usrs) {
-      await dst`INSERT INTO users ${dst(u)} ON CONFLICT (email) DO UPDATE SET
-        name = EXCLUDED.name, password_hash = EXCLUDED.password_hash,
-        role = EXCLUDED.role, must_change_password = EXCLUDED.must_change_password`;
-    }
-    if (usrs.length) await dst`SELECT setval(pg_get_serial_sequence('users','id'), (SELECT MAX(id) FROM users))`;
-    for (const r of slrs) await dst`INSERT INTO sellers ${dst(r)} ON CONFLICT DO NOTHING`;
-    if (slrs.length) await dst`SELECT setval(pg_get_serial_sequence('sellers','id'), (SELECT MAX(id) FROM sellers))`;
-    for (const r of clts) await dst`INSERT INTO clients ${dst(r)} ON CONFLICT DO NOTHING`;
-    if (clts.length) await dst`SELECT setval(pg_get_serial_sequence('clients','id'), (SELECT MAX(id) FROM clients))`;
-    for (const r of tsks) await dst`INSERT INTO tasks ${dst(r)} ON CONFLICT DO NOTHING`;
-    if (tsks.length) await dst`SELECT setval(pg_get_serial_sequence('tasks','id'), (SELECT MAX(id) FROM tasks))`;
-    for (const r of rmds) await dst`INSERT INTO reminders ${dst(r)} ON CONFLICT DO NOTHING`;
-    if (rmds.length) await dst`SELECT setval(pg_get_serial_sequence('reminders','id'), (SELECT MAX(id) FROM reminders))`;
-
-    console.log('[auto-migrate] done:', { users: usrs.length, sellers: slrs.length, clients: clts.length, tasks: tsks.length, reminders: rmds.length });
-  } catch (err: any) {
-    if (!(err?.message ?? '').includes('does not exist')) {
-      console.error('[auto-migrate] error:', err?.message ?? err);
-    }
-  } finally {
-    await dst?.end({ timeout: 3 }).catch(() => {});
-    await src?.end({ timeout: 3 }).catch(() => {});
-  }
-}
-
-// Delay migration by 6 s so the first wave of cold-start requests gets
-// DB connections before migration competes for the pool.
-setTimeout(() => {
-  autoMigrateIfNeeded().catch(err => console.error('[auto-migrate] uncaught:', err));
-}, 6_000);
+// SY5: autoMigrateIfNeeded removed — one-time CRM migration already completed.
 
 // ── Allowed origins ────────────────────────────────────────────────────────────
 const PROD_ORIGINS = [
@@ -275,6 +179,8 @@ async function handleUnsubscribe(req: express.Request, res: express.Response) {
 }
 
 app.get('/api/unsubscribe', handleUnsubscribe);
+// RFC 8058 one-click unsubscribe sends a POST request
+app.post('/api/unsubscribe', express.urlencoded({ extended: false }), handleUnsubscribe);
 
 // Run schema migration in background — do NOT block requests.
 // Tables already exist from prior successful migration; new instances
@@ -506,7 +412,7 @@ app.post('/api/resend-webhook', resendWebhookLimiter, express.raw({ type: 'appli
           messageId,
           recipientEmail,
           eventType: shortType,
-        });
+        }).onConflictDoNothing();
         if (shortType === 'opened' || shortType === 'clicked') {
           await flagEngagementByMessageId(messageId, shortType as 'opened' | 'clicked');
         }
@@ -534,6 +440,11 @@ const brevoWebhookLimiter = rateLimit({
 app.post('/api/brevo-webhook', brevoWebhookLimiter, express.json({ limit: '256kb' }), async (req, res) => {
   try {
     const secret = process.env.BREVO_WEBHOOK_SECRET;
+    if (!secret && process.env.NODE_ENV === 'production') {
+      console.warn('[brevo-webhook] BREVO_WEBHOOK_SECRET not configured');
+      res.status(401).json({ error: 'Webhook secret not configured' });
+      return;
+    }
     if (secret) {
       const provided = (req.query.secret as string) || req.headers['x-webhook-secret'];
       if (provided !== secret) {
@@ -584,7 +495,7 @@ app.post('/api/brevo-webhook', brevoWebhookLimiter, express.json({ limit: '256kb
           messageId,
           recipientEmail,
           eventType: shortType,
-        });
+        }).onConflictDoNothing();
         if (shortType === 'opened' || shortType === 'clicked') {
           await flagEngagementByMessageId(messageId, shortType as 'opened' | 'clicked');
         }
@@ -1053,6 +964,11 @@ app.get('/api/cron/email-daily', async (req, res) => {
     } catch (err) {
       console.error('[cron/email-daily] cleanup error:', err);
     }
+
+    // Purge old marketing data to stay within Neon free-tier 512 MB
+    try { await db.delete(emailCampaignRecipients).where(sql`created_at < NOW() - INTERVAL '90 days' AND status != 'pending'`); } catch {}
+    try { await db.delete(emailSequenceSends).where(sql`created_at < NOW() - INTERVAL '90 days'`); } catch {}
+    try { await db.delete(taskDeletionLogs).where(sql`created_at < NOW() - INTERVAL '180 days'`); } catch {}
 
     console.log('[cron/email-daily] summary:', summary);
     res.json({ ok: true, ...summary });
