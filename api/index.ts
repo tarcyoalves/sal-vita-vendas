@@ -500,6 +500,84 @@ app.post('/api/resend-webhook', resendWebhookLimiter, express.raw({ type: 'appli
   }
 });
 
+// ── Brevo webhook (delivered/opened/click/bounce/complaint) ──────────────────
+const brevoWebhookLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  validate: { xForwardedForHeader: false },
+});
+
+app.post('/api/brevo-webhook', brevoWebhookLimiter, express.json({ limit: '256kb' }), async (req, res) => {
+  try {
+    const secret = process.env.BREVO_WEBHOOK_SECRET;
+    if (secret) {
+      const provided = (req.query.secret as string) || req.headers['x-webhook-secret'];
+      if (provided !== secret) {
+        console.warn('[brevo-webhook] Invalid secret');
+        res.status(401).json({ error: 'Invalid secret' });
+        return;
+      }
+    }
+
+    const payload = req.body as {
+      event?: string;
+      email?: string;
+      'message-id'?: string;
+      tag?: string;
+    };
+
+    const event = (payload.event ?? '').toLowerCase();
+    const recipientEmail = (payload.email ?? '').toLowerCase().trim();
+    const rawMsgId = payload['message-id'] ?? '';
+    const messageId = rawMsgId.replace(/^<|>$/g, '');
+
+    console.log(`[brevo-webhook] event=${event} msgId=${messageId} to=${recipientEmail}`);
+
+    if (!recipientEmail) {
+      res.status(200).json({ ok: true });
+      return;
+    }
+
+    switch (event) {
+      case 'hard_bounce':
+      case 'soft_bounce':
+      case 'blocked':
+      case 'complaint': {
+        const reason = event === 'complaint' ? 'complaint' : 'bounce';
+        await db.insert(emailSuppressions).values({ email: recipientEmail, reason }).onConflictDoNothing();
+        await db.update(clients).set({ unsubscribed: true }).where(eq(clients.email, recipientEmail));
+        break;
+      }
+      case 'delivered':
+      case 'opened':
+      case 'proxy_open':
+      case 'click': {
+        if (!messageId) break;
+        const shortType = event === 'click' ? 'clicked'
+          : (event === 'opened' || event === 'proxy_open') ? 'opened'
+          : 'delivered';
+        await db.insert(emailEvents).values({
+          messageId,
+          recipientEmail,
+          eventType: shortType,
+        });
+        if (shortType === 'opened' || shortType === 'clicked') {
+          await flagEngagementByMessageId(messageId, shortType as 'opened' | 'clicked');
+        }
+        console.log(`[brevo-webhook] stored ${shortType} for ${recipientEmail}`);
+        break;
+      }
+      default:
+        break;
+    }
+
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    console.error('[brevo-webhook] error:', err);
+    if (!res.headersSent) res.status(200).json({ ok: true });
+  }
+});
+
 // 4mb to accommodate Disparo Rápido (broadcast) attachments sent as base64.
 // (Vercel's serverless request body cap is ~4.5MB; we validate ~3.5MB in the router.)
 app.use(express.json({ limit: '4mb' }));

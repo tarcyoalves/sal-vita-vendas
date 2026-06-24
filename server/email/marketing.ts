@@ -471,7 +471,8 @@ async function sendBatchBrevo(account: MarketingAccount, messages: BatchMessage[
     }
 
     const body = await res.json() as { messageId?: string; messageIds?: string[] };
-    const ids = body.messageIds ?? (body.messageId ? [body.messageId] : []);
+    const rawIds = body.messageIds ?? (body.messageId ? [body.messageId] : []);
+    const ids = rawIds.map(id => id?.replace(/^<|>$/g, ''));
     const results: BatchResult[] = messages.map((m, i) => ({
       to: m.to,
       ok: true,
