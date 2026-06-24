@@ -197,6 +197,12 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight = 220 }
         onInput={emit}
         onKeyUp={saveSelection}
         onMouseUp={saveSelection}
+        onPaste={e => {
+          e.preventDefault();
+          const text = e.clipboardData.getData('text/plain');
+          document.execCommand('insertText', false, text);
+          emit();
+        }}
         onBlur={() => { saveSelection(); emit(); }}
       />
     </div>
