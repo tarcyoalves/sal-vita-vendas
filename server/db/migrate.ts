@@ -16,9 +16,26 @@ async function seedAdminIfNeeded() {
   console.log('[migrate] admin user seeded');
 }
 
+// Bump this whenever the migrations below change to force exactly one re-run
+// across all serverless instances. Format: date + optional suffix.
+const SCHEMA_VERSION = '2026-06-24a';
+
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
   try { await seedAdminIfNeeded(); } catch {}
+
+  // Fast path: if the schema marker matches, the DB is already fully migrated.
+  // Skip the ~58 idempotent DDL/ALTER/CREATE INDEX round-trips that would
+  // otherwise run on EVERY cold start and burn Neon free-tier compute. The
+  // cheap daily purges still run to respect the storage limit.
+  try {
+    const v = await sql`SELECT value FROM schema_meta WHERE key = 'schema_version' LIMIT 1`;
+    if ((v as unknown as Array<{ value: string }>)[0]?.value === SCHEMA_VERSION) {
+      try { await sql`DELETE FROM chat_messages WHERE created_at < CURRENT_DATE`; } catch {}
+      try { await sql`DELETE FROM work_sessions WHERE status = 'completed' AND ended_at < NOW() - INTERVAL '90 days'`; } catch {}
+      return;
+    }
+  } catch { /* schema_meta missing → fall through and run the full migration */ }
 
   // Fast probe: if all 5 core tables already exist, skip DDL and go straight to
   // incremental migrations (ALTER TABLE ADD COLUMN IF NOT EXISTS + indexes).
@@ -428,6 +445,14 @@ export async function ensureTablesExist() {
   await sql`CREATE INDEX IF NOT EXISTS email_seq_sends_enrollment_idx ON email_sequence_sends(enrollment_id)`;
   await sql`CREATE INDEX IF NOT EXISTS email_events_message_idx ON email_events(message_id)`;
   await sql`CREATE INDEX IF NOT EXISTS email_events_created_idx ON email_events(created_at)`;
+
+  // Record the schema marker so every subsequent cold start takes the fast path
+  // at the top of this function instead of re-running the whole battery above.
+  try {
+    await sql`CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT)`;
+    await sql`INSERT INTO schema_meta (key, value) VALUES ('schema_version', ${SCHEMA_VERSION})
+              ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
+  } catch {}
 
   // Purge old data to stay within Neon free-tier limits (512 MB storage, ~5 GB transfer/month)
   // Chat: keep only today's messages — each session starts fresh, old history wastes storage+transfer

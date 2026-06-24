@@ -28,7 +28,21 @@ try {
   if (changed) localStorage.setItem('aiConfigs', JSON.stringify(stored));
 } catch { /* ignore */ }
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Neon free-tier guard: don't re-pull every query on each tab focus /
+      // reconnect. The CRM was refetching the full `tasks` table (notes up to
+      // 5000 chars) on every window focus, which dominated the 5 GB/month
+      // network-transfer budget. Mutations already invalidate the cache, so the
+      // UI still updates immediately after any action.
+      staleTime: 60_000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: 1,
+    },
+  },
+});
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
