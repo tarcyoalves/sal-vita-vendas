@@ -242,9 +242,6 @@ export default function EmailMarketing() {
           <TabsTrigger value="contacts" className={TAB_TRIGGER_CLASS}>
             <Contact size={14} /> Contatos
           </TabsTrigger>
-          <TabsTrigger value="export" className={TAB_TRIGGER_CLASS}>
-            <Download size={14} /> Exportar
-          </TabsTrigger>
           <TabsTrigger value="usage" className={TAB_TRIGGER_CLASS}>
             <Gauge size={14} /> Consumo
           </TabsTrigger>
@@ -270,9 +267,6 @@ export default function EmailMarketing() {
         </TabsContent>
         <TabsContent value="contacts" className="mt-4">
           <ContactsTab />
-        </TabsContent>
-        <TabsContent value="export" className="mt-4">
-          <ExportTab />
         </TabsContent>
         <TabsContent value="usage" className="mt-4">
           <UsageTab />
@@ -2564,6 +2558,8 @@ function ContactsTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ExportSection />
     </div>
   );
 }
@@ -2599,7 +2595,7 @@ function csvDate(value: string | Date | null | undefined): string {
   return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-function ExportTab() {
+function ExportSection() {
   const { data: tags } = trpc.emailMarketing.listTags.useQuery();
 
   const [filters, setFilters] = useState<{
