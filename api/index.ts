@@ -20,7 +20,7 @@ import { eq, and, sql, lte, gte, isNull, inArray, desc, asc, lt } from 'drizzle-
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
 import { createPixPaymentForOrder } from '../server/lib/mercadopago';
 import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid } from '../server/lib/orderConfirmation';
-import { verifyResendWebhook } from '../server/email/marketing';
+import { verifyResendWebhook, getAllDomainTracking, setDomainTracking, getAccounts } from '../server/email/marketing';
 import { evaluateInactiveDaysRules, flagEngagementByMessageId, processSequenceEnrollments } from '../server/email/automations';
 
 function isBusinessHours(): boolean {
@@ -58,6 +58,23 @@ const dbReady = Promise.all([
 // Set once dbReady settles so the guard middleware only blocks the very first request
 let migrationSettled = false;
 dbReady.then(() => { migrationSettled = true; });
+
+// Auto-enable Resend open/click tracking on cold start (domain-level setting).
+(async () => {
+  try {
+    const domains = await getAllDomainTracking();
+    for (const d of domains) {
+      if (d.domainId && (!d.openTracking || !d.clickTracking)) {
+        const account = getAccounts().find(a => a.key === d.accountKey);
+        if (!account) continue;
+        const r = await setDomainTracking(account, d.domainId, { openTracking: true, clickTracking: true });
+        console.log(`[tracking] enabled open+click for ${d.domainName}: ${r.ok ? 'ok' : r.error}`);
+      }
+    }
+  } catch (err) {
+    console.warn('[tracking] auto-enable failed:', err);
+  }
+})();
 
 // CRM data auto-migration: only runs if a source DB with a 'sellers' table is available.
 // ORDERS_DATABASE_URL is the e-commerce DB (no CRM tables) so it is skipped automatically.
