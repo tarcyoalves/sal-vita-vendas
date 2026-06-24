@@ -1364,11 +1364,17 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
       return;
     }
     try {
+      // Convert relative delay (days after previous step) to absolute delay (days after enrollment)
+      let absoluteDelay = editingStep.delayDays;
+      if (editingStep.stepOrder > 1 && steps) {
+        const prevStep = steps.filter(s => s.stepOrder < editingStep.stepOrder).sort((a, b) => b.stepOrder - a.stepOrder)[0];
+        if (prevStep) absoluteDelay = prevStep.delayDays + editingStep.delayDays;
+      }
       await upsertStepMutation.mutateAsync({
         id: editingStep.id,
         sequenceId,
         stepOrder: editingStep.stepOrder,
-        delayDays: editingStep.delayDays,
+        delayDays: absoluteDelay,
         subject: editingStep.subject,
         htmlBody: editingStep.htmlBody,
         sendCondition: editingStep.sendCondition as any,
@@ -1447,7 +1453,11 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <Badge variant="outline" className="bg-slate-100 text-slate-600 border-slate-200">Dia {step.delayDays}</Badge>
+                              <Badge variant="outline" className="bg-slate-100 text-slate-600 border-slate-200">Dia {step.delayDays}{(() => {
+                                const prev = steps?.filter(s => s.stepOrder < step.stepOrder).sort((a, b) => b.stepOrder - a.stepOrder)[0];
+                                const rel = prev ? step.delayDays - prev.delayDays : step.delayDays;
+                                return step.stepOrder > 1 ? ` (+${rel}d)` : '';
+                              })()}</Badge>
                               <span className="font-medium text-sm text-slate-700">{step.subject}</span>
                               {(step as any).sendCondition && (step as any).sendCondition !== 'always' && (
                                 <Badge variant="outline" className="text-xs bg-amber-100 text-amber-700 border-amber-200">{SEND_CONDITION_BADGES[(step as any).sendCondition] ?? (step as any).sendCondition}</Badge>
@@ -1466,7 +1476,11 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                             )}
                           </div>
                           <div className="flex gap-1 flex-shrink-0">
-                            <Button size="sm" variant="outline" onClick={() => setEditingStep({ id: step.id, stepOrder: step.stepOrder, delayDays: step.delayDays, subject: step.subject, htmlBody: step.htmlBody, sendCondition: (step as any).sendCondition ?? 'always' })}>
+                            <Button size="sm" variant="outline" onClick={() => {
+                              const prevStep = steps?.filter(s => s.stepOrder < step.stepOrder).sort((a, b) => b.stepOrder - a.stepOrder)[0];
+                              const relativeDelay = prevStep ? step.delayDays - prevStep.delayDays : step.delayDays;
+                              setEditingStep({ id: step.id, stepOrder: step.stepOrder, delayDays: Math.max(0, relativeDelay), subject: step.subject, htmlBody: step.htmlBody, sendCondition: (step as any).sendCondition ?? 'always' });
+                            }}>
                               <Pencil size={14} />
                             </Button>
                             <Button size="sm" variant="destructive" onClick={() => handleDeleteStep(step.id)}>
@@ -1585,8 +1599,9 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                     <Input type="number" min={1} value={editingStep.stepOrder} onChange={e => setEditingStep(s => s && ({ ...s, stepOrder: Number(e.target.value) }))} />
                   </div>
                   <div>
-                    <Label>Dias após inscrição</Label>
+                    <Label>{editingStep.stepOrder === 1 ? 'Dias após inscrição' : 'Dias após o passo anterior'}</Label>
                     <Input type="number" min={0} value={editingStep.delayDays} onChange={e => setEditingStep(s => s && ({ ...s, delayDays: Number(e.target.value) }))} />
+                    {editingStep.stepOrder > 1 && <p className="text-xs text-gray-500 mt-1">Ex: 30 = envia 30 dias depois do passo anterior</p>}
                   </div>
                 </div>
                 {(templates ?? []).length > 0 && (

@@ -3,6 +3,7 @@ import { Link } from 'wouter';
 import { trpc } from '../lib/trpc';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import { RichTextEditor } from '../components/RichTextEditor';
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import {
@@ -1810,12 +1811,11 @@ export default function Tasks() {
 
             <div>
               <label className="block text-sm font-medium mb-1">Corpo do e-mail *</label>
-              <textarea
-                rows={8}
+              <RichTextEditor
                 value={quickSendForm.htmlBody}
-                onChange={e => setQuickSendForm(f => ({ ...f, htmlBody: e.target.value }))}
+                onChange={html => setQuickSendForm(f => ({ ...f, htmlBody: html }))}
                 placeholder="Olá {nome}, ..."
-                className="w-full px-3 py-2 border rounded-lg text-sm"
+                minHeight={250}
               />
               <p className="text-xs text-gray-500 mt-1">Use {'{nome}'} para personalizar com o nome do destinatário.</p>
             </div>
