@@ -71381,7 +71381,7 @@ async function seedAdminIfNeeded() {
   `;
   console.log("[migrate] admin user seeded");
 }
-var SCHEMA_VERSION = "2026-06-24b";
+var SCHEMA_VERSION = "2026-06-24c";
 async function ensureTablesExist() {
   try {
     await seedAdminIfNeeded();
@@ -71757,6 +71757,9 @@ async function ensureTablesExist() {
   await sql4`CREATE INDEX IF NOT EXISTS email_seq_sends_enrollment_idx ON email_sequence_sends(enrollment_id)`;
   await sql4`CREATE INDEX IF NOT EXISTS email_events_message_idx ON email_events(message_id)`;
   await sql4`CREATE INDEX IF NOT EXISTS email_events_created_idx ON email_events(created_at)`;
+  await sql4`DELETE FROM email_events WHERE id NOT IN (
+    SELECT MIN(id) FROM email_events GROUP BY message_id, event_type
+  )`;
   await sql4`CREATE UNIQUE INDEX IF NOT EXISTS email_events_dedup_idx ON email_events(message_id, event_type)`;
   await sql4`CREATE INDEX IF NOT EXISTS tasks_assigned_to_lower_idx ON tasks (lower(assigned_to))`;
   try {

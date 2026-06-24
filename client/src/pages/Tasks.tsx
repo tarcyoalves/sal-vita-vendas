@@ -494,7 +494,6 @@ export default function Tasks() {
   const handleToggleConverted = async (task: Task, e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (!task.convertedAt) {
-      setOrderValueInput("");
       setConvertModalTask(task);
       return;
     }
