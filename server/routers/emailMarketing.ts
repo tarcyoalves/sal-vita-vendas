@@ -673,10 +673,11 @@ export const emailMarketingRouter = router({
       let skippedNoEmail = 0;
       let skippedUnconfirmed = 0;
       let skippedDuplicateOrSuppressed = 0;
+      const skipReasons: string[] = [];
 
       for (const t of taskRows) {
-        if (!t.email) { skippedNoEmail++; continue; }
-        if (!t.emailConfirmed) { skippedUnconfirmed++; continue; }
+        if (!t.email) { skippedNoEmail++; skipReasons.push(`${firstPart(t.title)}: sem email`); continue; }
+        if (!t.emailConfirmed) { skippedUnconfirmed++; skipReasons.push(`${t.email}: não confirmado`); continue; }
         const result = await enrollInSequence(input.sequenceId, {
           email: t.email,
           name: firstPart(t.title),
@@ -684,10 +685,11 @@ export const emailMarketingRouter = router({
           taskId: t.id,
         });
         if (result.enrolled) enrolled++;
-        else skippedDuplicateOrSuppressed++;
+        else { skippedDuplicateOrSuppressed++; skipReasons.push(`${t.email}: ${result.reason ?? 'duplicado/suprimido'}`); }
       }
 
-      return { enrolled, skippedNoEmail, skippedUnconfirmed, skippedDuplicateOrSuppressed };
+      console.log(`[enrollTasksInSequence] seq=${input.sequenceId}: enrolled=${enrolled}, skipped=${skippedNoEmail + skippedUnconfirmed + skippedDuplicateOrSuppressed}`, skipReasons.length > 0 ? skipReasons : '');
+      return { enrolled, skippedNoEmail, skippedUnconfirmed, skippedDuplicateOrSuppressed, skipReasons };
     }),
 
   // ── Inscrições ────────────────────────────────────────────────────────────

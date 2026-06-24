@@ -65842,13 +65842,17 @@ async function enrollInSequence(sequenceId, opts) {
   try {
     const email = opts.email.toLowerCase().trim();
     if (!email)
-      return { enrolled: false };
+      return { enrolled: false, reason: "empty_email" };
     const [suppressed] = await db.select({ email: emailSuppressions.email }).from(emailSuppressions).where(eq(emailSuppressions.email, email)).limit(1);
-    if (suppressed)
-      return { enrolled: false };
+    if (suppressed) {
+      console.log(`[enrollInSequence] SKIPPED ${email}: suppressed`);
+      return { enrolled: false, reason: "suppressed" };
+    }
     const steps = await db.select({ delayDays: emailSequenceSteps.delayDays }).from(emailSequenceSteps).where(eq(emailSequenceSteps.sequenceId, sequenceId)).orderBy(emailSequenceSteps.stepOrder);
-    if (steps.length === 0)
-      return { enrolled: false };
+    if (steps.length === 0) {
+      console.log(`[enrollInSequence] SKIPPED ${email}: sequence ${sequenceId} has 0 steps`);
+      return { enrolled: false, reason: "no_steps" };
+    }
     const enrolledAt = /* @__PURE__ */ new Date();
     const nextSendAt = computeNextSendAt(enrolledAt, steps, 0);
     const inserted = await db.insert(emailSequenceEnrollments).values({
@@ -65864,13 +65868,18 @@ async function enrollInSequence(sequenceId, opts) {
       nextSendAt,
       cycleStartedAt: enrolledAt
     }).onConflictDoNothing().returning({ id: emailSequenceEnrollments.id });
-    if (inserted.length > 0 && nextSendAt && nextSendAt <= /* @__PURE__ */ new Date()) {
+    if (inserted.length === 0) {
+      console.log(`[enrollInSequence] SKIPPED ${email}: duplicate (already enrolled in sequence ${sequenceId})`);
+      return { enrolled: false, reason: "duplicate" };
+    }
+    if (nextSendAt && nextSendAt <= /* @__PURE__ */ new Date()) {
       await processSequenceEnrollments({ enrollmentIds: [inserted[0].id] });
     }
-    return { enrolled: inserted.length > 0 };
+    console.log(`[enrollInSequence] OK ${email}: enrolled in sequence ${sequenceId}`);
+    return { enrolled: true };
   } catch (err) {
     console.error("[automations] enrollInSequence failed:", err);
-    return { enrolled: false };
+    return { enrolled: false, reason: "error" };
   }
 }
 async function addTagToTask(taskId, tag) {
@@ -70843,13 +70852,16 @@ var emailMarketingRouter = router({
     let skippedNoEmail = 0;
     let skippedUnconfirmed = 0;
     let skippedDuplicateOrSuppressed = 0;
+    const skipReasons = [];
     for (const t2 of taskRows) {
       if (!t2.email) {
         skippedNoEmail++;
+        skipReasons.push(`${firstPart2(t2.title)}: sem email`);
         continue;
       }
       if (!t2.emailConfirmed) {
         skippedUnconfirmed++;
+        skipReasons.push(`${t2.email}: n\xE3o confirmado`);
         continue;
       }
       const result = await enrollInSequence(input.sequenceId, {
@@ -70860,10 +70872,13 @@ var emailMarketingRouter = router({
       });
       if (result.enrolled)
         enrolled++;
-      else
+      else {
         skippedDuplicateOrSuppressed++;
+        skipReasons.push(`${t2.email}: ${result.reason ?? "duplicado/suprimido"}`);
+      }
     }
-    return { enrolled, skippedNoEmail, skippedUnconfirmed, skippedDuplicateOrSuppressed };
+    console.log(`[enrollTasksInSequence] seq=${input.sequenceId}: enrolled=${enrolled}, skipped=${skippedNoEmail + skippedUnconfirmed + skippedDuplicateOrSuppressed}`, skipReasons.length > 0 ? skipReasons : "");
+    return { enrolled, skippedNoEmail, skippedUnconfirmed, skippedDuplicateOrSuppressed, skipReasons };
   }),
   // ── Inscrições ────────────────────────────────────────────────────────────
   listEnrollments: adminProcedure.input(external_exports.object({

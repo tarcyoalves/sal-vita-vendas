@@ -262,8 +262,15 @@ export default function Tasks() {
     try {
       const res = await enrollInSequenceMutation.mutateAsync({ sequenceId: selectedSequenceId, taskIds: sequencePickerTaskIds });
       const skipped = res.skippedNoEmail + res.skippedDuplicateOrSuppressed + (res.skippedUnconfirmed ?? 0);
-      toast.success(`✅ ${res.enrolled} inscrito(s) na sequência` + (skipped > 0 ? ` (${skipped} ignorado(s): sem e-mail, não-confirmado, duplicado ou descadastrado)` : ''));
-      if (res.skippedUnconfirmed > 0) toast.warning(`✉️ ${res.skippedUnconfirmed} lead(s) ignorado(s) por e-mail não confirmado. Confirme o e-mail na tarefa antes de usá-lo.`, { duration: 9000 });
+      if (res.enrolled > 0) {
+        toast.success(`✅ ${res.enrolled} inscrito(s) na sequência`);
+      }
+      if (skipped > 0 && (res as any).skipReasons?.length) {
+        toast.error(`${skipped} ignorado(s):\n${(res as any).skipReasons.join('\n')}`, { duration: 12000 });
+      } else if (skipped > 0) {
+        toast.error(`${skipped} ignorado(s): sem e-mail, não-confirmado, duplicado ou descadastrado`);
+      }
+      if (res.skippedUnconfirmed > 0) toast.warning(`✉️ ${res.skippedUnconfirmed} lead(s) com e-mail não confirmado — confirme na tarefa antes.`, { duration: 9000 });
       setSequencePickerTaskIds(null);
       setSelectedSequenceId(null);
     } catch (e: any) {

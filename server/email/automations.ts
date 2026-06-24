@@ -44,21 +44,26 @@ function firstPart(title: string): string {
 export async function enrollInSequence(
   sequenceId: number,
   opts: { email: string; name?: string | null; replyTo?: string | null; taskId?: number | null },
-): Promise<{ enrolled: boolean }> {
+): Promise<{ enrolled: boolean; reason?: string }> {
   try {
     const email = opts.email.toLowerCase().trim();
-    if (!email) return { enrolled: false };
+    if (!email) return { enrolled: false, reason: 'empty_email' };
 
-    // Don't enroll suppressed/unsubscribed addresses.
     const [suppressed] = await db.select({ email: emailSuppressions.email })
       .from(emailSuppressions).where(eq(emailSuppressions.email, email)).limit(1);
-    if (suppressed) return { enrolled: false };
+    if (suppressed) {
+      console.log(`[enrollInSequence] SKIPPED ${email}: suppressed`);
+      return { enrolled: false, reason: 'suppressed' };
+    }
 
     const steps = await db.select({ delayDays: emailSequenceSteps.delayDays })
       .from(emailSequenceSteps)
       .where(eq(emailSequenceSteps.sequenceId, sequenceId))
       .orderBy(emailSequenceSteps.stepOrder);
-    if (steps.length === 0) return { enrolled: false };
+    if (steps.length === 0) {
+      console.log(`[enrollInSequence] SKIPPED ${email}: sequence ${sequenceId} has 0 steps`);
+      return { enrolled: false, reason: 'no_steps' };
+    }
 
     const enrolledAt = new Date();
     const nextSendAt = computeNextSendAt(enrolledAt, steps, 0);
@@ -77,17 +82,20 @@ export async function enrollInSequence(
       cycleStartedAt: enrolledAt,
     }).onConflictDoNothing().returning({ id: emailSequenceEnrollments.id });
 
-    if (inserted.length > 0 && nextSendAt && nextSendAt <= new Date()) {
-      // Passo 0 com delayDays = 0 ("Dia 0") — envia imediatamente, em vez de
-      // esperar a próxima execução do cron diário, espelhando o envio
-      // imediato de campanhas manuais.
+    if (inserted.length === 0) {
+      console.log(`[enrollInSequence] SKIPPED ${email}: duplicate (already enrolled in sequence ${sequenceId})`);
+      return { enrolled: false, reason: 'duplicate' };
+    }
+
+    if (nextSendAt && nextSendAt <= new Date()) {
       await processSequenceEnrollments({ enrollmentIds: [inserted[0].id] });
     }
 
-    return { enrolled: inserted.length > 0 };
+    console.log(`[enrollInSequence] OK ${email}: enrolled in sequence ${sequenceId}`);
+    return { enrolled: true };
   } catch (err) {
     console.error('[automations] enrollInSequence failed:', err);
-    return { enrolled: false };
+    return { enrolled: false, reason: 'error' };
   }
 }
 
