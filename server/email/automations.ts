@@ -160,6 +160,19 @@ function matchesTagFilters(taskTags: string[], requiredTags?: string[] | null, e
   return true;
 }
 
+export async function cancelAllEnrollments(email: string): Promise<void> {
+  try {
+    await db.update(emailSequenceEnrollments)
+      .set({ status: 'cancelled', nextSendAt: null })
+      .where(and(
+        eq(emailSequenceEnrollments.email, email.toLowerCase().trim()),
+        eq(emailSequenceEnrollments.status, 'active'),
+      ));
+  } catch (err) {
+    console.error('[automations] cancelAllEnrollments failed:', err);
+  }
+}
+
 async function cancelActiveEnrollments(email: string, exceptSequenceId: number): Promise<void> {
   try {
     await db.update(emailSequenceEnrollments)

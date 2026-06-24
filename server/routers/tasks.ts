@@ -4,7 +4,7 @@ import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { TRPCError } from '@trpc/server';
 import { db } from '../db';
 import { tasks, sellers, taskDeletionLogs } from '../db/schema';
-import { runTriggerNow } from '../email/automations';
+import { runTriggerNow, cancelAllEnrollments } from '../email/automations';
 
 // Normaliza CNPJ/telefone para somente dígitos. Para telefone, remove o código
 // do país (55) quando presente, para casar números digitados com ou sem DDI.
@@ -195,6 +195,12 @@ export const tasksRouter = router({
         setData.lastContactedAt = now;
         setData.contactCount = sql`${tasks.contactCount} + 1`;
       }
+      let oldEmail: string | null = null;
+      if (data.email !== undefined) {
+        const [prev] = await db.select({ email: tasks.email }).from(tasks).where(ownerFilter).limit(1);
+        oldEmail = prev?.email?.toLowerCase().trim() ?? null;
+      }
+
       const [updated] = await db
         .update(tasks)
         .set(setData)
@@ -202,8 +208,14 @@ export const tasksRouter = router({
         .returning();
       if (!updated) throw new TRPCError({ code: 'FORBIDDEN', message: 'Tarefa não encontrada ou sem permissão' });
 
-      // E-mail recém-confirmado via edição → dispara a automação "lead criado"
-      // (idempotente por UNIQUE(sequence_id, email), seguro re-disparar).
+      if (oldEmail && oldEmail !== (updated.email?.toLowerCase().trim() ?? null)) {
+        try {
+          await cancelAllEnrollments(oldEmail);
+        } catch (err) {
+          console.error('[tasks.update] cancelAllEnrollments for old email failed:', err);
+        }
+      }
+
       if (confirmedNow && updated.email) {
         try {
           await runTriggerNow('lead_created', {

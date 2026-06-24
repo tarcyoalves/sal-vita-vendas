@@ -65934,6 +65934,16 @@ function matchesTagFilters(taskTags, requiredTags, excludedTags) {
   }
   return true;
 }
+async function cancelAllEnrollments(email) {
+  try {
+    await db.update(emailSequenceEnrollments).set({ status: "cancelled", nextSendAt: null }).where(and(
+      eq(emailSequenceEnrollments.email, email.toLowerCase().trim()),
+      eq(emailSequenceEnrollments.status, "active")
+    ));
+  } catch (err) {
+    console.error("[automations] cancelAllEnrollments failed:", err);
+  }
+}
 async function cancelActiveEnrollments(email, exceptSequenceId) {
   try {
     await db.update(emailSequenceEnrollments).set({ status: "cancelled", nextSendAt: null }).where(and(
@@ -66346,9 +66356,21 @@ var tasksRouter = router({
       setData.lastContactedAt = now;
       setData.contactCount = sql`${tasks.contactCount} + 1`;
     }
+    let oldEmail = null;
+    if (data.email !== void 0) {
+      const [prev] = await db.select({ email: tasks.email }).from(tasks).where(ownerFilter).limit(1);
+      oldEmail = prev?.email?.toLowerCase().trim() ?? null;
+    }
     const [updated] = await db.update(tasks).set(setData).where(ownerFilter).returning();
     if (!updated)
       throw new TRPCError({ code: "FORBIDDEN", message: "Tarefa n\xE3o encontrada ou sem permiss\xE3o" });
+    if (oldEmail && oldEmail !== (updated.email?.toLowerCase().trim() ?? null)) {
+      try {
+        await cancelAllEnrollments(oldEmail);
+      } catch (err) {
+        console.error("[tasks.update] cancelAllEnrollments for old email failed:", err);
+      }
+    }
     if (confirmedNow && updated.email) {
       try {
         await runTriggerNow("lead_created", {
