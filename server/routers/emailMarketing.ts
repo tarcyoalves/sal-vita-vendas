@@ -772,7 +772,7 @@ export const emailMarketingRouter = router({
     .input(z.object({
       id: z.number().optional(),
       name: z.string().min(1).max(200),
-      triggerType: z.enum(['lead_created', 'lead_converted', 'inactive_days']),
+      triggerType: z.enum(['lead_created', 'lead_converted', 'inactive_days', 'tag_added', 'email_confirmed', 'sequence_completed']),
       triggerConfig: z.record(z.any()).optional(),
       actionType: z.enum(['enroll_sequence', 'add_tag']),
       actionConfig: z.record(z.any()),

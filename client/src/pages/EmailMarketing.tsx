@@ -88,6 +88,9 @@ const TRIGGER_TYPE_LABELS: Record<string, string> = {
   lead_created: "Novo lead criado",
   lead_converted: "Lead convertido em cliente",
   inactive_days: "Sem contato há N dias",
+  tag_added: "Tag adicionada ao lead",
+  email_confirmed: "E-mail confirmado",
+  sequence_completed: "Sequência concluída",
 };
 
 const ACTION_TYPE_LABELS: Record<string, string> = {
@@ -154,12 +157,18 @@ function formatDateTime(value: string | Date | null | undefined): string {
 }
 
 // Human-readable description of an automation rule's trigger, including config (e.g. days).
-function describeTrigger(rule: { triggerType: string; triggerConfig?: any; requiredTags?: string[] | null; excludedTags?: string[] | null }): string {
+function describeTrigger(rule: { triggerType: string; triggerConfig?: any; requiredTags?: string[] | null; excludedTags?: string[] | null }, sequences?: { id: number; name: string }[]): string {
   const base = TRIGGER_TYPE_LABELS[rule.triggerType] ?? rule.triggerType;
   const parts: string[] = [];
   if (rule.triggerType === 'inactive_days') {
     const days = rule.triggerConfig?.days;
     parts.push(days ? `Sem contato há ${days} dia(s)` : base);
+  } else if (rule.triggerType === 'tag_added') {
+    parts.push(`Tag "${rule.triggerConfig?.tag ?? '?'}" adicionada`);
+  } else if (rule.triggerType === 'sequence_completed') {
+    const seqId = rule.triggerConfig?.sequenceId;
+    const seq = seqId ? sequences?.find(s => s.id === seqId) : null;
+    parts.push(seq ? `Sequência "${seq.name}" concluída` : 'Qualquer sequência concluída');
   } else {
     parts.push(base);
   }
@@ -1758,8 +1767,10 @@ function AutomationsTab() {
   const [editing, setEditing] = useState<{
     id?: number;
     name: string;
-    triggerType: "lead_created" | "lead_converted" | "inactive_days";
+    triggerType: string;
     days: string;
+    triggerTag: string;
+    triggerSequenceId: string;
     actionType: "enroll_sequence" | "add_tag";
     sequenceId: string;
     tag: string;
@@ -1782,23 +1793,28 @@ function AutomationsTab() {
     if (!editing) return;
     if (!editing.name.trim()) { toast.error("Informe o nome da regra"); return; }
     if (editing.triggerType === 'inactive_days' && !editing.days.trim()) {
-      toast.error("Informe o número de dias sem contato");
-      return;
+      toast.error("Informe o número de dias sem contato"); return;
+    }
+    if (editing.triggerType === 'tag_added' && !editing.triggerTag.trim()) {
+      toast.error("Informe a tag que dispara a automação"); return;
     }
     if (editing.actionType === 'enroll_sequence' && !editing.sequenceId) {
-      toast.error("Selecione a sequência");
-      return;
+      toast.error("Selecione a sequência"); return;
     }
     if (editing.actionType === 'add_tag' && !editing.tag.trim()) {
-      toast.error("Informe a tag");
-      return;
+      toast.error("Informe a tag"); return;
     }
     try {
+      let triggerConfig: Record<string, any> | undefined;
+      if (editing.triggerType === 'inactive_days') triggerConfig = { days: Number(editing.days) };
+      else if (editing.triggerType === 'tag_added') triggerConfig = { tag: editing.triggerTag.trim() };
+      else if (editing.triggerType === 'sequence_completed' && editing.triggerSequenceId) triggerConfig = { sequenceId: Number(editing.triggerSequenceId) };
+
       await upsertMutation.mutateAsync({
         id: editing.id,
         name: editing.name,
-        triggerType: editing.triggerType,
-        triggerConfig: editing.triggerType === 'inactive_days' ? { days: Number(editing.days) } : undefined,
+        triggerType: editing.triggerType as any,
+        triggerConfig,
         actionType: editing.actionType,
         actionConfig: editing.actionType === 'enroll_sequence' ? { sequenceId: Number(editing.sequenceId) } : { tag: editing.tag.trim() },
         requiredTags: editing.requiredTags.filter(t => t.trim()),
@@ -1846,7 +1862,7 @@ function AutomationsTab() {
   };
 
   const openNew = () => setEditing({
-    name: "", triggerType: "lead_created", days: "30",
+    name: "", triggerType: "lead_created", days: "30", triggerTag: "", triggerSequenceId: "",
     actionType: "enroll_sequence", sequenceId: "", tag: "",
     requiredTags: [], excludedTags: [], cancelOtherSequences: false, active: true,
   });
@@ -1854,8 +1870,10 @@ function AutomationsTab() {
   const openEdit = (rule: typeof parsedRules[number]) => setEditing({
     id: rule.id,
     name: rule.name,
-    triggerType: rule.triggerType as any,
+    triggerType: rule.triggerType,
     days: rule.triggerConfig?.days ? String(rule.triggerConfig.days) : "30",
+    triggerTag: rule.triggerConfig?.tag ?? "",
+    triggerSequenceId: rule.triggerConfig?.sequenceId ? String(rule.triggerConfig.sequenceId) : "",
     actionType: rule.actionType as any,
     sequenceId: rule.actionConfig?.sequenceId ? String(rule.actionConfig.sequenceId) : "",
     tag: rule.actionConfig?.tag ?? "",
@@ -1898,7 +1916,7 @@ function AutomationsTab() {
                   {parsedRules.map(r => (
                     <tr key={r.id} className={TR_CLASS}>
                       <td className="px-3 py-2.5 font-medium text-slate-700">{r.name}</td>
-                      <td className="px-3 py-2.5 text-xs text-slate-500">{describeTrigger(r)}</td>
+                      <td className="px-3 py-2.5 text-xs text-slate-500">{describeTrigger(r, sequences)}</td>
                       <td className="px-3 py-2.5 text-xs text-slate-500">{describeAction(r, sequences)}</td>
                       <td className="px-3 py-2.5">
                         <Switch checked={r.active} onCheckedChange={(checked) => handleToggleActive(r, checked)} />
@@ -1945,6 +1963,9 @@ function AutomationsTab() {
                   <SelectContent>
                     <SelectItem value="lead_created">Novo lead criado</SelectItem>
                     <SelectItem value="lead_converted">Lead convertido em cliente</SelectItem>
+                    <SelectItem value="email_confirmed">E-mail confirmado</SelectItem>
+                    <SelectItem value="tag_added">Tag adicionada ao lead</SelectItem>
+                    <SelectItem value="sequence_completed">Sequência concluída</SelectItem>
                     <SelectItem value="inactive_days">Sem contato há N dias</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1953,6 +1974,33 @@ function AutomationsTab() {
                 <div>
                   <Label>Dias sem contato</Label>
                   <Input type="number" min={1} value={editing.days} onChange={e => setEditing(s => s && ({ ...s, days: e.target.value }))} />
+                </div>
+              )}
+              {editing.triggerType === 'tag_added' && (
+                <div>
+                  <Label>Qual tag dispara?</Label>
+                  {(availTags ?? []).length > 0 ? (
+                    <Select value={editing.triggerTag} onValueChange={(v) => setEditing(s => s && ({ ...s, triggerTag: v }))}>
+                      <SelectTrigger className="w-full"><SelectValue placeholder="Selecionar tag..." /></SelectTrigger>
+                      <SelectContent>
+                        {(availTags ?? []).map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input value={editing.triggerTag} onChange={e => setEditing(s => s && ({ ...s, triggerTag: e.target.value }))} placeholder="Nome da tag" />
+                  )}
+                </div>
+              )}
+              {editing.triggerType === 'sequence_completed' && (
+                <div>
+                  <Label>Qual sequência? (vazio = qualquer)</Label>
+                  <Select value={editing.triggerSequenceId} onValueChange={(v) => setEditing(s => s && ({ ...s, triggerSequenceId: v }))}>
+                    <SelectTrigger className="w-full"><SelectValue placeholder="Qualquer sequência..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Qualquer sequência</SelectItem>
+                      {(sequences ?? []).map(seq => <SelectItem key={seq.id} value={String(seq.id)}>{seq.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
               <div>

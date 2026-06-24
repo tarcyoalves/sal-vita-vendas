@@ -65897,7 +65897,7 @@ async function addTagToTask(taskId, tag) {
     console.error("[automations] addTagToTask failed:", err);
   }
 }
-async function runTriggerNow(triggerType, task) {
+async function runTriggerNow(triggerType, task, extra) {
   try {
     if (!task.email)
       return;
@@ -65911,6 +65911,15 @@ async function runTriggerNow(triggerType, task) {
       try {
         if (!matchesTagFilters(taskTags, rule.requiredTags, rule.excludedTags))
           continue;
+        const triggerConfig = JSON.parse(rule.triggerConfig || "{}");
+        if (triggerType === "tag_added") {
+          if (!triggerConfig.tag || triggerConfig.tag !== extra?.addedTag)
+            continue;
+        }
+        if (triggerType === "sequence_completed") {
+          if (triggerConfig.sequenceId && triggerConfig.sequenceId !== extra?.completedSequenceId)
+            continue;
+        }
         const actionConfig = JSON.parse(rule.actionConfig || "{}");
         if (rule.actionType === "enroll_sequence" && actionConfig.sequenceId) {
           if (rule.cancelOtherSequences) {
@@ -66105,6 +66114,16 @@ async function processSequenceEnrollments(opts) {
         }
         await db.update(emailSequenceEnrollments).set({ status: "completed", nextSendAt: null, updatedAt: /* @__PURE__ */ new Date() }).where(eq(emailSequenceEnrollments.id, enrollment.id));
         result.completed++;
+        if (enrollment.taskId && enrollment.email) {
+          try {
+            const [taskData] = await db.select({ id: tasks.id, email: tasks.email, title: tasks.title, tags: tasks.tags, assignedTo: tasks.assignedTo }).from(tasks).where(eq(tasks.id, enrollment.taskId)).limit(1);
+            if (taskData?.email) {
+              await runTriggerNow("sequence_completed", taskData, { completedSequenceId: enrollment.sequenceId });
+            }
+          } catch (err) {
+            console.error("[automations] sequence_completed trigger failed:", err);
+          }
+        }
         break;
       }
       const eng = engMap.get(enrollment.id) ?? { opened: false, clicked: false };
@@ -66365,10 +66384,13 @@ var tasksRouter = router({
       setData.lastContactedAt = now;
       setData.contactCount = sql`${tasks.contactCount} + 1`;
     }
+    const needsPrev = data.email !== void 0 || data.tags !== void 0;
     let oldEmail = null;
-    if (data.email !== void 0) {
-      const [prev] = await db.select({ email: tasks.email }).from(tasks).where(ownerFilter).limit(1);
+    let oldTags = [];
+    if (needsPrev) {
+      const [prev] = await db.select({ email: tasks.email, tags: tasks.tags }).from(tasks).where(ownerFilter).limit(1);
       oldEmail = prev?.email?.toLowerCase().trim() ?? null;
+      oldTags = prev?.tags ?? [];
     }
     const [updated] = await db.update(tasks).set(setData).where(ownerFilter).returning();
     if (!updated)
@@ -66391,6 +66413,23 @@ var tasksRouter = router({
         });
       } catch (err) {
         console.error("[tasks.update] runTriggerNow(lead_created) failed:", err);
+      }
+    }
+    if (data.tags && updated.email) {
+      const newTags = updated.tags ?? [];
+      const addedTags = newTags.filter((t2) => !oldTags.includes(t2));
+      for (const tag of addedTags) {
+        try {
+          await runTriggerNow("tag_added", {
+            id: updated.id,
+            email: updated.email,
+            title: updated.title,
+            tags: updated.tags,
+            assignedTo: updated.assignedTo
+          }, { addedTag: tag });
+        } catch (err) {
+          console.error(`[tasks.update] runTriggerNow(tag_added, ${tag}) failed:`, err);
+        }
       }
     }
     let burstWarning = false;
@@ -66417,16 +66456,16 @@ var tasksRouter = router({
     const now = /* @__PURE__ */ new Date();
     const [updated] = await db.update(tasks).set(input.confirmed ? { emailConfirmed: true, emailConfirmedAt: now, emailConfirmedBy: ctx.user.name ?? ctx.user.email, updatedAt: now } : { emailConfirmed: false, emailConfirmedAt: null, emailConfirmedBy: null, updatedAt: now }).where(ownerFilter).returning();
     if (input.confirmed && updated?.email) {
+      const taskPayload = { id: updated.id, email: updated.email, title: updated.title, tags: updated.tags, assignedTo: updated.assignedTo };
       try {
-        await runTriggerNow("lead_created", {
-          id: updated.id,
-          email: updated.email,
-          title: updated.title,
-          tags: updated.tags,
-          assignedTo: updated.assignedTo
-        });
+        await runTriggerNow("lead_created", taskPayload);
       } catch (err) {
         console.error("[tasks.confirmEmail] runTriggerNow(lead_created) failed:", err);
+      }
+      try {
+        await runTriggerNow("email_confirmed", taskPayload);
+      } catch (err) {
+        console.error("[tasks.confirmEmail] runTriggerNow(email_confirmed) failed:", err);
       }
     }
     return updated;
@@ -70927,7 +70966,7 @@ var emailMarketingRouter = router({
   upsertAutomationRule: adminProcedure.input(external_exports.object({
     id: external_exports.number().optional(),
     name: external_exports.string().min(1).max(200),
-    triggerType: external_exports.enum(["lead_created", "lead_converted", "inactive_days"]),
+    triggerType: external_exports.enum(["lead_created", "lead_converted", "inactive_days", "tag_added", "email_confirmed", "sequence_completed"]),
     triggerConfig: external_exports.record(external_exports.any()).optional(),
     actionType: external_exports.enum(["enroll_sequence", "add_tag"]),
     actionConfig: external_exports.record(external_exports.any()),

@@ -195,10 +195,13 @@ export const tasksRouter = router({
         setData.lastContactedAt = now;
         setData.contactCount = sql`${tasks.contactCount} + 1`;
       }
+      const needsPrev = data.email !== undefined || data.tags !== undefined;
       let oldEmail: string | null = null;
-      if (data.email !== undefined) {
-        const [prev] = await db.select({ email: tasks.email }).from(tasks).where(ownerFilter).limit(1);
+      let oldTags: string[] = [];
+      if (needsPrev) {
+        const [prev] = await db.select({ email: tasks.email, tags: tasks.tags }).from(tasks).where(ownerFilter).limit(1);
         oldEmail = prev?.email?.toLowerCase().trim() ?? null;
+        oldTags = prev?.tags ?? [];
       }
 
       const [updated] = await db
@@ -223,6 +226,20 @@ export const tasksRouter = router({
           });
         } catch (err) {
           console.error('[tasks.update] runTriggerNow(lead_created) failed:', err);
+        }
+      }
+
+      if (data.tags && updated.email) {
+        const newTags = updated.tags ?? [];
+        const addedTags = newTags.filter(t => !oldTags.includes(t));
+        for (const tag of addedTags) {
+          try {
+            await runTriggerNow('tag_added', {
+              id: updated.id, email: updated.email, title: updated.title, tags: updated.tags, assignedTo: updated.assignedTo,
+            }, { addedTag: tag });
+          } catch (err) {
+            console.error(`[tasks.update] runTriggerNow(tag_added, ${tag}) failed:`, err);
+          }
         }
       }
       let burstWarning = false;
@@ -265,12 +282,12 @@ export const tasksRouter = router({
       // Ao confirmar, o lead "entra" de fato no marketing → dispara a automação
       // "lead criado" (idempotente, seguro re-disparar).
       if (input.confirmed && updated?.email) {
-        try {
-          await runTriggerNow('lead_created', {
-            id: updated.id, email: updated.email, title: updated.title, tags: updated.tags, assignedTo: updated.assignedTo,
-          });
-        } catch (err) {
+        const taskPayload = { id: updated.id, email: updated.email, title: updated.title, tags: updated.tags, assignedTo: updated.assignedTo };
+        try { await runTriggerNow('lead_created', taskPayload); } catch (err) {
           console.error('[tasks.confirmEmail] runTriggerNow(lead_created) failed:', err);
+        }
+        try { await runTriggerNow('email_confirmed', taskPayload); } catch (err) {
+          console.error('[tasks.confirmEmail] runTriggerNow(email_confirmed) failed:', err);
         }
       }
 

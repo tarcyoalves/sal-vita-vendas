@@ -20,7 +20,7 @@ import {
   conditionMet, renderSignature, renderTemplate as renderMktTemplate, type BatchMessage,
 } from './marketing';
 
-export type TriggerType = 'lead_created' | 'lead_converted' | 'inactive_days';
+export type TriggerType = 'lead_created' | 'lead_converted' | 'inactive_days' | 'tag_added' | 'email_confirmed' | 'sequence_completed';
 
 interface TriggerTask {
   id: number;
@@ -122,7 +122,11 @@ export async function addTagToTask(taskId: number, tag: string): Promise<void> {
  * the given task. Looks up active rules of that trigger type and dispatches
  * the configured action (enroll_sequence | add_tag). Never throws.
  */
-export async function runTriggerNow(triggerType: 'lead_created' | 'lead_converted', task: TriggerTask): Promise<void> {
+export async function runTriggerNow(
+  triggerType: Exclude<TriggerType, 'inactive_days'>,
+  task: TriggerTask,
+  extra?: { addedTag?: string; completedSequenceId?: number },
+): Promise<void> {
   try {
     if (!task.email) return;
 
@@ -137,6 +141,15 @@ export async function runTriggerNow(triggerType: 'lead_created' | 'lead_converte
     for (const rule of rules) {
       try {
         if (!matchesTagFilters(taskTags, rule.requiredTags, rule.excludedTags)) continue;
+
+        const triggerConfig = JSON.parse(rule.triggerConfig || '{}') as { tag?: string; sequenceId?: number };
+
+        if (triggerType === 'tag_added') {
+          if (!triggerConfig.tag || triggerConfig.tag !== extra?.addedTag) continue;
+        }
+        if (triggerType === 'sequence_completed') {
+          if (triggerConfig.sequenceId && triggerConfig.sequenceId !== extra?.completedSequenceId) continue;
+        }
 
         const actionConfig = JSON.parse(rule.actionConfig || '{}') as { sequenceId?: number; tag?: string };
         if (rule.actionType === 'enroll_sequence' && actionConfig.sequenceId) {
@@ -412,11 +425,22 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
             .where(eq(emailSequenceEnrollments.id, enrollment.id));
           continue; // re-avalia a condição do novo passo 0
         }
-        // Não é recorrente — marca como concluída e segue.
+        // Não é recorrente — marca como concluída e dispara automação.
         await db.update(emailSequenceEnrollments)
           .set({ status: 'completed', nextSendAt: null, updatedAt: new Date() })
           .where(eq(emailSequenceEnrollments.id, enrollment.id));
         result.completed++;
+        if (enrollment.taskId && enrollment.email) {
+          try {
+            const [taskData] = await db.select({ id: tasks.id, email: tasks.email, title: tasks.title, tags: tasks.tags, assignedTo: tasks.assignedTo })
+              .from(tasks).where(eq(tasks.id, enrollment.taskId)).limit(1);
+            if (taskData?.email) {
+              await runTriggerNow('sequence_completed', taskData, { completedSequenceId: enrollment.sequenceId });
+            }
+          } catch (err) {
+            console.error('[automations] sequence_completed trigger failed:', err);
+          }
+        }
         break;
       }
 
