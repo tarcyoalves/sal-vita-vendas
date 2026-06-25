@@ -13,14 +13,33 @@ export default function Home() {
   const [submitting, setSubmitting] = useState(false);
 
   const [showRecovery, setShowRecovery] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState<'email' | 'secret'>('email');
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [recoverySecret, setRecoverySecret] = useState('');
   const [recoveryResult, setRecoveryResult] = useState<{ name: string; generatedPassword: string } | null>(null);
+  const [emailSent, setEmailSent] = useState(false);
   const [recovering, setRecovering] = useState(false);
+
+  const [resetToken, setResetToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetSuccess, setResetSuccess] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const loginMutation = trpc.auth.login.useMutation();
   const emergencyResetMutation = trpc.auth.emergencyReset.useMutation();
+  const requestResetMutation = trpc.auth.requestPasswordReset.useMutation();
+  const resetWithTokenMutation = trpc.auth.resetPasswordWithToken.useMutation();
   const utils = trpc.useUtils();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('reset');
+    if (token) {
+      setResetToken(token);
+      window.history.replaceState({}, '', '/');
+    }
+  }, []);
 
   useEffect(() => {
     if (!loading && isAuthenticated && user) {
@@ -113,10 +132,10 @@ export default function Home() {
         <div className="mt-4 text-center">
           <button
             type="button"
-            onClick={() => { setShowRecovery(true); setRecoveryResult(null); }}
+            onClick={() => { setShowRecovery(true); setRecoveryResult(null); setEmailSent(false); setRecoveryMode('email'); }}
             className="text-xs text-blue-600 hover:underline"
           >
-            Esqueci minha senha (admin)
+            Esqueci minha senha
           </button>
         </div>
 
@@ -125,81 +144,173 @@ export default function Home() {
         </p>
       </div>
 
-      {/* Emergency recovery modal */}
+      {/* Reset password via token (from email link) */}
+      {resetToken && !resetSuccess && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <KeyRound size={18} className="text-blue-600" />
+                <h2 className="font-semibold text-gray-800">Nova Senha</h2>
+              </div>
+              <button onClick={() => setResetToken('')} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+            <form
+              onSubmit={async e => {
+                e.preventDefault();
+                if (newPassword !== confirmPassword) {
+                  toast.error('As senhas não coincidem');
+                  return;
+                }
+                setResetting(true);
+                try {
+                  await resetWithTokenMutation.mutateAsync({ token: resetToken, newPassword });
+                  setResetSuccess(true);
+                  setResetToken('');
+                  toast.success('Senha redefinida com sucesso!');
+                } catch (err: any) {
+                  toast.error(err?.message ?? 'Erro ao redefinir senha');
+                } finally {
+                  setResetting(false);
+                }
+              }}
+              className="space-y-3"
+            >
+              <p className="text-xs text-gray-500">Defina sua nova senha abaixo.</p>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Nova senha</label>
+                <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required minLength={6} className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="Mínimo 6 caracteres" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Confirmar senha</label>
+                <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required minLength={6} className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="Repita a senha" />
+              </div>
+              <button type="submit" disabled={resetting} className="w-full py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold transition disabled:opacity-50">
+                {resetting ? 'Salvando...' : 'Salvar nova senha'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Success after reset */}
+      {resetSuccess && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm text-center space-y-4">
+            <div className="text-4xl">🎉</div>
+            <h2 className="font-bold text-lg text-green-700">Senha redefinida!</h2>
+            <p className="text-sm text-gray-600">Sua nova senha está pronta. Faça login abaixo.</p>
+            <button onClick={() => setResetSuccess(false)} className="w-full py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold">
+              Fazer login
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Recovery modal (email + emergency secret) */}
       {showRecovery && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <KeyRound size={18} className="text-orange-600" />
-                <h2 className="font-semibold text-gray-800">Recuperação de Emergência</h2>
+                <KeyRound size={18} className="text-blue-600" />
+                <h2 className="font-semibold text-gray-800">Recuperar Senha</h2>
               </div>
               <button onClick={() => setShowRecovery(false)} className="text-gray-400 hover:text-gray-600">
                 <X size={18} />
               </button>
             </div>
 
-            {recoveryResult ? (
-              <div className="space-y-3">
-                <p className="text-sm text-green-700 font-medium">Senha redefinida para <strong>{recoveryResult.name}</strong>:</p>
-                <div className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-3 text-center">
-                  <p className="font-mono text-lg font-bold text-orange-700 tracking-widest">{recoveryResult.generatedPassword}</p>
+            {/* Tab switch */}
+            <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1">
+              <button type="button" onClick={() => setRecoveryMode('email')} className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition ${recoveryMode === 'email' ? 'bg-white shadow text-blue-700' : 'text-gray-500'}`}>
+                Via E-mail
+              </button>
+              <button type="button" onClick={() => setRecoveryMode('secret')} className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition ${recoveryMode === 'secret' ? 'bg-white shadow text-orange-700' : 'text-gray-500'}`}>
+                Chave Secreta
+              </button>
+            </div>
+
+            {recoveryMode === 'email' ? (
+              emailSent ? (
+                <div className="space-y-3 text-center">
+                  <div className="text-3xl">📧</div>
+                  <p className="text-sm text-green-700 font-medium">E-mail de recuperação enviado!</p>
+                  <p className="text-xs text-gray-500">Verifique sua caixa de entrada (e spam) para o link de redefinição. O link expira em 30 minutos.</p>
+                  <button onClick={() => { setShowRecovery(false); setEmailSent(false); }} className="w-full py-2 bg-blue-700 text-white rounded-lg text-sm font-medium hover:bg-blue-800">
+                    Fechar
+                  </button>
                 </div>
-                <p className="text-xs text-gray-500">Anote esta senha — ela não será exibida novamente.</p>
-                <button
-                  onClick={() => { setShowRecovery(false); setRecoveryResult(null); }}
-                  className="w-full py-2 bg-blue-700 text-white rounded-lg text-sm font-medium hover:bg-blue-800"
+              ) : (
+                <form
+                  onSubmit={async e => {
+                    e.preventDefault();
+                    setRecovering(true);
+                    try {
+                      await requestResetMutation.mutateAsync({ email: recoveryEmail });
+                      setEmailSent(true);
+                    } catch (err: any) {
+                      toast.error(err?.message ?? 'Erro ao solicitar recuperação');
+                    } finally {
+                      setRecovering(false);
+                    }
+                  }}
+                  className="space-y-3"
                 >
-                  Fechar e fazer login
-                </button>
-              </div>
+                  <p className="text-xs text-gray-500">Insira seu e-mail cadastrado. Enviaremos um link para redefinir sua senha.</p>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">E-mail</label>
+                    <input type="email" value={recoveryEmail} onChange={e => setRecoveryEmail(e.target.value)} required className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="seu@email.com" />
+                  </div>
+                  <button type="submit" disabled={recovering} className="w-full py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold transition disabled:opacity-50">
+                    {recovering ? 'Enviando...' : 'Enviar link de recuperação'}
+                  </button>
+                </form>
+              )
             ) : (
-              <form
-                onSubmit={async e => {
-                  e.preventDefault();
-                  setRecovering(true);
-                  try {
-                    const res = await emergencyResetMutation.mutateAsync({ email: recoveryEmail, secret: recoverySecret });
-                    setRecoveryResult(res);
-                  } catch (err: any) {
-                    toast.error(err?.message ?? 'Erro na recuperação');
-                  } finally {
-                    setRecovering(false);
-                  }
-                }}
-                className="space-y-3"
-              >
-                <p className="text-xs text-gray-500">Insira seu email de admin e a chave de recuperação configurada no servidor.</p>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Email do admin</label>
-                  <input
-                    type="email"
-                    value={recoveryEmail}
-                    onChange={e => setRecoveryEmail(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-                    placeholder="admin@empresa.com"
-                  />
+              recoveryResult ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-green-700 font-medium">Senha redefinida para <strong>{recoveryResult.name}</strong>:</p>
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-3 text-center">
+                    <p className="font-mono text-lg font-bold text-orange-700 tracking-widest">{recoveryResult.generatedPassword}</p>
+                  </div>
+                  <p className="text-xs text-gray-500">Anote esta senha — ela não será exibida novamente.</p>
+                  <button onClick={() => { setShowRecovery(false); setRecoveryResult(null); }} className="w-full py-2 bg-blue-700 text-white rounded-lg text-sm font-medium hover:bg-blue-800">
+                    Fechar e fazer login
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Chave de recuperação</label>
-                  <input
-                    type="password"
-                    value={recoverySecret}
-                    onChange={e => setRecoverySecret(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-                    placeholder="Chave secreta do servidor"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={recovering}
-                  className="w-full py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-semibold transition disabled:opacity-50"
+              ) : (
+                <form
+                  onSubmit={async e => {
+                    e.preventDefault();
+                    setRecovering(true);
+                    try {
+                      const res = await emergencyResetMutation.mutateAsync({ email: recoveryEmail, secret: recoverySecret });
+                      setRecoveryResult(res);
+                    } catch (err: any) {
+                      toast.error(err?.message ?? 'Erro na recuperação');
+                    } finally {
+                      setRecovering(false);
+                    }
+                  }}
+                  className="space-y-3"
                 >
-                  {recovering ? 'Verificando...' : 'Redefinir Senha'}
-                </button>
-              </form>
+                  <p className="text-xs text-gray-500">Insira seu email e a chave secreta configurada no servidor (ADMIN_RESET_SECRET).</p>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                    <input type="email" value={recoveryEmail} onChange={e => setRecoveryEmail(e.target.value)} required className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="admin@empresa.com" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Chave secreta</label>
+                    <input type="password" value={recoverySecret} onChange={e => setRecoverySecret(e.target.value)} required className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="Chave secreta do servidor" />
+                  </div>
+                  <button type="submit" disabled={recovering} className="w-full py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-semibold transition disabled:opacity-50">
+                    {recovering ? 'Verificando...' : 'Redefinir Senha'}
+                  </button>
+                </form>
+              )
             )}
           </div>
         </div>

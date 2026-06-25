@@ -341,6 +341,15 @@ export const taskDeletionLogs = pgTable('task_deletion_logs', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+export const passwordResetTokens = pgTable('password_reset_tokens', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull(),
+  token: text('token').notNull().unique(),
+  expiresAt: timestamp('expires_at').notNull(),
+  usedAt: timestamp('used_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Seller = typeof sellers.$inferSelect;
 export type Client = typeof clients.$inferSelect;
