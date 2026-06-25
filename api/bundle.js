@@ -42665,6 +42665,7 @@ __export(schema_exports, {
   emailTemplates: () => emailTemplates,
   knowledgeDocuments: () => knowledgeDocuments,
   msgTemplates: () => msgTemplates,
+  passwordResetTokens: () => passwordResetTokens,
   reminders: () => reminders,
   sellers: () => sellers,
   siteOrders: () => siteOrders,
@@ -42674,7 +42675,7 @@ __export(schema_exports, {
   users: () => users,
   workSessions: () => workSessions
 });
-var appSettings, tags, users, sellers, clients, tasks, reminders, chatMessages, knowledgeDocuments, workSessions, siteOrders, abandonedCarts, automationRuns, coupons, msgTemplates, emailTemplates, emailCampaigns, emailCampaignRecipients, emailSuppressions, emailSendCounters, taskDeletionLogs, emailSequences, emailSequenceSteps, emailSequenceEnrollments, emailSequenceSends, emailEvents, automationRules;
+var appSettings, tags, users, sellers, clients, tasks, reminders, chatMessages, knowledgeDocuments, workSessions, siteOrders, abandonedCarts, automationRuns, coupons, msgTemplates, emailTemplates, emailCampaigns, emailCampaignRecipients, emailSuppressions, emailSendCounters, taskDeletionLogs, passwordResetTokens, emailSequences, emailSequenceSteps, emailSequenceEnrollments, emailSequenceSends, emailEvents, automationRules;
 var init_schema2 = __esm({
   "server/db/schema.ts"() {
     "use strict";
@@ -42998,6 +42999,14 @@ var init_schema2 = __esm({
       // do mesmo lead via CNPJ ou telefone.
       cnpj: text("cnpj"),
       phone: text("phone"),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    passwordResetTokens = pgTable("password_reset_tokens", {
+      id: serial("id").primaryKey(),
+      userId: integer("user_id").notNull(),
+      token: text("token").notNull().unique(),
+      expiresAt: timestamp("expires_at").notNull(),
+      usedAt: timestamp("used_at"),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     emailSequences = pgTable("email_sequences", {
@@ -55497,7 +55506,7 @@ module.exports = __toCommonJS(api_exports);
 })();
 
 // api/index.ts
-var import_crypto6 = __toESM(require("crypto"));
+var import_crypto7 = __toESM(require("crypto"));
 var import_express = __toESM(require_express2());
 var import_cors = __toESM(require_lib3());
 
@@ -65162,7 +65171,266 @@ var NEVER = INVALID;
 
 // server/routers/auth.ts
 init_drizzle_orm();
+var import_crypto2 = require("crypto");
 init_schema2();
+
+// server/email/resend.ts
+var FROM = "Sal Vita <noreply@premium.salvitarn.com.br>";
+var BRAND2 = "#0C3680";
+var DAILY_SOFT_LIMIT = parseInt(process.env.RESEND_DAILY_LIMIT ?? "80");
+var _emailsToday = 0;
+var _emailCounterDay = "";
+function dailyCount() {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  if (_emailCounterDay !== today2) {
+    _emailsToday = 0;
+    _emailCounterDay = today2;
+  }
+  return _emailsToday;
+}
+async function sendEmail(to2, subject, html) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey)
+    return { ok: false, reason: "no_api_key" };
+  if (dailyCount() >= DAILY_SOFT_LIMIT) {
+    console.warn(`[email] daily soft limit (${DAILY_SOFT_LIMIT}) reached \u2014 skipping "${subject}" \u2192 ${to2}`);
+    return { ok: false, reason: "daily_limit" };
+  }
+  try {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 8e3);
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({ from: FROM, to: to2, subject, html }),
+      signal: ac.signal
+    });
+    clearTimeout(timer);
+    if (!res.ok) {
+      const err = await res.text().catch(() => res.statusText);
+      console.error(`[email] Resend error ${res.status}:`, err);
+      return { ok: false, reason: `resend_${res.status}` };
+    }
+    _emailsToday++;
+    console.log(`[email] sent (${_emailsToday}/${DAILY_SOFT_LIMIT} today) "${subject}" \u2192 ${to2}`);
+    return { ok: true };
+  } catch (err) {
+    console.error("[email] sendEmail failed:", err);
+    return { ok: false, reason: "network_error" };
+  }
+}
+function layout(preheader, body) {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sal Vita</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:system-ui,Arial,sans-serif;">
+  <!-- preheader -->
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${preheader}&nbsp;&zwnj;&zwnj;&zwnj;&zwnj;&zwnj;</div>
+
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f4;">
+    <tr>
+      <td align="center" style="padding:24px 8px;">
+
+        <!-- card -->
+        <table width="600" cellpadding="0" cellspacing="0" border="0"
+               style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
+
+          <!-- header -->
+          <tr>
+            <td style="background:#ffffff;padding:20px 32px 8px;text-align:left;">
+              <img src="http://salvitarn.com.br/wp-content/uploads/2025/04/logo-SAL-VITA.png"
+                   alt="Sal Vita" width="160" height="auto"
+                   style="display:inline-block;max-width:160px;height:auto;border:0;" />
+            </td>
+          </tr>
+          <tr>
+            <td style="background:${BRAND2};height:4px;font-size:0;line-height:0;">&nbsp;</td>
+          </tr>
+
+          <!-- body -->
+          <tr>
+            <td style="padding:32px;">
+              ${body}
+            </td>
+          </tr>
+
+          <!-- footer -->
+          <tr>
+            <td style="background:#f4f4f4;padding:20px 32px;border-top:1px solid #e0e0e0;text-align:center;">
+              <p style="margin:0;font-size:12px;color:#888;">
+                <strong>Sal Vita &mdash; Sal Marinho Premium de Mossor\xF3/RN</strong>
+              </p>
+              <p style="margin:8px 0 0;font-size:11px;color:#aaa;">
+                Para deixar de receber mensagens, envie <strong>PARAR</strong> pelo WhatsApp.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+        <!-- /card -->
+
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+function ctaButton(label, href) {
+  return `<table cellpadding="0" cellspacing="0" border="0" style="margin:24px auto;">
+    <tr>
+      <td style="background:${BRAND2};border-radius:6px;">
+        <a href="${href}"
+           style="display:block;padding:14px 32px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:bold;">
+          ${label}
+        </a>
+      </td>
+    </tr>
+  </table>`;
+}
+function abandonedCartHtml(name2, link, coupon) {
+  const couponBlock = coupon ? `<tr>
+        <td style="background:#eef3ff;border:1px dashed ${BRAND2};border-radius:6px;padding:16px;text-align:center;margin-bottom:16px;">
+          <p style="margin:0;font-size:13px;color:#555;">Seu cupom exclusivo:</p>
+          <p style="margin:8px 0 0;font-size:22px;font-weight:bold;color:${BRAND2};letter-spacing:2px;">${coupon}</p>
+          <p style="margin:6px 0 0;font-size:12px;color:#888;">Use no checkout e ganhe desconto especial!</p>
+        </td>
+      </tr>` : "";
+  const body = `<table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td>
+        <h2 style="margin:0 0 8px;font-size:22px;color:#222;">Ol&aacute;, ${escapeHtml(name2)}! &#128075;</h2>
+        <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;">
+          Notamos que voc&ecirc; se interessou pelo <strong>Sal Marinho Integral Sal Vita</strong> mas n&atilde;o finalizou o pedido.
+        </p>
+        <p style="margin:0 0 24px;font-size:15px;color:#444;line-height:1.6;">
+          Nosso sal &eacute; colhido artesanalmente em Mossor&oacute;/RN, sem refino &mdash; preservando os 84+ minerais naturais do mar. &#127754;
+        </p>
+      </td>
+    </tr>
+    ${couponBlock}
+    <tr>
+      <td>${ctaButton("Finalizar meu pedido &rarr;", link)}</td>
+    </tr>
+    <tr>
+      <td>
+        <p style="margin:16px 0 0;font-size:13px;color:#888;text-align:center;">
+          Qualquer d&uacute;vida &eacute; s&oacute; chamar no WhatsApp. &#128522;
+        </p>
+      </td>
+    </tr>
+  </table>`;
+  return layout(
+    `Voc\xEA esqueceu algo \u2014 finalize seu pedido Sal Vita${coupon ? ` e use o cupom ${coupon}` : ""}.`,
+    body
+  );
+}
+function unpaidOrderHtml(name2, orderId, total, link, pixCode, failed) {
+  const pixBlock = pixCode ? `<tr>
+        <td style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:16px;margin-bottom:16px;">
+          <p style="margin:0 0 8px;font-size:14px;color:#166534;font-weight:bold;">&#128241; Pague com PIX agora:</p>
+          <p style="margin:0;font-size:11px;color:#555;word-break:break-all;font-family:monospace;background:#fff;padding:8px;border-radius:4px;">${escapeHtml(pixCode)}</p>
+          <p style="margin:8px 0 0;font-size:12px;color:#888;">Copie o c&oacute;digo acima e cole no app do seu banco.</p>
+        </td>
+      </tr>` : "";
+  const introText = failed ? `Houve um problema ao processar o pagamento do seu pedido <strong>#${orderId}</strong>. N&atilde;o se preocupe, voc&ecirc; pode tentar novamente.` : `Seu pedido <strong>#${orderId}</strong> est&aacute; aguardando pagamento.`;
+  const body = `<table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td>
+        <h2 style="margin:0 0 8px;font-size:22px;color:#222;">Ol&aacute;, ${escapeHtml(name2)}! &#128184;</h2>
+        <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;">
+          ${introText}
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding-bottom:16px;">
+        <table width="100%" cellpadding="8" cellspacing="0" border="0"
+               style="border:1px solid #e0e0e0;border-radius:6px;font-size:14px;color:#444;">
+          <tr style="background:#f9f9f9;">
+            <td><strong>Pedido</strong></td>
+            <td style="text-align:right;"><strong>#${orderId}</strong></td>
+          </tr>
+          <tr>
+            <td>Total</td>
+            <td style="text-align:right;color:${BRAND2};font-weight:bold;">R$ ${escapeHtml(total)}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    ${pixBlock}
+    <tr>
+      <td>${ctaButton(failed ? "Tentar novamente &rarr;" : "Concluir pagamento &rarr;", link)}</td>
+    </tr>
+    <tr>
+      <td>
+        <p style="margin:16px 0 0;font-size:13px;color:#888;text-align:center;">
+          Aceitamos Cart&atilde;o, PIX e Boleto. Pedido reservado por tempo limitado!
+        </p>
+      </td>
+    </tr>
+  </table>`;
+  const preheader = failed ? `Houve um problema no pagamento do pedido #${orderId} \u2014 tente novamente.` : `Seu pedido #${orderId} est\xE1 aguardando pagamento \u2014 R$ ${total}.`;
+  return layout(preheader, body);
+}
+function orderConfirmedHtml(name2, orderId, total) {
+  const body = `<table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td style="text-align:center;padding-bottom:16px;">
+        <span style="font-size:48px;">&#127881;</span>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <h2 style="margin:0 0 8px;font-size:22px;color:#222;text-align:center;">
+          Pagamento confirmado!
+        </h2>
+        <p style="margin:0 0 24px;font-size:15px;color:#444;line-height:1.6;text-align:center;">
+          Obrigado, <strong>${escapeHtml(name2)}</strong>! Seu pedido foi aprovado e j&aacute; estamos preparando o envio. &#128230;
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding-bottom:24px;">
+        <table width="100%" cellpadding="8" cellspacing="0" border="0"
+               style="border:1px solid #e0e0e0;border-radius:6px;font-size:14px;color:#444;">
+          <tr style="background:#f9f9f9;">
+            <td><strong>Pedido</strong></td>
+            <td style="text-align:right;"><strong>#${orderId}</strong></td>
+          </tr>
+          <tr>
+            <td>Total pago</td>
+            <td style="text-align:right;color:${BRAND2};font-weight:bold;">R$ ${escapeHtml(total)}</td>
+          </tr>
+          <tr style="background:#f9f9f9;">
+            <td>Status</td>
+            <td style="text-align:right;color:#16a34a;font-weight:bold;">&#10003; Confirmado</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <p style="margin:0;font-size:14px;color:#555;line-height:1.6;text-align:center;">
+          Voc&ecirc; receber&aacute; o c&oacute;digo de rastreio assim que postarmos o pacote. &#128666;<br />
+          Em caso de d&uacute;vidas, basta chamar no WhatsApp.
+        </p>
+      </td>
+    </tr>
+  </table>`;
+  return layout(`Pedido #${orderId} confirmado \u2014 R$ ${total}. Obrigado pela compra!`, body);
+}
+function escapeHtml(str) {
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// server/routers/auth.ts
 function generatePassword(length = 12) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%";
   return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
@@ -65263,6 +65531,69 @@ var authRouter = router({
     const generated = generatePassword();
     await db.update(users).set({ passwordHash: hashPassword(generated), mustChangePassword: true }).where(eq(users.id, user.id));
     return { name: user.name, generatedPassword: generated };
+  }),
+  requestPasswordReset: publicProcedure.input(external_exports.object({ email: external_exports.string().email() })).mutation(async ({ input }) => {
+    const [user] = await db.select().from(users).where(eq(users.email, input.email));
+    if (!user)
+      return { ok: true };
+    const token = (0, import_crypto2.randomBytes)(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1e3);
+    await db.insert(passwordResetTokens).values({
+      userId: user.id,
+      token,
+      expiresAt
+    });
+    const baseUrl = process.env.PUBLIC_APP_URL ?? "https://lembretes.salvitarn.com.br";
+    const resetLink = `${baseUrl}/?reset=${token}`;
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:system-ui,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f4;">
+<tr><td align="center" style="padding:24px 8px;">
+<table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
+<tr><td style="background:#0C3680;padding:20px 32px;text-align:center;">
+<h1 style="margin:0;color:#fff;font-size:22px;">Sal Vita \u2014 Recupera\xE7\xE3o de Senha</h1>
+</td></tr>
+<tr><td style="padding:32px;">
+<p style="margin:0 0 16px;font-size:15px;color:#444;">Ol\xE1, <strong>${user.name}</strong>!</p>
+<p style="margin:0 0 16px;font-size:15px;color:#444;">Recebemos uma solicita\xE7\xE3o para redefinir sua senha. Clique no bot\xE3o abaixo para criar uma nova senha:</p>
+<table cellpadding="0" cellspacing="0" border="0" style="margin:24px auto;">
+<tr><td style="background:#0C3680;border-radius:6px;">
+<a href="${resetLink}" style="display:block;padding:14px 32px;color:#fff;text-decoration:none;font-size:15px;font-weight:bold;">Redefinir minha senha</a>
+</td></tr></table>
+<p style="margin:16px 0 0;font-size:13px;color:#888;">Se voc\xEA n\xE3o solicitou essa altera\xE7\xE3o, ignore este e-mail. O link expira em 30 minutos.</p>
+<p style="margin:16px 0 0;font-size:12px;color:#aaa;word-break:break-all;">Link direto: ${resetLink}</p>
+</td></tr>
+<tr><td style="background:#f4f4f4;padding:16px 32px;border-top:1px solid #e0e0e0;text-align:center;">
+<p style="margin:0;font-size:12px;color:#888;"><strong>Sal Vita</strong> \u2014 Sistema de Gest\xE3o</p>
+</td></tr>
+</table></td></tr></table></body></html>`;
+    await sendEmail(input.email, "Recupera\xE7\xE3o de Senha \u2014 Sal Vita", html);
+    return { ok: true };
+  }),
+  resetPasswordWithToken: publicProcedure.input(external_exports.object({
+    token: external_exports.string().min(1),
+    newPassword: external_exports.string().min(6, "M\xEDnimo 6 caracteres")
+  })).mutation(async ({ input }) => {
+    const [resetToken] = await db.select().from(passwordResetTokens).where(
+      and(
+        eq(passwordResetTokens.token, input.token),
+        gt2(passwordResetTokens.expiresAt, /* @__PURE__ */ new Date()),
+        isNull2(passwordResetTokens.usedAt)
+      )
+    );
+    if (!resetToken) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Link inv\xE1lido ou expirado. Solicite uma nova recupera\xE7\xE3o." });
+    }
+    const [user] = await db.select().from(users).where(eq(users.id, resetToken.userId));
+    if (!user) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Usu\xE1rio n\xE3o encontrado." });
+    }
+    await db.update(users).set({ passwordHash: hashPassword(input.newPassword), mustChangePassword: false }).where(eq(users.id, user.id));
+    await db.update(passwordResetTokens).set({ usedAt: /* @__PURE__ */ new Date() }).where(eq(passwordResetTokens.id, resetToken.id));
+    cacheInvalidate(`auth:me:${user.id}`);
+    cacheInvalidate(`user:${user.id}`);
+    return { ok: true, name: user.name };
   })
 });
 
@@ -65306,14 +65637,14 @@ init_drizzle_orm();
 init_schema2();
 
 // server/email/automations.ts
-var import_crypto3 = __toESM(require("crypto"));
+var import_crypto4 = __toESM(require("crypto"));
 init_drizzle_orm();
 init_schema2();
 
 // server/email/marketing.ts
-var import_crypto2 = __toESM(require("crypto"));
+var import_crypto3 = __toESM(require("crypto"));
 var import_sanitize_html = __toESM(require_sanitize_html());
-var BRAND2 = "#0C3680";
+var BRAND3 = "#0C3680";
 var MKT_DAILY_LIMIT = parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? "90");
 function getAccountLimits(provider) {
   if (provider === "brevo") {
@@ -65500,10 +65831,10 @@ function verifyResendWebhook(rawBody, headers, secrets) {
     try {
       const secretKey = secret.startsWith("whsec_") ? secret.slice("whsec_".length) : secret;
       const secretBytes = Buffer.from(secretKey, "base64");
-      const expected = import_crypto2.default.createHmac("sha256", secretBytes).update(signedContent).digest("base64");
+      const expected = import_crypto3.default.createHmac("sha256", secretBytes).update(signedContent).digest("base64");
       for (const sig of providedSigs) {
         try {
-          if (expected.length === sig.length && import_crypto2.default.timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) {
+          if (expected.length === sig.length && import_crypto3.default.timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) {
             return true;
           }
         } catch {
@@ -65734,7 +66065,7 @@ function bodyToHtml(text2) {
   if (/<(br|p|div|table|ul|ol|h[1-6])[\s>\/]/i.test(trimmed))
     return trimmed;
   const escape2 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const linkify = (s) => s.replace(/(https?:\/\/[^\s<]+)/g, (url2) => `<a href="${url2}" style="color:${BRAND2};text-decoration:underline;">${url2}</a>`).replace(/(^|[\s(])(www\.[^\s<]+)/g, (_m, pre, host) => `${pre}<a href="http://${host}" style="color:${BRAND2};text-decoration:underline;">${host}</a>`);
+  const linkify = (s) => s.replace(/(https?:\/\/[^\s<]+)/g, (url2) => `<a href="${url2}" style="color:${BRAND3};text-decoration:underline;">${url2}</a>`).replace(/(^|[\s(])(www\.[^\s<]+)/g, (_m, pre, host) => `${pre}<a href="http://${host}" style="color:${BRAND3};text-decoration:underline;">${host}</a>`);
   return trimmed.split(/\n{2,}/).map((block) => {
     const lines = block.split(/\n/).map((line) => linkify(escape2(line)));
     return `<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#333;">${lines.join("<br />")}</p>`;
@@ -65780,7 +66111,7 @@ function renderSignature(html, seller) {
   });
   return out.join("").replace(/(<br\s*\/?>\s*){2,}/gi, "<br>").replace(/^(\s*<br\s*\/?>\s*)+/i, "").replace(/(\s*<br\s*\/?>\s*)+$/i, "");
 }
-function layout(body, unsubUrl, signatureHtml) {
+function layout2(body, unsubUrl, signatureHtml) {
   const sigBlock = signatureHtml ? `<tr>
             <td style="padding:0 32px 24px;border-top:1px solid #eee;">
               <div style="padding-top:16px;font-size:13px;color:#444;line-height:1.6;">${signatureHtml}</div>
@@ -65807,7 +66138,7 @@ function layout(body, unsubUrl, signatureHtml) {
             </td>
           </tr>
           <tr>
-            <td style="background:${BRAND2};height:4px;font-size:0;line-height:0;">&nbsp;</td>
+            <td style="background:${BRAND3};height:4px;font-size:0;line-height:0;">&nbsp;</td>
           </tr>
           <tr>
             <td style="padding:32px;">
@@ -65864,7 +66195,7 @@ async function enrollInSequence(sequenceId, opts) {
       taskId: opts.taskId ?? null,
       currentStep: 0,
       status: "active",
-      unsubToken: import_crypto3.default.randomUUID(),
+      unsubToken: import_crypto4.default.randomUUID(),
       enrolledAt,
       nextSendAt,
       cycleStartedAt: enrolledAt
@@ -66181,7 +66512,7 @@ async function processSequenceEnrollments(opts) {
       messages.push({
         to: enrollment.email,
         subject: renderTemplate(step.subject, { nome: enrollment.name ?? "" }),
-        html: layout(renderTemplate(step.htmlBody, { nome: enrollment.name ?? "", unsubscribe: unsubUrl }), unsubUrl, signatureHtml),
+        html: layout2(renderTemplate(step.htmlBody, { nome: enrollment.name ?? "", unsubscribe: unsubUrl }), unsubUrl, signatureHtml),
         replyTo: enrollment.replyTo ?? void 0,
         unsubToken: enrollment.unsubToken
       });
@@ -66710,6 +67041,7 @@ var sellersRouter = router({
   update: adminProcedure.input(external_exports.object({
     id: external_exports.number(),
     name: external_exports.string().optional(),
+    email: external_exports.string().email().optional(),
     phone: external_exports.string().optional(),
     department: external_exports.string().optional(),
     dailyGoal: external_exports.number().optional(),
@@ -66720,18 +67052,29 @@ var sellersRouter = router({
     emailSignatureEnabled: external_exports.boolean().optional(),
     emailMarketingEnabled: external_exports.boolean().optional()
   })).mutation(async ({ input }) => {
-    const { id, ...data } = input;
-    if (data.name) {
-      const [existing] = await db.select().from(sellers).where(eq(sellers.id, id));
-      if (existing && existing.name !== data.name) {
-        await db.update(tasks).set({ assignedTo: data.name }).where(eq(tasks.assignedTo, existing.name));
-      }
+    const { id, email: newEmail, ...data } = input;
+    const [existing] = await db.select().from(sellers).where(eq(sellers.id, id));
+    if (!existing)
+      throw new Error("Atendente n\xE3o encontrado");
+    if (data.name && existing.name !== data.name) {
+      await db.update(tasks).set({ assignedTo: data.name }).where(eq(tasks.assignedTo, existing.name));
     }
     if (data.emailSignatureHtml !== void 0) {
       data.emailSignatureHtml = sanitizeSignatureHtml(data.emailSignatureHtml);
     }
-    const [updated] = await db.update(sellers).set(data).where(eq(sellers.id, id)).returning();
+    const sellerUpdate = { ...data };
+    if (newEmail && newEmail !== existing.email) {
+      const [emailTaken] = await db.select({ id: users.id }).from(users).where(eq(users.email, newEmail));
+      if (emailTaken && emailTaken.id !== existing.userId) {
+        throw new Error("Este email j\xE1 est\xE1 em uso por outro usu\xE1rio");
+      }
+      await db.update(users).set({ email: newEmail }).where(eq(users.id, existing.userId));
+      sellerUpdate.email = newEmail;
+    }
+    const [updated] = await db.update(sellers).set(sellerUpdate).where(eq(sellers.id, id)).returning();
     invalidateSellersCache();
+    cacheInvalidate(`auth:me:${existing.userId}`);
+    cacheInvalidate(`user:${existing.userId}`);
     return updated;
   }),
   updateRole: adminProcedure.input(external_exports.object({
@@ -68167,267 +68510,9 @@ init_schema2();
 init_drizzle_orm();
 
 // server/lib/orderConfirmation.ts
-var import_crypto4 = __toESM(require("crypto"));
+var import_crypto5 = __toESM(require("crypto"));
 init_drizzle_orm();
 init_schema2();
-
-// server/email/resend.ts
-var FROM = "Sal Vita <noreply@premium.salvitarn.com.br>";
-var BRAND3 = "#0C3680";
-var DAILY_SOFT_LIMIT = parseInt(process.env.RESEND_DAILY_LIMIT ?? "80");
-var _emailsToday = 0;
-var _emailCounterDay = "";
-function dailyCount() {
-  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  if (_emailCounterDay !== today2) {
-    _emailsToday = 0;
-    _emailCounterDay = today2;
-  }
-  return _emailsToday;
-}
-async function sendEmail(to2, subject, html) {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey)
-    return { ok: false, reason: "no_api_key" };
-  if (dailyCount() >= DAILY_SOFT_LIMIT) {
-    console.warn(`[email] daily soft limit (${DAILY_SOFT_LIMIT}) reached \u2014 skipping "${subject}" \u2192 ${to2}`);
-    return { ok: false, reason: "daily_limit" };
-  }
-  try {
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 8e3);
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({ from: FROM, to: to2, subject, html }),
-      signal: ac.signal
-    });
-    clearTimeout(timer);
-    if (!res.ok) {
-      const err = await res.text().catch(() => res.statusText);
-      console.error(`[email] Resend error ${res.status}:`, err);
-      return { ok: false, reason: `resend_${res.status}` };
-    }
-    _emailsToday++;
-    console.log(`[email] sent (${_emailsToday}/${DAILY_SOFT_LIMIT} today) "${subject}" \u2192 ${to2}`);
-    return { ok: true };
-  } catch (err) {
-    console.error("[email] sendEmail failed:", err);
-    return { ok: false, reason: "network_error" };
-  }
-}
-function layout2(preheader, body) {
-  return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sal Vita</title>
-</head>
-<body style="margin:0;padding:0;background:#f4f4f4;font-family:system-ui,Arial,sans-serif;">
-  <!-- preheader -->
-  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${preheader}&nbsp;&zwnj;&zwnj;&zwnj;&zwnj;&zwnj;</div>
-
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f4;">
-    <tr>
-      <td align="center" style="padding:24px 8px;">
-
-        <!-- card -->
-        <table width="600" cellpadding="0" cellspacing="0" border="0"
-               style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
-
-          <!-- header -->
-          <tr>
-            <td style="background:#ffffff;padding:20px 32px 8px;text-align:left;">
-              <img src="http://salvitarn.com.br/wp-content/uploads/2025/04/logo-SAL-VITA.png"
-                   alt="Sal Vita" width="160" height="auto"
-                   style="display:inline-block;max-width:160px;height:auto;border:0;" />
-            </td>
-          </tr>
-          <tr>
-            <td style="background:${BRAND3};height:4px;font-size:0;line-height:0;">&nbsp;</td>
-          </tr>
-
-          <!-- body -->
-          <tr>
-            <td style="padding:32px;">
-              ${body}
-            </td>
-          </tr>
-
-          <!-- footer -->
-          <tr>
-            <td style="background:#f4f4f4;padding:20px 32px;border-top:1px solid #e0e0e0;text-align:center;">
-              <p style="margin:0;font-size:12px;color:#888;">
-                <strong>Sal Vita &mdash; Sal Marinho Premium de Mossor\xF3/RN</strong>
-              </p>
-              <p style="margin:8px 0 0;font-size:11px;color:#aaa;">
-                Para deixar de receber mensagens, envie <strong>PARAR</strong> pelo WhatsApp.
-              </p>
-            </td>
-          </tr>
-
-        </table>
-        <!-- /card -->
-
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
-}
-function ctaButton(label, href) {
-  return `<table cellpadding="0" cellspacing="0" border="0" style="margin:24px auto;">
-    <tr>
-      <td style="background:${BRAND3};border-radius:6px;">
-        <a href="${href}"
-           style="display:block;padding:14px 32px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:bold;">
-          ${label}
-        </a>
-      </td>
-    </tr>
-  </table>`;
-}
-function abandonedCartHtml(name2, link, coupon) {
-  const couponBlock = coupon ? `<tr>
-        <td style="background:#eef3ff;border:1px dashed ${BRAND3};border-radius:6px;padding:16px;text-align:center;margin-bottom:16px;">
-          <p style="margin:0;font-size:13px;color:#555;">Seu cupom exclusivo:</p>
-          <p style="margin:8px 0 0;font-size:22px;font-weight:bold;color:${BRAND3};letter-spacing:2px;">${coupon}</p>
-          <p style="margin:6px 0 0;font-size:12px;color:#888;">Use no checkout e ganhe desconto especial!</p>
-        </td>
-      </tr>` : "";
-  const body = `<table width="100%" cellpadding="0" cellspacing="0" border="0">
-    <tr>
-      <td>
-        <h2 style="margin:0 0 8px;font-size:22px;color:#222;">Ol&aacute;, ${escapeHtml(name2)}! &#128075;</h2>
-        <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;">
-          Notamos que voc&ecirc; se interessou pelo <strong>Sal Marinho Integral Sal Vita</strong> mas n&atilde;o finalizou o pedido.
-        </p>
-        <p style="margin:0 0 24px;font-size:15px;color:#444;line-height:1.6;">
-          Nosso sal &eacute; colhido artesanalmente em Mossor&oacute;/RN, sem refino &mdash; preservando os 84+ minerais naturais do mar. &#127754;
-        </p>
-      </td>
-    </tr>
-    ${couponBlock}
-    <tr>
-      <td>${ctaButton("Finalizar meu pedido &rarr;", link)}</td>
-    </tr>
-    <tr>
-      <td>
-        <p style="margin:16px 0 0;font-size:13px;color:#888;text-align:center;">
-          Qualquer d&uacute;vida &eacute; s&oacute; chamar no WhatsApp. &#128522;
-        </p>
-      </td>
-    </tr>
-  </table>`;
-  return layout2(
-    `Voc\xEA esqueceu algo \u2014 finalize seu pedido Sal Vita${coupon ? ` e use o cupom ${coupon}` : ""}.`,
-    body
-  );
-}
-function unpaidOrderHtml(name2, orderId, total, link, pixCode, failed) {
-  const pixBlock = pixCode ? `<tr>
-        <td style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:16px;margin-bottom:16px;">
-          <p style="margin:0 0 8px;font-size:14px;color:#166534;font-weight:bold;">&#128241; Pague com PIX agora:</p>
-          <p style="margin:0;font-size:11px;color:#555;word-break:break-all;font-family:monospace;background:#fff;padding:8px;border-radius:4px;">${escapeHtml(pixCode)}</p>
-          <p style="margin:8px 0 0;font-size:12px;color:#888;">Copie o c&oacute;digo acima e cole no app do seu banco.</p>
-        </td>
-      </tr>` : "";
-  const introText = failed ? `Houve um problema ao processar o pagamento do seu pedido <strong>#${orderId}</strong>. N&atilde;o se preocupe, voc&ecirc; pode tentar novamente.` : `Seu pedido <strong>#${orderId}</strong> est&aacute; aguardando pagamento.`;
-  const body = `<table width="100%" cellpadding="0" cellspacing="0" border="0">
-    <tr>
-      <td>
-        <h2 style="margin:0 0 8px;font-size:22px;color:#222;">Ol&aacute;, ${escapeHtml(name2)}! &#128184;</h2>
-        <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;">
-          ${introText}
-        </p>
-      </td>
-    </tr>
-    <tr>
-      <td style="padding-bottom:16px;">
-        <table width="100%" cellpadding="8" cellspacing="0" border="0"
-               style="border:1px solid #e0e0e0;border-radius:6px;font-size:14px;color:#444;">
-          <tr style="background:#f9f9f9;">
-            <td><strong>Pedido</strong></td>
-            <td style="text-align:right;"><strong>#${orderId}</strong></td>
-          </tr>
-          <tr>
-            <td>Total</td>
-            <td style="text-align:right;color:${BRAND3};font-weight:bold;">R$ ${escapeHtml(total)}</td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-    ${pixBlock}
-    <tr>
-      <td>${ctaButton(failed ? "Tentar novamente &rarr;" : "Concluir pagamento &rarr;", link)}</td>
-    </tr>
-    <tr>
-      <td>
-        <p style="margin:16px 0 0;font-size:13px;color:#888;text-align:center;">
-          Aceitamos Cart&atilde;o, PIX e Boleto. Pedido reservado por tempo limitado!
-        </p>
-      </td>
-    </tr>
-  </table>`;
-  const preheader = failed ? `Houve um problema no pagamento do pedido #${orderId} \u2014 tente novamente.` : `Seu pedido #${orderId} est\xE1 aguardando pagamento \u2014 R$ ${total}.`;
-  return layout2(preheader, body);
-}
-function orderConfirmedHtml(name2, orderId, total) {
-  const body = `<table width="100%" cellpadding="0" cellspacing="0" border="0">
-    <tr>
-      <td style="text-align:center;padding-bottom:16px;">
-        <span style="font-size:48px;">&#127881;</span>
-      </td>
-    </tr>
-    <tr>
-      <td>
-        <h2 style="margin:0 0 8px;font-size:22px;color:#222;text-align:center;">
-          Pagamento confirmado!
-        </h2>
-        <p style="margin:0 0 24px;font-size:15px;color:#444;line-height:1.6;text-align:center;">
-          Obrigado, <strong>${escapeHtml(name2)}</strong>! Seu pedido foi aprovado e j&aacute; estamos preparando o envio. &#128230;
-        </p>
-      </td>
-    </tr>
-    <tr>
-      <td style="padding-bottom:24px;">
-        <table width="100%" cellpadding="8" cellspacing="0" border="0"
-               style="border:1px solid #e0e0e0;border-radius:6px;font-size:14px;color:#444;">
-          <tr style="background:#f9f9f9;">
-            <td><strong>Pedido</strong></td>
-            <td style="text-align:right;"><strong>#${orderId}</strong></td>
-          </tr>
-          <tr>
-            <td>Total pago</td>
-            <td style="text-align:right;color:${BRAND3};font-weight:bold;">R$ ${escapeHtml(total)}</td>
-          </tr>
-          <tr style="background:#f9f9f9;">
-            <td>Status</td>
-            <td style="text-align:right;color:#16a34a;font-weight:bold;">&#10003; Confirmado</td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-    <tr>
-      <td>
-        <p style="margin:0;font-size:14px;color:#555;line-height:1.6;text-align:center;">
-          Voc&ecirc; receber&aacute; o c&oacute;digo de rastreio assim que postarmos o pacote. &#128666;<br />
-          Em caso de d&uacute;vidas, basta chamar no WhatsApp.
-        </p>
-      </td>
-    </tr>
-  </table>`;
-  return layout2(`Pedido #${orderId} confirmado \u2014 R$ ${total}. Obrigado pela compra!`, body);
-}
-function escapeHtml(str) {
-  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-// server/lib/orderConfirmation.ts
 function renderTemplate2(body, vars) {
   return body.replace(/\{(\w+)\}/g, (_2, k) => vars[k] ?? `{${k}}`);
 }
@@ -68449,7 +68534,7 @@ async function sendCapiPurchase(order) {
   if (!token)
     return;
   try {
-    const sha = (v2) => import_crypto4.default.createHash("sha256").update(v2.trim().toLowerCase()).digest("hex");
+    const sha = (v2) => import_crypto5.default.createHash("sha256").update(v2.trim().toLowerCase()).digest("hex");
     const user_data = {};
     const phoneDigits = order.customerPhone.replace(/\D/g, "");
     if (phoneDigits)
@@ -70370,7 +70455,7 @@ INSTRU\xC7\xD5ES:
 });
 
 // server/routers/emailMarketing.ts
-var import_crypto5 = __toESM(require("crypto"));
+var import_crypto6 = __toESM(require("crypto"));
 init_drizzle_orm();
 init_schema2();
 var PUBLIC_APP_URL = process.env.PUBLIC_APP_URL ?? "https://lembretes.salvitarn.com.br";
@@ -70563,7 +70648,7 @@ var emailMarketingRouter = router({
         name: r.name,
         replyTo: r.replyTo,
         taskId: r.taskId,
-        unsubToken: import_crypto5.default.randomUUID()
+        unsubToken: import_crypto6.default.randomUUID()
       })));
     }
     return campaign;
@@ -70647,7 +70732,7 @@ var emailMarketingRouter = router({
       email: r.email,
       name: r.name,
       replyTo: input.replyTo,
-      unsubToken: import_crypto5.default.randomUUID()
+      unsubToken: import_crypto6.default.randomUUID()
     })));
     return {
       campaignId: campaign.id,
@@ -70709,7 +70794,7 @@ var emailMarketingRouter = router({
       email: r.email,
       name: r.name,
       replyTo: seller.email,
-      unsubToken: import_crypto5.default.randomUUID()
+      unsubToken: import_crypto6.default.randomUUID()
     })));
     return { campaignId: campaign.id, recipientCount: clean.length };
   }),
@@ -70748,7 +70833,7 @@ var emailMarketingRouter = router({
         name: firstPart2(t2.title),
         replyTo: t2.assignedTo ? sellerMap.get(t2.assignedTo.toLowerCase()) : void 0,
         taskId: t2.id,
-        unsubToken: import_crypto5.default.randomUUID()
+        unsubToken: import_crypto6.default.randomUUID()
       });
     }
     if (toInsert.length > 0) {
@@ -70816,7 +70901,7 @@ var emailMarketingRouter = router({
         return {
           to: r.email,
           subject: renderTemplate(campaign.subject, { nome: r.name ?? "" }),
-          html: layout(renderTemplate(campaign.htmlBody, { nome: r.name ?? "", unsubscribe: unsubUrl }), unsubUrl, signatureHtml),
+          html: layout2(renderTemplate(campaign.htmlBody, { nome: r.name ?? "", unsubscribe: unsubUrl }), unsubUrl, signatureHtml),
           replyTo: r.replyTo ?? void 0,
           unsubToken: r.unsubToken,
           attachments: campaignAttachments
@@ -71594,7 +71679,7 @@ async function seedAdminIfNeeded() {
   `;
   console.log("[migrate] admin user seeded");
 }
-var SCHEMA_VERSION = "2026-06-24f";
+var SCHEMA_VERSION = "2026-06-25a";
 async function ensureTablesExist() {
   try {
     await seedAdminIfNeeded();
@@ -71956,6 +72041,20 @@ async function ensureTablesExist() {
     WHERE email IS NULL
       AND notes ~* '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}'
   `;
+  await sql4`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id         SERIAL PRIMARY KEY,
+      user_id    INTEGER NOT NULL,
+      token      TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMP NOT NULL,
+      used_at    TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `;
+  try {
+    await sql4`DELETE FROM password_reset_tokens WHERE expires_at < NOW() - INTERVAL '1 day'`;
+  } catch {
+  }
   await sql4`CREATE INDEX IF NOT EXISTS tasks_user_id_idx        ON tasks(user_id)`;
   await sql4`CREATE INDEX IF NOT EXISTS tasks_status_idx         ON tasks(status)`;
   await sql4`CREATE INDEX IF NOT EXISTS tasks_reminder_date_idx     ON tasks(reminder_date)`;
@@ -71971,7 +72070,8 @@ async function ensureTablesExist() {
   await sql4`CREATE INDEX IF NOT EXISTS tasks_tags_idx ON tasks USING GIN (tags)`;
   await sql4`CREATE INDEX IF NOT EXISTS email_seq_steps_seq_idx ON email_sequence_steps(sequence_id, step_order)`;
   await sql4`CREATE INDEX IF NOT EXISTS email_seq_enroll_due_idx ON email_sequence_enrollments(status, next_send_at)`;
-  await sql4`CREATE UNIQUE INDEX IF NOT EXISTS email_seq_enroll_unique_idx ON email_sequence_enrollments(sequence_id, email)`;
+  await sql4`DROP INDEX IF EXISTS email_seq_enroll_unique_idx`;
+  await sql4`CREATE UNIQUE INDEX IF NOT EXISTS email_seq_enroll_unique_v2_idx ON email_sequence_enrollments(sequence_id, email, COALESCE(task_id, 0))`;
   await sql4`CREATE INDEX IF NOT EXISTS email_seq_sends_enrollment_idx ON email_sequence_sends(enrollment_id)`;
   await sql4`CREATE INDEX IF NOT EXISTS email_events_message_idx ON email_events(message_id)`;
   await sql4`CREATE INDEX IF NOT EXISTS email_events_created_idx ON email_events(created_at)`;
@@ -72420,8 +72520,8 @@ app.post("/api/mp-webhook", webhookLimiter, import_express.default.raw({ type: "
         const { ts: ts2, v1 } = parts;
         if (ts2 && v1) {
           const manifest = `id:${body?.data?.id ?? ""};request-id:${xReqId};ts:${ts2}`;
-          const expected = import_crypto6.default.createHmac("sha256", webhookSecret).update(manifest).digest("hex");
-          if (expected.length !== v1.length || !import_crypto6.default.timingSafeEqual(Buffer.from(expected), Buffer.from(v1))) {
+          const expected = import_crypto7.default.createHmac("sha256", webhookSecret).update(manifest).digest("hex");
+          if (expected.length !== v1.length || !import_crypto7.default.timingSafeEqual(Buffer.from(expected), Buffer.from(v1))) {
             console.warn("[mp-webhook] Invalid HMAC signature \u2014 ignoring notification");
             res.status(401).json({ error: "Invalid signature" });
             return;
