@@ -626,10 +626,10 @@ export default function Attendants() {
                     checked={editFormData.emailMarketingEnabled}
                     onChange={(e) => setEditFormData({ ...editFormData, emailMarketingEnabled: e.target.checked })}
                   />
-                  Liberar Email Marketing (inscrever em sequências + disparo rápido)
+                  Liberar Email Marketing (inscrever em sequências)
                 </label>
                 <p className="text-xs text-gray-500 mt-1 ml-1">
-                  Quando ativo, o atendente poderá inscrever seus leads em sequências e enviar e-mails rápidos usando sua própria assinatura.
+                  Quando ativo, o atendente poderá inscrever seus leads em sequências de e-mail.
                 </p>
               </div>
               <DialogFooter className="flex gap-2 pt-2">
