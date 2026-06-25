@@ -716,7 +716,7 @@ export function bodyToHtml(text: string): string {
  * <script>, event handlers (on*), javascript: URLs, <style>, etc.
  */
 export function sanitizeSignatureHtml(html: string): string {
-  return sanitizeHtml(html, {
+  const cleaned = sanitizeHtml(html, {
     allowedTags: ['a', 'b', 'strong', 'i', 'em', 'u', 'br', 'span', 'div', 'p', 'table', 'tbody', 'tr', 'td', 'font', 'img'],
     allowedAttributes: {
       a: ['href', 'target', 'rel', 'style'],
@@ -730,6 +730,7 @@ export function sanitizeSignatureHtml(html: string): string {
       a: sanitizeHtml.simpleTransform('a', { rel: 'noopener noreferrer' }),
     },
   }).trim();
+  return cleaned;
 }
 
 /**
@@ -770,7 +771,7 @@ export function layout(body: string, unsubUrl: string, signatureHtml?: string): 
   const sigBlock = signatureHtml
     ? `<tr>
             <td style="padding:0 32px 24px;border-top:1px solid #eee;">
-              <div style="padding-top:16px;font-size:13px;color:#444;line-height:1.6;">${signatureHtml}</div>
+              <div style="padding-top:16px;font-size:13px;color:#444;line-height:1.6;max-width:280px;">${signatureHtml.replace(/<img\b/gi, '<img style="max-width:260px;height:auto;display:block;"')}</div>
             </td>
           </tr>`
     : '';

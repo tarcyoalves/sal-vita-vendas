@@ -66057,7 +66057,7 @@ function bodyToHtml(text2) {
   }).join("");
 }
 function sanitizeSignatureHtml(html) {
-  return (0, import_sanitize_html.default)(html, {
+  const cleaned = (0, import_sanitize_html.default)(html, {
     allowedTags: ["a", "b", "strong", "i", "em", "u", "br", "span", "div", "p", "table", "tbody", "tr", "td", "font", "img"],
     allowedAttributes: {
       a: ["href", "target", "rel", "style"],
@@ -66071,6 +66071,7 @@ function sanitizeSignatureHtml(html) {
       a: import_sanitize_html.default.simpleTransform("a", { rel: "noopener noreferrer" })
     }
   }).trim();
+  return cleaned;
 }
 function renderSignature(html, seller) {
   const tokens = {
@@ -66099,7 +66100,7 @@ function renderSignature(html, seller) {
 function layout2(body, unsubUrl, signatureHtml) {
   const sigBlock = signatureHtml ? `<tr>
             <td style="padding:0 32px 24px;border-top:1px solid #eee;">
-              <div style="padding-top:16px;font-size:13px;color:#444;line-height:1.6;">${signatureHtml}</div>
+              <div style="padding-top:16px;font-size:13px;color:#444;line-height:1.6;max-width:280px;">${signatureHtml.replace(/<img\b/gi, '<img style="max-width:260px;height:auto;display:block;"')}</div>
             </td>
           </tr>` : "";
   return `<!DOCTYPE html>
