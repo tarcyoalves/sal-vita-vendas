@@ -774,27 +774,21 @@ export function layout(body: string, unsubUrl: string, signatureHtml?: string): 
     sigHtml = sigHtml
       .replace(/<table\b([^>]*)>/gi, (_m, attrs: string) => {
         const clean = attrs
-          .replace(/\bwidth\s*=\s*["']?[^"'\s>]+["']?/gi, '')
-          .replace(/\bstyle\s*=\s*["'][^"']*["']/gi, '');
-        return `<table${clean} width="260" style="max-width:260px;table-layout:fixed;">`;
-      })
-      .replace(/<td\b([^>]*)>/gi, (_m, attrs: string) => {
-        const clean = attrs
           .replace(/\bwidth\s*=\s*["']?[^"'\s>]+["']?/gi, '');
-        return `<td${clean}>`;
+        return `<table${clean}>`;
       })
       .replace(/<img\b([^>]*)>/gi, (_m, attrs: string) => {
         const clean = attrs
           .replace(/\bwidth\s*=\s*["']?[^"'\s>]+["']?/gi, '')
           .replace(/\bheight\s*=\s*["']?[^"'\s>]+["']?/gi, '')
           .replace(/\bstyle\s*=\s*["'][^"']*["']/gi, '');
-        return `<img${clean} width="260" style="width:260px;max-width:260px;height:auto;display:block;">`;
+        return `<img${clean} style="max-width:100%;height:auto;display:block;">`;
       });
   }
   const sigBlock = sigHtml
     ? `<tr>
-            <td style="padding:0 32px 24px;border-top:1px solid #eee;">
-              <table cellpadding="0" cellspacing="0" border="0" width="260" style="max-width:260px;"><tr><td style="font-size:13px;color:#444;line-height:1.6;padding-top:16px;">${sigHtml}</td></tr></table>
+            <td style="padding:16px 32px 24px;border-top:1px solid #eee;">
+              ${sigHtml}
             </td>
           </tr>`
     : '';
