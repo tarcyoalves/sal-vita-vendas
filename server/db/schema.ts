@@ -260,8 +260,16 @@ export type MsgTemplate = typeof msgTemplates.$inferSelect;
 
 // ── E-mail Marketing (Lembretes CRM) ──────────────────────────────────────────
 
+export const emailTemplateCategories = pgTable('email_template_categories', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  sortOrder: integer('sort_order').default(0).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 export const emailTemplates = pgTable('email_templates', {
   id: serial('id').primaryKey(),
+  categoryId: integer('category_id'),
   slug: text('slug').notNull().unique(),
   name: text('name').notNull(),
   subject: text('subject').notNull(),
@@ -321,6 +329,7 @@ export const emailSendCounters = pgTable('email_send_counters', {
   sent: integer('sent').default(0).notNull(),
 });
 
+export type EmailTemplateCategory = typeof emailTemplateCategories.$inferSelect;
 export type EmailTemplate = typeof emailTemplates.$inferSelect;
 export type EmailCampaign = typeof emailCampaigns.$inferSelect;
 export type EmailCampaignRecipient = typeof emailCampaignRecipients.$inferSelect;

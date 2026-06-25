@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-06-25a';
+const SCHEMA_VERSION = '2026-06-25b';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -472,6 +472,17 @@ export async function ensureTablesExist() {
   )`;
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS email_events_dedup_idx ON email_events(message_id, event_type)`;
   await sql`CREATE INDEX IF NOT EXISTS tasks_assigned_to_lower_idx ON tasks (lower(assigned_to))`;
+
+  // ── Template categories ────────────────────────────────────────────────────
+  await sql`
+    CREATE TABLE IF NOT EXISTS email_template_categories (
+      id         SERIAL PRIMARY KEY,
+      name       TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `;
+  await sql`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS category_id INTEGER`;
 
   // Record the schema marker so every subsequent cold start takes the fast path
   // at the top of this function instead of re-running the whole battery above.

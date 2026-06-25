@@ -5,7 +5,7 @@ import { TRPCError } from '@trpc/server';
 import { router, adminProcedure, protectedProcedure } from '../trpc';
 import { db } from '../db';
 import {
-  emailTemplates, emailCampaigns, emailCampaignRecipients, emailSuppressions,
+  emailTemplateCategories, emailTemplates, emailCampaigns, emailCampaignRecipients, emailSuppressions,
   emailSequences, emailSequenceSteps, emailSequenceEnrollments, emailSequenceSends,
   emailEvents, automationRules, emailSendCounters,
   tasks, clients, sellers,
@@ -166,6 +166,37 @@ async function exportEngagementBatch(
 }
 
 export const emailMarketingRouter = router({
+  // ── Template Categories ──────────────────────────────────────────────────
+  listTemplateCategories: adminProcedure.query(async () => {
+    return db.select().from(emailTemplateCategories).orderBy(emailTemplateCategories.sortOrder, emailTemplateCategories.name);
+  }),
+
+  upsertTemplateCategory: adminProcedure
+    .input(z.object({ id: z.number().optional(), name: z.string().min(1).max(100), sortOrder: z.number().optional() }))
+    .mutation(async ({ input }) => {
+      if (input.id) {
+        const [updated] = await db.update(emailTemplateCategories)
+          .set({ name: input.name, ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}) })
+          .where(eq(emailTemplateCategories.id, input.id))
+          .returning();
+        if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'Categoria não encontrada' });
+        return updated;
+      }
+      const maxOrder = await db.select({ max: sql<number>`COALESCE(MAX(sort_order), 0)` }).from(emailTemplateCategories);
+      const [created] = await db.insert(emailTemplateCategories)
+        .values({ name: input.name, sortOrder: input.sortOrder ?? (maxOrder[0]?.max ?? 0) + 1 })
+        .returning();
+      return created;
+    }),
+
+  deleteTemplateCategory: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.update(emailTemplates).set({ categoryId: null }).where(eq(emailTemplates.categoryId, input.id));
+      await db.delete(emailTemplateCategories).where(eq(emailTemplateCategories.id, input.id));
+      return { ok: true };
+    }),
+
   // ── Templates ──────────────────────────────────────────────────────────────
   listTemplates: adminProcedure.query(async () => {
     return db.select().from(emailTemplates).orderBy(emailTemplates.name);
@@ -174,13 +205,14 @@ export const emailMarketingRouter = router({
   listTemplatesForAttendant: protectedProcedure.query(async ({ ctx }) => {
     const [seller] = await db.select({ emk: sellers.emailMarketingEnabled }).from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
     if (ctx.user.role !== 'admin' && !seller?.emk) return [];
-    return db.select({ id: emailTemplates.id, name: emailTemplates.name, slug: emailTemplates.slug, subject: emailTemplates.subject, htmlBody: emailTemplates.htmlBody, attachments: emailTemplates.attachments })
+    return db.select({ id: emailTemplates.id, name: emailTemplates.name, slug: emailTemplates.slug, subject: emailTemplates.subject, htmlBody: emailTemplates.htmlBody, attachments: emailTemplates.attachments, categoryId: emailTemplates.categoryId })
       .from(emailTemplates).where(eq(emailTemplates.active, true)).orderBy(emailTemplates.name);
   }),
 
   upsertTemplate: adminProcedure
     .input(z.object({
       id: z.number().optional(),
+      categoryId: z.number().nullable().optional(),
       slug: z.string().min(1).max(100),
       name: z.string().min(1).max(200),
       subject: z.string().min(1).max(300),

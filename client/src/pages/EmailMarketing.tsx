@@ -948,12 +948,23 @@ function CampaignDetailDialog({ campaignId, onClose }: { campaignId: number | nu
 function TemplatesTab() {
   const utils = trpc.useUtils();
   const { data: templates, isLoading } = trpc.emailMarketing.listTemplates.useQuery();
+  const { data: categories } = trpc.emailMarketing.listTemplateCategories.useQuery();
   const upsertMutation = trpc.emailMarketing.upsertTemplate.useMutation();
   const deleteMutation = trpc.emailMarketing.deleteTemplate.useMutation();
+  const upsertCatMutation = trpc.emailMarketing.upsertTemplateCategory.useMutation();
+  const deleteCatMutation = trpc.emailMarketing.deleteTemplateCategory.useMutation();
 
-  const [editing, setEditing] = useState<{ id?: number; slug: string; name: string; subject: string; htmlBody: string; active: boolean; attachments?: { filename: string; content: string; size: number }[] } | null>(null);
+  const [activeTab, setActiveTab] = useState<string>('all');
+  const [editing, setEditing] = useState<{ id?: number; categoryId?: number | null; slug: string; name: string; subject: string; htmlBody: string; active: boolean; attachments?: { filename: string; content: string; size: number }[] } | null>(null);
+  const [editingCat, setEditingCat] = useState<{ id?: number; name: string } | null>(null);
 
   const tplAttachBytes = editing?.attachments?.reduce((s, f) => s + f.size, 0) ?? 0;
+
+  const filteredTemplates = templates?.filter(t => {
+    if (activeTab === 'all') return true;
+    if (activeTab === 'uncategorized') return !(t as any).categoryId;
+    return (t as any).categoryId === Number(activeTab);
+  }) ?? [];
 
   const handleAddTplFiles = async (files: FileList | null) => {
     if (!files || !editing) return;
@@ -1004,24 +1015,97 @@ function TemplatesTab() {
     utils.emailMarketing.listTemplates.invalidate();
   };
 
+  const handleSaveCat = async () => {
+    if (!editingCat || !editingCat.name.trim()) { toast.error("Digite um nome"); return; }
+    try {
+      await upsertCatMutation.mutateAsync(editingCat);
+      toast.success(editingCat.id ? "Categoria renomeada!" : "Categoria criada!");
+      setEditingCat(null);
+      utils.emailMarketing.listTemplateCategories.invalidate();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao salvar categoria");
+    }
+  };
+
+  const handleDeleteCat = async (id: number, name: string) => {
+    if (!confirm(`Excluir a aba "${name}"? Os templates dela ficarão sem categoria.`)) return;
+    await deleteCatMutation.mutateAsync({ id });
+    toast.success("Categoria excluída");
+    if (activeTab === String(id)) setActiveTab('all');
+    utils.emailMarketing.listTemplateCategories.invalidate();
+    utils.emailMarketing.listTemplates.invalidate();
+  };
+
+  const openNewTemplate = () => {
+    const catId = activeTab !== 'all' && activeTab !== 'uncategorized' ? Number(activeTab) : null;
+    setEditing({ slug: "", name: "", subject: "", htmlBody: "", active: true, attachments: [], categoryId: catId });
+  };
+
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button className="bg-blue-900 hover:bg-blue-800 shadow-sm" onClick={() => setEditing({ slug: "", name: "", subject: "", htmlBody: "", active: true, attachments: [] })}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setEditingCat({ name: "" })}>
+            <Plus size={14} className="mr-1" /> Nova Aba
+          </Button>
+        </div>
+        <Button className="bg-blue-900 hover:bg-blue-800 shadow-sm" onClick={openNewTemplate}>
           <Plus size={16} className="mr-1" /> Novo Template
         </Button>
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <LayoutTemplate size={16} className="text-blue-900" /> Templates <span className="text-slate-400 font-normal">({templates?.length ?? 0})</span>
-          </CardTitle>
+        <CardHeader className="pb-2">
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => setActiveTab('all')}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'all' ? 'bg-blue-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            >
+              Todos ({templates?.length ?? 0})
+            </button>
+            {categories?.map(cat => {
+              const count = templates?.filter(t => (t as any).categoryId === cat.id).length ?? 0;
+              return (
+                <div key={cat.id} className="flex items-center gap-0.5 group">
+                  <button
+                    onClick={() => setActiveTab(String(cat.id))}
+                    className={`px-3 py-1.5 rounded-l-lg text-sm font-medium transition ${activeTab === String(cat.id) ? 'bg-blue-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    {cat.name} ({count})
+                  </button>
+                  <div className={`flex rounded-r-lg overflow-hidden ${activeTab === String(cat.id) ? 'bg-blue-800' : 'bg-slate-100'}`}>
+                    <button
+                      onClick={() => setEditingCat({ id: cat.id, name: cat.name })}
+                      className={`px-1.5 py-1.5 transition ${activeTab === String(cat.id) ? 'text-blue-200 hover:text-white' : 'text-slate-400 hover:text-slate-600'}`}
+                      title="Renomear"
+                    >
+                      <Pencil size={12} />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteCat(cat.id, cat.name)}
+                      className={`px-1.5 py-1.5 transition ${activeTab === String(cat.id) ? 'text-blue-200 hover:text-red-300' : 'text-slate-400 hover:text-red-500'}`}
+                      title="Excluir aba"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            {templates?.some(t => !(t as any).categoryId) && (
+              <button
+                onClick={() => setActiveTab('uncategorized')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'uncategorized' ? 'bg-blue-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+              >
+                Sem categoria ({templates?.filter(t => !(t as any).categoryId).length ?? 0})
+              </button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <p className="text-sm text-slate-500">Carregando...</p>
-          ) : templates && templates.length > 0 ? (
+          ) : filteredTemplates.length > 0 ? (
             <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-sm min-w-[480px]">
                 <thead className={THEAD_CLASS}>
@@ -1029,16 +1113,22 @@ function TemplatesTab() {
                     <th className={TH_CLASS}>Nome</th>
                     <th className={TH_CLASS}>Slug</th>
                     <th className={TH_CLASS}>Assunto</th>
+                    {activeTab === 'all' && <th className={TH_CLASS}>Categoria</th>}
                     <th className={TH_CLASS}>Status</th>
                     <th className={TH_CLASS}>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {templates.map(t => (
+                  {filteredTemplates.map(t => (
                     <tr key={t.id} className={TR_CLASS}>
                       <td className="px-3 py-2.5 font-medium text-slate-700">{t.name}</td>
                       <td className="px-3 py-2.5 text-slate-400 text-xs font-mono">{t.slug}</td>
                       <td className="px-3 py-2.5 text-xs text-slate-500">{t.subject}</td>
+                      {activeTab === 'all' && (
+                        <td className="px-3 py-2.5 text-xs text-slate-500">
+                          {categories?.find(c => c.id === (t as any).categoryId)?.name ?? <span className="text-slate-300">—</span>}
+                        </td>
+                      )}
                       <td className="px-3 py-2.5">
                         <Badge variant="outline" className={t.active ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200"}>
                           {t.active ? "Ativo" : "Inativo"}
@@ -1046,7 +1136,7 @@ function TemplatesTab() {
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex gap-1">
-                          <Button size="sm" variant="outline" onClick={() => setEditing({ id: t.id, slug: t.slug, name: t.name, subject: t.subject, htmlBody: t.htmlBody, active: t.active, attachments: Array.isArray((t as any).attachments) ? (t as any).attachments.map((a: any) => ({ filename: a.filename, content: a.content, size: Math.ceil((a.content?.length ?? 0) * 0.75) })) : [] })}>
+                          <Button size="sm" variant="outline" onClick={() => setEditing({ id: t.id, categoryId: (t as any).categoryId ?? null, slug: t.slug, name: t.name, subject: t.subject, htmlBody: t.htmlBody, active: t.active, attachments: Array.isArray((t as any).attachments) ? (t as any).attachments.map((a: any) => ({ filename: a.filename, content: a.content, size: Math.ceil((a.content?.length ?? 0) * 0.75) })) : [] })}>
                             <Pencil size={14} />
                           </Button>
                           <Button size="sm" variant="destructive" onClick={() => handleDelete(t.id)}>
@@ -1060,11 +1150,12 @@ function TemplatesTab() {
               </table>
             </div>
           ) : (
-            <EmptyState icon={LayoutTemplate} message="Nenhum template cadastrado. Crie modelos reutilizáveis para suas campanhas e sequências." />
+            <EmptyState icon={LayoutTemplate} message={activeTab === 'all' ? "Nenhum template cadastrado. Crie modelos reutilizáveis para suas campanhas e sequências." : "Nenhum template nesta categoria."} />
           )}
         </CardContent>
       </Card>
 
+      {/* Template edit dialog */}
       <Dialog open={editing !== null} onOpenChange={(open) => { if (!open) setEditing(null); }}>
         <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -1075,7 +1166,7 @@ function TemplatesTab() {
           </DialogHeader>
           {editing && (
             <div className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <Label>Nome</Label>
                   <Input value={editing.name} onChange={e => setEditing(t => t && ({ ...t, name: e.target.value }))} />
@@ -1083,6 +1174,17 @@ function TemplatesTab() {
                 <div>
                   <Label>Slug (identificador único)</Label>
                   <Input value={editing.slug} onChange={e => setEditing(t => t && ({ ...t, slug: e.target.value }))} placeholder="ex: promo-junho" />
+                </div>
+                <div>
+                  <Label>Categoria</Label>
+                  <select
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                    value={editing.categoryId ?? ''}
+                    onChange={e => setEditing(t => t && ({ ...t, categoryId: e.target.value ? Number(e.target.value) : null }))}
+                  >
+                    <option value="">Sem categoria</option>
+                    {categories?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
                 </div>
               </div>
               <div>
@@ -1130,6 +1232,31 @@ function TemplatesTab() {
               {upsertMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => setEditing(null)}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Category create/rename dialog */}
+      <Dialog open={editingCat !== null} onOpenChange={open => { if (!open) setEditingCat(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{editingCat?.id ? "Renomear Aba" : "Nova Aba"}</DialogTitle>
+          </DialogHeader>
+          <div>
+            <Label>Nome da aba</Label>
+            <Input
+              value={editingCat?.name ?? ''}
+              onChange={e => setEditingCat(c => c && ({ ...c, name: e.target.value }))}
+              placeholder="Ex: Refinado 1kg"
+              autoFocus
+              onKeyDown={e => { if (e.key === 'Enter') handleSaveCat(); }}
+            />
+          </div>
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleSaveCat} disabled={upsertCatMutation.isPending}>
+              {upsertCatMutation.isPending ? "Salvando..." : "Salvar"}
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setEditingCat(null)}>Cancelar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
