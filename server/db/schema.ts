@@ -269,7 +269,7 @@ export const emailTemplateCategories = pgTable('email_template_categories', {
 
 export const emailTemplates = pgTable('email_templates', {
   id: serial('id').primaryKey(),
-  categoryId: integer('category_id'),
+  categoryIds: jsonb('category_ids').$type<number[]>(),
   slug: text('slug').notNull().unique(),
   name: text('name').notNull(),
   subject: text('subject').notNull(),

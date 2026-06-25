@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-06-25b';
+const SCHEMA_VERSION = '2026-06-25c';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -33,10 +33,9 @@ export async function ensureTablesExist() {
     if ((v as unknown as Array<{ value: string }>)[0]?.value === SCHEMA_VERSION) {
       try { await sql`DELETE FROM chat_messages WHERE created_at < CURRENT_DATE`; } catch {}
       try { await sql`DELETE FROM work_sessions WHERE status = 'completed' AND ended_at < NOW() - INTERVAL '90 days'`; } catch {}
-      // Ensure critical new tables exist even on the fast path
       try {
         await sql`CREATE TABLE IF NOT EXISTS email_template_categories (id SERIAL PRIMARY KEY, name TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)`;
-        await sql`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS category_id INTEGER`;
+        await sql`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS category_ids JSONB`;
       } catch {}
       return;
     }
@@ -487,7 +486,10 @@ export async function ensureTablesExist() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
     )
   `;
-  await sql`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS category_id INTEGER`;
+  await sql`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS category_ids JSONB`;
+  // Migrate old single category_id to new category_ids array
+  try { await sql`UPDATE email_templates SET category_ids = jsonb_build_array(category_id) WHERE category_id IS NOT NULL AND category_ids IS NULL`; } catch {}
+  try { await sql`ALTER TABLE email_templates DROP COLUMN IF EXISTS category_id`; } catch {}
 
   // Record the schema marker so every subsequent cold start takes the fast path
   // at the top of this function instead of re-running the whole battery above.

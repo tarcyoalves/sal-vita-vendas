@@ -955,15 +955,22 @@ function TemplatesTab() {
   const deleteCatMutation = trpc.emailMarketing.deleteTemplateCategory.useMutation();
 
   const [activeTab, setActiveTab] = useState<string>('all');
-  const [editing, setEditing] = useState<{ id?: number; categoryId?: number | null; slug: string; name: string; subject: string; htmlBody: string; active: boolean; attachments?: { filename: string; content: string; size: number }[] } | null>(null);
+  const [editing, setEditing] = useState<{ id?: number; categoryIds: number[]; slug: string; name: string; subject: string; htmlBody: string; active: boolean; attachments?: { filename: string; content: string; size: number }[] } | null>(null);
   const [editingCat, setEditingCat] = useState<{ id?: number; name: string } | null>(null);
 
   const tplAttachBytes = editing?.attachments?.reduce((s, f) => s + f.size, 0) ?? 0;
 
+  const getCatIds = (t: any): number[] => {
+    if (Array.isArray(t.categoryIds)) return t.categoryIds;
+    if (t.categoryId) return [t.categoryId];
+    return [];
+  };
+
   const filteredTemplates = templates?.filter(t => {
     if (activeTab === 'all') return true;
-    if (activeTab === 'uncategorized') return !(t as any).categoryId;
-    return (t as any).categoryId === Number(activeTab);
+    const ids = getCatIds(t);
+    if (activeTab === 'uncategorized') return ids.length === 0;
+    return ids.includes(Number(activeTab));
   }) ?? [];
 
   const handleAddTplFiles = async (files: FileList | null) => {
@@ -995,7 +1002,7 @@ function TemplatesTab() {
       return;
     }
     try {
-      const payload: any = { ...editing };
+      const payload: any = { ...editing, categoryIds: editing.categoryIds.length > 0 ? editing.categoryIds : null };
       if (payload.attachments) {
         payload.attachments = payload.attachments.map((f: any) => ({ filename: f.filename, content: f.content }));
       }
@@ -1037,18 +1044,25 @@ function TemplatesTab() {
   };
 
   const openNewTemplate = () => {
-    const catId = activeTab !== 'all' && activeTab !== 'uncategorized' ? Number(activeTab) : null;
-    setEditing({ slug: "", name: "", subject: "", htmlBody: "", active: true, attachments: [], categoryId: catId });
+    const catIds = activeTab !== 'all' && activeTab !== 'uncategorized' ? [Number(activeTab)] : [];
+    setEditing({ slug: "", name: "", subject: "", htmlBody: "", active: true, attachments: [], categoryIds: catIds });
+  };
+
+  const toggleCategory = (catId: number) => {
+    if (!editing) return;
+    setEditing(e => {
+      if (!e) return e;
+      const ids = e.categoryIds.includes(catId) ? e.categoryIds.filter(id => id !== catId) : [...e.categoryIds, catId];
+      return { ...e, categoryIds: ids };
+    });
   };
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => setEditingCat({ name: "" })}>
-            <Plus size={14} className="mr-1" /> Nova Aba
-          </Button>
-        </div>
+        <Button size="sm" variant="outline" onClick={() => setEditingCat({ name: "" })}>
+          <Plus size={14} className="mr-1" /> Nova Aba
+        </Button>
         <Button className="bg-blue-900 hover:bg-blue-800 shadow-sm" onClick={openNewTemplate}>
           <Plus size={16} className="mr-1" /> Novo Template
         </Button>
@@ -1056,48 +1070,49 @@ function TemplatesTab() {
 
       <Card>
         <CardHeader className="pb-2">
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5 border-b border-slate-200 pb-3">
             <button
               onClick={() => setActiveTab('all')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'all' ? 'bg-blue-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'all' ? 'bg-blue-900 text-white shadow-sm' : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
             >
               Todos ({templates?.length ?? 0})
             </button>
             {categories?.map(cat => {
-              const count = templates?.filter(t => (t as any).categoryId === cat.id).length ?? 0;
+              const count = templates?.filter(t => getCatIds(t).includes(cat.id)).length ?? 0;
+              const isActive = activeTab === String(cat.id);
               return (
-                <div key={cat.id} className="flex items-center gap-0.5 group">
+                <div key={cat.id} className="relative group">
                   <button
                     onClick={() => setActiveTab(String(cat.id))}
-                    className={`px-3 py-1.5 rounded-l-lg text-sm font-medium transition ${activeTab === String(cat.id) ? 'bg-blue-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${isActive ? 'bg-blue-900 text-white shadow-sm' : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
                   >
                     {cat.name} ({count})
                   </button>
-                  <div className={`flex rounded-r-lg overflow-hidden ${activeTab === String(cat.id) ? 'bg-blue-800' : 'bg-slate-100'}`}>
+                  <div className="absolute -top-1 -right-1 hidden group-hover:flex gap-0.5">
                     <button
-                      onClick={() => setEditingCat({ id: cat.id, name: cat.name })}
-                      className={`px-1.5 py-1.5 transition ${activeTab === String(cat.id) ? 'text-blue-200 hover:text-white' : 'text-slate-400 hover:text-slate-600'}`}
+                      onClick={(e) => { e.stopPropagation(); setEditingCat({ id: cat.id, name: cat.name }); }}
+                      className="flex h-5 w-5 items-center justify-center rounded-full bg-white border border-slate-300 shadow-sm text-slate-500 hover:text-blue-700 hover:border-blue-400"
                       title="Renomear"
                     >
-                      <Pencil size={12} />
+                      <Pencil size={10} />
                     </button>
                     <button
-                      onClick={() => handleDeleteCat(cat.id, cat.name)}
-                      className={`px-1.5 py-1.5 transition ${activeTab === String(cat.id) ? 'text-blue-200 hover:text-red-300' : 'text-slate-400 hover:text-red-500'}`}
-                      title="Excluir aba"
+                      onClick={(e) => { e.stopPropagation(); handleDeleteCat(cat.id, cat.name); }}
+                      className="flex h-5 w-5 items-center justify-center rounded-full bg-white border border-slate-300 shadow-sm text-slate-500 hover:text-red-600 hover:border-red-400"
+                      title="Excluir"
                     >
-                      <X size={12} />
+                      <X size={10} />
                     </button>
                   </div>
                 </div>
               );
             })}
-            {templates?.some(t => !(t as any).categoryId) && (
+            {templates?.some(t => getCatIds(t).length === 0) && (
               <button
                 onClick={() => setActiveTab('uncategorized')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'uncategorized' ? 'bg-blue-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'uncategorized' ? 'bg-blue-900 text-white shadow-sm' : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
               >
-                Sem categoria ({templates?.filter(t => !(t as any).categoryId).length ?? 0})
+                Sem categoria ({templates?.filter(t => getCatIds(t).length === 0).length ?? 0})
               </button>
             )}
           </div>
@@ -1113,39 +1128,49 @@ function TemplatesTab() {
                     <th className={TH_CLASS}>Nome</th>
                     <th className={TH_CLASS}>Slug</th>
                     <th className={TH_CLASS}>Assunto</th>
-                    {activeTab === 'all' && <th className={TH_CLASS}>Categoria</th>}
+                    {activeTab === 'all' && <th className={TH_CLASS}>Categorias</th>}
                     <th className={TH_CLASS}>Status</th>
                     <th className={TH_CLASS}>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredTemplates.map(t => (
-                    <tr key={t.id} className={TR_CLASS}>
-                      <td className="px-3 py-2.5 font-medium text-slate-700">{t.name}</td>
-                      <td className="px-3 py-2.5 text-slate-400 text-xs font-mono">{t.slug}</td>
-                      <td className="px-3 py-2.5 text-xs text-slate-500">{t.subject}</td>
-                      {activeTab === 'all' && (
-                        <td className="px-3 py-2.5 text-xs text-slate-500">
-                          {categories?.find(c => c.id === (t as any).categoryId)?.name ?? <span className="text-slate-300">—</span>}
+                  {filteredTemplates.map(t => {
+                    const ids = getCatIds(t);
+                    return (
+                      <tr key={t.id} className={TR_CLASS}>
+                        <td className="px-3 py-2.5 font-medium text-slate-700">{t.name}</td>
+                        <td className="px-3 py-2.5 text-slate-400 text-xs font-mono">{t.slug}</td>
+                        <td className="px-3 py-2.5 text-xs text-slate-500">{t.subject}</td>
+                        {activeTab === 'all' && (
+                          <td className="px-3 py-2.5 text-xs">
+                            {ids.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {ids.map(cid => {
+                                  const cat = categories?.find(c => c.id === cid);
+                                  return cat ? <Badge key={cid} variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px]">{cat.name}</Badge> : null;
+                                })}
+                              </div>
+                            ) : <span className="text-slate-300">—</span>}
+                          </td>
+                        )}
+                        <td className="px-3 py-2.5">
+                          <Badge variant="outline" className={t.active ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200"}>
+                            {t.active ? "Ativo" : "Inativo"}
+                          </Badge>
                         </td>
-                      )}
-                      <td className="px-3 py-2.5">
-                        <Badge variant="outline" className={t.active ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200"}>
-                          {t.active ? "Ativo" : "Inativo"}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex gap-1">
-                          <Button size="sm" variant="outline" onClick={() => setEditing({ id: t.id, categoryId: (t as any).categoryId ?? null, slug: t.slug, name: t.name, subject: t.subject, htmlBody: t.htmlBody, active: t.active, attachments: Array.isArray((t as any).attachments) ? (t as any).attachments.map((a: any) => ({ filename: a.filename, content: a.content, size: Math.ceil((a.content?.length ?? 0) * 0.75) })) : [] })}>
-                            <Pencil size={14} />
-                          </Button>
-                          <Button size="sm" variant="destructive" onClick={() => handleDelete(t.id)}>
-                            <Trash2 size={14} />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        <td className="px-3 py-2.5">
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="outline" onClick={() => setEditing({ id: t.id, categoryIds: ids, slug: t.slug, name: t.name, subject: t.subject, htmlBody: t.htmlBody, active: t.active, attachments: Array.isArray((t as any).attachments) ? (t as any).attachments.map((a: any) => ({ filename: a.filename, content: a.content, size: Math.ceil((a.content?.length ?? 0) * 0.75) })) : [] })}>
+                              <Pencil size={14} />
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => handleDelete(t.id)}>
+                              <Trash2 size={14} />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1166,7 +1191,7 @@ function TemplatesTab() {
           </DialogHeader>
           {editing && (
             <div className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label>Nome</Label>
                   <Input value={editing.name} onChange={e => setEditing(t => t && ({ ...t, name: e.target.value }))} />
@@ -1175,18 +1200,24 @@ function TemplatesTab() {
                   <Label>Slug (identificador único)</Label>
                   <Input value={editing.slug} onChange={e => setEditing(t => t && ({ ...t, slug: e.target.value }))} placeholder="ex: promo-junho" />
                 </div>
-                <div>
-                  <Label>Categoria</Label>
-                  <select
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                    value={editing.categoryId ?? ''}
-                    onChange={e => setEditing(t => t && ({ ...t, categoryId: e.target.value ? Number(e.target.value) : null }))}
-                  >
-                    <option value="">Sem categoria</option>
-                    {categories?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
               </div>
+              {categories && categories.length > 0 && (
+                <div>
+                  <Label>Categorias (selecione uma ou mais)</Label>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {categories.map(c => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => toggleCategory(c.id)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${editing.categoryIds.includes(c.id) ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:bg-blue-50'}`}
+                      >
+                        {editing.categoryIds.includes(c.id) ? '✓ ' : ''}{c.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div>
                 <Label>Assunto</Label>
                 <Input value={editing.subject} onChange={e => setEditing(t => t && ({ ...t, subject: e.target.value }))} />
@@ -1273,6 +1304,7 @@ function SequencesTab() {
   const deleteMutation = trpc.emailMarketing.deleteSequence.useMutation();
 
   const [showCreate, setShowCreate] = useState(false);
+  const [editingSeq, setEditingSeq] = useState<{ id: number; name: string; description: string; active: boolean; repeat: boolean; repeatIntervalDays: string } | null>(null);
   const [form, setForm] = useState({ name: "", description: "", active: true, repeat: false, repeatIntervalDays: "30" });
   const [detailSequenceId, setDetailSequenceId] = useState<number | null>(null);
 
@@ -1296,6 +1328,41 @@ function SequencesTab() {
       utils.emailMarketing.listSequences.invalidate();
     } catch (e: any) {
       toast.error(e?.message ?? "Erro ao criar sequência");
+    }
+  };
+
+  const handleEdit = (s: any) => {
+    setEditingSeq({
+      id: s.id,
+      name: s.name,
+      description: s.description ?? "",
+      active: s.active,
+      repeat: !!(s as any).repeat,
+      repeatIntervalDays: String((s as any).repeatIntervalDays ?? 30),
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingSeq) return;
+    if (!editingSeq.name.trim()) { toast.error("Informe o nome da sequência"); return; }
+    if (editingSeq.repeat && (!editingSeq.repeatIntervalDays.trim() || Number(editingSeq.repeatIntervalDays) < 1)) {
+      toast.error("Informe o intervalo (em dias) para repetir a sequência");
+      return;
+    }
+    try {
+      await upsertMutation.mutateAsync({
+        id: editingSeq.id,
+        name: editingSeq.name,
+        description: editingSeq.description || undefined,
+        active: editingSeq.active,
+        repeat: editingSeq.repeat,
+        repeatIntervalDays: editingSeq.repeat ? Number(editingSeq.repeatIntervalDays) : undefined,
+      });
+      toast.success("Sequência atualizada!");
+      setEditingSeq(null);
+      utils.emailMarketing.listSequences.invalidate();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao atualizar sequência");
     }
   };
 
@@ -1375,6 +1442,9 @@ function SequencesTab() {
                           <Button size="sm" variant="outline" onClick={() => setDetailSequenceId(s.id)}>
                             <Eye size={14} className="mr-1" /> Ver
                           </Button>
+                          <Button size="sm" variant="outline" onClick={() => handleEdit(s)}>
+                            <Pencil size={14} />
+                          </Button>
                           <Button size="sm" variant="destructive" onClick={() => handleDelete(s.id)}>
                             <Trash2 size={14} />
                           </Button>
@@ -1430,6 +1500,49 @@ function SequencesTab() {
               {upsertMutation.isPending ? "Criando..." : "Criar"}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => setShowCreate(false)}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit sequence dialog */}
+      <Dialog open={editingSeq !== null} onOpenChange={open => { if (!open) setEditingSeq(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Pencil size={16} /></span>
+              Editar sequência
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Nome</Label>
+              <Input value={editingSeq?.name ?? ""} onChange={e => setEditingSeq(s => s && ({ ...s, name: e.target.value }))} placeholder="Nome da sequência" />
+            </div>
+            <div>
+              <Label>Descrição (opcional)</Label>
+              <Textarea rows={3} value={editingSeq?.description ?? ""} onChange={e => setEditingSeq(s => s && ({ ...s, description: e.target.value }))} placeholder="Para que serve esta sequência" />
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={editingSeq?.active ?? true} onCheckedChange={checked => setEditingSeq(s => s && ({ ...s, active: checked }))} />
+              <Label className="!mb-0">Ativa</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={editingSeq?.repeat ?? false} onCheckedChange={checked => setEditingSeq(s => s && ({ ...s, repeat: checked }))} />
+              <Label className="!mb-0">🔁 Repetir continuamente (loop)</Label>
+            </div>
+            {editingSeq?.repeat && (
+              <div>
+                <Label>Reiniciar a cada N dias</Label>
+                <Input type="number" min={1} value={editingSeq.repeatIntervalDays} onChange={e => setEditingSeq(s => s && ({ ...s, repeatIntervalDays: e.target.value }))} placeholder="30" />
+              </div>
+            )}
+            {editingSeq?.repeat && <p className="text-xs text-gray-500">{REPEAT_HINT}</p>}
+          </div>
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleSaveEdit} disabled={upsertMutation.isPending}>
+              {upsertMutation.isPending ? "Salvando..." : "Salvar"}
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setEditingSeq(null)}>Cancelar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

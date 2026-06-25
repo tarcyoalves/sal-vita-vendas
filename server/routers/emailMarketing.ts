@@ -196,7 +196,14 @@ export const emailMarketingRouter = router({
   deleteTemplateCategory: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
-      await db.update(emailTemplates).set({ categoryId: null }).where(eq(emailTemplates.categoryId, input.id));
+      const allTpls = await db.select({ id: emailTemplates.id, categoryIds: emailTemplates.categoryIds }).from(emailTemplates);
+      for (const tpl of allTpls) {
+        const ids = (tpl.categoryIds as number[] | null) ?? [];
+        if (ids.includes(input.id)) {
+          const updated = ids.filter(c => c !== input.id);
+          await db.update(emailTemplates).set({ categoryIds: updated.length > 0 ? updated : null }).where(eq(emailTemplates.id, tpl.id));
+        }
+      }
       await db.delete(emailTemplateCategories).where(eq(emailTemplateCategories.id, input.id));
       return { ok: true };
     }),
@@ -218,7 +225,7 @@ export const emailMarketingRouter = router({
     const [seller] = await db.select({ emk: sellers.emailMarketingEnabled }).from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
     if (ctx.user.role !== 'admin' && !seller?.emk) return [];
     try {
-      return await db.select({ id: emailTemplates.id, name: emailTemplates.name, slug: emailTemplates.slug, subject: emailTemplates.subject, htmlBody: emailTemplates.htmlBody, attachments: emailTemplates.attachments, categoryId: emailTemplates.categoryId })
+      return await db.select({ id: emailTemplates.id, name: emailTemplates.name, slug: emailTemplates.slug, subject: emailTemplates.subject, htmlBody: emailTemplates.htmlBody, attachments: emailTemplates.attachments, categoryIds: emailTemplates.categoryIds })
         .from(emailTemplates).where(eq(emailTemplates.active, true)).orderBy(emailTemplates.name);
     } catch {
       return await db.select({ id: emailTemplates.id, name: emailTemplates.name, slug: emailTemplates.slug, subject: emailTemplates.subject, htmlBody: emailTemplates.htmlBody, attachments: emailTemplates.attachments })
@@ -229,7 +236,7 @@ export const emailMarketingRouter = router({
   upsertTemplate: adminProcedure
     .input(z.object({
       id: z.number().optional(),
-      categoryId: z.number().nullable().optional(),
+      categoryIds: z.array(z.number()).nullable().optional(),
       slug: z.string().min(1).max(100),
       name: z.string().min(1).max(200),
       subject: z.string().min(1).max(300),
