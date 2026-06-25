@@ -66098,9 +66098,16 @@ function renderSignature(html, seller) {
   return out.join("").replace(/(<br\s*\/?>\s*){2,}/gi, "<br>").replace(/^(\s*<br\s*\/?>\s*)+/i, "").replace(/(\s*<br\s*\/?>\s*)+$/i, "");
 }
 function layout2(body, unsubUrl, signatureHtml) {
-  const sigBlock = signatureHtml ? `<tr>
+  let sigHtml = signatureHtml ?? "";
+  if (sigHtml) {
+    sigHtml = sigHtml.replace(/<img\b([^>]*)>/gi, (_m, attrs) => {
+      const clean = attrs.replace(/\bwidth\s*=\s*["']?[^"'\s>]+["']?/gi, "").replace(/\bheight\s*=\s*["']?[^"'\s>]+["']?/gi, "").replace(/\bstyle\s*=\s*["'][^"']*["']/gi, "");
+      return `<img${clean} style="max-width:260px;height:auto;display:block;">`;
+    });
+  }
+  const sigBlock = sigHtml ? `<tr>
             <td style="padding:0 32px 24px;border-top:1px solid #eee;">
-              <div style="padding-top:16px;font-size:13px;color:#444;line-height:1.6;max-width:280px;">${signatureHtml.replace(/<img\b/gi, '<img style="max-width:260px;height:auto;display:block;"')}</div>
+              <div style="padding-top:16px;font-size:13px;color:#444;line-height:1.6;max-width:280px;">${sigHtml}</div>
             </td>
           </tr>` : "";
   return `<!DOCTYPE html>
