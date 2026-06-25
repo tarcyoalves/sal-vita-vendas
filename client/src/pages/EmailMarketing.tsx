@@ -3555,56 +3555,16 @@ function StatsTab() {
 // to avoid firing N parallel queries when the page has many campaigns.
 function CampaignStatsRow({ campaignId, name }: { campaignId: number; name: string }) {
   const [show, setShow] = useState(false);
-  const [showRecipients, setShowRecipients] = useState(false);
+  const [recipientFilter, setRecipientFilter] = useState<'all' | 'opened' | 'not_opened' | 'clicked' | 'not_clicked' | 'bounced'>('all');
   const { data: stats, isLoading } = trpc.emailMarketing.campaignStats.useQuery({ campaignId }, { enabled: show });
+  const { data: recipients, isLoading: loadingRecipients } = trpc.emailMarketing.campaignRecipients.useQuery(
+    { campaignId, engagement: recipientFilter, limit: 500 },
+    { enabled: show }
+  );
 
   const pct = (n: number, base: number) => base > 0 ? `${Math.round((n / base) * 100)}%` : "0%";
 
-  return (
-    <div className="rounded-xl border border-slate-200 p-3 hover:border-blue-200 transition-colors">
-      <div className="flex items-center justify-between gap-2">
-        <p className="font-medium text-sm text-slate-700">{name}</p>
-        <div className="flex gap-1.5">
-          {!show && (
-            <Button size="sm" variant="outline" onClick={() => setShow(true)}>
-              <BarChart3 size={14} className="mr-1" /> Ver stats
-            </Button>
-          )}
-          <Button size="sm" variant="outline" onClick={() => setShowRecipients(true)}>
-            <Users size={14} className="mr-1" /> Quem abriu
-          </Button>
-        </div>
-      </div>
-      {show && (
-        isLoading ? (
-          <p className="text-xs text-gray-500 mt-1">Carregando...</p>
-        ) : stats && (
-          <div className="flex gap-1.5 mt-2 flex-wrap">
-            <Badge variant="outline" className="text-xs bg-slate-100 text-slate-600 border-slate-200">👥 {stats.recipients} destinatários</Badge>
-            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">📤 {stats.sent} enviados</Badge>
-            <Badge variant="outline" className="text-xs bg-cyan-50 text-cyan-700 border-cyan-200">📬 {stats.delivered} entregues</Badge>
-            <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">👁 {stats.opened} abriram ({pct(stats.opened, stats.delivered || stats.sent)})</Badge>
-            <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200">🔗 {stats.clicked} clicaram ({pct(stats.clicked, stats.delivered || stats.sent)})</Badge>
-            <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">⚠️ {stats.bounced} bounce</Badge>
-            <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">🚫 {stats.complained} reclamações</Badge>
-          </div>
-        )
-      )}
-      <CampaignRecipientsDialog campaignId={campaignId} name={name} open={showRecipients} onClose={() => setShowRecipients(false)} />
-    </div>
-  );
-}
-
-// Drill-down: lista de destinatários de uma campanha com status de
-// engajamento, filtrável por abriu / não abriu / clicou / bounce.
-function CampaignRecipientsDialog({ campaignId, name, open, onClose }: { campaignId: number; name: string; open: boolean; onClose: () => void }) {
-  const [filter, setFilter] = useState<'all' | 'opened' | 'not_opened' | 'clicked' | 'not_clicked' | 'bounced'>('all');
-  const { data: recipients, isLoading } = trpc.emailMarketing.campaignRecipients.useQuery(
-    { campaignId, engagement: filter, limit: 500 },
-    { enabled: open }
-  );
-
-  const FILTERS: { value: typeof filter; label: string }[] = [
+  const FILTERS: { value: typeof recipientFilter; label: string }[] = [
     { value: 'all', label: 'Todos' },
     { value: 'opened', label: 'Abriram' },
     { value: 'not_opened', label: 'Não abriram' },
@@ -3631,115 +3591,162 @@ function CampaignRecipientsDialog({ campaignId, name, open, onClose }: { campaig
   };
 
   return (
-    <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Users size={16} className="text-blue-900" /> Destinatários — {name}
-          </DialogTitle>
-        </DialogHeader>
+    <div className="rounded-xl border border-slate-200 p-3 hover:border-blue-200 transition-colors">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-medium text-sm text-slate-700">{name}</p>
+        <Button size="sm" variant="outline" onClick={() => setShow(!show)}>
+          <BarChart3 size={14} className="mr-1" /> {show ? 'Fechar' : 'Ver stats'}
+        </Button>
+      </div>
+      {show && (
+        isLoading ? (
+          <p className="text-xs text-gray-500 mt-2">Carregando...</p>
+        ) : stats && (
+          <div className="space-y-3 mt-3">
+            {/* Mini-funil */}
+            <div className="flex gap-1.5 flex-wrap">
+              <Badge variant="outline" className="text-xs bg-slate-100 text-slate-600 border-slate-200">👥 {stats.recipients} destinatários</Badge>
+              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">📤 {stats.sent} enviados</Badge>
+              <Badge variant="outline" className="text-xs bg-cyan-50 text-cyan-700 border-cyan-200">📬 {stats.delivered} entregues</Badge>
+              <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">👁 {stats.opened} abriram ({pct(stats.opened, stats.delivered || stats.sent)})</Badge>
+              <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200">🔗 {stats.clicked} clicaram ({pct(stats.clicked, stats.delivered || stats.sent)})</Badge>
+              {stats.bounced > 0 && <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">⚠️ {stats.bounced} bounce</Badge>}
+              {stats.complained > 0 && <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">🚫 {stats.complained} reclamações</Badge>}
+            </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          {FILTERS.map(f => (
-            <button
-              key={f.value}
-              onClick={() => setFilter(f.value)}
-              className={`px-3 py-1 rounded-lg text-xs font-medium border transition ${filter === f.value ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:bg-blue-50'}`}
-            >
-              {f.label}
-            </button>
-          ))}
-          <div className="ml-auto">
-            <Button size="sm" variant="outline" onClick={exportCsv} disabled={!recipients || recipients.length === 0}>
-              <Download size={14} className="mr-1" /> CSV
-            </Button>
+            {/* Filtros de destinatários */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-semibold text-slate-500 mr-1">Filtrar:</span>
+              {FILTERS.map(f => (
+                <button
+                  key={f.value}
+                  onClick={() => setRecipientFilter(f.value)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition ${recipientFilter === f.value ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:bg-blue-50'}`}
+                >
+                  {f.label}
+                </button>
+              ))}
+              <div className="ml-auto">
+                <Button size="sm" variant="outline" onClick={exportCsv} disabled={!recipients || recipients.length === 0}>
+                  <Download size={14} className="mr-1" /> CSV
+                </Button>
+              </div>
+            </div>
+
+            {/* Tabela inline de destinatários */}
+            {loadingRecipients ? (
+              <p className="text-xs text-gray-500">Carregando destinatários...</p>
+            ) : recipients && recipients.length > 0 ? (
+              <div className="overflow-x-auto rounded-xl border border-slate-200 max-h-[400px] overflow-y-auto">
+                <table className="w-full text-sm min-w-[600px]">
+                  <thead className={THEAD_CLASS + " sticky top-0 z-10"}>
+                    <tr>
+                      <th className={TH_CLASS}>Contato</th>
+                      <th className={TH_CLASS}>Engajamento</th>
+                      <th className={TH_CLASS}>Aberturas</th>
+                      <th className={TH_CLASS}>Cliques</th>
+                      <th className={TH_CLASS}>1ª abertura</th>
+                      <th className={TH_CLASS}>Último evento</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recipients.map(r => (
+                      <tr key={r.id} className={TR_CLASS}>
+                        <td className="px-3 py-2">
+                          <p className="font-medium text-slate-700 truncate">{r.name || r.email}</p>
+                          {r.name && <p className="text-xs text-slate-400 truncate">{r.email}</p>}
+                        </td>
+                        <td className="px-3 py-2">
+                          {r.bounced ? (
+                            <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">Bounce</Badge>
+                          ) : r.clicks > 0 ? (
+                            <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200">Clicou</Badge>
+                          ) : r.opens > 0 ? (
+                            <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">Abriu</Badge>
+                          ) : r.status === 'sent' ? (
+                            <Badge variant="outline" className="text-xs bg-slate-100 text-slate-500 border-slate-200">Não abriu</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs bg-red-50 text-red-600 border-red-200">{r.status}</Badge>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 tabular-nums">{r.opens}</td>
+                        <td className="px-3 py-2 tabular-nums">{r.clicks}</td>
+                        <td className="px-3 py-2 text-xs text-slate-500">{formatDateTime(r.firstOpen)}</td>
+                        <td className="px-3 py-2 text-xs text-slate-500">{formatDateTime(r.lastEvent)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500">Nenhum destinatário neste filtro.</p>
+            )}
+            {recipients && recipients.length >= 500 && (
+              <p className="text-[11px] text-slate-400">Exibindo os primeiros 500 destinatários.</p>
+            )}
           </div>
-        </div>
-
-        <div className="overflow-auto rounded-xl border border-slate-200 mt-1">
-          {isLoading ? (
-            <p className="text-sm text-slate-500 p-4">Carregando...</p>
-          ) : recipients && recipients.length > 0 ? (
-            <table className="w-full text-sm">
-              <thead className={THEAD_CLASS}>
-                <tr>
-                  <th className={TH_CLASS}>Contato</th>
-                  <th className={TH_CLASS}>Status</th>
-                  <th className={TH_CLASS}>Aberturas</th>
-                  <th className={TH_CLASS}>Cliques</th>
-                  <th className={TH_CLASS}>Último evento</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recipients.map(r => (
-                  <tr key={r.id} className={TR_CLASS}>
-                    <td className="px-3 py-2">
-                      <p className="font-medium text-slate-700 truncate">{r.name || r.email}</p>
-                      {r.name && <p className="text-xs text-slate-400 truncate">{r.email}</p>}
-                    </td>
-                    <td className="px-3 py-2">
-                      {r.bounced ? (
-                        <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">Bounce</Badge>
-                      ) : r.clicks > 0 ? (
-                        <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200">Clicou</Badge>
-                      ) : r.opens > 0 ? (
-                        <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">Abriu</Badge>
-                      ) : r.status === 'sent' ? (
-                        <Badge variant="outline" className="text-xs bg-slate-100 text-slate-500 border-slate-200">Não abriu</Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-xs bg-red-50 text-red-600 border-red-200">{r.status}</Badge>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 tabular-nums">{r.opens}</td>
-                    <td className="px-3 py-2 tabular-nums">{r.clicks}</td>
-                    <td className="px-3 py-2 text-xs text-slate-500">{formatDateTime(r.lastEvent)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p className="text-sm text-slate-500 p-4">Nenhum destinatário neste filtro.</p>
-          )}
-        </div>
-        {recipients && recipients.length >= 500 && (
-          <p className="text-[11px] text-slate-400">Exibindo os primeiros 500 destinatários.</p>
-        )}
-      </DialogContent>
-    </Dialog>
+        )
+      )}
+    </div>
   );
 }
+
 
 // Lazy-loaded per-step stats row for a single sequence.
 function SequenceStatsRow({ sequenceId, name }: { sequenceId: number; name: string }) {
   const [show, setShow] = useState(false);
   const { data: stats, isLoading } = trpc.emailMarketing.sequenceStats.useQuery({ sequenceId }, { enabled: show });
 
+  const pct = (n: number, base: number) => base > 0 ? `${Math.round((n / base) * 100)}%` : "";
+
   return (
     <div className="rounded-xl border border-slate-200 p-3 hover:border-blue-200 transition-colors">
       <div className="flex items-center justify-between gap-2">
         <p className="font-medium text-sm text-slate-700">{name}</p>
-        <Button size="sm" variant="outline" onClick={() => setShow(true)} disabled={show}>
-          <BarChart3 size={14} className="mr-1" /> Ver stats
+        <Button size="sm" variant="outline" onClick={() => setShow(!show)}>
+          <BarChart3 size={14} className="mr-1" /> {show ? 'Fechar' : 'Ver stats'}
         </Button>
       </div>
       {show && (
         isLoading ? (
-          <p className="text-xs text-gray-500 mt-1">Carregando...</p>
+          <p className="text-xs text-gray-500 mt-2">Carregando...</p>
         ) : stats && stats.length > 0 ? (
-          <div className="space-y-1.5 mt-2">
-            {stats.map(s => (
-              <div key={s.stepId} className="flex items-center gap-1.5 flex-wrap text-xs">
-                <Badge variant="outline" className="bg-slate-100 text-slate-600 border-slate-200">Dia {s.delayDays}</Badge>
-                <span className="text-gray-600 truncate">{s.subject}</span>
-                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">📤 {s.sent}</Badge>
-                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">👁 {s.opened}</Badge>
-                <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-200">🔗 {s.clicked}</Badge>
-                <Badge variant="outline" className="bg-slate-100 text-slate-500 border-slate-200">⏭ {(s as any).skipped ?? 0} pulados</Badge>
-              </div>
-            ))}
+          <div className="overflow-x-auto rounded-xl border border-slate-200 mt-3">
+            <table className="w-full text-sm min-w-[500px]">
+              <thead className={THEAD_CLASS}>
+                <tr>
+                  <th className={TH_CLASS}>Passo</th>
+                  <th className={TH_CLASS}>Assunto</th>
+                  <th className={TH_CLASS}>Enviados</th>
+                  <th className={TH_CLASS}>Abriram</th>
+                  <th className={TH_CLASS}>Clicaram</th>
+                  <th className={TH_CLASS}>Pulados</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.map(s => (
+                  <tr key={s.stepId} className={TR_CLASS}>
+                    <td className="px-3 py-2">
+                      <Badge variant="outline" className="bg-slate-100 text-slate-600 border-slate-200">Dia {s.delayDays}</Badge>
+                    </td>
+                    <td className="px-3 py-2 text-slate-600 truncate max-w-[200px]">{s.subject}</td>
+                    <td className="px-3 py-2 tabular-nums font-medium">{s.sent}</td>
+                    <td className="px-3 py-2 tabular-nums">
+                      <span className="text-emerald-700">{s.opened}</span>
+                      {s.sent > 0 && <span className="text-xs text-slate-400 ml-1">({pct(s.opened, s.sent)})</span>}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums">
+                      <span className="text-violet-700">{s.clicked}</span>
+                      {s.sent > 0 && <span className="text-xs text-slate-400 ml-1">({pct(s.clicked, s.sent)})</span>}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums text-slate-400">{(s as any).skipped ?? 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : (
-          <p className="text-xs text-gray-500 mt-1">Sem passos cadastrados.</p>
+          <p className="text-xs text-gray-500 mt-2">Sem passos cadastrados.</p>
         )
       )}
     </div>
