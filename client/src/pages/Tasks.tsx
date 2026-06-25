@@ -289,7 +289,7 @@ export default function Tasks() {
   const [quickSendTask, setQuickSendTask] = useState<Task | null>(null);
   const [quickSendForm, setQuickSendForm] = useState({ subject: '', htmlBody: '', recipientsRaw: '' });
   const [quickSendFiles, setQuickSendFiles] = useState<{ filename: string; content: string; size: number }[]>([]);
-  const { data: attTemplates } = trpc.emailMarketing.listTemplatesForAttendant.useQuery(undefined, { enabled: canEmailMarketing && !isAdmin && quickSendTask !== null });
+  const { data: attTemplates } = trpc.emailMarketing.listTemplatesForAttendant.useQuery(undefined, { enabled: canEmailMarketing && !isAdmin, staleTime: 5 * 60_000 });
   const attendantBroadcastMutation = trpc.emailMarketing.attendantBroadcast.useMutation();
   const attendantProcessMutation = trpc.emailMarketing.processBatch.useMutation();
 
