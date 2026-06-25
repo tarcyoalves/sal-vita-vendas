@@ -787,7 +787,7 @@ export function layout(body: string, unsubUrl: string, signatureHtml?: string): 
   }
   const sigBlock = sigHtml
     ? `<tr>
-            <td style="padding:16px 32px 24px;border-top:1px solid #eee;">
+            <td style="padding:16px 40px 24px;border-top:1px solid #eee;">
               ${sigHtml}
             </td>
           </tr>`
@@ -800,19 +800,19 @@ export function layout(body: string, unsubUrl: string, signatureHtml?: string): 
   <title>Sal Vita</title>
 </head>
 <body style="margin:0;padding:0;background:#f4f4f4;font-family:system-ui,Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f4;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;">
     <tr>
-      <td align="center" style="padding:24px 8px;">
-        <table width="600" cellpadding="0" cellspacing="0" border="0"
-               style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
+      <td align="center" style="padding:0;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0"
+               style="width:100%;background:#ffffff;">
           <tr>
-            <td style="padding:32px 32px 24px;">
+            <td style="padding:32px 40px 24px;">
               ${bodyToHtml(body)}
             </td>
           </tr>
           ${sigBlock}
           <tr>
-            <td style="background:#f4f4f4;padding:20px 32px;border-top:1px solid #e0e0e0;text-align:center;">
+            <td style="background:#f9f9f9;padding:20px 40px;border-top:1px solid #e0e0e0;text-align:center;">
               <p style="margin:0;font-size:12px;color:#888;">
                 <strong>Sal Vita &mdash; Sal Marinho Premium de Mossoró/RN</strong>
               </p>
