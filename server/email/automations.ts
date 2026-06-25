@@ -13,7 +13,7 @@ import { and, eq, isNull, isNotNull, ne, sql, lte, asc, inArray } from 'drizzle-
 import { db } from '../db';
 import {
   automationRules, emailSequenceSteps, emailSequenceEnrollments, emailSequenceSends,
-  emailCampaignRecipients, emailSuppressions, tasks, emailSequences, sellers,
+  emailCampaignRecipients, emailSuppressions, emailEvents, tasks, emailSequences, sellers,
 } from '../db/schema';
 import {
   computeNextSendAt, pickAccount, sendBatch, layout, enrollmentEngagementBatch,
@@ -346,6 +346,7 @@ export interface ProcessSequenceEnrollmentsResult {
   failed: number;
   completed: number;
   skipped: number;
+  retried: number;
   quotaExhausted: boolean;
 }
 
@@ -362,7 +363,7 @@ export interface ProcessSequenceEnrollmentsResult {
  */
 export async function processSequenceEnrollments(opts?: { enrollmentIds?: number[] }): Promise<ProcessSequenceEnrollmentsResult> {
   const result: ProcessSequenceEnrollmentsResult = {
-    enrollmentsDue: 0, sent: 0, failed: 0, completed: 0, skipped: 0, quotaExhausted: false,
+    enrollmentsDue: 0, sent: 0, failed: 0, completed: 0, skipped: 0, retried: 0, quotaExhausted: false,
   };
 
   const now = new Date();
@@ -383,7 +384,6 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
   result.enrollmentsDue = dueEnrollments.length;
   if (dueEnrollments.length === 0) return result;
 
-  // Pré-carrega os passos de todas as sequências envolvidas (evita N+1).
   const sequenceIds = [...new Set(dueEnrollments.map(e => e.sequenceId))];
   const allSteps = await db.select().from(emailSequenceSteps)
     .where(inArray(emailSequenceSteps.sequenceId, sequenceIds))
@@ -395,22 +395,54 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
     stepsBySequence.set(step.sequenceId, list);
   }
 
-  // Pré-carrega as sequências (repeat/repeatIntervalDays) para o loop de recorrência.
   const allSequences = await db.select().from(emailSequences)
     .where(inArray(emailSequences.id, sequenceIds));
   const sequenceById = new Map(allSequences.map(s => [s.id, s]));
 
   const unsubBase = process.env.PUBLIC_APP_URL ?? 'https://lembretes.salvitarn.com.br';
 
-  // Avalia o engajamento prévio de todas as inscrições devidas numa única query.
   const engMap = await enrollmentEngagementBatch(dueEnrollments.map(e => e.id));
 
-  // Skip-loop: para cada inscrição devida, avança por passos cuja condição não
-  // bate (registrando 'skipped', sem gastar cota) até achar um passo que deva
-  // ser enviado, ou até a inscrição ser concluída/reiniciar o ciclo (sequência
-  // recorrente). Cap de 10 iterações por segurança.
+  // Pre-load existing sends per enrollment+step for retry detection (single query).
+  const enrollmentIds = dueEnrollments.map(e => e.id);
+  const existingSends = await db.select({
+    enrollmentId: emailSequenceSends.enrollmentId,
+    stepId: emailSequenceSends.stepId,
+    status: emailSequenceSends.status,
+    retryNumber: emailSequenceSends.retryNumber,
+    messageId: emailSequenceSends.messageId,
+  }).from(emailSequenceSends)
+    .where(and(
+      inArray(emailSequenceSends.enrollmentId, enrollmentIds),
+      eq(emailSequenceSends.status, 'sent'),
+    ));
+
+  // Build map: enrollmentId → stepId → { maxRetryNumber, messageIds[] }
+  const sendsByEnrollmentStep = new Map<string, { maxRetryNumber: number; messageIds: string[] }>();
+  for (const s of existingSends) {
+    const key = `${s.enrollmentId}:${s.stepId}`;
+    const entry = sendsByEnrollmentStep.get(key) ?? { maxRetryNumber: -1, messageIds: [] };
+    entry.maxRetryNumber = Math.max(entry.maxRetryNumber, s.retryNumber);
+    if (s.messageId) entry.messageIds.push(s.messageId);
+    sendsByEnrollmentStep.set(key, entry);
+  }
+
+  // Check which message_ids have 'opened' events (single query for all retry candidates).
+  const allRetryMessageIds = [...new Set(existingSends.filter(s => s.messageId).map(s => s.messageId!))];
+  const openedMessageIds = new Set<string>();
+  if (allRetryMessageIds.length > 0) {
+    const openRows = await db.select({ messageId: emailEvents.messageId })
+      .from(emailEvents)
+      .where(and(
+        inArray(emailEvents.messageId, allRetryMessageIds),
+        eq(emailEvents.eventType, 'opened'),
+      ));
+    for (const r of openRows) openedMessageIds.add(r.messageId);
+  }
+
   type Enrollment = typeof dueEnrollments[number];
-  const sendable: { enrollment: Enrollment; step: typeof allSteps[number] }[] = [];
+  type StepInfo = typeof allSteps[number];
+  const sendable: { enrollment: Enrollment; step: StepInfo; retryNumber: number; subjectOverride?: string }[] = [];
 
   for (const original of dueEnrollments) {
     let enrollment: Enrollment = original;
@@ -421,24 +453,15 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
       const step = steps[enrollment.currentStep];
 
       if (!step) {
-        // Sem próximo passo.
         if (seq?.repeat && seq.repeatIntervalDays) {
-          // Sequência recorrente: reinicia o ciclo após repeatIntervalDays.
           const newCycleStart = new Date(now.getTime() + seq.repeatIntervalDays * 24 * 60 * 60 * 1000);
           const nextSendAt = computeNextSendAt(newCycleStart, steps, 0);
-          enrollment = {
-            ...enrollment,
-            currentStep: 0,
-            cycleStartedAt: newCycleStart,
-            nextSendAt,
-            status: 'active',
-          };
+          enrollment = { ...enrollment, currentStep: 0, cycleStartedAt: newCycleStart, nextSendAt, status: 'active' };
           await db.update(emailSequenceEnrollments)
             .set({ currentStep: 0, cycleStartedAt: newCycleStart, nextSendAt, status: 'active', updatedAt: new Date() })
             .where(eq(emailSequenceEnrollments.id, enrollment.id));
-          continue; // re-avalia a condição do novo passo 0
+          continue;
         }
-        // Não é recorrente — marca como concluída e dispara automação.
         await db.update(emailSequenceEnrollments)
           .set({ status: 'completed', nextSendAt: null, updatedAt: new Date() })
           .where(eq(emailSequenceEnrollments.id, enrollment.id));
@@ -457,18 +480,51 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
         break;
       }
 
+      // Check if this step was already sent (retry scenario).
+      const sendKey = `${enrollment.id}:${step.id}`;
+      const priorSends = sendsByEnrollmentStep.get(sendKey);
+
+      if (priorSends && priorSends.maxRetryNumber >= 0) {
+        // Step was already sent at least once. Evaluate retry logic.
+        if (step.retryIfNotOpened) {
+          const wasOpened = priorSends.messageIds.some(mid => openedMessageIds.has(mid));
+          if (!wasOpened && priorSends.maxRetryNumber < step.maxRetries) {
+            // Not opened + retries remaining → resend with incremented retry number.
+            const retryNum = priorSends.maxRetryNumber + 1;
+            sendable.push({
+              enrollment, step, retryNumber: retryNum,
+              subjectOverride: step.retrySubject || undefined,
+            });
+            break;
+          }
+        }
+        // Opened, or max retries reached, or retry not enabled → advance to next step.
+        const newCurrentStep = enrollment.currentStep + 1;
+        const cycleStart = enrollment.cycleStartedAt ?? enrollment.enrolledAt;
+        const nextSendAt = computeNextSendAt(cycleStart, steps, newCurrentStep);
+        const newStatus = nextSendAt ? 'active' : 'completed';
+        enrollment = { ...enrollment, currentStep: newCurrentStep, nextSendAt, status: newStatus };
+        await db.update(emailSequenceEnrollments)
+          .set({ currentStep: newCurrentStep, nextSendAt, status: newStatus, updatedAt: new Date() })
+          .where(eq(emailSequenceEnrollments.id, enrollment.id));
+        if (newStatus === 'completed') { result.completed++; break; }
+        continue;
+      }
+
+      // First send of this step — evaluate send condition.
       const eng = engMap.get(enrollment.id) ?? { opened: false, clicked: false };
       if (conditionMet(step.sendCondition, eng)) {
-        sendable.push({ enrollment, step });
+        sendable.push({ enrollment, step, retryNumber: 0 });
         break;
       }
 
-      // Condição não satisfeita — pula este passo sem gastar cota.
+      // Condition not met — skip this step.
       await db.insert(emailSequenceSends).values({
         enrollmentId: enrollment.id,
         stepId: step.id,
         status: 'skipped',
         messageId: null,
+        retryNumber: 0,
       });
       result.skipped++;
 
@@ -480,13 +536,9 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
       await db.update(emailSequenceEnrollments)
         .set({ currentStep: newCurrentStep, nextSendAt, status: newStatus, updatedAt: new Date() })
         .where(eq(emailSequenceEnrollments.id, enrollment.id));
-      // continua o laço — avalia o próximo passo no mesmo run
     }
   }
 
-  // Carrega a assinatura de e-mail de cada atendente (quando habilitada),
-  // indexada por e-mail — `enrollment.replyTo` já é o e-mail do atendente
-  // dono do lead (resolvido na inscrição via sellerMap).
   const signatureMap = new Map<string, string>();
   if (sendable.length > 0) {
     const sellerRows = await db.select({
@@ -499,7 +551,6 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
     }
   }
 
-  // Processa em lotes de até 100, respeitando a cota diária compartilhada.
   let i = 0;
   while (i < sendable.length) {
     const picked = await pickAccount();
@@ -512,44 +563,39 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
     const batch = sendable.slice(i, i + batchSize);
     i += batchSize;
 
-    // Monta as mensagens do passo já resolvido pelo skip-loop para cada inscrição do lote.
     const messages: BatchMessage[] = [];
-    const batchMeta: { enrollment: Enrollment; step: typeof allSteps[number] }[] = [];
+    const batchMeta: typeof sendable = [];
 
-    for (const { enrollment, step } of batch) {
+    for (const item of batch) {
+      const { enrollment, step, retryNumber, subjectOverride } = item;
       const unsubUrl = `${unsubBase}/api/unsubscribe?t=${enrollment.unsubToken}`;
       const signatureHtml = enrollment.replyTo ? signatureMap.get(enrollment.replyTo.toLowerCase()) : undefined;
+      const subject = subjectOverride
+        ? renderMktTemplate(subjectOverride, { nome: enrollment.name ?? '' })
+        : renderMktTemplate(step.subject, { nome: enrollment.name ?? '' });
       messages.push({
         to: enrollment.email,
-        subject: renderMktTemplate(step.subject, { nome: enrollment.name ?? '' }),
+        subject,
         html: layout(renderMktTemplate(step.htmlBody, { nome: enrollment.name ?? '', unsubscribe: unsubUrl }), unsubUrl, signatureHtml),
         replyTo: enrollment.replyTo ?? undefined,
         unsubToken: enrollment.unsubToken,
       });
-      batchMeta.push({ enrollment, step });
+      batchMeta.push(item);
     }
 
     if (messages.length > 0) {
       const results = await sendBatch(picked.account, messages);
       for (let j = 0; j < batchMeta.length; j++) {
-        const { enrollment, step } = batchMeta[j];
+        const { enrollment, step, retryNumber } = batchMeta[j];
         const sendResult = results[j];
         const steps = stepsBySequence.get(enrollment.sequenceId) ?? [];
-        const newCurrentStep = enrollment.currentStep + 1;
-        const cycleStart = enrollment.cycleStartedAt ?? enrollment.enrolledAt;
-        const nextSendAt = computeNextSendAt(cycleStart, steps, newCurrentStep);
-        const newStatus = nextSendAt ? 'active' : 'completed';
 
         if (sendResult.ok) {
           result.sent++;
+          if (retryNumber > 0) result.retried++;
         } else {
           result.failed++;
         }
-        if (newStatus === 'completed') result.completed++;
-
-        await db.update(emailSequenceEnrollments)
-          .set({ currentStep: newCurrentStep, nextSendAt, status: newStatus, updatedAt: new Date() })
-          .where(eq(emailSequenceEnrollments.id, enrollment.id));
 
         await db.insert(emailSequenceSends).values({
           enrollmentId: enrollment.id,
@@ -558,12 +604,31 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
           accountKey: picked.account.key,
           messageId: sendResult.messageId,
           error: sendResult.error,
+          retryNumber,
         });
+
+        // Decide next state: if retry is enabled and we haven't exhausted retries,
+        // keep currentStep the same and schedule retry check. Otherwise advance.
+        const shouldScheduleRetry = sendResult.ok && step.retryIfNotOpened && retryNumber < step.maxRetries;
+
+        if (shouldScheduleRetry) {
+          const retryAt = new Date(now.getTime() + step.retryDelayHours * 60 * 60 * 1000);
+          await db.update(emailSequenceEnrollments)
+            .set({ nextSendAt: retryAt, updatedAt: new Date() })
+            .where(eq(emailSequenceEnrollments.id, enrollment.id));
+        } else {
+          const newCurrentStep = enrollment.currentStep + 1;
+          const cycleStart = enrollment.cycleStartedAt ?? enrollment.enrolledAt;
+          const nextSendAt = computeNextSendAt(cycleStart, steps, newCurrentStep);
+          const newStatus = nextSendAt ? 'active' : 'completed';
+          if (newStatus === 'completed') result.completed++;
+          await db.update(emailSequenceEnrollments)
+            .set({ currentStep: newCurrentStep, nextSendAt, status: newStatus, updatedAt: new Date() })
+            .where(eq(emailSequenceEnrollments.id, enrollment.id));
+        }
       }
     }
 
-    // Se o lote não esgotou a cota da conta, ainda há mais a enviar? continua;
-    // se pickAccount ficar null no próximo loop, paramos com early-exit acima.
     if (i >= sendable.length) break;
   }
 

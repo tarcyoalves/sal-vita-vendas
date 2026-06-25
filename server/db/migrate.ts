@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-06-25c';
+const SCHEMA_VERSION = '2026-06-25d';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -490,6 +490,13 @@ export async function ensureTablesExist() {
   // Migrate old single category_id to new category_ids array
   try { await sql`UPDATE email_templates SET category_ids = jsonb_build_array(category_id) WHERE category_id IS NOT NULL AND category_ids IS NULL`; } catch {}
   try { await sql`ALTER TABLE email_templates DROP COLUMN IF EXISTS category_id`; } catch {}
+
+  // ── Reenvio condicional (retry if not opened) ─────────────────────────────
+  await sql`ALTER TABLE email_sequence_steps ADD COLUMN IF NOT EXISTS retry_if_not_opened BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql`ALTER TABLE email_sequence_steps ADD COLUMN IF NOT EXISTS retry_delay_hours INTEGER NOT NULL DEFAULT 24`;
+  await sql`ALTER TABLE email_sequence_steps ADD COLUMN IF NOT EXISTS max_retries INTEGER NOT NULL DEFAULT 1`;
+  await sql`ALTER TABLE email_sequence_steps ADD COLUMN IF NOT EXISTS retry_subject TEXT`;
+  await sql`ALTER TABLE email_sequence_sends ADD COLUMN IF NOT EXISTS retry_number INTEGER NOT NULL DEFAULT 0`;
 
   // Record the schema marker so every subsequent cold start takes the fast path
   // at the top of this function instead of re-running the whole battery above.

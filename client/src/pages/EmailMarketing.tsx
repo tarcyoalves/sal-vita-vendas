@@ -1582,7 +1582,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
   const resumeMutation = trpc.emailMarketing.resumeEnrollment.useMutation();
   const cancelMutation = trpc.emailMarketing.cancelEnrollment.useMutation();
 
-  const [editingStep, setEditingStep] = useState<{ id?: number; stepOrder: number; delayDays: number; subject: string; htmlBody: string; sendCondition: string } | null>(null);
+  const [editingStep, setEditingStep] = useState<{ id?: number; stepOrder: number; delayDays: number; subject: string; htmlBody: string; sendCondition: string; retryIfNotOpened: boolean; retryDelayHours: number; maxRetries: number; retrySubject: string } | null>(null);
   const [showEnroll, setShowEnroll] = useState(false);
 
   const statsByStepId = useMemo(() => {
@@ -1618,6 +1618,10 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
         subject: editingStep.subject,
         htmlBody: editingStep.htmlBody,
         sendCondition: editingStep.sendCondition as any,
+        retryIfNotOpened: editingStep.retryIfNotOpened,
+        retryDelayHours: editingStep.retryDelayHours,
+        maxRetries: editingStep.maxRetries,
+        retrySubject: editingStep.retrySubject.trim() || null,
       });
       toast.success("Passo salvo!");
       setEditingStep(null);
@@ -1673,7 +1677,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
               <Button
                 size="sm"
                 className="bg-blue-900 hover:bg-blue-800"
-                onClick={() => setEditingStep({ stepOrder: (steps?.length ?? 0) + 1, delayDays: 0, subject: "", htmlBody: "", sendCondition: "always" })}
+                onClick={() => setEditingStep({ stepOrder: (steps?.length ?? 0) + 1, delayDays: 0, subject: "", htmlBody: "", sendCondition: "always", retryIfNotOpened: false, retryDelayHours: 24, maxRetries: 1, retrySubject: "" })}
               >
                 <Plus size={14} className="mr-1" /> Adicionar passo
               </Button>
@@ -1702,6 +1706,9 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                               {(step as any).sendCondition && (step as any).sendCondition !== 'always' && (
                                 <Badge variant="outline" className="text-xs bg-amber-100 text-amber-700 border-amber-200">{SEND_CONDITION_BADGES[(step as any).sendCondition] ?? (step as any).sendCondition}</Badge>
                               )}
+                              {(step as any).retryIfNotOpened && (
+                                <Badge variant="outline" className="text-xs bg-orange-100 text-orange-700 border-orange-200">🔄 reenvio {(step as any).retryDelayHours}h (max {(step as any).maxRetries}x)</Badge>
+                              )}
                             </div>
                             <p className="text-xs text-gray-500 mt-1 line-clamp-2">
                               {step.htmlBody.replace(/<[^>]*>/g, ' ').trim().slice(0, 160)}
@@ -1719,7 +1726,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                             <Button size="sm" variant="outline" onClick={() => {
                               const prevStep = steps?.filter(s => s.stepOrder < step.stepOrder).sort((a, b) => b.stepOrder - a.stepOrder)[0];
                               const relativeDelay = prevStep ? step.delayDays - prevStep.delayDays : step.delayDays;
-                              setEditingStep({ id: step.id, stepOrder: step.stepOrder, delayDays: Math.max(0, relativeDelay), subject: step.subject, htmlBody: step.htmlBody, sendCondition: (step as any).sendCondition ?? 'always' });
+                              setEditingStep({ id: step.id, stepOrder: step.stepOrder, delayDays: Math.max(0, relativeDelay), subject: step.subject, htmlBody: step.htmlBody, sendCondition: (step as any).sendCondition ?? 'always', retryIfNotOpened: (step as any).retryIfNotOpened ?? false, retryDelayHours: (step as any).retryDelayHours ?? 24, maxRetries: (step as any).maxRetries ?? 1, retrySubject: (step as any).retrySubject ?? '' });
                             }}>
                               <Pencil size={14} />
                             </Button>
@@ -1881,6 +1888,38 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-gray-500 mt-1">{SEND_CONDITION_HINT}</p>
+                </div>
+                <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-3 space-y-3">
+                  <label className="flex items-center gap-2 text-sm font-medium cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded"
+                      checked={editingStep.retryIfNotOpened}
+                      onChange={e => setEditingStep(s => s && ({ ...s, retryIfNotOpened: e.target.checked }))}
+                    />
+                    Reenviar automaticamente se o destinatário não abrir
+                  </label>
+                  {editingStep.retryIfNotOpened && (
+                    <div className="space-y-3 pl-6">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label>Aguardar antes de reenviar (horas)</Label>
+                          <Input type="number" min={1} max={720} value={editingStep.retryDelayHours} onChange={e => setEditingStep(s => s && ({ ...s, retryDelayHours: Math.max(1, Number(e.target.value)) }))} />
+                          <p className="text-xs text-gray-500 mt-1">Ex: 24 = 1 dia, 48 = 2 dias, 72 = 3 dias</p>
+                        </div>
+                        <div>
+                          <Label>Tentativas máximas</Label>
+                          <Input type="number" min={1} max={5} value={editingStep.maxRetries} onChange={e => setEditingStep(s => s && ({ ...s, maxRetries: Math.min(5, Math.max(1, Number(e.target.value))) }))} />
+                          <p className="text-xs text-gray-500 mt-1">Quantas vezes reenviar (1-5)</p>
+                        </div>
+                      </div>
+                      <div>
+                        <Label>Assunto alternativo no reenvio (opcional)</Label>
+                        <Input value={editingStep.retrySubject} onChange={e => setEditingStep(s => s && ({ ...s, retrySubject: e.target.value }))} placeholder="Ex: Não vi sua resposta, {nome}..." />
+                        <p className="text-xs text-gray-500 mt-1">Se vazio, usa o mesmo assunto original. Use {'{nome}'} para personalizar.</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

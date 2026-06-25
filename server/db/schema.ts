@@ -389,9 +389,11 @@ export const emailSequenceSteps = pgTable('email_sequence_steps', {
   delayDays: integer('delay_days').notNull(),       // dias após a inscrição
   subject: text('subject').notNull(),
   htmlBody: text('html_body').notNull(),
-  // E-mail Marketing Fase 3 — condição de envio avaliada contra o engajamento
-  // anterior da inscrição: always | if_opened | if_not_opened | if_clicked | if_not_clicked
   sendCondition: text('send_condition').notNull().default('always'),
+  retryIfNotOpened: boolean('retry_if_not_opened').notNull().default(false),
+  retryDelayHours: integer('retry_delay_hours').notNull().default(24),
+  maxRetries: integer('max_retries').notNull().default(1),
+  retrySubject: text('retry_subject'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -421,6 +423,7 @@ export const emailSequenceSends = pgTable('email_sequence_sends', {
   accountKey: text('account_key'),
   messageId: text('message_id'),
   error: text('error'),
+  retryNumber: integer('retry_number').notNull().default(0),
   sentAt: timestamp('sent_at').defaultNow().notNull(),
 });
 

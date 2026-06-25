@@ -758,8 +758,11 @@ export const emailMarketingRouter = router({
       delayDays: z.number().int().min(0),
       subject: z.string().min(1).max(300),
       htmlBody: z.string().min(1),
-      // E-mail Marketing Fase 3 — condição de envio (ramificação por engajamento).
       sendCondition: z.enum(['always', 'if_opened', 'if_not_opened', 'if_clicked', 'if_not_clicked']).optional().default('always'),
+      retryIfNotOpened: z.boolean().optional().default(false),
+      retryDelayHours: z.number().int().min(1).max(720).optional().default(24),
+      maxRetries: z.number().int().min(1).max(5).optional().default(1),
+      retrySubject: z.string().max(300).nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       input.htmlBody = sanitizeCampaignHtml(input.htmlBody);
