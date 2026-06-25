@@ -782,12 +782,12 @@ export function layout(body: string, unsubUrl: string, signatureHtml?: string): 
           .replace(/\bwidth\s*=\s*["']?[^"'\s>]+["']?/gi, '')
           .replace(/\bheight\s*=\s*["']?[^"'\s>]+["']?/gi, '')
           .replace(/\bstyle\s*=\s*["'][^"']*["']/gi, '');
-        return `<img${clean} width="500" style="width:500px;max-width:100%;height:auto;display:block;">`;
+        return `<img${clean} width="650" style="width:650px;max-width:100%;height:auto;display:block;">`;
       });
   }
   const sigBlock = sigHtml
     ? `<tr>
-            <td style="padding:16px 40px 24px;border-top:1px solid #eee;">
+            <td style="padding:16px 40px 24px;">
               ${sigHtml}
             </td>
           </tr>`
