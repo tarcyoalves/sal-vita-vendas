@@ -3469,34 +3469,42 @@ function StatsTab() {
       {isLoading ? (
         <p className="text-sm text-slate-500">Carregando...</p>
       ) : overview && (
+        (() => {
+          // Base da barra = maior estágio do funil (normalmente "enviados").
+          // Garante barras proporcionais mesmo se os dados tiverem inconsistências.
+          const funnelBase = Math.max(
+            overview.totalSent30d, overview.delivered30d,
+            overview.openedUnique30d, overview.clickedUnique30d, 1,
+          );
+          return (
         <>
-          {/* Funil de engajamento (últimos 30 dias) */}
+          {/* Funil de engajamento (geral) */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <TrendingUp size={16} className="text-blue-900" /> Funil de engajamento
-                <span className="text-slate-400 font-normal text-sm">(últimos 30 dias)</span>
+                <span className="text-slate-400 font-normal text-sm">(geral)</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
               <FunnelStage
                 label="Enviados" icon={Send} count={overview.totalSent30d}
-                pct={1} base={overview.totalSent30d} color="bg-blue-600" tint="bg-blue-50 text-blue-700"
-                hint={`${overview.campaignSent30d} campanhas · ${overview.sequenceSent30d} sequências`}
+                pct={1} base={funnelBase} color="bg-blue-600" tint="bg-blue-50 text-blue-700"
+                hint={`${overview.campaignSent30d} de campanhas · ${overview.sequenceSent30d} de sequências`}
               />
               <FunnelStage
                 label="Entregues" icon={CheckCircle} count={overview.delivered30d}
-                pct={overview.deliveryRate} base={overview.totalSent30d} color="bg-cyan-600" tint="bg-cyan-50 text-cyan-700"
+                pct={overview.deliveryRate} base={funnelBase} color="bg-cyan-600" tint="bg-cyan-50 text-cyan-700"
                 hint={`${(overview.deliveryRate * 100).toFixed(1)}% dos enviados`}
               />
               <FunnelStage
                 label="Abriram" icon={Eye} count={overview.openedUnique30d}
-                pct={overview.openRate} base={overview.totalSent30d} color="bg-emerald-600" tint="bg-emerald-50 text-emerald-700"
+                pct={overview.openRate} base={funnelBase} color="bg-emerald-600" tint="bg-emerald-50 text-emerald-700"
                 hint={`${(overview.openRate * 100).toFixed(1)}% de abertura · ${overview.totalOpens30d} aberturas no total`}
               />
               <FunnelStage
                 label="Clicaram" icon={Workflow} count={overview.clickedUnique30d}
-                pct={overview.clickRate} base={overview.totalSent30d} color="bg-violet-600" tint="bg-violet-50 text-violet-700"
+                pct={overview.clickRate} base={funnelBase} color="bg-violet-600" tint="bg-violet-50 text-violet-700"
                 hint={`${(overview.clickRate * 100).toFixed(1)}% de clique · ${(overview.clickToOpenRate * 100).toFixed(1)}% dos que abriram (CTOR)`}
               />
             </CardContent>
@@ -3504,14 +3512,16 @@ function StatsTab() {
 
           {/* Métricas-chave */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <StatTile icon={Send} label="Enviados (30d)" value={overview.totalSent30d} accent="bg-blue-100 text-blue-900" />
+            <StatTile icon={Send} label="Enviados" value={overview.totalSent30d} accent="bg-blue-100 text-blue-900" />
             <StatTile icon={Eye} label="Taxa de abertura" value={`${(overview.openRate * 100).toFixed(1)}%`} accent="bg-emerald-100 text-emerald-700" />
             <StatTile icon={Workflow} label="Taxa de clique" value={`${(overview.clickRate * 100).toFixed(1)}%`} accent="bg-violet-100 text-violet-700" />
-            <StatTile icon={AlertTriangle} label="Bounces (30d)" value={overview.bounced30d} accent="bg-amber-100 text-amber-700" />
-            <StatTile icon={XCircle} label="Reclamações (30d)" value={overview.complained30d} accent="bg-orange-100 text-orange-700" />
-            <StatTile icon={MailX} label="Descadastros (30d)" value={overview.unsubscribed30d} accent="bg-red-100 text-red-600" />
+            <StatTile icon={AlertTriangle} label="Bounces" value={overview.bounced30d} accent="bg-amber-100 text-amber-700" />
+            <StatTile icon={XCircle} label="Reclamações" value={overview.complained30d} accent="bg-orange-100 text-orange-700" />
+            <StatTile icon={MailX} label="Descadastros" value={overview.unsubscribed30d} accent="bg-red-100 text-red-600" />
           </div>
         </>
+          );
+        })()
       )}
 
       <Card>
@@ -3692,12 +3702,43 @@ function CampaignStatsRow({ campaignId, name }: { campaignId: number; name: stri
 }
 
 
-// Lazy-loaded per-step stats row for a single sequence.
+// Lazy-loaded stats for a single sequence: per-step table + per-contact
+// drill-down (quem abriu/clicou) com filtros e exportação CSV.
 function SequenceStatsRow({ sequenceId, name }: { sequenceId: number; name: string }) {
   const [show, setShow] = useState(false);
+  const [recipientFilter, setRecipientFilter] = useState<'all' | 'opened' | 'not_opened' | 'clicked' | 'not_clicked'>('all');
   const { data: stats, isLoading } = trpc.emailMarketing.sequenceStats.useQuery({ sequenceId }, { enabled: show });
+  const { data: recipients, isLoading: loadingRecipients } = trpc.emailMarketing.sequenceRecipients.useQuery(
+    { sequenceId, engagement: recipientFilter, limit: 500 },
+    { enabled: show }
+  );
 
   const pct = (n: number, base: number) => base > 0 ? `${Math.round((n / base) * 100)}%` : "";
+
+  const FILTERS: { value: typeof recipientFilter; label: string }[] = [
+    { value: 'all', label: 'Todos' },
+    { value: 'opened', label: 'Abriram' },
+    { value: 'not_opened', label: 'Não abriram' },
+    { value: 'clicked', label: 'Clicaram' },
+    { value: 'not_clicked', label: 'Não clicaram' },
+  ];
+
+  const exportCsv = () => {
+    if (!recipients || recipients.length === 0) return;
+    const header = ["Nome", "Email", "Status", "Passo atual", "E-mails enviados", "Aberturas", "Cliques", "1ª abertura", "Último evento"];
+    const rows = recipients.map(r => [
+      r.name ?? "", r.email, r.status, String(r.currentStep), String(r.sentCount),
+      String(r.opens), String(r.clicks), formatDateTime(r.firstOpen), formatDateTime(r.lastEvent),
+    ]);
+    const csv = [header, ...rows].map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `sequencia-${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="rounded-xl border border-slate-200 p-3 hover:border-blue-200 transition-colors">
@@ -3708,46 +3749,117 @@ function SequenceStatsRow({ sequenceId, name }: { sequenceId: number; name: stri
         </Button>
       </div>
       {show && (
-        isLoading ? (
-          <p className="text-xs text-gray-500 mt-2">Carregando...</p>
-        ) : stats && stats.length > 0 ? (
-          <div className="overflow-x-auto rounded-xl border border-slate-200 mt-3">
-            <table className="w-full text-sm min-w-[500px]">
-              <thead className={THEAD_CLASS}>
-                <tr>
-                  <th className={TH_CLASS}>Passo</th>
-                  <th className={TH_CLASS}>Assunto</th>
-                  <th className={TH_CLASS}>Enviados</th>
-                  <th className={TH_CLASS}>Abriram</th>
-                  <th className={TH_CLASS}>Clicaram</th>
-                  <th className={TH_CLASS}>Pulados</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.map(s => (
-                  <tr key={s.stepId} className={TR_CLASS}>
-                    <td className="px-3 py-2">
-                      <Badge variant="outline" className="bg-slate-100 text-slate-600 border-slate-200">Dia {s.delayDays}</Badge>
-                    </td>
-                    <td className="px-3 py-2 text-slate-600 truncate max-w-[200px]">{s.subject}</td>
-                    <td className="px-3 py-2 tabular-nums font-medium">{s.sent}</td>
-                    <td className="px-3 py-2 tabular-nums">
-                      <span className="text-emerald-700">{s.opened}</span>
-                      {s.sent > 0 && <span className="text-xs text-slate-400 ml-1">({pct(s.opened, s.sent)})</span>}
-                    </td>
-                    <td className="px-3 py-2 tabular-nums">
-                      <span className="text-violet-700">{s.clicked}</span>
-                      {s.sent > 0 && <span className="text-xs text-slate-400 ml-1">({pct(s.clicked, s.sent)})</span>}
-                    </td>
-                    <td className="px-3 py-2 tabular-nums text-slate-400">{(s as any).skipped ?? 0}</td>
+        <div className="space-y-3 mt-3">
+          {/* Stats por passo */}
+          {isLoading ? (
+            <p className="text-xs text-gray-500">Carregando...</p>
+          ) : stats && stats.length > 0 ? (
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-sm min-w-[500px]">
+                <thead className={THEAD_CLASS}>
+                  <tr>
+                    <th className={TH_CLASS}>Passo</th>
+                    <th className={TH_CLASS}>Assunto</th>
+                    <th className={TH_CLASS}>Enviados</th>
+                    <th className={TH_CLASS}>Abriram</th>
+                    <th className={TH_CLASS}>Clicaram</th>
+                    <th className={TH_CLASS}>Pulados</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {stats.map(s => (
+                    <tr key={s.stepId} className={TR_CLASS}>
+                      <td className="px-3 py-2">
+                        <Badge variant="outline" className="bg-slate-100 text-slate-600 border-slate-200">Dia {s.delayDays}</Badge>
+                      </td>
+                      <td className="px-3 py-2 text-slate-600 truncate max-w-[200px]">{s.subject}</td>
+                      <td className="px-3 py-2 tabular-nums font-medium">{s.sent}</td>
+                      <td className="px-3 py-2 tabular-nums">
+                        <span className="text-emerald-700">{s.opened}</span>
+                        {s.sent > 0 && <span className="text-xs text-slate-400 ml-1">({pct(s.opened, s.sent)})</span>}
+                      </td>
+                      <td className="px-3 py-2 tabular-nums">
+                        <span className="text-violet-700">{s.clicked}</span>
+                        {s.sent > 0 && <span className="text-xs text-slate-400 ml-1">({pct(s.clicked, s.sent)})</span>}
+                      </td>
+                      <td className="px-3 py-2 tabular-nums text-slate-400">{(s as any).skipped ?? 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500">Sem passos cadastrados.</p>
+          )}
+
+          {/* Drill-down: contatos da sequência */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            <span className="text-xs font-semibold text-slate-500 mr-1 flex items-center gap-1"><Users size={13} /> Contatos:</span>
+            {FILTERS.map(f => (
+              <button
+                key={f.value}
+                onClick={() => setRecipientFilter(f.value)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition ${recipientFilter === f.value ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:bg-blue-50'}`}
+              >
+                {f.label}
+              </button>
+            ))}
+            <div className="ml-auto">
+              <Button size="sm" variant="outline" onClick={exportCsv} disabled={!recipients || recipients.length === 0}>
+                <Download size={14} className="mr-1" /> CSV
+              </Button>
+            </div>
           </div>
-        ) : (
-          <p className="text-xs text-gray-500 mt-2">Sem passos cadastrados.</p>
-        )
+
+          {loadingRecipients ? (
+            <p className="text-xs text-gray-500">Carregando contatos...</p>
+          ) : recipients && recipients.length > 0 ? (
+            <div className="overflow-x-auto rounded-xl border border-slate-200 max-h-[400px] overflow-y-auto">
+              <table className="w-full text-sm min-w-[600px]">
+                <thead className={THEAD_CLASS + " sticky top-0 z-10"}>
+                  <tr>
+                    <th className={TH_CLASS}>Contato</th>
+                    <th className={TH_CLASS}>Engajamento</th>
+                    <th className={TH_CLASS}>Passo</th>
+                    <th className={TH_CLASS}>Aberturas</th>
+                    <th className={TH_CLASS}>Cliques</th>
+                    <th className={TH_CLASS}>Último evento</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recipients.map(r => (
+                    <tr key={r.id} className={TR_CLASS}>
+                      <td className="px-3 py-2">
+                        <p className="font-medium text-slate-700 truncate">{r.name || r.email}</p>
+                        {r.name && <p className="text-xs text-slate-400 truncate">{r.email}</p>}
+                      </td>
+                      <td className="px-3 py-2">
+                        {r.clicks > 0 ? (
+                          <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200">Clicou</Badge>
+                        ) : r.opens > 0 ? (
+                          <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">Abriu</Badge>
+                        ) : r.sentCount > 0 ? (
+                          <Badge variant="outline" className="text-xs bg-slate-100 text-slate-500 border-slate-200">Não abriu</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs bg-amber-50 text-amber-600 border-amber-200">Aguardando envio</Badge>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-slate-500">{r.currentStep > 0 ? `${r.currentStep}º` : "--"}</td>
+                      <td className="px-3 py-2 tabular-nums">{r.opens}</td>
+                      <td className="px-3 py-2 tabular-nums">{r.clicks}</td>
+                      <td className="px-3 py-2 text-xs text-slate-500">{formatDateTime(r.lastEvent)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500">Nenhum contato neste filtro.</p>
+          )}
+          {recipients && recipients.length >= 500 && (
+            <p className="text-[11px] text-slate-400">Exibindo os primeiros 500 contatos.</p>
+          )}
+        </div>
       )}
     </div>
   );

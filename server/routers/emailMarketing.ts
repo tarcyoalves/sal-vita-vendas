@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import crypto from 'crypto';
-import { eq, and, or, inArray, isNotNull, isNull, ne, desc, asc, count, gte, sql } from 'drizzle-orm';
+import { eq, and, or, inArray, isNotNull, isNull, ne, desc, asc, count, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 import { router, adminProcedure, protectedProcedure } from '../trpc';
 import { db } from '../db';
@@ -1087,6 +1087,62 @@ export const emailMarketingRouter = router({
       }));
     }),
 
+  // Drill-down: lista contato por contato (inscrição) de uma sequência com o
+  // status de engajamento agregado de TODOS os passos. Permite ver exatamente
+  // quem abriu / não abriu / clicou nos e-mails da sequência. Lazy + paginado.
+  sequenceRecipients: adminProcedure
+    .input(z.object({
+      sequenceId: z.number(),
+      engagement: z.enum(['all', 'opened', 'not_opened', 'clicked', 'not_clicked']).optional().default('all'),
+      limit: z.number().int().min(1).max(500).optional().default(200),
+      offset: z.number().int().min(0).optional().default(0),
+    }))
+    .query(async ({ input }) => {
+      const having =
+        input.engagement === 'opened' ? sql`HAVING COUNT(*) FILTER (WHERE e.event_type = 'opened') > 0`
+        : input.engagement === 'not_opened' ? sql`HAVING COUNT(*) FILTER (WHERE e.event_type = 'opened') = 0`
+        : input.engagement === 'clicked' ? sql`HAVING COUNT(*) FILTER (WHERE e.event_type = 'clicked') > 0`
+        : input.engagement === 'not_clicked' ? sql`HAVING COUNT(*) FILTER (WHERE e.event_type = 'clicked') = 0`
+        : sql``;
+
+      const rows = await db.execute<{
+        id: number; email: string; name: string | null; status: string; current_step: number;
+        sent_count: number; opens: number; clicks: number;
+        first_open: string | null; last_event: string | null; last_sent: string | null;
+      }>(sql`
+        SELECT
+          en.id, en.email, en.name, en.status, en.current_step,
+          COUNT(DISTINCT sd.id) FILTER (WHERE sd.status = 'sent')::int AS sent_count,
+          COUNT(*) FILTER (WHERE e.event_type = 'opened')::int AS opens,
+          COUNT(*) FILTER (WHERE e.event_type = 'clicked')::int AS clicks,
+          MIN(e.created_at) FILTER (WHERE e.event_type = 'opened') AS first_open,
+          MAX(e.created_at) AS last_event,
+          MAX(sd.sent_at) AS last_sent
+        FROM ${emailSequenceEnrollments} en
+        LEFT JOIN ${emailSequenceSends} sd ON sd.enrollment_id = en.id
+        LEFT JOIN ${emailEvents} e ON e.message_id = sd.message_id
+        WHERE en.sequence_id = ${input.sequenceId}
+        GROUP BY en.id, en.email, en.name, en.status, en.current_step
+        ${having}
+        ORDER BY opens DESC, clicks DESC, en.email ASC
+        LIMIT ${input.limit} OFFSET ${input.offset}
+      `);
+
+      return rows.rows.map(r => ({
+        id: Number(r.id),
+        email: r.email,
+        name: r.name,
+        status: r.status,
+        currentStep: Number(r.current_step),
+        sentCount: Number(r.sent_count),
+        opens: Number(r.opens),
+        clicks: Number(r.clicks),
+        firstOpen: r.first_open,
+        lastEvent: r.last_event,
+        lastSent: r.last_sent,
+      }));
+    }),
+
   usageStats: adminProcedure.query(async () => {
     const accounts = await getUsage();
     const totals = accounts.reduce(
@@ -1140,50 +1196,53 @@ export const emailMarketingRouter = router({
     }),
 
   overviewStats: adminProcedure.query(async () => {
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
-    const [campaignSentRow] = await db.select({ cnt: count() })
-      .from(emailCampaignRecipients)
-      .where(and(eq(emailCampaignRecipients.status, 'sent'), gte(emailCampaignRecipients.sentAt, thirtyDaysAgo)));
-
-    const [sequenceSentRow] = await db.select({ cnt: count() })
-      .from(emailSequenceSends)
-      .where(and(eq(emailSequenceSends.status, 'sent'), gte(emailSequenceSends.sentAt, thirtyDaysAgo)));
-
-    // Conta tanto o total de eventos (inclui aberturas repetidas) quanto os
-    // únicos por mensagem. As TAXAS usam os únicos — caso contrário, alguém que
-    // abre o mesmo e-mail 3x inflaria a taxa acima de 100%.
-    const eventCountsResult = await db.execute<{ event_type: string; total: number; uniq: number }>(sql`
+    // Funil GERAL e consistente. O segredo: contamos tudo sobre o MESMO
+    // conjunto de mensagens (as que têm registro de envio), cruzando com os
+    // eventos por message_id. Isso garante enviados ≥ entregues ≥ abriram ≥
+    // clicaram — sem o problema anterior de "entregues" > "enviados" causado
+    // por janelas de tempo diferentes (sentAt vs created_at do evento).
+    const funnelResult = await db.execute<{
+      sent: number; campaign_sent: number; sequence_sent: number;
+      delivered: number; opened: number; clicked: number;
+      total_opens: number; total_clicks: number; bounced: number; complained: number;
+    }>(sql`
+      WITH sent_msgs AS (
+        SELECT message_id, 'campaign' AS kind FROM ${emailCampaignRecipients}
+          WHERE status = 'sent' AND message_id IS NOT NULL
+        UNION ALL
+        SELECT message_id, 'sequence' AS kind FROM ${emailSequenceSends}
+          WHERE status = 'sent' AND message_id IS NOT NULL
+      )
       SELECT
-        event_type,
-        COUNT(*)::int AS total,
-        COUNT(DISTINCT message_id)::int AS uniq
-      FROM ${emailEvents}
-      WHERE created_at >= ${thirtyDaysAgo}
-      GROUP BY event_type
+        COUNT(DISTINCT sm.message_id)::int AS sent,
+        COUNT(DISTINCT sm.message_id) FILTER (WHERE sm.kind = 'campaign')::int AS campaign_sent,
+        COUNT(DISTINCT sm.message_id) FILTER (WHERE sm.kind = 'sequence')::int AS sequence_sent,
+        COUNT(DISTINCT e.message_id) FILTER (WHERE e.event_type = 'delivered')::int AS delivered,
+        COUNT(DISTINCT e.message_id) FILTER (WHERE e.event_type = 'opened')::int AS opened,
+        COUNT(DISTINCT e.message_id) FILTER (WHERE e.event_type = 'clicked')::int AS clicked,
+        COUNT(*) FILTER (WHERE e.event_type = 'opened')::int AS total_opens,
+        COUNT(*) FILTER (WHERE e.event_type = 'clicked')::int AS total_clicks,
+        COUNT(DISTINCT e.message_id) FILTER (WHERE e.event_type = 'bounced')::int AS bounced,
+        COUNT(DISTINCT e.message_id) FILTER (WHERE e.event_type = 'complained')::int AS complained
+      FROM sent_msgs sm
+      LEFT JOIN ${emailEvents} e ON e.message_id = sm.message_id
     `);
-    const evTotal: Record<string, number> = {};
-    const evUniq: Record<string, number> = {};
-    for (const row of eventCountsResult.rows) {
-      evTotal[row.event_type] = Number(row.total);
-      evUniq[row.event_type] = Number(row.uniq);
-    }
+    const f = funnelResult.rows[0] ?? {} as any;
+
+    const totalSent = Number(f.sent ?? 0);
+    const delivered = Number(f.delivered ?? 0);
+    const openedUnique = Number(f.opened ?? 0);
+    const clickedUnique = Number(f.clicked ?? 0);
+    const totalOpens = Number(f.total_opens ?? 0);
+    const totalClicks = Number(f.total_clicks ?? 0);
+    const bounced = Number(f.bounced ?? 0);
+    const complained = Number(f.complained ?? 0);
 
     const [unsubRow] = await db.select({ cnt: count() })
       .from(emailSuppressions)
-      .where(and(eq(emailSuppressions.reason, 'unsubscribe'), gte(emailSuppressions.createdAt, thirtyDaysAgo)));
+      .where(eq(emailSuppressions.reason, 'unsubscribe'));
 
-    const totalSent = Number(campaignSentRow?.cnt ?? 0) + Number(sequenceSentRow?.cnt ?? 0);
-    const delivered = evUniq.delivered ?? 0;
-    const openedUnique = evUniq.opened ?? 0;
-    const clickedUnique = evUniq.clicked ?? 0;
-    const totalOpens = evTotal.opened ?? 0;
-    const totalClicks = evTotal.clicked ?? 0;
-    const bounced = evUniq.bounced ?? 0;
-    const complained = evUniq.complained ?? 0;
-
-    // Denominador das taxas de abertura/clique: nº de e-mails efetivamente
-    // entregues (fallback p/ enviados quando não há eventos de entrega).
+    // Denominador das taxas: e-mails entregues (fallback p/ enviados).
     const deliveredBase = delivered > 0 ? delivered : totalSent;
 
     // Quota usada hoje: soma de email_send_counters de hoje, sobre nº de contas * limite diário
@@ -1197,9 +1256,9 @@ export const emailMarketingRouter = router({
 
     return {
       totalSent30d: totalSent,
-      campaignSent30d: Number(campaignSentRow?.cnt ?? 0),
-      sequenceSent30d: Number(sequenceSentRow?.cnt ?? 0),
-      // Funil completo
+      campaignSent30d: Number(f.campaign_sent ?? 0),
+      sequenceSent30d: Number(f.sequence_sent ?? 0),
+      // Funil completo (geral)
       delivered30d: delivered,
       openedUnique30d: openedUnique,
       clickedUnique30d: clickedUnique,
@@ -1208,7 +1267,7 @@ export const emailMarketingRouter = router({
       bounced30d: bounced,
       complained30d: complained,
       unsubscribed30d: Number(unsubRow?.cnt ?? 0),
-      // Taxas (sempre ≤ 100% — baseadas em entregues e contagem única)
+      // Taxas (sempre ≤ 100% — base consistente e contagem única)
       deliveryRate: totalSent > 0 ? Math.min(1, delivered / totalSent) : 0,
       openRate: deliveredBase > 0 ? Math.min(1, openedUnique / deliveredBase) : 0,
       clickRate: deliveredBase > 0 ? Math.min(1, clickedUnique / deliveredBase) : 0,
