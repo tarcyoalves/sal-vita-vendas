@@ -168,7 +168,11 @@ async function exportEngagementBatch(
 export const emailMarketingRouter = router({
   // ── Template Categories ──────────────────────────────────────────────────
   listTemplateCategories: adminProcedure.query(async () => {
-    return db.select().from(emailTemplateCategories).orderBy(emailTemplateCategories.sortOrder, emailTemplateCategories.name);
+    try {
+      return await db.select().from(emailTemplateCategories).orderBy(emailTemplateCategories.sortOrder, emailTemplateCategories.name);
+    } catch {
+      return [];
+    }
   }),
 
   upsertTemplateCategory: adminProcedure
@@ -199,14 +203,27 @@ export const emailMarketingRouter = router({
 
   // ── Templates ──────────────────────────────────────────────────────────────
   listTemplates: adminProcedure.query(async () => {
-    return db.select().from(emailTemplates).orderBy(emailTemplates.name);
+    try {
+      return await db.select().from(emailTemplates).orderBy(emailTemplates.name);
+    } catch {
+      return await db.select({
+        id: emailTemplates.id, slug: emailTemplates.slug, name: emailTemplates.name,
+        subject: emailTemplates.subject, htmlBody: emailTemplates.htmlBody, attachments: emailTemplates.attachments,
+        active: emailTemplates.active, createdAt: emailTemplates.createdAt, updatedAt: emailTemplates.updatedAt,
+      }).from(emailTemplates).orderBy(emailTemplates.name);
+    }
   }),
 
   listTemplatesForAttendant: protectedProcedure.query(async ({ ctx }) => {
     const [seller] = await db.select({ emk: sellers.emailMarketingEnabled }).from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
     if (ctx.user.role !== 'admin' && !seller?.emk) return [];
-    return db.select({ id: emailTemplates.id, name: emailTemplates.name, slug: emailTemplates.slug, subject: emailTemplates.subject, htmlBody: emailTemplates.htmlBody, attachments: emailTemplates.attachments, categoryId: emailTemplates.categoryId })
-      .from(emailTemplates).where(eq(emailTemplates.active, true)).orderBy(emailTemplates.name);
+    try {
+      return await db.select({ id: emailTemplates.id, name: emailTemplates.name, slug: emailTemplates.slug, subject: emailTemplates.subject, htmlBody: emailTemplates.htmlBody, attachments: emailTemplates.attachments, categoryId: emailTemplates.categoryId })
+        .from(emailTemplates).where(eq(emailTemplates.active, true)).orderBy(emailTemplates.name);
+    } catch {
+      return await db.select({ id: emailTemplates.id, name: emailTemplates.name, slug: emailTemplates.slug, subject: emailTemplates.subject, htmlBody: emailTemplates.htmlBody, attachments: emailTemplates.attachments })
+        .from(emailTemplates).where(eq(emailTemplates.active, true)).orderBy(emailTemplates.name);
+    }
   }),
 
   upsertTemplate: adminProcedure

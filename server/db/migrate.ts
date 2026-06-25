@@ -33,6 +33,11 @@ export async function ensureTablesExist() {
     if ((v as unknown as Array<{ value: string }>)[0]?.value === SCHEMA_VERSION) {
       try { await sql`DELETE FROM chat_messages WHERE created_at < CURRENT_DATE`; } catch {}
       try { await sql`DELETE FROM work_sessions WHERE status = 'completed' AND ended_at < NOW() - INTERVAL '90 days'`; } catch {}
+      // Ensure critical new tables exist even on the fast path
+      try {
+        await sql`CREATE TABLE IF NOT EXISTS email_template_categories (id SERIAL PRIMARY KEY, name TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)`;
+        await sql`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS category_id INTEGER`;
+      } catch {}
       return;
     }
   } catch { /* schema_meta missing → fall through and run the full migration */ }
