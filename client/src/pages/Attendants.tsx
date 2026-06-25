@@ -48,6 +48,7 @@ export default function Attendants() {
   const [editingAttendant, setEditingAttendant] = useState<Attendant | null>(null);
   const [editFormData, setEditFormData] = useState({
     name: "",
+    email: "",
     phone: "",
     department: "",
     dailyGoal: 100,
@@ -102,6 +103,7 @@ export default function Attendants() {
     setEditingAttendant(attendant);
     setEditFormData({
       name: attendant.name,
+      email: attendant.email,
       phone: attendant.phone ?? "",
       department: attendant.department ?? "",
       dailyGoal: effectiveDailyGoal(attendant.dailyGoal),
@@ -118,6 +120,7 @@ export default function Attendants() {
       await updateMutation.mutateAsync({
         id: editingAttendant.id,
         name: editFormData.name,
+        email: editFormData.email || undefined,
         phone: editFormData.phone || undefined,
         department: editFormData.department || undefined,
         dailyGoal: editFormData.dailyGoal,
@@ -580,21 +583,25 @@ export default function Attendants() {
                   <input type="text" value={editFormData.name} onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })} placeholder="Nome completo" className="w-full px-3 py-2 border rounded-lg" required />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Telefone</label>
-                  <input type="tel" value={editFormData.phone} onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })} placeholder="(11) 99999-9999" className="w-full px-3 py-2 border rounded-lg" />
+                  <label className="block text-sm font-medium mb-1">Email (login) *</label>
+                  <input type="email" value={editFormData.email} onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })} placeholder="email@example.com" className="w-full px-3 py-2 border rounded-lg" required />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Telefone</label>
+                  <input type="tel" value={editFormData.phone} onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })} placeholder="(11) 99999-9999" className="w-full px-3 py-2 border rounded-lg" />
+                </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Departamento</label>
                   <input type="text" value={editFormData.department} onChange={(e) => setEditFormData({ ...editFormData, department: e.target.value })} placeholder="Ex: Vendas" className="w-full px-3 py-2 border rounded-lg" />
                 </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Meta Diária (tarefas)</label>
+                  <label className="block text-sm font-medium mb-1">Meta Diária</label>
                   <input type="number" value={editFormData.dailyGoal} onChange={(e) => setEditFormData({ ...editFormData, dailyGoal: parseInt(e.target.value) })} className="w-full px-3 py-2 border rounded-lg" min="1" />
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Expediente</label>
                   <select value={editFormData.workHoursGoal} onChange={(e) => setEditFormData({ ...editFormData, workHoursGoal: parseInt(e.target.value) })} className="w-full px-3 py-2 border rounded-lg">

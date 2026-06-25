@@ -88,6 +88,7 @@ export const sellersRouter = router({
     .input(z.object({
       id: z.number(),
       name: z.string().optional(),
+      email: z.string().email().optional(),
       phone: z.string().optional(),
       department: z.string().optional(),
       dailyGoal: z.number().optional(),
@@ -99,19 +100,32 @@ export const sellersRouter = router({
       emailMarketingEnabled: z.boolean().optional(),
     }))
     .mutation(async ({ input }) => {
-      const { id, ...data } = input;
-      // If name is changing, update tasks.assignedTo to match new name
-      if (data.name) {
-        const [existing] = await db.select().from(sellers).where(eq(sellers.id, id));
-        if (existing && existing.name !== data.name) {
-          await db.update(tasks).set({ assignedTo: data.name }).where(eq(tasks.assignedTo, existing.name));
-        }
+      const { id, email: newEmail, ...data } = input;
+      const [existing] = await db.select().from(sellers).where(eq(sellers.id, id));
+      if (!existing) throw new Error('Atendente não encontrado');
+
+      if (data.name && existing.name !== data.name) {
+        await db.update(tasks).set({ assignedTo: data.name }).where(eq(tasks.assignedTo, existing.name));
       }
       if (data.emailSignatureHtml !== undefined) {
         data.emailSignatureHtml = sanitizeSignatureHtml(data.emailSignatureHtml);
       }
-      const [updated] = await db.update(sellers).set(data).where(eq(sellers.id, id)).returning();
+
+      const sellerUpdate: Record<string, unknown> = { ...data };
+      if (newEmail && newEmail !== existing.email) {
+        const [emailTaken] = await db.select({ id: users.id }).from(users)
+          .where(eq(users.email, newEmail));
+        if (emailTaken && emailTaken.id !== existing.userId) {
+          throw new Error('Este email já está em uso por outro usuário');
+        }
+        await db.update(users).set({ email: newEmail }).where(eq(users.id, existing.userId));
+        sellerUpdate.email = newEmail;
+      }
+
+      const [updated] = await db.update(sellers).set(sellerUpdate).where(eq(sellers.id, id)).returning();
       invalidateSellersCache();
+      cacheInvalidate(`auth:me:${existing.userId}`);
+      cacheInvalidate(`user:${existing.userId}`);
       return updated;
     }),
 

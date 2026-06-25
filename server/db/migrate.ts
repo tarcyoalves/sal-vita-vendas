@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-06-24g';
+const SCHEMA_VERSION = '2026-06-25a';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -429,6 +429,19 @@ export async function ensureTablesExist() {
     WHERE email IS NULL
       AND notes ~* '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}'
   `;
+
+  // ── Recuperação de senha via e-mail ────────────────────────────────────────
+  await sql`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id         SERIAL PRIMARY KEY,
+      user_id    INTEGER NOT NULL,
+      token      TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMP NOT NULL,
+      used_at    TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `;
+  try { await sql`DELETE FROM password_reset_tokens WHERE expires_at < NOW() - INTERVAL '1 day'`; } catch {}
 
   // ── Indexes ───────────────────────────────────────────────────────────────
   await sql`CREATE INDEX IF NOT EXISTS tasks_user_id_idx        ON tasks(user_id)`;
