@@ -1,7 +1,7 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import {
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight,
-  List, ListOrdered, Link2, Eraser,
+  List, ListOrdered, Link2, Eraser, Code2,
 } from "lucide-react";
 
 /**
@@ -43,16 +43,18 @@ interface RichTextEditorProps {
 export function RichTextEditor({ value, onChange, placeholder, minHeight = 220 }: RichTextEditorProps) {
   const ref = useRef<HTMLDivElement>(null);
   const savedRange = useRef<Range | null>(null);
+  const [htmlMode, setHtmlMode] = useState(false);
 
   // Push the external value into the DOM only when it diverges (template load,
   // dialog open, reset) — never while typing, which would reset the caret.
   useEffect(() => {
+    if (htmlMode) return;
     const el = ref.current;
     if (el && value !== el.innerHTML) {
       el.innerHTML = value || "";
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
+  }, [value, htmlMode]);
 
   const emit = () => {
     if (ref.current) onChange(ref.current.innerHTML);
@@ -184,27 +186,56 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight = 220 }
         <span className="mx-1 h-5 w-px bg-slate-200" />
 
         <button type="button" className={btn} title="Limpar formatação" onMouseDown={e => e.preventDefault()} onClick={() => exec("removeFormat")}><Eraser size={15} /></button>
+
+        <span className="mx-1 h-5 w-px bg-slate-200" />
+
+        <button
+          type="button"
+          className={`${btn} ${htmlMode ? 'bg-blue-100 text-blue-900 ring-1 ring-blue-300' : ''}`}
+          title="Editar HTML"
+          onMouseDown={e => e.preventDefault()}
+          onClick={() => {
+            if (htmlMode) {
+              setHtmlMode(false);
+            } else {
+              saveSelection();
+              setHtmlMode(true);
+            }
+          }}
+        >
+          <Code2 size={15} />
+        </button>
       </div>
 
-      {/* Editable area */}
-      <div
-        ref={ref}
-        className="sv-rte px-4 py-3 text-sm leading-relaxed text-slate-800 focus:outline-none"
-        style={{ minHeight }}
-        contentEditable
-        suppressContentEditableWarning
-        data-placeholder={placeholder || "Escreva o conteúdo do e-mail..."}
-        onInput={emit}
-        onKeyUp={saveSelection}
-        onMouseUp={saveSelection}
-        onPaste={e => {
-          e.preventDefault();
-          const text = e.clipboardData.getData('text/plain');
-          document.execCommand('insertText', false, text);
-          emit();
-        }}
-        onBlur={() => { saveSelection(); emit(); }}
-      />
+      {htmlMode ? (
+        <textarea
+          className="w-full px-4 py-3 font-mono text-xs leading-relaxed text-slate-800 bg-slate-50 focus:outline-none resize-y"
+          style={{ minHeight }}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder="Cole ou edite o HTML aqui..."
+          spellCheck={false}
+        />
+      ) : (
+        <div
+          ref={ref}
+          className="sv-rte px-4 py-3 text-sm leading-relaxed text-slate-800 focus:outline-none"
+          style={{ minHeight }}
+          contentEditable
+          suppressContentEditableWarning
+          data-placeholder={placeholder || "Escreva o conteúdo do e-mail..."}
+          onInput={emit}
+          onKeyUp={saveSelection}
+          onMouseUp={saveSelection}
+          onPaste={e => {
+            e.preventDefault();
+            const text = e.clipboardData.getData('text/plain');
+            document.execCommand('insertText', false, text);
+            emit();
+          }}
+          onBlur={() => { saveSelection(); emit(); }}
+        />
+      )}
     </div>
   );
 }
