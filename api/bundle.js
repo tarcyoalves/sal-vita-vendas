@@ -65242,21 +65242,9 @@ function layout(preheader, body) {
         <table width="600" cellpadding="0" cellspacing="0" border="0"
                style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
 
-          <!-- header -->
-          <tr>
-            <td style="background:#ffffff;padding:20px 32px 8px;text-align:left;">
-              <img src="http://salvitarn.com.br/wp-content/uploads/2025/04/logo-SAL-VITA.png"
-                   alt="Sal Vita" width="160" height="auto"
-                   style="display:inline-block;max-width:160px;height:auto;border:0;" />
-            </td>
-          </tr>
-          <tr>
-            <td style="background:${BRAND2};height:4px;font-size:0;line-height:0;">&nbsp;</td>
-          </tr>
-
           <!-- body -->
           <tr>
-            <td style="padding:32px;">
+            <td style="padding:32px 32px 24px;">
               ${body}
             </td>
           </tr>
@@ -65551,10 +65539,7 @@ var authRouter = router({
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f4;">
 <tr><td align="center" style="padding:24px 8px;">
 <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
-<tr><td style="background:#0C3680;padding:20px 32px;text-align:center;">
-<h1 style="margin:0;color:#fff;font-size:22px;">Sal Vita \u2014 Recupera\xE7\xE3o de Senha</h1>
-</td></tr>
-<tr><td style="padding:32px;">
+<tr><td style="padding:32px 32px 24px;">
 <p style="margin:0 0 16px;font-size:15px;color:#444;">Ol\xE1, <strong>${user.name}</strong>!</p>
 <p style="margin:0 0 16px;font-size:15px;color:#444;">Recebemos uma solicita\xE7\xE3o para redefinir sua senha. Clique no bot\xE3o abaixo para criar uma nova senha:</p>
 <table cellpadding="0" cellspacing="0" border="0" style="margin:24px auto;">
@@ -66131,17 +66116,7 @@ function layout2(body, unsubUrl, signatureHtml) {
         <table width="600" cellpadding="0" cellspacing="0" border="0"
                style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
           <tr>
-            <td style="background:#ffffff;padding:20px 32px 8px;text-align:left;">
-              <img src="https://salvitarn.com.br/wp-content/uploads/2025/04/logo-SAL-VITA.png"
-                   alt="Sal Vita" width="160" height="auto"
-                   style="display:block;max-width:160px;height:auto;border:0;margin:0;" />
-            </td>
-          </tr>
-          <tr>
-            <td style="background:${BRAND3};height:4px;font-size:0;line-height:0;">&nbsp;</td>
-          </tr>
-          <tr>
-            <td style="padding:32px;">
+            <td style="padding:32px 32px 24px;">
               ${bodyToHtml(body)}
             </td>
           </tr>

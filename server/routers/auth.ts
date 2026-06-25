@@ -160,10 +160,7 @@ export const authRouter = router({
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f4;">
 <tr><td align="center" style="padding:24px 8px;">
 <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
-<tr><td style="background:#0C3680;padding:20px 32px;text-align:center;">
-<h1 style="margin:0;color:#fff;font-size:22px;">Sal Vita — Recuperação de Senha</h1>
-</td></tr>
-<tr><td style="padding:32px;">
+<tr><td style="padding:32px 32px 24px;">
 <p style="margin:0 0 16px;font-size:15px;color:#444;">Olá, <strong>${user.name}</strong>!</p>
 <p style="margin:0 0 16px;font-size:15px;color:#444;">Recebemos uma solicitação para redefinir sua senha. Clique no botão abaixo para criar uma nova senha:</p>
 <table cellpadding="0" cellspacing="0" border="0" style="margin:24px auto;">
