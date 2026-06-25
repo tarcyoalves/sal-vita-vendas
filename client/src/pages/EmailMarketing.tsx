@@ -3430,6 +3430,35 @@ function UsageTab() {
 
 // ── Estatísticas ───────────────────────────────────────────────────────────
 
+// Uma etapa do funil: barra proporcional ao topo do funil (enviados),
+// com contagem, ícone e legenda explicativa.
+function FunnelStage({ label, icon: Icon, count, pct, base, color, tint, hint }: {
+  label: string; icon: LucideIcon; count: number; pct: number; base: number;
+  color: string; tint: string; hint?: string;
+}) {
+  const widthPct = base > 0 ? Math.max(2, Math.round((count / base) * 100)) : 0;
+  return (
+    <div className="flex items-center gap-3">
+      <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${tint}`}>
+        <Icon size={15} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-sm font-semibold text-slate-700">{label}</span>
+          <span className="text-sm font-bold text-slate-800 tabular-nums">
+            {count.toLocaleString('pt-BR')}
+            <span className="ml-1.5 text-xs font-medium text-slate-400">{(pct * 100).toFixed(1)}%</span>
+          </span>
+        </div>
+        <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+          <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${widthPct}%` }} />
+        </div>
+        {hint && <p className="mt-0.5 text-[11px] text-slate-400 truncate">{hint}</p>}
+      </div>
+    </div>
+  );
+}
+
 function StatsTab() {
   const { data: overview, isLoading } = trpc.emailMarketing.overviewStats.useQuery();
   const { data: campaigns } = trpc.emailMarketing.listCampaigns.useQuery();
@@ -3440,12 +3469,49 @@ function StatsTab() {
       {isLoading ? (
         <p className="text-sm text-slate-500">Carregando...</p>
       ) : overview && (
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatTile icon={Send} label="Enviados (30d)" value={overview.totalSent30d} accent="bg-blue-100 text-blue-900" />
-          <StatTile icon={Eye} label="Taxa de abertura" value={`${(overview.openRate * 100).toFixed(1)}%`} accent="bg-emerald-100 text-emerald-700" />
-          <StatTile icon={Workflow} label="Taxa de clique" value={`${(overview.clickRate * 100).toFixed(1)}%`} accent="bg-violet-100 text-violet-700" />
-          <StatTile icon={MailX} label="Descadastros (30d)" value={overview.unsubscribed30d} accent="bg-red-100 text-red-600" />
-        </div>
+        <>
+          {/* Funil de engajamento (últimos 30 dias) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp size={16} className="text-blue-900" /> Funil de engajamento
+                <span className="text-slate-400 font-normal text-sm">(últimos 30 dias)</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <FunnelStage
+                label="Enviados" icon={Send} count={overview.totalSent30d}
+                pct={1} base={overview.totalSent30d} color="bg-blue-600" tint="bg-blue-50 text-blue-700"
+                hint={`${overview.campaignSent30d} campanhas · ${overview.sequenceSent30d} sequências`}
+              />
+              <FunnelStage
+                label="Entregues" icon={CheckCircle} count={overview.delivered30d}
+                pct={overview.deliveryRate} base={overview.totalSent30d} color="bg-cyan-600" tint="bg-cyan-50 text-cyan-700"
+                hint={`${(overview.deliveryRate * 100).toFixed(1)}% dos enviados`}
+              />
+              <FunnelStage
+                label="Abriram" icon={Eye} count={overview.openedUnique30d}
+                pct={overview.openRate} base={overview.totalSent30d} color="bg-emerald-600" tint="bg-emerald-50 text-emerald-700"
+                hint={`${(overview.openRate * 100).toFixed(1)}% de abertura · ${overview.totalOpens30d} aberturas no total`}
+              />
+              <FunnelStage
+                label="Clicaram" icon={Workflow} count={overview.clickedUnique30d}
+                pct={overview.clickRate} base={overview.totalSent30d} color="bg-violet-600" tint="bg-violet-50 text-violet-700"
+                hint={`${(overview.clickRate * 100).toFixed(1)}% de clique · ${(overview.clickToOpenRate * 100).toFixed(1)}% dos que abriram (CTOR)`}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Métricas-chave */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <StatTile icon={Send} label="Enviados (30d)" value={overview.totalSent30d} accent="bg-blue-100 text-blue-900" />
+            <StatTile icon={Eye} label="Taxa de abertura" value={`${(overview.openRate * 100).toFixed(1)}%`} accent="bg-emerald-100 text-emerald-700" />
+            <StatTile icon={Workflow} label="Taxa de clique" value={`${(overview.clickRate * 100).toFixed(1)}%`} accent="bg-violet-100 text-violet-700" />
+            <StatTile icon={AlertTriangle} label="Bounces (30d)" value={overview.bounced30d} accent="bg-amber-100 text-amber-700" />
+            <StatTile icon={XCircle} label="Reclamações (30d)" value={overview.complained30d} accent="bg-orange-100 text-orange-700" />
+            <StatTile icon={MailX} label="Descadastros (30d)" value={overview.unsubscribed30d} accent="bg-red-100 text-red-600" />
+          </div>
+        </>
       )}
 
       <Card>
@@ -3489,30 +3555,157 @@ function StatsTab() {
 // to avoid firing N parallel queries when the page has many campaigns.
 function CampaignStatsRow({ campaignId, name }: { campaignId: number; name: string }) {
   const [show, setShow] = useState(false);
+  const [showRecipients, setShowRecipients] = useState(false);
   const { data: stats, isLoading } = trpc.emailMarketing.campaignStats.useQuery({ campaignId }, { enabled: show });
+
+  const pct = (n: number, base: number) => base > 0 ? `${Math.round((n / base) * 100)}%` : "0%";
 
   return (
     <div className="rounded-xl border border-slate-200 p-3 hover:border-blue-200 transition-colors">
       <div className="flex items-center justify-between gap-2">
         <p className="font-medium text-sm text-slate-700">{name}</p>
-        <Button size="sm" variant="outline" onClick={() => setShow(true)} disabled={show}>
-          <BarChart3 size={14} className="mr-1" /> Ver stats
-        </Button>
+        <div className="flex gap-1.5">
+          {!show && (
+            <Button size="sm" variant="outline" onClick={() => setShow(true)}>
+              <BarChart3 size={14} className="mr-1" /> Ver stats
+            </Button>
+          )}
+          <Button size="sm" variant="outline" onClick={() => setShowRecipients(true)}>
+            <Users size={14} className="mr-1" /> Quem abriu
+          </Button>
+        </div>
       </div>
       {show && (
         isLoading ? (
           <p className="text-xs text-gray-500 mt-1">Carregando...</p>
         ) : stats && (
           <div className="flex gap-1.5 mt-2 flex-wrap">
-            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">📬 {stats.delivered} entregues</Badge>
-            <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">👁 {stats.opened} abertos</Badge>
-            <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200">🔗 {stats.clicked} clicados</Badge>
+            <Badge variant="outline" className="text-xs bg-slate-100 text-slate-600 border-slate-200">👥 {stats.recipients} destinatários</Badge>
+            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">📤 {stats.sent} enviados</Badge>
+            <Badge variant="outline" className="text-xs bg-cyan-50 text-cyan-700 border-cyan-200">📬 {stats.delivered} entregues</Badge>
+            <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">👁 {stats.opened} abriram ({pct(stats.opened, stats.delivered || stats.sent)})</Badge>
+            <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200">🔗 {stats.clicked} clicaram ({pct(stats.clicked, stats.delivered || stats.sent)})</Badge>
             <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">⚠️ {stats.bounced} bounce</Badge>
             <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">🚫 {stats.complained} reclamações</Badge>
           </div>
         )
       )}
+      <CampaignRecipientsDialog campaignId={campaignId} name={name} open={showRecipients} onClose={() => setShowRecipients(false)} />
     </div>
+  );
+}
+
+// Drill-down: lista de destinatários de uma campanha com status de
+// engajamento, filtrável por abriu / não abriu / clicou / bounce.
+function CampaignRecipientsDialog({ campaignId, name, open, onClose }: { campaignId: number; name: string; open: boolean; onClose: () => void }) {
+  const [filter, setFilter] = useState<'all' | 'opened' | 'not_opened' | 'clicked' | 'not_clicked' | 'bounced'>('all');
+  const { data: recipients, isLoading } = trpc.emailMarketing.campaignRecipients.useQuery(
+    { campaignId, engagement: filter, limit: 500 },
+    { enabled: open }
+  );
+
+  const FILTERS: { value: typeof filter; label: string }[] = [
+    { value: 'all', label: 'Todos' },
+    { value: 'opened', label: 'Abriram' },
+    { value: 'not_opened', label: 'Não abriram' },
+    { value: 'clicked', label: 'Clicaram' },
+    { value: 'not_clicked', label: 'Não clicaram' },
+    { value: 'bounced', label: 'Bounce' },
+  ];
+
+  const exportCsv = () => {
+    if (!recipients || recipients.length === 0) return;
+    const header = ["Nome", "Email", "Status", "Aberturas", "Cliques", "Bounce", "1ª abertura", "Último evento"];
+    const rows = recipients.map(r => [
+      r.name ?? "", r.email, r.status, String(r.opens), String(r.clicks),
+      r.bounced ? "sim" : "não", formatDateTime(r.firstOpen), formatDateTime(r.lastEvent),
+    ]);
+    const csv = [header, ...rows].map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `destinatarios-${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Users size={16} className="text-blue-900" /> Destinatários — {name}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          {FILTERS.map(f => (
+            <button
+              key={f.value}
+              onClick={() => setFilter(f.value)}
+              className={`px-3 py-1 rounded-lg text-xs font-medium border transition ${filter === f.value ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:bg-blue-50'}`}
+            >
+              {f.label}
+            </button>
+          ))}
+          <div className="ml-auto">
+            <Button size="sm" variant="outline" onClick={exportCsv} disabled={!recipients || recipients.length === 0}>
+              <Download size={14} className="mr-1" /> CSV
+            </Button>
+          </div>
+        </div>
+
+        <div className="overflow-auto rounded-xl border border-slate-200 mt-1">
+          {isLoading ? (
+            <p className="text-sm text-slate-500 p-4">Carregando...</p>
+          ) : recipients && recipients.length > 0 ? (
+            <table className="w-full text-sm">
+              <thead className={THEAD_CLASS}>
+                <tr>
+                  <th className={TH_CLASS}>Contato</th>
+                  <th className={TH_CLASS}>Status</th>
+                  <th className={TH_CLASS}>Aberturas</th>
+                  <th className={TH_CLASS}>Cliques</th>
+                  <th className={TH_CLASS}>Último evento</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recipients.map(r => (
+                  <tr key={r.id} className={TR_CLASS}>
+                    <td className="px-3 py-2">
+                      <p className="font-medium text-slate-700 truncate">{r.name || r.email}</p>
+                      {r.name && <p className="text-xs text-slate-400 truncate">{r.email}</p>}
+                    </td>
+                    <td className="px-3 py-2">
+                      {r.bounced ? (
+                        <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">Bounce</Badge>
+                      ) : r.clicks > 0 ? (
+                        <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200">Clicou</Badge>
+                      ) : r.opens > 0 ? (
+                        <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">Abriu</Badge>
+                      ) : r.status === 'sent' ? (
+                        <Badge variant="outline" className="text-xs bg-slate-100 text-slate-500 border-slate-200">Não abriu</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-xs bg-red-50 text-red-600 border-red-200">{r.status}</Badge>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums">{r.opens}</td>
+                    <td className="px-3 py-2 tabular-nums">{r.clicks}</td>
+                    <td className="px-3 py-2 text-xs text-slate-500">{formatDateTime(r.lastEvent)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="text-sm text-slate-500 p-4">Nenhum destinatário neste filtro.</p>
+          )}
+        </div>
+        {recipients && recipients.length >= 500 && (
+          <p className="text-[11px] text-slate-400">Exibindo os primeiros 500 destinatários.</p>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
