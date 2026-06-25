@@ -773,15 +773,22 @@ export function layout(body: string, unsubUrl: string, signatureHtml?: string): 
   if (sigHtml) {
     sigHtml = sigHtml
       .replace(/<table\b([^>]*)>/gi, (_m, attrs: string) => {
-        const clean = attrs.replace(/\bwidth\s*=\s*["']?[^"'\s>]+["']?/gi, '');
-        return `<table${clean} style="max-width:260px;">`;
+        const clean = attrs
+          .replace(/\bwidth\s*=\s*["']?[^"'\s>]+["']?/gi, '')
+          .replace(/\bstyle\s*=\s*["'][^"']*["']/gi, '');
+        return `<table${clean} width="260" style="max-width:260px;table-layout:fixed;">`;
+      })
+      .replace(/<td\b([^>]*)>/gi, (_m, attrs: string) => {
+        const clean = attrs
+          .replace(/\bwidth\s*=\s*["']?[^"'\s>]+["']?/gi, '');
+        return `<td${clean}>`;
       })
       .replace(/<img\b([^>]*)>/gi, (_m, attrs: string) => {
         const clean = attrs
           .replace(/\bwidth\s*=\s*["']?[^"'\s>]+["']?/gi, '')
           .replace(/\bheight\s*=\s*["']?[^"'\s>]+["']?/gi, '')
           .replace(/\bstyle\s*=\s*["'][^"']*["']/gi, '');
-        return `<img${clean} style="max-width:260px;width:260px;height:auto;display:block;">`;
+        return `<img${clean} width="260" style="width:260px;max-width:260px;height:auto;display:block;">`;
       });
   }
   const sigBlock = sigHtml
