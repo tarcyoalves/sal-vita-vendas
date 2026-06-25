@@ -792,6 +792,9 @@ export function layout(body: string, unsubUrl: string, signatureHtml?: string): 
             </td>
           </tr>`
     : '';
+  const htmlBody = bodyToHtml(body);
+  const isStructuredHtml = /<table[\s>]/i.test(htmlBody);
+  const bodyPadding = isStructuredHtml ? 'padding:0;' : 'padding:32px 40px 24px;';
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -806,8 +809,8 @@ export function layout(body: string, unsubUrl: string, signatureHtml?: string): 
         <table width="100%" cellpadding="0" cellspacing="0" border="0"
                style="width:100%;background:#ffffff;">
           <tr>
-            <td style="padding:32px 40px 24px;">
-              ${bodyToHtml(body)}
+            <td style="${bodyPadding}">
+              ${htmlBody}
             </td>
           </tr>
           ${sigBlock}
