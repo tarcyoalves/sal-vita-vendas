@@ -243,16 +243,6 @@ export default function Attendants() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-      </div>
-    );
-  }
-
-  if (!user || user.role !== "admin") return null;
-
   // ── Aplica filtro avançado (tudo client-side, sem novas queries) ──────────
   const filteredAttendants = useMemo(() => {
     let result = attendants as Attendant[];
@@ -282,6 +272,16 @@ export default function Attendants() {
     onlyAlerts,
     search.trim().length > 0,
   ].filter(Boolean).length;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
+
+  if (!user || user.role !== "admin") return null;
 
   return (
     <div className="p-4 md:p-6 space-y-4">
