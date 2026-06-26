@@ -8,7 +8,7 @@ import {
   emailTemplateCategories, emailTemplates, emailCampaigns, emailCampaignRecipients, emailSuppressions,
   emailSequences, emailSequenceSteps, emailSequenceEnrollments, emailSequenceSends,
   emailEvents, automationRules, emailSendCounters,
-  tasks, clients, sellers, marketingContacts,
+  tasks, clients, sellers, marketingContacts, marketingLists,
 } from '../db/schema';
 import { pickAccount, sendBatch, layout, renderTemplate, renderSignature, sanitizeCampaignHtml, getUsage, getAllDomainTracking, setDomainTracking, getAccounts, type BatchMessage } from '../email/marketing';
 import { enrollInSequence } from '../email/automations';
@@ -39,9 +39,10 @@ const audienceInput = z.object({
   source: z.enum(['leads', 'clients', 'contacts', 'both', 'all']).default('leads'),
   assignedTo: z.string().optional(),
   tags: z.array(z.string()).optional(),
+  listId: z.number().optional(),
 });
 
-async function buildAudience(opts: { source: 'leads' | 'clients' | 'contacts' | 'both' | 'all'; assignedTo?: string; tags?: string[] }): Promise<AudienceRow[]> {
+async function buildAudience(opts: { source: 'leads' | 'clients' | 'contacts' | 'both' | 'all'; assignedTo?: string; tags?: string[]; listId?: number }): Promise<AudienceRow[]> {
   const rows: AudienceRow[] = [];
 
   if (opts.source === 'leads' || opts.source === 'both' || opts.source === 'all') {
@@ -84,6 +85,9 @@ async function buildAudience(opts: { source: 'leads' | 'clients' | 'contacts' | 
     const conditions = [eq(marketingContacts.status, 'active')];
     if (opts.tags && opts.tags.length > 0) {
       conditions.push(sql`${marketingContacts.tags} && ARRAY[${sql.join(opts.tags.map(t => sql`${t}`), sql`, `)}]::text[]`);
+    }
+    if (opts.listId) {
+      conditions.push(eq(marketingContacts.listId, opts.listId));
     }
     const contactRows = await db.select({ email: marketingContacts.email, name: marketingContacts.name })
       .from(marketingContacts)
@@ -1655,10 +1659,21 @@ export const emailMarketingRouter = router({
         state: z.string().optional(),
       })).max(5000),
       tags: z.array(z.string()).default([]),
+      listId: z.number().optional(),
+      newListName: z.string().max(200).optional(),
     }))
     .mutation(async ({ input }) => {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       const allTags = Array.from(new Set(['Leads Importados', ...input.tags.map(t => t.trim()).filter(Boolean)]));
+
+      // Resolve list: create new or use existing
+      let listId: number | null = null;
+      if (input.newListName?.trim()) {
+        const [created] = await db.insert(marketingLists).values({ name: input.newListName.trim() }).returning();
+        listId = created.id;
+      } else if (input.listId) {
+        listId = input.listId;
+      }
 
       // Normalize and validate incoming contacts, dedup by email
       const seen = new Set<string>();
@@ -1681,7 +1696,7 @@ export const emailMarketingRouter = router({
       }
 
       if (validContacts.length === 0) {
-        return { imported: 0, updated: 0, skippedInvalid, total: input.contacts.length };
+        return { imported: 0, updated: 0, skippedInvalid, total: input.contacts.length, listId };
       }
 
       // Fetch existing contacts by email (case-insensitive) in a single query
@@ -1694,6 +1709,7 @@ export const emailMarketingRouter = router({
         city: marketingContacts.city,
         state: marketingContacts.state,
         tags: marketingContacts.tags,
+        listId: marketingContacts.listId,
       }).from(marketingContacts)
         .where(sql`lower(${marketingContacts.email}) IN (${sql.join(validContacts.map(c => sql`${c.email}`), sql`, `)})`);
 
@@ -1705,7 +1721,7 @@ export const emailMarketingRouter = router({
       for (const c of validContacts) {
         const existing = existingMap.get(c.email);
         if (existing) {
-          // Merge: union tags, fill empty fields
+          // Merge: union tags, fill empty fields, assign to list if not already in one
           const mergedTags = Array.from(new Set([...(existing.tags ?? []), ...allTags]));
           const updates: Record<string, any> = { tags: mergedTags, updatedAt: new Date() };
           if (!existing.name && c.name) updates.name = c.name;
@@ -1713,6 +1729,7 @@ export const emailMarketingRouter = router({
           if (!existing.company && c.company) updates.company = c.company;
           if (!existing.city && c.city) updates.city = c.city;
           if (!existing.state && c.state) updates.state = c.state;
+          if (listId && !existing.listId) updates.listId = listId;
           toUpdate.push({ id: existing.id, data: updates });
         } else {
           toInsert.push({
@@ -1722,6 +1739,7 @@ export const emailMarketingRouter = router({
             company: c.company ?? null,
             city: c.city ?? null,
             state: c.state ?? null,
+            listId,
             tags: allTags,
             source: 'csv_import',
             status: 'active',
@@ -1731,7 +1749,6 @@ export const emailMarketingRouter = router({
 
       // Batch insert new contacts
       if (toInsert.length > 0) {
-        // Insert in chunks of 500 to avoid query size limits
         for (let i = 0; i < toInsert.length; i += 500) {
           await db.insert(marketingContacts).values(toInsert.slice(i, i + 500));
         }
@@ -1744,11 +1761,20 @@ export const emailMarketingRouter = router({
         }
       }
 
+      // Update list contact count
+      if (listId) {
+        const [cntRow] = await db.select({ cnt: count() }).from(marketingContacts)
+          .where(and(eq(marketingContacts.listId, listId), eq(marketingContacts.status, 'active')));
+        await db.update(marketingLists).set({ contactCount: Number(cntRow?.cnt ?? 0), updatedAt: new Date() })
+          .where(eq(marketingLists.id, listId));
+      }
+
       return {
         imported: toInsert.length,
         updated: toUpdate.length,
         skippedInvalid,
         total: input.contacts.length,
+        listId,
       };
     }),
 
@@ -1756,6 +1782,7 @@ export const emailMarketingRouter = router({
     .input(z.object({
       search: z.string().optional(),
       tags: z.array(z.string()).optional(),
+      listId: z.number().optional(),
       status: z.enum(['all', 'active', 'unsubscribed']).default('all'),
       limit: z.number().int().min(1).max(200).optional().default(50),
       offset: z.number().int().min(0).optional().default(0),
@@ -1764,6 +1791,9 @@ export const emailMarketingRouter = router({
       const conditions: any[] = [];
       if (input.status !== 'all') {
         conditions.push(eq(marketingContacts.status, input.status));
+      }
+      if (input.listId !== undefined) {
+        conditions.push(eq(marketingContacts.listId, input.listId));
       }
       if (input.search) {
         const s = `%${input.search.toLowerCase()}%`;
@@ -1938,5 +1968,68 @@ export const emailMarketingRouter = router({
         .onConflictDoNothing();
 
       return { ok: true };
+    }),
+
+  // ── Marketing Lists ────────────────────────────────────────────────────────
+
+  listMarketingLists: adminProcedure.query(async () => {
+    return db.select().from(marketingLists).orderBy(desc(marketingLists.updatedAt));
+  }),
+
+  upsertMarketingList: adminProcedure
+    .input(z.object({
+      id: z.number().optional(),
+      name: z.string().min(1).max(200),
+      description: z.string().max(500).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      if (input.id) {
+        const [updated] = await db.update(marketingLists)
+          .set({ name: input.name, description: input.description ?? null, updatedAt: new Date() })
+          .where(eq(marketingLists.id, input.id))
+          .returning();
+        if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'Lista não encontrada' });
+        return updated;
+      }
+      const [created] = await db.insert(marketingLists)
+        .values({ name: input.name, description: input.description ?? null })
+        .returning();
+      return created;
+    }),
+
+  deleteMarketingList: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.update(marketingContacts)
+        .set({ listId: null, updatedAt: new Date() })
+        .where(eq(marketingContacts.listId, input.id));
+      await db.delete(marketingLists).where(eq(marketingLists.id, input.id));
+      return { ok: true };
+    }),
+
+  moveContactsToList: adminProcedure
+    .input(z.object({
+      contactIds: z.array(z.number()).min(1),
+      listId: z.number().nullable(),
+    }))
+    .mutation(async ({ input }) => {
+      const oldListIds = await db.select({ listId: marketingContacts.listId })
+        .from(marketingContacts)
+        .where(inArray(marketingContacts.id, input.contactIds));
+      const affectedListIds = new Set(oldListIds.map(r => r.listId).filter((id): id is number => id !== null));
+
+      await db.update(marketingContacts)
+        .set({ listId: input.listId, updatedAt: new Date() })
+        .where(inArray(marketingContacts.id, input.contactIds));
+
+      if (input.listId) affectedListIds.add(input.listId);
+      for (const lid of affectedListIds) {
+        const [cntRow] = await db.select({ cnt: count() }).from(marketingContacts)
+          .where(and(eq(marketingContacts.listId, lid), eq(marketingContacts.status, 'active')));
+        await db.update(marketingLists).set({ contactCount: Number(cntRow?.cnt ?? 0), updatedAt: new Date() })
+          .where(eq(marketingLists.id, lid));
+      }
+
+      return { moved: input.contactIds.length };
     }),
 });

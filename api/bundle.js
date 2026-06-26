@@ -42662,8 +42662,11 @@ __export(schema_exports, {
   emailSequenceSteps: () => emailSequenceSteps,
   emailSequences: () => emailSequences,
   emailSuppressions: () => emailSuppressions,
+  emailTemplateCategories: () => emailTemplateCategories,
   emailTemplates: () => emailTemplates,
   knowledgeDocuments: () => knowledgeDocuments,
+  marketingContacts: () => marketingContacts,
+  marketingLists: () => marketingLists,
   msgTemplates: () => msgTemplates,
   passwordResetTokens: () => passwordResetTokens,
   reminders: () => reminders,
@@ -42675,7 +42678,7 @@ __export(schema_exports, {
   users: () => users,
   workSessions: () => workSessions
 });
-var appSettings, tags, users, sellers, clients, tasks, reminders, chatMessages, knowledgeDocuments, workSessions, siteOrders, abandonedCarts, automationRuns, coupons, msgTemplates, emailTemplates, emailCampaigns, emailCampaignRecipients, emailSuppressions, emailSendCounters, taskDeletionLogs, passwordResetTokens, emailSequences, emailSequenceSteps, emailSequenceEnrollments, emailSequenceSends, emailEvents, automationRules;
+var appSettings, tags, users, sellers, clients, tasks, reminders, chatMessages, knowledgeDocuments, workSessions, siteOrders, abandonedCarts, automationRuns, coupons, msgTemplates, emailTemplateCategories, emailTemplates, emailCampaigns, emailCampaignRecipients, emailSuppressions, emailSendCounters, taskDeletionLogs, passwordResetTokens, emailSequences, emailSequenceSteps, emailSequenceEnrollments, emailSequenceSends, emailEvents, automationRules, marketingLists, marketingContacts;
 var init_schema2 = __esm({
   "server/db/schema.ts"() {
     "use strict";
@@ -42926,8 +42929,15 @@ var init_schema2 = __esm({
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
+    emailTemplateCategories = pgTable("email_template_categories", {
+      id: serial("id").primaryKey(),
+      name: text("name").notNull(),
+      sortOrder: integer("sort_order").default(0).notNull(),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
     emailTemplates = pgTable("email_templates", {
       id: serial("id").primaryKey(),
+      categoryIds: jsonb("category_ids").$type(),
       slug: text("slug").notNull().unique(),
       name: text("name").notNull(),
       subject: text("subject").notNull(),
@@ -43031,9 +43041,11 @@ var init_schema2 = __esm({
       // dias após a inscrição
       subject: text("subject").notNull(),
       htmlBody: text("html_body").notNull(),
-      // E-mail Marketing Fase 3 — condição de envio avaliada contra o engajamento
-      // anterior da inscrição: always | if_opened | if_not_opened | if_clicked | if_not_clicked
       sendCondition: text("send_condition").notNull().default("always"),
+      retryIfNotOpened: boolean("retry_if_not_opened").notNull().default(false),
+      retryDelayHours: integer("retry_delay_hours").notNull().default(24),
+      maxRetries: integer("max_retries").notNull().default(1),
+      retrySubject: text("retry_subject"),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     emailSequenceEnrollments = pgTable("email_sequence_enrollments", {
@@ -43064,6 +43076,7 @@ var init_schema2 = __esm({
       accountKey: text("account_key"),
       messageId: text("message_id"),
       error: text("error"),
+      retryNumber: integer("retry_number").notNull().default(0),
       sentAt: timestamp("sent_at").defaultNow().notNull()
     });
     emailEvents = pgTable("email_events", {
@@ -43091,6 +43104,32 @@ var init_schema2 = __esm({
       // lead MUST NOT have ANY of these tags
       cancelOtherSequences: boolean("cancel_other_sequences").default(false).notNull(),
       active: boolean("active").default(true).notNull(),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
+    marketingLists = pgTable("marketing_lists", {
+      id: serial("id").primaryKey(),
+      name: text("name").notNull(),
+      description: text("description"),
+      contactCount: integer("contact_count").notNull().default(0),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
+    marketingContacts = pgTable("marketing_contacts", {
+      id: serial("id").primaryKey(),
+      email: text("email").notNull(),
+      name: text("name"),
+      phone: text("phone"),
+      company: text("company"),
+      city: text("city"),
+      state: text("state"),
+      listId: integer("list_id"),
+      tags: text("tags").array().default([]).notNull(),
+      source: text("source").notNull().default("csv_import"),
+      // csv_import | manual
+      status: text("status").notNull().default("active"),
+      // active | unsubscribed
+      notes: text("notes"),
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
@@ -66063,6 +66102,7 @@ function sanitizeSignatureHtml(html) {
       a: ["href", "target", "rel", "style"],
       img: ["src", "alt", "width", "height", "style"],
       font: ["color", "size", "face"],
+      table: ["cellpadding", "cellspacing", "border", "width", "style"],
       td: ["style", "colspan", "rowspan", "width", "align", "valign"],
       "*": ["style"]
     },
@@ -66100,16 +66140,22 @@ function renderSignature(html, seller) {
 function layout2(body, unsubUrl, signatureHtml) {
   let sigHtml = signatureHtml ?? "";
   if (sigHtml) {
-    sigHtml = sigHtml.replace(/<img\b([^>]*)>/gi, (_m, attrs) => {
+    sigHtml = sigHtml.replace(/<table\b([^>]*)>/gi, (_m, attrs) => {
+      const clean = attrs.replace(/\bwidth\s*=\s*["']?[^"'\s>]+["']?/gi, "");
+      return `<table${clean}>`;
+    }).replace(/<img\b([^>]*)>/gi, (_m, attrs) => {
       const clean = attrs.replace(/\bwidth\s*=\s*["']?[^"'\s>]+["']?/gi, "").replace(/\bheight\s*=\s*["']?[^"'\s>]+["']?/gi, "").replace(/\bstyle\s*=\s*["'][^"']*["']/gi, "");
-      return `<img${clean} style="max-width:260px;height:auto;display:block;">`;
+      return `<img${clean} width="650" style="width:650px;max-width:100%;height:auto;display:block;">`;
     });
   }
   const sigBlock = sigHtml ? `<tr>
-            <td style="padding:0 32px 24px;border-top:1px solid #eee;">
-              <div style="padding-top:16px;font-size:13px;color:#444;line-height:1.6;max-width:280px;">${sigHtml}</div>
+            <td style="padding:16px 40px 24px;">
+              ${sigHtml}
             </td>
           </tr>` : "";
+  const htmlBody = bodyToHtml(body);
+  const isStructuredHtml = /<table[\s>]/i.test(htmlBody);
+  const bodyPadding = isStructuredHtml ? "padding:0;" : "padding:32px 40px 24px;";
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -66118,19 +66164,19 @@ function layout2(body, unsubUrl, signatureHtml) {
   <title>Sal Vita</title>
 </head>
 <body style="margin:0;padding:0;background:#f4f4f4;font-family:system-ui,Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f4;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;">
     <tr>
-      <td align="center" style="padding:24px 8px;">
-        <table width="600" cellpadding="0" cellspacing="0" border="0"
-               style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
+      <td align="center" style="padding:0;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0"
+               style="width:100%;background:#ffffff;">
           <tr>
-            <td style="padding:32px 32px 24px;">
-              ${bodyToHtml(body)}
+            <td style="${bodyPadding}">
+              ${htmlBody}
             </td>
           </tr>
           ${sigBlock}
           <tr>
-            <td style="background:#f4f4f4;padding:20px 32px;border-top:1px solid #e0e0e0;text-align:center;">
+            <td style="background:#f9f9f9;padding:20px 40px;border-top:1px solid #e0e0e0;text-align:center;">
               <p style="margin:0;font-size:12px;color:#888;">
                 <strong>Sal Vita &mdash; Sal Marinho Premium de Mossor\xF3/RN</strong>
               </p>
@@ -66386,6 +66432,7 @@ async function processSequenceEnrollments(opts) {
     failed: 0,
     completed: 0,
     skipped: 0,
+    retried: 0,
     quotaExhausted: false
   };
   const now = /* @__PURE__ */ new Date();
@@ -66415,6 +66462,36 @@ async function processSequenceEnrollments(opts) {
   const sequenceById = new Map(allSequences.map((s) => [s.id, s]));
   const unsubBase = process.env.PUBLIC_APP_URL ?? "https://lembretes.salvitarn.com.br";
   const engMap = await enrollmentEngagementBatch(dueEnrollments.map((e) => e.id));
+  const enrollmentIds = dueEnrollments.map((e) => e.id);
+  const existingSends = await db.select({
+    enrollmentId: emailSequenceSends.enrollmentId,
+    stepId: emailSequenceSends.stepId,
+    status: emailSequenceSends.status,
+    retryNumber: emailSequenceSends.retryNumber,
+    messageId: emailSequenceSends.messageId
+  }).from(emailSequenceSends).where(and(
+    inArray(emailSequenceSends.enrollmentId, enrollmentIds),
+    eq(emailSequenceSends.status, "sent")
+  ));
+  const sendsByEnrollmentStep = /* @__PURE__ */ new Map();
+  for (const s of existingSends) {
+    const key = `${s.enrollmentId}:${s.stepId}`;
+    const entry = sendsByEnrollmentStep.get(key) ?? { maxRetryNumber: -1, messageIds: [] };
+    entry.maxRetryNumber = Math.max(entry.maxRetryNumber, s.retryNumber);
+    if (s.messageId)
+      entry.messageIds.push(s.messageId);
+    sendsByEnrollmentStep.set(key, entry);
+  }
+  const allRetryMessageIds = [...new Set(existingSends.filter((s) => s.messageId).map((s) => s.messageId))];
+  const openedMessageIds = /* @__PURE__ */ new Set();
+  if (allRetryMessageIds.length > 0) {
+    const openRows = await db.select({ messageId: emailEvents.messageId }).from(emailEvents).where(and(
+      inArray(emailEvents.messageId, allRetryMessageIds),
+      eq(emailEvents.eventType, "opened")
+    ));
+    for (const r of openRows)
+      openedMessageIds.add(r.messageId);
+  }
   const sendable = [];
   for (const original of dueEnrollments) {
     let enrollment = original;
@@ -66426,13 +66503,7 @@ async function processSequenceEnrollments(opts) {
         if (seq?.repeat && seq.repeatIntervalDays) {
           const newCycleStart = new Date(now.getTime() + seq.repeatIntervalDays * 24 * 60 * 60 * 1e3);
           const nextSendAt2 = computeNextSendAt(newCycleStart, steps, 0);
-          enrollment = {
-            ...enrollment,
-            currentStep: 0,
-            cycleStartedAt: newCycleStart,
-            nextSendAt: nextSendAt2,
-            status: "active"
-          };
+          enrollment = { ...enrollment, currentStep: 0, cycleStartedAt: newCycleStart, nextSendAt: nextSendAt2, status: "active" };
           await db.update(emailSequenceEnrollments).set({ currentStep: 0, cycleStartedAt: newCycleStart, nextSendAt: nextSendAt2, status: "active", updatedAt: /* @__PURE__ */ new Date() }).where(eq(emailSequenceEnrollments.id, enrollment.id));
           continue;
         }
@@ -66450,16 +66521,45 @@ async function processSequenceEnrollments(opts) {
         }
         break;
       }
+      const sendKey = `${enrollment.id}:${step.id}`;
+      const priorSends = sendsByEnrollmentStep.get(sendKey);
+      if (priorSends && priorSends.maxRetryNumber >= 0) {
+        if (step.retryIfNotOpened) {
+          const wasOpened = priorSends.messageIds.some((mid) => openedMessageIds.has(mid));
+          if (!wasOpened && priorSends.maxRetryNumber < step.maxRetries) {
+            const retryNum = priorSends.maxRetryNumber + 1;
+            sendable.push({
+              enrollment,
+              step,
+              retryNumber: retryNum,
+              subjectOverride: step.retrySubject || void 0
+            });
+            break;
+          }
+        }
+        const newCurrentStep2 = enrollment.currentStep + 1;
+        const cycleStart2 = enrollment.cycleStartedAt ?? enrollment.enrolledAt;
+        const nextSendAt2 = computeNextSendAt(cycleStart2, steps, newCurrentStep2);
+        const newStatus2 = nextSendAt2 ? "active" : "completed";
+        enrollment = { ...enrollment, currentStep: newCurrentStep2, nextSendAt: nextSendAt2, status: newStatus2 };
+        await db.update(emailSequenceEnrollments).set({ currentStep: newCurrentStep2, nextSendAt: nextSendAt2, status: newStatus2, updatedAt: /* @__PURE__ */ new Date() }).where(eq(emailSequenceEnrollments.id, enrollment.id));
+        if (newStatus2 === "completed") {
+          result.completed++;
+          break;
+        }
+        continue;
+      }
       const eng = engMap.get(enrollment.id) ?? { opened: false, clicked: false };
       if (conditionMet(step.sendCondition, eng)) {
-        sendable.push({ enrollment, step });
+        sendable.push({ enrollment, step, retryNumber: 0 });
         break;
       }
       await db.insert(emailSequenceSends).values({
         enrollmentId: enrollment.id,
         stepId: step.id,
         status: "skipped",
-        messageId: null
+        messageId: null,
+        retryNumber: 0
       });
       result.skipped++;
       const newCurrentStep = enrollment.currentStep + 1;
@@ -66498,44 +66598,55 @@ async function processSequenceEnrollments(opts) {
     i += batchSize;
     const messages = [];
     const batchMeta = [];
-    for (const { enrollment, step } of batch) {
+    for (const item of batch) {
+      const { enrollment, step, retryNumber, subjectOverride } = item;
       const unsubUrl = `${unsubBase}/api/unsubscribe?t=${enrollment.unsubToken}`;
       const signatureHtml = enrollment.replyTo ? signatureMap.get(enrollment.replyTo.toLowerCase()) : void 0;
+      const subject = subjectOverride ? renderTemplate(subjectOverride, { nome: enrollment.name ?? "" }) : renderTemplate(step.subject, { nome: enrollment.name ?? "" });
       messages.push({
         to: enrollment.email,
-        subject: renderTemplate(step.subject, { nome: enrollment.name ?? "" }),
+        subject,
         html: layout2(renderTemplate(step.htmlBody, { nome: enrollment.name ?? "", unsubscribe: unsubUrl }), unsubUrl, signatureHtml),
         replyTo: enrollment.replyTo ?? void 0,
         unsubToken: enrollment.unsubToken
       });
-      batchMeta.push({ enrollment, step });
+      batchMeta.push(item);
     }
     if (messages.length > 0) {
       const results = await sendBatch(picked.account, messages);
       for (let j = 0; j < batchMeta.length; j++) {
-        const { enrollment, step } = batchMeta[j];
+        const { enrollment, step, retryNumber } = batchMeta[j];
         const sendResult = results[j];
         const steps = stepsBySequence.get(enrollment.sequenceId) ?? [];
-        const newCurrentStep = enrollment.currentStep + 1;
-        const cycleStart = enrollment.cycleStartedAt ?? enrollment.enrolledAt;
-        const nextSendAt = computeNextSendAt(cycleStart, steps, newCurrentStep);
-        const newStatus = nextSendAt ? "active" : "completed";
         if (sendResult.ok) {
           result.sent++;
+          if (retryNumber > 0)
+            result.retried++;
         } else {
           result.failed++;
         }
-        if (newStatus === "completed")
-          result.completed++;
-        await db.update(emailSequenceEnrollments).set({ currentStep: newCurrentStep, nextSendAt, status: newStatus, updatedAt: /* @__PURE__ */ new Date() }).where(eq(emailSequenceEnrollments.id, enrollment.id));
         await db.insert(emailSequenceSends).values({
           enrollmentId: enrollment.id,
           stepId: step.id,
           status: sendResult.ok ? "sent" : "failed",
           accountKey: picked.account.key,
           messageId: sendResult.messageId,
-          error: sendResult.error
+          error: sendResult.error,
+          retryNumber
         });
+        const shouldScheduleRetry = sendResult.ok && step.retryIfNotOpened && retryNumber < step.maxRetries;
+        if (shouldScheduleRetry) {
+          const retryAt = new Date(now.getTime() + step.retryDelayHours * 60 * 60 * 1e3);
+          await db.update(emailSequenceEnrollments).set({ nextSendAt: retryAt, updatedAt: /* @__PURE__ */ new Date() }).where(eq(emailSequenceEnrollments.id, enrollment.id));
+        } else {
+          const newCurrentStep = enrollment.currentStep + 1;
+          const cycleStart = enrollment.cycleStartedAt ?? enrollment.enrolledAt;
+          const nextSendAt = computeNextSendAt(cycleStart, steps, newCurrentStep);
+          const newStatus = nextSendAt ? "active" : "completed";
+          if (newStatus === "completed")
+            result.completed++;
+          await db.update(emailSequenceEnrollments).set({ currentStep: newCurrentStep, nextSendAt, status: newStatus, updatedAt: /* @__PURE__ */ new Date() }).where(eq(emailSequenceEnrollments.id, enrollment.id));
+        }
       }
     }
     if (i >= sendable.length)
@@ -70459,13 +70570,14 @@ function phonePart(title) {
   return title.split(" - ")[2]?.trim() || null;
 }
 var audienceInput = external_exports.object({
-  source: external_exports.enum(["leads", "clients", "both"]).default("leads"),
+  source: external_exports.enum(["leads", "clients", "contacts", "both", "all"]).default("leads"),
   assignedTo: external_exports.string().optional(),
-  tags: external_exports.array(external_exports.string()).optional()
+  tags: external_exports.array(external_exports.string()).optional(),
+  listId: external_exports.number().optional()
 });
 async function buildAudience(opts) {
   const rows = [];
-  if (opts.source === "leads" || opts.source === "both") {
+  if (opts.source === "leads" || opts.source === "both" || opts.source === "all") {
     const sellerRows = await db.select({ name: sellers.name, email: sellers.email }).from(sellers);
     const sellerMap = new Map(sellerRows.map((s) => [s.name.toLowerCase(), s.email]));
     const conditions = [isNotNull(tasks.email), ne(tasks.email, ""), eq(tasks.emailConfirmed, true)];
@@ -70491,12 +70603,25 @@ async function buildAudience(opts) {
       });
     }
   }
-  if (opts.source === "clients" || opts.source === "both") {
+  if (opts.source === "clients" || opts.source === "both" || opts.source === "all") {
     const clientRows = await db.select({ email: clients.email, name: clients.name }).from(clients).where(and(isNotNull(clients.email), ne(clients.email, ""), eq(clients.unsubscribed, false)));
     for (const c of clientRows) {
       if (!c.email)
         continue;
       rows.push({ email: c.email.toLowerCase().trim(), name: c.name });
+    }
+  }
+  if (opts.source === "contacts" || opts.source === "all") {
+    const conditions = [eq(marketingContacts.status, "active")];
+    if (opts.tags && opts.tags.length > 0) {
+      conditions.push(sql`${marketingContacts.tags} && ARRAY[${sql.join(opts.tags.map((t2) => sql`${t2}`), sql`, `)}]::text[]`);
+    }
+    if (opts.listId) {
+      conditions.push(eq(marketingContacts.listId, opts.listId));
+    }
+    const contactRows = await db.select({ email: marketingContacts.email, name: marketingContacts.name }).from(marketingContacts).where(and(...conditions));
+    for (const c of contactRows) {
+      rows.push({ email: c.email.toLowerCase().trim(), name: c.name ?? "" });
     }
   }
   const seen = /* @__PURE__ */ new Set();
@@ -70570,18 +70695,68 @@ async function exportEngagementBatch(taskIds, windowStart) {
   return out;
 }
 var emailMarketingRouter = router({
+  // ── Template Categories ──────────────────────────────────────────────────
+  listTemplateCategories: adminProcedure.query(async () => {
+    try {
+      return await db.select().from(emailTemplateCategories).orderBy(emailTemplateCategories.sortOrder, emailTemplateCategories.name);
+    } catch {
+      return [];
+    }
+  }),
+  upsertTemplateCategory: adminProcedure.input(external_exports.object({ id: external_exports.number().optional(), name: external_exports.string().min(1).max(100), sortOrder: external_exports.number().optional() })).mutation(async ({ input }) => {
+    if (input.id) {
+      const [updated] = await db.update(emailTemplateCategories).set({ name: input.name, ...input.sortOrder !== void 0 ? { sortOrder: input.sortOrder } : {} }).where(eq(emailTemplateCategories.id, input.id)).returning();
+      if (!updated)
+        throw new TRPCError({ code: "NOT_FOUND", message: "Categoria n\xE3o encontrada" });
+      return updated;
+    }
+    const maxOrder = await db.select({ max: sql`COALESCE(MAX(sort_order), 0)` }).from(emailTemplateCategories);
+    const [created] = await db.insert(emailTemplateCategories).values({ name: input.name, sortOrder: input.sortOrder ?? (maxOrder[0]?.max ?? 0) + 1 }).returning();
+    return created;
+  }),
+  deleteTemplateCategory: adminProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ input }) => {
+    const allTpls = await db.select({ id: emailTemplates.id, categoryIds: emailTemplates.categoryIds }).from(emailTemplates);
+    for (const tpl of allTpls) {
+      const ids = tpl.categoryIds ?? [];
+      if (ids.includes(input.id)) {
+        const updated = ids.filter((c) => c !== input.id);
+        await db.update(emailTemplates).set({ categoryIds: updated.length > 0 ? updated : null }).where(eq(emailTemplates.id, tpl.id));
+      }
+    }
+    await db.delete(emailTemplateCategories).where(eq(emailTemplateCategories.id, input.id));
+    return { ok: true };
+  }),
   // ── Templates ──────────────────────────────────────────────────────────────
   listTemplates: adminProcedure.query(async () => {
-    return db.select().from(emailTemplates).orderBy(emailTemplates.name);
+    try {
+      return await db.select().from(emailTemplates).orderBy(emailTemplates.name);
+    } catch {
+      return await db.select({
+        id: emailTemplates.id,
+        slug: emailTemplates.slug,
+        name: emailTemplates.name,
+        subject: emailTemplates.subject,
+        htmlBody: emailTemplates.htmlBody,
+        attachments: emailTemplates.attachments,
+        active: emailTemplates.active,
+        createdAt: emailTemplates.createdAt,
+        updatedAt: emailTemplates.updatedAt
+      }).from(emailTemplates).orderBy(emailTemplates.name);
+    }
   }),
   listTemplatesForAttendant: protectedProcedure.query(async ({ ctx }) => {
     const [seller] = await db.select({ emk: sellers.emailMarketingEnabled }).from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
     if (ctx.user.role !== "admin" && !seller?.emk)
       return [];
-    return db.select({ id: emailTemplates.id, name: emailTemplates.name, slug: emailTemplates.slug, subject: emailTemplates.subject, htmlBody: emailTemplates.htmlBody, attachments: emailTemplates.attachments }).from(emailTemplates).where(eq(emailTemplates.active, true)).orderBy(emailTemplates.name);
+    try {
+      return await db.select({ id: emailTemplates.id, name: emailTemplates.name, slug: emailTemplates.slug, subject: emailTemplates.subject, htmlBody: emailTemplates.htmlBody, attachments: emailTemplates.attachments, categoryIds: emailTemplates.categoryIds }).from(emailTemplates).where(eq(emailTemplates.active, true)).orderBy(emailTemplates.name);
+    } catch {
+      return await db.select({ id: emailTemplates.id, name: emailTemplates.name, slug: emailTemplates.slug, subject: emailTemplates.subject, htmlBody: emailTemplates.htmlBody, attachments: emailTemplates.attachments }).from(emailTemplates).where(eq(emailTemplates.active, true)).orderBy(emailTemplates.name);
+    }
   }),
   upsertTemplate: adminProcedure.input(external_exports.object({
     id: external_exports.number().optional(),
+    categoryIds: external_exports.array(external_exports.number()).nullable().optional(),
     slug: external_exports.string().min(1).max(100),
     name: external_exports.string().min(1).max(200),
     subject: external_exports.string().min(1).max(300),
@@ -70620,7 +70795,7 @@ var emailMarketingRouter = router({
     name: external_exports.string().min(1).max(200),
     subject: external_exports.string().min(1).max(300),
     htmlBody: external_exports.string().min(1),
-    source: external_exports.enum(["leads", "clients", "both"]).default("leads"),
+    source: external_exports.enum(["leads", "clients", "contacts", "both", "all"]).default("leads"),
     assignedTo: external_exports.string().optional(),
     tags: external_exports.array(external_exports.string()).optional()
   })).mutation(async ({ input, ctx }) => {
@@ -70657,7 +70832,7 @@ var emailMarketingRouter = router({
       email: external_exports.string().email(),
       name: external_exports.string().optional()
     })).max(2e3).optional(),
-    audienceSource: external_exports.enum(["leads", "clients", "both"]).optional(),
+    audienceSource: external_exports.enum(["leads", "clients", "contacts", "both", "all"]).optional(),
     audienceAssignedTo: external_exports.string().optional(),
     audienceTags: external_exports.array(external_exports.string()).optional(),
     attachments: external_exports.array(external_exports.object({
@@ -71009,8 +71184,11 @@ var emailMarketingRouter = router({
     delayDays: external_exports.number().int().min(0),
     subject: external_exports.string().min(1).max(300),
     htmlBody: external_exports.string().min(1),
-    // E-mail Marketing Fase 3 — condição de envio (ramificação por engajamento).
-    sendCondition: external_exports.enum(["always", "if_opened", "if_not_opened", "if_clicked", "if_not_clicked"]).optional().default("always")
+    sendCondition: external_exports.enum(["always", "if_opened", "if_not_opened", "if_clicked", "if_not_clicked"]).optional().default("always"),
+    retryIfNotOpened: external_exports.boolean().optional().default(false),
+    retryDelayHours: external_exports.number().int().min(1).max(720).optional().default(24),
+    maxRetries: external_exports.number().int().min(1).max(5).optional().default(1),
+    retrySubject: external_exports.string().max(300).nullable().optional()
   })).mutation(async ({ input }) => {
     input.htmlBody = sanitizeCampaignHtml(input.htmlBody);
     if (input.id) {
@@ -71162,23 +71340,82 @@ var emailMarketingRouter = router({
   }),
   // ── Estatísticas ──────────────────────────────────────────────────────────
   campaignStats: adminProcedure.input(external_exports.object({ campaignId: external_exports.number() })).query(async ({ input }) => {
+    const [recRow] = await db.execute(sql`
+        SELECT
+          COUNT(*)::int AS total,
+          COUNT(*) FILTER (WHERE status = 'sent')::int AS sent
+        FROM ${emailCampaignRecipients}
+        WHERE campaign_id = ${input.campaignId}
+      `).then((r) => r.rows);
     const result = await db.execute(sql`
-        SELECT e.event_type, COUNT(*)::int AS cnt
+        SELECT
+          e.event_type,
+          COUNT(*)::int AS total,
+          COUNT(DISTINCT e.message_id)::int AS uniq
         FROM ${emailEvents} e
         INNER JOIN ${emailCampaignRecipients} r ON r.message_id = e.message_id
         WHERE r.campaign_id = ${input.campaignId}
         GROUP BY e.event_type
       `);
-    const counts = {};
-    for (const row of result.rows)
-      counts[row.event_type] = Number(row.cnt);
+    const uniq = {};
+    const total = {};
+    for (const row of result.rows) {
+      uniq[row.event_type] = Number(row.uniq);
+      total[row.event_type] = Number(row.total);
+    }
     return {
-      delivered: counts.delivered ?? 0,
-      opened: counts.opened ?? 0,
-      clicked: counts.clicked ?? 0,
-      bounced: counts.bounced ?? 0,
-      complained: counts.complained ?? 0
+      recipients: Number(recRow?.total ?? 0),
+      sent: Number(recRow?.sent ?? 0),
+      delivered: uniq.delivered ?? 0,
+      opened: uniq.opened ?? 0,
+      // únicos (pessoas distintas)
+      clicked: uniq.clicked ?? 0,
+      // únicos
+      totalOpens: total.opened ?? 0,
+      // inclui reaberturas
+      totalClicks: total.clicked ?? 0,
+      bounced: uniq.bounced ?? 0,
+      complained: uniq.complained ?? 0
     };
+  }),
+  // Drill-down: lista destinatário por destinatário de uma campanha com o
+  // status de engajamento (abriu? clicou? bounce?). Lazy-loaded e paginado
+  // para economizar Neon — só roda quando o admin abre o detalhe.
+  campaignRecipients: adminProcedure.input(external_exports.object({
+    campaignId: external_exports.number(),
+    engagement: external_exports.enum(["all", "opened", "not_opened", "clicked", "not_clicked", "bounced"]).optional().default("all"),
+    limit: external_exports.number().int().min(1).max(500).optional().default(100),
+    offset: external_exports.number().int().min(0).optional().default(0)
+  })).query(async ({ input }) => {
+    const having = input.engagement === "opened" ? sql`HAVING COUNT(*) FILTER (WHERE e.event_type = 'opened') > 0` : input.engagement === "not_opened" ? sql`HAVING COUNT(*) FILTER (WHERE e.event_type = 'opened') = 0` : input.engagement === "clicked" ? sql`HAVING COUNT(*) FILTER (WHERE e.event_type = 'clicked') > 0` : input.engagement === "not_clicked" ? sql`HAVING COUNT(*) FILTER (WHERE e.event_type = 'clicked') = 0` : input.engagement === "bounced" ? sql`HAVING COUNT(*) FILTER (WHERE e.event_type = 'bounced') > 0` : sql``;
+    const rows = await db.execute(sql`
+        SELECT
+          r.id, r.email, r.name, r.status, r.sent_at,
+          COUNT(*) FILTER (WHERE e.event_type = 'opened')::int AS opens,
+          COUNT(*) FILTER (WHERE e.event_type = 'clicked')::int AS clicks,
+          COUNT(*) FILTER (WHERE e.event_type = 'bounced')::int AS bounced,
+          MIN(e.created_at) FILTER (WHERE e.event_type = 'opened') AS first_open,
+          MAX(e.created_at) AS last_event
+        FROM ${emailCampaignRecipients} r
+        LEFT JOIN ${emailEvents} e ON e.message_id = r.message_id
+        WHERE r.campaign_id = ${input.campaignId}
+        GROUP BY r.id, r.email, r.name, r.status, r.sent_at
+        ${having}
+        ORDER BY opens DESC, clicks DESC, r.email ASC
+        LIMIT ${input.limit} OFFSET ${input.offset}
+      `);
+    return rows.rows.map((r) => ({
+      id: Number(r.id),
+      email: r.email,
+      name: r.name,
+      status: r.status,
+      sentAt: r.sent_at,
+      opens: Number(r.opens),
+      clicks: Number(r.clicks),
+      bounced: Number(r.bounced) > 0,
+      firstOpen: r.first_open,
+      lastEvent: r.last_event
+    }));
   }),
   sequenceStats: adminProcedure.input(external_exports.object({ sequenceId: external_exports.number() })).query(async ({ input }) => {
     const steps = await db.select().from(emailSequenceSteps).where(eq(emailSequenceSteps.sequenceId, input.sequenceId)).orderBy(asc(emailSequenceSteps.stepOrder));
@@ -71212,6 +71449,48 @@ var emailMarketingRouter = router({
       subject: step.subject,
       sendCondition: step.sendCondition,
       ...statsMap.get(step.id) ?? { sent: 0, skipped: 0, opened: 0, clicked: 0 }
+    }));
+  }),
+  // Drill-down: lista contato por contato (inscrição) de uma sequência com o
+  // status de engajamento agregado de TODOS os passos. Permite ver exatamente
+  // quem abriu / não abriu / clicou nos e-mails da sequência. Lazy + paginado.
+  sequenceRecipients: adminProcedure.input(external_exports.object({
+    sequenceId: external_exports.number(),
+    engagement: external_exports.enum(["all", "opened", "not_opened", "clicked", "not_clicked"]).optional().default("all"),
+    limit: external_exports.number().int().min(1).max(500).optional().default(200),
+    offset: external_exports.number().int().min(0).optional().default(0)
+  })).query(async ({ input }) => {
+    const having = input.engagement === "opened" ? sql`HAVING COUNT(*) FILTER (WHERE e.event_type = 'opened') > 0` : input.engagement === "not_opened" ? sql`HAVING COUNT(*) FILTER (WHERE e.event_type = 'opened') = 0` : input.engagement === "clicked" ? sql`HAVING COUNT(*) FILTER (WHERE e.event_type = 'clicked') > 0` : input.engagement === "not_clicked" ? sql`HAVING COUNT(*) FILTER (WHERE e.event_type = 'clicked') = 0` : sql``;
+    const rows = await db.execute(sql`
+        SELECT
+          en.id, en.email, en.name, en.status, en.current_step,
+          COUNT(DISTINCT sd.id) FILTER (WHERE sd.status = 'sent')::int AS sent_count,
+          COUNT(*) FILTER (WHERE e.event_type = 'opened')::int AS opens,
+          COUNT(*) FILTER (WHERE e.event_type = 'clicked')::int AS clicks,
+          MIN(e.created_at) FILTER (WHERE e.event_type = 'opened') AS first_open,
+          MAX(e.created_at) AS last_event,
+          MAX(sd.sent_at) AS last_sent
+        FROM ${emailSequenceEnrollments} en
+        LEFT JOIN ${emailSequenceSends} sd ON sd.enrollment_id = en.id
+        LEFT JOIN ${emailEvents} e ON e.message_id = sd.message_id
+        WHERE en.sequence_id = ${input.sequenceId}
+        GROUP BY en.id, en.email, en.name, en.status, en.current_step
+        ${having}
+        ORDER BY opens DESC, clicks DESC, en.email ASC
+        LIMIT ${input.limit} OFFSET ${input.offset}
+      `);
+    return rows.rows.map((r) => ({
+      id: Number(r.id),
+      email: r.email,
+      name: r.name,
+      status: r.status,
+      currentStep: Number(r.current_step),
+      sentCount: Number(r.sent_count),
+      opens: Number(r.opens),
+      clicks: Number(r.clicks),
+      firstOpen: r.first_open,
+      lastEvent: r.last_event,
+      lastSent: r.last_sent
     }));
   }),
   usageStats: adminProcedure.query(async () => {
@@ -71263,22 +71542,39 @@ var emailMarketingRouter = router({
     return result;
   }),
   overviewStats: adminProcedure.query(async () => {
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1e3);
-    const [campaignSentRow] = await db.select({ cnt: count() }).from(emailCampaignRecipients).where(and(eq(emailCampaignRecipients.status, "sent"), gte(emailCampaignRecipients.sentAt, thirtyDaysAgo)));
-    const [sequenceSentRow] = await db.select({ cnt: count() }).from(emailSequenceSends).where(and(eq(emailSequenceSends.status, "sent"), gte(emailSequenceSends.sentAt, thirtyDaysAgo)));
-    const eventCountsResult = await db.execute(sql`
-      SELECT event_type, COUNT(*)::int AS cnt
-      FROM ${emailEvents}
-      WHERE created_at >= ${thirtyDaysAgo}
-      GROUP BY event_type
+    const funnelResult = await db.execute(sql`
+      WITH sent_msgs AS (
+        SELECT message_id, 'campaign' AS kind FROM ${emailCampaignRecipients}
+          WHERE status = 'sent' AND message_id IS NOT NULL
+        UNION ALL
+        SELECT message_id, 'sequence' AS kind FROM ${emailSequenceSends}
+          WHERE status = 'sent' AND message_id IS NOT NULL
+      )
+      SELECT
+        COUNT(DISTINCT sm.message_id)::int AS sent,
+        COUNT(DISTINCT sm.message_id) FILTER (WHERE sm.kind = 'campaign')::int AS campaign_sent,
+        COUNT(DISTINCT sm.message_id) FILTER (WHERE sm.kind = 'sequence')::int AS sequence_sent,
+        COUNT(DISTINCT e.message_id) FILTER (WHERE e.event_type = 'delivered')::int AS delivered,
+        COUNT(DISTINCT e.message_id) FILTER (WHERE e.event_type = 'opened')::int AS opened,
+        COUNT(DISTINCT e.message_id) FILTER (WHERE e.event_type = 'clicked')::int AS clicked,
+        COUNT(*) FILTER (WHERE e.event_type = 'opened')::int AS total_opens,
+        COUNT(*) FILTER (WHERE e.event_type = 'clicked')::int AS total_clicks,
+        COUNT(DISTINCT e.message_id) FILTER (WHERE e.event_type = 'bounced')::int AS bounced,
+        COUNT(DISTINCT e.message_id) FILTER (WHERE e.event_type = 'complained')::int AS complained
+      FROM sent_msgs sm
+      LEFT JOIN ${emailEvents} e ON e.message_id = sm.message_id
     `);
-    const eventCounts = {};
-    for (const row of eventCountsResult.rows)
-      eventCounts[row.event_type] = Number(row.cnt);
-    const [unsubRow] = await db.select({ cnt: count() }).from(emailSuppressions).where(and(eq(emailSuppressions.reason, "unsubscribe"), gte(emailSuppressions.createdAt, thirtyDaysAgo)));
-    const totalSent = Number(campaignSentRow?.cnt ?? 0) + Number(sequenceSentRow?.cnt ?? 0);
-    const opened = eventCounts.opened ?? 0;
-    const clicked = eventCounts.clicked ?? 0;
+    const f = funnelResult.rows[0] ?? {};
+    const totalSent = Number(f.sent ?? 0);
+    const delivered = Number(f.delivered ?? 0);
+    const openedUnique = Number(f.opened ?? 0);
+    const clickedUnique = Number(f.clicked ?? 0);
+    const totalOpens = Number(f.total_opens ?? 0);
+    const totalClicks = Number(f.total_clicks ?? 0);
+    const bounced = Number(f.bounced ?? 0);
+    const complained = Number(f.complained ?? 0);
+    const [unsubRow] = await db.select({ cnt: count() }).from(emailSuppressions).where(eq(emailSuppressions.reason, "unsubscribe"));
+    const deliveredBase = delivered > 0 ? delivered : totalSent;
     const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
     const countersToday = await db.select({ accountKey: emailSendCounters.accountKey, sent: emailSendCounters.sent }).from(emailSendCounters).where(eq(emailSendCounters.day, today2));
     const usedToday = countersToday.reduce((sum2, c) => sum2 + (c.sent ?? 0), 0);
@@ -71286,11 +71582,23 @@ var emailMarketingRouter = router({
     const quotaToday = accountCount * MKT_DAILY_LIMIT2;
     return {
       totalSent30d: totalSent,
-      campaignSent30d: Number(campaignSentRow?.cnt ?? 0),
-      sequenceSent30d: Number(sequenceSentRow?.cnt ?? 0),
-      openRate: totalSent > 0 ? opened / totalSent : 0,
-      clickRate: totalSent > 0 ? clicked / totalSent : 0,
+      campaignSent30d: Number(f.campaign_sent ?? 0),
+      sequenceSent30d: Number(f.sequence_sent ?? 0),
+      // Funil completo (geral)
+      delivered30d: delivered,
+      openedUnique30d: openedUnique,
+      clickedUnique30d: clickedUnique,
+      totalOpens30d: totalOpens,
+      totalClicks30d: totalClicks,
+      bounced30d: bounced,
+      complained30d: complained,
       unsubscribed30d: Number(unsubRow?.cnt ?? 0),
+      // Taxas (sempre ≤ 100% — base consistente e contagem única)
+      deliveryRate: totalSent > 0 ? Math.min(1, delivered / totalSent) : 0,
+      openRate: deliveredBase > 0 ? Math.min(1, openedUnique / deliveredBase) : 0,
+      clickRate: deliveredBase > 0 ? Math.min(1, clickedUnique / deliveredBase) : 0,
+      clickToOpenRate: openedUnique > 0 ? Math.min(1, clickedUnique / openedUnique) : 0,
+      bounceRate: totalSent > 0 ? Math.min(1, bounced / totalSent) : 0,
       quotaUsedToday: usedToday,
       quotaTotalToday: quotaToday
     };
@@ -71587,6 +71895,317 @@ var emailMarketingRouter = router({
         break;
     }
     return out;
+  }),
+  // ── Marketing Contacts (standalone CSV-imported leads) ────────────────────
+  importMarketingContacts: adminProcedure.input(external_exports.object({
+    contacts: external_exports.array(external_exports.object({
+      email: external_exports.string(),
+      name: external_exports.string().optional(),
+      phone: external_exports.string().optional(),
+      company: external_exports.string().optional(),
+      city: external_exports.string().optional(),
+      state: external_exports.string().optional()
+    })).max(5e3),
+    tags: external_exports.array(external_exports.string()).default([]),
+    listId: external_exports.number().optional(),
+    newListName: external_exports.string().max(200).optional()
+  })).mutation(async ({ input }) => {
+    const emailRegex2 = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const allTags = Array.from(/* @__PURE__ */ new Set(["Leads Importados", ...input.tags.map((t2) => t2.trim()).filter(Boolean)]));
+    let listId = null;
+    if (input.newListName?.trim()) {
+      const [created] = await db.insert(marketingLists).values({ name: input.newListName.trim() }).returning();
+      listId = created.id;
+    } else if (input.listId) {
+      listId = input.listId;
+    }
+    const seen = /* @__PURE__ */ new Set();
+    const validContacts = [];
+    let skippedInvalid = 0;
+    for (const c of input.contacts) {
+      const email = c.email?.toLowerCase().trim();
+      if (!email || !emailRegex2.test(email)) {
+        skippedInvalid++;
+        continue;
+      }
+      if (seen.has(email))
+        continue;
+      seen.add(email);
+      validContacts.push({
+        email,
+        name: c.name?.trim() || void 0,
+        phone: c.phone?.trim() || void 0,
+        company: c.company?.trim() || void 0,
+        city: c.city?.trim() || void 0,
+        state: c.state?.trim() || void 0
+      });
+    }
+    if (validContacts.length === 0) {
+      return { imported: 0, updated: 0, skippedInvalid, total: input.contacts.length, listId };
+    }
+    const existingRows = await db.select({
+      id: marketingContacts.id,
+      email: marketingContacts.email,
+      name: marketingContacts.name,
+      phone: marketingContacts.phone,
+      company: marketingContacts.company,
+      city: marketingContacts.city,
+      state: marketingContacts.state,
+      tags: marketingContacts.tags,
+      listId: marketingContacts.listId
+    }).from(marketingContacts).where(sql`lower(${marketingContacts.email}) IN (${sql.join(validContacts.map((c) => sql`${c.email}`), sql`, `)})`);
+    const existingMap = new Map(existingRows.map((r) => [r.email.toLowerCase(), r]));
+    const toInsert = [];
+    const toUpdate = [];
+    for (const c of validContacts) {
+      const existing = existingMap.get(c.email);
+      if (existing) {
+        const mergedTags = Array.from(/* @__PURE__ */ new Set([...existing.tags ?? [], ...allTags]));
+        const updates = { tags: mergedTags, updatedAt: /* @__PURE__ */ new Date() };
+        if (!existing.name && c.name)
+          updates.name = c.name;
+        if (!existing.phone && c.phone)
+          updates.phone = c.phone;
+        if (!existing.company && c.company)
+          updates.company = c.company;
+        if (!existing.city && c.city)
+          updates.city = c.city;
+        if (!existing.state && c.state)
+          updates.state = c.state;
+        if (listId && !existing.listId)
+          updates.listId = listId;
+        toUpdate.push({ id: existing.id, data: updates });
+      } else {
+        toInsert.push({
+          email: c.email,
+          name: c.name ?? null,
+          phone: c.phone ?? null,
+          company: c.company ?? null,
+          city: c.city ?? null,
+          state: c.state ?? null,
+          listId,
+          tags: allTags,
+          source: "csv_import",
+          status: "active"
+        });
+      }
+    }
+    if (toInsert.length > 0) {
+      for (let i = 0; i < toInsert.length; i += 500) {
+        await db.insert(marketingContacts).values(toInsert.slice(i, i + 500));
+      }
+    }
+    if (toUpdate.length > 0) {
+      for (const u of toUpdate) {
+        await db.update(marketingContacts).set(u.data).where(eq(marketingContacts.id, u.id));
+      }
+    }
+    if (listId) {
+      const [cntRow] = await db.select({ cnt: count() }).from(marketingContacts).where(and(eq(marketingContacts.listId, listId), eq(marketingContacts.status, "active")));
+      await db.update(marketingLists).set({ contactCount: Number(cntRow?.cnt ?? 0), updatedAt: /* @__PURE__ */ new Date() }).where(eq(marketingLists.id, listId));
+    }
+    return {
+      imported: toInsert.length,
+      updated: toUpdate.length,
+      skippedInvalid,
+      total: input.contacts.length,
+      listId
+    };
+  }),
+  listMarketingContacts: adminProcedure.input(external_exports.object({
+    search: external_exports.string().optional(),
+    tags: external_exports.array(external_exports.string()).optional(),
+    listId: external_exports.number().optional(),
+    status: external_exports.enum(["all", "active", "unsubscribed"]).default("all"),
+    limit: external_exports.number().int().min(1).max(200).optional().default(50),
+    offset: external_exports.number().int().min(0).optional().default(0)
+  })).query(async ({ input }) => {
+    const conditions = [];
+    if (input.status !== "all") {
+      conditions.push(eq(marketingContacts.status, input.status));
+    }
+    if (input.listId !== void 0) {
+      conditions.push(eq(marketingContacts.listId, input.listId));
+    }
+    if (input.search) {
+      const s = `%${input.search.toLowerCase()}%`;
+      conditions.push(sql`(lower(${marketingContacts.email}) LIKE ${s} OR lower(COALESCE(${marketingContacts.name}, '')) LIKE ${s} OR lower(COALESCE(${marketingContacts.company}, '')) LIKE ${s})`);
+    }
+    if (input.tags && input.tags.length > 0) {
+      conditions.push(sql`${marketingContacts.tags} && ARRAY[${sql.join(input.tags.map((t2) => sql`${t2}`), sql`, `)}]::text[]`);
+    }
+    const where = conditions.length > 0 ? and(...conditions) : void 0;
+    const [rows, totalRow] = await Promise.all([
+      db.select().from(marketingContacts).where(where).orderBy(desc(marketingContacts.createdAt)).limit(input.limit).offset(input.offset),
+      db.select({ cnt: count() }).from(marketingContacts).where(where)
+    ]);
+    return { contacts: rows, total: Number(totalRow[0]?.cnt ?? 0) };
+  }),
+  marketingContactStats: adminProcedure.query(async () => {
+    const [totalRow] = await db.select({ cnt: count() }).from(marketingContacts);
+    const [activeRow] = await db.select({ cnt: count() }).from(marketingContacts).where(eq(marketingContacts.status, "active"));
+    const [unsubRow] = await db.select({ cnt: count() }).from(marketingContacts).where(eq(marketingContacts.status, "unsubscribed"));
+    const byTagResult = await db.execute(sql`
+      SELECT t AS tag, COUNT(*)::int AS cnt
+      FROM ${marketingContacts}, unnest(${marketingContacts.tags}) AS t
+      GROUP BY t
+      ORDER BY cnt DESC
+      LIMIT 20
+    `);
+    return {
+      total: Number(totalRow?.cnt ?? 0),
+      active: Number(activeRow?.cnt ?? 0),
+      unsubscribed: Number(unsubRow?.cnt ?? 0),
+      byTag: byTagResult.rows.map((r) => ({ tag: r.tag, count: Number(r.cnt) }))
+    };
+  }),
+  updateMarketingContact: adminProcedure.input(external_exports.object({
+    id: external_exports.number(),
+    name: external_exports.string().optional(),
+    phone: external_exports.string().optional(),
+    company: external_exports.string().optional(),
+    city: external_exports.string().optional(),
+    state: external_exports.string().optional(),
+    tags: external_exports.array(external_exports.string()).optional(),
+    notes: external_exports.string().optional()
+  })).mutation(async ({ input }) => {
+    const { id, ...data } = input;
+    const updates = { updatedAt: /* @__PURE__ */ new Date() };
+    if (data.name !== void 0)
+      updates.name = data.name || null;
+    if (data.phone !== void 0)
+      updates.phone = data.phone || null;
+    if (data.company !== void 0)
+      updates.company = data.company || null;
+    if (data.city !== void 0)
+      updates.city = data.city || null;
+    if (data.state !== void 0)
+      updates.state = data.state || null;
+    if (data.tags !== void 0)
+      updates.tags = data.tags;
+    if (data.notes !== void 0)
+      updates.notes = data.notes || null;
+    const [updated] = await db.update(marketingContacts).set(updates).where(eq(marketingContacts.id, id)).returning();
+    if (!updated)
+      throw new TRPCError({ code: "NOT_FOUND", message: "Contato n\xE3o encontrado" });
+    return updated;
+  }),
+  deleteMarketingContacts: adminProcedure.input(external_exports.object({ ids: external_exports.array(external_exports.number()).min(1) })).mutation(async ({ input }) => {
+    await db.delete(marketingContacts).where(inArray(marketingContacts.id, input.ids));
+    return { deleted: input.ids.length };
+  }),
+  tagMarketingContacts: adminProcedure.input(external_exports.object({
+    ids: external_exports.array(external_exports.number()).min(1),
+    addTags: external_exports.array(external_exports.string()).optional(),
+    removeTags: external_exports.array(external_exports.string()).optional()
+  })).mutation(async ({ input }) => {
+    if (input.addTags && input.addTags.length > 0) {
+      const tagsToAdd = input.addTags.map((t2) => t2.trim()).filter(Boolean);
+      if (tagsToAdd.length > 0) {
+        await db.update(marketingContacts).set({
+          tags: sql`(SELECT array_agg(DISTINCT t) FROM unnest(${marketingContacts.tags} || ARRAY[${sql.join(tagsToAdd.map((t2) => sql`${t2}`), sql`, `)}]::text[]) AS t)`,
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(inArray(marketingContacts.id, input.ids));
+      }
+    }
+    if (input.removeTags && input.removeTags.length > 0) {
+      const tagsToRemove = input.removeTags.map((t2) => t2.trim()).filter(Boolean);
+      if (tagsToRemove.length > 0) {
+        await db.update(marketingContacts).set({
+          tags: sql`(SELECT COALESCE(array_agg(t), '{}') FROM unnest(${marketingContacts.tags}) AS t WHERE t != ALL(ARRAY[${sql.join(tagsToRemove.map((t2) => sql`${t2}`), sql`, `)}]::text[]))`,
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(inArray(marketingContacts.id, input.ids));
+      }
+    }
+    return { ok: true };
+  }),
+  listMarketingContactTags: adminProcedure.query(async () => {
+    const result = await db.execute(sql`
+      SELECT DISTINCT unnest(${marketingContacts.tags}) AS tag
+      FROM ${marketingContacts}
+      WHERE array_length(${marketingContacts.tags}, 1) > 0
+      ORDER BY 1
+    `);
+    return result.rows.map((r) => r.tag);
+  }),
+  enrollMarketingContactsInSequence: adminProcedure.input(external_exports.object({
+    sequenceId: external_exports.number(),
+    contactIds: external_exports.array(external_exports.number()).min(1)
+  })).mutation(async ({ input }) => {
+    const [sequence] = await db.select().from(emailSequences).where(eq(emailSequences.id, input.sequenceId));
+    if (!sequence)
+      throw new TRPCError({ code: "NOT_FOUND", message: "Sequ\xEAncia n\xE3o encontrada" });
+    const contactRows = await db.select({
+      id: marketingContacts.id,
+      email: marketingContacts.email,
+      name: marketingContacts.name,
+      status: marketingContacts.status
+    }).from(marketingContacts).where(and(inArray(marketingContacts.id, input.contactIds), eq(marketingContacts.status, "active")));
+    let enrolled = 0;
+    let skipped = 0;
+    for (const c of contactRows) {
+      if (!c.email) {
+        skipped++;
+        continue;
+      }
+      const result = await enrollInSequence(input.sequenceId, {
+        email: c.email,
+        name: c.name,
+        taskId: null
+      });
+      if (result.enrolled)
+        enrolled++;
+      else
+        skipped++;
+    }
+    skipped += input.contactIds.length - contactRows.length;
+    return { enrolled, skipped };
+  }),
+  unsubscribeMarketingContact: adminProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ input }) => {
+    const [contact] = await db.select({ email: marketingContacts.email }).from(marketingContacts).where(eq(marketingContacts.id, input.id));
+    if (!contact)
+      throw new TRPCError({ code: "NOT_FOUND", message: "Contato n\xE3o encontrado" });
+    await db.update(marketingContacts).set({ status: "unsubscribed", updatedAt: /* @__PURE__ */ new Date() }).where(eq(marketingContacts.id, input.id));
+    await db.insert(emailSuppressions).values({ email: contact.email.toLowerCase().trim(), reason: "manual" }).onConflictDoNothing();
+    return { ok: true };
+  }),
+  // ── Marketing Lists ────────────────────────────────────────────────────────
+  listMarketingLists: adminProcedure.query(async () => {
+    return db.select().from(marketingLists).orderBy(desc(marketingLists.updatedAt));
+  }),
+  upsertMarketingList: adminProcedure.input(external_exports.object({
+    id: external_exports.number().optional(),
+    name: external_exports.string().min(1).max(200),
+    description: external_exports.string().max(500).optional()
+  })).mutation(async ({ input }) => {
+    if (input.id) {
+      const [updated] = await db.update(marketingLists).set({ name: input.name, description: input.description ?? null, updatedAt: /* @__PURE__ */ new Date() }).where(eq(marketingLists.id, input.id)).returning();
+      if (!updated)
+        throw new TRPCError({ code: "NOT_FOUND", message: "Lista n\xE3o encontrada" });
+      return updated;
+    }
+    const [created] = await db.insert(marketingLists).values({ name: input.name, description: input.description ?? null }).returning();
+    return created;
+  }),
+  deleteMarketingList: adminProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ input }) => {
+    await db.update(marketingContacts).set({ listId: null, updatedAt: /* @__PURE__ */ new Date() }).where(eq(marketingContacts.listId, input.id));
+    await db.delete(marketingLists).where(eq(marketingLists.id, input.id));
+    return { ok: true };
+  }),
+  moveContactsToList: adminProcedure.input(external_exports.object({
+    contactIds: external_exports.array(external_exports.number()).min(1),
+    listId: external_exports.number().nullable()
+  })).mutation(async ({ input }) => {
+    const oldListIds = await db.select({ listId: marketingContacts.listId }).from(marketingContacts).where(inArray(marketingContacts.id, input.contactIds));
+    const affectedListIds = new Set(oldListIds.map((r) => r.listId).filter((id) => id !== null));
+    await db.update(marketingContacts).set({ listId: input.listId, updatedAt: /* @__PURE__ */ new Date() }).where(inArray(marketingContacts.id, input.contactIds));
+    if (input.listId)
+      affectedListIds.add(input.listId);
+    for (const lid of affectedListIds) {
+      const [cntRow] = await db.select({ cnt: count() }).from(marketingContacts).where(and(eq(marketingContacts.listId, lid), eq(marketingContacts.status, "active")));
+      await db.update(marketingLists).set({ contactCount: Number(cntRow?.cnt ?? 0), updatedAt: /* @__PURE__ */ new Date() }).where(eq(marketingLists.id, lid));
+    }
+    return { moved: input.contactIds.length };
   })
 });
 
@@ -71671,7 +72290,7 @@ async function seedAdminIfNeeded() {
   `;
   console.log("[migrate] admin user seeded");
 }
-var SCHEMA_VERSION = "2026-06-25a";
+var SCHEMA_VERSION = "2026-06-26a";
 async function ensureTablesExist() {
   try {
     await seedAdminIfNeeded();
@@ -71686,6 +72305,11 @@ async function ensureTablesExist() {
       }
       try {
         await sql4`DELETE FROM work_sessions WHERE status = 'completed' AND ended_at < NOW() - INTERVAL '90 days'`;
+      } catch {
+      }
+      try {
+        await sql4`CREATE TABLE IF NOT EXISTS email_template_categories (id SERIAL PRIMARY KEY, name TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)`;
+        await sql4`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS category_ids JSONB`;
       } catch {
       }
       return;
@@ -71984,6 +72608,34 @@ async function ensureTablesExist() {
       updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
     )
   `;
+  await sql4`
+    CREATE TABLE IF NOT EXISTS marketing_lists (
+      id            SERIAL PRIMARY KEY,
+      name          TEXT NOT NULL,
+      description   TEXT,
+      contact_count INTEGER NOT NULL DEFAULT 0,
+      created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `;
+  await sql4`
+    CREATE TABLE IF NOT EXISTS marketing_contacts (
+      id         SERIAL PRIMARY KEY,
+      email      TEXT NOT NULL,
+      name       TEXT,
+      phone      TEXT,
+      company    TEXT,
+      city       TEXT,
+      state      TEXT,
+      list_id    INTEGER,
+      tags       TEXT[] NOT NULL DEFAULT '{}',
+      source     TEXT NOT NULL DEFAULT 'csv_import',
+      status     TEXT NOT NULL DEFAULT 'active',
+      notes      TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `;
   await sql4`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS assigned_to       TEXT`;
   await sql4`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS order_value        NUMERIC(10,2)`;
   await sql4`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS order_id           TEXT`;
@@ -72072,6 +72724,33 @@ async function ensureTablesExist() {
   )`;
   await sql4`CREATE UNIQUE INDEX IF NOT EXISTS email_events_dedup_idx ON email_events(message_id, event_type)`;
   await sql4`CREATE INDEX IF NOT EXISTS tasks_assigned_to_lower_idx ON tasks (lower(assigned_to))`;
+  await sql4`
+    CREATE TABLE IF NOT EXISTS email_template_categories (
+      id         SERIAL PRIMARY KEY,
+      name       TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `;
+  await sql4`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS category_ids JSONB`;
+  try {
+    await sql4`UPDATE email_templates SET category_ids = jsonb_build_array(category_id) WHERE category_id IS NOT NULL AND category_ids IS NULL`;
+  } catch {
+  }
+  try {
+    await sql4`ALTER TABLE email_templates DROP COLUMN IF EXISTS category_id`;
+  } catch {
+  }
+  await sql4`ALTER TABLE email_sequence_steps ADD COLUMN IF NOT EXISTS retry_if_not_opened BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql4`ALTER TABLE email_sequence_steps ADD COLUMN IF NOT EXISTS retry_delay_hours INTEGER NOT NULL DEFAULT 24`;
+  await sql4`ALTER TABLE email_sequence_steps ADD COLUMN IF NOT EXISTS max_retries INTEGER NOT NULL DEFAULT 1`;
+  await sql4`ALTER TABLE email_sequence_steps ADD COLUMN IF NOT EXISTS retry_subject TEXT`;
+  await sql4`ALTER TABLE email_sequence_sends ADD COLUMN IF NOT EXISTS retry_number INTEGER NOT NULL DEFAULT 0`;
+  await sql4`ALTER TABLE marketing_contacts ADD COLUMN IF NOT EXISTS list_id INTEGER`;
+  await sql4`CREATE UNIQUE INDEX IF NOT EXISTS marketing_contacts_email_idx ON marketing_contacts (lower(email))`;
+  await sql4`CREATE INDEX IF NOT EXISTS marketing_contacts_tags_idx ON marketing_contacts USING GIN (tags)`;
+  await sql4`CREATE INDEX IF NOT EXISTS marketing_contacts_status_idx ON marketing_contacts (status)`;
+  await sql4`CREATE INDEX IF NOT EXISTS marketing_contacts_list_idx ON marketing_contacts (list_id) WHERE list_id IS NOT NULL`;
   try {
     await sql4`CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT)`;
     await sql4`INSERT INTO schema_meta (key, value) VALUES ('schema_version', ${SCHEMA_VERSION})

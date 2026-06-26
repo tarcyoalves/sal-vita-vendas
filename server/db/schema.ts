@@ -450,7 +450,17 @@ export const automationRules = pgTable('automation_rules', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-// ── Marketing Contacts (standalone CSV-imported leads) ────────────────────────
+// ── Marketing Lists & Contacts (standalone CSV-imported leads) ────────────────
+
+export const marketingLists = pgTable('marketing_lists', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description'),
+  contactCount: integer('contact_count').notNull().default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+export type MarketingList = typeof marketingLists.$inferSelect;
 
 export const marketingContacts = pgTable('marketing_contacts', {
   id: serial('id').primaryKey(),
@@ -460,6 +470,7 @@ export const marketingContacts = pgTable('marketing_contacts', {
   company: text('company'),
   city: text('city'),
   state: text('state'),
+  listId: integer('list_id'),
   tags: text('tags').array().default([]).notNull(),
   source: text('source').notNull().default('csv_import'), // csv_import | manual
   status: text('status').notNull().default('active'),     // active | unsubscribed

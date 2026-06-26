@@ -25,7 +25,7 @@ import { Checkbox } from "../components/ui/checkbox";
 import {
   Mail, Plus, Send, Trash2, Eye, Pencil, Workflow, Zap, Tag, BarChart3, Users, Pause, Play, X, Download,
   LayoutTemplate, MailX, Filter, Sparkles, Inbox, Megaphone, Paperclip, FileText, Contact, Search,
-  CheckCircle, XCircle, AlertTriangle, RotateCcw, Gauge, TrendingUp, Upload, UserPlus,
+  CheckCircle, XCircle, AlertTriangle, RotateCcw, Gauge, TrendingUp, Upload, UserPlus, FolderOpen, FolderPlus, ArrowRightLeft,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -2628,12 +2628,12 @@ function parseCSVContacts(text: string): { rows: { email: string; name?: string;
 function MarketingContactsSection() {
   const utils = trpc.useUtils();
   const { data: stats } = trpc.emailMarketing.marketingContactStats.useQuery();
-  const { data: allTags } = trpc.emailMarketing.listMarketingContactTags.useQuery();
   const { data: sequences } = trpc.emailMarketing.listSequences.useQuery();
+  const { data: lists } = trpc.emailMarketing.listMarketingLists.useQuery();
 
+  const [activeListId, setActiveListId] = useState<number | "all">("all");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "unsubscribed">("all");
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
@@ -2647,7 +2647,7 @@ function MarketingContactsSection() {
 
   const { data: contactsData, isLoading } = trpc.emailMarketing.listMarketingContacts.useQuery({
     search: debouncedSearch || undefined,
-    tags: selectedTags.length > 0 ? selectedTags : undefined,
+    listId: activeListId !== "all" ? activeListId : undefined,
     status: statusFilter,
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
@@ -2660,17 +2660,32 @@ function MarketingContactsSection() {
   const unsubMutation = trpc.emailMarketing.unsubscribeMarketingContact.useMutation();
   const tagMutation = trpc.emailMarketing.tagMarketingContacts.useMutation();
   const enrollMutation = trpc.emailMarketing.enrollMarketingContactsInSequence.useMutation();
+  const upsertListMutation = trpc.emailMarketing.upsertMarketingList.useMutation();
+  const deleteListMutation = trpc.emailMarketing.deleteMarketingList.useMutation();
+  const moveContactsMutation = trpc.emailMarketing.moveContactsToList.useMutation();
 
   const invalidateAll = () => {
     utils.emailMarketing.listMarketingContacts.invalidate();
     utils.emailMarketing.marketingContactStats.invalidate();
     utils.emailMarketing.listMarketingContactTags.invalidate();
+    utils.emailMarketing.listMarketingLists.invalidate();
   };
 
   // Import dialog
   const [showImport, setShowImport] = useState(false);
   const [importPreview, setImportPreview] = useState<{ rows: { email: string; name?: string; phone?: string; company?: string; city?: string; state?: string }[]; skipped: number } | null>(null);
   const [importExtraTags, setImportExtraTags] = useState("");
+  const [importListMode, setImportListMode] = useState<"new" | "existing">("new");
+  const [importNewListName, setImportNewListName] = useState("");
+  const [importExistingListId, setImportExistingListId] = useState("");
+
+  const resetImportDialog = () => {
+    setImportPreview(null);
+    setImportExtraTags("");
+    setImportListMode("new");
+    setImportNewListName("");
+    setImportExistingListId("");
+  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2680,19 +2695,32 @@ function MarketingContactsSection() {
       const text = reader.result as string;
       const parsed = parseCSVContacts(text);
       setImportPreview(parsed);
+      if (!importNewListName) {
+        const baseName = file.name.replace(/\.(csv|txt)$/i, '').replace(/[_-]+/g, ' ').trim();
+        setImportNewListName(baseName || "");
+      }
     };
     reader.readAsText(file, 'utf-8');
   };
 
   const handleImport = async () => {
     if (!importPreview || importPreview.rows.length === 0) return;
+    if (importListMode === "new" && !importNewListName.trim()) {
+      toast.error("Informe o nome da lista");
+      return;
+    }
     try {
       const extraTags = importExtraTags.split(',').map(t => t.trim()).filter(Boolean);
-      const res = await importMutation.mutateAsync({ contacts: importPreview.rows, tags: extraTags });
+      const res = await importMutation.mutateAsync({
+        contacts: importPreview.rows,
+        tags: extraTags,
+        newListName: importListMode === "new" ? importNewListName.trim() : undefined,
+        listId: importListMode === "existing" && importExistingListId ? Number(importExistingListId) : undefined,
+      });
       toast.success(`Importados: ${res.imported} novos, ${res.updated} atualizados${res.skippedInvalid > 0 ? `, ${res.skippedInvalid} ignorados` : ''}`);
+      if (res.listId) setActiveListId(res.listId);
       setShowImport(false);
-      setImportPreview(null);
-      setImportExtraTags("");
+      resetImportDialog();
       invalidateAll();
     } catch (e: any) {
       toast.error(e?.message ?? "Erro ao importar contatos");
@@ -2790,221 +2818,321 @@ function MarketingContactsSection() {
     }
   };
 
+  // Move to list dialog
+  const [showMoveList, setShowMoveList] = useState(false);
+  const [moveListId, setMoveListId] = useState("");
+
+  const handleMoveToList = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      await moveContactsMutation.mutateAsync({
+        contactIds: Array.from(selectedIds),
+        listId: moveListId ? Number(moveListId) : null,
+      });
+      toast.success(`${selectedIds.size} contato(s) movido(s)`);
+      setShowMoveList(false);
+      setMoveListId("");
+      setSelectedIds(new Set());
+      invalidateAll();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao mover contatos");
+    }
+  };
+
+  // Rename list dialog
+  const [showRenameList, setShowRenameList] = useState(false);
+  const [renameListName, setRenameListName] = useState("");
+
+  const handleRenameList = async () => {
+    if (activeListId === "all" || !renameListName.trim()) return;
+    try {
+      await upsertListMutation.mutateAsync({ id: activeListId, name: renameListName.trim() });
+      toast.success("Lista renomeada");
+      setShowRenameList(false);
+      invalidateAll();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao renomear lista");
+    }
+  };
+
+  const handleDeleteList = async (listId: number) => {
+    if (!confirm("Excluir esta lista? Os contatos não serão excluídos, apenas desvinculados.")) return;
+    try {
+      await deleteListMutation.mutateAsync({ id: listId });
+      if (activeListId === listId) setActiveListId("all");
+      toast.success("Lista excluída");
+      invalidateAll();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao excluir lista");
+    }
+  };
+
   const totalPages = Math.ceil((contactsData?.total ?? 0) / PAGE_SIZE);
   const activeSequences = sequences?.filter(s => s.active) ?? [];
+  const activeListObj = lists?.find(l => l.id === activeListId);
 
   return (
     <div className="space-y-4">
       {/* Stats strip */}
       {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           <StatTile icon={UserPlus} label="Total importados" value={stats.total} accent="bg-blue-100 text-blue-700" />
           <StatTile icon={CheckCircle} label="Ativos" value={stats.active} accent="bg-emerald-100 text-emerald-700" />
           <StatTile icon={XCircle} label="Descadastrados" value={stats.unsubscribed} accent="bg-red-100 text-red-600" />
+          <StatTile icon={FolderOpen} label="Listas" value={lists?.length ?? 0} accent="bg-violet-100 text-violet-700" />
         </div>
       )}
 
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <CardTitle className="flex items-center gap-2">
-              <Upload size={16} className="text-blue-900" /> Leads importados (CSV)
-              <span className="text-slate-400 font-normal">({contactsData?.total ?? 0})</span>
-            </CardTitle>
-            <Button
-              size="sm"
-              className="bg-blue-900 hover:bg-blue-800 shadow-sm gap-1.5"
-              onClick={() => setShowImport(true)}
-            >
-              <Upload size={14} /> Importar CSV
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {/* Search and filters */}
-          <div className="flex flex-col gap-2.5">
-            <div className="relative">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <Input
-                value={search}
-                onChange={e => handleSearch(e.target.value)}
-                placeholder="Buscar por e-mail, nome ou empresa..."
-                className="pl-9"
-              />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Select value={statusFilter} onValueChange={(v: any) => { setStatusFilter(v); setPage(0); }}>
-                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos status</SelectItem>
-                  <SelectItem value="active">Ativos</SelectItem>
-                  <SelectItem value="unsubscribed">Descadastrados</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {allTags && allTags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {allTags.map(tag => (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => { setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]); setPage(0); }}
-                    className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${selectedTags.includes(tag) ? "bg-blue-900 text-white border-blue-900 shadow-sm" : "bg-white text-slate-600 border-slate-200 hover:bg-blue-50 hover:border-blue-200"}`}
-                  >
-                    {tag}
-                  </button>
-                ))}
-                {selectedTags.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => { setSelectedTags([]); setPage(0); }}
-                    className="text-xs px-2.5 py-1 rounded-full border border-red-200 text-red-500 hover:bg-red-50 font-medium transition-colors"
-                  >
-                    Limpar tags
-                  </button>
-                )}
+      <div className="flex flex-col lg:flex-row gap-4">
+        {/* Lists sidebar */}
+        <div className="w-full lg:w-56 flex-shrink-0">
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-1.5">
+                  <FolderOpen size={14} className="text-blue-900" /> Listas
+                </CardTitle>
               </div>
-            )}
-          </div>
-
-          {/* Bulk actions */}
-          {selectedIds.size > 0 && (
-            <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 p-2.5 text-sm text-blue-900">
-              <span className="font-medium">{selectedIds.size} selecionado(s)</span>
-              <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={handleBulkDelete} disabled={deleteMutation.isPending}>
-                <Trash2 size={12} /> Excluir
-              </Button>
-              <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => setShowBulkTag(true)}>
-                <Tag size={12} /> Add tag
-              </Button>
-              {activeSequences.length > 0 && (
-                <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => setShowEnroll(true)}>
-                  <Workflow size={12} /> Inscrever em sequência
-                </Button>
-              )}
-              <button type="button" onClick={() => setSelectedIds(new Set())} className="ml-auto p-1 text-slate-400 hover:text-slate-600">
-                <X size={14} />
+            </CardHeader>
+            <CardContent className="space-y-1 pb-3">
+              <button
+                type="button"
+                onClick={() => { setActiveListId("all"); setPage(0); setSelectedIds(new Set()); }}
+                className={`w-full text-left text-sm px-3 py-2 rounded-lg transition-colors flex items-center justify-between ${activeListId === "all" ? "bg-blue-900 text-white font-medium" : "text-slate-600 hover:bg-slate-100"}`}
+              >
+                <span>Todos os contatos</span>
+                <span className={`text-xs ${activeListId === "all" ? "text-blue-200" : "text-slate-400"}`}>{stats?.total ?? 0}</span>
               </button>
-            </div>
-          )}
-
-          {/* Table */}
-          {isLoading ? (
-            <p className="text-sm text-slate-500">Carregando...</p>
-          ) : contactsData && contactsData.contacts.length > 0 ? (
-            <>
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full text-sm min-w-[700px]">
-                  <thead className={THEAD_CLASS}>
-                    <tr>
-                      <th className={TH_CLASS}>
-                        <Checkbox
-                          checked={selectedIds.size === contactsData.contacts.length && contactsData.contacts.length > 0}
-                          onCheckedChange={toggleAll}
-                        />
-                      </th>
-                      <th className={TH_CLASS}>E-mail</th>
-                      <th className={TH_CLASS}>Nome</th>
-                      <th className={TH_CLASS}>Empresa</th>
-                      <th className={TH_CLASS}>Tags</th>
-                      <th className={TH_CLASS}>Status</th>
-                      <th className={TH_CLASS}>Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {contactsData.contacts.map((c) => (
-                      <tr key={c.id} className={TR_CLASS}>
-                        <td className="px-3 py-2.5">
-                          <Checkbox
-                            checked={selectedIds.has(c.id)}
-                            onCheckedChange={() => toggleId(c.id)}
-                          />
-                        </td>
-                        <td className="px-3 py-2.5 font-medium text-slate-700">{c.email}</td>
-                        <td className="px-3 py-2.5 text-slate-600">{c.name || "--"}</td>
-                        <td className="px-3 py-2.5 text-slate-600">{c.company || "--"}</td>
-                        <td className="px-3 py-2.5">
-                          {c.tags && c.tags.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {c.tags.slice(0, 3).map(t => (
-                                <span key={t} className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">{t}</span>
-                              ))}
-                              {c.tags.length > 3 && <span className="text-xs text-slate-400">+{c.tags.length - 3}</span>}
-                            </div>
-                          ) : <span className="text-slate-300">--</span>}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <Badge variant="outline" className={c.status === 'active' ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-600 border-red-200"}>
-                            {c.status === 'active' ? 'Ativo' : 'Descadastrado'}
-                          </Badge>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <div className="flex gap-1">
-                            <button type="button" onClick={() => openEdit(c)} className="p-1.5 rounded-md text-slate-400 hover:text-blue-700 hover:bg-blue-50 transition" title="Editar">
-                              <Pencil size={14} />
-                            </button>
-                            {c.status === 'active' && (
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  if (!confirm(`Descadastrar "${c.email}"?`)) return;
-                                  try {
-                                    await unsubMutation.mutateAsync({ id: c.id });
-                                    toast.success("Contato descadastrado");
-                                    invalidateAll();
-                                  } catch (e: any) { toast.error(e?.message ?? "Erro"); }
-                                }}
-                                className="p-1.5 rounded-md text-slate-400 hover:text-orange-600 hover:bg-orange-50 transition"
-                                title="Descadastrar"
-                              >
-                                <MailX size={14} />
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                if (!confirm(`Excluir "${c.email}"?`)) return;
-                                try {
-                                  await deleteMutation.mutateAsync({ ids: [c.id] });
-                                  toast.success("Contato excluído");
-                                  invalidateAll();
-                                } catch (e: any) { toast.error(e?.message ?? "Erro"); }
-                              }}
-                              className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
-                              title="Excluir"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              {lists?.map(list => (
+                <div key={list.id} className="group relative">
+                  <button
+                    type="button"
+                    onClick={() => { setActiveListId(list.id); setPage(0); setSelectedIds(new Set()); }}
+                    className={`w-full text-left text-sm px-3 py-2 rounded-lg transition-colors flex items-center justify-between ${activeListId === list.id ? "bg-blue-900 text-white font-medium" : "text-slate-600 hover:bg-slate-100"}`}
+                  >
+                    <span className="truncate pr-1">{list.name}</span>
+                    <span className={`text-xs flex-shrink-0 ${activeListId === list.id ? "text-blue-200" : "text-slate-400"}`}>{list.contactCount}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteList(list.id)}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded text-slate-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition"
+                    title="Excluir lista"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+              <div className="pt-2 border-t border-slate-100 mt-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full gap-1.5 text-xs"
+                  onClick={() => setShowImport(true)}
+                >
+                  <Upload size={12} /> Importar CSV
+                </Button>
               </div>
+            </CardContent>
+          </Card>
+        </div>
 
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between text-xs text-slate-500">
-                  <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>
-                    Anterior
-                  </Button>
-                  <span>
-                    Página {page + 1} de {totalPages} ({contactsData.total} contato{contactsData.total === 1 ? "" : "s"})
-                  </span>
-                  <Button size="sm" variant="outline" disabled={page + 1 >= totalPages} onClick={() => setPage(p => p + 1)}>
-                    Próxima
+        {/* Main content */}
+        <div className="flex-1 min-w-0">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <CardTitle className="flex items-center gap-2">
+                  {activeListId === "all" ? (
+                    <>
+                      <Upload size={16} className="text-blue-900" /> Todos os contatos
+                    </>
+                  ) : (
+                    <>
+                      <FolderOpen size={16} className="text-blue-900" /> {activeListObj?.name ?? "Lista"}
+                    </>
+                  )}
+                  <span className="text-slate-400 font-normal">({contactsData?.total ?? 0})</span>
+                </CardTitle>
+                <div className="flex gap-2">
+                  {activeListId !== "all" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 text-xs"
+                      onClick={() => { setRenameListName(activeListObj?.name ?? ""); setShowRenameList(true); }}
+                    >
+                      <Pencil size={12} /> Renomear
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    className="bg-blue-900 hover:bg-blue-800 shadow-sm gap-1.5"
+                    onClick={() => setShowImport(true)}
+                  >
+                    <Upload size={14} /> Importar CSV
                   </Button>
                 </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {/* Search and filters */}
+              <div className="flex flex-col gap-2.5">
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      value={search}
+                      onChange={e => handleSearch(e.target.value)}
+                      placeholder="Buscar por e-mail, nome ou empresa..."
+                      className="pl-9"
+                    />
+                  </div>
+                  <Select value={statusFilter} onValueChange={(v: any) => { setStatusFilter(v); setPage(0); }}>
+                    <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos status</SelectItem>
+                      <SelectItem value="active">Ativos</SelectItem>
+                      <SelectItem value="unsubscribed">Descadastrados</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Bulk actions */}
+              {selectedIds.size > 0 && (
+                <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 p-2.5 text-sm text-blue-900 flex-wrap">
+                  <span className="font-medium">{selectedIds.size} selecionado(s)</span>
+                  <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={handleBulkDelete} disabled={deleteMutation.isPending}>
+                    <Trash2 size={12} /> Excluir
+                  </Button>
+                  <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => setShowBulkTag(true)}>
+                    <Tag size={12} /> Add tag
+                  </Button>
+                  {lists && lists.length > 0 && (
+                    <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => setShowMoveList(true)}>
+                      <ArrowRightLeft size={12} /> Mover p/ lista
+                    </Button>
+                  )}
+                  {activeSequences.length > 0 && (
+                    <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => setShowEnroll(true)}>
+                      <Workflow size={12} /> Inscrever em sequência
+                    </Button>
+                  )}
+                  <button type="button" onClick={() => setSelectedIds(new Set())} className="ml-auto p-1 text-slate-400 hover:text-slate-600">
+                    <X size={14} />
+                  </button>
+                </div>
               )}
-            </>
-          ) : (
-            <EmptyState icon={Upload} message={search || selectedTags.length > 0 || statusFilter !== 'all' ? "Nenhum contato encontrado com esses filtros." : "Nenhum lead importado ainda. Use o botão 'Importar CSV' acima para adicionar contatos."} />
-          )}
-        </CardContent>
-      </Card>
+
+              {/* Table */}
+              {isLoading ? (
+                <p className="text-sm text-slate-500">Carregando...</p>
+              ) : contactsData && contactsData.contacts.length > 0 ? (
+                <>
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="w-full text-sm min-w-[600px]">
+                      <thead className={THEAD_CLASS}>
+                        <tr>
+                          <th className={TH_CLASS}>
+                            <Checkbox
+                              checked={selectedIds.size === contactsData.contacts.length && contactsData.contacts.length > 0}
+                              onCheckedChange={toggleAll}
+                            />
+                          </th>
+                          <th className={TH_CLASS}>E-mail</th>
+                          <th className={TH_CLASS}>Nome</th>
+                          <th className={TH_CLASS}>Empresa</th>
+                          <th className={TH_CLASS}>Status</th>
+                          <th className={TH_CLASS}>Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {contactsData.contacts.map((c) => (
+                          <tr key={c.id} className={TR_CLASS}>
+                            <td className="px-3 py-2.5">
+                              <Checkbox
+                                checked={selectedIds.has(c.id)}
+                                onCheckedChange={() => toggleId(c.id)}
+                              />
+                            </td>
+                            <td className="px-3 py-2.5 font-medium text-slate-700">{c.email}</td>
+                            <td className="px-3 py-2.5 text-slate-600">{c.name || "--"}</td>
+                            <td className="px-3 py-2.5 text-slate-600">{c.company || "--"}</td>
+                            <td className="px-3 py-2.5">
+                              <Badge variant="outline" className={c.status === 'active' ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-600 border-red-200"}>
+                                {c.status === 'active' ? 'Ativo' : 'Descadastrado'}
+                              </Badge>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <div className="flex gap-1">
+                                <button type="button" onClick={() => openEdit(c)} className="p-1.5 rounded-md text-slate-400 hover:text-blue-700 hover:bg-blue-50 transition" title="Editar">
+                                  <Pencil size={14} />
+                                </button>
+                                {c.status === 'active' && (
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      if (!confirm(`Descadastrar "${c.email}"?`)) return;
+                                      try {
+                                        await unsubMutation.mutateAsync({ id: c.id });
+                                        toast.success("Contato descadastrado");
+                                        invalidateAll();
+                                      } catch (e: any) { toast.error(e?.message ?? "Erro"); }
+                                    }}
+                                    className="p-1.5 rounded-md text-slate-400 hover:text-orange-600 hover:bg-orange-50 transition"
+                                    title="Descadastrar"
+                                  >
+                                    <MailX size={14} />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (!confirm(`Excluir "${c.email}"?`)) return;
+                                    try {
+                                      await deleteMutation.mutateAsync({ ids: [c.id] });
+                                      toast.success("Contato excluído");
+                                      invalidateAll();
+                                    } catch (e: any) { toast.error(e?.message ?? "Erro"); }
+                                  }}
+                                  className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
+                                  title="Excluir"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-between text-xs text-slate-500">
+                      <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>
+                        Anterior
+                      </Button>
+                      <span>
+                        Página {page + 1} de {totalPages} ({contactsData.total} contato{contactsData.total === 1 ? "" : "s"})
+                      </span>
+                      <Button size="sm" variant="outline" disabled={page + 1 >= totalPages} onClick={() => setPage(p => p + 1)}>
+                        Próxima
+                      </Button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <EmptyState icon={Upload} message={search || statusFilter !== 'all' ? "Nenhum contato encontrado com esses filtros." : activeListId !== "all" ? "Esta lista está vazia. Importe contatos via CSV." : "Nenhum lead importado ainda. Use o botão 'Importar CSV' para adicionar contatos."} />
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
 
       {/* Import CSV dialog */}
-      <Dialog open={showImport} onOpenChange={(open) => { setShowImport(open); if (!open) { setImportPreview(null); setImportExtraTags(""); } }}>
+      <Dialog open={showImport} onOpenChange={(open) => { setShowImport(open); if (!open) resetImportDialog(); }}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -3018,8 +3146,45 @@ function MarketingContactsSection() {
               <p>
                 Envie um CSV com colunas: <strong>email</strong> (obrigatório), nome, telefone, empresa, cidade, estado/UF.
                 Aceita separador <code>;</code> ou <code>,</code>. Também aceita um arquivo simples com um e-mail por linha.
-                A tag <strong>"Leads Importados"</strong> é adicionada automaticamente.
               </p>
+            </div>
+
+            {/* List selection */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5"><FolderOpen size={13} /> Adicionar a qual lista?</Label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setImportListMode("new")}
+                  className={`flex-1 text-sm px-3 py-2.5 rounded-lg border font-medium transition-colors ${importListMode === "new" ? "bg-blue-900 text-white border-blue-900" : "bg-white text-slate-600 border-slate-200 hover:bg-blue-50"}`}
+                >
+                  <FolderPlus size={14} className="inline mr-1.5 -mt-0.5" /> Nova lista
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImportListMode("existing")}
+                  className={`flex-1 text-sm px-3 py-2.5 rounded-lg border font-medium transition-colors ${importListMode === "existing" ? "bg-blue-900 text-white border-blue-900" : "bg-white text-slate-600 border-slate-200 hover:bg-blue-50"}`}
+                  disabled={!lists || lists.length === 0}
+                >
+                  <FolderOpen size={14} className="inline mr-1.5 -mt-0.5" /> Lista existente
+                </button>
+              </div>
+              {importListMode === "new" ? (
+                <Input
+                  value={importNewListName}
+                  onChange={e => setImportNewListName(e.target.value)}
+                  placeholder="Nome da lista (ex: Feira 2026, Leads Google Ads)"
+                />
+              ) : (
+                <Select value={importExistingListId} onValueChange={setImportExistingListId}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Selecione uma lista..." /></SelectTrigger>
+                  <SelectContent>
+                    {lists?.map(l => (
+                      <SelectItem key={l.id} value={String(l.id)}>{l.name} ({l.contactCount})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             <div>
@@ -3069,24 +3234,23 @@ function MarketingContactsSection() {
             )}
 
             <div>
-              <Label>Tags extras (separadas por vírgula)</Label>
+              <Label>Tags extras (separadas por vírgula, opcional)</Label>
               <Input
                 value={importExtraTags}
                 onChange={e => setImportExtraTags(e.target.value)}
-                placeholder='Ex: "Feira 2026, Sal Grosso"'
+                placeholder='Ex: "Sal Grosso, Atacado"'
               />
-              <p className="text-xs text-slate-400 mt-1">"Leads Importados" é adicionada automaticamente.</p>
             </div>
           </div>
           <DialogFooter className="flex gap-2 pt-2">
             <Button
               className="flex-1 bg-blue-900 hover:bg-blue-800"
               onClick={handleImport}
-              disabled={importMutation.isPending || !importPreview || importPreview.rows.length === 0}
+              disabled={importMutation.isPending || !importPreview || importPreview.rows.length === 0 || (importListMode === "new" && !importNewListName.trim())}
             >
               {importMutation.isPending ? "Importando..." : `Importar ${importPreview?.rows.length ?? 0} contato(s)`}
             </Button>
-            <Button variant="outline" className="flex-1" onClick={() => { setShowImport(false); setImportPreview(null); setImportExtraTags(""); }}>Cancelar</Button>
+            <Button variant="outline" className="flex-1" onClick={() => { setShowImport(false); resetImportDialog(); }}>Cancelar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -3154,6 +3318,44 @@ function MarketingContactsSection() {
               {enrollMutation.isPending ? "Inscrevendo..." : `Inscrever ${selectedIds.size} contato(s)`}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => setShowEnroll(false)}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Move to list dialog */}
+      <Dialog open={showMoveList} onOpenChange={setShowMoveList}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Mover para lista</DialogTitle></DialogHeader>
+          <div>
+            <Label>Lista destino</Label>
+            <Select value={moveListId} onValueChange={setMoveListId}>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+              <SelectContent>
+                {lists?.map(l => (
+                  <SelectItem key={l.id} value={String(l.id)}>{l.name} ({l.contactCount})</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleMoveToList} disabled={moveContactsMutation.isPending || !moveListId}>
+              {moveContactsMutation.isPending ? "Movendo..." : `Mover ${selectedIds.size} contato(s)`}
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setShowMoveList(false)}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename list dialog */}
+      <Dialog open={showRenameList} onOpenChange={setShowRenameList}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Renomear lista</DialogTitle></DialogHeader>
+          <div><Label>Nome</Label><Input value={renameListName} onChange={e => setRenameListName(e.target.value)} autoFocus onKeyDown={e => { if (e.key === 'Enter') handleRenameList(); }} /></div>
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleRenameList} disabled={upsertListMutation.isPending || !renameListName.trim()}>
+              {upsertListMutation.isPending ? "Salvando..." : "Salvar"}
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setShowRenameList(false)}>Cancelar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
