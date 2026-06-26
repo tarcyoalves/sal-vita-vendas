@@ -84,7 +84,7 @@ export default function ActiveTimer() {
   const isPaused = session.status === 'paused';
 
   return (
-    <div ref={ref} className="fixed bottom-[88px] left-4 md:bottom-4 z-40">
+    <div ref={ref} className="fixed left-4 md:bottom-4 z-40" style={{ bottom: "calc(88px + env(safe-area-inset-bottom, 0px))" }}>
 
       {/* Expanded detail card — floats above the pill */}
       {expanded && (
@@ -105,7 +105,7 @@ export default function ActiveTimer() {
               <button
                 onClick={() => handle('pause')}
                 title="Pausar"
-                className="p-2 rounded-lg bg-yellow-50 hover:bg-yellow-100 text-yellow-600 border border-yellow-200 transition"
+                className="p-2.5 rounded-lg bg-yellow-50 hover:bg-yellow-100 text-yellow-600 border border-yellow-200 transition"
               >
                 <Pause size={15} />
               </button>
@@ -114,7 +114,7 @@ export default function ActiveTimer() {
               <button
                 onClick={() => handle('resume')}
                 title="Retomar"
-                className="p-2 rounded-lg bg-green-50 hover:bg-green-100 text-green-600 border border-green-200 transition"
+                className="p-2.5 rounded-lg bg-green-50 hover:bg-green-100 text-green-600 border border-green-200 transition"
               >
                 <Play size={15} />
               </button>
@@ -122,7 +122,7 @@ export default function ActiveTimer() {
             <button
               onClick={() => handle('end')}
               title="Finalizar trabalho"
-              className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition"
+              className="p-2.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition"
             >
               <Square size={15} />
             </button>

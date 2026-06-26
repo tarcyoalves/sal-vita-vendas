@@ -87,7 +87,7 @@ export default function AiChat() {
       </div>
 
       <div className="flex-1 flex flex-col p-4 max-w-3xl mx-auto w-full">
-        <div className="flex-1 overflow-y-auto mb-4 bg-white rounded-xl border p-4 space-y-4 min-h-96 max-h-[60vh]">
+        <div className="flex-1 min-h-0 overflow-y-auto mb-4 bg-white rounded-xl border p-4 space-y-4">
           {!historyReady ? (
             <div className="flex items-center justify-center h-full">
               <div className="flex gap-1">
@@ -126,13 +126,13 @@ export default function AiChat() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
             placeholder="Digite sua mensagem..."
-            className="flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 px-4 py-3 border rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
             disabled={isLoading || !historyReady}
           />
           <Button
             onClick={handleSendMessage}
             disabled={isLoading || !historyReady || !input.trim()}
-            className="px-5 rounded-xl bg-blue-600 hover:bg-blue-700"
+            className="px-5 rounded-xl bg-blue-600 hover:bg-blue-700 min-h-[44px]"
           >
             {isLoading ? "⏳" : "📤"}
           </Button>

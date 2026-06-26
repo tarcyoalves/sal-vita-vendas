@@ -69,7 +69,8 @@ export default function FloatingChat() {
       {/* Floating bubble */}
       <button
         onClick={() => setOpen(o => !o)}
-        className="fixed bottom-[88px] right-4 md:bottom-4 z-50 w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-2xl flex items-center justify-center text-2xl transition-all active:scale-95"
+        className="fixed right-4 md:bottom-4 z-50 w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-2xl flex items-center justify-center text-2xl transition-all active:scale-95"
+        style={{ bottom: "calc(88px + env(safe-area-inset-bottom, 0px))" }}
         title={open ? 'Fechar chat' : 'Abrir chat IA'}
         aria-label="Chat com IA"
       >
@@ -80,7 +81,7 @@ export default function FloatingChat() {
       {open && (
         <div
           className="fixed bottom-24 right-5 z-50 bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col"
-          style={{ width: 'min(380px, calc(100vw - 16px))', height: 'min(520px, calc(100vh - 170px))' }}
+          style={{ width: 'min(380px, calc(100vw - 16px))', height: 'min(520px, calc(100dvh - 170px))' }}
         >
           {/* Header */}
           <div className="bg-blue-600 text-white px-4 py-3 rounded-t-2xl flex items-center justify-between flex-shrink-0">
@@ -141,7 +142,7 @@ export default function FloatingChat() {
               <button
                 key={q}
                 onClick={() => setInput(q)}
-                className="whitespace-nowrap text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-1 rounded-full border border-blue-200 transition flex-shrink-0"
+                className="whitespace-nowrap text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-2 rounded-full border border-blue-200 transition flex-shrink-0"
               >
                 {q}
               </button>
@@ -157,12 +158,12 @@ export default function FloatingChat() {
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
               placeholder="Digite sua mensagem..."
               disabled={loading}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
             />
             <button
               onClick={send}
               disabled={loading || !input.trim()}
-              className="w-9 h-9 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-xl flex items-center justify-center transition flex-shrink-0"
+              className="w-11 h-11 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-xl flex items-center justify-center transition flex-shrink-0"
             >
               ➤
             </button>

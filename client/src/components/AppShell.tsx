@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import {
   LayoutDashboard,
@@ -124,6 +124,16 @@ export default function AppShell({ children }: AppShellProps) {
   );
   const logoutMutation = trpc.auth.logout.useMutation();
 
+  // Lock body scroll when mobile sidebar is open
+  useEffect(() => {
+    if (sidebarOpen) {
+      document.body.classList.add("overflow-hidden");
+    } else {
+      document.body.classList.remove("overflow-hidden");
+    }
+    return () => document.body.classList.remove("overflow-hidden");
+  }, [sidebarOpen]);
+
   const role = (user?.role ?? "user") as "admin" | "user";
   const { data: pendingDeletions } = trpc.tasks.deletionLogs.useQuery(
     { onlyUnreviewed: true },
@@ -247,7 +257,7 @@ export default function AppShell({ children }: AppShellProps) {
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="h-[72px] flex items-center px-5 border-b border-slate-700 flex-shrink-0">
+      <div className="min-h-[72px] flex items-center px-5 border-b border-slate-700 flex-shrink-0" style={{ paddingTop: "env(safe-area-inset-top)" }}>
         <img
           src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
           alt="Sal Vita"
@@ -269,7 +279,7 @@ export default function AppShell({ children }: AppShellProps) {
               return (
                 <li key={item.label}>
                   <button
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
                       childActive
                         ? "bg-slate-700 text-white border-l-2 border-blue-400"
                         : "text-slate-300 hover:bg-slate-800 hover:text-white"
@@ -285,7 +295,7 @@ export default function AppShell({ children }: AppShellProps) {
                       {item.children!.map((child) => (
                         <li key={child.path}>
                           <button
-                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
                               isActive(child.path)
                                 ? "bg-slate-700 text-white border-l-2 border-blue-400"
                                 : "text-slate-400 hover:bg-slate-800 hover:text-white"
@@ -314,7 +324,7 @@ export default function AppShell({ children }: AppShellProps) {
             return (
               <li key={item.label}>
                 <button
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
                     active
                       ? "bg-slate-700 text-white border-l-2 border-blue-400"
                       : "text-slate-300 hover:bg-slate-800 hover:text-white"
@@ -351,14 +361,14 @@ export default function AppShell({ children }: AppShellProps) {
         </div>
         <button
           onClick={() => setShowChangePwd(true)}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors mb-1"
+          className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors mb-1"
         >
           <KeyRound size={15} />
           <span>Alterar Senha</span>
         </button>
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+          className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
         >
           <LogOut size={15} />
           <span>Sair</span>
@@ -374,15 +384,13 @@ export default function AppShell({ children }: AppShellProps) {
         <SidebarContent />
       </aside>
 
-      {/* Mobile Sidebar Overlay (kept as fallback, no longer triggered by topbar) */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-40 flex md:hidden">
-          <div className="fixed inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
-          <aside className="relative z-50 flex flex-col w-60 bg-slate-900">
-            <SidebarContent />
-          </aside>
-        </div>
-      )}
+      {/* Mobile Sidebar Overlay */}
+      <div className={`fixed inset-0 z-40 md:hidden transition-opacity duration-300 ${sidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}>
+        <div className="fixed inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
+        <aside className={`relative z-50 flex flex-col w-60 h-full bg-slate-900 transition-transform duration-300 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+          <SidebarContent />
+        </aside>
+      </div>
 
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -390,7 +398,7 @@ export default function AppShell({ children }: AppShellProps) {
         <header className="bg-white border-b flex items-center px-4 gap-4 flex-shrink-0" style={{ paddingTop: "env(safe-area-inset-top)", minHeight: "calc(56px + env(safe-area-inset-top))" }}>
           {/* Mobile: show logo instead of hamburger */}
           <button
-            className="md:hidden p-1 bg-slate-800 rounded-xl flex-shrink-0"
+            className="md:hidden p-1.5 bg-slate-800 rounded-xl flex-shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center"
             onClick={() => setLocation(role === "admin" ? "/admin/dashboard" : "/tasks")}
           >
             <img
@@ -403,7 +411,7 @@ export default function AppShell({ children }: AppShellProps) {
           <h1 className="text-base font-semibold text-gray-800 truncate flex-1">{pageTitle}</h1>
           {/* Mobile: logout button in topbar */}
           <button
-            className="md:hidden p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+            className="md:hidden p-2.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
             onClick={handleLogout}
             aria-label="Sair"
           >
@@ -412,7 +420,7 @@ export default function AppShell({ children }: AppShellProps) {
         </header>
 
         {/* Page content — bottom padding on mobile to avoid bottom nav overlap */}
-        <main className="flex-1 overflow-y-auto pb-20 md:pb-0">
+        <main className="flex-1 overflow-y-auto pb-24 md:pb-0">
           {children}
         </main>
       </div>
@@ -434,7 +442,7 @@ export default function AppShell({ children }: AppShellProps) {
               >
                 <span className="relative">
                   <span
-                    className={`flex items-center justify-center w-12 h-10 rounded-2xl transition-all ${
+                    className={`flex items-center justify-center w-12 h-11 rounded-2xl transition-all ${
                       active ? "bg-blue-600 text-white shadow-md" : "text-gray-400"
                     }`}
                   >
@@ -459,7 +467,7 @@ export default function AppShell({ children }: AppShellProps) {
             className="flex flex-col items-center gap-0.5 flex-1 py-1 transition-all"
           >
             <span
-              className={`flex items-center justify-center w-12 h-10 rounded-2xl transition-all ${
+              className={`flex items-center justify-center w-12 h-11 rounded-2xl transition-all ${
                 sidebarOpen ? "bg-blue-600 text-white shadow-md" : "text-gray-400"
               }`}
             >
@@ -504,7 +512,7 @@ export default function AppShell({ children }: AppShellProps) {
                   placeholder="Mínimo 6 caracteres"
                   required
                   minLength={6}
-                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -515,7 +523,7 @@ export default function AppShell({ children }: AppShellProps) {
                   onChange={e => setForcePwdForm(f => ({ ...f, confirm: e.target.value }))}
                   placeholder="Repita a senha"
                   required
-                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <button
@@ -615,7 +623,7 @@ export default function AppShell({ children }: AppShellProps) {
                   onChange={e => setPwdForm(f => ({ ...f, current: e.target.value }))}
                   placeholder="••••••••"
                   required
-                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -627,7 +635,7 @@ export default function AppShell({ children }: AppShellProps) {
                   placeholder="Mínimo 6 caracteres"
                   required
                   minLength={6}
-                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -638,7 +646,7 @@ export default function AppShell({ children }: AppShellProps) {
                   onChange={e => setPwdForm(f => ({ ...f, confirm: e.target.value }))}
                   placeholder="••••••••"
                   required
-                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div className="flex gap-2 pt-2">

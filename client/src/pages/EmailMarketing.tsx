@@ -223,29 +223,29 @@ export default function EmailMarketing() {
       </div>
 
       <Tabs defaultValue="campaigns">
-        <TabsList className="flex-wrap h-auto justify-start gap-1 rounded-2xl bg-slate-100 p-1.5">
-          <TabsTrigger value="campaigns" className={TAB_TRIGGER_CLASS}>
+        <TabsList className="flex-nowrap overflow-x-auto scrollbar-hide justify-start gap-1 rounded-2xl bg-slate-100 p-1.5">
+          <TabsTrigger value="campaigns" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
             <Send size={14} /> Campanhas
           </TabsTrigger>
-          <TabsTrigger value="sequences" className={TAB_TRIGGER_CLASS}>
+          <TabsTrigger value="sequences" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
             <Workflow size={14} /> Sequências
           </TabsTrigger>
-          <TabsTrigger value="automations" className={TAB_TRIGGER_CLASS}>
+          <TabsTrigger value="automations" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
             <Zap size={14} /> Automações
           </TabsTrigger>
-          <TabsTrigger value="templates" className={TAB_TRIGGER_CLASS}>
+          <TabsTrigger value="templates" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
             <LayoutTemplate size={14} /> Templates
           </TabsTrigger>
-          <TabsTrigger value="tags" className={TAB_TRIGGER_CLASS}>
+          <TabsTrigger value="tags" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
             <Tag size={14} /> Tags
           </TabsTrigger>
-          <TabsTrigger value="contacts" className={TAB_TRIGGER_CLASS}>
+          <TabsTrigger value="contacts" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
             <Contact size={14} /> Contatos
           </TabsTrigger>
-          <TabsTrigger value="usage" className={TAB_TRIGGER_CLASS}>
+          <TabsTrigger value="usage" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
             <Gauge size={14} /> Consumo
           </TabsTrigger>
-          <TabsTrigger value="stats" className={TAB_TRIGGER_CLASS}>
+          <TabsTrigger value="stats" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
             <BarChart3 size={14} /> Estatísticas
           </TabsTrigger>
         </TabsList>
@@ -848,7 +848,7 @@ function CampaignsTab() {
                       <span className="text-xs text-slate-400">{(f.size / 1024).toFixed(0)} KB</span>
                       <button
                         type="button"
-                        className="text-slate-400 hover:text-red-600"
+                        className="text-slate-400 hover:text-red-600 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center"
                         onClick={() => setBcastFiles(files => files.filter((_, idx) => idx !== i))}
                       >
                         <X size={14} />
@@ -1092,17 +1092,17 @@ function TemplatesTab() {
                   >
                     {cat.name} ({count})
                   </button>
-                  <div className="absolute -top-1 -right-1 hidden group-hover:flex gap-0.5">
+                  <div className="absolute -top-1 -right-1 flex sm:hidden sm:group-hover:flex gap-0.5">
                     <button
                       onClick={(e) => { e.stopPropagation(); setEditingCat({ id: cat.id, name: cat.name }); }}
-                      className="flex h-5 w-5 items-center justify-center rounded-full bg-white border border-slate-300 shadow-sm text-slate-500 hover:text-blue-700 hover:border-blue-400"
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-white border border-slate-300 shadow-sm text-slate-500 hover:text-blue-700 hover:border-blue-400"
                       title="Renomear"
                     >
                       <Pencil size={10} />
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDeleteCat(cat.id, cat.name); }}
-                      className="flex h-5 w-5 items-center justify-center rounded-full bg-white border border-slate-300 shadow-sm text-slate-500 hover:text-red-600 hover:border-red-400"
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-white border border-slate-300 shadow-sm text-slate-500 hover:text-red-600 hover:border-red-400"
                       title="Excluir"
                     >
                       <X size={10} />
@@ -1247,7 +1247,7 @@ function TemplatesTab() {
                         <span className="text-xs text-slate-400">{(f.size / 1024).toFixed(0)} KB</span>
                         <button
                           type="button"
-                          className="text-slate-400 hover:text-red-600"
+                          className="text-slate-400 hover:text-red-600 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center"
                           onClick={() => setEditing(e => e && ({ ...e, attachments: e.attachments?.filter((_, idx) => idx !== i) }))}
                         >
                           <X size={14} />
@@ -1844,7 +1844,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
             </DialogHeader>
             {editingStep && (
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <Label>Ordem do passo</Label>
                     <Input type="number" min={1} value={editingStep.stepOrder} onChange={e => setEditingStep(s => s && ({ ...s, stepOrder: Number(e.target.value) }))} />
@@ -2475,13 +2475,13 @@ function TagsTab() {
               placeholder="Nome da nova tag (ex: cliente-vip)"
               className="flex-1 min-w-[180px] bg-white"
             />
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
               {TAG_COLOR_PRESETS.map(c => (
                 <button
                   key={c}
                   type="button"
                   onClick={() => setNewColor(c)}
-                  className={`w-6 h-6 rounded-full border-2 transition ${newColor === c ? 'border-slate-900 scale-110' : 'border-white'}`}
+                  className={`w-8 h-8 rounded-full border-2 transition ${newColor === c ? 'border-slate-900 scale-110' : 'border-white'}`}
                   style={{ backgroundColor: c }}
                   title={c}
                 />
@@ -2500,13 +2500,13 @@ function TagsTab() {
                 <div key={tag.id} className="flex items-center gap-2 p-2.5 group">
                   {editingId === tag.id ? (
                     <>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-2">
                         {TAG_COLOR_PRESETS.map(c => (
                           <button
                             key={c}
                             type="button"
                             onClick={() => setEditColor(c)}
-                            className={`w-5 h-5 rounded-full border-2 transition ${editColor === c ? 'border-slate-900 scale-110' : 'border-white'}`}
+                            className={`w-7 h-7 rounded-full border-2 transition ${editColor === c ? 'border-slate-900 scale-110' : 'border-white'}`}
                             style={{ backgroundColor: c }}
                             title={c}
                           />
@@ -2529,7 +2529,7 @@ function TagsTab() {
                       <button
                         type="button"
                         onClick={() => startEdit(tag)}
-                        className="p-1.5 rounded-md text-slate-400 hover:text-blue-700 hover:bg-blue-50 opacity-0 group-hover:opacity-100 transition"
+                        className="p-1.5 rounded-md text-slate-400 hover:text-blue-700 hover:bg-blue-50 sm:opacity-0 sm:group-hover:opacity-100 transition"
                         title="Renomear / cor"
                       >
                         <Pencil size={14} />
@@ -2537,7 +2537,7 @@ function TagsTab() {
                       <button
                         type="button"
                         onClick={() => { if (confirm(`Excluir a tag "${tag.name}"? Ela será removida de todas as tarefas.`)) deleteMutation.mutate({ id: tag.id }); }}
-                        className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition"
+                        className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 sm:opacity-0 sm:group-hover:opacity-100 transition"
                         title="Excluir"
                       >
                         <Trash2 size={14} />
@@ -2883,9 +2883,20 @@ function MarketingContactsSection() {
         </div>
       )}
 
+      {/* Mobile-only list selector */}
+      <div className="lg:hidden">
+        <Select value={activeListId === "all" ? "__all__" : String(activeListId)} onValueChange={(v) => { setActiveListId(v === "__all__" ? "all" : Number(v)); setPage(0); setSelectedIds(new Set()); }}>
+          <SelectTrigger className="w-full"><div className="flex items-center gap-1.5"><FolderOpen size={14} /><span>{activeListId === "all" ? "Todos os contatos" : (lists?.find(l => l.id === activeListId)?.name ?? "Lista")}</span></div></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">Todos os contatos ({stats?.total ?? 0})</SelectItem>
+            {lists?.map(l => (<SelectItem key={l.id} value={String(l.id)}>{l.name} ({l.contactCount})</SelectItem>))}
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="flex flex-col lg:flex-row gap-4">
         {/* Lists sidebar */}
-        <div className="w-full lg:w-56 flex-shrink-0">
+        <div className="w-full lg:w-56 flex-shrink-0 hidden lg:block">
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
@@ -2916,7 +2927,7 @@ function MarketingContactsSection() {
                   <button
                     type="button"
                     onClick={() => handleDeleteList(list.id)}
-                    className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded text-slate-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded text-slate-300 hover:text-red-500 hover:bg-red-50 sm:opacity-0 sm:group-hover:opacity-100 transition"
                     title="Excluir lista"
                   >
                     <X size={12} />
@@ -3267,7 +3278,7 @@ function MarketingContactsSection() {
           <div className="space-y-3">
             <div><Label>Nome</Label><Input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} /></div>
             <div><Label>Telefone</Label><Input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} /></div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div><Label>Empresa</Label><Input value={editForm.company} onChange={e => setEditForm(f => ({ ...f, company: e.target.value }))} /></div>
               <div><Label>Cidade</Label><Input value={editForm.city} onChange={e => setEditForm(f => ({ ...f, city: e.target.value }))} /></div>
             </div>

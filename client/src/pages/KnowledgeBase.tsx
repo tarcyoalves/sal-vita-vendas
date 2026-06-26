@@ -162,6 +162,7 @@ export default function KnowledgeBase() {
                       variant="destructive"
                       size="sm"
                       onClick={() => handleDelete(doc.id)}
+                      className="min-h-[44px] min-w-[44px] flex items-center justify-center"
                     >
                       🗑️
                     </Button>
