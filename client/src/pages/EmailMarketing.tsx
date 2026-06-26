@@ -3381,6 +3381,36 @@ const SUPPRESSION_REASON_LABELS: Record<string, string> = {
 };
 
 function ContactsTab() {
+  return (
+    <Tabs defaultValue="imported" className="space-y-4">
+      <TabsList className="h-auto justify-start gap-1 rounded-xl bg-slate-100 p-1">
+        <TabsTrigger value="imported" className="rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-3 py-1.5">
+          <Upload size={13} /> Importados
+        </TabsTrigger>
+        <TabsTrigger value="confirmed" className="rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-3 py-1.5">
+          <CheckCircle size={13} /> Confirmados
+        </TabsTrigger>
+        <TabsTrigger value="export" className="rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-3 py-1.5">
+          <Download size={13} /> Exportar
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="imported">
+        <MarketingContactsSection />
+      </TabsContent>
+
+      <TabsContent value="confirmed">
+        <ConfirmedContactsSection />
+      </TabsContent>
+
+      <TabsContent value="export">
+        <ExportSection />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+function ConfirmedContactsSection() {
   const utils = trpc.useUtils();
   const { data: stats } = trpc.emailMarketing.contactStats.useQuery();
   const { data: sellers } = trpc.sellers.list.useQuery();
@@ -3449,11 +3479,7 @@ function ContactsTab() {
   const totalPages = Math.ceil((contactsData?.total ?? 0) / PAGE_SIZE);
 
   return (
-    <div className="space-y-6">
-      <MarketingContactsSection />
-
-      <hr className="border-slate-200" />
-
+    <div className="space-y-4">
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
           <StatTile icon={CheckCircle} label="Leads confirmados" value={stats.confirmedLeads} accent="bg-emerald-100 text-emerald-700" />
@@ -3468,9 +3494,9 @@ function ContactsTab() {
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <CardTitle className="flex items-center gap-2">
-              <Contact size={16} className="text-blue-900" /> Contatos
-              <span className="text-slate-400 font-normal">({contactsData?.total ?? 0})</span>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Contact size={16} className="text-blue-900" /> Contatos do sistema
+              <span className="text-slate-400 font-normal text-sm">({contactsData?.total ?? 0})</span>
             </CardTitle>
             <Button
               variant="outline"
@@ -3478,13 +3504,14 @@ function ContactsTab() {
               className="border-red-200 text-red-600 hover:bg-red-50 shadow-sm"
               onClick={() => setShowAddSupp(true)}
             >
-              <MailX size={14} className="mr-1" /> Descadastrar e-mail
+              <MailX size={14} className="mr-1" /> Descadastrar
             </Button>
           </div>
+          <p className="text-xs text-slate-500 mt-1">Leads confirmados e clientes cadastrados no CRM. Esses contatos são usados nos disparos de e-mail.</p>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex flex-col gap-2.5">
-            <div className="relative">
+          <div className="flex flex-wrap gap-2">
+            <div className="relative flex-1 min-w-[180px]">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <Input
                 value={search}
@@ -3493,50 +3520,48 @@ function ContactsTab() {
                 className="pl-9"
               />
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Select value={source} onValueChange={(v: any) => { setSource(v); setPage(0); }}>
-                <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
+            <Select value={source} onValueChange={(v: any) => { setSource(v); setPage(0); }}>
+              <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas origens</SelectItem>
+                <SelectItem value="leads">Leads</SelectItem>
+                <SelectItem value="clients">Clientes</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={status} onValueChange={(v: any) => { setStatus(v); setPage(0); }}>
+              <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos status</SelectItem>
+                <SelectItem value="active">Ativos</SelectItem>
+                <SelectItem value="suppressed">Suprimidos</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {source !== "clients" && sellers && sellers.length > 0 && (
+              <Select value={assignedTo || "__all__"} onValueChange={(v) => { setAssignedTo(v === "__all__" ? "" : v); setPage(0); }}>
+                <SelectTrigger className="w-[140px]"><SelectValue placeholder="Atendente" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todas origens</SelectItem>
-                  <SelectItem value="leads">Leads</SelectItem>
-                  <SelectItem value="clients">Clientes</SelectItem>
+                  <SelectItem value="__all__">Todos atend.</SelectItem>
+                  {sellers.map(s => (
+                    <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
-
-              <Select value={status} onValueChange={(v: any) => { setStatus(v); setPage(0); }}>
-                <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos status</SelectItem>
-                  <SelectItem value="active">Ativos</SelectItem>
-                  <SelectItem value="suppressed">Suprimidos</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {source !== "clients" && sellers && sellers.length > 0 && (
-                <Select value={assignedTo || "__all__"} onValueChange={(v) => { setAssignedTo(v === "__all__" ? "" : v); setPage(0); }}>
-                  <SelectTrigger className="w-[140px]"><SelectValue placeholder="Atendente" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">Todos atend.</SelectItem>
-                    {sellers.map(s => (
-                      <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
+            )}
 
             {tags && tags.length > 0 && source !== "clients" && (
               <Select
-                value={selectedTags.length === 1 ? selectedTags[0] : selectedTags.length > 1 ? "__multi__" : "__all__"}
+                value={selectedTags.length === 1 ? selectedTags[0] : "__all__"}
                 onValueChange={(v) => {
                   if (v === "__all__") { setSelectedTags([]); setPage(0); }
-                  else if (v !== "__multi__") { setSelectedTags([v]); setPage(0); }
+                  else { setSelectedTags([v]); setPage(0); }
                 }}
               >
-                <SelectTrigger className="w-[160px]">
+                <SelectTrigger className="w-[140px]">
                   <div className="flex items-center gap-1.5">
                     <Tag size={12} />
-                    <span>{selectedTags.length === 0 ? "Todas tags" : selectedTags.length === 1 ? selectedTags[0] : `${selectedTags.length} tags`}</span>
+                    <span>{selectedTags.length === 0 ? "Todas tags" : selectedTags[0]}</span>
                   </div>
                 </SelectTrigger>
                 <SelectContent>
@@ -3554,14 +3579,13 @@ function ContactsTab() {
           ) : contactsData && contactsData.contacts.length > 0 ? (
             <>
               <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full text-sm min-w-[700px]">
+                <table className="w-full text-sm min-w-[600px]">
                   <thead className={THEAD_CLASS}>
                     <tr>
                       <th className={TH_CLASS}>E-mail</th>
                       <th className={TH_CLASS}>Nome</th>
                       <th className={TH_CLASS}>Origem</th>
                       <th className={TH_CLASS}>Status</th>
-                      <th className={TH_CLASS}>Tags</th>
                       <th className={TH_CLASS}>Atendente</th>
                       <th className={TH_CLASS}>Ações</th>
                     </tr>
@@ -3585,18 +3609,6 @@ function ContactsTab() {
                             <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
                               Ativo
                             </Badge>
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          {c.tags && c.tags.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {c.tags.slice(0, 3).map(t => (
-                                <span key={t} className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">{t}</span>
-                              ))}
-                              {c.tags.length > 3 && <span className="text-xs text-slate-400">+{c.tags.length - 3}</span>}
-                            </div>
-                          ) : (
-                            <span className="text-slate-300">--</span>
                           )}
                         </td>
                         <td className="px-3 py-2.5 text-xs text-slate-500">{c.assignedTo ?? "--"}</td>
@@ -3674,8 +3686,6 @@ function ContactsTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <ExportSection />
     </div>
   );
 }
