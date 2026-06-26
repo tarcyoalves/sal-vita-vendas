@@ -274,7 +274,115 @@ Esta ação é IRREVERSÍVEL — os lembretes serão redistribuídos para datas 
   },
 ];
 
+// Ferramentas do ATENDENTE — sempre com escopo automático nos dados do próprio
+// usuário (callerUserId). Nunca recebem nome de outro atendente, então um
+// atendente jamais vê a carteira de outro.
+const ATTENDANT_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'my_priorities',
+      description: 'Retorna SUAS prioridades do dia: lembretes vencidos, leads quentes (que engajaram em e-mails) e lembretes agendados para hoje. Use para "o que priorizo hoje", "minhas prioridades", "o que tenho pra fazer", "por onde começo".',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'find_my_client',
+      description: 'Busca um cliente SEU pelo nome e retorna as anotações e o histórico de contato. Use sempre que precisar ESCREVER uma mensagem de follow-up (WhatsApp/e-mail), RESUMIR o histórico, ou lembrar do que já foi conversado com um cliente específico. Depois de chamar, use as anotações para redigir a mensagem solicitada.',
+      parameters: {
+        type: 'object',
+        properties: {
+          client_name: { type: 'string', description: 'Nome ou parte do nome do cliente' },
+        },
+        required: ['client_name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_knowledge',
+      description: 'Busca na base de conhecimento da Sal Vita: scripts de abordagem, regras do negócio, informações de produto, políticas, metas. Use quando precisar de orientação oficial da empresa sobre como agir.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Assunto a buscar (ex: "script de abordagem", "preço do sal grosso")' },
+        },
+        required: ['query'],
+      },
+    },
+  },
+];
+
+// Busca o seller vinculado a um userId, para casar tarefas por userId OU por
+// assignedTo (nome do atendente) — leads importados usam assignedTo.
+async function ownTasksFor(callerUserId: number) {
+  const [seller] = await db.select().from(sellers).where(eq(sellers.userId, callerUserId)).limit(1);
+  const where = seller
+    ? or(eq(tasks.userId, callerUserId), eq(tasks.assignedTo, seller.name))
+    : eq(tasks.userId, callerUserId);
+  const rows = await db.select().from(tasks).where(where);
+  return { seller, rows };
+}
+
 async function executeTool(name: string, args: any, callerUserId?: number): Promise<any> {
+  // ── Ferramentas do atendente (escopo automático no próprio usuário) ──────────
+  if (name === 'my_priorities') {
+    if (!callerUserId) return { error: 'Usuário não identificado.' };
+    const { rows } = await ownTasksFor(callerUserId);
+    const now = new Date();
+    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+
+    const overdue = rows
+      .filter(t => t.reminderDate && t.reminderEnabled !== false && new Date(t.reminderDate) < now)
+      .sort((a, b) => new Date(a.reminderDate!).getTime() - new Date(b.reminderDate!).getTime());
+    const hoje = rows.filter(t =>
+      t.reminderDate && t.reminderEnabled !== false
+      && new Date(t.reminderDate) >= todayStart && new Date(t.reminderDate) <= todayEnd
+    );
+    const quentes = rows.filter(t => t.hotLead);
+
+    const fmt = (t: any) => ({
+      cliente: t.title.slice(0, 60),
+      venceu: t.reminderDate ? new Date(t.reminderDate).toLocaleDateString('pt-BR') : 'sem data',
+      anotacao: (t.notes ?? '').trim().slice(0, 120) || '(sem anotação)',
+    });
+
+    return {
+      vencidos: { quantidade: overdue.length, top: overdue.slice(0, 10).map(fmt) },
+      para_hoje: { quantidade: hoje.length, lista: hoje.slice(0, 10).map(fmt) },
+      leads_quentes: { quantidade: quentes.length, lista: quentes.slice(0, 10).map(fmt) },
+    };
+  }
+
+  if (name === 'find_my_client') {
+    if (!callerUserId) return { error: 'Usuário não identificado.' };
+    const q = String(args.client_name ?? '').toLowerCase().trim();
+    if (!q) return { error: 'Informe o nome do cliente.' };
+    const { rows } = await ownTasksFor(callerUserId);
+    const matches = rows
+      .filter(t => t.title.toLowerCase().includes(q))
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .slice(0, 5);
+    if (matches.length === 0) return { encontrados: 0, mensagem: `Nenhum cliente seu encontrado para "${args.client_name}".` };
+    return {
+      encontrados: matches.length,
+      clientes: matches.map(t => ({
+        cliente: t.title,
+        anotacoes: (t.notes ?? '').trim() || '(sem anotação)',
+        ultimo_contato: t.lastContactedAt ? new Date(t.lastContactedAt).toLocaleString('pt-BR') : 'nunca',
+        proximo_lembrete: t.reminderDate ? new Date(t.reminderDate).toLocaleString('pt-BR') : 'sem data',
+        prioridade: t.priority,
+        lead_quente: t.hotLead,
+        tags: t.tags ?? [],
+      })),
+    };
+  }
+
+
   if (name === 'list_tasks') {
     const name_ = String(args.attendant_name ?? '');
     const [seller] = await db.select().from(sellers).where(ilike(sellers.name, `%${name_}%`)).limit(1);
@@ -380,24 +488,19 @@ async function executeTool(name: string, args: any, callerUserId?: number): Prom
     const query = String(args.query ?? '');
     const category = args.category ? String(args.category) : null;
 
-    // Always scope to the caller's own documents to prevent cross-user leakage
-    const userFilter = callerUserId ? eq(knowledgeDocuments.userId, callerUserId) : undefined;
-
+    // Base de conhecimento COMPARTILHADA: a IA busca em todos os documentos da
+    // empresa (scripts, regras, políticas), independente de quem cadastrou.
     const searchWhere = category
       ? and(
-          userFilter,
           or(ilike(knowledgeDocuments.title, `%${query}%`), ilike(knowledgeDocuments.content, `%${query}%`)),
           ilike(knowledgeDocuments.category, `%${category}%`)
         )
-      : and(
-          userFilter,
-          or(ilike(knowledgeDocuments.title, `%${query}%`), ilike(knowledgeDocuments.content, `%${query}%`))
-        );
+      : or(ilike(knowledgeDocuments.title, `%${query}%`), ilike(knowledgeDocuments.content, `%${query}%`));
 
     const matched = await db.select().from(knowledgeDocuments).where(searchWhere).limit(5);
 
     if (matched.length === 0) {
-      const fallback = await db.select().from(knowledgeDocuments).where(userFilter).limit(3);
+      const fallback = await db.select().from(knowledgeDocuments).limit(3);
       return { encontrados: 0, mensagem: `Nenhum documento encontrado para "${query}". Documentos disponíveis:`, documentos: fallback.map(d => ({ titulo: d.title, categoria: d.category, conteudo: d.content.slice(0, 800) })) };
     }
 
@@ -817,9 +920,17 @@ REGRAS ABSOLUTAS:
 5. reschedule_tasks é IRREVERSÍVEL — sempre dry_run=true primeiro para mostrar preview, só execute se usuário confirmar
 Seja direto; português BR; emojis.
 ${userContext}`
-          : `Assistente Sal Vita — atendente. Apenas informativo, sem executar ações.
-${userContext}
-Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emojis, português BR.`;
+          : `Assistente de vendas Sal Vita para o atendente. Você AJUDA o atendente no dia a dia. Ferramentas disponíveis (todas restritas aos dados DELE):
+- my_priorities: prioridades do dia (vencidos, leads quentes, lembretes de hoje) — use para "o que faço hoje", "minhas prioridades"
+- find_my_client: busca um cliente DELE e traz as anotações/histórico — use SEMPRE antes de escrever um follow-up ou resumir um cliente
+- search_knowledge: scripts, regras, produtos e políticas oficiais da Sal Vita
+COMO AGIR:
+1. Pediu mensagem de follow-up / WhatsApp / e-mail para um cliente? → chame find_my_client com o nome, leia as anotações e ESCREVA a mensagem pronta (tom cordial, B2B, objetiva), citando o contexto real do cliente
+2. Pediu prioridades / o que fazer? → chame my_priorities e devolva uma lista ordenada por urgência
+3. Pediu resumo de um cliente? → chame find_my_client e resuma os contatos
+4. Precisa de script/preço/regra? → chame search_knowledge
+NUNCA invente dados do cliente — sempre busque com a ferramenta. Você só vê os clientes DESTE atendente. Objetivo, emojis, português BR.
+${userContext}`;
 
         const messages = [
           { role: 'system', content: systemPrompt },
@@ -831,10 +942,11 @@ Foco: performance própria, prioridades do dia, dicas B2B de sal. Objetivo, emoj
           reply = await callWithFallback(provider, apiKey, baseURL, model, (k, b, m) =>
             isAdmin
               ? callLLMWithTools(k, b, m, messages, TOOLS, 1000, ctx.user.id)
-              : callLLM(k, b, m, messages, 700, 0.6),
+              : callLLMWithTools(k, b, m, messages, ATTENDANT_TOOLS, 900, ctx.user.id),
           'AI_CHAT');
         } catch (primaryErr: any) {
-          if (isAdmin && primaryErr.status === 400) {
+          if (primaryErr.status === 400) {
+            // Algum provider de fallback pode não suportar tool_use — reenvia sem ferramentas
             console.warn('[AI_CHAT] tool_use 400, retrying without tools');
             reply = await callLLM(apiKey, baseURL, model, messages, 1000, 0.4);
           } else {
@@ -1117,6 +1229,88 @@ REGRAS ABSOLUTAS:
         return { suggestion };
       } catch (err: any) {
         return { suggestion: 'Erro ao gerar sugestão: ' + (err?.message ?? 'tente novamente') };
+      }
+    }),
+
+  // ── E-mail Marketing: geração de copy sob demanda ───────────────────────────
+  // Gera assunto(s) + corpo HTML a partir de um briefing curto. Sob demanda
+  // (1 clique = 1 chamada), reaproveita a cadeia de fallback de cota gratuita.
+  generateEmailCopy: protectedProcedure
+    .input(z.object({
+      brief: z.string().min(3).max(1000),
+      tone: z.enum(['cordial', 'formal', 'urgente', 'amigavel', 'persuasivo']).optional(),
+      mode: z.enum(['full', 'subjects', 'rewrite']).default('full'),
+      currentHtml: z.string().max(20000).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const provider = defaultProvider();
+      const apiKey = envKeyFor(provider) || '';
+      if (!apiKey) return { subjects: [], html: '', error: 'IA não configurada. Configure Groq ou Gemini em Configurações → IA.' };
+
+      const toneMap: Record<string, string> = {
+        cordial: 'cordial e profissional',
+        formal: 'formal e respeitoso',
+        urgente: 'com senso de urgência (sem ser agressivo)',
+        amigavel: 'amigável e próximo',
+        persuasivo: 'persuasivo, focado em benefício e conversão',
+      };
+      const toneDesc = toneMap[input.tone ?? 'cordial'];
+
+      const sys = `Você é redator de e-mail marketing B2B da Sal Vita — Sal do Brasil (sal marinho de Mossoró/RN), que vende para clientes industriais, alimentícios e revendas. Escreva em português BR, tom ${toneDesc}.
+
+REGRAS DO CORPO (HTML):
+- HTML simples e compatível com e-mail (use apenas <p>, <strong>, <ul>, <li>, <a>, <br>) — NUNCA <html>, <head>, <style> ou CSS externo
+- Pode usar as variáveis {{nome}} (nome do contato) e {{empresa}} quando fizer sentido
+- NÃO inclua assinatura nem rodapé (o sistema adiciona automaticamente)
+- Seja objetivo: 2 a 4 parágrafos curtos, com uma chamada para ação clara
+
+RESPONDA ESTRITAMENTE NESTE FORMATO (sem texto extra, sem markdown):
+ASSUNTOS:
+1. <opção de assunto>
+2. <opção de assunto>
+3. <opção de assunto>
+CORPO:
+<html do corpo>`;
+
+      let userMsg: string;
+      if (input.mode === 'subjects') {
+        userMsg = `Gere apenas 3 opções de ASSUNTO para este e-mail (deixe o CORPO vazio):\n${input.brief}`;
+      } else if (input.mode === 'rewrite' && input.currentHtml) {
+        userMsg = `Reescreva o e-mail abaixo no tom ${toneDesc}, mantendo a mensagem central. Instrução: ${input.brief}\n\nE-MAIL ATUAL:\n${input.currentHtml}`;
+      } else {
+        userMsg = `Briefing do e-mail a ser criado:\n${input.brief}`;
+      }
+
+      try {
+        const raw = await callWithFallback(provider, apiKey, BASE_URLS[provider], DEFAULT_MODELS[provider], (k, b, m) =>
+          callLLM(k, b, m, [
+            { role: 'system', content: sys },
+            { role: 'user', content: userMsg },
+          ], 1200, 0.6),
+        'AI_EMAIL_COPY');
+
+        // Parse defensivo do formato "ASSUNTOS:\n...\nCORPO:\n..."
+        const subjects: string[] = [];
+        let html = '';
+        const corpoIdx = raw.search(/CORPO\s*:/i);
+        const assuntosIdx = raw.search(/ASSUNTOS?\s*:/i);
+        const subjectsBlock = assuntosIdx >= 0
+          ? raw.slice(assuntosIdx, corpoIdx >= 0 ? corpoIdx : undefined)
+          : '';
+        for (const line of subjectsBlock.split('\n')) {
+          const m = line.match(/^\s*\d+[.)\-]\s*(.+?)\s*$/);
+          if (m && m[1]) subjects.push(m[1].replace(/^["']|["']$/g, '').trim());
+        }
+        if (corpoIdx >= 0) {
+          html = raw.slice(corpoIdx).replace(/^CORPO\s*:/i, '').trim();
+          html = html.replace(/^```html?\s*/i, '').replace(/```\s*$/i, '').trim();
+        }
+        // Se o modelo não seguiu o formato, devolve o texto bruto como corpo
+        if (!html && input.mode !== 'subjects') html = raw.trim();
+
+        return { subjects: subjects.slice(0, 3), html };
+      } catch (err: any) {
+        return { subjects: [], html: '', error: 'Erro ao gerar: ' + (err?.message ?? 'tente novamente') };
       }
     }),
 

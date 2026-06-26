@@ -70,12 +70,12 @@ export default function CallHistory() {
             <img
               src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/logoSALVITA_grande_3761478e.png"
               alt="Sal Vita"
-              className="h-32 cursor-pointer"
+              className="h-12 md:h-32 cursor-pointer"
             />
           </a>
-          <h1 className="text-3xl font-bold text-blue-900">📋 Histórico de Ligações</h1>
+          <h1 className="text-lg md:text-3xl font-bold text-blue-900">📋 Histórico de Ligações</h1>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="hidden md:flex gap-2 flex-wrap">
           <a href="/admin/dashboard"><Button variant="outline">📊 Dashboard</Button></a>
           <a href="/tasks"><Button variant="outline">📋 Tarefas</Button></a>
           <a href="/ai-chat"><Button variant="outline">💬 Chat</Button></a>
