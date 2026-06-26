@@ -8,7 +8,7 @@ import {
   emailTemplateCategories, emailTemplates, emailCampaigns, emailCampaignRecipients, emailSuppressions,
   emailSequences, emailSequenceSteps, emailSequenceEnrollments, emailSequenceSends,
   emailEvents, automationRules, emailSendCounters,
-  tasks, clients, sellers,
+  tasks, clients, sellers, marketingContacts,
 } from '../db/schema';
 import { pickAccount, sendBatch, layout, renderTemplate, renderSignature, sanitizeCampaignHtml, getUsage, getAllDomainTracking, setDomainTracking, getAccounts, type BatchMessage } from '../email/marketing';
 import { enrollInSequence } from '../email/automations';
@@ -36,15 +36,15 @@ interface AudienceRow {
 }
 
 const audienceInput = z.object({
-  source: z.enum(['leads', 'clients', 'both']).default('leads'),
+  source: z.enum(['leads', 'clients', 'contacts', 'both', 'all']).default('leads'),
   assignedTo: z.string().optional(),
   tags: z.array(z.string()).optional(),
 });
 
-async function buildAudience(opts: { source: 'leads' | 'clients' | 'both'; assignedTo?: string; tags?: string[] }): Promise<AudienceRow[]> {
+async function buildAudience(opts: { source: 'leads' | 'clients' | 'contacts' | 'both' | 'all'; assignedTo?: string; tags?: string[] }): Promise<AudienceRow[]> {
   const rows: AudienceRow[] = [];
 
-  if (opts.source === 'leads' || opts.source === 'both') {
+  if (opts.source === 'leads' || opts.source === 'both' || opts.source === 'all') {
     const sellerRows = await db.select({ name: sellers.name, email: sellers.email }).from(sellers);
     const sellerMap = new Map(sellerRows.map(s => [s.name.toLowerCase(), s.email]));
 
@@ -70,13 +70,26 @@ async function buildAudience(opts: { source: 'leads' | 'clients' | 'both'; assig
     }
   }
 
-  if (opts.source === 'clients' || opts.source === 'both') {
+  if (opts.source === 'clients' || opts.source === 'both' || opts.source === 'all') {
     const clientRows = await db.select({ email: clients.email, name: clients.name })
       .from(clients)
       .where(and(isNotNull(clients.email), ne(clients.email, ''), eq(clients.unsubscribed, false)));
     for (const c of clientRows) {
       if (!c.email) continue;
       rows.push({ email: c.email.toLowerCase().trim(), name: c.name });
+    }
+  }
+
+  if (opts.source === 'contacts' || opts.source === 'all') {
+    const conditions = [eq(marketingContacts.status, 'active')];
+    if (opts.tags && opts.tags.length > 0) {
+      conditions.push(sql`${marketingContacts.tags} && ARRAY[${sql.join(opts.tags.map(t => sql`${t}`), sql`, `)}]::text[]`);
+    }
+    const contactRows = await db.select({ email: marketingContacts.email, name: marketingContacts.name })
+      .from(marketingContacts)
+      .where(and(...conditions));
+    for (const c of contactRows) {
+      rows.push({ email: c.email.toLowerCase().trim(), name: c.name ?? '' });
     }
   }
 
@@ -287,7 +300,7 @@ export const emailMarketingRouter = router({
       name: z.string().min(1).max(200),
       subject: z.string().min(1).max(300),
       htmlBody: z.string().min(1),
-      source: z.enum(['leads', 'clients', 'both']).default('leads'),
+      source: z.enum(['leads', 'clients', 'contacts', 'both', 'all']).default('leads'),
       assignedTo: z.string().optional(),
       tags: z.array(z.string()).optional(),
     }))
@@ -330,7 +343,7 @@ export const emailMarketingRouter = router({
         email: z.string().email(),
         name: z.string().optional(),
       })).max(2000).optional(),
-      audienceSource: z.enum(['leads', 'clients', 'both']).optional(),
+      audienceSource: z.enum(['leads', 'clients', 'contacts', 'both', 'all']).optional(),
       audienceAssignedTo: z.string().optional(),
       audienceTags: z.array(z.string()).optional(),
       attachments: z.array(z.object({
@@ -1627,5 +1640,303 @@ export const emailMarketingRouter = router({
       }
 
       return out;
+    }),
+
+  // ── Marketing Contacts (standalone CSV-imported leads) ────────────────────
+
+  importMarketingContacts: adminProcedure
+    .input(z.object({
+      contacts: z.array(z.object({
+        email: z.string(),
+        name: z.string().optional(),
+        phone: z.string().optional(),
+        company: z.string().optional(),
+        city: z.string().optional(),
+        state: z.string().optional(),
+      })).max(5000),
+      tags: z.array(z.string()).default([]),
+    }))
+    .mutation(async ({ input }) => {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const allTags = Array.from(new Set(['Leads Importados', ...input.tags.map(t => t.trim()).filter(Boolean)]));
+
+      // Normalize and validate incoming contacts, dedup by email
+      const seen = new Set<string>();
+      const validContacts: { email: string; name?: string; phone?: string; company?: string; city?: string; state?: string }[] = [];
+      let skippedInvalid = 0;
+
+      for (const c of input.contacts) {
+        const email = c.email?.toLowerCase().trim();
+        if (!email || !emailRegex.test(email)) { skippedInvalid++; continue; }
+        if (seen.has(email)) continue;
+        seen.add(email);
+        validContacts.push({
+          email,
+          name: c.name?.trim() || undefined,
+          phone: c.phone?.trim() || undefined,
+          company: c.company?.trim() || undefined,
+          city: c.city?.trim() || undefined,
+          state: c.state?.trim() || undefined,
+        });
+      }
+
+      if (validContacts.length === 0) {
+        return { imported: 0, updated: 0, skippedInvalid, total: input.contacts.length };
+      }
+
+      // Fetch existing contacts by email (case-insensitive) in a single query
+      const existingRows = await db.select({
+        id: marketingContacts.id,
+        email: marketingContacts.email,
+        name: marketingContacts.name,
+        phone: marketingContacts.phone,
+        company: marketingContacts.company,
+        city: marketingContacts.city,
+        state: marketingContacts.state,
+        tags: marketingContacts.tags,
+      }).from(marketingContacts)
+        .where(sql`lower(${marketingContacts.email}) IN (${sql.join(validContacts.map(c => sql`${c.email}`), sql`, `)})`);
+
+      const existingMap = new Map(existingRows.map(r => [r.email.toLowerCase(), r]));
+
+      const toInsert: (typeof marketingContacts.$inferInsert)[] = [];
+      const toUpdate: { id: number; data: Partial<typeof marketingContacts.$inferInsert> }[] = [];
+
+      for (const c of validContacts) {
+        const existing = existingMap.get(c.email);
+        if (existing) {
+          // Merge: union tags, fill empty fields
+          const mergedTags = Array.from(new Set([...(existing.tags ?? []), ...allTags]));
+          const updates: Record<string, any> = { tags: mergedTags, updatedAt: new Date() };
+          if (!existing.name && c.name) updates.name = c.name;
+          if (!existing.phone && c.phone) updates.phone = c.phone;
+          if (!existing.company && c.company) updates.company = c.company;
+          if (!existing.city && c.city) updates.city = c.city;
+          if (!existing.state && c.state) updates.state = c.state;
+          toUpdate.push({ id: existing.id, data: updates });
+        } else {
+          toInsert.push({
+            email: c.email,
+            name: c.name ?? null,
+            phone: c.phone ?? null,
+            company: c.company ?? null,
+            city: c.city ?? null,
+            state: c.state ?? null,
+            tags: allTags,
+            source: 'csv_import',
+            status: 'active',
+          });
+        }
+      }
+
+      // Batch insert new contacts
+      if (toInsert.length > 0) {
+        // Insert in chunks of 500 to avoid query size limits
+        for (let i = 0; i < toInsert.length; i += 500) {
+          await db.insert(marketingContacts).values(toInsert.slice(i, i + 500));
+        }
+      }
+
+      // Batch update existing contacts
+      if (toUpdate.length > 0) {
+        for (const u of toUpdate) {
+          await db.update(marketingContacts).set(u.data).where(eq(marketingContacts.id, u.id));
+        }
+      }
+
+      return {
+        imported: toInsert.length,
+        updated: toUpdate.length,
+        skippedInvalid,
+        total: input.contacts.length,
+      };
+    }),
+
+  listMarketingContacts: adminProcedure
+    .input(z.object({
+      search: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      status: z.enum(['all', 'active', 'unsubscribed']).default('all'),
+      limit: z.number().int().min(1).max(200).optional().default(50),
+      offset: z.number().int().min(0).optional().default(0),
+    }))
+    .query(async ({ input }) => {
+      const conditions: any[] = [];
+      if (input.status !== 'all') {
+        conditions.push(eq(marketingContacts.status, input.status));
+      }
+      if (input.search) {
+        const s = `%${input.search.toLowerCase()}%`;
+        conditions.push(sql`(lower(${marketingContacts.email}) LIKE ${s} OR lower(COALESCE(${marketingContacts.name}, '')) LIKE ${s} OR lower(COALESCE(${marketingContacts.company}, '')) LIKE ${s})`);
+      }
+      if (input.tags && input.tags.length > 0) {
+        conditions.push(sql`${marketingContacts.tags} && ARRAY[${sql.join(input.tags.map(t => sql`${t}`), sql`, `)}]::text[]`);
+      }
+
+      const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+      const [rows, totalRow] = await Promise.all([
+        db.select().from(marketingContacts)
+          .where(where)
+          .orderBy(desc(marketingContacts.createdAt))
+          .limit(input.limit)
+          .offset(input.offset),
+        db.select({ cnt: count() }).from(marketingContacts).where(where),
+      ]);
+
+      return { contacts: rows, total: Number(totalRow[0]?.cnt ?? 0) };
+    }),
+
+  marketingContactStats: adminProcedure.query(async () => {
+    const [totalRow] = await db.select({ cnt: count() }).from(marketingContacts);
+    const [activeRow] = await db.select({ cnt: count() }).from(marketingContacts).where(eq(marketingContacts.status, 'active'));
+    const [unsubRow] = await db.select({ cnt: count() }).from(marketingContacts).where(eq(marketingContacts.status, 'unsubscribed'));
+
+    const byTagResult = await db.execute<{ tag: string; cnt: number }>(sql`
+      SELECT t AS tag, COUNT(*)::int AS cnt
+      FROM ${marketingContacts}, unnest(${marketingContacts.tags}) AS t
+      GROUP BY t
+      ORDER BY cnt DESC
+      LIMIT 20
+    `);
+
+    return {
+      total: Number(totalRow?.cnt ?? 0),
+      active: Number(activeRow?.cnt ?? 0),
+      unsubscribed: Number(unsubRow?.cnt ?? 0),
+      byTag: byTagResult.rows.map(r => ({ tag: r.tag, count: Number(r.cnt) })),
+    };
+  }),
+
+  updateMarketingContact: adminProcedure
+    .input(z.object({
+      id: z.number(),
+      name: z.string().optional(),
+      phone: z.string().optional(),
+      company: z.string().optional(),
+      city: z.string().optional(),
+      state: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      const updates: Record<string, any> = { updatedAt: new Date() };
+      if (data.name !== undefined) updates.name = data.name || null;
+      if (data.phone !== undefined) updates.phone = data.phone || null;
+      if (data.company !== undefined) updates.company = data.company || null;
+      if (data.city !== undefined) updates.city = data.city || null;
+      if (data.state !== undefined) updates.state = data.state || null;
+      if (data.tags !== undefined) updates.tags = data.tags;
+      if (data.notes !== undefined) updates.notes = data.notes || null;
+
+      const [updated] = await db.update(marketingContacts)
+        .set(updates)
+        .where(eq(marketingContacts.id, id))
+        .returning();
+      if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'Contato não encontrado' });
+      return updated;
+    }),
+
+  deleteMarketingContacts: adminProcedure
+    .input(z.object({ ids: z.array(z.number()).min(1) }))
+    .mutation(async ({ input }) => {
+      await db.delete(marketingContacts).where(inArray(marketingContacts.id, input.ids));
+      return { deleted: input.ids.length };
+    }),
+
+  tagMarketingContacts: adminProcedure
+    .input(z.object({
+      ids: z.array(z.number()).min(1),
+      addTags: z.array(z.string()).optional(),
+      removeTags: z.array(z.string()).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      if (input.addTags && input.addTags.length > 0) {
+        const tagsToAdd = input.addTags.map(t => t.trim()).filter(Boolean);
+        if (tagsToAdd.length > 0) {
+          await db.update(marketingContacts)
+            .set({
+              tags: sql`(SELECT array_agg(DISTINCT t) FROM unnest(${marketingContacts.tags} || ARRAY[${sql.join(tagsToAdd.map(t => sql`${t}`), sql`, `)}]::text[]) AS t)`,
+              updatedAt: new Date(),
+            })
+            .where(inArray(marketingContacts.id, input.ids));
+        }
+      }
+      if (input.removeTags && input.removeTags.length > 0) {
+        const tagsToRemove = input.removeTags.map(t => t.trim()).filter(Boolean);
+        if (tagsToRemove.length > 0) {
+          await db.update(marketingContacts)
+            .set({
+              tags: sql`(SELECT COALESCE(array_agg(t), '{}') FROM unnest(${marketingContacts.tags}) AS t WHERE t != ALL(ARRAY[${sql.join(tagsToRemove.map(t => sql`${t}`), sql`, `)}]::text[]))`,
+              updatedAt: new Date(),
+            })
+            .where(inArray(marketingContacts.id, input.ids));
+        }
+      }
+      return { ok: true };
+    }),
+
+  listMarketingContactTags: adminProcedure.query(async () => {
+    const result = await db.execute<{ tag: string }>(sql`
+      SELECT DISTINCT unnest(${marketingContacts.tags}) AS tag
+      FROM ${marketingContacts}
+      WHERE array_length(${marketingContacts.tags}, 1) > 0
+      ORDER BY 1
+    `);
+    return result.rows.map(r => r.tag);
+  }),
+
+  enrollMarketingContactsInSequence: adminProcedure
+    .input(z.object({
+      sequenceId: z.number(),
+      contactIds: z.array(z.number()).min(1),
+    }))
+    .mutation(async ({ input }) => {
+      const [sequence] = await db.select().from(emailSequences).where(eq(emailSequences.id, input.sequenceId));
+      if (!sequence) throw new TRPCError({ code: 'NOT_FOUND', message: 'Sequência não encontrada' });
+
+      const contactRows = await db.select({
+        id: marketingContacts.id, email: marketingContacts.email, name: marketingContacts.name, status: marketingContacts.status,
+      }).from(marketingContacts)
+        .where(and(inArray(marketingContacts.id, input.contactIds), eq(marketingContacts.status, 'active')));
+
+      let enrolled = 0;
+      let skipped = 0;
+
+      for (const c of contactRows) {
+        if (!c.email) { skipped++; continue; }
+        const result = await enrollInSequence(input.sequenceId, {
+          email: c.email,
+          name: c.name,
+          taskId: null,
+        });
+        if (result.enrolled) enrolled++;
+        else skipped++;
+      }
+
+      // Count contacts that were not active or not found
+      skipped += input.contactIds.length - contactRows.length;
+
+      return { enrolled, skipped };
+    }),
+
+  unsubscribeMarketingContact: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const [contact] = await db.select({ email: marketingContacts.email })
+        .from(marketingContacts).where(eq(marketingContacts.id, input.id));
+      if (!contact) throw new TRPCError({ code: 'NOT_FOUND', message: 'Contato não encontrado' });
+
+      await db.update(marketingContacts)
+        .set({ status: 'unsubscribed', updatedAt: new Date() })
+        .where(eq(marketingContacts.id, input.id));
+
+      // Add to global suppressions so the send gate is consistent
+      await db.insert(emailSuppressions)
+        .values({ email: contact.email.toLowerCase().trim(), reason: 'manual' })
+        .onConflictDoNothing();
+
+      return { ok: true };
     }),
 });

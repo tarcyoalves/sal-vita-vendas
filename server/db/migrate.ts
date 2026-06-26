@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-06-25d';
+const SCHEMA_VERSION = '2026-06-25e';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -367,6 +367,25 @@ export async function ensureTablesExist() {
     )
   `;
 
+  // ── Marketing Contacts (standalone CSV-imported leads) ─────────────────────
+  await sql`
+    CREATE TABLE IF NOT EXISTS marketing_contacts (
+      id         SERIAL PRIMARY KEY,
+      email      TEXT NOT NULL,
+      name       TEXT,
+      phone      TEXT,
+      company    TEXT,
+      city       TEXT,
+      state      TEXT,
+      tags       TEXT[] NOT NULL DEFAULT '{}',
+      source     TEXT NOT NULL DEFAULT 'csv_import',
+      status     TEXT NOT NULL DEFAULT 'active',
+      notes      TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `;
+
   // ── Incremental migrations (always run, idempotent) ───────────────────────
   await sql`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS assigned_to       TEXT`;
   await sql`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS order_value        NUMERIC(10,2)`;
@@ -497,6 +516,11 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE email_sequence_steps ADD COLUMN IF NOT EXISTS max_retries INTEGER NOT NULL DEFAULT 1`;
   await sql`ALTER TABLE email_sequence_steps ADD COLUMN IF NOT EXISTS retry_subject TEXT`;
   await sql`ALTER TABLE email_sequence_sends ADD COLUMN IF NOT EXISTS retry_number INTEGER NOT NULL DEFAULT 0`;
+
+  // ── Marketing Contacts indexes ──────────────────────────────────────────────
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS marketing_contacts_email_idx ON marketing_contacts (lower(email))`;
+  await sql`CREATE INDEX IF NOT EXISTS marketing_contacts_tags_idx ON marketing_contacts USING GIN (tags)`;
+  await sql`CREATE INDEX IF NOT EXISTS marketing_contacts_status_idx ON marketing_contacts (status)`;
 
   // Record the schema marker so every subsequent cold start takes the fast path
   // at the top of this function instead of re-running the whole battery above.

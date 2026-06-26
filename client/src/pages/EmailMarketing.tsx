@@ -25,11 +25,11 @@ import { Checkbox } from "../components/ui/checkbox";
 import {
   Mail, Plus, Send, Trash2, Eye, Pencil, Workflow, Zap, Tag, BarChart3, Users, Pause, Play, X, Download,
   LayoutTemplate, MailX, Filter, Sparkles, Inbox, Megaphone, Paperclip, FileText, Contact, Search,
-  CheckCircle, XCircle, AlertTriangle, RotateCcw, Gauge, TrendingUp,
+  CheckCircle, XCircle, AlertTriangle, RotateCcw, Gauge, TrendingUp, Upload, UserPlus,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-type Source = "leads" | "clients" | "both";
+type Source = "leads" | "clients" | "contacts" | "both" | "all";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Rascunho",
@@ -632,7 +632,9 @@ function CampaignsTab() {
                   <SelectContent>
                     <SelectItem value="leads">Leads (Tarefas)</SelectItem>
                     <SelectItem value="clients">Clientes</SelectItem>
-                    <SelectItem value="both">Ambos</SelectItem>
+                    <SelectItem value="contacts">Leads importados (CSV)</SelectItem>
+                    <SelectItem value="both">Leads + Clientes</SelectItem>
+                    <SelectItem value="all">Todos</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -741,7 +743,9 @@ function CampaignsTab() {
                       <SelectContent>
                         <SelectItem value="leads">Leads (Tarefas)</SelectItem>
                         <SelectItem value="clients">Clientes</SelectItem>
-                        <SelectItem value="both">Ambos</SelectItem>
+                        <SelectItem value="contacts">Leads importados (CSV)</SelectItem>
+                        <SelectItem value="both">Leads + Clientes</SelectItem>
+                        <SelectItem value="all">Todos</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -2552,6 +2556,611 @@ function TagsTab() {
   );
 }
 
+// ── Leads Importados (CSV) ───────────────────────────────────────────────
+
+function parseCSVContacts(text: string): { rows: { email: string; name?: string; phone?: string; company?: string; city?: string; state?: string }[]; skipped: number } {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) return { rows: [], skipped: 0 };
+
+  // Detect separator: semicolon or comma
+  const firstLine = lines[0];
+  const sep = firstLine.includes(';') ? ';' : ',';
+
+  // Check if first line is a header
+  const headerCandidates = ['email', 'e-mail', 'nome', 'name', 'telefone', 'phone', 'empresa', 'company', 'cidade', 'city', 'estado', 'uf', 'state'];
+  const firstCells = firstLine.split(sep).map(c => c.trim().toLowerCase().replace(/^["']|["']$/g, ''));
+  const isHeader = firstCells.some(c => headerCandidates.includes(c));
+
+  if (!isHeader) {
+    // Assume one-email-per-line
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const rows: { email: string }[] = [];
+    let skipped = 0;
+    for (const line of lines) {
+      const email = line.trim().replace(/^["']|["']$/g, '');
+      if (emailRe.test(email)) rows.push({ email });
+      else skipped++;
+    }
+    return { rows, skipped };
+  }
+
+  // Map header columns
+  const colMap: Record<string, number> = {};
+  const mapping: Record<string, string[]> = {
+    email: ['email', 'e-mail'],
+    name: ['nome', 'name'],
+    phone: ['telefone', 'phone', 'tel', 'celular'],
+    company: ['empresa', 'company'],
+    city: ['cidade', 'city'],
+    state: ['estado', 'uf', 'state'],
+  };
+  for (let i = 0; i < firstCells.length; i++) {
+    for (const [field, aliases] of Object.entries(mapping)) {
+      if (aliases.includes(firstCells[i]) && !(field in colMap)) {
+        colMap[field] = i;
+      }
+    }
+  }
+
+  if (!('email' in colMap)) return { rows: [], skipped: lines.length - 1 };
+
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const rows: { email: string; name?: string; phone?: string; company?: string; city?: string; state?: string }[] = [];
+  let skipped = 0;
+
+  for (let i = 1; i < lines.length; i++) {
+    const cells = lines[i].split(sep).map(c => c.trim().replace(/^["']|["']$/g, ''));
+    const email = cells[colMap.email]?.trim();
+    if (!email || !emailRe.test(email)) { skipped++; continue; }
+    rows.push({
+      email,
+      name: colMap.name !== undefined ? cells[colMap.name]?.trim() || undefined : undefined,
+      phone: colMap.phone !== undefined ? cells[colMap.phone]?.trim() || undefined : undefined,
+      company: colMap.company !== undefined ? cells[colMap.company]?.trim() || undefined : undefined,
+      city: colMap.city !== undefined ? cells[colMap.city]?.trim() || undefined : undefined,
+      state: colMap.state !== undefined ? cells[colMap.state]?.trim() || undefined : undefined,
+    });
+  }
+
+  return { rows, skipped };
+}
+
+function MarketingContactsSection() {
+  const utils = trpc.useUtils();
+  const { data: stats } = trpc.emailMarketing.marketingContactStats.useQuery();
+  const { data: allTags } = trpc.emailMarketing.listMarketingContactTags.useQuery();
+  const { data: sequences } = trpc.emailMarketing.listSequences.useQuery();
+
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "unsubscribed">("all");
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 50;
+
+  const [searchTimer, setSearchTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const handleSearch = (v: string) => {
+    setSearch(v);
+    if (searchTimer) clearTimeout(searchTimer);
+    setSearchTimer(setTimeout(() => { setDebouncedSearch(v); setPage(0); }, 350));
+  };
+
+  const { data: contactsData, isLoading } = trpc.emailMarketing.listMarketingContacts.useQuery({
+    search: debouncedSearch || undefined,
+    tags: selectedTags.length > 0 ? selectedTags : undefined,
+    status: statusFilter,
+    limit: PAGE_SIZE,
+    offset: page * PAGE_SIZE,
+  });
+
+  // Mutations
+  const importMutation = trpc.emailMarketing.importMarketingContacts.useMutation();
+  const updateMutation = trpc.emailMarketing.updateMarketingContact.useMutation();
+  const deleteMutation = trpc.emailMarketing.deleteMarketingContacts.useMutation();
+  const unsubMutation = trpc.emailMarketing.unsubscribeMarketingContact.useMutation();
+  const tagMutation = trpc.emailMarketing.tagMarketingContacts.useMutation();
+  const enrollMutation = trpc.emailMarketing.enrollMarketingContactsInSequence.useMutation();
+
+  const invalidateAll = () => {
+    utils.emailMarketing.listMarketingContacts.invalidate();
+    utils.emailMarketing.marketingContactStats.invalidate();
+    utils.emailMarketing.listMarketingContactTags.invalidate();
+  };
+
+  // Import dialog
+  const [showImport, setShowImport] = useState(false);
+  const [importPreview, setImportPreview] = useState<{ rows: { email: string; name?: string; phone?: string; company?: string; city?: string; state?: string }[]; skipped: number } | null>(null);
+  const [importExtraTags, setImportExtraTags] = useState("");
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = reader.result as string;
+      const parsed = parseCSVContacts(text);
+      setImportPreview(parsed);
+    };
+    reader.readAsText(file, 'utf-8');
+  };
+
+  const handleImport = async () => {
+    if (!importPreview || importPreview.rows.length === 0) return;
+    try {
+      const extraTags = importExtraTags.split(',').map(t => t.trim()).filter(Boolean);
+      const res = await importMutation.mutateAsync({ contacts: importPreview.rows, tags: extraTags });
+      toast.success(`Importados: ${res.imported} novos, ${res.updated} atualizados${res.skippedInvalid > 0 ? `, ${res.skippedInvalid} ignorados` : ''}`);
+      setShowImport(false);
+      setImportPreview(null);
+      setImportExtraTags("");
+      invalidateAll();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao importar contatos");
+    }
+  };
+
+  // Edit dialog
+  const [editContact, setEditContact] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", phone: "", company: "", city: "", state: "", tags: "", notes: "" });
+
+  const openEdit = (c: any) => {
+    setEditContact(c);
+    setEditForm({
+      name: c.name ?? "", phone: c.phone ?? "", company: c.company ?? "",
+      city: c.city ?? "", state: c.state ?? "", tags: (c.tags ?? []).join(", "), notes: c.notes ?? "",
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editContact) return;
+    try {
+      await updateMutation.mutateAsync({
+        id: editContact.id,
+        name: editForm.name, phone: editForm.phone, company: editForm.company,
+        city: editForm.city, state: editForm.state,
+        tags: editForm.tags.split(',').map(t => t.trim()).filter(Boolean),
+        notes: editForm.notes,
+      });
+      toast.success("Contato atualizado");
+      setEditContact(null);
+      invalidateAll();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao atualizar contato");
+    }
+  };
+
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const toggleId = (id: number) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleAll = () => {
+    if (!contactsData) return;
+    if (selectedIds.size === contactsData.contacts.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(contactsData.contacts.map(c => c.id)));
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Excluir ${selectedIds.size} contato(s)?`)) return;
+    try {
+      await deleteMutation.mutateAsync({ ids: Array.from(selectedIds) });
+      toast.success(`${selectedIds.size} contato(s) excluído(s)`);
+      setSelectedIds(new Set());
+      invalidateAll();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao excluir");
+    }
+  };
+
+  // Bulk add tag dialog
+  const [showBulkTag, setShowBulkTag] = useState(false);
+  const [bulkTagInput, setBulkTagInput] = useState("");
+
+  const handleBulkAddTag = async () => {
+    if (selectedIds.size === 0 || !bulkTagInput.trim()) return;
+    try {
+      await tagMutation.mutateAsync({ ids: Array.from(selectedIds), addTags: [bulkTagInput.trim()] });
+      toast.success(`Tag "${bulkTagInput.trim()}" adicionada a ${selectedIds.size} contato(s)`);
+      setShowBulkTag(false);
+      setBulkTagInput("");
+      setSelectedIds(new Set());
+      invalidateAll();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao adicionar tag");
+    }
+  };
+
+  // Enroll in sequence dialog
+  const [showEnroll, setShowEnroll] = useState(false);
+  const [enrollSeqId, setEnrollSeqId] = useState("");
+
+  const handleEnroll = async () => {
+    if (selectedIds.size === 0 || !enrollSeqId) return;
+    try {
+      const res = await enrollMutation.mutateAsync({ sequenceId: Number(enrollSeqId), contactIds: Array.from(selectedIds) });
+      toast.success(`${res.enrolled} contato(s) inscrito(s) na sequência${res.skipped > 0 ? ` (${res.skipped} ignorado(s))` : ''}`);
+      setShowEnroll(false);
+      setEnrollSeqId("");
+      setSelectedIds(new Set());
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao inscrever em sequência");
+    }
+  };
+
+  const totalPages = Math.ceil((contactsData?.total ?? 0) / PAGE_SIZE);
+  const activeSequences = sequences?.filter(s => s.active) ?? [];
+
+  return (
+    <div className="space-y-4">
+      {/* Stats strip */}
+      {stats && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          <StatTile icon={UserPlus} label="Total importados" value={stats.total} accent="bg-blue-100 text-blue-700" />
+          <StatTile icon={CheckCircle} label="Ativos" value={stats.active} accent="bg-emerald-100 text-emerald-700" />
+          <StatTile icon={XCircle} label="Descadastrados" value={stats.unsubscribed} accent="bg-red-100 text-red-600" />
+        </div>
+      )}
+
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <CardTitle className="flex items-center gap-2">
+              <Upload size={16} className="text-blue-900" /> Leads importados (CSV)
+              <span className="text-slate-400 font-normal">({contactsData?.total ?? 0})</span>
+            </CardTitle>
+            <Button
+              size="sm"
+              className="bg-blue-900 hover:bg-blue-800 shadow-sm gap-1.5"
+              onClick={() => setShowImport(true)}
+            >
+              <Upload size={14} /> Importar CSV
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {/* Search and filters */}
+          <div className="flex flex-col gap-2.5">
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={search}
+                onChange={e => handleSearch(e.target.value)}
+                placeholder="Buscar por e-mail, nome ou empresa..."
+                className="pl-9"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Select value={statusFilter} onValueChange={(v: any) => { setStatusFilter(v); setPage(0); }}>
+                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos status</SelectItem>
+                  <SelectItem value="active">Ativos</SelectItem>
+                  <SelectItem value="unsubscribed">Descadastrados</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {allTags && allTags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {allTags.map(tag => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => { setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]); setPage(0); }}
+                    className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${selectedTags.includes(tag) ? "bg-blue-900 text-white border-blue-900 shadow-sm" : "bg-white text-slate-600 border-slate-200 hover:bg-blue-50 hover:border-blue-200"}`}
+                  >
+                    {tag}
+                  </button>
+                ))}
+                {selectedTags.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedTags([]); setPage(0); }}
+                    className="text-xs px-2.5 py-1 rounded-full border border-red-200 text-red-500 hover:bg-red-50 font-medium transition-colors"
+                  >
+                    Limpar tags
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Bulk actions */}
+          {selectedIds.size > 0 && (
+            <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 p-2.5 text-sm text-blue-900">
+              <span className="font-medium">{selectedIds.size} selecionado(s)</span>
+              <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={handleBulkDelete} disabled={deleteMutation.isPending}>
+                <Trash2 size={12} /> Excluir
+              </Button>
+              <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => setShowBulkTag(true)}>
+                <Tag size={12} /> Add tag
+              </Button>
+              {activeSequences.length > 0 && (
+                <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => setShowEnroll(true)}>
+                  <Workflow size={12} /> Inscrever em sequência
+                </Button>
+              )}
+              <button type="button" onClick={() => setSelectedIds(new Set())} className="ml-auto p-1 text-slate-400 hover:text-slate-600">
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
+          {/* Table */}
+          {isLoading ? (
+            <p className="text-sm text-slate-500">Carregando...</p>
+          ) : contactsData && contactsData.contacts.length > 0 ? (
+            <>
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full text-sm min-w-[700px]">
+                  <thead className={THEAD_CLASS}>
+                    <tr>
+                      <th className={TH_CLASS}>
+                        <Checkbox
+                          checked={selectedIds.size === contactsData.contacts.length && contactsData.contacts.length > 0}
+                          onCheckedChange={toggleAll}
+                        />
+                      </th>
+                      <th className={TH_CLASS}>E-mail</th>
+                      <th className={TH_CLASS}>Nome</th>
+                      <th className={TH_CLASS}>Empresa</th>
+                      <th className={TH_CLASS}>Tags</th>
+                      <th className={TH_CLASS}>Status</th>
+                      <th className={TH_CLASS}>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {contactsData.contacts.map((c) => (
+                      <tr key={c.id} className={TR_CLASS}>
+                        <td className="px-3 py-2.5">
+                          <Checkbox
+                            checked={selectedIds.has(c.id)}
+                            onCheckedChange={() => toggleId(c.id)}
+                          />
+                        </td>
+                        <td className="px-3 py-2.5 font-medium text-slate-700">{c.email}</td>
+                        <td className="px-3 py-2.5 text-slate-600">{c.name || "--"}</td>
+                        <td className="px-3 py-2.5 text-slate-600">{c.company || "--"}</td>
+                        <td className="px-3 py-2.5">
+                          {c.tags && c.tags.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {c.tags.slice(0, 3).map(t => (
+                                <span key={t} className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">{t}</span>
+                              ))}
+                              {c.tags.length > 3 && <span className="text-xs text-slate-400">+{c.tags.length - 3}</span>}
+                            </div>
+                          ) : <span className="text-slate-300">--</span>}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <Badge variant="outline" className={c.status === 'active' ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-600 border-red-200"}>
+                            {c.status === 'active' ? 'Ativo' : 'Descadastrado'}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex gap-1">
+                            <button type="button" onClick={() => openEdit(c)} className="p-1.5 rounded-md text-slate-400 hover:text-blue-700 hover:bg-blue-50 transition" title="Editar">
+                              <Pencil size={14} />
+                            </button>
+                            {c.status === 'active' && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!confirm(`Descadastrar "${c.email}"?`)) return;
+                                  try {
+                                    await unsubMutation.mutateAsync({ id: c.id });
+                                    toast.success("Contato descadastrado");
+                                    invalidateAll();
+                                  } catch (e: any) { toast.error(e?.message ?? "Erro"); }
+                                }}
+                                className="p-1.5 rounded-md text-slate-400 hover:text-orange-600 hover:bg-orange-50 transition"
+                                title="Descadastrar"
+                              >
+                                <MailX size={14} />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (!confirm(`Excluir "${c.email}"?`)) return;
+                                try {
+                                  await deleteMutation.mutateAsync({ ids: [c.id] });
+                                  toast.success("Contato excluído");
+                                  invalidateAll();
+                                } catch (e: any) { toast.error(e?.message ?? "Erro"); }
+                              }}
+                              className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
+                              title="Excluir"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>
+                    Anterior
+                  </Button>
+                  <span>
+                    Página {page + 1} de {totalPages} ({contactsData.total} contato{contactsData.total === 1 ? "" : "s"})
+                  </span>
+                  <Button size="sm" variant="outline" disabled={page + 1 >= totalPages} onClick={() => setPage(p => p + 1)}>
+                    Próxima
+                  </Button>
+                </div>
+              )}
+            </>
+          ) : (
+            <EmptyState icon={Upload} message={search || selectedTags.length > 0 || statusFilter !== 'all' ? "Nenhum contato encontrado com esses filtros." : "Nenhum lead importado ainda. Use o botão 'Importar CSV' acima para adicionar contatos."} />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Import CSV dialog */}
+      <Dialog open={showImport} onOpenChange={(open) => { setShowImport(open); if (!open) { setImportPreview(null); setImportExtraTags(""); } }}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-700"><Upload size={16} /></span>
+              Importar leads via CSV
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">
+              <FileText size={16} className="mt-0.5 flex-shrink-0" />
+              <p>
+                Envie um CSV com colunas: <strong>email</strong> (obrigatório), nome, telefone, empresa, cidade, estado/UF.
+                Aceita separador <code>;</code> ou <code>,</code>. Também aceita um arquivo simples com um e-mail por linha.
+                A tag <strong>"Leads Importados"</strong> é adicionada automaticamente.
+              </p>
+            </div>
+
+            <div>
+              <Label>Arquivo CSV</Label>
+              <input
+                type="file"
+                accept=".csv,.txt"
+                onChange={handleFileSelect}
+                className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer mt-1"
+              />
+            </div>
+
+            {importPreview && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm">
+                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">{importPreview.rows.length} válido(s)</Badge>
+                  {importPreview.skipped > 0 && (
+                    <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200">{importPreview.skipped} ignorado(s)</Badge>
+                  )}
+                </div>
+                {importPreview.rows.length > 0 && (
+                  <div className="overflow-x-auto rounded-lg border border-slate-200 max-h-48">
+                    <table className="w-full text-xs">
+                      <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                          <th className="px-2 py-1.5 text-left font-medium text-slate-500">E-mail</th>
+                          <th className="px-2 py-1.5 text-left font-medium text-slate-500">Nome</th>
+                          <th className="px-2 py-1.5 text-left font-medium text-slate-500">Empresa</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importPreview.rows.slice(0, 10).map((r, i) => (
+                          <tr key={i} className="border-b border-slate-100">
+                            <td className="px-2 py-1.5 text-slate-700">{r.email}</td>
+                            <td className="px-2 py-1.5 text-slate-500">{r.name || "--"}</td>
+                            <td className="px-2 py-1.5 text-slate-500">{r.company || "--"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {importPreview.rows.length > 10 && (
+                      <p className="text-xs text-slate-400 px-2 py-1.5 bg-slate-50">... e mais {importPreview.rows.length - 10} contato(s)</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div>
+              <Label>Tags extras (separadas por vírgula)</Label>
+              <Input
+                value={importExtraTags}
+                onChange={e => setImportExtraTags(e.target.value)}
+                placeholder='Ex: "Feira 2026, Sal Grosso"'
+              />
+              <p className="text-xs text-slate-400 mt-1">"Leads Importados" é adicionada automaticamente.</p>
+            </div>
+          </div>
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button
+              className="flex-1 bg-blue-900 hover:bg-blue-800"
+              onClick={handleImport}
+              disabled={importMutation.isPending || !importPreview || importPreview.rows.length === 0}
+            >
+              {importMutation.isPending ? "Importando..." : `Importar ${importPreview?.rows.length ?? 0} contato(s)`}
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => { setShowImport(false); setImportPreview(null); setImportExtraTags(""); }}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit contact dialog */}
+      <Dialog open={!!editContact} onOpenChange={(open) => { if (!open) setEditContact(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-700"><Pencil size={16} /></span>
+              Editar contato
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Nome</Label><Input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} /></div>
+            <div><Label>Telefone</Label><Input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Empresa</Label><Input value={editForm.company} onChange={e => setEditForm(f => ({ ...f, company: e.target.value }))} /></div>
+              <div><Label>Cidade</Label><Input value={editForm.city} onChange={e => setEditForm(f => ({ ...f, city: e.target.value }))} /></div>
+            </div>
+            <div><Label>Estado/UF</Label><Input value={editForm.state} onChange={e => setEditForm(f => ({ ...f, state: e.target.value }))} /></div>
+            <div><Label>Tags (separadas por vírgula)</Label><Input value={editForm.tags} onChange={e => setEditForm(f => ({ ...f, tags: e.target.value }))} /></div>
+            <div><Label>Notas</Label><Textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} rows={2} /></div>
+          </div>
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleSaveEdit} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? "Salvando..." : "Salvar"}
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setEditContact(null)}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk add tag dialog */}
+      <Dialog open={showBulkTag} onOpenChange={setShowBulkTag}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Adicionar tag</DialogTitle></DialogHeader>
+          <div><Label>Nome da tag</Label><Input value={bulkTagInput} onChange={e => setBulkTagInput(e.target.value)} placeholder="Ex: Feira 2026" autoFocus onKeyDown={e => { if (e.key === 'Enter') handleBulkAddTag(); }} /></div>
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleBulkAddTag} disabled={tagMutation.isPending || !bulkTagInput.trim()}>
+              {tagMutation.isPending ? "Adicionando..." : `Adicionar a ${selectedIds.size} contato(s)`}
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setShowBulkTag(false)}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Enroll in sequence dialog */}
+      <Dialog open={showEnroll} onOpenChange={setShowEnroll}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Inscrever em sequência</DialogTitle></DialogHeader>
+          <div>
+            <Label>Sequência</Label>
+            <Select value={enrollSeqId} onValueChange={setEnrollSeqId}>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+              <SelectContent>
+                {activeSequences.map(s => (
+                  <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleEnroll} disabled={enrollMutation.isPending || !enrollSeqId}>
+              {enrollMutation.isPending ? "Inscrevendo..." : `Inscrever ${selectedIds.size} contato(s)`}
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setShowEnroll(false)}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 // ── Contatos ──────────────────────────────────────────────────────────────
 
 const SUPPRESSION_REASON_LABELS: Record<string, string> = {
@@ -2630,7 +3239,11 @@ function ContactsTab() {
   const totalPages = Math.ceil((contactsData?.total ?? 0) / PAGE_SIZE);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      <MarketingContactsSection />
+
+      <hr className="border-slate-200" />
+
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
           <StatTile icon={CheckCircle} label="Leads confirmados" value={stats.confirmedLeads} accent="bg-emerald-100 text-emerald-700" />
