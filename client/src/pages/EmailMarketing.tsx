@@ -279,6 +279,109 @@ export default function EmailMarketing() {
   );
 }
 
+// ── Assistente de IA para e-mail ─────────────────────────────────────────────
+// Painel compacto reutilizado nos editores de campanha, broadcast, template e
+// passo de sequência. Sob demanda (1 clique = 1 chamada), respeitando a cota.
+const AI_TONES = [
+  { value: "cordial", label: "Cordial" },
+  { value: "formal", label: "Formal" },
+  { value: "persuasivo", label: "Persuasivo" },
+  { value: "urgente", label: "Urgente" },
+  { value: "amigavel", label: "Amigável" },
+] as const;
+
+function AiEmailComposer({ html, onApply }: {
+  html: string;
+  onApply: (next: { subject?: string; html?: string }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [brief, setBrief] = useState("");
+  const [tone, setTone] = useState<string>("cordial");
+  const [subjects, setSubjects] = useState<string[]>([]);
+  const gen = trpc.ai.generateEmailCopy.useMutation();
+
+  const run = async (mode: "full" | "subjects" | "rewrite") => {
+    if (mode !== "subjects" && mode !== "rewrite" && !brief.trim()) {
+      toast.error("Descreva o e-mail que você quer gerar.");
+      return;
+    }
+    if (mode === "rewrite" && !html.trim()) {
+      toast.error("Escreva ou gere um corpo primeiro para reescrever.");
+      return;
+    }
+    try {
+      const res: any = await gen.mutateAsync({
+        brief: brief.trim() || "E-mail de relacionamento da Sal Vita",
+        tone: tone as any,
+        mode,
+        currentHtml: mode === "rewrite" ? html : undefined,
+      });
+      if (res.error) { toast.error(res.error); return; }
+      const next: { subject?: string; html?: string } = {};
+      if (res.html) next.html = res.html;
+      if (res.subjects?.length) { setSubjects(res.subjects); next.subject = res.subjects[0]; }
+      onApply(next);
+      toast.success(mode === "subjects" ? "Assuntos gerados!" : "Conteúdo gerado! Revise antes de enviar.");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao gerar.");
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-violet-200 bg-violet-50/60 p-2.5 mb-2">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 text-sm font-semibold text-violet-700"
+      >
+        <Sparkles size={15} /> Assistente de IA {open ? "▲" : "▼"}
+      </button>
+      {open && (
+        <div className="mt-2.5 space-y-2.5">
+          <Textarea
+            value={brief}
+            onChange={e => setBrief(e.target.value)}
+            placeholder='Descreva o e-mail. Ex: "Reativar clientes que não compram há 60 dias, oferecendo condição especial no sal grosso."'
+            className="text-base min-h-[70px]"
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={tone} onValueChange={setTone}>
+              <SelectTrigger className="w-[150px] h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {AI_TONES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Button type="button" size="sm" onClick={() => run("full")} disabled={gen.isPending}
+              className="bg-violet-600 hover:bg-violet-700 text-white">
+              {gen.isPending ? "⏳ Gerando..." : "✨ Gerar e-mail"}
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => run("subjects")} disabled={gen.isPending}>
+              Só assuntos
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => run("rewrite")} disabled={gen.isPending}>
+              Reescrever atual
+            </Button>
+          </div>
+          {subjects.length > 1 && (
+            <div className="space-y-1">
+              <p className="text-xs text-slate-500">Outras opções de assunto (clique para usar):</p>
+              <div className="flex flex-wrap gap-1.5">
+                {subjects.map((s, i) => (
+                  <button key={i} type="button" onClick={() => onApply({ subject: s })}
+                    className="text-xs px-2 py-1 rounded-full border border-violet-300 bg-white text-violet-700 hover:bg-violet-100">
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <p className="text-[11px] text-slate-400">A IA gera um rascunho — sempre revise antes de enviar. Use {"{{nome}}"} e {"{{empresa}}"} para personalizar.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Campanhas ──────────────────────────────────────────────────────────────
 
 function CampaignsTab() {
@@ -608,6 +711,11 @@ function CampaignsTab() {
               </div>
             )}
 
+            <AiEmailComposer
+              html={form.htmlBody}
+              onApply={({ subject, html }) => setForm(f => ({ ...f, ...(subject !== undefined ? { subject } : {}), ...(html !== undefined ? { htmlBody: html } : {}) }))}
+            />
+
             <div>
               <Label>Assunto</Label>
               <Input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} placeholder="Ex: Olá {nome}, confira nossas novidades!" />
@@ -815,6 +923,11 @@ function CampaignsTab() {
                 </Select>
               </div>
             )}
+
+            <AiEmailComposer
+              html={bcast.htmlBody}
+              onApply={({ subject, html }) => setBcast(b => ({ ...b, ...(subject !== undefined ? { subject } : {}), ...(html !== undefined ? { htmlBody: html } : {}) }))}
+            />
 
             <div>
               <Label>Assunto</Label>
@@ -1222,6 +1335,10 @@ function TemplatesTab() {
                   </div>
                 </div>
               )}
+              <AiEmailComposer
+                html={editing.htmlBody}
+                onApply={({ subject, html }) => setEditing(t => t && ({ ...t, ...(subject !== undefined ? { subject } : {}), ...(html !== undefined ? { htmlBody: html } : {}) }))}
+              />
               <div>
                 <Label>Assunto</Label>
                 <Input value={editing.subject} onChange={e => setEditing(t => t && ({ ...t, subject: e.target.value }))} />
@@ -1872,6 +1989,10 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                     <p className="text-xs text-gray-500 mt-1">Ao selecionar, o assunto e corpo serão preenchidos com o conteúdo do template.</p>
                   </div>
                 )}
+                <AiEmailComposer
+                  html={editingStep.htmlBody}
+                  onApply={({ subject, html }) => setEditingStep(s => s && ({ ...s, ...(subject !== undefined ? { subject } : {}), ...(html !== undefined ? { htmlBody: html } : {}) }))}
+                />
                 <div>
                   <Label>Assunto</Label>
                   <Input value={editingStep.subject} onChange={e => setEditingStep(s => s && ({ ...s, subject: e.target.value }))} />

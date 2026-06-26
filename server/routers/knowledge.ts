@@ -5,8 +5,11 @@ import { db } from '../db';
 import { knowledgeDocuments } from '../db/schema';
 
 export const knowledgeRouter = router({
-  list: protectedProcedure.query(async ({ ctx }) => {
-    return db.select().from(knowledgeDocuments).where(eq(knowledgeDocuments.userId, ctx.user.id)).orderBy(knowledgeDocuments.createdAt);
+  // Base de conhecimento COMPARTILHADA: todos os usuários (e a IA de todos) leem
+  // os mesmos documentos. O admin cadastra scripts/políticas/regras e os
+  // atendentes — junto com o assistente de IA — passam a enxergar tudo.
+  list: protectedProcedure.query(async () => {
+    return db.select().from(knowledgeDocuments).orderBy(knowledgeDocuments.createdAt);
   }),
 
   create: protectedProcedure
@@ -28,9 +31,12 @@ export const knowledgeRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
-      await db.delete(knowledgeDocuments).where(
-        and(eq(knowledgeDocuments.id, input.id), eq(knowledgeDocuments.userId, ctx.user.id))
-      );
+      // Base compartilhada: admin pode excluir qualquer documento; atendente só
+      // remove os que ele mesmo cadastrou.
+      const where = ctx.user.role === 'admin'
+        ? eq(knowledgeDocuments.id, input.id)
+        : and(eq(knowledgeDocuments.id, input.id), eq(knowledgeDocuments.userId, ctx.user.id));
+      await db.delete(knowledgeDocuments).where(where);
       return { ok: true };
     }),
 });
