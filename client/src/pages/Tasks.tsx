@@ -1016,17 +1016,15 @@ export default function Tasks() {
             <option value="active_clients">🎉 Só clientes ativos</option>
             <option value="leads">🌱 Só leads (não convertidos)</option>
           </select>
-          {availableTags.length > 0 && (
-            <select
-              value={filterTag}
-              onChange={(e) => setFilterTag(e.target.value)}
-              className={`px-3 py-2 border rounded-lg text-sm font-medium ${filterTag !== "all" ? "bg-indigo-500 text-white border-indigo-500" : "bg-white text-gray-700"}`}
-              title="Filtrar por tag"
-            >
-              <option value="all">🏷️ Todas as tags</option>
-              {availableTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
-            </select>
-          )}
+          <select
+            value={filterTag}
+            onChange={(e) => setFilterTag(e.target.value)}
+            className={`px-3 py-2 border rounded-lg text-sm font-medium ${filterTag !== "all" ? "bg-indigo-500 text-white border-indigo-500" : "bg-white text-gray-700"}`}
+            title="Filtrar por tag"
+          >
+            <option value="all">🏷️ Todas as tags</option>
+            {availableTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
+          </select>
           {!!hotLeadsData?.count && (
             <button
               onClick={() => setFilterHot(h => !h)}
