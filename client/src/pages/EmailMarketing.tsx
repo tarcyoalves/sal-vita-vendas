@@ -303,11 +303,11 @@ function CampaignsTab() {
   const [bcastMode, setBcastMode] = useState<"manual" | "audience">("manual");
   const [bcast, setBcast] = useState({
     name: "", subject: "", htmlBody: "", replyTo: "", recipientsRaw: "",
-    audSource: "leads" as Source, audAssignedTo: "", audTags: [] as string[],
+    audSource: "leads" as Source, audAssignedTo: "", audTags: [] as string[], audListId: undefined as number | undefined,
   });
   const [bcastFiles, setBcastFiles] = useState<{ filename: string; content: string; size: number }[]>([]);
   const resetBroadcast = () => {
-    setBcast({ name: "", subject: "", htmlBody: "", replyTo: "", recipientsRaw: "", audSource: "leads", audAssignedTo: "", audTags: [] });
+    setBcast({ name: "", subject: "", htmlBody: "", replyTo: "", recipientsRaw: "", audSource: "leads", audAssignedTo: "", audTags: [], audListId: undefined });
     setBcastFiles([]);
     setBcastMode("manual");
   };
@@ -331,9 +331,10 @@ function CampaignsTab() {
   }, [bcast.recipientsRaw]);
 
   const { data: availTags } = trpc.emailMarketing.listTags.useQuery(undefined, { enabled: showBroadcast && bcastMode === 'audience' });
+  const { data: bcastLists } = trpc.emailMarketing.listMarketingLists.useQuery(undefined, { enabled: showBroadcast && bcastMode === 'audience' });
 
   const { data: bcastAudiencePreview } = trpc.emailMarketing.audiencePreview.useQuery(
-    { source: bcast.audSource, assignedTo: bcast.audAssignedTo || undefined, tags: bcast.audTags.length > 0 ? bcast.audTags : undefined },
+    { source: bcast.audSource, assignedTo: bcast.audAssignedTo || undefined, tags: bcast.audTags.length > 0 ? bcast.audTags : undefined, listId: bcast.audListId },
     { enabled: showBroadcast && bcastMode === 'audience' }
   );
 
@@ -400,6 +401,7 @@ function CampaignsTab() {
         payload.audienceSource = bcast.audSource;
         if (bcast.audAssignedTo) payload.audienceAssignedTo = bcast.audAssignedTo;
         if (bcast.audTags.length > 0) payload.audienceTags = bcast.audTags;
+        if (bcast.audListId) payload.audienceListId = bcast.audListId;
       }
       const res = await broadcastMutation.mutateAsync(payload);
       toast.success(`Disparo criado: ${res.recipientCount} destinatário(s). Enviando...`);
@@ -764,26 +766,42 @@ function CampaignsTab() {
                     </div>
                   )}
                 </div>
-                {availTags && availTags.length > 0 && bcast.audSource !== "clients" && (
-                  <div>
-                    <Label className="flex items-center gap-1"><Tag size={12} /> Tags</Label>
-                    <div className="flex flex-wrap gap-1.5 mt-1">
-                      {availTags.map(tag => (
-                        <button
-                          key={tag}
-                          type="button"
-                          onClick={() => setBcast(b => ({
-                            ...b,
-                            audTags: b.audTags.includes(tag) ? b.audTags.filter(t => t !== tag) : [...b.audTags, tag],
-                          }))}
-                          className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${bcast.audTags.includes(tag) ? "bg-blue-900 text-white border-blue-900" : "bg-white text-slate-600 border-slate-200 hover:bg-blue-50"}`}
-                        >
-                          {tag}
-                        </button>
-                      ))}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {availTags && availTags.length > 0 && bcast.audSource !== "clients" && (
+                    <div>
+                      <Label className="flex items-center gap-1"><Tag size={12} /> Tag</Label>
+                      <Select
+                        value={bcast.audTags.length === 1 ? bcast.audTags[0] : "__all__"}
+                        onValueChange={(v) => setBcast(b => ({ ...b, audTags: v === "__all__" ? [] : [v] }))}
+                      >
+                        <SelectTrigger className="w-full bg-white"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__all__">Todas</SelectItem>
+                          {availTags.map(tag => (
+                            <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                  </div>
-                )}
+                  )}
+                  {bcastLists && bcastLists.length > 0 && (bcast.audSource === "contacts" || bcast.audSource === "all") && (
+                    <div>
+                      <Label className="flex items-center gap-1"><FolderOpen size={12} /> Lista</Label>
+                      <Select
+                        value={bcast.audListId ? String(bcast.audListId) : "__all__"}
+                        onValueChange={(v) => setBcast(b => ({ ...b, audListId: v === "__all__" ? undefined : Number(v) }))}
+                      >
+                        <SelectTrigger className="w-full bg-white"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__all__">Todas listas</SelectItem>
+                          {bcastLists.map(l => (
+                            <SelectItem key={l.id} value={String(l.id)}>{l.name} ({l.contactCount})</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
                 <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-white p-2.5 text-sm text-blue-900">
                   <Users size={16} className="flex-shrink-0 text-blue-700" />
                   <span>Público estimado: <strong>{bcastAudiencePreview?.count ?? 0}</strong> destinatário(s)</span>
@@ -3508,27 +3526,26 @@ function ContactsTab() {
             </div>
 
             {tags && tags.length > 0 && source !== "clients" && (
-              <div className="flex flex-wrap gap-1.5">
-                {tags.map(tag => (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => { setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]); setPage(0); }}
-                    className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${selectedTags.includes(tag) ? "bg-blue-900 text-white border-blue-900 shadow-sm" : "bg-white text-slate-600 border-slate-200 hover:bg-blue-50 hover:border-blue-200"}`}
-                  >
-                    {tag}
-                  </button>
-                ))}
-                {selectedTags.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => { setSelectedTags([]); setPage(0); }}
-                    className="text-xs px-2.5 py-1 rounded-full border border-red-200 text-red-500 hover:bg-red-50 font-medium transition-colors"
-                  >
-                    Limpar tags
-                  </button>
-                )}
-              </div>
+              <Select
+                value={selectedTags.length === 1 ? selectedTags[0] : selectedTags.length > 1 ? "__multi__" : "__all__"}
+                onValueChange={(v) => {
+                  if (v === "__all__") { setSelectedTags([]); setPage(0); }
+                  else if (v !== "__multi__") { setSelectedTags([v]); setPage(0); }
+                }}
+              >
+                <SelectTrigger className="w-[160px]">
+                  <div className="flex items-center gap-1.5">
+                    <Tag size={12} />
+                    <span>{selectedTags.length === 0 ? "Todas tags" : selectedTags.length === 1 ? selectedTags[0] : `${selectedTags.length} tags`}</span>
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">Todas tags</SelectItem>
+                  {tags.map(tag => (
+                    <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           </div>
 
@@ -3739,13 +3756,6 @@ function ExportSection() {
 
   const exportQuery = trpc.emailMarketing.exportLeads.useQuery(exportInput as any, { enabled: false });
 
-  const toggleTag = (tag: string) => {
-    setFilters(f => ({
-      ...f,
-      tags: f.tags.includes(tag) ? f.tags.filter(t => t !== tag) : [...f.tags, tag],
-    }));
-  };
-
   const handlePreview = async () => {
     try {
       const res = await exportQuery.refetch();
@@ -3822,19 +3832,19 @@ function ExportSection() {
 
           {tags && tags.length > 0 && (
             <div>
-              <Label className="flex items-center gap-1"><Filter size={12} /> Tags</Label>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {tags.map(tag => (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => toggleTag(tag)}
-                    className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors ${filters.tags.includes(tag) ? "bg-blue-900 text-white border-blue-900 shadow-sm" : "bg-white text-slate-600 border-slate-200 hover:bg-blue-50 hover:border-blue-200"}`}
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
+              <Label className="flex items-center gap-1"><Tag size={12} /> Tag</Label>
+              <Select
+                value={filters.tags.length === 1 ? filters.tags[0] : "__all__"}
+                onValueChange={(v) => setFilters(f => ({ ...f, tags: v === "__all__" ? [] : [v] }))}
+              >
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">Todas</SelectItem>
+                  {tags.map(tag => (
+                    <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
 
