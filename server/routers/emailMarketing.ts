@@ -350,6 +350,7 @@ export const emailMarketingRouter = router({
       audienceSource: z.enum(['leads', 'clients', 'contacts', 'both', 'all']).optional(),
       audienceAssignedTo: z.string().optional(),
       audienceTags: z.array(z.string()).optional(),
+      audienceListId: z.number().optional(),
       attachments: z.array(z.object({
         filename: z.string().min(1).max(255),
         content: z.string().min(1), // base64
@@ -371,6 +372,7 @@ export const emailMarketingRouter = router({
           source: input.audienceSource,
           assignedTo: input.audienceAssignedTo,
           tags: input.audienceTags,
+          listId: input.audienceListId,
         });
         allRecipients.push(...audience.map(r => ({ email: r.email, name: r.name })));
       }
@@ -1835,6 +1837,75 @@ export const emailMarketingRouter = router({
       active: Number(activeRow?.cnt ?? 0),
       unsubscribed: Number(unsubRow?.cnt ?? 0),
       byTag: byTagResult.rows.map(r => ({ tag: r.tag, count: Number(r.cnt) })),
+    };
+  }),
+
+  // Panorama dos contatos importados — agregações para tomada de decisão.
+  // Tudo via GROUP BY/COUNT (não traz linhas), barato no plano free da Neon.
+  contactsOverview: adminProcedure.query(async () => {
+    const aggRes = await db.execute<{
+      total: number; active: number; unsubscribed: number;
+      with_phone: number; with_company: number; with_location: number; with_name: number;
+      recent7: number; recent30: number; with_tags: number;
+    }>(sql`
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE ${marketingContacts.status} = 'active')::int AS active,
+        COUNT(*) FILTER (WHERE ${marketingContacts.status} = 'unsubscribed')::int AS unsubscribed,
+        COUNT(*) FILTER (WHERE ${marketingContacts.phone} IS NOT NULL AND ${marketingContacts.phone} <> '')::int AS with_phone,
+        COUNT(*) FILTER (WHERE ${marketingContacts.company} IS NOT NULL AND ${marketingContacts.company} <> '')::int AS with_company,
+        COUNT(*) FILTER (WHERE ${marketingContacts.city} IS NOT NULL AND ${marketingContacts.city} <> '' AND ${marketingContacts.state} IS NOT NULL AND ${marketingContacts.state} <> '')::int AS with_location,
+        COUNT(*) FILTER (WHERE ${marketingContacts.name} IS NOT NULL AND ${marketingContacts.name} <> '')::int AS with_name,
+        COUNT(*) FILTER (WHERE array_length(${marketingContacts.tags}, 1) > 0)::int AS with_tags,
+        COUNT(*) FILTER (WHERE ${marketingContacts.createdAt} >= NOW() - INTERVAL '7 days')::int AS recent7,
+        COUNT(*) FILTER (WHERE ${marketingContacts.createdAt} >= NOW() - INTERVAL '30 days')::int AS recent30
+      FROM ${marketingContacts}
+    `);
+    const a = (aggRes.rows[0] ?? {}) as any;
+
+    const byState = (await db.execute<{ state: string; cnt: number }>(sql`
+      SELECT COALESCE(NULLIF(TRIM(UPPER(${marketingContacts.state})), ''), '— sem UF') AS state, COUNT(*)::int AS cnt
+      FROM ${marketingContacts}
+      GROUP BY 1 ORDER BY cnt DESC LIMIT 12
+    `)).rows.map(r => ({ state: r.state, count: Number(r.cnt) }));
+
+    const bySource = (await db.execute<{ source: string; cnt: number }>(sql`
+      SELECT ${marketingContacts.source} AS source, COUNT(*)::int AS cnt
+      FROM ${marketingContacts} GROUP BY 1 ORDER BY cnt DESC
+    `)).rows.map(r => ({ source: r.source, count: Number(r.cnt) }));
+
+    const byTag = (await db.execute<{ tag: string; cnt: number }>(sql`
+      SELECT t AS tag, COUNT(*)::int AS cnt
+      FROM ${marketingContacts}, unnest(${marketingContacts.tags}) AS t
+      GROUP BY t ORDER BY cnt DESC LIMIT 12
+    `)).rows.map(r => ({ tag: r.tag, count: Number(r.cnt) }));
+
+    const byList = (await db.execute<{ id: number | null; name: string | null; cnt: number }>(sql`
+      SELECT ${marketingContacts.listId} AS id, ml.name AS name, COUNT(*)::int AS cnt
+      FROM ${marketingContacts}
+      LEFT JOIN ${marketingLists} ml ON ml.id = ${marketingContacts.listId}
+      GROUP BY ${marketingContacts.listId}, ml.name
+      ORDER BY cnt DESC LIMIT 15
+    `)).rows.map(r => ({ listId: r.id, name: r.name ?? '— sem lista', count: Number(r.cnt) }));
+
+    const [listsRow] = await db.select({ cnt: count() }).from(marketingLists);
+
+    return {
+      total: Number(a.total ?? 0),
+      active: Number(a.active ?? 0),
+      unsubscribed: Number(a.unsubscribed ?? 0),
+      withName: Number(a.with_name ?? 0),
+      withPhone: Number(a.with_phone ?? 0),
+      withCompany: Number(a.with_company ?? 0),
+      withLocation: Number(a.with_location ?? 0),
+      withTags: Number(a.with_tags ?? 0),
+      recent7: Number(a.recent7 ?? 0),
+      recent30: Number(a.recent30 ?? 0),
+      listsCount: Number(listsRow?.cnt ?? 0),
+      byState,
+      bySource,
+      byTag,
+      byList,
     };
   }),
 

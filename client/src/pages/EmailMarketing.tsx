@@ -3512,20 +3512,189 @@ const SUPPRESSION_REASON_LABELS: Record<string, string> = {
   manual: "Manual",
 };
 
+// ── Panorama de Contatos (Visão Geral) ───────────────────────────────────────
+const BAR_PALETTE = ['#6366f1', '#3b82f6', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#14b8a6'];
+
+function OverviewKpi({ icon: Icon, label, value, sub, tone }: {
+  icon: LucideIcon; label: string; value: string | number; sub?: string;
+  tone: 'slate' | 'emerald' | 'rose' | 'violet' | 'amber' | 'blue';
+}) {
+  const tones: Record<string, string> = {
+    slate: 'bg-slate-100 text-slate-600',
+    emerald: 'bg-emerald-100 text-emerald-600',
+    rose: 'bg-rose-100 text-rose-600',
+    violet: 'bg-violet-100 text-violet-600',
+    amber: 'bg-amber-100 text-amber-600',
+    blue: 'bg-blue-100 text-blue-600',
+  };
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
+      <div className="flex items-center gap-2">
+        <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${tones[tone]}`}><Icon size={16} /></span>
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+      </div>
+      <p className="mt-2 text-2xl font-bold tabular-nums text-slate-800">{value}</p>
+      {sub && <p className="text-xs text-slate-500">{sub}</p>}
+    </div>
+  );
+}
+
+function BarList({ items, total, emptyLabel }: {
+  items: { label: string; count: number }[]; total: number; emptyLabel: string;
+}) {
+  if (items.length === 0) return <p className="text-sm text-slate-400 italic py-2">{emptyLabel}</p>;
+  const max = Math.max(...items.map(i => i.count), 1);
+  return (
+    <div className="space-y-2.5">
+      {items.map((it, i) => {
+        const pctOfTotal = total > 0 ? Math.round((it.count / total) * 100) : 0;
+        const barPct = Math.round((it.count / max) * 100);
+        return (
+          <div key={i} className="space-y-1">
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <span className="truncate text-slate-700">{it.label}</span>
+              <span className="shrink-0 tabular-nums text-slate-500">
+                {it.count.toLocaleString('pt-BR')} <span className="text-slate-400">· {pctOfTotal}%</span>
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full rounded-full transition-all" style={{ width: `${barPct}%`, backgroundColor: BAR_PALETTE[i % BAR_PALETTE.length] }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CompletenessRow({ label, filled, total }: { label: string; filled: number; total: number }) {
+  const pct = total > 0 ? Math.round((filled / total) * 100) : 0;
+  const color = pct >= 80 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#ef4444';
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-slate-700">{label}</span>
+        <span className="tabular-nums text-slate-500">{filled.toLocaleString('pt-BR')}/{total.toLocaleString('pt-BR')} <span className="font-semibold" style={{ color }}>{pct}%</span></span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+      </div>
+    </div>
+  );
+}
+
+function OverviewPanel({ icon: Icon, title, children }: { icon: LucideIcon; title: string; children: ReactNode }) {
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base"><Icon size={16} className="text-slate-400" /> {title}</CardTitle>
+      </CardHeader>
+      <CardContent>{children}</CardContent>
+    </Card>
+  );
+}
+
+function ContactsOverviewSection() {
+  const { data: ov, isLoading } = trpc.emailMarketing.contactsOverview.useQuery();
+  const { data: crm } = trpc.emailMarketing.contactStats.useQuery();
+
+  if (isLoading || !ov) {
+    return (
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="h-24 animate-pulse rounded-xl bg-slate-100" />
+        ))}
+      </div>
+    );
+  }
+
+  const total = ov.total;
+  const activePct = total > 0 ? Math.round((ov.active / total) * 100) : 0;
+  const unsubRate = total > 0 ? Math.round((ov.unsubscribed / total) * 100) : 0;
+  const sourceLabel = (s: string) => s === 'csv_import' ? 'Importação CSV' : s === 'manual' ? 'Cadastro manual' : s;
+
+  return (
+    <div className="space-y-4">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <OverviewKpi icon={Users} tone="slate" label="Total importados" value={total.toLocaleString('pt-BR')} />
+        <OverviewKpi icon={CheckCircle} tone="emerald" label="Ativos" value={ov.active.toLocaleString('pt-BR')} sub={`${activePct}% da base`} />
+        <OverviewKpi icon={MailX} tone="rose" label="Descadastrados" value={ov.unsubscribed.toLocaleString('pt-BR')} sub={`taxa de ${unsubRate}%`} />
+        <OverviewKpi icon={FolderOpen} tone="violet" label="Listas" value={ov.listsCount.toLocaleString('pt-BR')} />
+        <OverviewKpi icon={TrendingUp} tone="amber" label="Novos (30d)" value={ov.recent30.toLocaleString('pt-BR')} sub={`${ov.recent7} nos últimos 7 dias`} />
+        <OverviewKpi icon={Inbox} tone="blue" label="Leads confirmados (CRM)" value={(crm?.confirmedLeads ?? 0).toLocaleString('pt-BR')} sub="prontos p/ disparo" />
+      </div>
+
+      {total === 0 ? (
+        <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 py-12 text-center">
+          <Upload className="mx-auto mb-2 text-slate-300" size={32} />
+          <p className="font-medium text-slate-600">Nenhum contato importado ainda</p>
+          <p className="mt-1 text-sm text-slate-400">Vá em <strong>Importados → Importar CSV</strong> para começar.<br />Assim que houver contatos, este painel mostra distribuição por lista, estado, tags e qualidade dos dados.</p>
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <OverviewPanel icon={FolderOpen} title="Distribuição por lista">
+              <BarList items={ov.byList.map(l => ({ label: l.name, count: l.count }))} total={total} emptyLabel="Nenhuma lista." />
+            </OverviewPanel>
+            <OverviewPanel icon={Megaphone} title="Distribuição por estado (UF)">
+              <BarList items={ov.byState.map(s => ({ label: s.state, count: s.count }))} total={total} emptyLabel="Sem dados de UF." />
+            </OverviewPanel>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <OverviewPanel icon={Tag} title="Top tags">
+              <BarList items={ov.byTag.map(t => ({ label: t.tag, count: t.count }))} total={total} emptyLabel="Nenhuma tag aplicada ainda." />
+            </OverviewPanel>
+            <OverviewPanel icon={Gauge} title="Qualidade dos dados">
+              <div className="space-y-3">
+                <CompletenessRow label="Com nome" filled={ov.withName} total={total} />
+                <CompletenessRow label="Com telefone" filled={ov.withPhone} total={total} />
+                <CompletenessRow label="Com empresa" filled={ov.withCompany} total={total} />
+                <CompletenessRow label="Com cidade/UF" filled={ov.withLocation} total={total} />
+                <CompletenessRow label="Com tag" filled={ov.withTags} total={total} />
+              </div>
+              {ov.bySource.length > 0 && (
+                <div className="mt-4 border-t border-slate-100 pt-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Origem</p>
+                  <div className="flex flex-wrap gap-2">
+                    {ov.bySource.map((s, i) => (
+                      <span key={i} className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">
+                        {sourceLabel(s.source)} <strong className="tabular-nums">{s.count.toLocaleString('pt-BR')}</strong>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </OverviewPanel>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ContactsTab() {
   return (
-    <Tabs defaultValue="imported" className="space-y-4">
-      <TabsList className="h-auto justify-start gap-1 rounded-xl bg-slate-100 p-1">
-        <TabsTrigger value="imported" className="rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-3 py-1.5">
+    <Tabs defaultValue="overview" className="space-y-4">
+      <TabsList className="h-auto justify-start gap-1 rounded-xl bg-slate-100 p-1 flex-nowrap overflow-x-auto scrollbar-hide">
+        <TabsTrigger value="overview" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-3 py-1.5">
+          <BarChart3 size={13} /> Visão Geral
+        </TabsTrigger>
+        <TabsTrigger value="imported" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-3 py-1.5">
           <Upload size={13} /> Importados
         </TabsTrigger>
-        <TabsTrigger value="confirmed" className="rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-3 py-1.5">
+        <TabsTrigger value="confirmed" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-3 py-1.5">
           <CheckCircle size={13} /> Confirmados
         </TabsTrigger>
-        <TabsTrigger value="export" className="rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-3 py-1.5">
+        <TabsTrigger value="export" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-3 py-1.5">
           <Download size={13} /> Exportar
         </TabsTrigger>
       </TabsList>
+
+      <TabsContent value="overview">
+        <ContactsOverviewSection />
+      </TabsContent>
 
       <TabsContent value="imported">
         <MarketingContactsSection />
