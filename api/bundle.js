@@ -67480,7 +67480,99 @@ Esta a\xE7\xE3o \xE9 IRREVERS\xCDVEL \u2014 os lembretes ser\xE3o redistribu\xED
     }
   }
 ];
+var ATTENDANT_TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "my_priorities",
+      description: 'Retorna SUAS prioridades do dia: lembretes vencidos, leads quentes (que engajaram em e-mails) e lembretes agendados para hoje. Use para "o que priorizo hoje", "minhas prioridades", "o que tenho pra fazer", "por onde come\xE7o".',
+      parameters: { type: "object", properties: {}, required: [] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "find_my_client",
+      description: "Busca um cliente SEU pelo nome e retorna as anota\xE7\xF5es e o hist\xF3rico de contato. Use sempre que precisar ESCREVER uma mensagem de follow-up (WhatsApp/e-mail), RESUMIR o hist\xF3rico, ou lembrar do que j\xE1 foi conversado com um cliente espec\xEDfico. Depois de chamar, use as anota\xE7\xF5es para redigir a mensagem solicitada.",
+      parameters: {
+        type: "object",
+        properties: {
+          client_name: { type: "string", description: "Nome ou parte do nome do cliente" }
+        },
+        required: ["client_name"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_knowledge",
+      description: "Busca na base de conhecimento da Sal Vita: scripts de abordagem, regras do neg\xF3cio, informa\xE7\xF5es de produto, pol\xEDticas, metas. Use quando precisar de orienta\xE7\xE3o oficial da empresa sobre como agir.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: 'Assunto a buscar (ex: "script de abordagem", "pre\xE7o do sal grosso")' }
+        },
+        required: ["query"]
+      }
+    }
+  }
+];
+async function ownTasksFor(callerUserId) {
+  const [seller] = await db.select().from(sellers).where(eq(sellers.userId, callerUserId)).limit(1);
+  const where = seller ? or2(eq(tasks.userId, callerUserId), eq(tasks.assignedTo, seller.name)) : eq(tasks.userId, callerUserId);
+  const rows = await db.select().from(tasks).where(where);
+  return { seller, rows };
+}
 async function executeTool(name2, args, callerUserId) {
+  if (name2 === "my_priorities") {
+    if (!callerUserId)
+      return { error: "Usu\xE1rio n\xE3o identificado." };
+    const { rows } = await ownTasksFor(callerUserId);
+    const now = /* @__PURE__ */ new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(now);
+    todayEnd.setHours(23, 59, 59, 999);
+    const overdue = rows.filter((t2) => t2.reminderDate && t2.reminderEnabled !== false && new Date(t2.reminderDate) < now).sort((a2, b) => new Date(a2.reminderDate).getTime() - new Date(b.reminderDate).getTime());
+    const hoje = rows.filter(
+      (t2) => t2.reminderDate && t2.reminderEnabled !== false && new Date(t2.reminderDate) >= todayStart && new Date(t2.reminderDate) <= todayEnd
+    );
+    const quentes = rows.filter((t2) => t2.hotLead);
+    const fmt = (t2) => ({
+      cliente: t2.title.slice(0, 60),
+      venceu: t2.reminderDate ? new Date(t2.reminderDate).toLocaleDateString("pt-BR") : "sem data",
+      anotacao: (t2.notes ?? "").trim().slice(0, 120) || "(sem anota\xE7\xE3o)"
+    });
+    return {
+      vencidos: { quantidade: overdue.length, top: overdue.slice(0, 10).map(fmt) },
+      para_hoje: { quantidade: hoje.length, lista: hoje.slice(0, 10).map(fmt) },
+      leads_quentes: { quantidade: quentes.length, lista: quentes.slice(0, 10).map(fmt) }
+    };
+  }
+  if (name2 === "find_my_client") {
+    if (!callerUserId)
+      return { error: "Usu\xE1rio n\xE3o identificado." };
+    const q = String(args.client_name ?? "").toLowerCase().trim();
+    if (!q)
+      return { error: "Informe o nome do cliente." };
+    const { rows } = await ownTasksFor(callerUserId);
+    const matches = rows.filter((t2) => t2.title.toLowerCase().includes(q)).sort((a2, b) => new Date(b.updatedAt).getTime() - new Date(a2.updatedAt).getTime()).slice(0, 5);
+    if (matches.length === 0)
+      return { encontrados: 0, mensagem: `Nenhum cliente seu encontrado para "${args.client_name}".` };
+    return {
+      encontrados: matches.length,
+      clientes: matches.map((t2) => ({
+        cliente: t2.title,
+        anotacoes: (t2.notes ?? "").trim() || "(sem anota\xE7\xE3o)",
+        ultimo_contato: t2.lastContactedAt ? new Date(t2.lastContactedAt).toLocaleString("pt-BR") : "nunca",
+        proximo_lembrete: t2.reminderDate ? new Date(t2.reminderDate).toLocaleString("pt-BR") : "sem data",
+        prioridade: t2.priority,
+        lead_quente: t2.hotLead,
+        tags: t2.tags ?? []
+      }))
+    };
+  }
   if (name2 === "list_tasks") {
     const name_ = String(args.attendant_name ?? "");
     const [seller] = await db.select().from(sellers).where(ilike(sellers.name, `%${name_}%`)).limit(1);
@@ -67574,18 +67666,13 @@ async function executeTool(name2, args, callerUserId) {
   if (name2 === "search_knowledge") {
     const query = String(args.query ?? "");
     const category = args.category ? String(args.category) : null;
-    const userFilter = callerUserId ? eq(knowledgeDocuments.userId, callerUserId) : void 0;
     const searchWhere = category ? and(
-      userFilter,
       or2(ilike(knowledgeDocuments.title, `%${query}%`), ilike(knowledgeDocuments.content, `%${query}%`)),
       ilike(knowledgeDocuments.category, `%${category}%`)
-    ) : and(
-      userFilter,
-      or2(ilike(knowledgeDocuments.title, `%${query}%`), ilike(knowledgeDocuments.content, `%${query}%`))
-    );
+    ) : or2(ilike(knowledgeDocuments.title, `%${query}%`), ilike(knowledgeDocuments.content, `%${query}%`));
     const matched = await db.select().from(knowledgeDocuments).where(searchWhere).limit(5);
     if (matched.length === 0) {
-      const fallback = await db.select().from(knowledgeDocuments).where(userFilter).limit(3);
+      const fallback = await db.select().from(knowledgeDocuments).limit(3);
       return { encontrados: 0, mensagem: `Nenhum documento encontrado para "${query}". Documentos dispon\xEDveis:`, documentos: fallback.map((d) => ({ titulo: d.title, categoria: d.category, conteudo: d.content.slice(0, 800) })) };
     }
     return {
@@ -67938,9 +68025,17 @@ REGRAS ABSOLUTAS:
 4. Quando precisar de contexto sobre processos da empresa, chame search_knowledge primeiro
 5. reschedule_tasks \xE9 IRREVERS\xCDVEL \u2014 sempre dry_run=true primeiro para mostrar preview, s\xF3 execute se usu\xE1rio confirmar
 Seja direto; portugu\xEAs BR; emojis.
-${userContext}` : `Assistente Sal Vita \u2014 atendente. Apenas informativo, sem executar a\xE7\xF5es.
-${userContext}
-Foco: performance pr\xF3pria, prioridades do dia, dicas B2B de sal. Objetivo, emojis, portugu\xEAs BR.`;
+${userContext}` : `Assistente de vendas Sal Vita para o atendente. Voc\xEA AJUDA o atendente no dia a dia. Ferramentas dispon\xEDveis (todas restritas aos dados DELE):
+- my_priorities: prioridades do dia (vencidos, leads quentes, lembretes de hoje) \u2014 use para "o que fa\xE7o hoje", "minhas prioridades"
+- find_my_client: busca um cliente DELE e traz as anota\xE7\xF5es/hist\xF3rico \u2014 use SEMPRE antes de escrever um follow-up ou resumir um cliente
+- search_knowledge: scripts, regras, produtos e pol\xEDticas oficiais da Sal Vita
+COMO AGIR:
+1. Pediu mensagem de follow-up / WhatsApp / e-mail para um cliente? \u2192 chame find_my_client com o nome, leia as anota\xE7\xF5es e ESCREVA a mensagem pronta (tom cordial, B2B, objetiva), citando o contexto real do cliente
+2. Pediu prioridades / o que fazer? \u2192 chame my_priorities e devolva uma lista ordenada por urg\xEAncia
+3. Pediu resumo de um cliente? \u2192 chame find_my_client e resuma os contatos
+4. Precisa de script/pre\xE7o/regra? \u2192 chame search_knowledge
+NUNCA invente dados do cliente \u2014 sempre busque com a ferramenta. Voc\xEA s\xF3 v\xEA os clientes DESTE atendente. Objetivo, emojis, portugu\xEAs BR.
+${userContext}`;
       const messages = [
         { role: "system", content: systemPrompt },
         ...history.reverse().map((m2) => ({ role: m2.role, content: m2.content }))
@@ -67952,11 +68047,11 @@ Foco: performance pr\xF3pria, prioridades do dia, dicas B2B de sal. Objetivo, em
           apiKey,
           baseURL,
           model,
-          (k, b, m2) => isAdmin ? callLLMWithTools(k, b, m2, messages, TOOLS, 1e3, ctx.user.id) : callLLM(k, b, m2, messages, 700, 0.6),
+          (k, b, m2) => isAdmin ? callLLMWithTools(k, b, m2, messages, TOOLS, 1e3, ctx.user.id) : callLLMWithTools(k, b, m2, messages, ATTENDANT_TOOLS, 900, ctx.user.id),
           "AI_CHAT"
         );
       } catch (primaryErr) {
-        if (isAdmin && primaryErr.status === 400) {
+        if (primaryErr.status === 400) {
           console.warn("[AI_CHAT] tool_use 400, retrying without tools");
           reply = await callLLM(apiKey, baseURL, model, messages, 1e3, 0.4);
         } else {
@@ -68226,6 +68321,88 @@ Observa\xE7\xF5es: ${input.notes || "sem observa\xE7\xF5es"}` }
       return { suggestion: "Erro ao gerar sugest\xE3o: " + (err?.message ?? "tente novamente") };
     }
   }),
+  // ── E-mail Marketing: geração de copy sob demanda ───────────────────────────
+  // Gera assunto(s) + corpo HTML a partir de um briefing curto. Sob demanda
+  // (1 clique = 1 chamada), reaproveita a cadeia de fallback de cota gratuita.
+  generateEmailCopy: protectedProcedure.input(external_exports.object({
+    brief: external_exports.string().min(3).max(1e3),
+    tone: external_exports.enum(["cordial", "formal", "urgente", "amigavel", "persuasivo"]).optional(),
+    mode: external_exports.enum(["full", "subjects", "rewrite"]).default("full"),
+    currentHtml: external_exports.string().max(2e4).optional()
+  })).mutation(async ({ input }) => {
+    const provider = defaultProvider();
+    const apiKey = envKeyFor(provider) || "";
+    if (!apiKey)
+      return { subjects: [], html: "", error: "IA n\xE3o configurada. Configure Groq ou Gemini em Configura\xE7\xF5es \u2192 IA." };
+    const toneMap = {
+      cordial: "cordial e profissional",
+      formal: "formal e respeitoso",
+      urgente: "com senso de urg\xEAncia (sem ser agressivo)",
+      amigavel: "amig\xE1vel e pr\xF3ximo",
+      persuasivo: "persuasivo, focado em benef\xEDcio e convers\xE3o"
+    };
+    const toneDesc = toneMap[input.tone ?? "cordial"];
+    const sys = `Voc\xEA \xE9 redator de e-mail marketing B2B da Sal Vita \u2014 Sal do Brasil (sal marinho de Mossor\xF3/RN), que vende para clientes industriais, aliment\xEDcios e revendas. Escreva em portugu\xEAs BR, tom ${toneDesc}.
+
+REGRAS DO CORPO (HTML):
+- HTML simples e compat\xEDvel com e-mail (use apenas <p>, <strong>, <ul>, <li>, <a>, <br>) \u2014 NUNCA <html>, <head>, <style> ou CSS externo
+- Pode usar as vari\xE1veis {{nome}} (nome do contato) e {{empresa}} quando fizer sentido
+- N\xC3O inclua assinatura nem rodap\xE9 (o sistema adiciona automaticamente)
+- Seja objetivo: 2 a 4 par\xE1grafos curtos, com uma chamada para a\xE7\xE3o clara
+
+RESPONDA ESTRITAMENTE NESTE FORMATO (sem texto extra, sem markdown):
+ASSUNTOS:
+1. <op\xE7\xE3o de assunto>
+2. <op\xE7\xE3o de assunto>
+3. <op\xE7\xE3o de assunto>
+CORPO:
+<html do corpo>`;
+    let userMsg;
+    if (input.mode === "subjects") {
+      userMsg = `Gere apenas 3 op\xE7\xF5es de ASSUNTO para este e-mail (deixe o CORPO vazio):
+${input.brief}`;
+    } else if (input.mode === "rewrite" && input.currentHtml) {
+      userMsg = `Reescreva o e-mail abaixo no tom ${toneDesc}, mantendo a mensagem central. Instru\xE7\xE3o: ${input.brief}
+
+E-MAIL ATUAL:
+${input.currentHtml}`;
+    } else {
+      userMsg = `Briefing do e-mail a ser criado:
+${input.brief}`;
+    }
+    try {
+      const raw = await callWithFallback(
+        provider,
+        apiKey,
+        BASE_URLS[provider],
+        DEFAULT_MODELS[provider],
+        (k, b, m2) => callLLM(k, b, m2, [
+          { role: "system", content: sys },
+          { role: "user", content: userMsg }
+        ], 1200, 0.6),
+        "AI_EMAIL_COPY"
+      );
+      const subjects = [];
+      let html = "";
+      const corpoIdx = raw.search(/CORPO\s*:/i);
+      const assuntosIdx = raw.search(/ASSUNTOS?\s*:/i);
+      const subjectsBlock = assuntosIdx >= 0 ? raw.slice(assuntosIdx, corpoIdx >= 0 ? corpoIdx : void 0) : "";
+      for (const line of subjectsBlock.split("\n")) {
+        const m2 = line.match(/^\s*\d+[.)\-]\s*(.+?)\s*$/);
+        if (m2 && m2[1])
+          subjects.push(m2[1].replace(/^["']|["']$/g, "").trim());
+      }
+      if (corpoIdx >= 0) {
+        html = raw.slice(corpoIdx).replace(/^CORPO\s*:/i, "").trim();
+        html = html.replace(/^```html?\s*/i, "").replace(/```\s*$/i, "").trim();
+      }
+      if (!html && input.mode !== "subjects")
+        html = raw.trim();
+      return { subjects: subjects.slice(0, 3), html };
+    } catch (err) {
+      return { subjects: [], html: "", error: "Erro ao gerar: " + (err?.message ?? "tente novamente") };
+    }
+  }),
   history: protectedProcedure.query(async ({ ctx }) => {
     const rows = await db.select().from(chatMessages).where(eq(chatMessages.userId, ctx.user.id)).orderBy(desc(chatMessages.createdAt)).limit(50);
     return rows.reverse();
@@ -68240,8 +68417,11 @@ Observa\xE7\xF5es: ${input.notes || "sem observa\xE7\xF5es"}` }
 init_drizzle_orm();
 init_schema2();
 var knowledgeRouter = router({
-  list: protectedProcedure.query(async ({ ctx }) => {
-    return db.select().from(knowledgeDocuments).where(eq(knowledgeDocuments.userId, ctx.user.id)).orderBy(knowledgeDocuments.createdAt);
+  // Base de conhecimento COMPARTILHADA: todos os usuários (e a IA de todos) leem
+  // os mesmos documentos. O admin cadastra scripts/políticas/regras e os
+  // atendentes — junto com o assistente de IA — passam a enxergar tudo.
+  list: protectedProcedure.query(async () => {
+    return db.select().from(knowledgeDocuments).orderBy(knowledgeDocuments.createdAt);
   }),
   create: protectedProcedure.input(external_exports.object({
     title: external_exports.string().min(1).max(500),
@@ -68257,9 +68437,8 @@ var knowledgeRouter = router({
     return created;
   }),
   delete: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ input, ctx }) => {
-    await db.delete(knowledgeDocuments).where(
-      and(eq(knowledgeDocuments.id, input.id), eq(knowledgeDocuments.userId, ctx.user.id))
-    );
+    const where = ctx.user.role === "admin" ? eq(knowledgeDocuments.id, input.id) : and(eq(knowledgeDocuments.id, input.id), eq(knowledgeDocuments.userId, ctx.user.id));
+    await db.delete(knowledgeDocuments).where(where);
     return { ok: true };
   })
 });
