@@ -2923,16 +2923,6 @@ function MarketingContactsSection() {
                   </button>
                 </div>
               ))}
-              <div className="pt-2 border-t border-slate-100 mt-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full gap-1.5 text-xs"
-                  onClick={() => setShowImport(true)}
-                >
-                  <Upload size={12} /> Importar CSV
-                </Button>
-              </div>
             </CardContent>
           </Card>
         </div>
