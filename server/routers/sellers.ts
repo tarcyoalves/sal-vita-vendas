@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
-import { router, protectedProcedure, adminProcedure } from '../trpc';
+import { router, protectedProcedure, adminProcedure, invalidateUserCache } from '../trpc';
 import { db } from '../db';
 import { sellers, users, tasks } from '../db/schema';
 import { hashPassword } from '../auth';
@@ -160,6 +160,8 @@ export const sellersRouter = router({
         createdAt: sellers.createdAt,
         updatedAt: sellers.updatedAt,
         userRole: users.role,
+        ipRestrictionEnabled: users.ipRestrictionEnabled,
+        allowedIps: users.allowedIps,
       })
       .from(sellers)
       .leftJoin(users, eq(sellers.userId, users.id))
@@ -169,5 +171,37 @@ export const sellersRouter = router({
   myProfile: protectedProcedure.query(async ({ ctx }) => {
     const [seller] = await db.select().from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
     return seller ?? null;
+  }),
+
+  getIpRestriction: adminProcedure
+    .input(z.object({ userId: z.number() }))
+    .query(async ({ input }) => {
+      const [user] = await db
+        .select({ ipRestrictionEnabled: users.ipRestrictionEnabled, allowedIps: users.allowedIps })
+        .from(users)
+        .where(eq(users.id, input.userId));
+      return user ?? { ipRestrictionEnabled: false, allowedIps: [] };
+    }),
+
+  setIpRestriction: adminProcedure
+    .input(z.object({
+      userId: z.number(),
+      enabled: z.boolean(),
+      allowedIps: z.array(z.string().min(1).max(45)).max(20),
+    }))
+    .mutation(async ({ input }) => {
+      const cleaned = input.allowedIps
+        .map(ip => ip.trim())
+        .filter(ip => /^[\d./]+$/.test(ip));
+      await db.update(users)
+        .set({ ipRestrictionEnabled: input.enabled, allowedIps: cleaned })
+        .where(eq(users.id, input.userId));
+      invalidateUserCache(input.userId);
+      cacheInvalidate(`auth:me:${input.userId}`);
+      return { ok: true };
+    }),
+
+  myIp: protectedProcedure.query(({ ctx }) => {
+    return { ip: (ctx as any).clientIp ?? '' };
   }),
 });

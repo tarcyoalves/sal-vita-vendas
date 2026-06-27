@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-06-26a';
+const SCHEMA_VERSION = '2026-06-27a';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -449,6 +449,10 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS is_broadcast BOOLEAN NOT NULL DEFAULT FALSE`;
   await sql`ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS attachments  JSONB`;
   await sql`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS attachments  JSONB`;
+
+  // ── Restrição de IP por usuário ─────────────────────────────────────────────
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS ip_restriction_enabled BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_ips TEXT[] NOT NULL DEFAULT '{}'`;
 
   // ── Confirmação manual de e-mail — só e-mails confirmados entram em disparo ─
   // Default FALSE: todos os e-mails existentes (importados) começam não-confirmados.

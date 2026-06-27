@@ -23,6 +23,8 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash').notNull(),
   role: text('role').notNull().default('user'), // 'admin' | 'user'
   mustChangePassword: boolean('must_change_password').default(false).notNull(),
+  ipRestrictionEnabled: boolean('ip_restriction_enabled').default(false).notNull(),
+  allowedIps: text('allowed_ips').array().default([]).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

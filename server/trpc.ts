@@ -12,6 +12,28 @@ export function invalidateUserCache(userId: number) {
   cacheInvalidate(`user:${userId}`);
 }
 
+function getClientIp(req: CreateExpressContextOptions['req']): string {
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string') return xff.split(',')[0].trim();
+  if (Array.isArray(xff)) return xff[0].split(',')[0].trim();
+  return req.socket.remoteAddress ?? '';
+}
+
+function ipMatchesEntry(ip: string, entry: string): boolean {
+  if (entry.includes('/')) {
+    const [subnet, bits] = entry.split('/');
+    const mask = ~((1 << (32 - parseInt(bits))) - 1) >>> 0;
+    return (ipToNum(ip) & mask) === (ipToNum(subnet) & mask);
+  }
+  return ip === entry;
+}
+
+function ipToNum(ip: string): number {
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4 || parts.some(p => isNaN(p))) return 0;
+  return ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+}
+
 export async function createContext({ req, res }: CreateExpressContextOptions) {
   const token = getCookieFromRequest(req.headers.cookie, COOKIE_NAME);
   let user: { id: number; email: string; name: string; role: string } | null = null;
@@ -21,18 +43,33 @@ export async function createContext({ req, res }: CreateExpressContextOptions) {
       const decoded = verifyToken(token) as any;
       const dbUser = await cached(`user:${decoded.id}`, 30_000, async () => {
         const [row] = await db
-          .select({ id: users.id, email: users.email, name: users.name, role: users.role })
+          .select({
+            id: users.id, email: users.email, name: users.name, role: users.role,
+            ipRestrictionEnabled: users.ipRestrictionEnabled, allowedIps: users.allowedIps,
+          })
           .from(users)
           .where(eq(users.id, decoded.id));
         return row ?? null;
       });
-      if (dbUser) user = dbUser;
+      if (dbUser) {
+        if (dbUser.ipRestrictionEnabled && dbUser.allowedIps.length > 0 && dbUser.role !== 'admin') {
+          const clientIp = getClientIp(req);
+          const allowed = dbUser.allowedIps.some(entry => ipMatchesEntry(clientIp, entry));
+          if (!allowed) {
+            user = null;
+          } else {
+            user = { id: dbUser.id, email: dbUser.email, name: dbUser.name, role: dbUser.role };
+          }
+        } else {
+          user = { id: dbUser.id, email: dbUser.email, name: dbUser.name, role: dbUser.role };
+        }
+      }
     } catch {
       // invalid token — user stays null
     }
   }
 
-  return { req, res, user };
+  return { req, res, user, clientIp: getClientIp(req) };
 }
 
 type Context = Awaited<ReturnType<typeof createContext>>;

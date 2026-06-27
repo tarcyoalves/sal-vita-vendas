@@ -33,6 +33,8 @@ interface Attendant {
   emailSignatureImageUrl?: string | null;
   emailSignatureEnabled?: boolean | null;
   emailMarketingEnabled?: boolean | null;
+  ipRestrictionEnabled?: boolean | null;
+  allowedIps?: string[] | null;
   createdAt: Date;
   updatedAt: Date;
   userRole?: string | null;
@@ -64,6 +66,14 @@ export default function Attendants() {
   const [signatureAttendant, setSignatureAttendant] = useState<Attendant | null>(null);
   const [signatureForm, setSignatureForm] = useState({ enabled: true, html: "", imageUrl: "" });
   const signatureMutation = trpc.sellers.update.useMutation();
+
+  // ── Restrição de IP ──────────────────────────────────────────────────────
+  const [ipAttendant, setIpAttendant] = useState<Attendant | null>(null);
+  const [ipEnabled, setIpEnabled] = useState(false);
+  const [ipList, setIpList] = useState<string[]>([]);
+  const [newIp, setNewIp] = useState("");
+  const ipMutation = trpc.sellers.setIpRestriction.useMutation();
+  const myIpQuery = trpc.sellers.myIp.useQuery(undefined, { enabled: !!ipAttendant });
 
   const { data: attendants = [], isLoading, refetch } = trpc.sellers.listWithRole.useQuery();
   // Sem polling — protege o plano free do Neon/Vercel. Cache válido por 2min.
@@ -187,6 +197,44 @@ export default function Attendants() {
     } catch {
       toast.error("Erro ao deletar atendente");
     }
+  };
+
+  const handleIpOpen = (attendant: Attendant) => {
+    setIpAttendant(attendant);
+    setIpEnabled(attendant.ipRestrictionEnabled ?? false);
+    setIpList(attendant.allowedIps ?? []);
+    setNewIp("");
+  };
+
+  const handleIpSave = async () => {
+    if (!ipAttendant) return;
+    try {
+      await ipMutation.mutateAsync({
+        userId: ipAttendant.userId,
+        enabled: ipEnabled,
+        allowedIps: ipList,
+      });
+      toast.success("Restrição de IP salva!");
+      setIpAttendant(null);
+      refetch();
+    } catch {
+      toast.error("Erro ao salvar restrição de IP");
+    }
+  };
+
+  const handleAddIp = (ip: string) => {
+    const trimmed = ip.trim();
+    if (!trimmed) return;
+    if (!/^[\d./]+$/.test(trimmed)) {
+      toast.error("IP inválido. Use formato: 189.33.120.45 ou 189.33.120.0/24");
+      return;
+    }
+    if (ipList.includes(trimmed)) {
+      toast.error("IP já adicionado");
+      return;
+    }
+    setIpList(prev => [...prev, trimmed]);
+    setNewIp("");
   };
 
   const handleSignatureOpen = (attendant: Attendant) => {
@@ -557,6 +605,14 @@ export default function Attendants() {
                       </Button>
                       <Button
                         size="sm"
+                        variant="outline"
+                        className={`w-full ${attendant.ipRestrictionEnabled ? 'border-red-300 text-red-700 hover:bg-red-50' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                        onClick={() => handleIpOpen(attendant)}
+                      >
+                        {attendant.ipRestrictionEnabled ? '🔒 IP Restrito' : '🌐 Restringir IP'}
+                      </Button>
+                      <Button
+                        size="sm"
                         variant={attendant.userRole === "admin" ? "outline" : "default"}
                         className="w-full"
                         onClick={() => handleToggleRole(attendant)}
@@ -640,6 +696,107 @@ export default function Attendants() {
                 <Button type="button" variant="outline" onClick={() => setEditingAttendant(null)}>Cancelar</Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* IP Restriction Modal */}
+        <Dialog open={!!ipAttendant} onOpenChange={(open) => { if (!open) setIpAttendant(null); }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>🔒 Restrição de IP — {ipAttendant?.name}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none px-3 py-2 border rounded-lg hover:bg-gray-50">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={ipEnabled}
+                  onChange={(e) => setIpEnabled(e.target.checked)}
+                />
+                Ativar restrição de IP para este atendente
+              </label>
+              <p className="text-xs text-gray-500">
+                Quando ativo, este atendente só consegue acessar o sistema a partir dos IPs listados abaixo.
+                O admin nunca é restrito.
+              </p>
+
+              {ipEnabled && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">IPs permitidos</label>
+                    {ipList.length === 0 && (
+                      <p className="text-xs text-amber-600 mb-2">
+                        Nenhum IP adicionado — o atendente será bloqueado de qualquer lugar enquanto a restrição estiver ativa.
+                      </p>
+                    )}
+                    <div className="space-y-1">
+                      {ipList.map((ip, i) => (
+                        <div key={i} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-1.5">
+                          <code className="flex-1 text-sm text-gray-800">{ip}</code>
+                          <button
+                            type="button"
+                            className="text-xs text-red-500 hover:text-red-700"
+                            onClick={() => setIpList(prev => prev.filter((_, idx) => idx !== i))}
+                          >
+                            Remover
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      className="flex-1 px-3 py-2 border rounded-lg text-sm font-mono"
+                      placeholder="189.33.120.45 ou 189.33.120.0/24"
+                      value={newIp}
+                      onChange={(e) => setNewIp(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddIp(newIp); } }}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="bg-blue-600 hover:bg-blue-700"
+                      onClick={() => handleAddIp(newIp)}
+                    >
+                      Adicionar
+                    </Button>
+                  </div>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="w-full border-green-300 text-green-700 hover:bg-green-50"
+                    onClick={() => {
+                      if (myIpQuery.data?.ip) {
+                        handleAddIp(myIpQuery.data.ip);
+                        toast.success(`IP ${myIpQuery.data.ip} adicionado (seu IP atual)`);
+                      } else {
+                        toast.error("Não foi possível detectar o IP");
+                      }
+                    }}
+                  >
+                    📍 Usar meu IP atual {myIpQuery.data?.ip ? `(${myIpQuery.data.ip})` : ''}
+                  </Button>
+                  <p className="text-xs text-gray-500">
+                    Dica: se o IP da empresa muda frequentemente, use um range (ex: 189.33.120.0/24) para cobrir todo o bloco.
+                  </p>
+                </>
+              )}
+            </div>
+            <DialogFooter className="flex gap-2 pt-2">
+              <Button
+                type="button"
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                onClick={handleIpSave}
+                disabled={ipMutation.isPending}
+              >
+                {ipMutation.isPending ? "Salvando..." : "Salvar"}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setIpAttendant(null)}>Cancelar</Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 
