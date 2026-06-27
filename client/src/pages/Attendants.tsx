@@ -3,6 +3,7 @@ import { trpc } from '../lib/trpc';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { useState, useMemo } from "react";
+import DOMPurify from 'dompurify';
 import { toast } from "sonner";
 import {
   Dialog,
@@ -703,7 +704,7 @@ export default function Attendants() {
                   <label className="block text-sm font-medium mb-1">Pré-visualização</label>
                   <div
                     className="border rounded-lg p-4 bg-gray-50 text-sm"
-                    dangerouslySetInnerHTML={{ __html: signaturePreviewHtml }}
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(signaturePreviewHtml) }}
                   />
                 </div>
               )}

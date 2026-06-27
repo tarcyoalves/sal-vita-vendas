@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from "react";
+import DOMPurify from "dompurify";
 import {
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight,
   List, ListOrdered, Link2, Eraser, Code2,
@@ -51,7 +52,7 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight = 220 }
     if (htmlMode) return;
     const el = ref.current;
     if (el && value !== el.innerHTML) {
-      el.innerHTML = value || "";
+      el.innerHTML = DOMPurify.sanitize(value || "");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, htmlMode]);
