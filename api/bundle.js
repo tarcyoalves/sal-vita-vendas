@@ -42702,6 +42702,8 @@ var init_schema2 = __esm({
       role: text("role").notNull().default("user"),
       // 'admin' | 'user'
       mustChangePassword: boolean("must_change_password").default(false).notNull(),
+      ipRestrictionEnabled: boolean("ip_restriction_enabled").default(false).notNull(),
+      allowedIps: text("allowed_ips").array().default([]).notNull(),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     sellers = pgTable("sellers", {
@@ -61134,6 +61136,31 @@ async function cached(key, ttlMs, fn) {
 }
 
 // server/trpc.ts
+function invalidateUserCache(userId) {
+  cacheInvalidate(`user:${userId}`);
+}
+function getClientIp(req) {
+  const xff = req.headers["x-forwarded-for"];
+  if (typeof xff === "string")
+    return xff.split(",")[0].trim();
+  if (Array.isArray(xff))
+    return xff[0].split(",")[0].trim();
+  return req.socket.remoteAddress ?? "";
+}
+function ipMatchesEntry(ip, entry) {
+  if (entry.includes("/")) {
+    const [subnet, bits] = entry.split("/");
+    const mask = ~((1 << 32 - parseInt(bits)) - 1) >>> 0;
+    return (ipToNum(ip) & mask) === (ipToNum(subnet) & mask);
+  }
+  return ip === entry;
+}
+function ipToNum(ip) {
+  const parts = ip.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((p2) => isNaN(p2)))
+    return 0;
+  return (parts[0] << 24 | parts[1] << 16 | parts[2] << 8 | parts[3]) >>> 0;
+}
 async function createContext({ req, res }) {
   const token = getCookieFromRequest(req.headers.cookie, COOKIE_NAME);
   let user = null;
@@ -61141,15 +61168,33 @@ async function createContext({ req, res }) {
     try {
       const decoded = verifyToken(token);
       const dbUser = await cached(`user:${decoded.id}`, 3e4, async () => {
-        const [row] = await db.select({ id: users.id, email: users.email, name: users.name, role: users.role }).from(users).where(eq(users.id, decoded.id));
+        const [row] = await db.select({
+          id: users.id,
+          email: users.email,
+          name: users.name,
+          role: users.role,
+          ipRestrictionEnabled: users.ipRestrictionEnabled,
+          allowedIps: users.allowedIps
+        }).from(users).where(eq(users.id, decoded.id));
         return row ?? null;
       });
-      if (dbUser)
-        user = dbUser;
+      if (dbUser) {
+        if (dbUser.ipRestrictionEnabled && dbUser.allowedIps.length > 0 && dbUser.role !== "admin") {
+          const clientIp = getClientIp(req);
+          const allowed = dbUser.allowedIps.some((entry) => ipMatchesEntry(clientIp, entry));
+          if (!allowed) {
+            user = null;
+          } else {
+            user = { id: dbUser.id, email: dbUser.email, name: dbUser.name, role: dbUser.role };
+          }
+        } else {
+          user = { id: dbUser.id, email: dbUser.email, name: dbUser.name, role: dbUser.role };
+        }
+      }
     } catch {
     }
   }
-  return { req, res, user };
+  return { req, res, user, clientIp: getClientIp(req) };
 }
 var t = initTRPC.context().create({ transformer: dist_default });
 var router = t.router;
@@ -67207,12 +67252,32 @@ var sellersRouter = router({
       emailMarketingEnabled: sellers.emailMarketingEnabled,
       createdAt: sellers.createdAt,
       updatedAt: sellers.updatedAt,
-      userRole: users.role
+      userRole: users.role,
+      ipRestrictionEnabled: users.ipRestrictionEnabled,
+      allowedIps: users.allowedIps
     }).from(sellers).leftJoin(users, eq(sellers.userId, users.id)).orderBy(sellers.name);
   }),
   myProfile: protectedProcedure.query(async ({ ctx }) => {
     const [seller] = await db.select().from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
     return seller ?? null;
+  }),
+  getIpRestriction: adminProcedure.input(external_exports.object({ userId: external_exports.number() })).query(async ({ input }) => {
+    const [user] = await db.select({ ipRestrictionEnabled: users.ipRestrictionEnabled, allowedIps: users.allowedIps }).from(users).where(eq(users.id, input.userId));
+    return user ?? { ipRestrictionEnabled: false, allowedIps: [] };
+  }),
+  setIpRestriction: adminProcedure.input(external_exports.object({
+    userId: external_exports.number(),
+    enabled: external_exports.boolean(),
+    allowedIps: external_exports.array(external_exports.string().min(1).max(45)).max(20)
+  })).mutation(async ({ input }) => {
+    const cleaned = input.allowedIps.map((ip) => ip.trim()).filter((ip) => /^[\d./]+$/.test(ip));
+    await db.update(users).set({ ipRestrictionEnabled: input.enabled, allowedIps: cleaned }).where(eq(users.id, input.userId));
+    invalidateUserCache(input.userId);
+    cacheInvalidate(`auth:me:${input.userId}`);
+    return { ok: true };
+  }),
+  myIp: protectedProcedure.query(({ ctx }) => {
+    return { ip: ctx.clientIp ?? "" };
   })
 });
 
@@ -72529,7 +72594,7 @@ async function seedAdminIfNeeded() {
   `;
   console.log("[migrate] admin user seeded");
 }
-var SCHEMA_VERSION = "2026-06-26a";
+var SCHEMA_VERSION = "2026-06-27a";
 async function ensureTablesExist() {
   try {
     await seedAdminIfNeeded();
@@ -72914,6 +72979,8 @@ async function ensureTablesExist() {
   await sql4`ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS is_broadcast BOOLEAN NOT NULL DEFAULT FALSE`;
   await sql4`ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS attachments  JSONB`;
   await sql4`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS attachments  JSONB`;
+  await sql4`ALTER TABLE users ADD COLUMN IF NOT EXISTS ip_restriction_enabled BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql4`ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_ips TEXT[] NOT NULL DEFAULT '{}'`;
   await sql4`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS email_confirmed    BOOLEAN NOT NULL DEFAULT FALSE`;
   await sql4`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS email_confirmed_at TIMESTAMP`;
   await sql4`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS email_confirmed_by TEXT`;
