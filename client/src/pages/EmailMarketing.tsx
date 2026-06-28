@@ -8,10 +8,15 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { RichTextEditor } from "../components/RichTextEditor";
+import { BlockEditor } from "../components/email/BlockEditor";
+import { SegmentBuilder } from "../components/email/SegmentBuilder";
+import { FrequencySettings } from "../components/email/FrequencySettings";
+import { EmailDashboard } from "../components/email/EmailDashboard";
 import { Label } from "../components/ui/label";
 import { Badge } from "../components/ui/badge";
 import { Progress } from "../components/ui/progress";
 import { Switch } from "../components/ui/switch";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "../components/ui/dialog";
@@ -26,6 +31,7 @@ import {
   Mail, Plus, Send, Trash2, Eye, Pencil, Workflow, Zap, Tag, BarChart3, Users, Pause, Play, X, Download,
   LayoutTemplate, MailX, Filter, Sparkles, Inbox, Megaphone, Paperclip, FileText, Contact, Search,
   CheckCircle, XCircle, AlertTriangle, RotateCcw, Gauge, TrendingUp, Upload, UserPlus, FolderOpen, FolderPlus, ArrowRightLeft,
+  Blocks, SplitSquareVertical, ShieldCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -396,6 +402,12 @@ function CampaignsTab() {
   const broadcastMutation = trpc.emailMarketing.sendBroadcast.useMutation();
 
   const [showCreate, setShowCreate] = useState(false);
+  const [useBlockEditor, setUseBlockEditor] = useState(false);
+  const [useBlockEditorBcast, setUseBlockEditorBcast] = useState(false);
+  const [abEnabled, setAbEnabled] = useState(false);
+  const [abSubjectB, setAbSubjectB] = useState("");
+  const [abEnabledBcast, setAbEnabledBcast] = useState(false);
+  const [abSubjectBBcast, setAbSubjectBBcast] = useState("");
   const [form, setForm] = useState({
     name: "", subject: "", htmlBody: "",
     source: "leads" as Source, assignedTo: "",
@@ -719,18 +731,76 @@ function CampaignsTab() {
             />
 
             <div>
-              <Label>Assunto</Label>
+              <div className="flex items-center justify-between mb-1">
+                <Label>Assunto</Label>
+                <div className="flex items-center gap-2">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center gap-1.5">
+                          <Label className="text-xs text-slate-500 cursor-pointer">Teste A/B</Label>
+                          <Switch checked={abEnabled} onCheckedChange={setAbEnabled} className="scale-75" />
+                          <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200 text-[9px] py-0">Em breve</Badge>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent><p className="text-xs">Disponível em julho</p></TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+              </div>
               <Input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} placeholder="Ex: Olá {nome}, confira nossas novidades!" />
+              {abEnabled && (
+                <div className="mt-2 rounded-lg border border-dashed border-amber-300 bg-amber-50/50 p-2.5 space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <SplitSquareVertical size={13} className="text-amber-600" />
+                    <Label className="text-xs text-amber-700 font-medium">Variante B</Label>
+                  </div>
+                  <Input
+                    value={abSubjectB}
+                    onChange={e => setAbSubjectB(e.target.value)}
+                    placeholder="Assunto alternativo para teste A/B"
+                    disabled
+                    title="Disponível em julho"
+                  />
+                  <p className="text-[10px] text-amber-600">50% dos destinatários receberão cada variante. O vencedor será enviado ao restante.</p>
+                </div>
+              )}
             </div>
 
             <div>
-              <Label>Corpo do e-mail</Label>
-              <RichTextEditor
-                value={form.htmlBody}
-                onChange={html => setForm(f => ({ ...f, htmlBody: html }))}
-                placeholder="Olá {nome}, ..."
-                minHeight={350}
-              />
+              <div className="flex items-center justify-between mb-1">
+                <Label>Corpo do e-mail</Label>
+                <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                  <button
+                    type="button"
+                    className={`px-2 py-1 rounded text-xs font-medium transition ${!useBlockEditor ? 'bg-white shadow-sm text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
+                    onClick={() => setUseBlockEditor(false)}
+                  >
+                    Editor
+                  </button>
+                  <button
+                    type="button"
+                    className={`px-2 py-1 rounded text-xs font-medium transition flex items-center gap-1 ${useBlockEditor ? 'bg-white shadow-sm text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
+                    onClick={() => setUseBlockEditor(true)}
+                  >
+                    <Blocks size={12} /> Blocos
+                  </button>
+                </div>
+              </div>
+              {useBlockEditor ? (
+                <BlockEditor
+                  value={form.htmlBody}
+                  onChange={html => setForm(f => ({ ...f, htmlBody: html }))}
+                  minHeight={350}
+                />
+              ) : (
+                <RichTextEditor
+                  value={form.htmlBody}
+                  onChange={html => setForm(f => ({ ...f, htmlBody: html }))}
+                  placeholder="Olá {nome}, ..."
+                  minHeight={350}
+                />
+              )}
               <p className="text-xs text-gray-500 mt-1">{TEMPLATE_HINT}</p>
             </div>
 
@@ -948,18 +1018,76 @@ function CampaignsTab() {
             />
 
             <div>
-              <Label>Assunto</Label>
+              <div className="flex items-center justify-between mb-1">
+                <Label>Assunto</Label>
+                <div className="flex items-center gap-2">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center gap-1.5">
+                          <Label className="text-xs text-slate-500 cursor-pointer">Teste A/B</Label>
+                          <Switch checked={abEnabledBcast} onCheckedChange={setAbEnabledBcast} className="scale-75" />
+                          <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200 text-[9px] py-0">Em breve</Badge>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent><p className="text-xs">Disponível em julho</p></TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+              </div>
               <Input value={bcast.subject} onChange={e => setBcast(b => ({ ...b, subject: e.target.value }))} placeholder="Ex: Comunicado importante" />
+              {abEnabledBcast && (
+                <div className="mt-2 rounded-lg border border-dashed border-amber-300 bg-amber-50/50 p-2.5 space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <SplitSquareVertical size={13} className="text-amber-600" />
+                    <Label className="text-xs text-amber-700 font-medium">Variante B</Label>
+                  </div>
+                  <Input
+                    value={abSubjectBBcast}
+                    onChange={e => setAbSubjectBBcast(e.target.value)}
+                    placeholder="Assunto alternativo para teste A/B"
+                    disabled
+                    title="Disponível em julho"
+                  />
+                  <p className="text-[10px] text-amber-600">50% dos destinatários receberão cada variante. O vencedor será enviado ao restante.</p>
+                </div>
+              )}
             </div>
 
             <div>
-              <Label>Corpo do e-mail</Label>
-              <RichTextEditor
-                value={bcast.htmlBody}
-                onChange={html => setBcast(b => ({ ...b, htmlBody: html }))}
-                placeholder="Olá, ..."
-                minHeight={350}
-              />
+              <div className="flex items-center justify-between mb-1">
+                <Label>Corpo do e-mail</Label>
+                <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                  <button
+                    type="button"
+                    className={`px-2 py-1 rounded text-xs font-medium transition ${!useBlockEditorBcast ? 'bg-white shadow-sm text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
+                    onClick={() => setUseBlockEditorBcast(false)}
+                  >
+                    Editor
+                  </button>
+                  <button
+                    type="button"
+                    className={`px-2 py-1 rounded text-xs font-medium transition flex items-center gap-1 ${useBlockEditorBcast ? 'bg-white shadow-sm text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
+                    onClick={() => setUseBlockEditorBcast(true)}
+                  >
+                    <Blocks size={12} /> Blocos
+                  </button>
+                </div>
+              </div>
+              {useBlockEditorBcast ? (
+                <BlockEditor
+                  value={bcast.htmlBody}
+                  onChange={html => setBcast(b => ({ ...b, htmlBody: html }))}
+                  minHeight={350}
+                />
+              ) : (
+                <RichTextEditor
+                  value={bcast.htmlBody}
+                  onChange={html => setBcast(b => ({ ...b, htmlBody: html }))}
+                  placeholder="Olá, ..."
+                  minHeight={350}
+                />
+              )}
               <p className="text-xs text-gray-500 mt-1">{TEMPLATE_HINT}</p>
             </div>
 
@@ -1092,6 +1220,7 @@ function TemplatesTab() {
   const [activeTab, setActiveTab] = useState<string>('all');
   const [editing, setEditing] = useState<{ id?: number; categoryIds: number[]; slug: string; name: string; subject: string; htmlBody: string; active: boolean; attachments?: { filename: string; content: string; size: number }[] } | null>(null);
   const [editingCat, setEditingCat] = useState<{ id?: number; name: string } | null>(null);
+  const [useBlockEditorTpl, setUseBlockEditorTpl] = useState(false);
 
   const tplAttachBytes = editing?.attachments?.reduce((s, f) => s + f.size, 0) ?? 0;
 
@@ -1362,8 +1491,30 @@ function TemplatesTab() {
                 <Input value={editing.subject} onChange={e => setEditing(t => t && ({ ...t, subject: e.target.value }))} />
               </div>
               <div>
-                <Label>Corpo do e-mail</Label>
-                <RichTextEditor value={editing.htmlBody} onChange={html => setEditing(t => t && ({ ...t, htmlBody: html }))} minHeight={350} />
+                <div className="flex items-center justify-between mb-1">
+                  <Label>Corpo do e-mail</Label>
+                  <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                    <button
+                      type="button"
+                      className={`px-2 py-1 rounded text-xs font-medium transition ${!useBlockEditorTpl ? 'bg-white shadow-sm text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
+                      onClick={() => setUseBlockEditorTpl(false)}
+                    >
+                      Editor
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-2 py-1 rounded text-xs font-medium transition flex items-center gap-1 ${useBlockEditorTpl ? 'bg-white shadow-sm text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
+                      onClick={() => setUseBlockEditorTpl(true)}
+                    >
+                      <Blocks size={12} /> Blocos
+                    </button>
+                  </div>
+                </div>
+                {useBlockEditorTpl ? (
+                  <BlockEditor value={editing.htmlBody} onChange={html => setEditing(t => t && ({ ...t, htmlBody: html }))} minHeight={350} />
+                ) : (
+                  <RichTextEditor value={editing.htmlBody} onChange={html => setEditing(t => t && ({ ...t, htmlBody: html }))} minHeight={350} />
+                )}
                 <p className="text-xs text-gray-500 mt-1">{TEMPLATE_HINT}</p>
               </div>
               <div>
@@ -1722,6 +1873,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
   const cancelMutation = trpc.emailMarketing.cancelEnrollment.useMutation();
 
   const [editingStep, setEditingStep] = useState<{ id?: number; stepOrder: number; delayDays: number; subject: string; htmlBody: string; sendCondition: string; retryIfNotOpened: boolean; retryDelayHours: number; maxRetries: number; retrySubject: string } | null>(null);
+  const [useBlockEditorStep, setUseBlockEditorStep] = useState(false);
   const [showEnroll, setShowEnroll] = useState(false);
 
   const statsByStepId = useMemo(() => {
@@ -2016,8 +2168,30 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                   <Input value={editingStep.subject} onChange={e => setEditingStep(s => s && ({ ...s, subject: e.target.value }))} />
                 </div>
                 <div>
-                  <Label>Corpo do e-mail</Label>
-                  <RichTextEditor value={editingStep.htmlBody} onChange={html => setEditingStep(s => s && ({ ...s, htmlBody: html }))} minHeight={350} />
+                  <div className="flex items-center justify-between mb-1">
+                    <Label>Corpo do e-mail</Label>
+                    <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                      <button
+                        type="button"
+                        className={`px-2 py-1 rounded text-xs font-medium transition ${!useBlockEditorStep ? 'bg-white shadow-sm text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
+                        onClick={() => setUseBlockEditorStep(false)}
+                      >
+                        Editor
+                      </button>
+                      <button
+                        type="button"
+                        className={`px-2 py-1 rounded text-xs font-medium transition flex items-center gap-1 ${useBlockEditorStep ? 'bg-white shadow-sm text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
+                        onClick={() => setUseBlockEditorStep(true)}
+                      >
+                        <Blocks size={12} /> Blocos
+                      </button>
+                    </div>
+                  </div>
+                  {useBlockEditorStep ? (
+                    <BlockEditor value={editingStep.htmlBody} onChange={html => setEditingStep(s => s && ({ ...s, htmlBody: html }))} minHeight={350} />
+                  ) : (
+                    <RichTextEditor value={editingStep.htmlBody} onChange={html => setEditingStep(s => s && ({ ...s, htmlBody: html }))} minHeight={350} />
+                  )}
                   <p className="text-xs text-gray-500 mt-1">{TEMPLATE_HINT}</p>
                 </div>
                 <div>
@@ -3690,6 +3864,9 @@ function ContactsTab() {
         <TabsTrigger value="export" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-3 py-1.5">
           <Download size={13} /> Exportar
         </TabsTrigger>
+        <TabsTrigger value="segments" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-3 py-1.5">
+          <Filter size={13} /> Segmentação
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="overview">
@@ -3706,6 +3883,10 @@ function ContactsTab() {
 
       <TabsContent value="export">
         <ExportSection />
+      </TabsContent>
+
+      <TabsContent value="segments">
+        <SegmentBuilder />
       </TabsContent>
     </Tabs>
   );
@@ -4589,7 +4770,60 @@ function UsageTab() {
           </p>
         </CardContent>
       </Card>
+
+      <FrequencySettings />
+
+      <DoubleOptInToggle />
     </div>
+  );
+}
+
+function DoubleOptInToggle() {
+  const [enabled, setEnabled] = useState(() => {
+    try { return localStorage.getItem('sv_email_double_optin') === 'true'; } catch { return false; }
+  });
+
+  const toggle = (v: boolean) => {
+    setEnabled(v);
+    localStorage.setItem('sv_email_double_optin', String(v));
+  };
+
+  return (
+    <Card className="rounded-2xl border-slate-200">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-blue-900 text-base">
+          <ShieldCheck size={18} /> Double Opt-In
+          <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200 text-[10px]">
+            Em breve
+          </Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-slate-600 leading-relaxed">
+          Quando ativado, novos contatos importados receberão um e-mail de confirmação antes de
+          entrarem nas listas de envio. Isso melhora a qualidade da lista e protege contra bounces.
+        </p>
+        <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+          <div className="flex items-center gap-2">
+            <ShieldCheck size={16} className="text-blue-700" />
+            <span className="text-sm font-medium text-slate-700">Exigir confirmação por e-mail</span>
+          </div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div>
+                  <Switch checked={enabled} onCheckedChange={toggle} disabled title="Disponível em julho" />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent><p className="text-xs">Disponível em julho</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+        <p className="text-[11px] text-slate-400">
+          A preferência é salva localmente. Quando o backend estiver pronto, a verificação será aplicada automaticamente.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -4634,21 +4868,20 @@ function StatsTab() {
       {isLoading ? (
         <p className="text-sm text-slate-500">Carregando...</p>
       ) : overview && (
-        (() => {
-          // Base da barra = maior estágio do funil (normalmente "enviados").
-          // Garante barras proporcionais mesmo se os dados tiverem inconsistências.
-          const funnelBase = Math.max(
-            overview.totalSent30d, overview.delivered30d,
-            overview.openedUnique30d, overview.clickedUnique30d, 1,
-          );
-          return (
         <>
-          {/* Funil de engajamento (geral) */}
+          <EmailDashboard overview={overview} campaigns={campaigns} />
+
+          {(() => {
+            const funnelBase = Math.max(
+              overview.totalSent30d, overview.delivered30d,
+              overview.openedUnique30d, overview.clickedUnique30d, 1,
+            );
+            return (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <TrendingUp size={16} className="text-blue-900" /> Funil de engajamento
-                <span className="text-slate-400 font-normal text-sm">(geral)</span>
+                <span className="text-slate-400 font-normal text-sm">(detalhado)</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -4674,19 +4907,9 @@ function StatsTab() {
               />
             </CardContent>
           </Card>
-
-          {/* Métricas-chave */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <StatTile icon={Send} label="Enviados" value={overview.totalSent30d} accent="bg-blue-100 text-blue-900" />
-            <StatTile icon={Eye} label="Taxa de abertura" value={`${(overview.openRate * 100).toFixed(1)}%`} accent="bg-emerald-100 text-emerald-700" />
-            <StatTile icon={Workflow} label="Taxa de clique" value={`${(overview.clickRate * 100).toFixed(1)}%`} accent="bg-violet-100 text-violet-700" />
-            <StatTile icon={AlertTriangle} label="Bounces" value={overview.bounced30d} accent="bg-amber-100 text-amber-700" />
-            <StatTile icon={XCircle} label="Reclamações" value={overview.complained30d} accent="bg-orange-100 text-orange-700" />
-            <StatTile icon={MailX} label="Descadastros" value={overview.unsubscribed30d} accent="bg-red-100 text-red-600" />
-          </div>
+            );
+          })()}
         </>
-          );
-        })()
       )}
 
       <Card>
