@@ -13,24 +13,25 @@ export function invalidateUserCache(userId: number) {
 }
 
 function getClientIp(req: CreateExpressContextOptions['req']): string {
-  const xff = req.headers['x-forwarded-for'];
-  if (typeof xff === 'string') return xff.split(',')[0].trim();
-  if (Array.isArray(xff)) return xff[0].split(',')[0].trim();
-  return req.socket.remoteAddress ?? '';
+  return req.ip ?? req.socket.remoteAddress ?? '';
 }
 
 function ipMatchesEntry(ip: string, entry: string): boolean {
+  const clientNum = ipToNum(ip);
+  if (clientNum === -1) return false;
   if (entry.includes('/')) {
     const [subnet, bits] = entry.split('/');
+    const subnetNum = ipToNum(subnet);
+    if (subnetNum === -1) return false;
     const mask = ~((1 << (32 - parseInt(bits))) - 1) >>> 0;
-    return (ipToNum(ip) & mask) === (ipToNum(subnet) & mask);
+    return (clientNum & mask) === (subnetNum & mask);
   }
   return ip === entry;
 }
 
 function ipToNum(ip: string): number {
   const parts = ip.split('.').map(Number);
-  if (parts.length !== 4 || parts.some(p => isNaN(p))) return 0;
+  if (parts.length !== 4 || parts.some(p => isNaN(p) || p < 0 || p > 255)) return -1;
   return ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
 }
 

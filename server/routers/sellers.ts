@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
+import { randomInt } from 'crypto';
 import { router, protectedProcedure, adminProcedure, invalidateUserCache } from '../trpc';
 import { db } from '../db';
 import { sellers, users, tasks } from '../db/schema';
@@ -9,7 +10,7 @@ import { cached, cacheInvalidate } from '../lib/cache';
 
 function generatePassword(length = 8): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  return Array.from({ length }, () => chars[randomInt(chars.length)]).join('');
 }
 
 export function invalidateSellersCache() { cacheInvalidate('sellers:'); }

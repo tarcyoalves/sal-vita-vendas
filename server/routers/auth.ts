@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { eq, and, gt, isNull } from 'drizzle-orm';
-import { randomBytes } from 'crypto';
+import { randomBytes, randomInt } from 'crypto';
 import { router, publicProcedure, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { users, passwordResetTokens } from '../db/schema';
@@ -12,7 +12,7 @@ import { cached, cacheInvalidate } from '../lib/cache';
 
 function generatePassword(length = 12): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
-  return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  return Array.from({ length }, () => chars[randomInt(chars.length)]).join('');
 }
 
 const emergencyAttempts = new Map<string, { count: number; blockedUntil: number }>();
