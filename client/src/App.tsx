@@ -18,6 +18,7 @@ import KnowledgeBase from "./pages/KnowledgeBase";
 import AttendantProgress from "./pages/AttendantProgress";
 import TvDashboard from "./pages/TvDashboard";
 import EmailMarketing from "./pages/EmailMarketing";
+import Faturamento from "./pages/Faturamento";
 import FloatingChat from "./components/FloatingChat";
 import AppShell from "./components/AppShell";
 import { useAuth } from "./_core/hooks/useAuth";
@@ -74,6 +75,9 @@ function Router() {
       </Route>
       <Route path="/admin/email-marketing">
         <AppShell><EmailMarketing /></AppShell>
+      </Route>
+      <Route path="/admin/faturamento">
+        <AppShell><Faturamento /></AppShell>
       </Route>
       {/* TV dashboard desativado para economizar network transfer Neon */}
       {/* <Route path="/tv" component={TvDashboard} /> */}

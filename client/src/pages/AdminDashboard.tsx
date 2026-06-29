@@ -26,8 +26,11 @@ import {
   RefreshCw,
   NotebookPen,
   Download,
+  DollarSign,
 } from "lucide-react";
 import AttendantDetailModal from '../components/AttendantDetailModal';
+import { useFatStore } from '../lib/faturamento/store';
+import { panoramaPorAtendente, somarResumos, mesAtual, formatBRL } from '../lib/faturamento/calc';
 
 // Sellers created before dailyGoal was wired up still carry the old default of 10
 // while the gamification has always targeted 100 — treat 10 as "not customized".
@@ -183,6 +186,39 @@ function AiAnalysisReport({ markdown }: { markdown: string }) {
         );
       })}
     </div>
+  );
+}
+
+function FaturamentoQuickCard({ setLocation }: { setLocation: (to: string) => void }) {
+  const { pedidos, comissoes } = useFatStore();
+  const { data: sellers = [] } = trpc.sellers.listWithRole.useQuery();
+  const sellerList = (sellers as { id: number; name: string }[]).map((s) => ({ id: s.id, name: s.name }));
+  const filtro = mesAtual();
+  const rows = panoramaPorAtendente(pedidos, sellerList, comissoes, filtro);
+  const totals = somarResumos(rows);
+
+  return (
+    <Card
+      className="border-blue-200 cursor-pointer hover:shadow-md transition-shadow"
+      onClick={() => setLocation("/admin/faturamento")}
+    >
+      <CardContent className="pt-4 px-4 pb-3">
+        <div className="flex items-center gap-3">
+          <div className="bg-blue-100 text-blue-700 p-2.5 rounded-xl flex-shrink-0">
+            <DollarSign size={20} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-gray-800">Faturamento & Comissao</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {totals.totalEmbarcado > 0
+                ? `Embarcado este mes: ${formatBRL(totals.totalEmbarcado)}`
+                : "Acompanhe vendas, comissoes e relatorios"}
+            </p>
+          </div>
+          <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1110,6 +1146,9 @@ export default function AdminDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Faturamento & Comissão — quick link */}
+      <FaturamentoQuickCard setLocation={setLocation} />
 
       {/* Quick Actions */}
       <div>

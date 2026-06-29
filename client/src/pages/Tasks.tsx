@@ -16,6 +16,7 @@ import {
 import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
 import { Label } from '../components/ui/label';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem } from '../components/ui/dropdown-menu';
+import { OrderDialog } from '../components/faturamento/OrderDialog';
 
 interface Task {
   id: number;
@@ -193,6 +194,9 @@ export default function Tasks() {
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
   const [convertModalTask, setConvertModalTask] = useState<Task | null>(null);
+  // Faturamento: order dialog after conversion
+  const [orderDialogOpen, setOrderDialogOpen] = useState(false);
+  const [orderDialogTask, setOrderDialogTask] = useState<Task | null>(null);
   // ID da tarefa mais urgente a destacar após salvar
   const [highlightTaskId, setHighlightTaskId] = useState<number | null>(null);
   // Ref para controlar alerta de ociosidade (último contato feito)
@@ -526,8 +530,14 @@ export default function Tasks() {
     try {
       await toggleConvertedMutation.mutateAsync({ id: convertModalTask.id, converted: true });
       toast.success("🎉 Cliente marcado como ativo! Tag \"ativo\" aplicada para o e-mail marketing.");
+      const taskForOrder = convertModalTask;
       setConvertModalTask(null);
       refetch();
+      // Open order dialog for the converted task (attendants only — admins skip)
+      if (sellerProfile) {
+        setOrderDialogTask(taskForOrder);
+        setOrderDialogOpen(true);
+      }
     } catch {
       toast.error("Erro ao atualizar conversão");
     }
@@ -1689,6 +1699,22 @@ export default function Tasks() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Order dialog after conversion */}
+      <OrderDialog
+        open={orderDialogOpen}
+        onOpenChange={setOrderDialogOpen}
+        seller={sellerProfile ? { id: sellerProfile.id, name: sellerProfile.name } : null}
+        task={orderDialogTask ? {
+          id: orderDialogTask.id,
+          title: orderDialogTask.title,
+          cnpj: (orderDialogTask as any).cnpj ?? null,
+          company: (orderDialogTask as any).company ?? null,
+          clientName: (orderDialogTask as any).clientName ?? orderDialogTask.title,
+          city: (orderDialogTask as any).city ?? null,
+          state: (orderDialogTask as any).state ?? null,
+        } : null}
+      />
 
     </div>
   );
