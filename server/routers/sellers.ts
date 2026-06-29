@@ -193,7 +193,7 @@ export const sellersRouter = router({
     .mutation(async ({ input }) => {
       const cleaned = input.allowedIps
         .map(ip => ip.trim())
-        .filter(ip => /^[\d./]+$/.test(ip));
+        .filter(ip => /^[\da-fA-F.:\/]+$/.test(ip));
       await db.update(users)
         .set({ ipRestrictionEnabled: input.enabled, allowedIps: cleaned })
         .where(eq(users.id, input.userId));

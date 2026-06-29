@@ -230,8 +230,8 @@ export default function Attendants() {
   const handleAddIp = (ip: string) => {
     const trimmed = ip.trim();
     if (!trimmed) return;
-    if (!/^[\d./]+$/.test(trimmed)) {
-      toast.error("IP inválido. Use formato: 189.33.120.45 ou 189.33.120.0/24");
+    if (!/^[\da-fA-F.:\/]+$/.test(trimmed)) {
+      toast.error("IP inválido. Use formato IPv4 (189.33.120.45) ou IPv6 (2804:29b8::1)");
       return;
     }
     if (ipList.includes(trimmed)) {
@@ -802,8 +802,13 @@ export default function Attendants() {
                   >
                     📍 Usar meu IP atual {myIpQuery.data?.ip ? `(${myIpQuery.data.ip})` : ''}
                   </Button>
+                  {myIpQuery.data?.ip && myIpQuery.data.ip.includes(':') && (
+                    <p className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
+                      Sua conexao usa IPv6 ({myIpQuery.data.ip}). Adicione este IP exato. Se o provedor mudar o IPv6 com frequencia, considere desativar a restricao para este atendente.
+                    </p>
+                  )}
                   <p className="text-xs text-gray-500">
-                    Dica: se o IP da empresa muda frequentemente, use um range (ex: 189.33.120.0/24) para cobrir todo o bloco.
+                    Dica: se o IP da empresa muda frequentemente, use um range CIDR (ex: 189.33.120.0/24). Aceita IPv4 e IPv6.
                   </p>
                 </>
               )}

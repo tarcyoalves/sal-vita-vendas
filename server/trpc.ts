@@ -12,21 +12,33 @@ export function invalidateUserCache(userId: number) {
   cacheInvalidate(`user:${userId}`);
 }
 
+function normalizeIp(raw: string): string {
+  const s = raw.trim();
+  if (s.startsWith('::ffff:')) return s.slice(7);
+  return s;
+}
+
 function getClientIp(req: CreateExpressContextOptions['req']): string {
-  return req.ip ?? req.socket.remoteAddress ?? '';
+  return normalizeIp(req.ip ?? req.socket.remoteAddress ?? '');
 }
 
 function ipMatchesEntry(ip: string, entry: string): boolean {
-  const clientNum = ipToNum(ip);
-  if (clientNum === -1) return false;
-  if (entry.includes('/')) {
-    const [subnet, bits] = entry.split('/');
-    const subnetNum = ipToNum(subnet);
-    if (subnetNum === -1) return false;
-    const mask = ~((1 << (32 - parseInt(bits))) - 1) >>> 0;
-    return (clientNum & mask) === (subnetNum & mask);
+  const nIp = normalizeIp(ip);
+  const nEntry = normalizeIp(entry);
+
+  const clientNum = ipToNum(nIp);
+  if (clientNum !== -1) {
+    if (nEntry.includes('/')) {
+      const [subnet, bits] = nEntry.split('/');
+      const subnetNum = ipToNum(subnet);
+      if (subnetNum === -1) return false;
+      const mask = ~((1 << (32 - parseInt(bits))) - 1) >>> 0;
+      return (clientNum & mask) === (subnetNum & mask);
+    }
+    return nIp === nEntry;
   }
-  return ip === entry;
+
+  return nIp.toLowerCase() === nEntry.toLowerCase();
 }
 
 function ipToNum(ip: string): number {
