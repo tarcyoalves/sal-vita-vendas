@@ -231,28 +231,28 @@ export default function EmailMarketing() {
       <Tabs defaultValue="campaigns">
         <TabsList className="flex-nowrap overflow-x-auto scrollbar-hide justify-start gap-1 rounded-2xl bg-slate-100 p-1.5">
           <TabsTrigger value="campaigns" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <Send size={14} /> <span className="hidden sm:inline">Campanhas</span>
+            <Send size={20} className="sm:w-[14px] sm:h-[14px]" /> <span className="hidden sm:inline">Campanhas</span>
           </TabsTrigger>
           <TabsTrigger value="sequences" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <Workflow size={14} /> <span className="hidden sm:inline">Sequências</span>
+            <Workflow size={20} className="sm:w-[14px] sm:h-[14px]" /> <span className="hidden sm:inline">Sequências</span>
           </TabsTrigger>
           <TabsTrigger value="automations" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <Zap size={14} /> <span className="hidden sm:inline">Automações</span>
+            <Zap size={20} className="sm:w-[14px] sm:h-[14px]" /> <span className="hidden sm:inline">Automações</span>
           </TabsTrigger>
           <TabsTrigger value="templates" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <LayoutTemplate size={14} /> <span className="hidden sm:inline">Templates</span>
+            <LayoutTemplate size={20} className="sm:w-[14px] sm:h-[14px]" /> <span className="hidden sm:inline">Templates</span>
           </TabsTrigger>
           <TabsTrigger value="tags" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <Tag size={14} /> <span className="hidden sm:inline">Tags</span>
+            <Tag size={20} className="sm:w-[14px] sm:h-[14px]" /> <span className="hidden sm:inline">Tags</span>
           </TabsTrigger>
           <TabsTrigger value="contacts" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <Contact size={14} /> <span className="hidden sm:inline">Contatos</span>
+            <Contact size={20} className="sm:w-[14px] sm:h-[14px]" /> <span className="hidden sm:inline">Contatos</span>
           </TabsTrigger>
           <TabsTrigger value="usage" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <Gauge size={14} /> <span className="hidden sm:inline">Consumo</span>
+            <Gauge size={20} className="sm:w-[14px] sm:h-[14px]" /> <span className="hidden sm:inline">Consumo</span>
           </TabsTrigger>
           <TabsTrigger value="stats" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <BarChart3 size={14} /> <span className="hidden sm:inline">Estatísticas</span>
+            <BarChart3 size={20} className="sm:w-[14px] sm:h-[14px]" /> <span className="hidden sm:inline">Estatísticas</span>
           </TabsTrigger>
         </TabsList>
 
@@ -3852,20 +3852,20 @@ function ContactsTab() {
   return (
     <Tabs defaultValue="overview" className="space-y-4">
       <TabsList className="h-auto justify-start gap-1 rounded-xl bg-slate-100 p-1 flex-nowrap overflow-x-auto scrollbar-hide">
-        <TabsTrigger value="overview" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-3 py-1.5">
-          <BarChart3 size={13} /> Visão Geral
+        <TabsTrigger value="overview" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-2.5 sm:px-3 py-1.5">
+          <BarChart3 size={15} className="sm:w-[13px] sm:h-[13px]" /> <span className="hidden sm:inline">Visão Geral</span>
         </TabsTrigger>
-        <TabsTrigger value="imported" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-3 py-1.5">
-          <Upload size={13} /> Importados
+        <TabsTrigger value="imported" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-2.5 sm:px-3 py-1.5">
+          <Upload size={15} className="sm:w-[13px] sm:h-[13px]" /> <span className="hidden sm:inline">Importados</span>
         </TabsTrigger>
-        <TabsTrigger value="confirmed" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-3 py-1.5">
-          <CheckCircle size={13} /> Confirmados
+        <TabsTrigger value="confirmed" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-2.5 sm:px-3 py-1.5">
+          <CheckCircle size={15} className="sm:w-[13px] sm:h-[13px]" /> <span className="hidden sm:inline">Confirmados</span>
         </TabsTrigger>
-        <TabsTrigger value="export" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-3 py-1.5">
-          <Download size={13} /> Exportar
+        <TabsTrigger value="export" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-2.5 sm:px-3 py-1.5">
+          <Download size={15} className="sm:w-[13px] sm:h-[13px]" /> <span className="hidden sm:inline">Exportar</span>
         </TabsTrigger>
-        <TabsTrigger value="segments" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-3 py-1.5">
-          <Filter size={13} /> Segmentação
+        <TabsTrigger value="segments" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-2.5 sm:px-3 py-1.5">
+          <Filter size={15} className="sm:w-[13px] sm:h-[13px]" /> <span className="hidden sm:inline">Segmentação</span>
         </TabsTrigger>
       </TabsList>
 
