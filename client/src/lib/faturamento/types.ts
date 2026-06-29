@@ -60,6 +60,8 @@ export interface ResumoAtendente {
   comissaoEmbarcada: number;// totalEmbarcado × pct (o que de fato se paga)
   qtdPedidos: number;
   qtdFaturados: number;
+  pesoTotalKg: number;      // Σ peso estimado dos pedidos do mês (kg)
+  pesoEmbarcadoKg: number;  // Σ peso dos pedidos faturados no mês (kg)
 }
 
 export interface FiltroMes {

@@ -205,7 +205,7 @@ export default function EmailMarketing() {
   }
 
   const TAB_TRIGGER_CLASS =
-    "gap-1.5 rounded-xl px-3 py-2 text-slate-500 data-[state=active]:bg-blue-900 data-[state=active]:text-white data-[state=active]:shadow-md";
+    "gap-1.5 rounded-xl px-2.5 py-2 sm:px-3 text-slate-500 data-[state=active]:bg-blue-900 data-[state=active]:text-white data-[state=active]:shadow-md";
 
   return (
     <div className="p-4 md:p-6 space-y-4 md:space-y-6">
@@ -231,28 +231,28 @@ export default function EmailMarketing() {
       <Tabs defaultValue="campaigns">
         <TabsList className="flex-nowrap overflow-x-auto scrollbar-hide justify-start gap-1 rounded-2xl bg-slate-100 p-1.5">
           <TabsTrigger value="campaigns" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <Send size={14} /> Campanhas
+            <Send size={14} /> <span className="hidden sm:inline">Campanhas</span>
           </TabsTrigger>
           <TabsTrigger value="sequences" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <Workflow size={14} /> Sequências
+            <Workflow size={14} /> <span className="hidden sm:inline">Sequências</span>
           </TabsTrigger>
           <TabsTrigger value="automations" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <Zap size={14} /> Automações
+            <Zap size={14} /> <span className="hidden sm:inline">Automações</span>
           </TabsTrigger>
           <TabsTrigger value="templates" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <LayoutTemplate size={14} /> Templates
+            <LayoutTemplate size={14} /> <span className="hidden sm:inline">Templates</span>
           </TabsTrigger>
           <TabsTrigger value="tags" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <Tag size={14} /> Tags
+            <Tag size={14} /> <span className="hidden sm:inline">Tags</span>
           </TabsTrigger>
           <TabsTrigger value="contacts" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <Contact size={14} /> Contatos
+            <Contact size={14} /> <span className="hidden sm:inline">Contatos</span>
           </TabsTrigger>
           <TabsTrigger value="usage" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <Gauge size={14} /> Consumo
+            <Gauge size={14} /> <span className="hidden sm:inline">Consumo</span>
           </TabsTrigger>
           <TabsTrigger value="stats" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <BarChart3 size={14} /> Estatísticas
+            <BarChart3 size={14} /> <span className="hidden sm:inline">Estatísticas</span>
           </TabsTrigger>
         </TabsList>
 

@@ -57,6 +57,8 @@ export function resumoAtendente(
 
   const totalVendido = doMes.reduce((s, p) => s + totalPedido(p), 0);
   const totalEmbarcado = faturadosNoMes.reduce((s, p) => s + totalPedido(p), 0);
+  const pesoTotalKg = doMes.reduce((s, p) => s + pesoTotalItens(p.itens), 0);
+  const pesoEmbarcadoKg = faturadosNoMes.reduce((s, p) => s + pesoTotalItens(p.itens), 0);
 
   return {
     sellerId,
@@ -68,6 +70,8 @@ export function resumoAtendente(
     comissaoEmbarcada: totalEmbarcado * comissaoPct / 100,
     qtdPedidos: doMes.length,
     qtdFaturados: faturadosNoMes.length,
+    pesoTotalKg,
+    pesoEmbarcadoKg,
   };
 }
 
@@ -92,8 +96,10 @@ export function somarResumos(rows: ResumoAtendente[]) {
       comissaoEmbarcada: acc.comissaoEmbarcada + r.comissaoEmbarcada,
       qtdPedidos: acc.qtdPedidos + r.qtdPedidos,
       qtdFaturados: acc.qtdFaturados + r.qtdFaturados,
+      pesoTotalKg: acc.pesoTotalKg + r.pesoTotalKg,
+      pesoEmbarcadoKg: acc.pesoEmbarcadoKg + r.pesoEmbarcadoKg,
     }),
-    { totalVendido: 0, totalEmbarcado: 0, comissaoPrevista: 0, comissaoEmbarcada: 0, qtdPedidos: 0, qtdFaturados: 0 },
+    { totalVendido: 0, totalEmbarcado: 0, comissaoPrevista: 0, comissaoEmbarcada: 0, qtdPedidos: 0, qtdFaturados: 0, pesoTotalKg: 0, pesoEmbarcadoKg: 0 },
   );
 }
 
@@ -123,4 +129,9 @@ export function parseBRL(input: string): number {
 export function formatKg(n: number): string {
   const v = Number(n) || 0;
   return `${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kg`;
+}
+
+export function formatTons(kg: number): string {
+  const t = (Number(kg) || 0) / 1000;
+  return `${t.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} t`;
 }
