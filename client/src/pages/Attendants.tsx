@@ -5,6 +5,7 @@ import { Button } from '../components/ui/button';
 import { useState, useMemo } from "react";
 import DOMPurify from 'dompurify';
 import { toast } from "sonner";
+import { useFatStore } from '../lib/faturamento/store';
 import {
   Dialog,
   DialogContent,
@@ -46,6 +47,7 @@ interface CreatedResult extends Attendant {
 
 export default function Attendants() {
   const { user, loading } = useAuth();
+  const { actions: fatActions } = useFatStore(); // reactivity for commission changes
   const [showForm, setShowForm] = useState(false);
   const [createdInfo, setCreatedInfo] = useState<{ name: string; email: string; password: string } | null>(null);
   const [editingAttendant, setEditingAttendant] = useState<Attendant | null>(null);
@@ -58,6 +60,7 @@ export default function Attendants() {
     workHoursGoal: 8,
     status: "active" as "active" | "inactive",
     emailMarketingEnabled: false,
+    commissionPct: 0,
   });
 
   const [resetInfo, setResetInfo] = useState<{ name: string; email: string; password: string } | null>(null);
@@ -121,6 +124,7 @@ export default function Attendants() {
       workHoursGoal: attendant.workHoursGoal ?? 8,
       status: (attendant.status ?? "active") as "active" | "inactive",
       emailMarketingEnabled: attendant.emailMarketingEnabled ?? false,
+      commissionPct: fatActions.comissoes.get(attendant.id),
     });
   };
 
@@ -139,6 +143,7 @@ export default function Attendants() {
         status: editFormData.status,
         emailMarketingEnabled: editFormData.emailMarketingEnabled,
       });
+      fatActions.comissoes.set(editingAttendant.id, editFormData.commissionPct);
       toast.success("Atendente atualizado!");
       setEditingAttendant(null);
       refetch();
@@ -563,6 +568,7 @@ export default function Attendants() {
                       {attendant.department && <p>🏢 {attendant.department}</p>}
                       <p>🎯 Meta: {effectiveDailyGoal(attendant.dailyGoal)} contatos/dia</p>
                       <p>🕐 Expediente: {attendant.workHoursGoal ?? 8}h</p>
+                      <p>💰 Comissao: {fatActions.comissoes.get(attendant.id)}%</p>
                       <div className="flex gap-2 flex-wrap">
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${attendant.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                           {attendant.status === "active" ? "✅ Ativo" : "❌ Inativo"}
@@ -687,6 +693,22 @@ export default function Attendants() {
                 </label>
                 <p className="text-xs text-gray-500 mt-1 ml-1">
                   Quando ativo, o atendente poderá inscrever seus leads em sequências de e-mail.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Comissao (%)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  value={editFormData.commissionPct}
+                  onChange={(e) => setEditFormData({ ...editFormData, commissionPct: parseFloat(e.target.value) || 0 })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                  placeholder="Ex: 5"
+                />
+                <p className="text-xs text-gray-500 mt-1 ml-1">
+                  Percentual de comissao sobre vendas faturadas (salvo localmente).
                 </p>
               </div>
               <DialogFooter className="flex gap-2 pt-2">

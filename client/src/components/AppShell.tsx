@@ -15,6 +15,7 @@ import {
   TrendingUp,
   KeyRound,
   Mail,
+  DollarSign,
 } from "lucide-react";
 import { useAuth } from "../_core/hooks/useAuth";
 import { trpc } from "../lib/trpc";
@@ -53,6 +54,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "E-mail Marketing",
     path: "/admin/email-marketing",
     icon: <Mail size={18} />,
+    roles: ["admin"],
+  },
+  {
+    label: "Faturamento",
+    path: "/admin/faturamento",
+    icon: <DollarSign size={18} />,
     roles: ["admin"],
   },
   {
@@ -104,6 +111,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/tasks": "Tarefas",
   "/attendants": "Atendentes",
   "/admin/email-marketing": "E-mail Marketing",
+  "/admin/faturamento": "Faturamento",
   "/ai-chat": "Chat IA",
   "/ai-settings": "Configurações IA",
   "/knowledge-base": "Base de Conhecimento",

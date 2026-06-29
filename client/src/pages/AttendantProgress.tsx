@@ -3,6 +3,8 @@ import { useAuth } from '../_core/hooks/useAuth';
 import { useMemo, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Phone, Clock, Zap, TrendingUp, AlertCircle, Trophy } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import AttendantBilling from '../components/faturamento/AttendantBilling';
 
 // Sellers created before dailyGoal was wired up still carry the old default of 10
 // while the gamification has always targeted 100 — treat 10 as "not customized".
@@ -146,7 +148,15 @@ export default function AttendantProgress() {
   const hoursColor   = m.hoursPct   >= 100 ? '#16a34a' : m.hoursPct   >= 60 ? '#2563eb' : '#94a3b8';
 
   return (
-    <div className="p-4 md:p-6 space-y-4 max-w-2xl mx-auto">
+    <div className="p-4 md:p-6 max-w-2xl mx-auto">
+      <Tabs defaultValue="progresso">
+        <TabsList className="w-full mb-4">
+          <TabsTrigger value="progresso" className="flex-1">Progresso</TabsTrigger>
+          <TabsTrigger value="faturamento" className="flex-1">Faturamento</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="progresso">
+          <div className="space-y-4">
 
       <div className="flex items-center justify-between">
         <div>
@@ -305,6 +315,13 @@ export default function AttendantProgress() {
         )}
       </div>
 
+          </div>
+        </TabsContent>
+
+        <TabsContent value="faturamento">
+          <AttendantBilling />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
