@@ -2078,6 +2078,139 @@ export const emailMarketingRouter = router({
       return { ok: true };
     }),
 
+  dashboardEmailStats: adminProcedure.query(async () => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const today = todayStart.toISOString().slice(0, 10);
+
+    // 1) Sends today per attendant (via reply_to → seller email)
+    const sendsToday = await db.execute<{
+      reply_to: string | null; cnt: number;
+    }>(sql`
+      SELECT r.reply_to, COUNT(*)::int AS cnt
+      FROM ${emailCampaignRecipients} r
+      WHERE r.status = 'sent' AND r.sent_at >= ${todayStart}
+      GROUP BY r.reply_to
+    `);
+    const seqSendsToday = await db.execute<{
+      reply_to: string | null; cnt: number;
+    }>(sql`
+      SELECT en.reply_to, COUNT(*)::int AS cnt
+      FROM ${emailSequenceSends} sd
+      INNER JOIN ${emailSequenceEnrollments} en ON en.id = sd.enrollment_id
+      WHERE sd.status = 'sent' AND sd.sent_at >= ${todayStart}
+      GROUP BY en.reply_to
+    `);
+
+    const sellerRows = await db.select({ name: sellers.name, email: sellers.email }).from(sellers);
+    const emailToName = new Map(sellerRows.map(s => [s.email.toLowerCase(), s.name]));
+
+    const byAttendant = new Map<string, { name: string; campaigns: number; sequences: number }>();
+    for (const r of sendsToday.rows) {
+      const key = (r.reply_to || '').toLowerCase();
+      const name = emailToName.get(key) ?? (r.reply_to || 'Admin');
+      const entry = byAttendant.get(key) ?? { name, campaigns: 0, sequences: 0 };
+      entry.campaigns += Number(r.cnt);
+      byAttendant.set(key, entry);
+    }
+    for (const r of seqSendsToday.rows) {
+      const key = (r.reply_to || '').toLowerCase();
+      const name = emailToName.get(key) ?? (r.reply_to || 'Admin');
+      const entry = byAttendant.get(key) ?? { name, campaigns: 0, sequences: 0 };
+      entry.sequences += Number(r.cnt);
+      byAttendant.set(key, entry);
+    }
+
+    const attendantSends = Array.from(byAttendant.values())
+      .map(a => ({ ...a, total: a.campaigns + a.sequences }))
+      .sort((a, b) => b.total - a.total);
+
+    const totalSentToday = attendantSends.reduce((s, a) => s + a.total, 0);
+
+    // 2) Engagement today (opens/clicks received today, regardless of send date)
+    const engToday = await db.execute<{
+      event_type: string; cnt: number; uniq: number;
+    }>(sql`
+      SELECT event_type, COUNT(*)::int AS cnt, COUNT(DISTINCT message_id)::int AS uniq
+      FROM ${emailEvents}
+      WHERE created_at >= ${todayStart}
+      GROUP BY event_type
+    `);
+    const engMap: Record<string, { total: number; unique: number }> = {};
+    for (const r of engToday.rows) {
+      engMap[r.event_type] = { total: Number(r.cnt), unique: Number(r.uniq) };
+    }
+
+    // 3) Top campaigns by open rate (last 30 days, min 5 recipients sent)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+    const topCampaigns = await db.execute<{
+      id: number; name: string; subject: string; sent: number; opened: number; clicked: number; open_rate: number;
+    }>(sql`
+      SELECT
+        c.id, c.name, c.subject,
+        c.sent_count AS sent,
+        COUNT(DISTINCT e_o.message_id)::int AS opened,
+        COUNT(DISTINCT e_c.message_id)::int AS clicked,
+        CASE WHEN c.sent_count > 0
+          THEN ROUND(COUNT(DISTINCT e_o.message_id)::numeric / c.sent_count * 100, 1)
+          ELSE 0
+        END AS open_rate
+      FROM ${emailCampaigns} c
+      LEFT JOIN ${emailCampaignRecipients} r ON r.campaign_id = c.id AND r.status = 'sent'
+      LEFT JOIN ${emailEvents} e_o ON e_o.message_id = r.message_id AND e_o.event_type = 'opened'
+      LEFT JOIN ${emailEvents} e_c ON e_c.message_id = r.message_id AND e_c.event_type = 'clicked'
+      WHERE c.created_at >= ${thirtyDaysAgo} AND c.sent_count >= 5
+      GROUP BY c.id, c.name, c.subject, c.sent_count
+      ORDER BY open_rate DESC
+      LIMIT 5
+    `);
+
+    // 4) Quota usage today
+    const countersToday = await db.select({ accountKey: emailSendCounters.accountKey, sent: emailSendCounters.sent })
+      .from(emailSendCounters)
+      .where(eq(emailSendCounters.day, today));
+    const usedToday = countersToday.reduce((sum, c) => sum + (c.sent ?? 0), 0);
+    const accountCount = Math.max(1, countersToday.length || 1);
+    const quotaToday = accountCount * MKT_DAILY_LIMIT;
+
+    // 5) Bounces/complaints today (health signal)
+    const bouncesToday = engMap['bounced']?.unique ?? 0;
+    const complaintsToday = engMap['complained']?.unique ?? 0;
+
+    // 6) 7-day send trend
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
+    const dailyTrend = await db.execute<{ day: string; cnt: number }>(sql`
+      SELECT day, SUM(sent)::int AS cnt
+      FROM ${emailSendCounters}
+      WHERE day >= ${sevenDaysAgo.toISOString().slice(0, 10)}
+      GROUP BY day
+      ORDER BY day
+    `);
+
+    return {
+      totalSentToday,
+      attendantSends,
+      opensToday: engMap['opened']?.unique ?? 0,
+      totalOpensToday: engMap['opened']?.total ?? 0,
+      clicksToday: engMap['clicked']?.unique ?? 0,
+      totalClicksToday: engMap['clicked']?.total ?? 0,
+      bouncesToday,
+      complaintsToday,
+      quotaUsed: usedToday,
+      quotaTotal: quotaToday,
+      topCampaigns: topCampaigns.rows.map(c => ({
+        id: Number(c.id),
+        name: c.name,
+        subject: c.subject,
+        sent: Number(c.sent),
+        opened: Number(c.opened),
+        clicked: Number(c.clicked),
+        openRate: Number(c.open_rate),
+      })),
+      dailyTrend: dailyTrend.rows.map(r => ({ day: r.day, sent: Number(r.cnt) })),
+    };
+  }),
+
   moveContactsToList: adminProcedure
     .input(z.object({
       contactIds: z.array(z.number()).min(1),

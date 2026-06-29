@@ -27,6 +27,11 @@ import {
   NotebookPen,
   Download,
   DollarSign,
+  Mail,
+  MousePointerClick,
+  MailOpen,
+  ShieldAlert,
+  Zap,
 } from "lucide-react";
 import AttendantDetailModal from '../components/AttendantDetailModal';
 import { useFatStore } from '../lib/faturamento/store';
@@ -186,6 +191,226 @@ function AiAnalysisReport({ markdown }: { markdown: string }) {
         );
       })}
     </div>
+  );
+}
+
+function EmailStrategicCard() {
+  const { data: emailStats, isLoading: emailLoading } = trpc.emailMarketing.dashboardEmailStats.useQuery(
+    undefined,
+    { staleTime: 120_000, refetchOnWindowFocus: false },
+  );
+
+  if (emailLoading) {
+    return (
+      <Card className="border-violet-200">
+        <CardContent className="pt-4 px-4 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="bg-violet-100 text-violet-700 p-2.5 rounded-xl flex-shrink-0">
+              <Mail size={20} />
+            </div>
+            <div className="flex-1 h-8 bg-gray-100 rounded animate-pulse" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!emailStats) return null;
+
+  const quotaPct = emailStats.quotaTotal > 0 ? Math.round((emailStats.quotaUsed / emailStats.quotaTotal) * 100) : 0;
+  const openRateToday = emailStats.totalSentToday > 0
+    ? Math.round((emailStats.opensToday / emailStats.totalSentToday) * 100)
+    : 0;
+  const clickRateToday = emailStats.opensToday > 0
+    ? Math.round((emailStats.clicksToday / emailStats.opensToday) * 100)
+    : 0;
+
+  const trendMax = Math.max(1, ...emailStats.dailyTrend.map((d: { sent: number }) => d.sent));
+
+  return (
+    <Card className="border-violet-200">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center justify-between text-base">
+          <span className="flex items-center gap-2">
+            <Mail size={18} className="text-violet-600" />
+            E-mail Marketing — Painel Estrategico
+          </span>
+          {emailStats.bouncesToday > 0 || emailStats.complaintsToday > 0 ? (
+            <span className="flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2 py-1 rounded-lg">
+              <ShieldAlert size={12} />
+              {emailStats.bouncesToday > 0 && `${emailStats.bouncesToday} bounce${emailStats.bouncesToday > 1 ? 's' : ''}`}
+              {emailStats.bouncesToday > 0 && emailStats.complaintsToday > 0 && ' · '}
+              {emailStats.complaintsToday > 0 && `${emailStats.complaintsToday} reclamacao`}
+            </span>
+          ) : null}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {/* KPIs do dia */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-violet-50 border border-violet-100 rounded-xl p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Mail size={14} className="text-violet-500" />
+              <span className="text-[10px] font-semibold text-violet-500 uppercase">Enviados hoje</span>
+            </div>
+            <p className="text-2xl font-black text-violet-700">{emailStats.totalSentToday}</p>
+            <p className="text-[11px] text-violet-400 mt-0.5">
+              Cota: {emailStats.quotaUsed}/{emailStats.quotaTotal} ({quotaPct}%)
+            </p>
+          </div>
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <MailOpen size={14} className="text-blue-500" />
+              <span className="text-[10px] font-semibold text-blue-500 uppercase">Aberturas hoje</span>
+            </div>
+            <p className="text-2xl font-black text-blue-700">{emailStats.opensToday}</p>
+            <p className="text-[11px] text-blue-400 mt-0.5">
+              {emailStats.totalOpensToday} total · {openRateToday}% taxa
+            </p>
+          </div>
+          <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <MousePointerClick size={14} className="text-emerald-500" />
+              <span className="text-[10px] font-semibold text-emerald-500 uppercase">Cliques hoje</span>
+            </div>
+            <p className="text-2xl font-black text-emerald-700">{emailStats.clicksToday}</p>
+            <p className="text-[11px] text-emerald-400 mt-0.5">
+              {emailStats.totalClicksToday} total · {clickRateToday}% click-to-open
+            </p>
+          </div>
+          <div className={`border rounded-xl p-3 ${quotaPct >= 90 ? 'bg-red-50 border-red-100' : quotaPct >= 70 ? 'bg-amber-50 border-amber-100' : 'bg-slate-50 border-slate-100'}`}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <Zap size={14} className={quotaPct >= 90 ? 'text-red-500' : quotaPct >= 70 ? 'text-amber-500' : 'text-slate-500'} />
+              <span className={`text-[10px] font-semibold uppercase ${quotaPct >= 90 ? 'text-red-500' : quotaPct >= 70 ? 'text-amber-500' : 'text-slate-500'}`}>Cota diaria</span>
+            </div>
+            <p className={`text-2xl font-black ${quotaPct >= 90 ? 'text-red-700' : quotaPct >= 70 ? 'text-amber-700' : 'text-slate-700'}`}>{quotaPct}%</p>
+            <div className="mt-1.5 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${quotaPct >= 90 ? 'bg-red-500' : quotaPct >= 70 ? 'bg-amber-400' : 'bg-violet-400'}`}
+                style={{ width: `${Math.min(quotaPct, 100)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Tendencia 7 dias + Envios por atendente */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* Envios por atendente hoje */}
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-2">Envios por atendente — hoje</p>
+            {emailStats.attendantSends.length > 0 ? (
+              <div className="space-y-2">
+                {emailStats.attendantSends.map((a: { name: string; campaigns: number; sequences: number; total: number }) => {
+                  const pct = emailStats.totalSentToday > 0 ? Math.round((a.total / emailStats.totalSentToday) * 100) : 0;
+                  return (
+                    <div key={a.name}>
+                      <div className="flex items-center justify-between text-sm mb-1">
+                        <span className="text-gray-700 font-medium truncate flex-1">{a.name}</span>
+                        <span className="text-violet-700 font-bold text-xs ml-2">{a.total}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-violet-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="text-[10px] text-gray-400 w-8 text-right">{pct}%</span>
+                      </div>
+                      <div className="flex gap-3 text-[10px] text-gray-400 mt-0.5 pl-0.5">
+                        {a.campaigns > 0 && <span>Campanhas: {a.campaigns}</span>}
+                        {a.sequences > 0 && <span>Sequencias: {a.sequences}</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-6 text-gray-400">
+                <Mail size={24} className="mx-auto mb-1 opacity-30" />
+                <p className="text-xs">Nenhum e-mail enviado hoje</p>
+              </div>
+            )}
+          </div>
+
+          {/* Tendencia 7 dias */}
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-2">Volume de envios — ultimos 7 dias</p>
+            {emailStats.dailyTrend.length > 0 ? (
+              <div className="flex items-end gap-2 h-24">
+                {emailStats.dailyTrend.map((d: { day: string; sent: number }) => {
+                  const dayLabel = d.day.slice(8, 10) + '/' + d.day.slice(5, 7);
+                  return (
+                    <div key={d.day} className="flex-1 flex flex-col items-center justify-end gap-1">
+                      <span className="text-[10px] text-gray-500 font-medium">{d.sent > 0 ? d.sent : ''}</span>
+                      <div
+                        className={`w-full rounded-t ${d.sent > 0 ? 'bg-violet-400' : 'bg-gray-100'} transition-all`}
+                        style={{ height: `${Math.max(4, Math.round((d.sent / trendMax) * 72))}px` }}
+                      />
+                      <span className="text-[9px] text-gray-400">{dayLabel}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-6 text-gray-400">
+                <BarChart2 size={24} className="mx-auto mb-1 opacity-30" />
+                <p className="text-xs">Sem dados de envio recentes</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Top campanhas por abertura */}
+        {emailStats.topCampaigns.length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-2">Melhores campanhas por abertura — ultimos 30 dias</p>
+            <div className="space-y-1.5">
+              {emailStats.topCampaigns.map((c: { id: number; name: string; subject: string; sent: number; opened: number; clicked: number; openRate: number }, i: number) => (
+                <div key={c.id} className="flex items-center gap-2 text-sm">
+                  <span className={`text-xs w-5 text-center font-bold ${i === 0 ? 'text-amber-500' : 'text-gray-400'}`}>
+                    {i + 1}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-gray-700 truncate text-xs font-medium">{c.subject}</p>
+                    <div className="flex gap-3 text-[10px] text-gray-400">
+                      <span>{c.sent} enviados</span>
+                      <span className="text-blue-500">{c.opened} abriram</span>
+                      <span className="text-emerald-500">{c.clicked} clicaram</span>
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0 text-right">
+                    <p className={`text-sm font-bold ${c.openRate >= 30 ? 'text-emerald-600' : c.openRate >= 15 ? 'text-blue-600' : 'text-amber-600'}`}>
+                      {c.openRate}%
+                    </p>
+                    <p className="text-[9px] text-gray-400">abertura</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Insights estrategicos */}
+        {emailStats.totalSentToday > 0 && (
+          <div className="bg-violet-50 border border-violet-100 rounded-xl px-4 py-3 space-y-1">
+            <p className="text-xs font-semibold text-violet-700 mb-1">Insights do dia</p>
+            {openRateToday >= 25 && (
+              <p className="text-[11px] text-violet-600">Taxa de abertura em {openRateToday}% — acima da media do mercado (15-25%)</p>
+            )}
+            {openRateToday > 0 && openRateToday < 15 && (
+              <p className="text-[11px] text-amber-700">Taxa de abertura de {openRateToday}% esta abaixo da media. Considere revisar os assuntos dos e-mails.</p>
+            )}
+            {clickRateToday >= 3 && (
+              <p className="text-[11px] text-emerald-700">Click-to-open de {clickRateToday}% — bom engajamento com o conteudo</p>
+            )}
+            {emailStats.bouncesToday > 0 && (
+              <p className="text-[11px] text-red-600">{emailStats.bouncesToday} bounce(s) hoje — verifique a qualidade dos e-mails da base</p>
+            )}
+            {quotaPct >= 80 && (
+              <p className="text-[11px] text-amber-700">Cota em {quotaPct}% — planeje os envios restantes com cuidado</p>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -833,6 +1058,9 @@ export default function AdminDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Email Marketing — Painel Estrategico */}
+      <EmailStrategicCard />
 
       {/* Monitor IA */}
       <Card className="border-purple-200">
