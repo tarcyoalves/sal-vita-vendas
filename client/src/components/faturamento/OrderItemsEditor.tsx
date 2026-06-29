@@ -68,20 +68,6 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
 
   const pickProduct = useCallback(
     (itemId: string, value: string) => {
-      if (value === '__custom__') {
-        updateItem(itemId, {
-          produtoId: null,
-          descricao: '',
-          valorUnitario: 0,
-          pesoKg: 0,
-        });
-        setPesoUnitMap((prev) => {
-          const next = { ...prev };
-          delete next[itemId];
-          return next;
-        });
-        return;
-      }
       const prod = ativos.find((p) => p.id === value);
       if (!prod) return;
       const qty =
@@ -155,47 +141,25 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
                   {/* Product select or free text */}
                   <td className="px-3 py-2">
                     {ativos.length > 0 ? (
-                      <div className="space-y-1.5">
-                        <Select
-                          value={item.produtoId ?? '__custom__'}
-                          onValueChange={(v) => pickProduct(item.id, v)}
-                        >
-                          <SelectTrigger className="w-full text-xs h-8">
-                            <SelectValue placeholder="Selecionar produto" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {ativos.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.nome}
-                              </SelectItem>
-                            ))}
-                            <SelectItem value="__custom__">
-                              Outro (digitar)
+                      <Select
+                        value={item.produtoId ?? ''}
+                        onValueChange={(v) => pickProduct(item.id, v)}
+                      >
+                        <SelectTrigger className="w-full text-xs h-8">
+                          <SelectValue placeholder="Selecionar produto" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ativos.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.nome}
                             </SelectItem>
-                          </SelectContent>
-                        </Select>
-                        {!item.produtoId && (
-                          <Input
-                            className="text-xs h-7"
-                            placeholder="Descrição do item"
-                            value={item.descricao}
-                            onChange={(e) =>
-                              updateItem(item.id, {
-                                descricao: e.target.value,
-                              })
-                            }
-                          />
-                        )}
-                      </div>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     ) : (
-                      <Input
-                        className="text-xs h-8"
-                        placeholder="Descrição do item"
-                        value={item.descricao}
-                        onChange={(e) =>
-                          updateItem(item.id, { descricao: e.target.value })
-                        }
-                      />
+                      <p className="text-xs text-amber-600 py-1">
+                        Nenhum produto cadastrado. Solicite ao admin.
+                      </p>
                     )}
                   </td>
                   {/* Quantidade */}

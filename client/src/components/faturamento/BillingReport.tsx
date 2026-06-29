@@ -103,14 +103,16 @@ export default function BillingReport() {
 
   // CSV
   const handleExport = () => {
-    const headers = ["CNPJ", "Razao Social", "Cidade", "UF", "Atendente", "Status", "Valor Estimado", "Valor Faturado"];
+    const headers = ["Tarefa", "CNPJ", "Razao Social", "Cidade", "UF", "Atendente", "Status", "Produtos", "Valor Estimado", "Valor Faturado"];
     const csvRows = filtered.map((p) => [
+      p.taskId ? `#${p.taskId}` : "",
       p.cnpj,
       p.razaoSocial,
       p.cidade,
       p.uf,
       p.sellerName,
       p.status === "faturado" ? "Faturado" : "Estimado",
+      p.itens.map(it => `${it.descricao} (${it.quantidade}un)`).join(", "),
       estimatedTotal(p).toFixed(2).replace(".", ","),
       p.status === "faturado" ? totalPedido(p).toFixed(2).replace(".", ",") : "",
     ]);
@@ -227,24 +229,34 @@ export default function BillingReport() {
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Tarefa</th>
                     <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">CNPJ</th>
                     <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Razao Social</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Cidade</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">UF</th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Cidade/UF</th>
                     <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Atendente</th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Produtos</th>
                     <th className="px-3 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-500">Status</th>
-                    <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Valor Estimado</th>
-                    <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Valor Faturado</th>
+                    <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Estimado</th>
+                    <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Faturado</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((p) => (
-                    <tr key={p.id} className="border-b border-slate-100 hover:bg-blue-50/50 transition-colors">
+                    <tr key={p.id} className="border-b border-slate-100 hover:bg-blue-50/50 transition-colors align-top">
+                      <td className="px-3 py-3 text-blue-600 text-xs font-medium">{p.taskId ? `#${p.taskId}` : "--"}</td>
                       <td className="px-3 py-3 text-gray-600 font-mono text-xs">{p.cnpj || "--"}</td>
-                      <td className="px-3 py-3 font-medium text-gray-800 max-w-[200px] truncate">{p.razaoSocial || p.clienteNome || "--"}</td>
-                      <td className="px-3 py-3 text-gray-600">{p.cidade || "--"}</td>
-                      <td className="px-3 py-3 text-gray-600">{p.uf || "--"}</td>
-                      <td className="px-3 py-3 text-gray-600">{p.sellerName || "--"}</td>
+                      <td className="px-3 py-3 font-medium text-gray-800 max-w-[180px] truncate">{p.razaoSocial || p.clienteNome || "--"}</td>
+                      <td className="px-3 py-3 text-gray-600 text-xs whitespace-nowrap">{[p.cidade, p.uf].filter(Boolean).join("/") || "--"}</td>
+                      <td className="px-3 py-3 text-gray-600 text-xs">{p.sellerName || "--"}</td>
+                      <td className="px-3 py-3 text-xs text-gray-600 max-w-[200px]">
+                        {p.itens.length > 0 ? (
+                          <div className="space-y-0.5">
+                            {p.itens.map((it) => (
+                              <div key={it.id} className="truncate">{it.descricao} ({it.quantidade}un)</div>
+                            ))}
+                          </div>
+                        ) : "--"}
+                      </td>
                       <td className="px-3 py-3 text-center">
                         <span
                           className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -269,7 +281,7 @@ export default function BillingReport() {
                 </tbody>
                 <tfoot className="bg-slate-50 border-t-2 border-slate-300">
                   <tr className="font-semibold text-gray-800">
-                    <td className="px-3 py-3" colSpan={6}>
+                    <td className="px-3 py-3" colSpan={7}>
                       Total ({filtered.length} pedido{filtered.length !== 1 ? "s" : ""})
                     </td>
                     <td className="px-3 py-3 text-right">{formatBRL(totalEstimado)}</td>

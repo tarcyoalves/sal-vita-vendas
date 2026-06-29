@@ -19,10 +19,7 @@ interface OrderDialogProps {
     id: number;
     title?: string;
     cnpj?: string | null;
-    company?: string | null;
     clientName?: string | null;
-    city?: string | null;
-    state?: string | null;
   } | null;
   existingPedidoId?: string | null;
   onSaved?: (pedido: Pedido) => void;
@@ -60,9 +57,9 @@ export function OrderDialog({
     } else {
       setClienteNome(task?.clientName ?? task?.title ?? '');
       setCnpj(task?.cnpj ?? '');
-      setRazaoSocial(task?.company ?? '');
-      setCidade(task?.city ?? '');
-      setUf(task?.state ?? '');
+      setRazaoSocial('');
+      setCidade('');
+      setUf('');
       setItens([]);
     }
   }, [open, existingPedidoId, task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -78,6 +75,10 @@ export function OrderDialog({
     }
     if (!seller) {
       toast.error('Perfil de vendedor não encontrado');
+      return;
+    }
+    if (!task && !existingPedidoId) {
+      toast.error('O pedido deve estar vinculado a uma tarefa');
       return;
     }
     const pedido = actions.pedidos.upsert({
@@ -105,9 +106,10 @@ export function OrderDialog({
         <DialogHeader>
           <DialogTitle>
             {existingPedidoId ? 'Editar pedido' : 'Novo pedido (estimativa)'}
+            {task && <span className="text-blue-600 text-sm font-normal ml-2">Tarefa #{task.id}</span>}
           </DialogTitle>
           <DialogDescription>
-            Preencha os dados do cliente e os itens do pedido. Itens podem ser adicionados depois.
+            Preencha os dados do cliente e os itens do pedido. Selecione os produtos do catalogo.
           </DialogDescription>
         </DialogHeader>
 

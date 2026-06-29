@@ -209,10 +209,7 @@ export default function AttendantBilling() {
         <h3 className="text-sm font-semibold text-slate-700">
           Pedidos ({pedidosDoMes.length})
         </h3>
-        <Button size="sm" onClick={openNewOrder} className="gap-1.5">
-          <Plus size={14} />
-          Novo pedido
-        </Button>
+        <p className="text-xs text-slate-400">Crie pedidos a partir das tarefas</p>
       </div>
 
       {/* Pedidos list */}
@@ -220,15 +217,7 @@ export default function AttendantBilling() {
         <div className="text-center py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
           <Package size={32} className="mx-auto text-slate-300 mb-2" />
           <p className="text-sm text-slate-400">Nenhum pedido neste mes</p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-3 gap-1.5"
-            onClick={openNewOrder}
-          >
-            <Plus size={14} />
-            Criar primeiro pedido
-          </Button>
+          <p className="text-xs text-slate-400 mt-1">Acesse suas tarefas para criar pedidos</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -273,17 +262,29 @@ function PedidoCard({
   const isFaturado = pedido.status === 'faturado';
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+    <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm space-y-2">
+      {/* Header: client + status */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-slate-800 truncate">
             {pedido.clienteNome || 'Sem cliente'}
           </p>
-          <p className="text-xs text-slate-400 mt-0.5">
-            {pedido.itens.length} ite{pedido.itens.length === 1 ? 'm' : 'ns'}
-            {pedido.cidade && ` · ${pedido.cidade}`}
-            {pedido.uf && `/${pedido.uf}`}
-          </p>
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+            {pedido.taskId && (
+              <span className="text-[11px] text-blue-600 font-medium">Tarefa #{pedido.taskId}</span>
+            )}
+            {pedido.cnpj && (
+              <span className="text-[11px] text-slate-500">{pedido.cnpj}</span>
+            )}
+            {pedido.razaoSocial && (
+              <span className="text-[11px] text-slate-500">{pedido.razaoSocial}</span>
+            )}
+            {(pedido.cidade || pedido.uf) && (
+              <span className="text-[11px] text-slate-500">
+                {pedido.cidade}{pedido.cidade && pedido.uf ? '/' : ''}{pedido.uf}
+              </span>
+            )}
+          </div>
         </div>
         <Badge
           className={
@@ -296,7 +297,22 @@ function PedidoCard({
         </Badge>
       </div>
 
-      <div className="flex items-center justify-between mt-2">
+      {/* Product details */}
+      {pedido.itens.length > 0 && (
+        <div className="bg-slate-50 rounded-lg px-2.5 py-1.5 space-y-0.5">
+          {pedido.itens.map((item) => (
+            <div key={item.id} className="flex items-center justify-between text-[11px]">
+              <span className="text-slate-600 truncate mr-2">{item.descricao || 'Item'}</span>
+              <span className="text-slate-500 whitespace-nowrap">
+                {item.quantidade}un x {formatBRL(item.valorUnitario)} = <strong className="text-slate-700">{formatBRL(item.quantidade * item.valorUnitario)}</strong>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Total + actions */}
+      <div className="flex items-center justify-between">
         <div>
           <p className="text-base font-bold text-slate-800">
             {formatBRL(total)}

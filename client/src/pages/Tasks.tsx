@@ -17,6 +17,10 @@ import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
 import { Label } from '../components/ui/label';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem } from '../components/ui/dropdown-menu';
 import { OrderDialog } from '../components/faturamento/OrderDialog';
+import { InvoiceDialog } from '../components/faturamento/InvoiceDialog';
+import { useFatStore } from '../lib/faturamento/store';
+import { totalPedido, formatBRL } from '../lib/faturamento/calc';
+import type { Pedido } from '../lib/faturamento/types';
 
 interface Task {
   id: number;
@@ -37,6 +41,8 @@ interface Task {
   hotLead?: boolean | null;
   lastEngagementAt?: Date | string | null;
   contactCount?: number | null;
+  cnpj?: string | null;
+  phone?: string | null;
   orderValue?: string | null;
   orderId?: string | null;
   createdAt: Date;
@@ -194,9 +200,13 @@ export default function Tasks() {
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
   const [convertModalTask, setConvertModalTask] = useState<Task | null>(null);
-  // Faturamento: order dialog after conversion
+  // Faturamento: order dialog + invoice dialog
   const [orderDialogOpen, setOrderDialogOpen] = useState(false);
   const [orderDialogTask, setOrderDialogTask] = useState<Task | null>(null);
+  const [editingPedidoId, setEditingPedidoId] = useState<string | null>(null);
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [invoicePedidoId, setInvoicePedidoId] = useState<string | null>(null);
+  const { pedidos: allPedidos, comissoes: fatComissoes } = useFatStore();
   // ID da tarefa mais urgente a destacar após salvar
   const [highlightTaskId, setHighlightTaskId] = useState<number | null>(null);
   // Ref para controlar alerta de ociosidade (último contato feito)
@@ -1427,6 +1437,87 @@ export default function Tasks() {
                       <p className="mt-1 text-gray-700">{aiSuggestion.text}</p>
                     </div>
                   )}
+                  {/* ── Pedidos vinculados a esta tarefa ──────────────────── */}
+                  {!isAdmin && (() => {
+                    const taskPedidos = allPedidos.filter(p => p.taskId === task.id);
+                    return (
+                      <div className="bg-white border border-blue-100 rounded-lg p-2.5 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-blue-800">Pedidos ({taskPedidos.length})</span>
+                          <Button
+                            size="sm"
+                            className="gap-1 text-xs h-6 px-2"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingPedidoId(null);
+                              setOrderDialogTask(task);
+                              setOrderDialogOpen(true);
+                            }}
+                          >
+                            + Novo pedido
+                          </Button>
+                        </div>
+                        {taskPedidos.length === 0 ? (
+                          <p className="text-xs text-slate-400 text-center py-2">Nenhum pedido criado para esta tarefa</p>
+                        ) : (
+                          taskPedidos.map((ped) => {
+                            const total = totalPedido(ped);
+                            const isFat = ped.status === 'faturado';
+                            return (
+                              <div key={ped.id} className="bg-slate-50 rounded-lg px-2.5 py-2 space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex flex-wrap gap-x-2 items-center">
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isFat ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                      {isFat ? 'Faturado' : 'Estimado'}
+                                    </span>
+                                    <span className="text-sm font-bold text-slate-800">{formatBRL(total)}</span>
+                                    {ped.cnpj && <span className="text-[11px] text-slate-500">{ped.cnpj}</span>}
+                                  </div>
+                                </div>
+                                {ped.itens.length > 0 && (
+                                  <div className="space-y-0.5">
+                                    {ped.itens.map((it) => (
+                                      <div key={it.id} className="flex justify-between text-[11px] text-slate-600">
+                                        <span className="truncate mr-2">{it.descricao}</span>
+                                        <span className="whitespace-nowrap">{it.quantidade}un x {formatBRL(it.valorUnitario)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                <div className="flex gap-1.5 pt-0.5">
+                                  <Button
+                                    variant="outline" size="sm"
+                                    className="gap-1 text-[11px] h-6 px-2"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingPedidoId(ped.id);
+                                      setOrderDialogTask(task);
+                                      setOrderDialogOpen(true);
+                                    }}
+                                  >
+                                    Editar
+                                  </Button>
+                                  {!isFat && (
+                                    <Button
+                                      size="sm"
+                                      className="gap-1 text-[11px] h-6 px-2 bg-emerald-600 hover:bg-emerald-700"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setInvoicePedidoId(ped.id);
+                                        setInvoiceDialogOpen(true);
+                                      }}
+                                    >
+                                      Faturar
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    );
+                  })()}
                   <div className="flex gap-2 flex-wrap">
                     {(() => {
                       const notesText = fullTask?.notes ?? task.notes ?? '';
@@ -1536,7 +1627,7 @@ export default function Tasks() {
               <h3 className="text-base font-bold text-gray-800">Marcar como Cliente Ativo</h3>
               <p className="text-sm text-gray-500 mt-1">{convertModalTask.title}</p>
               <p className="text-xs text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2 mt-3">
-                A tag <strong>"ativo"</strong> será aplicada automaticamente para o e-mail marketing.
+                A tag <strong>"ativo"</strong> sera aplicada e voce podera criar o pedido com os produtos.
               </p>
             </div>
             <div className="flex gap-3">
@@ -1700,20 +1791,23 @@ export default function Tasks() {
         </DialogContent>
       </Dialog>
 
-      {/* Order dialog after conversion */}
+      {/* Order dialog (new + edit) */}
       <OrderDialog
         open={orderDialogOpen}
-        onOpenChange={setOrderDialogOpen}
+        onOpenChange={(o) => { setOrderDialogOpen(o); if (!o) setEditingPedidoId(null); }}
         seller={sellerProfile ? { id: sellerProfile.id, name: sellerProfile.name } : null}
+        existingPedidoId={editingPedidoId}
         task={orderDialogTask ? {
           id: orderDialogTask.id,
           title: orderDialogTask.title,
-          cnpj: (orderDialogTask as any).cnpj ?? null,
-          company: (orderDialogTask as any).company ?? null,
-          clientName: (orderDialogTask as any).clientName ?? orderDialogTask.title,
-          city: (orderDialogTask as any).city ?? null,
-          state: (orderDialogTask as any).state ?? null,
+          cnpj: orderDialogTask.cnpj ?? null,
+          clientName: orderDialogTask.title,
         } : null}
+      />
+      <InvoiceDialog
+        open={invoiceDialogOpen}
+        onOpenChange={setInvoiceDialogOpen}
+        pedidoId={invoicePedidoId}
       />
 
     </div>
