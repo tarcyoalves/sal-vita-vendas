@@ -106,6 +106,10 @@ export const pedidos = {
       comissaoPct: input.comissaoPct ?? 0,
       itens: input.itens ?? [],
       itensEstimadoSnapshot: input.itensEstimadoSnapshot ?? null,
+      prazoPagamentoSal: input.prazoPagamentoSal ?? '',
+      prazoPagamentoFrete: input.prazoPagamentoFrete ?? '',
+      valorFretePorUnidade: input.valorFretePorUnidade ?? 0,
+      observacoes: input.observacoes ?? '',
       criadoEm: input.criadoEm ?? new Date().toISOString(),
       faturadoEm: input.faturadoEm ?? null,
     };

@@ -6,9 +6,10 @@ import {
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { Textarea } from '../ui/textarea';
 import { OrderItemsEditor } from './OrderItemsEditor';
 import { useFatStore } from '../../lib/faturamento/store';
-import { totalItens, formatBRL } from '../../lib/faturamento/calc';
+import { totalItens, formatBRL, parseBRL } from '../../lib/faturamento/calc';
 import type { ItemPedido, Pedido } from '../../lib/faturamento/types';
 
 interface OrderDialogProps {
@@ -43,8 +44,11 @@ export function OrderDialog({
   const [cidade, setCidade] = useState('');
   const [uf, setUf] = useState('');
   const [itens, setItens] = useState<ItemPedido[]>([]);
+  const [prazoPagamentoSal, setPrazoPagamentoSal] = useState('');
+  const [prazoPagamentoFrete, setPrazoPagamentoFrete] = useState('');
+  const [valorFreteRaw, setValorFreteRaw] = useState('');
+  const [observacoes, setObservacoes] = useState('');
 
-  // Reset form whenever dialog opens or the target changes
   useEffect(() => {
     if (!open) return;
     if (existing) {
@@ -54,6 +58,10 @@ export function OrderDialog({
       setCidade(existing.cidade);
       setUf(existing.uf);
       setItens(existing.itens);
+      setPrazoPagamentoSal(existing.prazoPagamentoSal ?? '');
+      setPrazoPagamentoFrete(existing.prazoPagamentoFrete ?? '');
+      setValorFreteRaw(existing.valorFretePorUnidade ? String(existing.valorFretePorUnidade).replace('.', ',') : '');
+      setObservacoes(existing.observacoes ?? '');
     } else {
       setClienteNome(task?.clientName ?? task?.title ?? '');
       setCnpj(task?.cnpj ?? '');
@@ -61,6 +69,10 @@ export function OrderDialog({
       setCidade('');
       setUf('');
       setItens([]);
+      setPrazoPagamentoSal('');
+      setPrazoPagamentoFrete('');
+      setValorFreteRaw('');
+      setObservacoes('');
     }
   }, [open, existingPedidoId, task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -93,6 +105,10 @@ export function OrderDialog({
       uf: uf.trim().toUpperCase(),
       comissaoPct,
       itens,
+      prazoPagamentoSal: prazoPagamentoSal.trim(),
+      prazoPagamentoFrete: prazoPagamentoFrete.trim(),
+      valorFretePorUnidade: parseBRL(valorFreteRaw),
+      observacoes: observacoes.trim(),
       status: 'estimado',
     });
     toast.success(existingPedidoId ? 'Pedido atualizado!' : 'Pedido criado!');
@@ -168,6 +184,55 @@ export function OrderDialog({
 
           {/* Items editor */}
           <OrderItemsEditor itens={itens} onChange={setItens} />
+
+          {/* Payment & freight info */}
+          <div className="space-y-3 bg-slate-50 border border-slate-200 rounded-xl p-3">
+            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Condicoes e Frete</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="od-prazo-sal" className="text-xs">Prazo pagamento sal</Label>
+                <Input
+                  id="od-prazo-sal"
+                  placeholder="Ex: 30 dias, a vista, 15/30/45"
+                  value={prazoPagamentoSal}
+                  onChange={(e) => setPrazoPagamentoSal(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="od-prazo-frete" className="text-xs">Prazo pagamento frete</Label>
+                <Input
+                  id="od-prazo-frete"
+                  placeholder="Ex: a vista, 30 dias"
+                  value={prazoPagamentoFrete}
+                  onChange={(e) => setPrazoPagamentoFrete(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="od-valor-frete" className="text-xs">Valor do frete por saco/fardo</Label>
+                <Input
+                  id="od-valor-frete"
+                  placeholder="R$ 0,00"
+                  inputMode="decimal"
+                  value={valorFreteRaw}
+                  onChange={(e) => setValorFreteRaw(e.target.value)}
+                  className="text-sm max-w-[200px]"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="od-obs" className="text-xs">Observacoes</Label>
+              <Textarea
+                id="od-obs"
+                placeholder="Informacoes adicionais do pedido..."
+                value={observacoes}
+                onChange={(e) => setObservacoes(e.target.value)}
+                rows={3}
+                className="text-sm resize-none"
+              />
+            </div>
+          </div>
 
           {/* Commission line */}
           {seller && (

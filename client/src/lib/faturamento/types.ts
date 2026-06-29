@@ -38,6 +38,10 @@ export interface Pedido {
   itens: ItemPedido[];      // valores atuais (estimados; viram reais ao faturar)
   // Congelado no momento de faturar, para comparar estimado × faturado no relatório.
   itensEstimadoSnapshot: ItemPedido[] | null;
+  prazoPagamentoSal: string;
+  prazoPagamentoFrete: string;
+  valorFretePorUnidade: number;
+  observacoes: string;
   criadoEm: string;         // ISO
   faturadoEm: string | null;// ISO quando marcado como embarcado/faturado
 }
