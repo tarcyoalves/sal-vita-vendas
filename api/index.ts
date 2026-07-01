@@ -1013,6 +1013,24 @@ app.get('/api/orders-health', async (_req, res) => {
   }
 });
 
+// Temporary diagnostic: inspect fat_orders commissaoPct vs the seller's current
+// commission % (fat_commissions) to root-cause a reported mismatch between
+// per-order commission and the admin panorama's aggregated commission. Remove
+// once confirmed. Read-only.
+app.get('/api/fat-commission-check', async (_req, res) => {
+  try {
+    const orders = await sqlClient`
+      SELECT id, cliente_nome, seller_id, seller_name, comissao_pct, status, criado_em, faturado_em,
+             itens
+      FROM fat_orders ORDER BY criado_em DESC
+    `;
+    const commissions = await sqlClient`SELECT seller_id, pct FROM fat_commissions`;
+    res.json({ orders, commissions });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? String(err) });
+  }
+});
+
 // Migration endpoints removed — one-time migration completed.
 
 // Recovery and cleanup endpoints removed — one-time operations completed.
