@@ -1042,11 +1042,24 @@ app.get('/api/fat-health', async (_req, res) => {
         (SELECT COUNT(*) FROM fat_orders)     AS orders,
         (SELECT COUNT(*) FROM fat_commissions) AS commissions
     `;
+    // Fictional records created by the removed "Carregar dados de exemplo"
+    // seed button — checked by name so we can confirm none of the demo rows
+    // leaked into production data.
+    const seedProducts = await sqlClient`
+      SELECT nome FROM fat_products WHERE nome IN (
+        'SAL DO FAZENDEIRO MOÍDO 25 KG','SAL GROSSO MARINHO 25 KG','SAL REFINADO 1 KG (FARDO 30un)'
+      )
+    `;
+    const seedOrders = await sqlClient`
+      SELECT cliente_nome, cnpj FROM fat_orders WHERE cnpj IN ('12.345.678/0001-90','98.765.432/0001-10')
+    `;
     res.json({
       tablesPresent: (tables as any[]).map(t => t.table_name),
       selectError,
       drizzleError,
       rowCounts: (counts as any[])[0],
+      seedProducts: (seedProducts as any[]).map(r => r.nome),
+      seedOrders: (seedOrders as any[]).map(r => ({ cliente: r.cliente_nome, cnpj: r.cnpj })),
     });
   } catch (err: any) {
     res.status(500).json({ error: err?.message ?? String(err) });
