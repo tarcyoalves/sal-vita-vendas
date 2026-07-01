@@ -43,11 +43,19 @@ export function isoNoMes(iso: string | null, filtro: FiltroMes): boolean {
 // ── Resumo de um atendente no mês ─────────────────────────────────────────────
 // Vendido/comissão prevista: pedidos criados no mês (pipeline).
 // Embarcado/comissão embarcada: pedidos faturados no mês (realizado).
+//
+// IMPORTANTE: a comissão em R$ é sempre a SOMA de comissaoPedido() de cada
+// pedido — ou seja, usa a % que ficou congelada em pedido.comissaoPct no
+// momento da criação, nunca a % atual do atendente. Isso mantém o valor
+// idêntico ao que aparece no card/detalhe de cada pedido individualmente.
+// `comissaoPctAtual` só é usado para exibir a % vigente do atendente (rótulo);
+// não entra no cálculo monetário — trocar a % de alguém não pode alterar
+// retroativamente a comissão de pedidos já criados com a % antiga.
 export function resumoAtendente(
   todosPedidos: Pedido[],
   sellerId: number,
   sellerName: string,
-  comissaoPct: number,
+  comissaoPctAtual: number,
   filtro: FiltroMes,
 ): ResumoAtendente {
   const meus = todosPedidos.filter((p) => p.sellerId === sellerId);
@@ -57,17 +65,19 @@ export function resumoAtendente(
 
   const totalVendido = doMes.reduce((s, p) => s + totalPedido(p), 0);
   const totalEmbarcado = faturadosNoMes.reduce((s, p) => s + totalPedido(p), 0);
+  const comissaoPrevista = doMes.reduce((s, p) => s + comissaoPedido(p), 0);
+  const comissaoEmbarcada = faturadosNoMes.reduce((s, p) => s + comissaoPedido(p), 0);
   const pesoTotalKg = doMes.reduce((s, p) => s + pesoTotalItens(p.itens), 0);
   const pesoEmbarcadoKg = faturadosNoMes.reduce((s, p) => s + pesoTotalItens(p.itens), 0);
 
   return {
     sellerId,
     sellerName,
-    comissaoPct,
+    comissaoPct: comissaoPctAtual,
     totalVendido,
     totalEmbarcado,
-    comissaoPrevista: totalVendido * comissaoPct / 100,
-    comissaoEmbarcada: totalEmbarcado * comissaoPct / 100,
+    comissaoPrevista,
+    comissaoEmbarcada,
     qtdPedidos: doMes.length,
     qtdFaturados: faturadosNoMes.length,
     pesoTotalKg,
