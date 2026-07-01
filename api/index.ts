@@ -601,6 +601,16 @@ app.use(
   createExpressMiddleware({
     router: appRouter,
     createContext,
+    onError({ path, error }) {
+      // tRPC's Express adapter is silent by default — nothing was reaching
+      // Vercel's runtime logs for procedure-level failures, which made a
+      // recent 500 in the faturamento router hard to diagnose. Always log
+      // unexpected (non-4xx) errors server-side; validation/auth errors from
+      // Zod/TRPCError business logic are noisy and expected, so skip those.
+      if (error.code === 'INTERNAL_SERVER_ERROR') {
+        console.error(`[trpc] ${path ?? '?'} failed:`, error.cause ?? error);
+      }
+    },
   }),
 );
 
@@ -1019,9 +1029,17 @@ app.get('/api/fat-health', async (_req, res) => {
     } catch (err: any) {
       selectError = err?.message ?? String(err);
     }
+    let drizzleError: string | null = null;
+    try {
+      const { fatProducts } = await import('../server/db/schema');
+      await db.select().from(fatProducts).limit(1);
+    } catch (err: any) {
+      drizzleError = (err?.stack ?? err?.message ?? String(err));
+    }
     res.json({
       tablesPresent: (tables as any[]).map(t => t.table_name),
       selectError,
+      drizzleError,
     });
   } catch (err: any) {
     res.status(500).json({ error: err?.message ?? String(err) });
