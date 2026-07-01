@@ -1,7 +1,6 @@
 import { useState, useRef } from "react";
 import { useFatStore } from "../../lib/faturamento/store";
 import { formatBRL, parseBRL, formatKg } from "../../lib/faturamento/calc";
-import { seedFaturamento, clearFaturamento } from "../../lib/faturamento/seed";
 import { Card, CardContent } from "../ui/card";
 import { Button } from "../ui/button";
 import {
@@ -12,7 +11,7 @@ import {
   DialogFooter,
 } from "../ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Package, Database, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Trash2, Package } from "lucide-react";
 import type { Produto } from "../../lib/faturamento/types";
 
 export default function ProductManager() {
@@ -110,14 +109,10 @@ export default function ProductManager() {
     toast.success("Produto removido");
   };
 
-  const handleSeed = () => {
-    seedFaturamento();
-    toast.success("Dados de exemplo carregados");
-  };
-
   const handleClear = () => {
     if (!confirm("Limpar todos os dados de faturamento (produtos e pedidos)? Esta ação não pode ser desfeita.")) return;
-    clearFaturamento();
+    produtosList.forEach((p) => actions.produtos.remove(p.id));
+    actions.pedidos.list().forEach((p) => actions.pedidos.remove(p.id));
     toast.success("Dados de faturamento limpos");
   };
 
@@ -172,9 +167,6 @@ export default function ProductManager() {
                 <Plus size={14} className="mr-1" /> Adicionar
               </Button>
               <div className="flex items-center gap-2">
-                <Button type="button" size="sm" variant="outline" className="text-xs" onClick={handleSeed}>
-                  <Database size={12} className="mr-1" /> Carregar dados de exemplo
-                </Button>
                 <Button type="button" size="sm" variant="outline" className="text-xs text-red-600 border-red-200 hover:bg-red-50" onClick={handleClear}>
                   <Trash2 size={12} className="mr-1" /> Limpar dados
                 </Button>
@@ -189,7 +181,7 @@ export default function ProductManager() {
         <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 py-10 px-4 text-center">
           <Package size={28} className="text-slate-300" />
           <p className="text-sm text-slate-500 max-w-sm">
-            Nenhum produto cadastrado. Adicione produtos acima ou carregue dados de exemplo.
+            Nenhum produto cadastrado. Adicione produtos acima.
           </p>
         </div>
       ) : (
@@ -250,14 +242,6 @@ export default function ProductManager() {
           </CardContent>
         </Card>
       )}
-
-      {/* Demo notice */}
-      <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5">
-        <AlertTriangle size={14} className="text-amber-500 mt-0.5 flex-shrink-0" />
-        <p className="text-xs text-amber-700">
-          Modo demonstracao — dados salvos localmente neste dispositivo (sincronizacao com o servidor chega em julho).
-        </p>
-      </div>
 
       {/* Edit dialog */}
       <Dialog open={!!editing} onOpenChange={(open) => { if (!open) setEditing(null); }}>

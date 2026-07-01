@@ -1003,6 +1003,31 @@ app.get('/api/orders-health', async (_req, res) => {
   }
 });
 
+// Temporary diagnostic for the faturamento migration rollout — reports whether
+// fat_* tables exist and captures the raw DB error, if any. Remove once confirmed.
+app.get('/api/fat-health', async (_req, res) => {
+  try {
+    const tables = await sqlClient`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_name IN ('fat_products','fat_orders','fat_commissions')
+      ORDER BY table_name
+    `;
+    let selectError: string | null = null;
+    try {
+      await sqlClient`SELECT id FROM fat_products LIMIT 1`;
+    } catch (err: any) {
+      selectError = err?.message ?? String(err);
+    }
+    res.json({
+      tablesPresent: (tables as any[]).map(t => t.table_name),
+      selectError,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? String(err) });
+  }
+});
+
 // Migration endpoints removed — one-time migration completed.
 
 // Recovery and cleanup endpoints removed — one-time operations completed.

@@ -12,7 +12,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import {
   DollarSign, TrendingUp, Package, ChevronLeft, ChevronRight,
-  Plus, Pencil, Truck, Info,
+  Plus, Pencil, Truck,
 } from 'lucide-react';
 
 const MESES = [
@@ -141,14 +141,6 @@ export default function AttendantBilling() {
 
   return (
     <div className="space-y-4">
-      {/* Demo banner */}
-      <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
-        <Info size={14} className="text-blue-500 mt-0.5 shrink-0" />
-        <p className="text-xs text-blue-600">
-          Modo demonstracao — dados salvos localmente neste dispositivo (sincronizacao com o servidor chega em julho).
-        </p>
-      </div>
-
       {/* Month selector */}
       <div className="flex items-center justify-between">
         <button
