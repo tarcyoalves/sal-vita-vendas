@@ -3,6 +3,10 @@ import { toast } from 'sonner';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '../ui/dialog';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel,
+} from '../ui/alert-dialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -21,9 +25,45 @@ interface OrderDialogProps {
     title?: string;
     cnpj?: string | null;
     clientName?: string | null;
+    description?: string | null;
   } | null;
   existingPedidoId?: string | null;
   onSaved?: (pedido: Pedido) => void;
+}
+
+// Leads importados em massa gravam title/description em formato posicional:
+//   title       = [cnpj, nome, fone, email, cidade, uf].filter(Boolean).join(' - ')
+//   description = [cidade, uf].filter(Boolean).join(' - ')
+// (ver Tasks.tsx, importação CSV). Extrai razaoSocial/cidade/uf desse formato
+// quando disponível, para pré-preencher o pedido ao converter o lead.
+function parseTaskClientInfo(task: OrderDialogProps['task']): {
+  razaoSocial: string;
+  cidade: string;
+  uf: string;
+} {
+  let razaoSocial = '';
+  let cidade = '';
+  let uf = '';
+
+  if (task?.description) {
+    const parts = task.description.split(' - ').map((s) => s.trim()).filter(Boolean);
+    if (parts.length >= 2 && /^[A-Za-z]{2}$/.test(parts[parts.length - 1])) {
+      uf = parts[parts.length - 1].toUpperCase();
+      cidade = parts.slice(0, -1).join(' - ');
+    } else if (parts.length === 1) {
+      cidade = parts[0];
+    }
+  }
+
+  if (task?.title && task?.cnpj) {
+    const segments = task.title.split(' - ').map((s) => s.trim()).filter(Boolean);
+    const cnpjIdx = segments.findIndex((s) => s.replace(/\D/g, '') === task.cnpj);
+    if (cnpjIdx >= 0 && segments[cnpjIdx + 1]) {
+      razaoSocial = segments[cnpjIdx + 1];
+    }
+  }
+
+  return { razaoSocial, cidade, uf };
 }
 
 export function OrderDialog({
@@ -49,8 +89,17 @@ export function OrderDialog({
   const [valorFreteRaw, setValorFreteRaw] = useState('');
   const [observacoes, setObservacoes] = useState('');
 
+  // Pedido recém-criado nesta sessão do diálogo: assim que o admin confirma
+  // "Pedido criado!" ele pode continuar editando (agora como update) até
+  // clicar em "Concluir" no aviso de confirmação.
+  const [savedPedido, setSavedPedido] = useState<Pedido | null>(null);
+  const [showSuccessConfirm, setShowSuccessConfirm] = useState(false);
+  const effectiveId = existingPedidoId ?? savedPedido?.id ?? null;
+
   useEffect(() => {
     if (!open) return;
+    setSavedPedido(null);
+    setShowSuccessConfirm(false);
     if (existing) {
       setClienteNome(existing.clienteNome);
       setCnpj(existing.cnpj);
@@ -63,11 +112,12 @@ export function OrderDialog({
       setValorFreteRaw(existing.valorFretePorUnidade ? String(existing.valorFretePorUnidade).replace('.', ',') : '');
       setObservacoes(existing.observacoes ?? '');
     } else {
+      const parsed = parseTaskClientInfo(task);
       setClienteNome(task?.clientName ?? task?.title ?? '');
       setCnpj(task?.cnpj ?? '');
-      setRazaoSocial('');
-      setCidade('');
-      setUf('');
+      setRazaoSocial(parsed.razaoSocial);
+      setCidade(parsed.cidade);
+      setUf(parsed.uf);
       setItens([]);
       setPrazoPagamentoSal('');
       setPrazoPagamentoFrete('');
@@ -89,12 +139,21 @@ export function OrderDialog({
       toast.error('Perfil de vendedor não encontrado');
       return;
     }
-    if (!task && !existingPedidoId) {
+    if (!task && !effectiveId) {
       toast.error('O pedido deve estar vinculado a uma tarefa');
       return;
     }
+    if (!prazoPagamentoSal.trim()) {
+      toast.error('Informe o prazo de pagamento do sal');
+      return;
+    }
+    if (!prazoPagamentoFrete.trim()) {
+      toast.error('Informe o prazo de pagamento do frete');
+      return;
+    }
+    const isFirstSave = !effectiveId;
     const pedido = actions.pedidos.upsert({
-      id: existingPedidoId ?? undefined,
+      id: effectiveId ?? undefined,
       sellerId: seller.id,
       sellerName: seller.name,
       taskId: task?.id ?? null,
@@ -111,14 +170,20 @@ export function OrderDialog({
       observacoes: observacoes.trim(),
       status: 'estimado',
     });
-    toast.success(existingPedidoId ? 'Pedido atualizado!' : 'Pedido criado!');
     onSaved?.(pedido);
-    onOpenChange(false);
+    if (isFirstSave) {
+      setSavedPedido(pedido);
+      setShowSuccessConfirm(true);
+    } else {
+      toast.success('Pedido atualizado!');
+      onOpenChange(false);
+    }
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle>
             {existingPedidoId ? 'Editar pedido' : 'Novo pedido (estimativa)'}
@@ -129,7 +194,9 @@ export function OrderDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        {/* min-w-0 evita que o DialogContent (display:grid) estique a modal
+            inteira para caber a tabela de itens — o scroll fica contido nela. */}
+        <div className="space-y-4 min-w-0">
           {/* Client fields */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -190,23 +257,25 @@ export function OrderDialog({
             <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Condicoes e Frete</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="od-prazo-sal" className="text-xs">Prazo pagamento sal</Label>
+                <Label htmlFor="od-prazo-sal" className="text-xs">Prazo pagamento sal <span className="text-red-500">*</span></Label>
                 <Input
                   id="od-prazo-sal"
                   placeholder="Ex: 30 dias, a vista, 15/30/45"
                   value={prazoPagamentoSal}
                   onChange={(e) => setPrazoPagamentoSal(e.target.value)}
                   className="text-sm"
+                  required
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="od-prazo-frete" className="text-xs">Prazo pagamento frete</Label>
+                <Label htmlFor="od-prazo-frete" className="text-xs">Prazo pagamento frete <span className="text-red-500">*</span></Label>
                 <Input
                   id="od-prazo-frete"
                   placeholder="Ex: a vista, 30 dias"
                   value={prazoPagamentoFrete}
                   onChange={(e) => setPrazoPagamentoFrete(e.target.value)}
                   className="text-sm"
+                  required
                 />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
@@ -252,10 +321,35 @@ export function OrderDialog({
             Cancelar
           </Button>
           <Button onClick={handleSave}>
-            {existingPedidoId ? 'Salvar alteracoes' : 'Criar pedido'}
+            {effectiveId ? 'Salvar alteracoes' : 'Criar pedido'}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <AlertDialog open={showSuccessConfirm} onOpenChange={setShowSuccessConfirm}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Pedido criado!</AlertDialogTitle>
+          <AlertDialogDescription>
+            O pedido foi salvo. Deseja revisar os dados antes de concluir, ou já está tudo certo?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => setShowSuccessConfirm(false)}>
+            Editar novamente
+          </AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              setShowSuccessConfirm(false);
+              onOpenChange(false);
+            }}
+          >
+            Concluir
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

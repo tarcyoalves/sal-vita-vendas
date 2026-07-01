@@ -1810,6 +1810,7 @@ export default function Tasks() {
           title: orderDialogTask.title,
           cnpj: orderDialogTask.cnpj ?? null,
           clientName: orderDialogTask.title,
+          description: orderDialogTask.description ?? null,
         } : null}
       />
       <InvoiceDialog
