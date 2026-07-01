@@ -1016,8 +1016,8 @@ app.get('/api/orders-health', async (_req, res) => {
 // One-time cleanup: deletes the fictional orders created by the removed
 // "Carregar dados de exemplo" seed button (identified by their fixed fake
 // CNPJs — never a real customer). Admin-secret gated. Remove after running once.
-app.post('/api/fat-cleanup-seed-orders', async (req, res) => {
-  if (req.headers['x-admin-secret'] !== '2de852a91a7b8f3b123eae77748afdf579038ecbe8c29ce6') {
+app.get('/api/fat-cleanup-seed-orders', async (req, res) => {
+  if (req.query.token !== '2de852a91a7b8f3b123eae77748afdf579038ecbe8c29ce6') {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
