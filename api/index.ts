@@ -1036,10 +1036,17 @@ app.get('/api/fat-health', async (_req, res) => {
     } catch (err: any) {
       drizzleError = (err?.stack ?? err?.message ?? String(err));
     }
+    const counts = await sqlClient`
+      SELECT
+        (SELECT COUNT(*) FROM fat_products)   AS products,
+        (SELECT COUNT(*) FROM fat_orders)     AS orders,
+        (SELECT COUNT(*) FROM fat_commissions) AS commissions
+    `;
     res.json({
       tablesPresent: (tables as any[]).map(t => t.table_name),
       selectError,
       drizzleError,
+      rowCounts: (counts as any[])[0],
     });
   } catch (err: any) {
     res.status(500).json({ error: err?.message ?? String(err) });
