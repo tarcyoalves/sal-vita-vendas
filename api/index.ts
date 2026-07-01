@@ -1013,54 +1013,21 @@ app.get('/api/orders-health', async (_req, res) => {
   }
 });
 
-// Temporary diagnostic for the faturamento migration rollout — reports whether
-// fat_* tables exist and captures the raw DB error, if any. Remove once confirmed.
-app.get('/api/fat-health', async (_req, res) => {
+// One-time cleanup: deletes the fictional orders created by the removed
+// "Carregar dados de exemplo" seed button (identified by their fixed fake
+// CNPJs — never a real customer). Admin-secret gated. Remove after running once.
+app.post('/api/fat-cleanup-seed-orders', async (req, res) => {
+  const secret = process.env.ADMIN_RESET_SECRET;
+  if (!secret || req.headers['x-admin-secret'] !== secret) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
   try {
-    const tables = await sqlClient`
-      SELECT table_name FROM information_schema.tables
-      WHERE table_schema = 'public'
-        AND table_name IN ('fat_products','fat_orders','fat_commissions')
-      ORDER BY table_name
+    const deleted = await sqlClient`
+      DELETE FROM fat_orders WHERE cnpj IN ('12.345.678/0001-90','98.765.432/0001-10')
+      RETURNING cliente_nome, cnpj
     `;
-    let selectError: string | null = null;
-    try {
-      await sqlClient`SELECT id FROM fat_products LIMIT 1`;
-    } catch (err: any) {
-      selectError = err?.message ?? String(err);
-    }
-    let drizzleError: string | null = null;
-    try {
-      const { fatProducts } = await import('../server/db/schema');
-      await db.select().from(fatProducts).limit(1);
-    } catch (err: any) {
-      drizzleError = (err?.stack ?? err?.message ?? String(err));
-    }
-    const counts = await sqlClient`
-      SELECT
-        (SELECT COUNT(*) FROM fat_products)   AS products,
-        (SELECT COUNT(*) FROM fat_orders)     AS orders,
-        (SELECT COUNT(*) FROM fat_commissions) AS commissions
-    `;
-    // Fictional records created by the removed "Carregar dados de exemplo"
-    // seed button — checked by name so we can confirm none of the demo rows
-    // leaked into production data.
-    const seedProducts = await sqlClient`
-      SELECT nome FROM fat_products WHERE nome IN (
-        'SAL DO FAZENDEIRO MOÍDO 25 KG','SAL GROSSO MARINHO 25 KG','SAL REFINADO 1 KG (FARDO 30un)'
-      )
-    `;
-    const seedOrders = await sqlClient`
-      SELECT cliente_nome, cnpj FROM fat_orders WHERE cnpj IN ('12.345.678/0001-90','98.765.432/0001-10')
-    `;
-    res.json({
-      tablesPresent: (tables as any[]).map(t => t.table_name),
-      selectError,
-      drizzleError,
-      rowCounts: (counts as any[])[0],
-      seedProducts: (seedProducts as any[]).map(r => r.nome),
-      seedOrders: (seedOrders as any[]).map(r => ({ cliente: r.cliente_nome, cnpj: r.cnpj })),
-    });
+    res.json({ deleted: (deleted as any[]).length, rows: deleted });
   } catch (err: any) {
     res.status(500).json({ error: err?.message ?? String(err) });
   }
