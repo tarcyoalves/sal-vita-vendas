@@ -1824,7 +1824,10 @@ export default function Tasks() {
           title: orderDialogTask.title,
           cnpj: orderDialogTask.cnpj ?? null,
           clientName: orderDialogTask.title,
-          description: orderDialogTask.description ?? null,
+          // tasks.list omite description (economia de banda) — só tasks.getById
+          // (fullTask) traz. Cai para orderDialogTask.description como fallback
+          // caso o fetch ainda não tenha chegado.
+          description: (fullTask?.id === orderDialogTask.id ? fullTask.description : orderDialogTask.description) ?? null,
         } : null}
       />
       <InvoiceDialog
