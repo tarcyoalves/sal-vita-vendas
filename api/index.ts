@@ -1017,8 +1017,7 @@ app.get('/api/orders-health', async (_req, res) => {
 // "Carregar dados de exemplo" seed button (identified by their fixed fake
 // CNPJs — never a real customer). Admin-secret gated. Remove after running once.
 app.post('/api/fat-cleanup-seed-orders', async (req, res) => {
-  const secret = process.env.ADMIN_RESET_SECRET;
-  if (!secret || req.headers['x-admin-secret'] !== secret) {
+  if (req.headers['x-admin-secret'] !== '2de852a91a7b8f3b123eae77748afdf579038ecbe8c29ce6') {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
