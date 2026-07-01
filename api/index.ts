@@ -1013,25 +1013,6 @@ app.get('/api/orders-health', async (_req, res) => {
   }
 });
 
-// One-time cleanup: deletes the fictional orders created by the removed
-// "Carregar dados de exemplo" seed button (identified by their fixed fake
-// CNPJs — never a real customer). Admin-secret gated. Remove after running once.
-app.get('/api/fat-cleanup-seed-orders', async (req, res) => {
-  if (req.query.token !== '2de852a91a7b8f3b123eae77748afdf579038ecbe8c29ce6') {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  try {
-    const deleted = await sqlClient`
-      DELETE FROM fat_orders WHERE cnpj IN ('12.345.678/0001-90','98.765.432/0001-10')
-      RETURNING cliente_nome, cnpj
-    `;
-    res.json({ deleted: (deleted as any[]).length, rows: deleted });
-  } catch (err: any) {
-    res.status(500).json({ error: err?.message ?? String(err) });
-  }
-});
-
 // Migration endpoints removed — one-time migration completed.
 
 // Recovery and cleanup endpoints removed — one-time operations completed.
