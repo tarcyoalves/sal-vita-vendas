@@ -112,7 +112,7 @@ export default function ProductManager() {
   const handleClear = () => {
     if (!confirm("Limpar todos os dados de faturamento (produtos e pedidos)? Esta ação não pode ser desfeita.")) return;
     produtosList.forEach((p) => actions.produtos.remove(p.id));
-    actions.pedidos.list().forEach((p) => actions.pedidos.remove(p.id));
+    actions.pedidos.list().forEach((p) => actions.pedidos.remove(p.id, "Limpeza em massa via botão administrativo"));
     toast.success("Dados de faturamento limpos");
   };
 

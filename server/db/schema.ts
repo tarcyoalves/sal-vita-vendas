@@ -537,6 +537,23 @@ export const fatCommissions = pgTable('fat_commissions', {
   pct: doublePrecision('pct').notNull().default(0),
 });
 
+// Auditoria de exclusão de pedidos — mesma lógica de task_deletion_logs:
+// snapshot dos dados do pedido no momento da exclusão + motivo obrigatório.
+export const fatOrderDeletionLogs = pgTable('fat_order_deletion_logs', {
+  id: serial('id').primaryKey(),
+  pedidoId: text('pedido_id').notNull(),
+  clienteNome: text('cliente_nome').notNull().default(''),
+  cnpj: text('cnpj').notNull().default(''),
+  valorTotal: doublePrecision('valor_total').notNull().default(0),
+  sellerId: integer('seller_id'),
+  sellerName: text('seller_name').notNull().default(''),
+  deletedByUserId: integer('deleted_by_user_id').notNull(),
+  deletedByName: text('deleted_by_name').notNull(),
+  reason: text('reason').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 export type FatProduct = typeof fatProducts.$inferSelect;
 export type FatOrder = typeof fatOrders.$inferSelect;
 export type FatCommission = typeof fatCommissions.$inferSelect;
+export type FatOrderDeletionLog = typeof fatOrderDeletionLogs.$inferSelect;

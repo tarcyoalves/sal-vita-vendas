@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
-import { fatProducts, fatOrders, fatCommissions, sellers } from '../db/schema';
+import { fatProducts, fatOrders, fatCommissions, fatOrderDeletionLogs, sellers } from '../db/schema';
 import { eq } from 'drizzle-orm';
 
 // ── Faturamento & Comissão (CRM Lembretes) ───────────────────────────────────
@@ -164,18 +164,41 @@ export const faturamentoRouter = router({
     }),
 
   removePedido: protectedProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({
+      id: z.string(),
+      reason: z.string().trim().min(5).max(500),
+    }))
     .mutation(async ({ ctx, input }) => {
+      const [existing] = await db
+        .select()
+        .from(fatOrders)
+        .where(eq(fatOrders.id, input.id));
+      if (!existing) return { ok: true };
+
       if (ctx.user.role !== 'admin') {
         const mySellerId = await sellerIdForUser(ctx.user.id);
-        const [existing] = await db
-          .select({ sellerId: fatOrders.sellerId })
-          .from(fatOrders)
-          .where(eq(fatOrders.id, input.id));
-        if (existing && existing.sellerId !== mySellerId) {
+        if (existing.sellerId !== mySellerId) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Pedido de outro atendente' });
         }
       }
+
+      const valorTotal = existing.itens.reduce(
+        (s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnitario) || 0),
+        0,
+      );
+
+      await db.insert(fatOrderDeletionLogs).values({
+        pedidoId: existing.id,
+        clienteNome: existing.clienteNome,
+        cnpj: existing.cnpj,
+        valorTotal,
+        sellerId: existing.sellerId,
+        sellerName: existing.sellerName,
+        deletedByUserId: ctx.user.id,
+        deletedByName: ctx.user.name,
+        reason: input.reason.trim(),
+      });
+
       await db.delete(fatOrders).where(eq(fatOrders.id, input.id));
       return { ok: true };
     }),

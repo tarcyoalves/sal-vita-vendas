@@ -49,7 +49,7 @@ export default function Faturamento() {
             <BarChart2 size={14} /> Panorama
           </TabsTrigger>
           <TabsTrigger value="relatorio" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <FileText size={14} /> Relatorio
+            <FileText size={14} /> Pedidos
           </TabsTrigger>
           <TabsTrigger value="produtos" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
             <Package size={14} /> Produtos

@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-07-02a';
+const SCHEMA_VERSION = '2026-07-02b';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -584,6 +584,24 @@ export async function ensureTablesExist() {
   `;
   await sql`CREATE INDEX IF NOT EXISTS fat_orders_seller_idx ON fat_orders(seller_id)`;
   await sql`CREATE INDEX IF NOT EXISTS fat_orders_status_idx ON fat_orders(status)`;
+
+  // Auditoria de exclusão de pedidos — motivo obrigatório + snapshot dos dados.
+  await sql`
+    CREATE TABLE IF NOT EXISTS fat_order_deletion_logs (
+      id                  SERIAL PRIMARY KEY,
+      pedido_id           TEXT NOT NULL,
+      cliente_nome        TEXT NOT NULL DEFAULT '',
+      cnpj                TEXT NOT NULL DEFAULT '',
+      valor_total         DOUBLE PRECISION NOT NULL DEFAULT 0,
+      seller_id           INTEGER,
+      seller_name         TEXT NOT NULL DEFAULT '',
+      deleted_by_user_id  INTEGER NOT NULL,
+      deleted_by_name     TEXT NOT NULL,
+      reason              TEXT NOT NULL,
+      created_at          TIMESTAMP DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS fat_order_deletion_logs_seller_idx ON fat_order_deletion_logs(seller_id)`;
 
   // Record the schema marker so every subsequent cold start takes the fast path
   // at the top of this function instead of re-running the whole battery above.

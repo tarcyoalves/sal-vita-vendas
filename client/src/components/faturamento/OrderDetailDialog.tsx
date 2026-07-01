@@ -1,0 +1,175 @@
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+} from '../ui/dialog';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
+import { useFatStore } from '../../lib/faturamento/store';
+import { totalPedido, comissaoPedido, formatBRL } from '../../lib/faturamento/calc';
+import { Pencil, Truck, Trash2 } from 'lucide-react';
+
+interface OrderDetailDialogProps {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  pedidoId: string | null;
+  onEdit: () => void;
+  onInvoice: () => void;
+  onDelete: () => void;
+}
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return '--';
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? '--' : d.toLocaleDateString('pt-BR');
+}
+
+// Popup de gerenciamento do pedido — visão completa (admin), com atalhos para
+// editar, marcar como faturado ou excluir. Reutiliza os dialogs já existentes
+// (fecha este e abre o correspondente) em vez de duplicar a lógica de edição.
+export function OrderDetailDialog({
+  open,
+  onOpenChange,
+  pedidoId,
+  onEdit,
+  onInvoice,
+  onDelete,
+}: OrderDetailDialogProps) {
+  const { actions } = useFatStore();
+  const pedido = pedidoId ? actions.pedidos.get(pedidoId) : null;
+
+  if (!pedido) return null;
+
+  const total = totalPedido(pedido);
+  const comissao = comissaoPedido(pedido);
+  const isFaturado = pedido.status === 'faturado';
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto overflow-x-hidden">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 flex-wrap">
+            {pedido.clienteNome || 'Sem cliente'}
+            <Badge
+              className={
+                isFaturado
+                  ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                  : 'bg-amber-100 text-amber-700 border-amber-200'
+              }
+            >
+              {isFaturado ? 'Faturado' : 'Estimado'}
+            </Badge>
+            {pedido.taskId && (
+              <span className="text-blue-600 text-sm font-normal">Tarefa #{pedido.taskId}</span>
+            )}
+          </DialogTitle>
+          <DialogDescription>
+            Detalhes completos do pedido. Use as ações abaixo para editar, faturar ou excluir.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 min-w-0">
+          {/* Client info */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-sm bg-slate-50 border border-slate-200 rounded-xl p-3">
+            <div>
+              <p className="text-[10px] font-semibold text-slate-400 uppercase">CNPJ</p>
+              <p className="text-slate-700">{pedido.cnpj || '--'}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-slate-400 uppercase">Razao Social</p>
+              <p className="text-slate-700">{pedido.razaoSocial || '--'}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-slate-400 uppercase">Cidade/UF</p>
+              <p className="text-slate-700">
+                {[pedido.cidade, pedido.uf].filter(Boolean).join('/') || '--'}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-slate-400 uppercase">Atendente</p>
+              <p className="text-slate-700">{pedido.sellerName || '--'}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-slate-400 uppercase">Criado em</p>
+              <p className="text-slate-700">{fmtDate(pedido.criadoEm)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-slate-400 uppercase">Faturado em</p>
+              <p className="text-slate-700">{fmtDate(pedido.faturadoEm)}</p>
+            </div>
+          </div>
+
+          {/* Items */}
+          {pedido.itens.length > 0 && (
+            <div className="rounded-xl border border-slate-200 overflow-x-auto">
+              <table className="w-full text-sm min-w-[480px]">
+                <thead>
+                  <tr className="bg-slate-50 text-left">
+                    <th className="px-3 py-2 text-xs font-semibold text-slate-600 uppercase">Produto</th>
+                    <th className="px-3 py-2 text-xs font-semibold text-slate-600 uppercase text-right">Qtd</th>
+                    <th className="px-3 py-2 text-xs font-semibold text-slate-600 uppercase text-right">Valor unit.</th>
+                    <th className="px-3 py-2 text-xs font-semibold text-slate-600 uppercase text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pedido.itens.map((it) => (
+                    <tr key={it.id} className="border-t border-slate-100">
+                      <td className="px-3 py-2 text-slate-700">{it.descricao || 'Item'}</td>
+                      <td className="px-3 py-2 text-right text-slate-600">{it.quantidade}</td>
+                      <td className="px-3 py-2 text-right text-slate-600">{formatBRL(it.valorUnitario)}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-slate-800">
+                        {formatBRL(it.quantidade * it.valorUnitario)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Payment/freight/obs */}
+          {(pedido.prazoPagamentoSal || pedido.prazoPagamentoFrete || pedido.valorFretePorUnidade || pedido.observacoes) && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-sm text-amber-800 space-y-0.5">
+              {pedido.prazoPagamentoSal && <div><strong>Prazo sal:</strong> {pedido.prazoPagamentoSal}</div>}
+              {pedido.prazoPagamentoFrete && <div><strong>Prazo frete:</strong> {pedido.prazoPagamentoFrete}</div>}
+              {!!pedido.valorFretePorUnidade && <div><strong>Frete/un:</strong> {formatBRL(pedido.valorFretePorUnidade)}</div>}
+              {pedido.observacoes && <div><strong>Obs:</strong> {pedido.observacoes}</div>}
+            </div>
+          )}
+
+          {/* Totals */}
+          <div className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5">
+            <span className="text-sm text-blue-800">
+              Comissao {pedido.comissaoPct}%: <strong>{formatBRL(comissao)}</strong>
+            </span>
+            <span className="text-lg font-bold text-blue-900">{formatBRL(total)}</span>
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2 pt-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-red-600 border-red-200 hover:bg-red-50 gap-1.5"
+            onClick={onDelete}
+          >
+            <Trash2 size={14} />
+            Excluir
+          </Button>
+          {!isFaturado && (
+            <Button
+              size="sm"
+              className="bg-emerald-600 hover:bg-emerald-700 gap-1.5"
+              onClick={onInvoice}
+            >
+              <Truck size={14} />
+              Marcar como faturado
+            </Button>
+          )}
+          <Button size="sm" className="gap-1.5" onClick={onEdit}>
+            <Pencil size={14} />
+            Editar pedido
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

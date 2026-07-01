@@ -6,6 +6,10 @@ import { trpc } from "../../lib/trpc";
 import { Card, CardContent } from "../ui/card";
 import { Button } from "../ui/button";
 import { Download, FileText, ChevronLeft, ChevronRight } from "lucide-react";
+import { OrderDetailDialog } from "./OrderDetailDialog";
+import { OrderDialog } from "./OrderDialog";
+import { InvoiceDialog } from "./InvoiceDialog";
+import { DeleteOrderDialog } from "./DeleteOrderDialog";
 
 const MONTH_NAMES = [
   "Janeiro", "Fevereiro", "Marco", "Abril", "Maio", "Junho",
@@ -53,6 +57,22 @@ export default function BillingReport() {
   const [mesFilter, setMesFilter] = useState<FiltroMes | null>(mesAtual);
   const [showAllMonths, setShowAllMonths] = useState(false);
   const [ufFilter, setUfFilter] = useState("");
+
+  // Manage popup (view all + edit/faturar/excluir shortcuts)
+  const [selectedPedidoId, setSelectedPedidoId] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  const selectedPedido = selectedPedidoId
+    ? allPedidos.find((p) => p.id === selectedPedidoId) ?? null
+    : null;
+
+  const openDetail = (id: string) => {
+    setSelectedPedidoId(id);
+    setDetailOpen(true);
+  };
 
   // Derived: distinct UFs from orders
   const distinctUFs = useMemo(
@@ -242,7 +262,11 @@ export default function BillingReport() {
                 </thead>
                 <tbody>
                   {filtered.map((p) => (
-                    <tr key={p.id} className="border-b border-slate-100 hover:bg-blue-50/50 transition-colors align-top">
+                    <tr
+                      key={p.id}
+                      onClick={() => openDetail(p.id)}
+                      className="border-b border-slate-100 hover:bg-blue-50/50 transition-colors align-top cursor-pointer"
+                    >
                       <td className="px-3 py-3 text-blue-600 text-xs font-medium">{p.taskId ? `#${p.taskId}` : "--"}</td>
                       <td className="px-3 py-3 text-gray-600 font-mono text-xs">{p.cnpj || "--"}</td>
                       <td className="px-3 py-3 font-medium text-gray-800 max-w-[180px] truncate">{p.razaoSocial || p.clienteNome || "--"}</td>
@@ -293,6 +317,32 @@ export default function BillingReport() {
           </CardContent>
         </Card>
       )}
+
+      {/* Manage popup: view everything + edit/faturar/excluir shortcuts */}
+      <OrderDetailDialog
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        pedidoId={selectedPedidoId}
+        onEdit={() => { setDetailOpen(false); setEditOpen(true); }}
+        onInvoice={() => { setDetailOpen(false); setInvoiceOpen(true); }}
+        onDelete={() => { setDetailOpen(false); setDeleteOpen(true); }}
+      />
+      <OrderDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        seller={selectedPedido ? { id: selectedPedido.sellerId ?? 0, name: selectedPedido.sellerName } : null}
+        existingPedidoId={selectedPedidoId}
+      />
+      <InvoiceDialog
+        open={invoiceOpen}
+        onOpenChange={setInvoiceOpen}
+        pedidoId={selectedPedidoId}
+      />
+      <DeleteOrderDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        pedidoId={selectedPedidoId}
+      />
     </div>
   );
 }

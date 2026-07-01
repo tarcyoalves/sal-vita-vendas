@@ -18,6 +18,7 @@ import { Label } from '../components/ui/label';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem } from '../components/ui/dropdown-menu';
 import { OrderDialog } from '../components/faturamento/OrderDialog';
 import { InvoiceDialog } from '../components/faturamento/InvoiceDialog';
+import { DeleteOrderDialog } from '../components/faturamento/DeleteOrderDialog';
 import { useFatStore } from '../lib/faturamento/store';
 import { totalPedido, formatBRL } from '../lib/faturamento/calc';
 import type { Pedido } from '../lib/faturamento/types';
@@ -206,6 +207,8 @@ export default function Tasks() {
   const [editingPedidoId, setEditingPedidoId] = useState<string | null>(null);
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const [invoicePedidoId, setInvoicePedidoId] = useState<string | null>(null);
+  const [deleteOrderDialogOpen, setDeleteOrderDialogOpen] = useState(false);
+  const [deleteOrderPedidoId, setDeleteOrderPedidoId] = useState<string | null>(null);
   const { pedidos: allPedidos, comissoes: fatComissoes } = useFatStore();
   // ID da tarefa mais urgente a destacar após salvar
   const [highlightTaskId, setHighlightTaskId] = useState<number | null>(null);
@@ -1515,9 +1518,20 @@ export default function Tasks() {
                                         setInvoiceDialogOpen(true);
                                       }}
                                     >
-                                      Faturar
+                                      Marcar como faturado
                                     </Button>
                                   )}
+                                  <Button
+                                    variant="outline" size="sm"
+                                    className="gap-1 text-[11px] h-6 px-2 text-red-600 border-red-200 hover:bg-red-50"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDeleteOrderPedidoId(ped.id);
+                                      setDeleteOrderDialogOpen(true);
+                                    }}
+                                  >
+                                    Excluir
+                                  </Button>
                                 </div>
                               </div>
                             );
@@ -1817,6 +1831,11 @@ export default function Tasks() {
         open={invoiceDialogOpen}
         onOpenChange={setInvoiceDialogOpen}
         pedidoId={invoicePedidoId}
+      />
+      <DeleteOrderDialog
+        open={deleteOrderDialogOpen}
+        onOpenChange={setDeleteOrderDialogOpen}
+        pedidoId={deleteOrderPedidoId}
       />
 
     </div>

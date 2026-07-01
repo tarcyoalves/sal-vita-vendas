@@ -209,10 +209,10 @@ export const pedidos = {
     api.faturamento.upsertPedido.mutate(faturado).catch(onWriteError);
     return faturado;
   },
-  remove(id: string): void {
+  remove(id: string, reason: string): void {
     mirror = { ...mirror, pedidos: mirror.pedidos.filter((p) => p.id !== id) };
     emit();
-    api.faturamento.removePedido.mutate({ id }).catch(onWriteError);
+    api.faturamento.removePedido.mutate({ id, reason }).catch(onWriteError);
   },
 };
 

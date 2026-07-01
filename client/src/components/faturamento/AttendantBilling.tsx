@@ -8,11 +8,12 @@ import {
 import type { FiltroMes, Pedido } from '../../lib/faturamento/types';
 import { OrderDialog } from './OrderDialog';
 import { InvoiceDialog } from './InvoiceDialog';
+import { DeleteOrderDialog } from './DeleteOrderDialog';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import {
   DollarSign, TrendingUp, Package, ChevronLeft, ChevronRight,
-  Plus, Pencil, Truck,
+  Plus, Pencil, Truck, Trash2,
 } from 'lucide-react';
 
 const MESES = [
@@ -76,6 +77,10 @@ export default function AttendantBilling() {
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [invoicePedidoId, setInvoicePedidoId] = useState<string | null>(null);
 
+  // Delete dialog state
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePedidoId, setDeletePedidoId] = useState<string | null>(null);
+
   const seller = sellerProfile
     ? { id: sellerProfile.id, name: sellerProfile.name }
     : null;
@@ -121,6 +126,11 @@ export default function AttendantBilling() {
   const openInvoice = (pedidoId: string) => {
     setInvoicePedidoId(pedidoId);
     setInvoiceOpen(true);
+  };
+
+  const openDelete = (pedidoId: string) => {
+    setDeletePedidoId(pedidoId);
+    setDeleteOpen(true);
   };
 
   if (profileLoading) {
@@ -219,6 +229,7 @@ export default function AttendantBilling() {
               pedido={p}
               onEdit={() => openEditOrder(p.id)}
               onInvoice={() => openInvoice(p.id)}
+              onDelete={() => openDelete(p.id)}
             />
           ))}
         </div>
@@ -236,6 +247,11 @@ export default function AttendantBilling() {
         onOpenChange={setInvoiceOpen}
         pedidoId={invoicePedidoId}
       />
+      <DeleteOrderDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        pedidoId={deletePedidoId}
+      />
     </div>
   );
 }
@@ -244,10 +260,12 @@ function PedidoCard({
   pedido,
   onEdit,
   onInvoice,
+  onDelete,
 }: {
   pedido: Pedido;
   onEdit: () => void;
   onInvoice: () => void;
+  onDelete: () => void;
 }) {
   const total = totalPedido(pedido);
   const comissao = comissaoPedido(pedido);
@@ -342,9 +360,17 @@ function PedidoCard({
               className="gap-1 text-xs h-7 bg-emerald-600 hover:bg-emerald-700"
             >
               <Truck size={12} />
-              Faturar
+              Marcar como faturado
             </Button>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onDelete}
+            className="gap-1 text-xs h-7 text-red-600 border-red-200 hover:bg-red-50"
+          >
+            <Trash2 size={12} />
+          </Button>
         </div>
       </div>
     </div>
