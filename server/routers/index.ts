@@ -12,6 +12,7 @@ import { shippingRouter } from './shipping';
 import { recoveryRouter } from './recovery';
 import { emailMarketingRouter } from './emailMarketing';
 import { tagsRouter } from './tags';
+import { faturamentoRouter } from './faturamento';
 export const appRouter = router({
   auth: authRouter,
   reminders: remindersRouter,
@@ -26,6 +27,7 @@ export const appRouter = router({
   recovery: recoveryRouter,
   emailMarketing: emailMarketingRouter,
   tags: tagsRouter,
+  faturamento: faturamentoRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, boolean, timestamp, numeric, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, boolean, timestamp, numeric, jsonb, doublePrecision } from 'drizzle-orm/pg-core';
 
 // Generic key/value store for small global toggles (e.g. TV panel on/off).
 export const appSettings = pgTable('app_settings', {
@@ -486,3 +486,57 @@ export type EmailSequence = typeof emailSequences.$inferSelect;
 export type EmailSequenceStep = typeof emailSequenceSteps.$inferSelect;
 export type EmailSequenceEnrollment = typeof emailSequenceEnrollments.$inferSelect;
 export type AutomationRule = typeof automationRules.$inferSelect;
+
+// ── Faturamento & Comissão (migrado do localStorage → Neon em 02/07) ──────────
+// IDs são gerados no cliente (uid()) e mantidos como PK text, para que o store
+// continue com API síncrona (upsert retorna o objeto na hora). `itens` é jsonb
+// (array sempre lido/escrito por inteiro, nunca consultado item a item). Datas
+// ficam como text ISO — todo o filtro por mês acontece no cliente (calc.ts).
+type FatItemPedido = {
+  id: string;
+  produtoId: string | null;
+  descricao: string;
+  quantidade: number;
+  pesoKg: number;
+  valorUnitario: number;
+};
+
+export const fatProducts = pgTable('fat_products', {
+  id: text('id').primaryKey(),
+  nome: text('nome').notNull(),
+  pesoUnitarioKg: doublePrecision('peso_unitario_kg').notNull().default(0),
+  valorUnitario: doublePrecision('valor_unitario').notNull().default(0),
+  ativo: boolean('ativo').notNull().default(true),
+  criadoEm: text('criado_em').notNull(),
+});
+
+export const fatOrders = pgTable('fat_orders', {
+  id: text('id').primaryKey(),
+  taskId: integer('task_id'),
+  sellerId: integer('seller_id'),
+  sellerName: text('seller_name').notNull().default(''),
+  clienteNome: text('cliente_nome').notNull().default(''),
+  cnpj: text('cnpj').notNull().default(''),
+  razaoSocial: text('razao_social').notNull().default(''),
+  cidade: text('cidade').notNull().default(''),
+  uf: text('uf').notNull().default(''),
+  status: text('status').notNull().default('estimado'), // estimado | faturado
+  comissaoPct: doublePrecision('comissao_pct').notNull().default(0),
+  itens: jsonb('itens').$type<FatItemPedido[]>().notNull(),
+  itensEstimadoSnapshot: jsonb('itens_estimado_snapshot').$type<FatItemPedido[] | null>(),
+  prazoPagamentoSal: text('prazo_pagamento_sal').notNull().default(''),
+  prazoPagamentoFrete: text('prazo_pagamento_frete').notNull().default(''),
+  valorFretePorUnidade: doublePrecision('valor_frete_por_unidade').notNull().default(0),
+  observacoes: text('observacoes').notNull().default(''),
+  criadoEm: text('criado_em').notNull(),
+  faturadoEm: text('faturado_em'),
+});
+
+export const fatCommissions = pgTable('fat_commissions', {
+  sellerId: integer('seller_id').primaryKey(),
+  pct: doublePrecision('pct').notNull().default(0),
+});
+
+export type FatProduct = typeof fatProducts.$inferSelect;
+export type FatOrder = typeof fatOrders.$inferSelect;
+export type FatCommission = typeof fatCommissions.$inferSelect;

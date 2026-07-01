@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-06-27a';
+const SCHEMA_VERSION = '2026-07-02a';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -539,6 +539,51 @@ export async function ensureTablesExist() {
   await sql`CREATE INDEX IF NOT EXISTS marketing_contacts_tags_idx ON marketing_contacts USING GIN (tags)`;
   await sql`CREATE INDEX IF NOT EXISTS marketing_contacts_status_idx ON marketing_contacts (status)`;
   await sql`CREATE INDEX IF NOT EXISTS marketing_contacts_list_idx ON marketing_contacts (list_id) WHERE list_id IS NOT NULL`;
+
+  // ── Faturamento & Comissão (CRM) — migrado do localStorage → Neon ──────────
+  // IDs gerados no cliente (text PK). `itens` em jsonb. Datas em text ISO
+  // (filtro por mês é feito no cliente). Ver server/routers/faturamento.ts.
+  await sql`
+    CREATE TABLE IF NOT EXISTS fat_products (
+      id                TEXT PRIMARY KEY,
+      nome              TEXT NOT NULL,
+      peso_unitario_kg  DOUBLE PRECISION NOT NULL DEFAULT 0,
+      valor_unitario    DOUBLE PRECISION NOT NULL DEFAULT 0,
+      ativo             BOOLEAN NOT NULL DEFAULT true,
+      criado_em         TEXT NOT NULL
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS fat_orders (
+      id                        TEXT PRIMARY KEY,
+      task_id                   INTEGER,
+      seller_id                 INTEGER,
+      seller_name               TEXT NOT NULL DEFAULT '',
+      cliente_nome              TEXT NOT NULL DEFAULT '',
+      cnpj                      TEXT NOT NULL DEFAULT '',
+      razao_social              TEXT NOT NULL DEFAULT '',
+      cidade                    TEXT NOT NULL DEFAULT '',
+      uf                        TEXT NOT NULL DEFAULT '',
+      status                    TEXT NOT NULL DEFAULT 'estimado',
+      comissao_pct              DOUBLE PRECISION NOT NULL DEFAULT 0,
+      itens                     JSONB NOT NULL DEFAULT '[]'::jsonb,
+      itens_estimado_snapshot   JSONB,
+      prazo_pagamento_sal       TEXT NOT NULL DEFAULT '',
+      prazo_pagamento_frete     TEXT NOT NULL DEFAULT '',
+      valor_frete_por_unidade   DOUBLE PRECISION NOT NULL DEFAULT 0,
+      observacoes               TEXT NOT NULL DEFAULT '',
+      criado_em                 TEXT NOT NULL,
+      faturado_em               TEXT
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS fat_commissions (
+      seller_id INTEGER PRIMARY KEY,
+      pct       DOUBLE PRECISION NOT NULL DEFAULT 0
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS fat_orders_seller_idx ON fat_orders(seller_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS fat_orders_status_idx ON fat_orders(status)`;
 
   // Record the schema marker so every subsequent cold start takes the fast path
   // at the top of this function instead of re-running the whole battery above.
