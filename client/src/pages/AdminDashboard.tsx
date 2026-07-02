@@ -518,22 +518,10 @@ export default function AdminDashboard() {
   const [reminderFilter, setReminderFilter] = useState<string>("all");
   const [selectedSeller, setSelectedSeller] = useState<any | null>(null);
 
-  const getAiConfig = () => {
-    try {
-      const configs = JSON.parse(localStorage.getItem('aiConfigs') || '{}') as Record<string, any>;
-      for (const id of ['groq', 'cerebras', 'gemini']) {
-        const c = configs[id];
-        if (c?.status === 'configured') return { apiKey: c.apiKey, provider: c.provider, model: c.model };
-      }
-    } catch { /* ignore */ }
-    return undefined;
-  };
-
   const handleRunMonitor = async (forceRefresh = false) => {
     setMonitorLoading(true);
     try {
-      const aiCfg = getAiConfig();
-      const result: any = await analyzeAttendantsMutation.mutateAsync({ ...aiCfg, forceRefresh });
+      const result: any = await analyzeAttendantsMutation.mutateAsync({ forceRefresh });
       setMonitorReport(result.report);
       setMonitorSummary(result.summary);
       setMonitorCached(typeof result.cached === 'boolean'

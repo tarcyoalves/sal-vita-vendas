@@ -13,6 +13,8 @@ const BASE_URLS: Record<string, string> = {
   gemini:  'https://generativelanguage.googleapis.com/v1beta/openai',
   anthropic: 'https://api.anthropic.com/v1',
   cerebras: 'https://api.cerebras.ai/v1',
+  openrouter: 'https://openrouter.ai/api/v1',
+  nvidia: 'https://integrate.api.nvidia.com/v1',
 };
 
 const DEFAULT_MODELS: Record<string, string> = {
@@ -21,7 +23,15 @@ const DEFAULT_MODELS: Record<string, string> = {
   gemini:  'gemini-2.5-flash',
   anthropic: 'claude-3-haiku-20240307',
   cerebras: 'gpt-oss-120b',
+  openrouter: 'meta-llama/llama-3.3-70b-instruct:free',
+  nvidia: 'meta/llama-3.3-70b-instruct',
 };
+
+// Modelo por provedor, sobrescrevível por env (ex.: OPENROUTER_MODEL) — os IDs de
+// free tier mudam de tempos em tempos, então dá pra trocar sem alterar o código.
+function modelFor(provider: string): string {
+  return process.env[`${provider.toUpperCase()}_MODEL`] || DEFAULT_MODELS[provider] || DEFAULT_MODELS.groq;
+}
 
 // ── Proteção de cota gratuita (Groq/Gemini) ─────────────────────────────────
 // Cooldown por usuário: evita spam de mensagens consumindo a cota diária gratuita.
@@ -33,6 +43,24 @@ const lastChatAt = new Map<number, number>();
 // longo o bastante para não desperdiçar a cota gratuita.
 const ANALYZE_CACHE_TTL_MS = 15 * 60 * 1000;
 let analyzeCache: { at: number; data: { report: any[]; summary: string } } | null = null;
+
+// Cache curto de respostas repetidas (sugestão de abordagem / copy de e-mail) para
+// poupar cota grátis. Memória por instância serverless — mesma limitação do analyzeCache.
+const SHORT_CACHE_TTL_MS = 10 * 60 * 1000;
+const shortCache = new Map<string, { at: number; data: any }>();
+function shortCacheGet(key: string): any | null {
+  const hit = shortCache.get(key);
+  if (hit && Date.now() - hit.at < SHORT_CACHE_TTL_MS) return hit.data;
+  if (hit) shortCache.delete(key);
+  return null;
+}
+function shortCacheSet(key: string, data: any): void {
+  shortCache.set(key, { at: Date.now(), data });
+  if (shortCache.size > 500) { // evita crescer sem limite
+    const oldest = [...shortCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+    if (oldest) shortCache.delete(oldest[0]);
+  }
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -46,6 +74,19 @@ function addMinutes(d: Date, mins: number): Date {
   return new Date(d.getTime() + mins * 60000);
 }
 
+// fetch com timeout — sem isso, um provedor "pendurado" trava a request inteira até o
+// limite da função serverless. O abort vira erro sem `status` → isRetryable → cai para
+// o próximo provedor.
+async function fetchWithTimeout(url: string, opts: RequestInit, ms = 30000): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function callLLMWithTools(
   apiKey: string, baseURL: string, model: string,
   messages: any[], tools: any[], maxTokens = 1000,
@@ -55,7 +96,7 @@ async function callLLMWithTools(
     const body: any = { model, messages: msgs, max_tokens: maxTokens, temperature: 0.4, parallel_tool_calls: false };
     if (tools.length) body.tools = tools;
 
-    const res = await fetch(`${baseURL}/chat/completions`, {
+    const res = await fetchWithTimeout(`${baseURL}/chat/completions`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -87,7 +128,7 @@ async function callLLMWithTools(
 }
 
 async function callLLM(apiKey: string, baseURL: string, model: string, messages: any[], maxTokens = 800, temperature = 0.7): Promise<string> {
-  const res = await fetch(`${baseURL}/chat/completions`, {
+  const res = await fetchWithTimeout(`${baseURL}/chat/completions`, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature }),
@@ -106,10 +147,20 @@ function isRateLimit(err: any): boolean {
   return err?.status === 429 || /429|rate.?limit|quota/i.test(err?.message ?? '');
 }
 
+// Erros que valem tentar no próximo provedor: rate limit (429), auth (401/403),
+// modelo/rota (404), timeout (408), 5xx e erros de rede/abort (sem status). Só o 400
+// NÃO cai no fallback: request malformado ou "provedor não suporta tools" (esse caso já
+// tem tratamento próprio no chat, retry sem tools).
+function isRetryable(err: any): boolean {
+  return err?.status !== 400;
+}
+
 function envKeyFor(provider: string): string | undefined {
   if (provider === 'groq') return process.env.GROQ_API_KEY;
   if (provider === 'cerebras') return process.env.CEREBRAS_API_KEY;
   if (provider === 'gemini') return process.env.GEMINI_API_KEY;
+  if (provider === 'openrouter') return process.env.OPENROUTER_API_KEY;
+  if (provider === 'nvidia') return process.env.NVIDIA_API_KEY;
   return undefined;
 }
 
@@ -117,10 +168,12 @@ function defaultProvider(): string {
   if (process.env.GROQ_API_KEY) return 'groq';
   if (process.env.CEREBRAS_API_KEY) return 'cerebras';
   if (process.env.GEMINI_API_KEY) return 'gemini';
+  if (process.env.OPENROUTER_API_KEY) return 'openrouter';
+  if (process.env.NVIDIA_API_KEY) return 'nvidia';
   return 'groq';
 }
 
-// Free-tier provider fallback order: Groq → Cerebras → Gemini.
+// Free-tier provider fallback order: Groq → Cerebras → Gemini → OpenRouter → NVIDIA.
 // Each quota resets independently, so chaining them multiplies the daily
 // free budget before the user sees an error.
 function getFallbackChain(primaryProvider: string): { provider: string; apiKey: string; baseURL: string; model: string }[] {
@@ -128,14 +181,17 @@ function getFallbackChain(primaryProvider: string): { provider: string; apiKey: 
     { provider: 'groq', apiKey: process.env.GROQ_API_KEY },
     { provider: 'cerebras', apiKey: process.env.CEREBRAS_API_KEY },
     { provider: 'gemini', apiKey: process.env.GEMINI_API_KEY },
+    { provider: 'openrouter', apiKey: process.env.OPENROUTER_API_KEY },
+    { provider: 'nvidia', apiKey: process.env.NVIDIA_API_KEY },
   ];
   return candidates
     .filter(c => c.provider !== primaryProvider && c.apiKey)
-    .map(c => ({ provider: c.provider, apiKey: c.apiKey!, baseURL: BASE_URLS[c.provider], model: DEFAULT_MODELS[c.provider] }));
+    .map(c => ({ provider: c.provider, apiKey: c.apiKey!, baseURL: BASE_URLS[c.provider], model: modelFor(c.provider) }));
 }
 
-// Runs `fn` against the primary provider; on a 429/rate-limit error, retries
-// against each fallback provider in order until one succeeds.
+// Runs `fn` against the primary provider; on any recoverable error (5xx/timeout/
+// network/429/401/403/404), retries against each fallback provider in order until
+// one succeeds.
 async function callWithFallback(
   primaryProvider: string,
   primaryApiKey: string,
@@ -147,15 +203,15 @@ async function callWithFallback(
   try {
     return await fn(primaryApiKey, primaryBaseURL, primaryModel);
   } catch (primaryErr: any) {
-    if (!isRateLimit(primaryErr)) throw primaryErr;
+    if (!isRetryable(primaryErr)) throw primaryErr;
     let lastErr = primaryErr;
     for (const fb of getFallbackChain(primaryProvider)) {
       try {
-        console.warn(`[${logLabel}] 429 on ${primaryProvider} — falling back to ${fb.provider}`);
+        console.warn(`[${logLabel}] ${primaryProvider} failed (${primaryErr?.status ?? 'network'}) — trying ${fb.provider}`);
         return await fn(fb.apiKey, fb.baseURL, fb.model);
       } catch (fbErr: any) {
         lastErr = fbErr;
-        if (!isRateLimit(fbErr)) throw fbErr;
+        if (!isRetryable(fbErr)) throw fbErr;
       }
     }
     throw lastErr;
@@ -885,7 +941,7 @@ export const aiRouter = router({
         const apiKey = envKeyFor(provider) || '';
         const baseURL = BASE_URLS[provider] ?? BASE_URLS.groq;
         const isAdmin = ctx.user.role === 'admin';
-        const model = DEFAULT_MODELS[provider] ?? 'llama-3.3-70b-versatile';
+        const model = modelFor(provider);
 
         await db.insert(chatMessages).values({ userId: ctx.user.id, content: input.message, role: 'user' });
 
@@ -981,7 +1037,7 @@ ${userContext}`;
 
     const analyzeProvider = input?.provider ?? defaultProvider();
     const apiKey = input?.apiKey || envKeyFor(analyzeProvider) || '';
-    const analyzeModel = DEFAULT_MODELS[analyzeProvider] ?? 'llama-3.3-70b-versatile';
+    const analyzeModel = modelFor(analyzeProvider);
     if (!apiKey) return { report: [], summary: 'IA não configurada. Vá em Configurações → IA e configure Groq (recomendado), Cerebras ou Gemini.' };
 
     const now = new Date();
@@ -1218,17 +1274,27 @@ REGRAS ABSOLUTAS:
   suggestSalesApproach: protectedProcedure
     .input(z.object({ title: z.string().min(1), notes: z.string() }))
     .mutation(async ({ input }) => {
+      const cacheKey = 'suggest:' + JSON.stringify({ title: input.title, notes: input.notes });
+      const cached = shortCacheGet(cacheKey);
+      if (cached) return cached;
+
       const suggestProvider = defaultProvider();
       const apiKey = envKeyFor(suggestProvider) || '';
       if (!apiKey) return { suggestion: 'IA não configurada.' };
       try {
-        const suggestion = await callWithFallback(suggestProvider, apiKey, BASE_URLS[suggestProvider], DEFAULT_MODELS[suggestProvider], (k, b, m) =>
+        // Saída curta (~150 tokens) — usa um modelo pequeno/rápido no Groq em vez do 70B.
+        const suggestModel = suggestProvider === 'groq'
+          ? (process.env.SUGGEST_MODEL || 'llama-3.1-8b-instant')
+          : modelFor(suggestProvider);
+        const suggestion = await callWithFallback(suggestProvider, apiKey, BASE_URLS[suggestProvider], suggestModel, (k, b, m) =>
           callLLM(k, b, m, [
           { role: 'system', content: 'Vendas B2B de sal. Sugira 1 abordagem prática em 2-3 frases. Direto, sem introdução. Português BR.' },
           { role: 'user', content: `Cliente: ${input.title}\nObservações: ${input.notes || 'sem observações'}` },
           ], 150, 0.7),
         'AI_SUGGEST');
-        return { suggestion };
+        const result = { suggestion };
+        shortCacheSet(cacheKey, result);
+        return result;
       } catch (err: any) {
         return { suggestion: 'Erro ao gerar sugestão: ' + (err?.message ?? 'tente novamente') };
       }
@@ -1245,6 +1311,15 @@ REGRAS ABSOLUTAS:
       currentHtml: z.string().max(20000).optional(),
     }))
     .mutation(async ({ input }) => {
+      const cacheKey = 'email:' + JSON.stringify({
+        brief: input.brief,
+        tone: input.tone,
+        mode: input.mode,
+        currentHtml: input.currentHtml,
+      });
+      const cached = shortCacheGet(cacheKey);
+      if (cached) return cached;
+
       const provider = defaultProvider();
       const apiKey = envKeyFor(provider) || '';
       if (!apiKey) return { subjects: [], html: '', error: 'IA não configurada. Configure Groq ou Gemini em Configurações → IA.' };
@@ -1284,7 +1359,7 @@ CORPO:
       }
 
       try {
-        const raw = await callWithFallback(provider, apiKey, BASE_URLS[provider], DEFAULT_MODELS[provider], (k, b, m) =>
+        const raw = await callWithFallback(provider, apiKey, BASE_URLS[provider], modelFor(provider), (k, b, m) =>
           callLLM(k, b, m, [
             { role: 'system', content: sys },
             { role: 'user', content: userMsg },
@@ -1310,7 +1385,9 @@ CORPO:
         // Se o modelo não seguiu o formato, devolve o texto bruto como corpo
         if (!html && input.mode !== 'subjects') html = raw.trim();
 
-        return { subjects: subjects.slice(0, 3), html };
+        const result = { subjects: subjects.slice(0, 3), html };
+        shortCacheSet(cacheKey, result);
+        return result;
       } catch (err: any) {
         return { subjects: [], html: '', error: 'Erro ao gerar: ' + (err?.message ?? 'tente novamente') };
       }

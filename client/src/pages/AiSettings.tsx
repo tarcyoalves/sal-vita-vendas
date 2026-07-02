@@ -65,24 +65,9 @@ export default function AiSettings() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
   const [testing, setTesting] = useState(false);
-  const [testStatus, setTestStatus] = useState<Record<string, AIConfig>>(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem("aiConfigs") || "{}");
-      const status: Record<string, AIConfig> = {};
-      for (const [id, cfg] of Object.entries(saved as Record<string, any>)) {
-        if (cfg?.status === "configured") {
-          status[id] = {
-            provider: id,
-            model: cfg.model ?? "",
-            apiKey: (cfg.apiKey ?? "").substring(0, 10) + "***",
-            status: "configured",
-            lastTested: cfg.lastTested,
-          };
-        }
-      }
-      return status;
-    } catch { return {}; }
-  });
+  // Resultados de teste desta sessão apenas — nada é persistido no navegador,
+  // as chaves de produção ficam nas env vars da Vercel (ver caixa "Como funciona" abaixo).
+  const [testStatus, setTestStatus] = useState<Record<string, AIConfig>>({});
   const testConnectionMutation = trpc.ai.testConnection.useMutation();
   const listModelsMutation = trpc.ai.listModels.useMutation();
   const [availableModels, setAvailableModels] = useState<{ id: string; contextLength: number | null; ownedBy: string | null }[] | null>(null);
@@ -127,17 +112,6 @@ export default function AiSettings() {
       });
 
       if (result.success) {
-        // Salvar cada IA com sua própria chave
-        const aiConfigs = JSON.parse(localStorage.getItem("aiConfigs") || "{}");
-        aiConfigs[selectedProvider] = {
-          provider: selectedProvider,
-          model: currentProvider?.defaultModel,
-          apiKey: apiKey,
-          status: "configured",
-          lastTested: new Date().toISOString(),
-        };
-        localStorage.setItem("aiConfigs", JSON.stringify(aiConfigs));
-
         setTestStatus((prev) => ({
           ...prev,
           [selectedProvider]: {
@@ -192,7 +166,7 @@ export default function AiSettings() {
         {saved && (
           <div className="bg-green-50 border border-green-200 text-green-700 p-4 rounded-lg flex items-center gap-2">
             <span>✅</span>
-            <span>Configuração salva e testada com sucesso!</span>
+            <span>Conexão testada com sucesso!</span>
           </div>
         )}
         {error && (
@@ -264,7 +238,7 @@ export default function AiSettings() {
                   🔐 Chave de API {currentProvider.name}
                 </label>
                 <p className="text-xs text-gray-500 mb-2">
-                  Cada IA terá sua própria chave armazenada com segurança. O modelo padrão é: <span className="font-mono font-bold">{currentProvider.defaultModel}</span>
+                  A chave é usada só para este teste e não é salva em nenhum lugar. O modelo padrão é: <span className="font-mono font-bold">{currentProvider.defaultModel}</span>
                 </p>
                 <div className="flex gap-2">
                   <input
@@ -290,7 +264,7 @@ export default function AiSettings() {
                   disabled={!apiKey.trim() || testing}
                   className="bg-green-600 hover:bg-green-700 flex-1"
                 >
-                  {testing ? "🔄 Testando e Salvando..." : "✅ Salvar e Testar"}
+                  {testing ? "🔄 Testando..." : "✅ Testar Conexão"}
                 </Button>
                 <Button
                   variant="outline"
@@ -374,9 +348,6 @@ export default function AiSettings() {
                       )}
                       <button
                         onClick={() => {
-                          const aiConfigs = JSON.parse(localStorage.getItem("aiConfigs") || "{}");
-                          delete aiConfigs[config.provider];
-                          localStorage.setItem("aiConfigs", JSON.stringify(aiConfigs));
                           setTestStatus(prev => { const n = { ...prev }; delete n[config.provider]; return n; });
                         }}
                         className="text-xs text-red-400 hover:text-red-600"
@@ -419,7 +390,7 @@ export default function AiSettings() {
               <p>4. Cole aqui — modelo: <span className="font-mono">gemini-2.5-flash</span></p>
             </div>
             <p className="text-xs text-green-700">• Todos têm tier gratuito generoso para uso diário</p>
-            <p className="text-xs text-green-700">• Chaves ficam salvas no seu navegador (localStorage)</p>
+            <p className="text-xs text-green-700">• As chaves de produção ficam nas variáveis de ambiente da Vercel (GROQ_API_KEY, CEREBRAS_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, NVIDIA_API_KEY) — esta tela serve só para testar uma chave e ver os modelos disponíveis, ela não salva nada no navegador</p>
           </CardContent>
         </Card>
 
@@ -429,11 +400,11 @@ export default function AiSettings() {
             <CardTitle className="text-yellow-900">ℹ️ Como funciona</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-yellow-800 space-y-2">
-            <p>• O servidor já tenta automaticamente Groq → Cerebras → Gemini, na ordem, sempre que uma IA atinge o limite gratuito do dia</p>
-            <p>• Configurar uma chave aqui é opcional — use para ter uma chave pessoal própria além da configuração do servidor</p>
+            <p>• O servidor encadeia os provedores automaticamente (Groq → Cerebras → Gemini → OpenRouter → NVIDIA), sempre que um deles atinge o limite gratuito do dia ou falha</p>
+            <p>• As chaves de produção ficam nas variáveis de ambiente da Vercel — não há nada para configurar aqui em produção</p>
             <p>• Groq tem prioridade — 14.400 req/dia grátis, sem risco de quota</p>
-            <p>• Clique "Salvar e Testar" para validar antes de usar</p>
-            <p>• Se der erro 404 no Gemini: chave errada ou modelo não existe</p>
+            <p>• Clique "Testar Conexão" para validar uma chave avulsa e "Ver todos os modelos" para listar o que ela tem acesso</p>
+            <p>• Se der erro 404: chave errada ou modelo não existe para essa chave</p>
           </CardContent>
         </Card>
     </div>

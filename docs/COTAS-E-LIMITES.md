@@ -14,7 +14,7 @@
 | Risco | Plataforma | Limite grátis | O que fazer |
 |-------|-----------|---------------|-------------|
 | 🔴 Alto | **Resend (e-mails)** | 100/dia · 3.000/mês por conta | Não disparar campanhas grandes de uma vez; usar múltiplas contas |
-| 🟡 Médio | **Gemini / Groq (IA)** | Rate limit por minuto | Evitar reanálises repetidas; respeitar o cooldown |
+| 🟡 Médio | **Groq/Cerebras/Gemini/OpenRouter/NVIDIA (IA)** | Rate limit por minuto | Evitar reanálises repetidas; respeitar o cooldown |
 | 🟡 Médio | **Neon (banco)** | Conexões + compute limitados | Evitar muitos acessos simultâneos; banco "dorme" sem uso |
 | 🟢 Baixo | **Vercel (hosting)** | 100 GB-banda/mês · execução serverless | Monitorar; raramente é problema neste porte |
 
@@ -65,30 +65,43 @@ O sistema tem **dois** caminhos de e-mail, **independentes**, cada um com sua(s)
 
 ---
 
-## 2. IA — Google Gemini e Groq 🟡
+## 2. IA — Groq, Cerebras, Gemini, OpenRouter e NVIDIA 🟡
 
 - **Arquivo:** `server/routers/ai.ts`
-- **Variáveis:** `GEMINI_API_KEY`, `GROQ_API_KEY`
-- **Usos:** Chat IA (todos), Análise IA de atendentes (admin), sugestões de abordagem.
+- **Variáveis:** `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY` (todas opcionais — só entram na cadeia quando configuradas)
+- **Usos:** Chat IA (todos), Análise IA de atendentes (admin), sugestões de abordagem, geração de copy de e-mail.
+
+### Cadeia de fallback (nessa ordem):
+**Groq → Cerebras → Gemini → OpenRouter → NVIDIA.** Cada provedor tem cota grátis
+independente, então encadear os 5 multiplica o orçamento diário antes do usuário ver
+um erro. A ordem primária pode ser sobrescrita por chamada; os modelos de cada
+provedor são configuráveis por env (`GROQ_MODEL`, `CEREBRAS_MODEL`, `GEMINI_MODEL`,
+`OPENROUTER_MODEL`, `NVIDIA_MODEL`).
 
 ### Limites de plano gratuito (confira sempre, mudam muito):
 - **Gemini free:** cota por **requisições/minuto** e **por dia** (varia conforme o modelo).
 - **Groq free:** cota por **tokens/minuto** e **requisições/minuto**.
+- **Cerebras free:** cota por **requisições/minuto** e **por dia**.
+- **OpenRouter free (modelos `:free`):** cota diária baixa, pensada como último recurso.
+- **NVIDIA free (build.nvidia.com):** cota por requisições, também como último recurso.
 
 ### Proteção no código:
 - **Cooldown de chat:** 2,5s por usuário (`CHAT_COOLDOWN_MS = 2500`) — evita spam de cliques.
 - **Cache de análise:** 15 minutos — clicar "Analisar" de novo no mesmo período reaproveita o resultado, sem gastar cota.
+- **Cache de sugestão/copy:** 10 minutos para `suggestSalesApproach` e `generateEmailCopy` — a mesma entrada repetida devolve a resposta cacheada, sem nova chamada à IA (cache em memória, por instância serverless).
 - **Limite de dados:** análise de atendentes processa no máximo 5.000 tarefas (protege também o banco).
-- **Fallback automático:** se um provedor responde 429 (rate limit), o sistema tenta o outro (Groq ↔ Gemini).
-- **Tokens máximos:** 8.000 (análise), 1.000/700 (chat).
+- **Timeout por chamada:** 30s (`fetchWithTimeout`) — um provedor "pendurado" não trava a request até o limite da função serverless; o timeout vira erro e aciona o fallback.
+- **Fallback automático:** o sistema tenta o próximo provedor da cadeia em **qualquer erro recuperável** — não só 429 (rate limit), mas também 401/403 (chave inválida), 404 (modelo/rota), 408, 5xx e erros de rede/timeout. Só erro 400 (request malformado) não aciona fallback. O loop continua tentando os próximos provedores até um responder ou a cadeia acabar.
+- **Modelo por tarefa:** `suggestSalesApproach` (saída curta) usa um modelo pequeno/rápido no Groq (`llama-3.1-8b-instant`, sobrescrevível via `SUGGEST_MODEL`) em vez do modelo grande usado na análise de atendentes.
+- **Tokens máximos:** 8.000 (análise), 1.200 (copy de e-mail), 1.000/900/700 (chat), 150 (sugestão).
 
 #### O que estoura:
 1. **Muitos atendentes usando o Chat IA ao mesmo tempo.**
 2. **Clicar "Analisar" repetidamente** ou ter uma base enorme de tarefas.
 
 #### ✅ O que fazer:
-- **Mantenha as duas chaves** (`GEMINI_API_KEY` **e** `GROQ_API_KEY`) configuradas — o fallback só funciona com as duas.
-- **Aproveite o cache:** não reanalise antes de 15 min.
+- **Mantenha ao menos duas chaves** (`GROQ_API_KEY` e mais uma) configuradas — o fallback só ajuda quando há para onde cair. Quanto mais chaves (`CEREBRAS_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY`), maior o orçamento diário total.
+- **Aproveite o cache:** não reanalise antes de 15 min; sugestões/copy repetidas em até 10 min não gastam cota.
 - Se o volume crescer muito, avaliar plano pago de um dos provedores.
 
 ---
@@ -130,7 +143,7 @@ O sistema tem **dois** caminhos de e-mail, **independentes**, cada um com sua(s)
 - [ ] **Resend:** acompanhar "Cota Resend hoje" na aba Estatísticas antes de campanhas grandes.
 - [ ] **Resend:** parcelar disparos > 80–90 e/ou cadastrar contas extras (`RESEND_MKT_*_2..5`).
 - [ ] **Resend:** DNS (SPF/DKIM) verificado em todas as contas.
-- [ ] **IA:** manter `GEMINI_API_KEY` **e** `GROQ_API_KEY` ativas (fallback).
+- [ ] **IA:** manter `GROQ_API_KEY` e ao menos mais uma (`CEREBRAS_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY`) ativas para o fallback funcionar.
 - [ ] **Neon:** usar string `-pooler`; monitorar compute/armazenamento.
 - [ ] **Vercel:** monitorar banda/execuções; avaliar plano Pro (uso comercial).
 - [ ] **Geral:** revisar este documento sempre que mudar plano ou volume.
