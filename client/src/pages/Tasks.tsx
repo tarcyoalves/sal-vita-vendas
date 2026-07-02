@@ -13,16 +13,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from '../components/ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogAction,
-  AlertDialogCancel,
-} from '../components/ui/alert-dialog';
 import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
 import { Label } from '../components/ui/label';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem } from '../components/ui/dropdown-menu';
@@ -282,9 +272,13 @@ export default function Tasks() {
   const canEmailMarketing = isAdmin || (sellerProfile?.emailMarketingEnabled ?? false);
 
   // ── E-mail Marketing: enroll task(s) in a sequence ──────────────────────────
+  // Carregadas assim que a página abre (não só quando um popup pede) — a lista
+  // de sequências é pequena e curada pelo admin, e pré-carregar evita qualquer
+  // espera perceptível no popup de confirmar e-mail (que já mostra o picker
+  // inline, sem abrir um segundo diálogo).
   const [sequencePickerTaskIds, setSequencePickerTaskIds] = useState<number[] | null>(null);
-  const { data: emailSequencesAdmin } = trpc.emailMarketing.listSequences.useQuery(undefined, { enabled: isAdmin && sequencePickerTaskIds !== null });
-  const { data: emailSequencesAtt } = trpc.emailMarketing.listSequencesForAttendant.useQuery(undefined, { enabled: !isAdmin && canEmailMarketing && sequencePickerTaskIds !== null });
+  const { data: emailSequencesAdmin } = trpc.emailMarketing.listSequences.useQuery(undefined, { enabled: isAdmin, staleTime: 300_000 });
+  const { data: emailSequencesAtt } = trpc.emailMarketing.listSequencesForAttendant.useQuery(undefined, { enabled: !isAdmin && canEmailMarketing, staleTime: 300_000 });
   const activeSequences = isAdmin
     ? (emailSequencesAdmin ?? []).filter(s => s.active)
     : (emailSequencesAtt ?? []);
@@ -705,32 +699,50 @@ export default function Tasks() {
   }, [removeCampaignRecipientMutation]);
 
   // Confirma manualmente o e-mail de um lead importado — só após isso ele pode
-  // ser usado em campanhas/sequências/automações. Fluxo em dois passos com
-  // diálogos (em vez de confirm() nativo): 1) confirma o e-mail, 2) oferece
-  // incluir a tarefa numa sequência na hora — evita o atendente ter que achar
-  // o botão "Inscrever em sequência" separadamente depois.
+  // ser usado em campanhas/sequências/automações. Um único popup: confirmar +
+  // escolher sequência (opcional) ficam na mesma tela, sem trocar de diálogo.
+  // A lista de sequências já vem pré-carregada (ver enabled: canEmailMarketing
+  // acima), então abrir o popup não espera nenhum fetch. O refetch da lista de
+  // tarefas roda em segundo plano — não trava o fechamento do popup.
   const confirmEmailMutation = trpc.tasks.confirmEmail.useMutation();
   const [confirmEmailTarget, setConfirmEmailTarget] = useState<{ id: number; email: string } | null>(null);
-  const [justConfirmedTaskId, setJustConfirmedTaskId] = useState<number | null>(null);
+  const [confirmEmailSequenceId, setConfirmEmailSequenceId] = useState<number | null>(null);
+  const [confirmEmailBusy, setConfirmEmailBusy] = useState(false);
 
   const handleConfirmEmail = useCallback((taskId: number, email?: string | null) => {
+    setConfirmEmailSequenceId(null);
     setConfirmEmailTarget({ id: taskId, email: email ?? '' });
   }, []);
 
   const confirmEmailNow = useCallback(async () => {
     if (!confirmEmailTarget) return;
     const taskId = confirmEmailTarget.id;
+    const sequenceId = confirmEmailSequenceId;
+    setConfirmEmailBusy(true);
     try {
       await confirmEmailMutation.mutateAsync({ id: taskId });
       setEditingTask(prev => (prev && prev.id === taskId ? { ...prev, emailConfirmed: true } : prev));
-      await refetch();
+
+      if (sequenceId !== null) {
+        const res = await enrollInSequenceMutation.mutateAsync({ sequenceId, taskIds: [taskId] });
+        if (res.enrolled > 0) {
+          toast.success("✅ E-mail confirmado e incluído na sequência!");
+        } else {
+          toast.success("✅ E-mail confirmado", { description: res.skipReasons?.[0] ?? "Não foi possível incluir na sequência agora." });
+        }
+      } else {
+        toast.success("✅ E-mail confirmado — já pode ser usado para e-mail marketing");
+      }
+
       setConfirmEmailTarget(null);
-      toast.success("✅ E-mail confirmado — já pode ser usado para e-mail marketing");
-      if (canEmailMarketing) setJustConfirmedTaskId(taskId);
+      setConfirmEmailSequenceId(null);
+      refetch(); // segundo plano — não bloqueia o fechamento do popup
     } catch (err: any) {
       toast.error(err?.message ?? "Erro ao confirmar e-mail");
+    } finally {
+      setConfirmEmailBusy(false);
     }
-  }, [confirmEmailTarget, confirmEmailMutation, canEmailMarketing]);
+  }, [confirmEmailTarget, confirmEmailSequenceId, confirmEmailMutation, enrollInSequenceMutation]);
 
   const handleEdit = useCallback((task: Task) => {
     setEditingTask(task);
@@ -1796,46 +1808,49 @@ export default function Tasks() {
         </DialogContent>
       </Dialog>
 
-      {/* Confirmar e-mail — passo 1 */}
-      <AlertDialog open={!!confirmEmailTarget} onOpenChange={(open) => { if (!open) setConfirmEmailTarget(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar e-mail</AlertDialogTitle>
-            <AlertDialogDescription>
+      {/* Confirmar e-mail + escolher sequência, tudo num único popup */}
+      <Dialog open={!!confirmEmailTarget} onOpenChange={(open) => { if (!open && !confirmEmailBusy) setConfirmEmailTarget(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirmar e-mail</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600">
               Confirmar que o e-mail <strong>{confirmEmailTarget?.email}</strong> está correto? Após confirmar, ele poderá ser usado em campanhas e sequências de e-mail.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setConfirmEmailTarget(null)}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmEmailNow} disabled={confirmEmailMutation.isPending}>
-              {confirmEmailMutation.isPending ? "Confirmando..." : "✓ Confirmar"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Oferece inscrever em sequência logo após confirmar — passo 2 */}
-      <AlertDialog open={justConfirmedTaskId !== null} onOpenChange={(open) => { if (!open) setJustConfirmedTaskId(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>✅ E-mail confirmado!</AlertDialogTitle>
-            <AlertDialogDescription>
-              Deseja incluir esta tarefa em uma sequência de e-mail marketing agora?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setJustConfirmedTaskId(null)}>Agora não</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (justConfirmedTaskId !== null) setSequencePickerTaskIds([justConfirmedTaskId]);
-                setJustConfirmedTaskId(null);
-              }}
-            >
-              🔁 Escolher sequência
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </p>
+            <div className="pt-1 border-t">
+              <p className="text-sm font-medium text-gray-700 mt-3 mb-2">Incluir em uma sequência agora? (opcional)</p>
+              <RadioGroup
+                value={confirmEmailSequenceId !== null ? String(confirmEmailSequenceId) : "none"}
+                onValueChange={(v: string) => setConfirmEmailSequenceId(v === "none" ? null : Number(v))}
+                className="max-h-56 overflow-y-auto"
+              >
+                <label className="flex items-start gap-2 px-3 py-2 border rounded-lg hover:bg-gray-50 transition cursor-pointer">
+                  <RadioGroupItem value="none" className="mt-0.5" />
+                  <p className="font-medium text-sm">Decidir depois</p>
+                </label>
+                {activeSequences.map(s => (
+                  <label key={s.id} className="flex items-start gap-2 px-3 py-2 border rounded-lg hover:bg-indigo-50 transition cursor-pointer">
+                    <RadioGroupItem value={String(s.id)} className="mt-0.5" />
+                    <div>
+                      <p className="font-medium text-sm">{s.name}</p>
+                      {'stepCount' in s && <p className="text-xs text-gray-500">{(s as any).stepCount} passo(s) · {(s as any).activeEnrollments} inscrito(s) ativo(s)</p>}
+                    </div>
+                  </label>
+                ))}
+              </RadioGroup>
+            </div>
+          </div>
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setConfirmEmailTarget(null)} disabled={confirmEmailBusy}>
+              Cancelar
+            </Button>
+            <Button type="button" className="flex-1" onClick={confirmEmailNow} disabled={confirmEmailBusy}>
+              {confirmEmailBusy ? "Confirmando..." : confirmEmailSequenceId !== null ? "✓ Confirmar e inscrever" : "✓ Confirmar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Enroll in sequence modal */}
       <Dialog open={sequencePickerTaskIds !== null} onOpenChange={(open) => { if (!open) { setSequencePickerTaskIds(null); setSelectedSequenceId(null); } }}>
