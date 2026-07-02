@@ -43,7 +43,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!loading && isAuthenticated && user) {
-      if (user.role === 'admin') {
+      if (user.role === 'admin' || user.role === 'manager') {
         setLocation('/admin/dashboard');
       } else {
         setLocation('/tasks');

@@ -460,7 +460,7 @@ function EmailStrategicCard() {
 
 function FaturamentoQuickCard({ setLocation }: { setLocation: (to: string) => void }) {
   const { pedidos, comissoes } = useFatStore();
-  const { data: sellers = [] } = trpc.sellers.listWithRole.useQuery();
+  const { data: sellers = [] } = trpc.sellers.list.useQuery();
   const sellerList = (sellers as { id: number; name: string }[]).map((s) => ({ id: s.id, name: s.name }));
   const filtro = mesAtual();
   const rows = panoramaPorAtendente(pedidos, sellerList, comissoes, filtro);
@@ -494,14 +494,17 @@ function FaturamentoQuickCard({ setLocation }: { setLocation: (to: string) => vo
 export default function AdminDashboard() {
   const { user, loading } = useAuth();
   const [, setLocation] = useLocation();
+  // Gerente (atendente promovido) vê o dashboard principal, mas sem as seções
+  // de gestão de atendentes/IA — só o admin de verdade (Tarcyo) tem isFullAdmin.
+  const isFullAdmin = user?.role === "admin";
   const { data: sellers = [], isLoading } = trpc.sellers.list.useQuery(undefined, { staleTime: 300_000 });
   const { data: tasks = [] } = trpc.tasks.list.useQuery(undefined, { staleTime: 120_000 });
   const { data: reminders = [] } = trpc.tasks.reminders.useQuery(undefined, { staleTime: 120_000 });
-  const { data: deletionLogs = [], refetch: refetchDeletionLogs } = trpc.tasks.deletionLogs.useQuery({ onlyUnreviewed: true }, { staleTime: 120_000 });
+  const { data: deletionLogs = [], refetch: refetchDeletionLogs } = trpc.tasks.deletionLogs.useQuery({ onlyUnreviewed: true }, { staleTime: 120_000, enabled: isFullAdmin });
   const markDeletionReviewedMutation = trpc.tasks.markDeletionReviewed.useMutation({ onSuccess: () => refetchDeletionLogs() });
   const [showDeletionLogs, setShowDeletionLogs] = useState(false);
   const analyzeAttendantsMutation = trpc.ai.analyzeAttendants.useMutation();
-  const { data: sessionData = [], refetch: refetchSessions, isFetching: sessionsFetching } = trpc.workSessions.allActiveToday.useQuery(undefined, { staleTime: 90_000 });
+  const { data: sessionData = [], refetch: refetchSessions, isFetching: sessionsFetching } = trpc.workSessions.allActiveToday.useQuery(undefined, { staleTime: 90_000, enabled: isFullAdmin });
   const [expandedSessions, setExpandedSessions] = useState<Set<number>>(new Set());
   const toggleSession = (id: number) => setExpandedSessions(prev => {
     const next = new Set(prev);
@@ -551,7 +554,7 @@ export default function AdminDashboard() {
     );
   }
 
-  if (!user || user.role !== "admin") return null;
+  if (!user || (user.role !== "admin" && user.role !== "manager")) return null;
 
   const pending = (tasks as any[]).filter(t => t.status === 'pending');
   const completed = (tasks as any[]).filter(t => t.status === 'completed');
@@ -688,7 +691,7 @@ export default function AdminDashboard() {
       bg: "bg-blue-50",
       border: "border-blue-100",
     },
-    {
+    ...(isFullAdmin ? [{
       label: "Atendentes",
       value: sellers?.length || 0,
       sub: `${(sessionData as any[]).filter((s: any) => s.session?.status === 'active').length} ativos agora`,
@@ -696,7 +699,7 @@ export default function AdminDashboard() {
       color: "text-indigo-600",
       bg: "bg-indigo-50",
       border: "border-indigo-100",
-    },
+    }] : []),
     {
       label: "Pendentes",
       value: pending.length,
@@ -735,11 +738,15 @@ export default function AdminDashboard() {
     },
   ];
 
-  const quickActions = [
+  const quickActions = isFullAdmin ? [
     { label: "Tarefas", path: "/tasks", icon: <ClipboardList size={20} />, color: "bg-blue-600 hover:bg-blue-700" },
     { label: "Atendentes", path: "/attendants", icon: <Users size={20} />, color: "bg-emerald-600 hover:bg-emerald-700" },
     { label: "Chat IA", path: "/ai-chat", icon: <MessageSquare size={20} />, color: "bg-purple-600 hover:bg-purple-700" },
     { label: "Config IA", path: "/ai-settings", icon: <Settings size={20} />, color: "bg-slate-600 hover:bg-slate-700" },
+  ] : [
+    { label: "Tarefas", path: "/tasks", icon: <ClipboardList size={20} />, color: "bg-blue-600 hover:bg-blue-700" },
+    { label: "E-mail Marketing", path: "/admin/email-marketing", icon: <Mail size={20} />, color: "bg-violet-600 hover:bg-violet-700" },
+    { label: "Faturamento", path: "/admin/faturamento", icon: <DollarSign size={20} />, color: "bg-cyan-600 hover:bg-cyan-700" },
   ];
 
   return (
@@ -929,8 +936,9 @@ export default function AdminDashboard() {
             {convertedCount === 0 && <p className="text-xs text-gray-400 mt-1">Sem conversões registradas ainda — o gráfico vai ganhar vida conforme as vendas acontecerem.</p>}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Ranking de conversão */}
+          <div className={`grid grid-cols-1 ${isFullAdmin ? 'md:grid-cols-2' : ''} gap-5`}>
+            {/* Ranking de conversão — cross-atendente, só admin */}
+            {isFullAdmin && (
             <div>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-medium text-gray-500">🏆 Ranking de conversão por atendente</p>
@@ -969,6 +977,7 @@ export default function AdminDashboard() {
                 <p className="text-xs text-gray-400">Sem conversões registradas ainda.</p>
               )}
             </div>
+            )}
 
             {/* Leads quentes */}
             <div>
@@ -996,7 +1005,8 @@ export default function AdminDashboard() {
         </CardContent>
       </Card>
 
-      {/* Attendants overview */}
+      {/* Attendants overview — cross-atendente, só admin */}
+      {isFullAdmin && (
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center justify-between text-base">
@@ -1094,8 +1104,10 @@ export default function AdminDashboard() {
           )}
         </CardContent>
       </Card>
+      )}
 
-      {/* Monitor IA */}
+      {/* Monitor IA — recurso de IA, só admin */}
+      {isFullAdmin && (
       <Card className="border-purple-200">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center justify-between text-base">
@@ -1190,8 +1202,10 @@ export default function AdminDashboard() {
           )}
         </CardContent>
       </Card>
+      )}
 
-      {/* Work Sessions */}
+      {/* Work Sessions — cross-atendente, só admin */}
+      {isFullAdmin && (
       <Card className="border-cyan-200">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center justify-between text-base">
@@ -1341,6 +1355,7 @@ export default function AdminDashboard() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Reminders Overview */}
       <Card>

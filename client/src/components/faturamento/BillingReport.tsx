@@ -49,7 +49,7 @@ function estimatedTotal(pedido: Pedido): number {
 
 export default function BillingReport() {
   const { pedidos: allPedidos } = useFatStore();
-  const { data: sellers = [] } = trpc.sellers.listWithRole.useQuery();
+  const { data: sellers = [] } = trpc.sellers.list.useQuery();
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<"todos" | "estimado" | "faturado">("todos");

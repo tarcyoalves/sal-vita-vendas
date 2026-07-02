@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { router, protectedProcedure, adminProcedure } from '../trpc';
+import { router, protectedProcedure, staffProcedure } from '../trpc';
 import { db } from '../db';
 import { fatProducts, fatOrders, fatCommissions, fatOrderDeletionLogs, sellers } from '../db/schema';
 import { eq } from 'drizzle-orm';
@@ -8,8 +8,8 @@ import { eq } from 'drizzle-orm';
 // ── Faturamento & Comissão (CRM Lembretes) ───────────────────────────────────
 // Backend do módulo antes mantido em localStorage. IDs são gerados no cliente
 // (text PK) para preservar a API síncrona do store. Escopo por papel:
-//   • admin  → vê/edita tudo (catálogo de produtos, comissões, todos os pedidos)
-//   • user   → catálogo (leitura), sua própria comissão, e só os SEUS pedidos
+//   • admin/manager → vê/edita tudo (catálogo de produtos, comissões, todos os pedidos)
+//   • user          → catálogo (leitura), sua própria comissão, e só os SEUS pedidos
 
 const itemPedidoSchema = z.object({
   id: z.string(),
@@ -62,18 +62,18 @@ async function sellerIdForUser(userId: number): Promise<number | null> {
 export const faturamentoRouter = router({
   // Um único round-trip carrega tudo que o store precisa (economiza Neon).
   getAll: protectedProcedure.query(async ({ ctx }) => {
-    const isAdmin = ctx.user.role === 'admin';
-    const mySellerId = isAdmin ? null : await sellerIdForUser(ctx.user.id);
+    const hasFullAccess = ctx.user.role === 'admin' || ctx.user.role === 'manager';
+    const mySellerId = hasFullAccess ? null : await sellerIdForUser(ctx.user.id);
 
     const produtos = await db.select().from(fatProducts);
 
-    const pedidos = isAdmin
+    const pedidos = hasFullAccess
       ? await db.select().from(fatOrders)
       : mySellerId != null
         ? await db.select().from(fatOrders).where(eq(fatOrders.sellerId, mySellerId))
         : [];
 
-    const commissionRows = isAdmin
+    const commissionRows = hasFullAccess
       ? await db.select().from(fatCommissions)
       : mySellerId != null
         ? await db.select().from(fatCommissions).where(eq(fatCommissions.sellerId, mySellerId))
@@ -86,7 +86,7 @@ export const faturamentoRouter = router({
   }),
 
   // ── Produtos (catálogo — admin) ────────────────────────────────────────────
-  upsertProduto: adminProcedure
+  upsertProduto: staffProcedure
     .input(produtoSchema)
     .mutation(async ({ input }) => {
       const [row] = await db
@@ -105,7 +105,7 @@ export const faturamentoRouter = router({
       return row;
     }),
 
-  removeProduto: adminProcedure
+  removeProduto: staffProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
       await db.delete(fatProducts).where(eq(fatProducts.id, input.id));
@@ -118,7 +118,7 @@ export const faturamentoRouter = router({
     .mutation(async ({ ctx, input }) => {
       const values = { ...input };
 
-      if (ctx.user.role !== 'admin') {
+      if (ctx.user.role !== 'admin' && ctx.user.role !== 'manager') {
         const mySellerId = await sellerIdForUser(ctx.user.id);
         if (mySellerId == null) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Perfil de vendedor não encontrado' });
@@ -175,7 +175,7 @@ export const faturamentoRouter = router({
         .where(eq(fatOrders.id, input.id));
       if (!existing) return { ok: true };
 
-      if (ctx.user.role !== 'admin') {
+      if (ctx.user.role !== 'admin' && ctx.user.role !== 'manager') {
         const mySellerId = await sellerIdForUser(ctx.user.id);
         if (existing.sellerId !== mySellerId) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Pedido de outro atendente' });
@@ -204,7 +204,7 @@ export const faturamentoRouter = router({
     }),
 
   // ── Comissões (por atendente — admin) ──────────────────────────────────────
-  setComissao: adminProcedure
+  setComissao: staffProcedure
     .input(z.object({ sellerId: z.number(), pct: z.number() }))
     .mutation(async ({ input }) => {
       await db
@@ -227,7 +227,7 @@ export const faturamentoRouter = router({
       comissoes: z.record(z.string(), z.number()).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const isAdmin = ctx.user.role === 'admin';
+      const isAdmin = ctx.user.role === 'admin' || ctx.user.role === 'manager';
       const mySellerId = isAdmin ? null : await sellerIdForUser(ctx.user.id);
       let produtos = 0, pedidos = 0, comissoes = 0;
 

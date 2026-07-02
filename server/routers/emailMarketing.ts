@@ -2,7 +2,7 @@ import { z } from 'zod';
 import crypto from 'crypto';
 import { eq, and, or, inArray, isNotNull, isNull, ne, gte, desc, asc, count, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
-import { router, adminProcedure, protectedProcedure } from '../trpc';
+import { router, staffProcedure, protectedProcedure } from '../trpc';
 import { db } from '../db';
 import {
   emailTemplateCategories, emailTemplates, emailCampaigns, emailCampaignRecipients, emailSuppressions,
@@ -184,7 +184,7 @@ async function exportEngagementBatch(
 
 export const emailMarketingRouter = router({
   // ── Template Categories ──────────────────────────────────────────────────
-  listTemplateCategories: adminProcedure.query(async () => {
+  listTemplateCategories: staffProcedure.query(async () => {
     try {
       return await db.select().from(emailTemplateCategories).orderBy(emailTemplateCategories.sortOrder, emailTemplateCategories.name);
     } catch {
@@ -192,7 +192,7 @@ export const emailMarketingRouter = router({
     }
   }),
 
-  upsertTemplateCategory: adminProcedure
+  upsertTemplateCategory: staffProcedure
     .input(z.object({ id: z.number().optional(), name: z.string().min(1).max(100), sortOrder: z.number().optional() }))
     .mutation(async ({ input }) => {
       if (input.id) {
@@ -210,7 +210,7 @@ export const emailMarketingRouter = router({
       return created;
     }),
 
-  deleteTemplateCategory: adminProcedure
+  deleteTemplateCategory: staffProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const allTpls = await db.select({ id: emailTemplates.id, categoryIds: emailTemplates.categoryIds }).from(emailTemplates);
@@ -226,7 +226,7 @@ export const emailMarketingRouter = router({
     }),
 
   // ── Templates ──────────────────────────────────────────────────────────────
-  listTemplates: adminProcedure.query(async () => {
+  listTemplates: staffProcedure.query(async () => {
     try {
       return await db.select().from(emailTemplates).orderBy(emailTemplates.name);
     } catch {
@@ -240,7 +240,7 @@ export const emailMarketingRouter = router({
 
   listTemplatesForAttendant: protectedProcedure.query(async ({ ctx }) => {
     const [seller] = await db.select({ emk: sellers.emailMarketingEnabled }).from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
-    if (ctx.user.role !== 'admin' && !seller?.emk) return [];
+    if (ctx.user.role !== 'admin' && ctx.user.role !== 'manager' && !seller?.emk) return [];
     try {
       return await db.select({ id: emailTemplates.id, name: emailTemplates.name, slug: emailTemplates.slug, subject: emailTemplates.subject, htmlBody: emailTemplates.htmlBody, attachments: emailTemplates.attachments, categoryIds: emailTemplates.categoryIds })
         .from(emailTemplates).where(eq(emailTemplates.active, true)).orderBy(emailTemplates.name);
@@ -250,7 +250,7 @@ export const emailMarketingRouter = router({
     }
   }),
 
-  upsertTemplate: adminProcedure
+  upsertTemplate: staffProcedure
     .input(z.object({
       id: z.number().optional(),
       categoryIds: z.array(z.number()).nullable().optional(),
@@ -279,7 +279,7 @@ export const emailMarketingRouter = router({
       return created;
     }),
 
-  deleteTemplate: adminProcedure
+  deleteTemplate: staffProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await db.delete(emailTemplates).where(eq(emailTemplates.id, input.id));
@@ -287,7 +287,7 @@ export const emailMarketingRouter = router({
     }),
 
   // ── Audience / segmentação ────────────────────────────────────────────────
-  audiencePreview: adminProcedure
+  audiencePreview: staffProcedure
     .input(audienceInput)
     .query(async ({ input }) => {
       const rows = await buildAudience(input);
@@ -295,11 +295,11 @@ export const emailMarketingRouter = router({
     }),
 
   // ── Campanhas ──────────────────────────────────────────────────────────────
-  listCampaigns: adminProcedure.query(async () => {
+  listCampaigns: staffProcedure.query(async () => {
     return db.select().from(emailCampaigns).orderBy(desc(emailCampaigns.createdAt));
   }),
 
-  createCampaign: adminProcedure
+  createCampaign: staffProcedure
     .input(z.object({
       name: z.string().min(1).max(200),
       subject: z.string().min(1).max(300),
@@ -337,7 +337,7 @@ export const emailMarketingRouter = router({
   // ── Disparo Rápido (Broadcast) ──────────────────────────────────────────────
   // Envio avulso: lista manual de e-mails + anexos opcionais. Cria uma campanha
   // (is_broadcast) e seus destinatários; o envio reusa o motor processBatch.
-  sendBroadcast: adminProcedure
+  sendBroadcast: staffProcedure
     .input(z.object({
       name: z.string().max(200).optional(),
       subject: z.string().min(1).max(300),
@@ -446,7 +446,7 @@ export const emailMarketingRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const [seller] = await db.select().from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
-      if (ctx.user.role !== 'admin') {
+      if (ctx.user.role !== 'admin' && ctx.user.role !== 'manager') {
         if (!seller?.emailMarketingEnabled) throw new TRPCError({ code: 'FORBIDDEN', message: 'Você não tem permissão para Email Marketing' });
       }
       if (!seller) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Atendente não encontrado. Peça ao admin para configurar seu cadastro.' });
@@ -491,7 +491,7 @@ export const emailMarketingRouter = router({
     }),
 
   // Used by the Tasks page: add selected tasks (leads) directly to a draft campaign.
-  addRecipientsFromTasks: adminProcedure
+  addRecipientsFromTasks: staffProcedure
     .input(z.object({ campaignId: z.number(), taskIds: z.array(z.number()).min(1) }))
     .mutation(async ({ input }) => {
       const [campaign] = await db.select().from(emailCampaigns).where(eq(emailCampaigns.id, input.campaignId));
@@ -546,7 +546,7 @@ export const emailMarketingRouter = router({
       };
     }),
 
-  getCampaign: adminProcedure
+  getCampaign: staffProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
       const [campaign] = await db.select().from(emailCampaigns).where(eq(emailCampaigns.id, input.id));
@@ -558,7 +558,7 @@ export const emailMarketingRouter = router({
       return { campaign, recipients };
     }),
 
-  deleteCampaign: adminProcedure
+  deleteCampaign: staffProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await db.delete(emailCampaignRecipients).where(eq(emailCampaignRecipients.campaignId, input.id));
@@ -573,7 +573,7 @@ export const emailMarketingRouter = router({
   processBatch: protectedProcedure
     .input(z.object({ campaignId: z.number() }))
     .mutation(async ({ input, ctx }) => {
-      if (ctx.user.role !== 'admin') {
+      if (ctx.user.role !== 'admin' && ctx.user.role !== 'manager') {
         const [c] = await db.select({ createdByUserId: emailCampaigns.createdByUserId }).from(emailCampaigns).where(eq(emailCampaigns.id, input.campaignId));
         if (!c || c.createdByUserId !== ctx.user.id) throw new TRPCError({ code: 'FORBIDDEN', message: 'Sem permissão' });
       }
@@ -664,11 +664,11 @@ export const emailMarketingRouter = router({
     }),
 
   // ── Descadastrados ─────────────────────────────────────────────────────────
-  listSuppressions: adminProcedure.query(async () => {
+  listSuppressions: staffProcedure.query(async () => {
     return db.select().from(emailSuppressions).orderBy(desc(emailSuppressions.createdAt)).limit(500);
   }),
 
-  addSuppression: adminProcedure
+  addSuppression: staffProcedure
     .input(z.object({ email: z.string().email(), reason: z.string().optional().default('manual') }))
     .mutation(async ({ input }) => {
       await db.insert(emailSuppressions)
@@ -679,7 +679,7 @@ export const emailMarketingRouter = router({
 
   // ── Tags ───────────────────────────────────────────────────────────────────
   // Autocomplete: distinct tags currently used across tasks.tags.
-  listTags: adminProcedure.query(async () => {
+  listTags: staffProcedure.query(async () => {
     const result = await db.execute<{ tag: string }>(sql`
       SELECT DISTINCT unnest(${tasks.tags}) AS tag
       FROM ${tasks}
@@ -690,7 +690,7 @@ export const emailMarketingRouter = router({
   }),
 
   // ── Sequências ────────────────────────────────────────────────────────────
-  listSequences: adminProcedure.query(async () => {
+  listSequences: staffProcedure.query(async () => {
     const sequencesRows = await db.select().from(emailSequences).orderBy(desc(emailSequences.createdAt));
     if (sequencesRows.length === 0) return [];
 
@@ -713,7 +713,7 @@ export const emailMarketingRouter = router({
     }));
   }),
 
-  upsertSequence: adminProcedure
+  upsertSequence: staffProcedure
     .input(z.object({
       id: z.number().optional(),
       name: z.string().min(1).max(200),
@@ -740,7 +740,7 @@ export const emailMarketingRouter = router({
       return created;
     }),
 
-  deleteSequence: adminProcedure
+  deleteSequence: staffProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const [activeRow] = await db.select({ cnt: count() })
@@ -761,7 +761,7 @@ export const emailMarketingRouter = router({
     }),
 
   // ── Passos da sequência ───────────────────────────────────────────────────
-  listSequenceSteps: adminProcedure
+  listSequenceSteps: staffProcedure
     .input(z.object({ sequenceId: z.number() }))
     .query(async ({ input }) => {
       return db.select().from(emailSequenceSteps)
@@ -769,7 +769,7 @@ export const emailMarketingRouter = router({
         .orderBy(asc(emailSequenceSteps.stepOrder));
     }),
 
-  upsertSequenceStep: adminProcedure
+  upsertSequenceStep: staffProcedure
     .input(z.object({
       id: z.number().optional(),
       sequenceId: z.number(),
@@ -798,7 +798,7 @@ export const emailMarketingRouter = router({
       return created;
     }),
 
-  deleteSequenceStep: adminProcedure
+  deleteSequenceStep: staffProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await db.delete(emailSequenceSteps).where(eq(emailSequenceSteps.id, input.id));
@@ -808,7 +808,7 @@ export const emailMarketingRouter = router({
   // ── Sequências visíveis para atendentes (leitura simplificada) ─────────
   listSequencesForAttendant: protectedProcedure.query(async ({ ctx }) => {
     const [seller] = await db.select({ emk: sellers.emailMarketingEnabled }).from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
-    if (ctx.user.role !== 'admin' && !seller?.emk) return [];
+    if (ctx.user.role !== 'admin' && ctx.user.role !== 'manager' && !seller?.emk) return [];
     const rows = await db.select({ id: emailSequences.id, name: emailSequences.name, active: emailSequences.active })
       .from(emailSequences).where(eq(emailSequences.active, true)).orderBy(emailSequences.name);
     return rows;
@@ -818,7 +818,7 @@ export const emailMarketingRouter = router({
   enrollTasksInSequence: protectedProcedure
     .input(z.object({ sequenceId: z.number(), taskIds: z.array(z.number()).min(1) }))
     .mutation(async ({ input, ctx }) => {
-      if (ctx.user.role !== 'admin') {
+      if (ctx.user.role !== 'admin' && ctx.user.role !== 'manager') {
         const [seller] = await db.select({ emk: sellers.emailMarketingEnabled }).from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
         if (!seller?.emk) throw new TRPCError({ code: 'FORBIDDEN', message: 'Você não tem permissão para Email Marketing' });
       }
@@ -855,7 +855,7 @@ export const emailMarketingRouter = router({
     }),
 
   // ── Inscrições ────────────────────────────────────────────────────────────
-  listEnrollments: adminProcedure
+  listEnrollments: staffProcedure
     .input(z.object({
       sequenceId: z.number(),
       status: z.enum(['active', 'paused', 'completed', 'cancelled']).optional(),
@@ -878,7 +878,7 @@ export const emailMarketingRouter = router({
       return { rows, total: Number(totalRow[0]?.cnt ?? 0) };
     }),
 
-  pauseEnrollment: adminProcedure
+  pauseEnrollment: staffProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const [updated] = await db.update(emailSequenceEnrollments)
@@ -889,7 +889,7 @@ export const emailMarketingRouter = router({
       return updated;
     }),
 
-  resumeEnrollment: adminProcedure
+  resumeEnrollment: staffProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const [enrollment] = await db.select().from(emailSequenceEnrollments).where(eq(emailSequenceEnrollments.id, input.id));
@@ -914,7 +914,7 @@ export const emailMarketingRouter = router({
       return updated;
     }),
 
-  cancelEnrollment: adminProcedure
+  cancelEnrollment: staffProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const [updated] = await db.update(emailSequenceEnrollments)
@@ -926,11 +926,11 @@ export const emailMarketingRouter = router({
     }),
 
   // ── Automações ────────────────────────────────────────────────────────────
-  listAutomationRules: adminProcedure.query(async () => {
+  listAutomationRules: staffProcedure.query(async () => {
     return db.select().from(automationRules).orderBy(desc(automationRules.createdAt));
   }),
 
-  upsertAutomationRule: adminProcedure
+  upsertAutomationRule: staffProcedure
     .input(z.object({
       id: z.number().optional(),
       name: z.string().min(1).max(200),
@@ -967,7 +967,7 @@ export const emailMarketingRouter = router({
       return created;
     }),
 
-  deleteAutomationRule: adminProcedure
+  deleteAutomationRule: staffProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await db.delete(automationRules).where(eq(automationRules.id, input.id));
@@ -975,7 +975,7 @@ export const emailMarketingRouter = router({
     }),
 
   // ── Estatísticas ──────────────────────────────────────────────────────────
-  campaignStats: adminProcedure
+  campaignStats: staffProcedure
     .input(z.object({ campaignId: z.number() }))
     .query(async ({ input }) => {
       // Total de destinatários e enviados (base do funil).
@@ -1020,7 +1020,7 @@ export const emailMarketingRouter = router({
   // Drill-down: lista destinatário por destinatário de uma campanha com o
   // status de engajamento (abriu? clicou? bounce?). Lazy-loaded e paginado
   // para economizar Neon — só roda quando o admin abre o detalhe.
-  campaignRecipients: adminProcedure
+  campaignRecipients: staffProcedure
     .input(z.object({
       campaignId: z.number(),
       engagement: z.enum(['all', 'opened', 'not_opened', 'clicked', 'not_clicked', 'bounced']).optional().default('all'),
@@ -1072,7 +1072,7 @@ export const emailMarketingRouter = router({
       }));
     }),
 
-  sequenceStats: adminProcedure
+  sequenceStats: staffProcedure
     .input(z.object({ sequenceId: z.number() }))
     .query(async ({ input }) => {
       const steps = await db.select().from(emailSequenceSteps)
@@ -1112,7 +1112,7 @@ export const emailMarketingRouter = router({
   // Drill-down: lista contato por contato (inscrição) de uma sequência com o
   // status de engajamento agregado de TODOS os passos. Permite ver exatamente
   // quem abriu / não abriu / clicou nos e-mails da sequência. Lazy + paginado.
-  sequenceRecipients: adminProcedure
+  sequenceRecipients: staffProcedure
     .input(z.object({
       sequenceId: z.number(),
       engagement: z.enum(['all', 'opened', 'not_opened', 'clicked', 'not_clicked']).optional().default('all'),
@@ -1165,7 +1165,7 @@ export const emailMarketingRouter = router({
       }));
     }),
 
-  usageStats: adminProcedure.query(async () => {
+  usageStats: staffProcedure.query(async () => {
     const accounts = await getUsage();
     const totals = accounts.reduce(
       (acc, a) => ({
@@ -1190,14 +1190,14 @@ export const emailMarketingRouter = router({
   // Resend open/click tracking is DOMAIN-LEVEL, not per-email. This surfaces the
   // current tracking flags per sending domain so the admin can confirm whether
   // open tracking is actually enabled (the root cause of 0% open rates).
-  domainTrackingStatus: adminProcedure.query(async () => {
+  domainTrackingStatus: staffProcedure.query(async () => {
     const domains = await getAllDomainTracking();
     return { domains, allOpenTrackingOn: domains.length > 0 && domains.every(d => d.openTracking) };
   }),
 
   // Enables open/click tracking for a Resend domain via PATCH /domains/:id —
   // the only programmatic way to turn it on (no per-email switch exists).
-  enableDomainTracking: adminProcedure
+  enableDomainTracking: staffProcedure
     .input(z.object({
       accountKey: z.string(),
       domainId: z.string(),
@@ -1217,7 +1217,7 @@ export const emailMarketingRouter = router({
       return result;
     }),
 
-  overviewStats: adminProcedure.query(async () => {
+  overviewStats: staffProcedure.query(async () => {
     // Funil GERAL e consistente. O segredo: contamos tudo sobre o MESMO
     // conjunto de mensagens (as que têm registro de envio), cruzando com os
     // eventos por message_id. Isso garante enviados ≥ entregues ≥ abriram ≥
@@ -1395,7 +1395,7 @@ export const emailMarketingRouter = router({
   // associação de um lead a uma campanha direto no card da tarefa. Ajusta os
   // contadores desnormalizados de email_campaigns para manter as estatísticas
   // consistentes.
-  removeCampaignRecipient: adminProcedure
+  removeCampaignRecipient: staffProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const [recipient] = await db.select().from(emailCampaignRecipients).where(eq(emailCampaignRecipients.id, input.id));
@@ -1427,7 +1427,7 @@ export const emailMarketingRouter = router({
   }),
 
   // ── Contatos (agregação de todos os e-mails do sistema) ─────────────────
-  contactStats: adminProcedure.query(async () => {
+  contactStats: staffProcedure.query(async () => {
     // Leads confirmados (entram na base de contatos) vs. pendentes de confirmação.
     const [confirmedRow] = await db.select({ cnt: sql<number>`COUNT(DISTINCT lower(trim(${tasks.email})))::int` })
       .from(tasks)
@@ -1464,7 +1464,7 @@ export const emailMarketingRouter = router({
     };
   }),
 
-  listContacts: adminProcedure
+  listContacts: staffProcedure
     .input(z.object({
       search: z.string().optional(),
       source: z.enum(['all', 'leads', 'clients']).default('all'),
@@ -1564,7 +1564,7 @@ export const emailMarketingRouter = router({
       return { contacts: page, total };
     }),
 
-  removeSuppression: adminProcedure
+  removeSuppression: staffProcedure
     .input(z.object({ email: z.string().email() }))
     .mutation(async ({ input }) => {
       await db.delete(emailSuppressions).where(eq(emailSuppressions.email, input.email.toLowerCase().trim()));
@@ -1575,7 +1575,7 @@ export const emailMarketingRouter = router({
   // CSV de leads com filtros avançados (tags, conversão, inatividade,
   // engajamento de e-mail e leads quentes). Sem N+1: uma query para as tasks
   // e uma query batched para o engajamento.
-  exportLeads: adminProcedure
+  exportLeads: staffProcedure
     .input(z.object({
       tags: z.array(z.string()).optional(),
       converted: z.enum(['yes', 'no']).optional(),
@@ -1650,7 +1650,7 @@ export const emailMarketingRouter = router({
 
   // ── Marketing Contacts (standalone CSV-imported leads) ────────────────────
 
-  importMarketingContacts: adminProcedure
+  importMarketingContacts: staffProcedure
     .input(z.object({
       contacts: z.array(z.object({
         email: z.string(),
@@ -1780,7 +1780,7 @@ export const emailMarketingRouter = router({
       };
     }),
 
-  listMarketingContacts: adminProcedure
+  listMarketingContacts: staffProcedure
     .input(z.object({
       search: z.string().optional(),
       tags: z.array(z.string()).optional(),
@@ -1819,7 +1819,7 @@ export const emailMarketingRouter = router({
       return { contacts: rows, total: Number(totalRow[0]?.cnt ?? 0) };
     }),
 
-  marketingContactStats: adminProcedure.query(async () => {
+  marketingContactStats: staffProcedure.query(async () => {
     const [totalRow] = await db.select({ cnt: count() }).from(marketingContacts);
     const [activeRow] = await db.select({ cnt: count() }).from(marketingContacts).where(eq(marketingContacts.status, 'active'));
     const [unsubRow] = await db.select({ cnt: count() }).from(marketingContacts).where(eq(marketingContacts.status, 'unsubscribed'));
@@ -1842,7 +1842,7 @@ export const emailMarketingRouter = router({
 
   // Panorama dos contatos importados — agregações para tomada de decisão.
   // Tudo via GROUP BY/COUNT (não traz linhas), barato no plano free da Neon.
-  contactsOverview: adminProcedure.query(async () => {
+  contactsOverview: staffProcedure.query(async () => {
     const aggRes = await db.execute<{
       total: number; active: number; unsubscribed: number;
       with_phone: number; with_company: number; with_location: number; with_name: number;
@@ -1909,7 +1909,7 @@ export const emailMarketingRouter = router({
     };
   }),
 
-  updateMarketingContact: adminProcedure
+  updateMarketingContact: staffProcedure
     .input(z.object({
       id: z.number(),
       name: z.string().optional(),
@@ -1939,14 +1939,14 @@ export const emailMarketingRouter = router({
       return updated;
     }),
 
-  deleteMarketingContacts: adminProcedure
+  deleteMarketingContacts: staffProcedure
     .input(z.object({ ids: z.array(z.number()).min(1) }))
     .mutation(async ({ input }) => {
       await db.delete(marketingContacts).where(inArray(marketingContacts.id, input.ids));
       return { deleted: input.ids.length };
     }),
 
-  tagMarketingContacts: adminProcedure
+  tagMarketingContacts: staffProcedure
     .input(z.object({
       ids: z.array(z.number()).min(1),
       addTags: z.array(z.string()).optional(),
@@ -1978,7 +1978,7 @@ export const emailMarketingRouter = router({
       return { ok: true };
     }),
 
-  listMarketingContactTags: adminProcedure.query(async () => {
+  listMarketingContactTags: staffProcedure.query(async () => {
     const result = await db.execute<{ tag: string }>(sql`
       SELECT DISTINCT unnest(${marketingContacts.tags}) AS tag
       FROM ${marketingContacts}
@@ -1988,7 +1988,7 @@ export const emailMarketingRouter = router({
     return result.rows.map(r => r.tag);
   }),
 
-  enrollMarketingContactsInSequence: adminProcedure
+  enrollMarketingContactsInSequence: staffProcedure
     .input(z.object({
       sequenceId: z.number(),
       contactIds: z.array(z.number()).min(1),
@@ -2022,7 +2022,7 @@ export const emailMarketingRouter = router({
       return { enrolled, skipped };
     }),
 
-  unsubscribeMarketingContact: adminProcedure
+  unsubscribeMarketingContact: staffProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const [contact] = await db.select({ email: marketingContacts.email })
@@ -2043,11 +2043,11 @@ export const emailMarketingRouter = router({
 
   // ── Marketing Lists ────────────────────────────────────────────────────────
 
-  listMarketingLists: adminProcedure.query(async () => {
+  listMarketingLists: staffProcedure.query(async () => {
     return db.select().from(marketingLists).orderBy(desc(marketingLists.updatedAt));
   }),
 
-  upsertMarketingList: adminProcedure
+  upsertMarketingList: staffProcedure
     .input(z.object({
       id: z.number().optional(),
       name: z.string().min(1).max(200),
@@ -2068,7 +2068,7 @@ export const emailMarketingRouter = router({
       return created;
     }),
 
-  deleteMarketingList: adminProcedure
+  deleteMarketingList: staffProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await db.update(marketingContacts)
@@ -2078,7 +2078,7 @@ export const emailMarketingRouter = router({
       return { ok: true };
     }),
 
-  dashboardEmailStats: adminProcedure.query(async () => {
+  dashboardEmailStats: staffProcedure.query(async () => {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const today = todayStart.toISOString().slice(0, 10);
@@ -2232,7 +2232,7 @@ export const emailMarketingRouter = router({
     };
   }),
 
-  moveContactsToList: adminProcedure
+  moveContactsToList: staffProcedure
     .input(z.object({
       contactIds: z.array(z.number()).min(1),
       listId: z.number().nullable(),

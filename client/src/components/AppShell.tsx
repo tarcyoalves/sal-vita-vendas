@@ -26,7 +26,7 @@ interface NavItem {
   label: string;
   path?: string;
   icon: React.ReactNode;
-  roles: ("admin" | "user")[];
+  roles: ("admin" | "manager" | "user")[];
   children?: { label: string; path: string; icon: React.ReactNode; external?: boolean }[];
   external?: boolean;
 }
@@ -36,13 +36,13 @@ const NAV_ITEMS: NavItem[] = [
     label: "Dashboard",
     path: "/admin/dashboard",
     icon: <LayoutDashboard size={18} />,
-    roles: ["admin"],
+    roles: ["admin", "manager"],
   },
   {
     label: "Tarefas",
     path: "/tasks",
     icon: <CheckSquare size={18} />,
-    roles: ["admin"],
+    roles: ["admin", "manager"],
   },
   {
     label: "Atendentes",
@@ -54,13 +54,13 @@ const NAV_ITEMS: NavItem[] = [
     label: "E-mail Marketing",
     path: "/admin/email-marketing",
     icon: <Mail size={18} />,
-    roles: ["admin"],
+    roles: ["admin", "manager"],
   },
   {
     label: "Faturamento",
     path: "/admin/faturamento",
     icon: <DollarSign size={18} />,
-    roles: ["admin"],
+    roles: ["admin", "manager"],
   },
   {
     label: "Inteligência IA",
@@ -98,6 +98,13 @@ const BOTTOM_NAV_ADMIN = [
   { label: "Tarefas",    path: "/tasks",            icon: <CheckSquare size={22} /> },
   { label: "Atendentes", path: "/attendants",       icon: <Users size={22} /> },
   { label: "Chat IA",    path: "/ai-chat",          icon: <MessageSquare size={22} /> },
+];
+
+const BOTTOM_NAV_MANAGER = [
+  { label: "Dashboard", path: "/admin/dashboard",      icon: <LayoutDashboard size={22} /> },
+  { label: "Tarefas",   path: "/tasks",                icon: <CheckSquare size={22} /> },
+  { label: "E-mail",    path: "/admin/email-marketing", icon: <Mail size={22} /> },
+  { label: "Faturamento", path: "/admin/faturamento",  icon: <DollarSign size={22} /> },
 ];
 
 const BOTTOM_NAV_USER = [
@@ -142,13 +149,13 @@ export default function AppShell({ children }: AppShellProps) {
     return () => document.body.classList.remove("overflow-hidden");
   }, [sidebarOpen]);
 
-  const role = (user?.role ?? "user") as "admin" | "user";
+  const role = (user?.role ?? "user") as "admin" | "manager" | "user";
   const { data: pendingDeletions } = trpc.tasks.deletionLogs.useQuery(
     { onlyUnreviewed: true },
     { enabled: role === "admin", refetchInterval: 120_000, staleTime: 90_000, select: (d) => d.length }
   );
   const visibleItems = NAV_ITEMS.filter((item) => item.roles.includes(role));
-  const bottomNavItems = role === "admin" ? BOTTOM_NAV_ADMIN : BOTTOM_NAV_USER;
+  const bottomNavItems = role === "admin" ? BOTTOM_NAV_ADMIN : role === "manager" ? BOTTOM_NAV_MANAGER : BOTTOM_NAV_USER;
 
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [pwdForm, setPwdForm] = useState({ current: "", next: "", confirm: "" });
@@ -271,7 +278,7 @@ export default function AppShell({ children }: AppShellProps) {
           alt="Sal Vita"
           style={{ height: "42px" }}
           className="cursor-pointer rounded-lg object-contain"
-          onClick={() => setLocation(role === "admin" ? "/admin/dashboard" : "/tasks")}
+          onClick={() => setLocation(role === "admin" || role === "manager" ? "/admin/dashboard" : "/tasks")}
         />
       </div>
 
@@ -407,7 +414,7 @@ export default function AppShell({ children }: AppShellProps) {
           {/* Mobile: show logo instead of hamburger */}
           <button
             className="md:hidden p-1.5 bg-slate-800 rounded-xl flex-shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center"
-            onClick={() => setLocation(role === "admin" ? "/admin/dashboard" : "/tasks")}
+            onClick={() => setLocation(role === "admin" || role === "manager" ? "/admin/dashboard" : "/tasks")}
           >
             <img
               src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"

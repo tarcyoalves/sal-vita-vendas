@@ -16,7 +16,7 @@ const TAB_TRIGGER_CLASS =
 export default function Faturamento() {
   const { user } = useAuth();
 
-  if (!user || user.role !== "admin") {
+  if (!user || (user.role !== "admin" && user.role !== "manager")) {
     return <div className="p-4">Acesso negado</div>;
   }
 

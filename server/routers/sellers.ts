@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { randomInt } from 'crypto';
-import { router, protectedProcedure, adminProcedure, invalidateUserCache } from '../trpc';
+import { router, protectedProcedure, adminProcedure, staffProcedure, invalidateUserCache } from '../trpc';
 import { db } from '../db';
 import { sellers, users, tasks } from '../db/schema';
 import { hashPassword } from '../auth';
@@ -130,10 +130,13 @@ export const sellersRouter = router({
       return updated;
     }),
 
+  // role: 'admin' (acesso total — não concedido por aqui, só manualmente no banco),
+  // 'manager' (atendente promovido: dashboard, próprias tarefas, e-mail marketing e
+  // faturamento completos, sem IA nem gestão de atendentes/clientes), 'user' (atendente).
   updateRole: adminProcedure
     .input(z.object({
       sellerId: z.number(),
-      role: z.enum(['admin', 'user']),
+      role: z.enum(['admin', 'manager', 'user']),
     }))
     .mutation(async ({ input }) => {
       const [seller] = await db.select().from(sellers).where(eq(sellers.id, input.sellerId));
@@ -174,15 +177,25 @@ export const sellersRouter = router({
     return seller ?? null;
   }),
 
-  updateMySignature: protectedProcedure
+  // Restrito a admin/manager — atendentes comuns não configuram a própria
+  // assinatura (é o admin quem cadastra, em /attendants). Cria o registro em
+  // `sellers` automaticamente se o admin ainda não tiver um (ex.: conta criada
+  // direto como admin, nunca passou por sellers.create).
+  updateMySignature: staffProcedure
     .input(z.object({
       emailSignatureHtml: z.string().max(10000),
       emailSignatureImageUrl: z.string().max(1000).optional(),
       emailSignatureEnabled: z.boolean(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const [seller] = await db.select({ id: sellers.id }).from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
-      if (!seller) throw new Error('Atendente não encontrado');
+      let [seller] = await db.select({ id: sellers.id }).from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
+      if (!seller) {
+        [seller] = await db.insert(sellers).values({
+          userId: ctx.user.id,
+          name: ctx.user.name,
+          email: ctx.user.email,
+        }).returning({ id: sellers.id });
+      }
 
       const [updated] = await db.update(sellers).set({
         emailSignatureHtml: sanitizeSignatureHtml(input.emailSignatureHtml),

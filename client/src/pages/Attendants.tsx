@@ -2,7 +2,7 @@ import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import DOMPurify from 'dompurify';
 import { toast } from "sonner";
 import { useFatStore } from '../lib/faturamento/store';
@@ -70,6 +70,18 @@ export default function Attendants() {
   const [signatureForm, setSignatureForm] = useState({ enabled: true, html: "", imageUrl: "" });
   const signatureMutation = trpc.sellers.update.useMutation();
 
+  // ── Minha assinatura de e-mail (o próprio admin/gerente logado) ──────────
+  const [showMySignature, setShowMySignature] = useState(false);
+  const [mySignatureForm, setMySignatureForm] = useState({ enabled: true, html: "", imageUrl: "" });
+  const [mySignatureLoaded, setMySignatureLoaded] = useState(false);
+  const { data: myProfile } = trpc.sellers.myProfile.useQuery(undefined, { enabled: showMySignature });
+  const mySignatureMutation = trpc.sellers.updateMySignature.useMutation();
+
+  const handleMySignatureOpen = () => {
+    setMySignatureLoaded(false);
+    setShowMySignature(true);
+  };
+
   // ── Restrição de IP ──────────────────────────────────────────────────────
   const [ipAttendant, setIpAttendant] = useState<Attendant | null>(null);
   const [ipEnabled, setIpEnabled] = useState(false);
@@ -85,7 +97,7 @@ export default function Attendants() {
   // ── Filtro avançado ──────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all");
-  const [filterRole, setFilterRole] = useState<"all" | "admin" | "user">("all");
+  const [filterRole, setFilterRole] = useState<"all" | "admin" | "manager" | "user">("all");
   const [onlyAlerts, setOnlyAlerts] = useState(false);
   const createMutation = trpc.sellers.create.useMutation();
   const updateMutation = trpc.sellers.update.useMutation();
@@ -181,9 +193,13 @@ export default function Attendants() {
     }
   };
 
+  // Promoção concede o papel "manager" (acesso restrito: dashboard, próprias
+  // tarefas, e-mail marketing e faturamento completos, sem IA nem gestão de
+  // atendentes/clientes). O papel "admin" pleno (acesso total) não é concedido
+  // por aqui — só manualmente no banco, reservado para o admin principal.
   const handleToggleRole = async (attendant: Attendant) => {
-    const newRole = attendant.userRole === 'admin' ? 'user' : 'admin';
-    const label = newRole === 'admin' ? 'promovido a Admin' : 'rebaixado para Atendente';
+    const newRole = attendant.userRole === 'user' || !attendant.userRole ? 'manager' : 'user';
+    const label = newRole === 'manager' ? 'promovido a Gerente' : 'rebaixado para Atendente';
     try {
       await updateRoleMutation.mutateAsync({ sellerId: attendant.id, role: newRole });
       toast.success(`${attendant.name} foi ${label}! Peça para ele atualizar a página (F5).`, { duration: 6000 });
@@ -297,6 +313,42 @@ export default function Attendants() {
     }
   };
 
+  useEffect(() => {
+    if (!showMySignature || !myProfile || mySignatureLoaded) return;
+    setMySignatureForm({
+      enabled: myProfile.emailSignatureEnabled ?? true,
+      html: myProfile.emailSignatureHtml ?? "",
+      imageUrl: myProfile.emailSignatureImageUrl ?? "",
+    });
+    setMySignatureLoaded(true);
+  }, [showMySignature, myProfile, mySignatureLoaded]);
+
+  const handleMySignatureGenerate = () => {
+    const imgLine = mySignatureForm.imageUrl.trim()
+      ? `<br><img src="${mySignatureForm.imageUrl.trim()}" alt="Assinatura de ${user?.name ?? ''}" style="max-width:220px;display:block;margin-top:8px;">`
+      : '';
+    const html = `<p style="margin:0;font-weight:bold;color:#0C3680;">${user?.name ?? ''}</p>` +
+      `<br><p style="margin:0;">📞 ${myProfile?.phone ?? ''}</p>` +
+      `<br><p style="margin:0;">✉️ ${user?.email ?? ''}</p>` +
+      `<br><p style="margin:8px 0 0;font-size:11px;color:#888;"><strong>Sal Vita</strong> — Sal Marinho Premium de Mossoró/RN</p>` +
+      imgLine;
+    setMySignatureForm(f => ({ ...f, html }));
+  };
+
+  const handleMySignatureSave = async () => {
+    try {
+      await mySignatureMutation.mutateAsync({
+        emailSignatureHtml: mySignatureForm.html,
+        emailSignatureImageUrl: mySignatureForm.imageUrl,
+        emailSignatureEnabled: mySignatureForm.enabled,
+      });
+      toast.success("Sua assinatura de e-mail foi salva!");
+      setShowMySignature(false);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Erro ao salvar assinatura");
+    }
+  };
+
   // ── Aplica filtro avançado (tudo client-side, sem novas queries) ──────────
   const filteredAttendants = useMemo(() => {
     let result = attendants as Attendant[];
@@ -304,7 +356,7 @@ export default function Attendants() {
       result = result.filter(a => (a.status ?? "active") === filterStatus);
     }
     if (filterRole !== "all") {
-      result = result.filter(a => (a.userRole === "admin" ? "admin" : "user") === filterRole);
+      result = result.filter(a => (a.userRole === "admin" || a.userRole === "manager" ? a.userRole : "user") === filterRole);
     }
     if (onlyAlerts) {
       result = result.filter(a => fraudAlerts.some(al => al.sellerName === a.name));
@@ -409,13 +461,18 @@ export default function Attendants() {
           </div>
         )}
 
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center gap-2 flex-wrap">
           <h2 className="text-lg font-semibold text-gray-700">
             {attendants.length} atendente{attendants.length !== 1 ? 's' : ''} cadastrado{attendants.length !== 1 ? 's' : ''}
           </h2>
-          <Button onClick={() => { setFormData({ name: "", email: "", phone: "", department: "", dailyGoal: 100, workHoursGoal: 8, status: "active" }); setShowForm(!showForm); }}>
-            {showForm ? "❌ Cancelar" : "➕ Novo Atendente"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50" onClick={handleMySignatureOpen}>
+              ✉️ Minha assinatura
+            </Button>
+            <Button onClick={() => { setFormData({ name: "", email: "", phone: "", department: "", dailyGoal: 100, workHoursGoal: 8, status: "active" }); setShowForm(!showForm); }}>
+              {showForm ? "❌ Cancelar" : "➕ Novo Atendente"}
+            </Button>
+          </div>
         </div>
 
         {/* Filtro avançado */}
@@ -464,6 +521,7 @@ export default function Attendants() {
                 <select value={filterRole} onChange={(e) => setFilterRole(e.target.value as any)} className="w-full px-3 py-2 border rounded-lg text-sm">
                   <option value="all">Todas</option>
                   <option value="admin">👑 Admins</option>
+                  <option value="manager">🧑‍💼 Gerentes</option>
                   <option value="user">👤 Atendentes</option>
                 </select>
               </div>
@@ -573,8 +631,12 @@ export default function Attendants() {
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${attendant.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                           {attendant.status === "active" ? "✅ Ativo" : "❌ Inativo"}
                         </span>
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${attendant.userRole === "admin" ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>
-                          {attendant.userRole === "admin" ? "👑 Admin" : "👤 Atendente"}
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                          attendant.userRole === "admin" ? "bg-purple-100 text-purple-700"
+                          : attendant.userRole === "manager" ? "bg-blue-100 text-blue-700"
+                          : "bg-gray-100 text-gray-600"
+                        }`}>
+                          {attendant.userRole === "admin" ? "👑 Admin" : attendant.userRole === "manager" ? "🧑‍💼 Gerente" : "👤 Atendente"}
                         </span>
                         {attendant.emailMarketingEnabled && (
                           <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
@@ -617,15 +679,17 @@ export default function Attendants() {
                       >
                         {attendant.ipRestrictionEnabled ? '🔒 IP Restrito' : '🌐 Restringir IP'}
                       </Button>
-                      <Button
-                        size="sm"
-                        variant={attendant.userRole === "admin" ? "outline" : "default"}
-                        className="w-full"
-                        onClick={() => handleToggleRole(attendant)}
-                        disabled={updateRoleMutation.isPending}
-                      >
-                        {attendant.userRole === "admin" ? "⬇️ Rebaixar para Atendente" : "👑 Promover a Admin"}
-                      </Button>
+                      {attendant.userRole !== "admin" && (
+                        <Button
+                          size="sm"
+                          variant={attendant.userRole === "manager" ? "outline" : "default"}
+                          className="w-full"
+                          onClick={() => handleToggleRole(attendant)}
+                          disabled={updateRoleMutation.isPending}
+                        >
+                          {attendant.userRole === "manager" ? "⬇️ Rebaixar para Atendente" : "🧑‍💼 Promover a Gerente"}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -823,6 +887,83 @@ export default function Attendants() {
                 {ipMutation.isPending ? "Salvando..." : "Salvar"}
               </Button>
               <Button type="button" variant="outline" onClick={() => setIpAttendant(null)}>Cancelar</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Minha assinatura de e-mail (admin/gerente logado) */}
+        <Dialog open={showMySignature} onOpenChange={(open) => { if (!open) setShowMySignature(false); }}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>✉️ Minha assinatura de e-mail</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <p className="text-xs text-gray-500">
+                Essa assinatura é anexada automaticamente aos e-mails das suas campanhas e sequências
+                de e-mail marketing.
+              </p>
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none px-3 py-2 border rounded-lg hover:bg-gray-50">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={mySignatureForm.enabled}
+                  onChange={(e) => setMySignatureForm(f => ({ ...f, enabled: e.target.checked }))}
+                />
+                Anexar esta assinatura nos meus e-mails de campanhas/sequências
+              </label>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">URL de uma imagem (opcional)</label>
+                <input
+                  type="text"
+                  value={mySignatureForm.imageUrl}
+                  onChange={(e) => setMySignatureForm(f => ({ ...f, imageUrl: e.target.value }))}
+                  placeholder="https://exemplo.com/assinatura.png"
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Imagens vêm bloqueadas por padrão em vários e-mails (Gmail, Outlook) — por isso
+                  recomendamos manter também a versão em texto.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={handleMySignatureGenerate}>
+                  ✨ Gerar HTML a partir dos meus dados
+                </Button>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">HTML da assinatura</label>
+                <textarea
+                  value={mySignatureForm.html}
+                  onChange={(e) => setMySignatureForm(f => ({ ...f, html: e.target.value }))}
+                  rows={8}
+                  className="w-full px-3 py-2 border rounded-lg text-sm font-mono"
+                  placeholder="<p>Seu nome</p><br><p>Seu telefone</p>"
+                />
+              </div>
+
+              {mySignatureForm.html.trim() && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Pré-visualização</label>
+                  <div
+                    className="border rounded-lg p-4 bg-gray-50 text-sm"
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(mySignatureForm.html) }}
+                  />
+                </div>
+              )}
+            </div>
+            <DialogFooter className="flex gap-2 pt-2">
+              <Button
+                type="button"
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                onClick={handleMySignatureSave}
+                disabled={mySignatureMutation.isPending}
+              >
+                {mySignatureMutation.isPending ? "Salvando..." : "✅ Salvar assinatura"}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setShowMySignature(false)}>Cancelar</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

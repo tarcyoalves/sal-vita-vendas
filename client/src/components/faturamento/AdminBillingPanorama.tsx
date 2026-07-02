@@ -60,7 +60,7 @@ function KpiTile({ label, value, sub, icon, color, bgColor }: KpiTileProps) {
 export default function AdminBillingPanorama() {
   const [filtro, setFiltro] = useState<FiltroMes>(mesAtual);
   const { pedidos, comissoes } = useFatStore();
-  const { data: sellers = [] } = trpc.sellers.listWithRole.useQuery();
+  const { data: sellers = [] } = trpc.sellers.list.useQuery();
 
   const sellerList = useMemo(
     () => (sellers as { id: number; name: string }[]).map((s) => ({ id: s.id, name: s.name })),

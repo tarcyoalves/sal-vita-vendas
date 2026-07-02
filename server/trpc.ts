@@ -105,3 +105,13 @@ export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   }
   return next({ ctx });
 });
+
+// 'manager' = atendente promovido com acesso restrito (dashboard, próprias
+// tarefas, e-mail marketing e faturamento completos — sem IA nem gestão de
+// atendentes/clientes). staffProcedure cobre 'admin' (acesso total) e 'manager'.
+export const staffProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== 'admin' && ctx.user.role !== 'manager') {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso restrito' });
+  }
+  return next({ ctx });
+});

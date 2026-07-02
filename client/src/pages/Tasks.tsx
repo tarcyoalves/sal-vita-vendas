@@ -269,7 +269,9 @@ export default function Tasks() {
   };
 
   // ── E-mail Marketing: permission check ──────────────────────────────────────
-  const canEmailMarketing = isAdmin || (sellerProfile?.emailMarketingEnabled ?? false);
+  // Gerente (role='manager') tem e-mail marketing completo, como o admin, sem
+  // depender do toggle emailMarketingEnabled por atendente.
+  const canEmailMarketing = isAdmin || user?.role === 'manager' || (sellerProfile?.emailMarketingEnabled ?? false);
 
   // ── E-mail Marketing: enroll task(s) in a sequence ──────────────────────────
   // Carregadas assim que a página abre (não só quando um popup pede) — a lista
