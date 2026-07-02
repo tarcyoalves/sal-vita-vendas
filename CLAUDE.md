@@ -216,6 +216,21 @@ node_modules/.bin/esbuild api/index.ts --bundle --platform=node --target=node20 
 ## Skills
 
 Skills do projeto ficam em `.claude/skills/` (algumas via symlink para
-`.agents/skills/`). A skill `task-observer` está disponível para capturar
-melhorias de skills durante sessões de trabalho — invoque-a quando o usuário
-pedir observação/melhoria de skills.
+`.agents/skills/`).
+
+At the start of any task-oriented session — any interaction where you will
+use tools and produce deliverables — invoke the task-observer skill before
+beginning work. This ensures skill improvement opportunities are captured
+throughout the session.
+
+## Design Context
+
+O contexto estratégico e visual do produto vive em dois arquivos na raiz,
+lidos pelas skills de design (impeccable etc.):
+
+- `PRODUCT.md` — register (product), usuários, propósito, personalidade da
+  marca, anti-referências e princípios de design
+- `DESIGN.md` — tokens de cor (light/dark), tipografia, radius, componentes
+  shadcn/ui e regras de layout
+
+Consulte-os antes de qualquer trabalho de UI.
