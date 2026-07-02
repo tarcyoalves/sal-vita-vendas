@@ -212,3 +212,10 @@ node_modules/.bin/esbuild api/index.ts --bundle --platform=node --target=node20 
 - Azul principal: `#0C3680`
 - Azul Tailwind equivalente: `blue-900` / `blue-800`
 - Sidebar: `bg-slate-800` / `bg-slate-900`
+
+## Skills
+
+Skills do projeto ficam em `.claude/skills/` (algumas via symlink para
+`.agents/skills/`). A skill `task-observer` está disponível para capturar
+melhorias de skills durante sessões de trabalho — invoque-a quando o usuário
+pedir observação/melhoria de skills.
