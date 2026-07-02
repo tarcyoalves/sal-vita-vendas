@@ -2,8 +2,10 @@ import { trpc } from '../lib/trpc';
 import { useAuth } from '../_core/hooks/useAuth';
 import { useMemo, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import DOMPurify from 'dompurify';
 import { Phone, Clock, Zap, TrendingUp, AlertCircle, Trophy } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Button } from '../components/ui/button';
 import AttendantBilling from '../components/faturamento/AttendantBilling';
 
 // Sellers created before dailyGoal was wired up still carry the old default of 10
@@ -52,6 +54,61 @@ export default function AttendantProgress() {
   }, [session]);
 
   const prevContactsRef = useRef<number>(-1);
+
+  // ── Minha assinatura de e-mail (usada em campanhas/sequências de e-mail marketing) ──
+  const [signatureForm, setSignatureForm] = useState({ enabled: true, html: "", imageUrl: "" });
+  const [signatureLoaded, setSignatureLoaded] = useState(false);
+  const updateSignatureMutation = trpc.sellers.updateMySignature.useMutation();
+
+  useEffect(() => {
+    if (!sellerProfile || signatureLoaded) return;
+    setSignatureForm({
+      enabled: sellerProfile.emailSignatureEnabled ?? true,
+      html: sellerProfile.emailSignatureHtml ?? "",
+      imageUrl: sellerProfile.emailSignatureImageUrl ?? "",
+    });
+    setSignatureLoaded(true);
+  }, [sellerProfile, signatureLoaded]);
+
+  const handleSignatureGenerate = () => {
+    const imgLine = signatureForm.imageUrl.trim()
+      ? `<br><img src="${signatureForm.imageUrl.trim()}" alt="Assinatura de {atendente_nome}" style="max-width:220px;display:block;margin-top:8px;">`
+      : '';
+    const html = `<p style="margin:0;font-weight:bold;color:#0C3680;">{atendente_nome}</p>` +
+      `<br><p style="margin:0;">{atendente_cargo}</p>` +
+      `<br><p style="margin:0;">📞 {atendente_telefone}</p>` +
+      `<br><p style="margin:0;">✉️ {atendente_email}</p>` +
+      `<br><p style="margin:8px 0 0;font-size:11px;color:#888;"><strong>Sal Vita</strong> — Sal Marinho Premium de Mossoró/RN</p>` +
+      imgLine;
+    setSignatureForm(f => ({ ...f, html }));
+  };
+
+  const signaturePreviewHtml = useMemo(() => {
+    const tokens: Record<string, string> = {
+      '{atendente_nome}': sellerProfile?.name || user?.name || '',
+      '{atendente_telefone}': sellerProfile?.phone || '',
+      '{atendente_email}': sellerProfile?.email || '',
+      '{atendente_cargo}': sellerProfile?.department || '',
+    };
+    let preview = signatureForm.html;
+    for (const [token, value] of Object.entries(tokens)) {
+      preview = preview.split(token).join(value);
+    }
+    return preview;
+  }, [signatureForm.html, sellerProfile, user]);
+
+  const handleSignatureSave = async () => {
+    try {
+      await updateSignatureMutation.mutateAsync({
+        emailSignatureHtml: signatureForm.html,
+        emailSignatureImageUrl: signatureForm.imageUrl,
+        emailSignatureEnabled: signatureForm.enabled,
+      });
+      toast.success("✅ Assinatura de e-mail salva! Suas próximas campanhas e sequências vão usá-la.");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Erro ao salvar assinatura");
+    }
+  };
 
   const m = useMemo(() => {
     const now = new Date();
@@ -153,6 +210,7 @@ export default function AttendantProgress() {
         <TabsList className="w-full mb-4">
           <TabsTrigger value="progresso" className="flex-1">Progresso</TabsTrigger>
           <TabsTrigger value="faturamento" className="flex-1">Faturamento</TabsTrigger>
+          <TabsTrigger value="assinatura" className="flex-1">✉️ Assinatura</TabsTrigger>
         </TabsList>
 
         <TabsContent value="progresso">
@@ -320,6 +378,84 @@ export default function AttendantProgress() {
 
         <TabsContent value="faturamento">
           <AttendantBilling />
+        </TabsContent>
+
+        <TabsContent value="assinatura">
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-lg font-bold text-gray-800">✉️ Minha assinatura de e-mail</h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Essa assinatura é anexada automaticamente aos e-mails das suas campanhas e
+                sequências de e-mail marketing — não precisa configurar nada em cada envio.
+              </p>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none px-3 py-2 border rounded-lg hover:bg-gray-50">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={signatureForm.enabled}
+                onChange={(e) => setSignatureForm(f => ({ ...f, enabled: e.target.checked }))}
+              />
+              Anexar esta assinatura nos e-mails enviados para meus leads/clientes
+            </label>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">URL de uma imagem (opcional)</label>
+              <input
+                type="text"
+                value={signatureForm.imageUrl}
+                onChange={(e) => setSignatureForm(f => ({ ...f, imageUrl: e.target.value }))}
+                placeholder="https://exemplo.com/assinatura.png"
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Se você já tem uma imagem hospedada (ex: foto/logo), cole a URL aqui e use o botão
+                abaixo para inseri-la no HTML. Imagens vêm bloqueadas por padrão em vários e-mails
+                (Gmail, Outlook) — por isso recomendamos manter também a versão em texto.
+              </p>
+            </div>
+
+            <Button type="button" size="sm" variant="outline" onClick={handleSignatureGenerate}>
+              ✨ Gerar HTML a partir dos meus dados
+            </Button>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">HTML da assinatura</label>
+              <textarea
+                value={signatureForm.html}
+                onChange={(e) => setSignatureForm(f => ({ ...f, html: e.target.value }))}
+                rows={8}
+                className="w-full px-3 py-2 border rounded-lg text-sm font-mono"
+                placeholder="<p>{atendente_nome}</p><br><p>{atendente_telefone}</p>"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Tokens disponíveis: <code>{'{atendente_nome}'}</code>, <code>{'{atendente_telefone}'}</code>,{' '}
+                <code>{'{atendente_email}'}</code>, <code>{'{atendente_cargo}'}</code>. Se um campo estiver
+                vazio, a linha (separada por <code>&lt;br&gt;</code>) que contém o token é removida
+                automaticamente. Tags e atributos não permitidos são removidos ao salvar.
+              </p>
+            </div>
+
+            {signatureForm.html.trim() && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Pré-visualização</label>
+                <div
+                  className="border rounded-lg p-4 bg-gray-50 text-sm"
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(signaturePreviewHtml) }}
+                />
+              </div>
+            )}
+
+            <Button
+              type="button"
+              className="w-full bg-blue-600 hover:bg-blue-700"
+              onClick={handleSignatureSave}
+              disabled={updateSignatureMutation.isPending}
+            >
+              {updateSignatureMutation.isPending ? "Salvando..." : "✅ Salvar assinatura"}
+            </Button>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

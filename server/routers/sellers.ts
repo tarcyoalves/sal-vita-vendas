@@ -174,6 +174,27 @@ export const sellersRouter = router({
     return seller ?? null;
   }),
 
+  updateMySignature: protectedProcedure
+    .input(z.object({
+      emailSignatureHtml: z.string().max(10000),
+      emailSignatureImageUrl: z.string().max(1000).optional(),
+      emailSignatureEnabled: z.boolean(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [seller] = await db.select({ id: sellers.id }).from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
+      if (!seller) throw new Error('Atendente não encontrado');
+
+      const [updated] = await db.update(sellers).set({
+        emailSignatureHtml: sanitizeSignatureHtml(input.emailSignatureHtml),
+        emailSignatureImageUrl: input.emailSignatureImageUrl,
+        emailSignatureEnabled: input.emailSignatureEnabled,
+      }).where(eq(sellers.id, seller.id)).returning();
+
+      invalidateSellersCache();
+      cacheInvalidate(`auth:me:${ctx.user.id}`);
+      return updated;
+    }),
+
   getIpRestriction: adminProcedure
     .input(z.object({ userId: z.number() }))
     .query(async ({ input }) => {
