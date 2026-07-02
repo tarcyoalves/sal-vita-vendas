@@ -195,79 +195,6 @@ function AiAnalysisReport({ markdown }: { markdown: string }) {
   );
 }
 
-// Bloco compacto com os 4 números do dia que o admin precisa ver de relance:
-// confirmados, enviados, pendentes de confirmação e tarefas inscritas em
-// sequência hoje. Mesma query do EmailStrategicCard (React Query dedupe evita
-// round-trip duplicado ao Neon), só que num recorte simples de 4 tiles.
-function EmailSequenceQuickBlock() {
-  const { data: emailStats, isLoading } = trpc.emailMarketing.dashboardEmailStats.useQuery(
-    undefined,
-    { staleTime: 120_000, refetchOnWindowFocus: false },
-  );
-
-  const tiles = [
-    {
-      label: "Confirmados hoje",
-      value: emailStats?.confirmedToday ?? 0,
-      icon: <CheckCircle2 size={20} />,
-      color: "text-emerald-600",
-      bg: "bg-emerald-50",
-      border: "border-emerald-100",
-    },
-    {
-      label: "Enviados hoje",
-      value: emailStats?.totalSentToday ?? 0,
-      icon: <Mail size={20} />,
-      color: "text-blue-600",
-      bg: "bg-blue-50",
-      border: "border-blue-100",
-    },
-    {
-      label: "Pendentes de confirmação",
-      value: emailStats?.pendingConfirmation ?? 0,
-      icon: <MailX size={20} />,
-      color: "text-amber-600",
-      bg: "bg-amber-50",
-      border: "border-amber-100",
-    },
-    {
-      label: "Em sequência hoje",
-      value: emailStats?.sequencesEnrolledToday ?? 0,
-      icon: <Workflow size={20} />,
-      color: "text-violet-600",
-      bg: "bg-violet-50",
-      border: "border-violet-100",
-    },
-  ];
-
-  return (
-    <div className="space-y-2">
-      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-0.5">
-        📧 E-mail Marketing hoje
-      </p>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {tiles.map((tile) => (
-          <Card key={tile.label} className={`border ${tile.border}`}>
-            <CardContent className="pt-4 px-4 pb-3">
-              <div className="flex items-start justify-between">
-                <div className="min-w-0 flex-1">
-                  <p className={`text-2xl font-bold ${tile.color}`}>
-                    {isLoading ? "--" : tile.value}
-                  </p>
-                  <p className="text-xs font-medium text-gray-600 mt-0.5">{tile.label}</p>
-                </div>
-                <div className={`${tile.bg} ${tile.color} p-2 rounded-lg flex-shrink-0 ml-2`}>
-                  {tile.icon}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function EmailStrategicCard() {
   const { data: emailStats, isLoading: emailLoading } = trpc.emailMarketing.dashboardEmailStats.useQuery(
     undefined,
@@ -298,6 +225,12 @@ function EmailStrategicCard() {
   const clickRateToday = emailStats.opensToday > 0
     ? Math.round((emailStats.clicksToday / emailStats.opensToday) * 100)
     : 0;
+  // % da base com e-mail que já está confirmada — dá contexto ao número
+  // absoluto de pendentes (2031 pendentes assusta menos se a base é 50 mil).
+  const confirmedTotal = Math.max(0, emailStats.totalWithEmail - emailStats.pendingConfirmation);
+  const confirmationRatePct = emailStats.totalWithEmail > 0
+    ? Math.round((confirmedTotal / emailStats.totalWithEmail) * 100)
+    : 0;
 
   const trendMax = Math.max(1, ...emailStats.dailyTrend.map((d: { sent: number }) => d.sent));
 
@@ -321,7 +254,7 @@ function EmailStrategicCard() {
       </CardHeader>
       <CardContent className="space-y-5">
         {/* KPIs do dia */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <div className="bg-violet-50 border border-violet-100 rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1">
               <Mail size={14} className="text-violet-500" />
@@ -329,8 +262,36 @@ function EmailStrategicCard() {
             </div>
             <p className="text-2xl font-black text-violet-700">{emailStats.totalSentToday}</p>
             <p className="text-[11px] text-violet-400 mt-0.5">
-              Cota: {emailStats.quotaUsed}/{emailStats.quotaTotal} ({quotaPct}%)
+              Cota: {emailStats.quotaUsed}/{emailStats.quotaTotal}
             </p>
+          </div>
+          <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <CheckCircle2 size={14} className="text-emerald-500" />
+              <span className="text-[10px] font-semibold text-emerald-500 uppercase">Confirmados hoje</span>
+            </div>
+            <p className="text-2xl font-black text-emerald-700">{emailStats.confirmedToday}</p>
+            <p className="text-[11px] text-emerald-400 mt-0.5">
+              {confirmationRatePct}% da base confirmada
+            </p>
+          </div>
+          <div className={`border rounded-xl p-3 ${emailStats.pendingConfirmation > 500 ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'}`}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <MailX size={14} className={emailStats.pendingConfirmation > 500 ? 'text-red-500' : 'text-amber-500'} />
+              <span className={`text-[10px] font-semibold uppercase ${emailStats.pendingConfirmation > 500 ? 'text-red-500' : 'text-amber-500'}`}>Pendentes</span>
+            </div>
+            <p className={`text-2xl font-black ${emailStats.pendingConfirmation > 500 ? 'text-red-700' : 'text-amber-700'}`}>{emailStats.pendingConfirmation}</p>
+            <p className={`text-[11px] mt-0.5 ${emailStats.pendingConfirmation > 500 ? 'text-red-400' : 'text-amber-400'}`}>
+              de {emailStats.totalWithEmail} com e-mail
+            </p>
+          </div>
+          <div className="bg-purple-50 border border-purple-100 rounded-xl p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Workflow size={14} className="text-purple-500" />
+              <span className="text-[10px] font-semibold text-purple-500 uppercase">Em sequência hoje</span>
+            </div>
+            <p className="text-2xl font-black text-purple-700">{emailStats.sequencesEnrolledToday}</p>
+            <p className="text-[11px] text-purple-400 mt-0.5">novas inscrições</p>
           </div>
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1">
@@ -342,29 +303,33 @@ function EmailStrategicCard() {
               {emailStats.totalOpensToday} total · {openRateToday}% taxa
             </p>
           </div>
-          <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
+          <div className="bg-teal-50 border border-teal-100 rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1">
-              <MousePointerClick size={14} className="text-emerald-500" />
-              <span className="text-[10px] font-semibold text-emerald-500 uppercase">Cliques hoje</span>
+              <MousePointerClick size={14} className="text-teal-500" />
+              <span className="text-[10px] font-semibold text-teal-500 uppercase">Cliques hoje</span>
             </div>
-            <p className="text-2xl font-black text-emerald-700">{emailStats.clicksToday}</p>
-            <p className="text-[11px] text-emerald-400 mt-0.5">
+            <p className="text-2xl font-black text-teal-700">{emailStats.clicksToday}</p>
+            <p className="text-[11px] text-teal-400 mt-0.5">
               {emailStats.totalClicksToday} total · {clickRateToday}% click-to-open
             </p>
           </div>
-          <div className={`border rounded-xl p-3 ${quotaPct >= 90 ? 'bg-red-50 border-red-100' : quotaPct >= 70 ? 'bg-amber-50 border-amber-100' : 'bg-slate-50 border-slate-100'}`}>
-            <div className="flex items-center gap-1.5 mb-1">
-              <Zap size={14} className={quotaPct >= 90 ? 'text-red-500' : quotaPct >= 70 ? 'text-amber-500' : 'text-slate-500'} />
-              <span className={`text-[10px] font-semibold uppercase ${quotaPct >= 90 ? 'text-red-500' : quotaPct >= 70 ? 'text-amber-500' : 'text-slate-500'}`}>Cota diaria</span>
-            </div>
-            <p className={`text-2xl font-black ${quotaPct >= 90 ? 'text-red-700' : quotaPct >= 70 ? 'text-amber-700' : 'text-slate-700'}`}>{quotaPct}%</p>
-            <div className="mt-1.5 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${quotaPct >= 90 ? 'bg-red-500' : quotaPct >= 70 ? 'bg-amber-400' : 'bg-violet-400'}`}
-                style={{ width: `${Math.min(quotaPct, 100)}%` }}
-              />
-            </div>
+        </div>
+
+        {/* Cota diaria — barra fina em vez de tile, pra nao competir com os KPIs de atividade */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <Zap size={13} className={quotaPct >= 90 ? 'text-red-500' : quotaPct >= 70 ? 'text-amber-500' : 'text-slate-400'} />
+            <span className="text-[11px] font-medium text-gray-500">Cota diária</span>
           </div>
+          <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${quotaPct >= 90 ? 'bg-red-500' : quotaPct >= 70 ? 'bg-amber-400' : 'bg-violet-400'}`}
+              style={{ width: `${Math.min(quotaPct, 100)}%` }}
+            />
+          </div>
+          <span className={`text-[11px] font-semibold flex-shrink-0 ${quotaPct >= 90 ? 'text-red-600' : quotaPct >= 70 ? 'text-amber-600' : 'text-gray-500'}`}>
+            {quotaPct}%
+          </span>
         </div>
 
         {/* Tendencia 7 dias + Envios por atendente */}
@@ -463,9 +428,14 @@ function EmailStrategicCard() {
         )}
 
         {/* Insights estrategicos */}
-        {emailStats.totalSentToday > 0 && (
+        {(emailStats.totalSentToday > 0 || emailStats.pendingConfirmation > 100) && (
           <div className="bg-violet-50 border border-violet-100 rounded-xl px-4 py-3 space-y-1">
             <p className="text-xs font-semibold text-violet-700 mb-1">Insights do dia</p>
+            {emailStats.pendingConfirmation > 100 && (
+              <p className="text-[11px] text-amber-700">
+                {emailStats.pendingConfirmation} e-mails aguardando confirmação ({100 - confirmationRatePct}% da base) — confirme em Tarefas para liberar para campanhas e sequências.
+              </p>
+            )}
             {openRateToday >= 25 && (
               <p className="text-[11px] text-violet-600">Taxa de abertura em {openRateToday}% — acima da media do mercado (15-25%)</p>
             )}
@@ -877,9 +847,6 @@ export default function AdminDashboard() {
           </Card>
         ))}
       </div>
-
-      {/* E-mail Marketing — bloco rápido do dia */}
-      <EmailSequenceQuickBlock />
 
       {/* Funil de Conversão & Performance de Vendas */}
       <Card>

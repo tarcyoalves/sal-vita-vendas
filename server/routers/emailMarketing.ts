@@ -2197,12 +2197,19 @@ export const emailMarketingRouter = router({
     const [enrolledTodayRow] = await db.select({ cnt: count() })
       .from(emailSequenceEnrollments)
       .where(gte(emailSequenceEnrollments.enrolledAt, todayStart));
+    // Base total com e-mail cadastrado — dá a % confirmada da base inteira,
+    // não só o que mudou hoje (pendingConfirmation sozinho não diz se a base
+    // está 5% ou 95% confirmada).
+    const [totalWithEmailRow] = await db.select({ cnt: count() })
+      .from(tasks)
+      .where(and(isNotNull(tasks.email), ne(tasks.email, '')));
 
     return {
       totalSentToday,
       confirmedToday: Number(confirmedTodayRow?.cnt ?? 0),
       pendingConfirmation: Number(pendingConfirmationRow?.cnt ?? 0),
       sequencesEnrolledToday: Number(enrolledTodayRow?.cnt ?? 0),
+      totalWithEmail: Number(totalWithEmailRow?.cnt ?? 0),
       attendantSends,
       opensToday: engMap['opened']?.unique ?? 0,
       totalOpensToday: engMap['opened']?.total ?? 0,
