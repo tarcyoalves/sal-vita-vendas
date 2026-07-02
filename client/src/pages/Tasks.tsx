@@ -279,11 +279,14 @@ export default function Tasks() {
   // espera perceptível no popup de confirmar e-mail (que já mostra o picker
   // inline, sem abrir um segundo diálogo).
   const [sequencePickerTaskIds, setSequencePickerTaskIds] = useState<number[] | null>(null);
-  const { data: emailSequencesAdmin } = trpc.emailMarketing.listSequences.useQuery(undefined, { enabled: isAdmin, staleTime: 300_000 });
-  const { data: emailSequencesAtt } = trpc.emailMarketing.listSequencesForAttendant.useQuery(undefined, { enabled: !isAdmin && canEmailMarketing, staleTime: 300_000 });
+  const { data: emailSequencesAdmin, isLoading: sequencesAdminLoading } = trpc.emailMarketing.listSequences.useQuery(undefined, { enabled: isAdmin, staleTime: 300_000 });
+  const { data: emailSequencesAtt, isLoading: sequencesAttLoading } = trpc.emailMarketing.listSequencesForAttendant.useQuery(undefined, { enabled: !isAdmin && canEmailMarketing, staleTime: 300_000 });
   const activeSequences = isAdmin
     ? (emailSequencesAdmin ?? []).filter(s => s.active)
     : (emailSequencesAtt ?? []);
+  // Só é "carregando" se a query relevante ao papel do usuário ainda não voltou —
+  // evita mostrar "nenhuma sequência" por um instante antes do fetch inicial.
+  const sequencesLoading = isAdmin ? sequencesAdminLoading : (canEmailMarketing && sequencesAttLoading);
   const enrollInSequenceMutation = trpc.emailMarketing.enrollTasksInSequence.useMutation();
   const [selectedSequenceId, setSelectedSequenceId] = useState<number | null>(null);
 
@@ -1822,25 +1825,40 @@ export default function Tasks() {
             </p>
             <div className="pt-1 border-t">
               <p className="text-sm font-medium text-gray-700 mt-3 mb-2">Incluir em uma sequência agora? (opcional)</p>
-              <RadioGroup
-                value={confirmEmailSequenceId !== null ? String(confirmEmailSequenceId) : "none"}
-                onValueChange={(v: string) => setConfirmEmailSequenceId(v === "none" ? null : Number(v))}
-                className="max-h-56 overflow-y-auto"
-              >
-                <label className="flex items-start gap-2 px-3 py-2 border rounded-lg hover:bg-gray-50 transition cursor-pointer">
-                  <RadioGroupItem value="none" className="mt-0.5" />
-                  <p className="font-medium text-sm">Decidir depois</p>
-                </label>
-                {activeSequences.map(s => (
-                  <label key={s.id} className="flex items-start gap-2 px-3 py-2 border rounded-lg hover:bg-indigo-50 transition cursor-pointer">
-                    <RadioGroupItem value={String(s.id)} className="mt-0.5" />
-                    <div>
-                      <p className="font-medium text-sm">{s.name}</p>
-                      {'stepCount' in s && <p className="text-xs text-gray-500">{(s as any).stepCount} passo(s) · {(s as any).activeEnrollments} inscrito(s) ativo(s)</p>}
-                    </div>
+              {sequencesLoading ? (
+                <div className="flex items-center gap-2 text-sm text-gray-400 px-3 py-2">
+                  <span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-gray-400" />
+                  Carregando sequências...
+                </div>
+              ) : (
+                <RadioGroup
+                  value={confirmEmailSequenceId !== null ? String(confirmEmailSequenceId) : "none"}
+                  onValueChange={(v: string) => setConfirmEmailSequenceId(v === "none" ? null : Number(v))}
+                  className="max-h-56 overflow-y-auto"
+                >
+                  <label className="flex items-start gap-2 px-3 py-2 border rounded-lg hover:bg-gray-50 transition cursor-pointer">
+                    <RadioGroupItem value="none" className="mt-0.5" />
+                    <p className="font-medium text-sm">Decidir depois</p>
                   </label>
-                ))}
-              </RadioGroup>
+                  {activeSequences.map(s => (
+                    <label key={s.id} className="flex items-start gap-2 px-3 py-2 border rounded-lg hover:bg-indigo-50 transition cursor-pointer">
+                      <RadioGroupItem value={String(s.id)} className="mt-0.5" />
+                      <div>
+                        <p className="font-medium text-sm">{s.name}</p>
+                        {'stepCount' in s && <p className="text-xs text-gray-500">{(s as any).stepCount} passo(s) · {(s as any).activeEnrollments} inscrito(s) ativo(s)</p>}
+                      </div>
+                    </label>
+                  ))}
+                </RadioGroup>
+              )}
+              {!sequencesLoading && !canEmailMarketing && (
+                <p className="text-xs text-amber-600 mt-2">
+                  Você ainda não tem acesso a E-mail Marketing. Peça ao administrador para liberar em Atendentes → editar → "Email Marketing".
+                </p>
+              )}
+              {!sequencesLoading && canEmailMarketing && activeSequences.length === 0 && (
+                <p className="text-xs text-gray-400 mt-2">Nenhuma sequência ativa no momento.</p>
+              )}
             </div>
           </div>
           <DialogFooter className="flex gap-2 pt-2">
