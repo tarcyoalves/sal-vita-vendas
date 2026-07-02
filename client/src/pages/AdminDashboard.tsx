@@ -762,9 +762,6 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Email Marketing — Painel Estrategico */}
-      <EmailStrategicCard />
-
       {/* Task Deletion Alert Banner */}
       {deletionLogs.length > 0 && (
         <div
@@ -850,6 +847,9 @@ export default function AdminDashboard() {
           </Card>
         ))}
       </div>
+
+      {/* Email Marketing — Painel Estrategico */}
+      <EmailStrategicCard />
 
       {/* Funil de Conversão & Performance de Vendas */}
       <Card>
