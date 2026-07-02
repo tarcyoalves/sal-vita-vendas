@@ -14,7 +14,7 @@ import { ordersDb } from '../server/db/ordersDb';
 import { sql as sqlClient, db } from '../server/db/index';
 import {
   siteOrders, abandonedCarts, automationRuns, msgTemplates, coupons, emailCampaignRecipients, emailSuppressions, clients,
-  emailEvents, sellers, emailSequenceSends, taskDeletionLogs, users, emailSequences, tasks,
+  emailEvents, sellers, emailSequenceSends, taskDeletionLogs,
 } from '../server/db/schema';
 import { eq, and, sql, lte, gte, isNull, inArray, desc, asc, lt } from 'drizzle-orm';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
@@ -241,22 +241,6 @@ app.get('/api/db-stats', adminApiLimiter, async (req, res) => {
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
-  }
-});
-
-// TEMPORARY diagnostic — investigating why the confirm-email sequence picker
-// is empty for one specific account. Self-contained token, removed after use.
-app.get('/api/_diag_seq_check_20260702', async (req, res) => {
-  if (req.query.token !== 'diag-8f3a1c9e-6b2d-4e11-tmp') return res.status(401).json({ error: 'no' });
-  try {
-    const usersRows = await db.select({ id: users.id, name: users.name, email: users.email, role: users.role }).from(users);
-    const sellersRows = await db.select({ id: sellers.id, userId: sellers.userId, name: sellers.name, email: sellers.email, emk: sellers.emailMarketingEnabled, status: sellers.status }).from(sellers);
-    const seqRows = await db.select({ id: emailSequences.id, name: emailSequences.name, active: emailSequences.active }).from(emailSequences);
-    const tarcyoTasks = await db.select({ id: tasks.id, title: tasks.title, assignedTo: tasks.assignedTo, email: tasks.email, emailConfirmed: tasks.emailConfirmed })
-      .from(tasks).where(sql`${tasks.assignedTo} ILIKE '%tarcyo%' OR ${tasks.title} ILIKE '%tarcyo alves%'`).limit(10);
-    res.json({ users: usersRows, sellers: sellersRows, sequences: seqRows, tarcyoTasks });
-  } catch (e: any) {
-    res.status(500).json({ error: e?.message });
   }
 });
 
