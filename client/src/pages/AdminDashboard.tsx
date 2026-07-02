@@ -24,7 +24,6 @@ import {
   Eye,
   Phone,
   RefreshCw,
-  NotebookPen,
   Download,
   DollarSign,
   Mail,
@@ -594,8 +593,6 @@ export default function AdminDashboard() {
   const completionRate = tasks.length > 0 ? Math.round((completed.length / tasks.length) * 100) : 0;
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const contactsToday = (tasks as any[]).filter(t => t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart).length;
-  const withNotes = (tasks as any[]).filter(t => t.notes && t.notes.trim().length >= 15).length;
-  const noteQuality = tasks.length > 0 ? Math.round((withNotes / tasks.length) * 100) : 0;
 
   // Conversão: leads (lembretes recorrentes) que viraram clientes ativos.
   // contactCount registra quantos contatos reais foram feitos até a conversão — mede esforço de venda.
@@ -747,15 +744,6 @@ export default function AdminDashboard() {
       color: overdue.length > 0 ? "text-red-600" : "text-green-600",
       bg: overdue.length > 0 ? "bg-red-50" : "bg-green-50",
       border: overdue.length > 0 ? "border-red-100" : "border-green-100",
-    },
-    {
-      label: "Qualidade notas",
-      value: `${noteQuality}%`,
-      sub: `${withNotes} com anotação`,
-      icon: <NotebookPen size={22} />,
-      color: noteQuality >= 70 ? "text-green-600" : noteQuality >= 40 ? "text-amber-600" : "text-red-600",
-      bg: noteQuality >= 70 ? "bg-green-50" : noteQuality >= 40 ? "bg-amber-50" : "bg-red-50",
-      border: noteQuality >= 70 ? "border-green-100" : noteQuality >= 40 ? "border-amber-100" : "border-red-100",
     },
     {
       label: "Com lembrete",
