@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-07-02b';
+const SCHEMA_VERSION = '2026-07-02c';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -602,6 +602,11 @@ export async function ensureTablesExist() {
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS fat_order_deletion_logs_seller_idx ON fat_order_deletion_logs(seller_id)`;
+
+  // Tag auto-gerenciada por tasks.confirmEmail/update (ver EMAIL_CONFIRMED_TAG
+  // em server/routers/tasks.ts) — precisa existir no catálogo para aparecer no
+  // filtro "Filtrar por tag" mesmo antes de qualquer tarefa ter sido confirmada.
+  await sql`INSERT INTO tags (name, color) VALUES ('Email Confirmado', '#16a34a') ON CONFLICT (name) DO NOTHING`;
 
   // Record the schema marker so every subsequent cold start takes the fast path
   // at the top of this function instead of re-running the whole battery above.

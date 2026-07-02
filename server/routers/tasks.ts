@@ -6,6 +6,12 @@ import { db } from '../db';
 import { tasks, sellers, taskDeletionLogs } from '../db/schema';
 import { runTriggerNow, cancelAllEnrollments } from '../email/automations';
 
+// Tag aplicada/removida automaticamente junto com tasks.emailConfirmed (ver
+// confirmEmail e update abaixo), para permitir filtrar tarefas por confirmação
+// de e-mail usando o filtro de tags já existente na UI. Sincronizada sempre
+// que o flag muda — nunca editar manualmente sem também ajustar o flag.
+const EMAIL_CONFIRMED_TAG = 'Email Confirmado';
+
 // Normaliza CNPJ/telefone para somente dígitos. Para telefone, remove o código
 // do país (55) quando presente, para casar números digitados com ou sem DDI.
 function normalizeCnpj(value?: string | null): string | undefined {
@@ -204,6 +210,15 @@ export const tasksRouter = router({
         oldTags = prev?.tags ?? [];
       }
 
+      // Mesma tag "Email Confirmado" sincronizada em tasks.confirmEmail — aqui
+      // cobre o caso de o atendente confirmar implicitamente ao digitar um e-mail novo.
+      if ('emailConfirmed' in setData) {
+        const baseTags: string[] = setData.tags !== undefined ? setData.tags : oldTags;
+        setData.tags = setData.emailConfirmed
+          ? (baseTags.includes(EMAIL_CONFIRMED_TAG) ? baseTags : [...baseTags, EMAIL_CONFIRMED_TAG])
+          : baseTags.filter((t: string) => t !== EMAIL_CONFIRMED_TAG);
+      }
+
       const [updated] = await db
         .update(tasks)
         .set(setData)
@@ -265,17 +280,24 @@ export const tasksRouter = router({
         ? eq(tasks.id, input.id)
         : and(eq(tasks.id, input.id), await userTaskFilter(ctx.user.id, ctx.user.name ?? ''));
 
-      const [task] = await db.select({ id: tasks.id, email: tasks.email }).from(tasks).where(ownerFilter).limit(1);
+      const [task] = await db.select({ id: tasks.id, email: tasks.email, tags: tasks.tags }).from(tasks).where(ownerFilter).limit(1);
       if (!task) throw new TRPCError({ code: 'NOT_FOUND', message: 'Tarefa não encontrada ou sem permissão' });
       if (input.confirmed && !task.email) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta tarefa não tem e-mail para confirmar' });
       }
 
+      // Aplica/remove a tag "Email Confirmado" junto com o flag, para permitir
+      // filtrar tarefas por confirmação de e-mail via o filtro de tags já existente.
+      const currentTags = task.tags ?? [];
+      const newTags = input.confirmed
+        ? (currentTags.includes(EMAIL_CONFIRMED_TAG) ? currentTags : [...currentTags, EMAIL_CONFIRMED_TAG])
+        : currentTags.filter(t => t !== EMAIL_CONFIRMED_TAG);
+
       const now = new Date();
       const [updated] = await db.update(tasks)
         .set(input.confirmed
-          ? { emailConfirmed: true, emailConfirmedAt: now, emailConfirmedBy: ctx.user.name ?? ctx.user.email, updatedAt: now }
-          : { emailConfirmed: false, emailConfirmedAt: null, emailConfirmedBy: null, updatedAt: now })
+          ? { emailConfirmed: true, emailConfirmedAt: now, emailConfirmedBy: ctx.user.name ?? ctx.user.email, updatedAt: now, tags: newTags }
+          : { emailConfirmed: false, emailConfirmedAt: null, emailConfirmedBy: null, updatedAt: now, tags: newTags })
         .where(ownerFilter)
         .returning();
 
