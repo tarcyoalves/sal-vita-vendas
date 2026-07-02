@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import crypto from 'crypto';
-import { eq, and, or, inArray, isNotNull, isNull, ne, desc, asc, count, sql } from 'drizzle-orm';
+import { eq, and, or, inArray, isNotNull, isNull, ne, gte, desc, asc, count, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 import { router, adminProcedure, protectedProcedure } from '../trpc';
 import { db } from '../db';
@@ -2187,8 +2187,22 @@ export const emailMarketingRouter = router({
       ORDER BY day
     `);
 
+    // 7) Confirmação de e-mail e inscrições em sequência — bloco rápido do dashboard
+    const [confirmedTodayRow] = await db.select({ cnt: count() })
+      .from(tasks)
+      .where(and(isNotNull(tasks.emailConfirmedAt), gte(tasks.emailConfirmedAt, todayStart)));
+    const [pendingConfirmationRow] = await db.select({ cnt: count() })
+      .from(tasks)
+      .where(and(isNotNull(tasks.email), ne(tasks.email, ''), eq(tasks.emailConfirmed, false)));
+    const [enrolledTodayRow] = await db.select({ cnt: count() })
+      .from(emailSequenceEnrollments)
+      .where(gte(emailSequenceEnrollments.enrolledAt, todayStart));
+
     return {
       totalSentToday,
+      confirmedToday: Number(confirmedTodayRow?.cnt ?? 0),
+      pendingConfirmation: Number(pendingConfirmationRow?.cnt ?? 0),
+      sequencesEnrolledToday: Number(enrolledTodayRow?.cnt ?? 0),
       attendantSends,
       opensToday: engMap['opened']?.unique ?? 0,
       totalOpensToday: engMap['opened']?.total ?? 0,

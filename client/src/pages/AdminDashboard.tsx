@@ -30,8 +30,10 @@ import {
   Mail,
   MousePointerClick,
   MailOpen,
+  MailX,
   ShieldAlert,
   Zap,
+  Workflow,
 } from "lucide-react";
 import AttendantDetailModal from '../components/AttendantDetailModal';
 import { useFatStore } from '../lib/faturamento/store';
@@ -190,6 +192,79 @@ function AiAnalysisReport({ markdown }: { markdown: string }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// Bloco compacto com os 4 números do dia que o admin precisa ver de relance:
+// confirmados, enviados, pendentes de confirmação e tarefas inscritas em
+// sequência hoje. Mesma query do EmailStrategicCard (React Query dedupe evita
+// round-trip duplicado ao Neon), só que num recorte simples de 4 tiles.
+function EmailSequenceQuickBlock() {
+  const { data: emailStats, isLoading } = trpc.emailMarketing.dashboardEmailStats.useQuery(
+    undefined,
+    { staleTime: 120_000, refetchOnWindowFocus: false },
+  );
+
+  const tiles = [
+    {
+      label: "Confirmados hoje",
+      value: emailStats?.confirmedToday ?? 0,
+      icon: <CheckCircle2 size={20} />,
+      color: "text-emerald-600",
+      bg: "bg-emerald-50",
+      border: "border-emerald-100",
+    },
+    {
+      label: "Enviados hoje",
+      value: emailStats?.totalSentToday ?? 0,
+      icon: <Mail size={20} />,
+      color: "text-blue-600",
+      bg: "bg-blue-50",
+      border: "border-blue-100",
+    },
+    {
+      label: "Pendentes de confirmação",
+      value: emailStats?.pendingConfirmation ?? 0,
+      icon: <MailX size={20} />,
+      color: "text-amber-600",
+      bg: "bg-amber-50",
+      border: "border-amber-100",
+    },
+    {
+      label: "Em sequência hoje",
+      value: emailStats?.sequencesEnrolledToday ?? 0,
+      icon: <Workflow size={20} />,
+      color: "text-violet-600",
+      bg: "bg-violet-50",
+      border: "border-violet-100",
+    },
+  ];
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-0.5">
+        📧 E-mail Marketing hoje
+      </p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {tiles.map((tile) => (
+          <Card key={tile.label} className={`border ${tile.border}`}>
+            <CardContent className="pt-4 px-4 pb-3">
+              <div className="flex items-start justify-between">
+                <div className="min-w-0 flex-1">
+                  <p className={`text-2xl font-bold ${tile.color}`}>
+                    {isLoading ? "--" : tile.value}
+                  </p>
+                  <p className="text-xs font-medium text-gray-600 mt-0.5">{tile.label}</p>
+                </div>
+                <div className={`${tile.bg} ${tile.color} p-2 rounded-lg flex-shrink-0 ml-2`}>
+                  {tile.icon}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }
@@ -814,6 +889,9 @@ export default function AdminDashboard() {
           </Card>
         ))}
       </div>
+
+      {/* E-mail Marketing — bloco rápido do dia */}
+      <EmailSequenceQuickBlock />
 
       {/* Funil de Conversão & Performance de Vendas */}
       <Card>
