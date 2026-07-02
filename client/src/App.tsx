@@ -24,6 +24,7 @@ import AppShell from "./components/AppShell";
 import { useAuth } from "./_core/hooks/useAuth";
 import { useReminderNotifications } from "./_core/hooks/useReminderNotifications";
 import SalVitaLanding from "./pages/SalVitaLanding";
+import SalVitaLandingClassic from "./pages/SalVitaLandingClassic";
 import SalVitaAdmin from "./pages/SalVitaAdmin";
 import SalVitaRecovery from "./pages/SalVitaRecovery";
 import SalVitaChat from "./components/SalVitaChat";
@@ -121,6 +122,11 @@ function App() {
     if (path === '/meu-pedido') {
       return (
         <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><TrackOrder /></TooltipProvider></ThemeProvider></ErrorBoundary>
+      );
+    }
+    if (path === '/classic') {
+      return (
+        <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><SalVitaLandingClassic /><SalVitaChat /></TooltipProvider></ThemeProvider></ErrorBoundary>
       );
     }
     return (
