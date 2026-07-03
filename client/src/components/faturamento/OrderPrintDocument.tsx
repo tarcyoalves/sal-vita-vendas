@@ -3,7 +3,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '../ui/dialog';
 import { Button } from '../ui/button';
-import { Printer, CheckCircle2 } from 'lucide-react';
+import { Printer } from 'lucide-react';
 import { totalItens, pesoTotalItens, freteTotal, formatBRL, formatKg } from '../../lib/faturamento/calc';
 import type { Pedido, ItemPedido } from '../../lib/faturamento/types';
 
@@ -62,11 +62,6 @@ function PedidoPrintContent({ pedido }: { pedido: Pedido }) {
         <div className="text-right">
           <p className="text-lg font-bold uppercase text-slate-800">Pedido de Vendas</p>
           <p className="text-xs text-slate-500">Nº {pedido.id.slice(0, 8).toUpperCase()} · {fmtDate(pedido.criadoEm)}</p>
-          {pedido.aprovadoEm && (
-            <p className="text-xs text-emerald-600 font-semibold flex items-center justify-end gap-1 mt-0.5">
-              <CheckCircle2 size={13} /> Pedido aprovado
-            </p>
-          )}
         </div>
       </div>
 
