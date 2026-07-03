@@ -487,6 +487,102 @@ export type EmailSequenceStep = typeof emailSequenceSteps.$inferSelect;
 export type EmailSequenceEnrollment = typeof emailSequenceEnrollments.$inferSelect;
 export type AutomationRule = typeof automationRules.$inferSelect;
 
+// ── B2B Prospecção (Sprint 1 — fundação: inbound /atacado + compliance) ───────
+// Escopo mínimo aprovado (PLANO-FINAL-EXECUCAO-B2B.md, Seção 9). NÃO inclui
+// lead_scores (Sprint 3) nem qualquer tabela de outbound/enriquecimento —
+// essas ficam para sprints futuros. Vive no schema `public` do mesmo Neon
+// (sem custo de schema novo); dedup e criação via server/db/b2bMigrate.ts.
+
+export const companies = pgTable('companies', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  tradeName: text('trade_name'),
+  segment: text('segment'),
+  subsegment: text('subsegment'),
+  cnpj: text('cnpj'),
+  // 'unverified' | 'cnpj_valid' | 'cnpj_inactive' | 'duplicate' | 'invalid'
+  companyValidationStatus: text('company_validation_status').notNull().default('unverified'),
+  website: text('website'),
+  instagramUrl: text('instagram_url'),
+  city: text('city'),
+  state: text('state'),
+  country: text('country').notNull().default('BR'),
+  sourceType: text('source_type'),
+  sourceUrl: text('source_url'),
+  // 'inbound' | 'outbound' — Sprint 1 só produz 'inbound' (formulário /atacado)
+  pipelineType: text('pipeline_type').notNull().default('inbound'),
+  pipelineStage: text('pipeline_stage').notNull().default('discovered'),
+  status: text('status').notNull().default('active'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const contacts = pgTable('contacts', {
+  id: serial('id').primaryKey(),
+  companyId: integer('company_id').notNull(),
+  name: text('name'),
+  role: text('role'),
+  email: text('email'),
+  phone: text('phone'),
+  whatsapp: text('whatsapp'),
+  channelType: text('channel_type'),
+  isPublicBusinessContact: boolean('is_public_business_contact').notNull().default(true),
+  sourceUrl: text('source_url'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const publicSources = pgTable('public_sources', {
+  id: serial('id').primaryKey(),
+  companyId: integer('company_id').notNull(),
+  sourceType: text('source_type').notNull(),
+  sourceUrl: text('source_url'),
+  capturedAt: timestamp('captured_at').defaultNow().notNull(),
+  rawExcerpt: text('raw_excerpt'),
+  confidence: integer('confidence'),
+});
+
+export const consentRecords = pgTable('consent_records', {
+  id: serial('id').primaryKey(),
+  companyId: integer('company_id').notNull(),
+  contactId: integer('contact_id'),
+  formName: text('form_name'),
+  consentText: text('consent_text'),
+  consentedAt: timestamp('consented_at').defaultNow().notNull(),
+  // Never store the raw IP — only a one-way hash, per LGPD data-minimization.
+  ipHash: text('ip_hash'),
+  userAgent: text('user_agent'),
+});
+
+export const suppressionList = pgTable('suppression_list', {
+  id: serial('id').primaryKey(),
+  email: text('email'),
+  phone: text('phone'),
+  domain: text('domain'),
+  companyId: integer('company_id'),
+  reason: text('reason').notNull(), // opt_out | bounce | complaint | manual
+  source: text('source'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const auditLogs = pgTable('audit_logs', {
+  id: serial('id').primaryKey(),
+  entityType: text('entity_type').notNull(),
+  entityId: integer('entity_id'),
+  action: text('action').notNull(),
+  actorType: text('actor_type').notNull(), // ai_agent | human | system
+  actorId: text('actor_id'),
+  metadataJson: jsonb('metadata_json'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type Company = typeof companies.$inferSelect;
+export type Contact = typeof contacts.$inferSelect;
+export type PublicSource = typeof publicSources.$inferSelect;
+export type ConsentRecord = typeof consentRecords.$inferSelect;
+export type SuppressionEntry = typeof suppressionList.$inferSelect;
+export type AuditLog = typeof auditLogs.$inferSelect;
+
 // ── Faturamento & Comissão (migrado do localStorage → Neon em 02/07) ──────────
 // IDs são gerados no cliente (uid()) e mantidos como PK text, para que o store
 // continue com API síncrona (upsert retorna o objeto na hora). `itens` é jsonb

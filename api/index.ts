@@ -5,18 +5,21 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import { z } from 'zod';
 import { createExpressMiddleware } from '@trpc/server/adapters/express';
 import { appRouter } from '../server/routers';
 import { createContext } from '../server/trpc';
 import { ensureTablesExist } from '../server/db/migrate';
 import { ensureOrdersTablesExist } from '../server/db/ordersMigrate';
+import { ensureB2bTablesExist } from '../server/db/b2bMigrate';
 import { ordersDb } from '../server/db/ordersDb';
 import { sql as sqlClient, db } from '../server/db/index';
 import {
   siteOrders, abandonedCarts, automationRuns, msgTemplates, coupons, emailCampaignRecipients, emailSuppressions, clients,
   emailEvents, sellers, emailSequenceSends, taskDeletionLogs,
+  companies, contacts, publicSources, consentRecords, suppressionList, auditLogs,
 } from '../server/db/schema';
-import { eq, and, sql, lte, gte, isNull, inArray, desc, asc, lt } from 'drizzle-orm';
+import { eq, and, or, sql, lte, gte, isNull, inArray, desc, asc, lt } from 'drizzle-orm';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
 import { createPixPaymentForOrder } from '../server/lib/mercadopago';
 import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid } from '../server/lib/orderConfirmation';
@@ -53,6 +56,7 @@ function withTimeout(p: Promise<unknown>, ms: number): Promise<unknown> {
 const dbReady = Promise.all([
   withTimeout(ensureTablesExist(), 20_000).catch(err => console.error('DB init error:', err)),
   withTimeout(ensureOrdersTablesExist(), 10_000).catch(err => console.error('Orders DB init error:', err)),
+  withTimeout(ensureB2bTablesExist(), 10_000).catch(err => console.error('B2B DB init error:', err)),
 ]);
 
 // Set once dbReady settles so the guard middleware only blocks the very first request
