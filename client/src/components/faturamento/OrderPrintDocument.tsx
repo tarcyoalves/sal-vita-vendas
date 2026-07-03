@@ -57,14 +57,12 @@ function PedidoPrintContent({ pedido }: { pedido: Pedido }) {
       {/* Header */}
       <div className="flex items-start justify-between border-b-2 border-slate-800 pb-3 mb-4 gap-4">
         <div className="flex items-start gap-3">
-          <div className="p-2 bg-slate-800 rounded-xl flex items-center justify-center shrink-0">
-            <img
-              src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
-              alt="Sal Vita"
-              style={{ height: '46px', width: 'auto' }}
-              className="object-contain rounded-lg"
-            />
-          </div>
+          <img
+            src="https://salvitarn.com.br/wp-content/uploads/2025/04/logo-SAL-VITA.png"
+            alt="Sal Vita"
+            style={{ height: '58px', width: 'auto' }}
+            className="object-contain shrink-0"
+          />
           <div className="text-[11px] text-slate-600 leading-snug">
             <p className="font-bold text-slate-800 text-[13px]">{EMPRESA.razaoSocial}</p>
             <p>CNPJ: {EMPRESA.cnpj} · IE: {EMPRESA.ie}</p>
