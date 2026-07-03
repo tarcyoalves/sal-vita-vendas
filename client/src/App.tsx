@@ -82,6 +82,9 @@ function Router() {
       <Route path="/admin/faturamento">
         <AppShell><Faturamento /></AppShell>
       </Route>
+      <Route path="/admin/b2b-leads">
+        <AppShell><B2bLeads /></AppShell>
+      </Route>
       {/* TV dashboard desativado para economizar network transfer Neon */}
       {/* <Route path="/tv" component={TvDashboard} /> */}
       <Route path={"/404"} component={NotFound} />
