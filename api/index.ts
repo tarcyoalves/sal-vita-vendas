@@ -525,6 +525,253 @@ app.post('/api/brevo-webhook', brevoWebhookLimiter, express.json({ limit: '256kb
   }
 });
 
+// ── B2B inbound (/atacado form) ────────────────────────────────────────────────
+// Sprint 1 scope: register the lead cleanly (dedup + consent + audit) and notify
+// a human. NO scoring, NO outbound, NO WhatsApp-to-lead automation here — see
+// PLANO-FINAL-EXECUCAO-B2B.md Seção 6/12.
+
+const b2bInboundLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: 'Muitas tentativas. Tente novamente mais tarde ou fale conosco pelo WhatsApp.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+});
+
+const b2bInboundSchema = z.object({
+  companyName: z.string().trim().min(2, 'Informe o nome da empresa').max(200),
+  contactName: z.string().trim().min(2, 'Informe o nome do responsável').max(200),
+  email: z.string().trim().email('E-mail inválido').max(200),
+  whatsapp: z.string().trim().min(8, 'Informe um WhatsApp válido').max(30),
+  city: z.string().trim().min(2, 'Informe a cidade').max(120),
+  state: z.string().trim().min(2, 'Informe o estado (UF)').max(2),
+  segment: z.string().trim().min(2, 'Informe o segmento').max(80),
+  volumeInterest: z.string().trim().max(500).optional().default(''),
+  message: z.string().trim().max(2000).optional().default(''),
+  // Not shown in the /atacado form (Sprint 1 fields are fixed — see plan Seção 11.1),
+  // but accepted defensively so the CNPJ→e-mail→telefone dedup cascade (Seção 12.4)
+  // is ready if a future form/import supplies it.
+  cnpj: z.string().trim().max(30).optional().default(''),
+  consent: z.literal(true, { errorMap: () => ({ message: 'É necessário aceitar o contato comercial.' }) }),
+});
+
+function escapeHtmlB2b(str: string): string {
+  return str.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+}
+
+// Best-effort internal notification — never throws, never blocks the response
+// to the lead. Sprint 1 canal fixo: e-mail via Resend (server/email/resend.ts).
+async function notifyB2bLead(lead: {
+  companyId: number; companyName: string; contactName: string; email: string;
+  whatsapp: string; segment: string; city: string; state: string; volumeInterest: string; message: string;
+}): Promise<void> {
+  const to = process.env.B2B_NOTIFY_EMAIL;
+  if (!to) { console.warn('[b2b] B2B_NOTIFY_EMAIL not configured — skipping internal notification'); return; }
+  const adminLink = `https://lembretes.salvitarn.com.br/admin/b2b-leads?empresa=${lead.companyId}`;
+  const row = (label: string, value: string) => value
+    ? `<tr><td style="padding:6px 0;font-size:13px;color:#888;width:140px;vertical-align:top;">${label}</td><td style="padding:6px 0;font-size:14px;color:#222;">${escapeHtmlB2b(value)}</td></tr>`
+    : '';
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8" /></head>
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:system-ui,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f4;">
+    <tr><td align="center" style="padding:24px 8px;">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
+        <tr><td style="background:#0C3680;padding:20px 32px;"><span style="font-size:18px;color:#fff;font-weight:bold;">Novo lead B2B — Sal Vita Atacado</span></td></tr>
+        <tr><td style="padding:24px 32px;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0">
+            ${row('Empresa', lead.companyName)}
+            ${row('Responsável', lead.contactName)}
+            ${row('E-mail', lead.email)}
+            ${row('WhatsApp', lead.whatsapp)}
+            ${row('Segmento', lead.segment)}
+            ${row('Cidade/UF', `${lead.city}/${lead.state}`)}
+            ${row('Volume/Interesse', lead.volumeInterest)}
+            ${row('Mensagem', lead.message)}
+          </table>
+          <p style="margin:20px 0 0;font-size:13px;color:#888;">SLA de resposta recomendado: 2h úteis.</p>
+          <table cellpadding="0" cellspacing="0" border="0" style="margin:16px 0 0;">
+            <tr><td style="background:#0C3680;border-radius:6px;">
+              <a href="${adminLink}" style="display:block;padding:12px 24px;color:#fff;text-decoration:none;font-size:14px;font-weight:bold;">Abrir no admin →</a>
+            </td></tr>
+          </table>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+  await sendEmail(to, `Novo lead B2B: ${lead.companyName}`, html);
+}
+
+// Finds an existing company by an existing contact's e-mail or phone/WhatsApp
+// (digits-only). Used by the CNPJ → e-mail → telefone dedup cascade below.
+async function findCompanyIdByContact(emailNorm: string, phoneDigits: string): Promise<number | null> {
+  if (emailNorm) {
+    const [byEmail] = await ordersDb.select({ companyId: contacts.companyId }).from(contacts)
+      .where(eq(contacts.email, emailNorm)).limit(1);
+    if (byEmail) return byEmail.companyId;
+  }
+  if (phoneDigits) {
+    const [byPhone] = await ordersDb.select({ companyId: contacts.companyId }).from(contacts)
+      .where(or(eq(contacts.phone, phoneDigits), eq(contacts.whatsapp, phoneDigits))).limit(1);
+    if (byPhone) return byPhone.companyId;
+  }
+  return null;
+}
+
+app.post('/api/b2b/inbound', b2bInboundLimiter, express.json({ limit: '256kb' }), async (req, res) => {
+  try {
+    const parsed = b2bInboundSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' });
+      return;
+    }
+    const data = parsed.data;
+    const emailNorm = data.email.toLowerCase().trim();
+    const phoneDigits = data.whatsapp.replace(/\D/g, '');
+    const cnpjDigits = data.cnpj.replace(/\D/g, '');
+
+    // Suppression check — never create/update a company or contact for a
+    // suppressed e-mail/phone, but still respond politely and audit it.
+    const supMatches = await ordersDb.select().from(suppressionList).where(
+      or(
+        emailNorm ? eq(suppressionList.email, emailNorm) : sql`FALSE`,
+        phoneDigits ? eq(suppressionList.phone, phoneDigits) : sql`FALSE`,
+      )
+    ).limit(1);
+    if (supMatches.length > 0) {
+      await ordersDb.insert(auditLogs).values({
+        entityType: 'inbound_form', entityId: null, action: 'blocked_suppressed',
+        actorType: 'system', actorId: 'b2b_inbound',
+        metadataJson: { email: emailNorm, phone: phoneDigits },
+      });
+      res.json({ ok: true });
+      return;
+    }
+
+    // Dedup company: CNPJ (when informed) → e-mail comercial normalizado → telefone.
+    let companyId: number | null = null;
+    if (cnpjDigits) {
+      const [byCnpj] = await ordersDb.select().from(companies).where(eq(companies.cnpj, cnpjDigits)).limit(1);
+      if (byCnpj) companyId = byCnpj.id;
+    }
+    if (!companyId) companyId = await findCompanyIdByContact(emailNorm, phoneDigits);
+
+    const now = new Date();
+    const stateUpper = data.state.toUpperCase();
+    if (companyId) {
+      await ordersDb.update(companies).set({
+        name: data.companyName,
+        segment: data.segment,
+        city: data.city,
+        state: stateUpper,
+        updatedAt: now,
+        ...(cnpjDigits ? { cnpj: cnpjDigits } : {}),
+      }).where(eq(companies.id, companyId));
+    } else {
+      const [created] = await ordersDb.insert(companies).values({
+        name: data.companyName,
+        cnpj: cnpjDigits || null,
+        segment: data.segment,
+        city: data.city,
+        state: stateUpper,
+        country: 'BR',
+        sourceType: 'inbound_form',
+        sourceUrl: 'https://premium.salvitarn.com.br/atacado',
+        pipelineType: 'inbound',
+        // Inbound leads never enter a cold cadence — they go straight to a
+        // human SLA (PLANO-FINAL Seção 10.1).
+        pipelineStage: 'qualified',
+        status: 'active',
+      }).returning();
+      companyId = created.id;
+    }
+
+    // Dedup contact within the company (by e-mail or phone).
+    const [existingContact] = await ordersDb.select().from(contacts).where(
+      and(
+        eq(contacts.companyId, companyId),
+        or(
+          emailNorm ? eq(contacts.email, emailNorm) : sql`FALSE`,
+          phoneDigits ? eq(contacts.phone, phoneDigits) : sql`FALSE`,
+        ),
+      )
+    ).limit(1);
+
+    let contactId: number;
+    if (existingContact) {
+      await ordersDb.update(contacts).set({
+        name: data.contactName,
+        email: emailNorm || existingContact.email,
+        phone: phoneDigits || existingContact.phone,
+        whatsapp: phoneDigits || existingContact.whatsapp,
+        updatedAt: now,
+      }).where(eq(contacts.id, existingContact.id));
+      contactId = existingContact.id;
+    } else {
+      const [createdContact] = await ordersDb.insert(contacts).values({
+        companyId,
+        name: data.contactName,
+        email: emailNorm,
+        phone: phoneDigits,
+        whatsapp: phoneDigits,
+        channelType: 'form',
+        isPublicBusinessContact: true,
+        sourceUrl: 'https://premium.salvitarn.com.br/atacado',
+      }).returning();
+      contactId = createdContact.id;
+    }
+
+    // Origin of the data (LGPD audit trail).
+    await ordersDb.insert(publicSources).values({
+      companyId,
+      sourceType: 'inbound_form',
+      sourceUrl: 'https://premium.salvitarn.com.br/atacado',
+      rawExcerpt: JSON.stringify({ volumeInterest: data.volumeInterest, message: data.message }).slice(0, 2000),
+      confidence: 100,
+    });
+
+    // Consent — inbound submission IS the consent basis. Never store the raw IP.
+    const ipRaw = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim()
+      || req.ip || req.socket.remoteAddress || '';
+    const ipHash = ipRaw ? crypto.createHash('sha256').update(ipRaw).digest('hex') : null;
+    await ordersDb.insert(consentRecords).values({
+      companyId,
+      contactId,
+      formName: 'atacado_b2b',
+      consentText: 'Concordo em ser contatado pela equipe Sal Vita Premium para receber informações comerciais sobre compras B2B, revenda ou atacado.',
+      ipHash,
+      userAgent: (req.headers['user-agent'] as string | undefined)?.slice(0, 500) ?? null,
+    });
+
+    // Audit log.
+    await ordersDb.insert(auditLogs).values({
+      entityType: 'company',
+      entityId: companyId,
+      action: 'inbound_lead_created',
+      actorType: 'system',
+      actorId: 'b2b_inbound_form',
+      metadataJson: {
+        contactId, segment: data.segment, city: data.city, state: stateUpper,
+        volumeInterest: data.volumeInterest, message: data.message,
+      },
+    });
+
+    // Internal notification — best-effort, never blocks the response.
+    notifyB2bLead({
+      companyId, companyName: data.companyName, contactName: data.contactName, email: emailNorm,
+      whatsapp: data.whatsapp, segment: data.segment, city: data.city, state: stateUpper,
+      volumeInterest: data.volumeInterest, message: data.message,
+    }).catch(err => console.error('[b2b] notification error:', err));
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[b2b-inbound] error:', err);
+    res.status(500).json({ ok: false, error: 'Erro ao enviar. Tente novamente em instantes.' });
+  }
+});
+
 // 4mb to accommodate Disparo Rápido (broadcast) attachments sent as base64.
 // (Vercel's serverless request body cap is ~4.5MB; we validate ~3.5MB in the router.)
 app.use(express.json({ limit: '4mb' }));
