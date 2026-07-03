@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-07-03a';
+const SCHEMA_VERSION = '2026-07-03b';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -621,6 +621,37 @@ export async function ensureTablesExist() {
     UPDATE fat_products
     SET comissao_fixa_pct = 10, isento_frete = TRUE
     WHERE nome ILIKE '%VITA PREMIUM%' AND nome ILIKE '%10X1%'
+  `;
+
+  // Backfill: pedidos criados no mesmo instante em que o recurso foi ao ar podem
+  // ter itens salvos com o navegador ainda mostrando o catálogo antigo (sem
+  // comissao_fixa_pct/isento_frete carregados) — o item ficou sem o snapshot da
+  // regra do produto. Sincroniza os itens existentes com o produto atual sempre
+  // que o produto carregar uma regra fixa, sem mexer em pedidos sem produto ligado.
+  await sql`
+    UPDATE fat_orders o
+    SET itens = sub.novos_itens
+    FROM (
+      SELECT o2.id, jsonb_agg(
+        CASE
+          WHEN p.id IS NOT NULL AND (p.comissao_fixa_pct IS NOT NULL OR p.isento_frete)
+            THEN item || jsonb_build_object('comissaoFixaPct', p.comissao_fixa_pct, 'isentoFrete', p.isento_frete)
+          ELSE item
+        END
+        ORDER BY ord
+      ) AS novos_itens
+      FROM fat_orders o2
+      CROSS JOIN LATERAL jsonb_array_elements(o2.itens) WITH ORDINALITY AS t(item, ord)
+      LEFT JOIN fat_products p ON p.id = item->>'produtoId'
+      GROUP BY o2.id
+    ) sub
+    WHERE o.id = sub.id
+      AND EXISTS (
+        SELECT 1 FROM jsonb_array_elements(o.itens) AS item2
+        JOIN fat_products p2 ON p2.id = item2->>'produtoId'
+        WHERE (p2.comissao_fixa_pct IS NOT NULL OR p2.isento_frete)
+          AND (item2->>'comissaoFixaPct') IS DISTINCT FROM (p2.comissao_fixa_pct)::text
+      )
   `;
 
   // Tag auto-gerenciada por tasks.confirmEmail/update (ver EMAIL_CONFIRMED_TAG
