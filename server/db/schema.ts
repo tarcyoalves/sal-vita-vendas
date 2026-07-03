@@ -25,6 +25,11 @@ export const users = pgTable('users', {
   mustChangePassword: boolean('must_change_password').default(false).notNull(),
   ipRestrictionEnabled: boolean('ip_restriction_enabled').default(false).notNull(),
   allowedIps: text('allowed_ips').array().default([]).notNull(),
+  // IP/data do último login bem-sucedido — permite ao admin ver o IP real do
+  // atendente ao configurar restrição, em vez de adivinhar (login não é bloqueado
+  // por restrição de IP, então isso é capturado mesmo se o usuário estiver restrito).
+  lastLoginIp: text('last_login_ip'),
+  lastLoginAt: timestamp('last_login_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

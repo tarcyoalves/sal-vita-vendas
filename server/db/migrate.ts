@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-07-02c';
+const SCHEMA_VERSION = '2026-07-02d';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -453,6 +453,8 @@ export async function ensureTablesExist() {
   // ── Restrição de IP por usuário ─────────────────────────────────────────────
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS ip_restriction_enabled BOOLEAN NOT NULL DEFAULT FALSE`;
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_ips TEXT[] NOT NULL DEFAULT '{}'`;
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_ip TEXT`;
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP`;
 
   // ── Confirmação manual de e-mail — só e-mails confirmados entram em disparo ─
   // Default FALSE: todos os e-mails existentes (importados) começam não-confirmados.

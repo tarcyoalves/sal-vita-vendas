@@ -47,6 +47,13 @@ export const authRouter = router({
         'Set-Cookie',
         `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly${secure}; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax`,
       );
+      // login não é bloqueado por restrição de IP (só as chamadas seguintes são) —
+      // por isso captura o IP real mesmo se o usuário estiver restrito, dando ao
+      // admin o dado que falta pra configurar a restrição corretamente. Aguarda
+      // (em vez de fire-and-forget) porque a função serverless pode encerrar antes
+      // de uma promise pendente terminar assim que a resposta é enviada.
+      await db.update(users).set({ lastLoginIp: ctx.clientIp, lastLoginAt: new Date() })
+        .where(eq(users.id, user.id)).catch(() => {});
       return { id: user.id, name: user.name, email: user.email, role: user.role };
     }),
 

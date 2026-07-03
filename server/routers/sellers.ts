@@ -167,6 +167,8 @@ export const sellersRouter = router({
         userRole: users.role,
         ipRestrictionEnabled: users.ipRestrictionEnabled,
         allowedIps: users.allowedIps,
+        lastLoginIp: users.lastLoginIp,
+        lastLoginAt: users.lastLoginAt,
       })
       .from(sellers)
       .leftJoin(users, eq(sellers.userId, users.id))
@@ -242,8 +244,4 @@ export const sellersRouter = router({
       cacheInvalidate(`auth:me:${input.userId}`);
       return { ok: true };
     }),
-
-  myIp: protectedProcedure.query(({ ctx }) => {
-    return { ip: (ctx as any).clientIp ?? '' };
-  }),
 });

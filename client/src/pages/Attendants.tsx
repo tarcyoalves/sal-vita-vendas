@@ -20,6 +20,15 @@ function effectiveDailyGoal(dailyGoal?: number | null): number {
   return dailyGoal && dailyGoal !== 10 ? dailyGoal : 100;
 }
 
+function fmtTimeAgo(date: Date | string): string {
+  const min = Math.floor((Date.now() - new Date(date).getTime()) / 60000);
+  if (min < 1) return 'agora mesmo';
+  if (min < 60) return `há ${min}min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h}h`;
+  return `há ${Math.floor(h / 24)}d`;
+}
+
 interface Attendant {
   id: number;
   userId: number;
@@ -36,6 +45,8 @@ interface Attendant {
   emailMarketingEnabled?: boolean | null;
   ipRestrictionEnabled?: boolean | null;
   allowedIps?: string[] | null;
+  lastLoginIp?: string | null;
+  lastLoginAt?: Date | string | null;
   createdAt: Date;
   updatedAt: Date;
   userRole?: string | null;
@@ -88,7 +99,6 @@ export default function Attendants() {
   const [ipList, setIpList] = useState<string[]>([]);
   const [newIp, setNewIp] = useState("");
   const ipMutation = trpc.sellers.setIpRestriction.useMutation();
-  const myIpQuery = trpc.sellers.myIp.useQuery(undefined, { enabled: !!ipAttendant });
 
   const { data: attendants = [], isLoading, refetch } = trpc.sellers.listWithRole.useQuery();
   // Sem polling — protege o plano free do Neon/Vercel. Cache válido por 2min.
@@ -854,25 +864,32 @@ export default function Attendants() {
                     </Button>
                   </div>
 
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="w-full border-green-300 text-green-700 hover:bg-green-50"
-                    onClick={() => {
-                      if (myIpQuery.data?.ip) {
-                        handleAddIp(myIpQuery.data.ip);
-                        toast.success(`IP ${myIpQuery.data.ip} adicionado (seu IP atual)`);
-                      } else {
-                        toast.error("Não foi possível detectar o IP");
-                      }
-                    }}
-                  >
-                    📍 Usar meu IP atual {myIpQuery.data?.ip ? `(${myIpQuery.data.ip})` : ''}
-                  </Button>
-                  {myIpQuery.data?.ip && myIpQuery.data.ip.includes(':') && (
-                    <p className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
-                      Sua conexao usa IPv6 ({myIpQuery.data.ip}). Adicione este IP exato. Se o provedor mudar o IPv6 com frequencia, considere desativar a restricao para este atendente.
+                  {ipAttendant?.lastLoginIp ? (
+                    <>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="w-full border-green-300 text-green-700 hover:bg-green-50"
+                        onClick={() => {
+                          handleAddIp(ipAttendant.lastLoginIp!);
+                          toast.success(`IP ${ipAttendant.lastLoginIp} adicionado (último login de ${ipAttendant.name})`);
+                        }}
+                      >
+                        📍 Usar último IP de login de {ipAttendant.name} ({ipAttendant.lastLoginIp}
+                        {ipAttendant.lastLoginAt ? `, ${fmtTimeAgo(ipAttendant.lastLoginAt)}` : ''})
+                      </Button>
+                      {ipAttendant.lastLoginIp.includes(':') && (
+                        <p className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
+                          Essa conexão usa IPv6 ({ipAttendant.lastLoginIp}). Se o provedor mudar o IPv6 com
+                          frequência, considere desativar a restrição para este atendente.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-xs text-gray-500 bg-gray-50 px-3 py-2 rounded-lg">
+                      Nenhum login registrado ainda pra {ipAttendant?.name}. Peça pra ela(e) tentar logar uma vez
+                      — o IP usado aparece aqui pra você adicionar com um clique.
                     </p>
                   )}
                   <p className="text-xs text-gray-500">
