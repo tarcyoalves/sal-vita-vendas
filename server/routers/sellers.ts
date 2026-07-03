@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import { eq } from 'drizzle-orm';
 import { randomInt } from 'crypto';
 import { router, protectedProcedure, adminProcedure, staffProcedure, invalidateUserCache } from '../trpc';
@@ -228,6 +229,12 @@ export const sellersRouter = router({
       const cleaned = input.allowedIps
         .map(ip => ip.trim())
         .filter(ip => /^[\da-fA-F.:\/]+$/.test(ip));
+      // Ligar a restrição sem nenhum IP salvo faz o createContext pular a checagem
+      // inteira (allowedIps.length > 0) — vira uma restrição "ligada" que não bloqueia
+      // ninguém, silenciosamente. Bloqueia esse estado aqui.
+      if (input.enabled && cleaned.length === 0) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Adicione ao menos um IP antes de ativar a restrição' });
+      }
       await db.update(users)
         .set({ ipRestrictionEnabled: input.enabled, allowedIps: cleaned })
         .where(eq(users.id, input.userId));

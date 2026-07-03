@@ -229,6 +229,10 @@ export default function Attendants() {
 
   const handleIpSave = async () => {
     if (!ipAttendant) return;
+    if (ipEnabled && ipList.length === 0) {
+      toast.error("Adicione ao menos um IP antes de ativar a restrição");
+      return;
+    }
     try {
       await ipMutation.mutateAsync({
         userId: ipAttendant.userId,
@@ -238,8 +242,8 @@ export default function Attendants() {
       toast.success("Restrição de IP salva!");
       setIpAttendant(null);
       refetch();
-    } catch {
-      toast.error("Erro ao salvar restrição de IP");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Erro ao salvar restrição de IP");
     }
   };
 
@@ -674,10 +678,10 @@ export default function Attendants() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className={`w-full ${attendant.ipRestrictionEnabled ? 'border-red-300 text-red-700 hover:bg-red-50' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                        className={`w-full ${attendant.ipRestrictionEnabled && (attendant.allowedIps?.length ?? 0) > 0 ? 'border-red-300 text-red-700 hover:bg-red-50' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
                         onClick={() => handleIpOpen(attendant)}
                       >
-                        {attendant.ipRestrictionEnabled ? '🔒 IP Restrito' : '🌐 Restringir IP'}
+                        {attendant.ipRestrictionEnabled && (attendant.allowedIps?.length ?? 0) > 0 ? '🔒 IP Restrito' : '🌐 Restringir IP'}
                       </Button>
                       {attendant.userRole !== "admin" && (
                         <Button
