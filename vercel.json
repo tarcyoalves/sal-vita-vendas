@@ -41,6 +41,16 @@
       "dest": "/index.html"
     },
     {
+      "src": "/sal-vita-b2b",
+      "has": [{ "type": "host", "value": "premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/index.html"
+    },
+    {
+      "src": "/sal-vita-b2b",
+      "has": [{ "type": "host", "value": "www\\.premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/index.html"
+    },
+    {
       "src": "/sal-vita-recovery",
       "has": [{ "type": "host", "value": "premium\\.salvitarn\\.com\\.br" }],
       "dest": "/index.html"

@@ -568,7 +568,7 @@ async function notifyB2bLead(lead: {
 }): Promise<void> {
   const to = process.env.B2B_NOTIFY_EMAIL;
   if (!to) { console.warn('[b2b] B2B_NOTIFY_EMAIL not configured — skipping internal notification'); return; }
-  const adminLink = `https://lembretes.salvitarn.com.br/admin/b2b-leads?empresa=${lead.companyId}`;
+  const adminLink = `https://premium.salvitarn.com.br/sal-vita-b2b?empresa=${lead.companyId}`;
   const row = (label: string, value: string) => value
     ? `<tr><td style="padding:6px 0;font-size:13px;color:#888;width:140px;vertical-align:top;">${label}</td><td style="padding:6px 0;font-size:14px;color:#222;">${escapeHtmlB2b(value)}</td></tr>`
     : '';
