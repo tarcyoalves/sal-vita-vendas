@@ -349,25 +349,11 @@ Campos recomendados:
 - `metadata_json`
 - `created_at`
 
-### 9.7. `lead_scores` opcional no MVP
+### 9.7. `lead_scores` — fora do Sprint 1
 
-Pode ser criada no MVP se o admin já exibir uma pontuação inicial simples.
-
-Campos recomendados:
-
-- `id`
-- `company_id`
-- `fit_score`
-- `intent_score`
-- `geo_score`
-- `readiness_score`
-- `risk_score`
-- `priority_score`
-- `data_confidence`
-- `score_version`
-- `created_at`
-
-No Sprint 1, esses campos podem ser preenchidos manualmente ou por regra simples, sem IA.
+Removida do Sprint 1. Score sem dado de outbound é campo vazio no admin. A
+tabela `lead_scores` e o score determinístico entram no Sprint 3, junto da
+prospecção assistida — não antecipar aqui.
 
 ## 10. Pipeline separado: inbound e outbound
 
@@ -465,8 +451,8 @@ Responsabilidades:
 1. Validar dados.
 2. Normalizar e-mail/telefone.
 3. Verificar `suppression_list`.
-4. Criar/atualizar `company`.
-5. Criar/atualizar `contact`.
+4. Criar/atualizar `company` — **dedup obrigatório**: procurar empresa existente por CNPJ (quando informado), senão por e-mail comercial normalizado, senão por telefone/WhatsApp normalizado (só dígitos). Encontrou → atualiza e registra novo `public_source`/contato; não encontrou → cria. Nunca gerar duplicata do mesmo empório que preenche o form 2×.
+5. Criar/atualizar `contact` (dedup por e-mail/telefone dentro da company).
 6. Registrar consentimento.
 7. Registrar audit log.
 8. Definir `pipeline_type = inbound`.
@@ -505,10 +491,12 @@ Não precisa implementar CRM avançado no Sprint 1.
 
 Quando um lead `/atacado` entrar, o sistema deve notificar internamente.
 
-Pode ser por:
+**Sprint 1 — canal fixo:** e-mail interno via Resend para o endereço do dono (variável de ambiente, ex.: `B2B_NOTIFY_EMAIL`) **+** o lead aparecendo no admin B2B. Um lead inbound sem aviso em minutos é um lead morto — o SLA de resposta de 2h úteis é a métrica-rainha. WhatsApp interno de notificação fica para o Sprint 2.
 
-- e-mail interno via Resend;
-- painel admin;
+Canais aceitáveis:
+
+- e-mail interno via Resend (obrigatório no Sprint 1);
+- painel admin (obrigatório no Sprint 1);
 - log/admin notification existente.
 
 A notificação deve incluir:
@@ -545,9 +533,9 @@ No Sprint 1, não adicionar variáveis de IA.
 
 Podem ser necessárias variáveis para:
 
-- e-mail interno de notificação;
+- `B2B_NOTIFY_EMAIL` — endereço que recebe a notificação de novo lead inbound;
 - feature flag B2B;
-- configurações do formulário;
+- configurações do formulário (ex.: chave do Turnstile/captcha se usado);
 - domínio/canonical se aplicável.
 
 Não adicionar ainda:
@@ -806,7 +794,7 @@ Escopo permitido:
    - consent_records
    - suppression_list
    - audit_logs
-   - lead_scores, se necessário para admin inicial
+   (NÃO criar lead_scores no Sprint 1 — entra no Sprint 3.)
 4. Criar ensureB2bTablesExist() seguindo o padrão existente do projeto.
 5. Criar endpoint /api/b2b/inbound para receber formulário de atacado.
 6. Criar página pública /atacado.
@@ -814,6 +802,8 @@ Escopo permitido:
 8. Criar audit log para toda entrada via /atacado.
 9. Criar suppression básica.
 10. Garantir que nada do CRM de lembretes, email marketing existente, frete, Melhor Envio, Evolution API ou checkout seja alterado fora dos críticos autorizados.
+
+REGRA CRÍTICA: Se você sentir vontade de implementar qualquer item da lista "Não implementar ainda" abaixo, PARE e pergunte. Não "adiante" funcionalidades — mesmo que pareçam triviais ou que "já que estou aqui".
 
 Não implementar ainda:
 - Scout
