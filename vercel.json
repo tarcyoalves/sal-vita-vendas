@@ -61,6 +61,16 @@
       "dest": "/index.html"
     },
     {
+      "src": "/atacado",
+      "has": [{ "type": "host", "value": "premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/index.html"
+    },
+    {
+      "src": "/atacado",
+      "has": [{ "type": "host", "value": "www\\.premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/index.html"
+    },
+    {
       "src": "/api/(.*)",
       "has": [{ "type": "host", "value": "premium\\.salvitarn\\.com\\.br" }],
       "dest": "/api/bundle.js"

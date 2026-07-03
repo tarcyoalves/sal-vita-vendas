@@ -29,6 +29,8 @@ import SalVitaAdmin from "./pages/SalVitaAdmin";
 import SalVitaRecovery from "./pages/SalVitaRecovery";
 import SalVitaChat from "./components/SalVitaChat";
 import TrackOrder from "./pages/TrackOrder";
+import Atacado from "./pages/Atacado";
+import B2bLeads from "./pages/B2bLeads";
 
 function Router() {
   return (
@@ -122,6 +124,11 @@ function App() {
     if (path === '/meu-pedido') {
       return (
         <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><TrackOrder /></TooltipProvider></ThemeProvider></ErrorBoundary>
+      );
+    }
+    if (path === '/atacado') {
+      return (
+        <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><Atacado /></TooltipProvider></ThemeProvider></ErrorBoundary>
       );
     }
     if (path === '/classic') {
