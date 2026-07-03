@@ -318,15 +318,23 @@ app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/jso
           res.json({ ok: true, mismatch: true }); return;
         }
       }
-      // Mark BOTH status and paymentStatus so the admin panel shows the order as paid + ready to ship
-      await ordersDb.update(siteOrders)
+      // C3: conditional update — only rows still 'awaiting' get confirmed, and only
+      // the caller that actually flips the row runs confirmOrderPaid(). This closes
+      // the race with the reconcile cron (both could otherwise fire WhatsApp/e-mail/
+      // CAPI/coupon-bump twice for the same order).
+      const updated = await ordersDb.update(siteOrders)
         .set({ status: 'confirmed', paymentStatus: 'confirmed', mpPaymentId: mpId, updatedAt: new Date() })
-        .where(eq(siteOrders.id, orderId));
+        .where(and(eq(siteOrders.id, orderId), eq(siteOrders.paymentStatus, 'awaiting')))
+        .returning();
 
-      // Coupon bump, CAPI Purchase, automation cancellation, abandoned-cart
-      // conversion, and WhatsApp/email confirmation — shared with the
-      // reconciliation cron and the admin's manual confirm action.
-      await confirmOrderPaid(order);
+      if (updated.length > 0) {
+        // Coupon bump, CAPI Purchase, automation cancellation, abandoned-cart
+        // conversion, and WhatsApp/email confirmation — shared with the
+        // reconciliation cron and the admin's manual confirm action.
+        await confirmOrderPaid(updated[0]);
+      } else {
+        console.log(`[mp-webhook] order ${orderId} was already confirmed elsewhere — skipping duplicate side effects`);
+      }
 
     } else if (payment.status === 'pending' || payment.status === 'in_process' || payment.status === 'authorized') {
       // PIX/boleto awaiting payment — keep awaiting but persist the payment id for follow-up
@@ -751,26 +759,49 @@ async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
         // Find an approved payment for this order (by saved id, else search by reference).
         let approved = false;
         let payId = o.mpPaymentId ?? '';
+        let transactionAmount: number | undefined;
         if (payId) {
           const r = await fetch(`https://api.mercadopago.com/v1/payments/${payId}`, { headers: { 'Authorization': `Bearer ${token}` } });
-          if (r.ok) approved = ((await r.json()) as any)?.status === 'approved';
+          if (r.ok) {
+            const p = (await r.json()) as any;
+            approved = p?.status === 'approved';
+            transactionAmount = p?.transaction_amount;
+          }
         } else {
           const r = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${o.id}&sort=date_created&criteria=desc`, { headers: { 'Authorization': `Bearer ${token}` } });
           if (r.ok) {
             const results = ((await r.json()) as any)?.results ?? [];
             const ap = results.find((p: any) => p.status === 'approved');
-            if (ap) { approved = true; payId = String(ap.id); }
+            if (ap) { approved = true; payId = String(ap.id); transactionAmount = ap.transaction_amount; }
           }
         }
         if (!approved) continue;
 
-        await ordersDb.update(siteOrders)
+        // C2: replicate the webhook's amount validation here — without it, the
+        // reconcile cron was the anti-fraud check's back door (a mismatched webhook
+        // leaves the order 'awaiting', and this loop would otherwise confirm it anyway).
+        if (transactionAmount !== undefined) {
+          const expectedTotal = parseFloat(o.totalPrice ?? '0');
+          if (expectedTotal > 0 && Math.abs(transactionAmount - expectedTotal) > 0.01) {
+            console.warn(`[cron] reconcile amount mismatch for order ${o.id}: expected ${expectedTotal}, got ${transactionAmount}`);
+            continue; // leave order 'awaiting' for manual review; do not confirm
+          }
+        }
+
+        // C3: same idempotent conditional update as the webhook — only the caller
+        // that actually flips payment_status 'awaiting' → 'confirmed' runs the
+        // WhatsApp/e-mail/CAPI/coupon side effects.
+        const updated = await ordersDb.update(siteOrders)
           .set({ status: 'confirmed', paymentStatus: 'confirmed', mpPaymentId: payId, updatedAt: new Date() })
-          .where(eq(siteOrders.id, o.id));
-        // Coupon bump, CAPI Purchase, automation cancellation, abandoned-cart
-        // conversion, and WhatsApp/email confirmation — same as the mp-webhook path
-        await confirmOrderPaid(o);
-        confirmed++;
+          .where(and(eq(siteOrders.id, o.id), eq(siteOrders.paymentStatus, 'awaiting')))
+          .returning();
+
+        if (updated.length > 0) {
+          // Coupon bump, CAPI Purchase, automation cancellation, abandoned-cart
+          // conversion, and WhatsApp/email confirmation — same as the mp-webhook path
+          await confirmOrderPaid(updated[0]);
+          confirmed++;
+        }
       } catch { /* skip this order */ }
     }
   } catch (e) { console.error('[cron] reconcile error:', e); }

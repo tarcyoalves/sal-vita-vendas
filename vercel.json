@@ -6,7 +6,8 @@
     "api/index.ts": { "maxDuration": 60 }
   },
   "crons": [
-    { "path": "/api/cron/email-daily", "schedule": "0 11 * * *" }
+    { "path": "/api/cron/email-daily", "schedule": "0 11 * * *" },
+    { "path": "/api/cron/abandoned-cart", "schedule": "0 15 * * *" }
   ],
   "headers": [
     {
