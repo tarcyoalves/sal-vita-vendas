@@ -34,15 +34,11 @@ function PedidoPrintContent({ pedido }: { pedido: Pedido }) {
   const totalGeral = totalSal + totalFrete;
   const pesoTotal = pesoTotalItens(pedido.itens);
 
-  // Cliente e Razão Social costumam vir com o mesmo valor (herdado da task) —
-  // mostrar só uma vez evita a duplicação óbvia que confunde o cliente.
-  const razaoSocial = pedido.razaoSocial?.trim() || '';
-  const clienteNome = pedido.clienteNome?.trim() || '';
-  const nomePrincipal = razaoSocial || clienteNome || '--';
-  const nomeSecundario =
-    clienteNome && razaoSocial && clienteNome.toLowerCase() !== razaoSocial.toLowerCase()
-      ? clienteNome
-      : null;
+  // Só um nome de cliente — clienteNome às vezes guarda o título bruto da
+  // task (que já embute CNPJ/telefone/cidade), então mostrar os dois campos
+  // duplicava a mesma informação de formas diferentes. Razão Social é a
+  // fonte mais confiável quando existe.
+  const nomePrincipal = pedido.razaoSocial?.trim() || pedido.clienteNome?.trim() || '--';
 
   return (
     <div className="text-[13px] text-slate-800 p-6 max-w-[210mm] mx-auto bg-white">
@@ -70,7 +66,6 @@ function PedidoPrintContent({ pedido }: { pedido: Pedido }) {
         <div className="col-span-2">
           <p className="text-[10px] font-semibold text-slate-400 uppercase">Cliente</p>
           <p className="font-medium">{nomePrincipal}</p>
-          {nomeSecundario && <p className="text-xs text-slate-500">{nomeSecundario}</p>}
         </div>
         <div>
           <p className="text-[10px] font-semibold text-slate-400 uppercase">CNPJ</p>
@@ -86,16 +81,27 @@ function PedidoPrintContent({ pedido }: { pedido: Pedido }) {
         </div>
       </div>
 
-      {/* Itens — valores unitários (por saco/fardo); totais agregados ficam na linha "Totais" */}
-      <table className="w-full border-collapse mb-4">
+      {/* Itens — valores unitários (por saco/fardo). Totais agregados (em R$)
+          ficam só no resumo de pagamento abaixo, para não repetir o mesmo
+          número em dois lugares; a linha "Totais" aqui mostra só o peso,
+          que não aparece em nenhum outro lugar do documento. */}
+      <table className="w-full border-collapse mb-4 table-fixed">
+        <colgroup>
+          <col className="w-[34%]" />
+          <col className="w-[9%]" />
+          <col className="w-[13%]" />
+          <col className="w-[14%]" />
+          <col className="w-[15%]" />
+          <col className="w-[15%]" />
+        </colgroup>
         <thead>
           <tr className="border-b-2 border-slate-800">
-            <th className="text-left py-1.5 text-[11px] font-semibold uppercase">Descrição do sal</th>
-            <th className="text-right py-1.5 text-[11px] font-semibold uppercase">Qtd</th>
-            <th className="text-right py-1.5 text-[11px] font-semibold uppercase">Peso</th>
-            <th className="text-right py-1.5 text-[11px] font-semibold uppercase">Valor do sal<br />(un.)</th>
-            <th className="text-right py-1.5 text-[11px] font-semibold uppercase">Valor do frete<br />(un.)</th>
-            <th className="text-right py-1.5 text-[11px] font-semibold uppercase">Preço final<br />(un.)</th>
+            <th className="text-left py-1.5 pr-2 text-[11px] font-semibold uppercase">Descrição do sal</th>
+            <th className="text-right py-1.5 px-1 text-[11px] font-semibold uppercase whitespace-nowrap">Qtd</th>
+            <th className="text-right py-1.5 px-1 text-[11px] font-semibold uppercase whitespace-nowrap">Peso</th>
+            <th className="text-right py-1.5 px-1 text-[11px] font-semibold uppercase leading-tight">Valor do<br />sal (un.)</th>
+            <th className="text-right py-1.5 px-1 text-[11px] font-semibold uppercase leading-tight">Valor do<br />frete (un.)</th>
+            <th className="text-right py-1.5 pl-1 text-[11px] font-semibold uppercase leading-tight">Preço<br />final (un.)</th>
           </tr>
         </thead>
         <tbody>
@@ -103,23 +109,21 @@ function PedidoPrintContent({ pedido }: { pedido: Pedido }) {
             const frete = freteUnit(it, pedido.valorFretePorUnidade);
             return (
               <tr key={it.id} className="border-b border-slate-200">
-                <td className="py-1.5">{it.descricao || 'Item'}</td>
-                <td className="py-1.5 text-right">{it.quantidade}</td>
-                <td className="py-1.5 text-right">{formatKg(it.pesoKg)}</td>
-                <td className="py-1.5 text-right">{formatBRL(it.valorUnitario)}</td>
-                <td className="py-1.5 text-right">{formatBRL(frete)}</td>
-                <td className="py-1.5 text-right font-semibold">{formatBRL(it.valorUnitario + frete)}</td>
+                <td className="py-1.5 pr-2 break-words">{it.descricao || 'Item'}</td>
+                <td className="py-1.5 px-1 text-right whitespace-nowrap">{it.quantidade}</td>
+                <td className="py-1.5 px-1 text-right whitespace-nowrap">{formatKg(it.pesoKg)}</td>
+                <td className="py-1.5 px-1 text-right whitespace-nowrap">{formatBRL(it.valorUnitario)}</td>
+                <td className="py-1.5 px-1 text-right whitespace-nowrap">{formatBRL(frete)}</td>
+                <td className="py-1.5 pl-1 text-right font-semibold whitespace-nowrap">{formatBRL(it.valorUnitario + frete)}</td>
               </tr>
             );
           })}
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-slate-800 font-semibold">
-            <td className="py-1.5" colSpan={2}>Totais</td>
-            <td className="py-1.5 text-right">{formatKg(pesoTotal)}</td>
-            <td className="py-1.5 text-right">{formatBRL(totalSal)}</td>
-            <td className="py-1.5 text-right">{formatBRL(totalFrete)}</td>
-            <td className="py-1.5 text-right text-blue-900">{formatBRL(totalGeral)}</td>
+            <td className="py-1.5 pr-2" colSpan={2}>Peso total</td>
+            <td className="py-1.5 px-1 text-right whitespace-nowrap">{formatKg(pesoTotal)}</td>
+            <td colSpan={3} />
           </tr>
         </tfoot>
       </table>
@@ -144,13 +148,15 @@ function PedidoPrintContent({ pedido }: { pedido: Pedido }) {
         </tbody>
       </table>
 
-      {/* Observações gerais */}
-      {pedido.observacoes && (
-        <div className="border border-slate-300 rounded-lg p-3">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1">Observações gerais do pedido</p>
-          <p className="whitespace-pre-wrap text-[13px]">{pedido.observacoes}</p>
-        </div>
-      )}
+      {/* Observações gerais — bloco sempre presente, mesmo vazio */}
+      <div className="border border-slate-300 rounded-lg p-3 mb-4 min-h-[52px]">
+        <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1">Observações gerais do pedido</p>
+        {pedido.observacoes && <p className="whitespace-pre-wrap text-[13px]">{pedido.observacoes}</p>}
+      </div>
+
+      <p className="text-center text-xs text-slate-400 pt-2 border-t border-slate-200">
+        www.salvitarn.com.br
+      </p>
     </div>
   );
 }
