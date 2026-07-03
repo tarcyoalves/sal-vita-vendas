@@ -3,11 +3,8 @@ import {
 } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Printer } from 'lucide-react';
-import SalVitaLogo from '../SalVitaLogo';
-import {
-  totalItens, pesoTotalItens, pesoBrutoTotalItens, freteTotal, formatBRL, formatKg,
-} from '../../lib/faturamento/calc';
-import type { Pedido } from '../../lib/faturamento/types';
+import { totalItens, pesoTotalItens, freteTotal, formatBRL, formatKg } from '../../lib/faturamento/calc';
+import type { Pedido, ItemPedido } from '../../lib/faturamento/types';
 
 interface OrderPrintDocumentProps {
   open: boolean;
@@ -21,15 +18,23 @@ function fmtDate(iso: string | null): string {
   return isNaN(d.getTime()) ? '--' : d.toLocaleDateString('pt-BR');
 }
 
+// Frete desta linha: isento quando o produto tem preço final fixo (snapshot
+// no item), senão quantidade × valor do frete por unidade do pedido.
+function freteItem(it: ItemPedido, valorFretePorUnidade: number): number {
+  return it.isentoFrete ? 0 : (Number(it.quantidade) || 0) * (Number(valorFretePorUnidade) || 0);
+}
+
 // Cópia do pedido, gerada pelo atendente para enviar ao cliente, disponível
 // depois que o admin aprova. Documento 100% voltado ao cliente: sem comissão,
-// sem observações internas do atendente, sem dado administrativo — só o que
-// o cliente precisa para conferir e pagar o pedido, em uma única página.
+// sem dado administrativo — só o que o cliente precisa para conferir e pagar
+// o pedido, em uma única página.
 export function OrderPrintDocument({ open, onOpenChange, pedido }: OrderPrintDocumentProps) {
   if (!pedido) return null;
 
-  const total = totalItens(pedido.itens);
-  const frete = freteTotal(pedido);
+  const totalSal = totalItens(pedido.itens);
+  const totalFrete = freteTotal(pedido);
+  const totalGeral = totalSal + totalFrete;
+  const pesoTotal = pesoTotalItens(pedido.itens);
 
   // Cliente e Razão Social costumam vir com o mesmo valor (herdado da task) —
   // mostrar só uma vez evita a duplicação óbvia que confunde o cliente.
@@ -55,7 +60,14 @@ export function OrderPrintDocument({ open, onOpenChange, pedido }: OrderPrintDoc
           {/* Header */}
           <div className="flex items-center justify-between border-b-2 border-slate-800 pb-2.5 mb-3">
             <div className="flex items-center gap-2.5">
-              <SalVitaLogo variant="light" className="h-12 w-auto shrink-0" />
+              <div className="p-1.5 bg-slate-800 rounded-xl flex items-center justify-center shrink-0">
+                <img
+                  src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
+                  alt="Sal Vita"
+                  style={{ height: '40px', width: 'auto' }}
+                  className="object-contain rounded-lg"
+                />
+              </div>
               <p className="text-[11px] text-slate-500 leading-tight">Sal marinho de<br />Mossoró/RN</p>
             </div>
             <div className="text-right">
@@ -89,66 +101,68 @@ export function OrderPrintDocument({ open, onOpenChange, pedido }: OrderPrintDoc
           <table className="w-full border-collapse mb-3">
             <thead>
               <tr className="border-b-2 border-slate-800">
-                <th className="text-left py-1 text-[11px] font-semibold uppercase">Produto</th>
+                <th className="text-left py-1 text-[11px] font-semibold uppercase">Descrição do sal</th>
                 <th className="text-right py-1 text-[11px] font-semibold uppercase">Qtd</th>
-                <th className="text-right py-1 text-[11px] font-semibold uppercase">Peso líq.</th>
-                <th className="text-right py-1 text-[11px] font-semibold uppercase">Peso bruto</th>
-                <th className="text-right py-1 text-[11px] font-semibold uppercase">Valor unit.</th>
-                <th className="text-right py-1 text-[11px] font-semibold uppercase">Total</th>
+                <th className="text-right py-1 text-[11px] font-semibold uppercase">Peso</th>
+                <th className="text-right py-1 text-[11px] font-semibold uppercase">Valor do sal</th>
+                <th className="text-right py-1 text-[11px] font-semibold uppercase">Valor do frete</th>
+                <th className="text-right py-1 text-[11px] font-semibold uppercase">Preço final</th>
               </tr>
             </thead>
             <tbody>
-              {pedido.itens.map((it) => (
-                <tr key={it.id} className="border-b border-slate-200">
-                  <td className="py-1">{it.descricao || 'Item'}</td>
-                  <td className="py-1 text-right">{it.quantidade}</td>
-                  <td className="py-1 text-right">{formatKg(it.pesoKg)}</td>
-                  <td className="py-1 text-right">{formatKg(it.pesoBrutoKg || it.pesoKg)}</td>
-                  <td className="py-1 text-right">{formatBRL(it.valorUnitario)}</td>
-                  <td className="py-1 text-right font-semibold">{formatBRL(it.quantidade * it.valorUnitario)}</td>
-                </tr>
-              ))}
+              {pedido.itens.map((it) => {
+                const valorSal = it.quantidade * it.valorUnitario;
+                const valorFrete = freteItem(it, pedido.valorFretePorUnidade);
+                return (
+                  <tr key={it.id} className="border-b border-slate-200">
+                    <td className="py-1">{it.descricao || 'Item'}</td>
+                    <td className="py-1 text-right">{it.quantidade}</td>
+                    <td className="py-1 text-right">{formatKg(it.pesoKg)}</td>
+                    <td className="py-1 text-right">{formatBRL(valorSal)}</td>
+                    <td className="py-1 text-right">{formatBRL(valorFrete)}</td>
+                    <td className="py-1 text-right font-semibold">{formatBRL(valorSal + valorFrete)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-slate-800 font-semibold">
                 <td className="py-1" colSpan={2}>Totais</td>
-                <td className="py-1 text-right">{formatKg(pesoTotalItens(pedido.itens))}</td>
-                <td className="py-1 text-right">{formatKg(pesoBrutoTotalItens(pedido.itens))}</td>
-                <td />
-                <td className="py-1 text-right text-blue-900">{formatBRL(total)}</td>
+                <td className="py-1 text-right">{formatKg(pesoTotal)}</td>
+                <td className="py-1 text-right">{formatBRL(totalSal)}</td>
+                <td className="py-1 text-right">{formatBRL(totalFrete)}</td>
+                <td className="py-1 text-right text-blue-900">{formatBRL(totalGeral)}</td>
               </tr>
             </tfoot>
           </table>
 
-          {/* Condições */}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-3 border border-slate-300 rounded-lg p-2.5">
-            <div>
-              <p className="text-[10px] font-semibold text-slate-400 uppercase">F. Pagamento</p>
-              <p>{pedido.prazoPagamentoSal || '--'}</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-semibold text-slate-400 uppercase">Prazo frete</p>
-              <p>{pedido.prazoPagamentoFrete || '--'}</p>
-            </div>
-            {frete > 0 && (
-              <div>
-                <p className="text-[10px] font-semibold text-slate-400 uppercase">Frete total</p>
-                <p>{formatBRL(frete)}</p>
-              </div>
-            )}
-            {pedido.valorPago > 0 && (
-              <div>
-                <p className="text-[10px] font-semibold text-slate-400 uppercase">Valor pago</p>
-                <p>{formatBRL(pedido.valorPago)}</p>
-              </div>
-            )}
-          </div>
+          {/* Resumo de pagamento */}
+          <table className="w-full border-collapse mb-3 border border-slate-300 rounded-lg overflow-hidden">
+            <tbody className="text-sm">
+              <tr className="border-b border-slate-200">
+                <td className="py-1.5 px-2.5 text-slate-600">Total Sal</td>
+                <td className="py-1.5 px-2.5 text-right font-semibold">{formatBRL(totalSal)}</td>
+                <td className="py-1.5 px-2.5 text-right text-slate-500">{pedido.prazoPagamentoSal || '--'}</td>
+              </tr>
+              <tr className="border-b border-slate-200">
+                <td className="py-1.5 px-2.5 text-slate-600">Total Frete</td>
+                <td className="py-1.5 px-2.5 text-right font-semibold">{formatBRL(totalFrete)}</td>
+                <td className="py-1.5 px-2.5 text-right text-slate-500">{pedido.prazoPagamentoFrete || '--'}</td>
+              </tr>
+              <tr className="bg-blue-50">
+                <td className="py-2 px-2.5 font-bold text-blue-900 uppercase text-xs">Total geral do pedido</td>
+                <td className="py-2 px-2.5 text-right font-bold text-blue-900 text-lg" colSpan={2}>{formatBRL(totalGeral)}</td>
+              </tr>
+            </tbody>
+          </table>
 
-          {/* Total — destaque máximo, sem ambiguidade */}
-          <div className="flex items-center justify-between bg-blue-50 border-2 border-blue-900 rounded-lg px-4 py-3">
-            <span className="text-sm font-semibold text-blue-900 uppercase">Valor do Sal</span>
-            <span className="text-2xl font-bold text-blue-900">{formatBRL(total)}</span>
-          </div>
+          {/* Observações gerais */}
+          {pedido.observacoes && (
+            <div className="border border-slate-300 rounded-lg p-2.5">
+              <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1">Observações gerais do pedido</p>
+              <p className="whitespace-pre-wrap text-sm">{pedido.observacoes}</p>
+            </div>
+          )}
         </div>
 
         <DialogFooter className="print:hidden">
