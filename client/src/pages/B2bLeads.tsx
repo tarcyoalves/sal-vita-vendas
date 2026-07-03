@@ -8,26 +8,12 @@ import {
 import { Building2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
-// Sprint 1 admin B2B — página do HOST PREMIUM (premium.salvitarn.com.br/sal-vita-b2b).
-// Login próprio + sem AppShell, exatamente como SalVitaAdmin / SalVitaRecovery.
-// NÃO pertence ao CRM de lembretes — é o admin de leads do produto premium.
+// Admin B2B — painel de conteúdo (sem login/header próprios). Montado dentro
+// do shell unificado em SalVitaAdmin.tsx (seção "Leads B2B"), que já cuida de
+// autenticação e navegação. NÃO pertence ao CRM de lembretes — é parte do
+// painel único do produto premium (premium.salvitarn.com.br).
 // Visualização simples de leads inbound do formulário /atacado + 3 transições
 // manuais de estágio + observação (audit log). Sem score/outbound/automação.
-
-/* ── Estilos do login (mesmo padrão dos admins premium) ── */
-const inputStyle: React.CSSProperties = {
-  width: '100%', boxSizing: 'border-box', padding: '9px 12px',
-  border: '1.5px solid #e2e8f0', borderRadius: 9, fontSize: '.88rem',
-  outline: 'none', fontFamily: 'inherit',
-};
-const labelStyle: React.CSSProperties = {
-  display: 'block', fontSize: '.72rem', fontWeight: 700, color: '#64748b',
-  marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.05em',
-};
-const btnPrimary: React.CSSProperties = {
-  padding: '9px 16px', background: '#0C3680', color: 'white', border: 'none',
-  borderRadius: 9, fontSize: '.83rem', fontWeight: 700, cursor: 'pointer',
-};
 
 const STAGE_LABEL: Record<string, string> = {
   discovered: 'Novo',
@@ -47,90 +33,8 @@ function fmtDate(d: string | Date) {
   return new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-/* ── Login (host premium, igual SalVitaRecovery) ── */
-function LoginForm() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const loginMut = trpc.auth.login.useMutation();
-
-  const handle = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      await loginMut.mutateAsync({ email, password });
-      window.location.reload();
-    } catch (err: any) {
-      toast.error(err?.message ?? 'Credenciais inválidas');
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg,#0b1d3a 0%,#1a3a6b 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{ background: 'white', borderRadius: 24, boxShadow: '0 25px 60px rgba(0,0,0,.3)', padding: '40px 36px', width: '100%', maxWidth: 380 }}>
-        <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 378" style={{ height: 56, width: 'auto', marginBottom: 12 }}>
-            <defs><clipPath id="oval-b2b"><ellipse cx="250" cy="187" rx="228" ry="164" /></clipPath></defs>
-            <ellipse cx="250" cy="187" rx="228" ry="164" fill="white" />
-            <path d="M 22 252 Q 95 182 178 222 Q 214 242 250 210 Q 286 178 338 208 Q 398 240 478 222 L 478 352 H 22 Z" fill="#0C3680" clipPath="url(#oval-b2b)" />
-            <text x="250" y="196" textAnchor="middle" fontFamily="Pacifico, cursive" fontSize="90" fill="#0C3680">Sal Vita</text>
-            <ellipse cx="250" cy="187" rx="228" ry="164" fill="none" stroke="#0C3680" strokeWidth="15" />
-          </svg>
-          <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0b1d3a', margin: 0 }}>Leads B2B — Atacado</h1>
-          <p style={{ fontSize: '.85rem', color: '#94a3b8', marginTop: 4 }}>premium.salvitarn.com.br</p>
-        </div>
-        <form onSubmit={handle} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <label style={labelStyle}>E-mail</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="admin@salvitarn.com.br" style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>Senha</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="••••••••" style={inputStyle} />
-          </div>
-          <button type="submit" disabled={loading} style={{ ...btnPrimary, marginTop: 4, padding: '13px', borderRadius: 12, fontSize: '.95rem', opacity: loading ? .6 : 1 }}>
-            {loading ? 'Entrando...' : 'Entrar'}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-/* ── Gate: login próprio, sem AppShell (host premium) ── */
-export default function B2bLeads() {
-  const meQuery = trpc.auth.me.useQuery(undefined, { retry: false });
-  const logoutMut = trpc.auth.logout.useMutation();
-
-  if (meQuery.isLoading) {
-    return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>Carregando...</div>;
-  }
-  const user = meQuery.data as any;
-  if (!user || user.role !== 'admin') {
-    return <LoginForm />;
-  }
-
-  return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
-      {/* Header próprio do premium (não é o AppShell do CRM) */}
-      <div style={{ background: 'linear-gradient(135deg,#0b1d3a 0%,#1a3a6b 100%)', color: 'white', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>Leads B2B — Atacado</h1>
-          <p style={{ margin: '2px 0 0', fontSize: '.8rem', color: 'rgba(255,255,255,.6)' }}>Recebidos pelo formulário /atacado · SLA recomendado: 2h úteis</p>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <a href="/sal-vita-admin" style={{ padding: '8px 14px', background: 'rgba(255,255,255,.12)', color: 'white', borderRadius: 9, fontSize: '.82rem', fontWeight: 600, textDecoration: 'none' }}>← Pedidos</a>
-          <button onClick={async () => { await logoutMut.mutateAsync(); window.location.reload(); }} style={{ padding: '8px 14px', background: 'rgba(255,255,255,.12)', color: 'white', border: 'none', borderRadius: 9, fontSize: '.82rem', fontWeight: 600, cursor: 'pointer' }}>Sair</button>
-        </div>
-      </div>
-      <B2bLeadsInner />
-    </div>
-  );
-}
-
-/* ── Conteúdo (já autenticado) ── */
-function B2bLeadsInner() {
+/* ── Conteúdo (a autenticação e o header já são feitos pelo shell) ── */
+export function B2bLeadsPanel() {
   const [stageFilter, setStageFilter] = useState('');
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -183,6 +87,10 @@ function B2bLeadsInner() {
 
   return (
     <div className="p-4 md:p-6 space-y-4 md:space-y-6">
+      <p className="text-sm text-gray-500">
+        Leads recebidos pelo formulário público <code>/atacado</code> · SLA recomendado de resposta: 2h úteis.
+      </p>
+
       {/* Contadores por estágio */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[

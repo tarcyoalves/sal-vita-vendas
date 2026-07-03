@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { trpc } from '../lib/trpc';
 import { toast } from 'sonner';
-import { useLocation } from 'wouter';
 
 /* ── Helpers ─────────────────────────────────────────────── */
 function timeAgo(dateStr: string | null | undefined): string {
@@ -67,57 +66,6 @@ const card: React.CSSProperties = {
   background: 'white', border: '1.5px solid #e2e8f0', borderRadius: 16,
   padding: '18px 20px', marginBottom: 12,
 };
-
-/* ── Login ───────────────────────────────────────────────── */
-function LoginForm() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const loginMut = trpc.auth.login.useMutation();
-
-  const handle = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      await loginMut.mutateAsync({ email, password });
-      window.location.reload();
-    } catch (err: any) {
-      toast.error(err?.message ?? 'Credenciais inválidas');
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg,#0b1d3a 0%,#1a3a6b 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{ background: 'white', borderRadius: 24, boxShadow: '0 25px 60px rgba(0,0,0,.3)', padding: '40px 36px', width: '100%', maxWidth: 380 }}>
-        <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 378" style={{ height: 56, width: 'auto', marginBottom: 12 }}>
-            <defs><clipPath id="oval-rv"><ellipse cx="250" cy="187" rx="228" ry="164" /></clipPath></defs>
-            <ellipse cx="250" cy="187" rx="228" ry="164" fill="white" />
-            <path d="M 22 252 Q 95 182 178 222 Q 214 242 250 210 Q 286 178 338 208 Q 398 240 478 222 L 478 352 H 22 Z" fill="#0C3680" clipPath="url(#oval-rv)" />
-            <text x="250" y="196" textAnchor="middle" fontFamily="Pacifico, cursive" fontSize="90" fill="#0C3680">Sal Vita</text>
-            <ellipse cx="250" cy="187" rx="228" ry="164" fill="none" stroke="#0C3680" strokeWidth="15" />
-          </svg>
-          <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0b1d3a', margin: 0 }}>Recuperação de Vendas</h1>
-          <p style={{ fontSize: '.85rem', color: '#94a3b8', marginTop: 4 }}>premium.salvitarn.com.br</p>
-        </div>
-        <form onSubmit={handle} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <label style={labelStyle}>E-mail</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="admin@salvitarn.com.br" style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>Senha</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="••••••••" style={inputStyle} />
-          </div>
-          <button type="submit" disabled={loading} style={{ ...btnPrimary, marginTop: 4, padding: '13px', borderRadius: 12, fontSize: '.95rem', opacity: loading ? .6 : 1 }}>
-            {loading ? 'Entrando...' : 'Entrar'}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
 
 /* ── Tab 1: Carrinhos Abandonados ────────────────────────── */
 function WaStatusBadge() {
@@ -1030,27 +978,11 @@ function AiTab() {
   );
 }
 
-/* ── Main Component ──────────────────────────────────────── */
+/* ── Painel (a autenticação e o header já são feitos pelo shell) ── */
 type Tab = 'abandoned' | 'unpaid' | 'templates' | 'automations' | 'coupons' | 'ai';
 
-export default function SalVitaRecovery() {
+export function RecoveryPanel() {
   const [tab, setTab] = useState<Tab>('abandoned');
-  const meQuery = trpc.auth.me.useQuery(undefined, { retry: false });
-  const [, setLocation] = useLocation();
-  const logoutMut = trpc.auth.logout.useMutation();
-
-  if (meQuery.isLoading) {
-    return (
-      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg,#0b1d3a 0%,#1e3a6e 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ color: 'white', fontSize: '1rem' }}>Carregando...</div>
-      </div>
-    );
-  }
-
-  const user = meQuery.data as any;
-  if (!user || user.role !== 'admin') {
-    return <LoginForm />;
-  }
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'abandoned', label: '🛒 Carrinhos' },
@@ -1062,37 +994,14 @@ export default function SalVitaRecovery() {
   ];
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'Inter, system-ui, sans-serif' }}>
-      {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg,#0b1d3a 0%,#1e3a6e 100%)', color: 'white', padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: '1.5rem' }}>🔄</span>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <h1 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800 }}>Recuperação de Vendas</h1>
-              <WaStatusBadge />
-            </div>
-            <p style={{ margin: 0, fontSize: '.78rem', opacity: .7 }}>Carrinhos · Automações · Cupons · IA</p>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={() => window.location.href = '/sal-vita-admin'}
-            style={{ padding: '8px 14px', background: 'rgba(255,255,255,.15)', color: 'white', border: '1px solid rgba(255,255,255,.2)', borderRadius: 8, fontSize: '.82rem', cursor: 'pointer' }}
-          >
-            ← Pedidos
-          </button>
-          <button
-            onClick={async () => { await logoutMut.mutateAsync(); setLocation('/sal-vita-admin'); window.location.reload(); }}
-            style={{ padding: '8px 14px', background: 'rgba(255,255,255,.1)', color: 'white', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, fontSize: '.82rem', cursor: 'pointer' }}
-          >
-            Sair
-          </button>
-        </div>
+    <div style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '16px 20px 0' }}>
+        <p style={{ margin: 0, fontSize: '.85rem', color: '#64748b' }}>Carrinhos abandonados, mensagens, automações e cupons de recuperação.</p>
+        <WaStatusBadge />
       </div>
 
       {/* Tab bar */}
-      <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '12px 24px', display: 'flex', gap: 6, overflowX: 'auto' }}>
+      <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '12px 20px', margin: '12px 0 0', display: 'flex', gap: 6, overflowX: 'auto' }}>
         {tabs.map(t => (
           <button
             key={t.id}

@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { trpc } from '../lib/trpc';
 import { toast } from 'sonner';
 import { useAuth } from '../_core/hooks/useAuth';
-import { useLocation } from 'wouter';
+import { RecoveryPanel } from './SalVitaRecovery';
+import { B2bLeadsPanel } from './B2bLeads';
 
 /* ── Status helpers ──────────────────────────────────────── */
 const S_LABEL: Record<string, string> = {
@@ -56,7 +57,7 @@ function LoginForm() {
             <text x="250" y="196" textAnchor="middle" fontFamily="Pacifico, cursive" fontSize="90" fill="#0C3680">Sal Vita</text>
             <ellipse cx="250" cy="187" rx="228" ry="164" fill="none" stroke="#0C3680" strokeWidth="15"/>
           </svg>
-          <h1 style={{ fontSize:'1.25rem', fontWeight:800, color:'#0b1d3a', margin:0 }}>Gestão de Pedidos</h1>
+          <h1 style={{ fontSize:'1.25rem', fontWeight:800, color:'#0b1d3a', margin:0 }}>Painel Sal Vita Premium</h1>
           <p style={{ fontSize:'.85rem', color:'#94a3b8', marginTop:4 }}>premium.salvitarn.com.br</p>
         </div>
         <form onSubmit={handle} style={{ display:'flex', flexDirection:'column', gap:14 }}>
@@ -398,14 +399,11 @@ function AiInsightsPanel() {
 }
 
 /* ── Main Panel ───────────────────────────────────────────── */
-function OrdersPanel() {
-  const { user } = useAuth();
-  const [, setLocation] = useLocation();
+export function OrdersPanel() {
   const [filter, setFilter] = useState<FilterTab>('all');
   const [showAi, setShowAi] = useState(false);
   const prevMaxId = useRef(0);
   const { data: orders = [], isLoading, refetch } = trpc.shipping.listOrders.useQuery(undefined, { refetchInterval: 300_000, staleTime: 120_000, refetchIntervalInBackground: false, refetchOnWindowFocus: false });
-  const logoutMut = trpc.auth.logout.useMutation();
 
   // New order notification
   useEffect(() => {
@@ -415,12 +413,6 @@ function OrdersPanel() {
     }
     prevMaxId.current = currentMaxId;
   }, [orders]);
-
-  const handleLogout = async () => {
-    await logoutMut.mutateAsync();
-    setLocation('/sal-vita-admin');
-    window.location.reload();
-  };
 
   const filtered = orders.filter(o => {
     if (filter === 'awaiting') return o.paymentStatus === 'awaiting' && o.status !== 'cancelled';
@@ -446,51 +438,30 @@ function OrdersPanel() {
   ];
 
   return (
-    <div style={{ minHeight:'100vh', background:'#f8fafc', fontFamily:"'Inter','Outfit',sans-serif" }}>
+    <div style={{ fontFamily:"'Inter','Outfit',sans-serif" }}>
       <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }`}</style>
 
-      {/* Header */}
-      <header style={{ background:'linear-gradient(135deg,#0b1d3a,#1a3a6b)', padding:'14px 24px', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:100, boxShadow:'0 4px 20px rgba(0,0,0,.2)' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 378" style={{ height:36, width:'auto' }}>
-            <defs><clipPath id="oval-hdr"><ellipse cx="250" cy="187" rx="228" ry="164"/></clipPath></defs>
-            <ellipse cx="250" cy="187" rx="228" ry="164" fill="rgba(255,255,255,.1)"/>
-            <path d="M 22 252 Q 95 182 178 222 Q 214 242 250 210 Q 286 178 338 208 Q 398 240 478 222 L 478 352 H 22 Z" fill="#4a9eff" clipPath="url(#oval-hdr)"/>
-            <text x="250" y="196" textAnchor="middle" fontFamily="Pacifico, cursive" fontSize="90" fill="white">Sal Vita</text>
-            <ellipse cx="250" cy="187" rx="228" ry="164" fill="none" stroke="rgba(255,255,255,.3)" strokeWidth="15"/>
-          </svg>
-          <div>
-            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-              <span style={{ color:'white', fontWeight:800, fontSize:'.95rem' }}>Gestão de Pedidos</span>
-              {todayOrders.length > 0 && (
-                <span style={{ background:'#f59e0b', color:'white', borderRadius:999, padding:'1px 8px', fontSize:'.72rem', fontWeight:800 }}>🔔 {todayOrders.length} hoje</span>
-              )}
-            </div>
-            <p style={{ color:'rgba(255,255,255,.5)', fontSize:'.73rem', margin:0 }}>premium.salvitarn.com.br</p>
-          </div>
+      {/* Toolbar (a autenticação e o header já são feitos pelo shell) */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap', padding:'16px 20px 0' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <p style={{ margin:0, fontSize:'.85rem', color:'#64748b' }}>Pedidos do e-commerce, pagamento, etiqueta e envio.</p>
+          {todayOrders.length > 0 && (
+            <span style={{ background:'#fef3c7', color:'#92400e', borderRadius:999, padding:'2px 10px', fontSize:'.72rem', fontWeight:800 }}>🔔 {todayOrders.length} hoje</span>
+          )}
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <button onClick={()=>window.location.href='/sal-vita-recovery'}
-            style={{ padding:'8px 14px', background:'rgba(251,146,60,.2)', border:'1px solid rgba(251,146,60,.4)', borderRadius:10, color:'#fed7aa', fontSize:'.8rem', fontWeight:600, cursor:'pointer' }}>
-            🔄 Recuperação
-          </button>
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
           <button onClick={()=>setShowAi(s=>!s)}
-            style={{ padding:'8px 14px', background:showAi?'rgba(255,255,255,.2)':'rgba(255,255,255,.1)', border:'1px solid rgba(255,255,255,.2)', borderRadius:10, color:'white', fontSize:'.8rem', fontWeight:600, cursor:'pointer' }}>
+            style={{ padding:'7px 13px', background:showAi?'#0b1d3a':'#eef2f7', border:'1px solid ' + (showAi?'#0b1d3a':'#e2e8f0'), borderRadius:9, color:showAi?'white':'#334155', fontSize:'.8rem', fontWeight:600, cursor:'pointer' }}>
             🤖 IA
           </button>
           <button onClick={()=>refetch()}
-            style={{ padding:8, background:'rgba(255,255,255,.1)', border:'1px solid rgba(255,255,255,.15)', borderRadius:10, color:'white', cursor:'pointer', fontSize:'.9rem' }}>
+            style={{ padding:'7px 10px', background:'#eef2f7', border:'1px solid #e2e8f0', borderRadius:9, color:'#334155', cursor:'pointer', fontSize:'.85rem' }}>
             ↺
           </button>
-          <span style={{ color:'rgba(255,255,255,.6)', fontSize:'.8rem', display:'none' }} className="sm-show">{user?.name}</span>
-          <button onClick={handleLogout}
-            style={{ padding:'7px 12px', background:'rgba(255,255,255,.08)', border:'1px solid rgba(255,255,255,.15)', borderRadius:10, color:'rgba(255,255,255,.7)', fontSize:'.8rem', cursor:'pointer' }}>
-            Sair
-          </button>
         </div>
-      </header>
+      </div>
 
-      <div style={{ maxWidth:960, margin:'0 auto', padding:'24px 16px', display:'flex', flexDirection:'column', gap:20 }}>
+      <div style={{ maxWidth:960, margin:'0 auto', padding:'16px 16px 24px', display:'flex', flexDirection:'column', gap:20 }}>
         {/* KPIs */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:12 }}>
           <KpiCard icon="📦" label="Total Pedidos" value={orders.length} sub={`${todayOrders.length} hoje`} accent="#3b82f6"/>
@@ -541,6 +512,90 @@ function OrdersPanel() {
   );
 }
 
+/* ── Painel unificado do produto premium ─────────────────────
+   Um único login, um único header, navegação instantânea (sem reload
+   de página) entre Pedidos / Recuperação de Vendas / Leads B2B.
+   /sal-vita-admin, /sal-vita-recovery e /sal-vita-b2b renderizam este
+   mesmo componente — a URL apenas define a seção inicial. ── */
+type Section = 'orders' | 'recovery' | 'b2b';
+
+const SECTIONS: { key: Section; label: string; path: string }[] = [
+  { key: 'orders',   label: '📦 Pedidos',     path: '/sal-vita-admin' },
+  { key: 'recovery', label: '🔄 Recuperação', path: '/sal-vita-recovery' },
+  { key: 'b2b',      label: '🏢 Leads B2B',   path: '/sal-vita-b2b' },
+];
+
+function sectionFromPath(): Section {
+  if (typeof window === 'undefined') return 'orders';
+  const found = SECTIONS.find(s => s.path === window.location.pathname);
+  return found?.key ?? 'orders';
+}
+
+function AdminShell() {
+  const { user } = useAuth();
+  const [section, setSection] = useState<Section>(sectionFromPath);
+  const logoutMut = trpc.auth.logout.useMutation();
+
+  const go = (key: Section) => {
+    setSection(key);
+    const target = SECTIONS.find(s => s.key === key)!.path;
+    if (window.location.pathname !== target) window.history.replaceState(null, '', target);
+  };
+
+  const handleLogout = async () => {
+    await logoutMut.mutateAsync();
+    window.location.reload();
+  };
+
+  return (
+    <div style={{ minHeight:'100vh', background:'#f8fafc', fontFamily:"'Inter','Outfit',sans-serif" }}>
+      <header style={{ background:'linear-gradient(135deg,#0b1d3a,#1a3a6b)', padding:'14px 24px 0', position:'sticky', top:0, zIndex:100, boxShadow:'0 4px 20px rgba(0,0,0,.2)' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap', paddingBottom:14 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 378" style={{ height:36, width:'auto' }}>
+              <defs><clipPath id="oval-hub"><ellipse cx="250" cy="187" rx="228" ry="164"/></clipPath></defs>
+              <ellipse cx="250" cy="187" rx="228" ry="164" fill="rgba(255,255,255,.1)"/>
+              <path d="M 22 252 Q 95 182 178 222 Q 214 242 250 210 Q 286 178 338 208 Q 398 240 478 222 L 478 352 H 22 Z" fill="#4a9eff" clipPath="url(#oval-hub)"/>
+              <text x="250" y="196" textAnchor="middle" fontFamily="Pacifico, cursive" fontSize="90" fill="white">Sal Vita</text>
+              <ellipse cx="250" cy="187" rx="228" ry="164" fill="none" stroke="rgba(255,255,255,.3)" strokeWidth="15"/>
+            </svg>
+            <div>
+              <span style={{ color:'white', fontWeight:800, fontSize:'.95rem' }}>Painel Sal Vita Premium</span>
+              <p style={{ color:'rgba(255,255,255,.5)', fontSize:'.73rem', margin:0 }}>premium.salvitarn.com.br</p>
+            </div>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <span style={{ color:'rgba(255,255,255,.6)', fontSize:'.8rem' }}>{user?.name}</span>
+            <button onClick={handleLogout}
+              style={{ padding:'7px 12px', background:'rgba(255,255,255,.08)', border:'1px solid rgba(255,255,255,.15)', borderRadius:10, color:'rgba(255,255,255,.7)', fontSize:'.8rem', cursor:'pointer' }}>
+              Sair
+            </button>
+          </div>
+        </div>
+        {/* Navegação entre seções — troca instantânea, sem reload */}
+        <div style={{ display:'flex', gap:6, overflowX:'auto', paddingBottom:10 }}>
+          {SECTIONS.map(s => (
+            <button key={s.key} onClick={()=>go(s.key)}
+              style={{
+                padding:'8px 16px', border:'none', borderRadius:'10px 10px 0 0', cursor:'pointer', whiteSpace:'nowrap',
+                fontSize:'.83rem', fontWeight:700,
+                background: section===s.key ? '#f8fafc' : 'rgba(255,255,255,.08)',
+                color: section===s.key ? '#0b1d3a' : 'rgba(255,255,255,.75)',
+                transition:'all .15s',
+              }}>
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      {section === 'orders' && <OrdersPanel />}
+      {section === 'recovery' && <RecoveryPanel />}
+      {section === 'b2b' && <B2bLeadsPanel />}
+    </div>
+  );
+}
+
 export default function SalVitaAdmin() {
   const { user, isAuthenticated, loading } = useAuth();
   if (loading) return (
@@ -549,5 +604,5 @@ export default function SalVitaAdmin() {
     </div>
   );
   if (!isAuthenticated || user?.role !== 'admin') return <LoginForm />;
-  return <OrdersPanel />;
+  return <AdminShell />;
 }

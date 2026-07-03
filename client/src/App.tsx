@@ -26,11 +26,9 @@ import { useReminderNotifications } from "./_core/hooks/useReminderNotifications
 import SalVitaLanding from "./pages/SalVitaLanding";
 import SalVitaLandingClassic from "./pages/SalVitaLandingClassic";
 import SalVitaAdmin from "./pages/SalVitaAdmin";
-import SalVitaRecovery from "./pages/SalVitaRecovery";
 import SalVitaChat from "./components/SalVitaChat";
 import TrackOrder from "./pages/TrackOrder";
 import Atacado from "./pages/Atacado";
-import B2bLeads from "./pages/B2bLeads";
 
 function Router() {
   return (
@@ -111,14 +109,12 @@ function App() {
   const isPublic = isPremium || PUBLIC_PATHS.some(p => path.startsWith(p));
 
   if (isPremium) {
-    if (path === '/sal-vita-admin') {
+    // Painel administrativo unificado: um único componente (com login e
+    // navegação internas) atende às 3 URLs históricas — a URL só escolhe
+    // a seção inicial (Pedidos / Recuperação / Leads B2B).
+    if (path === '/sal-vita-admin' || path === '/sal-vita-recovery' || path === '/sal-vita-b2b') {
       return (
         <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><SalVitaAdmin /></TooltipProvider></ThemeProvider></ErrorBoundary>
-      );
-    }
-    if (path === '/sal-vita-recovery') {
-      return (
-        <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><SalVitaRecovery /></TooltipProvider></ThemeProvider></ErrorBoundary>
       );
     }
     if (path === '/meu-pedido') {
@@ -129,11 +125,6 @@ function App() {
     if (path === '/atacado') {
       return (
         <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><Atacado /></TooltipProvider></ThemeProvider></ErrorBoundary>
-      );
-    }
-    if (path === '/sal-vita-b2b') {
-      return (
-        <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><B2bLeads /></TooltipProvider></ThemeProvider></ErrorBoundary>
       );
     }
     if (path === '/classic') {
