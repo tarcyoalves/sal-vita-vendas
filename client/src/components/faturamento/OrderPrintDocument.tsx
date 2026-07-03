@@ -19,6 +19,18 @@ function fmtDate(iso: string | null): string {
   return isNaN(d.getTime()) ? '--' : d.toLocaleDateString('pt-BR');
 }
 
+// Dados da empresa emissora — fixos (não há tela de configuração para isso
+// hoje). Fonte: registro fornecido pelo admin.
+const EMPRESA = {
+  razaoSocial: 'A S COMERCIO E MOAGEM DE SAL LTDA',
+  cnpj: '51.422.900/0001-68',
+  ie: '206389191',
+  endereco: 'Avenida Industrial Dehuel Vieira Diniz nº 659, Sala 110, Monsenhor Américo',
+  cidade: 'Mossoró - RN',
+  telefone: '(84) 3191-1376',
+  email: 'contato@salvitarn.com.br',
+};
+
 // Frete unitário desta linha (por saco/fardo): isento quando o produto tem
 // preço final fixo (snapshot no item), senão o valor de frete por unidade do pedido.
 function freteUnit(it: ItemPedido, valorFretePorUnidade: number): number {
@@ -43,8 +55,8 @@ function PedidoPrintContent({ pedido }: { pedido: Pedido }) {
   return (
     <div className="text-[13px] text-slate-800 p-6 max-w-[210mm] mx-auto bg-white">
       {/* Header */}
-      <div className="flex items-center justify-between border-b-2 border-slate-800 pb-3 mb-4">
-        <div className="flex items-center gap-3">
+      <div className="flex items-start justify-between border-b-2 border-slate-800 pb-3 mb-4 gap-4">
+        <div className="flex items-start gap-3">
           <div className="p-2 bg-slate-800 rounded-xl flex items-center justify-center shrink-0">
             <img
               src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
@@ -53,9 +65,14 @@ function PedidoPrintContent({ pedido }: { pedido: Pedido }) {
               className="object-contain rounded-lg"
             />
           </div>
-          <p className="text-xs text-slate-500 leading-snug">Sal marinho de<br />Mossoró/RN</p>
+          <div className="text-[11px] text-slate-600 leading-snug">
+            <p className="font-bold text-slate-800 text-[13px]">{EMPRESA.razaoSocial}</p>
+            <p>CNPJ: {EMPRESA.cnpj} · IE: {EMPRESA.ie}</p>
+            <p>{EMPRESA.endereco}</p>
+            <p>{EMPRESA.cidade} · Tel: {EMPRESA.telefone} · {EMPRESA.email}</p>
+          </div>
         </div>
-        <div className="text-right">
+        <div className="text-right shrink-0">
           <p className="text-lg font-bold uppercase text-slate-800">Pedido de Vendas</p>
           <p className="text-xs text-slate-500">Nº {pedido.id.slice(0, 8).toUpperCase()} · {fmtDate(pedido.criadoEm)}</p>
         </div>
