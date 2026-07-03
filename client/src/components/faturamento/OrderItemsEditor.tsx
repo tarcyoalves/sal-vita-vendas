@@ -6,7 +6,7 @@ import {
 } from '../ui/select';
 import { Input } from '../ui/input';
 import { useFatStore } from '../../lib/faturamento/store';
-import { totalLinha, totalItens, pesoTotalItens, formatBRL, parseBRL, formatKg } from '../../lib/faturamento/calc';
+import { totalLinha, totalItens, pesoTotalItens, pesoBrutoTotalItens, formatBRL, parseBRL, formatKg } from '../../lib/faturamento/calc';
 import type { ItemPedido, Produto } from '../../lib/faturamento/types';
 
 function uid(): string {
@@ -33,6 +33,9 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
       quantidade: 1,
       pesoKg: 0,
       valorUnitario: 0,
+      pesoBrutoKg: 0,
+      comissaoFixaPct: null,
+      isentoFrete: false,
     };
     onChange([...itens, newItem]);
   }, [itens, onChange]);
@@ -55,9 +58,13 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
         itens.map((it) => {
           if (it.id !== id) return it;
           const updated = { ...it, ...patch };
-          // Recompute peso when qty changes on a product-linked row
+          // Recompute peso (líquido e bruto) quando a quantidade muda numa linha
+          // vinculada a um produto do catálogo (não há peso bruto unitário
+          // separado no catálogo, então bruto acompanha o líquido por padrão).
           if ('quantidade' in patch && it.produtoId && pesoUnitMap[id]) {
-            updated.pesoKg = (Number(patch.quantidade) || 0) * pesoUnitMap[id];
+            const peso = (Number(patch.quantidade) || 0) * pesoUnitMap[id];
+            updated.pesoKg = peso;
+            updated.pesoBrutoKg = peso;
           }
           return updated;
         }),
@@ -78,6 +85,9 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
         descricao: prod.nome,
         valorUnitario: prod.valorUnitario,
         pesoKg: qty * prod.pesoUnitarioKg,
+        pesoBrutoKg: qty * prod.pesoUnitarioKg,
+        comissaoFixaPct: prod.comissaoFixaPct ?? null,
+        isentoFrete: prod.isentoFrete ?? false,
       });
     },
     [ativos, itens, updateItem],
@@ -96,7 +106,7 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
   const handleCurrencyBlur = (
     key: string,
     itemId: string,
-    field: 'valorUnitario' | 'pesoKg',
+    field: 'valorUnitario' | 'pesoKg' | 'pesoBrutoKg',
   ) => {
     const raw = editingValues[key] ?? '';
     const parsed = field === 'valorUnitario' ? parseBRL(raw) : (Number(raw.replace(',', '.')) || 0);
@@ -111,7 +121,7 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
   return (
     <div className="space-y-3">
       <div className="overflow-x-auto rounded-xl border border-slate-200">
-        <table className="w-full text-sm min-w-[640px]">
+        <table className="w-full text-sm min-w-[760px]">
           <thead>
             <tr className="bg-slate-50 text-left">
               <th className="px-3 py-2 font-semibold text-slate-600 text-xs uppercase tracking-wide">
@@ -121,7 +131,10 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
                 Qtd
               </th>
               <th className="px-3 py-2 font-semibold text-slate-600 text-xs uppercase tracking-wide w-24">
-                Peso (kg)
+                Peso líq. (kg)
+              </th>
+              <th className="px-3 py-2 font-semibold text-slate-600 text-xs uppercase tracking-wide w-24">
+                Peso bruto (kg)
               </th>
               <th className="px-3 py-2 font-semibold text-slate-600 text-xs uppercase tracking-wide w-28">
                 Valor unit.
@@ -136,6 +149,7 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
             {itens.map((item) => {
               const valKey = `val-${item.id}`;
               const pesoKey = `peso-${item.id}`;
+              const brutoKey = `bruto-${item.id}`;
               return (
                 <tr key={item.id} className="border-t border-slate-100">
                   {/* Product select or free text */}
@@ -198,6 +212,28 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
                       }
                     />
                   </td>
+                  {/* Peso bruto */}
+                  <td className="px-3 py-2">
+                    <Input
+                      className="text-xs h-8 w-24"
+                      inputMode="decimal"
+                      value={
+                        brutoKey in editingValues
+                          ? editingValues[brutoKey]
+                          : String(item.pesoBrutoKg ?? 0).replace('.', ',')
+                      }
+                      onFocus={() => handleCurrencyFocus(brutoKey, item.pesoBrutoKg ?? 0)}
+                      onChange={(e) =>
+                        setEditingValues((prev) => ({
+                          ...prev,
+                          [brutoKey]: e.target.value,
+                        }))
+                      }
+                      onBlur={() =>
+                        handleCurrencyBlur(brutoKey, item.id, 'pesoBrutoKg')
+                      }
+                    />
+                  </td>
                   {/* Valor unitário */}
                   <td className="px-3 py-2">
                     <Input
@@ -242,7 +278,7 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
             {itens.length === 0 && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="px-3 py-6 text-center text-sm text-slate-400"
                 >
                   Nenhum item adicionado
@@ -258,6 +294,9 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
                 </td>
                 <td className="px-3 py-2 text-slate-600">
                   {formatKg(pesoTotalItens(itens))}
+                </td>
+                <td className="px-3 py-2 text-slate-600">
+                  {formatKg(pesoBrutoTotalItens(itens))}
                 </td>
                 <td className="px-3 py-2" />
                 <td className="px-3 py-2 text-right text-blue-900 font-bold">

@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-07-02d';
+const SCHEMA_VERSION = '2026-07-03a';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -604,6 +604,24 @@ export async function ensureTablesExist() {
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS fat_order_deletion_logs_seller_idx ON fat_order_deletion_logs(seller_id)`;
+
+  // ── Pedidos: aprovação do admin, valor pago, comissão/frete por produto ────
+  await sql`ALTER TABLE fat_products ADD COLUMN IF NOT EXISTS comissao_fixa_pct DOUBLE PRECISION`;
+  await sql`ALTER TABLE fat_products ADD COLUMN IF NOT EXISTS isento_frete BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS valor_pago DOUBLE PRECISION NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS aprovado_em TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS aprovado_por TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS created_by_role TEXT`;
+  await sql`CREATE INDEX IF NOT EXISTS fat_orders_pending_approval_idx ON fat_orders(created_by_role) WHERE aprovado_em IS NULL`;
+
+  // SAL MARINHO MOIDO INTEGRAL VITA PREMIUM 10X1 KG: comissão sempre 10%, nunca
+  // soma frete — regra de negócio fixa pedida pelo admin, independente de quem vende.
+  await sql`
+    UPDATE fat_products
+    SET comissao_fixa_pct = 10, isento_frete = TRUE
+    WHERE nome ILIKE '%VITA PREMIUM%' AND nome ILIKE '%10X1%'
+  `;
 
   // Tag auto-gerenciada por tasks.confirmEmail/update (ver EMAIL_CONFIRMED_TAG
   // em server/routers/tasks.ts) — precisa existir no catálogo para aparecer no

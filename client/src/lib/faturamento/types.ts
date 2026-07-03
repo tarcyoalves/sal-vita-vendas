@@ -9,6 +9,10 @@ export interface Produto {
   valorUnitario: number;   // R$ por unidade/saco, ex: 6.00
   ativo: boolean;
   criadoEm: string;        // ISO
+  // null/undefined = usa a comissão normal do atendente. Setado = sempre essa %
+  // neste produto (ex: SAL MARINHO MOIDO INTEGRAL VITA PREMIUM 10X1 KG = sempre 10%).
+  comissaoFixaPct?: number | null;
+  isentoFrete?: boolean;   // true = frete nunca soma no preço deste produto
 }
 
 export interface ItemPedido {
@@ -16,8 +20,13 @@ export interface ItemPedido {
   produtoId: string | null; // null = item digitado à mão (sem produto do catálogo)
   descricao: string;        // nome do produto
   quantidade: number;       // nº de unidades/sacos
-  pesoKg: number;           // informativo (default = quantidade × pesoUnitário), editável
+  pesoKg: number;           // peso líquido, informativo (default = quantidade × pesoUnitário), editável
   valorUnitario: number;    // R$ por unidade. totalLinha = quantidade × valorUnitario
+  pesoBrutoKg: number;      // peso bruto (com embalagem), informativo
+  // Snapshot da regra do produto no momento em que foi adicionado — nunca
+  // recalculado retroativamente, mesmo se o produto mudar depois.
+  comissaoFixaPct: number | null;
+  isentoFrete: boolean;
 }
 
 export type StatusPedido = 'estimado' | 'faturado';
@@ -44,6 +53,12 @@ export interface Pedido {
   observacoes: string;
   criadoEm: string;         // ISO
   faturadoEm: string | null;// ISO quando marcado como embarcado/faturado
+  valorPago: number;        // valor efetivamente pago pelo cliente até o momento
+  // Revisão do admin — informativa, não bloqueia nenhuma ação do atendente.
+  aprovadoEm: string | null;
+  aprovadoPor: string | null;
+  createdByUserId: number | null;
+  createdByRole: string | null;
 }
 
 // sellerId -> percentual de comissão (ex: 5 = 5%)

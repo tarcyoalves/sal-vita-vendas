@@ -9,11 +9,12 @@ import type { FiltroMes, Pedido } from '../../lib/faturamento/types';
 import { OrderDialog } from './OrderDialog';
 import { InvoiceDialog } from './InvoiceDialog';
 import { DeleteOrderDialog } from './DeleteOrderDialog';
+import { OrderPrintDocument } from './OrderPrintDocument';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import {
   DollarSign, TrendingUp, Package, ChevronLeft, ChevronRight,
-  Plus, Pencil, Truck, Trash2,
+  Plus, Pencil, Truck, Trash2, Printer,
 } from 'lucide-react';
 
 const MESES = [
@@ -81,6 +82,10 @@ export default function AttendantBilling() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePedidoId, setDeletePedidoId] = useState<string | null>(null);
 
+  // Print dialog state
+  const [printOpen, setPrintOpen] = useState(false);
+  const [printPedido, setPrintPedido] = useState<Pedido | null>(null);
+
   const seller = sellerProfile
     ? { id: sellerProfile.id, name: sellerProfile.name }
     : null;
@@ -131,6 +136,11 @@ export default function AttendantBilling() {
   const openDelete = (pedidoId: string) => {
     setDeletePedidoId(pedidoId);
     setDeleteOpen(true);
+  };
+
+  const openPrint = (pedido: Pedido) => {
+    setPrintPedido(pedido);
+    setPrintOpen(true);
   };
 
   if (profileLoading) {
@@ -230,6 +240,7 @@ export default function AttendantBilling() {
               onEdit={() => openEditOrder(p.id)}
               onInvoice={() => openInvoice(p.id)}
               onDelete={() => openDelete(p.id)}
+              onPrint={() => openPrint(p)}
             />
           ))}
         </div>
@@ -252,6 +263,11 @@ export default function AttendantBilling() {
         onOpenChange={setDeleteOpen}
         pedidoId={deletePedidoId}
       />
+      <OrderPrintDocument
+        open={printOpen}
+        onOpenChange={setPrintOpen}
+        pedido={printPedido}
+      />
     </div>
   );
 }
@@ -261,11 +277,13 @@ function PedidoCard({
   onEdit,
   onInvoice,
   onDelete,
+  onPrint,
 }: {
   pedido: Pedido;
   onEdit: () => void;
   onInvoice: () => void;
   onDelete: () => void;
+  onPrint: () => void;
 }) {
   const total = totalPedido(pedido);
   const comissao = comissaoPedido(pedido);
@@ -296,15 +314,26 @@ function PedidoCard({
             )}
           </div>
         </div>
-        <Badge
-          className={
-            isFaturado
-              ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-              : 'bg-amber-100 text-amber-700 border-amber-200'
-          }
-        >
-          {isFaturado ? 'Faturado' : 'Estimado'}
-        </Badge>
+        <div className="flex flex-col items-end gap-1">
+          <Badge
+            className={
+              isFaturado
+                ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                : 'bg-amber-100 text-amber-700 border-amber-200'
+            }
+          >
+            {isFaturado ? 'Faturado' : 'Estimado'}
+          </Badge>
+          <Badge
+            className={
+              pedido.aprovadoEm
+                ? 'bg-blue-100 text-blue-700 border-blue-200'
+                : 'bg-slate-100 text-slate-500 border-slate-200'
+            }
+          >
+            {pedido.aprovadoEm ? 'Autorizado' : 'Aguardando revisão'}
+          </Badge>
+        </div>
       </div>
 
       {/* Product details */}
@@ -344,6 +373,17 @@ function PedidoCard({
           )}
         </div>
         <div className="flex gap-1.5">
+          {pedido.aprovadoEm && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onPrint}
+              className="gap-1 text-xs h-7"
+            >
+              <Printer size={12} />
+              Gerar cópia
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"

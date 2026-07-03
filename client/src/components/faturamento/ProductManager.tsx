@@ -19,6 +19,8 @@ export default function ProductManager() {
   const [nome, setNome] = useState("");
   const [peso, setPeso] = useState("");
   const [valor, setValor] = useState("");
+  const [comissaoFixa, setComissaoFixa] = useState("");
+  const [isentoFrete, setIsentoFrete] = useState(false);
   const nomeRef = useRef<HTMLInputElement>(null);
 
   // Edit state
@@ -26,6 +28,8 @@ export default function ProductManager() {
   const [editNome, setEditNome] = useState("");
   const [editPeso, setEditPeso] = useState("");
   const [editValor, setEditValor] = useState("");
+  const [editComissaoFixa, setEditComissaoFixa] = useState("");
+  const [editIsentoFrete, setEditIsentoFrete] = useState(false);
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,11 +54,15 @@ export default function ProductManager() {
       pesoUnitarioKg: pesoNum,
       valorUnitario: valorNum,
       ativo: true,
+      comissaoFixaPct: comissaoFixa.trim() ? parseBRL(comissaoFixa) : null,
+      isentoFrete,
     });
 
     setNome("");
     setPeso("");
     setValor("");
+    setComissaoFixa("");
+    setIsentoFrete(false);
     nomeRef.current?.focus();
     toast.success("Produto adicionado");
   };
@@ -64,6 +72,8 @@ export default function ProductManager() {
     setEditNome(prod.nome);
     setEditPeso(String(prod.pesoUnitarioKg));
     setEditValor(String(prod.valorUnitario));
+    setEditComissaoFixa(prod.comissaoFixaPct != null ? String(prod.comissaoFixaPct) : "");
+    setEditIsentoFrete(prod.isentoFrete ?? false);
   };
 
   const handleEditSave = (e: React.FormEvent) => {
@@ -87,6 +97,8 @@ export default function ProductManager() {
       pesoUnitarioKg: pesoNum,
       valorUnitario: valorNum,
       ativo: editing.ativo,
+      comissaoFixaPct: editComissaoFixa.trim() ? parseBRL(editComissaoFixa) : null,
+      isentoFrete: editIsentoFrete,
     });
     setEditing(null);
     toast.success("Produto atualizado");
@@ -162,6 +174,31 @@ export default function ProductManager() {
                 />
               </div>
             </div>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Comissao fixa (%)</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={comissaoFixa}
+                  onChange={(e) => setComissaoFixa(e.target.value)}
+                  placeholder="Padrao do atendente"
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                />
+              </div>
+              <div className="sm:col-span-3 flex items-center gap-2 pb-2">
+                <input
+                  id="pm-isento-frete"
+                  type="checkbox"
+                  checked={isentoFrete}
+                  onChange={(e) => setIsentoFrete(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <label htmlFor="pm-isento-frete" className="text-xs text-gray-600">
+                  Preco final fixo — frete nunca soma no preco deste produto
+                </label>
+              </div>
+            </div>
             <div className="flex items-center justify-between">
               <Button type="submit" size="sm" className="bg-blue-600 hover:bg-blue-700">
                 <Plus size={14} className="mr-1" /> Adicionar
@@ -194,6 +231,7 @@ export default function ProductManager() {
                     <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Nome</th>
                     <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Peso</th>
                     <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Valor</th>
+                    <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Regras</th>
                     <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-500">Ativo</th>
                     <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Acoes</th>
                   </tr>
@@ -204,6 +242,23 @@ export default function ProductManager() {
                       <td className="px-4 py-3 font-medium text-gray-800">{prod.nome}</td>
                       <td className="px-4 py-3 text-right text-gray-600">{formatKg(prod.pesoUnitarioKg)}</td>
                       <td className="px-4 py-3 text-right text-gray-600">{formatBRL(prod.valorUnitario)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {prod.comissaoFixaPct != null && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-700">
+                              Comissao {prod.comissaoFixaPct}%
+                            </span>
+                          )}
+                          {prod.isentoFrete && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-700">
+                              Preco final (sem frete)
+                            </span>
+                          )}
+                          {prod.comissaoFixaPct == null && !prod.isentoFrete && (
+                            <span className="text-[11px] text-slate-300">--</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-3 text-center">
                         <button
                           onClick={() => handleToggleAtivo(prod)}
@@ -286,6 +341,29 @@ export default function ProductManager() {
                   required
                 />
               </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Comissao fixa (%)</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={editComissaoFixa}
+                onChange={(e) => setEditComissaoFixa(e.target.value)}
+                placeholder="Deixe em branco para usar a comissao padrao do atendente"
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                id="pm-edit-isento-frete"
+                type="checkbox"
+                checked={editIsentoFrete}
+                onChange={(e) => setEditIsentoFrete(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              <label htmlFor="pm-edit-isento-frete" className="text-sm text-gray-600">
+                Preco final fixo — frete nunca soma no preco deste produto
+              </label>
             </div>
             <DialogFooter className="flex gap-2 pt-2">
               <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700">

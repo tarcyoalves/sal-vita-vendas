@@ -132,6 +132,8 @@ export const produtos = {
         valorUnitario: input.valorUnitario,
         ativo: input.ativo ?? true,
         criadoEm: input.criadoEm ?? new Date().toISOString(),
+        comissaoFixaPct: input.comissaoFixaPct ?? null,
+        isentoFrete: input.isentoFrete ?? false,
       };
       mirror = { ...mirror, produtos: [...mirror.produtos, result] };
     }
@@ -168,6 +170,11 @@ function buildPedido(input: Partial<Pedido> & { id?: string }): Pedido {
     observacoes: input.observacoes ?? '',
     criadoEm: input.criadoEm ?? new Date().toISOString(),
     faturadoEm: input.faturadoEm ?? null,
+    valorPago: input.valorPago ?? 0,
+    aprovadoEm: input.aprovadoEm ?? null,
+    aprovadoPor: input.aprovadoPor ?? null,
+    createdByUserId: input.createdByUserId ?? null,
+    createdByRole: input.createdByRole ?? null,
   };
 }
 
@@ -213,6 +220,20 @@ export const pedidos = {
     mirror = { ...mirror, pedidos: mirror.pedidos.filter((p) => p.id !== id) };
     emit();
     api.faturamento.removePedido.mutate({ id, reason }).catch(onWriteError);
+  },
+  // Revisão do admin/manager — informativa, não bloqueia ações do atendente.
+  aprovar(id: string, aprovadoPorNome: string): Pedido | null {
+    const atual = mirror.pedidos.find((p) => p.id === id);
+    if (!atual) return null;
+    const aprovado: Pedido = {
+      ...atual,
+      aprovadoEm: new Date().toISOString(),
+      aprovadoPor: aprovadoPorNome,
+    };
+    mirror = { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === id ? aprovado : p)) };
+    emit();
+    api.faturamento.aprovarPedido.mutate({ id }).catch(onWriteError);
+    return aprovado;
   },
 };
 

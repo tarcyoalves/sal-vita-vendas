@@ -1,6 +1,9 @@
 import { useState, useMemo } from "react";
 import { useFatStore } from "../../lib/faturamento/store";
-import { totalPedido, totalItens, mesAtual, isoNoMes, formatBRL } from "../../lib/faturamento/calc";
+import {
+  totalPedido, totalItens, mesAtual, isoNoMes, formatBRL,
+  pesoTotalItens, pesoBrutoTotalItens, formatKg,
+} from "../../lib/faturamento/calc";
 import type { Pedido, FiltroMes } from "../../lib/faturamento/types";
 import { trpc } from "../../lib/trpc";
 import { Card, CardContent } from "../ui/card";
@@ -255,6 +258,10 @@ export default function BillingReport() {
                     <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Cidade/UF</th>
                     <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Atendente</th>
                     <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Produtos</th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">F.Pagamento</th>
+                    <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">V.Pago</th>
+                    <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Peso Líq.</th>
+                    <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Peso Bruto</th>
                     <th className="px-3 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-500">Status</th>
                     <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Estimado</th>
                     <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Faturado</th>
@@ -281,16 +288,31 @@ export default function BillingReport() {
                           </div>
                         ) : "--"}
                       </td>
+                      <td className="px-3 py-3 text-gray-600 text-xs whitespace-nowrap">{p.prazoPagamentoSal || "--"}</td>
+                      <td className="px-3 py-3 text-right text-gray-600 text-xs whitespace-nowrap">{formatBRL(p.valorPago)}</td>
+                      <td className="px-3 py-3 text-right text-gray-600 text-xs whitespace-nowrap">{formatKg(pesoTotalItens(p.itens))}</td>
+                      <td className="px-3 py-3 text-right text-gray-600 text-xs whitespace-nowrap">{formatKg(pesoBrutoTotalItens(p.itens))}</td>
                       <td className="px-3 py-3 text-center">
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            p.status === "faturado"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-amber-100 text-amber-700"
-                          }`}
-                        >
-                          {p.status === "faturado" ? "Faturado" : "Estimado"}
-                        </span>
+                        <div className="flex flex-col items-center gap-1">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                              p.status === "faturado"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-amber-100 text-amber-700"
+                            }`}
+                          >
+                            {p.status === "faturado" ? "Faturado" : "Estimado"}
+                          </span>
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                              p.aprovadoEm
+                                ? "bg-blue-100 text-blue-700"
+                                : "bg-slate-100 text-slate-500"
+                            }`}
+                          >
+                            {p.aprovadoEm ? "Autorizado" : "Aguardando revisão"}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-3 py-3 text-right text-gray-600">{formatBRL(estimatedTotal(p))}</td>
                       <td className="px-3 py-3 text-right font-semibold">
@@ -305,7 +327,7 @@ export default function BillingReport() {
                 </tbody>
                 <tfoot className="bg-slate-50 border-t-2 border-slate-300">
                   <tr className="font-semibold text-gray-800">
-                    <td className="px-3 py-3" colSpan={7}>
+                    <td className="px-3 py-3" colSpan={11}>
                       Total ({filtered.length} pedido{filtered.length !== 1 ? "s" : ""})
                     </td>
                     <td className="px-3 py-3 text-right">{formatBRL(totalEstimado)}</td>

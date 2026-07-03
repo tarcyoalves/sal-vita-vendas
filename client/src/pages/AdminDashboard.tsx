@@ -33,10 +33,15 @@ import {
   ShieldAlert,
   Zap,
   Workflow,
+  PackageCheck,
 } from "lucide-react";
 import AttendantDetailModal from '../components/AttendantDetailModal';
 import { useFatStore } from '../lib/faturamento/store';
 import { panoramaPorAtendente, somarResumos, mesAtual, formatBRL } from '../lib/faturamento/calc';
+import { OrderDetailDialog } from '../components/faturamento/OrderDetailDialog';
+import { OrderDialog } from '../components/faturamento/OrderDialog';
+import { InvoiceDialog } from '../components/faturamento/InvoiceDialog';
+import { DeleteOrderDialog } from '../components/faturamento/DeleteOrderDialog';
 
 // Sellers created before dailyGoal was wired up still carry the old default of 10
 // while the gamification has always targeted 100 — treat 10 as "not customized".
@@ -503,6 +508,23 @@ export default function AdminDashboard() {
   const { data: deletionLogs = [], refetch: refetchDeletionLogs } = trpc.tasks.deletionLogs.useQuery({ onlyUnreviewed: true }, { staleTime: 120_000, enabled: isFullAdmin });
   const markDeletionReviewedMutation = trpc.tasks.markDeletionReviewed.useMutation({ onSuccess: () => refetchDeletionLogs() });
   const [showDeletionLogs, setShowDeletionLogs] = useState(false);
+
+  // Pedidos aguardando revisão (criados por atendentes) — admin/manager têm
+  // acesso completo ao Faturamento, mesmo padrão de permissão do módulo.
+  const canManageFaturamento = user?.role === "admin" || user?.role === "manager";
+  const { data: pendingPedidos = [], refetch: refetchPendingPedidos } = trpc.faturamento.pendingApproval.useQuery(undefined, { staleTime: 60_000, enabled: canManageFaturamento });
+  const [showPendingPedidos, setShowPendingPedidos] = useState(false);
+  const [pedidoDetailId, setPedidoDetailId] = useState<string | null>(null);
+  const [pedidoDetailOpen, setPedidoDetailOpen] = useState(false);
+  const [pedidoEditOpen, setPedidoEditOpen] = useState(false);
+  const [pedidoInvoiceOpen, setPedidoInvoiceOpen] = useState(false);
+  const [pedidoDeleteOpen, setPedidoDeleteOpen] = useState(false);
+  const { pedidos: allPedidosForReview } = useFatStore();
+  const pedidoEmRevisao = pedidoDetailId ? allPedidosForReview.find((p) => p.id === pedidoDetailId) ?? null : null;
+  const openPedidoRevisao = (id: string) => {
+    setPedidoDetailId(id);
+    setPedidoDetailOpen(true);
+  };
   const analyzeAttendantsMutation = trpc.ai.analyzeAttendants.useMutation();
   const { data: sessionData = [], refetch: refetchSessions, isFetching: sessionsFetching } = trpc.workSessions.allActiveToday.useQuery(undefined, { staleTime: 90_000, enabled: isFullAdmin });
   const [expandedSessions, setExpandedSessions] = useState<Set<number>>(new Set());
@@ -815,6 +837,64 @@ export default function AdminDashboard() {
                   >
                     <Eye size={13} className="mr-1" />
                     Revisei
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Pedidos Pending Approval Alert Banner */}
+      {pendingPedidos.length > 0 && (
+        <div
+          className="flex items-center justify-between gap-3 bg-blue-50 border border-blue-300 rounded-xl px-4 py-3 cursor-pointer hover:bg-blue-100 transition-colors"
+          onClick={() => setShowPendingPedidos(v => !v)}
+        >
+          <div className="flex items-center gap-2 text-blue-800">
+            <PackageCheck size={18} className="text-blue-500 shrink-0" />
+            <span className="font-semibold text-sm">
+              {pendingPedidos.length} pedido{pendingPedidos.length > 1 ? 's' : ''} aguarda{pendingPedidos.length > 1 ? 'm' : ''} sua revisão
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white text-xs font-bold">
+              {pendingPedidos.length}
+            </span>
+            {showPendingPedidos ? <ChevronDown size={16} className="text-blue-600" /> : <ChevronRight size={16} className="text-blue-600" />}
+          </div>
+        </div>
+      )}
+
+      {/* Pedidos Pending Approval Panel */}
+      {showPendingPedidos && pendingPedidos.length > 0 && (
+        <Card className="border-blue-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base text-blue-800">
+              <PackageCheck size={16} />
+              Pedidos Novos — Pendentes de Revisão
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-blue-100">
+              {pendingPedidos.map((p: any) => (
+                <div key={p.id} className="px-4 py-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-sm text-gray-800 truncate">{p.clienteNome || p.razaoSocial || 'Sem cliente'}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Criado por <span className="font-semibold text-gray-700">{p.sellerName}</span>
+                      {' · '}
+                      {new Date(p.criadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 text-xs border-blue-300 text-blue-700 hover:bg-blue-50"
+                    onClick={() => openPedidoRevisao(p.id)}
+                  >
+                    <Eye size={13} className="mr-1" />
+                    Revisar
                   </Button>
                 </div>
               ))}
@@ -1440,6 +1520,33 @@ export default function AdminDashboard() {
           onClose={() => setSelectedSeller(null)}
         />
       )}
+
+      {/* Revisão de pedido — abre direto no detalhe para o admin aprovar */}
+      <OrderDetailDialog
+        open={pedidoDetailOpen}
+        onOpenChange={setPedidoDetailOpen}
+        pedidoId={pedidoDetailId}
+        onEdit={() => { setPedidoDetailOpen(false); setPedidoEditOpen(true); }}
+        onInvoice={() => { setPedidoDetailOpen(false); setPedidoInvoiceOpen(true); }}
+        onDelete={() => { setPedidoDetailOpen(false); setPedidoDeleteOpen(true); }}
+        onApproved={() => refetchPendingPedidos()}
+      />
+      <OrderDialog
+        open={pedidoEditOpen}
+        onOpenChange={setPedidoEditOpen}
+        seller={pedidoEmRevisao ? { id: pedidoEmRevisao.sellerId ?? 0, name: pedidoEmRevisao.sellerName } : null}
+        existingPedidoId={pedidoDetailId}
+      />
+      <InvoiceDialog
+        open={pedidoInvoiceOpen}
+        onOpenChange={setPedidoInvoiceOpen}
+        pedidoId={pedidoDetailId}
+      />
+      <DeleteOrderDialog
+        open={pedidoDeleteOpen}
+        onOpenChange={setPedidoDeleteOpen}
+        pedidoId={pedidoDetailId}
+      />
 
     </div>
   );

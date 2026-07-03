@@ -3,7 +3,7 @@ import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure, staffProcedure } from '../trpc';
 import { db } from '../db';
 import { fatProducts, fatOrders, fatCommissions, fatOrderDeletionLogs, sellers } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and, isNull, desc } from 'drizzle-orm';
 
 // ── Faturamento & Comissão (CRM Lembretes) ───────────────────────────────────
 // Backend do módulo antes mantido em localStorage. IDs são gerados no cliente
@@ -18,6 +18,9 @@ const itemPedidoSchema = z.object({
   quantidade: z.number(),
   pesoKg: z.number(),
   valorUnitario: z.number(),
+  pesoBrutoKg: z.number().optional().default(0),
+  comissaoFixaPct: z.number().nullable().optional().default(null),
+  isentoFrete: z.boolean().optional().default(false),
 });
 
 const produtoSchema = z.object({
@@ -27,6 +30,8 @@ const produtoSchema = z.object({
   valorUnitario: z.number(),
   ativo: z.boolean(),
   criadoEm: z.string(),
+  comissaoFixaPct: z.number().nullable().optional().default(null),
+  isentoFrete: z.boolean().optional().default(false),
 });
 
 const pedidoSchema = z.object({
@@ -49,6 +54,11 @@ const pedidoSchema = z.object({
   observacoes: z.string(),
   criadoEm: z.string(),
   faturadoEm: z.string().nullable(),
+  valorPago: z.number().optional().default(0),
+  aprovadoEm: z.string().nullable().optional().default(null),
+  aprovadoPor: z.string().nullable().optional().default(null),
+  createdByUserId: z.number().nullable().optional().default(null),
+  createdByRole: z.string().nullable().optional().default(null),
 });
 
 async function sellerIdForUser(userId: number): Promise<number | null> {
@@ -99,6 +109,8 @@ export const faturamentoRouter = router({
             pesoUnitarioKg: input.pesoUnitarioKg,
             valorUnitario: input.valorUnitario,
             ativo: input.ativo,
+            comissaoFixaPct: input.comissaoFixaPct,
+            isentoFrete: input.isentoFrete,
           },
         })
         .returning();
@@ -118,20 +130,29 @@ export const faturamentoRouter = router({
     .mutation(async ({ ctx, input }) => {
       const values = { ...input };
 
+      const [existing] = await db
+        .select({ sellerId: fatOrders.sellerId })
+        .from(fatOrders)
+        .where(eq(fatOrders.id, input.id));
+
       if (ctx.user.role !== 'admin' && ctx.user.role !== 'manager') {
         const mySellerId = await sellerIdForUser(ctx.user.id);
         if (mySellerId == null) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Perfil de vendedor não encontrado' });
         }
         // Ownership: attendants can only touch their own orders.
-        const [existing] = await db
-          .select({ sellerId: fatOrders.sellerId })
-          .from(fatOrders)
-          .where(eq(fatOrders.id, input.id));
         if (existing && existing.sellerId !== mySellerId) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Pedido de outro atendente' });
         }
         values.sellerId = mySellerId;
+      }
+
+      // Stamped only at creation; the update `set` below deliberately excludes
+      // createdByUserId/createdByRole/aprovadoEm/aprovadoPor so later edits
+      // (including by the attendant) never touch who created or approved it.
+      if (!existing) {
+        values.createdByUserId = ctx.user.id;
+        values.createdByRole = ctx.user.role;
       }
 
       const [row] = await db
@@ -157,6 +178,7 @@ export const faturamentoRouter = router({
             valorFretePorUnidade: values.valorFretePorUnidade,
             observacoes: values.observacoes,
             faturadoEm: values.faturadoEm,
+            valorPago: values.valorPago,
           },
         })
         .returning();
@@ -202,6 +224,30 @@ export const faturamentoRouter = router({
       await db.delete(fatOrders).where(eq(fatOrders.id, input.id));
       return { ok: true };
     }),
+
+  // Revisão do admin/manager — informativa: não bloqueia nenhuma ação do
+  // atendente, só marca o pedido como conferido e libera a "cópia" para envio.
+  aprovarPedido: staffProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const [row] = await db
+        .update(fatOrders)
+        .set({ aprovadoEm: new Date().toISOString(), aprovadoPor: ctx.user.name })
+        .where(eq(fatOrders.id, input.id))
+        .returning();
+      if (!row) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' });
+      return row;
+    }),
+
+  // Pedidos criados por atendentes ainda não revisados pelo admin — alimenta o
+  // banner de notificação no dashboard.
+  pendingApproval: staffProcedure.query(async () => {
+    return db
+      .select()
+      .from(fatOrders)
+      .where(and(isNull(fatOrders.aprovadoEm), eq(fatOrders.createdByRole, 'user')))
+      .orderBy(desc(fatOrders.criadoEm));
+  }),
 
   // ── Comissões (por atendente — admin) ──────────────────────────────────────
   setComissao: staffProcedure

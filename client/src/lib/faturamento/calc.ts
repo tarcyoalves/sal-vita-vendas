@@ -22,9 +22,31 @@ export function pesoTotalItens(itens: ItemPedido[]): number {
   return itens.reduce((s, it) => s + (Number(it.pesoKg) || 0), 0);
 }
 
-// Comissão sobre o total atual do pedido (estimado ou faturado, conforme status).
+// Peso bruto total (kg). Itens antigos sem pesoBrutoKg gravado caem no líquido.
+export function pesoBrutoTotalItens(itens: ItemPedido[]): number {
+  return itens.reduce((s, it) => s + (Number(it.pesoBrutoKg) || Number(it.pesoKg) || 0), 0);
+}
+
+// Comissão por item: usa a % fixa do produto (snapshot em item.comissaoFixaPct)
+// quando existir, senão cai na % do atendente congelada em pedido.comissaoPct.
+// Itens antigos (sem comissaoFixaPct) mantêm exatamente o comportamento anterior.
 export function comissaoPedido(pedido: Pedido): number {
-  return totalPedido(pedido) * (Number(pedido.comissaoPct) || 0) / 100;
+  const pctPadrao = Number(pedido.comissaoPct) || 0;
+  return pedido.itens.reduce((s, it) => {
+    const pct = it.comissaoFixaPct ?? pctPadrao;
+    return s + totalLinha(it) * (Number(pct) || 0) / 100;
+  }, 0);
+}
+
+// Frete total do pedido: valorFretePorUnidade × quantidade, somado só nos itens
+// que não são isentos (isentoFrete snapshot no item, ex: produto de preço final fixo).
+export function freteTotal(pedido: Pedido): number {
+  const porUnidade = Number(pedido.valorFretePorUnidade) || 0;
+  if (!porUnidade) return 0;
+  return pedido.itens.reduce(
+    (s, it) => s + (it.isentoFrete ? 0 : (Number(it.quantidade) || 0) * porUnidade),
+    0,
+  );
 }
 
 // ── Filtro por mês ────────────────────────────────────────────────────────────

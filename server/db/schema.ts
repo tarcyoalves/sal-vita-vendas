@@ -600,6 +600,12 @@ type FatItemPedido = {
   quantidade: number;
   pesoKg: number;
   valorUnitario: number;
+  pesoBrutoKg?: number;
+  // Snapshot da regra do produto no momento em que o item foi adicionado ao
+  // pedido — nunca recalculado retroativamente (mesmo padrão de comissaoPct).
+  // null = usa a comissão normal do atendente (pedido.comissaoPct).
+  comissaoFixaPct?: number | null;
+  isentoFrete?: boolean;
 };
 
 export const fatProducts = pgTable('fat_products', {
@@ -609,6 +615,10 @@ export const fatProducts = pgTable('fat_products', {
   valorUnitario: doublePrecision('valor_unitario').notNull().default(0),
   ativo: boolean('ativo').notNull().default(true),
   criadoEm: text('criado_em').notNull(),
+  // null = comissão normal do atendente. Setado = sempre essa % neste produto,
+  // independente de quem vender (ex: SAL MARINHO MOIDO INTEGRAL VITA PREMIUM 10X1 KG = 10%).
+  comissaoFixaPct: doublePrecision('comissao_fixa_pct'),
+  isentoFrete: boolean('isento_frete').notNull().default(false),
 });
 
 export const fatOrders = pgTable('fat_orders', {
@@ -631,6 +641,12 @@ export const fatOrders = pgTable('fat_orders', {
   observacoes: text('observacoes').notNull().default(''),
   criadoEm: text('criado_em').notNull(),
   faturadoEm: text('faturado_em'),
+  valorPago: doublePrecision('valor_pago').notNull().default(0),
+  // Revisão do admin — informativa, não bloqueia nenhuma ação do atendente.
+  aprovadoEm: text('aprovado_em'),
+  aprovadoPor: text('aprovado_por'),
+  createdByUserId: integer('created_by_user_id'),
+  createdByRole: text('created_by_role'),
 });
 
 export const fatCommissions = pgTable('fat_commissions', {
