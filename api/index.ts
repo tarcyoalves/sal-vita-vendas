@@ -1274,7 +1274,7 @@ app.get('/api/cron/email-daily', async (req, res) => {
 // tables exist. Helps debug the recovery panel when tables are missing.
 app.get('/api/orders-health', async (_req, res) => {
   try {
-    const steps = await ensureOrdersTablesExist();
+    const steps = await ensureOrdersTablesExist(true);
     const { neon } = await import('@neondatabase/serverless');
     const url = process.env.ORDERS_DATABASE_URL ?? process.env.DATABASE_URL!;
     const sql = neon(url);

@@ -31,12 +31,16 @@ export async function ensureTablesExist() {
   try {
     const v = await sql`SELECT value FROM schema_meta WHERE key = 'schema_version' LIMIT 1`;
     if ((v as unknown as Array<{ value: string }>)[0]?.value === SCHEMA_VERSION) {
-      try { await sql`DELETE FROM chat_messages WHERE created_at < CURRENT_DATE`; } catch {}
-      try { await sql`DELETE FROM work_sessions WHERE status = 'completed' AND ended_at < NOW() - INTERVAL '90 days'`; } catch {}
-      try {
-        await sql`CREATE TABLE IF NOT EXISTS email_template_categories (id SERIAL PRIMARY KEY, name TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)`;
-        await sql`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS category_ids JSONB`;
-      } catch {}
+      // These 4 are independent (no shared state) — firing them together instead
+      // of sequentially awaiting each one cuts the cold-start critical path from
+      // ~4 network round-trips to ~1, since neon-http pays a fresh HTTP+TLS hop
+      // per query with no connection reuse.
+      await Promise.allSettled([
+        sql`DELETE FROM chat_messages WHERE created_at < CURRENT_DATE`,
+        sql`DELETE FROM work_sessions WHERE status = 'completed' AND ended_at < NOW() - INTERVAL '90 days'`,
+        sql`CREATE TABLE IF NOT EXISTS email_template_categories (id SERIAL PRIMARY KEY, name TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)`,
+        sql`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS category_ids JSONB`,
+      ]);
       return;
     }
   } catch { /* schema_meta missing → fall through and run the full migration */ }

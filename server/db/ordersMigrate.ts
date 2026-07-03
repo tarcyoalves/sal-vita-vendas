@@ -2,12 +2,21 @@ import { neon } from '@neondatabase/serverless';
 
 type Step = { name: string; ok: boolean; error?: string };
 
+// Bump whenever the DDL below changes, to force exactly one full re-run.
+const ORDERS_SCHEMA_VERSION = 'orders-2026-07-03a';
+
 /**
  * Ensures all e-commerce/recovery tables exist in the ORDERS database.
  * Each statement runs in isolation so a single failure never blocks the rest.
  * Returns a per-step report (used by the /api/orders-health diagnostic endpoint).
+ *
+ * Cold starts used to pay for all ~30 idempotent DDL round-trips below on
+ * EVERY invocation (neon-http has no connection pooling, so each is a fresh
+ * HTTP+TLS hop) — that was a big chunk of the "2-3s before data shows up"
+ * lag reported in production. `force: true` (used by /api/orders-health)
+ * bypasses the fast path for on-demand diagnostics.
  */
-export async function ensureOrdersTablesExist(): Promise<Step[]> {
+export async function ensureOrdersTablesExist(force = false): Promise<Step[]> {
   const url = process.env.ORDERS_DATABASE_URL ?? process.env.DATABASE_URL;
   const steps: Step[] = [];
   if (!url) {
@@ -25,6 +34,27 @@ export async function ensureOrdersTablesExist(): Promise<Step[]> {
       steps.push({ name, ok: false, error: msg });
       console.error(`[orders-migrate] step "${name}" failed:`, msg);
     }
+  }
+
+  if (!force) {
+    try {
+      const v = await sql`SELECT value FROM schema_meta WHERE key = 'orders_schema_version' LIMIT 1`;
+      if ((v as unknown as Array<{ value: string }>)[0]?.value === ORDERS_SCHEMA_VERSION) {
+        await Promise.allSettled([
+          run('cleanup_automation_runs', () => sql`
+            DELETE FROM automation_runs
+            WHERE status IN ('sent', 'cancelled', 'failed')
+              AND updated_at < NOW() - INTERVAL '60 days'
+          `),
+          run('cleanup_abandoned_carts', () => sql`
+            DELETE FROM abandoned_carts
+            WHERE (recovered = TRUE OR opted_out = TRUE)
+              AND updated_at < NOW() - INTERVAL '90 days'
+          `),
+        ]);
+        return steps;
+      }
+    } catch { /* schema_meta missing → fall through and run the full migration */ }
   }
 
   await run('site_orders', () => sql`
@@ -226,6 +256,14 @@ export async function ensureOrdersTablesExist(): Promise<Step[]> {
     WHERE (recovered = TRUE OR opted_out = TRUE)
       AND updated_at < NOW() - INTERVAL '90 days'
   `);
+
+  // Record the marker so subsequent cold starts take the fast path above
+  // instead of re-running all ~30 round-trips.
+  try {
+    await sql`CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT)`;
+    await sql`INSERT INTO schema_meta (key, value) VALUES ('orders_schema_version', ${ORDERS_SCHEMA_VERSION})
+              ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
+  } catch {}
 
   const failed = steps.filter(s => !s.ok);
   console.log(`[orders-migrate] done: ${steps.length - failed.length}/${steps.length} ok` + (failed.length ? `, failed: ${failed.map(f => f.name).join(', ')}` : ''));

@@ -2,6 +2,9 @@ import { neon } from '@neondatabase/serverless';
 
 type Step = { name: string; ok: boolean; error?: string };
 
+// Bump whenever the DDL below changes, to force exactly one full re-run.
+const B2B_SCHEMA_VERSION = 'b2b-2026-07-03a';
+
 /**
  * Ensures the B2B prospecting foundation tables exist (Sprint 1 scope only:
  * companies, contacts, public_sources, consent_records, suppression_list,
@@ -12,8 +15,10 @@ type Step = { name: string; ok: boolean; error?: string };
  * isolation so a single failure never blocks the rest, and reuses the same
  * ORDERS_DATABASE_URL fallback since B2B leads belong to the premium
  * e-commerce subsystem (companies/contacts may later reference site_orders).
+ * Same fast-path rationale too — skips all ~18 round-trips once the schema
+ * marker matches, instead of paying them on every cold start.
  */
-export async function ensureB2bTablesExist(): Promise<Step[]> {
+export async function ensureB2bTablesExist(force = false): Promise<Step[]> {
   const url = process.env.ORDERS_DATABASE_URL ?? process.env.DATABASE_URL;
   const steps: Step[] = [];
   if (!url) {
@@ -31,6 +36,15 @@ export async function ensureB2bTablesExist(): Promise<Step[]> {
       steps.push({ name, ok: false, error: msg });
       console.error(`[b2b-migrate] step "${name}" failed:`, msg);
     }
+  }
+
+  if (!force) {
+    try {
+      const v = await sql`SELECT value FROM schema_meta WHERE key = 'b2b_schema_version' LIMIT 1`;
+      if ((v as unknown as Array<{ value: string }>)[0]?.value === B2B_SCHEMA_VERSION) {
+        return steps;
+      }
+    } catch { /* schema_meta missing → fall through and run the full migration */ }
   }
 
   await run('companies', () => sql`
@@ -136,6 +150,14 @@ export async function ensureB2bTablesExist(): Promise<Step[]> {
     )
   `);
   await run('audit_logs_entity_idx', () => sql`CREATE INDEX IF NOT EXISTS audit_logs_entity_idx ON audit_logs(entity_type, entity_id)`);
+
+  // Record the marker so subsequent cold starts take the fast path above
+  // instead of re-running all ~18 round-trips.
+  try {
+    await sql`CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT)`;
+    await sql`INSERT INTO schema_meta (key, value) VALUES ('b2b_schema_version', ${B2B_SCHEMA_VERSION})
+              ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
+  } catch {}
 
   const failed = steps.filter(s => !s.ok);
   console.log(`[b2b-migrate] done: ${steps.length - failed.length}/${steps.length} ok` + (failed.length ? `, failed: ${failed.map(f => f.name).join(', ')}` : ''));
