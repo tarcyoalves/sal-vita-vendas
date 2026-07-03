@@ -694,18 +694,21 @@ Não antecipar isso no Sprint 1.
 
 ## 25. Tarefas humanas paralelas
 
-Enquanto o agente executa Sprint 1, o humano deve cuidar de:
+> **Regra de ouro do domínio secundário:** ele só é necessário quando começar o **outbound frio em volume (Sprint 4)**. Enquanto a operação for só `/atacado` + inbound + CRM + admin (Sprints 1–3), o domínio atual `salvitarn.com.br` atende perfeitamente — inbound e notificação interna não arriscam a reputação transacional. **Não compre domínio agora.** A Seção 4.1 permanece como regra absoluta, mas só entra em vigor quando houver disparo frio.
 
-1. Comprar domínio secundário para outbound.
-2. Configurar SPF/DKIM/DMARC.
-3. Configurar domínio no Resend.
-4. Preparar e-mail de reply-to.
-5. Criar ou revisar tabela B2B.
-6. Preparar PDF simples de revenda/food service.
-7. Preparar fotos comerciais do produto.
-8. Preparar política de amostras.
-9. Preparar régua de preço sem hardcode no sistema.
-10. Criar chave Google Places API somente com budget alert e restrição.
+**Agora (durante o Sprint 1) — prioridade humana:**
+1. Corrigir/validar a infraestrutura e colocar `/atacado` no ar (acompanhar o agente).
+2. Validar em produção o fluxo completo de um lead B2B inbound: preencher o form → lead entra limpo no CRM → notificação chega → aparece no admin.
+3. Preparar régua de preço sem hardcode (tabela/config), para o humano ter munição ao responder.
+
+**Depois (Sprints 2–3), sem pressa:**
+4. Preparar PDF simples de revenda/food service, ficha técnica e fotos comerciais.
+5. Preparar política de amostras e argumentos/objeções por segmento.
+
+**Só no Sprint 4 (quando entrar outbound):**
+6. Decidir estratégia de envio: domínio secundário dedicado **ou** outra estratégia, conforme volume e reputação naquele momento.
+7. Se optar por domínio secundário: comprar, configurar SPF/DKIM/DMARC, configurar no Resend, reply-to monitorado, warmup.
+8. Criar chave Google Places API somente com budget alert e restrição.
 
 ## 26. Política de preço
 
@@ -830,10 +833,12 @@ Antes de codar, entregue um plano técnico curto contendo:
 6. testes que serão rodados;
 7. confirmação explícita das áreas que não serão tocadas.
 
-Depois implemente em commits pequenos.
-Rode typecheck/build antes do push.
-Ao final, entregue resumo do que foi feito, arquivos alterados, testes executados e próximos passos.
+PARE AQUI. Entregue APENAS o plano técnico e AGUARDE aprovação humana explícita. NÃO escreva código, NÃO crie arquivos, NÃO faça commits nesta etapa. Só depois do "aprovado, pode implementar" você segue.
+
+Após aprovado, implemente em commits pequenos. Rode typecheck/build antes de cada push. Ao final, entregue resumo do que foi feito, arquivos alterados, testes executados e próximos passos.
 ```
+
+> **Modo de uso (recomendado):** rode este prompt em DUAS etapas. Etapa 1 — o agente entrega só o plano técnico e para; você confere se está consistente com os 4 documentos. Etapa 2 — se estiver ok, responda "aprovado, implemente o Sprint 1". Esse passo de revisão costuma economizar bastante retrabalho.
 
 ## 30. Erros fatais a evitar
 
