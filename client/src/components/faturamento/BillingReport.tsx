@@ -266,11 +266,13 @@ export default function BillingReport() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((p) => (
+                  {filtered.map((p, i) => (
                     <tr
                       key={p.id}
                       onClick={() => openDetail(p.id)}
-                      className="border-b border-slate-100 hover:bg-blue-50/50 transition-colors align-top cursor-pointer"
+                      className={`border-b-2 border-slate-300 hover:bg-blue-50/50 transition-colors align-top cursor-pointer ${
+                        i % 2 === 1 ? 'bg-slate-50/60' : ''
+                      }`}
                     >
                       <td className="px-3 py-3 text-blue-600 text-xs font-medium">{p.taskId ? `#${p.taskId}` : "--"}</td>
                       <td className="px-3 py-3 text-gray-600 font-mono text-xs">{p.cnpj || "--"}</td>

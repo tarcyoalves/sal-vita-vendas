@@ -1,18 +1,24 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '../ui/select';
 import { useFatStore } from '../../lib/faturamento/store';
 import { useAuth } from '../../_core/hooks/useAuth';
+import { trpc } from '../../lib/trpc';
 import {
   totalPedido, comissaoPedido, freteTotal, pesoTotalItens,
   formatBRL, formatKg,
 } from '../../lib/faturamento/calc';
 import { OrderPrintDocument } from './OrderPrintDocument';
-import { Pencil, Truck, Trash2, CheckCircle2, Printer } from 'lucide-react';
+import { Pencil, Truck, Trash2, CheckCircle2, Printer, Link2 } from 'lucide-react';
+
+const onlyDigits = (v?: string | null) => (v ?? '').replace(/\D/g, '');
 
 interface OrderDetailDialogProps {
   open: boolean;
@@ -45,7 +51,25 @@ export function OrderDetailDialog({
   const { actions } = useFatStore();
   const { user } = useAuth();
   const [printOpen, setPrintOpen] = useState(false);
+  const [linkTaskId, setLinkTaskId] = useState('');
   const pedido = pedidoId ? actions.pedidos.get(pedidoId) : null;
+  const canApprove = user?.role === 'admin' || user?.role === 'manager';
+
+  // Pedidos antigos (importados do localStorage, antes da tarefa passar a ser
+  // obrigatória na criação) podem ter ficado sem tarefa vinculada. Como não há
+  // como reconstruir esse vínculo com certeza, oferece uma lista de tarefas
+  // candidatas (mesmo CNPJ, senão mesmo atendente) para o admin escolher à mão
+  // em vez de tentar adivinhar automaticamente.
+  const { data: allTasks = [] } = trpc.tasks.list.useQuery(undefined, {
+    enabled: canApprove && !!pedido && !pedido.taskId,
+  });
+  const candidateTasks = useMemo(() => {
+    if (!pedido || pedido.taskId) return [];
+    const cnpj = onlyDigits(pedido.cnpj);
+    const porCnpj = cnpj ? allTasks.filter((t) => onlyDigits(t.cnpj) === cnpj) : [];
+    if (porCnpj.length > 0) return porCnpj;
+    return allTasks.filter((t) => t.assignedTo?.toLowerCase() === pedido.sellerName?.toLowerCase());
+  }, [allTasks, pedido]);
 
   if (!pedido) return null;
 
@@ -53,13 +77,19 @@ export function OrderDetailDialog({
   const comissao = comissaoPedido(pedido);
   const frete = freteTotal(pedido);
   const isFaturado = pedido.status === 'faturado';
-  const canApprove = user?.role === 'admin' || user?.role === 'manager';
 
   const handleAprovar = () => {
     if (!user) return;
     actions.pedidos.aprovar(pedido.id, user.name);
     toast.success('Pedido aprovado!');
     onApproved?.();
+  };
+
+  const handleVincularTarefa = () => {
+    if (!linkTaskId) return;
+    actions.pedidos.upsert({ id: pedido.id, taskId: Number(linkTaskId) });
+    toast.success('Pedido vinculado à tarefa!');
+    setLinkTaskId('');
   };
 
   return (
@@ -131,6 +161,38 @@ export function OrderDetailDialog({
               </div>
             )}
           </div>
+
+          {/* Vincular a uma tarefa — só para pedidos antigos sem esse vínculo */}
+          {!pedido.taskId && canApprove && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 text-sm text-orange-800">
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Link2 size={14} />
+                <span className="font-medium">Sem tarefa vinculada</span>
+              </div>
+              {candidateTasks.length > 0 ? (
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <Select value={linkTaskId} onValueChange={setLinkTaskId}>
+                    <SelectTrigger className="h-8 text-xs bg-white">
+                      <SelectValue placeholder="Selecione a tarefa correspondente" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {candidateTasks.map((t) => (
+                        <SelectItem key={t.id} value={String(t.id)}>
+                          #{t.id} · {t.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button size="sm" className="h-8 gap-1.5 shrink-0" disabled={!linkTaskId} onClick={handleVincularTarefa}>
+                    <Link2 size={14} />
+                    Vincular
+                  </Button>
+                </div>
+              ) : (
+                <span className="text-xs text-orange-700">Nenhuma tarefa com o mesmo CNPJ/atendente encontrada.</span>
+              )}
+            </div>
+          )}
 
           {/* Items */}
           {pedido.itens.length > 0 && (
