@@ -1,11 +1,17 @@
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { toast } from 'sonner';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '../ui/dialog';
 import { Button } from '../ui/button';
-import { Printer } from 'lucide-react';
-import { totalItens, pesoTotalItens, freteTotal, formatBRL, formatKg } from '../../lib/faturamento/calc';
-import type { Pedido, ItemPedido } from '../../lib/faturamento/types';
+import { Printer, Mail, Loader2 } from 'lucide-react';
+import { trpc } from '../../lib/trpc';
+import {
+  totalItens, pesoTotalItens, freteTotal, freteUnitItem, formatBRL, formatKg, formatPrazo,
+} from '../../lib/faturamento/calc';
+import { EMPRESA } from '../../../../shared/const';
+import type { Pedido } from '../../lib/faturamento/types';
 
 interface OrderPrintDocumentProps {
   open: boolean;
@@ -17,28 +23,6 @@ function fmtDate(iso: string | null): string {
   if (!iso) return '--';
   const d = new Date(iso);
   return isNaN(d.getTime()) ? '--' : d.toLocaleDateString('pt-BR');
-}
-
-// Dados da empresa emissora — fixos (não há tela de configuração para isso
-// hoje). Fonte: registro fornecido pelo admin.
-const EMPRESA = {
-  razaoSocial: 'A S COMERCIO E MOAGEM DE SAL LTDA',
-  cnpj: '51.422.900/0001-68',
-  ie: '206389191',
-  endereco: 'Avenida Industrial Dehuel Vieira Diniz nº 505, Monsenhor Américo',
-  cidade: 'Mossoró - RN',
-  telefone: '(84) 2140-8212',
-  email: 'contato@salvitarn.com.br',
-};
-
-// Frete por saco/fardo desta linha: o frete é negociado por TONELADA
-// (valorFretePorTonelada), então o valor por unidade depende do peso de cada
-// saco/fardo desse item específico (pesoKg da linha ÷ quantidade). Isento
-// quando o produto tem preço final fixo (snapshot isentoFrete no item).
-function freteUnit(it: ItemPedido, valorFretePorTonelada: number): number {
-  if (it.isentoFrete || !it.quantidade) return 0;
-  const pesoUnitKg = it.pesoKg / it.quantidade;
-  return (pesoUnitKg / 1000) * (Number(valorFretePorTonelada) || 0);
 }
 
 // Conteúdo do documento — extraído para ser renderizado uma única vez, direto
@@ -125,7 +109,7 @@ function PedidoPrintContent({ pedido }: { pedido: Pedido }) {
         </thead>
         <tbody>
           {pedido.itens.map((it) => {
-            const frete = freteUnit(it, pedido.valorFretePorUnidade);
+            const frete = freteUnitItem(it, pedido.valorFretePorUnidade);
             return (
               <tr key={it.id} className="border-b border-slate-200">
                 <td className="py-1.5 pr-2 break-words">{it.descricao || 'Item'}</td>
@@ -149,16 +133,23 @@ function PedidoPrintContent({ pedido }: { pedido: Pedido }) {
 
       {/* Resumo de pagamento */}
       <table className="w-full border-collapse mb-4 border border-slate-300 rounded-lg overflow-hidden">
+        <thead>
+          <tr className="bg-slate-50 border-b border-slate-300">
+            <th className="text-left py-1.5 px-3 text-[10px] font-semibold text-slate-400 uppercase">&nbsp;</th>
+            <th className="text-right py-1.5 px-3 text-[10px] font-semibold text-slate-400 uppercase">Valor</th>
+            <th className="text-right py-1.5 px-3 text-[10px] font-semibold text-slate-400 uppercase">Condição de pagamento</th>
+          </tr>
+        </thead>
         <tbody>
           <tr className="border-b border-slate-200">
             <td className="py-2 px-3 text-slate-600">Total Sal</td>
             <td className="py-2 px-3 text-right font-semibold">{formatBRL(totalSal)}</td>
-            <td className="py-2 px-3 text-right text-slate-500">{pedido.prazoPagamentoSal || '--'}</td>
+            <td className="py-2 px-3 text-right text-slate-500">{formatPrazo(pedido.prazoPagamentoSal)}</td>
           </tr>
           <tr className="border-b border-slate-200">
             <td className="py-2 px-3 text-slate-600">Total Frete</td>
             <td className="py-2 px-3 text-right font-semibold">{formatBRL(totalFrete)}</td>
-            <td className="py-2 px-3 text-right text-slate-500">{pedido.prazoPagamentoFrete || '--'}</td>
+            <td className="py-2 px-3 text-right text-slate-500">{formatPrazo(pedido.prazoPagamentoFrete)}</td>
           </tr>
           <tr className="bg-blue-50">
             <td className="py-2.5 px-3 font-bold text-blue-900 uppercase text-xs">Total geral do pedido</td>
@@ -174,7 +165,7 @@ function PedidoPrintContent({ pedido }: { pedido: Pedido }) {
       </div>
 
       <p className="text-center text-xs text-slate-400 pt-2 border-t border-slate-200">
-        www.salvitarn.com.br
+        {EMPRESA.site}
       </p>
     </div>
   );
@@ -195,6 +186,11 @@ function PedidoPrintContent({ pedido }: { pedido: Pedido }) {
 // ao imprimir). O portal garante que a área impressa seja filha direta de
 // <body>, sem nenhum ancestral posicionado, imprimindo do topo da página.
 export function OrderPrintDocument({ open, onOpenChange, pedido }: OrderPrintDocumentProps) {
+  const enviarEmailMutation = trpc.faturamento.enviarPedidoEmail.useMutation({
+    onSuccess: () => toast.success('E-mail enviado para o cliente!'),
+    onError: (err) => toast.error(err.message || 'Não foi possível enviar o e-mail'),
+  });
+
   if (!pedido) return null;
 
   return (
@@ -203,7 +199,7 @@ export function OrderPrintDocument({ open, onOpenChange, pedido }: OrderPrintDoc
         <DialogHeader>
           <DialogTitle>Cópia do pedido</DialogTitle>
           <DialogDescription>
-            Documento pronto para enviar ao cliente. Clique em Imprimir para gerar o PDF (use "Salvar como PDF" na janela de impressão).
+            Documento pronto para enviar ao cliente. Clique em Imprimir para gerar o PDF (use "Salvar como PDF" na janela de impressão), ou envie direto por e-mail.
           </DialogDescription>
         </DialogHeader>
 
@@ -213,9 +209,17 @@ export function OrderPrintDocument({ open, onOpenChange, pedido }: OrderPrintDoc
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Fechar</Button>
-          <Button onClick={() => window.print()} className="gap-1.5">
+          <Button onClick={() => window.print()} variant="outline" className="gap-1.5">
             <Printer size={14} />
             Imprimir / Salvar PDF
+          </Button>
+          <Button
+            onClick={() => enviarEmailMutation.mutate({ pedidoId: pedido.id })}
+            disabled={enviarEmailMutation.isPending}
+            className="gap-1.5"
+          >
+            {enviarEmailMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+            Enviar por e-mail
           </Button>
         </DialogFooter>
       </DialogContent>

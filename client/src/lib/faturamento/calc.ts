@@ -52,6 +52,27 @@ export function freteTotal(pedido: Pedido): number {
   );
 }
 
+// Frete por saco/fardo de UM item (não o total do pedido): deriva o peso de
+// um único saco/fardo desse item (pesoKg da linha ÷ quantidade) e aplica a
+// taxa por tonelada. Usado no documento/PDF do pedido, onde os valores da
+// tabela de itens são unitários. Compartilhado entre o print (client) e o
+// PDF anexado ao e-mail (server) para nunca haver dois cálculos divergentes.
+export function freteUnitItem(it: ItemPedido, valorFretePorTonelada: number): number {
+  if (it.isentoFrete || !it.quantidade) return 0;
+  const pesoUnitKg = (Number(it.pesoKg) || 0) / it.quantidade;
+  return (pesoUnitKg / 1000) * (Number(valorFretePorTonelada) || 0);
+}
+
+// Formata um prazo de pagamento livre (ex: "30/45/60", "25", "à vista") —
+// só acrescenta "dias" quando o texto for puramente numérico/barras, pra não
+// grudar a palavra em valores como "à vista" que já são autoexplicativos.
+export function formatPrazo(valor: string, singular = false): string {
+  const v = (valor || '').trim();
+  if (!v) return '--';
+  if (/^[\d/]+$/.test(v)) return `${v} ${singular ? 'dia' : 'dias'}`;
+  return v;
+}
+
 // ── Filtro por mês ────────────────────────────────────────────────────────────
 export function mesAtual(): FiltroMes {
   const d = new Date();

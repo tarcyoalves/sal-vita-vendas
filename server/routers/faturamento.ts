@@ -2,8 +2,12 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure, staffProcedure } from '../trpc';
 import { db } from '../db';
-import { fatProducts, fatOrders, fatCommissions, fatOrderDeletionLogs, sellers } from '../db/schema';
+import { fatProducts, fatOrders, fatCommissions, fatOrderDeletionLogs, sellers, tasks } from '../db/schema';
 import { eq, and, isNull, desc } from 'drizzle-orm';
+import { sendEmail } from '../email/resend';
+import { renderSignature } from '../email/marketing';
+import { gerarPedidoPdf } from '../pdf/pedidoPdf';
+import type { Pedido } from '../../client/src/lib/faturamento/types';
 
 // ── Faturamento & Comissão (CRM Lembretes) ───────────────────────────────────
 // Backend do módulo antes mantido em localStorage. IDs são gerados no cliente
@@ -248,6 +252,80 @@ export const faturamentoRouter = router({
       .where(and(isNull(fatOrders.aprovadoEm), eq(fatOrders.createdByRole, 'user')))
       .orderBy(desc(fatOrders.criadoEm));
   }),
+
+  // Envia a cópia do pedido (PDF anexado) para o e-mail do cliente cadastrado
+  // e confirmado na tarefa — mesmo padrão de "só e-mail confirmado entra em
+  // disparo" usado no resto do sistema. Exige aprovação prévia do admin/manager
+  // (mesma regra do botão "Gerar cópia"), e sempre usa a assinatura do
+  // atendente dono do pedido, igual aos outros envios de e-mail do sistema.
+  enviarPedidoEmail: protectedProcedure
+    .input(z.object({ pedidoId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const [pedido] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.pedidoId));
+      if (!pedido) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' });
+
+      if (ctx.user.role !== 'admin' && ctx.user.role !== 'manager') {
+        const mySellerId = await sellerIdForUser(ctx.user.id);
+        if (pedido.sellerId !== mySellerId) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Pedido de outro atendente' });
+        }
+      }
+
+      if (!pedido.aprovadoEm) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'O pedido precisa ser aprovado antes de enviar ao cliente' });
+      }
+      if (!pedido.taskId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Pedido sem tarefa vinculada — não há e-mail de cliente para enviar' });
+      }
+
+      const [task] = await db.select({ email: tasks.email, emailConfirmed: tasks.emailConfirmed })
+        .from(tasks).where(eq(tasks.id, pedido.taskId));
+      if (!task?.email || !task.emailConfirmed) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Nenhum e-mail confirmado para o cliente desta tarefa' });
+      }
+
+      let seller: { name: string; email: string; phone: string | null; department: string | null; sigHtml: string | null; sigOn: boolean } | undefined;
+      if (pedido.sellerId) {
+        [seller] = await db.select({
+          name: sellers.name, email: sellers.email, phone: sellers.phone, department: sellers.department,
+          sigHtml: sellers.emailSignatureHtml, sigOn: sellers.emailSignatureEnabled,
+        }).from(sellers).where(eq(sellers.id, pedido.sellerId));
+      }
+
+      const pdfBuffer = await gerarPedidoPdf(pedido as unknown as Pedido);
+      const numeroPedido = pedido.id.slice(0, 8).toUpperCase();
+      const nomeCliente = pedido.razaoSocial || pedido.clienteNome || 'Cliente';
+      const assinatura = seller?.sigOn && seller.sigHtml ? renderSignature(seller.sigHtml, seller) : '';
+
+      const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8" /></head>
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:system-ui,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f4;">
+<tr><td align="center" style="padding:24px 8px;">
+<table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
+<tr><td style="padding:32px 32px 24px;">
+<p style="margin:0 0 16px;font-size:15px;color:#444;">Olá, <strong>${nomeCliente}</strong>!</p>
+<p style="margin:0 0 16px;font-size:15px;color:#444;">Segue em anexo o pedido de compras nº <strong>${numeroPedido}</strong> para sua aprovação.</p>
+<p style="margin:0 0 16px;font-size:15px;color:#444;">Qualquer dúvida, estamos à disposição.</p>
+${assinatura ? `<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e5e5;">${assinatura}</div>` : ''}
+</td></tr>
+<tr><td style="background:#f4f4f4;padding:16px 32px;border-top:1px solid #e0e0e0;text-align:center;">
+<p style="margin:0;font-size:12px;color:#888;"><strong>Sal Vita</strong> — Sistema de Gestão</p>
+</td></tr>
+</table></td></tr></table></body></html>`;
+
+      const result = await sendEmail(
+        task.email,
+        `Pedido de Compras Nº ${numeroPedido} — Sal Vita`,
+        html,
+        [{ filename: `pedido-${numeroPedido}.pdf`, content: pdfBuffer.toString('base64') }],
+      );
+
+      if (!result.ok) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Falha ao enviar e-mail (${result.reason ?? 'erro desconhecido'})` });
+      }
+      return { ok: true, email: task.email };
+    }),
 
   // ── Comissões (por atendente — admin) ──────────────────────────────────────
   setComissao: staffProcedure

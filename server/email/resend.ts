@@ -29,6 +29,7 @@ export async function sendEmail(
   to: string,
   subject: string,
   html: string,
+  attachments?: { filename: string; content: string }[], // content = base64
 ): Promise<{ ok: boolean; reason?: string }> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return { ok: false, reason: 'no_api_key' };
@@ -40,14 +41,17 @@ export async function sendEmail(
 
   try {
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 8_000);
+    const timer = setTimeout(() => ac.abort(), attachments?.length ? 15_000 : 8_000);
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ from: FROM, to, subject, html }),
+      body: JSON.stringify({
+        from: FROM, to, subject, html,
+        ...(attachments?.length ? { attachments } : {}),
+      }),
       signal: ac.signal,
     });
     clearTimeout(timer);
