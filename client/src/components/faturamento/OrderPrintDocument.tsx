@@ -31,10 +31,14 @@ const EMPRESA = {
   email: 'contato@salvitarn.com.br',
 };
 
-// Frete unitário desta linha (por saco/fardo): isento quando o produto tem
-// preço final fixo (snapshot no item), senão o valor de frete por unidade do pedido.
-function freteUnit(it: ItemPedido, valorFretePorUnidade: number): number {
-  return it.isentoFrete ? 0 : Number(valorFretePorUnidade) || 0;
+// Frete por saco/fardo desta linha: o frete é negociado por TONELADA
+// (valorFretePorTonelada), então o valor por unidade depende do peso de cada
+// saco/fardo desse item específico (pesoKg da linha ÷ quantidade). Isento
+// quando o produto tem preço final fixo (snapshot isentoFrete no item).
+function freteUnit(it: ItemPedido, valorFretePorTonelada: number): number {
+  if (it.isentoFrete || !it.quantidade) return 0;
+  const pesoUnitKg = it.pesoKg / it.quantidade;
+  return (pesoUnitKg / 1000) * (Number(valorFretePorTonelada) || 0);
 }
 
 // Conteúdo do documento — extraído para ser renderizado uma única vez, direto

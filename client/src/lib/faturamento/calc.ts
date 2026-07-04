@@ -38,13 +38,16 @@ export function comissaoPedido(pedido: Pedido): number {
   }, 0);
 }
 
-// Frete total do pedido: valorFretePorUnidade × quantidade, somado só nos itens
-// que não são isentos (isentoFrete snapshot no item, ex: produto de preço final fixo).
+// Frete total do pedido: negociado por TONELADA (pedido.valorFretePorUnidade
+// guarda R$/tonelada), aplicado sobre o peso líquido de cada item — não por
+// quantidade de sacos/fardos, já que sacos/fardos de pesos diferentes pagam
+// frete proporcional ao peso, não por unidade. Itens isentos (snapshot
+// isentoFrete, ex: produto de preço final fixo) não entram na conta.
 export function freteTotal(pedido: Pedido): number {
-  const porUnidade = Number(pedido.valorFretePorUnidade) || 0;
-  if (!porUnidade) return 0;
+  const porTonelada = Number(pedido.valorFretePorUnidade) || 0;
+  if (!porTonelada) return 0;
   return pedido.itens.reduce(
-    (s, it) => s + (it.isentoFrete ? 0 : (Number(it.quantidade) || 0) * porUnidade),
+    (s, it) => s + (it.isentoFrete ? 0 : (Number(it.pesoKg) || 0) / 1000 * porTonelada),
     0,
   );
 }

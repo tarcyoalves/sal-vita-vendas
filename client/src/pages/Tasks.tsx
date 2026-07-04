@@ -1531,7 +1531,7 @@ export default function Tasks() {
                                   <div className="text-[10px] text-amber-700 bg-amber-50 rounded px-2 py-1 space-y-0.5">
                                     {ped.prazoPagamentoSal && <div><strong>Prazo sal:</strong> {ped.prazoPagamentoSal}</div>}
                                     {ped.prazoPagamentoFrete && <div><strong>Prazo frete:</strong> {ped.prazoPagamentoFrete}</div>}
-                                    {!!ped.valorFretePorUnidade && <div><strong>Frete/un:</strong> {formatBRL(ped.valorFretePorUnidade)}</div>}
+                                    {!!ped.valorFretePorUnidade && <div><strong>Frete/ton:</strong> {formatBRL(ped.valorFretePorUnidade)}</div>}
                                     {ped.observacoes && <div><strong>Obs:</strong> {ped.observacoes}</div>}
                                   </div>
                                 )}

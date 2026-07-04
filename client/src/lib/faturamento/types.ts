@@ -49,7 +49,7 @@ export interface Pedido {
   itensEstimadoSnapshot: ItemPedido[] | null;
   prazoPagamentoSal: string;
   prazoPagamentoFrete: string;
-  valorFretePorUnidade: number;
+  valorFretePorUnidade: number; // R$ por TONELADA — o valor por saco/fardo é calculado a partir do peso de cada item
   observacoes: string;
   criadoEm: string;         // ISO
   faturadoEm: string | null;// ISO quando marcado como embarcado/faturado

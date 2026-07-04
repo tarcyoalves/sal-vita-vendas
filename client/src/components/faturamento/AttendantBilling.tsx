@@ -355,7 +355,7 @@ function PedidoCard({
         <div className="bg-amber-50 rounded-lg px-2.5 py-1.5 text-[11px] text-amber-800 space-y-0.5">
           {pedido.prazoPagamentoSal && <div><strong>Prazo sal:</strong> {pedido.prazoPagamentoSal}</div>}
           {pedido.prazoPagamentoFrete && <div><strong>Prazo frete:</strong> {pedido.prazoPagamentoFrete}</div>}
-          {!!pedido.valorFretePorUnidade && <div><strong>Frete/un:</strong> {formatBRL(pedido.valorFretePorUnidade)}</div>}
+          {!!pedido.valorFretePorUnidade && <div><strong>Frete/ton:</strong> {formatBRL(pedido.valorFretePorUnidade)}</div>}
           {pedido.observacoes && <div><strong>Obs:</strong> {pedido.observacoes}</div>}
         </div>
       )}

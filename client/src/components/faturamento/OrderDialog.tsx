@@ -283,10 +283,10 @@ export function OrderDialog({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="od-valor-frete" className="text-xs">Valor do frete por saco/fardo</Label>
+                <Label htmlFor="od-valor-frete" className="text-xs">Valor do frete por tonelada</Label>
                 <Input
                   id="od-valor-frete"
-                  placeholder="R$ 0,00"
+                  placeholder="R$ 0,00 / ton"
                   inputMode="decimal"
                   value={valorFreteRaw}
                   onChange={(e) => setValorFreteRaw(e.target.value)}
