@@ -25,9 +25,9 @@ const EMPRESA = {
   razaoSocial: 'A S COMERCIO E MOAGEM DE SAL LTDA',
   cnpj: '51.422.900/0001-68',
   ie: '206389191',
-  endereco: 'Avenida Industrial Dehuel Vieira Diniz nº 659, Sala 110, Monsenhor Américo',
+  endereco: 'Avenida Industrial Dehuel Vieira Diniz nº 505, Monsenhor Américo',
   cidade: 'Mossoró - RN',
-  telefone: '(84) 3191-1376',
+  telefone: '(84) 2140-8212',
   email: 'contato@salvitarn.com.br',
 };
 
