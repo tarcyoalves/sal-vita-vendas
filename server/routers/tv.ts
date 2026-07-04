@@ -4,6 +4,7 @@ import { db } from '../db';
 import { sellers, tasks, workSessions, clients, appSettings } from '../db/schema';
 import { eq, or, and, gte, sql, isNotNull } from 'drizzle-orm';
 import { cached, cacheInvalidate } from '../lib/cache';
+import { spMidnight, spDaysAgo } from '../lib/tz';
 
 const TV_PANEL_SETTING_KEY = 'tv_panel_enabled';
 
@@ -42,12 +43,10 @@ export const tvRouter = router({
 
 async function tvDashboardQuery() {
     const now = new Date();
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
+    const todayStart = spMidnight(now);
 
     // 4 weeks ago — oldest date needed for weekly contact buckets
-    const fourWeeksAgo = new Date(todayStart);
-    fourWeeksAgo.setDate(todayStart.getDate() - 28);
+    const fourWeeksAgo = spDaysAgo(28, now);
 
     const [allSellers, allTasks, activeSessions, clientCount] = await Promise.all([
       db.select({ id: sellers.id, name: sellers.name, userId: sellers.userId })

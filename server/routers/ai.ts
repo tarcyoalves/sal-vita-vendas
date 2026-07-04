@@ -4,6 +4,7 @@ import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { chatMessages, tasks, clients, sellers, workSessions, knowledgeDocuments } from '../db/schema';
 import { eq, desc, or, gte, and, ilike } from 'drizzle-orm';
+import { spMidnight, spEndOfDay } from '../lib/tz';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -390,8 +391,8 @@ async function executeTool(name: string, args: any, callerUserId?: number): Prom
     if (!callerUserId) return { error: 'Usuário não identificado.' };
     const { rows } = await ownTasksFor(callerUserId);
     const now = new Date();
-    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+    const todayStart = spMidnight(now);
+    const todayEnd = spEndOfDay(now);
 
     const overdue = rows
       .filter(t => t.reminderDate && t.reminderEnabled !== false && new Date(t.reminderDate) < now)
@@ -478,8 +479,8 @@ async function executeTool(name: string, args: any, callerUserId?: number): Prom
     );
 
     const now = new Date();
-    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+    const todayStart = spMidnight(now);
+    const todayEnd = spEndOfDay(now);
 
     let sorted = allTasks.sort((a, b) =>
       new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
@@ -657,7 +658,7 @@ async function executeTool(name: string, args: any, callerUserId?: number): Prom
   if (name === 'list_sessions') {
     const nameArg = String(args.attendant_name ?? '').toLowerCase();
     const now = new Date();
-    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+    const todayStart = spMidnight(now);
     const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
 
     const targets = nameArg === 'todos'
@@ -779,7 +780,7 @@ async function executeTool(name: string, args: any, callerUserId?: number): Prom
 
 async function buildUserContext(userId: number, role: string): Promise<string> {
   const now = new Date();
-  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+  const todayStart = spMidnight(now);
 
   const taskFields = {
     id: tasks.id,
@@ -1041,7 +1042,7 @@ ${userContext}`;
     if (!apiKey) return { report: [], summary: 'IA não configurada. Vá em Configurações → IA e configure Groq (recomendado), Cerebras ou Gemini.' };
 
     const now = new Date();
-    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+    const todayStart = spMidnight(now);
     const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
 
     const allSellers = await db.select().from(sellers);

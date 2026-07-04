@@ -3,6 +3,7 @@ import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { workSessions, sellers, tasks } from '../db/schema';
 import { eq, and, desc, gte, or, isNotNull, isNull, lt, count } from 'drizzle-orm';
+import { spMidnight } from '../lib/tz';
 
 export const workSessionsRouter = router({
 
@@ -119,8 +120,7 @@ export const workSessionsRouter = router({
   // Admin: all seller sessions today + recent task activity + last-online history
   allActiveToday: adminProcedure.query(async () => {
     const now = new Date();
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
+    const todayStart = spMidnight(now);
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
 
     const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);

@@ -13,6 +13,7 @@ import {
 import { pickAccount, sendBatch, layout, renderTemplate, renderSignature, sanitizeCampaignHtml, getUsage, getAllDomainTracking, setDomainTracking, getAccounts, type BatchMessage } from '../email/marketing';
 import { enrollInSequence } from '../email/automations';
 import { userTaskFilter } from './tasks';
+import { spDateStr, spMidnight, spDaysAgo } from '../lib/tz';
 
 const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL ?? 'https://lembretes.salvitarn.com.br';
 const MKT_DAILY_LIMIT = parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? '90');
@@ -1268,7 +1269,7 @@ export const emailMarketingRouter = router({
     const deliveredBase = delivered > 0 ? delivered : totalSent;
 
     // Quota usada hoje: soma de email_send_counters de hoje, sobre nº de contas * limite diário
-    const today = new Date().toISOString().slice(0, 10);
+    const today = spDateStr();
     const countersToday = await db.select({ accountKey: emailSendCounters.accountKey, sent: emailSendCounters.sent })
       .from(emailSendCounters)
       .where(eq(emailSendCounters.day, today));
@@ -2079,9 +2080,8 @@ export const emailMarketingRouter = router({
     }),
 
   dashboardEmailStats: staffProcedure.query(async () => {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const today = todayStart.toISOString().slice(0, 10);
+    const todayStart = spMidnight();
+    const today = spDateStr(todayStart);
 
     // 1) Sends today per attendant (via reply_to → seller email)
     const sendsToday = await db.execute<{
@@ -2178,11 +2178,10 @@ export const emailMarketingRouter = router({
     const complaintsToday = engMap['complained']?.unique ?? 0;
 
     // 6) 7-day send trend
-    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
     const dailyTrend = await db.execute<{ day: string; cnt: number }>(sql`
       SELECT day, SUM(sent)::int AS cnt
       FROM ${emailSendCounters}
-      WHERE day >= ${sevenDaysAgo.toISOString().slice(0, 10)}
+      WHERE day >= ${spDateStr(spDaysAgo(7))}
       GROUP BY day
       ORDER BY day
     `);

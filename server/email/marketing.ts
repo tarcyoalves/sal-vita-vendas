@@ -14,6 +14,7 @@ import crypto from 'crypto';
 import sanitizeHtml from 'sanitize-html';
 import { sql } from '../db';
 import { emailSendCounters } from '../db/schema';
+import { spDateStr } from '../lib/tz';
 
 export const BRAND = '#0C3680';
 const MKT_DAILY_LIMIT = parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? '90');
@@ -67,7 +68,7 @@ function parseFromAddress(from: string): { name?: string; email: string } {
 }
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return spDateStr();
 }
 
 async function getCounter(accountKey: string): Promise<number> {
@@ -86,7 +87,7 @@ async function incrementCounter(accountKey: string, n: number): Promise<void> {
 }
 
 function currentMonth(): string {
-  return new Date().toISOString().slice(0, 7); // 'YYYY-MM'
+  return spDateStr().slice(0, 7); // 'YYYY-MM'
 }
 
 async function getMonthlyCounter(accountKey: string): Promise<number> {

@@ -8,6 +8,8 @@
  * guard, not a hard guarantee against Resend's own daily cap.
  */
 
+import { spDateStr } from '../lib/tz';
+
 const FROM = 'Sal Vita <noreply@premium.salvitarn.com.br>';
 const BRAND = '#0C3680';
 // Stay comfortably under 100/day free limit — env var allows override
@@ -15,10 +17,10 @@ const DAILY_SOFT_LIMIT = parseInt(process.env.RESEND_DAILY_LIMIT ?? '80');
 
 // In-process daily counter (resets on cold start — good enough for serverless)
 let _emailsToday = 0;
-let _emailCounterDay = '';  // YYYY-MM-DD in UTC
+let _emailCounterDay = '';  // YYYY-MM-DD em horário de Brasília
 
 function dailyCount(): number {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = spDateStr();
   if (_emailCounterDay !== today) { _emailsToday = 0; _emailCounterDay = today; }
   return _emailsToday;
 }
