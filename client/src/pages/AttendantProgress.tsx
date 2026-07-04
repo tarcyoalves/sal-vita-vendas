@@ -2,9 +2,16 @@ import { trpc } from '../lib/trpc';
 import { useAuth } from '../_core/hooks/useAuth';
 import { useMemo, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Phone, Clock, Zap, TrendingUp, AlertCircle, Trophy } from 'lucide-react';
+import { Phone, Clock, Zap, TrendingUp, AlertCircle, Trophy, DollarSign } from 'lucide-react';
+import {
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import AttendantBilling from '../components/faturamento/AttendantBilling';
+import { useFatStore } from '../lib/faturamento/store';
+import { resumoAtendente, isoNoMes, formatBRL } from '../lib/faturamento/calc';
+
+const MES_ABBR = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 // Sellers created before dailyGoal was wired up still carry the old default of 10
 // while the gamification has always targeted 100 — treat 10 as "not customized".
@@ -41,6 +48,9 @@ export default function AttendantProgress() {
   const { data: tasks = [], isLoading } = trpc.tasks.list.useQuery();
   const { data: session } = trpc.workSessions.current.useQuery(undefined, { staleTime: 60_000 });
   const { data: sellerProfile } = trpc.sellers.myProfile.useQuery(undefined, { staleTime: 300_000 });
+  // Mesma store já usada na aba Faturamento — reaproveitada aqui (sem query
+  // nova) para cruzar contatos (esforço) com comissão (resultado) no tempo.
+  const { pedidos: allPedidos, comissoes } = useFatStore();
 
   // Local clock tick — updates display every minute without any server call
   const [tick, setTick] = useState(0);
@@ -124,6 +134,35 @@ export default function AttendantProgress() {
       sessionStatus: session?.status ?? null,
     };
   }, [tasks, session, sellerProfile, tick]);
+
+  // 📈 Evolução: contatos (esforço) x comissão prevista (resultado), mês a mês.
+  // O objetivo é tornar visível, com números do próprio atendente, que fazer
+  // mais tarefas/contatos se traduz em mais vendas e mais comissão no fim do
+  // mês — sem depender de dados de outros atendentes (só o que já é seu).
+  const evolucao = useMemo(() => {
+    if (!sellerProfile) return null;
+    const comissaoPct = comissoes[sellerProfile.id] ?? 0;
+    const now = new Date();
+    const pontos = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+      const filtroMes = { ano: d.getFullYear(), mes: d.getMonth() };
+      const contatos = (tasks as any[]).filter(t => isoNoMes(t.lastContactedAt, filtroMes)).length;
+      const resumo = resumoAtendente(allPedidos, sellerProfile.id, sellerProfile.name, comissaoPct, filtroMes);
+      return {
+        label: `${MES_ABBR[filtroMes.mes]}/${String(filtroMes.ano).slice(2)}`,
+        contatos,
+        comissao: resumo.comissaoPrevista,
+        pedidos: resumo.qtdPedidos,
+      };
+    });
+    const totalContatos = pontos.reduce((s, p) => s + p.contatos, 0);
+    const totalComissao = pontos.reduce((s, p) => s + p.comissao, 0);
+    const valorPorContato = totalContatos > 0 ? totalComissao / totalContatos : 0;
+    const melhorMes = pontos.reduce<typeof pontos[number] | null>(
+      (best, p) => (p.comissao > (best?.comissao ?? -1) ? p : best), null,
+    );
+    return { pontos, valorPorContato, melhorMes, temDados: totalContatos > 0 || totalComissao > 0 };
+  }, [tasks, allPedidos, comissoes, sellerProfile]);
 
   useEffect(() => {
     const prev = prevContactsRef.current;
@@ -288,6 +327,50 @@ export default function AttendantProgress() {
           <span className="text-xs text-gray-500">Meta diária: <strong>{m.dailyGoal} contatos</strong></span>
         </div>
       </div>
+
+      {evolucao?.temDados && (
+        <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-1">
+            <DollarSign size={15} className="text-emerald-500" />
+            <p className="text-sm font-semibold text-gray-700">Seu impacto: tarefas geram vendas</p>
+          </div>
+          <p className="text-[11px] text-gray-400 mb-3">Contatos feitos (barras) x comissão prevista (linha) — últimos 6 meses</p>
+
+          <div className="h-44 -ml-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={evolucao.pontos} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                <YAxis yAxisId="contatos" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={26} allowDecimals={false} />
+                <YAxis yAxisId="comissao" orientation="right" hide domain={[0, (max: number) => max * 1.15 || 1]} />
+                <Tooltip
+                  formatter={(value: number, name: string) =>
+                    name === 'Comissão prevista' ? [formatBRL(value), name] : [value, name]
+                  }
+                  contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}
+                />
+                <Bar yAxisId="contatos" dataKey="contatos" name="Contatos" fill="#a5b4fc" radius={[4, 4, 0, 0]} barSize={20} />
+                <Line yAxisId="comissao" dataKey="comissao" name="Comissão prevista" stroke="#059669" strokeWidth={2.5} dot={{ r: 3, fill: '#059669' }} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            <div className="bg-emerald-50 rounded-xl p-2.5 text-center">
+              <p className="text-lg font-black text-emerald-700">{formatBRL(evolucao.valorPorContato)}</p>
+              <p className="text-[10px] text-gray-500">em comissão por contato feito</p>
+            </div>
+            <div className="bg-indigo-50 rounded-xl p-2.5 text-center">
+              <p className="text-lg font-black text-indigo-700">{evolucao.melhorMes?.label ?? '--'}</p>
+              <p className="text-[10px] text-gray-500">seu melhor mês ({formatBRL(evolucao.melhorMes?.comissao ?? 0)})</p>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-gray-400 mt-3 text-center">
+            Quanto mais tarefas você trabalha, mais contatos vira orçamento — e mais orçamento vira comissão no fim do mês. 💪
+          </p>
+        </div>
+      )}
 
       <div className={`rounded-2xl p-4 text-center ${m.contactsToday >= m.dailyGoal ? 'bg-green-50 border border-green-200' : 'bg-blue-50 border border-blue-100'}`}>
         {m.contactsToday >= m.dailyGoal ? (
