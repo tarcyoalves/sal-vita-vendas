@@ -195,7 +195,7 @@ export const pedidos = {
       : buildPedido(input);
     mirror = existing
       ? { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === result.id ? result : p)) }
-      : { ...mirror, pedidos: [...mirror.pedidos, result] };
+      : { ...mirror, pedidos: [result, ...mirror.pedidos] };
     emit();
     api.faturamento.upsertPedido.mutate(result).catch(onWriteError);
     return result;

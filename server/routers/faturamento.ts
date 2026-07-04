@@ -82,9 +82,9 @@ export const faturamentoRouter = router({
     const produtos = await db.select().from(fatProducts);
 
     const pedidos = hasFullAccess
-      ? await db.select().from(fatOrders)
+      ? await db.select().from(fatOrders).orderBy(desc(fatOrders.criadoEm))
       : mySellerId != null
-        ? await db.select().from(fatOrders).where(eq(fatOrders.sellerId, mySellerId))
+        ? await db.select().from(fatOrders).where(eq(fatOrders.sellerId, mySellerId)).orderBy(desc(fatOrders.criadoEm))
         : [];
 
     const commissionRows = hasFullAccess
