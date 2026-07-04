@@ -327,6 +327,29 @@ ${assinatura ? `<div style="margin-top:24px;padding-top:16px;border-top:1px soli
       return { ok: true, email: task.email };
     }),
 
+  // Gera o mesmo PDF anexado ao e-mail para download direto pelo navegador —
+  // usado pelo botão "Baixar PDF" no lugar de window.print(). Evita de vez o
+  // cabeçalho/rodapé que o Chrome injeta em "Salvar como PDF" (título da
+  // página + URL + data), que não tem como ser suprimido via CSS: é uma opção
+  // do próprio diálogo de impressão do navegador, fora do nosso controle.
+  baixarPedidoPdf: protectedProcedure
+    .input(z.object({ pedidoId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const [pedido] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.pedidoId));
+      if (!pedido) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' });
+
+      if (ctx.user.role !== 'admin' && ctx.user.role !== 'manager') {
+        const mySellerId = await sellerIdForUser(ctx.user.id);
+        if (pedido.sellerId !== mySellerId) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Pedido de outro atendente' });
+        }
+      }
+
+      const pdfBuffer = await gerarPedidoPdf(pedido as unknown as Pedido);
+      const numeroPedido = pedido.id.slice(0, 8).toUpperCase();
+      return { filename: `pedido-${numeroPedido}.pdf`, base64: pdfBuffer.toString('base64') };
+    }),
+
   // ── Comissões (por atendente — admin) ──────────────────────────────────────
   setComissao: staffProcedure
     .input(z.object({ sellerId: z.number(), pct: z.number() }))

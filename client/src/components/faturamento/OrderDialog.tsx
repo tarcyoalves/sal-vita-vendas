@@ -87,7 +87,6 @@ export function OrderDialog({
   const [prazoPagamentoSal, setPrazoPagamentoSal] = useState('');
   const [prazoPagamentoFrete, setPrazoPagamentoFrete] = useState('');
   const [valorFreteRaw, setValorFreteRaw] = useState('');
-  const [valorPagoRaw, setValorPagoRaw] = useState('');
   const [observacoes, setObservacoes] = useState('');
 
   // Pedido recém-criado nesta sessão do diálogo: assim que o admin confirma
@@ -111,7 +110,6 @@ export function OrderDialog({
       setPrazoPagamentoSal(existing.prazoPagamentoSal ?? '');
       setPrazoPagamentoFrete(existing.prazoPagamentoFrete ?? '');
       setValorFreteRaw(existing.valorFretePorUnidade ? String(existing.valorFretePorUnidade).replace('.', ',') : '');
-      setValorPagoRaw(existing.valorPago ? String(existing.valorPago).replace('.', ',') : '');
       setObservacoes(existing.observacoes ?? '');
     } else {
       const parsed = parseTaskClientInfo(task);
@@ -124,7 +122,6 @@ export function OrderDialog({
       setPrazoPagamentoSal('');
       setPrazoPagamentoFrete('');
       setValorFreteRaw('');
-      setValorPagoRaw('');
       setObservacoes('');
     }
   }, [open, existingPedidoId, task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -170,7 +167,6 @@ export function OrderDialog({
       prazoPagamentoSal: prazoPagamentoSal.trim(),
       prazoPagamentoFrete: prazoPagamentoFrete.trim(),
       valorFretePorUnidade: parseBRL(valorFreteRaw),
-      valorPago: parseBRL(valorPagoRaw),
       observacoes: observacoes.trim(),
       status: 'estimado',
     });
@@ -290,17 +286,6 @@ export function OrderDialog({
                   inputMode="decimal"
                   value={valorFreteRaw}
                   onChange={(e) => setValorFreteRaw(e.target.value)}
-                  className="text-sm"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="od-valor-pago" className="text-xs">Valor pago (V.pago)</Label>
-                <Input
-                  id="od-valor-pago"
-                  placeholder="R$ 0,00"
-                  inputMode="decimal"
-                  value={valorPagoRaw}
-                  onChange={(e) => setValorPagoRaw(e.target.value)}
                   className="text-sm"
                 />
               </div>

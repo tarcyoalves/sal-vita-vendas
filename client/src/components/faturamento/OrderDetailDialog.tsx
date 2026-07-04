@@ -8,7 +8,7 @@ import { Badge } from '../ui/badge';
 import { useFatStore } from '../../lib/faturamento/store';
 import { useAuth } from '../../_core/hooks/useAuth';
 import {
-  totalPedido, comissaoPedido, freteTotal, pesoTotalItens, pesoBrutoTotalItens,
+  totalPedido, comissaoPedido, freteTotal, pesoTotalItens,
   formatBRL, formatKg,
 } from '../../lib/faturamento/calc';
 import { OrderPrintDocument } from './OrderPrintDocument';
@@ -140,8 +140,7 @@ export function OrderDetailDialog({
                   <tr className="bg-slate-50 text-left">
                     <th className="px-3 py-2 text-xs font-semibold text-slate-600 uppercase">Produto</th>
                     <th className="px-3 py-2 text-xs font-semibold text-slate-600 uppercase text-right">Qtd</th>
-                    <th className="px-3 py-2 text-xs font-semibold text-slate-600 uppercase text-right">Peso líq.</th>
-                    <th className="px-3 py-2 text-xs font-semibold text-slate-600 uppercase text-right">Peso bruto</th>
+                    <th className="px-3 py-2 text-xs font-semibold text-slate-600 uppercase text-right">Peso</th>
                     <th className="px-3 py-2 text-xs font-semibold text-slate-600 uppercase text-right">Valor unit.</th>
                     <th className="px-3 py-2 text-xs font-semibold text-slate-600 uppercase text-right">Total</th>
                   </tr>
@@ -152,7 +151,6 @@ export function OrderDetailDialog({
                       <td className="px-3 py-2 text-slate-700">{it.descricao || 'Item'}</td>
                       <td className="px-3 py-2 text-right text-slate-600">{it.quantidade}</td>
                       <td className="px-3 py-2 text-right text-slate-600">{formatKg(it.pesoKg)}</td>
-                      <td className="px-3 py-2 text-right text-slate-600">{formatKg(it.pesoBrutoKg || it.pesoKg)}</td>
                       <td className="px-3 py-2 text-right text-slate-600">{formatBRL(it.valorUnitario)}</td>
                       <td className="px-3 py-2 text-right font-semibold text-slate-800">
                         {formatBRL(it.quantidade * it.valorUnitario)}
@@ -164,7 +162,6 @@ export function OrderDetailDialog({
                   <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-xs">
                     <td className="px-3 py-2 text-slate-500" colSpan={2}>Totais</td>
                     <td className="px-3 py-2 text-right text-slate-600">{formatKg(pesoTotalItens(pedido.itens))}</td>
-                    <td className="px-3 py-2 text-right text-slate-600">{formatKg(pesoBrutoTotalItens(pedido.itens))}</td>
                     <td />
                     <td />
                   </tr>
@@ -189,10 +186,6 @@ export function OrderDetailDialog({
                 <p>{formatBRL(frete)}</p>
               </div>
             )}
-            <div>
-              <p className="text-[10px] font-semibold text-amber-500 uppercase">V. Pago</p>
-              <p>{formatBRL(pedido.valorPago)}</p>
-            </div>
             {pedido.observacoes && (
               <div className="col-span-2 sm:col-span-3">
                 <p className="text-[10px] font-semibold text-amber-500 uppercase">Obs</p>

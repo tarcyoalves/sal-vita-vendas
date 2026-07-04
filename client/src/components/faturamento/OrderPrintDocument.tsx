@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '../ui/dialog';
 import { Button } from '../ui/button';
-import { Printer, Mail, Loader2 } from 'lucide-react';
+import { Download, Mail, Loader2 } from 'lucide-react';
 import { trpc } from '../../lib/trpc';
 import {
   totalItens, pesoTotalItens, freteTotal, freteUnitItem, formatBRL, formatKg, formatPrazo,
@@ -176,16 +175,17 @@ function PedidoPrintContent({ pedido }: { pedido: Pedido }) {
 // sem dado administrativo — só o que o cliente precisa para conferir e pagar
 // o pedido, em uma única página.
 //
-// O conteúdo é renderizado duas vezes: uma para a pré-visualização dentro do
-// diálogo, e outra via portal direto em <body> (fora da árvore do diálogo).
-// Isso é necessário porque o diálogo (Radix) usa position:fixed para se
-// centralizar na tela — se a impressão tentasse "esconder tudo e mostrar só
-// a área do pedido" dentro dessa árvore, o navegador ainda calcula a posição
-// impressa relativa ao container fixo do diálogo, empurrando o conteúdo pra
-// baixo e sobrando uma página quase em branco antes dele (bug real observado
-// ao imprimir). O portal garante que a área impressa seja filha direta de
-// <body>, sem nenhum ancestral posicionado, imprimindo do topo da página.
+// O PDF baixado vem pronto do servidor (mesmo gerador usado no e-mail, ver
+// server/pdf/pedidoPdf.tsx) em vez de usar window.print(): a opção "Salvar
+// como PDF" do navegador injeta seu próprio cabeçalho/rodapé (título da
+// página, URL, data, nº de página) por cima do documento, e isso não tem
+// como ser suprimido via CSS — é uma configuração do diálogo de impressão,
+// fora do alcance da página. Baixando o PDF já pronto, o documento fica
+// idêntico ao anexo do e-mail: sem nenhum dado extra do navegador.
 export function OrderPrintDocument({ open, onOpenChange, pedido }: OrderPrintDocumentProps) {
+  const [downloading, setDownloading] = useState(false);
+  const utils = trpc.useUtils();
+
   const enviarEmailMutation = trpc.faturamento.enviarPedidoEmail.useMutation({
     onSuccess: () => toast.success('E-mail enviado para o cliente!'),
     onError: (err) => toast.error(err.message || 'Não foi possível enviar o e-mail'),
@@ -193,13 +193,34 @@ export function OrderPrintDocument({ open, onOpenChange, pedido }: OrderPrintDoc
 
   if (!pedido) return null;
 
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const { filename, base64 } = await utils.faturamento.baixarPedidoPdf.fetch({ pedidoId: pedido.id });
+      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Não foi possível gerar o PDF');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto print:hidden">
+      <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Cópia do pedido</DialogTitle>
           <DialogDescription>
-            Documento pronto para enviar ao cliente. Clique em Imprimir para gerar o PDF (use "Salvar como PDF" na janela de impressão), ou envie direto por e-mail.
+            Documento pronto para enviar ao cliente. Baixe o PDF, ou envie direto por e-mail.
           </DialogDescription>
         </DialogHeader>
 
@@ -209,9 +230,9 @@ export function OrderPrintDocument({ open, onOpenChange, pedido }: OrderPrintDoc
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Fechar</Button>
-          <Button onClick={() => window.print()} variant="outline" className="gap-1.5">
-            <Printer size={14} />
-            Imprimir / Salvar PDF
+          <Button onClick={handleDownload} disabled={downloading} variant="outline" className="gap-1.5">
+            {downloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+            Baixar PDF
           </Button>
           <Button
             onClick={() => enviarEmailMutation.mutate({ pedidoId: pedido.id })}
@@ -223,22 +244,6 @@ export function OrderPrintDocument({ open, onOpenChange, pedido }: OrderPrintDoc
           </Button>
         </DialogFooter>
       </DialogContent>
-
-      {open && createPortal(
-        <div id="pedido-print-root">
-          <PedidoPrintContent pedido={pedido} />
-        </div>,
-        document.body,
-      )}
-
-      <style>{`
-        #pedido-print-root { display: none; }
-        @media print {
-          @page { size: A4 portrait; margin: 10mm; }
-          body > *:not(#pedido-print-root) { display: none !important; }
-          #pedido-print-root { display: block !important; }
-        }
-      `}</style>
     </Dialog>
   );
 }

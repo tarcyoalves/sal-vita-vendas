@@ -21,8 +21,14 @@ const api = createTRPCClient<AppRouter>({
     httpBatchLink({
       url: '/api/trpc',
       transformer: superjson,
+      // keepalive: sem isso, um refresh/fechamento de aba logo após salvar pode
+      // cancelar a requisição em voo antes de chegar ao servidor — o dado
+      // parece salvo (otimista, na tela) mas nunca grava no banco. keepalive
+      // garante que o navegador conclua a requisição mesmo com a página
+      // descarregando (payloads de pedido são pequenos, bem abaixo do limite
+      // de 64KB da API).
       fetch: (input, init) =>
-        globalThis.fetch(input, { ...(init ?? {}), credentials: 'include' }),
+        globalThis.fetch(input, { ...(init ?? {}), credentials: 'include', keepalive: true }),
     }),
   ],
 });

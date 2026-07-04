@@ -6,7 +6,7 @@ import {
 } from '../ui/select';
 import { Input } from '../ui/input';
 import { useFatStore } from '../../lib/faturamento/store';
-import { totalLinha, totalItens, pesoTotalItens, pesoBrutoTotalItens, formatBRL, parseBRL, formatKg } from '../../lib/faturamento/calc';
+import { totalLinha, totalItens, pesoTotalItens, formatBRL, parseBRL, formatKg } from '../../lib/faturamento/calc';
 import type { ItemPedido, Produto } from '../../lib/faturamento/types';
 
 function uid(): string {
@@ -58,14 +58,15 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
         itens.map((it) => {
           if (it.id !== id) return it;
           const updated = { ...it, ...patch };
-          // Recompute peso (líquido e bruto) quando a quantidade muda numa linha
-          // vinculada a um produto do catálogo (não há peso bruto unitário
-          // separado no catálogo, então bruto acompanha o líquido por padrão).
+          // Recompute peso quando a quantidade muda numa linha vinculada a um
+          // produto do catálogo.
           if ('quantidade' in patch && it.produtoId && pesoUnitMap[id]) {
-            const peso = (Number(patch.quantidade) || 0) * pesoUnitMap[id];
-            updated.pesoKg = peso;
-            updated.pesoBrutoKg = peso;
+            updated.pesoKg = (Number(patch.quantidade) || 0) * pesoUnitMap[id];
           }
+          // Peso bruto não é editável nesta tela (sem valor separado no
+          // catálogo) — sempre acompanha o líquido, evitando o campo
+          // duplicado/inconsistente que aparecia na edição de pedidos antigos.
+          if ('pesoKg' in updated) updated.pesoBrutoKg = updated.pesoKg;
           return updated;
         }),
       );
@@ -106,7 +107,7 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
   const handleCurrencyBlur = (
     key: string,
     itemId: string,
-    field: 'valorUnitario' | 'pesoKg' | 'pesoBrutoKg',
+    field: 'valorUnitario' | 'pesoKg',
   ) => {
     const raw = editingValues[key] ?? '';
     const parsed = field === 'valorUnitario' ? parseBRL(raw) : (Number(raw.replace(',', '.')) || 0);
@@ -131,10 +132,7 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
                 Qtd
               </th>
               <th className="px-3 py-2 font-semibold text-slate-600 text-xs uppercase tracking-wide w-24">
-                Peso líq. (kg)
-              </th>
-              <th className="px-3 py-2 font-semibold text-slate-600 text-xs uppercase tracking-wide w-24">
-                Peso bruto (kg)
+                Peso (kg)
               </th>
               <th className="px-3 py-2 font-semibold text-slate-600 text-xs uppercase tracking-wide w-28">
                 Valor unit.
@@ -149,7 +147,6 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
             {itens.map((item) => {
               const valKey = `val-${item.id}`;
               const pesoKey = `peso-${item.id}`;
-              const brutoKey = `bruto-${item.id}`;
               return (
                 <tr key={item.id} className="border-t border-slate-100">
                   {/* Product select or free text */}
@@ -212,28 +209,6 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
                       }
                     />
                   </td>
-                  {/* Peso bruto */}
-                  <td className="px-3 py-2">
-                    <Input
-                      className="text-xs h-8 w-24"
-                      inputMode="decimal"
-                      value={
-                        brutoKey in editingValues
-                          ? editingValues[brutoKey]
-                          : String(item.pesoBrutoKg ?? 0).replace('.', ',')
-                      }
-                      onFocus={() => handleCurrencyFocus(brutoKey, item.pesoBrutoKg ?? 0)}
-                      onChange={(e) =>
-                        setEditingValues((prev) => ({
-                          ...prev,
-                          [brutoKey]: e.target.value,
-                        }))
-                      }
-                      onBlur={() =>
-                        handleCurrencyBlur(brutoKey, item.id, 'pesoBrutoKg')
-                      }
-                    />
-                  </td>
                   {/* Valor unitário */}
                   <td className="px-3 py-2">
                     <Input
@@ -278,7 +253,7 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
             {itens.length === 0 && (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={6}
                   className="px-3 py-6 text-center text-sm text-slate-400"
                 >
                   Nenhum item adicionado
@@ -294,9 +269,6 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
                 </td>
                 <td className="px-3 py-2 text-slate-600">
                   {formatKg(pesoTotalItens(itens))}
-                </td>
-                <td className="px-3 py-2 text-slate-600">
-                  {formatKg(pesoBrutoTotalItens(itens))}
                 </td>
                 <td className="px-3 py-2" />
                 <td className="px-3 py-2 text-right text-blue-900 font-bold">
