@@ -14,9 +14,154 @@ license: Proprietary — uso interno Sal Vita.
 
 # Sal Vita Lembretes — Manual Operacional Completo (CRM + E-mail Marketing)
 
-> **Para o agente (OpenClaw):** este documento é o seu cérebro sobre este sistema.
-> Ele foi escrito para você conseguir fazer **qualquer** edição, correção ou deploy
-> sozinho. Leia a seção "Regras de ouro" antes de tocar em qualquer arquivo.
+> **Para o agente (OpenClaw):** este documento é o seu **mapa**, não uma cópia do
+> código. Ele te diz **onde** está cada coisa e **como** operar o sistema — mas a
+> fonte da verdade é sempre o arquivo real no repositório. Leia a Seção 00
+> (Protocolo de Precisão) e a Seção "Regras de ouro" antes de tocar em qualquer coisa.
+
+---
+
+## 00. PROTOCOLO DE PRECISÃO — OBRIGATÓRIO (leia antes de tudo)
+
+> Esta seção existe porque uma análise anterior foi gerada **só a partir desta
+> documentação, sem abrir o código** — e saiu cheia de erros (afirmou que features
+> existentes não existiam, inventou números, sugeriu integração de outro produto).
+> **Não repita isso.**
+
+### Regra nº 1 — NUNCA afirme sem ler o código
+Antes de dizer "isto existe", "isto falta", "isto está quebrado" ou "isto funciona
+assim", **abra o arquivo real e confirme na linha**. Documentação (inclusive esta)
+pode estar desatualizada — o código muda **várias vezes por dia** (histórico real:
+~5 commits/dia). Só o arquivo no repositório é verdade.
+
+### Regra nº 2 — Sem leitura = é chute, e deve ser rotulado
+Se você não abriu o código, **não chame de "análise" nem de "auditoria"**. Chame de
+"hipótese a verificar" e diga explicitamente: *"não li o arquivo X, isto é suposição."*
+Brainstorm é válido — mas rotulado como brainstorm, nunca vendido como fato.
+
+### Regra nº 3 — Nada de números inventados
+Não escreva "+25-40% de conversão", "score > 70", "3x mais" **a menos que venham de
+um cálculo real sobre dados reais**. Métrica sem fonte = remova ou marque como
+"estimativa sem base, chute".
+
+### Regra nº 4 — Respeite o escopo (Seção 0)
+Nunca proponha integrar WhatsApp, Telegram, Mercado Pago, Melhor Envio ou qualquer
+coisa do produto **premium** no CRM. Se não existe no CRM, não invente que existe.
+
+### Regra nº 5 — "Saber cada linha" = LER cada linha, sob demanda
+Você **não** decora as 43.000 linhas do projeto (é impossível e apodrece rápido).
+Você atinge "saber tudo" assim, toda vez que precisar:
+
+```bash
+# 1. Tenha o repo local atualizado (clone na 1ª vez, depois só puxe)
+git clone https://github.com/tarcyoalves/sal-vita-vendas   # 1ª vez
+cd sal-vita-vendas
+git checkout main && git pull origin main                  # SEMPRE antes de analisar
+
+# 2. Leia o(s) arquivo(s) exatos da pergunta (use o Mapa da Seção 000).
+#    Ex.: pergunta sobre a tela de e-mail marketing:
+sed -n '1,120p' client/src/pages/EmailMarketing.tsx        # ou abra inteiro
+grep -n "overviewStats\|StatsTab\|Funil" client/src/pages/EmailMarketing.tsx
+
+# 3. Confirme o backend correspondente:
+grep -n "overviewStats:" server/routers/emailMarketing.ts
+```
+
+Fluxo mental fixo para QUALQUER pedido:
+**(a)** `git pull` → **(b)** localizar arquivo no Mapa (Seção 000) → **(c)** LER o
+arquivo → **(d)** só então responder, citando `arquivo:linha`.
+
+---
+
+## 000. MAPA DE ARQUIVOS DO CRM (onde ler cada coisa)
+
+Use este mapa para saber **qual arquivo abrir** antes de responder. Tamanhos são
+aproximados (mudam) — servem para você dimensionar a leitura. **Arquivos do premium
+não estão aqui de propósito** (fora de escopo).
+
+**Backend — routers (`server/routers/`):**
+| Arquivo | ~linhas | Responsável por |
+|---|---|---|
+| `emailMarketing.ts` | ~2100 | TODA a API de e-mail mkt: campanhas, sequências, automações, templates, contatos, supressões, **estatísticas** (`overviewStats`, `usageStats`, `contactStats`) |
+| `ai.ts` | ~1330 | Chat IA, análise de atendentes, sugestões, cadeia de fallback, tools |
+| `tasks.ts` | ~510 | CRUD de tarefas/leads, conversão, fraude, confirmação de e-mail |
+| `workSessions.ts` | ~260 | Ponto/jornada dos atendentes |
+| `sellers.ts` | ~210 | Atendentes, papéis, restrição de IP, assinatura |
+| `tv.ts` | ~180 | Painel de TV (KPIs, ranking) |
+| `auth.ts` | ~220 | Login, senha, reset |
+| `tags.ts` ~70 · `reminders.ts` ~50 · `knowledge.ts` ~42 · `clients.ts` ~32 · `index.ts` ~31 | — | menores |
+
+**Backend — e-mail (`server/email/`):**
+| Arquivo | ~linhas | Responsável por |
+|---|---|---|
+| `marketing.ts` | ~835 | Motor multi-conta (Resend waterfall + Brevo), contadores de cota, webhooks, batch |
+| `automations.ts` | ~636 | Sequências (`processSequenceEnrollments`), automações inactive_days, **engajamento/lead scoring** (`flagEngagementByMessageId`) |
+| `resend.ts` | ~308 | E-mail transacional (recuperação de senha) |
+
+**Backend — núcleo (`server/`):**
+| Arquivo | ~linhas | Responsável por |
+|---|---|---|
+| `db/schema.ts` | ~488 | **Fonte da verdade das tabelas** (Drizzle) |
+| `db/migrate.ts` | ~556 | Migrações idempotentes + `SCHEMA_VERSION` |
+| `db/index.ts` | ~6 | Conexão Neon do CRM (`DATABASE_URL`) |
+| `trpc.ts` | ~95 | Contexto/auth + restrição de IP |
+| `auth.ts` | ~69 | Hash de senha (PBKDF2), JWT, cookie |
+| `lib/cache.ts` | ~47 | Cache em memória (TTL) |
+
+**Entry point produção:** `api/index.ts` (~1010 linhas) — middleware, webhooks de
+e-mail (`/api/resend-webhook`, `/api/brevo-webhook`), cron `/api/cron/email-daily`.
+
+**Frontend — páginas CRM (`client/src/pages/`):**
+| Arquivo | ~linhas | Tela |
+|---|---|---|
+| `EmailMarketing.tsx` | ~5250 | **Aba de e-mail marketing inteira** (Campanhas, Sequências, Automações, Templates, Tags, Contatos, Uso, Estatísticas) |
+| `Tasks.tsx` | ~1720 | Tarefas/lembretes do atendente |
+| `AdminDashboard.tsx` | ~1180 | Dashboard admin |
+| `Attendants.tsx` | ~906 | Gestão de atendentes + restrição de IP |
+| `TvDashboard.tsx` | ~513 | Painel de TV |
+| `AiSettings.tsx` ~440 · `AttendantProgress.tsx` ~327 · `Representatives.tsx` ~320 · `Home.tsx` ~320 · `CallHistory.tsx` ~218 · `ClientsManagement.tsx` ~212 · `KnowledgeBase.tsx` ~202 · `AiChat.tsx` ~144 · `VendorReminders.tsx` ~102 · `AiAnalysis.tsx` ~17 | — | demais |
+
+> Nota: `EmailMarketing.tsx` tem ~5250 linhas. Para responder sobre uma sub-aba
+> específica, use `grep -n` para achar o componente (ex.: `StatsTab`, `CampaignsTab`)
+> e leia só aquele trecho — não precisa ler o arquivo todo de uma vez.
+
+---
+
+## 0001. INVENTÁRIO VERIFICADO — o que JÁ EXISTE na aba de e-mail marketing
+
+> Confirmado lendo o código em 2026-07 (`EmailMarketing.tsx`, `emailMarketing.ts`,
+> `automations.ts`). **Sempre reconfirme com `git pull` + leitura** — pode ter mudado.
+> Serve para você **não re-alucinar** que features existentes "faltam".
+
+- **Abas existentes** (`EmailMarketing.tsx`, `<TabsTrigger>`): Campanhas, Sequências,
+  Automações, Templates, Tags, Contatos, **Uso (cotas)**, **Estatísticas**.
+- **Funil de engajamento JÁ é visual** — componente `StatsTab` consome
+  `emailMarketing.overviewStats`; desenha barras enviado → entregue → abriu → clicou
+  + taxas (deliveryRate/openRate/clickRate) + descadastro. **⚠️ Para no "clicou": NÃO
+  inclui conversão em venda nem receita** (gap real). Barras em CSS, **sem Recharts**
+  (sem série temporal).
+- **Teste A/B de assunto JÁ tem UI** (switch + campo assunto B em `EmailMarketing.tsx`),
+  mas está **marcado "Em breve"** e **não há backend** (nenhum campo `ab_test`/`subject_b`
+  no schema). Ou seja: existe como stub, não funciona.
+- **No clique o lead JÁ é escalado** (`flagEngagementByMessageId`, `automations.ts`):
+  seta `hotLead=true`, `priority='high'`, puxa `reminderDate` para agora, adiciona tag
+  `🔥 quente`. **Não é "o sistema não faz nada".**
+- **`hotLead` é BOOLEAN** (`schema.ts`), não um score numérico. Não existe
+  `hotLeadScore`.
+- **`email_events` NÃO guarda a URL do clique** (só `message_id`, `recipient_email`,
+  `event_type`). Logo, hoje é impossível pontuar clique por tipo de link
+  (proposta vs rodapé) sem antes capturar a URL do payload do webhook.
+- **Atribuição campanha→venda é POSSÍVEL mas não há tela**: `emailCampaignRecipients`
+  tem `taskId`; `tasks` tem `convertedAt` e `orderValue`. Dá para cruzar, mas nenhum
+  dashboard mostra receita por campanha ainda.
+
+### Gaps reais (confirmados, não chute) — candidatos a melhoria
+1. Funil não chega em conversão/receita (dado existe: `tasks.convertedAt/orderValue`).
+2. Sem série temporal (Recharts já é usado noutra tela do projeto — dá para reusar).
+3. `hotLead` binário — sem score ponderado para priorizar entre muitos "quentes".
+4. Clique sem URL — bloqueia regras por tipo de link.
+5. Sem visão de performance de e-mail por atendente.
+6. A/B parado no stub.
 
 ---
 
