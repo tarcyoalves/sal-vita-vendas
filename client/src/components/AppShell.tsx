@@ -94,10 +94,10 @@ const NAV_ITEMS: NavItem[] = [
 
 // Flat items for the mobile bottom nav — último slot é sempre "Mais" (abre sidebar)
 const BOTTOM_NAV_ADMIN = [
-  { label: "Dashboard",  path: "/admin/dashboard", icon: <LayoutDashboard size={22} /> },
-  { label: "Tarefas",    path: "/tasks",            icon: <CheckSquare size={22} /> },
-  { label: "Atendentes", path: "/attendants",       icon: <Users size={22} /> },
-  { label: "Chat IA",    path: "/ai-chat",          icon: <MessageSquare size={22} /> },
+  { label: "Dashboard",     path: "/admin/dashboard",      icon: <LayoutDashboard size={22} /> },
+  { label: "Tarefas",       path: "/tasks",                icon: <CheckSquare size={22} /> },
+  { label: "Atendentes",    path: "/attendants",           icon: <Users size={22} /> },
+  { label: "E-mail",        path: "/admin/email-marketing", icon: <Mail size={22} /> },
 ];
 
 const BOTTOM_NAV_MANAGER = [
@@ -108,9 +108,9 @@ const BOTTOM_NAV_MANAGER = [
 ];
 
 const BOTTOM_NAV_USER = [
-  { label: "Tarefas",   path: "/tasks",         icon: <CheckSquare size={22} /> },
-  { label: "Progresso", path: "/meu-progresso", icon: <TrendingUp size={22} /> },
-  { label: "Chat IA",   path: "/ai-chat",       icon: <MessageSquare size={22} /> },
+  { label: "Tarefas",   path: "/tasks",                icon: <CheckSquare size={22} /> },
+  { label: "Progresso", path: "/meu-progresso",         icon: <TrendingUp size={22} /> },
+  { label: "E-mail",    path: "/admin/email-marketing", icon: <Mail size={22} /> },
 ];
 
 const PAGE_TITLES: Record<string, string> = {
