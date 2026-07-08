@@ -1,0 +1,1 @@
+2026-07-08: Auditoria OpenClaw concluida — fluxo de entrega validado
