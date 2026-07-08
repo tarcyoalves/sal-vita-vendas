@@ -67,6 +67,64 @@ grep -n "overviewStats\|StatsTab\|Funil" client/src/pages/EmailMarketing.tsx
 grep -n "overviewStats:" server/routers/emailMarketing.ts
 ```
 
+### Regra nº 6 — PROIBIDO citar "conforme documento" no lugar de `arquivo:linha`
+
+> Motivo desta regra: mesmo depois de ler o código real numa análise (achou
+> `StatsTab`, `FunnelStage`, `overviewStats` corretamente), uma análise **seguinte**,
+> no mesmo dia, voltou a citar "conforme documentado", "seu sistema (conforme
+> documento)" e comparou contra um doc antigo (`analise-email-marketing-vendas.md`)
+> em vez do repositório. Resultado: inventou nomes de tabela que não existem
+> (`email_automations` — o real é `automation_rules`; `leads` — o real é `tasks`) e
+> repetiu percentuais fantasiados (`+18-25%`, `+50-80%`) depois de já ter lido a
+> Regra nº 3 proibindo isso. Ler o código uma vez não imuniza a resposta seguinte.
+
+**A partir de agora, para QUALQUER afirmação sobre o que o sistema tem, faz, ou não
+tem:**
+
+1. **Toda frase que descreve o sistema atual carrega uma citação `arquivo:linha`.**
+   Sem exceção — mesmo em comparação com produto de terceiro (Mautic, HubSpot, etc.),
+   mesmo em resposta rápida, mesmo repetindo algo já dito antes na conversa.
+   - ❌ "Seu sistema não tem decay de score (conforme documento)."
+   - ❌ "Sua tabela de automações (`email_automations`) só suporta regras simples."
+   - ✅ "`hotLead` é `boolean` sem campo de decay (`server/db/schema.ts:89`); a tabela
+     real de automação é `automation_rules` (`server/db/schema.ts:440`), com 6
+     `triggerType` (`server/routers/emailMarketing.ts:937`): não há decay hoje."
+2. **Nunca use um relatório/análise anterior (seu ou de outra sessão) como fonte da
+   verdade sobre "o que o sistema tem".** Um doc de análise é uma **conclusão
+   passada**, não o código. Ele pode estar errado (o `analise-email-marketing-vendas.md`
+   original **estava** errado). Toda vez, releia o arquivo de origem — nunca cite o
+   resumo de você mesmo como se fosse a fonte primária.
+   - Exceção: **esta skill** (`SKILL-OPENCLAW-CRM-LEMBRETES.md`) pode ser citada como
+     mapa/atalho — mas só para "onde procurar", nunca como prova de "o que existe".
+     Prova sempre vem do arquivo de código, com linha.
+3. **Antes de escrever qualquer nome técnico** (tabela, coluna, função, procedure,
+   variável de ambiente), confirme com `grep -n "<nome>" server/db/schema.ts` (ou
+   arquivo relevante). Se o grep não achar, **o nome está errado — não escreva-o**.
+   Rodar o grep custa segundos; escrever um nome inventado destrói a confiança na
+   resposta inteira.
+4. **Releitura obrigatória mesmo dentro da mesma conversa/dia.** Ter lido
+   `EmailMarketing.tsx` há 10 minutos não dispensa reler ao comparar com Mautic,
+   escrever specs, ou responder pergunta nova — cada afirmação nova precisa da sua
+   própria confirmação, porque cada resposta pode reintroduzir um erro mesmo que a
+   resposta anterior tenha acertado.
+5. **Se depois de tudo isso alguma afirmação ainda não puder ser confirmada por
+   arquivo:linha** (ex.: comparação de mercado, tendência do setor, número de
+   impacto), **rotule explicitamente como tal**: *"[não verificável no código —
+   conhecimento geral de mercado]"* ou *"[estimativa sem base — não é um cálculo
+   real]"*. Nunca deixe implícito que é fato do sistema quando não é.
+
+**Checklist de auto-verificação antes de enviar qualquer análise/comparação:**
+- [ ] Toda tabela/coluna/função citada foi confirmada com `grep` nesta sessão?
+- [ ] Toda frase "o sistema tem/não tem X" tem `arquivo:linha` ao lado?
+- [ ] Nenhuma frase se apoia em "conforme documento", "conforme análise anterior",
+      ou em resumo próprio de sessão passada?
+- [ ] Todo percentual/número de impacto vem de cálculo real, ou está rotulado como
+      chute/estimativa?
+- [ ] Nada do produto premium (WhatsApp, Mercado Pago, Melhor Envio) foi sugerido?
+
+Se qualquer item falhar, **não envie a análise ainda** — volte, leia o arquivo,
+corrija a frase ou rotule como chute.
+
 Fluxo mental fixo para QUALQUER pedido:
 **(a)** `git pull` → **(b)** localizar arquivo no Mapa (Seção 000) → **(c)** LER o
 arquivo → **(d)** só então responder, citando `arquivo:linha`.
