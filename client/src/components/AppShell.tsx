@@ -85,9 +85,9 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["user"],
   },
   {
-    label: "Chat IA",
-    path: "/ai-chat",
-    icon: <MessageSquare size={18} />,
+    label: "E-mail Marketing",
+    path: "/admin/email-marketing",
+    icon: <Mail size={18} />,
     roles: ["user"],
   },
 ];
