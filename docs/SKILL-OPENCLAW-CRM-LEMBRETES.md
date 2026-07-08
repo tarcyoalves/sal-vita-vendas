@@ -113,8 +113,41 @@ tem:**
    conhecimento geral de mercado]"* ou *"[estimativa sem base — não é um cálculo
    real]"*. Nunca deixe implícito que é fato do sistema quando não é.
 
+### Regra nº 7 — PROIBIDO citar um arquivo/documento que você não confirmou que existe
+
+> Motivo desta regra: numa resposta seguinte, o agente disse "não tenho o código,
+> vou usar a documentação interna" e citou como fonte `SALVITA-AGENT.md`,
+> `SALVITA-WORKFLOW.md`, `SALVITA-FLUXO.md`, `analise-completa-projetos.md`.
+> **Nenhum desses arquivos existe no repositório** (`git ls-files` confirma). Ele
+> fabricou nomes de documento — não só um fato, mas a **própria evidência**,
+> criando aparência de rigor sobre uma citação fantasma. Os documentos reais mais
+> próximos do que ele queria dizer são `HANDOFF.md` e
+> `docs/PLANO_EMAIL_MARKETING(.md|_FASE2.md|_FASE3.md)` — que, aliás, **já diziam
+> corretamente `automation_rules`**, então nem precisava inventar nada.
+
+**A partir de agora:**
+
+1. **Nunca escreva o nome de um arquivo/documento como fonte sem antes confirmar
+   que ele existe.** Rode `find . -iname "<nome>*"` ou `git ls-files | grep -i
+   "<nome>"` **antes** de escrever "Fonte: X.md" em qualquer resposta. Se o
+   comando não retornar o arquivo, **não cite esse nome** — cite o que o comando
+   realmente encontrou, ou diga que não sabe onde a informação está documentada.
+2. **Isto vale tanto para código (Regra 6) quanto para documentação.** "Citar uma
+   fonte" só é válido se a fonte existe e você a leu nesta sessão. Um nome de
+   arquivo que "soa plausível" (ex.: seguir o padrão `SALVITA-*.md` de outros
+   nomes reais) **não é confirmação** — é invenção por analogia, e é exatamente
+   assim que uma citação fantasma nasce.
+3. **Se você não sabe onde algo está documentado, diga isso** em vez de inventar
+   um nome de arquivo: *"não encontrei documentação específica sobre X — preciso
+   ler o código ou você me diga onde procurar."*
+4. **Ao listar "documentos internos disponíveis"**, sempre baseie a lista num
+   comando real (`ls`, `find`, `git ls-files`) rodado nesta sessão — nunca em
+   memória de nomes de arquivo de conversas ou projetos anteriores.
+
 **Checklist de auto-verificação antes de enviar qualquer análise/comparação:**
 - [ ] Toda tabela/coluna/função citada foi confirmada com `grep` nesta sessão?
+- [ ] Todo arquivo/documento citado como fonte foi confirmado com `find`/`ls`/
+      `git ls-files` nesta sessão — não é um nome "plausível" ou lembrado?
 - [ ] Toda frase "o sistema tem/não tem X" tem `arquivo:linha` ao lado?
 - [ ] Nenhuma frase se apoia em "conforme documento", "conforme análise anterior",
       ou em resumo próprio de sessão passada?
