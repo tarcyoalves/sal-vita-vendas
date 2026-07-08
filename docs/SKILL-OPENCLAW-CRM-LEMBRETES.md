@@ -144,10 +144,45 @@ tem:**
    comando real (`ls`, `find`, `git ls-files`) rodado nesta sessão — nunca em
    memória de nomes de arquivo de conversas ou projetos anteriores.
 
+### Regra nº 8 — "Não existe/não é chamado" exige `grep -rn` no projeto INTEIRO, não só no arquivo óbvio
+
+> Motivo desta regra: num teste controlado, o agente afirmou "apenas `inactive_days`
+> está implementado de verdade; os outros 5 gatilhos (`lead_created`,
+> `lead_converted`, `tag_added`, `email_confirmed`, `sequence_completed`) não têm
+> código que dispare — `processAutomationRules` não existe". **Falso.** A função
+> real (`runTriggerNow`, `server/email/automations.ts:138`) é chamada 6 vezes em
+> `server/routers/tasks.ts` (linhas 132, 224, 237, 286, 289, 337) e mais 1 vez em
+> `server/email/automations.ts:474` — cobrindo os 5 gatilhos que ele disse não
+> existirem. Ele buscou só dentro do arquivo onde a automação é *definida*
+> (`automations.ts`), não nos arquivos onde ela é *chamada* (`tasks.ts`). Diferente
+> das Regras 6/7 (inventar fato/fonte), aqui ele **leu código de verdade** — só
+> não leu o suficiente antes de generalizar "não existe".
+
+**A partir de agora, antes de escrever qualquer versão de "X não existe", "X não é
+chamado", "X não está implementado", "X está morto/quebrado":**
+
+1. **Rode `grep -rn "<nome_da_função_ou_símbolo>" .` (ou pelo menos em `server/` e
+   `client/src/` inteiros) — nunca só no arquivo onde a coisa é definida.** Uma
+   função pode estar definida num arquivo e chamada em 3 outros que você nem abriu
+   ainda. "Não achei no arquivo A" ≠ "não existe no projeto".
+2. **Uma função exportada (`export function`/`export async function`) é sinal de
+   alerta: ela provavelmente É chamada em outro lugar.** Antes de dizer que está
+   morta, procure especificamente por importações dela: `grep -rn "import.*
+   <nomeDaFunção>"` ou `grep -rn "<nomeDaFunção>("` fora do arquivo onde foi definida.
+3. **"Não encontrei uso" só vira afirmação de fato depois de buscar em TODO o
+   diretório relevante (`server/` inteiro para backend, `client/src/` inteiro para
+   frontend).** Se buscou só num arquivo ou pasta, a frase correta é *"não achei
+   uso em `<arquivo/pasta>` — ainda preciso checar o resto do projeto"*, não "não
+   existe".
+4. Isto vale especialmente para **gatilhos, hooks, event handlers e callbacks** —
+   por natureza, são definidos num lugar e disparados em outro(s).
+
 **Checklist de auto-verificação antes de enviar qualquer análise/comparação:**
 - [ ] Toda tabela/coluna/função citada foi confirmada com `grep` nesta sessão?
 - [ ] Todo arquivo/documento citado como fonte foi confirmado com `find`/`ls`/
       `git ls-files` nesta sessão — não é um nome "plausível" ou lembrado?
+- [ ] Toda afirmação de "X não existe/não é chamado" veio de `grep -rn` no
+      diretório inteiro (não só no arquivo onde X é definido)?
 - [ ] Toda frase "o sistema tem/não tem X" tem `arquivo:linha` ao lado?
 - [ ] Nenhuma frase se apoia em "conforme documento", "conforme análise anterior",
       ou em resumo próprio de sessão passada?
