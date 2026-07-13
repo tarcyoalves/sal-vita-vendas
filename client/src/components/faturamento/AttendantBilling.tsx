@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { toast } from 'sonner';
 import { trpc } from '../../lib/trpc';
 import { useFatStore } from '../../lib/faturamento/store';
 import {
@@ -13,9 +14,14 @@ import { OrderPrintDocument } from './OrderPrintDocument';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '../ui/select';
+import {
   DollarSign, TrendingUp, Package, ChevronLeft, ChevronRight,
-  Plus, Pencil, Truck, Trash2, Printer,
+  Plus, Pencil, Truck, Trash2, Printer, Link2,
 } from 'lucide-react';
+
+const onlyDigits = (v?: string | null) => (v ?? '').replace(/\D/g, '');
 
 const MESES = [
   'Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho',
@@ -86,11 +92,24 @@ export default function AttendantBilling() {
   const [printOpen, setPrintOpen] = useState(false);
   const [printPedido, setPrintPedido] = useState<Pedido | null>(null);
 
+  // Tarefas do próprio atendente — já vem escopado pelo servidor (tasks.list
+  // retorna só as tarefas do usuário logado quando role !== 'admin'), então é
+  // seguro usar direto como candidatas para vincular um pedido órfão.
+  const { data: myTasks = [] } = trpc.tasks.list.useQuery();
+  const [linkSelections, setLinkSelections] = useState<Record<string, string>>({});
+
   const seller = sellerProfile
     ? { id: sellerProfile.id, name: sellerProfile.name }
     : null;
 
   const comissaoPct = seller ? (comissoes[seller.id] ?? 0) : 0;
+
+  const handleLinkTask = (pedidoId: string, taskId: string) => {
+    if (!taskId) return;
+    actions.pedidos.upsert({ id: pedidoId, taskId: Number(taskId) });
+    toast.success('Pedido vinculado à tarefa!');
+    setLinkSelections((s) => ({ ...s, [pedidoId]: '' }));
+  };
 
   const resumo = useMemo(() => {
     if (!seller) return null;
@@ -237,6 +256,10 @@ export default function AttendantBilling() {
             <PedidoCard
               key={p.id}
               pedido={p}
+              tasks={myTasks}
+              linkTaskId={linkSelections[p.id] ?? ''}
+              onLinkTaskIdChange={(taskId) => setLinkSelections((s) => ({ ...s, [p.id]: taskId }))}
+              onLinkTask={() => handleLinkTask(p.id, linkSelections[p.id] ?? '')}
               onEdit={() => openEditOrder(p.id)}
               onInvoice={() => openInvoice(p.id)}
               onDelete={() => openDelete(p.id)}
@@ -274,12 +297,20 @@ export default function AttendantBilling() {
 
 function PedidoCard({
   pedido,
+  tasks,
+  linkTaskId,
+  onLinkTaskIdChange,
+  onLinkTask,
   onEdit,
   onInvoice,
   onDelete,
   onPrint,
 }: {
   pedido: Pedido;
+  tasks: { id: number; title: string; cnpj?: string | null }[];
+  linkTaskId: string;
+  onLinkTaskIdChange: (taskId: string) => void;
+  onLinkTask: () => void;
   onEdit: () => void;
   onInvoice: () => void;
   onDelete: () => void;
@@ -288,6 +319,12 @@ function PedidoCard({
   const total = totalPedido(pedido);
   const comissao = comissaoPedido(pedido);
   const isFaturado = pedido.status === 'faturado';
+
+  // Pedidos antigos (sem tarefa vinculada desde a criação) — mesma lógica de
+  // busca por CNPJ usada no picker do admin (OrderDetailDialog), aqui já
+  // restrita às próprias tarefas do atendente (o servidor escopa tasks.list).
+  const cnpj = onlyDigits(pedido.cnpj);
+  const candidateTasks = cnpj ? tasks.filter((t) => onlyDigits(t.cnpj) === cnpj) : tasks;
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm space-y-2">
@@ -335,6 +372,38 @@ function PedidoCard({
           </Badge>
         </div>
       </div>
+
+      {/* Vincular a uma tarefa — pedidos antigos sem esse vínculo */}
+      {!pedido.taskId && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-2 text-xs text-orange-800">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Link2 size={13} />
+            <span className="font-medium">Sem tarefa vinculada</span>
+          </div>
+          {candidateTasks.length > 0 ? (
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              <Select value={linkTaskId} onValueChange={onLinkTaskIdChange}>
+                <SelectTrigger className="h-7 text-xs bg-white">
+                  <SelectValue placeholder="Selecione a tarefa correspondente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {candidateTasks.map((t) => (
+                    <SelectItem key={t.id} value={String(t.id)}>
+                      #{t.id} · {t.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button size="sm" className="h-7 gap-1 text-xs shrink-0" disabled={!linkTaskId} onClick={onLinkTask}>
+                <Link2 size={12} />
+                Vincular
+              </Button>
+            </div>
+          ) : (
+            <span className="text-[11px] text-orange-700">Nenhuma tarefa sua com o mesmo CNPJ encontrada.</span>
+          )}
+        </div>
+      )}
 
       {/* Product details */}
       {pedido.itens.length > 0 && (
