@@ -10,7 +10,6 @@ const onlyDigits = (v?: string | null) => (v ?? '').replace(/\D/g, '');
 export interface LinkTaskOption {
   id: number;
   title: string;
-  status: string;
   cnpj?: string | null;
 }
 
@@ -23,18 +22,16 @@ interface LinkTaskDialogProps {
   onConfirm: (taskId: number) => void;
 }
 
-// Painel de busca para vincular um pedido a uma tarefa — mesmo padrão de
-// busca + filtro de status da tela de Tarefas, em vez de um dropdown simples
-// (que fica inutilizável quando o atendente tem muitas tarefas).
+// Painel de busca para vincular um pedido a uma tarefa — busca por título em
+// vez de um dropdown simples (que fica inutilizável quando o atendente/admin
+// tem muitas tarefas).
 export function LinkTaskDialog({ open, onOpenChange, tasks, pedidoCnpj, onConfirm }: LinkTaskDialogProps) {
   const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending'>('all');
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!open) {
       setQuery('');
-      setStatusFilter('all');
       setSelectedId(null);
     }
   }, [open]);
@@ -43,7 +40,6 @@ export function LinkTaskDialog({ open, onOpenChange, tasks, pedidoCnpj, onConfir
 
   const filtered = useMemo(() => {
     let list = tasks;
-    if (statusFilter === 'pending') list = list.filter((t) => t.status === 'pending');
     const q = query.trim().toLowerCase();
     if (q) list = list.filter((t) => t.title.toLowerCase().includes(q));
     // Prioriza tarefas com o mesmo CNPJ do pedido, sem esconder as demais.
@@ -55,7 +51,7 @@ export function LinkTaskDialog({ open, onOpenChange, tasks, pedidoCnpj, onConfir
       });
     }
     return list;
-  }, [tasks, query, statusFilter, targetCnpj]);
+  }, [tasks, query, targetCnpj]);
 
   const handleConfirm = () => {
     if (selectedId == null) return;
@@ -83,27 +79,7 @@ export function LinkTaskDialog({ open, onOpenChange, tasks, pedidoCnpj, onConfir
               className="w-full pl-8 pr-3 py-2 border rounded-lg text-sm"
             />
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setStatusFilter('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition ${
-                statusFilter === 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 hover:bg-slate-50'
-              }`}
-            >
-              Todas
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter('pending')}
-              className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition ${
-                statusFilter === 'pending' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 hover:bg-slate-50'
-              }`}
-            >
-              Ativas
-            </button>
-            <span className="text-xs text-slate-400 ml-auto">{filtered.length} tarefa(s)</span>
-          </div>
+          <p className="text-xs text-slate-400 text-right">{filtered.length} tarefa(s)</p>
         </div>
 
         <div className="flex-1 overflow-y-auto min-h-0 border rounded-lg divide-y">
@@ -130,11 +106,7 @@ export function LinkTaskDialog({ open, onOpenChange, tasks, pedidoCnpj, onConfir
                       </p>
                     )}
                   </div>
-                  <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full shrink-0 ${
-                      t.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'
-                    }`}
-                  >
+                  <span className="text-[10px] px-2 py-0.5 rounded-full shrink-0 bg-slate-100 text-slate-500">
                     #{t.id}
                   </span>
                 </button>
