@@ -11,17 +11,13 @@ import { OrderDialog } from './OrderDialog';
 import { InvoiceDialog } from './InvoiceDialog';
 import { DeleteOrderDialog } from './DeleteOrderDialog';
 import { OrderPrintDocument } from './OrderPrintDocument';
+import { LinkTaskDialog } from './LinkTaskDialog';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '../ui/select';
 import {
   DollarSign, TrendingUp, Package, ChevronLeft, ChevronRight,
   Plus, Pencil, Truck, Trash2, Printer, Link2,
 } from 'lucide-react';
-
-const onlyDigits = (v?: string | null) => (v ?? '').replace(/\D/g, '');
 
 const MESES = [
   'Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho',
@@ -96,7 +92,7 @@ export default function AttendantBilling() {
   // retorna só as tarefas do usuário logado quando role !== 'admin'), então é
   // seguro usar direto como candidatas para vincular um pedido órfão.
   const { data: myTasks = [] } = trpc.tasks.list.useQuery();
-  const [linkSelections, setLinkSelections] = useState<Record<string, string>>({});
+  const [linkingPedidoId, setLinkingPedidoId] = useState<string | null>(null);
 
   const seller = sellerProfile
     ? { id: sellerProfile.id, name: sellerProfile.name }
@@ -104,11 +100,12 @@ export default function AttendantBilling() {
 
   const comissaoPct = seller ? (comissoes[seller.id] ?? 0) : 0;
 
-  const handleLinkTask = (pedidoId: string, taskId: string) => {
-    if (!taskId) return;
-    actions.pedidos.upsert({ id: pedidoId, taskId: Number(taskId) });
+  const linkingPedido = linkingPedidoId ? actions.pedidos.get(linkingPedidoId) : null;
+
+  const handleLinkTask = (taskId: number) => {
+    if (!linkingPedidoId) return;
+    actions.pedidos.upsert({ id: linkingPedidoId, taskId });
     toast.success('Pedido vinculado à tarefa!');
-    setLinkSelections((s) => ({ ...s, [pedidoId]: '' }));
   };
 
   const resumo = useMemo(() => {
@@ -256,10 +253,7 @@ export default function AttendantBilling() {
             <PedidoCard
               key={p.id}
               pedido={p}
-              tasks={myTasks}
-              linkTaskId={linkSelections[p.id] ?? ''}
-              onLinkTaskIdChange={(taskId) => setLinkSelections((s) => ({ ...s, [p.id]: taskId }))}
-              onLinkTask={() => handleLinkTask(p.id, linkSelections[p.id] ?? '')}
+              onOpenLinkDialog={() => setLinkingPedidoId(p.id)}
               onEdit={() => openEditOrder(p.id)}
               onInvoice={() => openInvoice(p.id)}
               onDelete={() => openDelete(p.id)}
@@ -291,26 +285,27 @@ export default function AttendantBilling() {
         onOpenChange={setPrintOpen}
         pedido={printPedido}
       />
+      <LinkTaskDialog
+        open={!!linkingPedidoId}
+        onOpenChange={(o) => { if (!o) setLinkingPedidoId(null); }}
+        tasks={myTasks}
+        pedidoCnpj={linkingPedido?.cnpj}
+        onConfirm={handleLinkTask}
+      />
     </div>
   );
 }
 
 function PedidoCard({
   pedido,
-  tasks,
-  linkTaskId,
-  onLinkTaskIdChange,
-  onLinkTask,
+  onOpenLinkDialog,
   onEdit,
   onInvoice,
   onDelete,
   onPrint,
 }: {
   pedido: Pedido;
-  tasks: { id: number; title: string; cnpj?: string | null }[];
-  linkTaskId: string;
-  onLinkTaskIdChange: (taskId: string) => void;
-  onLinkTask: () => void;
+  onOpenLinkDialog: () => void;
   onEdit: () => void;
   onInvoice: () => void;
   onDelete: () => void;
@@ -319,16 +314,6 @@ function PedidoCard({
   const total = totalPedido(pedido);
   const comissao = comissaoPedido(pedido);
   const isFaturado = pedido.status === 'faturado';
-
-  // Pedidos antigos (sem tarefa vinculada desde a criação) — mesma lógica de
-  // busca por CNPJ usada no picker do admin (OrderDetailDialog), aqui já
-  // restrita às próprias tarefas do atendente (o servidor escopa tasks.list).
-  // Prioriza match por CNPJ; se não bater (ou o pedido/tarefa não tiver CNPJ),
-  // cai para a lista completa — já é só as tarefas do próprio atendente, então
-  // "nenhum candidato" nunca deveria acontecer só por causa do CNPJ.
-  const cnpj = onlyDigits(pedido.cnpj);
-  const porCnpj = cnpj ? tasks.filter((t) => onlyDigits(t.cnpj) === cnpj) : [];
-  const candidateTasks = porCnpj.length > 0 ? porCnpj : tasks;
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm space-y-2">
@@ -379,33 +364,15 @@ function PedidoCard({
 
       {/* Vincular a uma tarefa — pedidos antigos sem esse vínculo */}
       {!pedido.taskId && (
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-2 text-xs text-orange-800">
-          <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center justify-between gap-2 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-2 text-xs text-orange-800">
+          <div className="flex items-center gap-1.5">
             <Link2 size={13} />
             <span className="font-medium">Sem tarefa vinculada</span>
           </div>
-          {candidateTasks.length > 0 ? (
-            <div className="flex items-center gap-1.5 flex-1 min-w-0">
-              <Select value={linkTaskId} onValueChange={onLinkTaskIdChange}>
-                <SelectTrigger className="h-7 text-xs bg-white">
-                  <SelectValue placeholder="Selecione a tarefa correspondente" />
-                </SelectTrigger>
-                <SelectContent>
-                  {candidateTasks.map((t) => (
-                    <SelectItem key={t.id} value={String(t.id)}>
-                      #{t.id} · {t.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button size="sm" className="h-7 gap-1 text-xs shrink-0" disabled={!linkTaskId} onClick={onLinkTask}>
-                <Link2 size={12} />
-                Vincular
-              </Button>
-            </div>
-          ) : (
-            <span className="text-[11px] text-orange-700">Você não tem nenhuma tarefa para vincular.</span>
-          )}
+          <Button size="sm" className="h-7 gap-1 text-xs shrink-0" onClick={onOpenLinkDialog}>
+            <Link2 size={12} />
+            Vincular tarefa
+          </Button>
         </div>
       )}
 
