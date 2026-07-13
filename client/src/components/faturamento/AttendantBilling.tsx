@@ -323,8 +323,12 @@ function PedidoCard({
   // Pedidos antigos (sem tarefa vinculada desde a criação) — mesma lógica de
   // busca por CNPJ usada no picker do admin (OrderDetailDialog), aqui já
   // restrita às próprias tarefas do atendente (o servidor escopa tasks.list).
+  // Prioriza match por CNPJ; se não bater (ou o pedido/tarefa não tiver CNPJ),
+  // cai para a lista completa — já é só as tarefas do próprio atendente, então
+  // "nenhum candidato" nunca deveria acontecer só por causa do CNPJ.
   const cnpj = onlyDigits(pedido.cnpj);
-  const candidateTasks = cnpj ? tasks.filter((t) => onlyDigits(t.cnpj) === cnpj) : tasks;
+  const porCnpj = cnpj ? tasks.filter((t) => onlyDigits(t.cnpj) === cnpj) : [];
+  const candidateTasks = porCnpj.length > 0 ? porCnpj : tasks;
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm space-y-2">
@@ -400,7 +404,7 @@ function PedidoCard({
               </Button>
             </div>
           ) : (
-            <span className="text-[11px] text-orange-700">Nenhuma tarefa sua com o mesmo CNPJ encontrada.</span>
+            <span className="text-[11px] text-orange-700">Você não tem nenhuma tarefa para vincular.</span>
           )}
         </div>
       )}
