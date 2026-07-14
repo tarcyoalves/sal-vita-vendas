@@ -1,7 +1,9 @@
-# Handoff Completo — Sal Vita Lembretes (junho/2026)
+# Handoff Completo — Sal Vita Lembretes (julho/2026)
 
-> **Gerado em 28/06/2026.** Leia este arquivo inteiro antes de alterar qualquer coisa no projeto.
-> Ele contém TUDO que você precisa saber para dar continuidade ao desenvolvimento.
+> **Gerado em 28/06/2026, atualizado em 13/07/2026.** Leia este arquivo inteiro antes de
+> alterar qualquer coisa no projeto. Ele contém TUDO que você precisa saber para dar
+> continuidade ao desenvolvimento. Veja a **Seção 21** para o que mudou desde a versão
+> original — não redescubra o que já foi feito.
 
 ---
 
@@ -174,6 +176,8 @@ Registrados em `server/routers/index.ts`:
 | recoveryRouter | `trpc.recovery.*` | Carrinho abandonado (Premium) |
 | emailMarketingRouter | `trpc.emailMarketing.*` | Campanhas, sequências, templates, automações |
 | tagsRouter | `trpc.tags.*` | Tags curadas pelo admin |
+| faturamentoRouter | `trpc.faturamento.*` | Faturamento/comissão dos atendentes (pedidos, produtos, aprovação). **CRM**, não Premium — banco `db` normal |
+| b2bRouter | `trpc.b2b.*` | Prospecção B2B (leads inbound, 3 estágios manuais). Usa `ordersDb` (banco do Premium), não o banco do CRM — ver `PLANO-FINAL-EXECUCAO-B2B.md` |
 
 ---
 
@@ -185,7 +189,7 @@ Fonte da verdade: `server/db/schema.ts`
 
 | Tabela | Descrição |
 |--------|-----------|
-| `users` | Usuários do sistema (admin/user). Tem `ipRestrictionEnabled` e `allowedIps` para restrição por IP |
+| `users` | Usuários do sistema (admin/user). Tem `ipRestrictionEnabled` e `allowedIps` para restrição por IP, e `lastLoginIp`/`lastLoginAt` (capturado a cada login, mesmo se bloqueado depois pela restrição — dá ao admin o IP real pra configurar) |
 | `sellers` | Atendentes. `userId` referencia `users`. Tem campos de assinatura de e-mail |
 | `tasks` | Leads/tarefas de follow-up. O coração do CRM. Tem tags, lead scoring (`hotLead`), valor de venda (`orderValue`), confirmação de e-mail |
 | `clients` | Clientes (cadastro separado de tasks). Tem `unsubscribed` para opt-out de marketing |
@@ -217,6 +221,19 @@ Fonte da verdade: `server/db/schema.ts`
 | `marketing_lists` | Listas de contatos importados via CSV |
 | `marketing_contacts` | Contatos standalone (não vinculados a tasks) |
 
+### Tabelas de Faturamento/Comissão (CRM)
+
+Migrado de localStorage para o banco em 02/07/2026 (a API pública do store
+`client/src/lib/faturamento/store.ts` não mudou — nenhuma tela precisou ser
+reescrita). Tabelas em `server/db/schema.ts`, router em `server/routers/faturamento.ts`:
+
+| Tabela | Descrição |
+|--------|-----------|
+| `fat_products` | Catálogo de produtos com comissão/isenção de frete configuráveis |
+| `fat_orders` | Pedidos de venda (o "pedido" que aparece na tela de Faturamento). Tem `taskId` linkando à tarefa/lead de origem — pode ficar `NULL` em pedidos antigos importados (ver Seção 21) |
+| `fat_commissions` | % de comissão por atendente |
+| `fat_order_deletion_logs` | Auditoria de exclusão de pedidos |
+
 ### Tabelas do Premium (e-commerce)
 
 | Tabela | Descrição |
@@ -226,10 +243,15 @@ Fonte da verdade: `server/db/schema.ts`
 | `automation_runs` | Execuções de automação de carrinho (com IA) |
 | `coupons` | Cupons de desconto |
 | `msg_templates` | Templates de mensagem (carrinho, pagamento) |
+| `companies`, `contacts`, `public_sources`, `consent_records`, `audit_logs` | Prospecção B2B (`trpc.b2b.*`) — ver `server/db/b2bMigrate.ts` e `PLANO-FINAL-EXECUCAO-B2B.md` |
 
 ### Migrações
 
-Automáticas via `ensureTablesExist()` no cold start do servidor. O sistema usa um `SCHEMA_VERSION` (atualmente `'2026-06-27a'`) salvo em `app_settings` para pular DDL quando já está atualizado.
+Automáticas via `ensureTablesExist()` no cold start do servidor. O sistema usa um
+`SCHEMA_VERSION` (constante no topo de `server/db/migrate.ts`) salvo em `app_settings`
+para pular DDL quando já está atualizado. **Não hardcode o valor aqui** — ele muda a
+cada migração nova; confira sempre o arquivo. Se você adicionar uma coluna/tabela e
+esquecer de dar bump nesse valor, a migração nunca roda em produção.
 
 Para dev local: `npm run db:push` (Drizzle Kit push).
 
@@ -362,7 +384,16 @@ O sistema roda 100% em planos gratuitos. **NÃO exceder os limites.**
 - Verificação feita no `createContext()` do tRPC (antes de qualquer procedure)
 - Admin é **sempre isento** da restrição de IP
 - Campos: `users.ipRestrictionEnabled` (boolean) e `users.allowedIps` (text[])
-- UI: botão "Restringir IP" no card de cada atendente, com "Usar meu IP atual"
+- UI: botão "Restringir IP" no card de cada atendente, com "Usar último IP de login
+  de {nome}" (usa `users.lastLoginIp`, capturado no `auth.login`) — **não** existe
+  mais um botão "usar meu IP atual", porque nessa tela quem chama é sempre o admin,
+  então "meu IP" sempre pegava o IP errado (o do admin, não o do atendente)
+- ⚠️ **Fail-open conhecido:** se `ipRestrictionEnabled = true` mas `allowedIps` vier
+  vazio, a checagem é pulada e qualquer IP passa. O front (`setIpRestriction`)
+  valida isso antes de salvar, mas se algum registro antigo ficou nesse estado,
+  a restrição não bloqueia nada — o badge "IP Restrito" na lista só acende quando
+  `ipRestrictionEnabled && allowedIps.length > 0`, então o badge é o jeito rápido
+  de detectar isso.
 
 ### Outros
 - Rate limiting no chat IA (cooldown 2.5s)
@@ -434,6 +465,22 @@ Cada atendente pode ter uma assinatura HTML personalizada (`sellers.emailSignatu
 - Histórico de contatos
 - Tags curadas pelo admin
 - Lead scoring (hotLead via cliques em e-mail)
+- **Faturamento/Comissão** (`/admin/faturamento`, componentes em
+  `client/src/components/faturamento/`): atendente cria pedido de venda a partir
+  de uma tarefa (auto-vincula `taskId`), admin aprova, gera cópia em PDF, calcula
+  comissão. Pedido pode ficar sem tarefa vinculada (import antigo) — atendente e
+  admin têm um picker de busca (`LinkTaskDialog.tsx`) pra corrigir isso na mão,
+  sem depender de adivinhação automática
+
+### B2B (prospecção — usa o banco do Premium, não o do CRM)
+- Não é uma rota própria: é a seção "Leads B2B" (`section === 'b2b'`) dentro do
+  painel admin do Premium (`SalVitaAdmin.tsx`), acessível em `/sal-vita-b2b`.
+  Componente real: `B2bLeadsPanel` em `client/src/pages/B2bLeads.tsx`
+- Funil simples de leads inbound (`qualified`/`contacted`/`lost`), sem
+  scoring/automação — ver `PLANO-FINAL-EXECUCAO-B2B.md` e
+  `PLANO-PROSPECCAO-B2B.md` pro plano completo
+- Tabelas em `ordersDb` (`companies, contacts, public_sources, consent_records,
+  audit_logs`), não no banco do CRM — não confunda com `tasks`
 
 ### Premium (E-commerce)
 - Landing page com cálculo de frete (via Melhor Envio)
@@ -589,6 +636,58 @@ O `api/bundle.js` é gerado pelo build e está no `.gitignore`... mas por vezes 
 8. **Nunca misture Premium e CRM** — são contextos diferentes no mesmo repo.
 9. **sanitize-html** já está instalado para o backend; **DOMPurify** para o frontend.
 10. **O cron de e-mail roda às 11:00 UTC** (8:00 BRT) — `vercel.json` → `crons`.
+11. **Confira `git branch --show-current` antes de todo commit.** Erro real cometido
+    nesta sessão: trabalhar num branch de feature separado, commitar lá, e achar que
+    "deploy" tinha saído — mas deploy só acontece com push em `main`, e o commit
+    nunca chegou lá. Se você usa um branch próprio, depois de validar
+    (`tsc --noEmit` + build), faça `git checkout main && git pull && git cherry-pick
+    <commit>` (ou merge) e só então `git push origin main`.
+12. **`server/routers/tasks.ts` — `status` de tarefa é sempre `'pending'` na
+    prática.** O enum aceita `'completed'`/`'cancelled'`, mas nenhuma tela do
+    frontend jamais seta isso. Não construa filtro/UI assumindo variação de status
+    de tarefa sem antes confirmar com `grep` se algum fluxo real usa esses valores.
+
+---
+
+## 21. Log de trabalho recente (o que mudou desde 28/06/2026)
+
+Sessões depois da versão original deste handoff. Lido isto pra não redescobrir/
+refazer o que já foi feito ou corrigido.
+
+- **IP restriction — bug real corrigido:** botão "Usar meu IP atual" na tela de
+  Atendentes sempre pegava o IP do **admin** (quem chama a tela), nunca o do
+  atendente sendo editado — logo nunca funcionou como pretendido. Fix: agora
+  `users.lastLoginIp`/`lastLoginAt` são gravados a cada `auth.login` (mesmo se o
+  login for depois bloqueado pela própria restrição), e o botão virou "Usar
+  último IP de login de {nome}". Também endureceu `setIpRestriction` contra o
+  estado "ativado mas sem IP na lista" (fail-open silencioso).
+- **Fuso horário — bug de produção corrigido:** cálculos de "hoje"/contadores
+  diários no servidor usavam UTC ingênuo (`new Date().setHours(0,0,0,0)` etc.),
+  fazendo contadores (e-mails enviados hoje, sessões de trabalho, etc.) resetarem
+  às 21:00 BRT em vez de meia-noite. Corrigido em `tv.ts`, `workSessions.ts`,
+  `ai.ts`, `email/resend.ts`, `email/marketing.ts`, `routers/emailMarketing.ts`.
+  O helper vive em `server/lib/tz.ts` (`spDateStr`, `spMidnight`, `spEndOfDay`,
+  `spDaysAgo` — todos via `Intl.DateTimeFormat` com timezone `America/Sao_Paulo`
+  explícito). Use-o pra qualquer cálculo novo de "hoje"/janela de datas no
+  servidor — nunca `new Date().setHours()` puro.
+- **Faturamento — vínculo pedido↔tarefa:** pedidos antigos (importados antes da
+  tarefa ser obrigatória na criação) podem ficar sem `taskId`. Existe um picker
+  de busca (`LinkTaskDialog.tsx`, usado tanto pelo admin quanto pelo atendente
+  em `OrderDetailDialog.tsx`/`AttendantBilling.tsx`) pra vincular manualmente.
+  Duas armadilhas já caídas nessa feature, não repita:
+  1. Filtro "só por CNPJ" sem fallback pra lista completa deixa a lista vazia
+     sempre que o CNPJ não bate — sempre caia pra lista completa (já escopada
+     ao atendente certo) quando o filtro específico não achar nada.
+  2. Não crie UI diferente para admin vs atendente na mesma ação sem motivo —
+     gera confusão ("funciona pra um, não pro outro"). Usar o mesmo componente
+     compartilhado.
+- **Skill para o OpenClaw:** `docs/SKILL-OPENCLAW-CRM-LEMBRETES.md` — documento
+  extenso escrito para um agente (OpenClaw) diferente do Claude cuidar do
+  sistema em caso de emergência. Tem um "protocolo de precisão" rígido (nunca
+  afirmar sem `grep`/leitura real, nunca citar arquivo sem confirmar que existe,
+  etc.) porque esse agente alucinou fatos sobre o sistema repetidamente antes da
+  skill existir. Não precisa seguir esse protocolo aqui (você já lê o código
+  antes de falar), mas é uma referência útil sobre pegadinhas reais do projeto.
 
 ### Contato do dono
 
