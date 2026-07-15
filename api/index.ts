@@ -16,7 +16,7 @@ import { ordersDb } from '../server/db/ordersDb';
 import { sql as sqlClient, db } from '../server/db/index';
 import {
   siteOrders, abandonedCarts, automationRuns, msgTemplates, coupons, emailCampaignRecipients, emailSuppressions, clients,
-  emailEvents, sellers, emailSequenceSends, taskDeletionLogs,
+  emailEvents, sellers, emailSequenceSends, emailSequenceEnrollments, marketingContacts, taskDeletionLogs,
   companies, contacts, publicSources, consentRecords, suppressionList, auditLogs,
 } from '../server/db/schema';
 import { eq, and, or, sql, lte, gte, isNull, inArray, desc, asc, lt } from 'drizzle-orm';
@@ -24,7 +24,7 @@ import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } fro
 import { createPixPaymentForOrder } from '../server/lib/mercadopago';
 import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid } from '../server/lib/orderConfirmation';
 import { verifyResendWebhook } from '../server/email/marketing';
-import { evaluateInactiveDaysRules, flagEngagementByMessageId, processSequenceEnrollments } from '../server/email/automations';
+import { evaluateInactiveDaysRules, flagEngagementByMessageId, processSequenceEnrollments, cancelAllEnrollments } from '../server/email/automations';
 
 function isBusinessHours(): boolean {
   const brHour = (new Date().getUTCHours() - 3 + 24) % 24;
@@ -165,16 +165,44 @@ async function handleUnsubscribe(req: express.Request, res: express.Response) {
     return;
   }
   try {
-    const [recipient] = await db.select().from(emailCampaignRecipients)
-      .where(eq(emailCampaignRecipients.unsubToken, token));
-    if (!recipient) {
+    // Resolve the e-mail from the token, trying each source that issues one, in
+    // order: campaign recipients → sequence enrollments. Marketing contacts do
+    // not carry their own token (they receive campaign recipient tokens), so
+    // they are silenced via propagation below rather than a token lookup.
+    let email: string | null = null;
+
+    const [recipient] = await db.select({ email: emailCampaignRecipients.email })
+      .from(emailCampaignRecipients)
+      .where(eq(emailCampaignRecipients.unsubToken, token))
+      .limit(1);
+    if (recipient) email = recipient.email;
+
+    if (!email) {
+      const [enrollment] = await db.select({ email: emailSequenceEnrollments.email })
+        .from(emailSequenceEnrollments)
+        .where(eq(emailSequenceEnrollments.unsubToken, token))
+        .limit(1);
+      if (enrollment) email = enrollment.email;
+    }
+
+    if (!email) {
       res.status(404).send(unsubscribePage('Link de descadastro inválido ou expirado.'));
       return;
     }
+
+    const normalized = email.toLowerCase().trim();
+
+    // One opt-out silences every channel this address may live in (LGPD):
+    // suppress it, cancel any active sequence enrollments, and mark it
+    // unsubscribed on clients and marketing contacts.
     await db.insert(emailSuppressions)
-      .values({ email: recipient.email, reason: 'unsubscribe' })
+      .values({ email: normalized, reason: 'unsubscribe' })
       .onConflictDoNothing();
-    await db.update(clients).set({ unsubscribed: true }).where(eq(clients.email, recipient.email));
+    await cancelAllEnrollments(normalized);
+    await db.update(clients).set({ unsubscribed: true })
+      .where(sql`lower(${clients.email}) = ${normalized}`);
+    await db.update(marketingContacts).set({ status: 'unsubscribed', updatedAt: new Date() })
+      .where(sql`lower(${marketingContacts.email}) = ${normalized}`);
     res.send(unsubscribePage('Você foi descadastrado(a) com sucesso e não receberá mais e-mails da Sal Vita.'));
   } catch (err) {
     console.error('[unsubscribe] error:', err);
