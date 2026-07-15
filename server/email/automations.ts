@@ -16,7 +16,7 @@ import {
   emailCampaignRecipients, emailSuppressions, emailEvents, tasks, emailSequences, sellers,
 } from '../db/schema';
 import {
-  computeNextSendAt, pickAccount, sendBatch, layout, enrollmentEngagementBatch,
+  computeNextSendAt, reserveSendQuota, refundDailyQuota, sendBatch, layout, enrollmentEngagementBatch,
   conditionMet, renderSignature, renderTemplate as renderMktTemplate, type BatchMessage,
 } from './marketing';
 
@@ -583,13 +583,18 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
 
   let i = 0;
   while (i < sendable.length) {
-    const picked = await pickAccount();
-    if (!picked) {
+    // Reserve daily quota BEFORE sending (atomic) so concurrent crons can't both
+    // spend the same remaining quota and blow the daily cap. The reservation
+    // walks the account cascade for us.
+    const want = Math.min(100, sendable.length - i);
+    const reserved = await reserveSendQuota(want);
+    if (!reserved) {
       result.quotaExhausted = true;
       break;
     }
+    const { account, granted } = reserved;
 
-    const batchSize = Math.min(100, picked.remaining, sendable.length - i);
+    const batchSize = granted;
     const batch = sendable.slice(i, i + batchSize);
     i += batchSize;
 
@@ -603,7 +608,7 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
         enrollmentId: it.enrollment.id,
         stepId: it.step.id,
         status: 'sending',
-        accountKey: picked.account.key,
+        accountKey: account.key,
         messageId: null,
         retryNumber: it.retryNumber,
         cycleStartedAt: it.enrollment.cycleStartedAt ?? it.enrollment.enrolledAt,
@@ -642,8 +647,9 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
       batchMeta.push({ item, sendId });
     }
 
+    let confirmedFailures = 0;
     if (messages.length > 0) {
-      const results = await sendBatch(picked.account, messages);
+      const results = await sendBatch(account, messages);
       for (let j = 0; j < batchMeta.length; j++) {
         const { item, sendId } = batchMeta[j];
         const { enrollment, step, retryNumber } = item;
@@ -655,13 +661,16 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
           if (retryNumber > 0) result.retried++;
         } else {
           result.failed++;
+          // Only definitive provider rejections free their reserved slot;
+          // timeouts/unknown ('network_error') keep it (the mail may have gone).
+          if (sendResult.error !== 'network_error') confirmedFailures++;
         }
 
         // Finalize the claim row inserted above (was 'sending').
         await db.update(emailSequenceSends)
           .set({
             status: sendResult.ok ? 'sent' : 'failed',
-            accountKey: picked.account.key,
+            accountKey: account.key,
             messageId: sendResult.messageId,
             error: sendResult.error,
           })
@@ -688,6 +697,12 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
         }
       }
     }
+
+    // Return quota reserved but not spent: items another run had already claimed
+    // (not in `messages`) plus provider-confirmed rejections. Timeouts/unknown
+    // are deliberately NOT refunded.
+    const unusedReservation = Math.max(0, granted - messages.length);
+    await refundDailyQuota(account.key, unusedReservation + confirmedFailures);
 
     if (i >= sendable.length) break;
   }

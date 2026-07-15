@@ -78,12 +78,74 @@ async function getCounter(accountKey: string): Promise<number> {
   return (rows as unknown as Array<{ sent: number }>)[0]?.sent ?? 0;
 }
 
-async function incrementCounter(accountKey: string, n: number): Promise<void> {
+/**
+ * Atomically reserves up to `want` sends against an account's daily counter,
+ * BEFORE the e-mails go out (fixes the TOCTOU where concurrent invocations read
+ * the same remaining quota and both overshoot the daily cap). Returns how many
+ * slots were actually granted (0..want), never letting `sent` exceed the limit.
+ *
+ * The reserve is a row-locked read+update: two callers block on `FOR UPDATE`
+ * and serialize, so their grants sum to at most the remaining room.
+ */
+async function reserveDailyQuota(accountKey: string, want: number, dailyLimit: number): Promise<number> {
+  if (want <= 0) return 0;
+  const day = today();
+  // Ensure the counter row exists so the locking UPDATE has a row to lock.
   await sql`
     INSERT INTO email_send_counters (account_key, day, sent)
-    VALUES (${accountKey}, ${today()}, ${n})
-    ON CONFLICT (account_key, day) DO UPDATE SET sent = email_send_counters.sent + ${n}
+    VALUES (${accountKey}, ${day}, 0)
+    ON CONFLICT (account_key, day) DO NOTHING
   `;
+  const rows = await sql`
+    WITH locked AS (
+      SELECT sent AS old_sent FROM email_send_counters
+      WHERE account_key = ${accountKey} AND day = ${day}
+      FOR UPDATE
+    )
+    UPDATE email_send_counters c
+    SET sent = c.sent + LEAST(${want}::int, GREATEST(${dailyLimit}::int - c.sent, 0))
+    FROM locked
+    WHERE c.account_key = ${accountKey} AND c.day = ${day}
+    RETURNING c.sent AS new_sent, locked.old_sent AS old_sent
+  `;
+  const r = (rows as unknown as Array<{ new_sent: number; old_sent: number }>)[0];
+  if (!r) return 0;
+  return Number(r.new_sent) - Number(r.old_sent);
+}
+
+/**
+ * Returns `n` unused slots to an account's daily counter (floored at 0). Called
+ * to undo a reservation for e-mails that were never sent or were rejected by
+ * the provider with a definitive error. Timeouts/unknown states are NOT
+ * refunded — conservative: better to under-use quota than exceed the cap.
+ */
+export async function refundDailyQuota(accountKey: string, n: number): Promise<void> {
+  if (n <= 0) return;
+  await sql`
+    UPDATE email_send_counters
+    SET sent = GREATEST(sent - ${n}::int, 0)
+    WHERE account_key = ${accountKey} AND day = ${today()}
+  `;
+}
+
+/**
+ * Reserves up to `want` sends from the account pool, walking the waterfall until
+ * one account grants quota (same cascade semantics as pickAccount). Monthly is a
+ * soft pre-check (it spans days and can't be reserved atomically in one row);
+ * the daily counter is reserved atomically. Returns the chosen account and the
+ * number of slots granted, or null when every account is exhausted.
+ */
+export async function reserveSendQuota(want: number): Promise<{ account: MarketingAccount; granted: number } | null> {
+  if (want <= 0) return null;
+  for (const account of getAccounts()) {
+    const limits = getAccountLimits(account.provider);
+    const sentMonth = await getMonthlyCounter(account.key);
+    const monthlyRoom = limits.monthly - sentMonth;
+    if (monthlyRoom <= 0) continue;
+    const granted = await reserveDailyQuota(account.key, Math.min(want, monthlyRoom), limits.daily);
+    if (granted > 0) return { account, granted };
+  }
+  return null;
 }
 
 function currentMonth(): string {
@@ -526,7 +588,8 @@ async function sendBatchResend(account: MarketingAccount, messages: BatchMessage
     for (const m of messages) {
       results.push(await sendSingleResend(account, m, unsubBase));
     }
-    await incrementCounter(account.key, results.filter(r => r.ok).length);
+    // Daily counting is done up front by the caller's quota reservation (see
+    // reserveSendQuota); refunds handle failures. sendBatch no longer counts.
     return results;
   }
 
@@ -571,7 +634,7 @@ async function sendBatchResend(account: MarketingAccount, messages: BatchMessage
       ok: true,
       messageId: body.data?.[i]?.id,
     }));
-    await incrementCounter(account.key, results.filter(r => r.ok).length);
+    // Counting handled by the caller's quota reservation (reserveSendQuota).
     return results;
   } catch (err) {
     console.error('[email-marketing] sendBatch failed:', err);
@@ -651,7 +714,7 @@ async function sendBatchBrevo(account: MarketingAccount, messages: BatchMessage[
       ok: true,
       messageId: ids[i],
     }));
-    await incrementCounter(account.key, results.filter(r => r.ok).length);
+    // Counting handled by the caller's quota reservation (reserveSendQuota).
     return results;
   } catch (err) {
     console.error('[email-marketing] Brevo sendBatch failed:', err);

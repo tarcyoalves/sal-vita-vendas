@@ -10,7 +10,7 @@ import {
   emailEvents, automationRules, emailSendCounters,
   tasks, clients, sellers, marketingContacts, marketingLists,
 } from '../db/schema';
-import { pickAccount, sendBatch, layout, renderTemplate, renderSignature, sanitizeCampaignHtml, getUsage, getAllDomainTracking, setDomainTracking, getAccounts, type BatchMessage } from '../email/marketing';
+import { reserveSendQuota, refundDailyQuota, sendBatch, layout, renderTemplate, renderSignature, sanitizeCampaignHtml, getUsage, getAllDomainTracking, setDomainTracking, getAccounts, type BatchMessage } from '../email/marketing';
 import { enrollInSequence } from '../email/automations';
 import { userTaskFilter } from './tasks';
 import { spDateStr, spMidnight, spDaysAgo } from '../lib/tz';
@@ -609,12 +609,17 @@ export const emailMarketingRouter = router({
         return { done: true, sentNow: 0, failedNow: 0, remaining: 0 } as const;
       }
 
-      const picked = await pickAccount();
-      if (!picked) {
+      // Reserve daily quota BEFORE sending (atomic) so two concurrent
+      // invocations can't both spend the same remaining quota and blow the
+      // daily cap. The reservation walks the account cascade for us.
+      const want = Math.min(100, pendingCount);
+      const reserved = await reserveSendQuota(want);
+      if (!reserved) {
         return { done: false, sentNow: 0, failedNow: 0, remaining: pendingCount, reason: 'daily_limit_all' as const };
       }
+      const { account, granted } = reserved;
 
-      const batchSize = Math.min(100, picked.remaining, pendingCount);
+      const batchSize = granted;
 
       // Atomic claim: flip up to batchSize 'pending' rows to 'sending' and get
       // them back via RETURNING. `FOR UPDATE SKIP LOCKED` guarantees two
@@ -639,7 +644,8 @@ export const emailMarketingRouter = router({
 
       if (recipients.length === 0) {
         // Another invocation currently holds every pending row. Nothing to send
-        // here, but the campaign isn't finished — keep the client polling.
+        // here — return the reserved quota and keep the client polling.
+        await refundDailyQuota(account.key, granted);
         return { done: false, sentNow: 0, failedNow: 0, remaining: pendingCount };
       }
 
@@ -656,7 +662,7 @@ export const emailMarketingRouter = router({
       // Broadcasts may carry file attachments (base64) — applied to every message.
       const campaignAttachments = (campaign.attachments as { filename: string; content: string }[] | null) ?? undefined;
 
-      let sentNow = 0, failedNow = 0;
+      let sentNow = 0, failedNow = 0, confirmedFailures = 0;
       if (toSend.length > 0) {
         const signatureMap = await buildSignatureMap();
         const messages: BatchMessage[] = toSend.map(r => {
@@ -672,23 +678,32 @@ export const emailMarketingRouter = router({
           };
         });
 
-        const results = await sendBatch(picked.account, messages);
+        const results = await sendBatch(account, messages);
         for (let i = 0; i < toSend.length; i++) {
           const r = toSend[i];
           const res = results[i];
           if (res.ok) {
             sentNow++;
             await db.update(emailCampaignRecipients)
-              .set({ status: 'sent', accountKey: picked.account.key, messageId: res.messageId, sentAt: new Date() })
+              .set({ status: 'sent', accountKey: account.key, messageId: res.messageId, sentAt: new Date() })
               .where(eq(emailCampaignRecipients.id, r.id));
           } else {
             failedNow++;
+            // Only definitive provider rejections free their reserved slot;
+            // timeouts/unknown ('network_error') keep it (the mail may have gone).
+            if (res.error !== 'network_error') confirmedFailures++;
             await db.update(emailCampaignRecipients)
-              .set({ status: 'failed', accountKey: picked.account.key, error: res.error })
+              .set({ status: 'failed', accountKey: account.key, error: res.error })
               .where(eq(emailCampaignRecipients.id, r.id));
           }
         }
       }
+
+      // Return the quota reserved but not actually spent: slots for rows we
+      // never sent (fewer claimed than granted, or suppressed) plus confirmed
+      // provider rejections.
+      const unusedReservation = Math.max(0, granted - toSend.length);
+      await refundDailyQuota(account.key, unusedReservation + confirmedFailures);
 
       await db.update(emailCampaigns).set({
         sentCount: sql`${emailCampaigns.sentCount} + ${sentNow}`,
@@ -703,7 +718,7 @@ export const emailMarketingRouter = router({
         await db.update(emailCampaigns).set({ status: 'sent', attachments: null, updatedAt: new Date() }).where(eq(emailCampaigns.id, input.campaignId));
       }
 
-      return { done: remaining === 0, sentNow, failedNow, remaining, account: picked.account.key };
+      return { done: remaining === 0, sentNow, failedNow, remaining, account: account.key };
     }),
 
   // ── Descadastrados ─────────────────────────────────────────────────────────
