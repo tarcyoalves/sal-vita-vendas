@@ -538,7 +538,10 @@ function CampaignsTab() {
 
   const [detailCampaignId, setDetailCampaignId] = useState<number | null>(null);
   const [sendingId, setSendingId] = useState<number | null>(null);
-  const [sendProgress, setSendProgress] = useState<{ sentNow: number; failedNow: number; remaining: number } | null>(null);
+  const [sendProgress, setSendProgress] = useState<{ total: number; sentNow: number; failedNow: number; remaining: number } | null>(null);
+  // Envio exige confirmação explícita (evita disparo acidental por clique).
+  const [confirmCampaign, setConfirmCampaign] = useState<{ id: number; subject: string; count: number } | null>(null);
+  const [confirmBroadcast, setConfirmBroadcast] = useState(false);
 
   const resetForm = () => setForm({ name: "", subject: "", htmlBody: "", source: "leads", assignedTo: "" });
 
@@ -579,9 +582,14 @@ function CampaignsTab() {
     setSendProgress(null);
     try {
       let done = false;
+      // The very first batch response's counts add up to the initial total
+      // (remaining is what's left AFTER that batch), so capture it once and keep
+      // it fixed for an accurate percentage.
+      let total = 0;
       while (!done) {
         const res = await processBatchMutation.mutateAsync({ campaignId });
-        setSendProgress({ sentNow: res.sentNow, failedNow: res.failedNow, remaining: res.remaining });
+        if (total === 0) total = res.sentNow + res.failedNow + res.remaining;
+        setSendProgress({ total, sentNow: res.sentNow, failedNow: res.failedNow, remaining: res.remaining });
         done = res.done;
         if ('reason' in res && res.reason === 'daily_limit_all') {
           toast.warning("Limite diário das contas de e-mail atingido. Continue mais tarde.");
@@ -667,8 +675,8 @@ function CampaignsTab() {
                             <Button
                               size="sm"
                               className="bg-blue-900 hover:bg-blue-800"
-                              onClick={() => handleSend(c.id)}
-                              disabled={sendingId !== null}
+                              onClick={() => setConfirmCampaign({ id: c.id, subject: c.subject, count: c.totalRecipients })}
+                              disabled={sendingId !== null || processBatchMutation.isPending}
                             >
                               <Send size={14} className="mr-1" />
                               {sendingId === c.id ? "Enviando..." : "Enviar"}
@@ -680,7 +688,7 @@ function CampaignsTab() {
                         </div>
                         {sendingId === c.id && sendProgress && (
                           <div className="mt-2 w-48">
-                            <Progress value={sendProgress.remaining === 0 ? 100 : Math.max(5, 100 - sendProgress.remaining)} />
+                            <Progress value={sendProgress.total > 0 ? Math.round(((sendProgress.total - sendProgress.remaining) / sendProgress.total) * 100) : 0} />
                             <p className="text-xs text-gray-500 mt-1">
                               +{sendProgress.sentNow} enviados, {sendProgress.failedNow} falhas — restam {sendProgress.remaining}
                             </p>
@@ -1126,13 +1134,78 @@ function CampaignsTab() {
           <DialogFooter className="flex gap-2 pt-2">
             <Button
               className="flex-1 bg-blue-900 hover:bg-blue-800"
-              onClick={handleSendBroadcast}
+              onClick={() => setConfirmBroadcast(true)}
               disabled={broadcastMutation.isPending || sendingId !== null}
             >
               <Send size={16} className="mr-1" />
               {broadcastMutation.isPending ? "Enviando..." : `Enviar para ${bcastMode === 'audience' ? (bcastAudiencePreview?.count ?? 0) : parsedEmails.valid.length}`}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => { setShowBroadcast(false); resetBroadcast(); }}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmação de envio de campanha */}
+      <Dialog open={confirmCampaign !== null} onOpenChange={(open) => { if (!open) setConfirmCampaign(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Send size={16} /></span>
+              Confirmar envio
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 text-sm text-slate-600">
+            <p>Você está prestes a enviar esta campanha. Confira antes de confirmar:</p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-1">
+              <p><span className="font-medium text-slate-700">Destinatários:</span> {confirmCampaign?.count ?? 0}</p>
+              <p><span className="font-medium text-slate-700">Assunto:</span> {confirmCampaign?.subject}</p>
+            </div>
+            <p className="text-xs text-slate-400">O envio não pode ser desfeito depois de iniciado.</p>
+          </div>
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button
+              className="flex-1 bg-blue-900 hover:bg-blue-800"
+              disabled={sendingId !== null}
+              onClick={() => {
+                const target = confirmCampaign;
+                setConfirmCampaign(null);
+                if (target) handleSend(target.id);
+              }}
+            >
+              <Send size={16} className="mr-1" /> Confirmar e enviar
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setConfirmCampaign(null)}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmação de disparo rápido */}
+      <Dialog open={confirmBroadcast} onOpenChange={setConfirmBroadcast}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-700"><Megaphone size={16} /></span>
+              Confirmar disparo
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 text-sm text-slate-600">
+            <p>Você está prestes a disparar este e-mail. Confira antes de confirmar:</p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-1">
+              <p><span className="font-medium text-slate-700">Destinatários:</span> {bcastMode === 'audience' ? (bcastAudiencePreview?.count ?? 0) : parsedEmails.valid.length}</p>
+              <p><span className="font-medium text-slate-700">Assunto:</span> {bcast.subject}</p>
+              <p><span className="font-medium text-slate-700">Remetente:</span> {bcast.replyTo || "Padrão do sistema"}</p>
+            </div>
+            <p className="text-xs text-slate-400">O envio não pode ser desfeito depois de iniciado.</p>
+          </div>
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button
+              className="flex-1 bg-blue-900 hover:bg-blue-800"
+              disabled={broadcastMutation.isPending || sendingId !== null}
+              onClick={() => { setConfirmBroadcast(false); handleSendBroadcast(); }}
+            >
+              <Send size={16} className="mr-1" /> Confirmar e enviar
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setConfirmBroadcast(false)}>Cancelar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
