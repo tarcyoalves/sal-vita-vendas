@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-07-03b';
+const SCHEMA_VERSION = '2026-07-15a';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -435,6 +435,11 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS hot_lead BOOLEAN NOT NULL DEFAULT FALSE`;
   await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_engagement_at TIMESTAMP`;
   await sql`CREATE INDEX IF NOT EXISTS tasks_hot_lead_idx ON tasks (hot_lead) WHERE hot_lead = TRUE`;
+
+  // ── Envio duplicado de campanha — claim atômico ('sending') ────────────────
+  // processBatch reserva destinatários flipando 'pending' → 'sending' com
+  // RETURNING antes de enviar; claimed_at permite reciclar reservas órfãs.
+  await sql`ALTER TABLE email_campaign_recipients ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP`;
 
   // ── Reimportação de leads excluídos — CNPJ/telefone normalizados ───────────
   await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS cnpj TEXT`;

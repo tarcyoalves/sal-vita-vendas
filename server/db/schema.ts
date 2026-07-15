@@ -313,12 +313,16 @@ export const emailCampaignRecipients = pgTable('email_campaign_recipients', {
   name: text('name'),
   replyTo: text('reply_to'),
   taskId: integer('task_id'),
-  status: text('status').notNull().default('pending'), // pending|sent|failed|skipped
+  status: text('status').notNull().default('pending'), // pending|sending|sent|failed|skipped
   accountKey: text('account_key'),
   messageId: text('message_id'),
   unsubToken: text('unsub_token').notNull(),
   error: text('error'),
   sentAt: timestamp('sent_at'),
+  // Momento em que a linha foi reservada ('sending') por um processBatch. Usado
+  // para reciclar reservas órfãs (função morreu antes de finalizar) — ver
+  // processBatch em server/routers/emailMarketing.ts.
+  claimedAt: timestamp('claimed_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -426,7 +430,7 @@ export const emailSequenceSends = pgTable('email_sequence_sends', {
   id: serial('id').primaryKey(),
   enrollmentId: integer('enrollment_id').notNull(),
   stepId: integer('step_id').notNull(),
-  status: text('status').notNull().default('sent'), // sent|failed|skipped
+  status: text('status').notNull().default('sent'), // sending|sent|failed|skipped
   accountKey: text('account_key'),
   messageId: text('message_id'),
   error: text('error'),

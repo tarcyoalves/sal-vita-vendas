@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import crypto from 'crypto';
-import { eq, and, or, inArray, isNotNull, isNull, ne, gte, desc, asc, count, sql } from 'drizzle-orm';
+import { eq, and, or, inArray, isNotNull, isNull, ne, gte, lt, desc, asc, count, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 import { router, staffProcedure, protectedProcedure } from '../trpc';
 import { db } from '../db';
@@ -581,9 +581,27 @@ export const emailMarketingRouter = router({
       const [campaign] = await db.select().from(emailCampaigns).where(eq(emailCampaigns.id, input.campaignId));
       if (!campaign) throw new TRPCError({ code: 'NOT_FOUND', message: 'Campanha não encontrada' });
 
+      // Reclaim orphaned reservations: rows a prior invocation flipped to
+      // 'sending' but never finalized (e.g. the function died mid-send). 15 min
+      // is far beyond any serverless execution window, so an older 'sending' row
+      // is certainly abandoned and safe to release back to the pool.
+      await db.update(emailCampaignRecipients)
+        .set({ status: 'pending', claimedAt: null })
+        .where(and(
+          eq(emailCampaignRecipients.campaignId, input.campaignId),
+          eq(emailCampaignRecipients.status, 'sending'),
+          lt(emailCampaignRecipients.claimedAt, new Date(Date.now() - 15 * 60 * 1000)),
+        ));
+
+      // "Unsent" = still pending OR being sent right now by a concurrent
+      // invocation. Counting both keeps the campaign from being marked 'sent'
+      // while another invocation still has rows in flight.
       const [pendingRow] = await db.select({ cnt: count() })
         .from(emailCampaignRecipients)
-        .where(and(eq(emailCampaignRecipients.campaignId, input.campaignId), eq(emailCampaignRecipients.status, 'pending')));
+        .where(and(
+          eq(emailCampaignRecipients.campaignId, input.campaignId),
+          inArray(emailCampaignRecipients.status, ['pending', 'sending']),
+        ));
       const pendingCount = Number(pendingRow?.cnt ?? 0);
 
       if (pendingCount === 0) {
@@ -597,9 +615,33 @@ export const emailMarketingRouter = router({
       }
 
       const batchSize = Math.min(100, picked.remaining, pendingCount);
-      const recipients = await db.select().from(emailCampaignRecipients)
-        .where(and(eq(emailCampaignRecipients.campaignId, input.campaignId), eq(emailCampaignRecipients.status, 'pending')))
-        .limit(batchSize);
+
+      // Atomic claim: flip up to batchSize 'pending' rows to 'sending' and get
+      // them back via RETURNING. `FOR UPDATE SKIP LOCKED` guarantees two
+      // concurrent invocations (double click, retry, two tabs) never grab the
+      // same rows — each one only sends what it actually claimed here.
+      const claimed = await db.execute<{
+        id: number; email: string; name: string | null; replyTo: string | null;
+        taskId: number | null; unsubToken: string;
+      }>(sql`
+        UPDATE email_campaign_recipients
+        SET status = 'sending', claimed_at = now()
+        WHERE id IN (
+          SELECT id FROM email_campaign_recipients
+          WHERE campaign_id = ${input.campaignId} AND status = 'pending'
+          ORDER BY id
+          LIMIT ${batchSize}
+          FOR UPDATE SKIP LOCKED
+        )
+        RETURNING id, email, name, reply_to AS "replyTo", task_id AS "taskId", unsub_token AS "unsubToken"
+      `);
+      const recipients = claimed.rows;
+
+      if (recipients.length === 0) {
+        // Another invocation currently holds every pending row. Nothing to send
+        // here, but the campaign isn't finished — keep the client polling.
+        return { done: false, sentNow: 0, failedNow: 0, remaining: pendingCount };
+      }
 
       // Re-check suppressions added since the campaign was created
       const suppressed = await db.select({ email: emailSuppressions.email }).from(emailSuppressions);

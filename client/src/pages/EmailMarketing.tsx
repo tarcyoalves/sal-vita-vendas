@@ -45,6 +45,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 const RECIPIENT_STATUS_LABELS: Record<string, string> = {
   pending: "Pendente",
+  sending: "Enviando",
   sent: "Enviado",
   failed: "Falhou",
   skipped: "Ignorado",
@@ -113,6 +114,7 @@ const STATUS_BADGE_CLASS: Record<string, string> = {
 
 const RECIPIENT_STATUS_BADGE_CLASS: Record<string, string> = {
   pending: "bg-slate-100 text-slate-600 border-slate-200",
+  sending: "bg-amber-100 text-amber-700 border-amber-200",
   sent: "bg-emerald-100 text-emerald-700 border-emerald-200",
   failed: "bg-red-100 text-red-700 border-red-200",
   skipped: "bg-slate-100 text-slate-500 border-slate-200",
