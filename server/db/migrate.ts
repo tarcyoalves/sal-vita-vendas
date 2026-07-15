@@ -441,6 +441,33 @@ export async function ensureTablesExist() {
   // RETURNING antes de enviar; claimed_at permite reciclar reservas órfãs.
   await sql`ALTER TABLE email_campaign_recipients ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP`;
 
+  // ── Envio duplicado de sequências — idempotência por índice único ──────────
+  // cycle_started_at entra na chave única para que sequências recorrentes
+  // (repeat=true) reenviem o mesmo passo em ciclos distintos sem colidir.
+  await sql`ALTER TABLE email_sequence_sends ADD COLUMN IF NOT EXISTS cycle_started_at TIMESTAMP`;
+  // Backfill: linhas antigas usam o ciclo da inscrição; se a inscrição sumiu,
+  // caem para o próprio sent_at (cada linha vira sua própria "chave de ciclo").
+  await sql`
+    UPDATE email_sequence_sends s
+    SET cycle_started_at = e.cycle_started_at
+    FROM email_sequence_enrollments e
+    WHERE s.enrollment_id = e.id AND s.cycle_started_at IS NULL
+  `;
+  await sql`UPDATE email_sequence_sends SET cycle_started_at = sent_at WHERE cycle_started_at IS NULL`;
+  // Remove duplicatas históricas (mantém o menor id) para o CREATE UNIQUE INDEX
+  // não falhar. IS NOT DISTINCT FROM trata NULLs como iguais por segurança.
+  await sql`
+    DELETE FROM email_sequence_sends a
+    USING email_sequence_sends b
+    WHERE a.enrollment_id = b.enrollment_id
+      AND a.step_id       = b.step_id
+      AND a.retry_number  = b.retry_number
+      AND a.cycle_started_at IS NOT DISTINCT FROM b.cycle_started_at
+      AND a.id > b.id
+  `;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS email_seq_sends_unique_idx
+    ON email_sequence_sends(enrollment_id, step_id, retry_number, cycle_started_at)`;
+
   // ── Reimportação de leads excluídos — CNPJ/telefone normalizados ───────────
   await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS cnpj TEXT`;
   await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS phone TEXT`;

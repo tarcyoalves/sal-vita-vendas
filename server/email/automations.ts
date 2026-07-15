@@ -9,7 +9,7 @@
  */
 
 import crypto from 'crypto';
-import { and, eq, isNull, isNotNull, ne, sql, lte, asc, inArray } from 'drizzle-orm';
+import { and, eq, isNull, isNotNull, ne, sql, lte, lt, asc, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import {
   automationRules, emailSequenceSteps, emailSequenceEnrollments, emailSequenceSends,
@@ -405,6 +405,21 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
 
   // Pre-load existing sends per enrollment+step for retry detection (single query).
   const enrollmentIds = dueEnrollments.map(e => e.id);
+
+  // Reclaim abandoned claims: 'sending' rows a prior run inserted but never
+  // finalized (hard crash between the claim and the send-result update). 1h is
+  // far beyond any serverless execution window, so an older 'sending' row is
+  // certainly abandoned; deleting it lets the step be re-attempted instead of
+  // being blocked forever by the unique index. Trade-off: if the crash struck
+  // in the sub-second gap AFTER the provider accepted the e-mail, this can
+  // re-send once — deliberately chosen over permanently stranding the
+  // enrollment at that step.
+  await db.delete(emailSequenceSends).where(and(
+    inArray(emailSequenceSends.enrollmentId, enrollmentIds),
+    eq(emailSequenceSends.status, 'sending'),
+    lt(emailSequenceSends.sentAt, new Date(Date.now() - 60 * 60 * 1000)),
+  ));
+
   const existingSends = await db.select({
     enrollmentId: emailSequenceSends.enrollmentId,
     stepId: emailSequenceSends.stepId,
@@ -525,7 +540,8 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
         status: 'skipped',
         messageId: null,
         retryNumber: 0,
-      });
+        cycleStartedAt: enrollment.cycleStartedAt ?? enrollment.enrolledAt,
+      }).onConflictDoNothing();
       result.skipped++;
 
       const newCurrentStep = enrollment.currentStep + 1;
@@ -563,11 +579,40 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
     const batch = sendable.slice(i, i + batchSize);
     i += batchSize;
 
+    // Claim BEFORE sending: insert one 'sending' row per item. The unique index
+    // (enrollment, step, retry, cycle) + onConflictDoNothing means a concurrent
+    // cron — or a re-run after a timeout that already sent this step — conflicts
+    // and is filtered out here, so each step's e-mail goes out at most once.
+    // Only rows we actually claimed (returned) are sent.
+    const claimRows = await db.insert(emailSequenceSends)
+      .values(batch.map(it => ({
+        enrollmentId: it.enrollment.id,
+        stepId: it.step.id,
+        status: 'sending',
+        accountKey: picked.account.key,
+        messageId: null,
+        retryNumber: it.retryNumber,
+        cycleStartedAt: it.enrollment.cycleStartedAt ?? it.enrollment.enrolledAt,
+      })))
+      .onConflictDoNothing()
+      .returning({
+        id: emailSequenceSends.id,
+        enrollmentId: emailSequenceSends.enrollmentId,
+        stepId: emailSequenceSends.stepId,
+        retryNumber: emailSequenceSends.retryNumber,
+      });
+    const claimIdByKey = new Map<string, number>();
+    for (const r of claimRows) {
+      claimIdByKey.set(`${r.enrollmentId}:${r.stepId}:${r.retryNumber}`, r.id);
+    }
+
     const messages: BatchMessage[] = [];
-    const batchMeta: typeof sendable = [];
+    const batchMeta: { item: typeof sendable[number]; sendId: number }[] = [];
 
     for (const item of batch) {
-      const { enrollment, step, retryNumber, subjectOverride } = item;
+      const sendId = claimIdByKey.get(`${item.enrollment.id}:${item.step.id}:${item.retryNumber}`);
+      if (sendId === undefined) continue; // already claimed by another run — skip
+      const { enrollment, step, subjectOverride } = item;
       const unsubUrl = `${unsubBase}/api/unsubscribe?t=${enrollment.unsubToken}`;
       const signatureHtml = enrollment.replyTo ? signatureMap.get(enrollment.replyTo.toLowerCase()) : undefined;
       const subject = subjectOverride
@@ -580,13 +625,14 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
         replyTo: enrollment.replyTo ?? undefined,
         unsubToken: enrollment.unsubToken,
       });
-      batchMeta.push(item);
+      batchMeta.push({ item, sendId });
     }
 
     if (messages.length > 0) {
       const results = await sendBatch(picked.account, messages);
       for (let j = 0; j < batchMeta.length; j++) {
-        const { enrollment, step, retryNumber } = batchMeta[j];
+        const { item, sendId } = batchMeta[j];
+        const { enrollment, step, retryNumber } = item;
         const sendResult = results[j];
         const steps = stepsBySequence.get(enrollment.sequenceId) ?? [];
 
@@ -597,15 +643,15 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
           result.failed++;
         }
 
-        await db.insert(emailSequenceSends).values({
-          enrollmentId: enrollment.id,
-          stepId: step.id,
-          status: sendResult.ok ? 'sent' : 'failed',
-          accountKey: picked.account.key,
-          messageId: sendResult.messageId,
-          error: sendResult.error,
-          retryNumber,
-        });
+        // Finalize the claim row inserted above (was 'sending').
+        await db.update(emailSequenceSends)
+          .set({
+            status: sendResult.ok ? 'sent' : 'failed',
+            accountKey: picked.account.key,
+            messageId: sendResult.messageId,
+            error: sendResult.error,
+          })
+          .where(eq(emailSequenceSends.id, sendId));
 
         // Decide next state: if retry is enabled and we haven't exhausted retries,
         // keep currentStep the same and schedule retry check. Otherwise advance.

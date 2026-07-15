@@ -435,6 +435,11 @@ export const emailSequenceSends = pgTable('email_sequence_sends', {
   messageId: text('message_id'),
   error: text('error'),
   retryNumber: integer('retry_number').notNull().default(0),
+  // Base de tempo do ciclo em que este envio ocorreu (= enrollment.cycleStartedAt).
+  // Faz parte da chave única (enrollment, step, retry, cycle) para que sequências
+  // recorrentes (repeat=true) possam reenviar o mesmo passo em ciclos distintos
+  // sem colidir, mantendo a idempotência dentro do ciclo.
+  cycleStartedAt: timestamp('cycle_started_at'),
   sentAt: timestamp('sent_at').defaultNow().notNull(),
 });
 
