@@ -420,21 +420,35 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
     lt(emailSequenceSends.sentAt, new Date(Date.now() - 60 * 60 * 1000)),
   ));
 
+  // Base time of each enrollment's CURRENT cycle. For recurring sequences
+  // (repeat=true) this is bumped every time the loop restarts; sends from
+  // earlier cycles (sentAt < cycleStart) must be ignored below, otherwise every
+  // step of cycle 2+ looks "already sent" and the sequence stalls after the
+  // first cycle.
+  const cycleStartByEnrollment = new Map<number, number>();
+  for (const e of dueEnrollments) {
+    cycleStartByEnrollment.set(e.id, (e.cycleStartedAt ?? e.enrolledAt).getTime());
+  }
+
   const existingSends = await db.select({
     enrollmentId: emailSequenceSends.enrollmentId,
     stepId: emailSequenceSends.stepId,
     status: emailSequenceSends.status,
     retryNumber: emailSequenceSends.retryNumber,
     messageId: emailSequenceSends.messageId,
+    sentAt: emailSequenceSends.sentAt,
   }).from(emailSequenceSends)
     .where(and(
       inArray(emailSequenceSends.enrollmentId, enrollmentIds),
       eq(emailSequenceSends.status, 'sent'),
     ));
 
-  // Build map: enrollmentId → stepId → { maxRetryNumber, messageIds[] }
+  // Build map: enrollmentId → stepId → { maxRetryNumber, messageIds[] }.
+  // Only sends belonging to the enrollment's current cycle are considered.
   const sendsByEnrollmentStep = new Map<string, { maxRetryNumber: number; messageIds: string[] }>();
   for (const s of existingSends) {
+    const cycleStart = cycleStartByEnrollment.get(s.enrollmentId);
+    if (cycleStart !== undefined && s.sentAt.getTime() < cycleStart) continue; // prior cycle — ignore
     const key = `${s.enrollmentId}:${s.stepId}`;
     const entry = sendsByEnrollmentStep.get(key) ?? { maxRetryNumber: -1, messageIds: [] };
     entry.maxRetryNumber = Math.max(entry.maxRetryNumber, s.retryNumber);
