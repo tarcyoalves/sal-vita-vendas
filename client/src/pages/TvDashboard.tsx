@@ -5,9 +5,14 @@ import {
   ResponsiveContainer, Tooltip, CartesianGrid,
   PieChart, Pie, Cell,
 } from 'recharts';
+import { Users, Phone, AlertTriangle, Building2, BarChart3, Medal, Flame, Zap, Moon } from 'lucide-react';
 
 const COLORS = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed'];
-const MEDALS = ['🥇', '🥈', '🥉'];
+const MEDALS = [
+  <Medal size={18} className="text-amber-400" />,
+  <Medal size={18} className="text-slate-400" />,
+  <Medal size={18} className="text-orange-700" />,
+];
 const DAYS   = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const CURRENT_YEAR = new Date().getFullYear();
@@ -81,14 +86,17 @@ function Clock() {
 /* ─── KPI Card ───────────────────────────────────────────── */
 function KpiCard({ label, value, sub, color, icon, alert }: {
   label: string; value: string | number; sub?: string;
-  color: string; icon: string; alert?: boolean;
+  color: string; icon: React.ReactNode; alert?: boolean;
 }) {
   return (
     <div
       className={`bg-white rounded-xl md:rounded-2xl px-3 md:px-5 py-3 md:py-4 flex items-center gap-3 md:gap-4 border border-slate-100 shadow-sm relative overflow-hidden w-full ${alert ? 'ring-1 ring-red-200' : ''}`}
       style={{ borderTop: `3px solid ${alert ? '#ef4444' : color}` }}
     >
-      <div className={`w-9 h-9 md:w-11 md:h-11 rounded-xl flex items-center justify-center text-base md:text-xl flex-shrink-0 ${alert ? 'bg-red-50' : 'bg-slate-50'}`}>
+      <div
+        className={`w-9 h-9 md:w-11 md:h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${alert ? 'bg-red-50' : 'bg-slate-50'}`}
+        style={{ color: alert ? '#ef4444' : color }}
+      >
         {icon}
       </div>
       <div className="min-w-0 flex-1">
@@ -304,7 +312,7 @@ export default function TvDashboard() {
             <span className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="text-[10px] md:text-[11px] font-bold text-emerald-700 uppercase tracking-widest">Ao Vivo</span>
           </div>
-          <span className="hidden md:block text-xs text-slate-400">↻ atualiza a cada 3 min</span>
+          <span className="hidden md:block text-xs text-slate-400">atualiza a cada 3 min</span>
         </div>
         <Clock />
       </header>
@@ -312,21 +320,21 @@ export default function TvDashboard() {
       {/* ══ KPI STRIP ═══════════════════════════════════════ */}
       <div className="grid grid-cols-2 md:flex gap-2 md:gap-3 px-3 md:px-5 py-2.5 md:py-3">
         <div className="md:flex-1">
-          <KpiCard icon="👥" label="Online agora" value={`${data.kpis.onlineNow}/${data.kpis.totalSellers}`} color="#16a34a" sub="atendentes ativos" />
+          <KpiCard icon={<Users size={20} />} label="Online agora" value={`${data.kpis.onlineNow}/${data.kpis.totalSellers}`} color="#16a34a" sub="atendentes ativos" />
         </div>
         <div className="md:flex-1">
-          <KpiCard icon="📞" label="Contatos hoje" value={data.kpis.contactsToday} color="#2563eb"
+          <KpiCard icon={<Phone size={20} />} label="Contatos hoje" value={data.kpis.contactsToday} color="#2563eb"
             sub={weeklyDelta >= 0 ? `+${weeklyDelta} vs sem. ant.` : `${weeklyDelta} vs sem. ant.`} />
         </div>
         <div className="md:flex-1">
-          <KpiCard icon="⚠️" label="Atrasados" value={data.kpis.totalOverdue} color="#d97706"
+          <KpiCard icon={<AlertTriangle size={20} />} label="Atrasados" value={data.kpis.totalOverdue} color="#d97706"
             alert={data.kpis.totalOverdue > 10} sub="lembretes vencidos" />
         </div>
         <div className="md:flex-1">
-          <KpiCard icon="🏢" label="Clientes" value={(data.kpis.totalClients ?? 0).toLocaleString('pt-BR')} color="#7c3aed" sub="cadastrados" />
+          <KpiCard icon={<Building2 size={20} />} label="Clientes" value={(data.kpis.totalClients ?? 0).toLocaleString('pt-BR')} color="#7c3aed" sub="cadastrados" />
         </div>
         <div className="col-span-2 md:flex-1">
-          <KpiCard icon="📊" label="Semana atual" value={totalLastWeek} color="#0891b2" sub={`semana anterior: ${totalPrevWeek}`} />
+          <KpiCard icon={<BarChart3 size={20} />} label="Semana atual" value={totalLastWeek} color="#0891b2" sub={`semana anterior: ${totalPrevWeek}`} />
         </div>
       </div>
 
@@ -374,7 +382,7 @@ export default function TvDashboard() {
 
           {/* Seller ranking */}
           <div className="bg-white rounded-2xl px-4 md:px-5 py-4 shadow-sm border border-slate-100 flex-shrink-0" style={{ borderTop: '3px solid #7c3aed' }}>
-            <h2 className="text-xs md:text-sm font-bold text-slate-700 uppercase tracking-wide mb-3 md:mb-4">🏆 Desempenho dos Atendentes</h2>
+            <h2 className="text-xs md:text-sm font-bold text-slate-700 uppercase tracking-wide mb-3 md:mb-4">Desempenho dos Atendentes</h2>
             <div className="space-y-2.5">
               {ranked.length === 0 ? (
                 <p className="text-sm text-slate-400">Nenhum atendente configurado.</p>
@@ -402,7 +410,7 @@ export default function TvDashboard() {
                       </Tip>
                       {s.overdueCount > 0 && (
                         <Tip label={`${s.overdueCount} lembretes vencidos sem reagendamento`}>
-                          <span className="bg-amber-50 text-amber-700 border border-amber-200 rounded px-1 py-0.5 text-[10px] font-semibold cursor-default">{s.overdueCount}⚠</span>
+                          <span className="bg-amber-50 text-amber-700 border border-amber-200 rounded px-1 py-0.5 text-[10px] font-semibold cursor-default inline-flex items-center gap-0.5">{s.overdueCount}<AlertTriangle size={9} /></span>
                         </Tip>
                       )}
                     </div>
@@ -422,12 +430,12 @@ export default function TvDashboard() {
           {/* Hot clients */}
           <div className="bg-white rounded-2xl p-4 md:p-5 shadow-sm border border-slate-100 flex flex-col" style={{ borderTop: '3px solid #f59e0b' }}>
             <div className="flex-shrink-0 mb-3 md:mb-4">
-              <h2 className="text-xs md:text-sm font-bold text-slate-700 uppercase tracking-wide">🔥 Clientes Potenciais</h2>
+              <h2 className="text-xs md:text-sm font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5"><Flame size={14} className="text-orange-500" /> Clientes Potenciais</h2>
               <p className="text-[11px] text-slate-400 mt-0.5 hidden md:block">pontuados por palavras-chave nas anotações</p>
             </div>
             {data.hotClients.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 md:flex-1 gap-3">
-                <span className="text-4xl">💤</span>
+                <Moon size={40} className="text-slate-300" />
                 <p className="text-sm text-slate-400 text-center leading-relaxed">Sem clientes pontuados.<br />Atualize as anotações.</p>
               </div>
             ) : (
@@ -457,7 +465,7 @@ export default function TvDashboard() {
           {/* Alerts + PieChart */}
           <div className="bg-white rounded-2xl p-4 md:p-5 shadow-sm border border-slate-100 flex-shrink-0" style={{ borderTop: '3px solid #ef4444' }}>
             <div className="flex items-start justify-between mb-3 gap-3">
-              <h2 className="text-xs md:text-sm font-bold text-slate-700 uppercase tracking-wide">⚡ Alertas e Ações</h2>
+              <h2 className="text-xs md:text-sm font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5"><Zap size={14} className="text-amber-500" /> Alertas e Ações</h2>
               {alertPieData.length > 0 && (
                 <PieChart width={80} height={80} className="flex-shrink-0">
                   <Pie data={alertPieData} dataKey="value" cx="50%" cy="50%"

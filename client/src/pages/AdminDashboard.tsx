@@ -34,6 +34,9 @@ import {
   Zap,
   Workflow,
   PackageCheck,
+  Ghost,
+  Flame,
+  Target,
 } from "lucide-react";
 import AttendantDetailModal from '../components/AttendantDetailModal';
 import { useFatStore } from '../lib/faturamento/store';
@@ -170,7 +173,7 @@ function AiAnalysisReport({ markdown }: { markdown: string }) {
     <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
       <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
         <div style={{ width:8, height:8, borderRadius:'50%', background:'#8b5cf6', flexShrink:0 }} />
-        <p style={{ fontWeight:600, color:'#6d28d9', fontSize:'13px', margin:0 }}>📋 Parecer Executivo da IA</p>
+        <p style={{ fontWeight:600, color:'#6d28d9', fontSize:'13px', margin:0 }}>Parecer Executivo da IA</p>
       </div>
 
       {intro && (
@@ -722,7 +725,7 @@ export default function AdminDashboard() {
     {
       label: "Atrasados",
       value: overdue.length,
-      sub: overdue.length > 0 ? "precisam de ação" : "tudo em dia ✓",
+      sub: overdue.length > 0 ? "precisam de ação" : "tudo em dia",
       icon: <AlertTriangle size={22} />,
       color: overdue.length > 0 ? "text-red-600" : "text-green-600",
       bg: overdue.length > 0 ? "bg-red-50" : "bg-green-50",
@@ -741,7 +744,7 @@ export default function AdminDashboard() {
       label: "Conversões",
       value: convertedCount,
       sub: `${conversionRate}% taxa · ${convertedThisMonth} este mês · ~${avgContactsToConvert} contatos p/ converter`,
-      icon: <span className="text-[22px]">🎉</span>,
+      icon: <TrendingUp size={22} />,
       color: "text-emerald-600",
       bg: "bg-emerald-50",
       border: "border-emerald-100",
@@ -765,10 +768,10 @@ export default function AdminDashboard() {
       {/* Welcome banner */}
       <div className="bg-gradient-to-r from-slate-800 to-slate-700 rounded-2xl p-4 md:p-5 text-white flex items-center justify-between gap-2">
         <div>
-          <h2 className="text-xl font-bold">Olá, {user.name?.split(' ')[0]} 👋</h2>
+          <h2 className="text-xl font-bold">Olá, {user.name?.split(' ')[0]}</h2>
           <p className="text-slate-300 text-sm mt-0.5">
             {overdue.length > 0
-              ? `⚠️ ${overdue.length} tarefa${overdue.length > 1 ? 's' : ''} em atraso`
+              ? `${overdue.length} tarefa${overdue.length > 1 ? 's' : ''} em atraso`
               : 'Tudo em ordem no sistema'}
           </p>
         </div>
@@ -930,7 +933,7 @@ export default function AdminDashboard() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
-            <span className="text-lg">🎯</span>
+            <Target size={18} className="text-blue-600" />
             Funil de Conversão & Performance de Vendas
           </CardTitle>
         </CardHeader>
@@ -963,17 +966,17 @@ export default function AdminDashboard() {
             </div>
             {staleNoContact.length > 0 && (
               <p className="text-[11px] text-amber-600 mt-2">
-                ⚠️ {staleNoContact.length} lead(s) há mais de 48h sem nenhum contato — esfriando
+                {staleNoContact.length} lead(s) há mais de 48h sem nenhum contato — esfriando
               </p>
             )}
             {avgFirstContactDays > 0 && (
               <p className="text-[11px] text-gray-400 mt-1">
-                ⏱️ Tempo médio até o 1º contato: <strong className="text-gray-600">{avgFirstContactDays < 1 ? `${Math.round(avgFirstContactMs / 3600000)}h` : `${avgFirstContactDays.toFixed(1)} dias`}</strong>
+                Tempo médio até o 1º contato: <strong className="text-gray-600">{avgFirstContactDays < 1 ? `${Math.round(avgFirstContactMs / 3600000)}h` : `${avgFirstContactDays.toFixed(1)} dias`}</strong>
               </p>
             )}
             {avgConversionDays > 0 && (
               <p className="text-[11px] text-gray-400 mt-1">
-                🎯 Tempo médio até a conversão: <strong className="text-gray-600">{avgConversionDays < 1 ? `${Math.round(avgConversionMs / 3600000)}h` : `${avgConversionDays.toFixed(1)} dias`}</strong>
+                Tempo médio até a conversão: <strong className="text-gray-600">{avgConversionDays < 1 ? `${Math.round(avgConversionMs / 3600000)}h` : `${avgConversionDays.toFixed(1)} dias`}</strong>
               </p>
             )}
           </div>
@@ -981,7 +984,7 @@ export default function AdminDashboard() {
           {/* Tendência semanal de conversões */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-gray-500">📈 Tendência de conversões — últimas 8 semanas</p>
+              <p className="text-xs font-medium text-gray-500">Tendência de conversões — últimas 8 semanas</p>
               {decidedTotal > 0 && (
                 <p className="text-[11px] text-gray-400">
                   Taxa de leads perdidos: <strong className={lostRateGlobal >= 50 ? 'text-red-500' : lostRateGlobal >= 25 ? 'text-amber-600' : 'text-gray-600'}>{lostRateGlobal}%</strong>
@@ -1009,7 +1012,7 @@ export default function AdminDashboard() {
             {isFullAdmin && (
             <div>
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-medium text-gray-500">🏆 Ranking de conversão por atendente</p>
+                <p className="text-xs font-medium text-gray-500">Ranking de conversão por atendente</p>
                 {conversionRanking.length > 0 && (
                   <button
                     onClick={() => exportCsv(
@@ -1031,12 +1034,12 @@ export default function AdminDashboard() {
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-gray-400 w-4">{i + 1}º</span>
                         <span className="flex-1 truncate text-gray-700">{r.name}</span>
-                        <span className="text-emerald-700 font-semibold text-xs">{r.converted} 🎉</span>
+                        <span className="text-emerald-700 font-semibold text-xs">{r.converted}</span>
                         <span className="text-[11px] text-gray-400 w-12 text-right">{r.rate}%</span>
                       </div>
                       <div className="flex items-center gap-3 pl-6 mt-0.5 text-[10px] text-gray-400">
-                        {r.myAvgContacts > 0 && <span>📞 ~{r.myAvgContacts} contatos/venda</span>}
-                        {r.cancelled > 0 && <span className={r.lostRate >= 50 ? 'text-red-500' : ''}>❌ {r.cancelled} perdido(s) ({r.lostRate}%)</span>}
+                        {r.myAvgContacts > 0 && <span>~{r.myAvgContacts} contatos/venda</span>}
+                        {r.cancelled > 0 && <span className={r.lostRate >= 50 ? 'text-red-500' : ''}>{r.cancelled} perdido(s) ({r.lostRate}%)</span>}
                       </div>
                     </div>
                   ))}
@@ -1049,8 +1052,8 @@ export default function AdminDashboard() {
 
             {/* Leads quentes */}
             <div>
-              <p className="text-xs font-medium text-gray-500 mb-2">
-                🔥 Leads quentes — perto de converter
+              <p className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1.5">
+                <Flame size={13} className="text-orange-500" /> Leads quentes — perto de converter
                 {avgContactsToConvert > 0 && <span className="text-gray-400 font-normal"> (≥ {Math.max(1, avgContactsToConvert - 1)} contatos)</span>}
               </p>
               {hotLeads.length > 0 ? (
@@ -1058,8 +1061,8 @@ export default function AdminDashboard() {
                   {hotLeads.map((t: any) => (
                     <div key={t.id} className="flex items-center gap-2 text-sm">
                       <span className="truncate flex-1 text-gray-700">{(t.title || '').split(' - ')[0].slice(0, 36)}</span>
-                      {t.assignedTo && <span className="text-[11px] text-gray-400 truncate max-w-[80px]">👤 {t.assignedTo}</span>}
-                      <span className="text-orange-600 font-semibold text-xs flex-shrink-0">📞 {t.contactCount}</span>
+                      {t.assignedTo && <span className="text-[11px] text-gray-400 truncate max-w-[80px]">{t.assignedTo}</span>}
+                      <span className="text-orange-600 font-semibold text-xs flex-shrink-0">{t.contactCount}</span>
                     </div>
                   ))}
                 </div>
@@ -1204,7 +1207,7 @@ export default function AdminDashboard() {
           {monitorCached?.cached && (
             <div className="flex items-center justify-between gap-2 text-xs bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
               <span className="text-purple-700">
-                📦 Resultado em cache de {new Date(monitorCached.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} — economiza sua cota gratuita de IA
+                Resultado em cache de {new Date(monitorCached.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} — economiza sua cota gratuita de IA
               </span>
               <button
                 type="button"
@@ -1212,7 +1215,7 @@ export default function AdminDashboard() {
                 onClick={() => handleRunMonitor(true)}
                 disabled={monitorLoading}
               >
-                🔄 Forçar nova análise
+                Forçar nova análise
               </button>
             </div>
           )}
@@ -1256,7 +1259,7 @@ export default function AdminDashboard() {
                   {r.flags.length > 0 && (
                     <div className="mt-2 space-y-1">
                       {r.flags.map((flag: string, i: number) => (
-                        <p key={i} className="text-xs text-red-700 bg-red-100 px-2 py-1 rounded">⚠️ {flag}</p>
+                        <p key={i} className="text-xs text-red-700 bg-red-100 px-2 py-1 rounded flex items-start gap-1"><AlertTriangle size={12} className="mt-0.5 flex-shrink-0" /> {flag}</p>
                       ))}
                     </div>
                   )}
@@ -1347,35 +1350,35 @@ export default function AdminDashboard() {
                     <div className="w-28 flex-shrink-0">
                       {!s && <span className="text-xs text-gray-400">Sem sessão hoje</span>}
                       {s?.status === 'active' && !isIdle && <span className="text-xs font-semibold text-green-700 flex items-center gap-1"><Activity size={11} /> Ativo</span>}
-                      {isIdle && <span className="text-xs font-semibold text-amber-700">⚠ Ocioso {idleMin}min</span>}
-                      {isPaused && <span className="text-xs font-semibold text-yellow-700">⏸ Pausado</span>}
+                      {isIdle && <span className="text-xs font-semibold text-amber-700">Ocioso {idleMin}min</span>}
+                      {isPaused && <span className="text-xs font-semibold text-yellow-700">Pausado</span>}
                     </div>
 
                     {/* Metrics */}
                     <div className="flex items-center gap-4 flex-1 text-xs text-gray-600 flex-wrap">
-                      {startTime && <span title="Entrada">🕐 <strong>{startTime}</strong></span>}
+                      {startTime && <span title="Entrada"><strong>{startTime}</strong></span>}
                       {s && (
                         <span title="Tempo trabalhado">
-                          ⏱ <strong>{workedH > 0 ? `${workedH}h ` : ''}{workedM}min</strong>
+                          <strong>{workedH > 0 ? `${workedH}h ` : ''}{workedM}min</strong>
                         </span>
                       )}
                       <span title="Tarefas com anotação hoje">
-                        📞 <strong>{row.contactsToday}</strong> contatos
+                        <strong>{row.contactsToday}</strong> contatos
                       </span>
-                      {lastAct && <span title="Última edição de tarefa">🕒 <strong>{lastAct}</strong></span>}
+                      {lastAct && <span title="Última edição de tarefa"><strong>{lastAct}</strong></span>}
                       {!s && lastOnline && (
                         <span className="text-gray-400" title="Último acesso registrado">
-                          🔌 último acesso: <strong>{lastOnline}</strong>
+                          último acesso: <strong>{lastOnline}</strong>
                         </span>
                       )}
                       {row.ghostCount > 0 && (
-                        <span className="px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-semibold" title={`${row.ghostCount} clientes sem contato há 30+ dias`}>
-                          👻 {row.ghostCount}
+                        <span className="px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-semibold inline-flex items-center gap-1" title={`${row.ghostCount} clientes sem contato há 30+ dias`}>
+                          <Ghost size={11} /> {row.ghostCount}
                         </span>
                       )}
                       {row.burstAlert && (
-                        <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-bold animate-pulse" title={`Alerta de fraude: ${row.burstMax} contatos em <10min`}>
-                          ⚡ Burst
+                        <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-bold animate-pulse inline-flex items-center gap-1" title={`Alerta de fraude: ${row.burstMax} contatos em <10min`}>
+                          <Zap size={11} /> Burst
                         </span>
                       )}
                     </div>
@@ -1438,10 +1441,10 @@ export default function AdminDashboard() {
               onChange={(e) => setReminderFilter(e.target.value)}
               className="px-3 py-1 border rounded-lg text-xs font-normal bg-white"
             >
-              <option value="all">👁️ Todos</option>
-              <option value="__admin__">🔑 Administrador</option>
+              <option value="all">Todos</option>
+              <option value="__admin__">Administrador</option>
               {(sellers ?? []).map((s: any) => (
-                <option key={s.id} value={s.name}>👤 {s.name}</option>
+                <option key={s.id} value={s.name}>{s.name}</option>
               ))}
             </select>
           </CardTitle>
@@ -1456,7 +1459,7 @@ export default function AdminDashboard() {
             <>
               {overdueReminders.length > 0 && (
                 <div>
-                  <p className="text-xs font-bold text-red-600 mb-2">🚨 ATRASADOS ({overdueReminders.length})</p>
+                  <p className="text-xs font-bold text-red-600 mb-2">ATRASADOS ({overdueReminders.length})</p>
                   <div className="space-y-2">
                     {overdueReminders.slice(0, 5).map((reminder: any) => (
                       <div key={reminder.id} className="p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -1464,7 +1467,7 @@ export default function AdminDashboard() {
                           <p className="font-medium text-sm text-red-900">{reminder.title}</p>
                           <span className="text-xs text-red-700">{(() => { try { const d=new Date(reminder.reminderDate); const p=(n:number)=>String(n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)}`; } catch { return ''; } })()}</span>
                         </div>
-                        {reminder.assignedTo && <p className="text-xs text-red-600">👤 {reminder.assignedTo}</p>}
+                        {reminder.assignedTo && <p className="text-xs text-red-600">{reminder.assignedTo}</p>}
                       </div>
                     ))}
                   </div>
@@ -1472,7 +1475,7 @@ export default function AdminDashboard() {
               )}
               {upcomingReminders.length > 0 && (
                 <div>
-                  <p className="text-xs font-bold text-blue-600 mb-2">🔔 PRÓXIMOS ({upcomingReminders.length})</p>
+                  <p className="text-xs font-bold text-blue-600 mb-2">PRÓXIMOS ({upcomingReminders.length})</p>
                   <div className="space-y-2">
                     {upcomingReminders.slice(0, 5).map((reminder: any) => (
                       <div key={reminder.id} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -1480,7 +1483,7 @@ export default function AdminDashboard() {
                           <p className="font-medium text-sm text-blue-900">{reminder.title}</p>
                           <span className="text-xs text-blue-700">{(() => { try { const d=new Date(reminder.reminderDate); const p=(n:number)=>String(n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)} ${p(d.getHours())}:${p(d.getMinutes())}`; } catch { return ''; } })()}</span>
                         </div>
-                        {reminder.assignedTo && <p className="text-xs text-blue-600">👤 {reminder.assignedTo}</p>}
+                        {reminder.assignedTo && <p className="text-xs text-blue-600">{reminder.assignedTo}</p>}
                       </div>
                     ))}
                   </div>

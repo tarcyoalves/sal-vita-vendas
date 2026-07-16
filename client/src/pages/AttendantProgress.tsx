@@ -2,7 +2,7 @@ import { trpc } from '../lib/trpc';
 import { useAuth } from '../_core/hooks/useAuth';
 import { useMemo, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Phone, Clock, Zap, TrendingUp, AlertCircle, Trophy, DollarSign } from 'lucide-react';
+import { Phone, Clock, Zap, TrendingUp, AlertCircle, Trophy, DollarSign, Flame, Target, PartyPopper } from 'lucide-react';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -170,10 +170,10 @@ export default function AttendantProgress() {
     if (prev < 0) { prevContactsRef.current = cur; return; }
     const goal = m.dailyGoal;
     const q1 = Math.round(goal * 0.25), half = Math.round(goal * 0.5), q3 = Math.round(goal * 0.75);
-    if (prev < q1   && cur >= q1)   toast.success(`🎯 ${q1} contatos! Ótimo começo!`);
-    if (prev < half && cur >= half) toast.success(`🔥 ${half} contatos! Você está na metade da meta!`);
-    if (prev < q3   && cur >= q3)   toast.success(`⚡ ${q3} contatos! Falta só ${goal - q3} pra fechar!`);
-    if (prev < goal && cur >= goal) toast.success(`🏆 META BATIDA! ${goal} contatos hoje!`, { duration: 6000 });
+    if (prev < q1   && cur >= q1)   toast.success(`${q1} contatos! Ótimo começo!`);
+    if (prev < half && cur >= half) toast.success(`${half} contatos! Você está na metade da meta!`);
+    if (prev < q3   && cur >= q3)   toast.success(`${q3} contatos! Falta só ${goal - q3} pra fechar!`);
+    if (prev < goal && cur >= goal) toast.success(`META BATIDA! ${goal} contatos hoje!`, { duration: 6000 });
     prevContactsRef.current = cur;
   }, [m.contactsToday, m.dailyGoal]);
 
@@ -200,10 +200,11 @@ export default function AttendantProgress() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-800">{user?.name}</h1>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {m.sessionStatus === 'active' ? '🟢 Trabalhando agora'
-             : m.sessionStatus === 'paused' ? '🟡 Sessão pausada'
-             : '⚪ Sem sessão ativa'}
+          <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1.5">
+            <span className={`inline-block w-2 h-2 rounded-full ${m.sessionStatus === 'active' ? 'bg-green-500 animate-pulse' : m.sessionStatus === 'paused' ? 'bg-yellow-400' : 'bg-gray-300'}`} />
+            {m.sessionStatus === 'active' ? 'Trabalhando agora'
+             : m.sessionStatus === 'paused' ? 'Sessão pausada'
+             : 'Sem sessão ativa'}
           </p>
         </div>
         {m.contactsToday >= m.dailyGoal && (
@@ -225,7 +226,7 @@ export default function AttendantProgress() {
           </div>
           <div className="text-center">
             <p className="text-sm font-bold" style={{ color: contactColor }}>{m.contactsPct}%</p>
-            <p className="text-xs text-gray-400">{m.dailyGoal - m.contactsToday > 0 ? `faltam ${m.dailyGoal - m.contactsToday}` : '✅ completo'}</p>
+            <p className="text-xs text-gray-400">{m.dailyGoal - m.contactsToday > 0 ? `faltam ${m.dailyGoal - m.contactsToday}` : 'completo'}</p>
           </div>
         </div>
 
@@ -263,7 +264,7 @@ export default function AttendantProgress() {
       {m.convertedCount > 0 && (
         <div className="bg-green-50 border border-green-200 rounded-2xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-base">🎉</span>
+            <PartyPopper size={16} className="text-green-600" />
             <p className="text-sm font-semibold text-green-800">Minhas conversões (clientes ativos)</p>
           </div>
           <div className="grid grid-cols-3 gap-2">
@@ -280,7 +281,7 @@ export default function AttendantProgress() {
               <p className="text-[10px] text-gray-500 mt-0.5">Últimos 30 dias</p>
             </div>
           </div>
-          <p className="text-[11px] text-green-600 mt-2 text-center">Continue mantendo contato — cada conversa aproxima de uma nova venda! 💪</p>
+          <p className="text-[11px] text-green-600 mt-2 text-center">Continue mantendo contato — cada conversa aproxima de uma nova venda!</p>
         </div>
       )}
 
@@ -367,7 +368,7 @@ export default function AttendantProgress() {
           </div>
 
           <p className="text-[11px] text-gray-400 mt-3 text-center">
-            Quanto mais tarefas você trabalha, mais contatos vira orçamento — e mais orçamento vira comissão no fim do mês. 💪
+            Quanto mais tarefas você trabalha, mais contatos vira orçamento — e mais orçamento vira comissão no fim do mês.
           </p>
         </div>
       )}
@@ -375,23 +376,23 @@ export default function AttendantProgress() {
       <div className={`rounded-2xl p-4 text-center ${m.contactsToday >= m.dailyGoal ? 'bg-green-50 border border-green-200' : 'bg-blue-50 border border-blue-100'}`}>
         {m.contactsToday >= m.dailyGoal ? (
           <>
-            <p className="text-2xl mb-1">🏆</p>
+            <div className="flex justify-center mb-1"><Trophy size={32} className="text-green-600" /></div>
             <p className="font-bold text-green-700">Parabéns! Meta de {m.dailyGoal} contatos atingida!</p>
             <p className="text-xs text-green-600 mt-0.5">Excelente trabalho hoje, {user?.name?.split(' ')[0]}!</p>
           </>
         ) : m.contactsToday >= Math.round(m.dailyGoal * 0.75) ? (
           <>
-            <p className="text-2xl mb-1">⚡</p>
+            <div className="flex justify-center mb-1"><Zap size={32} className="text-blue-600" /></div>
             <p className="font-bold text-blue-700">Quase lá! Só faltam {m.dailyGoal - m.contactsToday} contatos!</p>
           </>
         ) : m.contactsToday >= Math.round(m.dailyGoal * 0.5) ? (
           <>
-            <p className="text-2xl mb-1">🔥</p>
+            <div className="flex justify-center mb-1"><Flame size={32} className="text-orange-500" /></div>
             <p className="font-bold text-blue-700">Na metade! {m.dailyGoal - m.contactsToday} contatos pra fechar.</p>
           </>
         ) : (
           <>
-            <p className="text-2xl mb-1">🎯</p>
+            <div className="flex justify-center mb-1"><Target size={32} className="text-blue-600" /></div>
             <p className="font-bold text-blue-700">Meta de hoje: {m.dailyGoal} contatos</p>
             <p className="text-xs text-blue-500 mt-0.5">Cada anotação salva conta como um contato!</p>
           </>

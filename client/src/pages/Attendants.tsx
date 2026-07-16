@@ -5,6 +5,7 @@ import { Button } from '../components/ui/button';
 import { useState, useMemo, useEffect } from "react";
 import DOMPurify from 'dompurify';
 import { toast } from "sonner";
+import { AlertCircle } from "lucide-react";
 import { useFatStore } from '../lib/faturamento/store';
 import {
   Dialog,
@@ -409,10 +410,10 @@ export default function Attendants() {
         {/* Fraud alerts banner */}
         {fraudAlerts.length > 0 && (
           <div className="bg-red-50 border border-red-300 rounded-xl p-4 space-y-2">
-            <p className="font-semibold text-red-800 flex items-center gap-2">🚨 Alertas de comportamento suspeito detectados agora</p>
+            <p className="font-semibold text-red-800 flex items-center gap-2">Alertas de comportamento suspeito detectados agora</p>
             {fraudAlerts.map((alert, i) => (
               <div key={i} className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${alert.severity === 'high' ? 'bg-red-100 text-red-800' : 'bg-orange-100 text-orange-800'}`}>
-                <span>{alert.severity === 'high' ? '🔴' : '🟠'}</span>
+                <AlertCircle size={14} className={alert.severity === 'high' ? 'text-red-600' : 'text-orange-500'} />
                 <strong>{alert.sellerName}</strong>: {alert.message}
               </div>
             ))}
@@ -423,7 +424,7 @@ export default function Attendants() {
         {resetInfo && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
-              <h2 className="text-2xl font-bold text-orange-600 mb-2">🔑 Senha Resetada!</h2>
+              <h2 className="text-2xl font-bold text-orange-600 mb-2">Senha Resetada!</h2>
               <p className="text-gray-600 mb-6">Anote a nova senha — ela não será exibida novamente.</p>
               <div className="bg-gray-50 rounded-xl p-4 space-y-3 border">
                 <div>
@@ -439,9 +440,9 @@ export default function Attendants() {
                   <p className="font-mono text-lg font-bold text-orange-700 bg-orange-50 px-3 py-2 rounded-lg border border-orange-200 select-all tracking-widest">{resetInfo.password}</p>
                 </div>
               </div>
-              <p className="text-xs text-orange-600 mt-3">⚠️ Copie a senha agora. Ela não será exibida novamente.</p>
+              <p className="text-xs text-orange-600 mt-3">Copie a senha agora. Ela não será exibida novamente.</p>
               <Button className="w-full mt-4 bg-orange-600 hover:bg-orange-700" onClick={() => setResetInfo(null)}>
-                ✅ Entendido, já copiei a senha
+                Entendido, já copiei a senha
               </Button>
             </div>
           </div>
@@ -451,7 +452,7 @@ export default function Attendants() {
         {createdInfo && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
-              <h2 className="text-2xl font-bold text-green-700 mb-2">✅ Atendente criado!</h2>
+              <h2 className="text-2xl font-bold text-green-700 mb-2">Atendente criado!</h2>
               <p className="text-gray-600 mb-6">Anote as credenciais — a senha não poderá ser recuperada depois.</p>
               <div className="bg-gray-50 rounded-xl p-4 space-y-3 border">
                 <div>
@@ -467,9 +468,9 @@ export default function Attendants() {
                   <p className="font-mono text-lg font-bold text-green-700 bg-green-50 px-3 py-2 rounded-lg border border-green-200 select-all tracking-widest">{createdInfo.password}</p>
                 </div>
               </div>
-              <p className="text-xs text-orange-600 mt-3">⚠️ Copie a senha agora. Ela não será exibida novamente.</p>
+              <p className="text-xs text-orange-600 mt-3">Copie a senha agora. Ela não será exibida novamente.</p>
               <Button className="w-full mt-4 bg-green-600 hover:bg-green-700" onClick={() => setCreatedInfo(null)}>
-                ✅ Entendido, já copiei a senha
+                Entendido, já copiei a senha
               </Button>
             </div>
           </div>
@@ -481,10 +482,10 @@ export default function Attendants() {
           </h2>
           <div className="flex items-center gap-2">
             <Button variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50" onClick={handleMySignatureOpen}>
-              ✉️ Minha assinatura
+              Minha assinatura
             </Button>
             <Button onClick={() => { setFormData({ name: "", email: "", phone: "", department: "", dailyGoal: 100, workHoursGoal: 8, status: "active" }); setShowForm(!showForm); }}>
-              {showForm ? "❌ Cancelar" : "➕ Novo Atendente"}
+              {showForm ? "Cancelar" : "Novo Atendente"}
             </Button>
           </div>
         </div>
@@ -494,7 +495,7 @@ export default function Attendants() {
           <CardContent className="pt-4 pb-4 space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                🔍 Filtro avançado
+                Filtro avançado
                 {activeFilterCount > 0 && (
                   <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
                     {activeFilterCount} ativo{activeFilterCount > 1 ? 's' : ''}
@@ -507,7 +508,7 @@ export default function Attendants() {
                   className="text-xs text-blue-600 hover:underline"
                   onClick={() => { setSearch(""); setFilterStatus("all"); setFilterRole("all"); setOnlyAlerts(false); }}
                 >
-                  ✖️ Limpar filtros
+                  Limpar filtros
                 </button>
               )}
             </div>
@@ -526,23 +527,23 @@ export default function Attendants() {
                 <label className="block text-xs font-medium mb-1 text-gray-600">Status</label>
                 <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as any)} className="w-full px-3 py-2 border rounded-lg text-sm">
                   <option value="all">Todos</option>
-                  <option value="active">✅ Ativos</option>
-                  <option value="inactive">❌ Inativos</option>
+                  <option value="active">Ativos</option>
+                  <option value="inactive">Inativos</option>
                 </select>
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1 text-gray-600">Permissão</label>
                 <select value={filterRole} onChange={(e) => setFilterRole(e.target.value as any)} className="w-full px-3 py-2 border rounded-lg text-sm">
                   <option value="all">Todas</option>
-                  <option value="admin">👑 Admins</option>
-                  <option value="manager">🧑‍💼 Gerentes</option>
-                  <option value="user">👤 Atendentes</option>
+                  <option value="admin">Admins</option>
+                  <option value="manager">Gerentes</option>
+                  <option value="user">Atendentes</option>
                 </select>
               </div>
               <div className="flex items-end">
                 <label className="flex items-center gap-2 text-sm cursor-pointer select-none px-3 py-2 border rounded-lg w-full hover:bg-gray-50">
                   <input type="checkbox" checked={onlyAlerts} onChange={(e) => setOnlyAlerts(e.target.checked)} className="h-4 w-4" />
-                  🚨 Só com alerta de fraude
+                  Só com alerta de fraude
                 </label>
               </div>
             </div>
@@ -600,11 +601,11 @@ export default function Attendants() {
                   </div>
                 </div>
                 <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-800">
-                  🔐 Uma senha de acesso será gerada automaticamente e exibida após o cadastro.
+                  Uma senha de acesso será gerada automaticamente e exibida após o cadastro.
                 </div>
                 <div className="flex gap-2">
                   <Button type="submit" className="flex-1" disabled={createMutation.isPending}>
-                    {createMutation.isPending ? "Criando..." : "✅ Criar Atendente"}
+                    {createMutation.isPending ? "Criando..." : "Criar Atendente"}
                   </Button>
                   <Button type="button" variant="outline" onClick={() => setShowForm(false)} className="flex-1">Cancelar</Button>
                 </div>
@@ -630,31 +631,31 @@ export default function Attendants() {
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-semibold text-lg">{attendant.name}</h3>
-                        {alert && <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${alert.severity === 'high' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>{alert.severity === 'high' ? '🔴 ALERTA' : '🟠 Suspeito'}</span>}
+                        {alert && <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${alert.severity === 'high' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>{alert.severity === 'high' ? 'ALERTA' : 'Suspeito'}</span>}
                       </div>
                       <p className="text-sm text-gray-500">{attendant.email}</p>
-                      {alert && <p className="text-xs text-red-600 mt-1">⚠️ {alert.message}</p>}
+                      {alert && <p className="text-xs text-red-600 mt-1">{alert.message}</p>}
                     </div>
                     <div className="space-y-1 text-sm text-gray-600">
-                      {attendant.phone && <p>📱 {attendant.phone}</p>}
-                      {attendant.department && <p>🏢 {attendant.department}</p>}
-                      <p>🎯 Meta: {effectiveDailyGoal(attendant.dailyGoal)} contatos/dia</p>
-                      <p>🕐 Expediente: {attendant.workHoursGoal ?? 8}h</p>
-                      <p>💰 Comissao: {fatActions.comissoes.get(attendant.id)}%</p>
+                      {attendant.phone && <p>{attendant.phone}</p>}
+                      {attendant.department && <p>{attendant.department}</p>}
+                      <p>Meta: {effectiveDailyGoal(attendant.dailyGoal)} contatos/dia</p>
+                      <p>Expediente: {attendant.workHoursGoal ?? 8}h</p>
+                      <p>Comissao: {fatActions.comissoes.get(attendant.id)}%</p>
                       <div className="flex gap-2 flex-wrap">
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${attendant.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                          {attendant.status === "active" ? "✅ Ativo" : "❌ Inativo"}
+                          {attendant.status === "active" ? "Ativo" : "Inativo"}
                         </span>
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
                           attendant.userRole === "admin" ? "bg-purple-100 text-purple-700"
                           : attendant.userRole === "manager" ? "bg-blue-100 text-blue-700"
                           : "bg-gray-100 text-gray-600"
                         }`}>
-                          {attendant.userRole === "admin" ? "👑 Admin" : attendant.userRole === "manager" ? "🧑‍💼 Gerente" : "👤 Atendente"}
+                          {attendant.userRole === "admin" ? "Admin" : attendant.userRole === "manager" ? "Gerente" : "Atendente"}
                         </span>
                         {attendant.emailMarketingEnabled && (
                           <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                            ✉️ Email Mkt
+                            Email Mkt
                           </span>
                         )}
                       </div>
@@ -662,10 +663,10 @@ export default function Attendants() {
                     <div className="flex flex-col gap-2">
                       <div className="flex gap-2">
                         <Button size="sm" variant="outline" className="flex-1" onClick={() => handleEditOpen(attendant)}>
-                          ✏️ Editar
+                          Editar
                         </Button>
                         <Button size="sm" variant="destructive" className="flex-1" onClick={() => handleDelete(attendant.id, attendant.name)}>
-                          🗑️ Remover
+                          Remover
                         </Button>
                       </div>
                       <Button
@@ -674,7 +675,7 @@ export default function Attendants() {
                         className="w-full border-blue-300 text-blue-700 hover:bg-blue-50"
                         onClick={() => handleSignatureOpen(attendant)}
                       >
-                        ✉️ Assinatura de e-mail
+                        Assinatura de e-mail
                       </Button>
                       <Button
                         size="sm"
@@ -683,7 +684,7 @@ export default function Attendants() {
                         onClick={() => handleResetPassword(attendant)}
                         disabled={resetPasswordMutation.isPending}
                       >
-                        🔑 Resetar Senha
+                        Resetar Senha
                       </Button>
                       <Button
                         size="sm"
@@ -691,7 +692,7 @@ export default function Attendants() {
                         className={`w-full ${attendant.ipRestrictionEnabled && (attendant.allowedIps?.length ?? 0) > 0 ? 'border-red-300 text-red-700 hover:bg-red-50' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
                         onClick={() => handleIpOpen(attendant)}
                       >
-                        {attendant.ipRestrictionEnabled && (attendant.allowedIps?.length ?? 0) > 0 ? '🔒 IP Restrito' : '🌐 Restringir IP'}
+                        {attendant.ipRestrictionEnabled && (attendant.allowedIps?.length ?? 0) > 0 ? 'IP Restrito' : 'Restringir IP'}
                       </Button>
                       {attendant.userRole !== "admin" && (
                         <Button
@@ -701,7 +702,7 @@ export default function Attendants() {
                           onClick={() => handleToggleRole(attendant)}
                           disabled={updateRoleMutation.isPending}
                         >
-                          {attendant.userRole === "manager" ? "⬇️ Rebaixar para Atendente" : "🧑‍💼 Promover a Gerente"}
+                          {attendant.userRole === "manager" ? "Rebaixar para Atendente" : "Promover a Gerente"}
                         </Button>
                       )}
                     </div>
@@ -716,7 +717,7 @@ export default function Attendants() {
         {/* Edit Attendant Modal */}
         <Dialog open={!!editingAttendant} onOpenChange={(open) => { if (!open) setEditingAttendant(null); }}>
           <DialogContent className="max-w-lg">
-            <DialogHeader><DialogTitle>✏️ Editar Atendente</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>Editar Atendente</DialogTitle></DialogHeader>
             <form onSubmit={handleEditSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -791,7 +792,7 @@ export default function Attendants() {
               </div>
               <DialogFooter className="flex gap-2 pt-2">
                 <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700" disabled={updateMutation.isPending}>
-                  {updateMutation.isPending ? "Salvando..." : "✅ Salvar"}
+                  {updateMutation.isPending ? "Salvando..." : "Salvar"}
                 </Button>
                 <Button type="button" variant="outline" onClick={() => setEditingAttendant(null)}>Cancelar</Button>
               </DialogFooter>
@@ -803,7 +804,7 @@ export default function Attendants() {
         <Dialog open={!!ipAttendant} onOpenChange={(open) => { if (!open) setIpAttendant(null); }}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>🔒 Restrição de IP — {ipAttendant?.name}</DialogTitle>
+              <DialogTitle>Restrição de IP — {ipAttendant?.name}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <label className="flex items-center gap-2 text-sm cursor-pointer select-none px-3 py-2 border rounded-lg hover:bg-gray-50">
@@ -876,7 +877,7 @@ export default function Attendants() {
                           toast.success(`IP ${ipAttendant.lastLoginIp} adicionado (último login de ${ipAttendant.name})`);
                         }}
                       >
-                        📍 Usar último IP de login de {ipAttendant.name} ({ipAttendant.lastLoginIp}
+                        Usar último IP de login de {ipAttendant.name} ({ipAttendant.lastLoginIp}
                         {ipAttendant.lastLoginAt ? `, ${fmtTimeAgo(ipAttendant.lastLoginAt)}` : ''})
                       </Button>
                       {ipAttendant.lastLoginIp.includes(':') && (
@@ -916,7 +917,7 @@ export default function Attendants() {
         <Dialog open={showMySignature} onOpenChange={(open) => { if (!open) setShowMySignature(false); }}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>✉️ Minha assinatura de e-mail</DialogTitle>
+              <DialogTitle>Minha assinatura de e-mail</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <p className="text-xs text-gray-500">
@@ -950,7 +951,7 @@ export default function Attendants() {
 
               <div className="flex flex-wrap gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={handleMySignatureGenerate}>
-                  ✨ Gerar HTML a partir dos meus dados
+                  Gerar HTML a partir dos meus dados
                 </Button>
               </div>
 
@@ -982,7 +983,7 @@ export default function Attendants() {
                 onClick={handleMySignatureSave}
                 disabled={mySignatureMutation.isPending}
               >
-                {mySignatureMutation.isPending ? "Salvando..." : "✅ Salvar assinatura"}
+                {mySignatureMutation.isPending ? "Salvando..." : "Salvar assinatura"}
               </Button>
               <Button type="button" variant="outline" onClick={() => setShowMySignature(false)}>Cancelar</Button>
             </DialogFooter>
@@ -993,7 +994,7 @@ export default function Attendants() {
         <Dialog open={!!signatureAttendant} onOpenChange={(open) => { if (!open) setSignatureAttendant(null); }}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>✉️ Assinatura de e-mail — {signatureAttendant?.name}</DialogTitle>
+              <DialogTitle>Assinatura de e-mail — {signatureAttendant?.name}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <label className="flex items-center gap-2 text-sm cursor-pointer select-none px-3 py-2 border rounded-lg hover:bg-gray-50">
@@ -1024,7 +1025,7 @@ export default function Attendants() {
 
               <div className="flex flex-wrap gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={handleSignatureGenerate}>
-                  ✨ Gerar HTML a partir dos dados do atendente
+                  Gerar HTML a partir dos dados do atendente
                 </Button>
               </div>
 
@@ -1062,7 +1063,7 @@ export default function Attendants() {
                 onClick={handleSignatureSave}
                 disabled={signatureMutation.isPending}
               >
-                {signatureMutation.isPending ? "Salvando..." : "✅ Salvar assinatura"}
+                {signatureMutation.isPending ? "Salvando..." : "Salvar assinatura"}
               </Button>
               <Button type="button" variant="outline" onClick={() => setSignatureAttendant(null)}>Cancelar</Button>
             </DialogFooter>
