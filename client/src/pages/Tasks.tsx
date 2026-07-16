@@ -222,6 +222,8 @@ export default function Tasks() {
   const { data: sellerProfile } = trpc.sellers.myProfile.useQuery(undefined, { enabled: !isAdmin, staleTime: 300_000 });
   const createMutation = trpc.tasks.create.useMutation();
   const updateMutation = trpc.tasks.update.useMutation();
+  const bulkCreateMutation = trpc.tasks.bulkCreate.useMutation();
+  const bulkAssignMutation = trpc.tasks.bulkAssign.useMutation();
   const deleteMutation = trpc.tasks.delete.useMutation();
   const deleteManyMutation = trpc.tasks.deleteMany.useMutation();
   const toggleConvertedMutation = trpc.tasks.toggleConverted.useMutation();
@@ -781,9 +783,14 @@ export default function Tasks() {
   const handleBulkAssign = async () => {
     if (!bulkRepresentative.trim()) { toast.error("Selecione um atendente"); return; }
     try {
-      for (const id of Array.from(selectedTasks)) await updateMutation.mutateAsync({ id, assignedTo: bulkRepresentative });
-      toast.success(`${selectedTasks.size} tarefas designadas!`); setSelectedTasks(new Set()); setBulkRepresentative(""); refetch();
-    } catch { toast.error("Erro ao designar"); }
+      await bulkAssignMutation.mutateAsync({ ids: Array.from(selectedTasks), assignedTo: bulkRepresentative });
+      toast.success(`${selectedTasks.size} tarefas designadas!`);
+      setSelectedTasks(new Set());
+      setBulkRepresentative("");
+      refetch();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao designar");
+    }
   };
 
   const handleCSVImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -929,21 +936,30 @@ export default function Tasks() {
   const handleImportTasks = async () => {
     if (!selectedRepresentative) { toast.error("Selecione um atendente"); return; }
     setImportLoading(true);
-    let success = 0;
     try {
       const importReminderDate = new Date(Date.now() + 5 * 60 * 1000); // hoje + 5 min
-      for (const t of importedTasks) {
-        await createMutation.mutateAsync({ clientId: 0, title: t.title, description: t.description, notes: t.notes, reminderDate: importReminderDate, reminderEnabled: true, priority: "medium", assignedTo: selectedRepresentative, cnpj: t.cnpj, phone: t.phone });
-        success++;
-      }
-      toast.success(`✅ ${success} tarefas importadas com sucesso para ${selectedRepresentative}!`, { duration: 8000 });
+      const created = await bulkCreateMutation.mutateAsync({
+        items: importedTasks.map(t => ({
+          clientId: 0,
+          title: t.title,
+          description: t.description,
+          notes: t.notes,
+          reminderDate: importReminderDate,
+          reminderEnabled: true,
+          priority: "medium" as const,
+          assignedTo: selectedRepresentative,
+          cnpj: t.cnpj,
+          phone: t.phone,
+        })),
+      });
+      toast.success(`✅ ${created.length} tarefas importadas com sucesso para ${selectedRepresentative}!`, { duration: 8000 });
       setImportedTasks([]);
       setImportSkipped(0);
       setShowImport(false);
       setSelectedRepresentative("");
       refetch();
     } catch (err: any) {
-      toast.error(`Importadas ${success}/${importedTasks.length}. Erro: ${err?.message ?? 'tente novamente'}`);
+      toast.error(`Erro ao importar: ${err?.message ?? 'tente novamente'}`);
     } finally {
       setImportLoading(false);
     }

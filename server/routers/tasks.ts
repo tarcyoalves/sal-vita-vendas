@@ -150,6 +150,95 @@ export const tasksRouter = router({
       return created;
     }),
 
+  // Cria N tarefas em um único INSERT (usado pela importação de CSV, que antes
+  // fazia uma chamada `create` por linha). Mesma validação e normalização de
+  // create acima, linha a linha — só o INSERT é agrupado. Mantém o mesmo efeito
+  // colateral de disparar `lead_created` para cada tarefa criada com e-mail.
+  bulkCreate: protectedProcedure
+    .input(z.object({
+      items: z.array(z.object({
+        clientId: z.number().optional().default(0),
+        title: z.string().min(1).max(500),
+        description: z.string().max(2000).optional(),
+        notes: z.string().max(5000).optional(),
+        email: z.string().email().max(200).optional().or(z.literal('')),
+        tags: z.array(z.string()).optional(),
+        reminderDate: z.date({ required_error: 'Data do lembrete é obrigatória' }),
+        reminderEnabled: z.boolean().optional().default(true),
+        priority: z.enum(['low', 'medium', 'high']).optional().default('medium'),
+        assignedTo: z.string().optional(),
+        cnpj: z.string().optional(),
+        phone: z.string().optional(),
+      })).min(1).max(2000),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const emailConfirmer = ctx.user.name ?? ctx.user.email;
+      const rows = input.items.map(item => {
+        const assignedTo = item.assignedTo || (ctx.user.role !== 'admin' ? ctx.user.name : undefined);
+        const email = item.email ? item.email.toLowerCase().trim() : undefined;
+        return {
+          userId: ctx.user.id,
+          clientId: item.clientId,
+          title: item.title,
+          description: item.description,
+          notes: item.notes,
+          email,
+          tags: item.tags,
+          reminderDate: item.reminderDate,
+          reminderEnabled: item.reminderEnabled,
+          priority: item.priority,
+          assignedTo,
+          status: 'pending' as const,
+          cnpj: normalizeCnpj(item.cnpj),
+          phone: normalizePhone(item.phone),
+          emailConfirmed: !!email,
+          emailConfirmedAt: email ? new Date() : null,
+          emailConfirmedBy: email ? emailConfirmer : null,
+        };
+      });
+
+      const created = await db.insert(tasks).values(rows).returning();
+
+      for (const row of created) {
+        if (!row.email) continue;
+        try {
+          await runTriggerNow('lead_created', {
+            id: row.id,
+            email: row.email,
+            title: row.title,
+            tags: row.tags,
+            assignedTo: row.assignedTo,
+          });
+        } catch (err) {
+          console.error('[tasks.bulkCreate] runTriggerNow(lead_created) failed:', err);
+        }
+      }
+
+      return created;
+    }),
+
+  // Reatribuição em massa (usada pelo botão "Designar" da seleção múltipla).
+  // Diferente de `update`, esta ação só toca assignedTo — não mexe em
+  // email/tags/notes, então nenhuma das trilhas de automação de `update`
+  // (email confirmado, tag_added) se aplica aqui. Por isso um endpoint dedicado
+  // e simples (1 UPDATE com inArray) é suficiente, em vez de generalizar todo
+  // o `update` complexo para lote.
+  bulkAssign: protectedProcedure
+    .input(z.object({
+      ids: z.array(z.number()).min(1).max(2000),
+      assignedTo: z.string().min(1),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const ownerFilter = ctx.user.role === 'admin'
+        ? inArray(tasks.id, input.ids)
+        : and(inArray(tasks.id, input.ids), await userTaskFilter(ctx.user.id, ctx.user.name ?? ''));
+      const updated = await db.update(tasks)
+        .set({ assignedTo: input.assignedTo, updatedAt: new Date() })
+        .where(ownerFilter)
+        .returning({ id: tasks.id });
+      return { updated: updated.length };
+    }),
+
   update: protectedProcedure
     .input(z.object({
       id: z.number(),
