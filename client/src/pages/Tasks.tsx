@@ -7,6 +7,10 @@ import { Button } from '../components/ui/button';
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import {
+  Search, X, Bell, Phone, Timer, CheckCircle2, XCircle, Clock, Flag, PartyPopper, Flame, Mail,
+  AlertTriangle, Trash2, ClipboardList, Package, Boxes, Tag, MailCheck,
+} from "lucide-react";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -246,8 +250,8 @@ export default function Tasks() {
     try {
       const res = await addToCampaignMutation.mutateAsync({ campaignId, taskIds: campaignPickerTaskIds });
       const skipped = res.skippedNoEmail + res.skippedDuplicateOrSuppressed + (res.skippedUnconfirmed ?? 0);
-      toast.success(`✅ ${res.added} adicionado(s) à campanha` + (skipped > 0 ? ` (${skipped} ignorado(s): sem e-mail, não-confirmado, duplicado ou descadastrado)` : ''));
-      if (res.skippedUnconfirmed > 0) toast.warning(`✉️ ${res.skippedUnconfirmed} lead(s) ignorado(s) por e-mail não confirmado. Confirme o e-mail na tarefa antes de usá-lo.`, { duration: 9000 });
+      toast.success(`${res.added} adicionado(s) à campanha` + (skipped > 0 ? ` (${skipped} ignorado(s): sem e-mail, não-confirmado, duplicado ou descadastrado)` : ''));
+      if (res.skippedUnconfirmed > 0) toast.warning(`${res.skippedUnconfirmed} lead(s) ignorado(s) por e-mail não confirmado. Confirme o e-mail na tarefa antes de usá-lo.`, { duration: 9000 });
       setCampaignPickerTaskIds(null);
     } catch (e: any) {
       toast.error(e?.message ?? "Erro ao adicionar à campanha");
@@ -298,14 +302,14 @@ export default function Tasks() {
       const res = await enrollInSequenceMutation.mutateAsync({ sequenceId: selectedSequenceId, taskIds: sequencePickerTaskIds });
       const skipped = res.skippedNoEmail + res.skippedDuplicateOrSuppressed + (res.skippedUnconfirmed ?? 0);
       if (res.enrolled > 0) {
-        toast.success(`✅ ${res.enrolled} inscrito(s) na sequência`);
+        toast.success(`${res.enrolled} inscrito(s) na sequência`);
       }
       if (skipped > 0 && (res as any).skipReasons?.length) {
         toast.error(`${skipped} ignorado(s):\n${(res as any).skipReasons.join('\n')}`, { duration: 12000 });
       } else if (skipped > 0) {
         toast.error(`${skipped} ignorado(s): sem e-mail, não-confirmado, duplicado ou descadastrado`);
       }
-      if (res.skippedUnconfirmed > 0) toast.warning(`✉️ ${res.skippedUnconfirmed} lead(s) com e-mail não confirmado — confirme na tarefa antes.`, { duration: 9000 });
+      if (res.skippedUnconfirmed > 0) toast.warning(`${res.skippedUnconfirmed} lead(s) com e-mail não confirmado — confirme na tarefa antes.`, { duration: 9000 });
       setSequencePickerTaskIds(null);
       setSelectedSequenceId(null);
     } catch (e: any) {
@@ -358,10 +362,10 @@ export default function Tasks() {
     if (prev < 0) { prevContactsRef.current = cur; return; }
     const goal = effectiveDailyGoal(sellerProfile?.dailyGoal);
     const q1 = Math.round(goal * 0.25), half = Math.round(goal * 0.5), q3 = Math.round(goal * 0.75);
-    if (prev < q1   && cur >= q1)   toast.success(`🎯 ${q1} contatos! Ótimo começo!`);
-    if (prev < half && cur >= half) toast.success(`🔥 Metade da meta! ${half} contatos!`);
-    if (prev < q3   && cur >= q3)   toast.success(`⚡ ${q3} contatos! Faltam só ${goal - q3}!`);
-    if (prev < goal && cur >= goal) toast.success(`🏆 META BATIDA! ${goal} contatos hoje!`, { duration: 6000 });
+    if (prev < q1   && cur >= q1)   toast.success(`${q1} contatos! Ótimo começo!`);
+    if (prev < half && cur >= half) toast.success(`Metade da meta! ${half} contatos!`);
+    if (prev < q3   && cur >= q3)   toast.success(`${q3} contatos! Faltam só ${goal - q3}!`);
+    if (prev < goal && cur >= goal) toast.success(`META BATIDA! ${goal} contatos hoje!`, { duration: 6000 });
     prevContactsRef.current = cur;
   }, [dailyProgress?.contacts, isAdmin, sellerProfile?.dailyGoal]);
 
@@ -389,7 +393,7 @@ export default function Tasks() {
 
       scheduledRemindersRef.current.add(t.id);
       timers.push(setTimeout(() => {
-        new Notification('🔔 Lembrete Sal Vita', {
+        new Notification('Lembrete Sal Vita', {
           body: t.title,
           icon: '/favicon.ico',
           tag: `reminder-${t.id}`,
@@ -415,7 +419,7 @@ export default function Tasks() {
       if (pending === 0) return;
       const idleMin = Math.round(idleMs / 60_000);
       toast.warning(
-        `⏰ ${idleMin} min sem contatos! Você tem ${pending} tarefa${pending > 1 ? 's' : ''} pendente${pending > 1 ? 's' : ''}.`,
+        `${idleMin} min sem contatos! Você tem ${pending} tarefa${pending > 1 ? 's' : ''} pendente${pending > 1 ? 's' : ''}.`,
         { duration: 8000, id: 'idle-alert' }
       );
     }, IDLE_MS);
@@ -484,12 +488,12 @@ export default function Tasks() {
         const result = await updateMutation.mutateAsync({ id: editingTask.id, title: formData.title, description: formData.description, notes: formData.notes, email: formData.email, tags: formData.tags, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined, emailConfirmed });
         toast.success("Tarefa atualizada!");
         if (!isAdmin && result.burstWarning) {
-          toast.warning(`⚠️ Atenção: ${result.burstCount} contatos registrados em menos de 10 minutos. Certifique-se de que cada anotação representa um contato real — a gestão monitora esse indicador.`, { duration: 12000 });
+          toast.warning(`Atenção: ${result.burstCount} contatos registrados em menos de 10 minutos. Certifique-se de que cada anotação representa um contato real — a gestão monitora esse indicador.`, { duration: 12000 });
         }
       } else {
-        if (!reminderDateTime) { toast.error("📅 Data do lembrete é obrigatória"); return; }
+        if (!reminderDateTime) { toast.error("Data do lembrete é obrigatória"); return; }
         await createMutation.mutateAsync({ clientId: formData.clientId || 0, title: formData.title, description: formData.description, notes: formData.notes, email: formData.email, tags: formData.tags, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined });
-        toast.success("Tarefa criada! Lembrete ativado ✅");
+        toast.success("Tarefa criada! Lembrete ativado!");
       }
       // Atualiza o timestamp do último contato para o alerta de ociosidade
       if (!isAdmin) lastContactTimeRef.current = Date.now();
@@ -503,7 +507,7 @@ export default function Tasks() {
   // Atalho: ajusta a data/hora do lembrete (30min ou amanhã, mantendo a hora atual) e já salva.
   const handleQuickReminder = async (mode: '30min' | 'tomorrow') => {
     if (!formData.title.trim()) { toast.error("Título é obrigatório"); return; }
-    if (tagCatalog.length > 0 && formData.tags.length === 0) { toast.error("🏷️ Selecione ao menos uma tag"); return; }
+    if (tagCatalog.length > 0 && formData.tags.length === 0) { toast.error("Selecione ao menos uma tag"); return; }
     const target = new Date();
     if (mode === '30min') target.setMinutes(target.getMinutes() + 30);
     else target.setDate(target.getDate() + 1);
@@ -517,8 +521,8 @@ export default function Tasks() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim()) { toast.error("Título é obrigatório"); return; }
-    if (!formData.reminderDate) { toast.error("📅 Data do lembrete é obrigatória"); return; }
-    if (tagCatalog.length > 0 && formData.tags.length === 0) { toast.error("🏷️ Selecione ao menos uma tag"); return; }
+    if (!formData.reminderDate) { toast.error("Data do lembrete é obrigatória"); return; }
+    if (tagCatalog.length > 0 && formData.tags.length === 0) { toast.error("Selecione ao menos uma tag"); return; }
     if (!editingTask && !formData.notes.trim()) {
       setIsModalOpen(false);
       setShowNotesWarning(true);
@@ -553,7 +557,7 @@ export default function Tasks() {
     if (!convertModalTask) return;
     try {
       await toggleConvertedMutation.mutateAsync({ id: convertModalTask.id, converted: true });
-      toast.success("🎉 Cliente marcado como ativo! Tag \"ativo\" aplicada para o e-mail marketing.");
+      toast.success("Cliente marcado como ativo! Tag \"ativo\" aplicada para o e-mail marketing.");
       const taskForOrder = convertModalTask;
       setConvertModalTask(null);
       refetch();
@@ -733,12 +737,12 @@ export default function Tasks() {
       if (sequenceId !== null) {
         const res = await enrollInSequenceMutation.mutateAsync({ sequenceId, taskIds: [taskId] });
         if (res.enrolled > 0) {
-          toast.success("✅ E-mail confirmado e incluído na sequência!");
+          toast.success("E-mail confirmado e incluído na sequência!");
         } else {
-          toast.success("✅ E-mail confirmado", { description: res.skipReasons?.[0] ?? "Não foi possível incluir na sequência agora." });
+          toast.success("E-mail confirmado", { description: res.skipReasons?.[0] ?? "Não foi possível incluir na sequência agora." });
         }
       } else {
-        toast.success("✅ E-mail confirmado — já pode ser usado para e-mail marketing");
+        toast.success("E-mail confirmado — já pode ser usado para e-mail marketing");
       }
 
       setConfirmEmailTarget(null);
@@ -952,7 +956,7 @@ export default function Tasks() {
           phone: t.phone,
         })),
       });
-      toast.success(`✅ ${created.length} tarefas importadas com sucesso para ${selectedRepresentative}!`, { duration: 8000 });
+      toast.success(`${created.length} tarefas importadas com sucesso para ${selectedRepresentative}!`, { duration: 8000 });
       setImportedTasks([]);
       setImportSkipped(0);
       setShowImport(false);
@@ -980,8 +984,16 @@ export default function Tasks() {
     }
   };
 
-  const priorityEmoji: Record<string, string> = { low: "🟦", medium: "🟨", high: "🟥" };
-  const statusEmoji: Record<string, string> = { pending: "⏳", completed: "✅", cancelled: "❌" };
+  const priorityIcon: Record<string, React.ReactNode> = {
+    low: <Flag size={13} className="text-blue-500" />,
+    medium: <Flag size={13} className="text-amber-500" />,
+    high: <Flag size={13} className="text-red-500" />,
+  };
+  const statusIcon: Record<string, React.ReactNode> = {
+    pending: <Clock size={13} className="text-slate-400" />,
+    completed: <CheckCircle2 size={13} className="text-green-600" />,
+    cancelled: <XCircle size={13} className="text-red-500" />,
+  };
 
   if (!user) return <div className="p-4 text-center">Carregando...</div>;
 
@@ -989,16 +1001,16 @@ export default function Tasks() {
     <div className="p-3 md:p-6 space-y-3 md:space-y-4">
       {!isAdmin && showMonitorBanner && (
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 text-sm text-amber-900">
-          <span className="text-lg flex-shrink-0 mt-0.5">🔍</span>
+          <Search size={18} className="flex-shrink-0 mt-0.5" />
           <div className="flex-1">
             <strong>Trabalho monitorado</strong> — anotações, qualidade e velocidade dos contatos são acompanhados diariamente pela gestão.
           </div>
-          <button onClick={() => { setShowMonitorBanner(false); sessionStorage.setItem('monitorBannerDismissed', '1'); }} className="text-amber-600 hover:text-amber-900 font-bold text-base leading-none flex-shrink-0 mt-0.5" title="Fechar">✕</button>
+          <button onClick={() => { setShowMonitorBanner(false); sessionStorage.setItem('monitorBannerDismissed', '1'); }} className="text-amber-600 hover:text-amber-900 flex-shrink-0 mt-0.5" title="Fechar"><X size={16} /></button>
         </div>
       )}
       {!isAdmin && 'Notification' in window && Notification.permission === 'default' && (
         <div className="flex items-center gap-3 bg-blue-50 border border-blue-300 rounded-xl px-4 py-3 text-sm text-blue-900">
-          <span className="text-lg flex-shrink-0">🔔</span>
+          <Bell size={18} className="flex-shrink-0" />
           <div className="flex-1">
             <strong>Ative as notificações</strong> para receber lembretes no horário certo, mesmo com o celular bloqueado.
           </div>
@@ -1014,14 +1026,14 @@ export default function Tasks() {
         <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <span className="text-base">📞</span>
+              <Phone size={16} />
               <span className="text-sm font-semibold text-gray-700">Contatos hoje</span>
               <span className="text-lg font-black" style={{ color: dailyProgress.color }}>{dailyProgress.contacts}</span>
               <span className="text-xs text-gray-400">/ {dailyProgress.goal}</span>
             </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5">
-                <span className="text-xs text-gray-400">⏱</span>
+                <Timer size={13} className="text-gray-400" />
                 <span className="text-xs font-semibold text-gray-600">{dailyProgress.hoursLabel}</span>
                 {dailyProgress.hoursPct > 0 && (
                   <div className="w-12 h-1.5 bg-gray-200 rounded-full overflow-hidden">
@@ -1040,18 +1052,18 @@ export default function Tasks() {
           </div>
           <div className="flex items-center justify-between mt-1.5">
             {dailyProgress.contacts >= dailyProgress.goal ? (
-              <p className="text-xs text-green-600 font-semibold">🏆 Meta atingida! Excelente trabalho!</p>
+              <p className="text-xs text-green-600 font-semibold">Meta atingida! Excelente trabalho!</p>
             ) : (
               <p className="text-xs text-gray-400">Faltam <strong>{dailyProgress.remaining}</strong> contatos para a meta de hoje</p>
             )}
             <Link href="/meu-progresso" className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 shrink-0 ml-3">
-              📊 Ver meu desempenho
+              Ver meu desempenho
             </Link>
           </div>
         </div>
       )}
 
-      <input type="text" placeholder="🔍 Pesquisar tarefas..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full px-3 py-2.5 border rounded-lg text-sm" />
+      <input type="text" placeholder="Pesquisar tarefas..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full px-3 py-2.5 border rounded-lg text-sm" />
 
       <div className="flex justify-between items-center flex-wrap gap-2">
         <div className="flex gap-2 flex-wrap">
@@ -1061,29 +1073,29 @@ export default function Tasks() {
           </select>
           {isAdmin && (
             <select value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
-              <option value="all">👥 Todos</option>
-              <option value="__none__">🔑 Sem atendente</option>
-              {user?.name && <option value={user.name}>👑 {user.name}</option>}
-              {(attendants as any[]).map((a: any) => <option key={a.id} value={a.name}>👤 {a.name}</option>)}
+              <option value="all">Todos</option>
+              <option value="__none__">Sem atendente</option>
+              {user?.name && <option value={user.name}>{user.name}</option>}
+              {(attendants as any[]).map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
             </select>
           )}
           <button
             onClick={() => setFilterContact(filterContact === "whatsapp" ? "all" : "whatsapp")}
             className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterContact === "whatsapp" ? "bg-green-500 text-white border-green-500" : "bg-white text-gray-700 hover:bg-green-50"}`}
           >
-            📱 WhatsApp
+            WhatsApp
           </button>
           <button
             onClick={() => setFilterContact(filterContact === "email" ? "all" : "email")}
             className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterContact === "email" ? "bg-blue-500 text-white border-blue-500" : "bg-white text-gray-700 hover:bg-blue-50"}`}
           >
-            📧 Email
+            Email
           </button>
           <button
             onClick={() => setFilterReminder(filterReminder === "active" ? "all" : filterReminder === "all" ? "inactive" : "all")}
             className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterReminder === "active" ? "bg-orange-500 text-white border-orange-500" : filterReminder === "inactive" ? "bg-gray-500 text-white border-gray-500" : "bg-white text-gray-700 hover:bg-orange-50"}`}
           >
-            {filterReminder === "inactive" ? "🔕 Sem lembrete" : "🔔 Lembrete"}
+            {filterReminder === "inactive" ? "Sem lembrete" : "Lembrete"}
           </button>
           <select
             value={filterConverted}
@@ -1091,9 +1103,9 @@ export default function Tasks() {
             className={`px-3 py-2 border rounded-lg text-sm font-medium ${filterConverted === "active_clients" ? "bg-emerald-500 text-white border-emerald-500" : filterConverted === "leads" ? "bg-amber-500 text-white border-amber-500" : "bg-white text-gray-700"}`}
             title="Filtrar por situação do cliente"
           >
-            <option value="all">🎯 Todos (leads + clientes)</option>
-            <option value="active_clients">🎉 Só clientes ativos</option>
-            <option value="leads">🌱 Só leads (não convertidos)</option>
+            <option value="all">Todos (leads + clientes)</option>
+            <option value="active_clients">Só clientes ativos</option>
+            <option value="leads">Só leads (não convertidos)</option>
           </select>
           <select
             value={filterTag}
@@ -1101,16 +1113,16 @@ export default function Tasks() {
             className={`px-3 py-2 border rounded-lg text-sm font-medium ${filterTag !== "all" ? "bg-indigo-500 text-white border-indigo-500" : "bg-white text-gray-700"}`}
             title="Filtrar por tag"
           >
-            <option value="all">🏷️ Todas as tags</option>
+            <option value="all">Todas as tags</option>
             {availableTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
           </select>
           {!!hotLeadsData?.count && (
             <button
               onClick={() => setFilterHot(h => !h)}
-              className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterHot ? "bg-red-500 text-white border-red-500" : "bg-white text-red-600 border-red-200 hover:bg-red-50"}`}
+              className={`px-3 py-2 rounded-lg text-sm border font-medium transition flex items-center gap-1.5 ${filterHot ? "bg-red-500 text-white border-red-500" : "bg-white text-red-600 border-red-200 hover:bg-red-50"}`}
               title="Leads que abriram ou clicaram em e-mails recentemente"
             >
-              🔥 {filterHot ? "Só quentes" : `${hotLeadsData.count} quente${hotLeadsData.count === 1 ? "" : "s"}`}
+              <Flame size={14} /> {filterHot ? "Só quentes" : `${hotLeadsData.count} quente${hotLeadsData.count === 1 ? "" : "s"}`}
             </button>
           )}
         </div>
@@ -1119,20 +1131,20 @@ export default function Tasks() {
             <>
               <select value={bulkRepresentative} onChange={(e) => setBulkRepresentative(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
                 <option value="">Atendente...</option>
-                {user?.name && <option value={user.name}>👑 {user.name}</option>}
+                {user?.name && <option value={user.name}>{user.name}</option>}
                 {attendants.map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
               </select>
-              <Button size="sm" onClick={handleBulkAssign} variant="outline">👤 Designar ({selectedTasks.size})</Button>
-              <Button size="sm" variant="outline" onClick={() => setCampaignPickerTaskIds(Array.from(selectedTasks))}>📧 Campanha ({selectedTasks.size})</Button>
-              <Button size="sm" variant="outline" onClick={() => setSequencePickerTaskIds(Array.from(selectedTasks))}>🔁 Sequência ({selectedTasks.size})</Button>
-              <Button size="sm" variant="destructive" onClick={handleBulkDelete}>🗑️ Deletar ({selectedTasks.size})</Button>
+              <Button size="sm" onClick={handleBulkAssign} variant="outline">Designar ({selectedTasks.size})</Button>
+              <Button size="sm" variant="outline" onClick={() => setCampaignPickerTaskIds(Array.from(selectedTasks))}>Campanha ({selectedTasks.size})</Button>
+              <Button size="sm" variant="outline" onClick={() => setSequencePickerTaskIds(Array.from(selectedTasks))}>Sequência ({selectedTasks.size})</Button>
+              <Button size="sm" variant="destructive" onClick={handleBulkDelete}>Deletar ({selectedTasks.size})</Button>
             </>
           )}
           {!isAdmin && canEmailMarketing && selectedTasks.size > 0 && (
-            <Button size="sm" variant="outline" onClick={() => setSequencePickerTaskIds(Array.from(selectedTasks))}>🔁 Sequência ({selectedTasks.size})</Button>
+            <Button size="sm" variant="outline" onClick={() => setSequencePickerTaskIds(Array.from(selectedTasks))}>Sequência ({selectedTasks.size})</Button>
           )}
-          {isAdmin && <Button onClick={() => setShowImport(!showImport)} variant="outline" size="sm">📤 CSV</Button>}
-          <Button onClick={handleOpenNewTask} size="sm">➕ Nova</Button>
+          {isAdmin && <Button onClick={() => setShowImport(!showImport)} variant="outline" size="sm">CSV</Button>}
+          <Button onClick={handleOpenNewTask} size="sm">Nova</Button>
         </div>
       </div>
 
@@ -1146,7 +1158,7 @@ export default function Tasks() {
               <>
                 {importSkipped > 0 && (
                   <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
-                    ⚠️ {importSkipped} registro{importSkipped > 1 ? 's' : ''} ignorado{importSkipped > 1 ? 's' : ''} — já {importSkipped > 1 ? 'foram excluídos' : 'foi excluído'} anteriormente.
+                    {importSkipped} registro{importSkipped > 1 ? 's' : ''} ignorado{importSkipped > 1 ? 's' : ''} — já {importSkipped > 1 ? 'foram excluídos' : 'foi excluído'} anteriormente.
                   </p>
                 )}
                 <div className="bg-white rounded-lg border p-3 max-h-40 overflow-y-auto space-y-1">
@@ -1160,11 +1172,11 @@ export default function Tasks() {
                 </div>
                 <select value={selectedRepresentative} onChange={(e) => setSelectedRepresentative(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
                   <option value="">Selecionar atendente...</option>
-                  {user?.name && <option value={user.name}>👑 {user.name}</option>}
+                  {user?.name && <option value={user.name}>{user.name}</option>}
                   {attendants.map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
                 </select>
                 <Button onClick={handleImportTasks} className="w-full" disabled={importLoading}>
-                  {importLoading ? `Importando...` : `✅ Importar ${importedTasks.length} tarefas`}
+                  {importLoading ? `Importando...` : `Importar ${importedTasks.length} tarefas`}
                 </Button>
               </>
             )}
@@ -1175,7 +1187,7 @@ export default function Tasks() {
       {/* Task Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-2xl w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto mx-4 md:mx-auto">
-          <DialogHeader><DialogTitle className="text-base">{editingTask ? "✏️ Editar Tarefa" : "➕ Nova Tarefa"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-base">{editingTask ? "Editar Tarefa" : "Nova Tarefa"}</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
               <label className="block text-xs font-medium mb-1 text-gray-600">Título *</label>
@@ -1186,25 +1198,25 @@ export default function Tasks() {
               <textarea ref={notesRef} value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Anotações, telefone, email..." className="w-full px-3 py-2 border rounded-lg text-sm" style={{ height: 'clamp(120px, 30vh, 260px)', resize: 'vertical' }} />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1 text-gray-600">📧 E-mail (e-mail marketing)</label>
+              <label className="block text-xs font-medium mb-1 text-gray-600">E-mail (e-mail marketing)</label>
               <input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="cliente@exemplo.com" className="w-full px-3 py-1.5 border rounded-lg text-sm" />
               {editingTask?.email && !editingTask.emailConfirmed && (
                 (formData.email || '').trim().toLowerCase() !== (editingTask.email || '').trim().toLowerCase()
-                  ? <p className="mt-1 text-xs text-green-700">✓ E-mail alterado — será confirmado ao salvar.</p>
+                  ? <p className="mt-1 text-xs text-green-700">E-mail alterado — será confirmado ao salvar.</p>
                   : (
                     <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <span className="text-xs text-amber-700">⚠️ E-mail não confirmado — não será usado em e-mail marketing.</span>
-                      <button type="button" onClick={() => handleConfirmEmail(editingTask.id, editingTask.email)} className="px-2 py-0.5 rounded-md bg-green-600 text-white text-xs font-medium hover:bg-green-700">✓ Confirmar agora</button>
+                      <span className="text-xs text-amber-700">E-mail não confirmado — não será usado em e-mail marketing.</span>
+                      <button type="button" onClick={() => handleConfirmEmail(editingTask.id, editingTask.email)} className="px-2 py-0.5 rounded-md bg-green-600 text-white text-xs font-medium hover:bg-green-700">Confirmar agora</button>
                     </div>
                   )
               )}
               {editingTask?.email && editingTask.emailConfirmed && (
-                <p className="mt-1 text-xs text-green-700">✓ E-mail confirmado — usável em e-mail marketing.</p>
+                <p className="mt-1 text-xs text-green-700">E-mail confirmado — usável em e-mail marketing.</p>
               )}
             </div>
             <div>
               <label className="block text-xs font-medium mb-1 text-gray-600">
-                🏷️ Tags (segmentação de e-mail marketing) {tagCatalog.length > 0 && <span className="text-red-500">*</span>}
+                Tags (segmentação de e-mail marketing) {tagCatalog.length > 0 && <span className="text-red-500">*</span>}
               </label>
               <div className={`rounded-xl border p-2.5 ${tagCatalog.length > 0 && formData.tags.length === 0 ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50/60'}`}>
                 {formData.tags.length > 0 ? (
@@ -1222,7 +1234,7 @@ export default function Tasks() {
                           title="Remover tag"
                           className="flex items-center justify-center w-4 h-4 rounded-full bg-white/15 hover:bg-white/30 text-white leading-none transition-colors"
                         >
-                          ✕
+                          <X size={10} />
                         </button>
                       </span>
                     ))}
@@ -1235,7 +1247,7 @@ export default function Tasks() {
                 <DropdownMenu open={tagPickerOpen} onOpenChange={setTagPickerOpen}>
                   <DropdownMenuTrigger asChild>
                     <Button type="button" variant="outline" size="sm" className="bg-white">
-                      🏷️ Selecionar tags...
+                      Selecionar tags...
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-64 max-h-64 overflow-y-auto">
@@ -1262,41 +1274,41 @@ export default function Tasks() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs font-medium mb-1 text-gray-600">🗓️ Data <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-medium mb-1 text-gray-600">Data <span className="text-red-500">*</span></label>
                 <input type="date" value={formData.reminderDate} onChange={(e) => setFormData({ ...formData, reminderDate: e.target.value })} className={`w-full px-2 py-1.5 border rounded-lg text-sm ${!formData.reminderDate ? 'border-red-300 bg-red-50' : 'border-gray-300'}`} required />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1 text-gray-600">⏰ Hora</label>
+                <label className="block text-xs font-medium mb-1 text-gray-600">Hora</label>
                 <input type="time" value={formData.reminderTime} onChange={(e) => setFormData({ ...formData, reminderTime: e.target.value })} className="w-full px-2 py-1.5 border rounded-lg text-sm" />
               </div>
             </div>
             <div className="flex items-center gap-2 bg-blue-50 px-2 py-1.5 rounded-lg">
               <input type="checkbox" id="reminderEnabled" checked={formData.reminderEnabled} onChange={(e) => setFormData({ ...formData, reminderEnabled: e.target.checked })} className="w-3.5 h-3.5" />
-              <label htmlFor="reminderEnabled" className="text-xs font-medium text-blue-800">🔔 Ativar notificação no navegador</label>
+              <label htmlFor="reminderEnabled" className="text-xs font-medium text-blue-800">Ativar notificação no navegador</label>
             </div>
             <div className="flex gap-2">
               <Button type="button" size="sm" variant="outline" className="flex-1 text-xs" onClick={() => handleQuickReminder('30min')}>
-                ⏱️ Lembrar em 30 min
+                Lembrar em 30 min
               </Button>
               <Button type="button" size="sm" variant="outline" className="flex-1 text-xs" onClick={() => handleQuickReminder('tomorrow')}>
-                📆 Lembrar amanhã
+                Lembrar amanhã
               </Button>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs font-medium mb-1 text-gray-600">Prioridade</label>
                 <select value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })} className="w-full px-2 py-1.5 border rounded-lg text-sm">
-                  <option value="low">🟦 Baixa</option>
-                  <option value="medium">🟨 Média</option>
-                  <option value="high">🟥 Alta</option>
+                  <option value="low">Baixa</option>
+                  <option value="medium">Média</option>
+                  <option value="high">Alta</option>
                 </select>
               </div>
               {isAdmin && (
                 <div>
-                  <label className="block text-xs font-medium mb-1 text-gray-600">👤 Designar para</label>
+                  <label className="block text-xs font-medium mb-1 text-gray-600">Designar para</label>
                   <select value={formData.assignedTo} onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })} className="w-full px-2 py-1.5 border rounded-lg text-sm">
                     <option value="">Nenhum</option>
-                    {user?.name && <option value={user.name}>👑 {user.name}</option>}
+                    {user?.name && <option value={user.name}>{user.name}</option>}
                     {attendants.map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
                   </select>
                 </div>
@@ -1304,7 +1316,7 @@ export default function Tasks() {
             </div>
             <DialogFooter className="flex gap-2 pt-1">
               <Button type="submit" size="sm" className="flex-1 bg-blue-600 hover:bg-blue-700">{editingTask ? "Salvar" : "Criar Tarefa"}</Button>
-              {editingTask && <Button type="button" size="sm" variant="destructive" onClick={() => handleDelete(editingTask.id)}>🗑️</Button>}
+              {editingTask && <Button type="button" size="sm" variant="destructive" onClick={() => handleDelete(editingTask.id)}><Trash2 size={14} /></Button>}
               <Button type="button" size="sm" variant="outline" onClick={() => { setIsModalOpen(false); resetForm(); }}>Cancelar</Button>
             </DialogFooter>
           </form>
@@ -1314,13 +1326,13 @@ export default function Tasks() {
       {/* Reminder Tabs */}
       <div className="flex gap-1 overflow-x-auto pb-1">
         {[
-          { key: "all",       label: "📋 Todas",           cls: "bg-blue-600 border-blue-600" },
-          { key: "overdue",   label: "🚨 Atrasados",        cls: "bg-red-600 border-red-600" },
-          { key: "upcoming",  label: "📅 Agendados",        cls: "bg-green-600 border-green-600" },
-          { key: "today",     label: "🔔 Hoje",             cls: "bg-blue-600 border-blue-600" },
-          { key: "yesterday", label: "📆 Ontem",            cls: "bg-blue-600 border-blue-600" },
-          { key: "lastWeek",  label: "📆 Semana passada",   cls: "bg-blue-600 border-blue-600" },
-          { key: "lastMonth", label: "🗓️ Mês passado",      cls: "bg-blue-600 border-blue-600" },
+          { key: "all",       label: "Todas",           cls: "bg-blue-600 border-blue-600" },
+          { key: "overdue",   label: "Atrasados",        cls: "bg-red-600 border-red-600" },
+          { key: "upcoming",  label: "Agendados",        cls: "bg-green-600 border-green-600" },
+          { key: "today",     label: "Hoje",             cls: "bg-blue-600 border-blue-600" },
+          { key: "yesterday", label: "Ontem",            cls: "bg-blue-600 border-blue-600" },
+          { key: "lastWeek",  label: "Semana passada",   cls: "bg-blue-600 border-blue-600" },
+          { key: "lastMonth", label: "Mês passado",      cls: "bg-blue-600 border-blue-600" },
         ].map(tab => (
           <button
             key={tab.key}
@@ -1342,7 +1354,7 @@ export default function Tasks() {
       ) : filteredTasks.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-gray-500 text-lg">Nenhuma tarefa encontrada</p>
-          <Button onClick={handleOpenNewTask} className="mt-4">➕ Criar primeira tarefa</Button>
+          <Button onClick={handleOpenNewTask} className="mt-4">Criar primeira tarefa</Button>
         </div>
       ) : (
         <div className="space-y-2">
@@ -1361,19 +1373,19 @@ export default function Tasks() {
                   <input type="checkbox" checked={selectedTasks.has(task.id)} onChange={() => handleSelectTask(task.id)} className="w-5 h-5 cursor-pointer" />
                 </label>
                 <div className="flex gap-1 flex-shrink-0">
-                  <span>{statusEmoji[task.status || 'pending']}</span>
-                  <span>{priorityEmoji[task.priority || 'medium']}</span>
-                  {task.convertedAt && <span title="Cliente ativo">🎉</span>}
-                  {task.hotLead && <span title="Lead quente: abriu/clicou em e-mail recentemente">🔥</span>}
+                  <span>{statusIcon[task.status || 'pending']}</span>
+                  <span>{priorityIcon[task.priority || 'medium']}</span>
+                  {task.convertedAt && <span title="Cliente ativo"><PartyPopper size={14} className="text-emerald-600" /></span>}
+                  {task.hotLead && <span title="Lead quente: abriu/clicou em e-mail recentemente"><Flame size={14} className="text-red-500" /></span>}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm leading-snug line-clamp-2 md:truncate">{task.title}</p>
                   <div className="flex gap-2 items-center flex-wrap mt-0.5">
-                    {isAdmin && task.assignedTo && <p className="text-xs text-gray-500">👤 {task.assignedTo}</p>}
-                    {hasPhone(`${task.title} ${task.notes ?? ''}`) && <span className="text-xs text-green-600">📱</span>}
-                    {hasEmail(`${task.title} ${task.notes ?? ''}`) && <span className="text-xs text-blue-600">📧</span>}
-                    {task.convertedAt && <span className="text-xs text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded font-medium">🎉 Cliente ativo</span>}
-                    {task.hotLead && <span className="text-xs text-red-700 bg-red-100 px-1.5 py-0.5 rounded font-medium">🔥 Lead quente</span>}
+                    {isAdmin && task.assignedTo && <p className="text-xs text-gray-500">{task.assignedTo}</p>}
+                    {hasPhone(`${task.title} ${task.notes ?? ''}`) && <Phone size={12} className="text-green-600" />}
+                    {hasEmail(`${task.title} ${task.notes ?? ''}`) && <Mail size={12} className="text-blue-600" />}
+                    {task.convertedAt && <span className="text-xs text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-1"><PartyPopper size={11} /> Cliente ativo</span>}
+                    {task.hotLead && <span className="text-xs text-red-700 bg-red-100 px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-1"><Flame size={11} /> Lead quente</span>}
                     {task.email && !task.emailConfirmed && (
                       <button
                         type="button"
@@ -1381,11 +1393,11 @@ export default function Tasks() {
                         title="E-mail não confirmado — clique para confirmar e liberar para e-mail marketing"
                         className="text-xs text-amber-800 bg-amber-100 hover:bg-amber-200 px-1.5 py-0.5 rounded font-medium transition-colors"
                       >
-                        ✉️ confirmar e-mail
+                        confirmar e-mail
                       </button>
                     )}
                     {task.email && task.emailConfirmed && (
-                      <span title="E-mail confirmado — usável em e-mail marketing" className="text-xs text-green-700 bg-green-100 px-1.5 py-0.5 rounded font-medium">✉️ ✓</span>
+                      <span title="E-mail confirmado — usável em e-mail marketing" className="text-xs text-green-700 bg-green-100 px-1.5 py-0.5 rounded font-medium inline-flex items-center"><MailCheck size={12} /></span>
                     )}
                     {(() => {
                       const eng = engagementData?.[task.id];
@@ -1396,9 +1408,9 @@ export default function Tasks() {
                           className="text-xs text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-medium"
                           title={title}
                         >
-                          {eng.opens > 0 && `👁 ${eng.opens}x`}
+                          {eng.opens > 0 && `${eng.opens}x`}
                           {eng.opens > 0 && eng.clicks > 0 && ' · '}
-                          {eng.clicks > 0 && '🔗 clicou'}
+                          {eng.clicks > 0 && 'clicou'}
                         </span>
                       );
                     })()}
@@ -1433,27 +1445,27 @@ export default function Tasks() {
                         <span className="flex gap-1 flex-wrap">
                           {enr.sequences.map(seq => (
                             <span key={`seq-${seq.enrollmentId}`} className={`text-xs px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-1 ${seqStatusColor[seq.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                              🔁 {seq.name} · {seqStatusLabel[seq.status] ?? seq.status}
+                              {seq.name} · {seqStatusLabel[seq.status] ?? seq.status}
                               {isAdmin && (seq.status === 'active' || seq.status === 'paused') && (
                                 <button
                                   type="button"
                                   title="Remover da sequência"
                                   className="hover:text-red-600"
                                   onClick={(e) => { e.stopPropagation(); handleCancelEnrollment(seq.enrollmentId); }}
-                                >✕</button>
+                                ><X size={10} /></button>
                               )}
                             </span>
                           ))}
                           {enr.campaigns.map(camp => (
                             <span key={`camp-${camp.recipientId}`} className={`text-xs px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-1 ${campStatusColor[camp.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                              📧 {camp.name} · {campStatusLabel[camp.status] ?? camp.status}
+                              {camp.name} · {campStatusLabel[camp.status] ?? camp.status}
                               {isAdmin && (
                                 <button
                                   type="button"
                                   title="Remover da campanha"
                                   className="hover:text-red-600"
                                   onClick={(e) => { e.stopPropagation(); handleRemoveCampaignRecipient(camp.recipientId); }}
-                                >✕</button>
+                                ><X size={10} /></button>
                               )}
                             </span>
                           ))}
@@ -1474,7 +1486,7 @@ export default function Tasks() {
                     const timeStr = `${p(rd.getHours())}:${p(rd.getMinutes())}`;
                     return (
                       <div className={`text-xs px-1.5 py-1 rounded-lg text-center flex-shrink-0 font-medium leading-tight ${isOverdue ? 'bg-red-100 text-red-700' : isToday ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                        <div>{isOverdue ? '🚨' : isToday ? '⚠️' : '🔔'}</div>
+                        <div className="flex justify-center">{isOverdue ? <AlertTriangle size={13} /> : isToday ? <Clock size={13} /> : <Bell size={13} />}</div>
                         <div>{dateStr}</div>
                         <div>{timeStr}</div>
                       </div>
@@ -1484,15 +1496,15 @@ export default function Tasks() {
               </div>
               {expandedTaskId === task.id && (
                 <div className="p-3 bg-gray-50 border-t space-y-2">
-                  {(fullTask?.notes ?? task.notes) && <div className="text-sm bg-yellow-50 p-3 rounded border border-yellow-200"><strong>📝 Anotações:</strong><p className="whitespace-pre-wrap mt-2 leading-relaxed">{fullTask?.notes ?? task.notes}</p></div>}
+                  {(fullTask?.notes ?? task.notes) && <div className="text-sm bg-yellow-50 p-3 rounded border border-yellow-200"><strong>Anotações:</strong><p className="whitespace-pre-wrap mt-2 leading-relaxed">{fullTask?.notes ?? task.notes}</p></div>}
                   <p className="text-xs text-gray-500">
                     Criada: {new Date(task.createdAt).toLocaleDateString("pt-BR")}
-                    {!!task.contactCount && ` · 📞 ${task.contactCount} contato(s)`}
-                    {task.convertedAt && ` · 🎉 Cliente ativo desde ${new Date(task.convertedAt).toLocaleDateString("pt-BR")}`}
+                    {!!task.contactCount && ` · ${task.contactCount} contato(s)`}
+                    {task.convertedAt && ` · Cliente ativo desde ${new Date(task.convertedAt).toLocaleDateString("pt-BR")}`}
                   </p>
                   {aiSuggestion?.taskId === task.id && (
                     <div className="text-sm bg-purple-50 p-2 rounded border border-purple-200">
-                      <strong>🤖 Sugestão de abordagem:</strong>
+                      <strong>Sugestão de abordagem:</strong>
                       <p className="mt-1 text-gray-700">{aiSuggestion.text}</p>
                     </div>
                   )}
@@ -1605,17 +1617,17 @@ export default function Tasks() {
                         <>
                           {phone && (
                             <Button asChild size="sm" variant="outline" className="text-green-700 border-green-300 hover:bg-green-50" onClick={(e) => e.stopPropagation()}>
-                              <a href={waLink(phone)} target="_blank" rel="noopener noreferrer">📱 WhatsApp</a>
+                              <a href={waLink(phone)} target="_blank" rel="noopener noreferrer">WhatsApp</a>
                             </Button>
                           )}
                           {phone && (
                             <Button asChild size="sm" variant="outline" onClick={(e) => e.stopPropagation()}>
-                              <a href={`tel:+${phone.length <= 11 ? `55${phone}` : phone}`}>📞 Ligar</a>
+                              <a href={`tel:+${phone.length <= 11 ? `55${phone}` : phone}`}>Ligar</a>
                             </Button>
                           )}
                           {email && (
                             <Button asChild size="sm" variant="outline" className="text-blue-700 border-blue-300 hover:bg-blue-50" onClick={(e) => e.stopPropagation()}>
-                              <a href={`mailto:${email}`}>📧 E-mail</a>
+                              <a href={`mailto:${email}`}>E-mail</a>
                             </Button>
                           )}
                         </>
@@ -1628,18 +1640,18 @@ export default function Tasks() {
                       onClick={(e) => handleToggleConverted(task, e)}
                       disabled={toggleConvertedMutation.isPending}
                     >
-                      {task.convertedAt ? "🎉 Cliente ativo — desmarcar" : "🎉 Marcar como Cliente Ativo"}
+                      {task.convertedAt ? "Cliente ativo — desmarcar" : "Marcar como Cliente Ativo"}
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => handleEdit(task)}>✏️ Editar</Button>
-                    <Button size="sm" variant="destructive" onClick={() => handleDelete(task.id)}>🗑️ Deletar</Button>
+                    <Button size="sm" variant="outline" onClick={() => handleEdit(task)}>Editar</Button>
+                    <Button size="sm" variant="destructive" onClick={() => handleDelete(task.id)}>Deletar</Button>
                     {isAdmin && task.email && (
-                      <Button size="sm" variant="outline" onClick={() => setCampaignPickerTaskIds([task.id])}>📧 Campanha</Button>
+                      <Button size="sm" variant="outline" onClick={() => setCampaignPickerTaskIds([task.id])}>Campanha</Button>
                     )}
                     {canEmailMarketing && task.email && (
-                      <Button size="sm" variant="outline" onClick={() => setSequencePickerTaskIds([task.id])}>🔁 Sequência</Button>
+                      <Button size="sm" variant="outline" onClick={() => setSequencePickerTaskIds([task.id])}>Sequência</Button>
                     )}
                     <Button size="sm" variant="outline" className="text-purple-700 border-purple-300 hover:bg-purple-50" onClick={() => handleAiSuggest(task)} disabled={loadingSuggestion}>
-                      {loadingSuggestion && aiSuggestion === null ? "⏳ Gerando..." : "🤖 Sugestão IA"}
+                      {loadingSuggestion && aiSuggestion === null ? "Gerando..." : "Sugestão IA"}
                     </Button>
                   </div>
                 </div>
@@ -1654,7 +1666,7 @@ export default function Tasks() {
         <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
             <div className="text-center mb-4">
-              <div className="text-4xl mb-2">🗑️</div>
+              <div className="flex justify-center mb-2"><Trash2 size={36} className="text-red-500" /></div>
               <h3 className="text-base font-bold text-gray-800">Confirmar exclusão</h3>
               <p className="text-sm text-gray-500 mt-1">
                 {bulkDeleteConfirm
@@ -1701,7 +1713,7 @@ export default function Tasks() {
         <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
             <div className="text-center mb-5">
-              <div className="text-4xl mb-2">🎉</div>
+              <div className="flex justify-center mb-2"><PartyPopper size={36} className="text-emerald-600" /></div>
               <h3 className="text-base font-bold text-gray-800">Marcar como Cliente Ativo</h3>
               <p className="text-sm text-gray-500 mt-1">{convertModalTask.title}</p>
               <p className="text-xs text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2 mt-3">
@@ -1739,7 +1751,7 @@ export default function Tasks() {
             <div className="px-6 pt-4 pb-6 space-y-5">
               {/* Header */}
               <div className="text-center">
-                <div className="text-4xl mb-2">📋</div>
+                <div className="flex justify-center mb-2"><ClipboardList size={36} className="text-blue-600" /></div>
                 <h3 className="text-lg font-bold text-gray-800">Anotou as informações importantes?</h3>
                 <p className="text-xs text-gray-400 mt-1">Contato recorrente — cada conversa deve ser documentada.</p>
               </div>
@@ -1748,21 +1760,21 @@ export default function Tasks() {
               <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 space-y-3">
                 <p className="text-[11px] font-semibold text-blue-600 uppercase tracking-wider">Lembre de registrar:</p>
                 <div className="flex items-start gap-3">
-                  <span className="text-xl mt-0.5">🧂</span>
+                  <Package size={20} className="text-blue-500 mt-0.5" />
                   <div>
                     <p className="text-sm font-semibold text-gray-800">Tipo de sal</p>
                     <p className="text-xs text-gray-500">Refinado, grosso, marinho, industrial…</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="text-xl mt-0.5">📦</span>
+                  <Boxes size={20} className="text-blue-500 mt-0.5" />
                   <div>
                     <p className="text-sm font-semibold text-gray-800">Volume e frequência</p>
                     <p className="text-xs text-gray-500">Ex.: 1.200 sacos/mês de 25kg, pedido trimestral / mensal…</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="text-xl mt-0.5">🏷️</span>
+                  <Tag size={20} className="text-blue-500 mt-0.5" />
                   <div>
                     <p className="text-sm font-semibold text-gray-800">Marca atual</p>
                     <p className="text-xs text-gray-500">Qual fornecedor está usando hoje?</p>
@@ -1797,7 +1809,7 @@ export default function Tasks() {
       {/* Add to campaign modal */}
       <Dialog open={campaignPickerTaskIds !== null} onOpenChange={(open) => { if (!open) setCampaignPickerTaskIds(null); }}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>📧 Adicionar à campanha de e-mail</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Adicionar à campanha de e-mail</DialogTitle></DialogHeader>
           <div className="space-y-2">
             <p className="text-sm text-gray-500">
               {campaignPickerTaskIds?.length === 1 ? "1 tarefa selecionada" : `${campaignPickerTaskIds?.length ?? 0} tarefas selecionadas`}. Apenas tarefas com e-mail cadastrado serão adicionadas.
@@ -1882,7 +1894,7 @@ export default function Tasks() {
               Cancelar
             </Button>
             <Button type="button" className="flex-1" onClick={confirmEmailNow} disabled={confirmEmailBusy}>
-              {confirmEmailBusy ? "Confirmando..." : confirmEmailSequenceId !== null ? "✓ Confirmar e inscrever" : "✓ Confirmar"}
+              {confirmEmailBusy ? "Confirmando..." : confirmEmailSequenceId !== null ? "Confirmar e inscrever" : "Confirmar"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1891,7 +1903,7 @@ export default function Tasks() {
       {/* Enroll in sequence modal */}
       <Dialog open={sequencePickerTaskIds !== null} onOpenChange={(open) => { if (!open) { setSequencePickerTaskIds(null); setSelectedSequenceId(null); } }}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>🔁 Inscrever em sequência de e-mail</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Inscrever em sequência de e-mail</DialogTitle></DialogHeader>
           <div className="space-y-2">
             <p className="text-sm text-gray-500">
               {sequencePickerTaskIds?.length === 1 ? "1 tarefa selecionada" : `${sequencePickerTaskIds?.length ?? 0} tarefas selecionadas`}. Apenas tarefas com e-mail cadastrado serão inscritas.
@@ -1921,7 +1933,7 @@ export default function Tasks() {
               onClick={handleEnrollInSequence}
               disabled={enrollInSequenceMutation.isPending || selectedSequenceId === null}
             >
-              {enrollInSequenceMutation.isPending ? "Inscrevendo..." : "✅ Inscrever"}
+              {enrollInSequenceMutation.isPending ? "Inscrevendo..." : "Inscrever"}
             </Button>
             <Button type="button" variant="outline" className="flex-1" onClick={() => { setSequencePickerTaskIds(null); setSelectedSequenceId(null); }}>Cancelar</Button>
           </DialogFooter>

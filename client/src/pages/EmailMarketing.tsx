@@ -31,7 +31,7 @@ import {
   Mail, Plus, Send, Trash2, Eye, Pencil, Workflow, Zap, Tag, BarChart3, Users, Pause, Play, X, Download,
   LayoutTemplate, MailX, Filter, Sparkles, Inbox, Megaphone, Paperclip, FileText, Contact, Search,
   CheckCircle, XCircle, AlertTriangle, RotateCcw, Gauge, TrendingUp, Upload, UserPlus, FolderOpen, FolderPlus, ArrowRightLeft,
-  Blocks, SplitSquareVertical, ShieldCheck,
+  Blocks, SplitSquareVertical, ShieldCheck, ChevronUp, ChevronDown, MousePointerClick, SkipForward, Flame,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -62,10 +62,10 @@ const SEND_CONDITION_LABELS: Record<string, string> = {
 };
 
 const SEND_CONDITION_BADGES: Record<string, string> = {
-  if_opened: "🔀 se abriu",
-  if_not_opened: "🔀 se não abriu",
-  if_clicked: "🔀 se clicou",
-  if_not_clicked: "🔀 se não clicou",
+  if_opened: "se abriu",
+  if_not_opened: "se não abriu",
+  if_clicked: "se clicou",
+  if_not_clicked: "se não clicou",
 };
 
 const SEND_CONDITION_HINT = "Para ramificar (abriu vs. não abriu), crie dois passos com o MESMO atraso (delay) — um com 'Se abriu' e outro com 'Se NÃO abriu'. O sistema envia o que casa e pula o outro.";
@@ -180,8 +180,8 @@ function describeTrigger(rule: { triggerType: string; triggerConfig?: any; requi
   } else {
     parts.push(base);
   }
-  if (rule.requiredTags?.length) parts.push(`✅ tem: ${rule.requiredTags.join(', ')}`);
-  if (rule.excludedTags?.length) parts.push(`🚫 sem: ${rule.excludedTags.join(', ')}`);
+  if (rule.requiredTags?.length) parts.push(`tem: ${rule.requiredTags.join(', ')}`);
+  if (rule.excludedTags?.length) parts.push(`sem: ${rule.excludedTags.join(', ')}`);
   return parts.join(' · ');
 }
 
@@ -398,7 +398,7 @@ function AiEmailComposer({ html, onApply }: {
         onClick={() => setOpen(o => !o)}
         className="flex items-center gap-1.5 text-sm font-semibold text-violet-700"
       >
-        <Sparkles size={15} /> Assistente de IA {open ? "▲" : "▼"}
+        <Sparkles size={15} /> Assistente de IA {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
       </button>
       {open && (
         <div className="mt-2.5 space-y-2.5">
@@ -417,7 +417,7 @@ function AiEmailComposer({ html, onApply }: {
             </Select>
             <Button type="button" size="sm" onClick={() => run("full")} disabled={gen.isPending}
               className="bg-violet-600 hover:bg-violet-700 text-white">
-              {gen.isPending ? "⏳ Gerando..." : "✨ Gerar e-mail"}
+              {gen.isPending ? "Gerando..." : "Gerar e-mail"}
             </Button>
             <Button type="button" size="sm" variant="outline" onClick={() => run("subjects")} disabled={gen.isPending}>
               Só assuntos
@@ -1620,7 +1620,7 @@ function TemplatesTab() {
                         onClick={() => toggleCategory(c.id)}
                         className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${editing.categoryIds.includes(c.id) ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:bg-blue-50'}`}
                       >
-                        {editing.categoryIds.includes(c.id) ? '✓ ' : ''}{c.name}
+                        {c.name}
                       </button>
                     ))}
                   </div>
@@ -1857,7 +1857,7 @@ function SequencesTab() {
                           <button className="text-left text-slate-700 hover:text-blue-900 hover:underline" onClick={() => setDetailSequenceId(s.id)}>
                             {s.name}
                           </button>
-                          {(s as any).repeat && <Badge variant="outline" className="text-xs bg-violet-100 text-violet-700 border-violet-200">🔁 mensal</Badge>}
+                          {(s as any).repeat && <Badge variant="outline" className="text-xs bg-violet-100 text-violet-700 border-violet-200">mensal</Badge>}
                         </div>
                         {s.description && <p className="text-xs text-gray-500">{s.description}</p>}
                       </td>
@@ -1919,7 +1919,7 @@ function SequencesTab() {
             </div>
             <div className="flex items-center gap-2">
               <Switch checked={form.repeat} onCheckedChange={(checked) => setForm(f => ({ ...f, repeat: checked }))} />
-              <Label className="!mb-0">🔁 Repetir continuamente (loop)</Label>
+              <Label className="!mb-0">Repetir continuamente (loop)</Label>
             </div>
             {form.repeat && (
               <div>
@@ -1962,7 +1962,7 @@ function SequencesTab() {
             </div>
             <div className="flex items-center gap-2">
               <Switch checked={editingSeq?.repeat ?? false} onCheckedChange={checked => setEditingSeq(s => s && ({ ...s, repeat: checked }))} />
-              <Label className="!mb-0">🔁 Repetir continuamente (loop)</Label>
+              <Label className="!mb-0">Repetir continuamente (loop)</Label>
             </div>
             {editingSeq?.repeat && (
               <div>
@@ -2142,7 +2142,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                                 <Badge variant="outline" className="text-xs bg-amber-100 text-amber-700 border-amber-200">{SEND_CONDITION_BADGES[(step as any).sendCondition] ?? (step as any).sendCondition}</Badge>
                               )}
                               {(step as any).retryIfNotOpened && (
-                                <Badge variant="outline" className="text-xs bg-orange-100 text-orange-700 border-orange-200">🔄 reenvio {(step as any).retryDelayHours}h (max {(step as any).maxRetries}x)</Badge>
+                                <Badge variant="outline" className="text-xs bg-orange-100 text-orange-700 border-orange-200 gap-1"><RotateCcw size={11} /> reenvio {(step as any).retryDelayHours}h (max {(step as any).maxRetries}x)</Badge>
                               )}
                             </div>
                             <p className="text-xs text-gray-500 mt-1 line-clamp-2">
@@ -2150,10 +2150,10 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                             </p>
                             {stepStats && (
                               <div className="flex gap-1.5 mt-2 flex-wrap">
-                                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">📤 {stepStats.sent} enviados</Badge>
-                                <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">👁 {stepStats.opened} abertos</Badge>
-                                <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200">🔗 {stepStats.clicked} clicados</Badge>
-                                <Badge variant="outline" className="text-xs bg-slate-100 text-slate-500 border-slate-200">⏭ {stepStats.skipped} pulados</Badge>
+                                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 gap-1"><Send size={11} /> {stepStats.sent} enviados</Badge>
+                                <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200 gap-1"><Eye size={11} /> {stepStats.opened} abertos</Badge>
+                                <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200 gap-1"><MousePointerClick size={11} /> {stepStats.clicked} clicados</Badge>
+                                <Badge variant="outline" className="text-xs bg-slate-100 text-slate-500 border-slate-200 gap-1"><SkipForward size={11} /> {stepStats.skipped} pulados</Badge>
                               </div>
                             )}
                           </div>
@@ -2443,8 +2443,8 @@ function EnrollLeadsDialog({ sequenceId, open, onClose, onEnrolled }: { sequence
     try {
       const res = await enrollMutation.mutateAsync({ sequenceId, taskIds: Array.from(selectedIds) });
       const skipped = res.skippedNoEmail + res.skippedDuplicateOrSuppressed + (res.skippedUnconfirmed ?? 0);
-      toast.success(`✅ ${res.enrolled} inscrito(s) na sequência` + (skipped > 0 ? ` (${skipped} ignorado(s): sem e-mail, não-confirmado, duplicado ou descadastrado)` : ''));
-      if (res.skippedUnconfirmed > 0) toast.warning(`✉️ ${res.skippedUnconfirmed} lead(s) ignorado(s) por e-mail não confirmado.`, { duration: 9000 });
+      toast.success(`${res.enrolled} inscrito(s) na sequência` + (skipped > 0 ? ` (${skipped} ignorado(s): sem e-mail, não-confirmado, duplicado ou descadastrado)` : ''));
+      if (res.skippedUnconfirmed > 0) toast.warning(`${res.skippedUnconfirmed} lead(s) ignorado(s) por e-mail não confirmado.`, { duration: 9000 });
       setSelectedIds(new Set());
       onEnrolled();
       onClose();
@@ -4469,7 +4469,7 @@ function ExportSection() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast.success(`✅ CSV gerado com ${rows.length} lead(s)`);
+      toast.success(`CSV gerado com ${rows.length} lead(s)`);
     } catch (e: any) {
       toast.error(e?.message ?? "Erro ao gerar CSV");
     }
@@ -4486,7 +4486,7 @@ function ExportSection() {
         <CardContent className="space-y-3">
           <p className="text-sm text-slate-500">
             Filtre os leads e exporte para CSV (Excel). Útil para campanhas externas,
-            limpeza de base (quem não abriu / não respondeu) e priorização de telefonemas (quem está quente 🔥).
+            limpeza de base (quem não abriu / não respondeu) e priorização de telefonemas (quem está quente).
           </p>
 
           {tags && tags.length > 0 && (
@@ -4553,7 +4553,7 @@ function ExportSection() {
             </div>
             <div className="flex items-center gap-2 pt-6">
               <Checkbox checked={filters.hotOnly} onCheckedChange={(checked) => setFilters(f => ({ ...f, hotOnly: checked === true }))} />
-              <Label className="!mb-0">🔥 Só quentes</Label>
+              <Label className="!mb-0 flex items-center gap-1"><Flame size={13} className="text-orange-500" /> Só quentes</Label>
             </div>
           </div>
 
@@ -5170,13 +5170,13 @@ function CampaignStatsRow({ campaignId, name }: { campaignId: number; name: stri
           <div className="space-y-3 mt-3">
             {/* Mini-funil */}
             <div className="flex gap-1.5 flex-wrap">
-              <Badge variant="outline" className="text-xs bg-slate-100 text-slate-600 border-slate-200">👥 {stats.recipients} destinatários</Badge>
-              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">📤 {stats.sent} enviados</Badge>
-              <Badge variant="outline" className="text-xs bg-cyan-50 text-cyan-700 border-cyan-200">📬 {stats.delivered} entregues</Badge>
-              <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">👁 {stats.opened} abriram ({pct(stats.opened, stats.delivered || stats.sent)})</Badge>
-              <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200">🔗 {stats.clicked} clicaram ({pct(stats.clicked, stats.delivered || stats.sent)})</Badge>
-              {stats.bounced > 0 && <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">⚠️ {stats.bounced} bounce</Badge>}
-              {stats.complained > 0 && <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">🚫 {stats.complained} reclamações</Badge>}
+              <Badge variant="outline" className="text-xs bg-slate-100 text-slate-600 border-slate-200 gap-1"><Users size={11} /> {stats.recipients} destinatários</Badge>
+              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 gap-1"><Send size={11} /> {stats.sent} enviados</Badge>
+              <Badge variant="outline" className="text-xs bg-cyan-50 text-cyan-700 border-cyan-200 gap-1"><Inbox size={11} /> {stats.delivered} entregues</Badge>
+              <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200 gap-1"><Eye size={11} /> {stats.opened} abriram ({pct(stats.opened, stats.delivered || stats.sent)})</Badge>
+              <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200 gap-1"><MousePointerClick size={11} /> {stats.clicked} clicaram ({pct(stats.clicked, stats.delivered || stats.sent)})</Badge>
+              {stats.bounced > 0 && <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200 gap-1"><AlertTriangle size={11} /> {stats.bounced} bounce</Badge>}
+              {stats.complained > 0 && <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200 gap-1"><XCircle size={11} /> {stats.complained} reclamações</Badge>}
             </div>
 
             {/* Filtros de destinatários */}
