@@ -199,98 +199,146 @@ function describeAction(rule: { actionType: string; actionConfig?: any; cancelOt
   return ACTION_TYPE_LABELS[rule.actionType] ?? rule.actionType;
 }
 
+// Navegação em 4 grupos (antes eram 8 abas planas). O grupo ativo é derivado
+// da sub-aba ativa; grupos com uma única sub-aba não mostram a linha de pills.
+const MKT_GROUPS = [
+  {
+    id: 'enviar', label: 'Enviar',
+    tabs: [{ id: 'campaigns', label: 'Campanhas', icon: Send }],
+  },
+  {
+    id: 'automatizar', label: 'Automatizar',
+    tabs: [
+      { id: 'sequences', label: 'Sequências', icon: Workflow },
+      { id: 'automations', label: 'Automações', icon: Zap },
+      { id: 'templates', label: 'Templates', icon: LayoutTemplate },
+    ],
+  },
+  {
+    id: 'audiencia', label: 'Audiência',
+    tabs: [
+      { id: 'contacts', label: 'Contatos', icon: Contact },
+      { id: 'tags', label: 'Tags', icon: Tag },
+    ],
+  },
+  {
+    id: 'resultados', label: 'Resultados',
+    tabs: [
+      { id: 'stats', label: 'Estatísticas', icon: BarChart3 },
+      { id: 'usage', label: 'Consumo', icon: Gauge },
+    ],
+  },
+] as const;
+
 export default function EmailMarketing() {
   const { user, loading: authLoading } = useAuth();
+  const isStaff = !!user && (user.role === "admin" || user.role === "manager");
+  const [activeTab, setActiveTab] = useState<string>('campaigns');
+  // Cota do dia sempre visível — é a restrição operacional nº 1 do módulo.
+  const { data: usage } = trpc.emailMarketing.usageStats.useQuery(undefined, {
+    enabled: isStaff,
+    staleTime: 60_000,
+  });
 
   if (authLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand" />
       </div>
     );
   }
 
-  if (!user || (user.role !== "admin" && user.role !== "manager")) {
+  if (!isStaff) {
     return <div className="p-4">Acesso negado</div>;
   }
 
-  const TAB_TRIGGER_CLASS =
-    "gap-1.5 rounded-xl px-2.5 py-2 sm:px-3 text-slate-500 data-[state=active]:bg-blue-900 data-[state=active]:text-white data-[state=active]:shadow-md";
+  const activeGroup = MKT_GROUPS.find(g => g.tabs.some(t => t.id === activeTab)) ?? MKT_GROUPS[0];
+  const totals = usage?.totals;
+  const quotaPct = totals && totals.dailyLimit > 0
+    ? Math.min(100, Math.round((totals.sentToday / totals.dailyLimit) * 100))
+    : 0;
 
   return (
-    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-950 via-blue-900 to-blue-800 px-5 py-5 md:px-7 md:py-6 text-white shadow-lg">
-        <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-white/10 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-16 left-1/4 h-48 w-48 rounded-full bg-sky-400/10 blur-3xl" />
-        <div className="relative flex items-center gap-3 md:gap-4">
-          <div className="flex h-11 w-11 md:h-14 md:w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/20">
-            <Mail size={26} />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg md:text-2xl font-bold tracking-tight">E-mail Marketing</h1>
-              <Sparkles size={16} className="text-sky-300 hidden sm:block" />
-            </div>
-            <p className="text-xs md:text-sm text-blue-200/80 mt-0.5">
-              Campanhas, sequências automáticas e automações para nutrir e converter leads
-            </p>
-          </div>
+    <div className="p-4 md:p-6 space-y-4">
+      {/* Barra de título com a cota do dia */}
+      <div className="bg-white border border-border rounded-xl px-4 md:px-5 py-3.5 flex items-center gap-3 flex-wrap">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-soft text-brand flex-shrink-0">
+          <Mail size={18} />
         </div>
+        <div className="min-w-0 flex-1">
+          <h1 className="font-cond text-xl md:text-2xl font-bold tracking-tight text-ink leading-tight">E-mail Marketing</h1>
+          <p className="text-xs text-muted-foreground hidden sm:block">
+            Campanhas, sequências e automações para nutrir e converter leads
+          </p>
+        </div>
+        {totals && totals.dailyLimit > 0 && (
+          <div
+            className="flex items-center gap-2.5 text-xs text-muted-foreground"
+            title="Envios de hoje somando todas as contas da cascata (Resend + Brevo)"
+          >
+            <span className="hidden sm:inline">Cota de hoje</span>
+            <span className="block w-24 h-1.5 rounded-full bg-secondary overflow-hidden">
+              <span
+                className={`block h-full rounded-full transition-all ${quotaPct >= 90 ? 'bg-destructive' : 'bg-sand'}`}
+                style={{ width: `${quotaPct}%` }}
+              />
+            </span>
+            <span className="font-semibold text-ink tabular-nums">{totals.sentToday}/{totals.dailyLimit}</span>
+          </div>
+        )}
       </div>
 
-      <Tabs defaultValue="campaigns">
-        <TabsList className="flex-nowrap overflow-x-auto scrollbar-hide justify-start gap-1 rounded-2xl bg-slate-100 p-1.5">
-          <TabsTrigger value="campaigns" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <Send size={20} className="sm:w-[14px] sm:h-[14px]" /> <span className="hidden sm:inline">Campanhas</span>
-          </TabsTrigger>
-          <TabsTrigger value="sequences" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <Workflow size={20} className="sm:w-[14px] sm:h-[14px]" /> <span className="hidden sm:inline">Sequências</span>
-          </TabsTrigger>
-          <TabsTrigger value="automations" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <Zap size={20} className="sm:w-[14px] sm:h-[14px]" /> <span className="hidden sm:inline">Automações</span>
-          </TabsTrigger>
-          <TabsTrigger value="templates" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <LayoutTemplate size={20} className="sm:w-[14px] sm:h-[14px]" /> <span className="hidden sm:inline">Templates</span>
-          </TabsTrigger>
-          <TabsTrigger value="tags" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <Tag size={20} className="sm:w-[14px] sm:h-[14px]" /> <span className="hidden sm:inline">Tags</span>
-          </TabsTrigger>
-          <TabsTrigger value="contacts" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <Contact size={20} className="sm:w-[14px] sm:h-[14px]" /> <span className="hidden sm:inline">Contatos</span>
-          </TabsTrigger>
-          <TabsTrigger value="usage" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <Gauge size={20} className="sm:w-[14px] sm:h-[14px]" /> <span className="hidden sm:inline">Consumo</span>
-          </TabsTrigger>
-          <TabsTrigger value="stats" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <BarChart3 size={20} className="sm:w-[14px] sm:h-[14px]" /> <span className="hidden sm:inline">Estatísticas</span>
-          </TabsTrigger>
-        </TabsList>
+      {/* Grupos */}
+      <div className="border-b border-border flex items-end gap-1 overflow-x-auto scrollbar-hide">
+        {MKT_GROUPS.map(g => {
+          const on = g.id === activeGroup.id;
+          return (
+            <button
+              key={g.id}
+              onClick={() => setActiveTab(g.tabs[0].id)}
+              className={`px-3.5 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors ${
+                on ? 'border-brand text-brand' : 'border-transparent text-muted-foreground hover:text-ink'
+              }`}
+            >
+              {g.label}
+            </button>
+          );
+        })}
+      </div>
 
-        <TabsContent value="campaigns" className="mt-4">
-          <CampaignsTab />
-        </TabsContent>
-        <TabsContent value="sequences" className="mt-4">
-          <SequencesTab />
-        </TabsContent>
-        <TabsContent value="automations" className="mt-4">
-          <AutomationsTab />
-        </TabsContent>
-        <TabsContent value="templates" className="mt-4">
-          <TemplatesTab />
-        </TabsContent>
-        <TabsContent value="tags" className="mt-4">
-          <TagsTab />
-        </TabsContent>
-        <TabsContent value="contacts" className="mt-4">
-          <ContactsTab />
-        </TabsContent>
-        <TabsContent value="usage" className="mt-4">
-          <UsageTab />
-        </TabsContent>
-        <TabsContent value="stats" className="mt-4">
-          <StatsTab />
-        </TabsContent>
-      </Tabs>
+      {/* Sub-abas do grupo ativo */}
+      {activeGroup.tabs.length > 1 && (
+        <div className="flex gap-1.5 flex-wrap">
+          {activeGroup.tabs.map(t => {
+            const Icon = t.icon;
+            const on = t.id === activeTab;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id)}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${
+                  on
+                    ? 'bg-brand text-white shadow-sm'
+                    : 'bg-white border border-border text-muted-foreground hover:text-ink hover:bg-secondary'
+                }`}
+              >
+                <Icon size={14} /> {t.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div>
+        {activeTab === 'campaigns' && <CampaignsTab />}
+        {activeTab === 'sequences' && <SequencesTab />}
+        {activeTab === 'automations' && <AutomationsTab />}
+        {activeTab === 'templates' && <TemplatesTab />}
+        {activeTab === 'tags' && <TagsTab />}
+        {activeTab === 'contacts' && <ContactsTab />}
+        {activeTab === 'usage' && <UsageTab />}
+        {activeTab === 'stats' && <StatsTab />}
+      </div>
     </div>
   );
 }

@@ -66,7 +66,7 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 to-blue-700">
+      <div className="min-h-screen flex items-center justify-center bg-brand-deep">
         <div className="text-white text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4" />
           <p>Carregando...</p>
@@ -76,7 +76,7 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-dvh flex items-start pt-[10vh] justify-center bg-gradient-to-br from-blue-900 to-blue-700 p-4 overflow-y-auto">
+    <div className="min-h-dvh flex items-start pt-[10vh] justify-center bg-brand-deep p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
         <div className="text-center mb-8">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 378" style={{ height: "125px", width: "auto" }} className="mx-auto mb-4" aria-label="Sal Vita">
@@ -88,7 +88,7 @@ export default function Home() {
             <text x="250" y="196" textAnchor="middle" fontFamily="Pacifico, cursive" fontSize="90" fill="#0C3680">Sal Vita</text>
             <ellipse cx="250" cy="187" rx="228" ry="164" fill="none" stroke="#0C3680" strokeWidth="15"/>
           </svg>
-          <h1 className="text-2xl font-bold text-blue-900">Sistema de Vendas</h1>
+          <h1 className="font-cond text-3xl font-bold text-brand tracking-tight">Lembretes e Vendas</h1>
           <p className="text-gray-500 text-sm mt-1">Faça login para continuar</p>
         </div>
 
@@ -123,7 +123,7 @@ export default function Home() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-3 bg-blue-700 hover:bg-blue-800 text-white font-semibold rounded-lg transition disabled:opacity-50"
+            className="w-full py-3 bg-brand hover:bg-brand-deep text-white font-semibold rounded-lg transition disabled:opacity-50"
           >
             {submitting ? 'Entrando...' : 'Entrar'}
           </button>
@@ -187,7 +187,7 @@ export default function Home() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar senha</label>
                 <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required minLength={6} className="w-full px-3 py-3 border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="Repita a senha" />
               </div>
-              <button type="submit" disabled={resetting} className="w-full py-3 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold transition disabled:opacity-50">
+              <button type="submit" disabled={resetting} className="w-full py-3 bg-brand hover:bg-brand-deep text-white rounded-lg text-sm font-semibold transition disabled:opacity-50">
                 {resetting ? 'Salvando...' : 'Salvar nova senha'}
               </button>
             </form>
@@ -199,10 +199,9 @@ export default function Home() {
       {resetSuccess && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center pt-[10vh] overflow-y-auto p-4">
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm max-h-[85vh] overflow-y-auto text-center space-y-4">
-            <div className="text-4xl">🎉</div>
             <h2 className="font-bold text-lg text-green-700">Senha redefinida!</h2>
             <p className="text-sm text-gray-600">Sua nova senha está pronta. Faça login abaixo.</p>
-            <button onClick={() => setResetSuccess(false)} className="w-full py-3 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold">
+            <button onClick={() => setResetSuccess(false)} className="w-full py-3 bg-brand hover:bg-brand-deep text-white rounded-lg text-sm font-semibold">
               Fazer login
             </button>
           </div>
@@ -236,7 +235,6 @@ export default function Home() {
             {recoveryMode === 'email' ? (
               emailSent ? (
                 <div className="space-y-3 text-center">
-                  <div className="text-3xl">📧</div>
                   <p className="text-sm text-green-700 font-medium">E-mail de recuperação enviado!</p>
                   <p className="text-sm text-gray-500">Verifique sua caixa de entrada (e spam) para o link de redefinição. O link expira em 30 minutos.</p>
                   <button onClick={() => { setShowRecovery(false); setEmailSent(false); }} className="w-full py-3 bg-blue-700 text-white rounded-lg text-sm font-medium hover:bg-blue-800">
@@ -264,7 +262,7 @@ export default function Home() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
                     <input type="email" value={recoveryEmail} onChange={e => setRecoveryEmail(e.target.value)} required className="w-full px-3 py-3 border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="seu@email.com" />
                   </div>
-                  <button type="submit" disabled={recovering} className="w-full py-3 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold transition disabled:opacity-50">
+                  <button type="submit" disabled={recovering} className="w-full py-3 bg-brand hover:bg-brand-deep text-white rounded-lg text-sm font-semibold transition disabled:opacity-50">
                     {recovering ? 'Enviando...' : 'Enviar link de recuperação'}
                   </button>
                 </form>
