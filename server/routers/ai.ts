@@ -4,7 +4,7 @@ import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { chatMessages, tasks, clients, sellers, workSessions, knowledgeDocuments } from '../db/schema';
 import { eq, desc, or, gte, and, ilike } from 'drizzle-orm';
-import { spMidnight, spEndOfDay } from '../lib/tz';
+import { spMidnight, spEndOfDay, spDateStr } from '../lib/tz';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -734,9 +734,9 @@ async function executeTool(name: string, args: any, callerUserId?: number): Prom
         lembretes_vencidos: overdue.length,
         dias_necessarios: daysNeeded,
         por_dia: perDay,
-        primeiro_dia: firstDay.toLocaleDateString('pt-BR'),
+        primeiro_dia: firstDay.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
         aviso: `⚠️ SIMULAÇÃO — nenhuma alteração foi feita. Para executar, confirme com "pode reagendar" e o sistema chamará com dry_run=false.`,
-        exemplos: overdue.slice(0, 5).map(t => ({ cliente: t.title.slice(0, 50), venceu: t.reminderDate ? new Date(t.reminderDate).toLocaleDateString('pt-BR') : '?' })),
+        exemplos: overdue.slice(0, 5).map(t => ({ cliente: t.title.slice(0, 50), venceu: t.reminderDate ? new Date(t.reminderDate).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '?' })),
       };
     }
 
@@ -750,8 +750,10 @@ async function executeTool(name: string, args: any, callerUserId?: number): Prom
         currentDay = nextBusinessDay(currentDay);
         countToday = 0;
       }
-      const reminderDate = new Date(currentDay);
-      reminderDate.setHours(startHour, 0, 0, 0);
+      // Monta o horário direto no fuso de São Paulo (offset -03:00 fixo, ver tz.ts) —
+      // setHours() usaria o fuso do processo (UTC na Vercel), agendando 3h adiantado.
+      const startHourInt = Math.trunc(startHour);
+      const reminderDate = new Date(`${spDateStr(currentDay)}T${String(startHourInt).padStart(2, '0')}:00:00-03:00`);
       const offsetMins = countToday * minutesBetween;
       const final = addMinutes(reminderDate, offsetMins);
 
@@ -768,7 +770,7 @@ async function executeTool(name: string, args: any, callerUserId?: number): Prom
       rescheduled: updated,
       attendant: seller.name,
       days_used: daysNeeded,
-      first_day: firstDay.toLocaleDateString('pt-BR'),
+      first_day: firstDay.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
       message: `✅ ${updated} lembretes de ${seller.name} redistribuídos em ${daysNeeded} dia(s) útil(eis) — ${perDay} por dia a partir de amanhã.`,
     };
   }
@@ -802,7 +804,7 @@ async function buildUserContext(userId: number, role: string): Promise<string> {
   const highPriority = userTasks.filter(t => t.priority === 'high');
 
   let context = `
-=== DADOS REAIS DO SISTEMA (${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}) ===
+=== DADOS REAIS DO SISTEMA (${now.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })} ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })}) ===
 LEMBRETES: Total=${userTasks.length} | Com lembrete ativo=${withReminder.length} | Vencidos=${overdue.length} | Alta prioridade=${highPriority.length}
 VENCIDOS RECENTES:
 ${overdue.slice(0, 5).map(t => `- "${t.title.slice(0, 60)}" (${t.assignedTo ?? 'sem atendente'})`).join('\n') || '- Nenhum vencido'}
