@@ -211,7 +211,7 @@ function EmailStrategicCard() {
 
   if (emailLoading) {
     return (
-      <Card className="border-violet-200">
+      <Card>
         <CardContent className="pt-4 px-4 pb-3">
           <div className="flex items-center gap-3">
             <div className="bg-violet-100 text-violet-700 p-2.5 rounded-xl flex-shrink-0">
@@ -243,7 +243,7 @@ function EmailStrategicCard() {
   const trendMax = Math.max(1, ...emailStats.dailyTrend.map((d: { sent: number }) => d.sent));
 
   return (
-    <Card className="border-violet-200">
+    <Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center justify-between text-base">
           <span className="flex items-center gap-2">
@@ -262,62 +262,63 @@ function EmailStrategicCard() {
       </CardHeader>
       <CardContent className="space-y-5">
         {/* KPIs do dia */}
+        {/* Tiles neutros; cor aparece apenas como informação (alerta de pendentes). */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <div className="bg-violet-50 border border-violet-100 rounded-xl p-3">
+          <div className="bg-white border border-border rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1">
-              <Mail size={14} className="text-violet-500" />
-              <span className="text-[10px] font-semibold text-violet-500 uppercase">Enviados hoje</span>
+              <Mail size={14} className="text-muted-foreground" />
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Enviados hoje</span>
             </div>
-            <p className="text-2xl font-black text-violet-700">{emailStats.totalSentToday}</p>
-            <p className="text-[11px] text-violet-400 mt-0.5">
+            <p className="font-cond text-3xl font-bold text-ink tabular-nums leading-none">{emailStats.totalSentToday}</p>
+            <p className="text-[11px] text-muted-foreground mt-1.5">
               Cota: {emailStats.quotaUsed}/{emailStats.quotaTotal}
             </p>
           </div>
-          <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
+          <div className="bg-white border border-border rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1">
-              <CheckCircle2 size={14} className="text-emerald-500" />
-              <span className="text-[10px] font-semibold text-emerald-500 uppercase">Confirmados hoje</span>
+              <CheckCircle2 size={14} className="text-emerald-600" />
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Confirmados hoje</span>
             </div>
-            <p className="text-2xl font-black text-emerald-700">{emailStats.confirmedToday}</p>
-            <p className="text-[11px] text-emerald-400 mt-0.5">
+            <p className="font-cond text-3xl font-bold text-ink tabular-nums leading-none">{emailStats.confirmedToday}</p>
+            <p className="text-[11px] text-muted-foreground mt-1.5">
               {confirmationRatePct}% da base confirmada
             </p>
           </div>
-          <div className={`border rounded-xl p-3 ${emailStats.pendingConfirmation > 500 ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'}`}>
+          <div className={`rounded-xl p-3 border ${emailStats.pendingConfirmation > 500 ? 'bg-red-50 border-red-200' : 'bg-white border-border'}`}>
             <div className="flex items-center gap-1.5 mb-1">
-              <MailX size={14} className={emailStats.pendingConfirmation > 500 ? 'text-red-500' : 'text-amber-500'} />
-              <span className={`text-[10px] font-semibold uppercase ${emailStats.pendingConfirmation > 500 ? 'text-red-500' : 'text-amber-500'}`}>Pendentes</span>
+              <MailX size={14} className={emailStats.pendingConfirmation > 500 ? 'text-red-600' : 'text-amber-600'} />
+              <span className={`text-[10px] font-semibold uppercase tracking-wide ${emailStats.pendingConfirmation > 500 ? 'text-red-600' : 'text-muted-foreground'}`}>Pendentes</span>
             </div>
-            <p className={`text-2xl font-black ${emailStats.pendingConfirmation > 500 ? 'text-red-700' : 'text-amber-700'}`}>{emailStats.pendingConfirmation}</p>
-            <p className={`text-[11px] mt-0.5 ${emailStats.pendingConfirmation > 500 ? 'text-red-400' : 'text-amber-400'}`}>
+            <p className={`font-cond text-3xl font-bold tabular-nums leading-none ${emailStats.pendingConfirmation > 500 ? 'text-red-700' : 'text-ink'}`}>{emailStats.pendingConfirmation}</p>
+            <p className={`text-[11px] mt-1.5 ${emailStats.pendingConfirmation > 500 ? 'text-red-500' : 'text-muted-foreground'}`}>
               de {emailStats.totalWithEmail} com e-mail
             </p>
           </div>
-          <div className="bg-purple-50 border border-purple-100 rounded-xl p-3">
+          <div className="bg-white border border-border rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1">
-              <Workflow size={14} className="text-purple-500" />
-              <span className="text-[10px] font-semibold text-purple-500 uppercase">Em sequência hoje</span>
+              <Workflow size={14} className="text-muted-foreground" />
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Em sequência hoje</span>
             </div>
-            <p className="text-2xl font-black text-purple-700">{emailStats.sequencesEnrolledToday}</p>
-            <p className="text-[11px] text-purple-400 mt-0.5">novas inscrições</p>
+            <p className="font-cond text-3xl font-bold text-ink tabular-nums leading-none">{emailStats.sequencesEnrolledToday}</p>
+            <p className="text-[11px] text-muted-foreground mt-1.5">novas inscrições</p>
           </div>
-          <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+          <div className="bg-white border border-border rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1">
-              <MailOpen size={14} className="text-blue-500" />
-              <span className="text-[10px] font-semibold text-blue-500 uppercase">Aberturas hoje</span>
+              <MailOpen size={14} className="text-muted-foreground" />
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Aberturas hoje</span>
             </div>
-            <p className="text-2xl font-black text-blue-700">{emailStats.opensToday}</p>
-            <p className="text-[11px] text-blue-400 mt-0.5">
+            <p className="font-cond text-3xl font-bold text-ink tabular-nums leading-none">{emailStats.opensToday}</p>
+            <p className="text-[11px] text-muted-foreground mt-1.5">
               {emailStats.totalOpensToday} total · {openRateToday}% taxa
             </p>
           </div>
-          <div className="bg-teal-50 border border-teal-100 rounded-xl p-3">
+          <div className="bg-white border border-border rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1">
-              <MousePointerClick size={14} className="text-teal-500" />
-              <span className="text-[10px] font-semibold text-teal-500 uppercase">Cliques hoje</span>
+              <MousePointerClick size={14} className="text-sand" />
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Cliques hoje</span>
             </div>
-            <p className="text-2xl font-black text-teal-700">{emailStats.clicksToday}</p>
-            <p className="text-[11px] text-teal-400 mt-0.5">
+            <p className="font-cond text-3xl font-bold text-ink tabular-nums leading-none">{emailStats.clicksToday}</p>
+            <p className="text-[11px] text-muted-foreground mt-1.5">
               {emailStats.totalClicksToday} total · {clickRateToday}% click-to-open
             </p>
           </div>
@@ -476,7 +477,7 @@ function FaturamentoQuickCard({ setLocation }: { setLocation: (to: string) => vo
 
   return (
     <Card
-      className="border-blue-200 cursor-pointer hover:shadow-md transition-shadow"
+      className="cursor-pointer hover:shadow-md transition-shadow"
       onClick={() => setLocation("/admin/faturamento")}
     >
       <CardContent className="pt-4 px-4 pb-3">
@@ -805,7 +806,7 @@ export default function AdminDashboard() {
 
       {/* Task Deletion Logs Panel */}
       {showDeletionLogs && deletionLogs.length > 0 && (
-        <Card className="border-amber-200">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base text-amber-800">
               <Trash2 size={16} />
@@ -871,7 +872,7 @@ export default function AdminDashboard() {
 
       {/* Pedidos Pending Approval Panel */}
       {showPendingPedidos && pendingPedidos.length > 0 && (
-        <Card className="border-blue-200">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base text-blue-800">
               <PackageCheck size={16} />
@@ -909,12 +910,12 @@ export default function AdminDashboard() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {kpis.map((kpi) => (
-          <Card key={kpi.label} className={`border ${kpi.border}`}>
+          <Card key={kpi.label}>
             <CardContent className="pt-4 px-4 pb-3">
               <div className="flex items-start justify-between">
                 <div className="min-w-0 flex-1">
-                  <p className={`text-2xl font-bold ${kpi.color}`}>{kpi.value}</p>
-                  <p className="text-xs font-medium text-gray-600 mt-0.5">{kpi.label}</p>
+                  <p className="font-cond text-3xl font-bold text-ink tabular-nums leading-none">{kpi.value}</p>
+                  <p className="text-xs font-medium text-gray-600 mt-1.5">{kpi.label}</p>
                   {(kpi as any).sub && <p className="text-[11px] text-gray-400 mt-0.5">{(kpi as any).sub}</p>}
                 </div>
                 <div className={`${kpi.bg} ${kpi.color} p-2 rounded-lg flex-shrink-0 ml-2`}>
@@ -1179,7 +1180,7 @@ export default function AdminDashboard() {
 
       {/* Monitor IA — recurso de IA, só admin */}
       {isFullAdmin && (
-      <Card className="border-purple-200">
+      <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center justify-between text-base">
             <span className="flex items-center gap-2">
@@ -1277,7 +1278,7 @@ export default function AdminDashboard() {
 
       {/* Work Sessions — cross-atendente, só admin */}
       {isFullAdmin && (
-      <Card className="border-cyan-200">
+      <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center justify-between text-base">
             <span className="flex items-center gap-2">
