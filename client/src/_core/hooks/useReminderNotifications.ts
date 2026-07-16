@@ -101,7 +101,7 @@ export function useReminderNotifications(enabled: boolean, userName: string = ''
     check();
     const id = setInterval(check, 120000);
 
-    // Motivational + productivity push tip every 30 min
+    // Motivational + productivity push tip every 1h
     const motivationId = setInterval(() => {
       try {
         if (!alertable.length) return;
