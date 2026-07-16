@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { useState } from "react";
 import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
 
 interface KnowledgeDoc {
   id: number;
@@ -70,7 +71,7 @@ export default function KnowledgeBase() {
             Adicione documentos, políticas e informações sobre sua empresa para que a IA tenha mais contexto.
           </p>
           <Button size="sm" onClick={() => setShowForm(!showForm)} className="flex-shrink-0">
-            {showForm ? "❌ Cancelar" : "➕ Novo Documento"}
+            {showForm ? "Cancelar" : "Novo Documento"}
           </Button>
         </div>
 
@@ -117,7 +118,7 @@ export default function KnowledgeBase() {
 
                 <div className="flex gap-2">
                   <Button type="submit" disabled={createMutation.isPending}>
-                    {createMutation.isPending ? "⏳ Salvando..." : "💾 Salvar Documento"}
+                    {createMutation.isPending ? "Salvando..." : "Salvar Documento"}
                   </Button>
                   <Button
                     type="button"
@@ -155,7 +156,7 @@ export default function KnowledgeBase() {
                     <div>
                       <CardTitle className="text-lg">{doc.title}</CardTitle>
                       {doc.category && (
-                        <p className="text-sm text-gray-500 mt-1">📁 {doc.category}</p>
+                        <p className="text-sm text-gray-500 mt-1">{doc.category}</p>
                       )}
                     </div>
                     <Button
@@ -164,7 +165,7 @@ export default function KnowledgeBase() {
                       onClick={() => handleDelete(doc.id)}
                       className="min-h-[44px] min-w-[44px] flex items-center justify-center"
                     >
-                      🗑️
+                      <Trash2 size={16} />
                     </Button>
                   </div>
                 </CardHeader>
@@ -187,14 +188,14 @@ export default function KnowledgeBase() {
         {/* Info Box */}
         <Card className="mt-8 bg-green-50">
           <CardHeader>
-            <CardTitle className="text-sm">✅ Dicas para Melhor Resultado</CardTitle>
+            <CardTitle className="text-sm">Dicas para Melhor Resultado</CardTitle>
           </CardHeader>
           <CardContent className="text-sm space-y-2">
-            <p>📝 <strong>Adicione políticas de vendas:</strong> Procedimentos, metas, regras de negócio</p>
-            <p>🏢 <strong>Informações da empresa:</strong> Missão, valores, produtos, serviços</p>
-            <p>👥 <strong>Dados de atendentes:</strong> Especialidades, histórico de performance</p>
-            <p>📊 <strong>Métricas importantes:</strong> KPIs, metas, benchmarks</p>
-            <p>💡 <strong>Contexto do negócio:</strong> Mercado, concorrência, oportunidades</p>
+            <p><strong>Adicione políticas de vendas:</strong> Procedimentos, metas, regras de negócio</p>
+            <p><strong>Informações da empresa:</strong> Missão, valores, produtos, serviços</p>
+            <p><strong>Dados de atendentes:</strong> Especialidades, histórico de performance</p>
+            <p><strong>Métricas importantes:</strong> KPIs, metas, benchmarks</p>
+            <p><strong>Contexto do negócio:</strong> Mercado, concorrência, oportunidades</p>
           </CardContent>
         </Card>
     </div>

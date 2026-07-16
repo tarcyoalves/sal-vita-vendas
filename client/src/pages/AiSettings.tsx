@@ -3,11 +3,12 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { useState } from "react";
 import { trpc } from '../lib/trpc';
+import { Rocket, Zap, Sparkles, CheckCircle2, XCircle } from "lucide-react";
 
 interface AIProvider {
   id: string;
   name: string;
-  icon: string;
+  icon: React.ReactNode;
   description: string;
   defaultModel: string;
   requiresKey: boolean;
@@ -26,7 +27,7 @@ const AI_PROVIDERS: AIProvider[] = [
   {
     id: "groq",
     name: "Groq",
-    icon: "🚀",
+    icon: <Rocket size={28} className="text-blue-600" />,
     description: "Llama 3.3 70B — Líder, 14.400 req/dia grátis, confiável",
     defaultModel: "llama-3.3-70b-versatile",
     requiresKey: true,
@@ -34,7 +35,7 @@ const AI_PROVIDERS: AIProvider[] = [
   {
     id: "cerebras",
     name: "Cerebras",
-    icon: "⚡",
+    icon: <Zap size={28} className="text-amber-500" />,
     description: "GPT-OSS 120B — Fallback ultra-rápido, tier grátis generoso",
     defaultModel: "gpt-oss-120b",
     requiresKey: true,
@@ -42,7 +43,7 @@ const AI_PROVIDERS: AIProvider[] = [
   {
     id: "gemini",
     name: "Google Gemini",
-    icon: "✨",
+    icon: <Sparkles size={28} className="text-violet-500" />,
     description: "Gemini 2.5 Flash — Backup opcional, contexto grande",
     defaultModel: "gemini-2.5-flash",
     requiresKey: true,
@@ -94,7 +95,7 @@ export default function AiSettings() {
       setAvailableModels(result.models);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      setError(`❌ Erro ao listar modelos: ${errorMessage}`);
+      setError(`Erro ao listar modelos: ${errorMessage}`);
     }
   };
 
@@ -134,7 +135,7 @@ export default function AiSettings() {
         setTimeout(() => setSaved(false), 3000);
         setApiKey("");
       } else {
-        setError(`❌ ${result.message}`);
+        setError(result.message);
         setTestStatus((prev) => ({
           ...prev,
           [selectedProvider]: {
@@ -148,7 +149,7 @@ export default function AiSettings() {
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      setError(`❌ Erro ao testar: ${errorMessage}`);
+      setError(`Erro ao testar: ${errorMessage}`);
       setTestStatus((prev) => ({
         ...prev,
         [selectedProvider]: {
@@ -173,13 +174,13 @@ export default function AiSettings() {
         {/* Status Messages */}
         {saved && (
           <div className="bg-green-50 border border-green-200 text-green-700 p-4 rounded-lg flex items-center gap-2">
-            <span>✅</span>
+            <CheckCircle2 size={18} className="flex-shrink-0" />
             <span>Conexão testada com sucesso!</span>
           </div>
         )}
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg flex items-start gap-2">
-            <span>❌</span>
+            <XCircle size={18} className="flex-shrink-0" />
             <span className="break-all">{error}</span>
           </div>
         )}
@@ -212,12 +213,12 @@ export default function AiSettings() {
                     {/* Status Badge */}
                     {isConfigured && (
                       <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full">
-                        ✅ OK
+                        OK
                       </div>
                     )}
                     {hasError && (
                       <div className="absolute top-2 right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-                        ❌ Erro
+                        Erro
                       </div>
                     )}
 
@@ -243,7 +244,7 @@ export default function AiSettings() {
             <CardContent className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">
-                  🔐 Chave de API {currentProvider.name}
+                  Chave de API {currentProvider.name}
                 </label>
                 <p className="text-xs text-gray-500 mb-2">
                   A chave é usada só para este teste e não é salva em nenhum lugar. O modelo padrão é: <span className="font-mono font-bold">{currentProvider.defaultModel}</span>
@@ -260,7 +261,7 @@ export default function AiSettings() {
                     variant="outline"
                     onClick={() => setShowKey(!showKey)}
                   >
-                    {showKey ? "👁️ Ocultar" : "👁️ Mostrar"}
+                    {showKey ? "Ocultar" : "Mostrar"}
                   </Button>
                 </div>
               </div>
@@ -272,7 +273,7 @@ export default function AiSettings() {
                   disabled={!apiKey.trim() || testing}
                   className="bg-green-600 hover:bg-green-700 flex-1"
                 >
-                  {testing ? "🔄 Testando..." : "✅ Testar Conexão"}
+                  {testing ? "Testando..." : "Testar Conexão"}
                 </Button>
                 <Button
                   variant="outline"
@@ -282,7 +283,7 @@ export default function AiSettings() {
                     setAvailableModels(null);
                   }}
                 >
-                  🔄 Limpar
+                  Limpar
                 </Button>
               </div>
 
@@ -294,7 +295,7 @@ export default function AiSettings() {
                   onClick={handleListModels}
                   disabled={!apiKey.trim() || listModelsMutation.isPending}
                 >
-                  {listModelsMutation.isPending ? "🔄 Listando..." : "📋 Ver todos os modelos desta chave"}
+                  {listModelsMutation.isPending ? "Listando..." : "Ver todos os modelos desta chave"}
                 </Button>
                 {availableModels && (
                   <div className="mt-3 border rounded-lg divide-y max-h-64 overflow-y-auto">
@@ -320,7 +321,7 @@ export default function AiSettings() {
         {/* Configured IAs Status */}
         <Card className="bg-blue-50 border-blue-200">
           <CardHeader>
-            <CardTitle>📊 Status das IAs Configuradas</CardTitle>
+            <CardTitle>Status das IAs Configuradas</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
@@ -335,7 +336,7 @@ export default function AiSettings() {
                     <div>
                       <p className="font-medium">
                         {AI_PROVIDERS.find((p) => p.id === config.provider)?.name ?? config.provider}
-                        {config.provider === "gemini" && <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">👑 Líder</span>}
+                        {config.provider === "gemini" && <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Líder</span>}
                       </p>
                       <p className="text-sm text-gray-600">{config.model}</p>
                       {config.status === "error" && config.errorMessage && (
@@ -345,14 +346,14 @@ export default function AiSettings() {
                     <div className="flex items-center gap-3">
                       {config.status === "configured" && (
                         <div className="flex items-center gap-2">
-                          <span className="text-green-600 font-medium">✅ OK</span>
+                          <span className="text-green-600 font-medium">OK</span>
                           <span className="text-xs text-gray-500">
                             {config.lastTested ? new Date(config.lastTested).toLocaleString("pt-BR") : ""}
                           </span>
                         </div>
                       )}
                       {config.status === "error" && (
-                        <span className="text-red-600 font-medium">❌ Erro</span>
+                        <span className="text-red-600 font-medium">Erro</span>
                       )}
                       <button
                         onClick={() => {
@@ -360,7 +361,7 @@ export default function AiSettings() {
                         }}
                         className="text-xs text-red-400 hover:text-red-600"
                       >
-                        🗑️ Remover
+                        Remover
                       </button>
                     </div>
                   </div>
@@ -373,25 +374,25 @@ export default function AiSettings() {
         {/* Free API Keys Guide */}
         <Card className="bg-green-50 border-green-200">
           <CardHeader>
-            <CardTitle className="text-green-900">🎁 Como pegar chaves grátis</CardTitle>
+            <CardTitle className="text-green-900">Como pegar chaves grátis</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-green-800 space-y-3">
             <div className="p-3 bg-white rounded-lg border border-green-200">
-              <p className="font-bold">🚀 Groq (recomendado)</p>
+              <p className="font-bold">Groq (recomendado)</p>
               <p className="mt-1">1. Acesse <span className="font-mono font-bold">console.groq.com</span></p>
               <p>2. Crie conta grátis</p>
               <p>3. Clique em <strong>API Keys → Create API Key</strong></p>
               <p>4. Cole aqui — modelo: <span className="font-mono">llama-3.3-70b-versatile</span></p>
             </div>
             <div className="p-3 bg-white rounded-lg border border-green-200">
-              <p className="font-bold">⚡ Cerebras</p>
+              <p className="font-bold">Cerebras</p>
               <p className="mt-1">1. Acesse <span className="font-mono font-bold">cloud.cerebras.ai</span></p>
               <p>2. Crie conta grátis</p>
               <p>3. Vá em <strong>API Keys → Create API Key</strong></p>
               <p>4. Cole aqui — modelo: <span className="font-mono">gpt-oss-120b</span></p>
             </div>
             <div className="p-3 bg-white rounded-lg border border-green-200">
-              <p className="font-bold">✨ Google Gemini</p>
+              <p className="font-bold">Google Gemini</p>
               <p className="mt-1">1. Acesse <span className="font-mono font-bold">aistudio.google.com</span></p>
               <p>2. Login com conta Google</p>
               <p>3. Clique em <strong>Get API Key → Create API key</strong></p>
@@ -405,7 +406,7 @@ export default function AiSettings() {
         {/* Info Box */}
         <Card className="bg-yellow-50 border-yellow-200">
           <CardHeader>
-            <CardTitle className="text-yellow-900">ℹ️ Como funciona</CardTitle>
+            <CardTitle className="text-yellow-900">Como funciona</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-yellow-800 space-y-2">
             <p>• O servidor encadeia os provedores automaticamente (Groq → Cerebras → Gemini → OpenRouter → NVIDIA), sempre que um deles atinge o limite gratuito do dia ou falha</p>

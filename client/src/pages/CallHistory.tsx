@@ -52,13 +52,13 @@ export default function CallHistory() {
   const getResultLabel = (type: string) => {
     switch (type) {
       case "realizada":
-        return "✅ Realizada";
+        return "Realizada";
       case "convertida":
-        return "💰 Convertida";
+        return "Convertida";
       case "reagendada":
-        return "📅 Reagendada";
+        return "Reagendada";
       case "nao_atendida":
-        return "❌ Não Atendida";
+        return "Não Atendida";
       default:
         return type;
     }
@@ -76,13 +76,13 @@ export default function CallHistory() {
               className="h-12 md:h-32 cursor-pointer"
             />
           </a>
-          <h1 className="text-lg md:text-3xl font-bold text-blue-900">📋 Histórico de Ligações</h1>
+          <h1 className="text-lg md:text-3xl font-bold text-blue-900">Histórico de Ligações</h1>
         </div>
         <div className="hidden md:flex gap-2 flex-wrap">
-          <a href="/admin/dashboard"><Button variant="outline">📊 Dashboard</Button></a>
-          <a href="/tasks"><Button variant="outline">📋 Tarefas</Button></a>
-          <a href="/ai-chat"><Button variant="outline">💬 Chat</Button></a>
-          <a href="/"><Button variant="outline">🏠 Início</Button></a>
+          <a href="/admin/dashboard"><Button variant="outline">Dashboard</Button></a>
+          <a href="/tasks"><Button variant="outline">Tarefas</Button></a>
+          <a href="/ai-chat"><Button variant="outline">Chat</Button></a>
+          <a href="/"><Button variant="outline">Início</Button></a>
           <Button variant="destructive" onClick={handleLogout}>Sair</Button>
         </div>
       </div>
@@ -164,7 +164,7 @@ export default function CallHistory() {
 
                     {result.nextScheduledDate && (
                       <div className="mt-2 text-sm text-blue-600">
-                        📅 Próximo agendamento: {format(new Date(result.nextScheduledDate), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                        Próximo agendamento: {format(new Date(result.nextScheduledDate), "dd/MM/yyyy HH:mm", { locale: ptBR })}
                       </div>
                     )}
                   </div>

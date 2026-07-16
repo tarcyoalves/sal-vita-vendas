@@ -3,6 +3,7 @@ import { trpc } from '../lib/trpc';
 import { Button } from '../components/ui/button';
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
+import { Loader2, Send } from "lucide-react";
 
 interface Message {
   role: "user" | "assistant";
@@ -74,7 +75,7 @@ export default function AiChat() {
     } catch (error: any) {
       const errMsg = error?.message ?? "Erro ao processar mensagem";
       toast.error(errMsg);
-      setMessages(prev => [...prev, { role: "assistant", content: `❌ ${errMsg}`, timestamp: new Date() }]);
+      setMessages(prev => [...prev, { role: "assistant", content: errMsg, timestamp: new Date() }]);
     } finally {
       setIsLoading(false);
     }
@@ -83,7 +84,7 @@ export default function AiChat() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex justify-end p-3 border-b bg-white">
-        <Button variant="outline" size="sm" onClick={handleClearHistory}>🗑️ Limpar histórico</Button>
+        <Button variant="outline" size="sm" onClick={handleClearHistory}>Limpar histórico</Button>
       </div>
 
       <div className="flex-1 flex flex-col p-4 max-w-3xl mx-auto w-full">
@@ -134,7 +135,7 @@ export default function AiChat() {
             disabled={isLoading || !historyReady || !input.trim()}
             className="px-5 rounded-xl bg-blue-600 hover:bg-blue-700 min-h-[44px]"
           >
-            {isLoading ? "⏳" : "📤"}
+            {isLoading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
           </Button>
         </div>
         <p className="text-xs text-center text-gray-400 mt-2">Powered by Groq · Llama 3.3 70B</p>
