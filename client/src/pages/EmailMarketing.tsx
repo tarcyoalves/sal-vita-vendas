@@ -2482,12 +2482,26 @@ function AutomationsTab() {
   } | null>(null);
 
   // Parse triggerConfig/actionConfig JSON strings into objects for display.
+  // Each rule is parsed independently — one rule with corrupted config must not
+  // throw during render and take down the whole Automations tab.
   const parsedRules = useMemo(() => {
-    return (rules ?? []).map(r => ({
-      ...r,
-      triggerConfig: r.triggerConfig ? JSON.parse(r.triggerConfig) : null,
-      actionConfig: r.actionConfig ? JSON.parse(r.actionConfig) : {},
-    }));
+    return (rules ?? []).map(r => {
+      try {
+        return {
+          ...r,
+          triggerConfig: r.triggerConfig ? JSON.parse(r.triggerConfig) : null,
+          actionConfig: r.actionConfig ? JSON.parse(r.actionConfig) : {},
+          invalid: false as const,
+        };
+      } catch {
+        return {
+          ...r,
+          triggerConfig: null,
+          actionConfig: {},
+          invalid: true as const,
+        };
+      }
+    });
   }, [rules]);
 
   const handleSave = async () => {
@@ -2617,8 +2631,16 @@ function AutomationsTab() {
                   {parsedRules.map(r => (
                     <tr key={r.id} className={TR_CLASS}>
                       <td className="px-3 py-2.5 font-medium text-slate-700">{r.name}</td>
-                      <td className="px-3 py-2.5 text-xs text-slate-500">{describeTrigger(r, sequences)}</td>
-                      <td className="px-3 py-2.5 text-xs text-slate-500">{describeAction(r, sequences)}</td>
+                      {r.invalid ? (
+                        <td className="px-3 py-2.5 text-xs" colSpan={2}>
+                          <Badge variant="destructive">Configuração inválida</Badge>
+                        </td>
+                      ) : (
+                        <>
+                          <td className="px-3 py-2.5 text-xs text-slate-500">{describeTrigger(r, sequences)}</td>
+                          <td className="px-3 py-2.5 text-xs text-slate-500">{describeAction(r, sequences)}</td>
+                        </>
+                      )}
                       <td className="px-3 py-2.5">
                         <Switch checked={r.active} onCheckedChange={(checked) => handleToggleActive(r, checked)} />
                       </td>
