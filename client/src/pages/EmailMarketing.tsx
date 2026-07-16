@@ -3244,6 +3244,7 @@ function MarketingContactsSection() {
       setShowEnroll(false);
       setEnrollSeqId("");
       setSelectedIds(new Set());
+      invalidateAll();
     } catch (e: any) {
       toast.error(e?.message ?? "Erro ao inscrever em sequência");
     }
