@@ -580,9 +580,13 @@ function CampaignsTab() {
 
   const handleDelete = async (id: number) => {
     if (!confirm("Excluir esta campanha e todos os destinatários?")) return;
-    await deleteMutation.mutateAsync({ id });
-    toast.success("Campanha excluída");
-    utils.emailMarketing.listCampaigns.invalidate();
+    try {
+      await deleteMutation.mutateAsync({ id });
+      toast.success("Campanha excluída");
+      utils.emailMarketing.listCampaigns.invalidate();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao excluir campanha");
+    }
   };
 
   const handleSend = async (campaignId: number) => {
@@ -690,7 +694,7 @@ function CampaignsTab() {
                               {sendingId === c.id ? "Enviando..." : "Enviar"}
                             </Button>
                           )}
-                          <Button size="sm" variant="destructive" onClick={() => handleDelete(c.id)} disabled={sendingId === c.id}>
+                          <Button size="sm" variant="destructive" onClick={() => handleDelete(c.id)} disabled={sendingId === c.id || deleteMutation.isPending}>
                             <Trash2 size={14} />
                           </Button>
                         </div>
@@ -1364,9 +1368,13 @@ function TemplatesTab() {
 
   const handleDelete = async (id: number) => {
     if (!confirm("Excluir este template?")) return;
-    await deleteMutation.mutateAsync({ id });
-    toast.success("Template excluído");
-    utils.emailMarketing.listTemplates.invalidate();
+    try {
+      await deleteMutation.mutateAsync({ id });
+      toast.success("Template excluído");
+      utils.emailMarketing.listTemplates.invalidate();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao excluir template");
+    }
   };
 
   const handleSaveCat = async () => {
@@ -1383,11 +1391,15 @@ function TemplatesTab() {
 
   const handleDeleteCat = async (id: number, name: string) => {
     if (!confirm(`Excluir a aba "${name}"? Os templates dela ficarão sem categoria.`)) return;
-    await deleteCatMutation.mutateAsync({ id });
-    toast.success("Categoria excluída");
-    if (activeTab === String(id)) setActiveTab('all');
-    utils.emailMarketing.listTemplateCategories.invalidate();
-    utils.emailMarketing.listTemplates.invalidate();
+    try {
+      await deleteCatMutation.mutateAsync({ id });
+      toast.success("Categoria excluída");
+      if (activeTab === String(id)) setActiveTab('all');
+      utils.emailMarketing.listTemplateCategories.invalidate();
+      utils.emailMarketing.listTemplates.invalidate();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao excluir categoria");
+    }
   };
 
   const openNewTemplate = () => {
@@ -1445,7 +1457,8 @@ function TemplatesTab() {
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDeleteCat(cat.id, cat.name); }}
-                      className="flex h-7 w-7 items-center justify-center rounded-full bg-white border border-slate-300 shadow-sm text-slate-500 hover:text-red-600 hover:border-red-400"
+                      disabled={deleteCatMutation.isPending}
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-white border border-slate-300 shadow-sm text-slate-500 hover:text-red-600 hover:border-red-400 disabled:opacity-50"
                       title="Excluir"
                     >
                       <X size={10} />
@@ -1510,7 +1523,7 @@ function TemplatesTab() {
                             <Button size="sm" variant="outline" onClick={() => setEditing({ id: t.id, categoryIds: ids, slug: t.slug, name: t.name, subject: t.subject, htmlBody: t.htmlBody, active: t.active, attachments: Array.isArray((t as any).attachments) ? (t as any).attachments.map((a: any) => ({ filename: a.filename, content: a.content, size: Math.ceil((a.content?.length ?? 0) * 0.75) })) : [] })}>
                               <Pencil size={14} />
                             </Button>
-                            <Button size="sm" variant="destructive" onClick={() => handleDelete(t.id)}>
+                            <Button size="sm" variant="destructive" onClick={() => handleDelete(t.id)} disabled={deleteMutation.isPending}>
                               <Trash2 size={14} />
                             </Button>
                           </div>
@@ -1818,7 +1831,7 @@ function SequencesTab() {
                           <Button size="sm" variant="outline" onClick={() => handleEdit(s)}>
                             <Pencil size={14} />
                           </Button>
-                          <Button size="sm" variant="destructive" onClick={() => handleDelete(s.id)}>
+                          <Button size="sm" variant="destructive" onClick={() => handleDelete(s.id)} disabled={deleteMutation.isPending}>
                             <Trash2 size={14} />
                           </Button>
                         </div>
@@ -2104,7 +2117,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                             }}>
                               <Pencil size={14} />
                             </Button>
-                            <Button size="sm" variant="destructive" onClick={() => handleDeleteStep(step.id)}>
+                            <Button size="sm" variant="destructive" onClick={() => handleDeleteStep(step.id)} disabled={deleteStepMutation.isPending}>
                               <Trash2 size={14} />
                             </Button>
                           </div>
@@ -2614,7 +2627,7 @@ function AutomationsTab() {
                           <Button size="sm" variant="outline" onClick={() => openEdit(r)}>
                             <Pencil size={14} />
                           </Button>
-                          <Button size="sm" variant="destructive" onClick={() => handleDelete(r.id)}>
+                          <Button size="sm" variant="destructive" onClick={() => handleDelete(r.id)} disabled={deleteMutation.isPending}>
                             <Trash2 size={14} />
                           </Button>
                         </div>
