@@ -515,12 +515,24 @@ app.post('/api/brevo-webhook', brevoWebhookLimiter, express.json({ limit: '256kb
 
     switch (event) {
       case 'hard_bounce':
-      case 'soft_bounce':
       case 'blocked':
       case 'complaint': {
         const reason = event === 'complaint' ? 'complaint' : 'bounce';
         await db.insert(emailSuppressions).values({ email: recipientEmail, reason }).onConflictDoNothing();
         await db.update(clients).set({ unsubscribed: true }).where(eq(clients.email, recipientEmail));
+        break;
+      }
+      case 'soft_bounce': {
+        // Soft bounces are transient (mailbox full, greylisting, temporary server
+        // issue) and must not permanently suppress the recipient. Just record the
+        // event for visibility; a repeat-offender counter can be added later.
+        if (messageId) {
+          await db.insert(emailEvents).values({
+            messageId,
+            recipientEmail,
+            eventType: 'soft_bounce',
+          }).onConflictDoNothing();
+        }
         break;
       }
       case 'delivered':
