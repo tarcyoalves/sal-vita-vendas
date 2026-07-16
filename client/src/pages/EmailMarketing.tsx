@@ -200,7 +200,15 @@ function describeAction(rule: { actionType: string; actionConfig?: any; cancelOt
 }
 
 export default function EmailMarketing() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
 
   if (!user || (user.role !== "admin" && user.role !== "manager")) {
     return <div className="p-4">Acesso negado</div>;

@@ -20,7 +20,7 @@ interface Representative {
 }
 
 export default function Representatives() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
   const [showForm, setShowForm] = useState(false);
   const [editingRep, setEditingRep] = useState<Representative | null>(null);
@@ -119,6 +119,14 @@ export default function Representatives() {
     });
     setShowForm(true);
   };
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
 
   if (!user || user.role !== "admin") {
     return <div className="p-4">Acesso negado</div>;

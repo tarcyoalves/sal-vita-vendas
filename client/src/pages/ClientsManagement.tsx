@@ -7,12 +7,20 @@ import { Users, UserCheck, UserX, Search } from "lucide-react";
 type StatusFilter = "all" | "active" | "inactive";
 
 export default function ClientsManagement() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { data: allTasks, isLoading } = trpc.tasks.list.useQuery();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [assignedFilter, setAssignedFilter] = useState("");
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
 
   if (!user || user.role !== "admin") {
     return <div className="p-4">Acesso negado</div>;

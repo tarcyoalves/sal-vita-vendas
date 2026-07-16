@@ -14,7 +14,15 @@ const TAB_TRIGGER_CLASS =
   "gap-1.5 rounded-xl px-3 py-2 text-slate-500 data-[state=active]:bg-blue-900 data-[state=active]:text-white data-[state=active]:shadow-md";
 
 export default function Faturamento() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
 
   if (!user || (user.role !== "admin" && user.role !== "manager")) {
     return <div className="p-4">Acesso negado</div>;

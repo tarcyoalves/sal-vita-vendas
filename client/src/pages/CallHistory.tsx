@@ -20,9 +20,12 @@ export default function CallHistory() {
     setLocation("/");
   };
 
-  const { data: results, isLoading } = trpc.results.list.useQuery({
-    sellerId: user?.role === "admin" ? undefined : user?.id,
-  });
+  const { data: results, isLoading } = trpc.results.list.useQuery(
+    {
+      sellerId: user?.role === "admin" ? undefined : user?.id,
+    },
+    { enabled: !!user }
+  );
 
   const filteredResults = results?.filter((result: any) => {
     if (filterStatus !== "all" && result.resultType !== filterStatus) return false;
