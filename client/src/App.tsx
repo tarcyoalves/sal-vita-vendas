@@ -6,7 +6,6 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import AdminDashboard from "./pages/AdminDashboard";
-import VendorReminders from "./pages/VendorReminders";
 import AiAnalysis from "./pages/AiAnalysis";
 import CallHistory from "./pages/CallHistory";
 import ClientsManagement from "./pages/ClientsManagement";
@@ -40,9 +39,6 @@ function Router() {
       </Route>
       <Route path={"/admin/ai-analysis"}>
         <AppShell><AiAnalysis /></AppShell>
-      </Route>
-      <Route path={"/vendor/reminders"}>
-        <AppShell><VendorReminders /></AppShell>
       </Route>
       <Route path={"/history"}>
         <AppShell><CallHistory /></AppShell>
