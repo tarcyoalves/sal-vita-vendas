@@ -12,18 +12,27 @@
 }
 
 :root {
-  --primary: #1d4ed8;
-  --primary-foreground: #eff6ff;
-  --sidebar-primary: #2563eb;
-  --sidebar-primary-foreground: #eff6ff;
-  --chart-1: #93c5fd;
-  --chart-2: #3b82f6;
-  --chart-3: #2563eb;
-  --chart-4: #1d4ed8;
-  --chart-5: #1e40af;
+  /* ── Identidade Sal Vita: azul-oceano da marca, branco-sal, areia ── */
+  --brand: #0C3680;          /* azul Sal Vita — ações e marca */
+  --brand-deep: #081F47;     /* marinho profundo — sidebar */
+  --brand-soft: #E8EEF9;     /* azul lavado — fundos de destaque */
+  --salt: #F7F6F2;           /* branco-sal — fundo de conteúdo */
+  --sand: #C89A3D;           /* areia — realce (item ativo, hot lead) */
+  --sand-soft: #FBF3E2;
+  --ink: #1B2A41;            /* texto principal, azul-tinta */
+
+  --primary: #0C3680;
+  --primary-foreground: #EFF3FB;
+  --sidebar-primary: #0C3680;
+  --sidebar-primary-foreground: #EFF3FB;
+  --chart-1: #9DB8E4;
+  --chart-2: #4A6FB0;
+  --chart-3: #0C3680;
+  --chart-4: #082550;
+  --chart-5: #C89A3D;
   --radius: 0.65rem;
-  --background: #ffffff;
-  --foreground: #374151;
+  --background: #F7F6F2;
+  --foreground: #1B2A41;
   --card: #ffffff;
   --card-foreground: #374151;
   --popover: #ffffff;
@@ -36,9 +45,9 @@
   --accent-foreground: #111827;
   --destructive: #b91c1c;
   --destructive-foreground: #ffffff;
-  --border: #e5e7eb;
-  --input: #e5e7eb;
-  --ring: #3b82f6;
+  --border: #E4E1D8;
+  --input: #E4E1D8;
+  --ring: #0C3680;
   --sidebar: #ffffff;
   --sidebar-foreground: #374151;
   --sidebar-accent: #f9fafb;

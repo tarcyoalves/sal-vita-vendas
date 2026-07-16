@@ -7,12 +7,27 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        cond: ['"Barlow Condensed"', '"Arial Narrow"', 'sans-serif'],
+        script: ['Pacifico', 'cursive'],
+      },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
       },
       colors: {
+        brand: {
+          DEFAULT: 'var(--brand)',
+          deep: 'var(--brand-deep)',
+          soft: 'var(--brand-soft)',
+        },
+        salt: 'var(--salt)',
+        sand: {
+          DEFAULT: 'var(--sand)',
+          soft: 'var(--sand-soft)',
+        },
+        ink: 'var(--ink)',
         background: 'var(--background)',
         foreground: 'var(--foreground)',
         card: {

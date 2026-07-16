@@ -27,6 +27,8 @@ interface NavItem {
   path?: string;
   icon: React.ReactNode;
   roles: ("admin" | "manager" | "user")[];
+  /** Rótulo de grupo exibido acima do item quando muda em relação ao item anterior */
+  group?: string;
   children?: { label: string; path: string; icon: React.ReactNode; external?: boolean }[];
   external?: boolean;
 }
@@ -37,35 +39,41 @@ const NAV_ITEMS: NavItem[] = [
     path: "/admin/dashboard",
     icon: <LayoutDashboard size={18} />,
     roles: ["admin", "manager"],
+    group: "Operação",
   },
   {
     label: "Tarefas",
     path: "/tasks",
     icon: <CheckSquare size={18} />,
     roles: ["admin", "manager"],
+    group: "Operação",
   },
   {
     label: "Atendentes",
     path: "/attendants",
     icon: <Users size={18} />,
     roles: ["admin"],
+    group: "Operação",
   },
   {
     label: "E-mail Marketing",
     path: "/admin/email-marketing",
     icon: <Mail size={18} />,
     roles: ["admin", "manager"],
+    group: "Receita",
   },
   {
     label: "Faturamento",
     path: "/admin/faturamento",
     icon: <DollarSign size={18} />,
     roles: ["admin", "manager"],
+    group: "Receita",
   },
   {
     label: "Inteligência IA",
     icon: <Bot size={18} />,
     roles: ["admin"],
+    group: "Inteligência",
     children: [
       { label: "Chat IA", path: "/ai-chat", icon: <MessageSquare size={16} /> },
       { label: "Configurações", path: "/ai-settings", icon: <Settings size={16} /> },
@@ -77,18 +85,21 @@ const NAV_ITEMS: NavItem[] = [
     path: "/tasks",
     icon: <CheckSquare size={18} />,
     roles: ["user"],
+    group: "Meu dia",
   },
   {
     label: "Meu Progresso",
     path: "/meu-progresso",
     icon: <TrendingUp size={18} />,
     roles: ["user"],
+    group: "Meu dia",
   },
   {
     label: "E-mail Marketing",
     path: "/admin/email-marketing",
     icon: <Mail size={18} />,
     roles: ["user"],
+    group: "Meu dia",
   },
 ];
 
@@ -201,7 +212,7 @@ export default function AppShell({ children }: AppShellProps) {
       const session = await startWorkMut.mutateAsync({ dailyGoalHours: goalHours });
       ackSession(session.id);
       await refetchSession();
-      toast.success("▶ Trabalho iniciado!");
+      toast.success("Trabalho iniciado!");
     } catch (e: any) {
       toast.error(e?.message ?? "Erro ao iniciar trabalho");
     } finally {
@@ -211,7 +222,7 @@ export default function AppShell({ children }: AppShellProps) {
 
   const handleRetomar = () => {
     if (currentSession) ackSession(currentSession.id);
-    toast.success("▶ Bem-vindo de volta!");
+    toast.success("Bem-vindo de volta!");
   };
 
   // Force password change on first access
@@ -229,7 +240,7 @@ export default function AppShell({ children }: AppShellProps) {
     try {
       await forceChangePwdMut.mutateAsync({ newPassword: forcePwdForm.next });
       await refreshUser();
-      toast.success("✅ Senha definida! Bem-vindo ao sistema.");
+      toast.success("Senha definida! Bem-vindo ao sistema.");
       setForcePwdForm({ next: "", confirm: "" });
     } catch (err: any) {
       toast.error(err?.message ?? "Erro ao definir senha");
@@ -276,7 +287,7 @@ export default function AppShell({ children }: AppShellProps) {
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="min-h-[72px] flex items-center px-5 border-b border-slate-700 flex-shrink-0" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+      <div className="min-h-[72px] flex items-center px-5 border-b border-white/10 flex-shrink-0" style={{ paddingTop: "env(safe-area-inset-top)" }}>
         <img
           src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
           alt="Sal Vita"
@@ -287,21 +298,30 @@ export default function AppShell({ children }: AppShellProps) {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 py-4 overflow-y-auto">
+      <nav className="flex-1 py-3 overflow-y-auto">
         <ul className="space-y-0.5 px-3">
-          {visibleItems.map((item) => {
+          {visibleItems.map((item, idx) => {
             const hasChildren = item.children && item.children.length > 0;
             const active = isActive(item.path);
             const childActive = isChildActive(item.children);
+            // Cabeçalho de grupo: aparece quando o grupo muda em relação ao item anterior
+            const showGroup = item.group && item.group !== visibleItems[idx - 1]?.group;
+
+            const groupHeader = showGroup ? (
+              <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-200/40 select-none">
+                {item.group}
+              </div>
+            ) : null;
 
             if (hasChildren) {
               return (
                 <li key={item.label}>
+                  {groupHeader}
                   <button
                     className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
                       childActive
-                        ? "bg-slate-700 text-white border-l-2 border-blue-400"
-                        : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                        ? "bg-white/10 text-white shadow-[inset_3px_0_0_var(--sand)]"
+                        : "text-blue-100/70 hover:bg-white/5 hover:text-white"
                     }`}
                     onClick={() => setIaExpanded(!iaExpanded)}
                   >
@@ -310,14 +330,14 @@ export default function AppShell({ children }: AppShellProps) {
                     {iaExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                   </button>
                   {iaExpanded && (
-                    <ul className="mt-0.5 ml-4 space-y-0.5 pl-3 border-l border-slate-700">
+                    <ul className="mt-0.5 ml-4 space-y-0.5 pl-3 border-l border-white/10">
                       {item.children!.map((child) => (
                         <li key={child.path}>
                           <button
                             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
                               isActive(child.path)
-                                ? "bg-slate-700 text-white border-l-2 border-blue-400"
-                                : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                                ? "bg-white/10 text-white shadow-[inset_3px_0_0_var(--sand)]"
+                                : "text-blue-100/60 hover:bg-white/5 hover:text-white"
                             }`}
                             onClick={() => {
                               if (child.external) {
@@ -330,7 +350,7 @@ export default function AppShell({ children }: AppShellProps) {
                           >
                             <span className="flex-shrink-0">{child.icon}</span>
                             <span className="flex-1 text-left">{child.label}</span>
-                            {child.external && <span className="text-[10px] text-slate-500">↗</span>}
+                            {child.external && <span className="text-[10px] text-blue-200/40">↗</span>}
                           </button>
                         </li>
                       ))}
@@ -342,11 +362,12 @@ export default function AppShell({ children }: AppShellProps) {
 
             return (
               <li key={item.label}>
+                {groupHeader}
                 <button
                   className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
                     active
-                      ? "bg-slate-700 text-white border-l-2 border-blue-400"
-                      : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                      ? "bg-white/10 text-white shadow-[inset_3px_0_0_var(--sand)]"
+                      : "text-blue-100/70 hover:bg-white/5 hover:text-white"
                   }`}
                   onClick={() => {
                     setLocation(item.path!);
@@ -356,7 +377,7 @@ export default function AppShell({ children }: AppShellProps) {
                   <span className="flex-shrink-0">{item.icon}</span>
                   <span className="flex-1 text-left">{item.label}</span>
                   {item.path === "/admin/dashboard" && !!pendingDeletions && pendingDeletions > 0 && (
-                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold">
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-sand text-[#3A2C0E] text-[10px] font-bold">
                       {pendingDeletions > 9 ? "9+" : pendingDeletions}
                     </span>
                   )}
@@ -368,26 +389,26 @@ export default function AppShell({ children }: AppShellProps) {
       </nav>
 
       {/* Footer */}
-      <div className="border-t border-slate-700 p-4 flex-shrink-0">
+      <div className="border-t border-white/10 p-4 flex-shrink-0">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+          <div className="w-8 h-8 rounded-full bg-sand text-[#3A2C0E] flex items-center justify-center text-sm font-bold flex-shrink-0">
             {userInitial}
           </div>
           <div className="min-w-0">
             <p className="text-sm font-medium text-white truncate">{user?.name ?? "Usuário"}</p>
-            <p className="text-xs text-slate-400 truncate">{user?.email ?? ""}</p>
+            <p className="text-xs text-blue-200/50 truncate">{user?.email ?? ""}</p>
           </div>
         </div>
         <button
           onClick={() => setShowChangePwd(true)}
-          className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors mb-1"
+          className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-blue-100/60 hover:text-white hover:bg-white/5 rounded-lg transition-colors mb-1"
         >
           <KeyRound size={15} />
           <span>Alterar Senha</span>
         </button>
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+          className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-blue-100/60 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
         >
           <LogOut size={15} />
           <span>Sair</span>
@@ -397,16 +418,16 @@ export default function AppShell({ children }: AppShellProps) {
   );
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen bg-background overflow-hidden">
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-60 flex-col bg-slate-900 flex-shrink-0">
+      <aside className="hidden md:flex w-60 flex-col bg-brand-deep flex-shrink-0">
         <SidebarContent />
       </aside>
 
       {/* Mobile Sidebar Overlay */}
       <div className={`fixed inset-0 z-40 md:hidden transition-opacity duration-300 ${sidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}>
         <div className="fixed inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
-        <aside className={`relative z-50 flex flex-col w-60 h-full bg-slate-900 transition-transform duration-300 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <aside className={`relative z-50 flex flex-col w-60 h-full bg-brand-deep transition-transform duration-300 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
           <SidebarContent />
         </aside>
       </div>
@@ -462,7 +483,7 @@ export default function AppShell({ children }: AppShellProps) {
                 <span className="relative">
                   <span
                     className={`flex items-center justify-center w-12 h-11 rounded-2xl transition-all ${
-                      active ? "bg-blue-600 text-white shadow-md" : "text-gray-400"
+                      active ? "bg-brand text-white shadow-md" : "text-gray-400"
                     }`}
                   >
                     {item.icon}
@@ -473,7 +494,7 @@ export default function AppShell({ children }: AppShellProps) {
                     </span>
                   )}
                 </span>
-                <span className={`text-[10px] font-medium leading-tight ${active ? "text-blue-600" : "text-gray-400"}`}>
+                <span className={`text-[10px] font-medium leading-tight ${active ? "text-brand" : "text-gray-400"}`}>
                   {item.label}
                 </span>
               </button>
@@ -487,12 +508,12 @@ export default function AppShell({ children }: AppShellProps) {
           >
             <span
               className={`flex items-center justify-center w-12 h-11 rounded-2xl transition-all ${
-                sidebarOpen ? "bg-blue-600 text-white shadow-md" : "text-gray-400"
+                sidebarOpen ? "bg-brand text-white shadow-md" : "text-gray-400"
               }`}
             >
               <Menu size={22} />
             </span>
-            <span className={`text-[10px] font-medium leading-tight ${sidebarOpen ? "text-blue-600" : "text-gray-400"}`}>
+            <span className={`text-[10px] font-medium leading-tight ${sidebarOpen ? "text-brand" : "text-gray-400"}`}>
               Mais
             </span>
           </button>
@@ -504,7 +525,7 @@ export default function AppShell({ children }: AppShellProps) {
 
       {/* ── Force password change modal (first access) — blocks everything ── */}
       {!!user && user.mustChangePassword && (
-        <div className="fixed inset-0 z-[300] bg-gradient-to-br from-slate-900 to-slate-700 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[300] bg-brand-deep flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 378" style={{ height: "56px", width: "auto" }} className="mx-auto mb-5" aria-label="Sal Vita">
               <defs><clipPath id="oval-m1"><ellipse cx="250" cy="187" rx="228" ry="164"/></clipPath></defs>
@@ -548,11 +569,11 @@ export default function AppShell({ children }: AppShellProps) {
               <button
                 type="submit"
                 disabled={forcePwdLoading}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
+                className="w-full py-3 bg-brand hover:bg-brand-deep text-white font-bold rounded-xl transition disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
               >
                 {forcePwdLoading ? (
                   <><span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Salvando...</>
-                ) : "🔑 Definir Minha Senha"}
+                ) : "Definir minha senha"}
               </button>
             </form>
           </div>
@@ -561,7 +582,7 @@ export default function AppShell({ children }: AppShellProps) {
 
       {/* ── Startup blocking modal (attendants) ── */}
       {needsStartup && !user?.mustChangePassword && (
-        <div className="fixed inset-0 z-[200] bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[200] bg-brand-deep flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm text-center">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 378" style={{ height: "72px", width: "auto" }} className="mx-auto mb-5" aria-label="Sal Vita">
               <defs><clipPath id="oval-m2"><ellipse cx="250" cy="187" rx="228" ry="164"/></clipPath></defs>
@@ -584,7 +605,7 @@ export default function AppShell({ children }: AppShellProps) {
                   onClick={handleRetomar}
                   className="w-full py-4 bg-green-600 hover:bg-green-700 text-white text-lg font-bold rounded-xl transition shadow-lg flex items-center justify-center gap-2 mb-3"
                 >
-                  ▶ Retomar Trabalho
+                  Retomar trabalho
                 </button>
                 <button
                   onClick={handleStartWork}
@@ -613,7 +634,7 @@ export default function AppShell({ children }: AppShellProps) {
                       Iniciando...
                     </>
                   ) : (
-                    "▶ Iniciar Trabalho"
+                    "Iniciar trabalho"
                   )}
                 </button>
               </>
@@ -628,7 +649,7 @@ export default function AppShell({ children }: AppShellProps) {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
             <div className="p-6 border-b">
               <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <KeyRound size={18} className="text-blue-600" />
+                <KeyRound size={18} className="text-brand" />
                 Alterar Senha
               </h2>
               <p className="text-sm text-gray-500 mt-0.5">{user?.name} · {user?.email}</p>
@@ -672,9 +693,9 @@ export default function AppShell({ children }: AppShellProps) {
                 <button
                   type="submit"
                   disabled={pwdLoading}
-                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition disabled:opacity-50"
+                  className="flex-1 py-2.5 bg-brand hover:bg-brand-deep text-white text-sm font-semibold rounded-lg transition disabled:opacity-50"
                 >
-                  {pwdLoading ? "Salvando..." : "✅ Salvar"}
+                  {pwdLoading ? "Salvando..." : "Salvar"}
                 </button>
                 <button
                   type="button"
