@@ -2960,7 +2960,7 @@ function TagsTab() {
                       <button
                         type="button"
                         onClick={() => startEdit(tag)}
-                        className="p-1.5 rounded-md text-slate-400 hover:text-blue-700 hover:bg-blue-50 sm:opacity-0 sm:group-hover:opacity-100 transition"
+                        className="p-1.5 -m-2 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-md text-slate-400 hover:text-blue-700 hover:bg-blue-50 sm:opacity-0 sm:group-hover:opacity-100 transition"
                         title="Renomear / cor"
                       >
                         <Pencil size={14} />
@@ -2968,7 +2968,7 @@ function TagsTab() {
                       <button
                         type="button"
                         onClick={() => { if (confirm(`Excluir a tag "${tag.name}"? Ela será removida de todas as tarefas.`)) deleteMutation.mutate({ id: tag.id }); }}
-                        className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 sm:opacity-0 sm:group-hover:opacity-100 transition"
+                        className="p-1.5 -m-2 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 sm:opacity-0 sm:group-hover:opacity-100 transition"
                         title="Excluir"
                       >
                         <Trash2 size={14} />
@@ -3499,7 +3499,7 @@ function MarketingContactsSection() {
                             </td>
                             <td className="px-3 py-2.5">
                               <div className="flex gap-1">
-                                <button type="button" onClick={() => openEdit(c)} className="p-1.5 rounded-md text-slate-400 hover:text-blue-700 hover:bg-blue-50 transition" title="Editar">
+                                <button type="button" onClick={() => openEdit(c)} className="p-1.5 -m-1.5 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-md text-slate-400 hover:text-blue-700 hover:bg-blue-50 transition" title="Editar">
                                   <Pencil size={14} />
                                 </button>
                                 {c.status === 'active' && (
@@ -3513,7 +3513,7 @@ function MarketingContactsSection() {
                                         invalidateAll();
                                       } catch (e: any) { toast.error(e?.message ?? "Erro"); }
                                     }}
-                                    className="p-1.5 rounded-md text-slate-400 hover:text-orange-600 hover:bg-orange-50 transition"
+                                    className="p-1.5 -m-1.5 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-md text-slate-400 hover:text-orange-600 hover:bg-orange-50 transition"
                                     title="Descadastrar"
                                   >
                                     <MailX size={14} />
@@ -3529,7 +3529,7 @@ function MarketingContactsSection() {
                                       invalidateAll();
                                     } catch (e: any) { toast.error(e?.message ?? "Erro"); }
                                   }}
-                                  className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
+                                  className="p-1.5 -m-1.5 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
                                   title="Excluir"
                                 >
                                   <Trash2 size={14} />
