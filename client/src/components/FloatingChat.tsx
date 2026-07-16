@@ -1,5 +1,6 @@
 import { useLocation } from 'wouter';
 import { useAuth } from '../_core/hooks/useAuth';
+import { Mail } from 'lucide-react';
 
 export default function FloatingEmailMarketing() {
   const { user } = useAuth();
@@ -17,7 +18,7 @@ export default function FloatingEmailMarketing() {
       title="Abrir E-mail Marketing"
       aria-label="E-mail Marketing"
     >
-      📧
+      <Mail size={24} />
     </button>
   );
 }

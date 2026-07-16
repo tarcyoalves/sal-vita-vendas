@@ -298,7 +298,7 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
               <div className="p-3 bg-green-50 border border-green-200 rounded-xl space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold text-green-800 flex items-center gap-1.5">
-                    🎉 Performance de Conversão (Vendas)
+                    Performance de Conversão (Vendas)
                   </p>
                   {m.teamConversion.length > 0 && (
                     <span className="text-[11px] text-green-700 bg-green-100 px-2 py-0.5 rounded-full font-medium">
@@ -326,7 +326,7 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
                 </div>
                 {m.cancelledCount > 0 && (
                   <p className="text-[11px] text-gray-500">
-                    📉 Taxa de leads perdidos: <span className={`font-semibold ${m.lostRate > 50 ? 'text-red-600' : 'text-gray-600'}`}>{m.lostRate}%</span> ({m.cancelledCount} cancelado{m.cancelledCount !== 1 ? 's' : ''})
+                    Taxa de leads perdidos: <span className={`font-semibold ${m.lostRate > 50 ? 'text-red-600' : 'text-gray-600'}`}>{m.lostRate}%</span> ({m.cancelledCount} cancelado{m.cancelledCount !== 1 ? 's' : ''})
                   </p>
                 )}
               </div>
@@ -480,7 +480,7 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
                 <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-300 rounded-xl">
                   <Zap size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm font-bold text-red-700">⚠️ Alerta de Fraude — Burst Detectado</p>
+                    <p className="text-sm font-bold text-red-700">Alerta de Fraude — Burst Detectado</p>
                     <p className="text-xs text-red-600 mt-0.5">
                       {m.burstMax} clientes "contatados" em menos de 10 minutos. Isso é estatisticamente improvável para contatos reais — provável marcação em massa.
                     </p>

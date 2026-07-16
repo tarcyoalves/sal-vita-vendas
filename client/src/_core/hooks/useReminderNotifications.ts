@@ -66,10 +66,10 @@ export function useReminderNotifications(enabled: boolean, userName: string = ''
             // Atrasada: dispara uma vez por dia
             if (diff < -60000 && !fired.has(overdueKey)) {
               markFired(overdueKey);
-              toast.warning(`🚨 Atrasada: ${r.title}`, { duration: 10000 });
+              toast.warning(`Atrasada: ${r.title}`, { duration: 10000 });
               playBeep();
               if ("Notification" in window && Notification.permission === 'granted') {
-                try { new Notification(`🚨 Atrasada: ${r.title}`, { body: 'Prazo ultrapassado!', icon: '/favicon.ico' }); } catch (_) {}
+                try { new Notification(`Atrasada: ${r.title}`, { body: 'Prazo ultrapassado!', icon: '/favicon.ico' }); } catch (_) {}
               }
               return;
             }
@@ -78,7 +78,7 @@ export function useReminderNotifications(enabled: boolean, userName: string = ''
             if (diff > 60000 && diff <= 300000 && !fired.has(warnKey)) {
               markFired(warnKey);
               const mins = Math.round(diff / 60000);
-              toast.info(`⏰ Lembrete em ${mins} min: ${r.title}`, { duration: 6000 });
+              toast.info(`Lembrete em ${mins} min: ${r.title}`, { duration: 6000 });
               return;
             }
 
@@ -87,10 +87,10 @@ export function useReminderNotifications(enabled: boolean, userName: string = ''
               markFired(fireKey);
               const p = (n: number) => String(n).padStart(2, '0');
               const time = `${p(rd.getHours())}:${p(rd.getMinutes())}`;
-              toast.warning(`🔔 Lembrete: ${r.title}`, { description: `Agendado para ${time}`, duration: 15000 });
+              toast.warning(`Lembrete: ${r.title}`, { description: `Agendado para ${time}`, duration: 15000 });
               playBeep();
               if ("Notification" in window && Notification.permission === 'granted') {
-                try { new Notification(`🔔 Lembrete: ${r.title}`, { body: r.notes?.trim() || `Agendado para ${time}`, icon: '/favicon.ico', tag: `reminder-${r.id}` }); } catch (_) {}
+                try { new Notification(`Lembrete: ${r.title}`, { body: r.notes?.trim() || `Agendado para ${time}`, icon: '/favicon.ico', tag: `reminder-${r.id}` }); } catch (_) {}
               }
             }
           } catch (_) {}
@@ -117,30 +117,30 @@ export function useReminderNotifications(enabled: boolean, userName: string = ''
 
         // Priority: overdue alert first
         if (overdue.length > 0) {
-          const msg = `🚨 ${overdue.length} lembrete${overdue.length > 1 ? 's' : ''} em atraso! Contate seus clientes agora.`;
+          const msg = `${overdue.length} lembrete${overdue.length > 1 ? 's' : ''} em atraso! Contate seus clientes agora.`;
           toast.warning(msg, { duration: 10000 });
           if ("Notification" in window && Notification.permission === 'granted') {
-            try { new Notification('⚠️ Sal Vita — Atenção', { body: msg, icon: '/favicon.ico' }); } catch (_) {}
+            try { new Notification('Sal Vita — Atenção', { body: msg, icon: '/favicon.ico' }); } catch (_) {}
           }
           return;
         }
 
         // Time-based tips
         const tips = [
-          ...(h >= 8 && h < 10   ? [`☀️ Bom dia! Você tem ${todayUpcoming.length} lembretes hoje. Comece pelos mais urgentes!`] : []),
-          ...(h >= 12 && h < 13  ? [`🍽️ Hora do almoço chegando! Você ainda tem ${todayUpcoming.length} lembretes para hoje.`] : []),
-          ...(h >= 14 && h < 15  ? [`💪 Tarde produtiva! ${upcoming.length} lembretes agendados — mantenha o ritmo.`] : []),
-          ...(h >= 17 && h < 18  ? [`🏁 Última hora! Finalize os ${todayUpcoming.length} lembretes de hoje antes de encerrar.`] : []),
-          `💡 Você tem ${upcoming.length} lembretes agendados. Contato regular fideliza o cliente!`,
-          `📞 ${pending.length} clientes ativos no seu portfólio. Qual vai contatar agora?`,
-          `🏆 Atendentes que reagendam no prazo vendem mais. Seus lembretes estão em dia?`,
-          `⏰ ${todayUpcoming.length} lembretes restantes hoje. Foco nos mais próximos!`,
-          `📈 Consistência é o segredo das metas. Clientes bem atendidos compram mais.`,
+          ...(h >= 8 && h < 10   ? [`Bom dia! Você tem ${todayUpcoming.length} lembretes hoje. Comece pelos mais urgentes!`] : []),
+          ...(h >= 12 && h < 13  ? [`Hora do almoço chegando! Você ainda tem ${todayUpcoming.length} lembretes para hoje.`] : []),
+          ...(h >= 14 && h < 15  ? [`Tarde produtiva! ${upcoming.length} lembretes agendados — mantenha o ritmo.`] : []),
+          ...(h >= 17 && h < 18  ? [`Última hora! Finalize os ${todayUpcoming.length} lembretes de hoje antes de encerrar.`] : []),
+          `Você tem ${upcoming.length} lembretes agendados. Contato regular fideliza o cliente!`,
+          `${pending.length} clientes ativos no seu portfólio. Qual vai contatar agora?`,
+          `Atendentes que reagendam no prazo vendem mais. Seus lembretes estão em dia?`,
+          `${todayUpcoming.length} lembretes restantes hoje. Foco nos mais próximos!`,
+          `Consistência é o segredo das metas. Clientes bem atendidos compram mais.`,
         ];
         const tip = tips[Math.floor(Math.random() * tips.length)];
         toast.info(tip, { duration: 7000 });
         if ("Notification" in window && Notification.permission === 'granted') {
-          try { new Notification('💡 Sal Vita', { body: tip, icon: '/favicon.ico' }); } catch (_) {}
+          try { new Notification('Sal Vita', { body: tip, icon: '/favicon.ico' }); } catch (_) {}
         }
       } catch (_) {}
     }, 60 * 60 * 1000);

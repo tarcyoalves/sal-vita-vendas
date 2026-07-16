@@ -61,14 +61,14 @@ export default function ActiveTimer() {
     try {
       if (action === 'pause') {
         await pauseMut.mutateAsync();
-        toast.info('⏸ Pausado.');
+        toast.info('Pausado.');
       } else if (action === 'resume') {
         await resumeMut.mutateAsync();
-        toast.success('▶ Retomado!');
+        toast.success('Retomado!');
       } else if (action === 'end') {
         if (!confirm('Finalizar o trabalho agora?')) return;
         await endMut.mutateAsync();
-        toast.success('⏹ Trabalho finalizado!');
+        toast.success('Trabalho finalizado!');
         setExpanded(false);
       }
       refetch();
