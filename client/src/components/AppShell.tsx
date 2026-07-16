@@ -239,8 +239,12 @@ export default function AppShell({ children }: AppShellProps) {
   };
 
   const handleLogout = async () => {
-    await logoutMutation.mutateAsync();
-    setLocation("/");
+    try {
+      await logoutMutation.mutateAsync();
+      setLocation("/");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao sair. Verifique sua conexão e tente novamente.");
+    }
   };
 
   const handleChangePwd = async (e: React.FormEvent) => {
