@@ -846,7 +846,7 @@ export function layout(body: string, unsubUrl: string, signatureHtml?: string): 
           .replace(/\bwidth\s*=\s*["']?[^"'\s>]+["']?/gi, '')
           .replace(/\bheight\s*=\s*["']?[^"'\s>]+["']?/gi, '')
           .replace(/\bstyle\s*=\s*["'][^"']*["']/gi, '');
-        return `<img${clean} width="650" style="width:650px;max-width:100%;height:auto;display:block;">`;
+        return `<img${clean} width="520" style="width:520px;max-width:100%;height:auto;display:block;">`;
       });
   }
   const sigBlock = sigHtml
@@ -859,6 +859,10 @@ export function layout(body: string, unsubUrl: string, signatureHtml?: string): 
   const htmlBody = bodyToHtml(body);
   const isStructuredHtml = /<table[\s>]/i.test(htmlBody);
   const bodyPadding = isStructuredHtml ? 'padding:0;' : 'padding:32px 40px 24px;';
+  // Shell da marca: container centralizado de 600px (padrão de e-mail — antes a
+  // tabela era 100% e o texto esticava a tela inteira em desktop), cabeçalho
+  // Sal Vita em texto puro (imagens externas são bloqueadas por padrão em
+  // muitos clientes de e-mail), corpo em card branco e rodapé em branco-sal.
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -866,12 +870,18 @@ export function layout(body: string, unsubUrl: string, signatureHtml?: string): 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sal Vita</title>
 </head>
-<body style="margin:0;padding:0;background:#f4f4f4;font-family:system-ui,Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;">
+<body style="margin:0;padding:0;background:#ECEAE4;font-family:system-ui,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ECEAE4;">
     <tr>
-      <td align="center" style="padding:0;">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0"
-               style="width:100%;background:#ffffff;">
+      <td align="center" style="padding:24px 12px;">
+        <table width="600" cellpadding="0" cellspacing="0" border="0"
+               style="width:600px;max-width:100%;background:#ffffff;border:1px solid #E0DDD4;border-radius:10px;overflow:hidden;">
+          <tr>
+            <td style="background:#0C3680;padding:16px 40px;">
+              <span style="font-family:Georgia,'Times New Roman',serif;font-style:italic;font-weight:bold;font-size:22px;color:#ffffff;">Sal Vita</span>
+              <span style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#9DB8E4;padding-left:10px;">Sal Marinho de Mossor&oacute;/RN</span>
+            </td>
+          </tr>
           <tr>
             <td style="${bodyPadding}">
               ${htmlBody}
@@ -879,15 +889,15 @@ export function layout(body: string, unsubUrl: string, signatureHtml?: string): 
           </tr>
           ${sigBlock}
           <tr>
-            <td style="background:#f9f9f9;padding:20px 40px;border-top:1px solid #e0e0e0;text-align:center;">
-              <p style="margin:0;font-size:12px;color:#888;">
+            <td style="background:#F7F6F2;padding:20px 40px;border-top:1px solid #E0DDD4;text-align:center;">
+              <p style="margin:0;font-size:12px;color:#6B7280;">
                 <strong>Sal Vita &mdash; Sal Marinho Premium de Mossoró/RN</strong>
               </p>
-              <p style="margin:8px 0 0;font-size:11px;color:#aaa;">
+              <p style="margin:8px 0 0;font-size:11px;color:#9CA3AF;">
                 Você está recebendo este e-mail porque é cliente ou contato da Sal Vita.<br />
-                <a href="${unsubUrl}" style="color:#aaa;text-decoration:underline;">Não quero mais receber e-mails</a>
+                <a href="${unsubUrl}" style="color:#9CA3AF;text-decoration:underline;">Não quero mais receber e-mails</a>
               </p>
-              <p style="margin:8px 0 0;font-size:11px;color:#aaa;">Sal Vita &middot; Mossor&oacute;/RN &middot; Brasil</p>
+              <p style="margin:8px 0 0;font-size:11px;color:#9CA3AF;">Sal Vita &middot; Mossor&oacute;/RN &middot; Brasil</p>
             </td>
           </tr>
         </table>
