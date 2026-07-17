@@ -160,6 +160,38 @@ function StatTile({ icon: Icon, label, value, accent }: { icon: LucideIcon; labe
   );
 }
 
+// "Enviar teste para mim" (F4): dispara sendTestEmail com o assunto/corpo
+// atuais do editor. Renderiza o e-mail com o pipeline real e manda para o
+// próprio usuário; consome 1 da cota do dia (máx. 10 testes/dia).
+function TestEmailButton({ subject, htmlBody, className }: { subject: string; htmlBody: string; className?: string }) {
+  const testMutation = trpc.emailMarketing.sendTestEmail.useMutation();
+  const handle = async () => {
+    if (!subject.trim() || !htmlBody.trim()) {
+      toast.error("Preencha o assunto e o corpo antes de enviar o teste");
+      return;
+    }
+    try {
+      const res = await testMutation.mutateAsync({ subject, htmlBody });
+      toast.success(`Teste enviado para ${res.to}. Restam ${res.remainingToday} teste(s) hoje.`);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao enviar teste");
+    }
+  };
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      onClick={handle}
+      disabled={testMutation.isPending}
+      className={`text-blue-700 hover:bg-blue-50 ${className ?? ""}`}
+    >
+      <Send size={14} className="mr-1.5" />
+      {testMutation.isPending ? "Enviando teste..." : "Enviar teste para mim"}
+    </Button>
+  );
+}
+
 function formatDateTime(value: string | Date | null | undefined): string {
   if (!value) return "--";
   const d = new Date(value);
@@ -1012,13 +1044,18 @@ function CampaignsTab() {
               )}
             </div>
           </div>
-          <DialogFooter className="flex gap-2 pt-2">
-            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleCreate} disabled={createMutation.isPending || sendingId !== null}>
-              {createMutation.isPending
-                ? (sendMode === "schedule" ? "Agendando..." : "Criando...")
-                : (sendMode === "schedule" ? "Agendar Campanha" : "Criar e Enviar")}
-            </Button>
-            <Button variant="outline" className="flex-1" onClick={() => { setShowCreate(false); resetForm(); }}>Cancelar</Button>
+          <DialogFooter className="flex-col gap-2 pt-2 sm:flex-col">
+            <div className="flex justify-center">
+              <TestEmailButton subject={form.subject} htmlBody={form.htmlBody} />
+            </div>
+            <div className="flex gap-2">
+              <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleCreate} disabled={createMutation.isPending || sendingId !== null}>
+                {createMutation.isPending
+                  ? (sendMode === "schedule" ? "Agendando..." : "Criando...")
+                  : (sendMode === "schedule" ? "Agendar Campanha" : "Criar e Enviar")}
+              </Button>
+              <Button variant="outline" className="flex-1" onClick={() => { setShowCreate(false); resetForm(); }}>Cancelar</Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1288,16 +1325,21 @@ function CampaignsTab() {
               )}
             </div>
           </div>
-          <DialogFooter className="flex gap-2 pt-2">
-            <Button
-              className="flex-1 bg-blue-900 hover:bg-blue-800"
-              onClick={() => setConfirmBroadcast(true)}
-              disabled={broadcastMutation.isPending || sendingId !== null}
-            >
-              <Send size={16} className="mr-1" />
-              {broadcastMutation.isPending ? "Enviando..." : `Enviar para ${bcastMode === 'audience' ? (bcastAudiencePreview?.count ?? 0) : parsedEmails.valid.length}`}
-            </Button>
-            <Button variant="outline" className="flex-1" onClick={() => { setShowBroadcast(false); resetBroadcast(); }}>Cancelar</Button>
+          <DialogFooter className="flex-col gap-2 pt-2 sm:flex-col">
+            <div className="flex justify-center">
+              <TestEmailButton subject={bcast.subject} htmlBody={bcast.htmlBody} />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                className="flex-1 bg-blue-900 hover:bg-blue-800"
+                onClick={() => setConfirmBroadcast(true)}
+                disabled={broadcastMutation.isPending || sendingId !== null}
+              >
+                <Send size={16} className="mr-1" />
+                {broadcastMutation.isPending ? "Enviando..." : `Enviar para ${bcastMode === 'audience' ? (bcastAudiencePreview?.count ?? 0) : parsedEmails.valid.length}`}
+              </Button>
+              <Button variant="outline" className="flex-1" onClick={() => { setShowBroadcast(false); resetBroadcast(); }}>Cancelar</Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1793,11 +1835,18 @@ function TemplatesTab() {
               </div>
             </div>
           )}
-          <DialogFooter className="flex gap-2 pt-2">
-            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleSave} disabled={upsertMutation.isPending}>
-              {upsertMutation.isPending ? "Salvando..." : "Salvar"}
-            </Button>
-            <Button variant="outline" className="flex-1" onClick={() => setEditing(null)}>Cancelar</Button>
+          <DialogFooter className="flex-col gap-2 pt-2 sm:flex-col">
+            {editing && (
+              <div className="flex justify-center">
+                <TestEmailButton subject={editing.subject} htmlBody={editing.htmlBody} />
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleSave} disabled={upsertMutation.isPending}>
+                {upsertMutation.isPending ? "Salvando..." : "Salvar"}
+              </Button>
+              <Button variant="outline" className="flex-1" onClick={() => setEditing(null)}>Cancelar</Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

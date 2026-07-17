@@ -19,6 +19,15 @@ import { spDateStr, spMidnight, spDaysAgo } from '../lib/tz';
 const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL ?? 'https://lembretes.salvitarn.com.br';
 const MKT_DAILY_LIMIT = parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? '90');
 
+// F4 — "Enviar teste para mim": rate limit em memória (máx. 10 testes/dia por
+// usuário). Deliberadamente em memória (aceitável p/ um guard anti-abuso): não
+// polui os contadores de cota do dashboard (email_send_counters) e reseta a
+// cada cold start da função serverless. O envio real ainda consome a cota do
+// dia via reserveSendQuota (honesto), então o teto diário de e-mails é
+// respeitado independentemente deste contador.
+const TEST_EMAIL_DAILY_LIMIT = 10;
+const testEmailCounter = new Map<number, { day: string; count: number }>();
+
 // Tasks are titled "NOME - EMPRESA - telefone - email - cidade - UF" — use the
 // first segment as the recipient's display name for {nome} personalization.
 function firstPart(title: string): string {
@@ -578,6 +587,84 @@ export const emailMarketingRouter = router({
       const res = await processCampaignBatch(input.campaignId);
       if (res.notFound) throw new TRPCError({ code: 'NOT_FOUND', message: 'Campanha não encontrada' });
       return res;
+    }),
+
+  // ── Enviar teste para mim (F4) ─────────────────────────────────────────────
+  // Renderiza com o MESMO pipeline real (sanitize + layout() + {nome}/
+  // {unsubscribe}) e envia UM e-mail para o próprio usuário via cascata de
+  // contas, consumindo a cota do dia (honesto) — mas SEM gravar recipient nem
+  // campanha. Rate-limit: 10 testes/dia por usuário (contador em memória).
+  sendTestEmail: staffProcedure
+    .input(z.object({
+      subject: z.string().min(1).max(300),
+      htmlBody: z.string().min(1),
+      templateId: z.number().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      if (!ctx.user.email) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Seu usuário não tem e-mail cadastrado para receber o teste.' });
+      }
+
+      const today = spDateStr();
+      const rec = testEmailCounter.get(ctx.user.id);
+      const usedToday = rec && rec.day === today ? rec.count : 0;
+      if (usedToday >= TEST_EMAIL_DAILY_LIMIT) {
+        throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: `Limite de ${TEST_EMAIL_DAILY_LIMIT} testes por dia atingido. Tente novamente amanhã.` });
+      }
+
+      // Template opcional sobrepõe assunto/corpo, se informado.
+      let subject = input.subject;
+      let htmlBody = input.htmlBody;
+      if (input.templateId) {
+        const [tpl] = await db.select({ subject: emailTemplates.subject, htmlBody: emailTemplates.htmlBody })
+          .from(emailTemplates).where(eq(emailTemplates.id, input.templateId));
+        if (tpl) { subject = tpl.subject; htmlBody = tpl.htmlBody; }
+      }
+
+      // Mesmo pipeline real. Link de descadastro aponta p/ um token dummy — a
+      // página pública de unsubscribe trata token inexistente com uma mensagem
+      // informativa (não descadastra ninguém).
+      const cleanBody = sanitizeCampaignHtml(htmlBody);
+      const dummyToken = `teste-${crypto.randomUUID()}`;
+      const unsubUrl = `${PUBLIC_APP_URL}/api/unsubscribe?t=${dummyToken}`;
+
+      // Assinatura do próprio remetente (se habilitada) — para o teste refletir
+      // exatamente o que o destinatário real veria.
+      let signatureHtml: string | undefined;
+      try {
+        const [seller] = await db.select({
+          name: sellers.name, email: sellers.email, phone: sellers.phone, department: sellers.department,
+          sig: sellers.emailSignatureHtml, sigOn: sellers.emailSignatureEnabled,
+        }).from(sellers).where(eq(sellers.userId, ctx.user.id)).limit(1);
+        if (seller?.sigOn && seller.sig) signatureHtml = renderSignature(seller.sig, seller);
+      } catch { /* assinatura é opcional */ }
+
+      const html = layout(renderTemplate(cleanBody, { nome: ctx.user.name, unsubscribe: unsubUrl }), unsubUrl, signatureHtml);
+      const renderedSubject = `[TESTE] ${renderTemplate(subject, { nome: ctx.user.name })}`;
+
+      // Reserva 1 slot na cascata de contas (conta na cota diária — honesto).
+      const reserved = await reserveSendQuota(1);
+      if (!reserved) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Limite diário de envio atingido em todas as contas. Tente mais tarde.' });
+      }
+      const { account, granted } = reserved;
+
+      const messages: BatchMessage[] = [{
+        to: ctx.user.email,
+        subject: renderedSubject,
+        html,
+        replyTo: ctx.user.email,
+        unsubToken: dummyToken,
+      }];
+      const [result] = await sendBatch(account, messages);
+      if (!result?.ok) {
+        // Rejeição definitiva devolve a reserva; teste não gravou nada.
+        await refundDailyQuota(account.key, granted);
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Falha ao enviar teste: ${result?.error ?? 'desconhecido'}` });
+      }
+
+      testEmailCounter.set(ctx.user.id, { day: today, count: usedToday + 1 });
+      return { ok: true, to: ctx.user.email, remainingToday: TEST_EMAIL_DAILY_LIMIT - (usedToday + 1) };
     }),
 
   // ── Descadastrados ─────────────────────────────────────────────────────────
