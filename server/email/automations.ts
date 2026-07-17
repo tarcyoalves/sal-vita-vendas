@@ -9,7 +9,7 @@
  */
 
 import crypto from 'crypto';
-import { and, eq, isNull, isNotNull, ne, sql, lte, lt, asc, inArray } from 'drizzle-orm';
+import { and, eq, isNull, isNotNull, ne, or, sql, lte, lt, asc, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import {
   automationRules, emailSequenceSteps, emailSequenceEnrollments, emailSequenceSends,
@@ -291,6 +291,49 @@ export async function evaluateInactiveDaysRules(): Promise<{ rulesEvaluated: num
  *
  * Never throws — fire-and-forget after the webhook already responded 200.
  */
+// Janela de dedupe do lembrete de lead quente: no máximo um lembrete de clique
+// a cada 48h por tarefa (cliques repetidos no intervalo são ignorados).
+const HOT_LEAD_REMINDER_DEDUPE_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * F4 — lembrete automático de lead quente para o atendente.
+ *
+ * Quando um clique marca/renova hotLead numa tarefa COM atendente (assignedTo)
+ * e e-mail, cria um lembrete usando a MESMA infra que as telas do atendente
+ * exibem: `tasks.reminderDate` + `tasks.reminderEnabled` (consumidos por
+ * `tasks.reminders` → useReminderNotifications e o dashboard). O texto vai em
+ * `tasks.notes` (prepend NÃO-destrutivo), que é exatamente o corpo mostrado na
+ * notificação do lembrete.
+ *
+ * Barato e silencioso: uma ÚNICA UPDATE, com todo o gate (atendente + e-mail +
+ * dedupe de 48h via `hotLeadReminderAt`) no WHERE — cliques repetidos casam 0
+ * linhas e não fazem nada. O texto (empresa/nome) é montado direto em SQL a
+ * partir do `title` ("NOME - EMPRESA - ..."), sem SELECT extra.
+ */
+async function createHotLeadReminder(taskId: number, now: Date): Promise<void> {
+  try {
+    const dedupeCutoff = new Date(now.getTime() - HOT_LEAD_REMINDER_DEDUPE_MS);
+    await db.update(tasks)
+      .set({
+        reminderDate: now,          // "Ligar hoje": traz o lembrete para agora
+        reminderEnabled: true,      // garante que a notificação dispare
+        hotLeadReminderAt: now,     // marcador de dedupe
+        notes: sql`'Lead quente: ' || COALESCE(NULLIF(split_part(${tasks.title}, ' - ', 2), ''), split_part(${tasks.title}, ' - ', 1)) || ' clicou num e-mail. Ligar hoje.' || E'\n\n' || COALESCE(${tasks.notes}, '')`,
+        updatedAt: now,
+      })
+      .where(and(
+        eq(tasks.id, taskId),
+        isNotNull(tasks.assignedTo),
+        ne(tasks.assignedTo, ''),
+        isNotNull(tasks.email),
+        ne(tasks.email, ''),
+        or(isNull(tasks.hotLeadReminderAt), lt(tasks.hotLeadReminderAt, dedupeCutoff)),
+      ));
+  } catch (err) {
+    console.error('[automations] createHotLeadReminder failed:', err);
+  }
+}
+
 export async function flagEngagementByMessageId(
   messageId: string,
   eventType: 'opened' | 'clicked',
@@ -330,6 +373,7 @@ export async function flagEngagementByMessageId(
         })
         .where(eq(tasks.id, taskId));
       await addTagToTask(taskId, '🔥 quente');
+      await createHotLeadReminder(taskId, now);
     } else {
       await db.update(tasks)
         .set({ lastEngagementAt: now, updatedAt: now })

@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-07-17a';
+const SCHEMA_VERSION = '2026-07-17b';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -435,6 +435,8 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS hot_lead BOOLEAN NOT NULL DEFAULT FALSE`;
   await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_engagement_at TIMESTAMP`;
   await sql`CREATE INDEX IF NOT EXISTS tasks_hot_lead_idx ON tasks (hot_lead) WHERE hot_lead = TRUE`;
+  // Lembrete automático de lead quente (F4): marcador de dedupe (janela de 48h).
+  await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS hot_lead_reminder_at TIMESTAMP`;
 
   // ── Envio duplicado de campanha — claim atômico ('sending') ────────────────
   // processBatch reserva destinatários flipando 'pending' → 'sending' com

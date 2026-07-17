@@ -93,6 +93,9 @@ export const tasks = pgTable('tasks', {
   // e-mail de campanha/sequência (sinal forte de interesse).
   hotLead: boolean('hot_lead').notNull().default(false),
   lastEngagementAt: timestamp('last_engagement_at'),
+  // E-mail Marketing F4 — lembrete de lead quente para o atendente. Marcador de
+  // dedupe: só cria/renova um lembrete de clique a cada 48h por tarefa.
+  hotLeadReminderAt: timestamp('hot_lead_reminder_at'),
   // Identificadores normalizados (somente dígitos) usados para detectar reimportação
   // de leads já excluídos — ver task_deletion_logs.
   cnpj: text('cnpj'),
