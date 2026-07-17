@@ -32,6 +32,7 @@ import {
   LayoutTemplate, MailX, Filter, Sparkles, Inbox, Megaphone, Paperclip, FileText, Contact, Search,
   CheckCircle, XCircle, AlertTriangle, RotateCcw, Gauge, TrendingUp, Upload, UserPlus, FolderOpen, FolderPlus, ArrowRightLeft,
   Blocks, SplitSquareVertical, ShieldCheck, ChevronUp, ChevronDown, MousePointerClick, SkipForward, Flame,
+  Clock, CalendarClock,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -39,6 +40,7 @@ type Source = "leads" | "clients" | "contacts" | "both" | "all";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Rascunho",
+  scheduled: "Agendada",
   sending: "Enviando",
   sent: "Enviado",
 };
@@ -108,6 +110,7 @@ const ACTION_TYPE_LABELS: Record<string, string> = {
 // Vivid color treatments layered on top of the base badge variants, keyed by status value.
 const STATUS_BADGE_CLASS: Record<string, string> = {
   draft: "bg-slate-100 text-slate-600 border-slate-200",
+  scheduled: "bg-violet-100 text-violet-700 border-violet-200",
   sending: "bg-amber-100 text-amber-700 border-amber-200",
   sent: "bg-emerald-100 text-emerald-700 border-emerald-200",
 };
@@ -458,6 +461,12 @@ function CampaignsTab() {
   const deleteMutation = trpc.emailMarketing.deleteCampaign.useMutation();
   const processBatchMutation = trpc.emailMarketing.processBatch.useMutation();
   const broadcastMutation = trpc.emailMarketing.sendBroadcast.useMutation();
+  const cancelScheduleMutation = trpc.emailMarketing.cancelCampaignSchedule.useMutation();
+
+  // Agendamento (F4): "Enviar agora" (padrão) cria + dispara já; "Agendar" cria
+  // com scheduledAt futuro e o cron diário promove/envia quando vencer.
+  const [sendMode, setSendMode] = useState<"now" | "schedule">("now");
+  const [scheduleAt, setScheduleAt] = useState("");
 
   const [showCreate, setShowCreate] = useState(false);
   const [useBlockEditor, setUseBlockEditor] = useState(false);
@@ -599,7 +608,11 @@ function CampaignsTab() {
   const [confirmCampaign, setConfirmCampaign] = useState<{ id: number; subject: string; count: number } | null>(null);
   const [confirmBroadcast, setConfirmBroadcast] = useState(false);
 
-  const resetForm = () => setForm({ name: "", subject: "", htmlBody: "", source: "leads", assignedTo: "" });
+  const resetForm = () => {
+    setForm({ name: "", subject: "", htmlBody: "", source: "leads", assignedTo: "" });
+    setSendMode("now");
+    setScheduleAt("");
+  };
 
   const handleApplyTemplate = (templateId: string) => {
     const t = templates?.find(t => t.id === Number(templateId));
@@ -612,17 +625,49 @@ function CampaignsTab() {
       toast.error("Preencha nome, assunto e corpo do e-mail");
       return;
     }
+    let scheduledAt: Date | undefined;
+    if (sendMode === "schedule") {
+      if (!scheduleAt) {
+        toast.error("Escolha a data e a hora do agendamento");
+        return;
+      }
+      // datetime-local é interpretado no fuso local do navegador (America/Sao_Paulo
+      // para os operadores) — vira um Date absoluto (UTC) ao serializar via tRPC.
+      const when = new Date(scheduleAt);
+      if (isNaN(when.getTime()) || when.getTime() <= Date.now() + 60_000) {
+        toast.error("O agendamento precisa ser pelo menos 1 minuto no futuro");
+        return;
+      }
+      scheduledAt = when;
+    }
     try {
-      await createMutation.mutateAsync({
+      const created = await createMutation.mutateAsync({
         name: form.name, subject: form.subject, htmlBody: form.htmlBody,
         source: form.source, assignedTo: form.assignedTo || undefined,
+        scheduledAt,
       });
-      toast.success("Campanha criada!");
       setShowCreate(false);
       resetForm();
-      utils.emailMarketing.listCampaigns.invalidate();
+      await utils.emailMarketing.listCampaigns.invalidate();
+      if (sendMode === "schedule" && scheduledAt) {
+        toast.success(`Campanha agendada para ${formatDateTime(scheduledAt)}.`);
+      } else {
+        // "Enviar agora": dispara o motor imediatamente (loop de lotes na aba).
+        toast.success("Campanha criada. Iniciando envio...");
+        await handleSend(created.id);
+      }
     } catch (e: any) {
       toast.error(e?.message ?? "Erro ao criar campanha");
+    }
+  };
+
+  const handleCancelSchedule = async (id: number) => {
+    try {
+      await cancelScheduleMutation.mutateAsync({ id });
+      toast.success("Agendamento cancelado. A campanha voltou para rascunho.");
+      utils.emailMarketing.listCampaigns.invalidate();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao cancelar agendamento");
     }
   };
 
@@ -722,6 +767,11 @@ function CampaignsTab() {
                         <Badge variant="outline" className={STATUS_BADGE_CLASS[c.status] ?? ""}>
                           {STATUS_LABELS[c.status] ?? c.status}
                         </Badge>
+                        {c.status === "scheduled" && (c as any).scheduledAt && (
+                          <p className="mt-1 flex items-center gap-1 text-[11px] text-violet-600">
+                            <CalendarClock size={11} /> {formatDateTime((c as any).scheduledAt)}
+                          </p>
+                        )}
                       </td>
                       <td className="px-3 py-2.5">{c.totalRecipients}</td>
                       <td className="px-3 py-2.5 text-emerald-700 font-medium">{c.sentCount}</td>
@@ -739,7 +789,18 @@ function CampaignsTab() {
                               disabled={sendingId !== null || processBatchMutation.isPending}
                             >
                               <Send size={14} className="mr-1" />
-                              {sendingId === c.id ? "Enviando..." : "Enviar"}
+                              {sendingId === c.id ? "Enviando..." : c.status === "scheduled" ? "Enviar agora" : "Enviar"}
+                            </Button>
+                          )}
+                          {c.status === "scheduled" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-violet-200 text-violet-700 hover:bg-violet-50"
+                              onClick={() => handleCancelSchedule(c.id)}
+                              disabled={cancelScheduleMutation.isPending}
+                            >
+                              <X size={14} className="mr-1" /> Cancelar agendamento
                             </Button>
                           )}
                           <Button size="sm" variant="destructive" onClick={() => handleDelete(c.id)} disabled={sendingId === c.id || deleteMutation.isPending}>
@@ -916,10 +977,46 @@ function CampaignsTab() {
                 )}
               </div>
             </div>
+
+            {/* Agendamento (F4): enviar agora vs. agendar */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2.5">
+              <Label className="flex items-center gap-1.5 text-slate-700"><Clock size={13} /> Quando enviar</Label>
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setSendMode("now")}
+                  className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition-all ${sendMode === "now" ? "border-blue-300 bg-blue-50 text-blue-900 shadow-sm" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}
+                >
+                  <Send size={14} className="inline mr-1.5 -mt-0.5" /> Enviar agora
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSendMode("schedule")}
+                  className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition-all ${sendMode === "schedule" ? "border-violet-300 bg-violet-50 text-violet-800 shadow-sm" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}
+                >
+                  <Clock size={14} className="inline mr-1.5 -mt-0.5" /> Agendar
+                </button>
+              </div>
+              {sendMode === "schedule" && (
+                <div>
+                  <Input
+                    type="datetime-local"
+                    value={scheduleAt}
+                    onChange={e => setScheduleAt(e.target.value)}
+                    className="bg-white"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    A campanha fica <strong>Agendada</strong> e é enviada automaticamente no ciclo diário (8h, horário de Brasília) a partir dessa data — mesmo com esta tela fechada.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter className="flex gap-2 pt-2">
-            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleCreate} disabled={createMutation.isPending}>
-              {createMutation.isPending ? "Criando..." : "Criar Campanha"}
+            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleCreate} disabled={createMutation.isPending || sendingId !== null}>
+              {createMutation.isPending
+                ? (sendMode === "schedule" ? "Agendando..." : "Criando...")
+                : (sendMode === "schedule" ? "Agendar Campanha" : "Criar e Enviar")}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => { setShowCreate(false); resetForm(); }}>Cancelar</Button>
           </DialogFooter>
@@ -1220,6 +1317,10 @@ function CampaignsTab() {
               <p><span className="font-medium text-slate-700">Destinatários:</span> {confirmCampaign?.count ?? 0}</p>
               <p><span className="font-medium text-slate-700">Assunto:</span> {confirmCampaign?.subject}</p>
             </div>
+            <p className="flex items-start gap-1.5 text-xs text-slate-500">
+              <CalendarClock size={13} className="mt-0.5 flex-shrink-0 text-slate-400" />
+              Se você fechar esta tela, o envio continua automaticamente no próximo ciclo diário (8h).
+            </p>
             <p className="text-xs text-slate-400">O envio não pode ser desfeito depois de iniciado.</p>
           </div>
           <DialogFooter className="flex gap-2 pt-2">

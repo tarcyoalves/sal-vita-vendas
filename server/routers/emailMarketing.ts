@@ -279,10 +279,17 @@ export const emailMarketingRouter = router({
       source: z.enum(['leads', 'clients', 'contacts', 'both', 'all']).default('leads'),
       assignedTo: z.string().optional(),
       tags: z.array(z.string()).optional(),
+      // Agendamento (F4): data/hora futura ⇒ campanha nasce 'scheduled' e o cron
+      // a promove para 'sending' quando vencer. Ausente/passado ⇒ 'draft'.
+      scheduledAt: z.date().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       input.htmlBody = sanitizeCampaignHtml(input.htmlBody);
       const audience = await buildAudience(input);
+
+      // Só agenda se a data for realmente futura (com folga de 1 min); caso
+      // contrário nasce como rascunho comum.
+      const isScheduled = !!input.scheduledAt && input.scheduledAt.getTime() > Date.now() + 60_000;
 
       const [campaign] = await db.insert(emailCampaigns).values({
         name: input.name,
@@ -290,6 +297,8 @@ export const emailMarketingRouter = router({
         htmlBody: input.htmlBody,
         totalRecipients: audience.length,
         createdByUserId: ctx.user.id,
+        status: isScheduled ? 'scheduled' : 'draft',
+        scheduledAt: isScheduled ? input.scheduledAt : null,
       }).returning();
 
       if (audience.length > 0) {
@@ -536,6 +545,20 @@ export const emailMarketingRouter = router({
       await db.delete(emailCampaignRecipients).where(eq(emailCampaignRecipients.campaignId, input.id));
       await db.delete(emailCampaigns).where(eq(emailCampaigns.id, input.id));
       return { ok: true };
+    }),
+
+  // Cancela o agendamento de uma campanha: volta para 'draft' e limpa
+  // scheduled_at. Só faz sentido enquanto ainda está 'scheduled' (o cron ainda
+  // não a promoveu para 'sending').
+  cancelCampaignSchedule: staffProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const [updated] = await db.update(emailCampaigns)
+        .set({ status: 'draft', scheduledAt: null, updatedAt: new Date() })
+        .where(and(eq(emailCampaigns.id, input.id), eq(emailCampaigns.status, 'scheduled')))
+        .returning();
+      if (!updated) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Campanha não está agendada (talvez já tenha iniciado o envio).' });
+      return updated;
     }),
 
   // ── Motor de envio (polling) ──────────────────────────────────────────────

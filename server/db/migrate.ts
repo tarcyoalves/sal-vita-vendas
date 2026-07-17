@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-07-15a';
+const SCHEMA_VERSION = '2026-07-17a';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -485,6 +485,12 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS is_broadcast BOOLEAN NOT NULL DEFAULT FALSE`;
   await sql`ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS attachments  JSONB`;
   await sql`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS attachments  JSONB`;
+
+  // ── Agendamento de campanhas (E-mail Marketing F4) ─────────────────────────
+  // scheduled_at futuro ⇒ status 'scheduled'; o cron diário promove p/ 'sending'
+  // quando vence. Index parcial acelera a varredura de agendadas no cron.
+  await sql`ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMP`;
+  await sql`CREATE INDEX IF NOT EXISTS email_campaigns_scheduled_idx ON email_campaigns (scheduled_at) WHERE status = 'scheduled'`;
 
   // ── Restrição de IP por usuário ─────────────────────────────────────────────
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS ip_restriction_enabled BOOLEAN NOT NULL DEFAULT FALSE`;

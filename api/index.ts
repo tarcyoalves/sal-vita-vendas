@@ -25,6 +25,7 @@ import { createPixPaymentForOrder } from '../server/lib/mercadopago';
 import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid } from '../server/lib/orderConfirmation';
 import { verifyResendWebhook } from '../server/email/marketing';
 import { evaluateInactiveDaysRules, flagEngagementByMessageId, processSequenceEnrollments, cancelAllEnrollments } from '../server/email/automations';
+import { processDueCampaigns } from '../server/email/campaigns';
 
 function isBusinessHours(): boolean {
   const brHour = (new Date().getUTCHours() - 3 + 24) % 24;
@@ -1255,6 +1256,13 @@ app.get('/api/cron/email-daily', async (req, res) => {
     return;
   }
 
+  // Time budget for the whole run. The serverless function is capped at 60s
+  // (vercel.json). Sequences run first (bounded), then campaigns are processed
+  // until this deadline; whatever is left stays 'sending' and is finished by
+  // the front-loop or the next daily run — never blowing the 60s ceiling.
+  const CRON_BUDGET_MS = 45_000;
+  const deadline = Date.now() + CRON_BUDGET_MS;
+
   const summary = {
     inactiveDaysRules: 0,
     inactiveDaysEnrolled: 0,
@@ -1265,6 +1273,12 @@ app.get('/api/cron/email-daily', async (req, res) => {
     skipped: 0,
     quotaExhausted: false,
     eventsDeleted: 0,
+    // Campanhas resilientes (envio continua mesmo com a aba do admin fechada).
+    campaignsPromoted: 0,
+    campaignsProcessed: 0,
+    campaignSent: 0,
+    campaignFailed: 0,
+    campaignTimeBudgetHit: false,
   };
 
   try {
@@ -1279,7 +1293,8 @@ app.get('/api/cron/email-daily', async (req, res) => {
 
     // 2. Processa enrollments ativos com next_send_at <= now() (skip-loop +
     // envio em lote) — lógica compartilhada com o envio imediato do "Dia 0"
-    // em enrollInSequence.
+    // em enrollInSequence. Sequências PRIMEIRO: compromisso já assumido; elas
+    // consomem a cota antes das campanhas (cascata natural via reserveSendQuota).
     const seqResult = await processSequenceEnrollments();
     summary.enrollmentsDue = seqResult.enrollmentsDue;
     summary.sent = seqResult.sent;
@@ -1287,6 +1302,22 @@ app.get('/api/cron/email-daily', async (req, res) => {
     summary.completed = seqResult.completed;
     summary.skipped = seqResult.skipped;
     summary.quotaExhausted = seqResult.quotaExhausted;
+
+    // 3. Campanhas DEPOIS: promove agendadas vencidas e termina campanhas
+    // 'sending' com pendentes (usando a MESMA processCampaignBatch do front),
+    // até esgotar a cota do dia OU o orçamento de tempo. O resto fica p/ o loop
+    // da aba ou o próximo ciclo.
+    try {
+      const campResult = await processDueCampaigns(deadline);
+      summary.campaignsPromoted = campResult.promoted;
+      summary.campaignsProcessed = campResult.campaignsProcessed;
+      summary.campaignSent = campResult.sent;
+      summary.campaignFailed = campResult.failed;
+      summary.campaignTimeBudgetHit = campResult.timeBudgetHit;
+      if (campResult.quotaExhausted) summary.quotaExhausted = true;
+    } catch (err) {
+      console.error('[cron/email-daily] processDueCampaigns error:', err);
+    }
 
     // 6. Limpeza: remove email_events com mais de 90 dias.
     try {

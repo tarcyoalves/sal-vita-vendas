@@ -6,7 +6,7 @@
  * a mesma implementação (claim atômico + reserva de cota), sem duplicar.
  */
 
-import { and, eq, count, inArray, lt, sql as dsql } from 'drizzle-orm';
+import { and, eq, count, inArray, lt, lte, or, isNotNull, sql as dsql } from 'drizzle-orm';
 import { db } from '../db';
 import { emailCampaigns, emailCampaignRecipients, emailSuppressions, sellers } from '../db/schema';
 import {
@@ -206,4 +206,95 @@ export async function processCampaignBatch(campaignId: number): Promise<Campaign
   }
 
   return { done: remaining === 0, sentNow, failedNow, remaining, account: account.key };
+}
+
+export interface CronCampaignResult {
+  promoted: number;
+  campaignsProcessed: number;
+  sent: number;
+  failed: number;
+  quotaExhausted: boolean;
+  timeBudgetHit: boolean;
+}
+
+/**
+ * Cron-only: (1) promove campanhas agendadas cujo `scheduledAt` já venceu para
+ * 'sending', e (2) processa em lote todas as campanhas 'sending' com
+ * destinatários pendentes — usando a MESMA `processCampaignBatch` do envio pelo
+ * front — até esgotar a cota do dia OU o orçamento de tempo (`deadline`, epoch
+ * ms), deixando o restante para o loop da aba/próximo dia. Isso evita estourar
+ * o timeout serverless de 60s da Vercel.
+ *
+ * A cascata de cota é respeitada naturalmente: as sequências rodam ANTES no
+ * cron e consomem a cota primeiro via reserveSendQuota; as campanhas pegam o
+ * que sobrar.
+ */
+export async function processDueCampaigns(deadline: number): Promise<CronCampaignResult> {
+  const result: CronCampaignResult = {
+    promoted: 0, campaignsProcessed: 0, sent: 0, failed: 0, quotaExhausted: false, timeBudgetHit: false,
+  };
+  const now = new Date();
+
+  // 1. Promote scheduled campaigns whose time has come.
+  try {
+    const promoted = await db.update(emailCampaigns)
+      .set({ status: 'sending', updatedAt: now })
+      .where(and(
+        eq(emailCampaigns.status, 'scheduled'),
+        isNotNull(emailCampaigns.scheduledAt),
+        lte(emailCampaigns.scheduledAt, now),
+      ))
+      .returning({ id: emailCampaigns.id });
+    result.promoted = promoted.length;
+  } catch (err) {
+    console.error('[processDueCampaigns] promote error:', err);
+  }
+
+  // 2. Campaigns in flight ('sending') that still have pending/in-flight
+  // recipients. Draft campaigns are NEVER auto-sent here — the admin sends
+  // those explicitly. This is exactly the resilience guarantee: a 'sending'
+  // campaign left half-done because the admin closed the tab gets finished by
+  // the cron.
+  let dueCampaigns: { id: number }[] = [];
+  try {
+    dueCampaigns = await db.selectDistinct({ id: emailCampaigns.id })
+      .from(emailCampaigns)
+      .innerJoin(emailCampaignRecipients, eq(emailCampaignRecipients.campaignId, emailCampaigns.id))
+      .where(and(
+        eq(emailCampaigns.status, 'sending'),
+        or(
+          eq(emailCampaignRecipients.status, 'pending'),
+          eq(emailCampaignRecipients.status, 'sending'),
+        ),
+      ));
+  } catch (err) {
+    console.error('[processDueCampaigns] list error:', err);
+    return result;
+  }
+
+  for (const c of dueCampaigns) {
+    if (Date.now() > deadline) { result.timeBudgetHit = true; break; }
+    let done = false;
+    while (!done) {
+      if (Date.now() > deadline) { result.timeBudgetHit = true; break; }
+      let res: CampaignBatchResult;
+      try {
+        res = await processCampaignBatch(c.id);
+      } catch (err) {
+        console.error(`[processDueCampaigns] campaign ${c.id} batch error:`, err);
+        break;
+      }
+      result.sent += res.sentNow;
+      result.failed += res.failedNow;
+      done = res.done;
+      if (res.reason === 'daily_limit_all') {
+        result.quotaExhausted = true;
+        // Cota diária esgotada em TODAS as contas — nada mais sai hoje.
+        return result;
+      }
+    }
+    result.campaignsProcessed++;
+  }
+
+  return result;
 }

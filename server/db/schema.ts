@@ -292,7 +292,10 @@ export const emailCampaigns = pgTable('email_campaigns', {
   name: text('name').notNull(),
   subject: text('subject').notNull(),
   htmlBody: text('html_body').notNull(),
-  status: text('status').notNull().default('draft'), // draft|sending|paused|sent
+  status: text('status').notNull().default('draft'), // draft|scheduled|sending|paused|sent
+  // Agendamento (E-mail Marketing F4): quando definido e futuro, a campanha fica
+  // status 'scheduled'; o cron diário a promove para 'sending' quando venceu.
+  scheduledAt: timestamp('scheduled_at'),
   totalRecipients: integer('total_recipients').default(0).notNull(),
   sentCount: integer('sent_count').default(0).notNull(),
   failedCount: integer('failed_count').default(0).notNull(),
