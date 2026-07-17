@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import type { ReactNode } from "react";
 import { useAuth } from "../_core/hooks/useAuth";
 import { trpc } from "../lib/trpc";
@@ -5200,13 +5200,49 @@ function FunnelStage({ label, icon: Icon, count, pct, base, color, tint, hint }:
   );
 }
 
+// Receita atribuída às campanhas (Estatísticas) — formatação pt-BR.
+const BRL_FMT = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const formatBRL = (n: number): string => BRL_FMT.format(Number.isFinite(n) ? n : 0);
+
 function StatsTab() {
   const { data: overview, isLoading } = trpc.emailMarketing.overviewStats.useQuery();
   const { data: campaigns } = trpc.emailMarketing.listCampaigns.useQuery();
   const { data: sequences } = trpc.emailMarketing.listSequences.useQuery();
 
+  // Receita atribuída ao e-mail (F4): soma client-side das campanhas cujas
+  // estatísticas já foram carregadas (o caminho mais barato em queries — cada
+  // CampaignStatsRow só busca stats quando o admin abre "Ver stats"). Cada linha
+  // reporta a sua receita atribuída aqui via reportRevenue.
+  const [revByCampaign, setRevByCampaign] = useState<Record<number, number>>({});
+  const reportRevenue = useCallback((id: number, revenue: number) => {
+    setRevByCampaign(prev => (prev[id] === revenue ? prev : { ...prev, [id]: revenue }));
+  }, []);
+  const loadedCampaigns = Object.keys(revByCampaign).length;
+  const totalAttributed = Object.values(revByCampaign).reduce((s, v) => s + v, 0);
+
   return (
     <div className="space-y-4">
+      <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-white">
+        <CardContent className="py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+              <TrendingUp size={20} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Receita atribuída ao e-mail</p>
+              <p className="text-2xl font-bold text-slate-800 tabular-nums">
+                {loadedCampaigns > 0 ? formatBRL(totalAttributed) : "—"}
+              </p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {loadedCampaigns > 0
+                  ? `Soma de ${loadedCampaigns} campanha(s) com estatísticas abertas · pedidos de leads que clicaram, criados após o envio`
+                  : "Abra \"Ver stats\" de uma campanha abaixo para calcular a receita atribuída."}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {isLoading ? (
         <p className="text-sm text-slate-500">Carregando...</p>
       ) : overview && (
@@ -5263,7 +5299,7 @@ function StatsTab() {
         <CardContent>
           {campaigns && campaigns.length > 0 ? (
             <div className="space-y-2">
-              {campaigns.map(c => <CampaignStatsRow key={c.id} campaignId={c.id} name={c.name} />)}
+              {campaigns.map(c => <CampaignStatsRow key={c.id} campaignId={c.id} name={c.name} onRevenue={reportRevenue} />)}
             </div>
           ) : (
             <EmptyState icon={Send} message="Nenhuma campanha criada ainda." />
@@ -5293,7 +5329,7 @@ function StatsTab() {
 
 // Lazy-loaded stats row for a single campaign — query only runs after "Ver stats" is clicked,
 // to avoid firing N parallel queries when the page has many campaigns.
-function CampaignStatsRow({ campaignId, name }: { campaignId: number; name: string }) {
+function CampaignStatsRow({ campaignId, name, onRevenue }: { campaignId: number; name: string; onRevenue?: (id: number, revenue: number) => void }) {
   const [show, setShow] = useState(false);
   const [recipientFilter, setRecipientFilter] = useState<'all' | 'opened' | 'not_opened' | 'clicked' | 'not_clicked' | 'bounced'>('all');
   const { data: stats, isLoading } = trpc.emailMarketing.campaignStats.useQuery({ campaignId }, { enabled: show });
@@ -5301,6 +5337,12 @@ function CampaignStatsRow({ campaignId, name }: { campaignId: number; name: stri
     { campaignId, engagement: recipientFilter, limit: 500 },
     { enabled: show }
   );
+
+  // Reporta a receita atribuída desta campanha ao StatsTab para o card de total.
+  const attributedRevenue = stats?.attributedRevenue ?? 0;
+  useEffect(() => {
+    if (stats && onRevenue) onRevenue(campaignId, attributedRevenue);
+  }, [stats, attributedRevenue, campaignId, onRevenue]);
 
   const pct = (n: number, base: number) => base > 0 ? `${Math.round((n / base) * 100)}%` : "0%";
 
@@ -5353,6 +5395,27 @@ function CampaignStatsRow({ campaignId, name }: { campaignId: number; name: stri
               {stats.bounced > 0 && <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200 gap-1"><AlertTriangle size={11} /> {stats.bounced} bounce</Badge>}
               {stats.complained > 0 && <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200 gap-1"><XCircle size={11} /> {stats.complained} reclamações</Badge>}
             </div>
+
+            {/* Receita atribuída — pedidos de leads que clicaram, criados após o envio */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 cursor-help">
+                    <TrendingUp size={13} className="text-emerald-700" />
+                    <span className="text-xs font-semibold text-emerald-700">Receita atribuída:</span>
+                    <span className="text-sm font-bold text-slate-800 tabular-nums">
+                      {stats.attributedOrders > 0 ? formatBRL(stats.attributedRevenue) : "—"}
+                    </span>
+                    {stats.attributedOrders > 0 && (
+                      <span className="text-[11px] text-slate-500">({stats.attributedOrders} pedido{stats.attributedOrders === 1 ? '' : 's'})</span>
+                    )}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  Pedidos de leads que clicaram nesta campanha, criados após o envio.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
 
             {/* Filtros de destinatários */}
             <div className="flex flex-wrap items-center gap-1.5">

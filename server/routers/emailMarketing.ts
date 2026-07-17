@@ -8,7 +8,7 @@ import {
   emailTemplateCategories, emailTemplates, emailCampaigns, emailCampaignRecipients, emailSuppressions,
   emailSequences, emailSequenceSteps, emailSequenceEnrollments, emailSequenceSends,
   emailEvents, automationRules, emailSendCounters,
-  tasks, clients, sellers, marketingContacts, marketingLists,
+  tasks, clients, sellers, marketingContacts, marketingLists, fatOrders,
 } from '../db/schema';
 import { reserveSendQuota, refundDailyQuota, sendBatch, layout, renderTemplate, renderSignature, sanitizeCampaignHtml, getUsage, getAllDomainTracking, setDomainTracking, getAccounts, type BatchMessage } from '../email/marketing';
 import { processCampaignBatch } from '../email/campaigns';
@@ -1141,6 +1141,47 @@ export const emailMarketingRouter = router({
         uniq[row.event_type] = Number(row.uniq);
         total[row.event_type] = Number(row.total);
       }
+
+      // Receita atribuída (F4): regra de atribuição SIMPLES — pedidos de faturamento
+      // de leads (tasks) que CLICARAM nesta campanha e que foram criados APÓS o
+      // envio da campanha. "Após o envio" = criado_em > o 1º envio da campanha
+      // (MIN(sent_at) dos destinatários). Valor de cada pedido = Σ quantidade ×
+      // valorUnitario dos itens (mesmo "total do pedido" do módulo Faturamento);
+      // conta só o que o Faturamento trata como RECEITA de fato: status
+      // 'faturado' (pedidos 'estimado' ainda são pipeline, não receita). Tudo em
+      // 1 query (CTEs + LATERAL sobre o jsonb dos itens) — sem N+1.
+      const [revRow] = await db.execute<{ revenue: number; orders: number }>(sql`
+        WITH clicked_tasks AS (
+          SELECT DISTINCT r.task_id AS task_id
+          FROM ${emailCampaignRecipients} r
+          INNER JOIN ${emailEvents} e ON e.message_id = r.message_id
+          WHERE r.campaign_id = ${input.campaignId}
+            AND e.event_type = 'clicked'
+            AND r.task_id IS NOT NULL
+        ),
+        send_time AS (
+          SELECT MIN(sent_at) AS ts
+          FROM ${emailCampaignRecipients}
+          WHERE campaign_id = ${input.campaignId} AND sent_at IS NOT NULL
+        )
+        SELECT
+          COALESCE(SUM(items.valor), 0)::float8 AS revenue,
+          COUNT(*)::int AS orders
+        FROM ${fatOrders} o
+        INNER JOIN clicked_tasks ct ON ct.task_id = o.task_id
+        CROSS JOIN send_time st
+        CROSS JOIN LATERAL (
+          SELECT COALESCE(SUM(
+            COALESCE((it->>'quantidade')::numeric, 0) * COALESCE((it->>'valorUnitario')::numeric, 0)
+          ), 0) AS valor
+          FROM jsonb_array_elements(o.itens) it
+        ) items
+        WHERE st.ts IS NOT NULL
+          AND o.status = 'faturado'
+          AND o.criado_em ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+          AND o.criado_em::timestamptz > st.ts
+      `).then(r => r.rows);
+
       return {
         recipients: Number(recRow?.total ?? 0),
         sent: Number(recRow?.sent ?? 0),
@@ -1151,6 +1192,8 @@ export const emailMarketingRouter = router({
         totalClicks: total.clicked ?? 0,
         bounced: uniq.bounced ?? 0,
         complained: uniq.complained ?? 0,
+        attributedRevenue: Number(revRow?.revenue ?? 0),
+        attributedOrders: Number(revRow?.orders ?? 0),
       };
     }),
 
