@@ -267,6 +267,139 @@ export const emailMarketingRouter = router({
       return { ok: true };
     }),
 
+  // Biblioteca de modelos prontos da marca Sal Vita. Cria (se preciso) a
+  // categoria "Modelos Sal Vita" e insere os 4 modelos que ainda não existem —
+  // idempotente: pular por nome (e por slug, que é UNIQUE) evita duplicar quando
+  // o admin clica o botão mais de uma vez. Os corpos NÃO trazem tabela externa
+  // completa (o layout() já provê card/cabeçalho/rodapé) nem o token
+  // {unsubscribe} (o rodapé do layout() já inclui sempre o link de descadastro).
+  // Como cada corpo contém uma <table> (botão de CTA), o layout() zera o padding
+  // do corpo (isStructuredHtml) — por isso cada modelo embrulha o conteúdo num
+  // <div> com padding próprio.
+  seedStarterTemplates: staffProcedure.mutation(async () => {
+    const CATEGORY_NAME = 'Modelos Sal Vita';
+
+    // Estilos inline reutilizados (e-mail exige CSS inline; DRY dentro do seed).
+    const h = (t: string) =>
+      `<h2 style="margin:0 0 14px;font-family:Georgia,'Times New Roman',serif;font-size:22px;line-height:1.3;color:#0C3680;">${t}</h2>`;
+    const p = (t: string) =>
+      `<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#333333;">${t}</p>`;
+    const cta = (label: string, secondary = false) => {
+      const bg = secondary ? '#ffffff' : '#0C3680';
+      const color = secondary ? '#0C3680' : '#ffffff';
+      const border = secondary ? 'border:1px solid #0C3680;' : '';
+      return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:28px auto 8px;">
+        <tr><td align="center" style="border-radius:8px;background:${bg};${border}">
+          <a href="#" style="display:inline-block;padding:12px 28px;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;color:${color};text-decoration:none;border-radius:8px;">${label}</a>
+        </td></tr>
+      </table>`;
+    };
+    const highlight = (inner: string) =>
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;">
+        <tr><td style="background:#F7F6F2;border:1px solid #E0DDD4;border-radius:8px;padding:20px 24px;">${inner}</td></tr>
+      </table>`;
+    const wrap = (inner: string) => `<div style="padding:32px 40px 24px;">${inner}</div>`;
+
+    const STARTERS: { slug: string; name: string; subject: string; htmlBody: string }[] = [
+      {
+        slug: 'sal-vita-oferta-do-mes',
+        name: 'Oferta do mês',
+        subject: 'Uma oferta especial da Sal Vita para você',
+        htmlBody: wrap(
+          h('A oferta do mês chegou') +
+          p('Olá {nome},') +
+          p('Separamos uma condição especial para quem confia no sal marinho premium da Sal Vita. É por tempo limitado e feita para caber no seu pedido.') +
+          highlight(
+            `<p style="margin:0 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:#6B7280;">Condição do mês</p>
+             <p style="margin:0;font-size:20px;font-weight:bold;color:#0C3680;">[descreva aqui o preço ou a condição]</p>
+             <p style="margin:8px 0 0;font-size:13px;color:#6B7280;">Edite este bloco com o valor, o desconto ou o prazo da oferta.</p>`
+          ) +
+          p('Fale com a gente e garanta a sua enquanto a condição está no ar.') +
+          cta('Quero aproveitar')
+        ),
+      },
+      {
+        slug: 'sal-vita-apresentacao',
+        name: 'Apresentação Sal Vita',
+        subject: 'Prazer, somos a Sal Vita',
+        htmlBody: wrap(
+          h('Quem é a Sal Vita') +
+          p('Olá {nome},') +
+          p('Somos uma produtora de sal marinho de Mossoró, no Rio Grande do Norte — terra de sol forte e das melhores salinas do Brasil. Levamos até a sua mesa e ao seu negócio um sal puro, de origem controlada e com padrão de qualidade constante.') +
+          p('Por que trabalhar com a Sal Vita:') +
+          `<ul style="margin:0 0 16px;padding-left:20px;">
+            <li style="font-size:15px;line-height:1.6;color:#333333;margin-bottom:8px;">Sal marinho de Mossoró/RN, com origem e procedência garantidas.</li>
+            <li style="font-size:15px;line-height:1.6;color:#333333;margin-bottom:8px;">Qualidade constante lote após lote, do saco ao fardo.</li>
+            <li style="font-size:15px;line-height:1.6;color:#333333;margin-bottom:8px;">Atendimento próximo e condições comerciais sob medida.</li>
+          </ul>` +
+          p('Quer entender como a Sal Vita pode abastecer o seu negócio? Um atendente está pronto para conversar.') +
+          cta('Falar com um atendente')
+        ),
+      },
+      {
+        slug: 'sal-vita-novidade',
+        name: 'Novidade / Comunicado',
+        subject: 'Novidade na Sal Vita',
+        htmlBody: wrap(
+          h('Temos uma novidade para você') +
+          p('Olá {nome},') +
+          p('Passando para compartilhar uma novidade da Sal Vita. Edite este texto com o comunicado, o lançamento ou a atualização que você quer anunciar aos seus contatos.') +
+          p('Ficou com alguma dúvida ou quer saber mais detalhes? É só falar com a gente.') +
+          cta('Saiba mais', true)
+        ),
+      },
+      {
+        slug: 'sal-vita-reengajamento',
+        name: 'Reengajamento',
+        subject: 'Sentimos a sua falta',
+        htmlBody: wrap(
+          h('Faz um tempo que não conversamos') +
+          p('Olá {nome},') +
+          p('Sentimos a sua falta por aqui. Queremos continuar te enviando as melhores condições em sal marinho da Sal Vita — mas só se isso fizer sentido para você.') +
+          p('Ainda quer receber as nossas ofertas e novidades?') +
+          cta('Continuar recebendo ofertas')
+        ),
+      },
+    ];
+
+    // 1) Garante a categoria (busca por nome; cria se não existir).
+    let categoryId: number;
+    const [existingCat] = await db.select({ id: emailTemplateCategories.id })
+      .from(emailTemplateCategories)
+      .where(eq(emailTemplateCategories.name, CATEGORY_NAME))
+      .limit(1);
+    if (existingCat) {
+      categoryId = existingCat.id;
+    } else {
+      const [maxRow] = await db.select({ max: sql<number>`COALESCE(MAX(sort_order), 0)` }).from(emailTemplateCategories);
+      const [created] = await db.insert(emailTemplateCategories)
+        .values({ name: CATEGORY_NAME, sortOrder: (maxRow?.max ?? 0) + 1 })
+        .returning({ id: emailTemplateCategories.id });
+      categoryId = created.id;
+    }
+
+    // 2) Insere os que faltam (pula por nome OU slug já existente).
+    const existing = await db.select({ name: emailTemplates.name, slug: emailTemplates.slug }).from(emailTemplates);
+    const existingNames = new Set(existing.map(t => t.name));
+    const existingSlugs = new Set(existing.map(t => t.slug));
+
+    let created = 0, skipped = 0;
+    for (const tpl of STARTERS) {
+      if (existingNames.has(tpl.name) || existingSlugs.has(tpl.slug)) { skipped++; continue; }
+      await db.insert(emailTemplates).values({
+        slug: tpl.slug,
+        name: tpl.name,
+        subject: tpl.subject,
+        htmlBody: sanitizeCampaignHtml(tpl.htmlBody),
+        categoryIds: [categoryId],
+        active: true,
+      });
+      created++;
+    }
+
+    return { created, skipped, categoryId };
+  }),
+
   // ── Audience / segmentação ────────────────────────────────────────────────
   audiencePreview: staffProcedure
     .input(audienceInput)

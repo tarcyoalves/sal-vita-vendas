@@ -53,7 +53,7 @@ const RECIPIENT_STATUS_LABELS: Record<string, string> = {
   skipped: "Ignorado",
 };
 
-const TEMPLATE_HINT = "Use {nome}, {empresa} e {unsubscribe} no corpo do e-mail. {unsubscribe} é substituído pelo link de descadastro.";
+const TEMPLATE_HINT = "Use {nome} e {empresa} no corpo do e-mail para personalizar. O link de descadastro é adicionado automaticamente no rodapé — não precisa incluí-lo.";
 
 const SEND_CONDITION_LABELS: Record<string, string> = {
   always: "Sempre",
@@ -1494,6 +1494,7 @@ function TemplatesTab() {
   const deleteMutation = trpc.emailMarketing.deleteTemplate.useMutation();
   const upsertCatMutation = trpc.emailMarketing.upsertTemplateCategory.useMutation();
   const deleteCatMutation = trpc.emailMarketing.deleteTemplateCategory.useMutation();
+  const seedMutation = trpc.emailMarketing.seedStarterTemplates.useMutation();
 
   const [activeTab, setActiveTab] = useState<string>('all');
   const [editing, setEditing] = useState<{ id?: number; categoryIds: number[]; slug: string; name: string; subject: string; htmlBody: string; active: boolean; attachments?: { filename: string; content: string; size: number }[] } | null>(null);
@@ -1598,6 +1599,25 @@ function TemplatesTab() {
     setEditing({ slug: "", name: "", subject: "", htmlBody: "", active: true, attachments: [], categoryIds: catIds });
   };
 
+  const handleSeedTemplates = async () => {
+    try {
+      const res = await seedMutation.mutateAsync();
+      if (res.created > 0) {
+        toast.success(
+          res.skipped > 0
+            ? `${res.created} modelo(s) da marca adicionado(s) · ${res.skipped} já existiam`
+            : `${res.created} modelo(s) da marca adicionado(s)`
+        );
+      } else {
+        toast.info(`Os ${res.skipped} modelos da marca já estão na sua biblioteca`);
+      }
+      utils.emailMarketing.listTemplates.invalidate();
+      utils.emailMarketing.listTemplateCategories.invalidate();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao adicionar modelos da marca");
+    }
+  };
+
   const toggleCategory = (catId: number) => {
     if (!editing) return;
     setEditing(e => {
@@ -1610,9 +1630,14 @@ function TemplatesTab() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Button size="sm" variant="outline" onClick={() => setEditingCat({ name: "" })}>
-          <Plus size={14} className="mr-1" /> Nova Aba
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setEditingCat({ name: "" })}>
+            <Plus size={14} className="mr-1" /> Nova Aba
+          </Button>
+          <Button size="sm" variant="ghost" onClick={handleSeedTemplates} disabled={seedMutation.isPending}>
+            <Sparkles size={14} className="mr-1" /> Adicionar modelos da marca
+          </Button>
+        </div>
         <Button className="bg-blue-900 hover:bg-blue-800 shadow-sm" onClick={openNewTemplate}>
           <Plus size={16} className="mr-1" /> Novo Template
         </Button>
