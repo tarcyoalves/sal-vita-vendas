@@ -5113,10 +5113,112 @@ function UsageTab() {
         </CardContent>
       </Card>
 
+      <DomainTrackingPanel />
+
       <FrequencySettings />
 
       <DoubleOptInToggle />
     </div>
+  );
+}
+
+// Painel de rastreamento de abertura/clique. No Resend, tracking é uma config
+// de DOMÍNIO (não por e-mail): se estiver desligada, NENHUM evento opened/clicked
+// chega — e aí lead scoring (🔥 quente), lembrete automático de lead quente,
+// condições de passo "só se abriu/clicou" e o funil de Estatísticas ficam todos
+// zerados silenciosamente. Este painel expõe as procedures que já existiam no
+// backend (domainTrackingStatus / enableDomainTracking) para ver e ligar tudo
+// dentro do app, sem precisar entrar no painel do Resend.
+function DomainTrackingPanel() {
+  const utils = trpc.useUtils();
+  const { data, isLoading } = trpc.emailMarketing.domainTrackingStatus.useQuery();
+  const enableMutation = trpc.emailMarketing.enableDomainTracking.useMutation();
+
+  const handleEnable = async (accountKey: string, domainId: string) => {
+    try {
+      await enableMutation.mutateAsync({ accountKey, domainId, openTracking: true, clickTracking: true });
+      toast.success("Rastreamento ativado! Novos e-mails já contam aberturas e cliques.");
+      utils.emailMarketing.domainTrackingStatus.invalidate();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Falha ao ativar rastreamento");
+    }
+  };
+
+  const domains = data?.domains ?? [];
+  // Só domínios Resend têm flags gerenciáveis; erros (sem domínio/sem chave) viram aviso.
+  const trackable = domains.filter((d) => d.domainId);
+  const allOn = trackable.length > 0 && trackable.every((d) => d.openTracking && d.clickTracking);
+
+  return (
+    <Card className={`rounded-2xl ${!isLoading && trackable.length > 0 && !allOn ? 'border-amber-300 bg-gradient-to-br from-amber-50/80 to-white' : 'border-slate-200'}`}>
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-blue-900 text-base">
+          <MousePointerClick size={18} className={!isLoading && trackable.length > 0 && !allOn ? 'text-amber-600' : 'text-blue-700'} />
+          Rastreamento de abertura e clique
+          {!isLoading && trackable.length > 0 && !allOn && <Badge className="bg-amber-500 text-white border-0 text-[10px]">DESLIGADO</Badge>}
+          {!isLoading && allOn && <Badge className="bg-emerald-600 text-white border-0 text-[10px]">ATIVO</Badge>}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-slate-600 leading-relaxed">
+          No Resend, rastrear abertura/clique é uma configuração do <strong>domínio</strong>, não de cada e-mail.
+          Se estiver desligado, o sistema não sabe quem abriu ou clicou — e o <strong>lead quente (🔥)</strong>,
+          o <strong>lembrete automático de clique</strong>, as condições de passo "só se abriu/clicou" e o
+          <strong> funil de Estatísticas</strong> ficam todos zerados. Ative aqui uma vez por domínio.
+        </p>
+
+        {isLoading ? (
+          <p className="text-sm text-slate-500">Carregando domínios...</p>
+        ) : domains.length === 0 ? (
+          <p className="text-sm text-slate-500">Nenhum domínio Resend encontrado. Só contas Resend têm rastreamento gerenciável (Brevo já rastreia por padrão).</p>
+        ) : (
+          <div className="space-y-2">
+            {domains.map((d, idx) => {
+              if (!d.domainId) {
+                return (
+                  <div key={`${d.accountKey}-${idx}`} className="flex items-center gap-2 text-xs text-slate-500 border rounded-lg px-3 py-2 bg-slate-50">
+                    <AlertTriangle size={14} className="text-slate-400 shrink-0" />
+                    <span>{d.fromEmail} ({d.accountKey}): {d.error === 'no_domains' ? 'nenhum domínio configurado no Resend' : d.error}</span>
+                  </div>
+                );
+              }
+              const on = d.openTracking && d.clickTracking;
+              return (
+                <div key={d.domainId} className="flex items-center justify-between gap-2 border rounded-lg px-3 py-2 bg-white">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-800 truncate">{d.domainName ?? d.fromEmail}</p>
+                    <div className="flex items-center gap-3 mt-0.5 text-[11px]">
+                      <span className={`inline-flex items-center gap-1 ${d.openTracking ? 'text-emerald-700' : 'text-slate-400'}`}>
+                        {d.openTracking ? <CheckCircle size={12} /> : <XCircle size={12} />} abertura
+                      </span>
+                      <span className={`inline-flex items-center gap-1 ${d.clickTracking ? 'text-emerald-700' : 'text-slate-400'}`}>
+                        {d.clickTracking ? <CheckCircle size={12} /> : <XCircle size={12} />} clique
+                      </span>
+                    </div>
+                  </div>
+                  {on ? (
+                    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 shrink-0">Ativo</Badge>
+                  ) : (
+                    <Button
+                      size="sm"
+                      className="h-8 shrink-0"
+                      disabled={enableMutation.isPending}
+                      onClick={() => handleEnable(d.accountKey, d.domainId!)}
+                    >
+                      Ativar
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <p className="text-[11px] text-slate-400">
+          Dica: rastreamento de clique reescreve os links por um subdomínio de rastreio — para melhor entregabilidade,
+          o Resend recomenda um subdomínio de tracking (CNAME) próprio no painel deles, mas abertura já funciona sem isso.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 
