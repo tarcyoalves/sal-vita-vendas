@@ -3,7 +3,7 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { useState } from "react";
 import { trpc } from '../lib/trpc';
-import { Rocket, Zap, Sparkles, CheckCircle2, XCircle } from "lucide-react";
+import { Rocket, Zap, Cpu, CheckCircle2, XCircle } from "lucide-react";
 
 interface AIProvider {
   id: string;
@@ -41,11 +41,11 @@ const AI_PROVIDERS: AIProvider[] = [
     requiresKey: true,
   },
   {
-    id: "gemini",
-    name: "Google Gemini",
-    icon: <Sparkles size={28} className="text-violet-500" />,
-    description: "Gemini 2.5 Flash — Backup opcional, contexto grande",
-    defaultModel: "gemini-2.5-flash",
+    id: "nvidia",
+    name: "NVIDIA NIM",
+    icon: <Cpu size={28} className="text-emerald-500" />,
+    description: "Llama 3.3 70B — Fallback, tier grátis via build.nvidia.com",
+    defaultModel: "meta/llama-3.3-70b-instruct",
     requiresKey: true,
   },
 ];
@@ -336,7 +336,7 @@ export default function AiSettings() {
                     <div>
                       <p className="font-medium">
                         {AI_PROVIDERS.find((p) => p.id === config.provider)?.name ?? config.provider}
-                        {config.provider === "gemini" && <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Líder</span>}
+                        {config.provider === "groq" && <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Líder</span>}
                       </p>
                       <p className="text-sm text-gray-600">{config.model}</p>
                       {config.status === "error" && config.errorMessage && (
@@ -392,14 +392,14 @@ export default function AiSettings() {
               <p>4. Cole aqui — modelo: <span className="font-mono">gpt-oss-120b</span></p>
             </div>
             <div className="p-3 bg-white rounded-lg border border-green-200">
-              <p className="font-bold">Google Gemini</p>
-              <p className="mt-1">1. Acesse <span className="font-mono font-bold">aistudio.google.com</span></p>
-              <p>2. Login com conta Google</p>
-              <p>3. Clique em <strong>Get API Key → Create API key</strong></p>
-              <p>4. Cole aqui — modelo: <span className="font-mono">gemini-2.5-flash</span></p>
+              <p className="font-bold">NVIDIA NIM</p>
+              <p className="mt-1">1. Acesse <span className="font-mono font-bold">build.nvidia.com</span></p>
+              <p>2. Crie conta grátis</p>
+              <p>3. Vá em <strong>API Keys → Generate API Key</strong></p>
+              <p>4. Cole aqui — modelo: <span className="font-mono">meta/llama-3.3-70b-instruct</span></p>
             </div>
             <p className="text-xs text-green-700">• Todos têm tier gratuito generoso para uso diário</p>
-            <p className="text-xs text-green-700">• As chaves de produção ficam nas variáveis de ambiente da Vercel (GROQ_API_KEY, CEREBRAS_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, NVIDIA_API_KEY) — esta tela serve só para testar uma chave e ver os modelos disponíveis, ela não salva nada no navegador</p>
+            <p className="text-xs text-green-700">• As chaves de produção ficam nas variáveis de ambiente da Vercel (GROQ_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY, NVIDIA_API_KEY) — esta tela serve só para testar uma chave e ver os modelos disponíveis, ela não salva nada no navegador</p>
           </CardContent>
         </Card>
 
@@ -409,7 +409,7 @@ export default function AiSettings() {
             <CardTitle className="text-yellow-900">Como funciona</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-yellow-800 space-y-2">
-            <p>• O servidor encadeia os provedores automaticamente (Groq → Cerebras → Gemini → OpenRouter → NVIDIA), sempre que um deles atinge o limite gratuito do dia ou falha</p>
+            <p>• O servidor encadeia os provedores automaticamente (Groq → Cerebras → OpenRouter → NVIDIA), sempre que um deles atinge o limite gratuito do dia ou falha</p>
             <p>• As chaves de produção ficam nas variáveis de ambiente da Vercel — não há nada para configurar aqui em produção</p>
             <p>• Groq tem prioridade — 14.400 req/dia grátis, sem risco de quota</p>
             <p>• Clique "Testar Conexão" para validar uma chave avulsa e "Ver todos os modelos" para listar o que ela tem acesso</p>

@@ -11,7 +11,6 @@ import { spMidnight, spEndOfDay, spDateStr } from '../lib/tz';
 const BASE_URLS: Record<string, string> = {
   groq:    'https://api.groq.com/openai/v1',
   openai:  'https://api.openai.com/v1',
-  gemini:  'https://generativelanguage.googleapis.com/v1beta/openai',
   anthropic: 'https://api.anthropic.com/v1',
   cerebras: 'https://api.cerebras.ai/v1',
   openrouter: 'https://openrouter.ai/api/v1',
@@ -21,7 +20,6 @@ const BASE_URLS: Record<string, string> = {
 const DEFAULT_MODELS: Record<string, string> = {
   groq:    'llama-3.3-70b-versatile',
   openai:  'gpt-3.5-turbo',
-  gemini:  'gemini-2.5-flash',
   anthropic: 'claude-3-haiku-20240307',
   cerebras: 'gpt-oss-120b',
   openrouter: 'meta-llama/llama-3.3-70b-instruct:free',
@@ -34,7 +32,7 @@ function modelFor(provider: string): string {
   return process.env[`${provider.toUpperCase()}_MODEL`] || DEFAULT_MODELS[provider] || DEFAULT_MODELS.groq;
 }
 
-// ── Proteção de cota gratuita (Groq/Gemini) ─────────────────────────────────
+// ── Proteção de cota gratuita (Groq/Cerebras) ───────────────────────────────
 // Cooldown por usuário: evita spam de mensagens consumindo a cota diária gratuita.
 const CHAT_COOLDOWN_MS = 2500;
 const lastChatAt = new Map<number, number>();
@@ -159,7 +157,6 @@ function isRetryable(err: any): boolean {
 function envKeyFor(provider: string): string | undefined {
   if (provider === 'groq') return process.env.GROQ_API_KEY;
   if (provider === 'cerebras') return process.env.CEREBRAS_API_KEY;
-  if (provider === 'gemini') return process.env.GEMINI_API_KEY;
   if (provider === 'openrouter') return process.env.OPENROUTER_API_KEY;
   if (provider === 'nvidia') return process.env.NVIDIA_API_KEY;
   return undefined;
@@ -168,20 +165,18 @@ function envKeyFor(provider: string): string | undefined {
 function defaultProvider(): string {
   if (process.env.GROQ_API_KEY) return 'groq';
   if (process.env.CEREBRAS_API_KEY) return 'cerebras';
-  if (process.env.GEMINI_API_KEY) return 'gemini';
   if (process.env.OPENROUTER_API_KEY) return 'openrouter';
   if (process.env.NVIDIA_API_KEY) return 'nvidia';
   return 'groq';
 }
 
-// Free-tier provider fallback order: Groq → Cerebras → Gemini → OpenRouter → NVIDIA.
+// Free-tier provider fallback order: Groq → Cerebras → OpenRouter → NVIDIA.
 // Each quota resets independently, so chaining them multiplies the daily
 // free budget before the user sees an error.
 function getFallbackChain(primaryProvider: string): { provider: string; apiKey: string; baseURL: string; model: string }[] {
   const candidates: { provider: string; apiKey?: string }[] = [
     { provider: 'groq', apiKey: process.env.GROQ_API_KEY },
     { provider: 'cerebras', apiKey: process.env.CEREBRAS_API_KEY },
-    { provider: 'gemini', apiKey: process.env.GEMINI_API_KEY },
     { provider: 'openrouter', apiKey: process.env.OPENROUTER_API_KEY },
     { provider: 'nvidia', apiKey: process.env.NVIDIA_API_KEY },
   ];
@@ -931,7 +926,7 @@ export const aiRouter = router({
       message: z.string().min(1).max(4000),
     }))
     .mutation(async ({ input, ctx }) => {
-      // Cooldown — protege a cota gratuita do Groq/Gemini contra spam de mensagens
+      // Cooldown — protege a cota gratuita do Groq/Cerebras contra spam de mensagens
       const lastAt = lastChatAt.get(ctx.user.id) ?? 0;
       const elapsed = Date.now() - lastAt;
       if (elapsed < CHAT_COOLDOWN_MS) {
@@ -949,7 +944,7 @@ export const aiRouter = router({
         await db.insert(chatMessages).values({ userId: ctx.user.id, content: input.message, role: 'user' });
 
         if (!apiKey) {
-          const reply = 'IA não configurada. Vá em Configurações → IA e adicione uma chave do Groq ou Gemini (ambos gratuitos).';
+          const reply = 'IA não configurada. Vá em Configurações → IA e adicione uma chave do Groq ou Cerebras (ambos gratuitos).';
           await db.insert(chatMessages).values({ userId: ctx.user.id, content: reply, role: 'assistant' });
           return { reply };
         }
@@ -1041,7 +1036,7 @@ ${userContext}`;
     const analyzeProvider = input?.provider ?? defaultProvider();
     const apiKey = input?.apiKey || envKeyFor(analyzeProvider) || '';
     const analyzeModel = modelFor(analyzeProvider);
-    if (!apiKey) return { report: [], summary: 'IA não configurada. Vá em Configurações → IA e configure Groq (recomendado), Cerebras ou Gemini.' };
+    if (!apiKey) return { report: [], summary: 'IA não configurada. Vá em Configurações → IA e configure Groq (recomendado), Cerebras, OpenRouter ou NVIDIA.' };
 
     const now = new Date();
     const todayStart = spMidnight(now);
@@ -1325,7 +1320,7 @@ REGRAS ABSOLUTAS:
 
       const provider = defaultProvider();
       const apiKey = envKeyFor(provider) || '';
-      if (!apiKey) return { subjects: [], html: '', error: 'IA não configurada. Configure Groq ou Gemini em Configurações → IA.' };
+      if (!apiKey) return { subjects: [], html: '', error: 'IA não configurada. Configure Groq ou Cerebras em Configurações → IA.' };
 
       const toneMap: Record<string, string> = {
         cordial: 'cordial e profissional',
