@@ -52,6 +52,23 @@ const AI_PROVIDERS: AIProvider[] = [
 
 export default function AiSettings() {
   const { user, loading: authLoading } = useAuth();
+  // Todos os hooks ficam antes de qualquer return condicional (Regras de
+  // Hooks do React) — declará-los depois de um `if (...) return` muda a
+  // contagem de hooks entre o render de loading e o render final, e o React
+  // quebra com "Rendered more hooks than during the previous render" (erro
+  // #310) assim que `authLoading` vira false.
+  const [selectedProvider, setSelectedProvider] = useState<string>("groq");
+  const [apiKey, setApiKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+  const [testing, setTesting] = useState(false);
+  // Resultados de teste desta sessão apenas — nada é persistido no navegador,
+  // as chaves de produção ficam nas env vars da Vercel (ver caixa "Como funciona" abaixo).
+  const [testStatus, setTestStatus] = useState<Record<string, AIConfig>>({});
+  const testConnectionMutation = trpc.ai.testConnection.useMutation();
+  const listModelsMutation = trpc.ai.listModels.useMutation();
+  const [availableModels, setAvailableModels] = useState<{ id: string; contextLength: number | null; ownedBy: string | null }[] | null>(null);
 
   if (authLoading) {
     return (
@@ -68,18 +85,6 @@ export default function AiSettings() {
       </div>
     );
   }
-  const [selectedProvider, setSelectedProvider] = useState<string>("groq");
-  const [apiKey, setApiKey] = useState("");
-  const [showKey, setShowKey] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState("");
-  const [testing, setTesting] = useState(false);
-  // Resultados de teste desta sessão apenas — nada é persistido no navegador,
-  // as chaves de produção ficam nas env vars da Vercel (ver caixa "Como funciona" abaixo).
-  const [testStatus, setTestStatus] = useState<Record<string, AIConfig>>({});
-  const testConnectionMutation = trpc.ai.testConnection.useMutation();
-  const listModelsMutation = trpc.ai.listModels.useMutation();
-  const [availableModels, setAvailableModels] = useState<{ id: string; contextLength: number | null; ownedBy: string | null }[] | null>(null);
 
   const currentProvider = AI_PROVIDERS.find((p) => p.id === selectedProvider);
 

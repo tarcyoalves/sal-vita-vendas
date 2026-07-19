@@ -14,18 +14,9 @@ export default function ClientsManagement() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [assignedFilter, setAssignedFilter] = useState("");
 
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-      </div>
-    );
-  }
-
-  if (!user || user.role !== "admin") {
-    return <div className="p-4">Acesso negado</div>;
-  }
-
+  // Hooks precisam ficar todos antes de qualquer return condicional (Regras
+  // de Hooks) — senão o React quebra com "Rendered more hooks than during
+  // the previous render" (erro #310) assim que authLoading vira false.
   const assignees = useMemo(() => {
     if (!allTasks) return [];
     const set = new Set<string>();
@@ -52,6 +43,18 @@ export default function ClientsManagement() {
       return true;
     });
   }, [allTasks, statusFilter, assignedFilter, search]);
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
+
+  if (!user || user.role !== "admin") {
+    return <div className="p-4">Acesso negado</div>;
+  }
 
   const activeCount = allTasks?.filter((t) => t.convertedAt).length ?? 0;
   const inactiveCount = (allTasks?.length ?? 0) - activeCount;
