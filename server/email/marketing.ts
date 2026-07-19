@@ -288,7 +288,12 @@ export async function setDomainTracking(
     if (!res.ok) {
       const err = await res.text().catch(() => res.statusText);
       console.error(`[email-marketing] Resend domain update error ${res.status}:`, err);
-      return { ok: false, error: `resend_${res.status}` };
+      // Devolve o motivo real (não só o código) — a UI mostra isso inline para o
+      // admin diagnosticar (ex.: 422 domínio não verificado, 401 chave sem acesso
+      // total, 404 domínio de outra conta). Sem isso vira adivinhação.
+      let reason = err.slice(0, 200);
+      try { reason = (JSON.parse(err)?.message as string) ?? reason; } catch { /* not json */ }
+      return { ok: false, error: `resend_${res.status}: ${reason}` };
     }
     return { ok: true, openTracking: flags.openTracking, clickTracking: flags.clickTracking };
   } catch {

@@ -5134,13 +5134,18 @@ function DomainTrackingPanel() {
   const { data, isLoading } = trpc.emailMarketing.domainTrackingStatus.useQuery();
   const enableMutation = trpc.emailMarketing.enableDomainTracking.useMutation();
 
+  const [lastError, setLastError] = useState<string | null>(null);
+
   const handleEnable = async (accountKey: string, domainId: string) => {
+    setLastError(null);
     try {
       await enableMutation.mutateAsync({ accountKey, domainId, openTracking: true, clickTracking: true });
       toast.success("Rastreamento ativado! Novos e-mails já contam aberturas e cliques.");
       utils.emailMarketing.domainTrackingStatus.invalidate();
     } catch (err: any) {
-      toast.error(err?.message ?? "Falha ao ativar rastreamento");
+      const msg = err?.message ?? "Falha ao ativar rastreamento";
+      setLastError(msg);
+      toast.error(msg);
     }
   };
 
@@ -5211,6 +5216,17 @@ function DomainTrackingPanel() {
                 </div>
               );
             })}
+          </div>
+        )}
+        {lastError && (
+          <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 space-y-1">
+            <p className="font-medium">O Resend recusou a ativação:</p>
+            <p className="font-mono break-all">{lastError}</p>
+            <p className="text-red-600">
+              Causas comuns: <strong>422</strong> = domínio ainda não verificado no Resend ·
+              <strong> 401/403</strong> = a chave API é "Sending access", precisa ser "Full access" ·
+              <strong> 404</strong> = esse domínio pertence a outra conta. Ajuste no painel do Resend e tente de novo.
+            </p>
           </div>
         )}
         <p className="text-[11px] text-slate-400">
