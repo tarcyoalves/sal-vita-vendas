@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-07-17b';
+const SCHEMA_VERSION = '2026-07-19a';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -493,6 +493,16 @@ export async function ensureTablesExist() {
   // quando vence. Index parcial acelera a varredura de agendadas no cron.
   await sql`ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMP`;
   await sql`CREATE INDEX IF NOT EXISTS email_campaigns_scheduled_idx ON email_campaigns (scheduled_at) WHERE status = 'scheduled'`;
+
+  // ── Teste A/B de assunto ────────────────────────────────────────────────────
+  // subject_b na campanha + variant ('A'/'B') por destinatário (split 50/50).
+  await sql`ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS subject_b TEXT`;
+  await sql`ALTER TABLE email_campaign_recipients ADD COLUMN IF NOT EXISTS variant TEXT`;
+
+  // ── Controle de frequência (frequency capping) ─────────────────────────────
+  // Config global em app_settings (key 'email_freq_cap', valor JSON). Sem tabela
+  // nova — o histórico de envio já vive em email_campaign_recipients.sent_at e
+  // email_sequence_sends.sent_at, contados por e-mail na janela configurada.
 
   // ── Restrição de IP por usuário ─────────────────────────────────────────────
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS ip_restriction_enabled BOOLEAN NOT NULL DEFAULT FALSE`;

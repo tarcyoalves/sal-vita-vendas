@@ -605,6 +605,7 @@ function CampaignsTab() {
       const payload: Parameters<typeof broadcastMutation.mutateAsync>[0] = {
         name: bcast.name || undefined,
         subject: bcast.subject,
+        subjectB: abEnabledBcast && abSubjectBBcast.trim() ? abSubjectBBcast.trim() : undefined,
         htmlBody: bcast.htmlBody,
         replyTo: bcast.replyTo || undefined,
         attachments: bcastFiles.length > 0 ? bcastFiles.map(f => ({ filename: f.filename, content: f.content })) : undefined,
@@ -675,6 +676,7 @@ function CampaignsTab() {
     try {
       const created = await createMutation.mutateAsync({
         name: form.name, subject: form.subject, htmlBody: form.htmlBody,
+        subjectB: abEnabled && abSubjectB.trim() ? abSubjectB.trim() : undefined,
         source: form.source, assignedTo: form.assignedTo || undefined,
         scheduledAt,
       });
@@ -896,19 +898,9 @@ function CampaignsTab() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <Label>Assunto</Label>
-                <div className="flex items-center gap-2">
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div className="flex items-center gap-1.5">
-                          <Label className="text-xs text-slate-500 cursor-pointer">Teste A/B</Label>
-                          <Switch checked={abEnabled} onCheckedChange={setAbEnabled} className="scale-75" />
-                          <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200 text-[9px] py-0">Em breve</Badge>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent><p className="text-xs">Disponível em julho</p></TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-xs text-slate-500 cursor-pointer">Teste A/B</Label>
+                  <Switch checked={abEnabled} onCheckedChange={setAbEnabled} className="scale-75" />
                 </div>
               </div>
               <Input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} placeholder="Ex: Olá {nome}, confira nossas novidades!" />
@@ -916,16 +908,14 @@ function CampaignsTab() {
                 <div className="mt-2 rounded-lg border border-dashed border-amber-300 bg-amber-50/50 p-2.5 space-y-1.5">
                   <div className="flex items-center gap-1.5">
                     <SplitSquareVertical size={13} className="text-amber-600" />
-                    <Label className="text-xs text-amber-700 font-medium">Variante B</Label>
+                    <Label className="text-xs text-amber-700 font-medium">Variante B (assunto)</Label>
                   </div>
                   <Input
                     value={abSubjectB}
                     onChange={e => setAbSubjectB(e.target.value)}
                     placeholder="Assunto alternativo para teste A/B"
-                    disabled
-                    title="Disponível em julho"
                   />
-                  <p className="text-[10px] text-amber-600">50% dos destinatários receberão cada variante. O vencedor será enviado ao restante.</p>
+                  <p className="text-[10px] text-amber-600">Metade recebe o assunto A, metade o B. Compare a abertura de cada um nas Estatísticas da campanha.</p>
                 </div>
               )}
             </div>
@@ -1224,19 +1214,9 @@ function CampaignsTab() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <Label>Assunto</Label>
-                <div className="flex items-center gap-2">
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div className="flex items-center gap-1.5">
-                          <Label className="text-xs text-slate-500 cursor-pointer">Teste A/B</Label>
-                          <Switch checked={abEnabledBcast} onCheckedChange={setAbEnabledBcast} className="scale-75" />
-                          <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200 text-[9px] py-0">Em breve</Badge>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent><p className="text-xs">Disponível em julho</p></TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-xs text-slate-500 cursor-pointer">Teste A/B</Label>
+                  <Switch checked={abEnabledBcast} onCheckedChange={setAbEnabledBcast} className="scale-75" />
                 </div>
               </div>
               <Input value={bcast.subject} onChange={e => setBcast(b => ({ ...b, subject: e.target.value }))} placeholder="Ex: Comunicado importante" />
@@ -1244,16 +1224,14 @@ function CampaignsTab() {
                 <div className="mt-2 rounded-lg border border-dashed border-amber-300 bg-amber-50/50 p-2.5 space-y-1.5">
                   <div className="flex items-center gap-1.5">
                     <SplitSquareVertical size={13} className="text-amber-600" />
-                    <Label className="text-xs text-amber-700 font-medium">Variante B</Label>
+                    <Label className="text-xs text-amber-700 font-medium">Variante B (assunto)</Label>
                   </div>
                   <Input
                     value={abSubjectBBcast}
                     onChange={e => setAbSubjectBBcast(e.target.value)}
                     placeholder="Assunto alternativo para teste A/B"
-                    disabled
-                    title="Disponível em julho"
                   />
-                  <p className="text-[10px] text-amber-600">50% dos destinatários receberão cada variante. O vencedor será enviado ao restante.</p>
+                  <p className="text-[10px] text-amber-600">Metade recebe o assunto A, metade o B. Compare a abertura de cada um nas Estatísticas.</p>
                 </div>
               )}
             </div>
@@ -5513,6 +5491,38 @@ function CampaignStatsRow({ campaignId, name, onRevenue }: { campaignId: number;
               {stats.bounced > 0 && <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200 gap-1"><AlertTriangle size={11} /> {stats.bounced} bounce</Badge>}
               {stats.complained > 0 && <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200 gap-1"><XCircle size={11} /> {stats.complained} reclamações</Badge>}
             </div>
+
+            {/* Resultado do teste A/B — só aparece se a campanha teve subjectB */}
+            {stats.ab && (() => {
+              const a = stats.ab.A, b = stats.ab.B;
+              const rateA = a.sent > 0 ? a.opened / a.sent : 0;
+              const rateB = b.sent > 0 ? b.opened / b.sent : 0;
+              const decided = a.sent > 0 && b.sent > 0 && rateA !== rateB;
+              const winner = rateA > rateB ? 'A' : 'B';
+              return (
+                <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-2.5 space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <SplitSquareVertical size={13} className="text-amber-600" />
+                    <span className="text-xs font-semibold text-amber-800">Teste A/B de assunto</span>
+                    {decided && <Badge className="bg-emerald-600 text-white border-0 text-[9px]">Vencedor: {winner}</Badge>}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['A', 'B'] as const).map(v => {
+                      const d = stats.ab![v];
+                      const rate = d.sent > 0 ? d.opened / d.sent : 0;
+                      const isWinner = decided && winner === v;
+                      return (
+                        <div key={v} className={`rounded-md border px-2 py-1.5 ${isWinner ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
+                          <p className="text-[10px] font-semibold text-slate-500">Assunto {v}</p>
+                          <p className="text-sm font-bold text-slate-800">{(rate * 100).toFixed(1)}% <span className="text-[10px] font-normal text-slate-400">abertura</span></p>
+                          <p className="text-[10px] text-slate-400">{d.opened}/{d.sent} enviados</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Receita atribuída — pedidos de leads que clicaram, criados após o envio */}
             <TooltipProvider>

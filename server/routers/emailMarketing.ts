@@ -417,6 +417,9 @@ export const emailMarketingRouter = router({
     .input(z.object({
       name: z.string().min(1).max(200),
       subject: z.string().min(1).max(300),
+      // Teste A/B: assunto alternativo. Quando presente, metade recebe `subject`,
+      // metade `subjectB`.
+      subjectB: z.string().max(300).optional(),
       htmlBody: z.string().min(1),
       source: z.enum(['leads', 'clients', 'contacts', 'both', 'all']).default('leads'),
       assignedTo: z.string().optional(),
@@ -432,10 +435,12 @@ export const emailMarketingRouter = router({
       // Só agenda se a data for realmente futura (com folga de 1 min); caso
       // contrário nasce como rascunho comum.
       const isScheduled = !!input.scheduledAt && input.scheduledAt.getTime() > Date.now() + 60_000;
+      const subjectB = input.subjectB?.trim() || null;
 
       const [campaign] = await db.insert(emailCampaigns).values({
         name: input.name,
         subject: input.subject,
+        subjectB,
         htmlBody: input.htmlBody,
         totalRecipients: audience.length,
         createdByUserId: ctx.user.id,
@@ -444,12 +449,14 @@ export const emailMarketingRouter = router({
       }).returning();
 
       if (audience.length > 0) {
-        await db.insert(emailCampaignRecipients).values(audience.map(r => ({
+        await db.insert(emailCampaignRecipients).values(audience.map((r, idx) => ({
           campaignId: campaign.id,
           email: r.email,
           name: r.name,
           replyTo: r.replyTo,
           taskId: r.taskId,
+          // A/B: alterna A/B por índice (split ~50/50). Sem subjectB ⇒ null.
+          variant: subjectB ? (idx % 2 === 0 ? 'A' : 'B') : null,
           unsubToken: crypto.randomUUID(),
         })));
       }
@@ -464,6 +471,7 @@ export const emailMarketingRouter = router({
     .input(z.object({
       name: z.string().max(200).optional(),
       subject: z.string().min(1).max(300),
+      subjectB: z.string().max(300).optional(),
       htmlBody: z.string().min(1),
       replyTo: z.string().email().optional(),
       recipients: z.array(z.object({
@@ -527,9 +535,11 @@ export const emailMarketingRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Nenhum destinatário válido (todos duplicados ou descadastrados).' });
       }
 
+      const bcastSubjectB = input.subjectB?.trim() || null;
       const [campaign] = await db.insert(emailCampaigns).values({
         name: input.name?.trim() || `Disparo ${new Date().toLocaleDateString('pt-BR')}`,
         subject: input.subject,
+        subjectB: bcastSubjectB,
         htmlBody: input.htmlBody,
         isBroadcast: true,
         attachments: input.attachments && input.attachments.length > 0 ? input.attachments : null,
@@ -537,11 +547,12 @@ export const emailMarketingRouter = router({
         createdByUserId: ctx.user.id,
       }).returning();
 
-      await db.insert(emailCampaignRecipients).values(clean.map(r => ({
+      await db.insert(emailCampaignRecipients).values(clean.map((r, idx) => ({
         campaignId: campaign.id,
         email: r.email,
         name: r.name,
         replyTo: input.replyTo,
+        variant: bcastSubjectB ? (idx % 2 === 0 ? 'A' : 'B') : null,
         unsubToken: crypto.randomUUID(),
       })));
 
@@ -1182,6 +1193,27 @@ export const emailMarketingRouter = router({
           AND o.criado_em::timestamptz > st.ts
       `).then(r => r.rows);
 
+      // Teste A/B: enviados e aberturas únicas por variante ('A'/'B'). Só tem
+      // sentido quando a campanha foi criada com subjectB; caso contrário as
+      // duas linhas vêm zeradas e a UI simplesmente não mostra o bloco.
+      const abResult = await db.execute<{ variant: string; sent: number; opened: number }>(sql`
+        SELECT
+          r.variant,
+          COUNT(*) FILTER (WHERE r.status = 'sent')::int AS sent,
+          COUNT(DISTINCT e.message_id) FILTER (WHERE e.event_type = 'opened')::int AS opened
+        FROM ${emailCampaignRecipients} r
+        LEFT JOIN ${emailEvents} e ON e.message_id = r.message_id
+        WHERE r.campaign_id = ${input.campaignId} AND r.variant IS NOT NULL
+        GROUP BY r.variant
+      `);
+      const abByVariant: Record<string, { sent: number; opened: number }> = {};
+      for (const row of abResult.rows) {
+        abByVariant[row.variant] = { sent: Number(row.sent), opened: Number(row.opened) };
+      }
+      const ab = (abByVariant.A || abByVariant.B)
+        ? { A: abByVariant.A ?? { sent: 0, opened: 0 }, B: abByVariant.B ?? { sent: 0, opened: 0 } }
+        : null;
+
       return {
         recipients: Number(recRow?.total ?? 0),
         sent: Number(recRow?.sent ?? 0),
@@ -1194,6 +1226,7 @@ export const emailMarketingRouter = router({
         complained: uniq.complained ?? 0,
         attributedRevenue: Number(revRow?.revenue ?? 0),
         attributedOrders: Number(revRow?.orders ?? 0),
+        ab,
       };
     }),
 

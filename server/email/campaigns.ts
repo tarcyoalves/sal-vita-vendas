@@ -114,7 +114,7 @@ export async function processCampaignBatch(campaignId: number): Promise<Campaign
   // grab the same rows — each one only sends what it actually claimed here.
   const claimed = await db.execute<{
     id: number; email: string; name: string | null; replyTo: string | null;
-    taskId: number | null; unsubToken: string;
+    taskId: number | null; unsubToken: string; variant: string | null;
   }>(dsql`
     UPDATE email_campaign_recipients
     SET status = 'sending', claimed_at = now()
@@ -125,7 +125,7 @@ export async function processCampaignBatch(campaignId: number): Promise<Campaign
       LIMIT ${batchSize}
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING id, email, name, reply_to AS "replyTo", task_id AS "taskId", unsub_token AS "unsubToken"
+    RETURNING id, email, name, reply_to AS "replyTo", task_id AS "taskId", unsub_token AS "unsubToken", variant
   `);
   const recipients = claimed.rows;
 
@@ -155,9 +155,11 @@ export async function processCampaignBatch(campaignId: number): Promise<Campaign
     const messages: BatchMessage[] = toSend.map(r => {
       const unsubUrl = `${PUBLIC_APP_URL}/api/unsubscribe?t=${r.unsubToken}`;
       const signatureHtml = r.replyTo ? signatureMap.get(r.replyTo.toLowerCase()) : undefined;
+      // A/B: variante 'B' usa subjectB (se existir); todo o resto usa subject.
+      const subjectTemplate = (r.variant === 'B' && campaign.subjectB) ? campaign.subjectB : campaign.subject;
       return {
         to: r.email,
-        subject: renderTemplate(campaign.subject, { nome: r.name ?? '' }),
+        subject: renderTemplate(subjectTemplate, { nome: r.name ?? '' }),
         html: layout(renderTemplate(campaign.htmlBody, { nome: r.name ?? '', unsubscribe: unsubUrl }), unsubUrl, signatureHtml),
         replyTo: r.replyTo ?? undefined,
         unsubToken: r.unsubToken,

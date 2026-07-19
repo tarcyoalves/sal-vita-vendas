@@ -294,6 +294,10 @@ export const emailCampaigns = pgTable('email_campaigns', {
   id: serial('id').primaryKey(),
   name: text('name').notNull(),
   subject: text('subject').notNull(),
+  // Teste A/B de assunto: quando preenchido, os destinatários são divididos
+  // ~50/50 — metade recebe `subject`, metade `subjectB`. As Estatísticas comparam
+  // a taxa de abertura de cada variante para você saber qual assunto rende mais.
+  subjectB: text('subject_b'),
   htmlBody: text('html_body').notNull(),
   status: text('status').notNull().default('draft'), // draft|scheduled|sending|paused|sent
   // Agendamento (E-mail Marketing F4): quando definido e futuro, a campanha fica
@@ -319,6 +323,9 @@ export const emailCampaignRecipients = pgTable('email_campaign_recipients', {
   name: text('name'),
   replyTo: text('reply_to'),
   taskId: integer('task_id'),
+  // Teste A/B: 'A' | 'B' | null. Definido na criação quando a campanha tem
+  // subjectB; escolhe qual assunto este destinatário recebe no envio.
+  variant: text('variant'),
   status: text('status').notNull().default('pending'), // pending|sending|sent|failed|skipped
   accountKey: text('account_key'),
   messageId: text('message_id'),
