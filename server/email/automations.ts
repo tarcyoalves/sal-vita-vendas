@@ -19,6 +19,7 @@ import {
   computeNextSendAt, reserveSendQuota, refundDailyQuota, sendBatch, layout, enrollmentEngagementBatch,
   conditionMet, renderSignature, renderTemplate as renderMktTemplate, type BatchMessage,
 } from './marketing';
+import { isEmailOverCapped } from './frequency';
 
 export type TriggerType = 'lead_created' | 'lead_converted' | 'inactive_days' | 'tag_added' | 'email_confirmed' | 'sequence_completed';
 
@@ -54,6 +55,12 @@ export async function enrollInSequence(
     if (suppressed) {
       console.log(`[enrollInSequence] SKIPPED ${email}: suppressed`);
       return { enrolled: false, reason: 'suppressed' };
+    }
+
+    // Controle de frequência: não inscreve quem já atingiu o teto na janela.
+    if (await isEmailOverCapped(email)) {
+      console.log(`[enrollInSequence] SKIPPED ${email}: frequency cap`);
+      return { enrolled: false, reason: 'frequency_cap' };
     }
 
     const steps = await db.select({ delayDays: emailSequenceSteps.delayDays })

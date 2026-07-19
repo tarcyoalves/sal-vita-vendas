@@ -13,6 +13,7 @@ import {
 import { reserveSendQuota, refundDailyQuota, sendBatch, layout, renderTemplate, renderSignature, sanitizeCampaignHtml, getUsage, getAllDomainTracking, setDomainTracking, getAccounts, type BatchMessage } from '../email/marketing';
 import { processCampaignBatch } from '../email/campaigns';
 import { enrollInSequence } from '../email/automations';
+import { getFrequencyCap, setFrequencyCap, overCappedEmails } from '../email/frequency';
 import { userTaskFilter } from './tasks';
 import { spDateStr, spMidnight, spDaysAgo } from '../lib/tz';
 
@@ -119,7 +120,11 @@ async function buildAudience(opts: { source: 'leads' | 'clients' | 'contacts' | 
   if (deduped.length === 0) return [];
   const suppressed = await db.select({ email: emailSuppressions.email }).from(emailSuppressions);
   const suppressedSet = new Set(suppressed.map(s => s.email.toLowerCase()));
-  return deduped.filter(r => !suppressedSet.has(r.email));
+  const notSuppressed = deduped.filter(r => !suppressedSet.has(r.email));
+
+  // Controle de frequência: remove quem já atingiu o teto de e-mails na janela.
+  const overCap = await overCappedEmails(notSuppressed.map(r => r.email));
+  return overCap.size === 0 ? notSuppressed : notSuppressed.filter(r => !overCap.has(r.email));
 }
 
 // Same UNION-join used by `engagementByTaskIds`, but restricted to events on or
@@ -1428,6 +1433,22 @@ export const emailMarketingRouter = router({
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Falha ao atualizar rastreamento: ${result.error}` });
       }
       return result;
+    }),
+
+  // ── Controle de frequência (frequency capping) ─────────────────────────────
+  getFrequencyCap: staffProcedure.query(async () => {
+    return getFrequencyCap();
+  }),
+
+  setFrequencyCap: staffProcedure
+    .input(z.object({
+      enabled: z.boolean(),
+      maxEmails: z.number().int().min(1).max(50),
+      windowDays: z.number().int().min(1).max(90),
+    }))
+    .mutation(async ({ input }) => {
+      await setFrequencyCap(input);
+      return { ok: true };
     }),
 
   overviewStats: staffProcedure.query(async () => {
