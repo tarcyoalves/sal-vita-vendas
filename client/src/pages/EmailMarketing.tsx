@@ -5147,7 +5147,8 @@ function DomainTrackingPanel() {
           No Resend, rastrear abertura/clique é uma configuração do <strong>domínio</strong>, não de cada e-mail.
           Se estiver desligado, o sistema não sabe quem abriu ou clicou — e o <strong>lead quente (🔥)</strong>,
           o <strong>lembrete automático de clique</strong>, as condições de passo "só se abriu/clicou" e o
-          <strong> funil de Estatísticas</strong> ficam todos zerados. Ative aqui uma vez por domínio.
+          <strong> funil de Estatísticas</strong> ficam todos zerados. Clique "Ativar" e confira o aviso abaixo —
+          o Resend exige um subdomínio de rastreio (CNAME) verificado para o tracking funcionar de fato.
         </p>
 
         {isLoading ? (
@@ -5207,10 +5208,15 @@ function DomainTrackingPanel() {
             </p>
           </div>
         )}
-        <p className="text-[11px] text-slate-400">
-          Dica: rastreamento de clique reescreve os links por um subdomínio de rastreio — para melhor entregabilidade,
-          o Resend recomenda um subdomínio de tracking (CNAME) próprio no painel deles, mas abertura já funciona sem isso.
-        </p>
+        <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1">
+          <p className="font-medium">⚠️ O botão "Ativar" liga a intenção, mas o Resend só ativa de verdade quando existe um subdomínio de rastreio (CNAME) verificado.</p>
+          <p className="text-amber-600">
+            Se o status continuar DESLIGADO mesmo depois de clicar (sem erro), é porque falta esse passo — que é DNS,
+            não dá pra fazer por botão. No painel do Resend: Domains → seu domínio → aba de tracking → configure o
+            subdomínio de rastreio; depois adicione o CNAME que ele pedir no seu provedor de DNS (HostGator) e aguarde verificar.
+            Enquanto o CNAME não verifica, abertura/clique não contam.
+          </p>
+        </div>
       </CardContent>
     </Card>
   );
