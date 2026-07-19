@@ -213,18 +213,25 @@ export interface DomainTrackingInfo {
   domainName?: string;
   openTracking?: boolean;
   clickTracking?: boolean;
-  status?: string;
+  trackingSubdomain?: string | null;  // subdomínio de rastreio (gate do clique)
+  status?: string;                    // verified | pending | not_started | failed | ...
   error?: string;
 }
 
 /**
- * Lists the Resend domains for one marketing account, returning each domain's
- * open/click tracking flags. Brevo accounts are skipped (Brevo tracks by default).
+ * Lista os domínios Resend de uma conta e retorna os flags de open/click tracking.
+ * Contas Brevo são puladas (Brevo rastreia por padrão).
  *
- * IMPORTANT: open/click tracking in Resend is a DOMAIN-LEVEL setting, not a
- * per-email one. Enabling `tracking` in the send payload does nothing — the API
- * silently ignores it. Tracking must be turned on for the sending domain, either
- * in the dashboard (Domains → Configuration) or via setDomainTracking() below.
+ * IMPORTANTE (por que buscamos o DETALHE de cada domínio):
+ * o endpoint de LISTA (GET /domains) não devolve de forma confiável
+ * open_tracking/click_tracking/tracking_subdomain — esses campos vêm no detalhe
+ * (GET /domains/:id). Ler só a lista fazia o painel mostrar "desligado" mesmo com
+ * a abertura funcionando (17.9% real). Então: lista para pegar os IDs, depois um
+ * GET por domínio para os flags reais + o subdomínio de rastreio (que é o que de
+ * fato habilita o clique — sem ele o Resend não conta cliques).
+ *
+ * Tracking no Resend é DOMAIN-LEVEL, não por e-mail. Abertura funciona com
+ * open_tracking ligado; clique exige um tracking_subdomain (CNAME) verificado.
  */
 export async function getDomainTracking(account: MarketingAccount): Promise<DomainTrackingInfo[]> {
   if (account.provider !== 'resend') return [];
@@ -237,24 +244,40 @@ export async function getDomainTracking(account: MarketingAccount): Promise<Doma
     if (!res.ok) {
       return [{ accountKey: account.key, fromEmail: email, error: `resend_${res.status}` }];
     }
-    const body = await res.json() as {
-      data?: Array<{
-        id: string; name: string; status?: string;
-        open_tracking?: boolean; click_tracking?: boolean;
-      }>;
-    };
+    const body = await res.json() as { data?: Array<{ id: string; name: string }> };
     const domains = body.data ?? [];
     if (domains.length === 0) {
       return [{ accountKey: account.key, fromEmail: email, error: 'no_domains' }];
     }
-    return domains.map(d => ({
-      accountKey: account.key,
-      fromEmail: email,
-      domainId: d.id,
-      domainName: d.name,
-      openTracking: d.open_tracking,
-      clickTracking: d.click_tracking,
-      status: d.status,
+
+    // Detalhe por domínio — fonte autoritativa dos flags de tracking.
+    return await Promise.all(domains.map(async (d) => {
+      try {
+        const detailRes = await fetch(`https://api.resend.com/domains/${d.id}`, {
+          headers: { Authorization: `Bearer ${account.apiKey}` },
+        });
+        if (!detailRes.ok) {
+          return { accountKey: account.key, fromEmail: email, domainId: d.id, domainName: d.name, error: `resend_${detailRes.status}` };
+        }
+        const detail = await detailRes.json() as {
+          status?: string;
+          open_tracking?: boolean;
+          click_tracking?: boolean;
+          tracking_subdomain?: string | null;
+        };
+        return {
+          accountKey: account.key,
+          fromEmail: email,
+          domainId: d.id,
+          domainName: d.name,
+          openTracking: detail.open_tracking,
+          clickTracking: detail.click_tracking,
+          trackingSubdomain: detail.tracking_subdomain ?? null,
+          status: detail.status,
+        };
+      } catch {
+        return { accountKey: account.key, fromEmail: email, domainId: d.id, domainName: d.name, error: 'network_error' };
+      }
     }));
   } catch {
     return [{ accountKey: account.key, fromEmail: email, error: 'network_error' }];

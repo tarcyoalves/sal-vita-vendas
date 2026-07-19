@@ -5170,7 +5170,12 @@ function DomainTrackingPanel() {
               return (
                 <div key={d.domainId} className="flex items-center justify-between gap-2 border rounded-lg px-3 py-2 bg-white">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-800 truncate">{d.domainName ?? d.fromEmail}</p>
+                    <p className="text-sm font-medium text-slate-800 truncate">
+                      {d.domainName ?? d.fromEmail}
+                      {d.status && d.status !== 'verified' && (
+                        <span className="ml-1.5 text-[10px] text-amber-600 font-normal">({d.status})</span>
+                      )}
+                    </p>
                     <div className="flex items-center gap-3 mt-0.5 text-[11px]">
                       <span className={`inline-flex items-center gap-1 ${d.openTracking ? 'text-emerald-700' : 'text-slate-400'}`}>
                         {d.openTracking ? <CheckCircle size={12} /> : <XCircle size={12} />} abertura
@@ -5179,6 +5184,11 @@ function DomainTrackingPanel() {
                         {d.clickTracking ? <CheckCircle size={12} /> : <XCircle size={12} />} clique
                       </span>
                     </div>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      {d.trackingSubdomain
+                        ? <>subdomínio de rastreio: <span className="font-mono text-slate-500">{d.trackingSubdomain}</span> — clique só conta com ele verificado</>
+                        : <>sem subdomínio de rastreio configurado — o clique não conta até criar um CNAME de tracking no Resend</>}
+                    </p>
                   </div>
                   {on ? (
                     <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 shrink-0">Ativo</Badge>
