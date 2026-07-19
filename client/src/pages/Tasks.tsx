@@ -62,6 +62,34 @@ function hasEmail(text: string): boolean {
   return /[\w.+-]+@[\w-]+\.[a-z]{2,}/i.test(text);
 }
 
+// Urgência do lembrete de uma tarefa — base única para a cor de fundo do card
+// e o chip de data, evitando duas contas de data ligeiramente diferentes.
+function taskUrgency(task: Task): { isOverdue: boolean; daysOverdue: number; isToday: boolean } {
+  if (!task.reminderDate || task.reminderEnabled === false) {
+    return { isOverdue: false, daysOverdue: 0, isToday: false };
+  }
+  const rd = new Date(task.reminderDate);
+  if (isNaN(rd.getTime())) return { isOverdue: false, daysOverdue: 0, isToday: false };
+  const now = new Date();
+  const isOverdue = rd < now && task.status === 'pending';
+  const daysOverdue = isOverdue ? Math.floor((now.getTime() - rd.getTime()) / 86400000) : 0;
+  const isToday = rd.toDateString() === now.toDateString();
+  return { isOverdue, daysOverdue, isToday };
+}
+
+// Cor de fundo do card de tarefa — sinaliza o que precisa de atenção primeiro:
+// lead quente (existente) > muito atrasado (>7d) > atrasado > lembrete hoje >
+// cliente ativo (informativo, cede a qualquer urgência de prazo).
+function taskRowBg(task: Task): string {
+  if (task.hotLead) return 'bg-red-50';
+  const { isOverdue, daysOverdue, isToday } = taskUrgency(task);
+  if (isOverdue && daysOverdue > 7) return 'bg-red-50';
+  if (isOverdue) return 'bg-orange-50';
+  if (isToday) return 'bg-yellow-50';
+  if (task.convertedAt) return 'bg-emerald-50';
+  return 'bg-white';
+}
+
 // Extracts the first phone number found in a string, returning only digits (or null)
 function extractPhone(text: string): string | null {
   const m = text.match(/\(?\d{2}\)?[\s.]*\d{4,5}[-\s]?\d{4}/);
@@ -1368,7 +1396,7 @@ export default function Tasks() {
           {filteredTasks.map((task: Task) => (
             <div key={task.id} className={`border rounded-lg overflow-hidden shadow-sm transition-all duration-300 ${highlightTaskId === task.id ? 'ring-2 ring-blue-500 ring-offset-1 shadow-blue-200 shadow-md' : task.hotLead ? 'ring-1 ring-red-300 border-red-200' : ''}`}
               style={highlightTaskId === task.id ? { animation: 'pulse-highlight 1s ease-in-out 3' } : {}}>
-              <div className={`flex items-center gap-2 md:gap-3 p-3 hover:bg-gray-50 transition cursor-pointer ${task.hotLead ? 'bg-red-50' : 'bg-white'}`} onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}>
+              <div className={`flex items-center gap-2 md:gap-3 p-3 hover:bg-gray-50 transition cursor-pointer ${taskRowBg(task)}`} onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}>
                 <label className="flex-shrink-0 p-1 -m-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
                   <input type="checkbox" checked={selectedTasks.has(task.id)} onChange={() => handleSelectTask(task.id)} className="w-5 h-5 cursor-pointer" />
                 </label>
@@ -1478,14 +1506,17 @@ export default function Tasks() {
                   try {
                     const rd = new Date(task.reminderDate);
                     if (isNaN(rd.getTime())) return null;
-                    const now = new Date();
-                    const isOverdue = rd < now && task.status === 'pending';
-                    const isToday = rd.toDateString() === now.toDateString();
+                    const { isOverdue, daysOverdue, isToday } = taskUrgency(task);
+                    const veryOverdue = isOverdue && daysOverdue > 7;
                     const p = (n: number) => String(n).padStart(2, '0');
                     const dateStr = `${p(rd.getDate())}/${p(rd.getMonth() + 1)}`;
                     const timeStr = `${p(rd.getHours())}:${p(rd.getMinutes())}`;
+                    const chipCls = veryOverdue ? 'bg-red-100 text-red-700'
+                      : isOverdue ? 'bg-orange-100 text-orange-700'
+                      : isToday ? 'bg-yellow-100 text-yellow-800'
+                      : 'bg-blue-100 text-blue-700';
                     return (
-                      <div className={`text-xs px-1.5 py-1 rounded-lg text-center flex-shrink-0 font-medium leading-tight ${isOverdue ? 'bg-red-100 text-red-700' : isToday ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                      <div className={`text-xs px-1.5 py-1 rounded-lg text-center flex-shrink-0 font-medium leading-tight ${chipCls}`}>
                         <div className="flex justify-center">{isOverdue ? <AlertTriangle size={13} /> : isToday ? <Clock size={13} /> : <Bell size={13} />}</div>
                         <div>{dateStr}</div>
                         <div>{timeStr}</div>

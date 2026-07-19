@@ -60,6 +60,9 @@ export default function BillingReport() {
   const [mesFilter, setMesFilter] = useState<FiltroMes | null>(mesAtual);
   const [showAllMonths, setShowAllMonths] = useState(false);
   const [ufFilter, setUfFilter] = useState("");
+  // Busca livre: CNPJ, Razão Social, Cidade e Produtos num único campo — mesmo
+  // padrão de busca já usado em Tarefas e no picker de vínculo de pedidos.
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Manage popup (view all + edit/faturar/excluir shortcuts)
   const [selectedPedidoId, setSelectedPedidoId] = useState<string | null>(null);
@@ -114,8 +117,20 @@ export default function BillingReport() {
       result = result.filter((p) => p.uf.toLowerCase().includes(ufLower));
     }
 
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      const qDigits = q.replace(/\D/g, "");
+      result = result.filter((p) => {
+        const matchCnpj = qDigits && p.cnpj.replace(/\D/g, "").includes(qDigits);
+        const matchRazaoSocial = p.razaoSocial.toLowerCase().includes(q);
+        const matchCidade = p.cidade.toLowerCase().includes(q);
+        const matchProdutos = p.itens.some((it) => it.descricao.toLowerCase().includes(q));
+        return matchCnpj || matchRazaoSocial || matchCidade || matchProdutos;
+      });
+    }
+
     return result;
-  }, [allPedidos, statusFilter, sellerFilter, mesFilter, showAllMonths, ufFilter]);
+  }, [allPedidos, statusFilter, sellerFilter, mesFilter, showAllMonths, ufFilter, searchQuery]);
 
   // Totals
   const totalEstimado = useMemo(() => filtered.reduce((s, p) => s + estimatedTotal(p), 0), [filtered]);
@@ -147,7 +162,14 @@ export default function BillingReport() {
     <div className="space-y-4">
       {/* Filters */}
       <Card>
-        <CardContent className="pt-4 pb-4">
+        <CardContent className="pt-4 pb-4 space-y-3">
+          <input
+            type="text"
+            placeholder="🔍 Buscar por CNPJ, Razão Social, Cidade ou Produto..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full px-3 py-2.5 border rounded-lg text-sm"
+          />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
