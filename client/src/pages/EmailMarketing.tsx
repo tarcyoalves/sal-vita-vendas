@@ -5100,55 +5100,38 @@ function UsageTab() {
   );
 }
 
-// Painel de rastreamento de abertura/clique. No Resend, tracking é uma config
-// de DOMÍNIO (não por e-mail): se estiver desligada, NENHUM evento opened/clicked
-// chega — e aí lead scoring (🔥 quente), lembrete automático de lead quente,
-// condições de passo "só se abriu/clicou" e o funil de Estatísticas ficam todos
-// zerados silenciosamente. Este painel expõe as procedures que já existiam no
-// backend (domainTrackingStatus / enableDomainTracking) para ver e ligar tudo
-// dentro do app, sem precisar entrar no painel do Resend.
+// Painel de DIAGNÓSTICO do rastreamento de abertura/clique. Só leitura: mostra,
+// por domínio Resend, se abertura/clique estão ativos, o status de verificação e
+// o subdomínio de rastreio (CNAME que habilita o clique). Ligar/desligar é feito
+// no painel do Resend (é config de DNS + domínio, não faz sentido botão no app).
+// Serve para o admin saber, sem sair do sistema, se o 🔥 lead quente (que depende
+// de CLIQUE) vai funcionar.
 function DomainTrackingPanel() {
-  const utils = trpc.useUtils();
   const { data, isLoading } = trpc.emailMarketing.domainTrackingStatus.useQuery();
-  const enableMutation = trpc.emailMarketing.enableDomainTracking.useMutation();
-
-  const [lastError, setLastError] = useState<string | null>(null);
-
-  const handleEnable = async (accountKey: string, domainId: string) => {
-    setLastError(null);
-    try {
-      await enableMutation.mutateAsync({ accountKey, domainId, openTracking: true, clickTracking: true });
-      toast.success("Rastreamento ativado! Novos e-mails já contam aberturas e cliques.");
-      utils.emailMarketing.domainTrackingStatus.invalidate();
-    } catch (err: any) {
-      const msg = err?.message ?? "Falha ao ativar rastreamento";
-      setLastError(msg);
-      toast.error(msg);
-    }
-  };
 
   const domains = data?.domains ?? [];
-  // Só domínios Resend têm flags gerenciáveis; erros (sem domínio/sem chave) viram aviso.
   const trackable = domains.filter((d) => d.domainId);
-  const allOn = trackable.length > 0 && trackable.every((d) => d.openTracking && d.clickTracking);
+  const clickOn = trackable.length > 0 && trackable.every((d) => d.clickTracking);
 
   return (
-    <Card className={`rounded-2xl ${!isLoading && trackable.length > 0 && !allOn ? 'border-amber-300 bg-gradient-to-br from-amber-50/80 to-white' : 'border-slate-200'}`}>
+    <Card className="rounded-2xl border-slate-200">
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-blue-900 text-base">
-          <MousePointerClick size={18} className={!isLoading && trackable.length > 0 && !allOn ? 'text-amber-600' : 'text-blue-700'} />
+          <MousePointerClick size={18} className="text-blue-700" />
           Rastreamento de abertura e clique
-          {!isLoading && trackable.length > 0 && !allOn && <Badge className="bg-amber-500 text-white border-0 text-[10px]">DESLIGADO</Badge>}
-          {!isLoading && allOn && <Badge className="bg-emerald-600 text-white border-0 text-[10px]">ATIVO</Badge>}
+          {!isLoading && trackable.length > 0 && (
+            <Badge className={clickOn ? "bg-emerald-600 text-white border-0 text-[10px]" : "bg-amber-500 text-white border-0 text-[10px]"}>
+              {clickOn ? "ATIVO" : "CLIQUE OFF"}
+            </Badge>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-slate-600 leading-relaxed">
-          No Resend, rastrear abertura/clique é uma configuração do <strong>domínio</strong>, não de cada e-mail.
-          Se estiver desligado, o sistema não sabe quem abriu ou clicou — e o <strong>lead quente (🔥)</strong>,
-          o <strong>lembrete automático de clique</strong>, as condições de passo "só se abriu/clicou" e o
-          <strong> funil de Estatísticas</strong> ficam todos zerados. Clique "Ativar" e confira o aviso abaixo —
-          o Resend exige um subdomínio de rastreio (CNAME) verificado para o tracking funcionar de fato.
+          No Resend, rastrear abertura/clique é config do <strong>domínio</strong>. <strong>Abertura</strong> conta
+          o quanto o e-mail é aberto; <strong>clique</strong> é o que aciona o <strong>lead quente (🔥)</strong> e o
+          lembrete automático — e o clique só funciona com um <strong>subdomínio de rastreio (CNAME) verificado</strong>.
+          Este painel é só diagnóstico: liga/desliga é no painel do Resend (é DNS).
         </p>
 
         {isLoading ? (
@@ -5184,49 +5167,22 @@ function DomainTrackingPanel() {
                         {d.clickTracking ? <CheckCircle size={12} /> : <XCircle size={12} />} clique
                       </span>
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-0.5">
-                      {d.trackingSubdomain
-                        ? <>subdomínio de rastreio: <span className="font-mono text-slate-500">{d.trackingSubdomain}</span> — clique só conta com ele verificado</>
-                        : <>sem subdomínio de rastreio configurado — o clique não conta até criar um CNAME de tracking no Resend</>}
-                    </p>
+                    {!d.clickTracking && (
+                      <p className="text-[10px] text-amber-600 mt-0.5">
+                        {d.trackingSubdomain
+                          ? <>subdomínio de rastreio <span className="font-mono">{d.trackingSubdomain}</span> ainda não verificado — clique não conta até verificar o CNAME no DNS</>
+                          : <>sem subdomínio de rastreio — o 🔥 lead quente só funciona depois de criar um CNAME de tracking no Resend (Domains → tracking) e verificar no HostGator</>}
+                      </p>
+                    )}
                   </div>
-                  {on ? (
-                    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 shrink-0">Ativo</Badge>
-                  ) : (
-                    <Button
-                      size="sm"
-                      className="h-8 shrink-0"
-                      disabled={enableMutation.isPending}
-                      onClick={() => handleEnable(d.accountKey, d.domainId!)}
-                    >
-                      Ativar
-                    </Button>
-                  )}
+                  <Badge className={`shrink-0 ${on ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                    {on ? 'Ativo' : d.openTracking ? 'Só abertura' : 'Desligado'}
+                  </Badge>
                 </div>
               );
             })}
           </div>
         )}
-        {lastError && (
-          <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 space-y-1">
-            <p className="font-medium">O Resend recusou a ativação:</p>
-            <p className="font-mono break-all">{lastError}</p>
-            <p className="text-red-600">
-              Causas comuns: <strong>422</strong> = domínio ainda não verificado no Resend ·
-              <strong> 401/403</strong> = a chave API é "Sending access", precisa ser "Full access" ·
-              <strong> 404</strong> = esse domínio pertence a outra conta. Ajuste no painel do Resend e tente de novo.
-            </p>
-          </div>
-        )}
-        <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1">
-          <p className="font-medium">⚠️ O botão "Ativar" liga a intenção, mas o Resend só ativa de verdade quando existe um subdomínio de rastreio (CNAME) verificado.</p>
-          <p className="text-amber-600">
-            Se o status continuar DESLIGADO mesmo depois de clicar (sem erro), é porque falta esse passo — que é DNS,
-            não dá pra fazer por botão. No painel do Resend: Domains → seu domínio → aba de tracking → configure o
-            subdomínio de rastreio; depois adicione o CNAME que ele pedir no seu provedor de DNS (HostGator) e aguarde verificar.
-            Enquanto o CNAME não verifica, abertura/clique não contam.
-          </p>
-        </div>
       </CardContent>
     </Card>
   );
