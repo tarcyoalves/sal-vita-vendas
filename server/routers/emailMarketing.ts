@@ -1661,6 +1661,58 @@ export const emailMarketingRouter = router({
   }),
 
   // ── Contatos (agregação de todos os e-mails do sistema) ─────────────────
+  // ── Segmentação dinâmica ────────────────────────────────────────────────────
+  // Avalia um conjunto de regras (lógica AND) contra marketing_contacts e retorna
+  // a contagem + uma amostra. Campos batem 1:1 com as colunas da tabela; lastContact
+  // usa created_at (dias desde que o contato foi adicionado).
+  previewSegment: staffProcedure
+    .input(z.object({
+      filters: z.array(z.object({
+        field: z.enum(['status', 'city', 'state', 'company', 'tag', 'lastContact', 'source']),
+        operator: z.string(),
+        value: z.string(),
+      })).max(20),
+    }))
+    .query(async ({ input }) => {
+      const conditions: any[] = [];
+      for (const f of input.filters) {
+        const v = f.value.trim();
+        if (!v && f.field !== 'status') continue; // status pode filtrar por valor fixo; demais exigem valor
+        const col =
+          f.field === 'status' ? marketingContacts.status :
+          f.field === 'city' ? marketingContacts.city :
+          f.field === 'state' ? marketingContacts.state :
+          f.field === 'company' ? marketingContacts.company :
+          f.field === 'source' ? marketingContacts.source :
+          null;
+
+        if (col) {
+          if (f.operator === 'contains') conditions.push(sql`lower(coalesce(${col}, '')) LIKE ${'%' + v.toLowerCase() + '%'}`);
+          else if (f.operator === 'is_not') conditions.push(sql`lower(coalesce(${col}, '')) <> ${v.toLowerCase()}`);
+          else conditions.push(sql`lower(coalesce(${col}, '')) = ${v.toLowerCase()}`); // 'is'
+        } else if (f.field === 'tag') {
+          if (f.operator === 'not_has') conditions.push(sql`NOT (${marketingContacts.tags} @> ARRAY[${v}]::text[])`);
+          else conditions.push(sql`${marketingContacts.tags} @> ARRAY[${v}]::text[]`); // 'has'
+        } else if (f.field === 'lastContact') {
+          const days = parseInt(v, 10);
+          if (!isNaN(days) && days > 0) {
+            const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+            if (f.operator === 'less_than_days') conditions.push(sql`${marketingContacts.createdAt} >= ${cutoff}`);
+            else conditions.push(sql`${marketingContacts.createdAt} < ${cutoff}`); // more_than_days
+          }
+        }
+      }
+
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+      const [countRow] = await db.select({ cnt: count() }).from(marketingContacts).where(whereClause);
+      const sample = await db.select({
+        email: marketingContacts.email, name: marketingContacts.name,
+        city: marketingContacts.city, state: marketingContacts.state, company: marketingContacts.company,
+      }).from(marketingContacts).where(whereClause).limit(8);
+
+      return { count: Number(countRow?.cnt ?? 0), sample };
+    }),
+
   contactStats: staffProcedure.query(async () => {
     // Leads confirmados (entram na base de contatos) vs. pendentes de confirmação.
     const [confirmedRow] = await db.select({ cnt: sql<number>`COUNT(DISTINCT lower(trim(${tasks.email})))::int` })

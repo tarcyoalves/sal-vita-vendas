@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-  Filter, Plus, Trash2, Save, FolderOpen, X,
+  Filter, Plus, Trash2, Save, FolderOpen, X, Users,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -10,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "../ui/select";
+import { trpc } from "../../lib/trpc";
 
 type FilterField = "status" | "city" | "state" | "company" | "tag" | "lastContact" | "source";
 
@@ -97,6 +99,10 @@ export function SegmentBuilder({
   const [segments, setSegments] = useState<SavedSegment[]>([]);
   const [segmentName, setSegmentName] = useState("");
   const [showSaved, setShowSaved] = useState(false);
+  const [preview, setPreview] = useState<{ count: number; sample: { email: string; name: string | null; city: string | null; state: string | null; company: string | null }[] } | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+
+  const utils = trpc.useUtils();
 
   useEffect(() => {
     setSegments(loadSegments());
@@ -144,6 +150,7 @@ export function SegmentBuilder({
   const handleLoad = (seg: SavedSegment) => {
     setFilters([...seg.filters]);
     setShowSaved(false);
+    setPreview(null);
     onApply?.(seg.filters);
   };
 
@@ -153,8 +160,20 @@ export function SegmentBuilder({
     saveSegments(updated);
   };
 
-  const handleApply = () => {
-    onApply?.(filters);
+  const handleApply = async () => {
+    setPreviewing(true);
+    setPreview(null);
+    try {
+      const res = await utils.emailMarketing.previewSegment.fetch({
+        filters: filters.map(f => ({ field: f.field, operator: f.operator, value: f.value })),
+      });
+      setPreview(res);
+      onApply?.(filters);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao avaliar segmento");
+    } finally {
+      setPreviewing(false);
+    }
   };
 
   return (
@@ -162,15 +181,13 @@ export function SegmentBuilder({
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-blue-900 text-base">
           <Filter size={18} /> Segmentação dinâmica
-          <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200 text-[10px]">
-            Em breve
-          </Badge>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-slate-600">
-          Crie filtros combinados (lógica AND) para segmentar seus contatos.
-          Os segmentos são salvos localmente no navegador.
+          Crie filtros combinados (lógica <strong>E</strong>) e clique <strong>Aplicar</strong> para ver
+          quantos contatos da sua base (Leads importados) correspondem. Os segmentos ficam salvos no navegador
+          para reusar. <span className="text-slate-400">Campo "Último contato" = dias desde que o contato foi adicionado.</span>
         </p>
 
         {filters.map(f => (
@@ -249,10 +266,9 @@ export function SegmentBuilder({
                 size="sm"
                 className="bg-blue-900 hover:bg-blue-800"
                 onClick={handleApply}
-                disabled
-                title="Disponível em julho"
+                disabled={previewing}
               >
-                <Filter size={14} className="mr-1" /> Aplicar segmento
+                <Filter size={14} className="mr-1" /> {previewing ? "Avaliando..." : "Aplicar segmento"}
               </Button>
             </>
           )}
@@ -299,9 +315,37 @@ export function SegmentBuilder({
           </div>
         )}
 
+        {preview && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <Users size={16} className="text-blue-700" />
+              <span className="text-sm font-semibold text-blue-900">
+                {preview.count} contato{preview.count === 1 ? "" : "s"} correspondem
+              </span>
+            </div>
+            {preview.sample.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Amostra</p>
+                {preview.sample.map((c) => (
+                  <div key={c.email} className="text-xs text-slate-600 flex flex-wrap gap-x-2">
+                    <span className="font-medium text-slate-800">{c.name || c.email}</span>
+                    <span className="text-slate-400">{c.email}</span>
+                    {(c.city || c.state) && <span className="text-slate-400">{[c.city, c.state].filter(Boolean).join("/")}</span>}
+                    {c.company && <span className="text-slate-400">{c.company}</span>}
+                  </div>
+                ))}
+                {preview.count > preview.sample.length && (
+                  <p className="text-[11px] text-slate-400">… e mais {preview.count - preview.sample.length}.</p>
+                )}
+              </div>
+            )}
+            {preview.count === 0 && <p className="text-xs text-slate-500">Nenhum contato bate com esses filtros.</p>}
+          </div>
+        )}
+
         <p className="text-[11px] text-slate-400">
-          A aplicação de segmentos a campanhas e sequências requer integração com o backend.
-          Os filtros ficam salvos localmente para uso futuro.
+          A contagem roda sobre a base de <strong>Leads importados</strong> (contatos de e-mail marketing).
+          Os filtros ficam salvos no navegador para reuso.
         </p>
       </CardContent>
     </Card>
