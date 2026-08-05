@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Trash2, Plus } from 'lucide-react';
 import { Button } from '../ui/button';
 import {
@@ -21,9 +21,12 @@ interface OrderItemsEditorProps {
 export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
   const { produtos } = useFatStore();
   const ativos = produtos.filter((p) => p.ativo);
-
-  // Track pesoUnitarioKg per item id so we can recompute peso when qty changes
-  const [pesoUnitMap, setPesoUnitMap] = useState<Record<string, number>>({});
+  // Todos os produtos (incluindo inativos) para resolver o peso unitário de
+  // itens de pedidos antigos cujo produto foi desativado depois.
+  const produtoPorId = useCallback(
+    (id: string | null) => (id ? produtos.find((p) => p.id === id) : undefined),
+    [produtos],
+  );
 
   const addRow = useCallback(() => {
     const newItem: ItemPedido = {
@@ -43,11 +46,6 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
   const removeRow = useCallback(
     (id: string) => {
       onChange(itens.filter((it) => it.id !== id));
-      setPesoUnitMap((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
     },
     [itens, onChange],
   );
@@ -58,21 +56,38 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
         itens.map((it) => {
           if (it.id !== id) return it;
           const updated = { ...it, ...patch };
-          // Recompute peso quando a quantidade muda numa linha vinculada a um
-          // produto do catálogo.
-          if ('quantidade' in patch && it.produtoId && pesoUnitMap[id]) {
-            updated.pesoKg = (Number(patch.quantidade) || 0) * pesoUnitMap[id];
+          // Peso sempre vem do peso unitário cadastrado no produto × quantidade
+          // — nunca é digitável, pra bater sempre com o peso real da carga.
+          const prod = produtoPorId(updated.produtoId);
+          if (prod && 'quantidade' in patch) {
+            updated.pesoKg = (Number(updated.quantidade) || 0) * prod.pesoUnitarioKg;
           }
-          // Peso bruto não é editável nesta tela (sem valor separado no
-          // catálogo) — sempre acompanha o líquido, evitando o campo
-          // duplicado/inconsistente que aparecia na edição de pedidos antigos.
           if ('pesoKg' in updated) updated.pesoBrutoKg = updated.pesoKg;
           return updated;
         }),
       );
     },
-    [itens, onChange, pesoUnitMap],
+    [itens, onChange, produtoPorId],
   );
+
+  // Pedidos antigos podem ter pesoKg gravado manualmente (era editável antes)
+  // ou o peso unitário do produto pode ter mudado desde a criação — corrige
+  // ao carregar, pra peso sempre bater com o cadastro atual do produto.
+  useEffect(() => {
+    if (produtos.length === 0) return;
+    let changed = false;
+    const corrected = itens.map((it) => {
+      const prod = produtoPorId(it.produtoId);
+      if (!prod) return it;
+      const correctPeso = (Number(it.quantidade) || 0) * prod.pesoUnitarioKg;
+      if (it.pesoKg !== correctPeso || it.pesoBrutoKg !== correctPeso) {
+        changed = true;
+        return { ...it, pesoKg: correctPeso, pesoBrutoKg: correctPeso };
+      }
+      return it;
+    });
+    if (changed) onChange(corrected);
+  }, [produtos, itens, produtoPorId, onChange]);
 
   const pickProduct = useCallback(
     (itemId: string, value: string) => {
@@ -80,7 +95,6 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
       if (!prod) return;
       const qty =
         itens.find((it) => it.id === itemId)?.quantidade ?? 1;
-      setPesoUnitMap((prev) => ({ ...prev, [itemId]: prod.pesoUnitarioKg }));
       updateItem(itemId, {
         produtoId: prod.id,
         descricao: prod.nome,
@@ -104,13 +118,9 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
     }));
   };
 
-  const handleCurrencyBlur = (
-    key: string,
-    itemId: string,
-    field: 'valorUnitario' | 'pesoKg',
-  ) => {
+  const handleCurrencyBlur = (key: string, itemId: string, field: 'valorUnitario') => {
     const raw = editingValues[key] ?? '';
-    const parsed = field === 'valorUnitario' ? parseBRL(raw) : (Number(raw.replace(',', '.')) || 0);
+    const parsed = parseBRL(raw);
     updateItem(itemId, { [field]: parsed });
     setEditingValues((prev) => {
       const next = { ...prev };
@@ -146,7 +156,6 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
           <tbody>
             {itens.map((item) => {
               const valKey = `val-${item.id}`;
-              const pesoKey = `peso-${item.id}`;
               return (
                 <tr key={item.id} className="border-t border-slate-100">
                   {/* Product select or free text */}
@@ -187,27 +196,9 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
                       }
                     />
                   </td>
-                  {/* Peso */}
-                  <td className="px-3 py-2">
-                    <Input
-                      className="text-xs h-8 w-24"
-                      inputMode="decimal"
-                      value={
-                        pesoKey in editingValues
-                          ? editingValues[pesoKey]
-                          : String(item.pesoKg).replace('.', ',')
-                      }
-                      onFocus={() => handleCurrencyFocus(pesoKey, item.pesoKg)}
-                      onChange={(e) =>
-                        setEditingValues((prev) => ({
-                          ...prev,
-                          [pesoKey]: e.target.value,
-                        }))
-                      }
-                      onBlur={() =>
-                        handleCurrencyBlur(pesoKey, item.id, 'pesoKg')
-                      }
-                    />
+                  {/* Peso — travado no peso unitário do produto × quantidade, não editável */}
+                  <td className="px-3 py-2 text-xs text-slate-600 whitespace-nowrap">
+                    {formatKg(item.pesoKg)}
                   </td>
                   {/* Valor unitário */}
                   <td className="px-3 py-2">
