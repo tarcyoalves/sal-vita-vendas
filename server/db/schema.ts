@@ -195,6 +195,10 @@ export const siteOrders = pgTable('site_orders', {
   fbclid: text('fbclid'),
   // Reorder reminder (retention): set when the ~45-day "buy again" nudge is sent.
   reorderRemindedAt: timestamp('reorder_reminded_at'),
+  // Opaque per-order secret used to authorize tracking/payment without exposing
+  // customer data to ID enumeration. Orders created before this column exists
+  // are null — those still fall back to full-phone verification.
+  trackToken: text('track_token'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -224,6 +228,9 @@ export const automationRuns = pgTable('automation_runs', {
   ruleName: text('rule_name').notNull().default('abandoned_cart_30m'),
   status: text('status').notNull().default('scheduled'), // scheduled | sent | cancelled | failed
   scheduledFor: timestamp('scheduled_for').notNull(),
+  // Delivery attempts so far. A send failure re-schedules instead of burning the
+  // run outright; only after MAX_SEND_ATTEMPTS does it become 'failed'.
+  attempts: integer('attempts').notNull().default(0),
   sentAt: timestamp('sent_at'),
   cancelledAt: timestamp('cancelled_at'),
   providerResponse: text('provider_response'),

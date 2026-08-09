@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import crypto from 'crypto';
 import { router, publicProcedure, protectedProcedure } from '../trpc';
 import { ordersDb as db } from '../db/ordersDb';
 import { siteOrders, coupons, msgTemplates } from '../db/schema';
@@ -9,10 +10,55 @@ import { confirmOrderPaid } from '../lib/orderConfirmation';
 const ME_BASE = 'https://melhorenvio.com.br';
 const ORIGIN_CEP = process.env.MELHOR_ENVIO_ORIGIN_CEP ?? '59600000';
 // Dimensions in cm — 1kg TBD by owner, 10kg box confirmed
-const PKG_1KG  = { height: 7, width: 15, length: 24 };
+const PKG_1KG  = { height: 7,  width: 15, length: 24 };
+const PKG_3KG  = { height: 14, width: 18, length: 26 };
 const PKG_10KG = { height: 21, width: 24, length: 27 };
 
-function getPkg(qty: number) { return qty >= 10 ? PKG_10KG : PKG_1KG; }
+/**
+ * Single source of truth for the storefront catalog. Everything that used to be
+ * derived from a bare `quantity` — price, gross shipping weight, box dimensions —
+ * now comes from here, so the quote, the order and the shipping label can never
+ * disagree.
+ *
+ * `grossWeightKg` is the REAL packed weight (product + packaging), matching the
+ * landing page's `weightKg`. The old `qty * 1.05` formula understated the trio by
+ * 0.45kg and the box by 1.5kg, which under-quoted the customer AND under-bought
+ * the label — the difference surfaced at the Correios scale.
+ */
+export type ProductId = '1kg' | '3kg' | 'caixa';
+export const CATALOG: Record<ProductId, {
+  name: string;
+  price: number;
+  kgPerUnit: number;
+  grossWeightKg: number;
+  pkg: { height: number; width: number; length: number };
+}> = {
+  '1kg':   { name: 'Sal Marinho Integral 1kg',        price: 29.90,  kgPerUnit: 1,  grossWeightKg: 1.2,  pkg: PKG_1KG  },
+  '3kg':   { name: 'Trio Sal Vita 3kg (3×1kg)',      price: 74.90,  kgPerUnit: 3,  grossWeightKg: 3.6,  pkg: PKG_3KG  },
+  'caixa': { name: 'Caixa Sal Vita 10kg (10×1kg)',   price: 149.90, kgPerUnit: 10, grossWeightKg: 12.0, pkg: PKG_10KG },
+};
+
+function isProductId(v: unknown): v is ProductId {
+  return v === '1kg' || v === '3kg' || v === 'caixa';
+}
+
+/**
+ * Resolve the catalog entry for a request. Prefers the explicit productId; falls
+ * back to inferring from the kg quantity for older clients (and for the admin's
+ * manually-created orders) that don't send one.
+ */
+function resolveProduct(productId?: string | null, qty?: number | null): ProductId {
+  if (isProductId(productId)) return productId;
+  const q = qty ?? 1;
+  if (q >= 10) return 'caixa';
+  if (q >= 3)  return '3kg';
+  return '1kg';
+}
+
+/** Gross weight in kg for a given product and number of packs of that product. */
+function shipWeight(product: ProductId, packs: number): number {
+  return +(Math.max(1.2, CATALOG[product].grossWeightKg * Math.max(1, packs))).toFixed(2);
+}
 
 function renderTpl(body: string, vars: Record<string, string>): string {
   return body.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
@@ -61,19 +107,24 @@ const STATIC_REGIONS: Record<string, { pac:[number,string]; sedex:[number,string
 
 function staticCalc(uf: string, qty: number) {
   const r = STATIC_REGIONS[uf] ?? { pac:[28,'10–15'], sedex:[52,'4–7'] };
-  const f = qty >= 10 ? 2.2 : qty >= 5 ? 1.4 : 1;
+  // The 3kg trio previously fell into the `1` bucket, so the fallback table quoted
+  // it at the same price as a single 1kg pack — a loss on every trio sold whenever
+  // the Melhor Envio API was unreachable.
+  const f = qty >= 10 ? 2.2 : qty >= 5 ? 1.4 : qty >= 3 ? 1.25 : 1;
   return [
     { serviceId: '1', name: 'PAC', company: 'Correios', price: +(r.pac[0]*f).toFixed(2), days: `${r.pac[1]} dias úteis` },
     { serviceId: '2', name: 'SEDEX', company: 'Correios', price: +(r.sedex[0]*f).toFixed(2), days: `${r.sedex[1]} dias úteis` },
   ];
 }
 
-async function meCalculate(destCep: string, qty: number) {
+async function meCalculate(destCep: string, qty: number, productId?: string | null) {
   const token = process.env.MELHOR_ENVIO_TOKEN;
   if (!token) return null;
   try {
-    const pkg = getPkg(qty);
-    const weight = +(Math.max(1.2, qty * 1.05)).toFixed(2);
+    const product = resolveProduct(productId, qty);
+    const packs = Math.max(1, Math.round(qty / CATALOG[product].kgPerUnit));
+    const pkg = CATALOG[product].pkg;
+    const weight = shipWeight(product, packs);
     const body = {
       from: { postal_code: ORIGIN_CEP },
       to:   { postal_code: destCep.replace(/\D/g, '') },
@@ -109,19 +160,76 @@ async function meCalculate(destCep: string, qty: number) {
   }
 }
 
+/**
+ * Ownership check for the public order endpoints (tracking, payment retry, PIX).
+ *
+ * The old rule was "last 4 digits of the phone", against sequential order ids —
+ * ~10k guesses per order to read a stranger's name, city, total and tracking
+ * code. Worse, those same 4 digits were placed in the Mercado Pago return URL,
+ * so the credential travelled through a third-party redirect, browser history
+ * and `Referer` headers on every paid order.
+ *
+ * Now: an opaque per-order token, or the FULL phone number. The full-phone branch
+ * keeps orders created before `track_token` existed reachable by their real owner.
+ */
+function assertOrderAccess(
+  order: { customerPhone: string; trackToken?: string | null },
+  creds: { token?: string | null; phone?: string | null },
+): void {
+  const token = (creds.token ?? '').trim();
+  if (token && order.trackToken) {
+    const a = Buffer.from(token);
+    const b = Buffer.from(order.trackToken);
+    if (a.length === b.length && crypto.timingSafeEqual(a, b)) return;
+  }
+  const given = (creds.phone ?? '').replace(/\D/g, '');
+  const real = order.customerPhone.replace(/\D/g, '');
+  // Require the whole number (10+ digits), not a 4-digit suffix.
+  if (given.length >= 10 && (given === real || given === `55${real}` || `55${given}` === real)) return;
+  throw new TRPCError({
+    code: 'FORBIDDEN',
+    message: 'Não foi possível confirmar o acesso a este pedido. Informe o telefone completo usado na compra.',
+  });
+}
+
+type ShipOption = { serviceId: string; name: string; company: string; price: number; days: string };
+
+/**
+ * Server-side shipping quote — the single path used both to show options to the
+ * customer AND to price the order at creation time. `createOrder` must never
+ * trust a price sent by the browser: before this existed, a crafted request with
+ * `shippingPrice: 0` produced a perfectly valid free-shipping order that the
+ * webhook's amount check then happily confirmed (it compares against the same
+ * tampered total).
+ */
+async function quoteShipping(
+  cep: string,
+  qty: number,
+  productId?: string | null,
+  ufHint?: string | null,
+): Promise<{ source: 'api' | 'static'; options: ShipOption[] }> {
+  const apiResult = await meCalculate(cep, qty, productId);
+  if (apiResult && apiResult.length > 0) return { source: 'api', options: apiResult };
+  let uf = ufHint?.toUpperCase() || '';
+  if (!uf) {
+    try {
+      const r = await fetch(`https://viacep.com.br/ws/${cep.replace(/\D/g,'')}/json/`);
+      const d = await r.json();
+      if (d.uf) uf = d.uf;
+    } catch {}
+  }
+  return { source: 'static', options: staticCalc(uf || 'RN', qty) };
+}
+
 export const shippingRouter = router({
   calculate: publicProcedure
-    .input(z.object({ cep: z.string().min(8), quantity: z.number().min(1).max(100).default(1) }))
+    .input(z.object({
+      cep: z.string().min(8),
+      quantity: z.number().min(1).max(100).default(1),
+      productId: z.enum(['1kg', '3kg', 'caixa']).optional(),
+    }))
     .mutation(async ({ input }) => {
-      const apiResult = await meCalculate(input.cep, input.quantity);
-      if (apiResult && apiResult.length > 0) return { source: 'api' as const, options: apiResult };
-      let uf = 'RN';
-      try {
-        const r = await fetch(`https://viacep.com.br/ws/${input.cep.replace(/\D/g,'')}/json/`);
-        const d = await r.json();
-        if (d.uf) uf = d.uf;
-      } catch {}
-      return { source: 'static' as const, options: staticCalc(uf, input.quantity) };
+      return quoteShipping(input.cep, input.quantity, input.productId);
     }),
 
   createOrder: publicProcedure
@@ -154,18 +262,36 @@ export const shippingRouter = router({
     .mutation(async ({ input }) => {
       // Server-authoritative price catalog. `quantity` is the number of 1kg units
       // (kg units): 1kg product = 1 unit each, box = 10 units each.
-      const CATALOG: Record<string, { price: number; kgPerUnit: number }> = {
-        '1kg':   { price: 29.90,  kgPerUnit: 1 },
-        '3kg':   { price: 74.90,  kgPerUnit: 3 },
-        'caixa': { price: 149.90, kgPerUnit: 10 },
-      };
-      const prod = CATALOG[input.productId] ?? CATALOG['1kg'];
+      const productId = resolveProduct(input.productId, input.quantity);
+      const prod = CATALOG[productId];
       const productCount = Math.max(1, Math.round(input.quantity / prod.kgPerUnit));
-      const shipping = input.shippingPrice ?? 0;
 
-      // Validate shipping price server-side
       if (input.shippingPrice !== undefined && (input.shippingPrice < 0 || input.shippingPrice > 200)) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Valor de frete inválido.' });
+      }
+
+      // Re-quote server-side and price the order from OUR number, never the
+      // browser's. The client value is kept only as a cross-check: matching the
+      // chosen service wins; if the service can't be matched (e.g. the quote fell
+      // back to the static table while the client held Melhor Envio ids), we
+      // accept the client price only when it is at least the cheapest legitimate
+      // option — so an order can never be created with an under-quoted freight.
+      const quote = await quoteShipping(input.postalCode, input.quantity, productId, input.state);
+      const claimed = input.shippingPrice ?? 0;
+      const match = quote.options.find(o => String(o.serviceId) === String(input.shippingServiceId));
+      const cheapest = quote.options.length
+        ? Math.min(...quote.options.map(o => o.price))
+        : claimed;
+      let shipping: number;
+      if (match) {
+        shipping = match.price;
+      } else if (claimed >= cheapest) {
+        shipping = claimed;
+      } else {
+        shipping = cheapest;
+      }
+      if (Math.abs(shipping - claimed) > 0.01) {
+        console.warn(`[createOrder] shipping corrected: client sent ${claimed}, server charged ${shipping} (service ${input.shippingServiceId ?? '—'}, source ${quote.source})`);
       }
 
       let subtotal = +(prod.price * productCount).toFixed(2);
@@ -210,6 +336,13 @@ export const shippingRouter = router({
         city: input.city,
         state: input.state.toUpperCase(),
         quantity: input.quantity,
+        // Persisted so the payment title, the shipping label and the customer's
+        // order page all describe what was actually bought. Previously these fell
+        // back to the schema defaults, so a R$ 149,90 box was labelled and
+        // declared as 10 × "Sal Marinho Integral 1kg" at R$ 29,90.
+        product: prod.name,
+        unitPrice: String(prod.price),
+        trackToken: crypto.randomBytes(16).toString('hex'),
         shippingServiceId: input.shippingServiceId ?? null,
         shippingServiceName: input.shippingServiceName ?? null,
         shippingPrice: shipping > 0 ? String(shipping) : null,
@@ -224,7 +357,17 @@ export const shippingRouter = router({
         fbclid: input.fbclid ?? null,
       }).returning();
       if (!order?.id) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Erro ao criar pedido. Tente novamente.' });
-      return { id: order.id, total, couponDiscount, couponApplied: appliedCoupon };
+      // `shipping` is returned so the storefront can show the corrected freight if
+      // its own quote went stale; `trackToken` authorizes the follow-up calls
+      // (payment, PIX, status) and the /meu-pedido link without leaking the phone.
+      return {
+        id: order.id,
+        total,
+        shipping,
+        couponDiscount,
+        couponApplied: appliedCoupon,
+        trackToken: order.trackToken,
+      };
     }),
 
   listOrders: protectedProcedure
@@ -361,18 +504,14 @@ Seja direto e use emojis para facilitar leitura.`;
   trackOrder: publicProcedure
     .input(z.object({
       orderId: z.number().int().positive(),
-      phone: z.string().min(4),
+      phone: z.string().optional(),
+      token: z.string().max(64).optional(),
     }))
     .query(async ({ input }) => {
       const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
       const order = orders[0];
       if (!order) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado.' });
-      // Verify phone matches (last 4 digits for privacy)
-      const phone = order.customerPhone.replace(/\D/g, '');
-      const inputPhone = input.phone.replace(/\D/g, '');
-      if (!phone.endsWith(inputPhone.slice(-4))) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Telefone não confere com o pedido.' });
-      }
+      assertOrderAccess(order, { token: input.token, phone: input.phone });
       return {
         id: order.id,
         customerName: order.customerName,
@@ -423,7 +562,11 @@ Seja direto e use emojis para facilitar leitura.`;
     }),
 
   createPayment: publicProcedure
-    .input(z.object({ orderId: z.number(), phone: z.string().min(4).optional() }))
+    .input(z.object({
+      orderId: z.number(),
+      phone: z.string().optional(),
+      token: z.string().max(64).optional(),
+    }))
     .mutation(async ({ input }) => {
       const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
       if (!token) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Configure MERCADO_PAGO_ACCESS_TOKEN no painel Vercel' });
@@ -432,22 +575,21 @@ Seja direto e use emojis para facilitar leitura.`;
       const order = orders[0];
       if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
       if (order.paymentStatus === 'confirmed') throw new TRPCError({ code: 'CONFLICT', message: 'Este pedido já foi pago.' });
+      assertOrderAccess(order, { token: input.token, phone: input.phone });
 
-      // Verify phone last-4-digits when provided (non-breaking incremental check)
-      if (input.phone !== undefined) {
-        const orderPhone = order.customerPhone.replace(/\D/g, '');
-        const inputPhone = input.phone.replace(/\D/g, '');
-        if (!orderPhone.endsWith(inputPhone.slice(-4))) {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'Telefone não confere com o pedido.' });
-        }
-      }
+      // Return URLs carry the opaque token, never the phone digits — this link is
+      // handed to Mercado Pago and ends up in history/Referer.
+      const back = (status: string) =>
+        `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}`
+        + (order.trackToken ? `&t=${order.trackToken}` : '')
+        + `&status=${status}`;
 
       const preference = {
         items: [{
           id: `order-${order.id}`,
-          title: `${order.product ?? 'Sal Vita'} × ${order.quantity}`,
+          title: order.product ?? 'Sal Vita',
           quantity: 1,
-          unit_price: parseFloat(order.totalPrice ?? '30'),
+          unit_price: parseFloat(order.totalPrice ?? String(CATALOG['1kg'].price)),
           currency_id: 'BRL',
         }],
         payer: {
@@ -457,10 +599,9 @@ Seja direto e use emojis para facilitar leitura.`;
           phone: { number: order.customerPhone.replace(/\D/g,'') },
         },
         back_urls: {
-          // Include &tel=<last4> so the tracking page auto-loads the order on return.
-          success: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${order.customerPhone.replace(/\D/g,'').slice(-4)}&status=pago`,
-          failure: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${order.customerPhone.replace(/\D/g,'').slice(-4)}&status=falhou`,
-          pending: `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${order.customerPhone.replace(/\D/g,'').slice(-4)}&status=pendente`,
+          success: back('pago'),
+          failure: back('falhou'),
+          pending: back('pendente'),
         },
         auto_return: 'approved',
         notification_url: `https://premium.salvitarn.com.br/api/mp-webhook`,
@@ -489,7 +630,11 @@ Seja direto e use emojis para facilitar leitura.`;
 
   // Create a PIX payment directly (inline QR + copy-paste) so the customer never leaves the site.
   createPixPayment: publicProcedure
-    .input(z.object({ orderId: z.number() }))
+    .input(z.object({
+      orderId: z.number(),
+      phone: z.string().optional(),
+      token: z.string().max(64).optional(),
+    }))
     .mutation(async ({ input }) => {
       const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
       if (!token) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Configure MERCADO_PAGO_ACCESS_TOKEN' });
@@ -497,8 +642,34 @@ Seja direto e use emojis para facilitar leitura.`;
       const order = orders[0];
       if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
       if (order.paymentStatus === 'confirmed') throw new TRPCError({ code: 'CONFLICT', message: 'Este pedido já foi pago.' });
+      assertOrderAccess(order, { token: input.token, phone: input.phone });
 
       const amount = parseFloat(order.totalPrice ?? '0');
+
+      // Reuse the order's live PIX charge instead of minting a new one on every
+      // click. Two QR codes for one order means the customer can pay an expired
+      // code, or pay PIX *and* card — the second confirmation is then ignored and
+      // there is no automatic refund.
+      if (order.mpPaymentId) {
+        try {
+          const existing = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+          });
+          if (existing.ok) {
+            const p = await existing.json() as any;
+            const live = p?.status === 'pending' || p?.status === 'in_process';
+            const td0 = p?.point_of_interaction?.transaction_data;
+            if (live && td0?.qr_code && Math.abs((p.transaction_amount ?? 0) - amount) <= 0.01) {
+              return {
+                paymentId: String(p.id),
+                qrCode: td0.qr_code as string,
+                qrCodeBase64: (td0.qr_code_base64 ?? '') as string,
+                amount,
+              };
+            }
+          }
+        } catch { /* fall through and create a fresh charge */ }
+      }
       const email = (order.customerEmail && order.customerEmail.includes('@')) ? order.customerEmail : `cliente${order.id}@salvitarn.com.br`;
       const body: any = {
         transaction_amount: amount,
@@ -519,7 +690,8 @@ Seja direto e use emojis para facilitar leitura.`;
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'X-Idempotency-Key': `pix-${order.id}-${Date.now()}`,
+          // Stable per-order key — `Date.now()` defeated idempotency entirely.
+          'X-Idempotency-Key': `pix-${order.id}`,
         },
         body: JSON.stringify(body),
       });
@@ -543,12 +715,22 @@ Seja direto e use emojis para facilitar leitura.`;
 
   // Lightweight poll for the PIX/checkout payment status (read-only — webhook does the writes).
   pixStatus: publicProcedure
-    .input(z.object({ orderId: z.number() }))
+    .input(z.object({
+      orderId: z.number(),
+      phone: z.string().optional(),
+      token: z.string().max(64).optional(),
+    }))
     .query(async ({ input }) => {
-      const orders = await db.select({ id: siteOrders.id, paymentStatus: siteOrders.paymentStatus, mpPaymentId: siteOrders.mpPaymentId })
-        .from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
+      const orders = await db.select({
+        id: siteOrders.id,
+        paymentStatus: siteOrders.paymentStatus,
+        mpPaymentId: siteOrders.mpPaymentId,
+        customerPhone: siteOrders.customerPhone,
+        trackToken: siteOrders.trackToken,
+      }).from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
       const order = orders[0];
       if (!order) return { paid: false, status: 'not_found' };
+      assertOrderAccess(order, { token: input.token, phone: input.phone });
       if (order.paymentStatus === 'confirmed') return { paid: true, status: 'approved' };
       const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
       if (!token || !order.mpPaymentId) return { paid: false, status: order.paymentStatus };
@@ -590,7 +772,15 @@ Seja direto e use emojis para facilitar leitura.`;
         throw new TRPCError({ code: 'BAD_REQUEST', message: `ID de serviço de frete inválido: "${order.shippingServiceId}". Edite o pedido e selecione um serviço válido.` });
       }
       const serviceId = serviceIdNum;
-      const weight = +(Math.max(1.2, order.quantity * 1.05)).toFixed(2);
+      // Derive weight/dimensions/declared value from the catalog entry actually
+      // sold. The old `quantity * 1.05` shipped a 12kg box declared at 10.5kg and
+      // a 3.6kg trio declared at 3.15kg, in a 1kg-sized carton.
+      const labelProduct = resolveProduct(null, order.quantity);
+      const labelPacks = Math.max(1, Math.round(order.quantity / CATALOG[labelProduct].kgPerUnit));
+      const labelPkg = CATALOG[labelProduct].pkg;
+      const weight = shipWeight(labelProduct, labelPacks);
+      const declaredUnitPrice = parseFloat(order.unitPrice ?? String(CATALOG[labelProduct].price));
+      const declaredValue = parseFloat(order.totalPrice ?? String(declaredUnitPrice * labelPacks));
 
       const cartBody = {
         service: serviceId,
@@ -619,17 +809,17 @@ Seja direto e use emojis para facilitar leitura.`;
           state_abbr: order.state,
           country_id: 'BR',
         },
-        volumes: [{ ...getPkg(order.quantity), weight }],
+        volumes: [{ ...labelPkg, weight }],
         options: {
-          insurance_value: parseFloat(order.totalPrice ?? '30'),
+          insurance_value: declaredValue,
           receipt: false,
           own_hand: false,
           non_commercial: false,
         },
         products: [{
-          name: 'Sal Marinho Integral 1kg',
-          quantity: order.quantity,
-          unitary_value: 29.90,
+          name: order.product ?? CATALOG[labelProduct].name,
+          quantity: labelPacks,
+          unitary_value: declaredUnitPrice,
         }],
       };
 

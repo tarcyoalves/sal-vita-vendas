@@ -11,10 +11,68 @@
     <meta name="apple-mobile-web-app-title" content="Sal Vita" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png" />
-    <title>Sal Vita — Lembretes</title>
-    <meta name="description" content="Sistema interno de gestão de vendas e lembretes da Sal Vita." />
-    <meta name="robots" content="noindex, nofollow" />
+    <!--
+      One index.html serves two hosts: the storefront (premium.salvitarn.com.br)
+      and the internal CRM (lembretes.salvitarn.com.br).
+
+      The STATIC head below describes the storefront, because that is the surface
+      that gets crawled and shared. Link previews on WhatsApp/Facebook are built
+      by scrapers that do NOT run JavaScript, so whatever is written here is what
+      customers see when a recovery message is forwarded — it used to read
+      "Sistema interno de gestão de vendas", under a `noindex` that also kept the
+      sales page out of Google entirely.
+
+      The CRM head is applied at runtime by the script further down: it is a
+      private, login-gated app, so a JS-applied noindex is sufficient there.
+    -->
+    <title>Sal Vita Premium — Sal Marinho Integral de Mossoró/RN</title>
+    <meta name="description" content="Sal marinho integral premium, sem refino, com 84+ minerais. Colhido em Mossoró/RN e entregue em todo o Brasil. Embalagem zip lock de 1kg, trio 3kg e caixa 10kg." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://premium.salvitarn.com.br/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Sal Vita" />
+    <meta property="og:locale" content="pt_BR" />
+    <meta property="og:url" content="https://premium.salvitarn.com.br/" />
+    <meta property="og:title" content="Sal Vita Premium — Sal Marinho Integral de Mossoró/RN" />
+    <meta property="og:description" content="Sal marinho integral premium, sem refino, com 84+ minerais. Colhido em Mossoró/RN e entregue em todo o Brasil." />
+    <meta property="og:image" content="https://premium.salvitarn.com.br/icon-512.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Sal Vita Premium — Sal Marinho Integral de Mossoró/RN" />
+    <meta name="twitter:description" content="Sal marinho integral premium, sem refino, com 84+ minerais. Colhido em Mossoró/RN e entregue em todo o Brasil." />
+    <meta name="twitter:image" content="https://premium.salvitarn.com.br/icon-512.png" />
     <meta name="facebook-domain-verification" content="ey4m4yzr3c5jou01pjdbw0jwolg8ps" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Sal Vita Premium — Sal Marinho Integral",
+      "description": "Sal marinho integral premium, sem refino, com 84+ minerais naturais. Colhido em Mossoró/RN.",
+      "brand": { "@type": "Brand", "name": "Sal Vita" },
+      "image": "https://premium.salvitarn.com.br/icon-512.png",
+      "offers": {
+        "@type": "AggregateOffer",
+        "priceCurrency": "BRL",
+        "lowPrice": "29.90",
+        "highPrice": "149.90",
+        "offerCount": "3",
+        "availability": "https://schema.org/InStock",
+        "url": "https://premium.salvitarn.com.br/"
+      }
+    }
+    </script>
+    <script>
+      // The CRM is private: give it its own title and keep it out of search.
+      (function () {
+        if (!/(^|\.)lembretes\./.test(location.hostname)) return;
+        document.title = 'Sal Vita — Lembretes';
+        var set = function (sel, attr, value) {
+          var el = document.querySelector(sel);
+          if (el) el.setAttribute(attr, value);
+        };
+        set('meta[name="description"]', 'content', 'Sistema interno de gestão de vendas e lembretes da Sal Vita.');
+        set('meta[name="robots"]', 'content', 'noindex, nofollow');
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Pacifico&family=Inter:wght@400;500;600;700&family=Barlow+Condensed:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />

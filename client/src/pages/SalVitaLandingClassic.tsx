@@ -134,6 +134,10 @@ function isValidCpf(cpf: string): boolean {
 }
 
 interface Product {id:string;name:string;subtitle:string;weight:string;weightKg:number;units:number;price:number;pricePerKg:number;tag:string;highlight:boolean;savings?:string}
+
+type CatalogId = '1kg' | '3kg' | 'caixa';
+const catalogId = (id: string): CatalogId =>
+  (['1kg','3kg','caixa'] as const).includes(id as CatalogId) ? (id as CatalogId) : '1kg';
 interface ShipOpt  {serviceId?:string;service:string;price:number;days:string;icon:string;description:string}
 interface CepData  {localidade:string;uf:string;bairro:string}
 
@@ -160,7 +164,9 @@ export default function SalVitaLandingClassic() {
   const [visible,setVisible]               = useState<Set<string>>(new Set());
   const [showCheckout,setShowCheckout]     = useState(false);
   const [checkoutLoading,setCheckoutLoading] = useState(false);
-  const [orderDone,setOrderDone]           = useState<{id:number;total:number;createdAt:number}|null>(null);
+  // See SalVitaLanding: the opaque per-order token authorizes the payment/PIX/
+  // status calls, which now refuse requests that carry no ownership proof.
+  const [orderDone,setOrderDone]           = useState<{id:number;total:number;createdAt:number;trackToken?:string|null}|null>(null);
   const [mpLoading,setMpLoading]           = useState(false);
   const [payTimer,setPayTimer]             = useState(900); // 15 min countdown
   const payTimerRef = useRef<ReturnType<typeof setInterval>|null>(null);
@@ -348,7 +354,7 @@ export default function SalVitaLandingClassic() {
         const r = await fetch('/api/trpc/shipping.calculate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ json: { cep: c, quantity: qty } }),
+          body: JSON.stringify({ json: { cep: c, quantity: qty, productId: catalogId(selProd!.id) } }),
         });
         const data = await r.json();
         const source = data?.result?.data?.json?.source;
@@ -434,7 +440,7 @@ export default function SalVitaLandingClassic() {
         body:JSON.stringify({json:{
           ...checkoutForm,
           quantity:qty,
-          productId: (['1kg','3kg','caixa'] as const).includes(selProd.id as any) ? selProd.id : '1kg',
+          productId: catalogId(selProd.id),
           shippingServiceId:selShip.serviceId ?? (selShip.service==='PAC'?'1':'2'),
           shippingServiceName:selShip.service,
           shippingPrice:selShip.price,
@@ -458,9 +464,14 @@ export default function SalVitaLandingClassic() {
         return;
       }
       const total   = data?.result?.data?.json?.total ?? (selProd.price+selShip.price);
+      const trackToken = data?.result?.data?.json?.trackToken ?? null;
+      const serverShipping = data?.result?.data?.json?.shipping;
+      if (typeof serverShipping === 'number' && Math.abs(serverShipping - selShip.price) > 0.01) {
+        setSelShip({ ...selShip, price: serverShipping });
+      }
       const createdAt = Date.now();
-      setOrderDone({ id: orderId, total, createdAt });
-      localStorage.setItem('sv_pending_order', JSON.stringify({ id: orderId, total, ts: createdAt }));
+      setOrderDone({ id: orderId, total, createdAt, trackToken });
+      localStorage.setItem('sv_pending_order', JSON.stringify({ id: orderId, total, ts: createdAt, trackToken }));
       try { (window as any).fbq?.('track','AddPaymentInfo',{ value: total, currency: 'BRL', content_name: 'SAL VITA PREMIUM 1kg', content_ids: ['salvita-001'], content_type: 'product', num_items: qty }); } catch {}
     } catch(err) {
       console.error('createOrder error:', err);
@@ -478,7 +489,7 @@ export default function SalVitaLandingClassic() {
       const res = await fetch('/api/trpc/shipping.createPayment', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({json:{ orderId: orderDone.id }}),
+        body:JSON.stringify({json:{ orderId: orderDone.id, token: orderDone.trackToken ?? undefined }}),
       });
       const data = await res.json();
       const initPoint = data?.result?.data?.json?.initPoint;
@@ -505,7 +516,7 @@ export default function SalVitaLandingClassic() {
       const res = await fetch('/api/trpc/shipping.createPixPayment', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({json:{ orderId: orderDone.id }}),
+        body:JSON.stringify({json:{ orderId: orderDone.id, token: orderDone.trackToken ?? undefined }}),
       });
       const data = await res.json();
       const result = data?.result?.data?.json;
@@ -518,7 +529,7 @@ export default function SalVitaLandingClassic() {
           try {
             const r = await fetch('/api/trpc/shipping.pixStatus', {
               method:'POST', headers:{'Content-Type':'application/json'},
-              body:JSON.stringify({json:{ orderId: orderDone.id }}),
+              body:JSON.stringify({json:{ orderId: orderDone.id, token: orderDone.trackToken ?? undefined }}),
             });
             const d = await r.json();
             if(d?.result?.data?.json?.paid) {
@@ -1679,7 +1690,7 @@ export default function SalVitaLandingClassic() {
 
               {/* track link */}
               <p style={{textAlign:'center',fontSize:'.75rem',color:'var(--muted)',marginTop:12}}>
-                Após pagar, rastreie em: <a href={`/meu-pedido?pedido=${orderDone.id}&tel=${checkoutForm.customerPhone.replace(/\D/g,'').slice(-4)}`} style={{color:'var(--brand)',fontWeight:600}}>Pedido #{orderDone.id}</a>
+                Após pagar, rastreie em: <a href={`/meu-pedido?pedido=${orderDone.id}${orderDone.trackToken ? `&t=${orderDone.trackToken}` : ''}`} style={{color:'var(--brand)',fontWeight:600}}>Pedido #{orderDone.id}</a>
               </p>
             </div>
           </div>

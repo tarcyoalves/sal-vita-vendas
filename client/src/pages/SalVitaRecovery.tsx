@@ -68,37 +68,99 @@ const card: React.CSSProperties = {
 };
 
 /* ── Tab 1: Carrinhos Abandonados ────────────────────────── */
+const WA_REASON_LABEL: Record<string, string> = {
+  ok: 'Conectado',
+  logged_out: 'Sessão caiu',
+  unreachable: 'Servidor fora do ar',
+  bad_key: 'Chave recusada',
+  server_error: 'Erro no servidor',
+  no_api_key: 'Sem chave',
+};
+
 function WaStatusBadge() {
   const { data, isLoading, refetch } = trpc.recovery.waStatus.useQuery(undefined, { refetchInterval: 600000, staleTime: 300000, retry: 0, refetchOnWindowFocus: false });
+  const [qr, setQr] = useState<string | null>(null);
   const reconnectMut = trpc.recovery.waReconnect.useMutation({
     onSuccess: (d: any) => {
-      toast.success(d.ok ? `WA reconectado via ${d.path}` : 'WA: nenhum endpoint de reconexão disponível');
+      toast.success(d.ok ? `WA reconectado via ${d.path}` : 'Nenhum endpoint de reconexão respondeu — tente o QR code');
       setTimeout(() => refetch(), 3000);
     },
     onError: () => toast.error('Falha ao reconectar WA'),
   });
+  const qrMut = trpc.recovery.waQrCode.useMutation({
+    onSuccess: (d: any) => {
+      if (d.ok && d.qr) setQr(d.qr);
+      else toast.error('O wa-server não expôs um QR code. Será preciso reconectar direto na VPS.');
+    },
+    onError: () => toast.error('Falha ao buscar o QR code'),
+  });
   if (isLoading) return null;
+
   const connected = (data as any)?.connected;
+  const reason = (data as any)?.reason ?? (connected ? 'ok' : 'logged_out');
+  const detail = (data as any)?.detail ?? '';
+  const label = WA_REASON_LABEL[reason] ?? (connected ? 'Conectado' : 'Desconectado');
+  // Only a dropped session can be fixed by scanning a QR — an unreachable
+  // server or a rejected key needs a different action entirely.
+  const qrHelps = reason === 'logged_out';
+
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-      <span style={{
-        display: 'inline-flex', alignItems: 'center', gap: 5,
-        background: connected ? '#dcfce7' : '#fee2e2',
-        color: connected ? '#166534' : '#991b1b',
-        borderRadius: 999, padding: '4px 12px', fontSize: '.75rem', fontWeight: 700,
-      }}>
-        <span style={{ width: 7, height: 7, borderRadius: '50%', background: connected ? '#22c55e' : '#ef4444', display: 'inline-block' }} />
-        WA {connected ? 'Conectado' : 'Desconectado'}
+    <>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <span title={detail} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+          background: connected ? '#dcfce7' : '#fee2e2',
+          color: connected ? '#166534' : '#991b1b',
+          borderRadius: 999, padding: '4px 12px', fontSize: '.75rem', fontWeight: 700,
+        }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: connected ? '#22c55e' : '#ef4444', display: 'inline-block' }} />
+          WA {label}
+        </span>
+        <button
+          onClick={() => reconnectMut.mutate()}
+          disabled={reconnectMut.isPending}
+          title="Tentar reconectar o WhatsApp sem derrubar a sessão"
+          style={{ padding: '4px 10px', background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', borderRadius: 999, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer', opacity: reconnectMut.isPending ? .6 : 1 }}
+        >
+          {reconnectMut.isPending ? '...' : '🔄'}
+        </button>
+        {qrHelps && (
+          <button
+            onClick={() => qrMut.mutate()}
+            disabled={qrMut.isPending}
+            title="Mostrar o QR code para reconectar lendo pelo celular"
+            style={{ padding: '4px 10px', background: '#0C3680', color: 'white', border: 'none', borderRadius: 999, fontSize: '.72rem', fontWeight: 700, cursor: 'pointer', opacity: qrMut.isPending ? .6 : 1 }}
+          >
+            {qrMut.isPending ? '...' : '📱 QR code'}
+          </button>
+        )}
       </span>
-      <button
-        onClick={() => reconnectMut.mutate()}
-        disabled={reconnectMut.isPending}
-        title="Forçar reconexão do WhatsApp (útil se mensagens não estão chegando)"
-        style={{ padding: '4px 10px', background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', borderRadius: 999, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer', opacity: reconnectMut.isPending ? .6 : 1 }}
-      >
-        {reconnectMut.isPending ? '...' : '🔄'}
-      </button>
-    </span>
+
+      {!connected && (
+        <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: 12, padding: '12px 16px', margin: '10px 0 0', fontSize: '.82rem', color: '#7f1d1d', lineHeight: 1.5 }}>
+          <strong>Nenhuma mensagem automática está saindo.</strong> {detail}
+          <br />
+          As automações ficam <strong>seguradas na fila</strong> enquanto isso — elas não são mais descartadas, e voltam a sair sozinhas assim que a conexão voltar.
+        </div>
+      )}
+
+      {qr && (
+        <div onClick={e => e.target === e.currentTarget && setQr(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: 'white', borderRadius: 20, padding: '24px 26px', maxWidth: 380, textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: '1.05rem', fontWeight: 800, color: '#0b1d3a' }}>Reconectar o WhatsApp</h3>
+            <p style={{ margin: '0 0 16px', fontSize: '.82rem', color: '#64748b', lineHeight: 1.5 }}>
+              No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho. Depois leia o código abaixo.
+            </p>
+            <img src={qr} alt="QR code de conexão do WhatsApp" style={{ width: '100%', maxWidth: 280, borderRadius: 12 }} />
+            <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+              <button onClick={() => qrMut.mutate()} style={{ ...btnGhost, flex: 1 }}>Gerar outro</button>
+              <button onClick={() => { setQr(null); refetch(); }} style={{ ...btnPrimary, flex: 1 }}>Já conectei</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -946,8 +1008,10 @@ function AiTab() {
         </div>
       </div>
 
+      {/* aiRecovery takes no input — it reads the carts and orders itself, so
+          passing these counts was silently discarded (and broke the hook's types). */}
       <button
-        onClick={() => aiMut.mutate({ abandonedCount: abandoned.length, unpaidCount: unpaid.length, revenueAtRisk: displayRevenueAtRisk })}
+        onClick={() => aiMut.mutate()}
         disabled={aiMut.isPending}
         style={{ ...btnPrimary, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, padding: '11px 20px', fontSize: '.9rem', opacity: aiMut.isPending ? .7 : 1 }}
       >
@@ -962,7 +1026,7 @@ function AiTab() {
             <h3 style={{ margin: 0, fontSize: '.95rem', fontWeight: 800, color: '#0b1d3a' }}>Análise de Recuperação</h3>
           </div>
           <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '.85rem', color: '#334155', lineHeight: 1.7 }}>
-            {typeof aiMut.data === 'string' ? aiMut.data : (aiMut.data as any)?.insights ?? JSON.stringify(aiMut.data, null, 2)}
+            {aiMut.data.insights}
           </pre>
         </div>
       )}

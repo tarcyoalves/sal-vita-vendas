@@ -6,6 +6,7 @@ import { desc, eq, and, sql, lte } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml } from '../email/resend';
 import { createPixPaymentForOrder } from '../lib/mercadopago';
+import { orderTrackLink } from '../lib/orderConfirmation';
 
 type SiteOrder = typeof siteOrders.$inferSelect;
 
@@ -109,12 +110,14 @@ async function getActiveRecoveryCoupon(): Promise<{ code: string; discountType: 
   return fallback ? { code: fallback.code, discountType: fallback.discountType, discountValue: fallback.discountValue } : null;
 }
 
-function unpaidMsg(name: string, id: number, qty: number, total: string, tel: string) {
-  return `Olá *${name}*! 🌊\n\nSeu pedido *#${id}* do Sal Vita ainda está aguardando pagamento.\n\n📦 ${qty}x Sal Marinho Integral 1kg\n💰 Total: R$ ${total}\n\nFinalize o pagamento aqui:\n👉 https://premium.salvitarn.com.br/meu-pedido?pedido=${id}&tel=${tel}\n\n_Pedido reservado por tempo limitado!_\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
+// These take a ready-made link (see orderTrackLink) rather than phone digits —
+// the tracking credential must not be assembled from the customer's number.
+function unpaidMsg(name: string, id: number, product: string, total: string, link: string) {
+  return `Olá *${name}*! 🌊\n\nSeu pedido *#${id}* do Sal Vita ainda está aguardando pagamento.\n\n📦 ${product}\n💰 Total: R$ ${total}\n\nFinalize o pagamento aqui:\n👉 ${link}\n\n_Pedido reservado por tempo limitado!_\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
 }
 
-function failedMsg(name: string, id: number, tel: string) {
-  return `Olá *${name}*! 🌊\n\nHouve um problema com o pagamento do pedido *#${id}*.\n\nTente novamente com outro método:\n👉 https://premium.salvitarn.com.br/meu-pedido?pedido=${id}&tel=${tel}\n\nAceitamos Cartão, PIX e Boleto 💳\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
+function failedMsg(name: string, id: number, link: string) {
+  return `Olá *${name}*! 🌊\n\nHouve um problema com o pagamento do pedido *#${id}*.\n\nTente novamente com outro método:\n👉 ${link}\n\nAceitamos Cartão, PIX e Boleto 💳\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
 }
 
 // Fetches a real PIX copy-paste code for an order: tries the stored MP payment,
@@ -323,8 +326,8 @@ export const recoveryRouter = router({
         .orderBy(desc(siteOrders.createdAt));
       return rows.map(r => ({
         ...r,
-        waLinkUnpaid: waLink(r.customerPhone, unpaidMsg(r.customerName, r.id, r.quantity, r.totalPrice ?? '0', r.customerPhone.replace(/\D/g, '').slice(-4))),
-        waLinkFailed: waLink(r.customerPhone, failedMsg(r.customerName, r.id, r.customerPhone.replace(/\D/g, '').slice(-4))),
+        waLinkUnpaid: waLink(r.customerPhone, unpaidMsg(r.customerName, r.id, r.product, r.totalPrice ?? '0', orderTrackLink(r))),
+        waLinkFailed: waLink(r.customerPhone, failedMsg(r.customerName, r.id, orderTrackLink(r))),
       }));
     }),
 
@@ -500,8 +503,7 @@ export const recoveryRouter = router({
       if (cartRecord?.optedOut) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cliente optou por não receber mensagens (PARAR)' });
 
       const pixCode = await fetchPixCode(order);
-      const tel = phone.slice(-4);
-      const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${tel}`;
+      const orderLink = orderTrackLink(order);
       const vars = {
         nome: order.customerName,
         pedido: String(order.id),
@@ -511,24 +513,26 @@ export const recoveryRouter = router({
         // text, so wrapping it in ``` would put backtick characters into whatever
         // the customer pastes into their bank app.
         pix: pixCode ?? '',
-        produto: 'Sal Marinho Integral 1kg',
+        // The order knows what was bought — a trio or a box must not be described
+        // to the customer as a single 1kg pack.
+        produto: order.product,
       };
 
       let msg: string;
       if (input.templateId) {
         const [tpl] = await db.select().from(msgTemplates).where(eq(msgTemplates.id, input.templateId)).limit(1);
-        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0', tel);
+        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.product, order.totalPrice ?? '0', orderLink);
       } else if (pixCode) {
         // Auto-select PIX template when PIX code is available
         const [tpl] = await db.select().from(msgTemplates)
           .where(and(eq(msgTemplates.slug, 'unpaid_pix'), eq(msgTemplates.active, true)))
           .limit(1);
-        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0', tel);
+        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.product, order.totalPrice ?? '0', orderLink);
       } else {
         const [tpl] = await db.select().from(msgTemplates)
           .where(and(eq(msgTemplates.type, 'unpaid'), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true)))
           .limit(1);
-        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0', tel);
+        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.product, order.totalPrice ?? '0', orderLink);
       }
 
       const { ok, usedPhone } = await sendViaWhatsApp(order.customerPhone, msg);
@@ -638,16 +642,74 @@ export const recoveryRouter = router({
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
       const key = process.env.WA_API_KEY;
-      if (!key) return { status: 'no_api_key', connected: false };
+      if (!key) {
+        return { status: 'no_api_key', connected: false, reason: 'no_api_key' as const,
+          detail: 'WA_API_KEY não está configurada no painel da Vercel.' };
+      }
       try {
         const ac = new AbortController();
         const timer = setTimeout(() => ac.abort(), 5000);
         const res = await fetch(`${url}/status`, { headers: { 'apikey': key }, signal: ac.signal });
         clearTimeout(timer);
-        return await res.json() as { status: string; connected: boolean };
-      } catch {
-        return { status: 'error', connected: false };
+        // "Desconectado" used to cover three very different situations that need
+        // three different actions, so the panel could not tell the operator what
+        // to actually do. Separate them.
+        if (res.status === 401 || res.status === 403) {
+          return { status: 'unauthorized', connected: false, reason: 'bad_key' as const,
+            detail: 'O servidor respondeu, mas recusou a WA_API_KEY. A chave foi trocada de um lado só?' };
+        }
+        if (!res.ok) {
+          return { status: `http_${res.status}`, connected: false, reason: 'server_error' as const,
+            detail: `O wa-server respondeu HTTP ${res.status}.` };
+        }
+        const body = await res.json() as { status?: string; connected?: boolean };
+        const connected = body?.connected === true || body?.status === 'open' || body?.status === 'connected';
+        return {
+          status: body?.status ?? (connected ? 'connected' : 'disconnected'),
+          connected,
+          reason: connected ? ('ok' as const) : ('logged_out' as const),
+          detail: connected
+            ? 'Sessão ativa — mensagens automáticas estão saindo.'
+            : 'O servidor está no ar, mas a sessão do WhatsApp caiu. Normalmente é preciso ler o QR code novamente no celular.',
+        };
+      } catch (err) {
+        return { status: 'unreachable', connected: false, reason: 'unreachable' as const,
+          detail: `Não foi possível falar com ${url}. A VPS ou o container wa-server pode estar fora do ar.` };
       }
+    }),
+
+  // Admin: fetch the pairing QR code so a dropped session can be restored from
+  // the panel. Without this the operator saw "WA Desconectado" with no way
+  // forward — the reconnect button cannot help once WhatsApp has logged out.
+  waQrCode: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
+      const key = process.env.WA_API_KEY;
+      if (!key) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'WA_API_KEY não configurado' });
+      const tried: string[] = [];
+      // wa-server builds vary; probe the usual shapes rather than assuming one.
+      for (const path of ['/qr', '/qrcode', '/qr-code', '/connect']) {
+        try {
+          const ac = new AbortController();
+          const timer = setTimeout(() => ac.abort(), 8000);
+          const r = await fetch(`${url}${path}`, { headers: { apikey: key }, signal: ac.signal });
+          clearTimeout(timer);
+          tried.push(`${path}:${r.status}`);
+          if (!r.ok) continue;
+          const ct = r.headers.get('content-type') ?? '';
+          if (ct.includes('image')) {
+            const buf = Buffer.from(await r.arrayBuffer());
+            return { ok: true, qr: `data:${ct};base64,${buf.toString('base64')}`, path, tried };
+          }
+          const body = await r.json() as Record<string, any>;
+          const qr = body?.qr ?? body?.qrcode ?? body?.code ?? body?.base64 ?? body?.data?.qr;
+          if (typeof qr === 'string' && qr.length > 0) {
+            return { ok: true, qr: qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`, path, tried };
+          }
+        } catch { tried.push(`${path}:error`); }
+      }
+      return { ok: false, qr: null, path: null, tried };
     }),
 
   // Admin: force WA reconnect — tries /reconnect then /restart endpoints on the wa-server
@@ -659,7 +721,11 @@ export const recoveryRouter = router({
       if (!key) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'WA_API_KEY não configurado' });
       const headers = { 'Content-Type': 'application/json', 'apikey': key };
       const tried: string[] = [];
-      for (const path of ['/reconnect', '/restart', '/connect', '/logout']) {
+      // NEVER include '/logout' here. It was the last item in this list, so a
+      // reconnect attempt that found no working endpoint would end by destroying
+      // a session that may well have been healthy — turning "messages are slow"
+      // into "someone has to scan a QR code from the phone".
+      for (const path of ['/reconnect', '/restart', '/connect']) {
         try {
           const ac = new AbortController();
           setTimeout(() => ac.abort(), 6000);
@@ -860,7 +926,7 @@ Responda SOMENTE com JSON válido neste formato exato:
       if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
 
       const pixCode = await fetchPixCode(order);
-      const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${order.customerPhone.replace(/\D/g, '').slice(-4)}`;
+      const orderLink = orderTrackLink(order);
 
       const prompt = `Você é especialista em recuperação de vendas para Sal Vita (sal marinho premium de Mossoró/RN).
 
