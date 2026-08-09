@@ -72,6 +72,14 @@ async function withDbRetry<T>(label: string, fn: () => Promise<T>, attempts = 3)
  * whereas burning it costs the sale.
  */
 async function isWhatsAppConnected(): Promise<boolean> {
+  // Escape hatch: this gate reads a health endpoint whose payload shape varies
+  // between wa-server builds. If it ever reports "down" for a session that is
+  // actually fine, recovery would stay paused indefinitely with no way out.
+  // Setting WA_FORCE_SEND=1 in Vercel restores the old always-send behaviour.
+  if (process.env.WA_FORCE_SEND === '1') {
+    console.warn('[wa-gate] WA_FORCE_SEND=1 — bypassing the connectivity check');
+    return true;
+  }
   const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
   const key = process.env.WA_API_KEY;
   if (!key) {
