@@ -688,6 +688,7 @@ export const recoveryRouter = router({
       const key = process.env.WA_API_KEY;
       if (!key) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'WA_API_KEY não configurado' });
       const tried: string[] = [];
+      let pending = false;
       // wa-server builds vary; probe the usual shapes rather than assuming one.
       for (const path of ['/qr', '/qrcode', '/qr-code', '/connect']) {
         try {
@@ -697,19 +698,33 @@ export const recoveryRouter = router({
           clearTimeout(timer);
           tried.push(`${path}:${r.status}`);
           if (!r.ok) continue;
+
+          // Some builds hand back a ready-made image.
           const ct = r.headers.get('content-type') ?? '';
           if (ct.includes('image')) {
             const buf = Buffer.from(await r.arrayBuffer());
-            return { ok: true, qr: `data:${ct};base64,${buf.toString('base64')}`, path, tried };
+            return { ok: true, qr: `data:${ct};base64,${buf.toString('base64')}`, pending: false, path, tried };
           }
+
           const body = await r.json() as Record<string, any>;
-          const qr = body?.qr ?? body?.qrcode ?? body?.code ?? body?.base64 ?? body?.data?.qr;
-          if (typeof qr === 'string' && qr.length > 0) {
-            return { ok: true, qr: qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`, path, tried };
+          const raw = body?.qr ?? body?.qrcode ?? body?.code ?? body?.base64 ?? body?.data?.qr;
+          // The route answered but no pairing is in progress (session already open,
+          // or the server gave up retrying and needs a restart).
+          if (raw === null || raw === undefined || raw === '') {
+            if (body?.reason) pending = true;
+            continue;
           }
+          if (typeof raw !== 'string') continue;
+          if (raw.startsWith('data:')) return { ok: true, qr: raw, pending: false, path, tried };
+
+          // Baileys hands out the pairing payload as plain text ("2@...."), not an
+          // image — render it here so the panel can just drop it into an <img>.
+          const QRCode = (await import('qrcode')).default;
+          const dataUrl = await QRCode.toDataURL(raw, { width: 320, margin: 2 });
+          return { ok: true, qr: dataUrl, pending: false, path, tried };
         } catch { tried.push(`${path}:error`); }
       }
-      return { ok: false, qr: null, path: null, tried };
+      return { ok: false, qr: null, pending, path: null, tried };
     }),
 
   // Admin: force WA reconnect — tries /reconnect then /restart endpoints on the wa-server

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { trpc } from '../lib/trpc';
 import { toast } from 'sonner';
 
@@ -89,14 +89,46 @@ function WaStatusBadge() {
   });
   const qrMut = trpc.recovery.waQrCode.useMutation({
     onSuccess: (d: any) => {
-      if (d.ok && d.qr) setQr(d.qr);
-      else toast.error('O wa-server não expôs um QR code. Será preciso reconectar direto na VPS.');
+      if (d.ok && d.qr) { setQr(d.qr); return; }
+      // Two very different dead ends: the route exists but nothing is pairing
+      // right now (restart the container), or the route isn't there at all
+      // (the wa-server still needs vps-wa-qr-patch.sh).
+      if (d.pending) {
+        toast.error('Nenhum pareamento em andamento. Reinicie o wa-server na VPS e tente de novo em ~10s.', { duration: 8000 });
+      } else {
+        toast.error('O wa-server não expõe /qr — rode o vps-wa-qr-patch.sh na VPS uma vez.', { duration: 8000 });
+      }
     },
     onError: () => toast.error('Falha ao buscar o QR code'),
   });
-  if (isLoading) return null;
+  // A Baileys pairing code is only valid for ~20s before the socket issues a new
+  // one, so a static image would almost always be stale by the time the phone is
+  // pointed at it. Pull a fresh code while the dialog is open, and stop as soon
+  // as the status query reports the session is back.
+  const qrOpen = qr !== null;
+  useEffect(() => {
+    if (!qrOpen) return;
+    const t = setInterval(() => {
+      qrMut.mutate();
+      refetch();
+    }, 18000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qrOpen]);
 
   const connected = (data as any)?.connected;
+
+  // Session came back while the dialog was open — close it and celebrate.
+  useEffect(() => {
+    if (qrOpen && connected) {
+      setQr(null);
+      toast.success('WhatsApp reconectado! As automações seguradas voltam a sair no próximo ciclo.');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, qrOpen]);
+
+  if (isLoading) return null;
+
   const reason = (data as any)?.reason ?? (connected ? 'ok' : 'logged_out');
   const detail = (data as any)?.detail ?? '';
   const label = WA_REASON_LABEL[reason] ?? (connected ? 'Conectado' : 'Desconectado');
@@ -150,12 +182,17 @@ function WaStatusBadge() {
           <div style={{ background: 'white', borderRadius: 20, padding: '24px 26px', maxWidth: 380, textAlign: 'center' }}>
             <h3 style={{ margin: '0 0 6px', fontSize: '1.05rem', fontWeight: 800, color: '#0b1d3a' }}>Reconectar o WhatsApp</h3>
             <p style={{ margin: '0 0 16px', fontSize: '.82rem', color: '#64748b', lineHeight: 1.5 }}>
-              No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho. Depois leia o código abaixo.
+              No celular: <strong>WhatsApp → Aparelhos conectados → Conectar um aparelho</strong>. Depois leia o código abaixo.
             </p>
             <img src={qr} alt="QR code de conexão do WhatsApp" style={{ width: '100%', maxWidth: 280, borderRadius: 12 }} />
-            <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
-              <button onClick={() => qrMut.mutate()} style={{ ...btnGhost, flex: 1 }}>Gerar outro</button>
-              <button onClick={() => { setQr(null); refetch(); }} style={{ ...btnPrimary, flex: 1 }}>Já conectei</button>
+            <p style={{ margin: '12px 0 0', fontSize: '.75rem', color: '#94a3b8', lineHeight: 1.5 }}>
+              O código se renova sozinho a cada 18s. Esta janela fecha assim que a conexão voltar.
+            </p>
+            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+              <button onClick={() => qrMut.mutate()} disabled={qrMut.isPending} style={{ ...btnGhost, flex: 1, opacity: qrMut.isPending ? .6 : 1 }}>
+                {qrMut.isPending ? '...' : 'Gerar agora'}
+              </button>
+              <button onClick={() => { setQr(null); refetch(); }} style={{ ...btnPrimary, flex: 1 }}>Fechar</button>
             </div>
           </div>
         </div>
