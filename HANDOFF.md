@@ -1,9 +1,11 @@
 # Handoff Completo — Sal Vita Lembretes (julho/2026)
 
-> **Gerado em 28/06/2026, atualizado em 13/07/2026.** Leia este arquivo inteiro antes de
+> **Gerado em 28/06/2026, atualizado em 09/08/2026.** Leia este arquivo inteiro antes de
 > alterar qualquer coisa no projeto. Ele contém TUDO que você precisa saber para dar
 > continuidade ao desenvolvimento. Veja a **Seção 21** para o que mudou desde a versão
-> original — não redescubra o que já foi feito.
+> original, e a **Seção 22** para o handoff da última sessão (auditoria + correções do
+> Premium, reconexão do WhatsApp) — leia a 22 primeiro se seu trabalho for no e-commerce
+> Premium, tem uma pendência crítica de segurança lá.
 
 ---
 
@@ -688,6 +690,129 @@ refazer o que já foi feito ou corrigido.
   etc.) porque esse agente alucinou fatos sobre o sistema repetidamente antes da
   skill existir. Não precisa seguir esse protocolo aqui (você já lê o código
   antes de falar), mas é uma referência útil sobre pegadinhas reais do projeto.
+
+## 22. Handoff — auditoria e correções do Premium (09/08/2026)
+
+Sessão inteira focada **exclusivamente** no e-commerce Premium
+(`premium.salvitarn.com.br` — landing, checkout, pedidos, recuperação). Não
+tocou nos routers do CRM (`tasks`, `sellers`, `clients`, `reminders`, `ai`,
+`knowledge`, `workSessions`, `tv`). `main` está em `7870fcd`, tudo em produção
+e verificado no ar. Leia isto antes de continuar — evita redescobrir o que já
+foi corrigido ou repetir os dois erros que aconteceram nesta sessão.
+
+### O que foi feito, em ordem cronológica de commit
+
+| Commit | O quê |
+|---|---|
+| `8c18fd5` | Auditoria: `RELATORIO-PREMIUM-2026-08-09.md` — 12 achados novos + reverificação linha a linha da auditoria de 02/07 |
+| `e6ee06d` | Frete recotado no servidor (não confia mais no valor do cliente), produto/preço persistidos no pedido, peso/dimensões corretos por SKU, token opaco por pedido substituindo "4 últimos dígitos do telefone", posse obrigatória em `createPayment`/`createPixPayment`/`pixStatus`, cron com sub-rotinas isoladas + retry no Neon + lotes maiores |
+| `2e50451` | Mesmo tratamento de token na landing `/classic` (estava esquecida) |
+| `58c5b01` | **Portão de conectividade do WhatsApp no cron** — a correção mais importante da sessão, ver abaixo |
+| `3117d85` | Válvula de escape `WA_FORCE_SEND=1` pro portão acima, caso o `/status` do wa-server minta |
+| `3388846` | Merge do tudo acima pra `main` |
+| `9f3f958` | **Revert de um erro meu**: tinha tirado `api/bundle.js`/`sallog/api/bundle.js` do `.gitignore` achando que era artefato de build — isso derrubou `/api/*` inteiro em produção por ~6 min. Ver "Erros cometidos" abaixo antes de mexer nesses arquivos de novo |
+| `5940a19`, `c2eb974` | QR code do WhatsApp direto no painel (ver seção própria abaixo) |
+| `7870fcd` | Corrida de race condition no polling do QR (falso alarme de "desconectado" após reconectar de verdade) |
+
+### 🔴 Pendência crítica — rotacionar `WA_API_KEY`
+
+A chave da API do wa-server ficou commitada em texto puro em `vps-wa-patch.sh`
+num repositório **público**, por pelo menos um mês (desde `767565a`,
+08/07/2026). Foi removida do HEAD nesta sessão, mas **continua no histórico do
+git** — não basta ter tirado do arquivo atual. Enquanto não rotacionar,
+qualquer pessoa com a chave antiga envia WhatsApp pelo número da Sal Vita.
+
+Passos: gerar chave nova → atualizar no `docker exec wa-server` (variável de
+ambiente ou onde o `server.js` ler) → atualizar `WA_API_KEY` no painel da
+Vercel (projeto `sal-vita-vendas`) → redeploy. O dono adiou isso pra depois da
+sessão de reconexão do WhatsApp; ainda não foi feito até `7870fcd`.
+
+### WhatsApp / wa-server — o que aprendemos nesta sessão
+
+Isto **não é Evolution API** apesar do domínio se chamar `evolution.
+salvitarn.com.br` — é um wa-server próprio em Baileys, rodando numa VPS
+**diferente** da VPS do OpenClaw (não confundir — IPs e chaves SSH distintos,
+ver `[[salvita-wa-server-vps]]` na memória do Claude se disponível, ou
+pergunte ao Tarcyo o IP/chave se não tiver acesso).
+
+- **Rotas reais do servidor:** só `GET /status`, `POST /send` e (agora)
+  `GET /qr`. `/reconnect`, `/restart`, `/connect` **não existem** (sempre 404)
+  — por isso o botão de reconectar do painel nunca fazia nada antes desta
+  sessão. Não recrie chamadas pra essas rotas.
+- **O host da VPS não tem Node instalado**, só o container `wa-server` tem.
+  Qualquer patch/debug tem que rodar via `docker exec wa-server node ...`,
+  nunca `node` direto no host.
+- **Sessão do Baileys:** `AUTH_DIR='/app/sessions'` dentro do container
+  (achado via `grep` no `server.js`, não adivinhado). Apagar essa pasta +
+  `docker restart wa-server` força um pareamento novo do zero.
+- **Causa raiz da desconexão desta vez:** `"conflict":{"type":"device_removed"}`
+  nos logs — o WhatsApp (ou o dono, sem querer) removeu o aparelho vinculado
+  em "Aparelhos conectados" no celular. Não era bug no código, era sessão
+  revogada do lado do WhatsApp mesmo.
+- **QR pelo painel (`vps-wa-qr-patch.sh`, já commitado):** patcheia o
+  `server.js` em runtime pra guardar o QR mais recente emitido pelo evento
+  `connection.update` do Baileys e servir em `GET /qr`, autenticado com a
+  mesma `apikey`. Roda inteiro via `docker exec` (ver ponto acima). É seguro
+  rodar de novo — detecta o próprio marcador (`__SALVITA_QR_PATCH__`) e sai
+  sem fazer nada se já aplicado. Faz backup timestampado antes de tocar em
+  qualquer coisa; comando de rollback sai impresso no final da execução.
+- **`server/routers/recovery.ts`**: `waStatus` agora devolve `reason` (`ok` |
+  `logged_out` | `unreachable` | `bad_key` | `server_error` | `no_api_key`) e
+  `detail` — usar esses campos pra decidir a ação certa no painel, não só o
+  boolean `connected`. `waQrCode` decodifica o payload de texto puro do
+  Baileys (`2@...`) pra imagem PNG via lib `qrcode` (já em `package.json`) —
+  o servidor NUNCA manda imagem pronta, é sempre texto pra renderizar.
+- **Portão de conectividade no cron (`api/index.ts`, função
+  `isWhatsAppConnected`):** antes desta sessão, o cron gastava as
+  oportunidades de recuperação (`unpaid_followup_sent_at`,
+  `reorder_reminded_at`, automation runs marcados `failed`) mesmo com o
+  WhatsApp desconectado — permanentemente, sem re-tentativa. Agora ele checa
+  `/status` antes de qualquer rotina que dependa de WA; a reconciliação de
+  pagamento (Mercado Pago) roda de qualquer forma, porque não depende de WA.
+  Falhas de envio reagendam com 2h de atraso e um contador `attempts`,
+  desistindo só depois de 3 tentativas. `WA_FORCE_SEND=1` no ambiente da
+  Vercel desliga esse portão se ele algum dia bloquear envios com o WA
+  realmente conectado (payload do `/status` mudou de formato, por exemplo).
+
+### Dois erros cometidos nesta sessão — não repetir
+
+1. **Tirei `api/bundle.js` e `sallog/api/bundle.js` do controle de versão**
+   achando que eram artefato de build regenerado pelo `buildCommand` do
+   `vercel.json`. Errado: a Vercel só registra `/api/*` como função
+   serverless se o `api/bundle.js` **já existir no repo no momento do clone**
+   — regenerar durante o build é tarde demais. Isso derrubou toda API de
+   produção por ~6 min até eu perceber e reverter (`9f3f958`). Os dois
+   arquivos **precisam continuar versionados**; o `.gitignore` agora tem um
+   comentário explicando isso — não removê-los de novo.
+2. **`raw.githubusercontent.com` cacheia agressivamente e ignora query
+   string de cache-busting** (`?nocache=timestamp` não adiantou). Depois de
+   um `git push`, um `curl -O` direto do GitHub numa VPS pode entregar a
+   versão antiga do arquivo por vários minutos, mesmo em requisições feitas
+   depois do push. Se um script precisar estar atualizado imediatamente numa
+   VPS, prefira gerar o arquivo local via heredoc (`cat > arquivo.sh <<'EOF'
+   ...`) em vez de `curl` do GitHub logo após um push.
+
+### O que NÃO foi testado
+
+Fluxo de compra ponta a ponta em produção (criar pedido real, gerar PIX,
+confirmar pagamento) — teria criado um pedido real na base. Recomendado antes
+de considerar a sessão totalmente encerrada: um pedido de teste do próprio
+Tarcyo, prestando atenção especial no frete da caixa 10kg (saiu R$ 200,88 de
+PAC pra SP com o peso corrigido — mais caro que o produto, pode exigir decisão
+comercial, não é bug).
+
+### Melhorias identificadas mas NÃO implementadas (ficaram pra depois)
+
+Do pedido de varredura do painel admin, feito depois da auditoria original:
+
+- Pedidos com PIX gerado inline (sem `mpPreferenceId`) ficam invisíveis em
+  `listOrders` — o filtro esconde `awaiting` sem preferência, e o fluxo de PIX
+  inline só grava `mpPaymentId`.
+- Painel de pedidos sem busca nem paginação (o CRM ganhou busca unificada em
+  julho; o Premium não).
+- "Receita Confirmada" no admin soma desde sempre, sem recorte por período.
+- Sem status de revisão manual pra pedido com valor divergente do esperado
+  (fica `awaiting` calado, sem badge nem alerta).
 
 ### Contato do dono
 
