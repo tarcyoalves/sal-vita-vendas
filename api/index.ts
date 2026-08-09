@@ -58,6 +58,75 @@ async function withDbRetry<T>(label: string, fn: () => Promise<T>, attempts = 3)
 }
 
 /**
+ * Is the WhatsApp session actually able to send right now?
+ *
+ * This gate exists because every WA-dependent routine consumes its opportunity
+ * up front: the unpaid follow-up stamps `unpaid_followup_sent_at` before
+ * sending, the reorder nudge stamps `reorder_reminded_at`, and a failed
+ * automation run used to be marked 'failed' and never looked at again. So while
+ * the Baileys session was disconnected, the cron kept "spending" carts, unpaid
+ * orders and reorder reminders against a socket that could not deliver anything
+ * — silently, once per day, with no way to get them back.
+ *
+ * Unknown counts as disconnected on purpose: postponing a message costs a day,
+ * whereas burning it costs the sale.
+ */
+async function isWhatsAppConnected(): Promise<boolean> {
+  const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
+  const key = process.env.WA_API_KEY;
+  if (!key) {
+    console.warn('[wa-gate] WA_API_KEY not configured — treating WhatsApp as disconnected');
+    return false;
+  }
+  try {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 6000);
+    const res = await fetch(`${url}/status`, { headers: { apikey: key }, signal: ac.signal });
+    clearTimeout(timer);
+    if (!res.ok) {
+      console.warn(`[wa-gate] status endpoint returned HTTP ${res.status} — treating as disconnected`);
+      return false;
+    }
+    const body = await res.json() as { connected?: boolean; status?: string };
+    const connected = body?.connected === true || body?.status === 'open' || body?.status === 'connected';
+    if (!connected) console.warn(`[wa-gate] WhatsApp reports "${body?.status ?? 'unknown'}" — holding all WA sends`);
+    return connected;
+  } catch (err) {
+    console.warn('[wa-gate] status check failed — treating as disconnected:', (err as Error).message);
+    return false;
+  }
+}
+
+// A send failure re-schedules the run instead of discarding it; only after this
+// many attempts is it given up on.
+const MAX_SEND_ATTEMPTS = 3;
+
+/**
+ * A failed WhatsApp send used to set the run to 'failed' permanently, and the
+ * due-runs query only ever looks at 'scheduled' — so a single bad moment threw
+ * the cart away. Now the run goes back in the queue with a delay, and is only
+ * given up on after MAX_SEND_ATTEMPTS.
+ */
+async function requeueOrFail(
+  runsTable: typeof automationRuns,
+  run: { id: number; attempts?: number | null },
+): Promise<void> {
+  const attempts = (run.attempts ?? 0) + 1;
+  if (attempts >= MAX_SEND_ATTEMPTS) {
+    await ordersDb.update(runsTable)
+      .set({ status: 'failed', attempts, updatedAt: new Date() })
+      .where(eq(runsTable.id, run.id));
+    console.warn(`[cron] automation run ${run.id} failed ${attempts}x — giving up`);
+    return;
+  }
+  const retryAt = new Date(Date.now() + 2 * 60 * 60 * 1000); // +2h
+  await ordersDb.update(runsTable)
+    .set({ status: 'scheduled', attempts, scheduledFor: retryAt, updatedAt: new Date() })
+    .where(eq(runsTable.id, run.id));
+  console.log(`[cron] automation run ${run.id} re-queued (attempt ${attempts}/${MAX_SEND_ATTEMPTS})`);
+}
+
+/**
  * Run one cron sub-routine without letting its failure take down the others.
  * These used to share a single try/catch, so one bad query cancelled everything
  * queued behind it.
@@ -1230,11 +1299,27 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
     };
     const fallbackTpl = tplBySlug['abandoned_simples'] ?? abandonedTpls.find(t => t.isDefault);
 
-    // ── Always run these regardless of business hours ────────────────────────
+    // Reconciliation only talks to the database and Mercado Pago, so it must run
+    // whether or not WhatsApp is up — a paid order stuck in 'awaiting' is the
+    // most expensive thing to leave sitting.
+    const reconciled = await runIsolated('reconcile', reconcileAwaitingOrders, { confirmed: 0 });
+
+    // Everything below sends WhatsApp. If the session is down, do nothing at all
+    // rather than consuming these one-shot opportunities against a dead socket.
+    const waUp = await isWhatsAppConnected();
+    if (!waUp) {
+      console.warn('[cron] WhatsApp disconnected — holding recovery, unpaid follow-ups and reorder nudges for the next run');
+      res.json({
+        ok: true, processed: 0, sent: 0, cancelled: 0, failed: 0,
+        skipped: 'whatsapp disconnected', waConnected: false,
+        unpaid: { sent: 0 }, reconciled, reorder: { sent: 0 },
+      });
+      return;
+    }
+
     // Each is isolated: a failure in one must not cost the others their run,
     // because on the current schedule the next attempt is a day away.
     const unpaid = await runIsolated('unpaid-followup', processUnpaidFollowups, { sent: 0 });
-    const reconciled = await runIsolated('reconcile', reconcileAwaitingOrders, { confirmed: 0 });
     const reorder = await runIsolated('reorder-reminder', processReorderReminders, { sent: 0 });
 
     // ── Abandoned cart automation: only during business hours ─────────────────
@@ -1278,11 +1363,11 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
             sendEmail(cart.customerEmail, `Seu cupom ${ruleCfg.coupon} — finalize seu pedido Sal Vita`, emailHtml).catch(() => {});
           }
         } else {
-          await ordersDb.update(runs).set({ status: 'failed', updatedAt: new Date() }).where(eq(runs.id, run.id));
+          await requeueOrFail(runs, run);
           failed++;
         }
       } catch {
-        await ordersDb.update(runs).set({ status: 'failed', updatedAt: new Date() }).where(eq(runs.id, run.id));
+        await requeueOrFail(runs, run);
         failed++;
       }
     }

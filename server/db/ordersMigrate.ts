@@ -174,6 +174,17 @@ export async function ensureOrdersTablesExist(force = false): Promise<Step[]> {
   await run('automation_runs.sent_at', () => sql`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP`);
   await run('automation_runs.cancelled_at', () => sql`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP`);
   await run('automation_runs.updated_at', () => sql`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW() NOT NULL`);
+  await run('automation_runs.attempts', () => sql`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0`);
+  // Recover runs burned while WhatsApp was disconnected: before the connectivity
+  // gate existed, every due run was marked 'failed' on the first send error and
+  // never retried, so an outage silently consumed the whole recovery queue.
+  await run('automation_runs.requeue_failed', () => sql`
+    UPDATE automation_runs
+    SET status = 'scheduled', attempts = 0, scheduled_for = NOW(), updated_at = NOW()
+    WHERE status = 'failed'
+      AND sent_at IS NULL
+      AND created_at > NOW() - INTERVAL '30 days'
+  `);
   await run('automation_runs_status_idx', () => sql`CREATE INDEX IF NOT EXISTS automation_runs_status_idx ON automation_runs(status)`);
   await run('automation_runs_scheduled_idx', () => sql`CREATE INDEX IF NOT EXISTS automation_runs_scheduled_for_idx ON automation_runs(scheduled_for)`);
   await run('automation_runs_cart_idx', () => sql`CREATE INDEX IF NOT EXISTS automation_runs_cart_id_idx ON automation_runs(cart_id)`);

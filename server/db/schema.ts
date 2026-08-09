@@ -228,6 +228,9 @@ export const automationRuns = pgTable('automation_runs', {
   ruleName: text('rule_name').notNull().default('abandoned_cart_30m'),
   status: text('status').notNull().default('scheduled'), // scheduled | sent | cancelled | failed
   scheduledFor: timestamp('scheduled_for').notNull(),
+  // Delivery attempts so far. A send failure re-schedules instead of burning the
+  // run outright; only after MAX_SEND_ATTEMPTS does it become 'failed'.
+  attempts: integer('attempts').notNull().default(0),
   sentAt: timestamp('sent_at'),
   cancelledAt: timestamp('cancelled_at'),
   providerResponse: text('provider_response'),
