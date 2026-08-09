@@ -11,6 +11,9 @@
 # /sal-vita-recovery can render it. It adds a listener alongside the existing
 # handler rather than rewriting it, so the current reconnect logic is untouched.
 #
+# Runs entirely through `docker exec` — the VPS host itself has no Node
+# installed, only the container does, so every step below happens inside it.
+#
 # Run ON the VPS:
 #   bash vps-wa-qr-patch.sh
 #
@@ -24,12 +27,12 @@ BACKUP="/home/ubuntu/server.js.bak-$STAMP"
 
 echo "[1/5] Backing up current server.js -> $BACKUP"
 docker cp "$CONTAINER:/app/server.js" "$BACKUP"
-cp "$BACKUP" /tmp/server.js
 
-echo "[2/5] Patching..."
-node - <<'EOF'
+echo "[2/5] Patching inside the container (the host has no Node — using the container's)"
+set +e
+docker exec -i "$CONTAINER" node <<'EOF'
 const fs = require('fs');
-const SRC = '/tmp/server.js';
+const SRC = '/app/server.js';
 let code = fs.readFileSync(SRC, 'utf8');
 
 if (code.includes('__SALVITA_QR_PATCH__')) {
@@ -76,25 +79,26 @@ code = code.replace(
 fs.writeFileSync('/tmp/server.patched.js', code, 'utf8');
 console.log('OK: patch written.');
 EOF
-
 RC=$?
+set -e
+
 if [ $RC -eq 3 ]; then
   echo "Nothing to do — already patched."
   exit 0
 fi
 if [ $RC -ne 0 ]; then
   echo ""
-  echo "Patch aborted, container untouched. Send these lines for a tailored patch:"
-  grep -n "connection.update" /tmp/server.js | head -5 || true
-  grep -n "app.post('/send'\|app.post(\"/send\"" /tmp/server.js | head -5 || true
+  echo "Patch aborted, container untouched. Here is what the anchors look like — send this back:"
+  docker exec "$CONTAINER" grep -n "connection.update" /app/server.js | head -5 || true
+  docker exec "$CONTAINER" grep -n "app.post('/send'\|app.post(\"/send\"" /app/server.js | head -5 || true
   exit 1
 fi
 
 echo "[3/5] Syntax-checking the patched file"
-node --check /tmp/server.patched.js
+docker exec "$CONTAINER" node --check /tmp/server.patched.js
 
 echo "[4/5] Installing and restarting"
-docker cp /tmp/server.patched.js "$CONTAINER:/app/server.js"
+docker exec "$CONTAINER" cp /tmp/server.patched.js /app/server.js
 docker restart "$CONTAINER"
 
 echo "[5/5] Waiting for the container to come back..."
