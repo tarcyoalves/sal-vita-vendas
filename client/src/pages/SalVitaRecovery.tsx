@@ -108,9 +108,17 @@ function WaStatusBadge() {
   const qrOpen = qr !== null;
   useEffect(() => {
     if (!qrOpen) return;
-    const t = setInterval(() => {
-      qrMut.mutate();
-      refetch();
+    const t = setInterval(async () => {
+      // Check connection status FIRST. Firing both calls at once created a race:
+      // if the phone finished pairing between ticks, the QR fetch would land after
+      // the session was already open — the server has nothing pending anymore, and
+      // that "no QR right now" response showed up as a scary error toast even
+      // though the reconnect had actually succeeded seconds earlier.
+      try {
+        const res = await refetch();
+        if ((res.data as any)?.connected) return;
+        qrMut.mutate();
+      } catch { /* transient network hiccup — try again next tick */ }
     }, 18000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
