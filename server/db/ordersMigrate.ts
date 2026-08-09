@@ -3,7 +3,7 @@ import { neon } from '@neondatabase/serverless';
 type Step = { name: string; ok: boolean; error?: string };
 
 // Bump whenever the DDL below changes, to force exactly one full re-run.
-const ORDERS_SCHEMA_VERSION = 'orders-2026-07-03a';
+const ORDERS_SCHEMA_VERSION = 'orders-2026-08-09a';
 
 /**
  * Ensures all e-commerce/recovery tables exist in the ORDERS database.
@@ -106,6 +106,11 @@ export async function ensureOrdersTablesExist(force = false): Promise<Step[]> {
   await run('site_orders.utm_term', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS utm_term TEXT`);
   await run('site_orders.fbclid', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS fbclid TEXT`);
   await run('site_orders.reorder_reminded_at', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS reorder_reminded_at TIMESTAMP`);
+  // Opaque per-order token: replaces "last 4 phone digits" as the ownership proof
+  // for /meu-pedido and for payment retries. Nullable so pre-existing orders keep
+  // working via the full-phone fallback.
+  await run('site_orders.track_token', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS track_token TEXT`);
+  await run('site_orders_track_token_idx', () => sql`CREATE INDEX IF NOT EXISTS site_orders_track_token_idx ON site_orders(track_token)`);
   await run('site_orders_status_idx', () => sql`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`);
   await run('site_orders_phone_idx', () => sql`CREATE INDEX IF NOT EXISTS site_orders_phone_idx ON site_orders(customer_phone)`);
 

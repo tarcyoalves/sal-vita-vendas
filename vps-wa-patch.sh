@@ -1,7 +1,8 @@
 #!/bin/bash
 # Patch wa-server to resolve WhatsApp JID (9th digit fix) before sending.
-# Run this on the Oracle Cloud VPS:
-#   ssh -i "C:\ssh\ssh-key-2026-05-20.key" ubuntu@147.15.88.162
+#
+# Run this ON the VPS (connection details are intentionally not recorded here —
+# this repository is public):
 #   bash vps-wa-patch.sh
 #
 # What it does:
@@ -82,8 +83,8 @@ echo "[4/4] Copying patched file back and restarting..."
 docker cp /tmp/server.patched.js $CONTAINER:/app/server.js
 docker restart $CONTAINER
 echo ""
-echo "Done! Test with:"
-echo "  curl -s -X POST https://evolution.salvitarn.com.br/send \\"
+echo "Done! Test with (export WA_API_KEY and WA_TEST_PHONE first — never inline them):"
+echo "  curl -s -X POST \"\$WA_SERVER_URL/send\" \\"
 echo "    -H 'Content-Type: application/json' \\"
-echo "    -H 'apikey: MinhaChaveSuperSegura123456' \\"
-echo "    -d '{\"phone\":\"5584986207841\",\"message\":\"Teste patch\"}'"
+echo "    -H \"apikey: \$WA_API_KEY\" \\"
+echo "    -d \"{\\\"phone\\\":\\\"\$WA_TEST_PHONE\\\",\\\"message\\\":\\\"Teste patch\\\"}\""

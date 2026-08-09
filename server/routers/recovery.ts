@@ -6,6 +6,7 @@ import { desc, eq, and, sql, lte } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml } from '../email/resend';
 import { createPixPaymentForOrder } from '../lib/mercadopago';
+import { orderTrackLink } from '../lib/orderConfirmation';
 
 type SiteOrder = typeof siteOrders.$inferSelect;
 
@@ -109,12 +110,14 @@ async function getActiveRecoveryCoupon(): Promise<{ code: string; discountType: 
   return fallback ? { code: fallback.code, discountType: fallback.discountType, discountValue: fallback.discountValue } : null;
 }
 
-function unpaidMsg(name: string, id: number, qty: number, total: string, tel: string) {
-  return `Olá *${name}*! 🌊\n\nSeu pedido *#${id}* do Sal Vita ainda está aguardando pagamento.\n\n📦 ${qty}x Sal Marinho Integral 1kg\n💰 Total: R$ ${total}\n\nFinalize o pagamento aqui:\n👉 https://premium.salvitarn.com.br/meu-pedido?pedido=${id}&tel=${tel}\n\n_Pedido reservado por tempo limitado!_\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
+// These take a ready-made link (see orderTrackLink) rather than phone digits —
+// the tracking credential must not be assembled from the customer's number.
+function unpaidMsg(name: string, id: number, product: string, total: string, link: string) {
+  return `Olá *${name}*! 🌊\n\nSeu pedido *#${id}* do Sal Vita ainda está aguardando pagamento.\n\n📦 ${product}\n💰 Total: R$ ${total}\n\nFinalize o pagamento aqui:\n👉 ${link}\n\n_Pedido reservado por tempo limitado!_\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
 }
 
-function failedMsg(name: string, id: number, tel: string) {
-  return `Olá *${name}*! 🌊\n\nHouve um problema com o pagamento do pedido *#${id}*.\n\nTente novamente com outro método:\n👉 https://premium.salvitarn.com.br/meu-pedido?pedido=${id}&tel=${tel}\n\nAceitamos Cartão, PIX e Boleto 💳\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
+function failedMsg(name: string, id: number, link: string) {
+  return `Olá *${name}*! 🌊\n\nHouve um problema com o pagamento do pedido *#${id}*.\n\nTente novamente com outro método:\n👉 ${link}\n\nAceitamos Cartão, PIX e Boleto 💳\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
 }
 
 // Fetches a real PIX copy-paste code for an order: tries the stored MP payment,
@@ -323,8 +326,8 @@ export const recoveryRouter = router({
         .orderBy(desc(siteOrders.createdAt));
       return rows.map(r => ({
         ...r,
-        waLinkUnpaid: waLink(r.customerPhone, unpaidMsg(r.customerName, r.id, r.quantity, r.totalPrice ?? '0', r.customerPhone.replace(/\D/g, '').slice(-4))),
-        waLinkFailed: waLink(r.customerPhone, failedMsg(r.customerName, r.id, r.customerPhone.replace(/\D/g, '').slice(-4))),
+        waLinkUnpaid: waLink(r.customerPhone, unpaidMsg(r.customerName, r.id, r.product, r.totalPrice ?? '0', orderTrackLink(r))),
+        waLinkFailed: waLink(r.customerPhone, failedMsg(r.customerName, r.id, orderTrackLink(r))),
       }));
     }),
 
@@ -500,8 +503,7 @@ export const recoveryRouter = router({
       if (cartRecord?.optedOut) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cliente optou por não receber mensagens (PARAR)' });
 
       const pixCode = await fetchPixCode(order);
-      const tel = phone.slice(-4);
-      const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${tel}`;
+      const orderLink = orderTrackLink(order);
       const vars = {
         nome: order.customerName,
         pedido: String(order.id),
@@ -511,24 +513,26 @@ export const recoveryRouter = router({
         // text, so wrapping it in ``` would put backtick characters into whatever
         // the customer pastes into their bank app.
         pix: pixCode ?? '',
-        produto: 'Sal Marinho Integral 1kg',
+        // The order knows what was bought — a trio or a box must not be described
+        // to the customer as a single 1kg pack.
+        produto: order.product,
       };
 
       let msg: string;
       if (input.templateId) {
         const [tpl] = await db.select().from(msgTemplates).where(eq(msgTemplates.id, input.templateId)).limit(1);
-        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0', tel);
+        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.product, order.totalPrice ?? '0', orderLink);
       } else if (pixCode) {
         // Auto-select PIX template when PIX code is available
         const [tpl] = await db.select().from(msgTemplates)
           .where(and(eq(msgTemplates.slug, 'unpaid_pix'), eq(msgTemplates.active, true)))
           .limit(1);
-        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0', tel);
+        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.product, order.totalPrice ?? '0', orderLink);
       } else {
         const [tpl] = await db.select().from(msgTemplates)
           .where(and(eq(msgTemplates.type, 'unpaid'), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true)))
           .limit(1);
-        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.quantity, order.totalPrice ?? '0', tel);
+        msg = tpl ? renderTemplate(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.product, order.totalPrice ?? '0', orderLink);
       }
 
       const { ok, usedPhone } = await sendViaWhatsApp(order.customerPhone, msg);
@@ -860,7 +864,7 @@ Responda SOMENTE com JSON válido neste formato exato:
       if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
 
       const pixCode = await fetchPixCode(order);
-      const orderLink = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}&tel=${order.customerPhone.replace(/\D/g, '').slice(-4)}`;
+      const orderLink = orderTrackLink(order);
 
       const prompt = `Você é especialista em recuperação de vendas para Sal Vita (sal marinho premium de Mossoró/RN).
 

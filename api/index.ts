@@ -22,7 +22,7 @@ import {
 import { eq, and, or, sql, lte, gte, isNull, inArray, desc, asc, lt } from 'drizzle-orm';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
 import { createPixPaymentForOrder } from '../server/lib/mercadopago';
-import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid } from '../server/lib/orderConfirmation';
+import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid, orderTrackLink } from '../server/lib/orderConfirmation';
 import { verifyResendWebhook } from '../server/email/marketing';
 import { evaluateInactiveDaysRules, flagEngagementByMessageId, processSequenceEnrollments, cancelAllEnrollments } from '../server/email/automations';
 import { processDueCampaigns } from '../server/email/campaigns';
@@ -30,6 +30,45 @@ import { processDueCampaigns } from '../server/email/campaigns';
 function isBusinessHours(): boolean {
   const brHour = (new Date().getUTCHours() - 3 + 24) % 24;
   return brHour >= 8 && brHour < 21;
+}
+
+/**
+ * Retry a Neon query through transient connection-pool contention.
+ *
+ * neon-http opens a fresh HTTP hop per query, and under a burst the branch
+ * answers "Failed to acquire permit to connect to the database". On 2026-08-07
+ * that error hit the very first SELECT of the abandoned-cart cron and, because
+ * the cron runs once a day with no retry, the whole day's recovery and payment
+ * reconciliation silently didn't happen.
+ */
+async function withDbRetry<T>(label: string, fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try { return await fn(); } catch (err) {
+      lastErr = err;
+      const msg = String((err as any)?.message ?? err);
+      const transient = msg.includes('Failed to acquire permit') || msg.includes('ECONNRESET') || msg.includes('fetch failed');
+      if (!transient || i === attempts - 1) break;
+      const backoff = 400 * Math.pow(2, i);
+      console.warn(`[db-retry] ${label}: transient failure, retrying in ${backoff}ms (${i + 1}/${attempts - 1})`);
+      await new Promise(r => setTimeout(r, backoff));
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * Run one cron sub-routine without letting its failure take down the others.
+ * These used to share a single try/catch, so one bad query cancelled everything
+ * queued behind it.
+ */
+async function runIsolated<T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    console.error(`[cron] ${label} failed (other routines continue):`, err);
+    return fallback;
+  }
 }
 
 // Best active coupon for automated recovery messages: prefers the admin-flagged
@@ -381,11 +420,20 @@ app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/jso
         .where(eq(siteOrders.id, orderId));
     } else if (payment.status === 'refunded' || payment.status === 'charged_back') {
       // Money reversed after payment — cancel the order and return the coupon use.
-      const wasConfirmed = order.paymentStatus === 'confirmed';
-      await ordersDb.update(siteOrders)
+      // Conditional on the row still being 'confirmed' so that MP's repeated
+      // refund notifications can't give the coupon back more than once.
+      const reversed = await ordersDb.update(siteOrders)
         .set({ status: 'cancelled', paymentStatus: 'failed', mpPaymentId: mpId, updatedAt: new Date() })
-        .where(eq(siteOrders.id, orderId));
-      if (wasConfirmed) await bumpCouponUsage(order.couponCode, -1);
+        .where(and(eq(siteOrders.id, orderId), eq(siteOrders.paymentStatus, 'confirmed')))
+        .returning();
+      if (reversed.length > 0) {
+        await bumpCouponUsage(reversed[0].couponCode, -1);
+      } else {
+        // Never was confirmed (or already reversed): just record the outcome.
+        await ordersDb.update(siteOrders)
+          .set({ status: 'cancelled', paymentStatus: 'failed', mpPaymentId: mpId, updatedAt: new Date() })
+          .where(and(eq(siteOrders.id, orderId), eq(siteOrders.paymentStatus, 'awaiting')));
+      }
     }
 
     res.json({ ok: true });
@@ -965,7 +1013,7 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
       isNull(siteOrders.unpaidFollowupSentAt),
       lte(siteOrders.createdAt, twoHoursAgo),
       gte(siteOrders.createdAt, threeDaysAgo),
-    )).limit(2); // max 2 per cron run — keeps execution within Hobby 10s budget
+    )).limit(10); // bounded by maxDuration (60s), with a 1s pause between sends
     if (orders.length === 0) return { sent };
 
     const tpls = await ordersDb.select().from(msgTemplates).where(inArray(msgTemplates.type, ['unpaid', 'failed']));
@@ -983,7 +1031,7 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
         .from(abandonedCarts).where(eq(abandonedCarts.customerPhone, phoneDigits)).limit(1);
       if (cartRecord?.optedOut) continue;
 
-      const link = `https://premium.salvitarn.com.br/meu-pedido?pedido=${o.id}&tel=${o.customerPhone.replace(/\D/g, '').slice(-4)}`;
+      const link = orderTrackLink(o);
       let tpl = o.paymentStatus === 'failed' ? defaultByType('failed') : defaultByType('unpaid');
       let pix = '';
       if (o.paymentStatus === 'awaiting') {
@@ -1044,7 +1092,7 @@ async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
       eq(siteOrders.paymentStatus, 'awaiting'),
       lte(siteOrders.createdAt, oneHourAgo),
       gte(siteOrders.createdAt, thirtyDaysAgo),
-    )).limit(5); // lightweight DB/API check only — no WA sends
+    )).limit(20); // lightweight DB/API check only — no WA sends
 
     for (const o of orders) {
       try {
@@ -1114,7 +1162,7 @@ async function processReorderReminders(): Promise<{ sent: number }> {
       isNull(siteOrders.reorderRemindedAt),
       lte(siteOrders.createdAt, fortyFiveDaysAgo),
       gte(siteOrders.createdAt, ninetyDaysAgo),
-    )).limit(2); // max 2 per cron run — keeps execution within Hobby 10s budget
+    )).limit(10); // bounded by maxDuration (60s), with a 1s pause between sends
     if (orders.length === 0) return { sent };
 
     const [tpl] = await ordersDb.select().from(msgTemplates)
@@ -1150,7 +1198,9 @@ async function processReorderReminders(): Promise<{ sent: number }> {
 app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
   const secret = process.env.CRON_SECRET;
   const provided = req.headers['x-cron-secret'] ?? req.headers['authorization']?.replace('Bearer ', '');
-  if (secret && provided !== secret) {
+  // Fail closed: with the old `if (secret && ...)` an unset CRON_SECRET left this
+  // endpoint — which sends WhatsApp and e-mail — open to anyone.
+  if (!secret || provided !== secret) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
@@ -1158,10 +1208,12 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
     const { lte } = await import('drizzle-orm');
     const { automationRuns: runs, abandonedCarts: carts } = await import('../server/db/schema');
     const now = new Date();
-    // Limit to 3 per cron run — keeps total execution under Vercel Hobby 10s budget
-    const due = await ordersDb.select().from(runs).where(
+    // Batch sizes are bounded by `maxDuration` (60s in vercel.json), not by the
+    // 10s figure the previous comments assumed — that mismatch capped the whole
+    // system at 3 recovery messages per day once the cron went to daily.
+    const due = await withDbRetry('due-runs', () => ordersDb.select().from(runs).where(
       and(eq(runs.status, 'scheduled'), lte(runs.scheduledFor, now))
-    ).limit(3);
+    ).limit(20));
 
     // Load all abandoned templates once (small table) and index by slug for the cadence.
     const abandonedTpls = await ordersDb.select().from(msgTemplates).where(eq(msgTemplates.type, 'abandoned'));
@@ -1179,9 +1231,11 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
     const fallbackTpl = tplBySlug['abandoned_simples'] ?? abandonedTpls.find(t => t.isDefault);
 
     // ── Always run these regardless of business hours ────────────────────────
-    const unpaid = await processUnpaidFollowups();      // has its own hours check
-    const reconciled = await reconcileAwaitingOrders(); // no WA sends, pure DB/API
-    const reorder = await processReorderReminders();    // has its own hours check
+    // Each is isolated: a failure in one must not cost the others their run,
+    // because on the current schedule the next attempt is a day away.
+    const unpaid = await runIsolated('unpaid-followup', processUnpaidFollowups, { sent: 0 });
+    const reconciled = await runIsolated('reconcile', reconcileAwaitingOrders, { confirmed: 0 });
+    const reorder = await runIsolated('reorder-reminder', processReorderReminders, { sent: 0 });
 
     // ── Abandoned cart automation: only during business hours ─────────────────
     let sent = 0, cancelled = 0, failed = 0;

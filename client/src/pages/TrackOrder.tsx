@@ -16,26 +16,29 @@ function getStepIndex(status: string) {
 }
 
 // MP redirects with ?pedido=ID&status=pago after payment.
-// Recovery emails/WhatsApp links also include ?tel=XXXX (last 4 digits) so the
-// customer can land directly on their order without retyping anything.
+// Links we send (return URLs, recovery e-mail/WhatsApp) carry ?t=<track token>,
+// an opaque per-order credential, so the customer lands straight on their order.
+// The old ?tel=XXXX form is gone — it put the ownership proof itself into a URL
+// that passes through Mercado Pago, browser history and Referer headers.
 function getUrlParams() {
   const p = new URLSearchParams(window.location.search);
-  return { pedido: p.get('pedido'), status: p.get('status'), tel: p.get('tel') };
+  return { pedido: p.get('pedido'), status: p.get('status'), token: p.get('t') };
 }
+
+type TrackQuery = { orderId: number; phone?: string; token?: string };
 
 export default function TrackOrder() {
   const urlParams = getUrlParams();
   const [orderId, setOrderId] = useState(urlParams.pedido ?? '');
-  const [phone, setPhone] = useState(urlParams.tel ?? '');
+  const [phone, setPhone] = useState('');
   const [submitted, setSubmitted] = useState(false);
-  const [queryInput, setQueryInput] = useState<{ orderId: number; phone: string } | null>(
-    urlParams.pedido && urlParams.tel ? { orderId: parseInt(urlParams.pedido), phone: urlParams.tel } : null
+  const [queryInput, setQueryInput] = useState<TrackQuery | null>(
+    urlParams.pedido && urlParams.token
+      ? { orderId: parseInt(urlParams.pedido), token: urlParams.token }
+      : null
   );
   const [mpStatus] = useState(urlParams.status);
   const [payLoading, setPayLoading] = useState(false);
-
-  // Used to verify ownership when generating a payment link.
-  const payerPhone = phone || urlParams.tel || '';
 
   async function handlePay() {
     const id = queryInput?.orderId ?? parseInt(urlParams.pedido ?? '');
@@ -45,7 +48,11 @@ export default function TrackOrder() {
       const res = await fetch('/api/trpc/shipping.createPayment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ json: { orderId: id, phone: payerPhone || undefined } }),
+        body: JSON.stringify({ json: {
+          orderId: id,
+          token: queryInput?.token ?? urlParams.token ?? undefined,
+          phone: queryInput?.phone ?? (phone.trim() || undefined),
+        } }),
       });
       const data = await res.json();
       const initPoint = data?.result?.data?.json?.initPoint;
@@ -59,9 +66,10 @@ export default function TrackOrder() {
     { enabled: !!queryInput, retry: false }
   );
 
-  // If we have both order + phone from the link, search automatically.
+  // With a token in the link the order opens straight away; otherwise focus the
+  // phone field so the customer can identify themselves.
   useEffect(() => {
-    if (urlParams.pedido && urlParams.tel) {
+    if (urlParams.pedido && urlParams.token) {
       setSubmitted(true);
     } else if (urlParams.pedido) {
       const el = document.getElementById('track-phone');
@@ -73,8 +81,10 @@ export default function TrackOrder() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     const id = parseInt(orderId);
-    if (!id || !phone.trim()) return;
-    setQueryInput({ orderId: id, phone: phone.trim() });
+    const digits = phone.replace(/\D/g, '');
+    // The server now requires the whole number, not a 4-digit suffix.
+    if (!id || digits.length < 10) return;
+    setQueryInput({ orderId: id, phone: digits });
     setSubmitted(true);
   };
 
@@ -166,7 +176,7 @@ export default function TrackOrder() {
             🔍 Rastrear meu pedido
           </h2>
           <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.5)', marginBottom: '24px' }}>
-            Informe o número do pedido e os últimos 4 dígitos do seu telefone.
+            Informe o número do pedido e o telefone completo usado na compra.
           </p>
           <form onSubmit={handleSearch}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -191,15 +201,16 @@ export default function TrackOrder() {
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Últimos 4 dígitos do telefone
+                  Telefone completo com DDD
                 </label>
                 <input
                   id="track-phone"
-                  type="text"
+                  type="tel"
+                  inputMode="numeric"
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
-                  placeholder="Ex: 8212"
-                  maxLength={4}
+                  placeholder="Ex: (84) 98620-7841"
+                  maxLength={20}
                   required
                   style={{
                     width: '100%', boxSizing: 'border-box',

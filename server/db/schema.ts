@@ -195,6 +195,10 @@ export const siteOrders = pgTable('site_orders', {
   fbclid: text('fbclid'),
   // Reorder reminder (retention): set when the ~45-day "buy again" nudge is sent.
   reorderRemindedAt: timestamp('reorder_reminded_at'),
+  // Opaque per-order secret used to authorize tracking/payment without exposing
+  // customer data to ID enumeration. Orders created before this column exists
+  // are null — those still fall back to full-phone verification.
+  trackToken: text('track_token'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

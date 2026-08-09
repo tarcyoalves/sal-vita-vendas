@@ -17,12 +17,47 @@ export function brl(price: string | null | undefined): string {
 
 // Adjusts a coupon's used_count. Called +1 only when a payment is CONFIRMED (so
 // abandoned/unpaid orders never burn a coupon's max uses) and -1 on refund.
+/**
+ * Customer-facing link to an order.
+ *
+ * Uses the opaque per-order token. Orders created before `track_token` existed
+ * have none — those links still open /meu-pedido, and the page asks for the full
+ * phone number. The old `&tel=<last 4 digits>` form is gone: it put the very
+ * credential that unlocks the order into a URL shared with Mercado Pago, browser
+ * history and `Referer` headers.
+ */
+export function orderTrackLink(
+  order: { id: number; trackToken?: string | null },
+  extraQuery?: string,
+): string {
+  const base = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}`;
+  const withToken = order.trackToken ? `${base}&t=${order.trackToken}` : base;
+  return extraQuery ? `${withToken}&${extraQuery}` : withToken;
+}
+
 export async function bumpCouponUsage(code: string | null | undefined, delta: 1 | -1): Promise<void> {
   if (!code) return;
   try {
-    await ordersDb.update(coupons)
-      .set({ usedCount: delta > 0 ? sql`used_count + 1` : sql`GREATEST(used_count - 1, 0)` })
-      .where(eq(coupons.code, code));
+    if (delta > 0) {
+      // Conditional increment: `used_count` can never pass `max_uses`, even when
+      // several confirmations for the same coupon land at once. Without the
+      // WHERE clause, concurrent webhook/reconcile confirmations each read the
+      // old count and the counter drifts past the limit.
+      const bumped = await ordersDb.update(coupons)
+        .set({ usedCount: sql`used_count + 1` })
+        .where(and(
+          eq(coupons.code, code),
+          sql`(${coupons.maxUses} IS NULL OR ${coupons.usedCount} < ${coupons.maxUses})`,
+        ))
+        .returning({ id: coupons.id });
+      if (bumped.length === 0) {
+        console.warn(`[coupon] ${code} already at max_uses — discount was granted but the counter was not bumped`);
+      }
+    } else {
+      await ordersDb.update(coupons)
+        .set({ usedCount: sql`GREATEST(used_count - 1, 0)` })
+        .where(eq(coupons.code, code));
+    }
   } catch (e) { console.error('[coupon] usage bump failed:', e); }
 }
 
