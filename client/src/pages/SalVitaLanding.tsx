@@ -1078,7 +1078,7 @@ export default function SalVitaLanding() {
             <div id="tl-g" data-reveal className={`tl-wrap${v('tl-g')?' on':''}`}>
               {[
                 {e:'🌊',t:'Colheita artesanal',d:'Água do Atlântico cristaliza nos tanques sob o sol de Mossoró.'},
-                {e:'☀️',t:'Secagem ao sol',d:'100% natural — sem fornos, sem calor industrial, sem pressa.'},
+                {e:'☀️',t:'Secagem ao sol',d:'Evaporação solar — sem fornos, sem calor industrial, sem pressa.'},
                 {e:'🔍',t:'Seleção rigorosa',d:'Colheita, secagem e moagem — sem refino industrial. Nenhum mineral traço é retirado.'},
                 {e:'🧂',t:'Embalado na origem',d:'Zip lock premium com janela — do cristal à sua cozinha, intacto.'},
               ].map((s,i)=>(
@@ -1109,7 +1109,7 @@ export default function SalVitaLanding() {
                 {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,t:'Sal Não Refinado',d:'Processamento mínimo — colheita, secagem ao sol e moagem. Nenhum mineral traço é retirado no processo.'},
                 {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>,t:'Zip Lock Premium',d:'Fechamento duplo de alta espessura. Abre e fecha centenas de vezes sem perder a vedação. Chega de sal empedrado.'},
                 {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>,t:'Janela Transparente',d:'Circular na frente da embalagem. Você vê o sal a qualquer momento, sem precisar abrir.'},
-                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>,t:'Seco ao Sol Natural',d:'Secagem 100% natural sob o sol do Nordeste. Sem calor industrial e sem refino que remova os minerais traço.'},
+                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>,t:'Seco ao Sol',d:'Secagem por evaporação solar sob o sol do Nordeste. Sem calor industrial e sem refino que remova os minerais traço.'},
                 {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><path d="M2 12c1.5-3 4-4.5 6-4.5s4.5 3 6 3 4.5-1.5 6-4.5"/><path d="M2 18c1.5-3 4-4.5 6-4.5s4.5 3 6 3 4.5-1.5 6-4.5"/></svg>,t:'100% Mossoró RN',d:'Das salinas que produzem 95% do sal marinho brasileiro. Apoio direto à economia do Nordeste.'},
               ].map((b,i)=>(
                 <div key={b.t} className={`ben-cell${i%3!==2?' ben-cell-border-r':''}${i<3?' ben-cell-border-b':''}`} style={{transitionDelay:`${i*.08}s`}}>

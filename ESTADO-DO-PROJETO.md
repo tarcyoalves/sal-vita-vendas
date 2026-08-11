@@ -95,9 +95,45 @@ Selo frontal: "+80 MINERAIS NATURAIS PRESERVADOS"  ← contradiz o verso
 secagem por evaporação solar, ausência de refino industrial (os minerais traço ficam),
 granulometria, umidade característica, embalagem zip lock com janela.
 
-**Norma:** RDC 604/2022 (ANVISA). A ANVISA está fiscalizando teor de iodo em sal — em
-21/01/2026 recolheu o lote 901124 do sal Marfim por reprovação nesse ensaio. O risco da
-Sal Vita **não** é o produto; era o site contradizer o próprio rótulo.
+Também evite **"100% natural"** como descrição do produto. Descreva o processo
+("evaporação solar", "secagem ao sol") — o produto passa por seleção, moagem, iodação e
+embalagem.
+
+### Precedentes reais da ANVISA (leia antes de escrever copy)
+
+| Data | O que aconteceu | Lição |
+|---|---|---|
+| 21/01/2026 | Recolhimento do lote 901124 do sal **Marfim**, reprovado no ensaio de **teor de iodo** (LACEN-DF), via RE nº 219. | A fiscalização testa iodo em sal de verdade. O da Sal Vita está em 25 mg/kg. |
+| **07/08/2026** | **Proibição de 6 produtos** (Quanqton Ocean Salts, Sal Integral Quanqton, Sal Perfeito, New Quantic, Endurance e um chamado literalmente **"Sal Marinho Integral"**), publicada no DOU. | Ver abaixo — é o precedente mais relevante. |
+
+**O caso de 07/08/2026 em detalhe.** A proibição não foi pelo nome nem pelo conceito de
+"sal integral". Foi pela combinação de três coisas:
+
+1. **Fabricante desconhecido / clandestino**
+2. **Sem registro sanitário**
+3. **Alegações terapêuticas**: prevenção de cãibras e fadiga muscular, reposição mineral
+   em treinos, hidratação celular por eletrólitos, recuperação após esforço, equilíbrio
+   do sistema nervoso e muscular.
+
+A ANVISA foi explícita: **alimento não pode ser anunciado com indicação terapêutica nem
+promessa de prevenir problema de saúde** — isso é exclusivo de medicamento e exige
+comprovação científica.
+
+**Por que a Sal Vita é um caso diferente:** o rótulo identifica produtor (CNPJ
+11309104000107) e distribuidor (A S Comércio e Moagem de Sal Ltda, CNPJ
+51.422.900/0001-68) com endereço completo em Mossoró — o oposto do perfil clandestino
+punido. E o site não faz nenhuma alegação terapêutica (auditado em 11/08/2026: zero).
+
+> ⚠️ **Item aberto para o dono:** a proibição girou em torno de **falta de registro
+> sanitário**. Confirme com o produtor a situação de regularização sanitária do produto e
+> a licença do estabelecimento. Isso é documental, não é copy — e nenhuma IA consegue
+> verificar por código.
+
+**Não vale a pena chegar perto.** Mesmo sem promessa terapêutica explícita, evite a
+família semântica que a ANVISA acabou de atacar: "reposição mineral", "eletrólitos",
+"minerais essenciais para o organismo", "energia", "hidratação", ou listar minerais com a
+função de cada um no corpo. Fale de **sabor, textura, origem e processo** — que é onde a
+marca é forte e onde não há risco nenhum.
 
 **Se um dia sair um laudo** enumerando os elementos, aí sim dá para voltar com número de
 minerais. Até lá, não.
