@@ -623,6 +623,8 @@ export default function SalVitaLanding() {
           --muted:   #6a7a90;
         }
         html{scroll-behavior:smooth;}
+        /* nav e fixa: sem isso a ancora aterrissa por baixo da barra */
+        #produto,#beneficios,#como-usar,#preco{scroll-margin-top:96px;}
         .lp { font-family:'Outfit',sans-serif; color:var(--text); background:var(--white); overflow-x:hidden; }
         .lp ::selection{background:rgba(201,162,39,.35);}
 
@@ -828,8 +830,8 @@ export default function SalVitaLanding() {
           <div style={{maxWidth:1200,margin:'0 auto',padding:'0 20px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
             <Logo size={44}/>
             <div className="nav-menu" style={{display:'flex',gap:28,alignItems:'center'}}>
-              {['Produto','Benefícios','Como Usar','Preço'].map(l=>(
-                <a key={l} href={`#${l.toLowerCase().replace('í','i').replace('ç','c')}`} style={{color:'rgba(255,255,255,.72)',fontSize:'.88rem',fontWeight:500,letterSpacing:'.14em',textDecoration:'none',textTransform:'uppercase',transition:'color .2s'}}
+              {[{l:'Produto',h:'#produto'},{l:'Benefícios',h:'#beneficios'},{l:'Como Usar',h:'#como-usar'},{l:'Preço',h:'#preco'}].map(({l,h})=>(
+                <a key={l} href={h} style={{color:'rgba(255,255,255,.72)',fontSize:'.88rem',fontWeight:500,letterSpacing:'.14em',textDecoration:'none',textTransform:'uppercase',transition:'color .2s'}}
                   onMouseEnter={e=>e.currentTarget.style.color='var(--goldlt)'}
                   onMouseLeave={e=>e.currentTarget.style.color='rgba(255,255,255,.72)'}>{l}</a>
               ))}

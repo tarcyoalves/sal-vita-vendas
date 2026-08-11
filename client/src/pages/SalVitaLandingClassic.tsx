@@ -599,6 +599,10 @@ export default function SalVitaLandingClassic() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Great+Vibes&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600;1,700&family=Outfit:wght@300;400;500;600;700&display=swap');
 
+        html{scroll-behavior:smooth;}
+        /* nav e fixa: sem isso a ancora aterrissa por baixo da barra */
+        #produto,#beneficios,#como-usar,#preco{scroll-margin-top:96px;}
+
         /* ── Tokens — Premium Dark ── */
         :root {
           --brand:   #0b1d3a;
@@ -940,8 +944,8 @@ export default function SalVitaLandingClassic() {
           <div style={{maxWidth:1200,margin:'0 auto',padding:'0 20px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
             <Logo size={44} white={!scrolled&&!mobileMenu?false:false}/>
             <div className="nav-menu" style={{display:'flex',gap:28,alignItems:'center'}}>
-              {['Produto','Benefícios','Como Usar','Preço'].map(l=>(
-                <a key={l} href={`#${l.toLowerCase().replace('í','i').replace('ç','c')}`} style={{color:'rgba(255,255,255,.7)',fontSize:'.9rem',fontWeight:500,letterSpacing:'.12em',textDecoration:'none',textTransform:'uppercase',transition:'color .2s'}}
+              {[{l:'Produto',h:'#produto'},{l:'Benefícios',h:'#beneficios'},{l:'Como Usar',h:'#como-usar'},{l:'Preço',h:'#preco'}].map(({l,h})=>(
+                <a key={l} href={h} style={{color:'rgba(255,255,255,.7)',fontSize:'.9rem',fontWeight:500,letterSpacing:'.12em',textDecoration:'none',textTransform:'uppercase',transition:'color .2s'}}
                   onMouseEnter={e=>e.currentTarget.style.color='var(--gold)'}
                   onMouseLeave={e=>e.currentTarget.style.color='rgba(255,255,255,.7)'}>{l}</a>
               ))}
