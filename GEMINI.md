@@ -1,3 +1,11 @@
+> # ⚠️ PARE — LEIA `ESTADO-DO-PROJETO.md` PRIMEIRO
+>
+> Este repositório tem **dois produtos distintos** (loja Premium e CRM de Lembretes) e
+> regras de conformidade sanitária que já foram violadas por IA antes. O arquivo
+> `ESTADO-DO-PROJETO.md` na raiz é o ponto de entrada único: estado atual, pendências,
+> armadilhas conhecidas e as 6 regras invioláveis. **Leia antes de escrever qualquer
+> linha de código.**
+
 <!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph
 
