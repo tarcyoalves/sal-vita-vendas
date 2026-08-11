@@ -147,7 +147,7 @@ interface CepData  {localidade:string;uf:string;bairro:string}
 export default function SalVitaLanding() {
   useEffect(() => {
     const prev = document.title;
-    document.title = 'SAL VITA PREMIUM — Sal Marinho Não Refinado de Mossoró · +80 Minerais';
+    document.title = 'SAL VITA PREMIUM — Sal Marinho Não Refinado de Mossoró · Minerais Traço Naturais';
     return () => { document.title = prev; };
   }, []);
 
@@ -892,7 +892,7 @@ export default function SalVitaLanding() {
               </p>
 
               <div className="hero-badges h-rev" style={{animationDelay:'1s',display:'flex',flexWrap:'wrap',gap:8,marginBottom:42}}>
-                {[{t:'+80 Minerais'},{t:'Não Refinado'},{t:'Seco ao Sol'},{t:'Zip Lock Premium'}].map(b=>(
+                {[{t:'Minerais Traço'},{t:'Não Refinado'},{t:'Seco ao Sol'},{t:'Zip Lock Premium'}].map(b=>(
                   <span key={b.t} style={{background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.16)',borderRadius:999,padding:'8px 16px',fontSize:'.88rem',fontWeight:500,color:'rgba(255,255,255,.82)',display:'flex',alignItems:'center',gap:8,letterSpacing:'.04em',backdropFilter:'blur(6px)'}}>
                     <span style={{color:'var(--goldlt)',fontSize:'.6rem'}}>✦</span> {b.t}
                   </span>
@@ -934,7 +934,7 @@ export default function SalVitaLanding() {
                   <Logo size={56}/>
                   <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.5rem',fontWeight:700,color:'white',marginTop:12,textAlign:'center'}}>SAL VITA PREMIUM</div>
                   <div style={{fontSize:'.75rem',color:'rgba(255,255,255,.5)'}}>Sal Integral · 1kg · Mossoró RN</div>
-                  <div style={{marginTop:16,background:'rgba(201,162,39,.15)',border:'1px solid rgba(201,162,39,.4)',borderRadius:8,padding:'6px 14px',fontSize:'.75rem',color:'var(--gold)',fontWeight:700}}>+80 Minerais Naturais</div>
+                  <div style={{marginTop:16,background:'rgba(201,162,39,.15)',border:'1px solid rgba(201,162,39,.4)',borderRadius:8,padding:'6px 14px',fontSize:'.75rem',color:'var(--gold)',fontWeight:700}}>Minerais Traço Naturais</div>
                 </div>
               </div>
               <div style={{position:'absolute',bottom:-34,left:'50%',transform:'translateX(-50%)',width:300,height:38,background:'rgba(0,0,0,.5)',borderRadius:'50%',filter:'blur(30px)'}}/>
@@ -998,7 +998,7 @@ export default function SalVitaLanding() {
           <div className="mq-inner">
             {[...Array(2)].map((_,r)=>(
               <div key={r} style={{display:'flex',gap:52,paddingRight:52}}>
-                {['✦ 100% Salinas de Mossoró','✦ +80 Minerais Naturais','✦ Não Refinado','✦ Zip Lock Premium','✦ Janela Transparente','✦ Iodado Conforme a Lei','✦ 100% Brasileiro','✦ Premium Quality'].map(i=>(
+                {['✦ 100% Salinas de Mossoró','✦ Minerais Traço Naturais','✦ Não Refinado','✦ Zip Lock Premium','✦ Janela Transparente','✦ Iodado Conforme a Lei','✦ 100% Brasileiro','✦ Premium Quality'].map(i=>(
                   <span key={i} style={{whiteSpace:'nowrap',fontWeight:600,letterSpacing:'.2em',textTransform:'uppercase',color:'var(--gold)'}}>{i}</span>
                 ))}
               </div>
@@ -1036,10 +1036,10 @@ export default function SalVitaLanding() {
                 Mossoró produz <strong style={{color:'var(--brand)'}}>mais de 95% do sal marinho brasileiro</strong>. O sol nordestino, os ventos constantes e a baixíssima umidade criam condições únicas para um sal de pureza excepcional.
               </p>
               <p style={{color:'var(--mid)',lineHeight:1.8,fontSize:'1.06rem',marginBottom:38}}>
-                O SAL VITA PREMIUM é <strong style={{color:'var(--brand)'}}>Não Refinado</strong> — preserva seus +80 minerais naturais intactos, entregando muito mais sabor em cada pitada.
+                O SAL VITA PREMIUM é <strong style={{color:'var(--brand)'}}>Não Refinado</strong> — preserva os minerais traço naturais do mar, entregando muito mais sabor em cada pitada.
               </p>
               <div className="story-stats" style={{display:'flex',gap:40,flexWrap:'wrap'}}>
-                {[['+80','Minerais naturais'],['95%','do sal BR vem do RN'],['Não Refinado','do oceano Atlântico']].map(([n,l])=>(
+                {[['Dezenas','Minerais traço do mar'],['95%','do sal BR vem do RN'],['Não Refinado','do oceano Atlântico']].map(([n,l])=>(
                   <div key={n}>
                     <div className="shim-blue" style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'2.4rem',fontWeight:700}}>{n}</div>
                     <div style={{fontSize:'.87rem',color:'var(--muted)',letterSpacing:'.06em',marginTop:4}}>{l}</div>
@@ -1052,7 +1052,7 @@ export default function SalVitaLanding() {
                 <img src={IMG.salina} alt="Salinas de Mossoró" style={{width:'100%',height:400,objectFit:'cover',objectPosition:'center',display:'block'}} loading="lazy"/>
                 <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(6,15,32,.9) 0%,rgba(6,15,32,.25) 45%,transparent 100%)'}}/>
                 <div style={{position:'absolute',bottom:0,left:0,right:0,padding:'24px 28px 28px'}}>
-                  <div className="shim-blue" style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'3.5rem',fontWeight:700,lineHeight:1}}>+80</div>
+                  <div className="shim-blue" style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'3.5rem',fontWeight:700,lineHeight:1}}>Dezenas</div>
                   <p style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.14em',color:'rgba(255,255,255,.68)',textTransform:'uppercase',marginBottom:12}}>Minerais Naturais Preservados</p>
                   <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
                     {['Magnésio','Cálcio','Potássio','Ferro','Iodo','Zinco','Manganês','+ outros'].map(m=>(
@@ -1105,11 +1105,11 @@ export default function SalVitaLanding() {
             </div>
             <div id="ben-g" data-reveal className={`rev ben-table-grid${v('ben-g')?' on':''}`}>
               {[
-                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,t:'+80 Minerais Naturais',d:'Magnésio, cálcio, potássio, ferro, iodo e mais 75 minerais do oceano Atlântico, todos preservados.'},
+                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,t:'Minerais Traço Naturais',d:'Magnésio, cálcio e potássio entre os minerais traço naturalmente presentes na água do mar, preservados por não haver refino.'},
                 {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,t:'Sal Não Refinado',d:'Processamento mínimo — colheita, secagem ao sol e moagem. Nenhum mineral traço é retirado no processo.'},
                 {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>,t:'Zip Lock Premium',d:'Fechamento duplo de alta espessura. Abre e fecha centenas de vezes sem perder a vedação. Chega de sal empedrado.'},
                 {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>,t:'Janela Transparente',d:'Circular na frente da embalagem. Você vê o sal a qualquer momento, sem precisar abrir.'},
-                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>,t:'Seco ao Sol Natural',d:'Secagem 100% natural sob o sol do Nordeste. Sem calor industrial, sem processos que alterem a composição mineral do sal.'},
+                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>,t:'Seco ao Sol Natural',d:'Secagem 100% natural sob o sol do Nordeste. Sem calor industrial e sem refino que remova os minerais traço.'},
                 {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><path d="M2 12c1.5-3 4-4.5 6-4.5s4.5 3 6 3 4.5-1.5 6-4.5"/><path d="M2 18c1.5-3 4-4.5 6-4.5s4.5 3 6 3 4.5-1.5 6-4.5"/></svg>,t:'100% Mossoró RN',d:'Das salinas que produzem 95% do sal marinho brasileiro. Apoio direto à economia do Nordeste.'},
               ].map((b,i)=>(
                 <div key={b.t} className={`ben-cell${i%3!==2?' ben-cell-border-r':''}${i<3?' ben-cell-border-b':''}`} style={{transitionDelay:`${i*.08}s`}}>
@@ -1151,7 +1151,7 @@ export default function SalVitaLanding() {
                 O sal que combina com tudo
               </h2>
               <p style={{color:'var(--muted)',fontSize:'1rem',maxWidth:460,margin:'0 auto',lineHeight:1.7}}>
-                Com +80 minerais naturais, cada pitada entrega sabor mais rico — do preparo à finalização.
+                Com os minerais traço do mar preservados, cada pitada entrega sabor mais rico — do preparo à finalização.
               </p>
             </div>
             <div id="use-g" data-reveal className={`rev use-2col${v('use-g')?' on':''}`}>
@@ -1189,7 +1189,7 @@ export default function SalVitaLanding() {
                 </thead>
                 <tbody>
                   {[
-                    ['Minerais naturais preservados', '✓ +80 minerais','parcial','✗ removidos'],
+                    ['Minerais traço preservados',    '✓','parcial','✗ removidos'],
                     ['Secagem solar natural',         '✓','parcial','✗'],
                     ['Sabor rico e natural',          '✓ intenso','médio','✗ neutro'],
                     ['Não refinado / integral',       '✓','parcial','✗'],
@@ -1281,8 +1281,8 @@ export default function SalVitaLanding() {
 
                   <ul style={{listStyle:'none',padding:0,marginBottom:28}}>
                     {(p.highlight
-                      ? ['10 embalagens zip lock de 1kg','+80 Minerais Naturais preservados','Sal marinho não refinado de Mossoró','Ideal para casa, churrasco e cozinha']
-                      : ['Sal Marinho Não Refinado','+80 Minerais Naturais','Zip lock com janela de visualização','100% Mossoró RN']
+                      ? ['10 embalagens zip lock de 1kg','Minerais traço naturais preservados','Sal marinho não refinado de Mossoró','Ideal para casa, churrasco e cozinha']
+                      : ['Sal Marinho Não Refinado','Minerais Traço Naturais','Zip lock com janela de visualização','100% Mossoró RN']
                     ).map(f=>(
                       <li key={f} style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
                         <span style={{color:'var(--gold)',fontSize:'.85rem',flexShrink:0}}>✦</span>
@@ -1402,7 +1402,7 @@ export default function SalVitaLanding() {
               <div>
                 <h4 style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.16em',color:'var(--gold)',textTransform:'uppercase',marginBottom:16}}>Produto</h4>
                 <ul style={{listStyle:'none',padding:0}}>
-                  {['1kg — R$ 29,90','Trio 3kg — R$ 74,90','Caixa 10kg — R$ 149,90','Frete calculado por CEP','+80 Minerais Naturais'].map(i=>(
+                  {['1kg — R$ 29,90','Trio 3kg — R$ 74,90','Caixa 10kg — R$ 149,90','Frete calculado por CEP','Minerais Traço Naturais'].map(i=>(
                     <li key={i} style={{color:'rgba(255,255,255,.38)',marginBottom:8}}>{i}</li>
                   ))}
                 </ul>
