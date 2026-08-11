@@ -79,7 +79,7 @@ const PARTICLES = Array.from({length:20},(_,i)=>({
 
 /* ─── FAQ ────────────────────────────────────────────────── */
 const FAQS = [
-  {q:'O que é sal marinho não refinado?',a:'Processamento mínimo — apenas lavado e seco ao sol natural, sem adicionar ou retirar nada. Preserva os +80 minerais naturais do oceano: magnésio, cálcio, potássio, ferro, iodo e muitos outros, que conferem sabor mais rico e complexo comparado ao sal refinado comum.'},
+  {q:'O que é sal marinho não refinado?',a:'Passa apenas pelos processos essenciais de colheita, secagem e moagem — sem o refino industrial que remove os minerais traço. Preserva o complexo natural de minerais presentes na água do mar, como magnésio, cálcio e potássio, que conferem sabor mais rico e complexo comparado ao sal refinado comum. Como todo sal para consumo humano no Brasil, é enriquecido com iodo conforme a legislação.'},
   {q:'Por que "mais sabor em menos pitadas"?',a:'A presença dos minerais naturais amplifica a percepção de sabor nos alimentos. Com o sal refinado você perde toda essa riqueza. Com o SAL VITA PREMIUM Não Refinado, uma pitada menor já entrega mais sabor — consumo mais consciente e econômico.'},
   {q:'O zip lock realmente funciona?',a:'Sim. Fechamento duplo de alta espessura com junta dupla de vedação. Abre e fecha centenas de vezes sem perder a vedação. A janela circular transparente permite ver o sal a qualquer momento sem abrir a embalagem.'},
 {q:'Por que o sal de Mossoró é diferente?',a:'Mossoró (RN) produz mais de 95% do sal marinho brasileiro. Sol intenso, ventos constantes e baixíssima umidade criam um sal de altíssima pureza, colhido diretamente do oceano Atlântico.'},
@@ -1119,7 +1119,7 @@ export default function SalVitaLandingClassic() {
           <div className="mq-inner">
             {[...Array(2)].map((_,r)=>(
               <div key={r} style={{display:'flex',gap:52,paddingRight:52}}>
-                {['✦ 100% Salinas de Mossoró','✦ +80 Minerais Naturais','✦ Não Refinado','✦ Zip Lock Premium','✦ Janela Transparente','✦ Com Iodo Natural','✦ 100% Brasileiro','✦ Premium Quality'].map(i=>(
+                {['✦ 100% Salinas de Mossoró','✦ +80 Minerais Naturais','✦ Não Refinado','✦ Zip Lock Premium','✦ Janela Transparente','✦ Iodado Conforme a Lei','✦ 100% Brasileiro','✦ Premium Quality'].map(i=>(
                   <span key={i} style={{whiteSpace:'nowrap',fontSize:'.73rem',fontWeight:600,letterSpacing:'.2em',textTransform:'uppercase',color:'var(--gold)'}}>{i}</span>
                 ))}
               </div>
@@ -1216,7 +1216,7 @@ export default function SalVitaLandingClassic() {
             <div id="ben-g" data-reveal className={`rev ben-table-grid${v('ben-g')?' on':''}`}>
               {[
                 {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,t:'+80 Minerais Naturais',d:'Magnésio, cálcio, potássio, ferro, iodo e mais 75 minerais do oceano Atlântico, todos preservados.'},
-                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,t:'Sal Não Refinado',d:'Processamento mínimo — lavado e seco ao sol. Nenhum mineral retirado, nenhum aditivo adicionado além do essencial.'},
+                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,t:'Sal Não Refinado',d:'Processamento mínimo — colheita, secagem ao sol e moagem. Nenhum mineral traço é retirado no processo.'},
                 {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>,t:'Zip Lock Premium',d:'Fechamento duplo de alta espessura. Abre e fecha centenas de vezes sem perder a vedação. Chega de sal empedrado.'},
                 {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>,t:'Janela Transparente',d:'Circular na frente da embalagem. Você vê o sal a qualquer momento, sem precisar abrir.'},
                 {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>,t:'Seco ao Sol Natural',d:'Secagem 100% natural sob o sol do Nordeste. Sem calor industrial, sem processos que alterem a composição mineral do sal.'},
@@ -1286,7 +1286,7 @@ export default function SalVitaLandingClassic() {
             <div id="comp-h" data-reveal className={`rev${v('comp-h')?' on':''}`} style={{textAlign:'center',marginBottom:48}}>
               <p className="eyebrow" style={{color:'var(--brand)'}}>Sal Integral vs Refinado</p>
               <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(1.8rem,4vw,3rem)',fontWeight:700,color:'var(--text)'}}>O que o refinamento retira do seu sal?</h2>
-              <p style={{color:'var(--muted)',marginTop:12,fontSize:'.95rem',maxWidth:560,margin:'12px auto 0'}}>O processamento industrial elimina minerais essenciais e adiciona químicos para branquear e evitar umidade.</p>
+              <p style={{color:'var(--muted)',marginTop:12,fontSize:'.95rem',maxWidth:560,margin:'12px auto 0'}}>O refino industrial remove os minerais traço naturalmente presentes na água do mar, deixando essencialmente cloreto de sódio.</p>
             </div>
             <div id="comp-t" data-reveal className={`rev comp-wrap${v('comp-t')?' on':''}`} style={{overflowX:'auto',borderRadius:16,boxShadow:'0 4px 32px rgba(26,58,138,.08)',background:'white'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.88rem'}}>
@@ -1301,10 +1301,10 @@ export default function SalVitaLandingClassic() {
                 <tbody>
                   {[
                     ['Minerais naturais preservados', '✓ +80 minerais','parcial','✗ removidos'],
-                    ['Sem aditivos químicos',         '✓','parcial','✗'],
+                    ['Secagem solar natural',         '✓','parcial','✗'],
                     ['Sabor rico e natural',          '✓ intenso','médio','✗ neutro'],
                     ['Não refinado / integral',       '✓','parcial','✗'],
-                    ['Não empedra naturalmente',      '✓','✗','✗'],
+                    ['Umidade característica do processo','✓','médio','✗'],
                     ['Embalagem com zip lock',        '✓ dupla vedação','✗','✗'],
                     ['Origem rastreável',             '✓ Mossoró RN','variada','variada'],
                   ].map(([f,a,b,c],ri)=>(
@@ -1463,7 +1463,7 @@ export default function SalVitaLandingClassic() {
               <p style={{fontSize:'.82rem',fontWeight:700,letterSpacing:'.18em',color:'rgba(255,255,255,.4)',textTransform:'uppercase',marginBottom:16}}>Dúvidas rápidas</p>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px 32px'}}>
                 {[
-                  ['É iodado?','Sim — iodo natural do oceano Atlântico'],
+                  ['É iodado?','Sim — 25 mg/kg, conforme a legislação brasileira'],
                   ['Empedra?','Não — cristais naturais não endurecem'],
                   ['Granulometria?','Média/grossa, ideal para todo uso'],
                   ['Quanto dura 1kg?','1–2 meses para família de 4 pessoas'],
