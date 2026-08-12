@@ -308,7 +308,7 @@ export default function AppShell({ children }: AppShellProps) {
             const showGroup = item.group && item.group !== visibleItems[idx - 1]?.group;
 
             const groupHeader = showGroup ? (
-              <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-200/40 select-none">
+              <div className="px-3 pt-5 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400/80 border-t border-white/5 first:border-0 select-none">
                 {item.group}
               </div>
             ) : null;
@@ -318,26 +318,26 @@ export default function AppShell({ children }: AppShellProps) {
                 <li key={item.label}>
                   {groupHeader}
                   <button
-                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                       childActive
-                        ? "bg-white/10 text-white shadow-[inset_3px_0_0_var(--sand)]"
-                        : "text-blue-100/70 hover:bg-white/5 hover:text-white"
+                        ? "bg-[#0C3680] text-white shadow-sm border-r-2 border-blue-400"
+                        : "text-slate-300 hover:bg-white/5 hover:text-white"
                     }`}
                     onClick={() => setIaExpanded(!iaExpanded)}
                   >
-                    <span className="flex-shrink-0">{item.icon}</span>
+                    <span className="flex-shrink-0 text-blue-300">{item.icon}</span>
                     <span className="flex-1 text-left">{item.label}</span>
-                    {iaExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    {iaExpanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
                   </button>
                   {iaExpanded && (
-                    <ul className="mt-0.5 ml-4 space-y-0.5 pl-3 border-l border-white/10">
+                    <ul className="mt-1 ml-3 space-y-0.5 pl-3 border-l border-white/10">
                       {item.children!.map((child) => (
                         <li key={child.path}>
                           <button
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                               isActive(child.path)
-                                ? "bg-white/10 text-white shadow-[inset_3px_0_0_var(--sand)]"
-                                : "text-blue-100/60 hover:bg-white/5 hover:text-white"
+                                ? "bg-white/15 text-white font-semibold"
+                                : "text-slate-400 hover:bg-white/5 hover:text-white"
                             }`}
                             onClick={() => {
                               if (child.external) {
@@ -348,9 +348,9 @@ export default function AppShell({ children }: AppShellProps) {
                               }
                             }}
                           >
-                            <span className="flex-shrink-0">{child.icon}</span>
+                            <span className="flex-shrink-0 text-blue-300">{child.icon}</span>
                             <span className="flex-1 text-left">{child.label}</span>
-                            {child.external && <span className="text-[10px] text-blue-200/40">↗</span>}
+                            {child.external && <span className="text-[10px] text-slate-400">↗</span>}
                           </button>
                         </li>
                       ))}
@@ -364,20 +364,20 @@ export default function AppShell({ children }: AppShellProps) {
               <li key={item.label}>
                 {groupHeader}
                 <button
-                  className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                     active
-                      ? "bg-white/10 text-white shadow-[inset_3px_0_0_var(--sand)]"
-                      : "text-blue-100/70 hover:bg-white/5 hover:text-white"
+                      ? "bg-[#0C3680] text-white shadow-sm border-r-2 border-blue-400"
+                      : "text-slate-300 hover:bg-white/5 hover:text-white"
                   }`}
                   onClick={() => {
                     setLocation(item.path!);
                     setSidebarOpen(false);
                   }}
                 >
-                  <span className="flex-shrink-0">{item.icon}</span>
+                  <span className={`flex-shrink-0 ${active ? "text-white" : "text-blue-300"}`}>{item.icon}</span>
                   <span className="flex-1 text-left">{item.label}</span>
                   {item.path === "/admin/dashboard" && !!pendingDeletions && pendingDeletions > 0 && (
-                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-sand text-[#3A2C0E] text-[10px] font-bold">
+                    <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-bold">
                       {pendingDeletions > 9 ? "9+" : pendingDeletions}
                     </span>
                   )}
@@ -389,45 +389,47 @@ export default function AppShell({ children }: AppShellProps) {
       </nav>
 
       {/* Footer */}
-      <div className="border-t border-white/10 p-4 flex-shrink-0">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-8 h-8 rounded-full bg-sand text-[#3A2C0E] flex items-center justify-center text-sm font-bold flex-shrink-0">
+      <div className="border-t border-white/10 p-4 flex-shrink-0 space-y-2">
+        <div className="flex items-center gap-3 bg-white/5 p-2.5 rounded-xl border border-white/5">
+          <div className="w-8 h-8 rounded-lg bg-[#0C3680] text-white flex items-center justify-center text-xs font-bold flex-shrink-0 shadow-xs">
             {userInitial}
           </div>
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-white truncate">{user?.name ?? "Usuário"}</p>
-            <p className="text-xs text-blue-200/50 truncate">{user?.email ?? ""}</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold text-white truncate">{user?.name ?? "Usuário"}</p>
+            <p className="text-[11px] text-slate-400 truncate">{user?.email ?? ""}</p>
           </div>
         </div>
-        <button
-          onClick={() => setShowChangePwd(true)}
-          className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-blue-100/60 hover:text-white hover:bg-white/5 rounded-lg transition-colors mb-1"
-        >
-          <KeyRound size={15} />
-          <span>Alterar Senha</span>
-        </button>
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-blue-100/60 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
-        >
-          <LogOut size={15} />
-          <span>Sair</span>
-        </button>
+        <div className="grid grid-cols-2 gap-1 pt-1">
+          <button
+            onClick={() => setShowChangePwd(true)}
+            className="flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-medium text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+          >
+            <KeyRound size={13} />
+            <span>Senha</span>
+          </button>
+          <button
+            onClick={handleLogout}
+            className="flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition-colors"
+          >
+            <LogOut size={13} />
+            <span>Sair</span>
+          </button>
+        </div>
       </div>
     </div>
   );
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-screen bg-slate-50/50 overflow-hidden">
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-60 flex-col bg-brand-deep flex-shrink-0">
+      <aside className="hidden md:flex w-60 flex-col bg-[#081F47] flex-shrink-0 border-r border-slate-800">
         <SidebarContent />
       </aside>
 
       {/* Mobile Sidebar Overlay */}
       <div className={`fixed inset-0 z-40 md:hidden transition-opacity duration-300 ${sidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}>
-        <div className="fixed inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
-        <aside className={`relative z-50 flex flex-col w-60 h-full bg-brand-deep transition-transform duration-300 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onClick={() => setSidebarOpen(false)} />
+        <aside className={`relative z-50 flex flex-col w-64 h-full bg-[#081F47] transition-transform duration-300 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
           <SidebarContent />
         </aside>
       </div>
@@ -435,28 +437,28 @@ export default function AppShell({ children }: AppShellProps) {
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Topbar */}
-        <header className="bg-white border-b flex items-center px-4 gap-4 flex-shrink-0" style={{ paddingTop: "env(safe-area-inset-top)", minHeight: "calc(56px + env(safe-area-inset-top))" }}>
-          {/* Mobile: show logo instead of hamburger */}
-          <button
-            className="md:hidden p-1.5 bg-slate-800 rounded-xl flex-shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center"
-            onClick={() => setLocation(role === "admin" || role === "manager" ? "/admin/dashboard" : "/tasks")}
-          >
-            <img
-              src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
-              alt="Sal Vita"
-              style={{ height: "34px", width: "auto" }}
-              className="object-contain rounded-lg"
-            />
-          </button>
-          <h1 className="text-base font-semibold text-gray-800 truncate flex-1">{pageTitle}</h1>
-          {/* Mobile: logout button in topbar */}
-          <button
-            className="md:hidden p-2.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-            onClick={handleLogout}
-            aria-label="Sair"
-          >
-            <LogOut size={18} />
-          </button>
+        <header className="bg-white/90 backdrop-blur-md border-b border-slate-200/80 flex items-center justify-between px-6 gap-4 flex-shrink-0 z-10" style={{ paddingTop: "env(safe-area-inset-top)", minHeight: "calc(60px + env(safe-area-inset-top))" }}>
+          <div className="flex items-center gap-3">
+            {/* Mobile menu trigger */}
+            <button
+              className="md:hidden p-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Abrir menu"
+            >
+              <Menu size={20} />
+            </button>
+            <div>
+              <h1 className="text-base font-bold text-slate-900 tracking-tight leading-none">{pageTitle}</h1>
+              <p className="text-[11px] text-slate-400 font-medium mt-0.5">CRM Sal Vita · Operação & Vendas</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200/70 text-emerald-700 text-xs font-semibold">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Sistema Operacional</span>
+            </div>
+          </div>
         </header>
 
         {/* Page content — bottom padding on mobile to avoid bottom nav overlap */}

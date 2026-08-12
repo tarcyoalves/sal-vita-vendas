@@ -909,19 +909,29 @@ export default function AdminDashboard() {
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3.5">
         {kpis.map((kpi) => (
-          <div key={kpi.label} className="saas-stat-card">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 leading-none">{kpi.label}</p>
-                <p className="text-2xl font-bold text-slate-900 tracking-tight mt-1.5 leading-none">{kpi.value}</p>
-                {(kpi as any).sub && <p className="text-[11px] text-slate-400 mt-1 truncate">{(kpi as any).sub}</p>}
-              </div>
-              <div className={`p-2 rounded-xl ${kpi.bg} ${kpi.color} shrink-0`}>
+          <div
+            key={kpi.label}
+            className={`saas-card p-4 relative overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-md ${kpi.border}`}
+          >
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${kpi.color.replace('text-', 'bg-')}`} />
+                {kpi.label}
+              </span>
+              <div className={`p-1.5 rounded-lg ${kpi.bg} ${kpi.color}`}>
                 {kpi.icon}
               </div>
             </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-3xl font-bold font-mono text-slate-900 tracking-tight">{kpi.value}</p>
+            </div>
+            {(kpi as any).sub && (
+              <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                <span className="text-slate-500 font-medium truncate">{(kpi as any).sub}</span>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -930,55 +940,57 @@ export default function AdminDashboard() {
       <EmailStrategicCard />
 
       {/* Funil de Conversão & Performance de Vendas */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Target size={18} className="text-blue-600" />
+      <div className="saas-card p-5 space-y-5">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-blue-50 text-[#0C3680]">
+              <Target size={16} />
+            </div>
             Funil de Conversão & Performance de Vendas
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5">
+          </h3>
+          <span className="saas-badge saas-badge-info text-[10px]">Visão em tempo real</span>
+        </div>
+
+        <div className="space-y-5">
           {/* Funil visual */}
-          <div>
-            <p className="text-xs font-medium text-gray-500 mb-2">Funil — do lead ao cliente ativo</p>
-            <div className="flex items-center gap-2">
+          <div className="bg-slate-50/60 p-4 rounded-xl border border-slate-200/70 space-y-3">
+            <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Etapas do Funil (Lead → Cliente Ativo)</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {[
-                { label: 'Leads', value: funnel.total, color: 'bg-slate-500' },
-                { label: 'Contatados', value: funnel.contacted, color: 'bg-blue-500' },
-                { label: 'Convertidos', value: funnel.converted, color: 'bg-emerald-500' },
-              ].map((stage, i, arr) => {
+                { label: 'Leads Totais', value: funnel.total, color: 'from-slate-600 to-slate-700', badgeClass: 'saas-badge-neutral' },
+                { label: 'Contatados', value: funnel.contacted, color: 'from-blue-600 to-indigo-600', badgeClass: 'saas-badge-info' },
+                { label: 'Convertidos', value: funnel.converted, color: 'from-emerald-500 to-teal-600', badgeClass: 'saas-badge-success' },
+              ].map((stage, i) => {
                 const pct = funnel.total > 0 ? Math.round((stage.value / funnel.total) * 100) : 0;
                 return (
-                  <div key={stage.label} className="flex-1 flex items-center gap-2">
-                    <div className="flex-1">
-                      <div className="flex justify-between text-[11px] text-gray-500 mb-1">
-                        <span>{stage.label}</span>
-                        <span className="font-semibold text-gray-700">{stage.value} ({pct}%)</span>
-                      </div>
-                      <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className={`h-full ${stage.color} rounded-full transition-all`} style={{ width: `${pct}%` }} />
-                      </div>
+                  <div key={stage.label} className="p-3 bg-white rounded-lg border border-slate-200/80 shadow-2xs space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-800">{stage.label}</span>
+                      <span className={`saas-badge ${stage.badgeClass} font-mono`}>{pct}%</span>
                     </div>
-                    {i < arr.length - 1 && <ArrowRight size={14} className="text-gray-300 flex-shrink-0" />}
+                    <p className="text-xl font-bold font-mono text-slate-900">{stage.value.toLocaleString('pt-BR')}</p>
+                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div className={`h-full bg-gradient-to-r ${stage.color} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
+                    </div>
                   </div>
                 );
               })}
             </div>
+
             {staleNoContact.length > 0 && (
-              <p className="text-[11px] text-amber-600 mt-2">
-                {staleNoContact.length} lead(s) há mais de 48h sem nenhum contato — esfriando
-              </p>
+              <div className="p-2.5 bg-amber-50 border border-amber-200/80 rounded-lg text-xs text-amber-800 font-medium flex items-center gap-1.5">
+                <AlertTriangle size={14} className="text-amber-600 flex-shrink-0" />
+                <span>{staleNoContact.length} lead(s) há mais de 48h sem nenhum contato — esfriando</span>
+              </div>
             )}
-            {avgFirstContactDays > 0 && (
-              <p className="text-[11px] text-gray-400 mt-1">
-                Tempo médio até o 1º contato: <strong className="text-gray-600">{avgFirstContactDays < 1 ? `${Math.round(avgFirstContactMs / 3600000)}h` : `${avgFirstContactDays.toFixed(1)} dias`}</strong>
-              </p>
-            )}
-            {avgConversionDays > 0 && (
-              <p className="text-[11px] text-gray-400 mt-1">
-                Tempo médio até a conversão: <strong className="text-gray-600">{avgConversionDays < 1 ? `${Math.round(avgConversionMs / 3600000)}h` : `${avgConversionDays.toFixed(1)} dias`}</strong>
-              </p>
-            )}
+            <div className="flex flex-wrap gap-4 text-xs text-slate-500 pt-1">
+              {avgFirstContactDays > 0 && (
+                <span>⏱️ 1º contato médio: <strong className="text-slate-800">{avgFirstContactDays < 1 ? `${Math.round(avgFirstContactMs / 3600000)}h` : `${avgFirstContactDays.toFixed(1)} dias`}</strong></span>
+              )}
+              {avgConversionDays > 0 && (
+                <span>🏆 Conversão média: <strong className="text-slate-800">{avgConversionDays < 1 ? `${Math.round(avgConversionMs / 3600000)}h` : `${avgConversionDays.toFixed(1)} dias`}</strong></span>
+              )}
+            </div>
           </div>
 
           {/* Tendência semanal de conversões */}
@@ -1073,8 +1085,8 @@ export default function AdminDashboard() {
               )}
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Attendants overview — cross-atendente, só admin */}
       {isFullAdmin && (
