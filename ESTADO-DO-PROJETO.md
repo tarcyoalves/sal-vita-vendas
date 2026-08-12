@@ -157,6 +157,18 @@ minerais. Até lá, não.
   - Seleção por checkbox + Barra flutuante no rodapé para emissão de etiquetas em lote no Melhor Envio (`batchGenerateLabels`) e exportação CSV.
   - Disparo de rastreio direto pelo WhatsApp do servidor na VPS (`sendTrackingWhatsApp`).
   - Varredura de bugs: tratamento defensivo de valores nulos em telefones/CPFs e prevenção de `NaN` em métricas financeiras.
+- **Sistema Completo de E-mail Marketing (Sal Vita Premium)**:
+  - 13 tabelas criadas no banco de dados do Premium (`ORDERS_DATABASE_URL`).
+  - Reserva atômica de cota com `FOR UPDATE` (`reserveDailyQuota` em `marketingQuota.ts`), eliminando o bug de reset por cold start.
+  - Gestão multi-conta em cascata (Resend 1..5 + Brevo 1..5) e suporte a Teste A/B de assunto.
+  - Montagem de público (`buildAudience`) a partir de compradores (`site_orders`), carrinhos (`abandoned_carts`) e leads B2B (`contacts` + `companies`).
+  - Disparos em lote resilientes com claim `FOR UPDATE SKIP LOCKED` e reciclagem de reservas órfãs.
+  - Conformidade LGPD total — Opção (b): Opt-out e webhook de bounce/queixa propagam silenciosamente em todas as tabelas de supressão do grupo (`email_suppressions` Premium, `email_suppressions` CRM, `suppression_list` B2B).
+  - Suporte a RFC 8058 One-Click Unsubscribe (GET & POST) com links em SSL `https://www.premium.salvitarn.com.br`.
+  - Webhook Svix HMAC com verificação de assinatura time-safe (`timingSafeEqual`).
+  - Motor de sequências drip (`sequenceEngine.ts`) com condições de engajamento (`if_opened`, `if_clicked`), loops e motor de regras de automação.
+  - Orçamento de tempo estrito (45s) no cron diário `/api/cron/email-daily`.
+  - Aba de alta performance **"E-mail Marketing"** integrada ao `AdminShell` do Sal Vita Premium (`SalVitaEmailMarketing.tsx`).
 
 **B2B — Sprint 1 (fundação)**
 - 6 tabelas (`companies`, `contacts`, `public_sources`, `consent_records`, `suppression_list`, `audit_logs`) via `ensureB2bTablesExist()`.
