@@ -26,6 +26,10 @@ import { DeleteOrderDialog } from '../components/faturamento/DeleteOrderDialog';
 import { useFatStore } from '../lib/faturamento/store';
 import { totalPedido, formatBRL } from '../lib/faturamento/calc';
 import type { Pedido } from '../lib/faturamento/types';
+import { MultiSelectFilter } from '../components/tasks/MultiSelectFilter';
+import { extractLocation, type TaskLocation } from '../lib/tasks/location';
+
+type ReminderTab = "all" | "overdue" | "upcoming" | "today" | "yesterday" | "lastWeek" | "lastMonth";
 
 interface Task {
   id: number;
@@ -212,7 +216,13 @@ export default function Tasks() {
   const [filterReminder, setFilterReminder] = useState<"all" | "active" | "inactive">("all");
   const [filterConverted, setFilterConverted] = useState<"all" | "active_clients" | "leads">("all");
   const [filterHot, setFilterHot] = useState(false);
-  const [reminderTab, setReminderTab] = useState<"all" | "today" | "yesterday" | "lastWeek" | "lastMonth">("all");
+  // Localização: cidade/UF não são colunas — são derivadas de title/description
+  // (ver lib/tasks/location.ts). Multi-seleção, cidade dependente do estado.
+  const [filterStates, setFilterStates] = useState<string[]>([]);
+  const [filterCities, setFilterCities] = useState<string[]>([]);
+  // "overdue"/"upcoming" existem como abas na UI desde sempre; faltavam no tipo,
+  // o que fazia o TypeScript tratar esses dois ramos do filtro como inalcançáveis.
+  const [reminderTab, setReminderTab] = useState<ReminderTab>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [importedTasks, setImportedTasks] = useState<{ title: string; description: string; notes: string; cnpj?: string; phone?: string }[]>([]);
   const [importSkipped, setImportSkipped] = useState(0);
@@ -346,8 +356,11 @@ export default function Tasks() {
   };
 
 
-  // ── E-mail Marketing: tag filter ────────────────────────────────────────────
-  const [filterTag, setFilterTag] = useState<string>("all");
+  // ── Filtro por tags: multi-seleção com modo de combinação ───────────────────
+  // 'any' = tem qualquer uma das tags marcadas (união, padrão)
+  // 'all' = tem todas ao mesmo tempo (interseção — ex: "ativo" E "compra muito")
+  const [filterTags, setFilterTags] = useState<string[]>([]);
+  const [tagMatchMode, setTagMatchMode] = useState<"any" | "all">("any");
 
   const [progressTick, setProgressTick] = useState(0);
   useEffect(() => {
@@ -624,6 +637,57 @@ export default function Tasks() {
     finally { setBulkDeleteConfirm(false); setDeleteReason(""); }
   };
 
+  // Localização por tarefa — calculada uma vez por lista (não por filtro), já
+  // que parsear título de 3k+ tarefas a cada tecla digitada seria desperdício.
+  const locationByTaskId = useMemo(() => {
+    const map = new Map<number, TaskLocation>();
+    for (const t of tasks as Task[]) map.set(t.id, extractLocation(t));
+    return map;
+  }, [tasks]);
+
+  // Quantas tarefas carregam cada tag — mostrado no seletor pra o atendente
+  // saber o tamanho do recorte antes de aplicar.
+  const tagCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const t of tasks as Task[]) {
+      for (const tag of t.tags ?? []) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+    return counts;
+  }, [tasks]);
+
+  // Opções de UF: só as que existem na base, com contagem.
+  const stateOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const loc of locationByTaskId.values()) {
+      if (loc.state) counts.set(loc.state, (counts.get(loc.state) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([value, count]) => ({ value, label: value, count }));
+  }, [locationByTaskId]);
+
+  // Opções de cidade — restritas às UFs selecionadas, pra lista não virar um
+  // paredão de milhares de itens quando nenhum estado foi escolhido.
+  const cityOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const loc of locationByTaskId.values()) {
+      if (!loc.city) continue;
+      if (filterStates.length > 0 && !filterStates.includes(loc.state)) continue;
+      counts.set(loc.city, (counts.get(loc.city) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([value, count]) => ({ value, label: value, count }));
+  }, [locationByTaskId, filterStates]);
+
+  // Trocar de estado invalida cidades que não pertencem mais ao recorte.
+  useEffect(() => {
+    if (filterCities.length === 0) return;
+    const valid = new Set(cityOptions.map((o) => o.value));
+    const kept = filterCities.filter((c) => valid.has(c));
+    if (kept.length !== filterCities.length) setFilterCities(kept);
+  }, [cityOptions, filterCities]);
+
   const filteredTasks = useMemo(() => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -669,15 +733,48 @@ export default function Tasks() {
     } else if (filterConverted === "leads") {
       result = result.filter(t => !t.convertedAt);
     }
-    if (filterTag !== "all") {
-      result = result.filter(t => t.tags?.includes(filterTag));
+    if (filterTags.length > 0) {
+      result = result.filter(t => {
+        const tags = t.tags ?? [];
+        return tagMatchMode === "all"
+          ? filterTags.every(ft => tags.includes(ft))
+          : filterTags.some(ft => tags.includes(ft));
+      });
+    }
+    if (filterStates.length > 0) {
+      result = result.filter(t => {
+        const st = locationByTaskId.get(t.id)?.state;
+        return !!st && filterStates.includes(st);
+      });
+    }
+    if (filterCities.length > 0) {
+      result = result.filter(t => {
+        const city = locationByTaskId.get(t.id)?.city;
+        return !!city && filterCities.includes(city);
+      });
     }
     if (filterHot) {
       result = result.filter(t => t.hotLead);
     }
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(t => t.title.toLowerCase().includes(q) || t.notes?.toLowerCase().includes(q) || t.assignedTo?.toLowerCase().includes(q));
+      // Busca por todos os termos (E): "laticinios chapada" acha a linha que
+      // tem as duas palavras, em qualquer ordem e em qualquer um dos campos.
+      // Também varre CNPJ/telefone/e-mail, que antes ficavam de fora.
+      const terms = searchQuery.toLowerCase().split(/\s+/).filter(Boolean);
+      result = result.filter(t => {
+        const loc = locationByTaskId.get(t.id);
+        const haystack = [
+          t.title, t.notes, t.assignedTo, t.email, t.cnpj, t.phone,
+          t.description, loc?.city, loc?.state, ...(t.tags ?? []),
+        ].filter(Boolean).join(' ').toLowerCase();
+        const digits = haystack.replace(/\D/g, '');
+        return terms.every(term => {
+          if (haystack.includes(term)) return true;
+          // Termo só de dígitos casa com CNPJ/telefone mesmo formatado
+          const termDigits = term.replace(/\D/g, '');
+          return termDigits.length >= 3 && digits.includes(termDigits);
+        });
+      });
     }
 
     // Sort: hot leads first, then upcoming reminders (soonest), then overdue (most recent), then no reminder
@@ -698,7 +795,41 @@ export default function Tasks() {
       if (aOverdue && bOverdue) return bDate! - aDate!;
       return 0;
     });
-  }, [tasks, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTag, filterHot, reminderTab, isAdmin, searchQuery]);
+  }, [tasks, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTags, tagMatchMode, filterStates, filterCities, locationByTaskId, filterHot, reminderTab, isAdmin, searchQuery]);
+
+  const clearAllFilters = useCallback(() => {
+    setFilterStatus("all");
+    setFilterAssignee("all");
+    setFilterContact("all");
+    setFilterReminder("all");
+    setFilterConverted("all");
+    setFilterTags([]);
+    setFilterStates([]);
+    setFilterCities([]);
+    setFilterHot(false);
+    setReminderTab("all");
+    setSearchQuery("");
+  }, []);
+
+  // Um chip por filtro ativo. Cada chip sabe se limpar sozinho.
+  const activeFilterChips = useMemo(() => {
+    const chips: { key: string; label: string; value: string; clear: () => void }[] = [];
+    if (searchQuery.trim()) chips.push({ key: "q", label: "Busca", value: searchQuery.trim(), clear: () => setSearchQuery("") });
+    if (reminderTab !== "all") {
+      const labels: Record<string, string> = { overdue: "Atrasados", upcoming: "Agendados", today: "Hoje", yesterday: "Ontem", lastWeek: "Semana passada", lastMonth: "Mês passado" };
+      chips.push({ key: "tab", label: "Período", value: labels[reminderTab] ?? reminderTab, clear: () => setReminderTab("all") });
+    }
+    if (filterStatus !== "all") chips.push({ key: "status", label: "Status", value: "Ativas", clear: () => setFilterStatus("all") });
+    if (isAdmin && filterAssignee !== "all") chips.push({ key: "assignee", label: "Atendente", value: filterAssignee === "__none__" ? "Sem atendente" : filterAssignee, clear: () => setFilterAssignee("all") });
+    if (filterContact !== "all") chips.push({ key: "contact", label: "Contato", value: filterContact === "whatsapp" ? "WhatsApp" : "E-mail", clear: () => setFilterContact("all") });
+    if (filterReminder !== "all") chips.push({ key: "rem", label: "Lembrete", value: filterReminder === "active" ? "Com lembrete" : "Sem lembrete", clear: () => setFilterReminder("all") });
+    if (filterConverted !== "all") chips.push({ key: "conv", label: "Situação", value: filterConverted === "active_clients" ? "Clientes ativos" : "Só leads", clear: () => setFilterConverted("all") });
+    if (filterTags.length > 0) chips.push({ key: "tags", label: tagMatchMode === "all" ? "Tags (todas)" : "Tags", value: filterTags.join(tagMatchMode === "all" ? " + " : ", "), clear: () => setFilterTags([]) });
+    if (filterStates.length > 0) chips.push({ key: "uf", label: "Estado", value: filterStates.join(", "), clear: () => setFilterStates([]) });
+    if (filterCities.length > 0) chips.push({ key: "city", label: "Cidade", value: filterCities.join(", "), clear: () => setFilterCities([]) });
+    if (filterHot) chips.push({ key: "hot", label: "Lead", value: "Só quentes", clear: () => setFilterHot(false) });
+    return chips;
+  }, [searchQuery, reminderTab, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTags, tagMatchMode, filterStates, filterCities, filterHot, isAdmin]);
 
   // ── E-mail Marketing: engagement badges (single batched query for visible tasks) ──
   const visibleTaskIds = useMemo(() => filteredTasks.map((t: Task) => t.id), [filteredTasks]);
@@ -1135,15 +1266,42 @@ export default function Tasks() {
             <option value="active_clients">Só clientes ativos</option>
             <option value="leads">Só leads (não convertidos)</option>
           </select>
-          <select
-            value={filterTag}
-            onChange={(e) => setFilterTag(e.target.value)}
-            className={`px-3 py-2 border rounded-lg text-sm font-medium ${filterTag !== "all" ? "bg-indigo-500 text-white border-indigo-500" : "bg-white text-gray-700"}`}
-            title="Filtrar por tag"
-          >
-            <option value="all">Todas as tags</option>
-            {availableTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
-          </select>
+          <MultiSelectFilter
+            placeholder="Todas as tags"
+            noun="tags"
+            options={availableTags.map(tag => ({
+              value: tag,
+              label: tag,
+              color: tagColorMap.get(tag) ?? null,
+              count: tagCounts.get(tag) ?? 0,
+            }))}
+            selected={filterTags}
+            onChange={setFilterTags}
+            matchMode={tagMatchMode}
+            onMatchModeChange={setTagMatchMode}
+            activeClass="bg-indigo-500 text-white border-indigo-500"
+            searchable={availableTags.length > 8}
+          />
+          <MultiSelectFilter
+            placeholder="Todos os estados"
+            noun="estados"
+            options={stateOptions}
+            selected={filterStates}
+            onChange={setFilterStates}
+            activeClass="bg-teal-600 text-white border-teal-600"
+            searchable={stateOptions.length > 8}
+            emptyHint="Nenhuma tarefa com UF identificada"
+          />
+          <MultiSelectFilter
+            placeholder="Todas as cidades"
+            noun="cidades"
+            options={cityOptions}
+            selected={filterCities}
+            onChange={setFilterCities}
+            activeClass="bg-cyan-600 text-white border-cyan-600"
+            searchable
+            emptyHint="Nenhuma tarefa com cidade identificada"
+          />
           {!!hotLeadsData?.count && (
             <button
               onClick={() => setFilterHot(h => !h)}
@@ -1353,7 +1511,7 @@ export default function Tasks() {
 
       {/* Reminder Tabs */}
       <div className="flex gap-1 overflow-x-auto pb-1">
-        {[
+        {([
           { key: "all",       label: "Todas",           cls: "bg-blue-600 border-blue-600" },
           { key: "overdue",   label: "Atrasados",        cls: "bg-red-600 border-red-600" },
           { key: "upcoming",  label: "Agendados",        cls: "bg-green-600 border-green-600" },
@@ -1361,10 +1519,10 @@ export default function Tasks() {
           { key: "yesterday", label: "Ontem",            cls: "bg-blue-600 border-blue-600" },
           { key: "lastWeek",  label: "Semana passada",   cls: "bg-blue-600 border-blue-600" },
           { key: "lastMonth", label: "Mês passado",      cls: "bg-blue-600 border-blue-600" },
-        ].map(tab => (
+        ] as { key: ReminderTab; label: string; cls: string }[]).map(tab => (
           <button
             key={tab.key}
-            onClick={() => setReminderTab(tab.key as any)}
+            onClick={() => setReminderTab(tab.key)}
             className={`px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap border transition ${
               reminderTab === tab.key
                 ? `${tab.cls} text-white`
@@ -1375,6 +1533,35 @@ export default function Tasks() {
           </button>
         ))}
       </div>
+
+      {/* Filtros ativos — mostra o recorte atual e deixa remover um a um.
+          Sem isto, com vários filtros combinados o atendente perde a noção de
+          por que a lista está pequena. */}
+      {activeFilterChips.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-slate-500">
+            {filteredTasks.length} de {tasks.length} ·
+          </span>
+          {activeFilterChips.map(chip => (
+            <button
+              key={chip.key}
+              onClick={chip.clear}
+              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition"
+              title="Remover este filtro"
+            >
+              <span className="text-slate-400">{chip.label}:</span>
+              <span className="font-medium">{chip.value}</span>
+              <X size={11} />
+            </button>
+          ))}
+          <button
+            onClick={clearAllFilters}
+            className="rounded-full px-2.5 py-1 text-xs font-medium text-slate-500 underline-offset-2 hover:text-red-600 hover:underline transition"
+          >
+            Limpar tudo
+          </button>
+        </div>
+      )}
 
       {/* Tasks List */}
       {isLoading ? (
