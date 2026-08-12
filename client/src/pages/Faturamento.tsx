@@ -29,22 +29,21 @@ export default function Faturamento() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
-      {/* Header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-950 via-blue-900 to-blue-800 px-5 py-5 md:px-7 md:py-6 text-white shadow-lg">
-        <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-white/10 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-16 left-1/4 h-48 w-48 rounded-full bg-sky-400/10 blur-3xl" />
-        <div className="relative flex items-center gap-3 md:gap-4">
-          <div className="flex h-11 w-11 md:h-14 md:w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/20">
-            <DollarSign size={26} />
+    <div className="p-4 md:p-6 space-y-6">
+      {/* Header Banner */}
+      <div className="relative overflow-hidden rounded-2xl bg-[#081F47] px-6 py-6 text-white shadow-md border border-slate-800">
+        <div className="pointer-events-none absolute -right-10 -top-12 h-44 w-44 rounded-full bg-blue-500/10 blur-2xl" />
+        <div className="relative flex items-center gap-4">
+          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/20">
+            <DollarSign size={24} className="text-blue-200" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-lg md:text-2xl font-bold tracking-tight">Faturamento & Comissao</h1>
-              <Sparkles size={16} className="text-sky-300 hidden sm:block" />
+              <h1 className="text-xl md:text-2xl font-bold tracking-tight">Faturamento & Comissões</h1>
+              <Sparkles size={16} className="text-amber-400 hidden sm:block" />
             </div>
             <p className="text-xs md:text-sm text-blue-200/80 mt-0.5">
-              Panorama de vendas, relatorio detalhado e catalogo de produtos
+              Panorama de vendas, relatório detalhado de pedidos e catálogo de produtos
             </p>
           </div>
         </div>
@@ -52,15 +51,24 @@ export default function Faturamento() {
 
       {/* Tabs */}
       <Tabs defaultValue="panorama">
-        <TabsList className="flex-nowrap overflow-x-auto scrollbar-hide justify-start gap-1 rounded-2xl bg-slate-100 p-1.5">
-          <TabsTrigger value="panorama" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <BarChart2 size={14} /> Panorama
+        <TabsList className="inline-flex gap-1 rounded-xl bg-slate-100 p-1 border border-slate-200/60">
+          <TabsTrigger
+            value="panorama"
+            className="gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold text-slate-600 data-[state=active]:bg-[#0C3680] data-[state=active]:text-white data-[state=active]:shadow-xs transition-all"
+          >
+            <BarChart2 size={15} /> Panorama
           </TabsTrigger>
-          <TabsTrigger value="relatorio" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <FileText size={14} /> Pedidos
+          <TabsTrigger
+            value="relatorio"
+            className="gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold text-slate-600 data-[state=active]:bg-[#0C3680] data-[state=active]:text-white data-[state=active]:shadow-xs transition-all"
+          >
+            <FileText size={15} /> Pedidos
           </TabsTrigger>
-          <TabsTrigger value="produtos" className={`${TAB_TRIGGER_CLASS} flex-shrink-0`}>
-            <Package size={14} /> Produtos
+          <TabsTrigger
+            value="produtos"
+            className="gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold text-slate-600 data-[state=active]:bg-[#0C3680] data-[state=active]:text-white data-[state=active]:shadow-xs transition-all"
+          >
+            <Package size={15} /> Produtos
           </TabsTrigger>
         </TabsList>
 

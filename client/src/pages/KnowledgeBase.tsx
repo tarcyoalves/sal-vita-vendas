@@ -65,139 +65,158 @@ export default function KnowledgeBase() {
   };
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl mx-auto">
-        <div className="mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
-          <p className="text-gray-600 text-sm">
-            Adicione documentos, políticas e informações sobre sua empresa para que a IA tenha mais contexto.
+    <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="pb-4 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">Base de Conhecimento IA</h1>
+          <p className="text-xs md:text-sm text-slate-500 mt-0.5">
+            Adicione documentos e diretrizes para alimentar o contexto do assistente de IA
           </p>
-          <Button size="sm" onClick={() => setShowForm(!showForm)} className="flex-shrink-0">
-            {showForm ? "Cancelar" : "Novo Documento"}
-          </Button>
         </div>
+        <Button
+          size="sm"
+          onClick={() => setShowForm(!showForm)}
+          className="bg-[#0C3680] hover:bg-[#081F47] text-white font-medium shadow-xs transition-all flex-shrink-0"
+        >
+          {showForm ? "Cancelar" : "+ Novo Documento"}
+        </Button>
+      </div>
 
-        {/* Form */}
-        {showForm && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Adicionar Novo Documento</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Título *</label>
-                  <input
-                    type="text"
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    placeholder="Ex: Política de Vendas"
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+      {/* Form */}
+      {showForm && (
+        <div className="saas-card p-5 border-slate-200 shadow-md">
+          <h2 className="text-sm font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100">Adicionar Novo Documento</h2>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">Título do Documento *</label>
+              <input
+                type="text"
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                placeholder="Ex: Diretrizes de Vendas Sal Vita"
+                className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680] transition-all shadow-xs"
+              />
+            </div>
 
-                <div>
-                  <label className="block text-sm font-medium mb-2">Categoria</label>
-                  <input
-                    type="text"
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    placeholder="Ex: Políticas, Procedimentos, Informações"
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">Categoria</label>
+              <input
+                type="text"
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                placeholder="Ex: Políticas, Procedimentos, Catálogo"
+                className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680] transition-all shadow-xs"
+              />
+            </div>
 
-                <div>
-                  <label className="block text-sm font-medium mb-2">Conteúdo *</label>
-                  <textarea
-                    value={formData.content}
-                    onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                    placeholder="Cole aqui o conteúdo do documento..."
-                    rows={8}
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                  />
-                </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">Conteúdo Textual *</label>
+              <textarea
+                value={formData.content}
+                onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                placeholder="Cole aqui o conteúdo explicativo, regras de frete, scripts de vendas..."
+                rows={7}
+                className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680] transition-all shadow-xs font-mono"
+              />
+            </div>
 
-                <div className="flex gap-2">
-                  <Button type="submit" disabled={createMutation.isPending}>
-                    {createMutation.isPending ? "Salvando..." : "Salvar Documento"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setShowForm(false);
-                      setFormData({ title: "", content: "", category: "" });
-                    }}
+            <div className="flex gap-2 pt-2">
+              <Button type="submit" disabled={createMutation.isPending} className="bg-[#0C3680] hover:bg-[#081F47] text-white text-sm font-medium">
+                {createMutation.isPending ? "Salvando..." : "Salvar Documento"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowForm(false);
+                  setFormData({ title: "", content: "", category: "" });
+                }}
+                className="text-slate-600 border-slate-200 hover:bg-slate-50 text-sm"
+              >
+                Cancelar
+              </Button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Documents List */}
+      {isLoading ? (
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-7 w-7 border-2 border-slate-200 border-t-[#0C3680] mx-auto mb-2" />
+          <p className="text-xs text-slate-400">Carregando documentos...</p>
+        </div>
+      ) : docs.length === 0 ? (
+        <div className="saas-card p-8 text-center bg-blue-50/40 border-blue-100">
+          <p className="text-sm font-medium text-slate-700">
+            Nenhum documento cadastrado na base de conhecimento.
+          </p>
+          <p className="text-xs text-slate-500 mt-1">
+            Clique no botão acima para adicionar instruções e politicas de negócio para a IA.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {docs.map((doc: KnowledgeDoc) => (
+            <div key={doc.id} className="saas-card p-5 flex flex-col justify-between hover:border-slate-300 transition-all">
+              <div>
+                <div className="flex justify-between items-start gap-2 mb-3">
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900 tracking-tight">{doc.title}</h2>
+                    {doc.category && (
+                      <span className="saas-badge saas-badge-info mt-1.5">{doc.category}</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleDelete(doc.id)}
+                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                    title="Excluir documento"
                   >
-                    Cancelar
-                  </Button>
+                    <Trash2 size={16} />
+                  </button>
                 </div>
-              </form>
-            </CardContent>
-          </Card>
-        )}
 
-        {/* Documents List */}
-        {isLoading ? (
-          <div className="text-center py-8">Carregando documentos...</div>
-        ) : docs.length === 0 ? (
-          <Card className="bg-blue-50">
-            <CardContent className="pt-6 text-center">
-              <p className="text-blue-900">
-                Nenhum documento na base de conhecimento. Adicione documentos para que a IA tenha mais contexto sobre sua empresa.
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {docs.map((doc: KnowledgeDoc) => (
-              <Card key={doc.id}>
-                <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="text-lg">{doc.title}</CardTitle>
-                      {doc.category && (
-                        <p className="text-sm text-gray-500 mt-1">{doc.category}</p>
-                      )}
-                    </div>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleDelete(doc.id)}
-                      className="min-h-[44px] min-w-[44px] flex items-center justify-center"
-                    >
-                      <Trash2 size={16} />
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="bg-gray-50 p-3 rounded-lg max-h-32 overflow-y-auto">
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                      {doc.content.substring(0, 200)}
-                      {doc.content.length > 200 ? "..." : ""}
-                    </p>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-3">
-                    Adicionado em {new Date(doc.createdAt).toLocaleDateString("pt-BR")}
+                <div className="bg-slate-50 border border-slate-100 p-3 rounded-lg max-h-36 overflow-y-auto">
+                  <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
+                    {doc.content.substring(0, 220)}
+                    {doc.content.length > 220 ? "..." : ""}
                   </p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
+                </div>
+              </div>
 
-        {/* Info Box */}
-        <Card className="mt-8 bg-green-50">
-          <CardHeader>
-            <CardTitle className="text-sm">Dicas para Melhor Resultado</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm space-y-2">
-            <p><strong>Adicione políticas de vendas:</strong> Procedimentos, metas, regras de negócio</p>
-            <p><strong>Informações da empresa:</strong> Missão, valores, produtos, serviços</p>
-            <p><strong>Dados de atendentes:</strong> Especialidades, histórico de performance</p>
-            <p><strong>Métricas importantes:</strong> KPIs, metas, benchmarks</p>
-            <p><strong>Contexto do negócio:</strong> Mercado, concorrência, oportunidades</p>
-          </CardContent>
-        </Card>
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                <span className="text-[11px] text-slate-400 font-medium">
+                  Adicionado em {new Date(doc.createdAt).toLocaleDateString("pt-BR")}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Info Box */}
+      <div className="saas-card p-5 bg-slate-50/60 border-slate-200/80">
+        <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3">Boas práticas para Base de Conhecimento</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-600">
+          <div className="p-3 bg-white rounded-lg border border-slate-200/60">
+            <strong className="text-slate-800 block mb-1">Políticas & Preços:</strong>
+            Regras de frete, descontos por volume, procedimentos comerciais.
+          </div>
+          <div className="p-3 bg-white rounded-lg border border-slate-200/60">
+            <strong className="text-slate-800 block mb-1">Informações do Produto:</strong>
+            Origem marinha de Sal Vita, processos de secagem, diferenciais de mercado.
+          </div>
+          <div className="p-3 bg-white rounded-lg border border-slate-200/60">
+            <strong className="text-slate-800 block mb-1">Scripts de Atendimento:</strong>
+            Dicas para reativação de clientes inativos e contornar objeções comuns.
+          </div>
+          <div className="p-3 bg-white rounded-lg border border-slate-200/60">
+            <strong className="text-slate-800 block mb-1">Metas & Indicadores:</strong>
+            Metas diárias de prospecção e acompanhamento de vendedores.
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

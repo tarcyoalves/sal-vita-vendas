@@ -76,25 +76,27 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-dvh flex items-start pt-[10vh] justify-center bg-brand-deep p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
+    <div className="min-h-dvh flex items-center justify-center bg-[#081F47] relative p-4 overflow-y-auto">
+      {/* Subtle radial glow background */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/30 via-[#081F47] to-[#05132d] pointer-events-none" />
+
+      <div className="relative z-10 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-white/20 p-8 w-full max-w-md transition-all">
         <div className="text-center mb-8">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 378" style={{ height: "125px", width: "auto" }} className="mx-auto mb-4" aria-label="Sal Vita">
-            <defs><clipPath id="oval-login"><ellipse cx="250" cy="187" rx="228" ry="164"/></clipPath></defs>
-            <ellipse cx="250" cy="187" rx="228" ry="164" fill="white"/>
-            <path d="M 22 252 Q 95 182 178 222 Q 214 242 250 210 Q 286 178 338 208 Q 398 240 478 222 L 478 352 H 22 Z" fill="#0C3680" clipPath="url(#oval-login)"/>
-            <path d="M 210 240 Q 206 295 204 352" fill="none" stroke="white" strokeWidth="9" strokeLinecap="round" clipPath="url(#oval-login)"/>
-            <path d="M 336 210 Q 340 270 342 352" fill="none" stroke="white" strokeWidth="9" strokeLinecap="round" clipPath="url(#oval-login)"/>
-            <text x="250" y="196" textAnchor="middle" fontFamily="Pacifico, cursive" fontSize="90" fill="#0C3680">Sal Vita</text>
-            <ellipse cx="250" cy="187" rx="228" ry="164" fill="none" stroke="#0C3680" strokeWidth="15"/>
-          </svg>
-          <h1 className="font-cond text-3xl font-bold text-brand tracking-tight">Lembretes e Vendas</h1>
-          <p className="text-gray-500 text-sm mt-1">Faça login para continuar</p>
+          <div className="inline-flex items-center justify-center p-2 bg-slate-50 rounded-2xl border border-slate-100 shadow-xs mb-4">
+            <img
+              src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
+              alt="Sal Vita"
+              style={{ height: "48px", width: "auto" }}
+              className="object-contain rounded-lg"
+            />
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Lembretes & CRM</h1>
+          <p className="text-slate-500 text-sm mt-1">Acesse sua conta profissional Sal Vita</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">E-mail</label>
             <input
               type="email"
               inputMode="email"
@@ -103,12 +105,21 @@ export default function Home() {
               onChange={e => setEmail(e.target.value)}
               placeholder="seu@email.com"
               required
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680] transition-all shadow-xs"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">Senha</label>
+              <button
+                type="button"
+                onClick={() => { setShowRecovery(true); setRecoveryResult(null); setEmailSent(false); setRecoveryMode('email'); }}
+                className="text-xs text-[#0C3680] hover:text-[#081F47] font-medium hover:underline transition-all"
+              >
+                Esqueci minha senha
+              </button>
+            </div>
             <input
               type="password"
               autoComplete="current-password"
@@ -116,32 +127,29 @@ export default function Home() {
               onChange={e => setPassword(e.target.value)}
               placeholder="••••••••"
               required
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680] transition-all shadow-xs"
             />
           </div>
 
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-3 bg-brand hover:bg-brand-deep text-white font-semibold rounded-lg transition disabled:opacity-50"
+            className="w-full py-2.5 px-4 bg-[#0C3680] hover:bg-[#081F47] text-white font-medium rounded-lg text-sm transition-all duration-150 shadow-sm hover:shadow active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
           >
-            {submitting ? 'Entrando...' : 'Entrar'}
+            {submitting ? (
+              <>
+                <span className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white" />
+                Entrando...
+              </>
+            ) : 'Entrar no Sistema'}
           </button>
         </form>
 
-        <div className="mt-4 text-center">
-          <button
-            type="button"
-            onClick={() => { setShowRecovery(true); setRecoveryResult(null); setEmailSent(false); setRecoveryMode('email'); }}
-            className="text-sm text-blue-600 hover:underline py-3 px-4"
-          >
-            Esqueci minha senha
-          </button>
+        <div className="pt-6 mt-6 border-t border-slate-100 text-center">
+          <p className="text-xs text-slate-400 font-medium">
+            Sal Vita — Plataforma Inteligente de Vendas & CRM
+          </p>
         </div>
-
-        <p className="text-center text-xs text-gray-400 mt-4">
-          Sal Vita — Sistema de Gestão de Vendas e Lembretes
-        </p>
       </div>
 
       {/* Reset password via token (from email link) */}

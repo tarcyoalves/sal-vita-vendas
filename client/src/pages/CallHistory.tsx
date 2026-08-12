@@ -37,15 +37,15 @@ export default function CallHistory() {
   const getResultColor = (type: string) => {
     switch (type) {
       case "realizada":
-        return "bg-green-100 text-green-800";
+        return "saas-badge-success";
       case "convertida":
-        return "bg-blue-100 text-blue-800";
+        return "saas-badge-info";
       case "reagendada":
-        return "bg-yellow-100 text-yellow-800";
+        return "saas-badge-warning";
       case "nao_atendida":
-        return "bg-red-100 text-red-800";
+        return "saas-badge-danger";
       default:
-        return "bg-gray-100 text-gray-800";
+        return "saas-badge-neutral";
     }
   };
 
@@ -65,157 +65,138 @@ export default function CallHistory() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b p-4 flex justify-between items-center sticky top-0 z-10">
-        <div className="flex items-center gap-4">
-          <a href="/" className="hover:opacity-80">
-            <img
-              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471406798/ebiDeAqNiPYHcVdFoPsqfV/logoSALVITA_grande_3761478e.png"
-              alt="Sal Vita"
-              className="h-12 md:h-32 cursor-pointer"
-            />
-          </a>
-          <h1 className="text-lg md:text-3xl font-bold text-blue-900">Histórico de Ligações</h1>
-        </div>
-        <div className="hidden md:flex gap-2 flex-wrap">
-          <a href="/admin/dashboard"><Button variant="outline">Dashboard</Button></a>
-          <a href="/tasks"><Button variant="outline">Tarefas</Button></a>
-          <a href="/ai-chat"><Button variant="outline">Chat</Button></a>
-          <a href="/"><Button variant="outline">Início</Button></a>
-          <Button variant="destructive" onClick={handleLogout}>Sair</Button>
+    <div className="p-4 md:p-6 space-y-6">
+      {/* Page Header */}
+      <div className="pb-4 border-b border-slate-200/80 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">Histórico de Ligações & Contatos</h1>
+          <p className="text-xs md:text-sm text-slate-500 mt-0.5">
+            Registro de interações telefônicas, agendamentos e conversões
+          </p>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="p-6 space-y-6">
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="saas-stat-card">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total de Ligações</p>
+          <p className="text-2xl font-bold text-slate-900 tracking-tight mt-1">{filteredResults.length}</p>
+        </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Filtros</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Status</label>
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full p-2 border rounded-lg"
-              >
-                <option value="all">Todos</option>
-                <option value="realizada">Realizada</option>
-                <option value="convertida">Convertida</option>
-                <option value="reagendada">Reagendada</option>
-                <option value="nao_atendida">Não Atendida</option>
-              </select>
-            </div>
+        <div className="saas-stat-card">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Realizadas</p>
+          <p className="text-2xl font-bold text-emerald-600 tracking-tight mt-1">
+            {filteredResults.filter((r: any) => r.resultType === "realizada").length}
+          </p>
+        </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">Data Inicial</label>
-              <input
-                type="date"
-                value={filterStartDate}
-                onChange={(e) => setFilterStartDate(e.target.value)}
-                className="w-full p-2 border rounded-lg"
-              />
-            </div>
+        <div className="saas-stat-card">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Convertidas</p>
+          <p className="text-2xl font-bold text-blue-600 tracking-tight mt-1">
+            {filteredResults.filter((r: any) => r.resultType === "convertida").length}
+          </p>
+        </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">Data Final</label>
-              <input
-                type="date"
-                value={filterEndDate}
-                onChange={(e) => setFilterEndDate(e.target.value)}
-                className="w-full p-2 border rounded-lg"
-              />
-            </div>
+        <div className="saas-stat-card">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Taxa de Conversão</p>
+          <p className="text-2xl font-bold text-[#0C3680] tracking-tight mt-1">
+            {filteredResults.length > 0
+              ? Math.round(
+                  (filteredResults.filter((r: any) => r.resultType === "convertida").length / filteredResults.length) * 100
+                )
+              : 0}
+            %
+          </p>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="saas-card p-4 space-y-3">
+        <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Filtros de Pesquisa</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Status da Ligação</label>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680] transition-all shadow-xs"
+            >
+              <option value="all">Todos os Status</option>
+              <option value="realizada">Realizada</option>
+              <option value="convertida">Convertida</option>
+              <option value="reagendada">Reagendada</option>
+              <option value="nao_atendida">Não Atendida</option>
+            </select>
           </div>
-        </CardContent>
-      </Card>
 
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Data Inicial</label>
+            <input
+              type="date"
+              value={filterStartDate}
+              onChange={(e) => setFilterStartDate(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680] transition-all shadow-xs"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Data Final</label>
+            <input
+              type="date"
+              value={filterEndDate}
+              onChange={(e) => setFilterEndDate(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680] transition-all shadow-xs"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Results List */}
       {isLoading ? (
-        <div className="text-center py-8">Carregando...</div>
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-7 w-7 border-2 border-slate-200 border-t-[#0C3680] mx-auto mb-2" />
+          <p className="text-xs text-slate-400">Carregando histórico...</p>
+        </div>
       ) : filteredResults.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">Nenhuma ligação encontrada</div>
+        <div className="saas-card text-center py-12 text-slate-400">
+          <p className="font-medium text-sm text-slate-600">Nenhuma ligação encontrada</p>
+          <p className="text-xs mt-1">Ajuste os filtros acima para visualizar o histórico de contatos.</p>
+        </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {filteredResults.map((result: any) => (
-            <Card key={result.id}>
-              <CardContent className="pt-6">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${getResultColor(result.resultType)}`}>
-                        {getResultLabel(result.resultType)}
-                      </span>
-                      <span className="text-sm text-gray-500">
-                        {result.completedAt
-                          ? format(new Date(result.completedAt), "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })
-                          : "Sem data"}
-                      </span>
-                    </div>
-
-                    {result.notes && (
-                      <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                        <p className="text-sm text-gray-700">{result.notes}</p>
-                      </div>
-                    )}
-
-                    {result.nextScheduledDate && (
-                      <div className="mt-2 text-sm text-blue-600">
-                        Próximo agendamento: {format(new Date(result.nextScheduledDate), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                      </div>
-                    )}
+            <div key={result.id} className="saas-card p-4 hover:border-slate-300 transition-all">
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className={`saas-badge ${getResultColor(result.resultType)}`}>
+                      {getResultLabel(result.resultType)}
+                    </span>
+                    <span className="text-xs text-slate-500 font-medium">
+                      {result.completedAt
+                        ? format(new Date(result.completedAt), "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })
+                        : "Sem data"}
+                    </span>
                   </div>
+
+                  {result.notes && (
+                    <div className="mt-2.5 p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                      <p className="text-xs text-slate-700 leading-relaxed">{result.notes}</p>
+                    </div>
+                  )}
+
+                  {result.nextScheduledDate && (
+                    <div className="mt-2 text-xs font-semibold text-[#0C3680] flex items-center gap-1">
+                      <span>Próximo agendamento:</span>
+                      <span>{format(new Date(result.nextScheduledDate), "dd/MM/yyyy HH:mm", { locale: ptBR })}</span>
+                    </div>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           ))}
         </div>
       )}
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-gray-600">Total</p>
-            <p className="text-3xl font-bold text-blue-600">{filteredResults.length}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-gray-600">Realizadas</p>
-            <p className="text-3xl font-bold text-green-600">
-              {filteredResults.filter((r: any) => r.resultType === "realizada").length}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-gray-600">Convertidas</p>
-            <p className="text-3xl font-bold text-blue-600">
-              {filteredResults.filter((r: any) => r.resultType === "convertida").length}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-gray-600">Taxa Conversão</p>
-            <p className="text-3xl font-bold text-purple-600">
-              {filteredResults.length > 0
-                ? Math.round(
-                    (filteredResults.filter((r: any) => r.resultType === "convertida").length / filteredResults.length) * 100
-                  )
-                : 0}
-              %
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
     </div>
   );
 }
