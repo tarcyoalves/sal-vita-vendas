@@ -27,6 +27,7 @@ import { useFatStore } from '../lib/faturamento/store';
 import { totalPedido, formatBRL } from '../lib/faturamento/calc';
 import type { Pedido } from '../lib/faturamento/types';
 import { MultiSelectFilter } from '../components/tasks/MultiSelectFilter';
+import { FilterPanel, FilterSection } from '../components/tasks/FilterPanel';
 import { extractLocation, type TaskLocation } from '../lib/tasks/location';
 
 type ReminderTab = "all" | "overdue" | "upcoming" | "today" | "yesterday" | "lastWeek" | "lastMonth";
@@ -811,6 +812,21 @@ export default function Tasks() {
     setSearchQuery("");
   }, []);
 
+  // Quantos filtros DO PAINEL estão ativos — vira o contador no botão "Filtros".
+  // Busca, abas de período e "quentes" não contam: são visíveis por si só.
+  const panelFilterCount = useMemo(() => {
+    let n = 0;
+    if (filterStatus !== "all") n++;
+    if (isAdmin && filterAssignee !== "all") n++;
+    if (filterContact !== "all") n++;
+    if (filterReminder !== "all") n++;
+    if (filterConverted !== "all") n++;
+    if (filterTags.length > 0) n++;
+    if (filterStates.length > 0) n++;
+    if (filterCities.length > 0) n++;
+    return n;
+  }, [filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTags, filterStates, filterCities, isAdmin]);
+
   // Um chip por filtro ativo. Cada chip sabe se limpar sozinho.
   const activeFilterChips = useMemo(() => {
     const chips: { key: string; label: string; value: string; clear: () => void }[] = [];
@@ -1222,97 +1238,140 @@ export default function Tasks() {
         </div>
       )}
 
-      <input type="text" placeholder="Pesquisar tarefas..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full px-3 py-2.5 border rounded-lg text-sm" />
-
-      <div className="flex justify-between items-center flex-wrap gap-2">
-        <div className="flex gap-2 flex-wrap">
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
-            <option value="all">Todas</option>
-            <option value="pending">Ativas</option>
-          </select>
-          {isAdmin && (
-            <select value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
-              <option value="all">Todos</option>
-              <option value="__none__">Sem atendente</option>
-              {user?.name && <option value={user.name}>{user.name}</option>}
-              {(attendants as any[]).map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
-            </select>
-          )}
-          <button
-            onClick={() => setFilterContact(filterContact === "whatsapp" ? "all" : "whatsapp")}
-            className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterContact === "whatsapp" ? "bg-green-500 text-white border-green-500" : "bg-white text-gray-700 hover:bg-green-50"}`}
-          >
-            WhatsApp
-          </button>
-          <button
-            onClick={() => setFilterContact(filterContact === "email" ? "all" : "email")}
-            className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterContact === "email" ? "bg-blue-500 text-white border-blue-500" : "bg-white text-gray-700 hover:bg-blue-50"}`}
-          >
-            Email
-          </button>
-          <button
-            onClick={() => setFilterReminder(filterReminder === "active" ? "all" : filterReminder === "all" ? "inactive" : "all")}
-            className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterReminder === "active" ? "bg-orange-500 text-white border-orange-500" : filterReminder === "inactive" ? "bg-gray-500 text-white border-gray-500" : "bg-white text-gray-700 hover:bg-orange-50"}`}
-          >
-            {filterReminder === "inactive" ? "Sem lembrete" : "Lembrete"}
-          </button>
-          <select
-            value={filterConverted}
-            onChange={(e) => setFilterConverted(e.target.value as "all" | "active_clients" | "leads")}
-            className={`px-3 py-2 border rounded-lg text-sm font-medium ${filterConverted === "active_clients" ? "bg-emerald-500 text-white border-emerald-500" : filterConverted === "leads" ? "bg-amber-500 text-white border-amber-500" : "bg-white text-gray-700"}`}
-            title="Filtrar por situação do cliente"
-          >
-            <option value="all">Todos (leads + clientes)</option>
-            <option value="active_clients">Só clientes ativos</option>
-            <option value="leads">Só leads (não convertidos)</option>
-          </select>
-          <MultiSelectFilter
-            placeholder="Todas as tags"
-            noun="tags"
-            options={availableTags.map(tag => ({
-              value: tag,
-              label: tag,
-              color: tagColorMap.get(tag) ?? null,
-              count: tagCounts.get(tag) ?? 0,
-            }))}
-            selected={filterTags}
-            onChange={setFilterTags}
-            matchMode={tagMatchMode}
-            onMatchModeChange={setTagMatchMode}
-            activeClass="bg-indigo-500 text-white border-indigo-500"
-            searchable={availableTags.length > 8}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[220px] flex-1">
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Nome, CNPJ, telefone, e-mail, cidade..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full rounded-lg border py-2.5 pl-9 pr-8 text-sm"
           />
-          <MultiSelectFilter
-            placeholder="Todos os estados"
-            noun="estados"
-            options={stateOptions}
-            selected={filterStates}
-            onChange={setFilterStates}
-            activeClass="bg-teal-600 text-white border-teal-600"
-            searchable={stateOptions.length > 8}
-            emptyHint="Nenhuma tarefa com UF identificada"
-          />
-          <MultiSelectFilter
-            placeholder="Todas as cidades"
-            noun="cidades"
-            options={cityOptions}
-            selected={filterCities}
-            onChange={setFilterCities}
-            activeClass="bg-cyan-600 text-white border-cyan-600"
-            searchable
-            emptyHint="Nenhuma tarefa com cidade identificada"
-          />
-          {!!hotLeadsData?.count && (
+          {searchQuery && (
             <button
-              onClick={() => setFilterHot(h => !h)}
-              className={`px-3 py-2 rounded-lg text-sm border font-medium transition flex items-center gap-1.5 ${filterHot ? "bg-red-500 text-white border-red-500" : "bg-white text-red-600 border-red-200 hover:bg-red-50"}`}
-              title="Leads que abriram ou clicaram em e-mails recentemente"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              aria-label="Limpar busca"
             >
-              <Flame size={14} /> {filterHot ? "Só quentes" : `${hotLeadsData.count} quente${hotLeadsData.count === 1 ? "" : "s"}`}
+              <X size={14} />
             </button>
           )}
         </div>
-        <div className="flex gap-2 flex-wrap">
+
+        {/* Filtros ocasionais recolhidos — só a busca, os quentes e as abas de
+            período ficam à vista, que é o uso do dia a dia. */}
+        <FilterPanel activeCount={panelFilterCount} onClearAll={clearAllFilters}>
+          {isAdmin && (
+            <FilterSection label="Responsável">
+              <select
+                value={filterAssignee}
+                onChange={(e) => setFilterAssignee(e.target.value)}
+                className={`px-3 py-2 border rounded-lg text-sm font-medium ${filterAssignee !== "all" ? "bg-blue-900 text-white border-blue-900" : "bg-white text-gray-700"}`}
+              >
+                <option value="all">Todos os atendentes</option>
+                <option value="__none__">Sem atendente</option>
+                {user?.name && <option value={user.name}>{user.name}</option>}
+                {(attendants as any[]).map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
+              </select>
+            </FilterSection>
+          )}
+
+          <FilterSection label="Situação">
+            <select
+              value={filterConverted}
+              onChange={(e) => setFilterConverted(e.target.value as "all" | "active_clients" | "leads")}
+              className={`px-3 py-2 border rounded-lg text-sm font-medium ${filterConverted === "active_clients" ? "bg-emerald-500 text-white border-emerald-500" : filterConverted === "leads" ? "bg-amber-500 text-white border-amber-500" : "bg-white text-gray-700"}`}
+            >
+              <option value="all">Leads + clientes</option>
+              <option value="active_clients">Só clientes ativos</option>
+              <option value="leads">Só leads</option>
+            </select>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className={`px-3 py-2 border rounded-lg text-sm font-medium ${filterStatus !== "all" ? "bg-blue-900 text-white border-blue-900" : "bg-white text-gray-700"}`}
+            >
+              <option value="all">Qualquer status</option>
+              <option value="pending">Só ativas</option>
+            </select>
+          </FilterSection>
+
+          <FilterSection label="Canal de contato">
+            <button
+              onClick={() => setFilterContact(filterContact === "whatsapp" ? "all" : "whatsapp")}
+              className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterContact === "whatsapp" ? "bg-green-500 text-white border-green-500" : "bg-white text-gray-700 hover:bg-green-50"}`}
+            >
+              Tem WhatsApp
+            </button>
+            <button
+              onClick={() => setFilterContact(filterContact === "email" ? "all" : "email")}
+              className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterContact === "email" ? "bg-blue-500 text-white border-blue-500" : "bg-white text-gray-700 hover:bg-blue-50"}`}
+            >
+              Tem e-mail
+            </button>
+            <button
+              onClick={() => setFilterReminder(filterReminder === "active" ? "inactive" : filterReminder === "inactive" ? "all" : "active")}
+              className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterReminder === "active" ? "bg-orange-500 text-white border-orange-500" : filterReminder === "inactive" ? "bg-gray-500 text-white border-gray-500" : "bg-white text-gray-700 hover:bg-orange-50"}`}
+            >
+              {filterReminder === "inactive" ? "Sem lembrete" : "Com lembrete"}
+            </button>
+          </FilterSection>
+
+          <FilterSection label="Tags">
+            <MultiSelectFilter
+              placeholder="Todas as tags"
+              noun="tags"
+              options={availableTags.map(tag => ({
+                value: tag,
+                label: tag,
+                color: tagColorMap.get(tag) ?? null,
+                count: tagCounts.get(tag) ?? 0,
+              }))}
+              selected={filterTags}
+              onChange={setFilterTags}
+              matchMode={tagMatchMode}
+              onMatchModeChange={setTagMatchMode}
+              activeClass="bg-indigo-500 text-white border-indigo-500"
+              searchable={availableTags.length > 8}
+            />
+          </FilterSection>
+
+          <FilterSection label="Localização">
+            <MultiSelectFilter
+              placeholder="Todos os estados"
+              noun="estados"
+              options={stateOptions}
+              selected={filterStates}
+              onChange={setFilterStates}
+              activeClass="bg-teal-600 text-white border-teal-600"
+              searchable={stateOptions.length > 8}
+              emptyHint="Nenhuma tarefa com UF identificada"
+            />
+            <MultiSelectFilter
+              placeholder="Todas as cidades"
+              noun="cidades"
+              options={cityOptions}
+              selected={filterCities}
+              onChange={setFilterCities}
+              activeClass="bg-cyan-600 text-white border-cyan-600"
+              searchable
+              emptyHint={filterStates.length > 0 ? "Nenhuma cidade nos estados escolhidos" : "Nenhuma tarefa com cidade identificada"}
+            />
+          </FilterSection>
+        </FilterPanel>
+
+        {!!hotLeadsData?.count && (
+          <button
+            onClick={() => setFilterHot(h => !h)}
+            className={`px-3 py-2 rounded-lg text-sm border font-medium transition flex items-center gap-1.5 ${filterHot ? "bg-red-500 text-white border-red-500" : "bg-white text-red-600 border-red-200 hover:bg-red-50"}`}
+            title="Leads que abriram ou clicaram em e-mails recentemente"
+          >
+            <Flame size={14} /> {filterHot ? "Só quentes" : `${hotLeadsData.count} quente${hotLeadsData.count === 1 ? "" : "s"}`}
+          </button>
+        )}
+
+        <div className="ml-auto flex gap-2 flex-wrap">
           {isAdmin && selectedTasks.size > 0 && (
             <>
               <select value={bulkRepresentative} onChange={(e) => setBulkRepresentative(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
