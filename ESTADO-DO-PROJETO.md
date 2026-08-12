@@ -146,18 +146,20 @@ minerais. Até lá, não.
 - Landing redesenhada (versão anterior preservada em `/classic`).
 - Copy alinhada à conformidade (commits `6caaee9`, `175b97a`).
 - Frete server-authoritative; token opaco de rastreio (sem telefone na URL).
-- Confirmação de pagamento idempotente (`UPDATE ... WHERE payment_status='awaiting'
-  RETURNING`) nos dois caminhos — webhook e reconcile — para não disparar
-  WhatsApp/e-mail/CAPI/cupom em dobro.
+- Confirmação de pagamento idempotente (`UPDATE ... WHERE payment_status='awaiting' RETURNING`) nos dois caminhos — webhook e reconcile.
 - Reconcile valida o valor pago antes de confirmar.
-- Cron de abandoned-cart agendado; portão de conectividade do WhatsApp para não queimar
-  as tentativas de recuperação com o WA fora do ar.
+- Cron de abandoned-cart agendado; portão de conectividade do WhatsApp para não queimar as tentativas de recuperação com o WA fora do ar.
 - Pareamento de WhatsApp por QR pelo próprio painel.
-- Painel admin unificado (Pedidos + Recuperação + Leads B2B).
+- **Painel Admin Unificado Redesenhado (SaaS Profissional)**:
+  - `SalVitaAdmin.tsx`, `SalVitaRecovery.tsx` e `B2bLeads.tsx` redesenhados com Tailwind CSS e `lucide-react` (zero visual de IA).
+  - Esteira visual de progresso (Order Stepper em 5 etapas: `Criado` ➔ `Pago` ➔ `Etiqueta` ➔ `Enviado` ➔ `Entregue`).
+  - Busca inteligente por Cliente, Telefone, CPF, E-mail, Cidade, Pedido # ou Rastreio + Filtros por período temporais.
+  - Seleção por checkbox + Barra flutuante no rodapé para emissão de etiquetas em lote no Melhor Envio (`batchGenerateLabels`) e exportação CSV.
+  - Disparo de rastreio direto pelo WhatsApp do servidor na VPS (`sendTrackingWhatsApp`).
+  - Varredura de bugs: tratamento defensivo de valores nulos em telefones/CPFs e prevenção de `NaN` em métricas financeiras.
 
 **B2B — Sprint 1 (fundação)**
-- 6 tabelas (`companies`, `contacts`, `public_sources`, `consent_records`,
-  `suppression_list`, `audit_logs`) via `ensureB2bTablesExist()`.
+- 6 tabelas (`companies`, `contacts`, `public_sources`, `consent_records`, `suppression_list`, `audit_logs`) via `ensureB2bTablesExist()`.
 - Página pública `/atacado` + `POST /api/b2b/inbound` com dedup (CNPJ → e-mail →
   telefone), suppression, consentimento e audit log.
 - Admin de leads como aba do painel Premium.
