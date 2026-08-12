@@ -956,4 +956,170 @@ Seja direto e use emojis para facilitar leitura.`;
       if (!deleted) throw new TRPCError({ code: 'NOT_FOUND' });
       return { ok: true };
     }),
+
+  // Admin: send direct WhatsApp tracking notification via server API
+  sendTrackingWhatsApp: protectedProcedure
+    .input(z.object({ orderId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
+      const order = orders[0];
+      if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+      if (!order.customerPhone) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Pedido sem telefone cadastrado.' });
+      if (!order.trackingCode) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Pedido sem código de rastreio.' });
+
+      const tpls = await db.select().from(msgTemplates).where(and(eq(msgTemplates.type, 'general'), eq(msgTemplates.isDefault, true))).limit(1);
+      const tpl = tpls[0];
+      const vars = {
+        nome: order.customerName,
+        pedido: String(order.id),
+        rastreio: order.trackingCode,
+        link: correiosLink(order.trackingCode),
+      };
+      const msg = tpl
+        ? renderTpl(tpl.body, vars)
+        : `🧂 *Sal Vita — Pedido #${order.id}*\n\nOlá *${order.customerName}*! Seu pedido foi enviado! 🚚\n\n📦 Código de rastreio: *${order.trackingCode}*\n\n🔗 Rastreie: ${correiosLink(order.trackingCode)}\n\nOu acesse: https://premium.salvitarn.com.br/meu-pedido\n\nObrigado! 🙏`;
+
+      const sent = await sendWhatsAppMsg(order.customerPhone, msg);
+      if (!sent) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Falha ao enviar mensagem pelo WhatsApp da VPS. Verifique se o serviço está online.' });
+      }
+      return { success: true };
+    }),
+
+  // Admin: generate shipping labels in batch for multiple paid orders
+  batchGenerateLabels: protectedProcedure
+    .input(z.object({ orderIds: z.array(z.number()) }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      if (!input.orderIds.length) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Nenhum pedido selecionado.' });
+
+      const token = process.env.MELHOR_ENVIO_TOKEN;
+      if (!token) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Configure MELHOR_ENVIO_TOKEN no painel Vercel' });
+
+      const results: Array<{ orderId: number; success: boolean; labelUrl?: string; error?: string }> = [];
+      for (const orderId of input.orderIds) {
+        try {
+          const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, orderId));
+          const order = orders[0];
+          if (!order) {
+            results.push({ orderId, success: false, error: 'Pedido não encontrado' });
+            continue;
+          }
+          if (order.paymentStatus !== 'confirmed') {
+            results.push({ orderId, success: false, error: 'Pagamento não confirmado' });
+            continue;
+          }
+          if (order.meLabelUrl) {
+            results.push({ orderId, success: true, labelUrl: order.meLabelUrl });
+            continue;
+          }
+
+          const serviceIdNum = order.shippingServiceId ? parseInt(order.shippingServiceId, 10) : NaN;
+          if (isNaN(serviceIdNum)) {
+            results.push({ orderId, success: false, error: 'Serviço de frete inválido' });
+            continue;
+          }
+
+          const labelProduct = resolveProduct(null, order.quantity);
+          const labelPacks = Math.max(1, Math.round(order.quantity / CATALOG[labelProduct].kgPerUnit));
+          const labelPkg = CATALOG[labelProduct].pkg;
+          const weight = shipWeight(labelProduct, labelPacks);
+          const declaredUnitPrice = parseFloat(order.unitPrice ?? String(CATALOG[labelProduct].price));
+          const declaredValue = parseFloat(order.totalPrice ?? String(declaredUnitPrice * labelPacks));
+
+          const headers = {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'User-Agent': 'SalVita/1.0 (contato@salvitarn.com.br)',
+            'Accept': 'application/json',
+          };
+
+          const cartBody = {
+            service: serviceIdNum,
+            from: {
+              name: 'Sal Vita',
+              phone: '84214082120',
+              email: 'contato@salvitarn.com.br',
+              postal_code: ORIGIN_CEP,
+              address: 'Av. Presidente Dutra',
+              number: '1',
+              city: 'Mossoró',
+              state_abbr: 'RN',
+              country_id: 'BR',
+            },
+            to: {
+              name: order.customerName,
+              phone: order.customerPhone.replace(/\D/g,''),
+              email: order.customerEmail ?? 'cliente@salvitarn.com.br',
+              document: order.customerCpf ? order.customerCpf.replace(/\D/g,'') : undefined,
+              postal_code: order.postalCode,
+              address: order.address,
+              number: order.number,
+              complement: order.complement ?? '',
+              district: order.neighborhood,
+              city: order.city,
+              state_abbr: order.state,
+              country_id: 'BR',
+            },
+            volumes: [{ ...labelPkg, weight }],
+            options: { insurance_value: declaredValue, receipt: false, own_hand: false, non_commercial: false },
+            products: [{
+              name: order.product ?? CATALOG[labelProduct].name,
+              quantity: labelPacks,
+              unitary_value: declaredUnitPrice,
+            }],
+          };
+
+          const cartRes = await fetch(`${ME_BASE}/api/v2/me/cart`, { method: 'POST', headers, body: JSON.stringify(cartBody) });
+          if (!cartRes.ok) {
+            const txt = await cartRes.text();
+            results.push({ orderId, success: false, error: `Cart ME: ${txt.slice(0, 80)}` });
+            continue;
+          }
+          const cartData = await cartRes.json();
+          const meOrderId: string = cartData.id;
+
+          const checkRes = await fetch(`${ME_BASE}/api/v2/me/shipment/checkout`, {
+            method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }),
+          });
+          if (!checkRes.ok) {
+            await fetch(`${ME_BASE}/api/v2/me/cart/${meOrderId}`, { method: 'DELETE', headers }).catch(() => {});
+            const txt = await checkRes.text();
+            results.push({ orderId, success: false, error: `Checkout ME: ${txt.slice(0, 80)}` });
+            continue;
+          }
+
+          await db.update(siteOrders).set({ meOrderId, updatedAt: new Date() }).where(eq(siteOrders.id, orderId));
+
+          const genRes = await fetch(`${ME_BASE}/api/v2/me/shipment/generate`, {
+            method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }),
+          });
+          if (!genRes.ok) {
+            results.push({ orderId, success: false, error: 'Falha ao gerar etiqueta no ME' });
+            continue;
+          }
+
+          const printRes = await fetch(`${ME_BASE}/api/v2/me/shipment/print`, {
+            method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId], mode: 'private' }),
+          });
+          if (!printRes.ok) {
+            results.push({ orderId, success: false, error: 'Falha ao obter URL de impressão no ME' });
+            continue;
+          }
+          const printData = await printRes.json();
+          const labelUrl: string = printData.url;
+
+          await db.update(siteOrders)
+            .set({ meOrderId, meLabelUrl: labelUrl, status: 'label_generated', updatedAt: new Date() })
+            .where(eq(siteOrders.id, orderId));
+
+          results.push({ orderId, success: true, labelUrl });
+        } catch (e: any) {
+          results.push({ orderId, success: false, error: e?.message ?? 'Erro desconhecido' });
+        }
+      }
+
+      return { results };
+    }),
 });
