@@ -275,61 +275,16 @@ function unsubscribePage(message: string): string {
 </html>`;
 }
 
-async function handleUnsubscribe(req: express.Request, res: express.Response) {
-  const token = String(req.query.t ?? '').trim();
-  if (!token) {
-    res.status(400).send(unsubscribePage('Link de descadastro inválido.'));
-    return;
-  }
-  try {
-    // Resolve the e-mail from the token, trying each source that issues one, in
-    // order: campaign recipients → sequence enrollments. Marketing contacts do
-    // not carry their own token (they receive campaign recipient tokens), so
-    // they are silenced via propagation below rather than a token lookup.
-    let email: string | null = null;
-
-    const [recipient] = await db.select({ email: emailCampaignRecipients.email })
-      .from(emailCampaignRecipients)
-      .where(eq(emailCampaignRecipients.unsubToken, token))
-      .limit(1);
-    if (recipient) email = recipient.email;
-
-    if (!email) {
-      const [enrollment] = await db.select({ email: emailSequenceEnrollments.email })
-        .from(emailSequenceEnrollments)
-        .where(eq(emailSequenceEnrollments.unsubToken, token))
-        .limit(1);
-      if (enrollment) email = enrollment.email;
-    }
-
-    if (!email) {
-      res.status(404).send(unsubscribePage('Link de descadastro inválido ou expirado.'));
-      return;
-    }
-
-    const normalized = email.toLowerCase().trim();
-
-    // One opt-out silences every channel this address may live in (LGPD):
-    // suppress it, cancel any active sequence enrollments, and mark it
-    // unsubscribed on clients and marketing contacts.
-    await db.insert(emailSuppressions)
-      .values({ email: normalized, reason: 'unsubscribe' })
-      .onConflictDoNothing();
-    await cancelAllEnrollments(normalized);
-    await db.update(clients).set({ unsubscribed: true })
-      .where(sql`lower(${clients.email}) = ${normalized}`);
-    await db.update(marketingContacts).set({ status: 'unsubscribed', updatedAt: new Date() })
-      .where(sql`lower(${marketingContacts.email}) = ${normalized}`);
-    res.send(unsubscribePage('Você foi descadastrado(a) com sucesso e não receberá mais e-mails da Sal Vita.'));
-  } catch (err) {
-    console.error('[unsubscribe] error:', err);
-    res.status(500).send(unsubscribePage('Erro ao processar seu pedido. Tente novamente mais tarde.'));
-  }
-}
+import { handleUnsubscribe } from '../server/routers/unsubscribe';
+import { handleResendWebhook } from '../server/routers/resendWebhook';
 
 app.get('/api/unsubscribe', handleUnsubscribe);
 // RFC 8058 one-click unsubscribe sends a POST request
 app.post('/api/unsubscribe', express.urlencoded({ extended: false }), handleUnsubscribe);
+
+// Webhook Resend/Svix HMAC time-safe signature verification
+app.post('/api/resend-webhook', express.raw({ type: 'application/json' }), handleResendWebhook);
+
 
 // Run schema migration in background — do NOT block requests.
 // Tables already exist from prior successful migration; new instances

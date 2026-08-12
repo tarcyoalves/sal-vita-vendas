@@ -703,3 +703,5 @@ export type FatProduct = typeof fatProducts.$inferSelect;
 export type FatOrder = typeof fatOrders.$inferSelect;
 export type FatCommission = typeof fatCommissions.$inferSelect;
 export type FatOrderDeletionLog = typeof fatOrderDeletionLogs.$inferSelect;
+
+

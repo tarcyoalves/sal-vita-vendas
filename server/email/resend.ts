@@ -8,22 +8,11 @@
  * guard, not a hard guarantee against Resend's own daily cap.
  */
 
-import { spDateStr } from '../lib/tz';
+import { reserveDailyQuota, refundDailyQuota } from './marketingQuota';
 
 const FROM = 'Sal Vita <noreply@premium.salvitarn.com.br>';
 const BRAND = '#0C3680';
-// Stay comfortably under 100/day free limit — env var allows override
-const DAILY_SOFT_LIMIT = parseInt(process.env.RESEND_DAILY_LIMIT ?? '80');
-
-// In-process daily counter (resets on cold start — good enough for serverless)
-let _emailsToday = 0;
-let _emailCounterDay = '';  // YYYY-MM-DD em horário de Brasília
-
-function dailyCount(): number {
-  const today = spDateStr();
-  if (_emailCounterDay !== today) { _emailsToday = 0; _emailCounterDay = today; }
-  return _emailsToday;
-}
+const DAILY_SOFT_LIMIT = parseInt(process.env.RESEND_DAILY_LIMIT ?? '80', 10);
 
 // ── Core send function ────────────────────────────────────────────────────────
 
@@ -36,7 +25,9 @@ export async function sendEmail(
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return { ok: false, reason: 'no_api_key' };
 
-  if (dailyCount() >= DAILY_SOFT_LIMIT) {
+  // Reserve 1 slot atomically from email_send_counters
+  const reserved = await reserveDailyQuota('resend_1', 1, DAILY_SOFT_LIMIT);
+  if (reserved <= 0) {
     console.warn(`[email] daily soft limit (${DAILY_SOFT_LIMIT}) reached — skipping "${subject}" → ${to}`);
     return { ok: false, reason: 'daily_limit' };
   }
@@ -60,10 +51,13 @@ export async function sendEmail(
     if (!res.ok) {
       const err = await res.text().catch(() => res.statusText);
       console.error(`[email] Resend error ${res.status}:`, err);
+      // Refund quota only on definitive HTTP errors (not network/timeout)
+      if (res.status >= 400 && res.status < 500) {
+        await refundDailyQuota('resend_1', 1);
+      }
       return { ok: false, reason: `resend_${res.status}` };
     }
-    _emailsToday++;
-    console.log(`[email] sent (${_emailsToday}/${DAILY_SOFT_LIMIT} today) "${subject}" → ${to}`);
+    console.log(`[email] sent successfully "${subject}" → ${to}`);
     return { ok: true };
   } catch (err) {
     console.error('[email] sendEmail failed:', err);

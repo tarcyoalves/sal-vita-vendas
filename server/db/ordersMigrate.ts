@@ -260,6 +260,219 @@ export async function ensureOrdersTablesExist(force = false): Promise<Step[]> {
     ON CONFLICT (slug) DO NOTHING
   `);
 
+  // E-mail Marketing Tables (Sal Vita Premium)
+  await run('email_template_categories', () => sql`
+    CREATE TABLE IF NOT EXISTS email_template_categories (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await run('email_templates', () => sql`
+    CREATE TABLE IF NOT EXISTS email_templates (
+      id SERIAL PRIMARY KEY,
+      category_ids JSONB,
+      slug TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      html_body TEXT NOT NULL,
+      attachments JSONB,
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await run('email_campaigns', () => sql`
+    CREATE TABLE IF NOT EXISTS email_campaigns (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      subject_b TEXT,
+      html_body TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      scheduled_at TIMESTAMP,
+      total_recipients INTEGER NOT NULL DEFAULT 0,
+      sent_count INTEGER NOT NULL DEFAULT 0,
+      failed_count INTEGER NOT NULL DEFAULT 0,
+      created_by_user_id INTEGER NOT NULL DEFAULT 1,
+      is_broadcast BOOLEAN NOT NULL DEFAULT FALSE,
+      attachments JSONB,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await run('email_campaign_recipients', () => sql`
+    CREATE TABLE IF NOT EXISTS email_campaign_recipients (
+      id SERIAL PRIMARY KEY,
+      campaign_id INTEGER NOT NULL,
+      email TEXT NOT NULL,
+      name TEXT,
+      reply_to TEXT,
+      task_id INTEGER,
+      variant TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      account_key TEXT,
+      message_id TEXT,
+      unsub_token TEXT NOT NULL,
+      error TEXT,
+      sent_at TIMESTAMP,
+      claimed_at TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+  await run('email_recipients_campaign_idx', () => sql`CREATE INDEX IF NOT EXISTS email_recipients_campaign_idx ON email_campaign_recipients(campaign_id, status)`);
+
+  await run('email_sequences', () => sql`
+    CREATE TABLE IF NOT EXISTS email_sequences (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      repeat BOOLEAN NOT NULL DEFAULT FALSE,
+      repeat_interval_days INTEGER,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await run('email_sequence_steps', () => sql`
+    CREATE TABLE IF NOT EXISTS email_sequence_steps (
+      id SERIAL PRIMARY KEY,
+      sequence_id INTEGER NOT NULL,
+      step_order INTEGER NOT NULL,
+      delay_days INTEGER NOT NULL,
+      subject TEXT NOT NULL,
+      html_body TEXT NOT NULL,
+      send_condition TEXT NOT NULL DEFAULT 'always',
+      retry_if_not_opened BOOLEAN NOT NULL DEFAULT FALSE,
+      retry_delay_hours INTEGER NOT NULL DEFAULT 24,
+      max_retries INTEGER NOT NULL DEFAULT 1,
+      retry_subject TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await run('email_sequence_enrollments', () => sql`
+    CREATE TABLE IF NOT EXISTS email_sequence_enrollments (
+      id SERIAL PRIMARY KEY,
+      sequence_id INTEGER NOT NULL,
+      email TEXT NOT NULL,
+      name TEXT,
+      reply_to TEXT,
+      task_id INTEGER,
+      current_step INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'active',
+      unsub_token TEXT NOT NULL,
+      enrolled_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      next_send_at TIMESTAMP,
+      cycle_started_at TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await run('email_sequence_sends', () => sql`
+    CREATE TABLE IF NOT EXISTS email_sequence_sends (
+      id SERIAL PRIMARY KEY,
+      enrollment_id INTEGER NOT NULL,
+      step_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'sent',
+      account_key TEXT,
+      message_id TEXT,
+      error TEXT,
+      retry_number INTEGER NOT NULL DEFAULT 0,
+      cycle_started_at TIMESTAMP,
+      sent_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+  await run('email_seq_sends_unique_idx', () => sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS email_seq_sends_unique_idx
+    ON email_sequence_sends(enrollment_id, step_id, retry_number, cycle_started_at)
+  `);
+
+  await run('automation_rules', () => sql`
+    CREATE TABLE IF NOT EXISTS automation_rules (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      trigger_type TEXT NOT NULL,
+      trigger_config TEXT,
+      action_type TEXT NOT NULL,
+      action_config TEXT NOT NULL,
+      required_tags TEXT[],
+      excluded_tags TEXT[],
+      cancel_other_sequences BOOLEAN NOT NULL DEFAULT FALSE,
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await run('email_suppressions', () => sql`
+    CREATE TABLE IF NOT EXISTS email_suppressions (
+      id SERIAL PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      reason TEXT NOT NULL DEFAULT 'unsubscribe',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await run('email_events', () => sql`
+    CREATE TABLE IF NOT EXISTS email_events (
+      id SERIAL PRIMARY KEY,
+      message_id TEXT NOT NULL,
+      recipient_email TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+  await run('email_events_msg_idx', () => sql`CREATE INDEX IF NOT EXISTS email_events_msg_idx ON email_events(message_id)`);
+
+  await run('email_send_counters', () => sql`
+    CREATE TABLE IF NOT EXISTS email_send_counters (
+      id SERIAL PRIMARY KEY,
+      account_key TEXT NOT NULL,
+      day TEXT NOT NULL,
+      sent INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  await run('email_counter_key_day_idx', () => sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS email_counter_key_day_idx
+    ON email_send_counters(account_key, day)
+  `);
+
+  await run('marketing_lists', () => sql`
+    CREATE TABLE IF NOT EXISTS marketing_lists (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      contact_count INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await run('marketing_contacts', () => sql`
+    CREATE TABLE IF NOT EXISTS marketing_contacts (
+      id SERIAL PRIMARY KEY,
+      email TEXT NOT NULL,
+      name TEXT,
+      phone TEXT,
+      company TEXT,
+      city TEXT,
+      state TEXT,
+      list_id INTEGER,
+      tags TEXT[] NOT NULL DEFAULT '{}',
+      source TEXT NOT NULL DEFAULT 'csv_import',
+      status TEXT NOT NULL DEFAULT 'active',
+      notes TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
   // Auto-cleanup: keep Neon storage well under the 0.5 GB free limit.
   // Runs on every cold start — cheap scans with index support, idempotent.
   await run('cleanup_automation_runs', () => sql`

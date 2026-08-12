@@ -945,13 +945,16 @@ export function OrdersPanel() {
   );
 }
 
+import { SalVitaEmailMarketing } from './SalVitaEmailMarketing';
+
 /* ── Unified Admin Shell ──────────────────────────────────── */
-type Section = 'orders' | 'recovery' | 'b2b';
+type Section = 'orders' | 'recovery' | 'b2b' | 'email-marketing';
 
 const SECTIONS: { key: Section; label: string; icon: any; path: string }[] = [
-  { key: 'orders',   label: 'Pedidos & Vendas', icon: Package, path: '/sal-vita-admin' },
-  { key: 'recovery', label: 'Recuperação',      icon: RotateCcw, path: '/sal-vita-recovery' },
-  { key: 'b2b',      label: 'Leads B2B',        icon: Building2, path: '/sal-vita-b2b' },
+  { key: 'orders',          label: 'Pedidos & Vendas', icon: Package,        path: '/sal-vita-admin' },
+  { key: 'recovery',        label: 'Recuperação',      icon: RotateCcw,      path: '/sal-vita-recovery' },
+  { key: 'b2b',             label: 'Leads B2B',        icon: Building2,      path: '/sal-vita-b2b' },
+  { key: 'email-marketing', label: 'E-mail Marketing', icon: Mail,           path: '/sal-vita-email-marketing' },
 ];
 
 function sectionFromPath(): Section {
@@ -1037,6 +1040,7 @@ function AdminShell() {
         {section === 'orders' && <OrdersPanel />}
         {section === 'recovery' && <RecoveryPanel />}
         {section === 'b2b' && <B2bLeadsPanel />}
+        {section === 'email-marketing' && <SalVitaEmailMarketing />}
       </main>
     </div>
   );
