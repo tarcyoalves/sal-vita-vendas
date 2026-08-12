@@ -62,8 +62,16 @@ export function FilterPanel({
         <ChevronDown size={14} className={`opacity-70 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
+      {/* Ancorado à DIREITA em todos os tamanhos: a busca ao lado é flex-1 e
+          empurra este botão para perto da borda direita, então um painel
+          left-0 abria ~336px fora da tela e era recortado pelo overflow-y-auto
+          do main do AppShell (o painel aparecia como uma tira estreita).
+          A largura acompanha a viewport e só então é limitada a 560px, para
+          nunca ultrapassar a tela em telas pequenas.
+          Sem overflow no corpo: os multi-selects internos abrem dropdowns
+          próprios, que um contêiner de rolagem aqui recortaria. */}
       {open && (
-        <div className="absolute left-0 z-50 mt-1.5 w-[min(92vw,560px)] rounded-2xl border border-slate-200 bg-white shadow-xl">
+        <div className="absolute right-0 z-50 mt-1.5 w-[calc(100vw-1.5rem)] max-w-[560px] rounded-2xl border border-slate-200 bg-white shadow-xl">
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
             <span className="text-sm font-semibold text-slate-700">Filtrar tarefas</span>
             {active && (
@@ -76,7 +84,7 @@ export function FilterPanel({
               </button>
             )}
           </div>
-          <div className="max-h-[min(70vh,520px)] space-y-4 overflow-y-auto p-4">
+          <div className="space-y-4 p-4">
             {children}
           </div>
         </div>
