@@ -477,187 +477,181 @@ export default function Attendants() {
         )}
 
         <div className="flex justify-between items-center gap-2 flex-wrap">
-          <h2 className="text-lg font-semibold text-gray-700">
+          <h2 className="text-base font-bold text-slate-800 tracking-tight">
             {attendants.length} atendente{attendants.length !== 1 ? 's' : ''} cadastrado{attendants.length !== 1 ? 's' : ''}
           </h2>
           <div className="flex items-center gap-2">
-            <Button variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50" onClick={handleMySignatureOpen}>
+            <Button variant="outline" className="border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold rounded-lg" onClick={handleMySignatureOpen}>
               Minha assinatura
             </Button>
-            <Button onClick={() => { setFormData({ name: "", email: "", phone: "", department: "", dailyGoal: 100, workHoursGoal: 8, status: "active" }); setShowForm(!showForm); }}>
+            <Button className="bg-[#0C3680] hover:bg-[#081F47] text-white text-xs font-semibold rounded-lg" onClick={() => { setFormData({ name: "", email: "", phone: "", department: "", dailyGoal: 100, workHoursGoal: 8, status: "active" }); setShowForm(!showForm); }}>
               {showForm ? "Cancelar" : "Novo Atendente"}
             </Button>
           </div>
         </div>
 
         {/* Filtro avançado */}
-        <Card>
-          <CardContent className="pt-4 pb-4 space-y-3">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                Filtro avançado
-                {activeFilterCount > 0 && (
-                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                    {activeFilterCount} ativo{activeFilterCount > 1 ? 's' : ''}
-                  </span>
-                )}
-              </h3>
+        <div className="saas-card p-4 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+              Filtro avançado
               {activeFilterCount > 0 && (
-                <button
-                  type="button"
-                  className="text-xs text-blue-600 hover:underline"
-                  onClick={() => { setSearch(""); setFilterStatus("all"); setFilterRole("all"); setOnlyAlerts(false); }}
-                >
-                  Limpar filtros
-                </button>
+                <span className="saas-badge saas-badge-info">
+                  {activeFilterCount} ativo{activeFilterCount > 1 ? 's' : ''}
+                </span>
               )}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div>
-                <label className="block text-xs font-medium mb-1 text-gray-600">Buscar</label>
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Nome, email ou departamento..."
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1 text-gray-600">Status</label>
-                <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as any)} className="w-full px-3 py-2 border rounded-lg text-sm">
-                  <option value="all">Todos</option>
-                  <option value="active">Ativos</option>
-                  <option value="inactive">Inativos</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1 text-gray-600">Permissão</label>
-                <select value={filterRole} onChange={(e) => setFilterRole(e.target.value as any)} className="w-full px-3 py-2 border rounded-lg text-sm">
-                  <option value="all">Todas</option>
-                  <option value="admin">Admins</option>
-                  <option value="manager">Gerentes</option>
-                  <option value="user">Atendentes</option>
-                </select>
-              </div>
-              <div className="flex items-end">
-                <label className="flex items-center gap-2 text-sm cursor-pointer select-none px-3 py-2 border rounded-lg w-full hover:bg-gray-50">
-                  <input type="checkbox" checked={onlyAlerts} onChange={(e) => setOnlyAlerts(e.target.checked)} className="h-4 w-4" />
-                  Só com alerta de fraude
-                </label>
-              </div>
-            </div>
+            </h3>
             {activeFilterCount > 0 && (
-              <p className="text-xs text-gray-500">
-                Mostrando {filteredAttendants.length} de {attendants.length} atendente{attendants.length !== 1 ? 's' : ''}
-              </p>
+              <button
+                type="button"
+                className="text-xs text-blue-600 hover:underline font-medium"
+                onClick={() => { setSearch(""); setFilterStatus("all"); setFilterRole("all"); setOnlyAlerts(false); }}
+              >
+                Limpar filtros
+              </button>
             )}
-          </CardContent>
-        </Card>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1 text-slate-600">Buscar</label>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Nome, email ou departamento..."
+                className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:bg-white focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680]"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1 text-slate-600">Status</label>
+              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as any)} className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:bg-white focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680]">
+                <option value="all">Todos</option>
+                <option value="active">Ativos</option>
+                <option value="inactive">Inativos</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1 text-slate-600">Permissão</label>
+              <select value={filterRole} onChange={(e) => setFilterRole(e.target.value as any)} className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:bg-white focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680]">
+                <option value="all">Todas</option>
+                <option value="admin">Admins</option>
+                <option value="manager">Gerentes</option>
+                <option value="user">Atendentes</option>
+              </select>
+            </div>
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 text-xs font-medium cursor-pointer select-none px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg w-full hover:bg-slate-100/50 text-slate-700">
+                <input type="checkbox" checked={onlyAlerts} onChange={(e) => setOnlyAlerts(e.target.checked)} className="h-3.5 w-3.5 rounded text-[#0C3680]" />
+                Só com alerta de fraude
+              </label>
+            </div>
+          </div>
+          {activeFilterCount > 0 && (
+            <p className="text-[11px] text-slate-500">
+              Mostrando {filteredAttendants.length} de {attendants.length} atendente{attendants.length !== 1 ? 's' : ''}
+            </p>
+          )}
+        </div>
 
         {showForm && (
-          <Card>
-            <CardContent className="pt-6">
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Nome *</label>
-                    <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Nome completo" className="w-full px-3 py-2 border rounded-lg" required />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Email * (login)</label>
-                    <input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="email@example.com" className="w-full px-3 py-2 border rounded-lg" required />
-                  </div>
+          <div className="saas-card p-5">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Nome *</label>
+                  <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Nome completo" className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs" required />
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Telefone</label>
-                    <input type="tel" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} placeholder="(11) 99999-9999" className="w-full px-3 py-2 border rounded-lg" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Departamento</label>
-                    <input type="text" value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} placeholder="Ex: Vendas" className="w-full px-3 py-2 border rounded-lg" />
-                  </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Email * (login)</label>
+                  <input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="email@example.com" className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs" required />
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Meta Diária (tarefas)</label>
-                    <input type="number" value={formData.dailyGoal} onChange={(e) => setFormData({ ...formData, dailyGoal: parseInt(e.target.value) })} className="w-full px-3 py-2 border rounded-lg" min="1" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Expediente</label>
-                    <select value={formData.workHoursGoal} onChange={(e) => setFormData({ ...formData, workHoursGoal: parseInt(e.target.value) })} className="w-full px-3 py-2 border rounded-lg">
-                      <option value={4}>4h — Meio período</option>
-                      <option value={6}>6h — Período parcial</option>
-                      <option value={8}>8h — Período integral</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Status</label>
-                    <select value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value as "active" | "inactive" })} className="w-full px-3 py-2 border rounded-lg">
-                      <option value="active">Ativo</option>
-                      <option value="inactive">Inativo</option>
-                    </select>
-                  </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Telefone</label>
+                  <input type="tel" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} placeholder="(11) 99999-9999" className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs" />
                 </div>
-                <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-800">
-                  Uma senha de acesso será gerada automaticamente e exibida após o cadastro.
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Departamento</label>
+                  <input type="text" value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} placeholder="Ex: Vendas" className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs" />
                 </div>
-                <div className="flex gap-2">
-                  <Button type="submit" className="flex-1" disabled={createMutation.isPending}>
-                    {createMutation.isPending ? "Criando..." : "Criar Atendente"}
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => setShowForm(false)} className="flex-1">Cancelar</Button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Meta Diária (tarefas)</label>
+                  <input type="number" value={formData.dailyGoal} onChange={(e) => setFormData({ ...formData, dailyGoal: parseInt(e.target.value) })} className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs" min="1" />
                 </div>
-              </form>
-            </CardContent>
-          </Card>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Expediente</label>
+                  <select value={formData.workHoursGoal} onChange={(e) => setFormData({ ...formData, workHoursGoal: parseInt(e.target.value) })} className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs">
+                    <option value={4}>4h — Meio período</option>
+                    <option value={6}>6h — Período parcial</option>
+                    <option value={8}>8h — Período integral</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Status</label>
+                  <select value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value as "active" | "inactive" })} className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs">
+                    <option value="active">Ativo</option>
+                    <option value="inactive">Inativo</option>
+                  </select>
+                </div>
+              </div>
+              <div className="bg-blue-50/70 p-3 rounded-lg text-xs text-blue-800 border border-blue-200/60">
+                Uma senha de acesso será gerada automaticamente e exibida após o cadastro.
+              </div>
+              <div className="flex gap-2">
+                <Button type="submit" className="flex-1 bg-[#0C3680] hover:bg-[#081F47] text-xs font-semibold" disabled={createMutation.isPending}>
+                  {createMutation.isPending ? "Criando..." : "Criar Atendente"}
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setShowForm(false)} className="flex-1 text-xs">Cancelar</Button>
+              </div>
+            </form>
+          </div>
         )}
 
         {isLoading ? (
-          <p className="text-center text-gray-500 py-8">Carregando...</p>
+          <p className="text-center text-slate-500 py-8 text-xs">Carregando...</p>
         ) : attendants.length === 0 ? (
-          <Card><CardContent className="pt-6 text-center text-gray-500">Nenhum atendente cadastrado</CardContent></Card>
+          <div className="saas-card p-6 text-center text-xs text-slate-500">Nenhum atendente cadastrado</div>
         ) : filteredAttendants.length === 0 ? (
-          <Card><CardContent className="pt-6 text-center text-gray-500">Nenhum atendente encontrado com esse filtro</CardContent></Card>
+          <div className="saas-card p-6 text-center text-xs text-slate-500">Nenhum atendente encontrado com esse filtro</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredAttendants.map((attendant: Attendant) => {
               const alert = fraudAlerts.find(a => a.sellerName === attendant.name);
               return (
-              <Card key={attendant.id} className={alert ? 'border-red-400' : ''}>
-                <CardContent className="pt-5">
-                  <div className="space-y-3">
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-semibold text-lg">{attendant.name}</h3>
-                        {alert && <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${alert.severity === 'high' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>{alert.severity === 'high' ? 'ALERTA' : 'Suspeito'}</span>}
-                      </div>
-                      <p className="text-sm text-gray-500">{attendant.email}</p>
-                      {alert && <p className="text-xs text-red-600 mt-1">{alert.message}</p>}
-                    </div>
-                    <div className="space-y-1 text-sm text-gray-600">
-                      {attendant.phone && <p>{attendant.phone}</p>}
-                      {attendant.department && <p>{attendant.department}</p>}
-                      <p>Meta: {effectiveDailyGoal(attendant.dailyGoal)} contatos/dia</p>
-                      <p>Expediente: {attendant.workHoursGoal ?? 8}h</p>
-                      <p>Comissao: {fatActions.comissoes.get(attendant.id)}%</p>
-                      <div className="flex gap-2 flex-wrap">
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${attendant.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                          {attendant.status === "active" ? "Ativo" : "Inativo"}
-                        </span>
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                          attendant.userRole === "admin" ? "bg-purple-100 text-purple-700"
-                          : attendant.userRole === "manager" ? "bg-blue-100 text-blue-700"
-                          : "bg-gray-100 text-gray-600"
-                        }`}>
-                          {attendant.userRole === "admin" ? "Admin" : attendant.userRole === "manager" ? "Gerente" : "Atendente"}
-                        </span>
-                        {attendant.emailMarketingEnabled && (
-                          <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                            Email Mkt
-                          </span>
-                        )}
+              <div key={attendant.id} className={`saas-card p-4 space-y-3 ${alert ? 'border-rose-400 bg-rose-50/20' : ''}`}>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-slate-900 text-sm">{attendant.name}</h3>
+                    {alert && <span className="saas-badge saas-badge-danger text-[10px]">{alert.severity === 'high' ? 'ALERTA' : 'Suspeito'}</span>}
+                  </div>
+                  <p className="text-xs text-slate-500">{attendant.email}</p>
+                  {alert && <p className="text-xs text-rose-600 mt-1 font-medium">{alert.message}</p>}
+                </div>
+                <div className="space-y-1 text-xs text-slate-600 border-t border-slate-100 pt-2.5">
+                  {attendant.phone && <p>📞 {attendant.phone}</p>}
+                  {attendant.department && <p>🏢 {attendant.department}</p>}
+                  <p>🎯 Meta: {effectiveDailyGoal(attendant.dailyGoal)} contatos/dia</p>
+                  <p>⏱️ Expediente: {attendant.workHoursGoal ?? 8}h</p>
+                  <p>💰 Comissão: {fatActions.comissoes.get(attendant.id)}%</p>
+                  <div className="flex gap-1.5 flex-wrap pt-1">
+                    <span className={`saas-badge ${attendant.status === "active" ? "saas-badge-success" : "saas-badge-danger"}`}>
+                      {attendant.status === "active" ? "Ativo" : "Inativo"}
+                    </span>
+                    <span className={`saas-badge ${
+                      attendant.userRole === "admin" ? "saas-badge-info"
+                      : attendant.userRole === "manager" ? "saas-badge-warning"
+                      : "saas-badge-neutral"
+                    }`}>
+                      {attendant.userRole === "admin" ? "Admin" : attendant.userRole === "manager" ? "Gerente" : "Atendente"}
+                    </span>
+                    {attendant.emailMarketingEnabled && (
+                      <span className="saas-badge saas-badge-info">
+                        Email Mkt
+                      </span>
+                    )}
                       </div>
                     </div>
                     <div className="flex flex-col gap-2">
@@ -706,9 +700,7 @@ export default function Attendants() {
                         </Button>
                       )}
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
+              </div>
               );
             })}
           </div>

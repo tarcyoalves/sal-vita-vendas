@@ -1243,10 +1243,10 @@ export default function Tasks() {
           <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Nome, CNPJ, telefone, e-mail, cidade..."
+            placeholder="Buscar por Nome, CNPJ, Telefone, E-mail, Cidade..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-lg border py-2.5 pl-9 pr-8 text-sm"
+            className="w-full rounded-xl bg-slate-50/50 border border-slate-200/90 py-2.5 pl-9 pr-8 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680] transition-all"
           />
           {searchQuery && (
             <button

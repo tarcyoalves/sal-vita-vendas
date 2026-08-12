@@ -767,17 +767,18 @@ export default function AdminDashboard() {
     <div className="p-4 md:p-6 space-y-4 md:space-y-6">
 
       {/* Welcome banner */}
-      <div className="bg-gradient-to-r from-slate-800 to-slate-700 rounded-2xl p-4 md:p-5 text-white flex items-center justify-between gap-2">
+      <div className="relative overflow-hidden rounded-2xl bg-[#081F47] px-6 py-5 text-white shadow-sm border border-slate-800 flex items-center justify-between gap-4">
+        <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-blue-500/10 blur-2xl" />
         <div>
-          <h2 className="text-xl font-bold">Olá, {user.name?.split(' ')[0]}</h2>
-          <p className="text-slate-300 text-sm mt-0.5">
+          <h2 className="text-xl font-bold tracking-tight">Olá, {user.name?.split(' ')[0]}</h2>
+          <p className="text-blue-200/80 text-xs md:text-sm mt-0.5">
             {overdue.length > 0
               ? `${overdue.length} tarefa${overdue.length > 1 ? 's' : ''} em atraso`
               : 'Tudo em ordem no sistema'}
           </p>
         </div>
         <div className="flex items-center gap-3 md:gap-4">
-          <div className="hidden md:flex items-center gap-2 text-slate-400 text-sm">
+          <div className="hidden md:flex items-center gap-2 text-slate-300 text-xs font-medium bg-white/10 px-3 py-1.5 rounded-lg ring-1 ring-white/15">
             <span>{(() => { try { return new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }); } catch { const d = new Date(); return `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`; } })()}</span>
           </div>
         </div>
@@ -786,29 +787,29 @@ export default function AdminDashboard() {
       {/* Task Deletion Alert Banner */}
       {deletionLogs.length > 0 && (
         <div
-          className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 cursor-pointer hover:bg-amber-100 transition-colors"
+          className="flex items-center justify-between gap-3 bg-amber-50/80 border border-amber-200/80 rounded-xl px-4 py-3 cursor-pointer hover:bg-amber-100/80 transition-colors shadow-2xs"
           onClick={() => setShowDeletionLogs(v => !v)}
         >
-          <div className="flex items-center gap-2 text-amber-800">
-            <AlertTriangle size={18} className="text-amber-500 shrink-0" />
-            <span className="font-semibold text-sm">
+          <div className="flex items-center gap-2 text-amber-900">
+            <AlertTriangle size={18} className="text-amber-600 shrink-0" />
+            <span className="font-semibold text-xs md:text-sm">
               {deletionLogs.length} tarefa{deletionLogs.length > 1 ? 's' : ''} excluída{deletionLogs.length > 1 ? 's' : ''} aguarda{deletionLogs.length > 1 ? 'm' : ''} revisão
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-bold">
+            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-600 text-white text-xs font-bold">
               {deletionLogs.length}
             </span>
-            {showDeletionLogs ? <ChevronDown size={16} className="text-amber-600" /> : <ChevronRight size={16} className="text-amber-600" />}
+            {showDeletionLogs ? <ChevronDown size={16} className="text-amber-700" /> : <ChevronRight size={16} className="text-amber-700" />}
           </div>
         </div>
       )}
 
       {/* Task Deletion Logs Panel */}
       {showDeletionLogs && deletionLogs.length > 0 && (
-        <Card>
+        <Card className="saas-card">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base text-amber-800">
+            <CardTitle className="flex items-center gap-2 text-sm font-bold text-amber-900">
               <Trash2 size={16} />
               Tarefas Excluídas — Pendentes de Revisão
             </CardTitle>
@@ -816,26 +817,26 @@ export default function AdminDashboard() {
           <CardContent className="p-0">
             <div className="divide-y divide-amber-100">
               {deletionLogs.map((log: any) => (
-                <div key={log.id} className="px-4 py-3 flex items-start justify-between gap-3">
+                <div key={log.id} className="px-4 py-3 flex items-start justify-between gap-3 text-xs">
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-sm text-gray-800 truncate">{log.taskTitle}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Excluída por <span className="font-semibold text-gray-700">{log.deletedByName}</span>
+                    <p className="font-semibold text-slate-800 truncate">{log.taskTitle}</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Excluída por <span className="font-semibold text-slate-700">{log.deletedByName}</span>
                       {' · '}
                       {new Date(log.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                     </p>
                     <div className="mt-1.5 flex items-start gap-1.5">
-                      <span className="text-xs text-amber-700 font-medium shrink-0">Motivo:</span>
-                      <span className="text-xs text-gray-700 break-words">{log.reason}</span>
+                      <span className="text-[11px] text-amber-700 font-medium shrink-0">Motivo:</span>
+                      <span className="text-[11px] text-slate-700 break-words">{log.reason}</span>
                     </div>
                     {log.taskNotes && (
-                      <p className="text-xs text-gray-400 mt-1 italic truncate">Nota: {log.taskNotes.slice(0, 80)}</p>
+                      <p className="text-[11px] text-slate-400 mt-1 italic truncate">Nota: {log.taskNotes.slice(0, 80)}</p>
                     )}
                   </div>
                   <Button
                     size="sm"
                     variant="outline"
-                    className="shrink-0 text-xs border-green-300 text-green-700 hover:bg-green-50"
+                    className="shrink-0 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50"
                     onClick={() => markDeletionReviewedMutation.mutate({ id: log.id })}
                     disabled={markDeletionReviewedMutation.isPending}
                   >
@@ -852,29 +853,29 @@ export default function AdminDashboard() {
       {/* Pedidos Pending Approval Alert Banner */}
       {pendingPedidos.length > 0 && (
         <div
-          className="flex items-center justify-between gap-3 bg-blue-50 border border-blue-300 rounded-xl px-4 py-3 cursor-pointer hover:bg-blue-100 transition-colors"
+          className="flex items-center justify-between gap-3 bg-blue-50/80 border border-blue-200/80 rounded-xl px-4 py-3 cursor-pointer hover:bg-blue-100/80 transition-colors shadow-2xs"
           onClick={() => setShowPendingPedidos(v => !v)}
         >
-          <div className="flex items-center gap-2 text-blue-800">
-            <PackageCheck size={18} className="text-blue-500 shrink-0" />
-            <span className="font-semibold text-sm">
+          <div className="flex items-center gap-2 text-blue-900">
+            <PackageCheck size={18} className="text-blue-600 shrink-0" />
+            <span className="font-semibold text-xs md:text-sm">
               {pendingPedidos.length} pedido{pendingPedidos.length > 1 ? 's' : ''} aguarda{pendingPedidos.length > 1 ? 'm' : ''} sua revisão
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white text-xs font-bold">
+            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-600 text-white text-xs font-bold">
               {pendingPedidos.length}
             </span>
-            {showPendingPedidos ? <ChevronDown size={16} className="text-blue-600" /> : <ChevronRight size={16} className="text-blue-600" />}
+            {showPendingPedidos ? <ChevronDown size={16} className="text-blue-700" /> : <ChevronRight size={16} className="text-blue-700" />}
           </div>
         </div>
       )}
 
       {/* Pedidos Pending Approval Panel */}
       {showPendingPedidos && pendingPedidos.length > 0 && (
-        <Card>
+        <Card className="saas-card">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base text-blue-800">
+            <CardTitle className="flex items-center gap-2 text-sm font-bold text-blue-900">
               <PackageCheck size={16} />
               Pedidos Novos — Pendentes de Revisão
             </CardTitle>
@@ -882,11 +883,11 @@ export default function AdminDashboard() {
           <CardContent className="p-0">
             <div className="divide-y divide-blue-100">
               {pendingPedidos.map((p: any) => (
-                <div key={p.id} className="px-4 py-3 flex items-start justify-between gap-3">
+                <div key={p.id} className="px-4 py-3 flex items-start justify-between gap-3 text-xs">
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-sm text-gray-800 truncate">{p.clienteNome || p.razaoSocial || 'Sem cliente'}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Criado por <span className="font-semibold text-gray-700">{p.sellerName}</span>
+                    <p className="font-semibold text-slate-800 truncate">{p.clienteNome || p.razaoSocial || 'Sem cliente'}</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Criado por <span className="font-semibold text-slate-700">{p.sellerName}</span>
                       {' · '}
                       {new Date(p.criadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                     </p>
@@ -894,7 +895,7 @@ export default function AdminDashboard() {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="shrink-0 text-xs border-blue-300 text-blue-700 hover:bg-blue-50"
+                    className="shrink-0 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"
                     onClick={() => openPedidoRevisao(p.id)}
                   >
                     <Eye size={13} className="mr-1" />
@@ -910,20 +911,18 @@ export default function AdminDashboard() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {kpis.map((kpi) => (
-          <Card key={kpi.label}>
-            <CardContent className="pt-4 px-4 pb-3">
-              <div className="flex items-start justify-between">
-                <div className="min-w-0 flex-1">
-                  <p className="font-cond text-3xl font-bold text-ink tabular-nums leading-none">{kpi.value}</p>
-                  <p className="text-xs font-medium text-gray-600 mt-1.5">{kpi.label}</p>
-                  {(kpi as any).sub && <p className="text-[11px] text-gray-400 mt-0.5">{(kpi as any).sub}</p>}
-                </div>
-                <div className={`${kpi.bg} ${kpi.color} p-2 rounded-lg flex-shrink-0 ml-2`}>
-                  {kpi.icon}
-                </div>
+          <div key={kpi.label} className="saas-stat-card">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 leading-none">{kpi.label}</p>
+                <p className="text-2xl font-bold text-slate-900 tracking-tight mt-1.5 leading-none">{kpi.value}</p>
+                {(kpi as any).sub && <p className="text-[11px] text-slate-400 mt-1 truncate">{(kpi as any).sub}</p>}
               </div>
-            </CardContent>
-          </Card>
+              <div className={`p-2 rounded-xl ${kpi.bg} ${kpi.color} shrink-0`}>
+                {kpi.icon}
+              </div>
+            </div>
+          </div>
         ))}
       </div>
 
