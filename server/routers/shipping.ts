@@ -65,11 +65,12 @@ function renderTpl(body: string, vars: Record<string, string>): string {
 }
 
 // Best-effort WhatsApp send via the Baileys wa-server on the VPS (non-throwing).
-async function sendWhatsAppMsg(phone: string, message: string): Promise<boolean> {
+async function sendWhatsAppMsg(phone: string | null | undefined, message: string): Promise<boolean> {
   const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
   const key = process.env.WA_API_KEY;
-  if (!key) { console.warn('[wa] WA_API_KEY not configured — skipping'); return false; }
-  const digits = phone.replace(/\D/g, '');
+  if (!key || !phone) { console.warn('[wa] WA_API_KEY or phone not configured — skipping'); return false; }
+  const digits = (phone || '').replace(/\D/g, '');
+  if (!digits) return false;
   const fmt = digits.startsWith('55') ? digits : `55${digits}`;
   try {
     const ac = new AbortController();
@@ -1050,7 +1051,7 @@ Seja direto e use emojis para facilitar leitura.`;
             },
             to: {
               name: order.customerName,
-              phone: order.customerPhone.replace(/\D/g,''),
+              phone: (order.customerPhone || '').replace(/\D/g,''),
               email: order.customerEmail ?? 'cliente@salvitarn.com.br',
               document: order.customerCpf ? order.customerCpf.replace(/\D/g,'') : undefined,
               postal_code: order.postalCode,

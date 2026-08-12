@@ -531,7 +531,7 @@ function OrderCard({
                 </button>
 
                 <a
-                  href={`https://wa.me/${order.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`🧂 *Sal Vita — Pedido #${order.id}*\n\nOlá ${order.customerName}! Seu pedido foi enviado! 🚚\n\n📦 Código de rastreio: *${order.trackingCode}*\n\n🔗 Rastreie: https://rastreamento.correios.com.br/app/index.php?objetos=${order.trackingCode}\n\nOu acesse: https://premium.salvitarn.com.br/meu-pedido\n\nObrigado! 🙏`)}`}
+                  href={`https://wa.me/${(order.customerPhone || '').replace(/\D/g, '')}?text=${encodeURIComponent(`🧂 *Sal Vita — Pedido #${order.id}*\n\nOlá ${order.customerName}! Seu pedido foi enviado! 🚚\n\n📦 Código de rastreio: *${order.trackingCode}*\n\n🔗 Rastreie: https://rastreamento.correios.com.br/app/index.php?objetos=${order.trackingCode}\n\nOu acesse: https://premium.salvitarn.com.br/meu-pedido\n\nObrigado! 🙏`)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition flex items-center gap-1.5"
