@@ -11,6 +11,7 @@ import { tvRouter } from './tv';
 import { shippingRouter } from './shipping';
 import { recoveryRouter } from './recovery';
 import { emailMarketingRouter } from './emailMarketing';
+import { premiumEmailMarketingRouter } from './premiumEmailMarketing';
 import { tagsRouter } from './tags';
 import { faturamentoRouter } from './faturamento';
 import { b2bRouter } from './b2b';
@@ -27,6 +28,9 @@ export const appRouter = router({
   shipping: shippingRouter,
   recovery: recoveryRouter,
   emailMarketing: emailMarketingRouter,
+  // Premium (loja) tem o seu próprio — namespaces distintos para os dois
+  // produtos não se sobrescreverem como já aconteceu.
+  premiumEmailMarketing: premiumEmailMarketingRouter,
   tags: tagsRouter,
   faturamento: faturamentoRouter,
   b2b: b2bRouter,

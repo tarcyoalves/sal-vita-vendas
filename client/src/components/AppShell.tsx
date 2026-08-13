@@ -149,7 +149,6 @@ const PAGE_TITLES: Record<string, string> = {
   "/ai-chat": "Chat IA",
   "/ai-settings": "Configurações IA",
   "/knowledge-base": "Base de Conhecimento",
-  "/history": "Histórico",
   "/meu-progresso": "Meu Progresso",
 };
 

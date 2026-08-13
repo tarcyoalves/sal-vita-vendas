@@ -7,7 +7,6 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import AdminDashboard from "./pages/AdminDashboard";
 import AiAnalysis from "./pages/AiAnalysis";
-import CallHistory from "./pages/CallHistory";
 import ClientsManagement from "./pages/ClientsManagement";
 import AiChat from "./pages/AiChat";
 import AiSettings from "./pages/AiSettings";
@@ -40,9 +39,6 @@ function Router() {
       </Route>
       <Route path={"/admin/ai-analysis"}>
         <AppShell><AiAnalysis /></AppShell>
-      </Route>
-      <Route path={"/history"}>
-        <AppShell><CallHistory /></AppShell>
       </Route>
       <Route path={"/admin/clients"}>
         <AppShell><ClientsManagement /></AppShell>

@@ -269,7 +269,7 @@ export default function AiSettings() {
 
             <div className="flex flex-wrap gap-2 pt-2">
               <Button
-                onClick={handleTestConnection}
+                onClick={handleSaveAndTest}
                 disabled={testing || !apiKey.trim()}
                 className="bg-[#0C3680] hover:bg-[#081F47] text-white text-xs font-semibold py-2 px-4 rounded-lg"
               >

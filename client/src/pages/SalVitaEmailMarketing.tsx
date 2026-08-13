@@ -27,19 +27,22 @@ import { toast } from 'sonner';
 
 export function SalVitaEmailMarketing() {
   const [activeTab, setActiveTab] = useState<'enviar' | 'automatizar' | 'audiencia' | 'resultados'>('enviar');
+  // useUtils é um hook: precisa ser chamado no corpo do componente. Estava
+  // dentro de um onClick, o que quebra as regras de hooks em runtime.
+  const utils = trpc.useUtils();
 
   // Queries
-  const metricsQuery = trpc.emailMarketing.getMetrics.useQuery(undefined, { refetchInterval: 10000 });
-  const previewAudienceQuery = trpc.emailMarketing.previewAudience.useQuery();
-  const campaignsQuery = trpc.emailMarketing.getCampaigns.useQuery();
-  const sequencesQuery = trpc.emailMarketing.getSequences.useQuery();
-  const rulesQuery = trpc.emailMarketing.getAutomationRules.useQuery();
-  const templatesQuery = trpc.emailMarketing.getTemplates.useQuery();
-  const contactsQuery = trpc.emailMarketing.getContacts.useQuery({});
-  const suppressionsQuery = trpc.emailMarketing.getSuppressions.useQuery();
+  const metricsQuery = trpc.premiumEmailMarketing.getMetrics.useQuery(undefined, { refetchInterval: 10000 });
+  const previewAudienceQuery = trpc.premiumEmailMarketing.previewAudience.useQuery();
+  const campaignsQuery = trpc.premiumEmailMarketing.getCampaigns.useQuery();
+  const sequencesQuery = trpc.premiumEmailMarketing.getSequences.useQuery();
+  const rulesQuery = trpc.premiumEmailMarketing.getAutomationRules.useQuery();
+  const templatesQuery = trpc.premiumEmailMarketing.getTemplates.useQuery();
+  const contactsQuery = trpc.premiumEmailMarketing.getContacts.useQuery({});
+  const suppressionsQuery = trpc.premiumEmailMarketing.getSuppressions.useQuery();
 
   // Mutations
-  const createCampaignMut = trpc.emailMarketing.createCampaign.useMutation({
+  const createCampaignMut = trpc.premiumEmailMarketing.createCampaign.useMutation({
     onSuccess: () => {
       toast.success('Campanha criada com sucesso e destinatários vinculados!');
       campaignsQuery.refetch();
@@ -49,7 +52,7 @@ export function SalVitaEmailMarketing() {
     onError: (err) => toast.error(`Erro ao criar campanha: ${err.message}`),
   });
 
-  const dispatchCampaignMut = trpc.emailMarketing.dispatchCampaign.useMutation({
+  const dispatchCampaignMut = trpc.premiumEmailMarketing.dispatchCampaign.useMutation({
     onSuccess: (data) => {
       toast.success(`Lote processado: ${data.sent} enviados, ${data.failed} falhas.`);
       campaignsQuery.refetch();
@@ -58,18 +61,18 @@ export function SalVitaEmailMarketing() {
     onError: (err) => toast.error(`Erro no disparo: ${err.message}`),
   });
 
-  const pauseCampaignMut = trpc.emailMarketing.pauseCampaign.useMutation({
+  const pauseCampaignMut = trpc.premiumEmailMarketing.pauseCampaign.useMutation({
     onSuccess: () => campaignsQuery.refetch(),
   });
 
-  const deleteCampaignMut = trpc.emailMarketing.deleteCampaign.useMutation({
+  const deleteCampaignMut = trpc.premiumEmailMarketing.deleteCampaign.useMutation({
     onSuccess: () => {
       toast.success('Campanha removida.');
       campaignsQuery.refetch();
     },
   });
 
-  const addSuppressionMut = trpc.emailMarketing.addSuppression.useMutation({
+  const addSuppressionMut = trpc.premiumEmailMarketing.addSuppression.useMutation({
     onSuccess: () => {
       toast.success('E-mail adicionado à lista de supressão (LGPD).');
       suppressionsQuery.refetch();
@@ -77,7 +80,7 @@ export function SalVitaEmailMarketing() {
     },
   });
 
-  const removeSuppressionMut = trpc.emailMarketing.removeSuppression.useMutation({
+  const removeSuppressionMut = trpc.premiumEmailMarketing.removeSuppression.useMutation({
     onSuccess: () => {
       toast.success('E-mail removido da supressão.');
       suppressionsQuery.refetch();
@@ -318,7 +321,7 @@ export function SalVitaEmailMarketing() {
                 <p className="text-sm text-slate-500">Fluxos de nutrição automatizados por dia e engajamento.</p>
               </div>
               <button
-                onClick={() => trpc.useUtils().emailMarketing.getSequences.invalidate()}
+                onClick={() => utils.premiumEmailMarketing.getSequences.invalidate()}
                 className="p-2 text-slate-400 hover:text-slate-600 rounded-lg border border-slate-200"
               >
                 <RefreshCw className="w-4 h-4" />
