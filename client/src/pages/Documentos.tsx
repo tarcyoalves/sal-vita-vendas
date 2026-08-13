@@ -87,6 +87,7 @@ export interface CompanyCategory {
   documents: AttachedDoc[];
 }
 
+// INITIAL BASE PRODUCTS (NO FICTITIOUS DOCUMENTS)
 const INITIAL_PRODUCTS: TechnicalProduct[] = [
   {
     id: "sal-refinado-bigbag",
@@ -437,10 +438,9 @@ export default function Documentos() {
   const [editingProduct, setEditingProduct] = useState<TechnicalProduct | null>(null);
   const [imageUrlInput, setImageUrlInput] = useState<string>("");
 
-  // MULTI-VERSION BACKWARD COMPATIBLE STORAGE LOAD (NEVER DESTROY USER UPLOADS)
+  // MULTI-VERSION BACKWARD COMPATIBLE STORAGE LOAD
   useEffect(() => {
     try {
-      // Look up all previous storage keys so user's uploaded files & photos are NEVER lost
       const keysToSearchProducts = ["sal_vita_products_v3", "sal_vita_products_v2", "sal_vita_products"];
       let foundProductsStr: string | null = null;
       for (const key of keysToSearchProducts) {
@@ -460,7 +460,6 @@ export default function Documentos() {
               return {
                 ...item,
                 imageUrl: savedItem.imageUrl || item.imageUrl,
-                // Keep all documents uploaded by user (filtering out dummy '#' links)
                 documents: (savedItem.documents || []).filter(d => d.fileUrl && d.fileUrl !== "#")
               };
             }
@@ -551,7 +550,7 @@ export default function Documentos() {
     setAttachModalOpen(true);
   };
 
-  // NATIVE FILE SELECTOR FROM COMPUTER (FileReader DataURL)
+  // NATIVE FILE SELECTOR FROM COMPUTER
   const handleLocalFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -597,27 +596,40 @@ export default function Documentos() {
     setEditImageModalOpen(true);
   };
 
-  const handleSaveProductImage = (e?: React.FormEvent) => {
+  // SAVE PRODUCT PHOTO AND GUARANTEE POPUP CLOSES INSTANTLY
+  const handleSaveProductImage = (e?: React.SyntheticEvent) => {
     if (e) e.preventDefault();
-    if (!editingProduct) return;
+    
+    if (!editingProduct) {
+      setEditImageModalOpen(false);
+      return;
+    }
+
+    const productId = editingProduct.id;
+    const finalPhoto = imageUrlInput.trim() || undefined;
 
     const updatedProducts = productsList.map(p => {
-      if (p.id === editingProduct.id) {
-        return { ...p, imageUrl: imageUrlInput.trim() || undefined };
+      if (p.id === productId) {
+        return { ...p, imageUrl: finalPhoto };
       }
       return p;
     });
 
     saveProductsToStorage(updatedProducts);
-    toast.success("Foto do produto salva permanentemente no card!");
-    setEditImageModalOpen(false);
+    toast.success("Foto do produto salva com sucesso!");
+
+    // CLOSE POPUP AND CLEAR STATE
     setEditingProduct(null);
+    setImageUrlInput("");
+    setEditImageModalOpen(false);
   };
 
   const handleResetProductImage = () => {
     if (!editingProduct) return;
+    const productId = editingProduct.id;
+
     const updatedProducts = productsList.map(p => {
-      if (p.id === editingProduct.id) {
+      if (p.id === productId) {
         const copy = { ...p };
         delete copy.imageUrl;
         return copy;
@@ -626,12 +638,14 @@ export default function Documentos() {
     });
     saveProductsToStorage(updatedProducts);
     toast.success("Foto restaurada para a ilustração padrão.");
-    setEditImageModalOpen(false);
+    
     setEditingProduct(null);
+    setImageUrlInput("");
+    setEditImageModalOpen(false);
   };
 
-  // SAVE ATTACHED DOC & CLOSE POPUP IMMEDIATELY
-  const handleSaveAttachedDoc = (e?: React.FormEvent) => {
+  // SAVE ATTACHED DOC AND GUARANTEE POPUP CLOSES INSTANTLY
+  const handleSaveAttachedDoc = (e?: React.SyntheticEvent) => {
     if (e) e.preventDefault();
 
     if (!newDocData.title.trim()) {
@@ -662,7 +676,7 @@ export default function Documentos() {
         return p;
       });
       saveProductsToStorage(updatedProducts);
-      toast.success(`Arquivo salvo permanentemente no produto!`);
+      toast.success(`Arquivo anexado no produto com sucesso!`);
     } else if (targetType === "company" && targetTargetId) {
       const updatedCompany = companyCategoriesList.map(c => {
         if (c.id === targetTargetId) {
@@ -671,7 +685,7 @@ export default function Documentos() {
         return c;
       });
       saveCompanyToStorage(updatedCompany);
-      toast.success(`Arquivo salvo permanentemente no card da empresa!`);
+      toast.success(`Arquivo anexado no card da empresa!`);
     }
 
     // CLOSE POPUP & RESET FORM IMMEDIATELY
@@ -692,7 +706,6 @@ export default function Documentos() {
       return;
     }
 
-    // Trigger download of the exact real file stored
     const link = document.createElement("a");
     link.href = doc.fileUrl;
     link.download = doc.fileName || `${doc.title}.pdf`;
@@ -875,6 +888,7 @@ ${docsListText}
         {/* Navigation Tabs */}
         <div className="flex bg-slate-100 p-1 rounded-xl shrink-0">
           <button
+            type="button"
             onClick={() => setActiveTab("produtos")}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
               activeTab === "produtos"
@@ -886,6 +900,7 @@ ${docsListText}
             Fichas dos Produtos ({productsList.length})
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab("empresa")}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
               activeTab === "empresa"
@@ -923,6 +938,7 @@ ${docsListText}
           ].map((cat) => (
             <button
               key={cat.id}
+              type="button"
               onClick={() => setCategoryFilter(cat.id)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                 categoryFilter === cat.id
@@ -962,6 +978,7 @@ ${docsListText}
                     {/* Admin Button to Alter Product Photo */}
                     {isAdmin && (
                       <button
+                        type="button"
                         onClick={() => handleOpenImageModal(product)}
                         className="absolute bottom-4 left-4 z-20 bg-slate-900/90 hover:bg-slate-950 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg shadow-md flex items-center gap-1.5 backdrop-blur-md border border-white/20 transition transform active:scale-95"
                       >
@@ -1022,6 +1039,7 @@ ${docsListText}
                         {/* Admin Add Document Button to this specific Product Card */}
                         {isAdmin && (
                           <button
+                            type="button"
                             onClick={() => handleOpenAttachModal(product.id, "product")}
                             className="text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-md flex items-center gap-1 transition"
                           >
@@ -1056,6 +1074,7 @@ ${docsListText}
 
                               <div className="flex items-center gap-1 flex-shrink-0">
                                 <button
+                                  type="button"
                                   onClick={() => handleDownloadFile(doc)}
                                   title="Baixar arquivo real do computador"
                                   className="text-xs font-bold text-blue-700 bg-white border border-blue-200 hover:bg-blue-600 hover:text-white px-2.5 py-1 rounded-lg transition flex items-center gap-1 shadow-sm"
@@ -1066,6 +1085,7 @@ ${docsListText}
 
                                 {isAdmin && (
                                   <button
+                                    type="button"
                                     onClick={() => handleDeleteAttachedDoc(product.id, doc.id, true)}
                                     title="Remover anexo"
                                     className="text-slate-400 hover:text-red-600 p-1.5 rounded transition"
@@ -1083,6 +1103,7 @@ ${docsListText}
 
                   <CardFooter className="pt-3 border-t bg-slate-50/50 gap-2">
                     <Button
+                      type="button"
                       variant="outline"
                       size="sm"
                       onClick={() => setSelectedProduct(product)}
@@ -1092,6 +1113,7 @@ ${docsListText}
                       Ver Ficha
                     </Button>
                     <Button
+                      type="button"
                       size="sm"
                       onClick={() => handleCopyWhatsApp(product)}
                       className="flex-1 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white min-h-[38px]"
@@ -1133,6 +1155,7 @@ ${docsListText}
                       
                       {isAdmin && (
                         <button
+                          type="button"
                           onClick={() => handleOpenAttachModal(comp.id, "company")}
                           className="text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1 transition shrink-0"
                         >
@@ -1188,6 +1211,7 @@ ${docsListText}
 
                               <div className="flex items-center gap-1.5 flex-shrink-0">
                                 <button
+                                  type="button"
                                   onClick={() => handleDownloadFile(doc)}
                                   className="text-xs font-bold text-slate-900 bg-white border border-slate-300 hover:bg-slate-900 hover:text-white px-3 py-1.5 rounded-lg transition flex items-center gap-1 shadow-sm"
                                 >
@@ -1197,6 +1221,7 @@ ${docsListText}
 
                                 {isAdmin && (
                                   <button
+                                    type="button"
                                     onClick={() => handleDeleteAttachedDoc(comp.id, doc.id, false)}
                                     title="Remover arquivo"
                                     className="text-slate-400 hover:text-red-600 p-1.5 rounded transition"
@@ -1216,6 +1241,7 @@ ${docsListText}
                     <CardFooter className="pt-3 border-t bg-slate-50/50 justify-between items-center text-xs">
                       <span className="text-slate-400 text-[11px]">Sal Vita Oficial</span>
                       <Button
+                        type="button"
                         size="sm"
                         variant="outline"
                         onClick={() => handleCopyText(comp.copyContent, comp.id)}
@@ -1235,7 +1261,13 @@ ${docsListText}
 
       {/* MODAL ADMIN: ALTERAR FOTO DO PRODUTO (LOCAL FILE OU URL) */}
       {editImageModalOpen && editingProduct && (
-        <Dialog open={editImageModalOpen} onOpenChange={setEditImageModalOpen}>
+        <Dialog open={editImageModalOpen} onOpenChange={(open) => {
+          setEditImageModalOpen(open);
+          if (!open) {
+            setEditingProduct(null);
+            setImageUrlInput("");
+          }
+        }}>
           <DialogContent className="max-w-md w-full">
             <DialogHeader>
               <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -1247,7 +1279,7 @@ ${docsListText}
               </DialogDescription>
             </DialogHeader>
 
-            <form onSubmit={handleSaveProductImage} className="space-y-4 py-2 text-xs md:text-sm">
+            <div className="space-y-4 py-2 text-xs md:text-sm">
               {/* Native Computer File Picker */}
               <div>
                 <label className="block font-semibold mb-1.5 text-slate-800">Escolher Imagem do Computador (PNG/JPG)</label>
@@ -1309,11 +1341,18 @@ ${docsListText}
                 ) : <div />}
 
                 <div className="flex gap-2">
-                  <Button type="button" variant="outline" onClick={() => setEditImageModalOpen(false)}>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={() => {
+                      setEditImageModalOpen(false);
+                      setEditingProduct(null);
+                    }}
+                  >
                     Cancelar
                   </Button>
                   <Button 
-                    type="submit" 
+                    type="button" 
                     onClick={handleSaveProductImage}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
                   >
@@ -1321,14 +1360,17 @@ ${docsListText}
                   </Button>
                 </div>
               </DialogFooter>
-            </form>
+            </div>
           </DialogContent>
         </Dialog>
       )}
 
       {/* MODAL ADMIN: INSERIR ARQUIVO DO COMPUTADOR NO CARD */}
       {attachModalOpen && (
-        <Dialog open={attachModalOpen} onOpenChange={setAttachModalOpen}>
+        <Dialog open={attachModalOpen} onOpenChange={(open) => {
+          setAttachModalOpen(open);
+          if (!open) setTargetTargetId(null);
+        }}>
           <DialogContent className="max-w-md w-full overflow-hidden">
             <DialogHeader>
               <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -1340,7 +1382,7 @@ ${docsListText}
               </DialogDescription>
             </DialogHeader>
 
-            <form onSubmit={handleSaveAttachedDoc} className="space-y-4 py-2 text-xs md:text-sm">
+            <div className="space-y-4 py-2 text-xs md:text-sm">
               {/* Native File Input Picker */}
               <div>
                 <label className="block font-semibold mb-1.5 text-slate-800">Escolher Arquivo do Computador (PDF/Laudo) *</label>
@@ -1426,21 +1468,23 @@ ${docsListText}
                   Cancelar
                 </Button>
                 <Button 
-                  type="submit" 
+                  type="button" 
                   onClick={handleSaveAttachedDoc}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
                 >
                   Inserir Arquivo no Card
                 </Button>
               </DialogFooter>
-            </form>
+            </div>
           </DialogContent>
         </Dialog>
       )}
 
       {/* MODAL FICHA TÉCNICA DETALHADA */}
       {selectedProduct && (
-        <Dialog open={!!selectedProduct} onOpenChange={() => setSelectedProduct(null)}>
+        <Dialog open={!!selectedProduct} onOpenChange={(open) => {
+          if (!open) setSelectedProduct(null);
+        }}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <div className="flex items-center gap-2 mb-1">
@@ -1511,6 +1555,7 @@ ${docsListText}
                           <span className="font-semibold text-xs text-slate-800 truncate">{doc.title}</span>
                         </div>
                         <Button
+                          type="button"
                           size="sm"
                           onClick={() => handleDownloadFile(doc)}
                           className="text-xs gap-1 bg-blue-600 hover:bg-blue-700 text-white shrink-0"
@@ -1526,6 +1571,7 @@ ${docsListText}
 
             <DialogFooter className="gap-2 sm:gap-0">
               <Button
+                type="button"
                 variant="outline"
                 onClick={() => setSelectedProduct(null)}
                 className="text-xs"
@@ -1533,6 +1579,7 @@ ${docsListText}
                 Fechar
               </Button>
               <Button
+                type="button"
                 onClick={() => handleCopyWhatsApp(selectedProduct)}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5"
               >
