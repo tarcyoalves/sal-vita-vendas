@@ -680,18 +680,7 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
             </p>
           </div>
           
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Admin Add Button */}
-            {isAdmin && (
-              <Button
-                onClick={() => setShowAddModal(true)}
-                className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm shadow-lg gap-2 px-5 py-6 rounded-xl border border-emerald-400/30"
-              >
-                <Plus size={20} />
-                + Novo Documento / Ficha
-              </Button>
-            )}
-
+          <div className="flex items-center gap-3 shrink-0">
             <div className="bg-white/10 backdrop-blur-md px-4 py-3 rounded-xl border border-white/10 text-center min-w-[110px]">
               <span className="block text-2xl font-bold text-amber-400">{productsList.length}</span>
               <span className="text-xs text-slate-300">Produtos</span>
@@ -705,9 +694,9 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
       </div>
 
       {/* Control Toolbar & Search */}
-      <div className="flex flex-col md:flex-row gap-4 justify-between items-stretch md:items-center bg-white p-4 rounded-xl border shadow-sm">
+      <div className="flex flex-col lg:flex-row gap-4 justify-between items-stretch lg:items-center bg-white p-4 rounded-xl border shadow-sm">
         {/* Navigation Tabs */}
-        <div className="flex bg-slate-100 p-1 rounded-xl">
+        <div className="flex bg-slate-100 p-1 rounded-xl shrink-0">
           <button
             onClick={() => setActiveTab("produtos")}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
@@ -732,16 +721,28 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
           </button>
         </div>
 
-        {/* Search Input */}
-        <div className="relative min-w-[280px] md:min-w-[340px]">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <Input
-            type="text"
-            placeholder={activeTab === "produtos" ? "Buscar por tipo de sal, aplicação, 25kg, bigbag..." : "Buscar documento da empresa..."}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 bg-slate-50 border-slate-200 focus:bg-white text-sm"
-          />
+        {/* Right side: Search Input & Admin Add Button */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1 lg:max-w-xl justify-end">
+          <div className="relative flex-1">
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Input
+              type="text"
+              placeholder={activeTab === "produtos" ? "Buscar por tipo de sal, aplicação, 25kg..." : "Buscar documento da empresa..."}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 bg-slate-50 border-slate-200 focus:bg-white text-sm w-full"
+            />
+          </div>
+
+          {isAdmin && (
+            <Button
+              onClick={() => setShowAddModal(true)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow gap-1.5 px-4 py-2 h-10 rounded-lg shrink-0"
+            >
+              <Plus size={16} />
+              Novo Documento
+            </Button>
+          )}
         </div>
       </div>
 
