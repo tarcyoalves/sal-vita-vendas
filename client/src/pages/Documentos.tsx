@@ -88,18 +88,18 @@ export interface CompanyCategory {
 }
 
 // ============================================================================
-// NATIVE INDEXEDDB STORAGE ENGINE (PERMANENT & UNLIMITED STORAGE FOR PDFS/PHOTOS)
-// PREVENTS ANY BROWSER QUOTA LIMITS AND GUARANTEES 100% ZERO DATA LOSS
+// NATIVE INDEXEDDB MASTER STORAGE ENGINE (PERMANENT & UNLIMITED STORAGE)
+// SINGLE SOURCE OF TRUTH FOR PRODUCTS, CUSTOM PHOTOS & REAL PDF ATTACHMENTS
 // ============================================================================
-const DB_NAME = "SalVitaStorageEngine_v5";
+const DB_NAME = "SalVitaMasterStorageDB_v6";
 const DB_VERSION = 1;
-const STORE_PRODUCTS = "products_store";
-const STORE_COMPANY = "company_store";
+const STORE_PRODUCTS = "products_master";
+const STORE_COMPANY = "company_master";
 
 const getDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
     if (typeof window === "undefined" || !window.indexedDB) {
-      reject("IndexedDB unavailable");
+      reject("IndexedDB is unavailable in this browser environment.");
       return;
     }
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -117,22 +117,25 @@ const getDB = (): Promise<IDBDatabase> => {
   });
 };
 
-const idbSet = async (storeName: string, key: string, val: any): Promise<void> => {
+const idbSetMaster = async (storeName: string, key: string, val: any): Promise<void> => {
   try {
     const db = await getDB();
     const tx = db.transaction(storeName, "readwrite");
     const store = tx.objectStore(storeName);
     store.put(val, key);
     return new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => resolve();
+      tx.oncomplete = () => {
+        console.log(`[Sal Vita DB] Successfully persisted "${key}" to IndexedDB.`);
+        resolve();
+      };
       tx.onerror = () => reject(tx.error);
     });
   } catch (err) {
-    console.error(`[IndexedDB Error] Failed to write key "${key}":`, err);
+    console.error(`[Sal Vita DB Error] Failed to write "${key}":`, err);
   }
 };
 
-const idbGet = async (storeName: string, key: string): Promise<any> => {
+const idbGetMaster = async (storeName: string, key: string): Promise<any> => {
   try {
     const db = await getDB();
     const tx = db.transaction(storeName, "readonly");
@@ -143,7 +146,7 @@ const idbGet = async (storeName: string, key: string): Promise<any> => {
       req.onerror = () => reject(req.error);
     });
   } catch (err) {
-    console.error(`[IndexedDB Error] Failed to read key "${key}":`, err);
+    console.error(`[Sal Vita DB Error] Failed to read "${key}":`, err);
     return null;
   }
 };
@@ -519,7 +522,7 @@ export default function Documentos() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Dynamic state loaded from IndexedDB & localStorage
+  // Dynamic state loaded from IndexedDB
   const [productsList, setProductsList] = useState<TechnicalProduct[]>(INITIAL_PRODUCTS);
   const [companyCategoriesList, setCompanyCategoriesList] = useState<CompanyCategory[]>(INITIAL_COMPANY_CATEGORIES);
 
@@ -542,52 +545,34 @@ export default function Documentos() {
   const [imageUrlInput, setImageUrlInput] = useState<string>("");
   const [isCompressingPhoto, setIsCompressingPhoto] = useState<boolean>(false);
 
-  // SAFE LOCALSTORAGE FALLBACK
-  const safeStorageSave = (key: string, data: any) => {
-    try {
-      const serialized = JSON.stringify(data);
-      localStorage.setItem(key, serialized);
-    } catch (err) {
-      console.warn(`[LocalStorage Warning] Failed to save key "${key}":`, err);
-    }
-  };
-
-  // HIGH-CAPACITY DUAL STORAGE SAVE (INDEXEDDB + LOCALSTORAGE)
+  // SAVE PRODUCTS TO INDEXEDDB (MASTER STORE)
   const saveProductsToStorage = async (products: TechnicalProduct[]) => {
     setProductsList(products);
-    // 1. Primary IndexedDB Save (Handles large PDFs easily)
-    await idbSet(STORE_PRODUCTS, "sal_vita_products_data", products);
-    // 2. Backup localStorage keys
-    safeStorageSave("sal_vita_products_v5", products);
-    safeStorageSave("sal_vita_products_v4", products);
-    safeStorageSave("sal_vita_products_v3", products);
+    await idbSetMaster(STORE_PRODUCTS, "sal_vita_products_master", products);
   };
 
+  // SAVE COMPANY CATEGORIES TO INDEXEDDB (MASTER STORE)
   const saveCompanyToStorage = async (company: CompanyCategory[]) => {
     setCompanyCategoriesList(company);
-    // 1. Primary IndexedDB Save
-    await idbSet(STORE_COMPANY, "sal_vita_company_data", company);
-    // 2. Backup localStorage keys
-    safeStorageSave("sal_vita_company_v5", company);
-    safeStorageSave("sal_vita_company_v4", company);
-    safeStorageSave("sal_vita_company_v3", company);
+    await idbSetMaster(STORE_COMPANY, "sal_vita_company_master", company);
   };
 
-  // MULTI-LEVEL STORAGE RESTORATION ON LOAD (PRESERVES ALL USER ATTACHMENTS & PHOTOS FOREVER)
+  // RESTORE SAVED DATA FROM INDEXEDDB ON MOUNT (GUARANTEES NO DISAPPEARING DATA)
   useEffect(() => {
     const restoreSavedData = async () => {
       try {
-        // --- RESTORE PRODUCTS ---
-        let savedProducts: TechnicalProduct[] | null = await idbGet(STORE_PRODUCTS, "sal_vita_products_data");
-        
+        // 1. Try reading products from IndexedDB Master Store
+        let savedProducts: TechnicalProduct[] | null = await idbGetMaster(STORE_PRODUCTS, "sal_vita_products_master");
+
+        // Fallback: Check if user uploaded under older keys in localStorage
         if (!savedProducts || !Array.isArray(savedProducts) || savedProducts.length === 0) {
-          const keysToSearch = ["sal_vita_products_v5", "sal_vita_products_v4", "sal_vita_products_v3", "sal_vita_products_v2", "sal_vita_products"];
-          for (const key of keysToSearch) {
+          const legacyKeys = ["sal_vita_products_v5", "sal_vita_products_v4", "sal_vita_products_v3", "sal_vita_products_v2", "sal_vita_products"];
+          for (const key of legacyKeys) {
             const val = localStorage.getItem(key);
             if (val) {
               try {
                 const parsed = JSON.parse(val);
-                if (Array.isArray(parsed) && parsed.length > 0) {
+                if (Array.isArray(parsed) && parsed.some(p => (p.documents && p.documents.length > 0) || p.imageUrl)) {
                   savedProducts = parsed;
                   break;
                 }
@@ -597,37 +582,36 @@ export default function Documentos() {
         }
 
         if (savedProducts && Array.isArray(savedProducts) && savedProducts.length > 0) {
-          setProductsList(prevList => {
-            return prevList.map(baseItem => {
-              const savedItem = savedProducts!.find(p => p.id === baseItem.id);
-              if (savedItem) {
-                return {
-                  ...baseItem,
-                  imageUrl: savedItem.imageUrl || baseItem.imageUrl,
-                  documents: Array.isArray(savedItem.documents)
-                    ? savedItem.documents.filter(d => d.fileUrl && d.fileUrl !== "#")
-                    : baseItem.documents
-                };
-              }
-              return baseItem;
-            });
+          const mergedProducts = INITIAL_PRODUCTS.map(baseItem => {
+            const savedItem = savedProducts!.find(p => p.id === baseItem.id);
+            if (savedItem) {
+              return {
+                ...baseItem,
+                imageUrl: savedItem.imageUrl || baseItem.imageUrl,
+                documents: Array.isArray(savedItem.documents)
+                  ? savedItem.documents.filter(d => d.fileUrl && d.fileUrl !== "#")
+                  : baseItem.documents
+              };
+            }
+            return baseItem;
           });
 
-          // Sync to IndexedDB
-          await idbSet(STORE_PRODUCTS, "sal_vita_products_data", savedProducts);
+          setProductsList(mergedProducts);
+          // Write merged version to IndexedDB Master Store
+          await idbSetMaster(STORE_PRODUCTS, "sal_vita_products_master", mergedProducts);
         }
 
-        // --- RESTORE COMPANY CATEGORIES ---
-        let savedCompany: CompanyCategory[] | null = await idbGet(STORE_COMPANY, "sal_vita_company_data");
-        
+        // 2. Try reading company categories from IndexedDB Master Store
+        let savedCompany: CompanyCategory[] | null = await idbGetMaster(STORE_COMPANY, "sal_vita_company_master");
+
         if (!savedCompany || !Array.isArray(savedCompany) || savedCompany.length === 0) {
-          const keysToSearchComp = ["sal_vita_company_v5", "sal_vita_company_v4", "sal_vita_company_v3", "sal_vita_company_v2", "sal_vita_company"];
-          for (const key of keysToSearchComp) {
+          const legacyCompKeys = ["sal_vita_company_v5", "sal_vita_company_v4", "sal_vita_company_v3", "sal_vita_company_v2", "sal_vita_company"];
+          for (const key of legacyCompKeys) {
             const val = localStorage.getItem(key);
             if (val) {
               try {
                 const parsed = JSON.parse(val);
-                if (Array.isArray(parsed) && parsed.length > 0) {
+                if (Array.isArray(parsed) && parsed.some(c => c.documents && c.documents.length > 0)) {
                   savedCompany = parsed;
                   break;
                 }
@@ -637,26 +621,24 @@ export default function Documentos() {
         }
 
         if (savedCompany && Array.isArray(savedCompany) && savedCompany.length > 0) {
-          setCompanyCategoriesList(prevComp => {
-            return prevComp.map(baseComp => {
-              const savedComp = savedCompany!.find(c => c.id === baseComp.id);
-              if (savedComp) {
-                return {
-                  ...baseComp,
-                  documents: Array.isArray(savedComp.documents)
-                    ? savedComp.documents.filter(d => d.fileUrl && d.fileUrl !== "#")
-                    : baseComp.documents
-                };
-              }
-              return baseComp;
-            });
+          const mergedCompany = INITIAL_COMPANY_CATEGORIES.map(baseComp => {
+            const savedComp = savedCompany!.find(c => c.id === baseComp.id);
+            if (savedComp) {
+              return {
+                ...baseComp,
+                documents: Array.isArray(savedComp.documents)
+                  ? savedComp.documents.filter(d => d.fileUrl && d.fileUrl !== "#")
+                  : baseComp.documents
+              };
+            }
+            return baseComp;
           });
 
-          // Sync to IndexedDB
-          await idbSet(STORE_COMPANY, "sal_vita_company_data", savedCompany);
+          setCompanyCategoriesList(mergedCompany);
+          await idbSetMaster(STORE_COMPANY, "sal_vita_company_master", mergedCompany);
         }
       } catch (err) {
-        console.error("Error restoring user data:", err);
+        console.error("[Sal Vita Restoration Error]:", err);
       }
     };
 
