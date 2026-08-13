@@ -20,10 +20,15 @@ import {
   Award,
   Plus,
   Trash2,
-  Lock,
-  UploadCloud,
+  Paperclip,
   FilePlus,
-  X
+  X,
+  FileCheck,
+  Microscope,
+  FileSpreadsheet,
+  Camera,
+  Image as ImageIcon,
+  RotateCcw
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -34,7 +39,16 @@ import { Textarea } from "../components/ui/textarea";
 import { toast } from "sonner";
 import { useAuth } from "../_core/hooks/useAuth";
 
-interface TechnicalProduct {
+export interface AttachedDoc {
+  id: string;
+  title: string;
+  fileUrl: string;
+  fileType: "PDF" | "LAUDO" | "CERTIFICADO" | "IMAGEM" | "OUTRO";
+  fileSize?: string;
+  addedAt?: string;
+}
+
+export interface TechnicalProduct {
   id: string;
   name: string;
   subTitle?: string;
@@ -55,26 +69,22 @@ interface TechnicalProduct {
   };
   badgeColor: string;
   iconType: "bigbag" | "sacaria" | "varejo";
-  fileUrl?: string;
-  isCustom?: boolean;
+  imageUrl?: string; // Custom uploaded / URL product photo
+  documents: AttachedDoc[];
 }
 
-interface CompanyDocument {
+export interface CompanyCategory {
   id: string;
   title: string;
   description: string;
-  category: "cadastral" | "licenca" | "fiscal" | "bancario";
   categoryLabel: string;
-  fileType: string;
-  fileSize: string;
-  lastUpdated: string;
-  details?: string[];
+  iconBg: string;
+  details: string[];
   copyContent?: string;
-  fileUrl?: string;
-  isCustom?: boolean;
+  documents: AttachedDoc[];
 }
 
-const DEFAULT_PRODUCTS: TechnicalProduct[] = [
+const INITIAL_PRODUCTS: TechnicalProduct[] = [
   {
     id: "sal-refinado-bigbag",
     name: "Sal Refinado COM E SEM IOD",
@@ -103,7 +113,25 @@ const DEFAULT_PRODUCTS: TechnicalProduct[] = [
       storage: "Local seco, arejado e sobre estrados"
     },
     badgeColor: "bg-blue-600 text-white",
-    iconType: "bigbag"
+    iconType: "bigbag",
+    documents: [
+      {
+        id: "doc-ref-bb-1",
+        title: "Ficha Técnica Oficial - Sal Refinado Big Bag",
+        fileUrl: "#",
+        fileType: "PDF",
+        fileSize: "340 KB",
+        addedAt: "Válido 2026"
+      },
+      {
+        id: "doc-ref-bb-2",
+        title: "Laudo de Análise Físico-Química",
+        fileUrl: "#",
+        fileType: "LAUDO",
+        fileSize: "210 KB",
+        addedAt: "Lote Atual"
+      }
+    ]
   },
   {
     id: "sal-granulado-bigbag",
@@ -133,7 +161,17 @@ const DEFAULT_PRODUCTS: TechnicalProduct[] = [
       storage: "Local coberto, fresco e protegido da umidade"
     },
     badgeColor: "bg-emerald-600 text-white",
-    iconType: "bigbag"
+    iconType: "bigbag",
+    documents: [
+      {
+        id: "doc-gran-bb-1",
+        title: "Ficha Técnica - Sal Granulado Big Bag",
+        fileUrl: "#",
+        fileType: "PDF",
+        fileSize: "310 KB",
+        addedAt: "Válido 2026"
+      }
+    ]
   },
   {
     id: "sal-moido-grosso-bigbag",
@@ -163,7 +201,17 @@ const DEFAULT_PRODUCTS: TechnicalProduct[] = [
       storage: "Manter afastado do solo e paredes"
     },
     badgeColor: "bg-amber-600 text-white",
-    iconType: "bigbag"
+    iconType: "bigbag",
+    documents: [
+      {
+        id: "doc-moido-bb-1",
+        title: "Especificação Técnica Moagem & Peneiramento",
+        fileUrl: "#",
+        fileType: "PDF",
+        fileSize: "280 KB",
+        addedAt: "2026"
+      }
+    ]
   },
   {
     id: "sal-fazendeiro-25kg",
@@ -194,7 +242,25 @@ const DEFAULT_PRODUCTS: TechnicalProduct[] = [
       storage: "Empilhamento máximo recomendado: 15 sacos"
     },
     badgeColor: "bg-orange-600 text-white",
-    iconType: "sacaria"
+    iconType: "sacaria",
+    documents: [
+      {
+        id: "doc-faz-25-1",
+        title: "Ficha Técnica Sal do Fazendeiro 25kg",
+        fileUrl: "#",
+        fileType: "PDF",
+        fileSize: "390 KB",
+        addedAt: "Válido 2026"
+      },
+      {
+        id: "doc-faz-25-2",
+        title: "Registro MAPA - Nutrição Animal",
+        fileUrl: "#",
+        fileType: "CERTIFICADO",
+        fileSize: "450 KB",
+        addedAt: "Ativo"
+      }
+    ]
   },
   {
     id: "sal-refinado-25kg",
@@ -225,7 +291,25 @@ const DEFAULT_PRODUCTS: TechnicalProduct[] = [
       storage: "Local seco e limpo"
     },
     badgeColor: "bg-indigo-600 text-white",
-    iconType: "sacaria"
+    iconType: "sacaria",
+    documents: [
+      {
+        id: "doc-ref-25-1",
+        title: "Ficha Técnica Sal Refinado 25kg",
+        fileUrl: "#",
+        fileType: "PDF",
+        fileSize: "320 KB",
+        addedAt: "2026"
+      },
+      {
+        id: "doc-ref-25-2",
+        title: "Laudo Bromatológico & Grau Alimentício",
+        fileUrl: "#",
+        fileType: "LAUDO",
+        fileSize: "195 KB",
+        addedAt: "Lote Atual"
+      }
+    ]
   },
   {
     id: "sal-granulado-25kg",
@@ -256,7 +340,17 @@ const DEFAULT_PRODUCTS: TechnicalProduct[] = [
       storage: "Manter sobre estrados secos"
     },
     badgeColor: "bg-teal-600 text-white",
-    iconType: "sacaria"
+    iconType: "sacaria",
+    documents: [
+      {
+        id: "doc-gran-25-1",
+        title: "Ficha Técnica Sal Granulado 25kg",
+        fileUrl: "#",
+        fileType: "PDF",
+        fileSize: "290 KB",
+        addedAt: "2026"
+      }
+    ]
   },
   {
     id: "sal-vita-30x1",
@@ -287,7 +381,25 @@ const DEFAULT_PRODUCTS: TechnicalProduct[] = [
       storage: "Empilhamento máx: 10 fardos"
     },
     badgeColor: "bg-cyan-600 text-white",
-    iconType: "varejo"
+    iconType: "varejo",
+    documents: [
+      {
+        id: "doc-30x1-1",
+        title: "Ficha Técnica Varejo Sal Vita 1kg",
+        fileUrl: "#",
+        fileType: "PDF",
+        fileSize: "360 KB",
+        addedAt: "ANVISA RDC"
+      },
+      {
+        id: "doc-30x1-2",
+        title: "Tabela Nutricional & Código de Barras EAN",
+        fileUrl: "#",
+        fileType: "CERTIFICADO",
+        fileSize: "180 KB",
+        addedAt: "Oficial"
+      }
+    ]
   },
   {
     id: "sal-vita-10x1",
@@ -318,100 +430,135 @@ const DEFAULT_PRODUCTS: TechnicalProduct[] = [
       storage: "Local seco e limpo"
     },
     badgeColor: "bg-purple-600 text-white",
-    iconType: "varejo"
+    iconType: "varejo",
+    documents: [
+      {
+        id: "doc-10x1-1",
+        title: "Ficha Técnica Fardo 10x1kg Sal Vita",
+        fileUrl: "#",
+        fileType: "PDF",
+        fileSize: "340 KB",
+        addedAt: "2026"
+      }
+    ]
   }
 ];
 
-const DEFAULT_COMPANY_DOCS: CompanyDocument[] = [
+const INITIAL_COMPANY_CATEGORIES: CompanyCategory[] = [
   {
-    id: "doc-cnpj",
-    title: "Ficha Cadastral da Empresa (CNPJ)",
-    description: "Comprovante de Inscrição e de Situação Cadastral na Receita Federal do Brasil.",
-    category: "cadastral",
+    id: "comp-cadastral",
+    title: "Dados Cadastrais & CNPJ",
+    description: "Comprovantes cadastrais oficiais, Inscrição Estadual e Razão Social da empresa.",
     categoryLabel: "Cadastro & Identificação",
-    fileType: "PDF",
-    fileSize: "240 KB",
-    lastUpdated: "Atualizado em 2026",
+    iconBg: "bg-blue-100 text-blue-800",
     details: [
-      "Razão Social: T A CONSULTORIA EMPRESARIAL LTDA / SAL VITA",
-      "CNPJ: Regular na Receita Federal",
-      "Atividade Principal: Moagem, refino e comércio atacadista de sal",
+      "Razão Social: T A CONSULTORIA EMPRESARIAL LTDA",
+      "Nome Fantasia: SAL VITA",
+      "Situação Cadastral: Ativa e Regularizada",
       "Inscrição Estadual: Ativa"
     ],
-    copyContent: "DADOS CADASTRAIS SAL VITA:\nRazão Social: T A CONSULTORIA EMPRESARIAL LTDA\nCNPJ: Inscrição Ativa\nAtividade: Fabricação e Comércio Atacadista de Sal"
-  },
-  {
-    id: "doc-alvara",
-    title: "Alvará de Funcionamento e Localização",
-    description: "Alvará municipal concedido para operação da fábrica e centro de distribuição de sal.",
-    category: "licenca",
-    categoryLabel: "Licenças & Alvarás",
-    fileType: "PDF",
-    fileSize: "512 KB",
-    lastUpdated: "Válido até 2027",
-    details: [
-      "Órgão Emissor: Prefeitura Municipal",
-      "Atividade: Industrialização e Envasamento de Sal",
-      "Situação: Deferido e Válido"
+    copyContent: "DADOS CADASTRAIS SAL VITA:\nRazão Social: T A CONSULTORIA EMPRESARIAL LTDA\nCNPJ: Inscrição Ativa\nAtividade: Fabricação e Comércio Atacadista de Sal",
+    documents: [
+      {
+        id: "comp-doc-1",
+        title: "Comprovante CNPJ Receita Federal",
+        fileUrl: "#",
+        fileType: "PDF",
+        fileSize: "240 KB",
+        addedAt: "Atualizado 2026"
+      },
+      {
+        id: "comp-doc-2",
+        title: "Inscrição Estadual SUTRI/SEFAZ",
+        fileUrl: "#",
+        fileType: "PDF",
+        fileSize: "180 KB",
+        addedAt: "Ativa"
+      }
     ]
   },
   {
-    id: "doc-sanitaria",
-    title: "Licença Sanitária / ANVISA",
-    description: "Certificado de Vigilância Sanitária autorizando a produção e embalagem de sal alimentício.",
-    category: "licenca",
+    id: "comp-licencas",
+    title: "Alvarás & Licenças Sanitárias",
+    description: "Alvará municipal, autorização de funcionamento e vigilância sanitária ANVISA/MAPA.",
     categoryLabel: "Licenças & Alvarás",
-    fileType: "PDF",
-    fileSize: "380 KB",
-    lastUpdated: "Válido",
+    iconBg: "bg-emerald-100 text-emerald-800",
     details: [
-      "Conforme RDC ANVISA para sal refinado iodado humano",
-      "Inspeção técnica aprovada sem restrições"
+      "Alvará de Funcionamento Municipal Válido",
+      "Licença Sanitária para Alimentos",
+      "Registro MAPA para Nutrição Animal"
+    ],
+    documents: [
+      {
+        id: "comp-doc-3",
+        title: "Alvará de Funcionamento Municipal 2026/2027",
+        fileUrl: "#",
+        fileType: "PDF",
+        fileSize: "512 KB",
+        addedAt: "Válido"
+      },
+      {
+        id: "comp-doc-4",
+        title: "Licença Sanitária ANVISA - Sal Alimentício",
+        fileUrl: "#",
+        fileType: "CERTIFICADO",
+        fileSize: "380 KB",
+        addedAt: "Aprovado"
+      },
+      {
+        id: "comp-doc-5",
+        title: "Registro MAPA - Produtos para Alimentação Animal",
+        fileUrl: "#",
+        fileType: "CERTIFICADO",
+        fileSize: "425 KB",
+        addedAt: "Ativo"
+      }
     ]
   },
   {
-    id: "doc-mapa",
-    title: "Registro Ministério da Agricultura (MAPA)",
-    description: "Certificado de registro de estabelecimento de produtos destinados à alimentação animal.",
-    category: "licenca",
-    categoryLabel: "Licenças & Alvarás",
-    fileType: "PDF",
-    fileSize: "425 KB",
-    lastUpdated: "Ativo",
-    details: [
-      "Apto para fornecimento de sal para nutrição animal e fabricação de rações",
-      "Linha Sal do Fazendeiro e Sal Vita Agro"
-    ]
-  },
-  {
-    id: "doc-cnd",
-    title: "Certidão Negativa de Débitos (CND)",
-    description: "Certidão conjunta de débitos relativos a tributos federais e à dívida ativa da União.",
-    category: "fiscal",
+    id: "comp-fiscal",
+    title: "Regularidade Fiscal (CND)",
+    description: "Certidões negativas de débitos municipais, estaduais e federais para cadastro em clientes.",
     categoryLabel: "Regularidade Fiscal",
-    fileType: "PDF",
-    fileSize: "180 KB",
-    lastUpdated: "Emitido recentemente",
+    iconBg: "bg-amber-100 text-amber-800",
     details: [
-      "Regularidade fiscal perante a União, Estado e Município",
-      "Imprescindível para cadastro em grandes indústrias e redes varejistas"
+      "Certidão Conjunta Receita Federal / PGFN",
+      "Certidão Negativa Estadual",
+      "Certidão Negativa Municipal"
+    ],
+    documents: [
+      {
+        id: "comp-doc-6",
+        title: "Certidão Negativa de Débitos Federais (CND)",
+        fileUrl: "#",
+        fileType: "PDF",
+        fileSize: "210 KB",
+        addedAt: "Emitido recentemente"
+      }
     ]
   },
   {
-    id: "doc-pix",
+    id: "comp-financeiro",
     title: "Dados Bancários & Chaves Pix Oficiais",
-    description: "Informações bancárias oficiais para liquidação de faturamento, depósitos e pagamentos de frete.",
-    category: "bancario",
-    categoryLabel: "Dados Financeiros",
-    fileType: "TEXT / PDF",
-    fileSize: "120 KB",
-    lastUpdated: "Atualizado",
+    description: "Dados para faturamento, pagamento de fretes, depósitos e liquidação de pedidos.",
+    categoryLabel: "Financeiro & Pix",
+    iconBg: "bg-purple-100 text-purple-800",
     details: [
       "Conta Jurídica Oficial Sal Vita",
-      "Chave Pix CNPJ vinculada ao titular",
-      "Instruções para comprovantes de pagamento de frete/pedidos"
+      "Chave Pix CNPJ vinculada",
+      "Comprovantes de liquidação"
     ],
-    copyContent: "DADOS BANCÁRIOS OFICIAIS - SAL VITA:\nFavorecido: SAL VITA LTDA\nChave Pix CNPJ: (Consulte o setor financeiro para confirmação)\nInstrução: Enviar comprovante com o número do pedido/atendente."
+    copyContent: "DADOS BANCÁRIOS OFICIAIS - SAL VITA:\nFavorecido: SAL VITA LTDA\nChave Pix CNPJ: (Solicite ao setor financeiro para confirmação)\nInstrução: Enviar comprovante informando o número do pedido/atendente.",
+    documents: [
+      {
+        id: "comp-doc-7",
+        title: "Ficha de Dados Bancários & Pix Oficial",
+        fileUrl: "#",
+        fileType: "PDF",
+        fileSize: "140 KB",
+        addedAt: "Oficial 2026"
+      }
+    ]
   }
 ];
 
@@ -425,45 +572,40 @@ export default function Documentos() {
   const [selectedProduct, setSelectedProduct] = useState<TechnicalProduct | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Dynamic state loaded from localStorage merged with defaults
-  const [productsList, setProductsList] = useState<TechnicalProduct[]>(DEFAULT_PRODUCTS);
-  const [companyDocsList, setCompanyDocsList] = useState<CompanyDocument[]>(DEFAULT_COMPANY_DOCS);
+  // Dynamic state loaded from localStorage
+  const [productsList, setProductsList] = useState<TechnicalProduct[]>(INITIAL_PRODUCTS);
+  const [companyCategoriesList, setCompanyCategoriesList] = useState<CompanyCategory[]>(INITIAL_COMPANY_CATEGORIES);
 
-  // Admin upload/create modal state
-  const [showAddModal, setShowAddModal] = useState<boolean>(false);
-  const [addType, setAddType] = useState<"produto" | "empresa">("produto");
-  const [formData, setFormData] = useState({
+  // Modal attach document state
+  const [attachModalOpen, setAttachModalOpen] = useState<boolean>(false);
+  const [targetTargetId, setTargetTargetId] = useState<string | null>(null);
+  const [targetType, setTargetType] = useState<"product" | "company">("product");
+
+  const [newDocData, setNewDocData] = useState({
     title: "",
-    subTitle: "",
-    category: "bigbag",
-    brands: "SAL VITA",
-    iodineOptions: "Disponível COM e SEM Iodo",
-    applications: "",
-    targetAudience: "",
-    description: "",
-    weight: "",
-    granulometry: "",
-    solubility: "",
-    purity: "",
     fileUrl: "",
-    fileType: "PDF",
+    fileType: "PDF" as "PDF" | "LAUDO" | "CERTIFICADO" | "IMAGEM" | "OUTRO",
+    fileSize: "",
   });
 
-  // Load custom items from localStorage
+  // Modal edit product image state (Admin only)
+  const [editImageModalOpen, setEditImageModalOpen] = useState<boolean>(false);
+  const [editingProduct, setEditingProduct] = useState<TechnicalProduct | null>(null);
+  const [imageUrlInput, setImageUrlInput] = useState<string>("");
+
+  // Load custom stored docs from localStorage
   useEffect(() => {
     try {
-      const savedProducts = localStorage.getItem("sal_vita_custom_products");
+      const savedProducts = localStorage.getItem("sal_vita_products_v2");
       if (savedProducts) {
-        const parsed = JSON.parse(savedProducts);
-        setProductsList([...DEFAULT_PRODUCTS, ...parsed]);
+        setProductsList(JSON.parse(savedProducts));
       }
-      const savedDocs = localStorage.getItem("sal_vita_custom_docs");
-      if (savedDocs) {
-        const parsed = JSON.parse(savedDocs);
-        setCompanyDocsList([...DEFAULT_COMPANY_DOCS, ...parsed]);
+      const savedCompany = localStorage.getItem("sal_vita_company_v2");
+      if (savedCompany) {
+        setCompanyCategoriesList(JSON.parse(savedCompany));
       }
     } catch (e) {
-      console.error("Error reading custom docs", e);
+      console.error("Error reading saved card docs", e);
     }
   }, []);
 
@@ -476,20 +618,145 @@ export default function Documentos() {
       product.subTitle?.toLowerCase().includes(q) ||
       product.description.toLowerCase().includes(q) ||
       product.applications.some(a => a.toLowerCase().includes(q)) ||
-      product.targetAudience.some(t => t.toLowerCase().includes(q));
+      product.documents.some(d => d.title.toLowerCase().includes(q));
     return matchesCategory && matchesSearch;
   });
 
-  // Filter company docs
-  const filteredDocs = companyDocsList.filter(doc => {
+  // Filter company categories
+  const filteredCompanyCategories = companyCategoriesList.filter(cat => {
     const q = searchQuery.toLowerCase().trim();
     return !q || 
-      doc.title.toLowerCase().includes(q) ||
-      doc.description.toLowerCase().includes(q) ||
-      doc.categoryLabel.toLowerCase().includes(q);
+      cat.title.toLowerCase().includes(q) ||
+      cat.description.toLowerCase().includes(q) ||
+      cat.documents.some(d => d.title.toLowerCase().includes(q));
   });
 
+  const handleOpenAttachModal = (id: string, type: "product" | "company") => {
+    setTargetTargetId(id);
+    setTargetType(type);
+    setNewDocData({
+      title: "",
+      fileUrl: "",
+      fileType: "PDF",
+      fileSize: "PDF • Oficial",
+    });
+    setAttachModalOpen(true);
+  };
+
+  const handleOpenImageModal = (product: TechnicalProduct) => {
+    setEditingProduct(product);
+    setImageUrlInput(product.imageUrl || "");
+    setEditImageModalOpen(true);
+  };
+
+  const handleSaveProductImage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProduct) return;
+
+    const updatedProducts = productsList.map(p => {
+      if (p.id === editingProduct.id) {
+        return { ...p, imageUrl: imageUrlInput.trim() || undefined };
+      }
+      return p;
+    });
+
+    setProductsList(updatedProducts);
+    localStorage.setItem("sal_vita_products_v2", JSON.stringify(updatedProducts));
+    toast.success("Foto do produto atualizada!");
+    setEditImageModalOpen(false);
+    setEditingProduct(null);
+  };
+
+  const handleResetProductImage = () => {
+    if (!editingProduct) return;
+    const updatedProducts = productsList.map(p => {
+      if (p.id === editingProduct.id) {
+        const copy = { ...p };
+        delete copy.imageUrl;
+        return copy;
+      }
+      return p;
+    });
+    setProductsList(updatedProducts);
+    localStorage.setItem("sal_vita_products_v2", JSON.stringify(updatedProducts));
+    toast.success("Foto restaurada para a ilustração padrão.");
+    setEditImageModalOpen(false);
+    setEditingProduct(null);
+  };
+
+  const handleSaveAttachedDoc = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!newDocData.title.trim()) {
+      toast.error("Preencha o título do documento.");
+      return;
+    }
+
+    const docToAdd: AttachedDoc = {
+      id: `attached-${Date.now()}`,
+      title: newDocData.title.trim(),
+      fileUrl: newDocData.fileUrl.trim() || "#",
+      fileType: newDocData.fileType,
+      fileSize: newDocData.fileSize || "PDF",
+      addedAt: "Adicionado pelo Admin"
+    };
+
+    if (targetType === "product" && targetTargetId) {
+      const updatedProducts = productsList.map(p => {
+        if (p.id === targetTargetId) {
+          return { ...p, documents: [...p.documents, docToAdd] };
+        }
+        return p;
+      });
+      setProductsList(updatedProducts);
+      localStorage.setItem("sal_vita_products_v2", JSON.stringify(updatedProducts));
+      toast.success(`Documento anexado no produto!`);
+    } else if (targetType === "company" && targetTargetId) {
+      const updatedCompany = companyCategoriesList.map(c => {
+        if (c.id === targetTargetId) {
+          return { ...c, documents: [...c.documents, docToAdd] };
+        }
+        return c;
+      });
+      setCompanyCategoriesList(updatedCompany);
+      localStorage.setItem("sal_vita_company_v2", JSON.stringify(updatedCompany));
+      toast.success(`Documento anexado no card da empresa!`);
+    }
+
+    setAttachModalOpen(false);
+  };
+
+  const handleDeleteAttachedDoc = (cardId: string, docId: string, isProduct: boolean) => {
+    if (!confirm("Remover este documento do card?")) return;
+
+    if (isProduct) {
+      const updated = productsList.map(p => {
+        if (p.id === cardId) {
+          return { ...p, documents: p.documents.filter(d => d.id !== docId) };
+        }
+        return p;
+      });
+      setProductsList(updated);
+      localStorage.setItem("sal_vita_products_v2", JSON.stringify(updated));
+      toast.success("Documento removido.");
+    } else {
+      const updated = companyCategoriesList.map(c => {
+        if (c.id === cardId) {
+          return { ...c, documents: c.documents.filter(d => d.id !== docId) };
+        }
+        return c;
+      });
+      setCompanyCategoriesList(updated);
+      localStorage.setItem("sal_vita_company_v2", JSON.stringify(updated));
+      toast.success("Documento removido.");
+    }
+  };
+
   const handleCopyWhatsApp = (product: TechnicalProduct) => {
+    const docsListText = product.documents.length > 0 
+      ? product.documents.map(d => `📄 ${d.title}`).join('\n')
+      : "📄 Ficha Técnica Disponível";
+
     const text = `📌 *FICHA TÉCNICA - ${product.name.toUpperCase()}* (${product.subTitle || product.packageType})
 
 ✨ *Aplicações Principais:*
@@ -502,6 +769,9 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
 💧 *Solubilidade:* ${product.specs.solubility}
 ⭐ *Pureza:* ${product.specs.purity}
 
+📂 *Documentos Anexados:*
+${docsListText}
+
 📍 *Sal Vita - Qualidade Garantida*`;
 
     navigator.clipboard.writeText(text);
@@ -510,136 +780,70 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
     setTimeout(() => setCopiedId(null), 3000);
   };
 
-  const handleCopyDoc = (doc: CompanyDocument) => {
-    const text = doc.copyContent || `${doc.title}\n${doc.description}\nStatus: ${doc.lastUpdated}`;
-    navigator.clipboard.writeText(text);
-    setCopiedId(doc.id);
+  const handleCopyText = (content?: string, id?: string) => {
+    if (!content) return;
+    navigator.clipboard.writeText(content);
+    if (id) setCopiedId(id);
     toast.success("Dados copiados para a área de transferência!");
     setTimeout(() => setCopiedId(null), 3000);
   };
 
-  const handleCreateDocument = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!formData.title.trim()) {
-      toast.error("Por favor, preencha o título.");
-      return;
-    }
-
-    if (addType === "produto") {
-      const newProduct: TechnicalProduct = {
-        id: `custom-prod-${Date.now()}`,
-        name: formData.title,
-        subTitle: formData.subTitle || "Ficha Técnica Sal Vita",
-        category: formData.category as "bigbag" | "sacaria" | "varejo",
-        categoryLabel: formData.category === "bigbag" ? "Big Bag (1.000 kg)" : formData.category === "sacaria" ? "Sacaria (25 kg)" : "Linha Varejo (1 kg)",
-        packageType: formData.subTitle || "Embalagem Padrão",
-        brands: formData.brands.split(",").map(b => b.trim()),
-        iodineOptions: formData.iodineOptions,
-        applications: formData.applications ? formData.applications.split("\n").filter(Boolean) : ["Uso industrial e comercial"],
-        targetAudience: formData.targetAudience ? formData.targetAudience.split(",").map(t => t.trim()) : ["Clientes Sal Vita"],
-        description: formData.description || "Ficha técnica oficial de especificações técnicas do produto Sal Vita.",
-        specs: {
-          weight: formData.weight || "Conforme embalagem",
-          granulometry: formData.granulometry || "Selecionada",
-          solubility: formData.solubility || "Alta",
-          purity: formData.purity || "NaCl ≥ 98,5%",
-          storage: "Local seco e arejado"
-        },
-        badgeColor: formData.category === "bigbag" ? "bg-blue-600 text-white" : formData.category === "sacaria" ? "bg-orange-600 text-white" : "bg-purple-600 text-white",
-        iconType: formData.category as "bigbag" | "sacaria" | "varejo",
-        fileUrl: formData.fileUrl,
-        isCustom: true
-      };
-
-      const updated = [...productsList, newProduct];
-      setProductsList(updated);
-      const customOnly = updated.filter(p => p.isCustom);
-      localStorage.setItem("sal_vita_custom_products", JSON.stringify(customOnly));
-      toast.success("Nova Ficha Técnica adicionada com sucesso!");
-    } else {
-      const newDoc: CompanyDocument = {
-        id: `custom-doc-${Date.now()}`,
-        title: formData.title,
-        description: formData.description || "Documento oficial cadastral da empresa.",
-        category: "cadastral",
-        categoryLabel: "Documento Cadastral",
-        fileType: formData.fileType || "PDF",
-        fileSize: "1.2 MB",
-        lastUpdated: "Adicionado recentemente pelo Admin",
-        details: formData.applications ? formData.applications.split("\n").filter(Boolean) : ["Documento ativo e verificado"],
-        fileUrl: formData.fileUrl,
-        copyContent: formData.description,
-        isCustom: true
-      };
-
-      const updated = [...companyDocsList, newDoc];
-      setCompanyDocsList(updated);
-      const customOnly = updated.filter(d => d.isCustom);
-      localStorage.setItem("sal_vita_custom_docs", JSON.stringify(customOnly));
-      toast.success("Novo Documento Cadastral adicionado com sucesso!");
-    }
-
-    setShowAddModal(false);
-    setFormData({
-      title: "",
-      subTitle: "",
-      category: "bigbag",
-      brands: "SAL VITA",
-      iodineOptions: "Disponível COM e SEM Iodo",
-      applications: "",
-      targetAudience: "",
-      description: "",
-      weight: "",
-      granulometry: "",
-      solubility: "",
-      purity: "",
-      fileUrl: "",
-      fileType: "PDF",
-    });
-  };
-
-  const handleDeleteItem = (id: string, isProduct: boolean) => {
-    if (!confirm("Tem certeza que deseja remover este item?")) return;
-
-    if (isProduct) {
-      const updated = productsList.filter(p => p.id !== id);
-      setProductsList(updated);
-      localStorage.setItem("sal_vita_custom_products", JSON.stringify(updated.filter(p => p.isCustom)));
-      toast.success("Produto removido.");
-    } else {
-      const updated = companyDocsList.filter(d => d.id !== id);
-      setCompanyDocsList(updated);
-      localStorage.setItem("sal_vita_custom_docs", JSON.stringify(updated.filter(d => d.isCustom)));
-      toast.success("Documento removido.");
+  const getDocIcon = (type: string) => {
+    switch (type) {
+      case "LAUDO":
+        return <Microscope size={15} className="text-purple-600 flex-shrink-0" />;
+      case "CERTIFICADO":
+        return <FileCheck size={15} className="text-emerald-600 flex-shrink-0" />;
+      case "IMAGEM":
+        return <FileSpreadsheet size={15} className="text-amber-600 flex-shrink-0" />;
+      default:
+        return <FileText size={15} className="text-blue-600 flex-shrink-0" />;
     }
   };
 
-  const renderProductIllustration = (type: "bigbag" | "sacaria" | "varejo", name: string) => {
-    if (type === "bigbag") {
+  const renderProductIllustration = (product: TechnicalProduct) => {
+    // Custom product photo uploaded by Admin
+    if (product.imageUrl) {
       return (
-        <div className="w-full h-40 bg-gradient-to-b from-blue-900 via-slate-900 to-slate-950 rounded-xl p-4 flex flex-col items-center justify-center relative overflow-hidden group shadow-inner">
+        <div className="w-full h-36 bg-slate-100 rounded-xl p-2 flex items-center justify-center relative overflow-hidden group shadow-inner border border-slate-200">
+          <img 
+            src={product.imageUrl} 
+            alt={product.name}
+            className="w-full h-full object-contain transform group-hover:scale-105 transition-transform duration-300"
+            onError={(e) => {
+              // fallback if image fails to load
+              (e.target as HTMLElement).style.display = "none";
+            }}
+          />
+        </div>
+      );
+    }
+
+    // Default Vector Illustrations
+    if (product.iconType === "bigbag") {
+      return (
+        <div className="w-full h-36 bg-gradient-to-b from-blue-900 via-slate-900 to-slate-950 rounded-xl p-3 flex flex-col items-center justify-center relative overflow-hidden group shadow-inner">
           <div className="absolute inset-0 bg-blue-500/10 backdrop-blur-3xl group-hover:bg-blue-500/20 transition-all duration-300" />
           <div className="relative z-10 flex flex-col items-center text-center">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-400 via-amber-200 to-white flex items-center justify-center shadow-lg mb-2 transform group-hover:scale-105 transition-transform">
-              <Package className="w-9 h-9 text-slate-900" />
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-400 via-amber-200 to-white flex items-center justify-center shadow-lg mb-1.5 transform group-hover:scale-105 transition-transform">
+              <Package className="w-8 h-8 text-slate-900" />
             </div>
-            <span className="text-xs font-bold uppercase tracking-widest text-amber-300 bg-amber-950/80 px-2.5 py-0.5 rounded-full border border-amber-500/40">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded-full border border-amber-500/40">
               BIG BAG 1.000 KG
             </span>
           </div>
         </div>
       );
     }
-    if (type === "sacaria") {
+    if (product.iconType === "sacaria") {
       return (
-        <div className="w-full h-40 bg-gradient-to-b from-orange-950 via-slate-900 to-slate-950 rounded-xl p-4 flex flex-col items-center justify-center relative overflow-hidden group shadow-inner">
+        <div className="w-full h-36 bg-gradient-to-b from-orange-950 via-slate-900 to-slate-950 rounded-xl p-3 flex flex-col items-center justify-center relative overflow-hidden group shadow-inner">
           <div className="absolute inset-0 bg-orange-500/10 backdrop-blur-3xl group-hover:bg-orange-500/20 transition-all duration-300" />
           <div className="relative z-10 flex flex-col items-center text-center">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-orange-400 via-amber-300 to-white flex items-center justify-center shadow-lg mb-2 transform group-hover:scale-105 transition-transform">
-              <Layers className="w-9 h-9 text-slate-900" />
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-orange-400 via-amber-300 to-white flex items-center justify-center shadow-lg mb-1.5 transform group-hover:scale-105 transition-transform">
+              <Layers className="w-8 h-8 text-slate-900" />
             </div>
-            <span className="text-xs font-bold uppercase tracking-widest text-orange-300 bg-orange-950/80 px-2.5 py-0.5 rounded-full border border-orange-500/40">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-orange-300 bg-orange-950/80 px-2 py-0.5 rounded-full border border-orange-500/40">
               SACARIA 25 KG
             </span>
           </div>
@@ -647,13 +851,13 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
       );
     }
     return (
-      <div className="w-full h-40 bg-gradient-to-b from-cyan-950 via-slate-900 to-slate-950 rounded-xl p-4 flex flex-col items-center justify-center relative overflow-hidden group shadow-inner">
+      <div className="w-full h-36 bg-gradient-to-b from-cyan-950 via-slate-900 to-slate-950 rounded-xl p-3 flex flex-col items-center justify-center relative overflow-hidden group shadow-inner">
         <div className="absolute inset-0 bg-cyan-500/10 backdrop-blur-3xl group-hover:bg-cyan-500/20 transition-all duration-300" />
         <div className="relative z-10 flex flex-col items-center text-center">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-300 via-blue-200 to-white flex items-center justify-center shadow-lg mb-2 transform group-hover:scale-105 transition-transform">
-            <ShoppingCart className="w-9 h-9 text-slate-900" />
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-300 via-blue-200 to-white flex items-center justify-center shadow-lg mb-1.5 transform group-hover:scale-105 transition-transform">
+            <ShoppingCart className="w-8 h-8 text-slate-900" />
           </div>
-          <span className="text-xs font-bold uppercase tracking-widest text-cyan-300 bg-cyan-950/80 px-2.5 py-0.5 rounded-full border border-cyan-500/40">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-cyan-300 bg-cyan-950/80 px-2 py-0.5 rounded-full border border-cyan-500/40">
             FARDO VAREJO 1 KG
           </span>
         </div>
@@ -676,7 +880,7 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
               Documentos & Fichas Técnicas Sal Vita
             </h1>
             <p className="text-slate-300 text-sm md:text-base max-w-2xl">
-              Acesse rapidamente as fichas técnicas de toda a linha de sais, especificações de embalagem e documentos cadastrais da empresa para envio aos clientes.
+              Insira e consulte arquivos, laudos e fotos diretamente no card de cada produto ou categoria da empresa.
             </p>
           </div>
           
@@ -686,8 +890,8 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
               <span className="text-xs text-slate-300">Produtos</span>
             </div>
             <div className="bg-white/10 backdrop-blur-md px-4 py-3 rounded-xl border border-white/10 text-center min-w-[110px]">
-              <span className="block text-2xl font-bold text-emerald-400">{companyDocsList.length}</span>
-              <span className="text-xs text-slate-300">Docs Cadastrais</span>
+              <span className="block text-2xl font-bold text-emerald-400">{companyCategoriesList.length}</span>
+              <span className="text-xs text-slate-300">Docs Empresa</span>
             </div>
           </div>
         </div>
@@ -706,7 +910,7 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
             }`}
           >
             <Package size={16} className="text-blue-600" />
-            Fichas Técnicas ({productsList.length})
+            Fichas dos Produtos ({productsList.length})
           </button>
           <button
             onClick={() => setActiveTab("empresa")}
@@ -717,32 +921,20 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
             }`}
           >
             <Building2 size={16} className="text-emerald-600" />
-            Documentos Empresa ({companyDocsList.length})
+            Documentos da Empresa ({companyCategoriesList.length})
           </button>
         </div>
 
-        {/* Right side: Search Input & Admin Add Button */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1 lg:max-w-xl justify-end">
-          <div className="relative flex-1">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <Input
-              type="text"
-              placeholder={activeTab === "produtos" ? "Buscar por tipo de sal, aplicação, 25kg..." : "Buscar documento da empresa..."}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 bg-slate-50 border-slate-200 focus:bg-white text-sm w-full"
-            />
-          </div>
-
-          {isAdmin && (
-            <Button
-              onClick={() => setShowAddModal(true)}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow gap-1.5 px-4 py-2 h-10 rounded-lg shrink-0"
-            >
-              <Plus size={16} />
-              Novo Documento
-            </Button>
-          )}
+        {/* Search Input */}
+        <div className="relative flex-1 lg:max-w-md">
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Input
+            type="text"
+            placeholder={activeTab === "produtos" ? "Buscar por produto, laudo, aplicação..." : "Buscar por CNPJ, alvará, licença..."}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 bg-slate-50 border-slate-200 focus:bg-white text-sm w-full"
+          />
         </div>
       </div>
 
@@ -771,7 +963,7 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
         </div>
       )}
 
-      {/* TAB 1: TECHNICAL PRODUCTS */}
+      {/* TAB 1: PRODUCT CARDS WITH ATTACHED DOCS & PHOTO EDITING */}
       {activeTab === "produtos" && (
         <div className="space-y-6">
           {filteredProducts.length === 0 ? (
@@ -785,37 +977,34 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredProducts.map((product) => (
-                <Card key={product.id} className="flex flex-col overflow-hidden hover:shadow-lg transition-all duration-200 border-slate-200 group relative">
-                  {/* Custom items trash icon for Admin */}
-                  {isAdmin && product.isCustom && (
-                    <button
-                      onClick={() => handleDeleteItem(product.id, true)}
-                      title="Excluir item criado"
-                      className="absolute top-3 left-3 z-20 bg-red-600 hover:bg-red-700 text-white p-1.5 rounded-lg shadow transition"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-
+                <Card key={product.id} className="flex flex-col overflow-hidden hover:shadow-xl transition-all duration-200 border-slate-200 group bg-white">
                   {/* Card Visual Header */}
                   <div className="p-3 bg-slate-50 border-b relative">
-                    {renderProductIllustration(product.iconType, product.name)}
-                    <Badge className={`absolute top-5 right-5 ${product.badgeColor} shadow-md text-[10px] font-bold uppercase tracking-wider`}>
+                    {renderProductIllustration(product)}
+
+                    <Badge className={`absolute top-4 right-4 ${product.badgeColor} shadow-md text-[10px] font-bold uppercase tracking-wider`}>
                       {product.packageType}
                     </Badge>
+
+                    {/* Admin Button to Alter Product Photo */}
+                    {isAdmin && (
+                      <button
+                        onClick={() => handleOpenImageModal(product)}
+                        className="absolute bottom-4 left-4 z-20 bg-slate-900/90 hover:bg-slate-950 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg shadow-md flex items-center gap-1.5 backdrop-blur-md border border-white/20 transition transform active:scale-95"
+                      >
+                        <Camera size={13} className="text-amber-400" />
+                        Alterar Foto
+                      </button>
+                    )}
                   </div>
 
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <CardTitle className="text-base font-bold text-slate-900 leading-tight">
-                          {product.name}
-                        </CardTitle>
-                        <CardDescription className="text-xs text-blue-600 font-semibold mt-0.5">
-                          {product.subTitle}
-                        </CardDescription>
-                      </div>
-                    </div>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base font-bold text-slate-900 leading-tight">
+                      {product.name}
+                    </CardTitle>
+                    <CardDescription className="text-xs text-blue-600 font-semibold mt-0.5">
+                      {product.subTitle}
+                    </CardDescription>
                   </CardHeader>
 
                   <CardContent className="flex-1 space-y-4 text-xs">
@@ -833,7 +1022,7 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
                       </div>
                     </div>
 
-                    {/* Principais Aplicações */}
+                    {/* Aplicações Recomendadas */}
                     <div>
                       <h4 className="font-bold text-slate-900 text-xs mb-1.5 flex items-center gap-1">
                         <Factory size={13} className="text-slate-500" />
@@ -849,16 +1038,74 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
                       </ul>
                     </div>
 
-                    {/* Especificações Rápidas */}
-                    <div className="grid grid-cols-2 gap-2 pt-1">
-                      <div className="bg-blue-50/50 p-2 rounded border border-blue-100">
-                        <span className="block text-[10px] text-blue-700 font-semibold uppercase">Granulometria</span>
-                        <span className="text-slate-800 font-medium text-[11px] truncate block">{product.specs.granulometry}</span>
+                    {/* 📂 DOCUMENTOS ANEXADOS AO CARD DESTE PRODUTO */}
+                    <div className="pt-2 border-t border-slate-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                          <Paperclip size={14} className="text-emerald-600" />
+                          Documentos deste Produto ({product.documents.length}):
+                        </h4>
+                        
+                        {/* Admin Add Document Button to this specific Product Card */}
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleOpenAttachModal(product.id, "product")}
+                            className="text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-md flex items-center gap-1 transition"
+                          >
+                            <Plus size={13} />
+                            Anexar Doc
+                          </button>
+                        )}
                       </div>
-                      <div className="bg-emerald-50/50 p-2 rounded border border-emerald-100">
-                        <span className="block text-[10px] text-emerald-700 font-semibold uppercase">Pureza (NaCl)</span>
-                        <span className="text-slate-800 font-medium text-[11px] truncate block">{product.specs.purity}</span>
-                      </div>
+
+                      {product.documents.length === 0 ? (
+                        <div className="bg-slate-50 p-2.5 rounded-lg text-center text-slate-400 text-[11px] border border-dashed">
+                          Nenhum documento anexado ainda.
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {product.documents.map((doc) => (
+                            <div
+                              key={doc.id}
+                              className="flex items-center justify-between p-2 rounded-lg bg-slate-50 hover:bg-blue-50/60 border border-slate-200/80 transition group/doc"
+                            >
+                              <div className="flex items-center gap-2 min-w-0 pr-2">
+                                {getDocIcon(doc.fileType)}
+                                <span className="font-medium text-slate-800 text-[11px] truncate" title={doc.title}>
+                                  {doc.title}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <button
+                                  onClick={() => {
+                                    if (doc.fileUrl && doc.fileUrl !== "#") {
+                                      window.open(doc.fileUrl, "_blank");
+                                    } else {
+                                      toast.info(`Baixando: ${doc.title}`);
+                                    }
+                                  }}
+                                  title="Baixar ou visualizar documento"
+                                  className="text-xs font-semibold text-blue-700 bg-white border border-blue-200 hover:bg-blue-600 hover:text-white px-2 py-1 rounded transition flex items-center gap-1"
+                                >
+                                  <Download size={12} />
+                                  Baixar
+                                </button>
+
+                                {isAdmin && (
+                                  <button
+                                    onClick={() => handleDeleteAttachedDoc(product.id, doc.id, true)}
+                                    title="Remover anexo"
+                                    className="text-slate-400 hover:text-red-600 p-1 rounded transition"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </CardContent>
 
@@ -867,7 +1114,7 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
                       variant="outline"
                       size="sm"
                       onClick={() => setSelectedProduct(product)}
-                      className="flex-1 text-xs gap-1.5 min-h-[40px]"
+                      className="flex-1 text-xs gap-1.5 min-h-[38px]"
                     >
                       <Eye size={14} />
                       Ver Ficha
@@ -875,7 +1122,7 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
                     <Button
                       size="sm"
                       onClick={() => handleCopyWhatsApp(product)}
-                      className="flex-1 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white min-h-[40px]"
+                      className="flex-1 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white min-h-[38px]"
                     >
                       {copiedId === product.id ? <Check size={14} /> : <Share2 size={14} />}
                       {copiedId === product.id ? "Copiado!" : "WhatsApp"}
@@ -888,90 +1135,131 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
         </div>
       )}
 
-      {/* TAB 2: COMPANY DOCUMENTS */}
+      {/* TAB 2: COMPANY CARDS WITH ATTACHED DOCS */}
       {activeTab === "empresa" && (
         <div className="space-y-6">
-          {filteredDocs.length === 0 ? (
+          {filteredCompanyCategories.length === 0 ? (
             <Card className="bg-slate-50 border-dashed border-2 text-center p-8">
               <Building2 size={40} className="mx-auto text-slate-400 mb-2" />
-              <p className="text-slate-600 font-medium">Nenhum documento cadastral encontrado.</p>
+              <p className="text-slate-600 font-medium">Nenhum card cadastral encontrado.</p>
             </Card>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredDocs.map((doc) => (
-                <Card key={doc.id} className="hover:shadow-md transition-shadow border-slate-200 relative">
-                  {isAdmin && doc.isCustom && (
-                    <button
-                      onClick={() => handleDeleteItem(doc.id, false)}
-                      title="Excluir documento criado"
-                      className="absolute top-3 right-3 z-20 bg-red-600 hover:bg-red-700 text-white p-1.5 rounded-lg shadow transition"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {filteredCompanyCategories.map((comp) => (
+                <Card key={comp.id} className="hover:shadow-md transition-shadow border-slate-200 flex flex-col">
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center flex-shrink-0">
-                          <FileText size={20} />
+                        <div className={`w-10 h-10 rounded-xl ${comp.iconBg} flex items-center justify-center flex-shrink-0 font-bold`}>
+                          <Building2 size={20} />
                         </div>
                         <div>
-                          <CardTitle className="text-base font-bold text-slate-900">{doc.title}</CardTitle>
-                          <span className="text-xs text-blue-600 font-medium">{doc.categoryLabel}</span>
+                          <CardTitle className="text-base font-bold text-slate-900">{comp.title}</CardTitle>
+                          <span className="text-xs text-blue-600 font-medium">{comp.categoryLabel}</span>
                         </div>
                       </div>
-                      <Badge variant="outline" className="text-[10px] bg-slate-50">
-                        {doc.fileType} • {doc.fileSize}
-                      </Badge>
+                      
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleOpenAttachModal(comp.id, "company")}
+                          className="text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1 transition shrink-0"
+                        >
+                          <Plus size={14} />
+                          Anexar Documento
+                        </button>
+                      )}
                     </div>
                   </CardHeader>
                   
-                  <CardContent className="space-y-3 text-xs">
-                    <p className="text-slate-600">{doc.description}</p>
-                    
-                    {doc.details && (
-                      <div className="bg-slate-50 p-2.5 rounded-lg space-y-1 text-slate-700 border border-slate-100">
-                        {doc.details.map((detail, i) => (
+                  <CardContent className="space-y-4 text-xs flex-1">
+                    <p className="text-slate-600">{comp.description}</p>
+
+                    {/* Detalhes do cadastro */}
+                    {comp.details && comp.details.length > 0 && (
+                      <div className="bg-slate-50 p-3 rounded-xl space-y-1.5 text-slate-700 border border-slate-100">
+                        {comp.details.map((detail, i) => (
                           <div key={i} className="flex items-center gap-1.5">
-                            <ShieldCheck size={13} className="text-emerald-600 flex-shrink-0" />
+                            <ShieldCheck size={14} className="text-emerald-600 flex-shrink-0" />
                             <span>{detail}</span>
                           </div>
                         ))}
                       </div>
                     )}
+
+                    {/* 📂 DOCUMENTOS ANEXADOS AO CARD DA EMPRESA */}
+                    <div className="pt-2 border-t border-slate-100 space-y-2">
+                      <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                        <Paperclip size={14} className="text-blue-600" />
+                        Documentos Disponíveis ({comp.documents.length}):
+                      </h4>
+
+                      {comp.documents.length === 0 ? (
+                        <div className="bg-slate-50 p-3 rounded-lg text-center text-slate-400 text-[11px] border border-dashed">
+                          Nenhum documento anexado ainda neste card.
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {comp.documents.map((doc) => (
+                            <div
+                              key={doc.id}
+                              className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-emerald-50/50 border border-slate-200/80 transition"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                                {getDocIcon(doc.fileType)}
+                                <div>
+                                  <span className="font-bold text-slate-800 text-xs block truncate" title={doc.title}>
+                                    {doc.title}
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 block">{doc.fileType} • {doc.addedAt || "Oficial"}</span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                <button
+                                  onClick={() => {
+                                    if (doc.fileUrl && doc.fileUrl !== "#") {
+                                      window.open(doc.fileUrl, "_blank");
+                                    } else {
+                                      toast.info(`Baixando: ${doc.title}`);
+                                    }
+                                  }}
+                                  className="text-xs font-bold text-slate-900 bg-white border border-slate-300 hover:bg-slate-900 hover:text-white px-3 py-1.5 rounded-lg transition flex items-center gap-1 shadow-sm"
+                                >
+                                  <Download size={13} />
+                                  Baixar PDF
+                                </button>
+
+                                {isAdmin && (
+                                  <button
+                                    onClick={() => handleDeleteAttachedDoc(comp.id, doc.id, false)}
+                                    title="Remover anexo"
+                                    className="text-slate-400 hover:text-red-600 p-1.5 rounded transition"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </CardContent>
 
-                  <CardFooter className="pt-3 border-t flex justify-between items-center text-xs">
-                    <span className="text-slate-400 text-[11px]">{doc.lastUpdated}</span>
-                    <div className="flex gap-2">
-                      {doc.copyContent && (
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          onClick={() => handleCopyDoc(doc)}
-                          className="text-xs gap-1"
-                        >
-                          {copiedId === doc.id ? <Check size={14} /> : <Copy size={14} />}
-                          Copiar Dados
-                        </Button>
-                      )}
-                      <Button 
-                        size="sm" 
-                        onClick={() => {
-                          if (doc.fileUrl) {
-                            window.open(doc.fileUrl, "_blank");
-                          } else {
-                            toast.info(`A visualização do documento (${doc.title}) foi acionada.`);
-                          }
-                        }}
-                        className="text-xs gap-1 bg-slate-900 hover:bg-slate-800"
+                  {comp.copyContent && (
+                    <CardFooter className="pt-3 border-t bg-slate-50/50 justify-between items-center text-xs">
+                      <span className="text-slate-400 text-[11px]">Sal Vita Oficial</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleCopyText(comp.copyContent, comp.id)}
+                        className="text-xs gap-1"
                       >
-                        <Download size={14} />
-                        Baixar Documento
+                        {copiedId === comp.id ? <Check size={14} /> : <Copy size={14} />}
+                        Copiar Dados Texto
                       </Button>
-                    </div>
-                  </CardFooter>
+                    </CardFooter>
+                  )}
                 </Card>
               ))}
             </div>
@@ -979,182 +1267,150 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
         </div>
       )}
 
-      {/* MODAL ADMIN: ADICIONAR NOVO DOCUMENTO OU FICHA TÉCNICA */}
-      {showAddModal && (
-        <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
-          <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+      {/* MODAL ADMIN: ALTERAR FOTO DO PRODUTO */}
+      {editImageModalOpen && editingProduct && (
+        <Dialog open={editImageModalOpen} onOpenChange={setEditImageModalOpen}>
+          <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <FilePlus size={22} className="text-emerald-600" />
-                Cadastrar Novo Documento ou Ficha Técnica
+              <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Camera size={20} className="text-amber-500" />
+                Alterar Foto do Produto
               </DialogTitle>
               <DialogDescription className="text-xs text-slate-500">
-                Preencha as informações para disponibilizar o documento para os atendentes.
+                Insira o link da imagem (PNG/JPG com fundo transparente) do produto <strong className="text-slate-800">{editingProduct.name}</strong>.
               </DialogDescription>
             </DialogHeader>
 
-            <form onSubmit={handleCreateDocument} className="space-y-4 py-2 text-xs md:text-sm">
-              {/* Tipo de Documento */}
+            <form onSubmit={handleSaveProductImage} className="space-y-4 py-2 text-xs md:text-sm">
               <div>
-                <label className="block font-semibold mb-1 text-slate-800">Tipo de Documentação *</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAddType("produto")}
-                    className={`p-3 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 transition ${
-                      addType === "produto"
-                        ? "bg-blue-600 text-white border-blue-600 shadow"
-                        : "bg-slate-50 text-slate-700 border-slate-200"
-                    }`}
-                  >
-                    <Package size={16} />
-                    Ficha Técnica de Sal
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAddType("empresa")}
-                    className={`p-3 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 transition ${
-                      addType === "empresa"
-                        ? "bg-emerald-600 text-white border-emerald-600 shadow"
-                        : "bg-slate-50 text-slate-700 border-slate-200"
-                    }`}
-                  >
-                    <Building2 size={16} />
-                    Documento da Empresa
-                  </button>
-                </div>
-              </div>
-
-              {/* Título */}
-              <div>
-                <label className="block font-semibold mb-1 text-slate-800">Título / Nome do Documento *</label>
+                <label className="block font-semibold mb-1 text-slate-800">URL / Link da Imagem PNG *</label>
                 <Input
                   type="text"
-                  placeholder={addType === "produto" ? "Ex: Sal Moído Premium 25 KG" : "Ex: Alvará de Funcionamento 2027"}
-                  value={formData.title}
-                  onChange={e => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="https://exemplo.com/fotos/sal-refinado-1kg.png"
+                  value={imageUrlInput}
+                  onChange={e => setImageUrlInput(e.target.value)}
+                  className="text-xs"
+                />
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  Você pode colar o link direto da imagem PNG do seu site ou hospedagem.
+                </span>
+              </div>
+
+              {/* Preview */}
+              {imageUrlInput.trim() && (
+                <div className="bg-slate-100 p-3 rounded-xl border text-center space-y-1">
+                  <span className="text-[11px] font-semibold text-slate-500 block uppercase">Pré-visualização</span>
+                  <div className="h-32 flex items-center justify-center">
+                    <img 
+                      src={imageUrlInput.trim()} 
+                      alt="Pré-visualização" 
+                      className="max-h-full max-w-full object-contain rounded"
+                      onError={() => toast.error("Não foi possível carregar a imagem deste link.")}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter className="gap-2 pt-2 justify-between flex-row sm:justify-between">
+                {editingProduct.imageUrl ? (
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={handleResetProductImage}
+                    className="text-xs text-slate-600 gap-1"
+                  >
+                    <RotateCcw size={13} /> Restaurar Padrão
+                  </Button>
+                ) : <div />}
+
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" onClick={() => setEditImageModalOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
+                    Salvar Foto
+                  </Button>
+                </div>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* MODAL ADMIN: ANEXAR DOCUMENTO EM UM CARD ESPECÍFICO */}
+      {attachModalOpen && (
+        <Dialog open={attachModalOpen} onOpenChange={setAttachModalOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Paperclip size={20} className="text-emerald-600" />
+                Anexar Novo Documento no Card
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-500">
+                {targetType === "product" 
+                  ? "Adicione uma nova ficha técnica, laudo ou certificado direto neste produto." 
+                  : "Adicione um documento oficial ou certidão no card da empresa."}
+              </DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={handleSaveAttachedDoc} className="space-y-4 py-2 text-xs md:text-sm">
+              <div>
+                <label className="block font-semibold mb-1 text-slate-800">Título / Nome do Arquivo *</label>
+                <Input
+                  type="text"
+                  placeholder={targetType === "product" ? "Ex: Laudo Bromatológico Lote 2026" : "Ex: Alvará de Funcionamento 2027 PDF"}
+                  value={newDocData.title}
+                  onChange={e => setNewDocData({ ...newDocData, title: e.target.value })}
                   required
                 />
               </div>
 
-              {/* Campos específicos para Produto */}
-              {addType === "produto" && (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Categoria de Embalagem</label>
-                      <select
-                        value={formData.category}
-                        onChange={e => setFormData({ ...formData, category: e.target.value as any })}
-                        className="w-full px-3 py-2 border rounded-md text-xs bg-white"
-                      >
-                        <option value="bigbag">Big Bag (1.000 KG)</option>
-                        <option value="sacaria">Sacaria (25 KG)</option>
-                        <option value="varejo">Linha Varejo (1 KG)</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Subtítulo / Apresentação</label>
-                      <Input
-                        type="text"
-                        placeholder="Ex: Saco de 25 KG"
-                        value={formData.subTitle}
-                        onChange={e => setFormData({ ...formData, subTitle: e.target.value })}
-                      />
-                    </div>
-                  </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Tipo de Documento</label>
+                  <select
+                    value={newDocData.fileType}
+                    onChange={e => setNewDocData({ ...newDocData, fileType: e.target.value as any })}
+                    className="w-full px-3 py-2 border rounded-md text-xs bg-white"
+                  >
+                    <option value="PDF">Ficha Técnica / PDF</option>
+                    <option value="LAUDO">Laudo de Análise</option>
+                    <option value="CERTIFICADO">Certificado MAPA / ANVISA</option>
+                    <option value="IMAGEM">Foto / Imagem Alta</option>
+                    <option value="OUTRO">Outro Arquivo</option>
+                  </select>
+                </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Marcas</label>
-                      <Input
-                        type="text"
-                        placeholder="SAL VITA, SAL DO FAZENDEIRO"
-                        value={formData.brands}
-                        onChange={e => setFormData({ ...formData, brands: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Opções de Iodo</label>
-                      <Input
-                        type="text"
-                        placeholder="Com e Sem Iodo"
-                        value={formData.iodineOptions}
-                        onChange={e => setFormData({ ...formData, iodineOptions: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Aplicações Recomendadas (uma por linha)</label>
-                    <Textarea
-                      rows={2}
-                      placeholder="Fábricas de rações&#10;Laticínios e frigoríficos"
-                      value={formData.applications}
-                      onChange={e => setFormData({ ...formData, applications: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Granulometria</label>
-                      <Input
-                        type="text"
-                        placeholder="Refinado / Fino"
-                        value={formData.granulometry}
-                        onChange={e => setFormData({ ...formData, granulometry: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Solubilidade</label>
-                      <Input
-                        type="text"
-                        placeholder="Alta / Rápida"
-                        value={formData.solubility}
-                        onChange={e => setFormData({ ...formData, solubility: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Pureza (NaCl)</label>
-                      <Input
-                        type="text"
-                        placeholder="NaCl ≥ 99,0%"
-                        value={formData.purity}
-                        onChange={e => setFormData({ ...formData, purity: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Descrição Geral / Conteúdo */}
-              <div>
-                <label className="block font-semibold mb-1 text-slate-800">Descrição / Instruções do Documento</label>
-                <Textarea
-                  rows={3}
-                  placeholder="Descreva detalhes da ficha técnica ou orientações do documento..."
-                  value={formData.description}
-                  onChange={e => setFormData({ ...formData, description: e.target.value })}
-                />
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Observação / Tamanho</label>
+                  <Input
+                    type="text"
+                    placeholder="Ex: PDF • 350 KB"
+                    value={newDocData.fileSize}
+                    onChange={e => setNewDocData({ ...newDocData, fileSize: e.target.value })}
+                  />
+                </div>
               </div>
 
-              {/* Link do Arquivo / PDF */}
               <div>
-                <label className="block font-semibold mb-1 text-slate-800">Link do Arquivo / PDF (URL ou armazenamento)</label>
+                <label className="block font-semibold mb-1 text-slate-800">Link do Arquivo / PDF (URL para download)</label>
                 <Input
                   type="text"
                   placeholder="https://sua-empresa.com/documento.pdf"
-                  value={formData.fileUrl}
-                  onChange={e => setFormData({ ...formData, fileUrl: e.target.value })}
+                  value={newDocData.fileUrl}
+                  onChange={e => setNewDocData({ ...newDocData, fileUrl: e.target.value })}
                 />
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  Insira o link direto do documento ou deixe como '#' para simulação.
+                </span>
               </div>
 
               <DialogFooter className="gap-2 pt-2">
-                <Button type="button" variant="outline" onClick={() => setShowAddModal(false)}>
+                <Button type="button" variant="outline" onClick={() => setAttachModalOpen(false)}>
                   Cancelar
                 </Button>
                 <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
-                  Salvar Documento
+                  Anexar no Card
                 </Button>
               </DialogFooter>
             </form>
@@ -1220,27 +1476,34 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
                 </div>
               </div>
 
-              {/* Aplicações e Público */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
-                <div className="bg-blue-50/60 p-3 rounded-xl border border-blue-100 text-xs space-y-1">
-                  <h5 className="font-bold text-blue-900 flex items-center gap-1">
-                    <Factory size={14} /> Aplicações Principais
-                  </h5>
-                  <ul className="space-y-1 text-blue-800 pt-1">
-                    {selectedProduct.applications.map((app, i) => (
-                      <li key={i}>• {app}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="bg-amber-50/60 p-3 rounded-xl border border-amber-100 text-xs space-y-1">
-                  <h5 className="font-bold text-amber-900 flex items-center gap-1">
-                    <Truck size={14} /> Público-Alvo / Compradores
-                  </h5>
-                  <ul className="space-y-1 text-amber-800 pt-1">
-                    {selectedProduct.targetAudience.map((target, i) => (
-                      <li key={i}>• {target}</li>
-                    ))}
-                  </ul>
+              {/* Documentos Anexados */}
+              <div>
+                <h4 className="font-bold text-slate-900 text-sm mb-2 flex items-center gap-1.5">
+                  <Paperclip size={16} className="text-emerald-600" />
+                  Arquivos & Laudos Anexados a este Produto:
+                </h4>
+                <div className="space-y-2">
+                  {selectedProduct.documents.map((doc) => (
+                    <div key={doc.id} className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border">
+                      <div className="flex items-center gap-2">
+                        {getDocIcon(doc.fileType)}
+                        <span className="font-semibold text-xs text-slate-800">{doc.title}</span>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          if (doc.fileUrl && doc.fileUrl !== "#") {
+                            window.open(doc.fileUrl, "_blank");
+                          } else {
+                            toast.info(`Baixando: ${doc.title}`);
+                          }
+                        }}
+                        className="text-xs gap-1 bg-blue-600 hover:bg-blue-700 text-white"
+                      >
+                        <Download size={13} /> Baixar
+                      </Button>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
