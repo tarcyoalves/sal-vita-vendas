@@ -1,6 +1,6 @@
 # ⚠️ LEIA ESTE ARQUIVO ANTES DE QUALQUER COISA
 
-**Última atualização:** 11/08/2026
+**Última atualização:** 13/08/2026
 **Este é o ponto de entrada único do repositório.** O repo tem 13 arquivos `.md` e várias
 sessões de IA paralelas já se atrapalharam. Leia este primeiro; ele diz o que é verdade
 hoje e para onde ir depois.
@@ -59,9 +59,12 @@ Neon Postgres · JWT em cookie HttpOnly.
 - **`api/bundle.js` PRECISA continuar versionado.** A Vercel só registra `/api/*` como
   função se o bundle já existir no clone. Já removeram uma vez e derrubaram a API em
   produção por ~6 min.
-- **Typecheck tem erros de baseline** (deps shadcn ausentes, subprojeto `sallog/`,
-  tipagem do `express-rate-limit`, `AiTab` do Recovery). Não são seus. Confirme com
-  `git stash` antes de sair caçando.
+- **Typecheck está em zero erros e é portão de deploy** (desde 13/08). Se `npx tsc
+  --noEmit` acusar algo, é seu — não é baseline. `tsconfig.json` cobre só
+  `client/src`, `server` e `api`; `sallog/` e `tests/` estão excluídos de propósito.
+- **Se o typecheck acusar módulo faltando** (`Cannot find module 'qrcode'` e afins),
+  provavelmente é o checkout local desatualizado, não o código: rode `npm install`. O
+  CI usa `npm ci`, que instala o lockfile inteiro.
 
 ---
 
@@ -142,6 +145,30 @@ minerais. Até lá, não.
 
 ## 5. O que está feito
 
+**Infra e portões (13/08/2026 — PRs #12 e #13)**
+- **Typecheck é portão de verdade** (`a29da9e` + `#12`). Os 153 erros foram zerados
+  deletando ~6.300 linhas de código órfão, e `tsconfig.json` passou a excluir `sallog/`
+  e `tests/`. O bloqueio efetivo está no `buildCommand` do `vercel.json`, porque a Vercel
+  publica no push e não passa pelo Actions; o workflow `typecheck.yml` faz o erro
+  aparecer no PR antes disso.
+- **Deploy voltou a funcionar.** O `a29da9e` tinha levado o `buildCommand` a 262
+  caracteres e a API da Vercel corta em 256 — o job `typecheck` passava e só o `deploy`
+  quebrava, ou seja o portão recém-criado nunca guardou um deploy. O build agora mora no
+  script `vercel-build` do `package.json` e o `buildCommand` é `npm run vercel-build`.
+  **Os binários são chamados por nome, não por `node_modules/.bin/`** — a forma explícita
+  falha no Windows e deixava o build irrodável localmente.
+- **`server/db/ordersDb.ts` não é mais fail-open.** Em produção recusa subir sem
+  `ORDERS_DATABASE_URL`; o fallback para `DATABASE_URL` só vale em dev.
+- **`GET /api/orders-health` exige `CRON_SECRET`** (mesmo padrão fail-closed dos crons).
+  Não é probe passivo: roda DDL e devolve o layout do schema. Nada no frontend o consome.
+- **`GET /api/db-health` devolve só `{db:"ok"}`.** Antes entregava a mensagem do driver
+  (que carrega host, database e role) e o tempo de ida e volta; os dois vão para o log.
+- **Três gitlinks removidos** (`.claude/skills/get-shit-done` e dois
+  `.claude/worktrees/agent-*`). Eram repos git aninhados commitados sem `.gitmodules`, e
+  faziam todo job do Actions terminar com `fatal: No url found for submodule path` +
+  exit 128. Regra no `.gitignore` não desrastreia o que já está no index — precisa de
+  `git rm --cached`.
+
 **Premium**
 - Landing redesenhada (versão anterior preservada em `/classic`).
 - Copy alinhada à conformidade (commits `6caaee9`, `175b97a`).
@@ -183,57 +210,61 @@ minerais. Até lá, não.
 ## 6. Pendências — em ordem de urgência
 
 ### 🔴 Só o dono resolve (fora do código)
-1. **Rotacionar a API key do WhatsApp.** Ela vazou em texto puro no commit `767565a`
-   (`vps-wa-patch.sh`), junto com IP da VPS, usuário SSH e caminho da chave privada. O
-   HEAD já foi limpo, **mas o commit continua no histórico e o repositório é público** —
-   limpar o arquivo não revoga a chave. Trocar a chave é o que resolve; reescrever o
-   histórico (`git filter-repo`) é o passo seguinte.
-2. **TLS do domínio sem `www`.** `premium.salvitarn.com.br` (sem www) apresentou
+1. **Rotacionar a API key do WhatsApp.** O HEAD já está limpo (`vps-wa-patch.sh` e
+   `vps-wa-qr-patch.sh` hoje leem `$WA_API_KEY` do ambiente), **mas o literal continua
+   no histórico e o repositório é público** — limpar o arquivo não revoga a chave.
+   Trocar a chave é o que resolve; reescrever o histórico (`git filter-repo`) é o passo
+   seguinte. *Correção de 13/08: o commit é `e0cc24c`, não `767565a` — este último é só
+   um changelog. Verificado varrendo todas as versões do arquivo no histórico.*
+2. **TLS do domínio sem `www`.** `premium.salvitarn.com.br` (sem www) apresenta
    certificado emitido só para `www.premium...`. Quem digita sem www não abre o site.
+   *Reconferido em 13/08: continua falhando (`SEC_E_WRONG_PRINCIPAL`); com `www` responde
+   200.*
 3. **Setar `B2B_NOTIFY_EMAIL`** na Vercel — sem isso o aviso de lead novo do `/atacado`
    não chega.
 
 ### 🟠 Código, ainda aberto
-4. **`server/db/ordersDb.ts` continua fail-open.** O comentário diz "fail loudly", mas o
-   código é `ORDERS_DATABASE_URL ?? DATABASE_URL` e só lança erro se as duas faltarem. Se
-   só a do Premium sumir, os pedidos vão para o banco do CRM com um `console.warn`.
-   Alguém começou e não terminou.
-5. **`GET /api/orders-health` é público e roda DDL.** Sem autenticação, executa
-   `ensureOrdersTablesExist(true)` e devolve estado do schema.
-6. **Sem outbox para efeitos pós-pagamento.** O pedido vira `confirmed` antes de
+4. **Sem outbox para efeitos pós-pagamento.** O pedido vira `confirmed` antes de
    `confirmOrderPaid()`. Se a notificação falhar, o retry do webhook é barrado pelo guard
-   idempotente e o cliente nunca recebe aviso.
-7. **Webhook do Mercado Pago é fail-open no HMAC** (sem secret, ou sem os headers, segue).
-8. **Cupom:** o contador é atômico, mas o desconto já foi aplicado no checkout antes da
+   idempotente e o cliente nunca recebe aviso. **É a maior pendência de código hoje** —
+   as outras não fazem o cliente pagar e não receber nada.
+5. **Webhook do Mercado Pago é fail-open no HMAC** (sem secret, ou sem os headers, segue).
+6. **Cupom:** o contador é atômico, mas o desconto já foi aplicado no checkout antes da
    checagem — pedidos simultâneos podem sair com desconto além do limite.
-9. **Migrações rodam no cold start** com `.catch()` que só loga; o app serve requisição
+7. **Migrações rodam no cold start** com `.catch()` que só loga; o app serve requisição
    com schema incompleto.
-10. **CSP duplicada** em `vercel.json` e `api/index.ts`, ambas com `unsafe-inline`.
-11. **`client/index.html` é compartilhado** — por isso o CRM mostra título do Premium.
-12. **Sem testes executáveis e sem gate de CI.**
+8. **CSP duplicada** em `vercel.json` e `api/index.ts`, ambas com `unsafe-inline`.
+9. **`client/index.html` é compartilhado** — por isso o CRM mostra título do Premium.
+10. **Sem testes executáveis.** Só `tests/reminders.test.ts`, sem runner: não há script
+    `test`, nem Vitest/Jest configurado, e vários casos testam arrays locais em vez do
+    comportamento dos routers. O typecheck já é gate (ver seção 5), os testes não.
+11. **Schema sem foreign keys declaradas** — as relações são inteiros por convenção, sem
+    `.references()`. Integridade depende só do código.
 
 ### 🔵 Operacional
-13. Pedidos com PIX inline (sem `mpPreferenceId`) não aparecem em `listOrders`.
-14. Frete da caixa de 10 kg saiu R$ 200,88 (PAC p/ SP) — mais caro que o produto. Decisão
+12. Pedidos com PIX inline (sem `mpPreferenceId`) não aparecem em `listOrders`.
+13. Frete da caixa de 10 kg saiu R$ 200,88 (PAC p/ SP) — mais caro que o produto. Decisão
     comercial, não bug.
-15. B2B Sprints 2–4 (pipeline comercial, prospecção manual assistida, outbound) não
+14. B2B Sprints 2–4 (pipeline comercial, prospecção manual assistida, outbound) não
     começaram. Domínio secundário só é necessário no Sprint 4.
 
 ---
 
 ## 7. Estado do Git — atenção
 
-Sessões paralelas divergiram. Em 11/08/2026:
+**`origin/main` é a linhagem de produção.** É o que a Vercel publica.
 
-- **`origin/main` é a linhagem de produção.** É o que a Vercel publica. Tem o B2B, o
-  painel unificado e as correções de conformidade.
-- **`origin/claude/sharp-fermat-nY6Bf` é uma linhagem SEPARADA** (trabalho de migração
-  Neon, cron a cada 5 min). **Não é ancestral da `main`** e não tem o B2B nem o painel
-  unificado. Um `cherry-pick` entre as duas dá conflito.
+A divergência que assustava em 11/08 se resolveu: `origin/claude/sharp-fermat-nY6Bf`
+está hoje **0 commits à frente e 397 atrás** da `main` (verificado em 13/08). Não tem
+nada exclusivo — pode ser apagada sem perder trabalho. O mesmo vale para a maioria das
+27 branches remotas, quase todas `claude/*` de sessões antigas.
 
-**Antes de commitar:** rode `git log --oneline -3` e `git fetch origin main` e confirme em
-que linhagem você está. **Não force-push** sobre a branch da outra sessão — alguém ainda
-precisa decidir se aquela migração entra ou é descartada.
+**Antes de commitar:** rode `git fetch origin main` e `git log --oneline -3`. A cópia
+local em `Downloads/sal-vita-vendas-atual` já ficou 4 commits atrás sem ninguém notar.
+
+**Não force-push em `main`.** Se precisar publicar, abra PR: o workflow `typecheck` roda
+no PR e a Vercel gera preview, então dá para verificar antes do merge — foi assim que os
+PRs #12 e #13 foram validados.
 
 ---
 
