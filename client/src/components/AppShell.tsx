@@ -16,6 +16,7 @@ import {
   KeyRound,
   Mail,
   DollarSign,
+  FileText,
 } from "lucide-react";
 import { useAuth } from "../_core/hooks/useAuth";
 import { trpc } from "../lib/trpc";
@@ -70,6 +71,13 @@ const NAV_ITEMS: NavItem[] = [
     group: "Receita",
   },
   {
+    label: "Documentos",
+    path: "/documentos",
+    icon: <FileText size={18} />,
+    roles: ["admin", "manager"],
+    group: "Recursos",
+  },
+  {
     label: "Inteligência IA",
     icon: <Bot size={18} />,
     roles: ["admin"],
@@ -101,6 +109,13 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["user"],
     group: "Meu dia",
   },
+  {
+    label: "Documentos",
+    path: "/documentos",
+    icon: <FileText size={18} />,
+    roles: ["user"],
+    group: "Meu dia",
+  },
 ];
 
 // Flat items for the mobile bottom nav — último slot é sempre "Mais" (abre sidebar)
@@ -121,7 +136,7 @@ const BOTTOM_NAV_MANAGER = [
 const BOTTOM_NAV_USER = [
   { label: "Tarefas",   path: "/tasks",                icon: <CheckSquare size={22} /> },
   { label: "Progresso", path: "/meu-progresso",         icon: <TrendingUp size={22} /> },
-  { label: "E-mail",    path: "/admin/email-marketing", icon: <Mail size={22} /> },
+  { label: "Documentos", path: "/documentos",          icon: <FileText size={22} /> },
 ];
 
 const PAGE_TITLES: Record<string, string> = {
@@ -130,6 +145,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/attendants": "Atendentes",
   "/admin/email-marketing": "E-mail Marketing",
   "/admin/faturamento": "Faturamento",
+  "/documentos": "Documentos & Fichas Técnicas",
   "/ai-chat": "Chat IA",
   "/ai-settings": "Configurações IA",
   "/knowledge-base": "Base de Conhecimento",

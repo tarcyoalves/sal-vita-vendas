@@ -18,6 +18,7 @@ import AttendantProgress from "./pages/AttendantProgress";
 import TvDashboard from "./pages/TvDashboard";
 import EmailMarketing from "./pages/EmailMarketing";
 import Faturamento from "./pages/Faturamento";
+import Documentos from "./pages/Documentos";
 import FloatingChat from "./components/FloatingChat";
 import AppShell from "./components/AppShell";
 import { useAuth } from "./_core/hooks/useAuth";
@@ -57,6 +58,9 @@ function Router() {
       </Route>
       <Route path="/knowledge-base">
         <AppShell><KnowledgeBase /></AppShell>
+      </Route>
+      <Route path="/documentos">
+        <AppShell><Documentos /></AppShell>
       </Route>
       <Route path="/representatives">
         <AppShell><Attendants /></AppShell>
