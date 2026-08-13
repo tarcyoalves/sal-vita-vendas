@@ -15,6 +15,7 @@ import { premiumEmailMarketingRouter } from './premiumEmailMarketing';
 import { tagsRouter } from './tags';
 import { faturamentoRouter } from './faturamento';
 import { b2bRouter } from './b2b';
+import { catalogRouter } from './catalog';
 export const appRouter = router({
   auth: authRouter,
   reminders: remindersRouter,
@@ -34,6 +35,7 @@ export const appRouter = router({
   tags: tagsRouter,
   faturamento: faturamentoRouter,
   b2b: b2bRouter,
+  catalog: catalogRouter,
 });
 
 export type AppRouter = typeof appRouter;

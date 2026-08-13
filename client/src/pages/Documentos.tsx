@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { 
   FileText, 
   Download, 
@@ -40,6 +40,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Textarea } from "../components/ui/textarea";
 import { toast } from "sonner";
 import { useAuth } from "../_core/hooks/useAuth";
+import { trpc } from "../lib/trpc";
 
 export interface AttachedDoc {
   id: string;
@@ -88,9 +89,14 @@ export interface CompanyCategory {
 }
 
 // ============================================================================
-// NATIVE INDEXEDDB MASTER STORAGE ENGINE (PERMANENT & UNLIMITED STORAGE)
-// SINGLE SOURCE OF TRUTH FOR PRODUCTS, CUSTOM PHOTOS & REAL PDF ATTACHMENTS
+// Leitura do IndexedDB legado — usada SÓ para migrar, uma vez, o que ficou
+// preso no navegador antes de a página passar a salvar no servidor.
+// A fonte da verdade agora é o banco (router `catalog`).
 // ============================================================================
+const LOCAL_MIGRATION_FLAG = "sal_vita_docs_migrated_to_server";
+// Espelha o limite do backend (server/routers/catalog.ts): o corpo aceito pelo
+// Express e de 4mb e o base64 infla ~33%.
+const MAX_UPLOAD_BYTES = 2.5 * 1024 * 1024;
 const DB_NAME = "SalVitaMasterStorageDB_v6";
 const DB_VERSION = 1;
 const STORE_PRODUCTS = "products_master";
@@ -115,24 +121,6 @@ const getDB = (): Promise<IDBDatabase> => {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
-};
-
-const idbSetMaster = async (storeName: string, key: string, val: any): Promise<void> => {
-  try {
-    const db = await getDB();
-    const tx = db.transaction(storeName, "readwrite");
-    const store = tx.objectStore(storeName);
-    store.put(val, key);
-    return new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => {
-        console.log(`[Sal Vita DB] Successfully persisted "${key}" to IndexedDB.`);
-        resolve();
-      };
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch (err) {
-    console.error(`[Sal Vita DB Error] Failed to write "${key}":`, err);
-  }
 };
 
 const idbGetMaster = async (storeName: string, key: string): Promise<any> => {
@@ -522,9 +510,59 @@ export default function Documentos() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Dynamic state loaded from IndexedDB
-  const [productsList, setProductsList] = useState<TechnicalProduct[]>(INITIAL_PRODUCTS);
-  const [companyCategoriesList, setCompanyCategoriesList] = useState<CompanyCategory[]>(INITIAL_COMPANY_CATEGORIES);
+  // ── Persistência no SERVIDOR ───────────────────────────────────────────────
+  // Antes isto vivia no IndexedDB do navegador, então cada pessoa via só os
+  // próprios arquivos. Agora o catálogo é uma constante local (produtos/cards)
+  // e os anexos + fotos vêm do banco, iguais para todo mundo.
+  const utils = trpc.useUtils();
+  const { data: catalog, isLoading: catalogLoading } = trpc.catalog.list.useQuery();
+  const addDocMutation = trpc.catalog.addDocument.useMutation();
+  const deleteDocMutation = trpc.catalog.deleteDocument.useMutation();
+  const setImageMutation = trpc.catalog.setImage.useMutation();
+  const resetImageMutation = trpc.catalog.resetImage.useMutation();
+  const migrateMutation = trpc.catalog.migrateFromLocal.useMutation();
+
+  const docsByOwner = useMemo(() => {
+    const map = new Map<string, AttachedDoc[]>();
+    for (const d of catalog?.documents ?? []) {
+      const key = `${d.ownerType}:${d.ownerId}`;
+      const list = map.get(key) ?? [];
+      list.push({
+        id: String(d.id),
+        title: d.title,
+        fileUrl: "",                      // binário é buscado sob demanda
+        fileName: d.fileName ?? undefined,
+        fileType: (d.fileType as AttachedDoc["fileType"]) ?? "PDF",
+        fileSize: d.fileSize ?? undefined,
+        addedAt: d.uploadedByName ?? undefined,
+      });
+      map.set(key, list);
+    }
+    return map;
+  }, [catalog]);
+
+  const imagesByOwner = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const i of catalog?.images ?? []) map.set(i.ownerId, i.imageUrl);
+    return map;
+  }, [catalog]);
+
+  const productsList = useMemo<TechnicalProduct[]>(
+    () => INITIAL_PRODUCTS.map(p => ({
+      ...p,
+      imageUrl: imagesByOwner.get(p.id) ?? p.imageUrl,
+      documents: docsByOwner.get(`product:${p.id}`) ?? [],
+    })),
+    [docsByOwner, imagesByOwner],
+  );
+
+  const companyCategoriesList = useMemo<CompanyCategory[]>(
+    () => INITIAL_COMPANY_CATEGORIES.map(c => ({
+      ...c,
+      documents: docsByOwner.get(`company:${c.id}`) ?? [],
+    })),
+    [docsByOwner],
+  );
 
   // Modal attach document state
   const [attachModalOpen, setAttachModalOpen] = useState<boolean>(false);
@@ -545,105 +583,66 @@ export default function Documentos() {
   const [imageUrlInput, setImageUrlInput] = useState<string>("");
   const [isCompressingPhoto, setIsCompressingPhoto] = useState<boolean>(false);
 
-  // SAVE PRODUCTS TO INDEXEDDB (MASTER STORE)
-  const saveProductsToStorage = async (products: TechnicalProduct[]) => {
-    setProductsList(products);
-    await idbSetMaster(STORE_PRODUCTS, "sal_vita_products_master", products);
-  };
 
-  // SAVE COMPANY CATEGORIES TO INDEXEDDB (MASTER STORE)
-  const saveCompanyToStorage = async (company: CompanyCategory[]) => {
-    setCompanyCategoriesList(company);
-    await idbSetMaster(STORE_COMPANY, "sal_vita_company_master", company);
-  };
-
-  // RESTORE SAVED DATA FROM INDEXEDDB ON MOUNT (GUARANTEES NO DISAPPEARING DATA)
+  // Migração única: sobe para o servidor o que ficou preso no IndexedDB /
+  // localStorage deste navegador (arquivos enviados antes desta correção),
+  // para nada se perder. Roda uma vez por navegador e é idempotente no backend.
   useEffect(() => {
-    const restoreSavedData = async () => {
+    if (!isAdmin || catalogLoading) return;
+    if (localStorage.getItem(LOCAL_MIGRATION_FLAG) === "done") return;
+
+    const migrate = async () => {
       try {
-        // 1. Try reading products from IndexedDB Master Store
-        let savedProducts: TechnicalProduct[] | null = await idbGetMaster(STORE_PRODUCTS, "sal_vita_products_master");
+        const docs: any[] = [];
+        const images: any[] = [];
 
-        // Fallback: Check if user uploaded under older keys in localStorage
-        if (!savedProducts || !Array.isArray(savedProducts) || savedProducts.length === 0) {
-          const legacyKeys = ["sal_vita_products_v5", "sal_vita_products_v4", "sal_vita_products_v3", "sal_vita_products_v2", "sal_vita_products"];
-          for (const key of legacyKeys) {
-            const val = localStorage.getItem(key);
-            if (val) {
-              try {
-                const parsed = JSON.parse(val);
-                if (Array.isArray(parsed) && parsed.some(p => (p.documents && p.documents.length > 0) || p.imageUrl)) {
-                  savedProducts = parsed;
-                  break;
-                }
-              } catch (e) {}
+        const collect = (arr: any[], ownerType: "product" | "company") => {
+          if (!Array.isArray(arr)) return;
+          for (const item of arr) {
+            if (!item?.id) continue;
+            if (ownerType === "product" && typeof item.imageUrl === "string" && item.imageUrl.startsWith("data:")) {
+              images.push({ ownerId: item.id, imageUrl: item.imageUrl });
+            }
+            for (const d of item.documents ?? []) {
+              if (typeof d?.fileUrl === "string" && d.fileUrl.startsWith("data:")) {
+                docs.push({
+                  ownerType, ownerId: item.id, title: d.title ?? "Documento",
+                  fileName: d.fileName, fileType: d.fileType ?? "PDF",
+                  fileSize: d.fileSize, content: d.fileUrl,
+                });
+              }
             }
           }
+        };
+
+        collect(await idbGetMaster(STORE_PRODUCTS, "sal_vita_products_master"), "product");
+        collect(await idbGetMaster(STORE_COMPANY, "sal_vita_company_master"), "company");
+
+        for (const key of ["sal_vita_products_v5", "sal_vita_products_v4", "sal_vita_products_v3", "sal_vita_products_v2", "sal_vita_products"]) {
+          try { collect(JSON.parse(localStorage.getItem(key) || "null"), "product"); } catch {}
+        }
+        for (const key of ["sal_vita_company_v5", "sal_vita_company_v4", "sal_vita_company_v3", "sal_vita_company_v2", "sal_vita_company"]) {
+          try { collect(JSON.parse(localStorage.getItem(key) || "null"), "company"); } catch {}
         }
 
-        if (savedProducts && Array.isArray(savedProducts) && savedProducts.length > 0) {
-          const mergedProducts = INITIAL_PRODUCTS.map(baseItem => {
-            const savedItem = savedProducts!.find(p => p.id === baseItem.id);
-            if (savedItem) {
-              return {
-                ...baseItem,
-                imageUrl: savedItem.imageUrl || baseItem.imageUrl,
-                documents: Array.isArray(savedItem.documents)
-                  ? savedItem.documents.filter(d => d.fileUrl && d.fileUrl !== "#")
-                  : baseItem.documents
-              };
-            }
-            return baseItem;
-          });
-
-          setProductsList(mergedProducts);
-          // Write merged version to IndexedDB Master Store
-          await idbSetMaster(STORE_PRODUCTS, "sal_vita_products_master", mergedProducts);
+        if (docs.length === 0 && images.length === 0) {
+          localStorage.setItem(LOCAL_MIGRATION_FLAG, "done");
+          return;
         }
 
-        // 2. Try reading company categories from IndexedDB Master Store
-        let savedCompany: CompanyCategory[] | null = await idbGetMaster(STORE_COMPANY, "sal_vita_company_master");
-
-        if (!savedCompany || !Array.isArray(savedCompany) || savedCompany.length === 0) {
-          const legacyCompKeys = ["sal_vita_company_v5", "sal_vita_company_v4", "sal_vita_company_v3", "sal_vita_company_v2", "sal_vita_company"];
-          for (const key of legacyCompKeys) {
-            const val = localStorage.getItem(key);
-            if (val) {
-              try {
-                const parsed = JSON.parse(val);
-                if (Array.isArray(parsed) && parsed.some(c => c.documents && c.documents.length > 0)) {
-                  savedCompany = parsed;
-                  break;
-                }
-              } catch (e) {}
-            }
-          }
-        }
-
-        if (savedCompany && Array.isArray(savedCompany) && savedCompany.length > 0) {
-          const mergedCompany = INITIAL_COMPANY_CATEGORIES.map(baseComp => {
-            const savedComp = savedCompany!.find(c => c.id === baseComp.id);
-            if (savedComp) {
-              return {
-                ...baseComp,
-                documents: Array.isArray(savedComp.documents)
-                  ? savedComp.documents.filter(d => d.fileUrl && d.fileUrl !== "#")
-                  : baseComp.documents
-              };
-            }
-            return baseComp;
-          });
-
-          setCompanyCategoriesList(mergedCompany);
-          await idbSetMaster(STORE_COMPANY, "sal_vita_company_master", mergedCompany);
+        const res = await migrateMutation.mutateAsync({ documents: docs.slice(0, 100), images: images.slice(0, 60) });
+        localStorage.setItem(LOCAL_MIGRATION_FLAG, "done");
+        if (res.docsImported > 0 || res.imagesImported > 0) {
+          toast.success(`Enviamos para o servidor ${res.docsImported} arquivo(s) e ${res.imagesImported} foto(s) que estavam salvos só neste navegador.`);
+          utils.catalog.list.invalidate();
         }
       } catch (err) {
-        console.error("[Sal Vita Restoration Error]:", err);
+        console.error("[Documentos] migração local → servidor falhou:", err);
       }
     };
 
-    restoreSavedData();
-  }, []);
+    migrate();
+  }, [isAdmin, catalogLoading]);
 
   // Filter products
   const filteredProducts = productsList.filter(product => {
@@ -688,6 +687,14 @@ export default function Documentos() {
     const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
     const sizeStr = file.size > 1024 * 1024 ? `${sizeMb} MB` : `${Math.round(file.size / 1024)} KB`;
     const ext = file.name.split('.').pop()?.toUpperCase() || 'ARQUIVO';
+
+    // Avisa aqui em vez de deixar o servidor recusar depois de todo o upload.
+    // O limite acompanha o do backend (2,5 MB — ver server/routers/catalog.ts).
+    if (file.size > MAX_UPLOAD_BYTES) {
+      toast.error(`"${file.name}" tem ${sizeMb} MB. O limite é 2,5 MB — comprima o PDF e tente de novo.`);
+      e.target.value = "";
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = () => {
@@ -739,17 +746,20 @@ export default function Documentos() {
     }
 
     const productId = editingProduct.id;
-    const finalPhoto = imageUrlInput.trim() || undefined;
+    const finalPhoto = imageUrlInput.trim();
 
-    const updatedProducts = productsList.map(p => {
-      if (p.id === productId) {
-        return { ...p, imageUrl: finalPhoto };
+    try {
+      if (finalPhoto) {
+        await setImageMutation.mutateAsync({ ownerId: productId, imageUrl: finalPhoto });
+      } else {
+        await resetImageMutation.mutateAsync({ ownerId: productId });
       }
-      return p;
-    });
-
-    await saveProductsToStorage(updatedProducts);
-    toast.success("Foto do produto salva no card com sucesso!");
+      await utils.catalog.list.invalidate();
+      toast.success("Foto salva no servidor — toda a equipe passa a ver.");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao salvar a foto.");
+      return;
+    }
 
     setEditingProduct(null);
     setImageUrlInput("");
@@ -760,17 +770,14 @@ export default function Documentos() {
     if (!editingProduct) return;
     const productId = editingProduct.id;
 
-    const updatedProducts = productsList.map(p => {
-      if (p.id === productId) {
-        const copy = { ...p };
-        delete copy.imageUrl;
-        return copy;
-      }
-      return p;
-    });
-
-    await saveProductsToStorage(updatedProducts);
-    toast.success("Foto restaurada para a ilustração padrão.");
+    try {
+      await resetImageMutation.mutateAsync({ ownerId: productId });
+      await utils.catalog.list.invalidate();
+      toast.success("Foto restaurada para a ilustração padrão.");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao restaurar a foto.");
+      return;
+    }
 
     setEditingProduct(null);
     setImageUrlInput("");
@@ -800,24 +807,22 @@ export default function Documentos() {
       addedAt: "Real Anexado"
     };
 
-    if (targetType === "product" && targetTargetId) {
-      const updatedProducts = productsList.map(p => {
-        if (p.id === targetTargetId) {
-          return { ...p, documents: [...p.documents, docToAdd] };
-        }
-        return p;
+    if (!targetTargetId) return;
+    try {
+      await addDocMutation.mutateAsync({
+        ownerType: targetType,
+        ownerId: targetTargetId,
+        title: docToAdd.title,
+        fileName: docToAdd.fileName,
+        fileType: docToAdd.fileType,
+        fileSize: docToAdd.fileSize,
+        content: newDocData.fileUrl,
       });
-      await saveProductsToStorage(updatedProducts);
-      toast.success(`Arquivo anexado no produto com sucesso!`);
-    } else if (targetType === "company" && targetTargetId) {
-      const updatedCompany = companyCategoriesList.map(c => {
-        if (c.id === targetTargetId) {
-          return { ...c, documents: [...c.documents, docToAdd] };
-        }
-        return c;
-      });
-      await saveCompanyToStorage(updatedCompany);
-      toast.success(`Arquivo anexado no card da empresa!`);
+      await utils.catalog.list.invalidate();
+      toast.success("Arquivo anexado e disponível para toda a equipe.");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao anexar arquivo.");
+      return;
     }
 
     setAttachModalOpen(false);
@@ -831,42 +836,35 @@ export default function Documentos() {
     });
   };
 
-  const handleDownloadFile = (doc: AttachedDoc) => {
-    if (!doc.fileUrl || doc.fileUrl === "#") {
-      toast.error("Arquivo indisponível.");
-      return;
+  // A listagem traz só metadados; o binário é buscado agora, no clique — assim
+  // abrir a página não baixa todos os anexos de uma vez.
+  const handleDownloadFile = async (doc: AttachedDoc) => {
+    try {
+      const full = await utils.catalog.getContent.fetch({ id: Number(doc.id) });
+      if (!full?.content) {
+        toast.error("Arquivo indisponível.");
+        return;
+      }
+      const link = document.createElement("a");
+      link.href = full.content;
+      link.download = full.fileName || doc.fileName || `${doc.title}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success(`Download de "${full.fileName || doc.title}" iniciado!`);
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao baixar o arquivo.");
     }
-
-    const link = document.createElement("a");
-    link.href = doc.fileUrl;
-    link.download = doc.fileName || `${doc.title}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success(`Download de "${doc.fileName || doc.title}" iniciado!`);
   };
 
-  const handleDeleteAttachedDoc = async (cardId: string, docId: string, isProduct: boolean) => {
-    if (!confirm("Remover este arquivo anexado do card?")) return;
-
-    if (isProduct) {
-      const updated = productsList.map(p => {
-        if (p.id === cardId) {
-          return { ...p, documents: p.documents.filter(d => d.id !== docId) };
-        }
-        return p;
-      });
-      await saveProductsToStorage(updated);
+  const handleDeleteAttachedDoc = async (_cardId: string, docId: string, _isProduct: boolean) => {
+    if (!confirm("Remover este arquivo anexado do card? Ele sai para toda a equipe.")) return;
+    try {
+      await deleteDocMutation.mutateAsync({ id: Number(docId) });
+      await utils.catalog.list.invalidate();
       toast.success("Arquivo removido.");
-    } else {
-      const updated = companyCategoriesList.map(c => {
-        if (c.id === cardId) {
-          return { ...c, documents: c.documents.filter(d => d.id !== docId) };
-        }
-        return c;
-      });
-      await saveCompanyToStorage(updated);
-      toast.success("Arquivo removido.");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao remover o arquivo.");
     }
   };
 
@@ -1054,6 +1052,15 @@ ${docsListText}
           />
         </div>
       </div>
+
+      {/* Anexos vêm do servidor: avisa enquanto carregam, para os cards não
+          parecerem vazios por um instante. */}
+      {catalogLoading && (
+        <p className="text-xs text-slate-500 flex items-center gap-2">
+          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-blue-700" />
+          Carregando documentos do servidor...
+        </p>
+      )}
 
       {/* Category Pills (Product Mode Only) */}
       {activeTab === "produtos" && (

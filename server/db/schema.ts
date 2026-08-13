@@ -705,3 +705,39 @@ export type FatCommission = typeof fatCommissions.$inferSelect;
 export type FatOrderDeletionLog = typeof fatOrderDeletionLogs.$inferSelect;
 
 
+
+// ── Catálogo de Documentos (página /documentos) ──────────────────────────────
+// A página nasceu guardando anexos e fotos no IndexedDB do navegador, o que
+// tornava tudo local: o que o admin subia, as atendentes não viam, e limpar os
+// dados do navegador apagava tudo. Estas tabelas põem o conteúdo no servidor,
+// compartilhado entre todos os usuários e incluído no backup do banco.
+//
+// O binário fica em `content` como data URL base64. Não temos storage de
+// objetos (S3/Blob) neste projeto, e o volume aqui é de poucas dezenas de
+// laudos/certificados — cabe no Postgres. Por isso a listagem NUNCA seleciona
+// `content`: só metadados, com o binário buscado sob demanda no download.
+export const catalogDocuments = pgTable('catalog_documents', {
+  id: serial('id').primaryKey(),
+  ownerType: text('owner_type').notNull(),   // 'product' | 'company'
+  ownerId: text('owner_id').notNull(),       // ex: 'sal-refinado-bigbag'
+  title: text('title').notNull(),
+  fileName: text('file_name'),
+  fileType: text('file_type').notNull().default('PDF'),
+  fileSize: text('file_size'),
+  content: text('content').notNull(),        // data URL base64
+  uploadedByUserId: integer('uploaded_by_user_id'),
+  uploadedByName: text('uploaded_by_name'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Foto personalizada de um produto do catálogo (sobrescreve a ilustração
+// padrão). Uma linha por produto — o upsert troca a foto no lugar.
+export const catalogImages = pgTable('catalog_images', {
+  ownerId: text('owner_id').primaryKey(),
+  imageUrl: text('image_url').notNull(),     // data URL já comprimida no cliente
+  updatedByUserId: integer('updated_by_user_id'),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type CatalogDocument = typeof catalogDocuments.$inferSelect;
+export type CatalogImage = typeof catalogImages.$inferSelect;

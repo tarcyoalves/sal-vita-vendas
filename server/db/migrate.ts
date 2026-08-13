@@ -18,7 +18,7 @@ async function seedAdminIfNeeded() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-07-19a';
+const SCHEMA_VERSION = '2026-08-12a';
 
 export async function ensureTablesExist() {
   // Always seed admin first in case DB has tables but lost the admin row
@@ -712,6 +712,35 @@ export async function ensureTablesExist() {
   // em server/routers/tasks.ts) — precisa existir no catálogo para aparecer no
   // filtro "Filtrar por tag" mesmo antes de qualquer tarefa ter sido confirmada.
   await sql`INSERT INTO tags (name, color) VALUES ('Email Confirmado', '#16a34a') ON CONFLICT (name) DO NOTHING`;
+
+  // ── Catálogo de Documentos (/documentos) ────────────────────────────────
+  // Substitui o armazenamento em IndexedDB do navegador, que deixava cada
+  // usuário com a sua própria cópia invisível para os demais.
+  await sql`
+    CREATE TABLE IF NOT EXISTS catalog_documents (
+      id                  SERIAL PRIMARY KEY,
+      owner_type          TEXT NOT NULL,
+      owner_id            TEXT NOT NULL,
+      title               TEXT NOT NULL,
+      file_name           TEXT,
+      file_type           TEXT NOT NULL DEFAULT 'PDF',
+      file_size           TEXT,
+      content             TEXT NOT NULL,
+      uploaded_by_user_id INTEGER,
+      uploaded_by_name    TEXT,
+      created_at          TIMESTAMP NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS catalog_documents_owner_idx
+            ON catalog_documents(owner_type, owner_id)`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS catalog_images (
+      owner_id            TEXT PRIMARY KEY,
+      image_url           TEXT NOT NULL,
+      updated_by_user_id  INTEGER,
+      updated_at          TIMESTAMP NOT NULL DEFAULT now()
+    )
+  `;
 
   // Record the schema marker so every subsequent cold start takes the fast path
   // at the top of this function instead of re-running the whole battery above.
