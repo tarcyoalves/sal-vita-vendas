@@ -1,0 +1,35 @@
+name: Typecheck
+
+# Portão de qualidade. Existe porque `vite build` transpila SEM checar tipos:
+# em agosto/2026 um commit derrubou 59 procedures do router de e-mail marketing
+# e o build seguiu verde, subindo a quebra para produção.
+#
+# O bloqueio de verdade está no `buildCommand` do vercel.json (o deploy da
+# Vercel é automático no push e não passa por este workflow). Este job serve
+# para o erro aparecer no PR/commit antes de alguém tentar publicar.
+
+on:
+  workflow_call:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # `npm ci` respeita o package-lock — instalação determinística, ao
+      # contrário de `npm install`, que pode resolver versões diferentes.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (tsc --noEmit)
+        run: npx tsc --noEmit

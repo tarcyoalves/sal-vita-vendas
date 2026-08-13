@@ -443,7 +443,7 @@ function UnpaidTab() {
                 </select>
               )}
               <button
-                onClick={() => sendMut.mutate({ orderId: row.id, templateId: selectedTemplates[row.id] })}
+                onClick={() => sendMut.mutate({ id: row.id, templateId: selectedTemplates[row.id] })}
                 disabled={sendMut.isPending}
                 className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
               >
@@ -458,10 +458,22 @@ function UnpaidTab() {
 }
 
 /* ── Tab 3: Mensagens & Templates ────────────────────────── */
+// O backend exige `slug` no padrão /^[a-z0-9_]+$/ (server/routers/recovery.ts).
+// A tela nunca enviava esse campo, então salvar template sempre falhava na
+// validação — derivamos do nome digitado.
+function slugify(label: string): string {
+  const base = label
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 50);
+  return base.length >= 2 ? base : `template_${Date.now().toString().slice(-6)}`;
+}
+
 function TemplatesTab() {
   const { data: templates = [], isLoading, refetch } = trpc.recovery.listTemplates.useQuery(undefined, { staleTime: 120_000, refetchOnWindowFocus: false });
   const [editing, setEditing] = useState<any | null>(null);
-  const [form, setForm] = useState({ label: '', body: '', type: 'abandoned_cart', isDefault: false });
+  const [form, setForm] = useState<{ label: string; body: string; type: 'abandoned' | 'unpaid' | 'failed' | 'general'; isDefault: boolean }>({ label: '', body: '', type: 'abandoned', isDefault: false });
 
   const saveMut = trpc.recovery.saveTemplate.useMutation({
     onSuccess: () => { toast.success('Template salvo!'); setEditing(null); refetch(); },
@@ -475,7 +487,7 @@ function TemplatesTab() {
       <div className="flex items-center justify-between">
         <h3 className="font-bold text-slate-900 text-sm">Templates de Mensagens</h3>
         <button
-          onClick={() => { setEditing({}); setForm({ label: '', body: '', type: 'abandoned_cart', isDefault: false }); }}
+          onClick={() => { setEditing({}); setForm({ label: '', body: '', type: 'abandoned', isDefault: false }); }}
           className="px-3 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-semibold hover:bg-slate-800 transition flex items-center gap-1"
         >
           <Plus className="w-3.5 h-3.5" /> Novo Template
@@ -491,6 +503,16 @@ function TemplatesTab() {
             placeholder="Nome do template (ex: Lembrete 15 min)"
             className="w-full px-3 py-2 border rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-900/20"
           />
+          <select
+            value={form.type}
+            onChange={e => setForm(f => ({ ...f, type: e.target.value as typeof f.type }))}
+            className="w-full px-3 py-2 border rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-900/20"
+          >
+            <option value="abandoned">Carrinho abandonado</option>
+            <option value="unpaid">Pedido não pago</option>
+            <option value="failed">Pagamento recusado</option>
+            <option value="general">Geral</option>
+          </select>
           <textarea
             value={form.body}
             onChange={e => setForm(f => ({ ...f, body: e.target.value }))}
@@ -500,7 +522,7 @@ function TemplatesTab() {
           />
           <div className="flex gap-2">
             <button
-              onClick={() => saveMut.mutate({ id: editing.id, ...form })}
+              onClick={() => saveMut.mutate({ id: editing.id, ...form, slug: slugify(form.label) })}
               disabled={saveMut.isPending}
               className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-semibold hover:bg-slate-800"
             >
@@ -575,7 +597,7 @@ function AutomationTab() {
 function CouponsTab() {
   const { data: coupons = [], isLoading, refetch } = trpc.recovery.listCoupons.useQuery(undefined, { staleTime: 120_000, refetchOnWindowFocus: false });
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ code: '', discountType: 'percent', discountValue: '', minOrderValue: '', maxUses: '', expiresAt: '', description: '' });
+  const [form, setForm] = useState<{ code: string; discountType: 'percent' | 'fixed'; discountValue: string; minOrderValue: string; maxUses: string; expiresAt: string; description: string }>({ code: '', discountType: 'percent', discountValue: '', minOrderValue: '', maxUses: '', expiresAt: '', description: '' });
 
   const createMut = trpc.recovery.createCoupon.useMutation({
     onSuccess: () => { toast.success('Cupom criado!'); setShowForm(false); refetch(); },
@@ -619,7 +641,17 @@ function CouponsTab() {
             </div>
           </div>
           <button
-            onClick={() => createMut.mutate({ ...form, discountValue: Number(form.discountValue) })}
+            onClick={() => createMut.mutate({
+              code: form.code,
+              discountType: form.discountType,
+              discountValue: Number(form.discountValue),
+              description: form.description || undefined,
+              // Campos opcionais e numéricos no backend: a tela guarda tudo como
+              // texto, então vazio precisa virar undefined em vez de ir como "".
+              minOrderValue: form.minOrderValue ? Number(form.minOrderValue) : undefined,
+              maxUses: form.maxUses ? Number(form.maxUses) : undefined,
+              expiresAt: form.expiresAt || undefined,
+            })}
             disabled={createMut.isPending}
             className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-semibold hover:bg-slate-800 cursor-pointer"
           >

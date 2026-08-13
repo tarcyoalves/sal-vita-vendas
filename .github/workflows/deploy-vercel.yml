@@ -4,7 +4,12 @@ on:
     branches: [main]
   workflow_dispatch:
 jobs:
+  # Não publica com typecheck quebrado.
+  typecheck:
+    uses: ./.github/workflows/typecheck.yml
+
   deploy:
+    needs: typecheck
     runs-on: ubuntu-latest
     env:
       VERCEL_ORG_ID: team_ZHn6TWGLumT9fkcooDeIbHD8

@@ -277,7 +277,10 @@ export function B2bLeadsPanel() {
                 <div>
                   <span className="text-slate-500 font-semibold uppercase tracking-wider block mb-2">Mover Estágio do Pipeline</span>
                   <div className="flex gap-2 flex-wrap">
-                    {(['discovered', 'qualified', 'contacted', 'lost'] as const).map(stage => (
+                    {/* 'discovered' é o estágio inicial automático e o servidor não aceita
+                        voltar para ele (STAGE_VALUES em server/routers/b2b.ts) — o botão
+                        existia mas dava erro de validação ao clicar. */}
+                    {(['qualified', 'contacted', 'lost'] as const).map(stage => (
                       <button
                         key={stage}
                         disabled={updateStage.isPending}

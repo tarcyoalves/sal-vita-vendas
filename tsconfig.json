@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2020",
     "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
     "module": "CommonJS",
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -21,6 +21,11 @@
       "@/*": ["./client/src/*"]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules"]
+  // Escopo: só o app deste repositório (client + server + api).
+  // Antes era "**/*", o que arrastava `sallog/` (projeto separado, com o seu
+  // próprio package.json/tsconfig) e `tests/` (sem runner configurado) para
+  // dentro do typecheck. Os erros deles afogavam os erros reais do app e
+  // tornavam `tsc --noEmit` inútil como portão de qualidade.
+  "include": ["client/src/**/*.ts", "client/src/**/*.tsx", "server/**/*.ts", "api/**/*.ts"],
+  "exclude": ["node_modules", "sallog", "tests", "**/*.test.ts", "**/*.test.tsx", "api/bundle.js"]
 }

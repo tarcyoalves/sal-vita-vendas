@@ -294,7 +294,10 @@ dbReady.catch(err => console.error('Background dbReady failed:', err));
 const adminApiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
-  keyGenerator: ipKeyGenerator,
+  // `keyGenerator` recebe o request, não o IP: passar `ipKeyGenerator` direto
+  // não bate com a assinatura. Ele normaliza IPv6 (agrupa por /64), então
+  // aplicamos sobre `req.ip`, igual ao limiter de login mais abaixo.
+  keyGenerator: (req) => ipKeyGenerator(req.ip ?? 'unknown'),
   message: { error: 'Too many requests' },
 });
 
