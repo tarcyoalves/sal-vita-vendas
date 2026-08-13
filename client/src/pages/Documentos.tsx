@@ -444,7 +444,6 @@ export default function Documentos() {
       const savedProducts = localStorage.getItem("sal_vita_products_v3");
       if (savedProducts) {
         const parsed: TechnicalProduct[] = JSON.parse(savedProducts);
-        // Clean out any leftover fake '#' items from previous tests
         const cleaned = parsed.map(p => ({
           ...p,
           documents: (p.documents || []).filter(d => d.fileUrl && d.fileUrl !== "#")
@@ -558,8 +557,8 @@ export default function Documentos() {
     setEditImageModalOpen(true);
   };
 
-  const handleSaveProductImage = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveProductImage = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!editingProduct) return;
 
     const updatedProducts = productsList.map(p => {
@@ -591,8 +590,9 @@ export default function Documentos() {
     setEditingProduct(null);
   };
 
-  const handleSaveAttachedDoc = (e: React.FormEvent) => {
-    e.preventDefault();
+  // SAVE ATTACHED DOC & CLOSE POPUP IMMEDIATELY
+  const handleSaveAttachedDoc = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
 
     if (!newDocData.title.trim()) {
       toast.error("Preencha o título do documento.");
@@ -617,13 +617,12 @@ export default function Documentos() {
     if (targetType === "product" && targetTargetId) {
       const updatedProducts = productsList.map(p => {
         if (p.id === targetTargetId) {
-          // Replace existing or add file cleanly
           return { ...p, documents: [...p.documents, docToAdd] };
         }
         return p;
       });
       saveProductsToStorage(updatedProducts);
-      toast.success(`Arquivo real anexado no produto com sucesso!`);
+      toast.success(`Arquivo anexado no produto com sucesso!`);
     } else if (targetType === "company" && targetTargetId) {
       const updatedCompany = companyCategoriesList.map(c => {
         if (c.id === targetTargetId) {
@@ -632,10 +631,19 @@ export default function Documentos() {
         return c;
       });
       saveCompanyToStorage(updatedCompany);
-      toast.success(`Arquivo real anexado no card da empresa!`);
+      toast.success(`Arquivo anexado no card da empresa!`);
     }
 
+    // CLOSE POPUP & RESET FORM IMMEDIATELY
     setAttachModalOpen(false);
+    setTargetTargetId(null);
+    setNewDocData({
+      title: "",
+      fileUrl: "",
+      fileName: "",
+      fileType: "PDF",
+      fileSize: "",
+    });
   };
 
   const handleDownloadFile = (doc: AttachedDoc) => {
@@ -1264,7 +1272,11 @@ ${docsListText}
                   <Button type="button" variant="outline" onClick={() => setEditImageModalOpen(false)}>
                     Cancelar
                   </Button>
-                  <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
+                  <Button 
+                    type="submit" 
+                    onClick={handleSaveProductImage}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                  >
                     Salvar Foto
                   </Button>
                 </div>
@@ -1274,7 +1286,7 @@ ${docsListText}
         </Dialog>
       )}
 
-      {/* MODAL ADMIN: INSERIR ARQUIVO DO COMPUTADOR NO CARD (CORRIGIDO SEM BUG VISUAL) */}
+      {/* MODAL ADMIN: INSERIR ARQUIVO DO COMPUTADOR NO CARD */}
       {attachModalOpen && (
         <Dialog open={attachModalOpen} onOpenChange={setAttachModalOpen}>
           <DialogContent className="max-w-md w-full overflow-hidden">
@@ -1363,10 +1375,21 @@ ${docsListText}
               )}
 
               <DialogFooter className="gap-2 pt-2">
-                <Button type="button" variant="outline" onClick={() => setAttachModalOpen(false)}>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => {
+                    setAttachModalOpen(false);
+                    setTargetTargetId(null);
+                  }}
+                >
                   Cancelar
                 </Button>
-                <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
+                <Button 
+                  type="submit" 
+                  onClick={handleSaveAttachedDoc}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                >
                   Inserir Arquivo no Card
                 </Button>
               </DialogFooter>
