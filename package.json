@@ -9,6 +9,9 @@
     "build": "vite build client",
     "preview": "vite preview",
     "check": "tsc --noEmit",
+    "build:client": "vite build client -c vite.config.ts",
+    "build:api": "esbuild api/index.ts --bundle --platform=node --target=node20 --outfile=api/bundle.js --external:pg-native --external:fsevents",
+    "vercel-build": "npm install && npm run check && npm run build:client && npm run build:api",
     "db:push": "drizzle-kit push",
     "db:seed": "tsx server/seed.ts",
     "db:update-admin": "tsx server/update-admin.ts"

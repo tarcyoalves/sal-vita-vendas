@@ -229,14 +229,19 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
 }));
 
-// DB connectivity probe — bypasses the dbReady wait intentionally
+// DB connectivity probe — bypasses the dbReady wait intentionally.
+// Public, so it only answers ok/not-ok. The driver's error message can carry the
+// host, database name and role, and the round-trip time is a free signal about
+// infrastructure; both are logged server-side instead of returned to the caller.
 app.get('/api/db-health', async (_req, res) => {
   try {
     const t0 = Date.now();
     await sqlClient`SELECT 1`;
-    res.json({ db: 'ok', ms: Date.now() - t0 });
+    console.log('[db-health] ok in', Date.now() - t0, 'ms');
+    res.json({ db: 'ok' });
   } catch (err: any) {
-    res.status(500).json({ db: 'error', message: err.message });
+    console.error('[db-health] error:', err?.message ?? err);
+    res.status(500).json({ db: 'error' });
   }
 });
 
@@ -1448,7 +1453,20 @@ app.get('/api/cron/email-daily', async (req, res) => {
 
 // Diagnostic: runs the orders-DB migration and reports per-step status + which
 // tables exist. Helps debug the recovery panel when tables are missing.
-app.get('/api/orders-health', async (_req, res) => {
+//
+// Authenticated with CRON_SECRET (same pattern as the cron endpoints) because
+// this is NOT a passive health check: it executes DDL via
+// `ensureOrdersTablesExist(true)` and reports the schema layout back. Left open,
+// any third party could trigger migrations on the orders database and read its
+// internals. Fails closed when CRON_SECRET is unset.
+app.get('/api/orders-health', async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  const provided = (req.headers['x-cron-secret'] as string | undefined)
+    ?? (req.headers['authorization'] as string | undefined)?.replace('Bearer ', '');
+  if (!secret || provided !== secret) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
   try {
     const steps = await ensureOrdersTablesExist(true);
     const { neon } = await import('@neondatabase/serverless');
