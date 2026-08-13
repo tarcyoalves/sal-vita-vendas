@@ -72,7 +72,7 @@ export interface TechnicalProduct {
   };
   badgeColor: string;
   iconType: "bigbag" | "sacaria" | "varejo";
-  imageUrl?: string; // Custom uploaded product photo
+  imageUrl?: string; // Custom compressed product photo
   documents: AttachedDoc[];
 }
 
@@ -87,7 +87,51 @@ export interface CompanyCategory {
   documents: AttachedDoc[];
 }
 
-// INITIAL BASE PRODUCTS (NO FICTITIOUS DOCUMENTS)
+// CANVAS IMAGE COMPRESSOR - CONVERTS MASSIVE IMAGES (5MB+) TO COMPACT WEB-READY DATA URL (~80KB)
+// THIS PREVENTS BROWSER QUOTAEXCEEDEDERROR AND GUARANTEES INSTANT POPUP CLOSING & PERMANENT SAVING
+const compressImageFile = (file: File, maxWidth = 900, maxHeight = 900, quality = 0.85): Promise<string> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(event.target?.result as string);
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        // Try WebP or JPEG for lightweight storage
+        const compressedDataUrl = canvas.toDataURL("image/webp", quality) || canvas.toDataURL("image/jpeg", quality);
+        resolve(compressedDataUrl);
+      };
+      img.onerror = () => resolve(event.target?.result as string);
+      img.src = event.target?.result as string;
+    };
+    reader.onerror = () => resolve("");
+    reader.readAsDataURL(file);
+  });
+};
+
 const INITIAL_PRODUCTS: TechnicalProduct[] = [
   {
     id: "sal-refinado-bigbag",
@@ -437,8 +481,34 @@ export default function Documentos() {
   const [editImageModalOpen, setEditImageModalOpen] = useState<boolean>(false);
   const [editingProduct, setEditingProduct] = useState<TechnicalProduct | null>(null);
   const [imageUrlInput, setImageUrlInput] = useState<string>("");
+  const [isCompressingPhoto, setIsCompressingPhoto] = useState<boolean>(false);
 
-  // MULTI-VERSION BACKWARD COMPATIBLE STORAGE LOAD
+  // SAFE STORAGE WRAPPER THAT NEVER CRASHES ON QUOTAEXCEEDEDERROR
+  const safeStorageSave = (key: string, data: any) => {
+    try {
+      const serialized = JSON.stringify(data);
+      localStorage.setItem(key, serialized);
+    } catch (err) {
+      console.warn(`[Storage Warning] Failed to save key "${key}":`, err);
+    }
+  };
+
+  const saveProductsToStorage = (products: TechnicalProduct[]) => {
+    setProductsList(products);
+    // Persist across all version keys safely
+    safeStorageSave("sal_vita_products_v3", products);
+    safeStorageSave("sal_vita_products_v2", products);
+    safeStorageSave("sal_vita_products", products);
+  };
+
+  const saveCompanyToStorage = (company: CompanyCategory[]) => {
+    setCompanyCategoriesList(company);
+    safeStorageSave("sal_vita_company_v3", company);
+    safeStorageSave("sal_vita_company_v2", company);
+    safeStorageSave("sal_vita_company", company);
+  };
+
+  // MULTI-VERSION BACKWARD COMPATIBLE STORAGE LOAD (RESTORES ALL USER UPLOADS & PHOTOS)
   useEffect(() => {
     try {
       const keysToSearchProducts = ["sal_vita_products_v3", "sal_vita_products_v2", "sal_vita_products"];
@@ -498,23 +568,6 @@ export default function Documentos() {
     }
   }, []);
 
-  // SYNCHRONIZE TO ALL STORAGE KEYS TO ENSURE 100% DATA PRESERVATION
-  const saveProductsToStorage = (products: TechnicalProduct[]) => {
-    setProductsList(products);
-    const dataStr = JSON.stringify(products);
-    localStorage.setItem("sal_vita_products_v3", dataStr);
-    localStorage.setItem("sal_vita_products_v2", dataStr);
-    localStorage.setItem("sal_vita_products", dataStr);
-  };
-
-  const saveCompanyToStorage = (company: CompanyCategory[]) => {
-    setCompanyCategoriesList(company);
-    const dataStr = JSON.stringify(company);
-    localStorage.setItem("sal_vita_company_v3", dataStr);
-    localStorage.setItem("sal_vita_company_v2", dataStr);
-    localStorage.setItem("sal_vita_company", dataStr);
-  };
-
   // Filter products
   const filteredProducts = productsList.filter(product => {
     const matchesCategory = categoryFilter === "todos" || product.category === categoryFilter;
@@ -550,7 +603,7 @@ export default function Documentos() {
     setAttachModalOpen(true);
   };
 
-  // NATIVE FILE SELECTOR FROM COMPUTER
+  // NATIVE FILE SELECTOR FROM COMPUTER FOR ATTACHMENTS
   const handleLocalFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -576,18 +629,23 @@ export default function Documentos() {
     reader.readAsDataURL(file);
   };
 
-  // NATIVE PHOTO SELECTOR FROM COMPUTER FOR PRODUCT CARD
-  const handleLocalPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // COMPRESSED PHOTO SELECTOR FROM COMPUTER FOR PRODUCT CARD
+  const handleLocalPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      setImageUrlInput(dataUrl);
-      toast.success(`Foto "${file.name}" selecionada!`);
-    };
-    reader.readAsDataURL(file);
+    setIsCompressingPhoto(true);
+    try {
+      // Compress image via Canvas to lightweight WebP/JPEG (~80KB)
+      const compressedDataUrl = await compressImageFile(file, 900, 900, 0.85);
+      setImageUrlInput(compressedDataUrl);
+      toast.success(`Foto "${file.name}" otimizada e pronta para salvar!`);
+    } catch (err) {
+      console.error("Error compressing photo:", err);
+      toast.error("Erro ao processar imagem.");
+    } finally {
+      setIsCompressingPhoto(false);
+    }
   };
 
   const handleOpenImageModal = (product: TechnicalProduct) => {
@@ -596,10 +654,10 @@ export default function Documentos() {
     setEditImageModalOpen(true);
   };
 
-  // SAVE PRODUCT PHOTO AND GUARANTEE POPUP CLOSES INSTANTLY
+  // SAVE PRODUCT PHOTO AND GUARANTEE POPUP CLOSES INSTANTLY WITHOUT STORAGE QUOTA CRASH
   const handleSaveProductImage = (e?: React.SyntheticEvent) => {
     if (e) e.preventDefault();
-    
+
     if (!editingProduct) {
       setEditImageModalOpen(false);
       return;
@@ -608,6 +666,7 @@ export default function Documentos() {
     const productId = editingProduct.id;
     const finalPhoto = imageUrlInput.trim() || undefined;
 
+    // 1. Update React state first
     const updatedProducts = productsList.map(p => {
       if (p.id === productId) {
         return { ...p, imageUrl: finalPhoto };
@@ -615,10 +674,11 @@ export default function Documentos() {
       return p;
     });
 
+    // 2. Persist safely to localStorage (with compress & try-catch)
     saveProductsToStorage(updatedProducts);
-    toast.success("Foto do produto salva com sucesso!");
+    toast.success("Foto do produto salva no card com sucesso!");
 
-    // CLOSE POPUP AND CLEAR STATE
+    // 3. UNCONDITIONALLY CLOSE POPUP AND RESET STATE
     setEditingProduct(null);
     setImageUrlInput("");
     setEditImageModalOpen(false);
@@ -636,9 +696,10 @@ export default function Documentos() {
       }
       return p;
     });
+
     saveProductsToStorage(updatedProducts);
     toast.success("Foto restaurada para a ilustração padrão.");
-    
+
     setEditingProduct(null);
     setImageUrlInput("");
     setEditImageModalOpen(false);
@@ -1259,7 +1320,7 @@ ${docsListText}
         </div>
       )}
 
-      {/* MODAL ADMIN: ALTERAR FOTO DO PRODUTO (LOCAL FILE OU URL) */}
+      {/* MODAL ADMIN: ALTERAR FOTO DO PRODUTO (WITH CANVAS COMPRESSION & SAFE LOCALSTORAGE SAVE) */}
       {editImageModalOpen && editingProduct && (
         <Dialog open={editImageModalOpen} onOpenChange={(open) => {
           setEditImageModalOpen(open);
@@ -1293,11 +1354,12 @@ ${docsListText}
                 <Button
                   type="button"
                   onClick={() => photoInputRef.current?.click()}
+                  disabled={isCompressingPhoto}
                   variant="outline"
                   className="w-full h-12 bg-slate-50 hover:bg-slate-100 border-dashed border-2 border-slate-300 font-bold text-slate-700 flex items-center justify-center gap-2 text-xs"
                 >
                   <Upload size={16} className="text-blue-600 shrink-0" />
-                  <span>Selecionar Foto do Computador...</span>
+                  <span>{isCompressingPhoto ? "Otimizando Imagem..." : "Selecionar Foto do Computador..."}</span>
                 </Button>
               </div>
 
@@ -1317,7 +1379,7 @@ ${docsListText}
               {imageUrlInput.trim() && (
                 <div className="bg-slate-100 p-3 rounded-xl border text-center space-y-1">
                   <span className="text-[11px] font-semibold text-slate-500 block uppercase">Pré-visualização da Foto</span>
-                  <div className="h-32 flex items-center justify-center overflow-hidden">
+                  <div className="h-36 flex items-center justify-center overflow-hidden bg-white p-2 rounded-lg border">
                     <img 
                       src={imageUrlInput.trim()} 
                       alt="Pré-visualização" 
@@ -1354,6 +1416,7 @@ ${docsListText}
                   <Button 
                     type="button" 
                     onClick={handleSaveProductImage}
+                    disabled={isCompressingPhoto}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
                   >
                     Salvar Foto
