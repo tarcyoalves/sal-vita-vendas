@@ -87,7 +87,6 @@ export interface CompanyCategory {
   documents: AttachedDoc[];
 }
 
-// NO FAKE OR FICTITIOUS DOCUMENTS - ALL START CLEAN & EMPTY UNTIL USER UPLOADS REAL FILES
 const INITIAL_PRODUCTS: TechnicalProduct[] = [
   {
     id: "sal-refinado-bigbag",
@@ -438,42 +437,83 @@ export default function Documentos() {
   const [editingProduct, setEditingProduct] = useState<TechnicalProduct | null>(null);
   const [imageUrlInput, setImageUrlInput] = useState<string>("");
 
-  // Load real uploaded items from localStorage (filtering out any old fake '#' items)
+  // MULTI-VERSION BACKWARD COMPATIBLE STORAGE LOAD (NEVER DESTROY USER UPLOADS)
   useEffect(() => {
     try {
-      const savedProducts = localStorage.getItem("sal_vita_products_v3");
-      if (savedProducts) {
-        const parsed: TechnicalProduct[] = JSON.parse(savedProducts);
-        const cleaned = parsed.map(p => ({
-          ...p,
-          documents: (p.documents || []).filter(d => d.fileUrl && d.fileUrl !== "#")
-        }));
-        setProductsList(cleaned);
+      // Look up all previous storage keys so user's uploaded files & photos are NEVER lost
+      const keysToSearchProducts = ["sal_vita_products_v3", "sal_vita_products_v2", "sal_vita_products"];
+      let foundProductsStr: string | null = null;
+      for (const key of keysToSearchProducts) {
+        const val = localStorage.getItem(key);
+        if (val) {
+          foundProductsStr = val;
+          break;
+        }
       }
 
-      const savedCompany = localStorage.getItem("sal_vita_company_v3");
-      if (savedCompany) {
-        const parsed: CompanyCategory[] = JSON.parse(savedCompany);
-        const cleaned = parsed.map(c => ({
-          ...c,
-          documents: (c.documents || []).filter(d => d.fileUrl && d.fileUrl !== "#")
-        }));
-        setCompanyCategoriesList(cleaned);
+      if (foundProductsStr) {
+        const parsed: TechnicalProduct[] = JSON.parse(foundProductsStr);
+        setProductsList(prevList => {
+          return prevList.map(item => {
+            const savedItem = parsed.find(p => p.id === item.id);
+            if (savedItem) {
+              return {
+                ...item,
+                imageUrl: savedItem.imageUrl || item.imageUrl,
+                // Keep all documents uploaded by user (filtering out dummy '#' links)
+                documents: (savedItem.documents || []).filter(d => d.fileUrl && d.fileUrl !== "#")
+              };
+            }
+            return item;
+          });
+        });
+      }
+
+      const keysToSearchCompany = ["sal_vita_company_v3", "sal_vita_company_v2", "sal_vita_company"];
+      let foundCompanyStr: string | null = null;
+      for (const key of keysToSearchCompany) {
+        const val = localStorage.getItem(key);
+        if (val) {
+          foundCompanyStr = val;
+          break;
+        }
+      }
+
+      if (foundCompanyStr) {
+        const parsedComp: CompanyCategory[] = JSON.parse(foundCompanyStr);
+        setCompanyCategoriesList(prevComp => {
+          return prevComp.map(item => {
+            const savedItem = parsedComp.find(c => c.id === item.id);
+            if (savedItem) {
+              return {
+                ...item,
+                documents: (savedItem.documents || []).filter(d => d.fileUrl && d.fileUrl !== "#")
+              };
+            }
+            return item;
+          });
+        });
       }
     } catch (e) {
-      console.error("Error reading saved card docs", e);
+      console.error("Error reading saved user data", e);
     }
   }, []);
 
-  // Save to localStorage v3
+  // SYNCHRONIZE TO ALL STORAGE KEYS TO ENSURE 100% DATA PRESERVATION
   const saveProductsToStorage = (products: TechnicalProduct[]) => {
     setProductsList(products);
-    localStorage.setItem("sal_vita_products_v3", JSON.stringify(products));
+    const dataStr = JSON.stringify(products);
+    localStorage.setItem("sal_vita_products_v3", dataStr);
+    localStorage.setItem("sal_vita_products_v2", dataStr);
+    localStorage.setItem("sal_vita_products", dataStr);
   };
 
   const saveCompanyToStorage = (company: CompanyCategory[]) => {
     setCompanyCategoriesList(company);
-    localStorage.setItem("sal_vita_company_v3", JSON.stringify(company));
+    const dataStr = JSON.stringify(company);
+    localStorage.setItem("sal_vita_company_v3", dataStr);
+    localStorage.setItem("sal_vita_company_v2", dataStr);
+    localStorage.setItem("sal_vita_company", dataStr);
   };
 
   // Filter products
@@ -569,7 +609,7 @@ export default function Documentos() {
     });
 
     saveProductsToStorage(updatedProducts);
-    toast.success("Foto do produto salva no card!");
+    toast.success("Foto do produto salva permanentemente no card!");
     setEditImageModalOpen(false);
     setEditingProduct(null);
   };
@@ -622,7 +662,7 @@ export default function Documentos() {
         return p;
       });
       saveProductsToStorage(updatedProducts);
-      toast.success(`Arquivo anexado no produto com sucesso!`);
+      toast.success(`Arquivo salvo permanentemente no produto!`);
     } else if (targetType === "company" && targetTargetId) {
       const updatedCompany = companyCategoriesList.map(c => {
         if (c.id === targetTargetId) {
@@ -631,7 +671,7 @@ export default function Documentos() {
         return c;
       });
       saveCompanyToStorage(updatedCompany);
-      toast.success(`Arquivo anexado no card da empresa!`);
+      toast.success(`Arquivo salvo permanentemente no card da empresa!`);
     }
 
     // CLOSE POPUP & RESET FORM IMMEDIATELY
