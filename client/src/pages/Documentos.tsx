@@ -88,7 +88,6 @@ export interface CompanyCategory {
 }
 
 // CANVAS IMAGE COMPRESSOR - CONVERTS MASSIVE IMAGES (5MB+) TO COMPACT WEB-READY DATA URL (~80KB)
-// THIS PREVENTS BROWSER QUOTAEXCEEDEDERROR AND GUARANTEES INSTANT POPUP CLOSING & PERMANENT SAVING
 const compressImageFile = (file: File, maxWidth = 900, maxHeight = 900, quality = 0.85): Promise<string> => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -120,7 +119,6 @@ const compressImageFile = (file: File, maxWidth = 900, maxHeight = 900, quality 
         }
 
         ctx.drawImage(img, 0, 0, width, height);
-        // Try WebP or JPEG for lightweight storage
         const compressedDataUrl = canvas.toDataURL("image/webp", quality) || canvas.toDataURL("image/jpeg", quality);
         resolve(compressedDataUrl);
       };
@@ -495,7 +493,6 @@ export default function Documentos() {
 
   const saveProductsToStorage = (products: TechnicalProduct[]) => {
     setProductsList(products);
-    // Persist across all version keys safely
     safeStorageSave("sal_vita_products_v3", products);
     safeStorageSave("sal_vita_products_v2", products);
     safeStorageSave("sal_vita_products", products);
@@ -636,7 +633,6 @@ export default function Documentos() {
 
     setIsCompressingPhoto(true);
     try {
-      // Compress image via Canvas to lightweight WebP/JPEG (~80KB)
       const compressedDataUrl = await compressImageFile(file, 900, 900, 0.85);
       setImageUrlInput(compressedDataUrl);
       toast.success(`Foto "${file.name}" otimizada e pronta para salvar!`);
@@ -654,7 +650,6 @@ export default function Documentos() {
     setEditImageModalOpen(true);
   };
 
-  // SAVE PRODUCT PHOTO AND GUARANTEE POPUP CLOSES INSTANTLY WITHOUT STORAGE QUOTA CRASH
   const handleSaveProductImage = (e?: React.SyntheticEvent) => {
     if (e) e.preventDefault();
 
@@ -666,7 +661,6 @@ export default function Documentos() {
     const productId = editingProduct.id;
     const finalPhoto = imageUrlInput.trim() || undefined;
 
-    // 1. Update React state first
     const updatedProducts = productsList.map(p => {
       if (p.id === productId) {
         return { ...p, imageUrl: finalPhoto };
@@ -674,11 +668,9 @@ export default function Documentos() {
       return p;
     });
 
-    // 2. Persist safely to localStorage (with compress & try-catch)
     saveProductsToStorage(updatedProducts);
     toast.success("Foto do produto salva no card com sucesso!");
 
-    // 3. UNCONDITIONALLY CLOSE POPUP AND RESET STATE
     setEditingProduct(null);
     setImageUrlInput("");
     setEditImageModalOpen(false);
@@ -705,7 +697,6 @@ export default function Documentos() {
     setEditImageModalOpen(false);
   };
 
-  // SAVE ATTACHED DOC AND GUARANTEE POPUP CLOSES INSTANTLY
   const handleSaveAttachedDoc = (e?: React.SyntheticEvent) => {
     if (e) e.preventDefault();
 
@@ -749,7 +740,6 @@ export default function Documentos() {
       toast.success(`Arquivo anexado no card da empresa!`);
     }
 
-    // CLOSE POPUP & RESET FORM IMMEDIATELY
     setAttachModalOpen(false);
     setTargetTargetId(null);
     setNewDocData({
@@ -839,18 +829,17 @@ ${docsListText}
   const getDocIcon = (type: string) => {
     switch (type) {
       case "LAUDO":
-        return <Microscope size={15} className="text-purple-600 flex-shrink-0" />;
+        return <Microscope size={16} className="text-purple-600 flex-shrink-0" />;
       case "CERTIFICADO":
-        return <FileCheck size={15} className="text-emerald-600 flex-shrink-0" />;
+        return <FileCheck size={16} className="text-emerald-600 flex-shrink-0" />;
       case "IMAGEM":
-        return <FileSpreadsheet size={15} className="text-amber-600 flex-shrink-0" />;
+        return <FileSpreadsheet size={16} className="text-amber-600 flex-shrink-0" />;
       default:
-        return <FileText size={15} className="text-blue-600 flex-shrink-0" />;
+        return <FileText size={16} className="text-blue-600 flex-shrink-0" />;
     }
   };
 
   const renderProductIllustration = (product: TechnicalProduct) => {
-    // Custom product photo uploaded by Admin
     if (product.imageUrl) {
       return (
         <div className="w-full h-36 bg-slate-100 rounded-xl p-2 flex items-center justify-center relative overflow-hidden group shadow-inner border border-slate-200">
@@ -866,7 +855,6 @@ ${docsListText}
       );
     }
 
-    // Default Vector Illustrations
     if (product.iconType === "bigbag") {
       return (
         <div className="w-full h-36 bg-gradient-to-b from-blue-900 via-slate-900 to-slate-950 rounded-xl p-3 flex flex-col items-center justify-center relative overflow-hidden group shadow-inner">
@@ -1013,7 +1001,7 @@ ${docsListText}
         </div>
       )}
 
-      {/* TAB 1: PRODUCT CARDS WITH ATTACHED DOCS & UPLOAD */}
+      {/* TAB 1: PRODUCT CARDS WITH UNTRUNCATED FULL DOCUMENT TITLES */}
       {activeTab === "produtos" && (
         <div className="space-y-6">
           {filteredProducts.length === 0 ? (
@@ -1089,7 +1077,7 @@ ${docsListText}
                       </ul>
                     </div>
 
-                    {/* 📂 DOCUMENTOS REALMENTE ANEXADOS AO CARD DESTE PRODUTO */}
+                    {/* 📂 DOCUMENTOS COM TÍTULOS 100% VISÍVEIS (SEM CORTES OU TRUNCATE) */}
                     <div className="pt-2 border-t border-slate-100">
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
@@ -1119,26 +1107,29 @@ ${docsListText}
                           {product.documents.map((doc) => (
                             <div
                               key={doc.id}
-                              className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-blue-50/60 border border-slate-200 transition"
+                              className="flex items-start justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-blue-50/60 border border-slate-200 transition gap-2"
                             >
-                              <div className="flex items-center gap-2 min-w-0 pr-2 overflow-hidden">
-                                {getDocIcon(doc.fileType)}
-                                <div className="min-w-0 flex-1">
-                                  <span className="font-bold text-slate-900 text-xs block truncate" title={doc.title}>
+                              <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                                <div className="mt-0.5 shrink-0">
+                                  {getDocIcon(doc.fileType)}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  {/* FULL UNTRUNCATED TEXT DISPLAY */}
+                                  <span className="font-bold text-slate-900 text-xs block leading-snug break-words whitespace-normal">
                                     {doc.title}
                                   </span>
                                   {doc.fileSize && (
-                                    <span className="text-[10px] text-slate-400 block truncate">{doc.fileSize}</span>
+                                    <span className="text-[10px] text-slate-400 block mt-0.5 font-medium">{doc.fileSize}</span>
                                   )}
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-1 flex-shrink-0">
+                              <div className="flex items-center gap-1 shrink-0 mt-0.5">
                                 <button
                                   type="button"
                                   onClick={() => handleDownloadFile(doc)}
                                   title="Baixar arquivo real do computador"
-                                  className="text-xs font-bold text-blue-700 bg-white border border-blue-200 hover:bg-blue-600 hover:text-white px-2.5 py-1 rounded-lg transition flex items-center gap-1 shadow-sm"
+                                  className="text-xs font-bold text-blue-700 bg-white border border-blue-200 hover:bg-blue-600 hover:text-white px-2.5 py-1.5 rounded-lg transition flex items-center gap-1 shadow-sm"
                                 >
                                   <Download size={13} />
                                   Baixar
@@ -1190,7 +1181,7 @@ ${docsListText}
         </div>
       )}
 
-      {/* TAB 2: COMPANY CARDS WITH ATTACHED DOCS & UPLOAD */}
+      {/* TAB 2: COMPANY CARDS WITH UNTRUNCATED FULL DOCUMENT TITLES */}
       {activeTab === "empresa" && (
         <div className="space-y-6">
           {filteredCompanyCategories.length === 0 ? (
@@ -1242,7 +1233,7 @@ ${docsListText}
                       </div>
                     )}
 
-                    {/* 📂 DOCUMENTOS REALMENTE ANEXADOS AO CARD DA EMPRESA */}
+                    {/* 📂 DOCUMENTOS DA EMPRESA COM TÍTULOS FULL VISÍVEIS */}
                     <div className="pt-2 border-t border-slate-100 space-y-2">
                       <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
                         <Paperclip size={14} className="text-blue-600" />
@@ -1258,19 +1249,24 @@ ${docsListText}
                           {comp.documents.map((doc) => (
                             <div
                               key={doc.id}
-                              className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 transition"
+                              className="flex items-start justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 transition gap-2"
                             >
-                              <div className="flex items-center gap-2.5 min-w-0 pr-2 overflow-hidden">
-                                {getDocIcon(doc.fileType)}
-                                <div className="min-w-0 flex-1">
-                                  <span className="font-bold text-slate-800 text-xs block truncate" title={doc.title}>
+                              <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                                <div className="mt-0.5 shrink-0">
+                                  {getDocIcon(doc.fileType)}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  {/* FULL UNTRUNCATED TEXT DISPLAY */}
+                                  <span className="font-bold text-slate-900 text-xs block leading-snug break-words whitespace-normal">
                                     {doc.title}
                                   </span>
-                                  <span className="text-[10px] text-slate-400 block truncate">{doc.fileSize || doc.fileType}</span>
+                                  {doc.fileSize && (
+                                    <span className="text-[10px] text-slate-400 block mt-0.5 font-medium">{doc.fileSize}</span>
+                                  )}
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
                                 <button
                                   type="button"
                                   onClick={() => handleDownloadFile(doc)}
@@ -1320,7 +1316,7 @@ ${docsListText}
         </div>
       )}
 
-      {/* MODAL ADMIN: ALTERAR FOTO DO PRODUTO (WITH CANVAS COMPRESSION & SAFE LOCALSTORAGE SAVE) */}
+      {/* MODAL ADMIN: ALTERAR FOTO DO PRODUTO */}
       {editImageModalOpen && editingProduct && (
         <Dialog open={editImageModalOpen} onOpenChange={(open) => {
           setEditImageModalOpen(open);
@@ -1612,10 +1608,14 @@ ${docsListText}
                   </h4>
                   <div className="space-y-2">
                     {selectedProduct.documents.map((doc) => (
-                      <div key={doc.id} className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border">
-                        <div className="flex items-center gap-2 overflow-hidden">
-                          {getDocIcon(doc.fileType)}
-                          <span className="font-semibold text-xs text-slate-800 truncate">{doc.title}</span>
+                      <div key={doc.id} className="flex items-start justify-between bg-slate-50 p-2.5 rounded-xl border gap-2">
+                        <div className="flex items-start gap-2 flex-1 min-w-0">
+                          <div className="mt-0.5 shrink-0">
+                            {getDocIcon(doc.fileType)}
+                          </div>
+                          <span className="font-bold text-xs text-slate-800 break-words whitespace-normal leading-snug">
+                            {doc.title}
+                          </span>
                         </div>
                         <Button
                           type="button"
