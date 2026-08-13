@@ -14,5 +14,11 @@ drizzle
 CREDENCIAIS.txt
 # Added by code-review-graph
 .code-review-graph/
-.claude/worktrees/
+
+# Agent scratch space — these are separate git repositories. Committing one
+# lands a gitlink (mode 160000) with no .gitmodules entry, and then every
+# checkout logs `fatal: No url found for submodule path` while the directory
+# clones empty. Two of them reached main before this rule existed; a third came
+# in via .claude/skills/get-shit-done, which was a clone rather than plain
+# files. If you add a skill, commit its files — never a nested repo.
 .claude/worktrees/
