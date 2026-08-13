@@ -741,3 +741,24 @@ export const catalogImages = pgTable('catalog_images', {
 
 export type CatalogDocument = typeof catalogDocuments.$inferSelect;
 export type CatalogImage = typeof catalogImages.$inferSelect;
+
+// Especificações técnicas por produto do catálogo (/documentos).
+//
+// Os valores exibidos antes (pureza "NaCl ≥ 98,5%", granulometria, etc.) foram
+// inventados por uma IA e apresentados como "Especificação Técnica Oficial" —
+// inclusive no texto que o atendente envia ao cliente por WhatsApp. Para um sal
+// alimentício isso é declaração regulada: passa a valer só o que o admin
+// preencher aqui, e o que estiver vazio aparece como "não informado".
+export const catalogSpecs = pgTable('catalog_specs', {
+  ownerId: text('owner_id').primaryKey(),
+  weight: text('weight'),
+  granulometry: text('granulometry'),
+  solubility: text('solubility'),
+  purity: text('purity'),
+  storage: text('storage'),
+  updatedByUserId: integer('updated_by_user_id'),
+  updatedByName: text('updated_by_name'),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type CatalogSpec = typeof catalogSpecs.$inferSelect;

@@ -17,7 +17,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure, staffProcedure } from '../trpc';
 import { db } from '../db';
-import { catalogDocuments, catalogImages } from '../db/schema';
+import { catalogDocuments, catalogImages, catalogSpecs } from '../db/schema';
 
 // O corpo aceito pelo Express é de 4mb (api/index.ts) e base64 infla ~33%,
 // então o arquivo cru precisa ficar bem abaixo disso. 2,5 MB deixa margem para
@@ -72,7 +72,9 @@ export const catalogRouter = router({
       .select({ ownerId: catalogImages.ownerId, imageUrl: catalogImages.imageUrl })
       .from(catalogImages);
 
-    return { documents: docs, images };
+    const specs = await db.select().from(catalogSpecs);
+
+    return { documents: docs, images, specs };
   }),
 
   /** Binário de um anexo, buscado só quando o usuário baixa ou visualiza. */
@@ -133,6 +135,44 @@ export const catalogRouter = router({
       if (deleted.length === 0) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Documento não encontrado.' });
       }
+      return { ok: true };
+    }),
+
+  /**
+   * Grava as especificações técnicas reais de um produto. Campo vazio é
+   * gravado como null e a ficha mostra "não informado" — nunca um valor
+   * inventado, já que isto vai no material enviado ao cliente.
+   */
+  setSpecs: staffProcedure
+    .input(
+      z.object({
+        ownerId: z.string().min(1).max(120),
+        weight: z.string().max(200).optional(),
+        granulometry: z.string().max(200).optional(),
+        solubility: z.string().max(200).optional(),
+        purity: z.string().max(200).optional(),
+        storage: z.string().max(300).optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const clean = (v?: string) => {
+        const t = (v ?? '').trim();
+        return t.length > 0 ? t : null;
+      };
+      const values = {
+        weight: clean(input.weight),
+        granulometry: clean(input.granulometry),
+        solubility: clean(input.solubility),
+        purity: clean(input.purity),
+        storage: clean(input.storage),
+        updatedByUserId: ctx.user.id,
+        updatedByName: ctx.user.name ?? null,
+        updatedAt: new Date(),
+      };
+      await db
+        .insert(catalogSpecs)
+        .values({ ownerId: input.ownerId, ...values })
+        .onConflictDoUpdate({ target: catalogSpecs.ownerId, set: values });
       return { ok: true };
     }),
 

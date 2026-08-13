@@ -204,11 +204,11 @@ const INITIAL_PRODUCTS: TechnicalProduct[] = [
     ],
     description: "Sal refinado de altíssima pureza com granulometria fina uniforme. Processo de secagem e refino avançado garantindo excelente solubilidade e homogeneidade para misturas industriais pesadas.",
     specs: {
-      weight: "1.000 KG (Big Bag em Polipropileno)",
-      granulometry: "Fina e Homogênea (Refinado)",
-      solubility: "Rápida e Completa",
-      purity: "NaCl ≥ 99,0%",
-      storage: "Local seco, arejado e sobre estrados"
+      weight: "",
+      granulometry: "",
+      solubility: "",
+      purity: "",
+      storage: ""
     },
     badgeColor: "bg-blue-600 text-white",
     iconType: "bigbag",
@@ -235,11 +235,11 @@ const INITIAL_PRODUCTS: TechnicalProduct[] = [
     ],
     description: "Perfeito para misturas minerais e nutrição de gado bovino, caprino e equino. Possui grãos selecionados que evitam o empedramento precoce e proporcionam liberação equilibrada dos minerais.",
     specs: {
-      weight: "1.000 KG (Big Bag em Polipropileno)",
-      granulometry: "Granulado Misto / Médio",
-      solubility: "Gradativa / Controlada",
-      purity: "NaCl ≥ 98,5%",
-      storage: "Local coberto, fresco e protegido da umidade"
+      weight: "",
+      granulometry: "",
+      solubility: "",
+      purity: "",
+      storage: ""
     },
     badgeColor: "bg-emerald-600 text-white",
     iconType: "bigbag",
@@ -266,11 +266,11 @@ const INITIAL_PRODUCTS: TechnicalProduct[] = [
     ],
     description: "Linha versátil de sal em grande volume para aplicações agropastoris e tratamento de água. Oferecido em diferentes moagens (Moído, Triturado ou Grosso) conforme a necessidade do processo produtivo.",
     specs: {
-      weight: "1.000 KG (Big Bag de alta resistência)",
-      granulometry: "Moído, Triturado ou Grosso",
-      solubility: "Conforme a moagem escolhida",
-      purity: "NaCl ≥ 98,0%",
-      storage: "Manter afastado do solo e paredes"
+      weight: "",
+      granulometry: "",
+      solubility: "",
+      purity: "",
+      storage: ""
     },
     badgeColor: "bg-amber-600 text-white",
     iconType: "bigbag",
@@ -298,11 +298,11 @@ const INITIAL_PRODUCTS: TechnicalProduct[] = [
     ],
     description: "Marca tradicional consolidada no mercado agro. Embalagem reforçada de 25 kg ideal para manuseio direto no campo, cochos de gado, curtimento de couros e misturas para ração animal.",
     specs: {
-      weight: "25 KG (Saco de Polietileno Reforçado)",
-      granulometry: "Moído / Fino Agro",
-      solubility: "Boa dissolução em misturas",
-      purity: "NaCl ≥ 98,0%",
-      storage: "Empilhamento máximo recomendado: 15 sacos"
+      weight: "",
+      granulometry: "",
+      solubility: "",
+      purity: "",
+      storage: ""
     },
     badgeColor: "bg-orange-600 text-white",
     iconType: "sacaria",
@@ -330,11 +330,11 @@ const INITIAL_PRODUCTS: TechnicalProduct[] = [
     ],
     description: "Sal refinado de alta pureza em sacos de 25 kg para fácil fracionamento no ambiente industrial. Excelente fluidez, alta solubilidade e controle de dosagem preciso em laticínios e embutidos.",
     specs: {
-      weight: "25 KG",
-      granulometry: "Fina e Uniforme (Refinado)",
-      solubility: "Alta e Rápida",
-      purity: "NaCl ≥ 99,0%",
-      storage: "Local seco e limpo"
+      weight: "",
+      granulometry: "",
+      solubility: "",
+      purity: "",
+      storage: ""
     },
     badgeColor: "bg-indigo-600 text-white",
     iconType: "sacaria",
@@ -362,11 +362,11 @@ const INITIAL_PRODUCTS: TechnicalProduct[] = [
     ],
     description: "Desenvolvido para processos produtivos que requerem maior granulometria e liberação mais lenta do sal no processo fabril ou na nutrição animal, reduzindo perdas e garantindo eficiência.",
     specs: {
-      weight: "25 KG",
-      granulometry: "Granulado Médio",
-      solubility: "Liberação Gradativa",
-      purity: "NaCl ≥ 98,5%",
-      storage: "Manter sobre estrados secos"
+      weight: "",
+      granulometry: "",
+      solubility: "",
+      purity: "",
+      storage: ""
     },
     badgeColor: "bg-teal-600 text-white",
     iconType: "sacaria",
@@ -394,11 +394,11 @@ const INITIAL_PRODUCTS: TechnicalProduct[] = [
     ],
     description: "O Sal Refinado VITA em embalagens de 1 kg é referência em qualidade nas prateleiras dos supermercados. Sal extra branco, soltinho e iodado conforme exigências do Ministério da Saúde.",
     specs: {
-      weight: "Fardo de 30 KG (30 pacotes de 1 KG)",
-      granulometry: "Extra Fino e Soltinho",
-      solubility: "Instantânea",
-      purity: "NaCl ≥ 99,1% + Iodo Potássico",
-      storage: "Empilhamento máx: 10 fardos"
+      weight: "",
+      granulometry: "",
+      solubility: "",
+      purity: "",
+      storage: ""
     },
     badgeColor: "bg-cyan-600 text-white",
     iconType: "varejo",
@@ -426,11 +426,11 @@ const INITIAL_PRODUCTS: TechnicalProduct[] = [
     ],
     description: "Versão otimizada de fardo compacto com 10 pacotes de 1 kg. Excelente para estabelecimentos de menor porte que necessitam de menor investimento por fardo e alta rotatividade de estoque.",
     specs: {
-      weight: "Fardo de 10 KG (10 pacotes de 1 KG)",
-      granulometry: "Extra Fino e Soltinho",
-      solubility: "Instantânea",
-      purity: "NaCl ≥ 99,1% + Iodo Potássico",
-      storage: "Local seco e limpo"
+      weight: "",
+      granulometry: "",
+      solubility: "",
+      purity: "",
+      storage: ""
     },
     badgeColor: "bg-purple-600 text-white",
     iconType: "varejo",
@@ -519,6 +519,7 @@ export default function Documentos() {
   const addDocMutation = trpc.catalog.addDocument.useMutation();
   const deleteDocMutation = trpc.catalog.deleteDocument.useMutation();
   const setImageMutation = trpc.catalog.setImage.useMutation();
+  const setSpecsMutation = trpc.catalog.setSpecs.useMutation();
   const resetImageMutation = trpc.catalog.resetImage.useMutation();
   const migrateMutation = trpc.catalog.migrateFromLocal.useMutation();
 
@@ -541,6 +542,20 @@ export default function Documentos() {
     return map;
   }, [catalog]);
 
+  const specsByOwner = useMemo(() => {
+    const map = new Map<string, TechnicalProduct["specs"]>();
+    for (const sp of catalog?.specs ?? []) {
+      map.set(sp.ownerId, {
+        weight: sp.weight ?? "",
+        granulometry: sp.granulometry ?? "",
+        solubility: sp.solubility ?? "",
+        purity: sp.purity ?? "",
+        storage: sp.storage ?? "",
+      });
+    }
+    return map;
+  }, [catalog]);
+
   const imagesByOwner = useMemo(() => {
     const map = new Map<string, string>();
     for (const i of catalog?.images ?? []) map.set(i.ownerId, i.imageUrl);
@@ -551,9 +566,10 @@ export default function Documentos() {
     () => INITIAL_PRODUCTS.map(p => ({
       ...p,
       imageUrl: imagesByOwner.get(p.id) ?? p.imageUrl,
+      specs: specsByOwner.get(p.id) ?? p.specs,
       documents: docsByOwner.get(`product:${p.id}`) ?? [],
     })),
-    [docsByOwner, imagesByOwner],
+    [docsByOwner, imagesByOwner, specsByOwner],
   );
 
   const companyCategoriesList = useMemo<CompanyCategory[]>(
@@ -578,6 +594,10 @@ export default function Documentos() {
   });
 
   // Modal edit product image state (Admin only)
+  const [specsModalOpen, setSpecsModalOpen] = useState<boolean>(false);
+  const [specsProduct, setSpecsProduct] = useState<TechnicalProduct | null>(null);
+  const [specsForm, setSpecsForm] = useState({ weight: "", granulometry: "", solubility: "", purity: "", storage: "" });
+
   const [editImageModalOpen, setEditImageModalOpen] = useState<boolean>(false);
   const [editingProduct, setEditingProduct] = useState<TechnicalProduct | null>(null);
   const [imageUrlInput, setImageUrlInput] = useState<string>("");
@@ -731,6 +751,32 @@ export default function Documentos() {
     }
   };
 
+  const handleOpenSpecsModal = (product: TechnicalProduct) => {
+    setSpecsProduct(product);
+    setSpecsForm({
+      weight: product.specs.weight ?? "",
+      granulometry: product.specs.granulometry ?? "",
+      solubility: product.specs.solubility ?? "",
+      purity: product.specs.purity ?? "",
+      storage: product.specs.storage ?? "",
+    });
+    setSpecsModalOpen(true);
+  };
+
+  const handleSaveSpecs = async (e?: React.SyntheticEvent) => {
+    if (e) e.preventDefault();
+    if (!specsProduct) return;
+    try {
+      await setSpecsMutation.mutateAsync({ ownerId: specsProduct.id, ...specsForm });
+      await utils.catalog.list.invalidate();
+      toast.success("Especificações salvas — agora valem para toda a equipe.");
+      setSpecsModalOpen(false);
+      setSpecsProduct(null);
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao salvar as especificações.");
+    }
+  };
+
   const handleOpenImageModal = (product: TechnicalProduct) => {
     setEditingProduct(product);
     setImageUrlInput(product.imageUrl || "");
@@ -873,6 +919,19 @@ export default function Documentos() {
       ? product.documents.map(d => `📄 ${d.title}`).join('\n')
       : "📄 Ficha Técnica Sob Consulta";
 
+    // Só entra no texto o que o admin preencheu de verdade. Antes as
+    // especificações eram valores inventados e iam assim mesmo para o cliente —
+    // para sal alimentício, pureza/granulometria são declaração regulada.
+    const specsText = [
+      ['🔬 *Granulometria:*', product.specs.granulometry],
+      ['💧 *Solubilidade:*', product.specs.solubility],
+      ['⭐ *Pureza:*', product.specs.purity],
+      ['🏷️ *Armazenamento:*', product.specs.storage],
+    ]
+      .filter(([, v]) => (v ?? '').trim().length > 0)
+      .map(([label, v]) => `\n${label} ${v}`)
+      .join('');
+
     const text = `📌 *FICHA TÉCNICA - ${product.name.toUpperCase()}* (${product.subTitle || product.packageType})
 
 ✨ *Aplicações Principais:*
@@ -880,10 +939,7 @@ ${product.applications.map(a => `• ${a}`).join('\n')}
 
 📦 *Embalagem:* ${product.packageType}
 🔹 *Marcas:* ${product.brands.join(' / ')}
-🔹 *Opções de Iodo:* ${product.iodineOptions}
-🔬 *Granulometria:* ${product.specs.granulometry}
-💧 *Solubilidade:* ${product.specs.solubility}
-⭐ *Pureza:* ${product.specs.purity}
+🔹 *Opções de Iodo:* ${product.iodineOptions}${specsText}
 
 📂 *Documentos Anexados:*
 ${docsListText}
@@ -903,6 +959,16 @@ ${docsListText}
     toast.success("Dados copiados para a área de transferência!");
     setTimeout(() => setCopiedId(null), 3000);
   };
+
+  // Nunca renderiza célula vazia como se fosse um dado: ou tem o valor real
+  // que o admin preencheu, ou diz explicitamente que não foi informado.
+  const specValue = (v?: string) =>
+    (v ?? "").trim().length > 0
+      ? <>{v}</>
+      : <span className="text-slate-400 italic">não informado</span>;
+
+  const hasAnySpec = (p: TechnicalProduct) =>
+    Object.values(p.specs).some(v => (v ?? "").trim().length > 0);
 
   const getDocIcon = (type: string) => {
     switch (type) {
@@ -1403,6 +1469,52 @@ ${docsListText}
         </div>
       )}
 
+      {/* MODAL ADMIN: ESPECIFICAÇÕES TÉCNICAS REAIS */}
+      {specsModalOpen && specsProduct && (
+        <Dialog open={specsModalOpen} onOpenChange={(open) => { setSpecsModalOpen(open); if (!open) setSpecsProduct(null); }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="text-base">Especificações — {specsProduct.name}</DialogTitle>
+              <DialogDescription className="text-xs">
+                Preencha com os dados do laudo. O que ficar em branco aparece como
+                "não informado" e é omitido da ficha enviada ao cliente.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSaveSpecs} className="space-y-3">
+              {([
+                ['weight', 'Embalagem', 'Ex: 25 KG (saco de polietileno)'],
+                ['granulometry', 'Granulometria', 'Ex: fina e uniforme'],
+                ['solubility', 'Solubilidade', 'Ex: rápida'],
+                ['purity', 'Pureza / NaCl', 'Copie exatamente o valor do laudo'],
+                ['storage', 'Armazenamento', 'Ex: local seco, sobre estrados'],
+              ] as const).map(([field, label, placeholder]) => (
+                <div key={field}>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">{label}</label>
+                  <Input
+                    value={specsForm[field]}
+                    onChange={(e) => setSpecsForm(f => ({ ...f, [field]: e.target.value }))}
+                    placeholder={placeholder}
+                    className="text-xs h-9"
+                  />
+                </div>
+              ))}
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
+                Pureza e granulometria são declarações reguladas para sal alimentício.
+                Informe só o que constar no laudo — não estime.
+              </p>
+              <DialogFooter className="gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => setSpecsModalOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" size="sm" disabled={setSpecsMutation.isPending}>
+                  {setSpecsMutation.isPending ? "Salvando..." : "Salvar especificações"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* MODAL ADMIN: ALTERAR FOTO DO PRODUTO */}
       {editImageModalOpen && editingProduct && (
         <Dialog open={editImageModalOpen} onOpenChange={(open) => {
@@ -1637,7 +1749,7 @@ ${docsListText}
                 <Badge className={`${selectedProduct.badgeColor}`}>
                   {selectedProduct.packageType}
                 </Badge>
-                <span className="text-xs text-slate-500 font-medium">Especificação Técnica Oficial</span>
+                <span className="text-xs text-slate-500 font-medium">{hasAnySpec(selectedProduct) ? "Especificação Técnica Oficial" : "Ficha do Produto"}</span>
               </div>
               <DialogTitle className="text-xl font-bold text-slate-900">
                 {selectedProduct.name}
@@ -1654,10 +1766,31 @@ ${docsListText}
 
               {/* Tabela de Especificações */}
               <div>
-                <h4 className="font-bold text-slate-900 text-sm mb-2 flex items-center gap-1.5">
-                  <Sparkles size={16} className="text-amber-500" />
-                  Especificações Técnicas:
-                </h4>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                    <Sparkles size={16} className="text-amber-500" />
+                    Especificações Técnicas:
+                  </h4>
+                  {isAdmin && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-[11px] gap-1"
+                      onClick={() => handleOpenSpecsModal(selectedProduct)}
+                    >
+                      <FilePlus size={12} /> Preencher especificações
+                    </Button>
+                  )}
+                </div>
+                {!hasAnySpec(selectedProduct) && (
+                  <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
+                    Nenhuma especificação foi informada para este produto ainda.
+                    {isAdmin
+                      ? " Preencha com os dados do laudo antes de enviar a ficha a um cliente."
+                      : " Peça ao administrador para preencher com os dados do laudo."}
+                  </p>
+                )}
                 <div className="border rounded-xl overflow-hidden divide-y text-xs">
                   <div className="grid grid-cols-3 p-2.5 bg-slate-50 font-semibold text-slate-700">
                     <span>Parâmetro</span>
@@ -1665,23 +1798,23 @@ ${docsListText}
                   </div>
                   <div className="grid grid-cols-3 p-2.5 text-slate-800">
                     <span className="font-semibold text-slate-600">Embalagem</span>
-                    <span className="col-span-2">{selectedProduct.specs.weight}</span>
+                    <span className="col-span-2">{specValue(selectedProduct.specs.weight)}</span>
                   </div>
                   <div className="grid grid-cols-3 p-2.5 text-slate-800 bg-slate-50/50">
                     <span className="font-semibold text-slate-600">Granulometria</span>
-                    <span className="col-span-2">{selectedProduct.specs.granulometry}</span>
+                    <span className="col-span-2">{specValue(selectedProduct.specs.granulometry)}</span>
                   </div>
                   <div className="grid grid-cols-3 p-2.5 text-slate-800">
                     <span className="font-semibold text-slate-600">Solubilidade</span>
-                    <span className="col-span-2">{selectedProduct.specs.solubility}</span>
+                    <span className="col-span-2">{specValue(selectedProduct.specs.solubility)}</span>
                   </div>
                   <div className="grid grid-cols-3 p-2.5 text-slate-800 bg-slate-50/50">
                     <span className="font-semibold text-slate-600">Pureza / NaCl</span>
-                    <span className="col-span-2">{selectedProduct.specs.purity}</span>
+                    <span className="col-span-2">{specValue(selectedProduct.specs.purity)}</span>
                   </div>
                   <div className="grid grid-cols-3 p-2.5 text-slate-800">
                     <span className="font-semibold text-slate-600">Armazenamento</span>
-                    <span className="col-span-2">{selectedProduct.specs.storage}</span>
+                    <span className="col-span-2">{specValue(selectedProduct.specs.storage)}</span>
                   </div>
                 </div>
               </div>
