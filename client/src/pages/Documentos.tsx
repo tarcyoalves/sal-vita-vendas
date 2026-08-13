@@ -27,7 +27,7 @@ import {
   Microscope,
   FileSpreadsheet,
   Camera,
-  Image as ImageIcon,
+  ImageIcon,
   RotateCcw,
   Upload,
   FolderPlus
@@ -87,6 +87,7 @@ export interface CompanyCategory {
   documents: AttachedDoc[];
 }
 
+// NO FAKE OR FICTITIOUS DOCUMENTS - ALL START CLEAN & EMPTY UNTIL USER UPLOADS REAL FILES
 const INITIAL_PRODUCTS: TechnicalProduct[] = [
   {
     id: "sal-refinado-bigbag",
@@ -117,24 +118,7 @@ const INITIAL_PRODUCTS: TechnicalProduct[] = [
     },
     badgeColor: "bg-blue-600 text-white",
     iconType: "bigbag",
-    documents: [
-      {
-        id: "doc-ref-bb-1",
-        title: "Ficha Técnica Oficial - Sal Refinado Big Bag.pdf",
-        fileUrl: "#",
-        fileType: "PDF",
-        fileSize: "340 KB",
-        addedAt: "Válido 2026"
-      },
-      {
-        id: "doc-ref-bb-2",
-        title: "Laudo de Análise Físico-Química.pdf",
-        fileUrl: "#",
-        fileType: "LAUDO",
-        fileSize: "210 KB",
-        addedAt: "Lote Atual"
-      }
-    ]
+    documents: []
   },
   {
     id: "sal-granulado-bigbag",
@@ -165,16 +149,7 @@ const INITIAL_PRODUCTS: TechnicalProduct[] = [
     },
     badgeColor: "bg-emerald-600 text-white",
     iconType: "bigbag",
-    documents: [
-      {
-        id: "doc-gran-bb-1",
-        title: "Ficha Técnica - Sal Granulado Big Bag.pdf",
-        fileUrl: "#",
-        fileType: "PDF",
-        fileSize: "310 KB",
-        addedAt: "Válido 2026"
-      }
-    ]
+    documents: []
   },
   {
     id: "sal-moido-grosso-bigbag",
@@ -205,16 +180,7 @@ const INITIAL_PRODUCTS: TechnicalProduct[] = [
     },
     badgeColor: "bg-amber-600 text-white",
     iconType: "bigbag",
-    documents: [
-      {
-        id: "doc-moido-bb-1",
-        title: "Especificação Técnica Moagem & Peneiramento.pdf",
-        fileUrl: "#",
-        fileType: "PDF",
-        fileSize: "280 KB",
-        addedAt: "2026"
-      }
-    ]
+    documents: []
   },
   {
     id: "sal-fazendeiro-25kg",
@@ -246,24 +212,7 @@ const INITIAL_PRODUCTS: TechnicalProduct[] = [
     },
     badgeColor: "bg-orange-600 text-white",
     iconType: "sacaria",
-    documents: [
-      {
-        id: "doc-faz-25-1",
-        title: "Ficha Técnica Sal do Fazendeiro 25kg.pdf",
-        fileUrl: "#",
-        fileType: "PDF",
-        fileSize: "390 KB",
-        addedAt: "Válido 2026"
-      },
-      {
-        id: "doc-faz-25-2",
-        title: "Registro MAPA - Nutrição Animal.pdf",
-        fileUrl: "#",
-        fileType: "CERTIFICADO",
-        fileSize: "450 KB",
-        addedAt: "Ativo"
-      }
-    ]
+    documents: []
   },
   {
     id: "sal-refinado-25kg",
@@ -295,24 +244,7 @@ const INITIAL_PRODUCTS: TechnicalProduct[] = [
     },
     badgeColor: "bg-indigo-600 text-white",
     iconType: "sacaria",
-    documents: [
-      {
-        id: "doc-ref-25-1",
-        title: "Ficha Técnica Sal Refinado 25kg.pdf",
-        fileUrl: "#",
-        fileType: "PDF",
-        fileSize: "320 KB",
-        addedAt: "2026"
-      },
-      {
-        id: "doc-ref-25-2",
-        title: "Laudo Bromatológico Grau Alimentício.pdf",
-        fileUrl: "#",
-        fileType: "LAUDO",
-        fileSize: "195 KB",
-        addedAt: "Lote Atual"
-      }
-    ]
+    documents: []
   },
   {
     id: "sal-granulado-25kg",
@@ -344,16 +276,7 @@ const INITIAL_PRODUCTS: TechnicalProduct[] = [
     },
     badgeColor: "bg-teal-600 text-white",
     iconType: "sacaria",
-    documents: [
-      {
-        id: "doc-gran-25-1",
-        title: "Ficha Técnica Sal Granulado 25kg.pdf",
-        fileUrl: "#",
-        fileType: "PDF",
-        fileSize: "290 KB",
-        addedAt: "2026"
-      }
-    ]
+    documents: []
   },
   {
     id: "sal-vita-30x1",
@@ -385,24 +308,7 @@ const INITIAL_PRODUCTS: TechnicalProduct[] = [
     },
     badgeColor: "bg-cyan-600 text-white",
     iconType: "varejo",
-    documents: [
-      {
-        id: "doc-30x1-1",
-        title: "Ficha Técnica Varejo Sal Vita 1kg.pdf",
-        fileUrl: "#",
-        fileType: "PDF",
-        fileSize: "360 KB",
-        addedAt: "ANVISA RDC"
-      },
-      {
-        id: "doc-30x1-2",
-        title: "Tabela Nutricional & Código EAN.pdf",
-        fileUrl: "#",
-        fileType: "CERTIFICADO",
-        fileSize: "180 KB",
-        addedAt: "Oficial"
-      }
-    ]
+    documents: []
   },
   {
     id: "sal-vita-10x1",
@@ -434,16 +340,7 @@ const INITIAL_PRODUCTS: TechnicalProduct[] = [
     },
     badgeColor: "bg-purple-600 text-white",
     iconType: "varejo",
-    documents: [
-      {
-        id: "doc-10x1-1",
-        title: "Ficha Técnica Fardo 10x1kg Sal Vita.pdf",
-        fileUrl: "#",
-        fileType: "PDF",
-        fileSize: "340 KB",
-        addedAt: "2026"
-      }
-    ]
+    documents: []
   }
 ];
 
@@ -461,24 +358,7 @@ const INITIAL_COMPANY_CATEGORIES: CompanyCategory[] = [
       "Inscrição Estadual: Ativa"
     ],
     copyContent: "DADOS CADASTRAIS SAL VITA:\nRazão Social: T A CONSULTORIA EMPRESARIAL LTDA\nCNPJ: Inscrição Ativa\nAtividade: Fabricação e Comércio Atacadista de Sal",
-    documents: [
-      {
-        id: "comp-doc-1",
-        title: "Comprovante CNPJ Receita Federal.pdf",
-        fileUrl: "#",
-        fileType: "PDF",
-        fileSize: "240 KB",
-        addedAt: "Atualizado 2026"
-      },
-      {
-        id: "comp-doc-2",
-        title: "Inscrição Estadual SUTRI/SEFAZ.pdf",
-        fileUrl: "#",
-        fileType: "PDF",
-        fileSize: "180 KB",
-        addedAt: "Ativa"
-      }
-    ]
+    documents: []
   },
   {
     id: "comp-licencas",
@@ -491,32 +371,7 @@ const INITIAL_COMPANY_CATEGORIES: CompanyCategory[] = [
       "Licença Sanitária para Alimentos",
       "Registro MAPA para Nutrição Animal"
     ],
-    documents: [
-      {
-        id: "comp-doc-3",
-        title: "Alvará de Funcionamento Municipal.pdf",
-        fileUrl: "#",
-        fileType: "PDF",
-        fileSize: "512 KB",
-        addedAt: "Válido 2026/2027"
-      },
-      {
-        id: "comp-doc-4",
-        title: "Licença Sanitária ANVISA.pdf",
-        fileUrl: "#",
-        fileType: "CERTIFICADO",
-        fileSize: "380 KB",
-        addedAt: "Aprovado"
-      },
-      {
-        id: "comp-doc-5",
-        title: "Registro MAPA Alimentação Animal.pdf",
-        fileUrl: "#",
-        fileType: "CERTIFICADO",
-        fileSize: "425 KB",
-        addedAt: "Ativo"
-      }
-    ]
+    documents: []
   },
   {
     id: "comp-fiscal",
@@ -529,16 +384,7 @@ const INITIAL_COMPANY_CATEGORIES: CompanyCategory[] = [
       "Certidão Negativa Estadual",
       "Certidão Negativa Municipal"
     ],
-    documents: [
-      {
-        id: "comp-doc-6",
-        title: "Certidão Negativa de Débitos Federais (CND).pdf",
-        fileUrl: "#",
-        fileType: "PDF",
-        fileSize: "210 KB",
-        addedAt: "Emitido recentemente"
-      }
-    ]
+    documents: []
   },
   {
     id: "comp-financeiro",
@@ -552,16 +398,7 @@ const INITIAL_COMPANY_CATEGORIES: CompanyCategory[] = [
       "Comprovantes de liquidação"
     ],
     copyContent: "DADOS BANCÁRIOS OFICIAIS - SAL VITA:\nFavorecido: SAL VITA LTDA\nChave Pix CNPJ: (Solicite ao setor financeiro para confirmação)\nInstrução: Enviar comprovante informando o número do pedido/atendente.",
-    documents: [
-      {
-        id: "comp-doc-7",
-        title: "Dados Bancários & Pix Oficial Sal Vita.pdf",
-        fileUrl: "#",
-        fileType: "PDF",
-        fileSize: "140 KB",
-        addedAt: "Oficial 2026"
-      }
-    ]
+    documents: []
   }
 ];
 
@@ -601,21 +438,44 @@ export default function Documentos() {
   const [editingProduct, setEditingProduct] = useState<TechnicalProduct | null>(null);
   const [imageUrlInput, setImageUrlInput] = useState<string>("");
 
-  // Load custom stored docs from localStorage
+  // Load real uploaded items from localStorage (filtering out any old fake '#' items)
   useEffect(() => {
     try {
-      const savedProducts = localStorage.getItem("sal_vita_products_v2");
+      const savedProducts = localStorage.getItem("sal_vita_products_v3");
       if (savedProducts) {
-        setProductsList(JSON.parse(savedProducts));
+        const parsed: TechnicalProduct[] = JSON.parse(savedProducts);
+        // Clean out any leftover fake '#' items from previous tests
+        const cleaned = parsed.map(p => ({
+          ...p,
+          documents: (p.documents || []).filter(d => d.fileUrl && d.fileUrl !== "#")
+        }));
+        setProductsList(cleaned);
       }
-      const savedCompany = localStorage.getItem("sal_vita_company_v2");
+
+      const savedCompany = localStorage.getItem("sal_vita_company_v3");
       if (savedCompany) {
-        setCompanyCategoriesList(JSON.parse(savedCompany));
+        const parsed: CompanyCategory[] = JSON.parse(savedCompany);
+        const cleaned = parsed.map(c => ({
+          ...c,
+          documents: (c.documents || []).filter(d => d.fileUrl && d.fileUrl !== "#")
+        }));
+        setCompanyCategoriesList(cleaned);
       }
     } catch (e) {
       console.error("Error reading saved card docs", e);
     }
   }, []);
+
+  // Save to localStorage v3
+  const saveProductsToStorage = (products: TechnicalProduct[]) => {
+    setProductsList(products);
+    localStorage.setItem("sal_vita_products_v3", JSON.stringify(products));
+  };
+
+  const saveCompanyToStorage = (company: CompanyCategory[]) => {
+    setCompanyCategoriesList(company);
+    localStorage.setItem("sal_vita_company_v3", JSON.stringify(company));
+  };
 
   // Filter products
   const filteredProducts = productsList.filter(product => {
@@ -647,7 +507,7 @@ export default function Documentos() {
       fileUrl: "",
       fileName: "",
       fileType: "PDF",
-      fileSize: "PDF • Local",
+      fileSize: "",
     });
     setAttachModalOpen(true);
   };
@@ -664,15 +524,16 @@ export default function Documentos() {
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
+      const cleanTitle = file.name.replace(/\.[^/.]+$/, "").replaceAll("_", " ").toUpperCase();
       setNewDocData(prev => ({
         ...prev,
-        title: prev.title || file.name,
+        title: prev.title || cleanTitle,
         fileName: file.name,
         fileUrl: dataUrl,
         fileSize: `${ext} • ${sizeStr}`,
         fileType: ext.includes("PDF") ? "PDF" : ext.includes("PNG") || ext.includes("JPG") ? "IMAGEM" : "PDF"
       }));
-      toast.success(`Arquivo "${file.name}" carregado do computador!`);
+      toast.success(`Arquivo "${file.name}" pronto para ser anexado!`);
     };
     reader.readAsDataURL(file);
   };
@@ -686,7 +547,7 @@ export default function Documentos() {
     reader.onload = () => {
       const dataUrl = reader.result as string;
       setImageUrlInput(dataUrl);
-      toast.success(`Foto "${file.name}" carregada!`);
+      toast.success(`Foto "${file.name}" selecionada!`);
     };
     reader.readAsDataURL(file);
   };
@@ -708,8 +569,7 @@ export default function Documentos() {
       return p;
     });
 
-    setProductsList(updatedProducts);
-    localStorage.setItem("sal_vita_products_v2", JSON.stringify(updatedProducts));
+    saveProductsToStorage(updatedProducts);
     toast.success("Foto do produto salva no card!");
     setEditImageModalOpen(false);
     setEditingProduct(null);
@@ -725,8 +585,7 @@ export default function Documentos() {
       }
       return p;
     });
-    setProductsList(updatedProducts);
-    localStorage.setItem("sal_vita_products_v2", JSON.stringify(updatedProducts));
+    saveProductsToStorage(updatedProducts);
     toast.success("Foto restaurada para a ilustração padrão.");
     setEditImageModalOpen(false);
     setEditingProduct(null);
@@ -748,23 +607,23 @@ export default function Documentos() {
     const docToAdd: AttachedDoc = {
       id: `attached-${Date.now()}`,
       title: newDocData.title.trim(),
-      fileName: newDocData.fileName || newDocData.title.trim(),
+      fileName: newDocData.fileName || `${newDocData.title.trim()}.pdf`,
       fileUrl: newDocData.fileUrl,
       fileType: newDocData.fileType,
       fileSize: newDocData.fileSize || "PDF",
-      addedAt: "Enviado pelo Admin"
+      addedAt: "Real Anexado"
     };
 
     if (targetType === "product" && targetTargetId) {
       const updatedProducts = productsList.map(p => {
         if (p.id === targetTargetId) {
+          // Replace existing or add file cleanly
           return { ...p, documents: [...p.documents, docToAdd] };
         }
         return p;
       });
-      setProductsList(updatedProducts);
-      localStorage.setItem("sal_vita_products_v2", JSON.stringify(updatedProducts));
-      toast.success(`Arquivo inserido com sucesso no produto!`);
+      saveProductsToStorage(updatedProducts);
+      toast.success(`Arquivo real anexado no produto com sucesso!`);
     } else if (targetType === "company" && targetTargetId) {
       const updatedCompany = companyCategoriesList.map(c => {
         if (c.id === targetTargetId) {
@@ -772,9 +631,8 @@ export default function Documentos() {
         }
         return c;
       });
-      setCompanyCategoriesList(updatedCompany);
-      localStorage.setItem("sal_vita_company_v2", JSON.stringify(updatedCompany));
-      toast.success(`Arquivo inserido com sucesso no card da empresa!`);
+      saveCompanyToStorage(updatedCompany);
+      toast.success(`Arquivo real anexado no card da empresa!`);
     }
 
     setAttachModalOpen(false);
@@ -782,22 +640,22 @@ export default function Documentos() {
 
   const handleDownloadFile = (doc: AttachedDoc) => {
     if (!doc.fileUrl || doc.fileUrl === "#") {
-      toast.info(`O arquivo "${doc.title}" é um modelo de exemplo. Insira um arquivo do seu computador.`);
+      toast.error("Arquivo indisponível.");
       return;
     }
 
-    // Direct download or open
+    // Trigger download of the exact real file stored
     const link = document.createElement("a");
     link.href = doc.fileUrl;
     link.download = doc.fileName || `${doc.title}.pdf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success(`Download de "${doc.title}" iniciado!`);
+    toast.success(`Download de "${doc.fileName || doc.title}" iniciado!`);
   };
 
   const handleDeleteAttachedDoc = (cardId: string, docId: string, isProduct: boolean) => {
-    if (!confirm("Remover este arquivo do card?")) return;
+    if (!confirm("Remover este arquivo anexado do card?")) return;
 
     if (isProduct) {
       const updated = productsList.map(p => {
@@ -806,8 +664,7 @@ export default function Documentos() {
         }
         return p;
       });
-      setProductsList(updated);
-      localStorage.setItem("sal_vita_products_v2", JSON.stringify(updated));
+      saveProductsToStorage(updated);
       toast.success("Arquivo removido.");
     } else {
       const updated = companyCategoriesList.map(c => {
@@ -816,8 +673,7 @@ export default function Documentos() {
         }
         return c;
       });
-      setCompanyCategoriesList(updated);
-      localStorage.setItem("sal_vita_company_v2", JSON.stringify(updated));
+      saveCompanyToStorage(updated);
       toast.success("Arquivo removido.");
     }
   };
@@ -825,7 +681,7 @@ export default function Documentos() {
   const handleCopyWhatsApp = (product: TechnicalProduct) => {
     const docsListText = product.documents.length > 0 
       ? product.documents.map(d => `📄 ${d.title}`).join('\n')
-      : "📄 Ficha Técnica Disponível";
+      : "📄 Ficha Técnica Sob Consulta";
 
     const text = `📌 *FICHA TÉCNICA - ${product.name.toUpperCase()}* (${product.subTitle || product.packageType})
 
@@ -949,7 +805,7 @@ ${docsListText}
               Documentos & Fichas Técnicas Sal Vita
             </h1>
             <p className="text-slate-300 text-sm md:text-base max-w-2xl">
-              Insira arquivos, laudos e fotos do seu computador diretamente no card de cada produto ou categoria da empresa.
+              Anexe os arquivos reais do seu computador diretamente no card de cada produto ou categoria da empresa.
             </p>
           </div>
           
@@ -1107,12 +963,12 @@ ${docsListText}
                       </ul>
                     </div>
 
-                    {/* 📂 DOCUMENTOS ANEXADOS AO CARD DESTE PRODUTO */}
+                    {/* 📂 DOCUMENTOS REALMENTE ANEXADOS AO CARD DESTE PRODUTO */}
                     <div className="pt-2 border-t border-slate-100">
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
                           <Paperclip size={14} className="text-emerald-600" />
-                          Arquivos do Produto ({product.documents.length}):
+                          Arquivo Anexado ({product.documents.length}):
                         </h4>
                         
                         {/* Admin Add Document Button to this specific Product Card */}
@@ -1122,46 +978,51 @@ ${docsListText}
                             className="text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-md flex items-center gap-1 transition"
                           >
                             <Plus size={13} />
-                            Inserir Arquivo
+                            Anexar Arquivo
                           </button>
                         )}
                       </div>
 
                       {product.documents.length === 0 ? (
-                        <div className="bg-slate-50 p-2.5 rounded-lg text-center text-slate-400 text-[11px] border border-dashed">
-                          Nenhum arquivo inserido ainda.
+                        <div className="bg-slate-50 p-3 rounded-xl text-center text-slate-400 text-[11px] border border-dashed">
+                          Nenhum arquivo anexado ainda neste produto.
                         </div>
                       ) : (
-                        <div className="space-y-1.5">
+                        <div className="space-y-2">
                           {product.documents.map((doc) => (
                             <div
                               key={doc.id}
-                              className="flex items-center justify-between p-2 rounded-lg bg-slate-50 hover:bg-blue-50/60 border border-slate-200/80 transition group/doc"
+                              className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-blue-50/60 border border-slate-200 transition"
                             >
-                              <div className="flex items-center gap-2 min-w-0 pr-2">
+                              <div className="flex items-center gap-2 min-w-0 pr-2 overflow-hidden">
                                 {getDocIcon(doc.fileType)}
-                                <span className="font-medium text-slate-800 text-[11px] truncate" title={doc.title}>
-                                  {doc.title}
-                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <span className="font-bold text-slate-900 text-xs block truncate" title={doc.title}>
+                                    {doc.title}
+                                  </span>
+                                  {doc.fileSize && (
+                                    <span className="text-[10px] text-slate-400 block truncate">{doc.fileSize}</span>
+                                  )}
+                                </div>
                               </div>
 
                               <div className="flex items-center gap-1 flex-shrink-0">
                                 <button
                                   onClick={() => handleDownloadFile(doc)}
-                                  title="Baixar arquivo do computador"
-                                  className="text-xs font-semibold text-blue-700 bg-white border border-blue-200 hover:bg-blue-600 hover:text-white px-2 py-1 rounded transition flex items-center gap-1"
+                                  title="Baixar arquivo real do computador"
+                                  className="text-xs font-bold text-blue-700 bg-white border border-blue-200 hover:bg-blue-600 hover:text-white px-2.5 py-1 rounded-lg transition flex items-center gap-1 shadow-sm"
                                 >
-                                  <Download size={12} />
+                                  <Download size={13} />
                                   Baixar
                                 </button>
 
                                 {isAdmin && (
                                   <button
                                     onClick={() => handleDeleteAttachedDoc(product.id, doc.id, true)}
-                                    title="Remover arquivo"
-                                    className="text-slate-400 hover:text-red-600 p-1 rounded transition"
+                                    title="Remover anexo"
+                                    className="text-slate-400 hover:text-red-600 p-1.5 rounded transition"
                                   >
-                                    <Trash2 size={12} />
+                                    <Trash2 size={13} />
                                   </button>
                                 )}
                               </div>
@@ -1228,7 +1089,7 @@ ${docsListText}
                           className="text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1 transition shrink-0"
                         >
                           <Plus size={14} />
-                          Inserir Arquivo
+                          Anexar Arquivo
                         </button>
                       )}
                     </div>
@@ -1249,31 +1110,31 @@ ${docsListText}
                       </div>
                     )}
 
-                    {/* 📂 DOCUMENTOS ANEXADOS AO CARD DA EMPRESA */}
+                    {/* 📂 DOCUMENTOS REALMENTE ANEXADOS AO CARD DA EMPRESA */}
                     <div className="pt-2 border-t border-slate-100 space-y-2">
                       <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
                         <Paperclip size={14} className="text-blue-600" />
-                        Arquivos da Empresa ({comp.documents.length}):
+                        Arquivo Anexado ({comp.documents.length}):
                       </h4>
 
                       {comp.documents.length === 0 ? (
                         <div className="bg-slate-50 p-3 rounded-lg text-center text-slate-400 text-[11px] border border-dashed">
-                          Nenhum arquivo inserido ainda neste card.
+                          Nenhum arquivo anexado ainda neste card.
                         </div>
                       ) : (
                         <div className="space-y-2">
                           {comp.documents.map((doc) => (
                             <div
                               key={doc.id}
-                              className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-emerald-50/50 border border-slate-200/80 transition"
+                              className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 transition"
                             >
-                              <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                              <div className="flex items-center gap-2.5 min-w-0 pr-2 overflow-hidden">
                                 {getDocIcon(doc.fileType)}
-                                <div>
+                                <div className="min-w-0 flex-1">
                                   <span className="font-bold text-slate-800 text-xs block truncate" title={doc.title}>
                                     {doc.title}
                                   </span>
-                                  <span className="text-[10px] text-slate-400 block">{doc.fileSize || doc.fileType}</span>
+                                  <span className="text-[10px] text-slate-400 block truncate">{doc.fileSize || doc.fileType}</span>
                                 </div>
                               </div>
 
@@ -1327,7 +1188,7 @@ ${docsListText}
       {/* MODAL ADMIN: ALTERAR FOTO DO PRODUTO (LOCAL FILE OU URL) */}
       {editImageModalOpen && editingProduct && (
         <Dialog open={editImageModalOpen} onOpenChange={setEditImageModalOpen}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md w-full">
             <DialogHeader>
               <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <Camera size={20} className="text-amber-500" />
@@ -1353,10 +1214,10 @@ ${docsListText}
                   type="button"
                   onClick={() => photoInputRef.current?.click()}
                   variant="outline"
-                  className="w-full h-12 bg-slate-50 hover:bg-slate-100 border-dashed border-2 border-slate-300 font-bold text-slate-700 flex items-center justify-center gap-2"
+                  className="w-full h-12 bg-slate-50 hover:bg-slate-100 border-dashed border-2 border-slate-300 font-bold text-slate-700 flex items-center justify-center gap-2 text-xs"
                 >
-                  <Upload size={18} className="text-blue-600" />
-                  Selecionar Foto do Computador...
+                  <Upload size={16} className="text-blue-600 shrink-0" />
+                  <span>Selecionar Foto do Computador...</span>
                 </Button>
               </div>
 
@@ -1368,7 +1229,7 @@ ${docsListText}
                   placeholder="https://exemplo.com/foto.png"
                   value={imageUrlInput}
                   onChange={e => setImageUrlInput(e.target.value)}
-                  className="text-xs"
+                  className="text-xs text-slate-900 bg-white"
                 />
               </div>
 
@@ -1376,7 +1237,7 @@ ${docsListText}
               {imageUrlInput.trim() && (
                 <div className="bg-slate-100 p-3 rounded-xl border text-center space-y-1">
                   <span className="text-[11px] font-semibold text-slate-500 block uppercase">Pré-visualização da Foto</span>
-                  <div className="h-32 flex items-center justify-center">
+                  <div className="h-32 flex items-center justify-center overflow-hidden">
                     <img 
                       src={imageUrlInput.trim()} 
                       alt="Pré-visualização" 
@@ -1413,24 +1274,24 @@ ${docsListText}
         </Dialog>
       )}
 
-      {/* MODAL ADMIN: INSERIR ARQUIVO DO COMPUTADOR NO CARD */}
+      {/* MODAL ADMIN: INSERIR ARQUIVO DO COMPUTADOR NO CARD (CORRIGIDO SEM BUG VISUAL) */}
       {attachModalOpen && (
         <Dialog open={attachModalOpen} onOpenChange={setAttachModalOpen}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md w-full overflow-hidden">
             <DialogHeader>
               <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <Paperclip size={20} className="text-emerald-600" />
                 Inserir Arquivo do Computador no Card
               </DialogTitle>
               <DialogDescription className="text-xs text-slate-500">
-                Escolha um arquivo PDF, laudo ou certificado no seu computador para anexar neste card.
+                Escolha o arquivo PDF ou laudo no seu computador para este card.
               </DialogDescription>
             </DialogHeader>
 
             <form onSubmit={handleSaveAttachedDoc} className="space-y-4 py-2 text-xs md:text-sm">
               {/* Native File Input Picker */}
               <div>
-                <label className="block font-semibold mb-1.5 text-slate-800">Escolher Arquivo do Computador (PDF/Laudo/Imagem) *</label>
+                <label className="block font-semibold mb-1.5 text-slate-800">Escolher Arquivo do Computador (PDF/Laudo) *</label>
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -1441,10 +1302,12 @@ ${docsListText}
                 <Button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-full h-14 bg-emerald-50 hover:bg-emerald-100 border-2 border-dashed border-emerald-300 text-emerald-900 font-bold flex items-center justify-center gap-2 text-xs shadow-sm"
+                  className="w-full min-h-[48px] h-auto py-2 px-3 bg-emerald-50 hover:bg-emerald-100 border-2 border-dashed border-emerald-300 text-emerald-900 font-bold flex items-center justify-center gap-2 text-xs shadow-sm max-w-full overflow-hidden"
                 >
-                  <FolderPlus size={20} className="text-emerald-600" />
-                  {newDocData.fileName ? `Substituir (${newDocData.fileName})` : "Selecionar Arquivo do Seu Computador..."}
+                  <FolderPlus size={18} className="text-emerald-600 shrink-0" />
+                  <span className="truncate max-w-full">
+                    {newDocData.fileName ? `Substituir: ${newDocData.fileName}` : "Selecionar Arquivo do Seu Computador..."}
+                  </span>
                 </Button>
               </div>
 
@@ -1453,9 +1316,10 @@ ${docsListText}
                 <label className="block font-semibold mb-1 text-slate-800">Título / Nome de Exibição do Arquivo *</label>
                 <Input
                   type="text"
-                  placeholder="Ex: Ficha Técnica Sal Refinado 25kg.pdf"
+                  placeholder="Ex: FICHA TECNICA SAL GRANULADO COM IODO"
                   value={newDocData.title}
                   onChange={e => setNewDocData({ ...newDocData, title: e.target.value })}
+                  className="text-xs text-slate-900 bg-white"
                   required
                 />
               </div>
@@ -1466,7 +1330,7 @@ ${docsListText}
                   <select
                     value={newDocData.fileType}
                     onChange={e => setNewDocData({ ...newDocData, fileType: e.target.value as any })}
-                    className="w-full px-3 py-2 border rounded-md text-xs bg-white"
+                    className="w-full px-3 py-2 border rounded-md text-xs bg-white text-slate-900"
                   >
                     <option value="PDF">Ficha Técnica / PDF</option>
                     <option value="LAUDO">Laudo de Análise</option>
@@ -1480,18 +1344,21 @@ ${docsListText}
                   <label className="block font-semibold mb-1 text-slate-800">Tamanho / Detalhe</label>
                   <Input
                     type="text"
-                    placeholder="Ex: PDF • 350 KB"
+                    placeholder="Ex: PDF • 786 KB"
                     value={newDocData.fileSize}
                     onChange={e => setNewDocData({ ...newDocData, fileSize: e.target.value })}
+                    className="text-xs text-slate-900 bg-white"
                   />
                 </div>
               </div>
 
               {/* Status File Confirmation */}
               {newDocData.fileUrl && newDocData.fileUrl !== "#" && (
-                <div className="bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 flex items-center gap-2 text-emerald-800 text-xs font-semibold">
-                  <Check size={16} className="text-emerald-600 flex-shrink-0" />
-                  <span className="truncate">Arquivo pronto para ser inserido: {newDocData.fileName || "Carregado"}</span>
+                <div className="bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 flex items-center gap-2 text-emerald-800 text-xs font-semibold max-w-full overflow-hidden">
+                  <Check size={16} className="text-emerald-600 shrink-0" />
+                  <span className="truncate max-w-full">
+                    Arquivo pronto: {newDocData.fileName || "Carregado"}
+                  </span>
                 </div>
               )}
 
@@ -1567,29 +1434,31 @@ ${docsListText}
               </div>
 
               {/* Documentos Anexados */}
-              <div>
-                <h4 className="font-bold text-slate-900 text-sm mb-2 flex items-center gap-1.5">
-                  <Paperclip size={16} className="text-emerald-600" />
-                  Arquivos & Laudos Anexados a este Produto:
-                </h4>
-                <div className="space-y-2">
-                  {selectedProduct.documents.map((doc) => (
-                    <div key={doc.id} className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border">
-                      <div className="flex items-center gap-2">
-                        {getDocIcon(doc.fileType)}
-                        <span className="font-semibold text-xs text-slate-800">{doc.title}</span>
+              {selectedProduct.documents.length > 0 && (
+                <div>
+                  <h4 className="font-bold text-slate-900 text-sm mb-2 flex items-center gap-1.5">
+                    <Paperclip size={16} className="text-emerald-600" />
+                    Arquivo Anexado a este Produto:
+                  </h4>
+                  <div className="space-y-2">
+                    {selectedProduct.documents.map((doc) => (
+                      <div key={doc.id} className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border">
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          {getDocIcon(doc.fileType)}
+                          <span className="font-semibold text-xs text-slate-800 truncate">{doc.title}</span>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => handleDownloadFile(doc)}
+                          className="text-xs gap-1 bg-blue-600 hover:bg-blue-700 text-white shrink-0"
+                        >
+                          <Download size={13} /> Baixar
+                        </Button>
                       </div>
-                      <Button
-                        size="sm"
-                        onClick={() => handleDownloadFile(doc)}
-                        className="text-xs gap-1 bg-blue-600 hover:bg-blue-700 text-white"
-                      >
-                        <Download size={13} /> Baixar
-                      </Button>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             <DialogFooter className="gap-2 sm:gap-0">
