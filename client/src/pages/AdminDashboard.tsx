@@ -1,5 +1,6 @@
 import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
+import { splitDashboardReminders, type ReminderRow } from '../lib/tasks/reminders';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { useState } from "react";
@@ -678,20 +679,15 @@ export default function AdminDashboard() {
   const decidedTotal = convertedCount + cancelledTotal;
   const lostRateGlobal = decidedTotal > 0 ? Math.round((cancelledTotal / decidedTotal) * 100) : 0;
 
-  // Filter reminders based on selection
-  const filteredReminders = (reminders as any[]).filter(r => {
-    if (reminderFilter === "all") return true;
-    if (reminderFilter === "__admin__") return !r.assignedTo || r.assignedTo.trim() === "";
-    return r.assignedTo === reminderFilter;
-  }).sort((a, b) => {
-    const dateA = new Date(a.reminderDate).getTime();
-    const dateB = new Date(b.reminderDate).getTime();
-    return dateA - dateB;
-  });
-
-  const now = new Date();
-  const upcomingReminders = filteredReminders.filter(r => new Date(r.reminderDate) > now && r.status === 'pending');
-  const overdueReminders = filteredReminders.filter(r => new Date(r.reminderDate) <= now && r.status === 'pending');
+  // Filtro + classificação vivem em lib/tasks/reminders.ts (puro, coberto por
+  // tests/reminders.test.ts). O slice de 5 por categoria também sai de lá.
+  const {
+    filtered: filteredReminders,
+    overdue: overdueReminders,
+    upcoming: upcomingReminders,
+    overdueCount,
+    upcomingCount,
+  } = splitDashboardReminders(reminders as ReminderRow[], reminderFilter);
 
   const teamDailyGoal = (sellers as any[] || []).reduce((sum, s) => sum + effectiveDailyGoal(s.dailyGoal), 0);
 
@@ -1469,11 +1465,11 @@ export default function AdminDashboard() {
             </div>
           ) : (
             <>
-              {overdueReminders.length > 0 && (
+              {overdueCount > 0 && (
                 <div>
-                  <p className="text-xs font-bold text-red-600 mb-2">ATRASADOS ({overdueReminders.length})</p>
+                  <p className="text-xs font-bold text-red-600 mb-2">ATRASADOS ({overdueCount})</p>
                   <div className="space-y-2">
-                    {overdueReminders.slice(0, 5).map((reminder: any) => (
+                    {overdueReminders.map((reminder: any) => (
                       <div key={reminder.id} className="p-3 bg-red-50 border border-red-200 rounded-lg">
                         <div className="flex items-start justify-between mb-1">
                           <p className="font-medium text-sm text-red-900">{reminder.title}</p>
@@ -1485,11 +1481,11 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               )}
-              {upcomingReminders.length > 0 && (
+              {upcomingCount > 0 && (
                 <div>
-                  <p className="text-xs font-bold text-blue-600 mb-2">PRÓXIMOS ({upcomingReminders.length})</p>
+                  <p className="text-xs font-bold text-blue-600 mb-2">PRÓXIMOS ({upcomingCount})</p>
                   <div className="space-y-2">
-                    {upcomingReminders.slice(0, 5).map((reminder: any) => (
+                    {upcomingReminders.map((reminder: any) => (
                       <div key={reminder.id} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                         <div className="flex items-start justify-between mb-1">
                           <p className="font-medium text-sm text-blue-900">{reminder.title}</p>

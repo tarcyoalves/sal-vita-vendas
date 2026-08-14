@@ -1,6 +1,5 @@
 import { router } from '../trpc';
 import { authRouter } from './auth';
-import { remindersRouter } from './reminders';
 import { tasksRouter } from './tasks';
 import { sellersRouter } from './sellers';
 import { clientsRouter } from './clients';
@@ -16,9 +15,14 @@ import { tagsRouter } from './tags';
 import { faturamentoRouter } from './faturamento';
 import { b2bRouter } from './b2b';
 import { catalogRouter } from './catalog';
+// Não existe namespace `reminders` aqui de propósito. Os lembretes do CRM são
+// um campo da tarefa (`tasks.reminderDate`) e são lidos por `tasks.reminders`.
+// A tabela `reminders` e o router que a servia eram um segundo modelo, paralelo
+// e sem nenhuma tela: `trpc.reminders.*` não era chamado em lugar nenhum. O
+// router foi removido; a TABELA continua no schema porque pode ter linhas
+// legadas em produção (o monitor de storage a lista e `recoverOldDb` a copia).
 export const appRouter = router({
   auth: authRouter,
-  reminders: remindersRouter,
   tasks: tasksRouter,
   sellers: sellersRouter,
   clients: clientsRouter,

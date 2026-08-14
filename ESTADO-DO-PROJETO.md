@@ -54,14 +54,18 @@ Query · Tailwind + shadcn/ui · Express serverless na Vercel (`api/index.ts`) �
 Neon Postgres · JWT em cookie HttpOnly.
 
 - **Deploy:** `git push origin main` → Vercel publica sozinha (~2 min).
-- **Antes de todo push:** `npx tsc --noEmit` e o build do Vite. Se `node_modules` não
-  existir no checkout, rode `npm install` antes.
+- **Antes de todo push:** `npx tsc --noEmit`, `npm test` e o build do Vite. Se
+  `node_modules` não existir no checkout, rode `npm install` antes.
 - **`api/bundle.js` PRECISA continuar versionado.** A Vercel só registra `/api/*` como
   função se o bundle já existir no clone. Já removeram uma vez e derrubaram a API em
   produção por ~6 min.
 - **Typecheck está em zero erros e é portão de deploy** (desde 13/08). Se `npx tsc
   --noEmit` acusar algo, é seu — não é baseline. `tsconfig.json` cobre só
-  `client/src`, `server` e `api`; `sallog/` e `tests/` estão excluídos de propósito.
+  `client/src`, `server` e `api`; `sallog/` e `tests/` estão excluídos de propósito
+  (quem checa os tipos dos testes é o Vitest, ao transformar cada arquivo).
+- **Testes são portão de PR e de `deploy-vercel.yml`, não do `vercel-build`.**
+  `npm test` roda no workflow `Typecheck e Testes`. O push direto em `main`
+  publica pela Vercel sem passar por ele — nesse caminho só o typecheck barra.
 - **Se o typecheck acusar módulo faltando** (`Cannot find module 'qrcode'` e afins),
   provavelmente é o checkout local desatualizado, não o código: rode `npm install`. O
   CI usa `npm ci`, que instala o lockfile inteiro.
@@ -144,6 +148,39 @@ minerais. Até lá, não.
 ---
 
 ## 5. O que está feito
+
+**CRM de Lembretes (13/08/2026 — sessão da noite)**
+- **Testes rodam e são portão de PR.** Vitest 3.2.4 instalado, `npm test` =
+  `vitest run`, config em `vitest.config.ts` (environment `node`, `TZ` fixo em
+  `America/Sao_Paulo` para o CI não mudar o resultado das datas). O workflow
+  `typecheck.yml` virou "Typecheck e Testes" e roda `npm test` — como o
+  `deploy-vercel.yml` o chama via `workflow_call`, teste quebrado também barra
+  aquele deploy. **Os testes NÃO entraram no `vercel-build`** de propósito: o
+  `buildCommand` tem limite de 256 caracteres e já derrubou o deploy uma vez.
+- **A suíte de lembretes passou a testar produção.** Os 41 casos antigos
+  reimplementavam cada filtro em array local e testavam a própria
+  reimplementação — verde mesmo se o dashboard mudasse a regra. A lógica foi
+  extraída para `client/src/lib/tasks/reminders.ts` (puro, sem React) e agora
+  `AdminDashboard`, `Tasks` e `useReminderNotifications` importam de lá. 42
+  casos, e a mutação `<=` → `<` na classificação de atrasado faz quebrar
+  (verificado).
+- **Achado da extração:** o hook prometia "janela de ±2 minutos" para o alerta
+  na hora, mas `overdue` é avaliado antes e captura tudo abaixo de -60s, então a
+  janela real é -60s..+60s. Um lembrete 90s atrasado sai como "Atrasada", não
+  como "Lembrete". Comportamento **mantido** (mudar é decisão de produto) e
+  registrado em teste + comentário em `ALERT_WINDOWS`.
+- **Meta Pixel não carrega mais no CRM.** O `fbq('init')` + `PageView` rodava em
+  qualquer host: toda tela do sistema interno autenticado reportava para a Meta.
+  Agora o IIFE só boota nos hosts `premium.` / `www.premium.` e na rota
+  `/sal-vita`. O JSON-LD de produto (nome, preço, disponibilidade) também é
+  removido no host `lembretes.`. Coberto por `tests/index-html-hosts.test.ts`,
+  que executa o `client/index.html` real em jsdom e checa os dois hosts.
+- **`remindersRouter` removido — era código morto.** `trpc.reminders.*` não tinha
+  um único consumidor em client/api/server; o lembrete do CRM é
+  `tasks.reminderDate` servido por `tasks.reminders`. A **tabela `reminders`
+  continua** no schema (pode ter linhas legadas em produção; o monitor de
+  storage a lista e `recoverOldDb` a copia), agora com comentário de "LEGADO —
+  não escreva aqui" para ninguém reintroduzi-la como modelo ativo.
 
 **Infra e portões (13/08/2026 — PRs #12 e #13)**
 - **Typecheck é portão de verdade** (`a29da9e` + `#12`). Os 153 erros foram zerados
@@ -234,18 +271,19 @@ minerais. Até lá, não.
 7. **Migrações rodam no cold start** com `.catch()` que só loga; o app serve requisição
    com schema incompleto.
 8. **CSP duplicada** em `vercel.json` e `api/index.ts`, ambas com `unsafe-inline`.
-9. **`client/index.html` é compartilhado** — por isso o CRM mostra título do Premium.
-10. **Sem testes executáveis.** Só `tests/reminders.test.ts`, sem runner: não há script
-    `test`, nem Vitest/Jest configurado, e vários casos testam arrays locais em vez do
-    comportamento dos routers. O typecheck já é gate (ver seção 5), os testes não.
-11. **Schema sem foreign keys declaradas** — as relações são inteiros por convenção, sem
-    `.references()`. Integridade depende só do código.
+9. **Schema sem foreign keys declaradas** — as relações são inteiros por convenção, sem
+   `.references()`. Integridade depende só do código.
+10. **Cobertura de teste é só de lembretes.** O runner existe e é portão de PR
+    (seção 5), mas as duas suítes cobrem lembretes e o head do `index.html`.
+    Nada cobre pagamento, frete, e-mail marketing ou os routers — que é onde
+    mora o risco financeiro. Testar router exige decidir como isolar o Neon
+    (banco de teste ou mock do Drizzle); nada disso está montado.
 
 ### 🔵 Operacional
-12. Pedidos com PIX inline (sem `mpPreferenceId`) não aparecem em `listOrders`.
-13. Frete da caixa de 10 kg saiu R$ 200,88 (PAC p/ SP) — mais caro que o produto. Decisão
+11. Pedidos com PIX inline (sem `mpPreferenceId`) não aparecem em `listOrders`.
+12. Frete da caixa de 10 kg saiu R$ 200,88 (PAC p/ SP) — mais caro que o produto. Decisão
     comercial, não bug.
-14. B2B Sprints 2–4 (pipeline comercial, prospecção manual assistida, outbound) não
+13. B2B Sprints 2–4 (pipeline comercial, prospecção manual assistida, outbound) não
     começaram. Domínio secundário só é necessário no Sprint 4.
 
 ---

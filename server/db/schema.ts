@@ -110,6 +110,19 @@ export const tasks = pgTable('tasks', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+/**
+ * LEGADO — não escreva aqui. Não é o lembrete do CRM.
+ *
+ * O lembrete que o sistema usa é um campo da tarefa: `tasks.reminderDate` +
+ * `tasks.reminderEnabled`, lido por `tasks.reminders` e consumido pelo
+ * `useReminderNotifications` e pelo AdminDashboard. Esta tabela é um segundo
+ * modelo, criado em paralelo e nunca ligado a nenhuma tela — o router que a
+ * servia (`trpc.reminders.*`) não tinha um único consumidor e foi removido.
+ *
+ * Mantida só porque pode conter linhas legadas em produção (o monitor de
+ * storage em api/index.ts a lista, e recoverOldDb a copia do banco antigo).
+ * Se for criar funcionalidade de lembrete, estenda `tasks`.
+ */
 export const reminders = pgTable('reminders', {
   id: serial('id').primaryKey(),
   userId: integer('user_id').notNull(),
