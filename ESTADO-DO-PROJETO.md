@@ -1,6 +1,6 @@
 # ⚠️ LEIA ESTE ARQUIVO ANTES DE QUALQUER COISA
 
-**Última atualização:** 13/08/2026
+**Última atualização:** 13/08/2026 (auditoria do CRM de Lembretes — ver seção 6)
 **Este é o ponto de entrada único do repositório.** O repo tem 13 arquivos `.md` e várias
 sessões de IA paralelas já se atrapalharam. Leia este primeiro; ele diz o que é verdade
 hoje e para onde ir depois.
@@ -260,6 +260,34 @@ minerais. Até lá, não.
 3. **Setar `B2B_NOTIFY_EMAIL`** na Vercel — sem isso o aviso de lead novo do `/atacado`
    não chega.
 
+### 🔴 CRM de Lembretes — achados da auditoria de 13/08/2026
+
+Detalhe completo, com arquivo:linha e plano em 4 lotes, em
+`RELATORIO-AUDITORIA-CRM-2026-08-13.md`. Resumo do que é P0/P1:
+
+- **Seed de admin com senha `admin123`** (`server/db/migrate.ts:7-25`) roda em todo cold
+  start quando não existe nenhuma linha `role='admin'` — e `sellers.delete` pode apagar
+  essa linha. Credencial pública no repo = tomada de conta.
+- **Rate limit é contornável por batching do tRPC.** Os limiters estão em caminhos exatos
+  (`api/index.ts:965-966`) e o cliente usa `httpBatchLink` (`client/src/main.tsx:77-89`);
+  URL em lote não casa com o middleware. Vale para `auth.login` e `auth.emergencyReset`.
+- **Restrição de IP confia em `req.ip` com `trust proxy: 1`** (`server/trpc.ts:21-23,68-70`)
+  e é fail-open quando a lista está vazia com a restrição ligada.
+- **Comissão vem do navegador e nunca é recalculada** (`server/routers/faturamento.ts:22-186`).
+  Sem `.finite()`/faixa; editar pedido aprovado não invalida a aprovação.
+- **IDOR no E-mail Marketing:** `engagementByTaskIds` e `enrollmentsByTaskIds`
+  (`server/routers/emailMarketing.ts:1541-1626`) não recebem `ctx` nem aplicam
+  `userTaskFilter`; `enrollTasksInSequence` (`:971-1007`) idem. `attendantBroadcast`
+  (`:573-630`) aceita até 50 e-mails livres, sem ownership nem `emailConfirmed`.
+- **Migração pode deixar banco novo quebrado:** `tasks.reminder_enabled` e
+  `work_sessions.updated_at` não são garantidas, o bloco de tags consulta `tasks.tags`
+  antes do `ALTER`, e o erro é engolido em `api/index.ts:173-177`.
+- **`/api/resend-webhook` está registrado duas vezes** (`api/index.ts:291` e `:494`); só a
+  primeira responde, então o limiter da segunda nunca se aplica.
+- **`npm audit --omit=dev`: 15 advisories** (1 critical, 6 high). O `tar` crítico entra por
+  `@capacitor/cli`, que está em `dependencies` sem precisar estar. `react-router-dom` está
+  instalado e não é usado — contraria a regra do wouter.
+
 ### 🟠 Código, ainda aberto
 4. **Sem outbox para efeitos pós-pagamento.** O pedido vira `confirmed` antes de
    `confirmOrderPaid()`. Se a notificação falhar, o retry do webhook é barrado pelo guard
@@ -314,7 +342,8 @@ Leia sob demanda, não todos:
 |---|---|
 | `CLAUDE.md` | Convenções de código, estrutura de pastas, variáveis de ambiente |
 | `HANDOFF.md` | Diário longo de sessões; detalhes da VPS/WhatsApp e erros já cometidos |
-| `RELATORIO-PREMIUM-2026-08-09.md` | Auditoria da loja (12 achados) — a mais recente |
+| `RELATORIO-AUDITORIA-CRM-2026-08-13.md` | **Auditoria do CRM de Lembretes — a mais recente.** 25 achados com arquivo:linha, o que já estava corrigido, e plano em 4 lotes |
+| `RELATORIO-PREMIUM-2026-08-09.md` | Auditoria da loja (12 achados) |
 | `RELATORIO-AUDITORIA-PREMIUM.md` | Auditoria anterior (02/07); os 3 críticos já foram corrigidos |
 | `PLANO-PROSPECCAO-B2B.md` | Estratégia B2B completa (25 partes) |
 | `PLANO-FINAL-EXECUCAO-B2B.md` | Execução B2B por sprints + prompt do agente executor |
