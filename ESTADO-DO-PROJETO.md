@@ -262,8 +262,12 @@ minerais. Até lá, não.
 
 ### 🔴 CRM de Lembretes — achados da auditoria de 13/08/2026
 
-Detalhe completo, com arquivo:linha e plano em 4 lotes, em
-`RELATORIO-AUDITORIA-CRM-2026-08-13.md`. Resumo do que é P0/P1:
+> **Agente: o acompanhamento vive em `PLANO-CORRECOES-CRM.md`.** Lá estão os 40 itens em 5
+> lotes com marcador de estado (⬜/🔄/✅). Reivindique um item marcando 🔄 antes de começar e
+> marque ✅ no mesmo commit da correção. A evidência completa de cada achado está em
+> `RELATORIO-AUDITORIA-CRM-2026-08-13.md`.
+
+Resumo do que é P0/P1:
 
 - **Seed de admin com senha `admin123`** (`server/db/migrate.ts:7-25`) roda em todo cold
   start quando não existe nenhuma linha `role='admin'` — e `sellers.delete` pode apagar
@@ -356,7 +360,8 @@ Leia sob demanda, não todos:
 |---|---|
 | `CLAUDE.md` | Convenções de código, estrutura de pastas, variáveis de ambiente |
 | `HANDOFF.md` | Diário longo de sessões; detalhes da VPS/WhatsApp e erros já cometidos |
-| `RELATORIO-AUDITORIA-CRM-2026-08-13.md` | **Auditoria do CRM de Lembretes — a mais recente.** 25 achados com arquivo:linha, o que já estava corrigido, e plano em 4 lotes |
+| `PLANO-CORRECOES-CRM.md` | **Handoff entre agentes.** 40 itens em 5 lotes com estado de execução — comece por aqui para trabalhar no CRM |
+| `RELATORIO-AUDITORIA-CRM-2026-08-13.md` | **Auditoria do CRM de Lembretes — a mais recente.** 32 achados com arquivo:linha, alegações falsas descartadas e o que já estava corrigido |
 | `RELATORIO-PREMIUM-2026-08-09.md` | Auditoria da loja (12 achados) |
 | `RELATORIO-AUDITORIA-PREMIUM.md` | Auditoria anterior (02/07); os 3 críticos já foram corrigidos |
 | `PLANO-PROSPECCAO-B2B.md` | Estratégia B2B completa (25 partes) |
@@ -367,8 +372,22 @@ Leia sob demanda, não todos:
 
 ---
 
-## 9. Ao terminar sua sessão
+## 9. Plano e progresso ficam no repositório, não no chat
 
-Atualize **este arquivo**: mova o que você concluiu para a seção 5, tire da seção 6, e
-registre qualquer armadilha nova que você descobriu. Se você quebrou alguma das 6 regras
-da seção 1 e aprendeu algo, escreva lá — foi assim que essa lista nasceu.
+**Regra do dono:** todo plano e todo progresso vão versionados no GitHub, porque várias
+sessões e agentes trabalham neste repo em paralelo. O que fica só na conversa morre com a
+sessão e o próximo agente refaz o trabalho — ou pior, sobrescreve.
+
+Na prática:
+
+- **Antes de começar** uma correção, marque o item como 🔄 em `PLANO-CORRECOES-CRM.md` e
+  comite só essa linha. É o que impede dois agentes na mesma tarefa.
+- **Ao concluir**, marque ✅ no mesmo commit da correção, dizendo em uma linha como
+  verificou. Nada vira ✅ sem `npm run check`, `npm test` e build passando.
+- **Levantamento novo** (auditoria, investigação, decisão de arquitetura) vira arquivo
+  commitado, não resposta de chat.
+- **Ao terminar a sessão**, atualize também este arquivo: mova o concluído para a seção 5,
+  tire da seção 6, e registre armadilha nova que você descobriu. Se quebrou alguma das 6
+  regras da seção 1 e aprendeu algo, escreva lá — foi assim que a lista nasceu.
+- **Descobriu que um item do plano está errado?** Marque ❌ com a justificativa. Não apague:
+  a próxima sessão precisa saber que já foi investigado.
