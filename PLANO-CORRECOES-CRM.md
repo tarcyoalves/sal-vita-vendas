@@ -8,6 +8,12 @@ commit `7ef810b`). O relatório tem a evidência completa; aqui fica só o estad
 
 **Última atualização:** 14/08/2026 · **Branch de trabalho:** `crm/reminders-tests-and-pixel-scope` (PR #15)
 
+**Issues de acompanhamento:** [#16 Lote 1](https://github.com/tarcyoalves/sal-vita-vendas/issues/16) ·
+[#17 Lote 2](https://github.com/tarcyoalves/sal-vita-vendas/issues/17) ·
+[#18 Lote 3](https://github.com/tarcyoalves/sal-vita-vendas/issues/18) ·
+[#19 Lote 4](https://github.com/tarcyoalves/sal-vita-vendas/issues/19) ·
+[#20 Lote 5](https://github.com/tarcyoalves/sal-vita-vendas/issues/20)
+
 ---
 
 ## Como usar este arquivo
