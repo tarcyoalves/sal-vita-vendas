@@ -13,8 +13,8 @@ O CRM compila e a suíte atual passa, mas há riscos importantes que os 49 teste
 |---|---:|---|
 | Crítica | 2 | tomada de conta administrativa / força bruta sem proteção efetiva |
 | Alta | 8 | IP spoofing, dinheiro, IDOR, disparos, migração e integridade |
-| Média | 10 | prompt injection, HTML, sessões, cache, webhooks e resiliência |
-| Baixa / melhoria | 5 | bundle, CSV, tipagem de RBAC e manutenção |
+| Média | 11 | prompt injection, HTML, sessões, cache, webhooks, importação em lote e resiliência |
+| Baixa / melhoria | 11 | bundle, CSV, fuso, códigos de erro, atomicidade, render, acessibilidade e manutenção |
 
 ## P0 — corrigir antes de novas funcionalidades
 
@@ -146,17 +146,31 @@ A primeira rota está em `api/index.ts:291`; outra, com limiter e processamento 
 
 **Correção:** gerar dummy no mesmo formato/custo atual e adicionar teste estatístico tolerante.
 
+### M7b. `maxDuration` declarado para arquivo diferente do que é roteado
+
+**Evidência:** `vercel.json:5-6` declara `functions: { "api/index.ts": { maxDuration: 60 } }`, enquanto todas as rotas de API apontam para `/api/bundle.js` (`vercel.json:86,91,105`), que é o artefato do esbuild e está versionado (`git ls-files api/` lista `api/bundle.js` e `api/index.ts`).
+
+**Impacto:** se a chave `functions` não casar com o arquivo efetivamente servido, o limite de 60s pode não ser aplicado e valeria o padrão do plano. Isso agravaria diretamente o M9. **Não confirmado em execução:** depende do comportamento do matcher da plataforma e exige checagem no deploy.
+
+**Correção:** alinhar a chave `functions` ao arquivo servido e confirmar a duração efetiva no painel/log de uma execução real antes de dimensionar o M9.
+
 ### M8. Cache de autorização pode manter papel/IP antigo por instância
 
-`server/lib/cache.ts` usa `Map` local e `createContext` cacheia usuário por 30s. Algumas mutações de papel não invalidam todas as chaves relevantes.
+**Evidência:** `server/trpc.ts:57` resolve o usuário com `cached('user:${id}', 30_000, ...)` e o cache é um `Map` de módulo (`server/lib/cache.ts:6`). `updateRole` (`server/routers/sellers.ts:137-147`) altera o papel e **não** invalida o cache; `delete` (`server/routers/sellers.ts:74-87`) invalida a lista de atendentes, mas não a chave do usuário. Apenas a restrição de IP invalida corretamente (`server/routers/sellers.ts:130`).
 
-**Correção:** invalidar em toda mudança de papel, senha, status e restrição de IP; para decisões críticas, reduzir cache ou adotar versão de sessão/revogação persistida.
+**Impacto:** rebaixar ou desligar um atendente pode continuar valendo o papel antigo por até 30 segundos em cada instância morna. O JWT dura **7 dias** (`server/auth.ts:51`) e não há denylist, então a expiração do cache é a única barreira imediata.
 
-### M9. `attendantBroadcast`/automação e criação em lote podem gerar carga longa
+**Correção:** chamar `invalidateUserCache` em `updateRole` e `delete`, e em qualquer mudança de senha/status. Para revogação imediata, adotar versão de sessão persistida em vez de confiar em TTL.
 
-`tasks.bulkCreate` aceita até 2.000 itens e depois chama automação sequencialmente para cada e-mail (`server/routers/tasks.ts:153-217`). Em função serverless, isso pode exceder tempo e deixar importação parcialmente automatizada.
+**Nota de documentação:** `CLAUDE.md:39` afirma que o JWT dura 30 dias; o código usa 7 dias. Corrigir a documentação.
 
-**Correção:** inserir em lote e enfileirar efeitos em outbox; limitar trabalho síncrono; responder com job/import ID.
+### M9. Importação em lote pode estourar o tempo da função e deixar estado parcial
+
+**Evidência:** o `INSERT` em si é correto e único (`server/routers/tasks.ts:200`). O problema é o laço seguinte: `server/routers/tasks.ts:202-215` chama `await runTriggerNow('lead_created', ...)` uma vez por linha, sequencialmente. Cada chamada faz várias consultas ao Neon via `neon-http`, que não reaproveita conexão. O input aceita `.max(2000)` (`server/routers/tasks.ts:172`) e o cliente envia o lote inteiro em uma chamada (`client/src/pages/Tasks.tsx:1114`).
+
+**Impacto:** em importação grande a função pode ser encerrada por tempo **depois** de o `INSERT` ter sido confirmado. O atendente vê erro genérico (`client/src/pages/Tasks.tsx:1135`), mas as tarefas já existem com automação disparada apenas para parte delas. Reimportar duplica os leads.
+
+**Correção:** separar persistência de efeitos — enfileirar automações em outbox processada por cron, ou paralelizar com concorrência limitada e orçamento de tempo. Fragmentar no cliente em lotes menores e responder com identificador de importação para acompanhamento.
 
 ### M10. Aprovação/remoção de associações do E-mail Marketing precisa de ownership completo
 
@@ -176,7 +190,47 @@ O build gera um JS de **2.043,59 kB** minificado (**531,17 kB gzip**). `App.tsx`
 
 `Tasks.tsx` usa `line.split(sep)` e `readAsText(..., 'UTF-8')` (`client/src/pages/Tasks.tsx:969-1106`). Campos entre aspas com `;`/quebra de linha, BOM e arquivos Windows-1252 podem ser interpretados incorretamente.
 
-**Melhoria:** parser CSV maduro ou parser pequeno com aspas/escape; detectar BOM/encoding; validar e mostrar erros por linha antes do `bulkCreate`.
+Três defeitos concretos, todos confirmados no código:
+
+1. **Vírgula não é reconhecida como separador.** A detecção cobre só tabulação e ponto e vírgula (`client/src/pages/Tasks.tsx:978`). Arquivo separado por vírgula cai no ramo "dash-separated".
+2. **Cabeçalho entra como lead.** Nesse ramo o código usa `lines.map(parseImportLine)` sem descartar a primeira linha (`client/src/pages/Tasks.tsx:1072`), então o cabeçalho vira uma tarefa.
+3. **Encoding fixo em UTF-8** (`client/src/pages/Tasks.tsx:1106`), enquanto Excel em português salva CSV em Windows-1252 por padrão — acentos chegam corrompidos.
+
+**Melhoria:** incluir vírgula na detecção, descartar cabeçalho quando presente, usar parser que respeite aspas e detectar BOM/encoding com fallback para `windows-1252`. Validar e exibir erros por linha antes de chamar `bulkCreate`.
+
+**Correção a uma alegação recorrente:** a **exportação** CSV está correta — `client/src/pages/AdminDashboard.tsx:63` prefixa BOM (verificado por leitura dos bytes) e usa `;`. O defeito é só na importação.
+
+### B2b. Fronteira do dia é calculada no fuso do dispositivo
+
+O servidor usa offset fixo de São Paulo (`server/lib/tz.ts`, aplicado em `server/routers/workSessions.ts:123`), mas o cliente usa a meia-noite local do aparelho (`client/src/pages/AttendantProgress.tsx:68`, `client/src/pages/Tasks.tsx:378`) e nenhum arquivo do cliente importa `lib/tz`.
+
+**Impacto:** contagem de "hoje" do atendente pode divergir do painel do admin, e a meta diária pode ser comemorada num limite que o servidor não reconhece.
+
+**Melhoria:** compartilhar o helper de fuso com o cliente, ou obter a contagem do servidor.
+
+### B2c. Erros de validação retornam 500
+
+`server/routers/sellers.ts` (linhas 44, 107, 121, 144), `server/routers/auth.ts` (73, 75, 89, 90, 103) e `server/routers/ai.ts:933` usam `throw new Error`, que o tRPC converte em `INTERNAL_SERVER_ERROR`. Mensagens como "Senha atual incorreta" e "Este email já está cadastrado" saem como falha de servidor. Os demais routers já usam `TRPCError` corretamente.
+
+**Melhoria:** usar `TRPCError` com código adequado (`BAD_REQUEST`, `CONFLICT`, `NOT_FOUND`) para não poluir monitoramento nem mascarar indisponibilidade real.
+
+### B2d. Operações multi-tabela não são atômicas
+
+O driver é `neon-http`, que não suporta transação interativa. `server/routers/sellers.ts:79-84` executa três comandos independentes ao excluir atendente; falha no meio deixa estado inconsistente. Como o schema não declara foreign keys, o banco não impede o resultado.
+
+**Melhoria:** usar driver com suporte a transação nos caminhos que precisam de atomicidade, ou encapsular em uma única função SQL.
+
+### B2e. `SidebarContent` é recriado a cada render
+
+`client/src/components/AppShell.tsx:302` define o componente dentro do corpo de `AppShell` (`:159`) e o usa em dois pontos (`:441`, `:448`). Isso gera um tipo novo a cada render do pai, remontando a subárvore e descartando estado interno.
+
+**Melhoria:** extrair para fora do componente.
+
+### B2f. Acessibilidade tem cobertura baixa nas telas do CRM
+
+Várias páginas não têm nenhum `aria-label` em botões só de ícone, e em `Tasks.tsx` quase nenhum `<label>` está associado ao campo via `htmlFor`/`id` — leitor de tela anuncia entradas sem nome. Há também elemento clicável sem `role`/`tabIndex`.
+
+**Melhoria:** associar rótulos, nomear controles de ícone e tornar clicáveis acessíveis por teclado. Validação completa exige teste manual com tecnologia assistiva.
 
 ### B3. RBAC manual em routers Premium/B2B é frágil
 
@@ -192,7 +246,7 @@ Os procedimentos sensíveis revisados fazem `role === 'admin'`, mas vários são
 
 ### B5. Cobertura não alcança os riscos principais
 
-A suíte possui 49 testes em 2 arquivos e cobre lembretes/hosts, mas não auth, RBAC, faturamento, migrações, importação, E-mail Marketing ou webhooks.
+A suíte possui 49 testes em 2 arquivos e cobre lembretes/hosts, mas não auth, RBAC, faturamento, migrações, importação, E-mail Marketing ou webhooks. Nenhum dos defeitos confirmados nesta auditoria tem teste — em particular importação CSV, fuso e comissão.
 
 **Melhoria:** primeiro criar testes de autorização e invariantes financeiros; depois migração em banco vazio e integração de e-mail/webhook.
 
@@ -205,6 +259,11 @@ A suíte possui 49 testes em 2 arquivos e cobre lembretes/hosts, mas não auth, 
 - **Lembrete duplicado:** já corrigido.
 - **Testes desligados:** já corrigido; Vitest está ativo no projeto/CI.
 - **`NaN` aceito por Zod:** falso para `z.number()`; porém `Infinity`, negativos e valores fora de faixa continuam exigindo `.finite()` e limites.
+- **Exportação CSV sem BOM:** falso. `client/src/pages/AdminDashboard.tsx:63` inclui BOM e usa `;`.
+- **XSS via `dangerouslySetInnerHTML`:** não confirmado como falha. As ocorrências em `client/src` passam por `DOMPurify.sanitize`, e `ui/chart.tsx` injeta CSS gerado internamente. Há defesa em profundidade com sanitização também no servidor. A ressalva do M2 continua válida quanto ao HTML de e-mail montado por regex e à interpolação sem escape.
+- **Procedures inexistentes chamadas pelo frontend:** não encontradas.
+- **PWA cacheando respostas de API:** não confirmado. O `runtimeCaching` cobre apenas fontes externas, e `/api/*` responde com `no-store`.
+- **Typecheck ou testes quebrados no HEAD:** falso; ambos passam.
 
 ## Plano recomendado de execução
 
@@ -222,19 +281,24 @@ A suíte possui 49 testes em 2 arquivos e cobre lembretes/hosts, mas não auth, 
 3. Aplicar ownership aos três endpoints de E-mail Marketing e às mutations relacionadas.
 4. Restringir `attendantBroadcast` a destinatários internos confirmados.
 
-### Lote 3 — integridade e migração
+### Lote 3 — integridade, migração e revogação
 
 1. Corrigir DDL/ordem/colunas e testar banco vazio.
-2. Transformar exclusão de atendente em desativação/reassign.
-3. Corrigir sessão noturna e retenção.
-4. Unificar webhook Resend.
+2. Invalidar cache de usuário em `updateRole` e `delete`.
+3. Transformar exclusão de atendente em desativação/reassign.
+4. Corrigir sessão noturna e retenção.
+5. Unificar webhook Resend.
+6. Confirmar `maxDuration` efetivo e tirar a importação em lote do caminho síncrono.
 
 ### Lote 4 — conteúdo, dependências e desempenho
 
 1. Admin-only/aprovação na base de conhecimento.
 2. Sanitização HTML por allowlist e escape pós-template.
 3. Atualizar dependências em etapas.
-4. Lazy loading por rota e parser CSV robusto.
+4. Lazy loading por rota e parser CSV robusto (vírgula, cabeçalho, aspas, encoding).
+5. Unificar fuso entre cliente e servidor.
+6. Trocar `throw new Error` por `TRPCError` em sellers/auth/ai.
+7. Extrair `SidebarContent` e cobrir lacunas de acessibilidade.
 
 ## Validação realizada
 

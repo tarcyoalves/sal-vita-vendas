@@ -284,6 +284,20 @@ Detalhe completo, com arquivo:linha e plano em 4 lotes, em
   antes do `ALTER`, e o erro é engolido em `api/index.ts:173-177`.
 - **`/api/resend-webhook` está registrado duas vezes** (`api/index.ts:291` e `:494`); só a
   primeira responde, então o limiter da segunda nunca se aplica.
+- **`updateRole` e `delete` não invalidam o cache de usuário** (`server/routers/sellers.ts:137-147`
+  e `:74-87`). Rebaixar ou demitir continua valendo o papel antigo por até 30s por instância.
+  O JWT é de **7 dias** (`server/auth.ts:51`) e sem denylist — o `CLAUDE.md:39` diz 30 dias,
+  está errado.
+- **Importação CSV tem 3 defeitos:** vírgula não é separador reconhecido
+  (`client/src/pages/Tasks.tsx:978`), o cabeçalho entra como lead no ramo dash (`:1072`) e o
+  encoding é fixo em UTF-8 (`:1106`) enquanto Excel pt-BR salva Windows-1252. A **exportação**
+  está correta (tem BOM em `AdminDashboard.tsx:63`) — não confundir.
+- **`bulkCreate` dispara automação em laço sequencial** depois do INSERT já commitado
+  (`server/routers/tasks.ts:200-215`), com `.max(2000)` e sem fragmentação no cliente.
+  Importação grande pode morrer por timeout com as tarefas criadas e automação parcial.
+- **`vercel.json:5-6` declara `maxDuration` para `api/index.ts`**, mas as rotas servem
+  `api/bundle.js` (`:86,91,105`). Se o matcher não casar, o limite de 60s não vale — confirmar
+  num deploy antes de dimensionar o item acima.
 - **`npm audit --omit=dev`: 15 advisories** (1 critical, 6 high). O `tar` crítico entra por
   `@capacitor/cli`, que está em `dependencies` sem precisar estar. `react-router-dom` está
   instalado e não é usado — contraria a regra do wouter.
