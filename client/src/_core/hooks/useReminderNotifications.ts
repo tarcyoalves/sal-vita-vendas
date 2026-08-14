@@ -1,6 +1,13 @@
 import { useEffect } from "react";
 import { trpc } from "../../lib/trpc";
 import { toast } from "sonner";
+import {
+  alertKey,
+  alertableReminders,
+  classifyAlert,
+  parseReminderDate,
+  type ReminderRow,
+} from "../../lib/tasks/reminders";
 
 function playBeep() {
   try {
@@ -41,31 +48,30 @@ export function useReminderNotifications(enabled: boolean, userName: string = ''
 
   useEffect(() => {
     if (!reminders || !enabled) return;
-    // Admin only gets alerts for tasks assigned to themselves
-    const alertable = isAdmin
-      ? (reminders as any[]).filter(r => r.assignedTo === userName)
-      : reminders as any[];
+    // Admin only gets alerts for tasks assigned to themselves.
+    // A decisão de "quem alerta" e "qual alerta" mora em lib/tasks/reminders.ts,
+    // coberta por tests/reminders.test.ts. Aqui fica só o efeito colateral
+    // (toast, beep, Notification) e o dedupe via sessionStorage.
+    const alertable = alertableReminders(reminders as ReminderRow[], userName, isAdmin);
 
     const check = () => {
       try {
         const now = new Date();
-        const today = now.toDateString();
         const fired = getFired();
 
         alertable.forEach((r) => {
           try {
-            if (!r.reminderDate || r.reminderEnabled === false || r.status !== "pending") return;
-            const rd = new Date(r.reminderDate);
-            if (isNaN(rd.getTime())) return;
-            const diff = rd.getTime() - now.getTime();
+            const kind = classifyAlert(r, now);
+            if (!kind) return;
 
-            const overdueKey = `${r.id}-overdue-${today}`;
-            const warnKey    = `${r.id}-warn-${rd.getTime()}`;
-            const fireKey    = `${r.id}-fire-${rd.getTime()}`;
+            const key = alertKey(r, kind, now);
+            if (fired.has(key)) return;
+            markFired(key);
+
+            const rd = parseReminderDate(r.reminderDate);
 
             // Atrasada: dispara uma vez por dia
-            if (diff < -60000 && !fired.has(overdueKey)) {
-              markFired(overdueKey);
+            if (kind === 'overdue') {
               toast.warning(`Atrasada: ${r.title}`, { duration: 10000 });
               playBeep();
               if ("Notification" in window && Notification.permission === 'granted') {
@@ -75,23 +81,19 @@ export function useReminderNotifications(enabled: boolean, userName: string = ''
             }
 
             // Aviso 5 min antes
-            if (diff > 60000 && diff <= 300000 && !fired.has(warnKey)) {
-              markFired(warnKey);
-              const mins = Math.round(diff / 60000);
+            if (kind === 'warn') {
+              const mins = Math.round(((rd?.getTime() ?? now.getTime()) - now.getTime()) / 60000);
               toast.info(`Lembrete em ${mins} min: ${r.title}`, { duration: 6000 });
               return;
             }
 
             // No horário: janela de ±2 minutos para não perder
-            if (diff >= -120000 && diff <= 60000 && !fired.has(fireKey)) {
-              markFired(fireKey);
-              const p = (n: number) => String(n).padStart(2, '0');
-              const time = `${p(rd.getHours())}:${p(rd.getMinutes())}`;
-              toast.warning(`Lembrete: ${r.title}`, { description: `Agendado para ${time}`, duration: 15000 });
-              playBeep();
-              if ("Notification" in window && Notification.permission === 'granted') {
-                try { new Notification(`Lembrete: ${r.title}`, { body: r.notes?.trim() || `Agendado para ${time}`, icon: '/favicon.ico', tag: `reminder-${r.id}` }); } catch (_) {}
-              }
+            const p = (n: number) => String(n).padStart(2, '0');
+            const time = rd ? `${p(rd.getHours())}:${p(rd.getMinutes())}` : '';
+            toast.warning(`Lembrete: ${r.title}`, { description: `Agendado para ${time}`, duration: 15000 });
+            playBeep();
+            if ("Notification" in window && Notification.permission === 'granted') {
+              try { new Notification(`Lembrete: ${r.title}`, { body: r.notes?.trim() || `Agendado para ${time}`, icon: '/favicon.ico', tag: `reminder-${r.id}` }); } catch (_) {}
             }
           } catch (_) {}
         });
@@ -108,12 +110,12 @@ export function useReminderNotifications(enabled: boolean, userName: string = ''
         const now = new Date();
         const h = now.getHours();
         const pending = alertable.filter(r => r.reminderEnabled !== false);
-        const overdue = pending.filter(r => r.reminderDate && new Date(r.reminderDate) < now);
-        const upcoming = pending.filter(r => r.reminderDate && new Date(r.reminderDate) >= now);
-        const todayUpcoming = upcoming.filter(r => {
-          const d = new Date(r.reminderDate);
-          return d.toDateString() === now.toDateString();
-        });
+        const withDate = pending
+          .map(r => ({ r, d: parseReminderDate(r.reminderDate) }))
+          .filter((x): x is { r: ReminderRow; d: Date } => x.d != null);
+        const overdue = withDate.filter(x => x.d < now);
+        const upcoming = withDate.filter(x => x.d >= now);
+        const todayUpcoming = upcoming.filter(x => x.d.toDateString() === now.toDateString());
 
         // Priority: overdue alert first
         if (overdue.length > 0) {

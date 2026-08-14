@@ -1,4 +1,4 @@
-name: Typecheck
+name: Typecheck e Testes
 
 # Portão de qualidade. Existe porque `vite build` transpila SEM checar tipos:
 # em agosto/2026 um commit derrubou 59 procedures do router de e-mail marketing
@@ -7,6 +7,11 @@ name: Typecheck
 # O bloqueio de verdade está no `buildCommand` do vercel.json (o deploy da
 # Vercel é automático no push e não passa por este workflow). Este job serve
 # para o erro aparecer no PR/commit antes de alguém tentar publicar.
+#
+# Os testes rodam aqui e NÃO no vercel-build: são rápidos, mas o build da
+# Vercel já é o caminho crítico do deploy e o `buildCommand` tem limite de 256
+# caracteres (que já derrubou o deploy uma vez). Regressão de lógica aparece no
+# PR; o typecheck continua sendo o que barra a publicação.
 
 on:
   workflow_call:
@@ -33,3 +38,6 @@ jobs:
 
       - name: Typecheck (tsc --noEmit)
         run: npx tsc --noEmit
+
+      - name: Tests (vitest run)
+        run: npm test

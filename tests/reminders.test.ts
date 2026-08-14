@@ -1,216 +1,365 @@
 /**
- * Reminder Functionality Tests
+ * Lembretes do CRM — comportamento real, importado de client/src/lib/tasks/reminders.ts.
  *
- * Tests for reminder date handling, filtering, and display in AdminDashboard.
- * These tests verify:
- * 1. Local time parsing (no UTC conversion)
- * 2. Admin vs user reminder visibility
- * 3. Reminder filtering by assignee
- * 4. Overdue vs upcoming reminder classification
+ * A versão anterior desta suíte reimplementava cada filtro em arrays locais
+ * (`reminders.filter(r => r.assignedTo === attendant)`) e depois testava a
+ * própria reimplementação. Passava verde sem tocar em uma linha do código de
+ * produção — se o dashboard trocasse a regra, o teste continuava verde. Agora
+ * tudo abaixo chama as funções que o AdminDashboard, o Tasks e o
+ * useReminderNotifications realmente usam.
  */
 
-describe('Reminder Functionality', () => {
-  describe('Local Time Date Parsing', () => {
-    test('should parse reminder date as local time without UTC conversion', () => {
-      // Input: "2026-04-20T14:30:00" (no Z suffix = local time)
-      const reminderDate = '2026-04-20T14:30:00';
-      const date = new Date(reminderDate);
+import { describe, expect, test } from 'vitest';
+import {
+  ADMIN_FILTER,
+  ALERT_WINDOWS,
+  DASHBOARD_CATEGORY_LIMIT,
+  alertKey,
+  alertableReminders,
+  buildLocalReminderDate,
+  classifyAlert,
+  filterAndSortReminders,
+  isOverdue,
+  isUpcoming,
+  matchesReminderFilter,
+  parseReminderDate,
+  splitDashboardReminders,
+  toReminderFormFields,
+  type ReminderRow,
+} from '../client/src/lib/tasks/reminders';
 
-      // Should preserve the date-time values as entered
-      expect(date.getFullYear()).toBe(2026);
-      expect(date.getMonth() + 1).toBe(4); // months are 0-indexed
-      expect(date.getDate()).toBe(20);
-      expect(date.getHours()).toBe(14);
-      expect(date.getMinutes()).toBe(30);
-    });
+/** Fábrica: só o que o teste precisa declarar fica explícito. */
+function row(over: Partial<ReminderRow> & { id: number }): ReminderRow {
+  return {
+    title: `Tarefa ${over.id}`,
+    reminderDate: new Date('2026-04-20T14:30:00'),
+    status: 'pending',
+    ...over,
+  };
+}
 
-    test('should format reminder date to local Brazilian format', () => {
-      const reminderDate = new Date('2026-04-20T14:30:00');
-      const formatted = reminderDate.toLocaleDateString('pt-BR');
+const NOW = new Date('2026-04-20T12:00:00');
+const minutes = (n: number) => n * 60_000;
+const at = (offsetMs: number) => new Date(NOW.getTime() + offsetMs);
 
-      expect(formatted).toBe('20/04/2026');
-    });
+describe('parseReminderDate', () => {
+  test('aceita Date e string, e rejeita ausente ou inválido', () => {
+    const d = new Date('2026-04-20T14:30:00');
+    expect(parseReminderDate(d)).toEqual(d);
+    // O cache do TanStack Query pode devolver string onde a API devolveu Date.
+    expect(parseReminderDate('2026-04-20T14:30:00')?.getHours()).toBe(14);
+    expect(parseReminderDate(null)).toBeNull();
+    expect(parseReminderDate(undefined)).toBeNull();
+    // Um valor corrompido não pode virar Invalid Date solto: toda comparação
+    // de data passaria a devolver false silenciosamente.
+    expect(parseReminderDate('não é data')).toBeNull();
+  });
+});
 
-    test('should format reminder time to HH:mm format', () => {
-      const reminderDate = new Date('2026-04-20T14:30:00');
-      const formatted = reminderDate.toLocaleTimeString('pt-BR', {
-        hour: '2-digit',
-        minute: '2-digit'
+describe('data local do lembrete (a armadilha do UTC)', () => {
+  test('buildLocalReminderDate preserva o que o atendente digitou', () => {
+    const d = buildLocalReminderDate('2026-04-20', '14:30');
+    expect(d).not.toBeNull();
+    expect(d!.getFullYear()).toBe(2026);
+    expect(d!.getMonth() + 1).toBe(4);
+    expect(d!.getDate()).toBe(20);
+    expect(d!.getHours()).toBe(14);
+    expect(d!.getMinutes()).toBe(30);
+  });
+
+  test('não usa toISOString: meia-noite não escorrega para o dia anterior', () => {
+    // Este é o bug histórico. Em UTC-3, toISOString() de 2026-04-20T00:00
+    // produz 2026-04-20T03:00Z; o caminho inverso (ler a parte de data do ISO
+    // em fuso negativo) devolvia dia 19. Aqui a ida e volta tem de fechar.
+    const d = buildLocalReminderDate('2026-04-20', '00:00')!;
+    expect(d.getDate()).toBe(20);
+    const back = toReminderFormFields(d);
+    expect(back.reminderDate).toBe('2026-04-20');
+    expect(back.reminderTime).toBe('00:00');
+  });
+
+  test('ida e volta é estável para qualquer hora do dia', () => {
+    for (const time of ['00:00', '00:30', '09:00', '12:00', '21:45', '23:59']) {
+      const d = buildLocalReminderDate('2026-04-20', time)!;
+      expect(toReminderFormFields(d)).toEqual({
+        reminderDate: '2026-04-20',
+        reminderTime: time,
       });
+    }
+  });
 
-      expect(formatted).toBe('14:30');
-    });
+  test('editar a data mantém a hora e move só o dia', () => {
+    const original = buildLocalReminderDate('2026-04-20', '14:30')!;
+    const fields = toReminderFormFields(original);
+    const edited = buildLocalReminderDate('2026-04-21', fields.reminderTime)!;
+    expect(edited.getDate()).toBe(21);
+    expect(edited.getHours()).toBe(14);
+    expect(edited.getMinutes()).toBe(30);
+  });
 
-    test('should handle date editing without reverting to previous day', () => {
-      // Simulate editing a reminder date
-      const originalDate = new Date('2026-04-20');
+  test('sem data devolve campo vazio e a hora padrão do formulário', () => {
+    expect(toReminderFormFields(null)).toEqual({ reminderDate: '', reminderTime: '09:00' });
+    expect(toReminderFormFields(null, '08:00').reminderTime).toBe('08:00');
+  });
 
-      // Extract local date components
-      const year = originalDate.getFullYear();
-      const month = String(originalDate.getMonth() + 1).padStart(2, '0');
-      const day = String(originalDate.getDate()).padStart(2, '0');
-      const hour = String(originalDate.getHours()).padStart(2, '0');
-      const minute = String(originalDate.getMinutes()).padStart(2, '0');
-
-      const formattedDate = `${year}-${month}-${day}`;
-      const formattedTime = `${hour}:${minute}`;
-
-      // When user updates date to "2026-04-21", parsing should give 2026-04-21
-      const updatedDate = new Date(`${formattedDate}T${formattedTime}:00`);
-      expect(updatedDate.getDate()).toBe(20); // Original date unchanged
-
-      // Now update to new date
-      const newDate = new Date('2026-04-21T14:30:00');
-      expect(newDate.getDate()).toBe(21); // New date should be correct
+  test('dia e mês de um dígito saem com zero à esquerda', () => {
+    const d = buildLocalReminderDate('2026-01-05', '07:05')!;
+    expect(toReminderFormFields(d)).toEqual({
+      reminderDate: '2026-01-05',
+      reminderTime: '07:05',
     });
   });
 
-  describe('Reminder Visibility (Admin vs User)', () => {
-    test('admin should see all reminders from all users', () => {
-      const adminUser = { role: 'admin', id: 1 };
-      const reminders = [
-        { id: 1, userId: 1, title: 'Admin task', reminderDate: new Date(), assignedTo: null },
-        { id: 2, userId: 2, title: 'User 2 task', reminderDate: new Date(), assignedTo: 'John' },
-        { id: 3, userId: 3, title: 'User 3 task', reminderDate: new Date(), assignedTo: 'Jane' },
-      ];
+  test('data ou hora em branco não gera lembrete', () => {
+    expect(buildLocalReminderDate('', '14:30')).toBeNull();
+    expect(buildLocalReminderDate('2026-04-20', '')).toBeNull();
+  });
+});
 
-      // Admin query should return all tasks with reminders
-      const visibleReminders = reminders.filter(r => r.reminderDate != null);
-      expect(visibleReminders).toHaveLength(3);
-    });
+describe('filtro do dropdown do dashboard', () => {
+  const rows = [
+    row({ id: 1, assignedTo: null }),
+    row({ id: 2, assignedTo: '' }),
+    row({ id: 3, assignedTo: 'John' }),
+    row({ id: 4, assignedTo: 'Jane' }),
+    row({ id: 5, assignedTo: 'John' }),
+  ];
 
-    test('user should only see their own reminders', () => {
-      const userId = 2;
-      const reminders = [
-        { id: 1, userId: 1, title: 'Admin task', reminderDate: new Date() },
-        { id: 2, userId: 2, title: 'My task', reminderDate: new Date() },
-        { id: 3, userId: 3, title: 'Other task', reminderDate: new Date() },
-      ];
-
-      const userReminders = reminders.filter(r => r.userId === userId && r.reminderDate != null);
-      expect(userReminders).toHaveLength(1);
-      expect(userReminders[0].title).toBe('My task');
-    });
+  test('"all" devolve tudo', () => {
+    expect(filterAndSortReminders(rows, 'all')).toHaveLength(5);
   });
 
-  describe('Reminder Filtering by Assignee', () => {
-    const reminders = [
-      { id: 1, title: 'Admin task 1', reminderDate: new Date(), assignedTo: null },
-      { id: 2, title: 'Admin task 2', reminderDate: new Date(), assignedTo: '' },
-      { id: 3, title: 'John task', reminderDate: new Date(), assignedTo: 'John' },
-      { id: 4, title: 'Jane task', reminderDate: new Date(), assignedTo: 'Jane' },
-      { id: 5, title: 'John task 2', reminderDate: new Date(), assignedTo: 'John' },
+  test('__admin__ pega só o que não tem responsável', () => {
+    const got = filterAndSortReminders(rows, ADMIN_FILTER);
+    expect(got.map((r) => r.id)).toEqual([1, 2]);
+  });
+
+  test('__admin__ trata responsável só com espaços como vazio', () => {
+    expect(matchesReminderFilter(row({ id: 9, assignedTo: '   ' }), ADMIN_FILTER)).toBe(true);
+  });
+
+  test('nome de atendente pega só os dele', () => {
+    const got = filterAndSortReminders(rows, 'John');
+    expect(got.map((r) => r.id)).toEqual([3, 5]);
+  });
+
+  test('o filtro por nome é sensível a caixa (comportamento atual do dashboard)', () => {
+    // Documenta o que o código faz hoje: a comparação é `===`, então o valor do
+    // dropdown precisa ser idêntico ao gravado em assigned_to. Se um dia isso
+    // virar case-insensitive, é aqui que o teste avisa.
+    expect(matchesReminderFilter(row({ id: 9, assignedTo: 'John' }), 'john')).toBe(false);
+  });
+
+  test('ordena por data crescente e joga sem data para o fim', () => {
+    const unordered = [
+      row({ id: 1, reminderDate: at(minutes(60)) }),
+      row({ id: 2, reminderDate: at(-minutes(60)) }),
+      row({ id: 3, reminderDate: null }),
+      row({ id: 4, reminderDate: at(minutes(10)) }),
     ];
+    expect(filterAndSortReminders(unordered, 'all').map((r) => r.id)).toEqual([2, 4, 1, 3]);
+  });
+});
 
-    test('should filter reminders for all attendants', () => {
-      const filtered = reminders.filter(() => true);
-      expect(filtered).toHaveLength(5);
-    });
-
-    test('should filter reminders for admin only (no assignedTo)', () => {
-      const filtered = reminders.filter(r => !r.assignedTo || r.assignedTo.trim() === '');
-      expect(filtered).toHaveLength(2);
-      expect(filtered.map(r => r.title)).toEqual(['Admin task 1', 'Admin task 2']);
-    });
-
-    test('should filter reminders for specific attendant', () => {
-      const attendant = 'John';
-      const filtered = reminders.filter(r => r.assignedTo === attendant);
-      expect(filtered).toHaveLength(2);
-      expect(filtered.map(r => r.title)).toEqual(['John task', 'John task 2']);
-    });
+describe('classificação atrasado / próximo', () => {
+  test('vencido e pendente é atrasado', () => {
+    const r = row({ id: 1, reminderDate: at(-minutes(60)) });
+    expect(isOverdue(r, NOW)).toBe(true);
+    expect(isUpcoming(r, NOW)).toBe(false);
   });
 
-  describe('Reminder Status Classification', () => {
-    const now = new Date();
-    const pastDate = new Date(now.getTime() - 86400000); // 1 day ago
-    const futureDate = new Date(now.getTime() + 86400000); // 1 day from now
-
-    test('should classify overdue reminder', () => {
-      const reminder = {
-        id: 1,
-        title: 'Overdue task',
-        reminderDate: pastDate,
-        status: 'pending',
-      };
-
-      const isOverdue = reminder.reminderDate < now && reminder.status === 'pending';
-      expect(isOverdue).toBe(true);
-    });
-
-    test('should classify upcoming reminder', () => {
-      const reminder = {
-        id: 1,
-        title: 'Upcoming task',
-        reminderDate: futureDate,
-        status: 'pending',
-      };
-
-      const isUpcoming = reminder.reminderDate > now && reminder.status === 'pending';
-      expect(isUpcoming).toBe(true);
-    });
-
-    test('should not classify completed reminders as overdue', () => {
-      const reminder = {
-        id: 1,
-        title: 'Completed task',
-        reminderDate: pastDate,
-        status: 'completed',
-      };
-
-      const isOverdue = reminder.reminderDate < now && reminder.status === 'pending';
-      expect(isOverdue).toBe(false);
-    });
-
-    test('should sort reminders by date', () => {
-      const reminders = [
-        { id: 1, title: 'Task 1', reminderDate: futureDate },
-        { id: 2, title: 'Task 2', reminderDate: pastDate },
-        { id: 3, title: 'Task 3', reminderDate: new Date(now.getTime() + 3600000) },
-      ];
-
-      const sorted = [...reminders].sort((a, b) => {
-        const dateA = a.reminderDate.getTime();
-        const dateB = b.reminderDate.getTime();
-        return dateA - dateB;
-      });
-
-      expect(sorted[0].id).toBe(2); // pastDate first
-      expect(sorted[1].id).toBe(3); // newer future date
-      expect(sorted[2].id).toBe(1); // furthest future date
-    });
+  test('futuro e pendente é próximo', () => {
+    const r = row({ id: 1, reminderDate: at(minutes(60)) });
+    expect(isUpcoming(r, NOW)).toBe(true);
+    expect(isOverdue(r, NOW)).toBe(false);
   });
 
-  describe('Admin Dashboard Reminder Display', () => {
-    const reminders = [
-      { id: 1, title: 'Overdue 1', reminderDate: new Date(Date.now() - 86400000), status: 'pending', assignedTo: 'John' },
-      { id: 2, title: 'Overdue 2', reminderDate: new Date(Date.now() - 3600000), status: 'pending', assignedTo: null },
-      { id: 3, title: 'Upcoming 1', reminderDate: new Date(Date.now() + 3600000), status: 'pending', assignedTo: 'Jane' },
-      { id: 4, title: 'Upcoming 2', reminderDate: new Date(Date.now() + 86400000), status: 'pending', assignedTo: 'John' },
+  test('concluído nunca é atrasado, mesmo vencido', () => {
+    const r = row({ id: 1, reminderDate: at(-minutes(60)), status: 'completed' });
+    expect(isOverdue(r, NOW)).toBe(false);
+    expect(isUpcoming(r, NOW)).toBe(false);
+  });
+
+  test('cancelado também sai das duas listas', () => {
+    const r = row({ id: 1, reminderDate: at(-minutes(60)), status: 'cancelled' });
+    expect(isOverdue(r, NOW)).toBe(false);
+    expect(isUpcoming(r, NOW)).toBe(false);
+  });
+
+  test('exatamente agora conta como atrasado, não como próximo', () => {
+    // O dashboard usa `<= now` para atrasado; sem isso o lembrete do minuto
+    // exato ficaria fora das duas listas.
+    const r = row({ id: 1, reminderDate: new Date(NOW.getTime()) });
+    expect(isOverdue(r, NOW)).toBe(true);
+    expect(isUpcoming(r, NOW)).toBe(false);
+  });
+
+  test('sem data não entra em nenhuma lista', () => {
+    const r = row({ id: 1, reminderDate: null });
+    expect(isOverdue(r, NOW)).toBe(false);
+    expect(isUpcoming(r, NOW)).toBe(false);
+  });
+});
+
+describe('card de lembretes do dashboard', () => {
+  test('separa atrasados de próximos e ignora concluídos', () => {
+    const rows = [
+      row({ id: 1, reminderDate: at(-minutes(1440)), assignedTo: 'John' }),
+      row({ id: 2, reminderDate: at(-minutes(60)), assignedTo: null }),
+      row({ id: 3, reminderDate: at(minutes(60)), assignedTo: 'Jane' }),
+      row({ id: 4, reminderDate: at(minutes(1440)), assignedTo: 'John' }),
+      row({ id: 5, reminderDate: at(-minutes(30)), status: 'completed' }),
     ];
-    const now = new Date();
+    const got = splitDashboardReminders(rows, 'all', NOW);
+    expect(got.overdue.map((r) => r.id)).toEqual([1, 2]);
+    expect(got.upcoming.map((r) => r.id)).toEqual([3, 4]);
+    expect(got.overdueCount).toBe(2);
+    expect(got.upcomingCount).toBe(2);
+  });
 
-    test('should separate overdue from upcoming reminders', () => {
-      const overdueReminders = reminders.filter(r => new Date(r.reminderDate) <= now && r.status === 'pending');
-      const upcomingReminders = reminders.filter(r => new Date(r.reminderDate) > now && r.status === 'pending');
+  test('mostra no máximo 5 por categoria mas conta o total', () => {
+    // O badge do card exibe a contagem completa; a lista corta em 5. Se os dois
+    // saíssem do mesmo array cortado, o atendente veria "ATRASADOS (5)" tendo 12.
+    const rows = Array.from({ length: 12 }, (_, i) =>
+      row({ id: i + 1, reminderDate: at(-minutes(i + 1)) }),
+    );
+    const got = splitDashboardReminders(rows, 'all', NOW);
+    expect(got.overdue).toHaveLength(DASHBOARD_CATEGORY_LIMIT);
+    expect(got.overdueCount).toBe(12);
+  });
 
-      expect(overdueReminders).toHaveLength(2);
-      expect(upcomingReminders).toHaveLength(2);
-    });
+  test('os mais antigos aparecem primeiro entre os atrasados', () => {
+    const rows = [
+      row({ id: 1, reminderDate: at(-minutes(10)) }),
+      row({ id: 2, reminderDate: at(-minutes(600)) }),
+      row({ id: 3, reminderDate: at(-minutes(60)) }),
+    ];
+    expect(splitDashboardReminders(rows, 'all', NOW).overdue.map((r) => r.id)).toEqual([2, 3, 1]);
+  });
 
-    test('should limit display to top 5 in each category', () => {
-      const manyReminders = Array.from({ length: 10 }, (_, i) => ({
-        id: i,
-        title: `Overdue ${i}`,
-        reminderDate: new Date(Date.now() - (i + 1) * 3600000),
-        status: 'pending',
-        assignedTo: null,
-      }));
+  test('o filtro se aplica antes da separação', () => {
+    const rows = [
+      row({ id: 1, reminderDate: at(-minutes(60)), assignedTo: 'John' }),
+      row({ id: 2, reminderDate: at(-minutes(30)), assignedTo: 'Jane' }),
+      row({ id: 3, reminderDate: at(minutes(60)), assignedTo: 'John' }),
+    ];
+    const got = splitDashboardReminders(rows, 'John', NOW);
+    expect(got.overdue.map((r) => r.id)).toEqual([1]);
+    expect(got.upcoming.map((r) => r.id)).toEqual([3]);
+  });
 
-      const overdueReminders = manyReminders.filter(r => r.reminderDate < now && r.status === 'pending');
-      const displayed = overdueReminders.slice(0, 5);
+  test('lista vazia não quebra', () => {
+    const got = splitDashboardReminders([], 'all', NOW);
+    expect(got.filtered).toEqual([]);
+    expect(got.overdueCount).toBe(0);
+    expect(got.upcomingCount).toBe(0);
+  });
+});
 
-      expect(displayed).toHaveLength(5);
-    });
+describe('quem recebe alerta', () => {
+  const rows = [
+    row({ id: 1, assignedTo: 'Ana' }),
+    row({ id: 2, assignedTo: 'Bruno' }),
+    row({ id: 3, assignedTo: null }),
+  ];
+
+  test('atendente recebe tudo que a query devolveu', () => {
+    // O servidor já limitou via userTaskFilter; o cliente não filtra de novo.
+    expect(alertableReminders(rows, 'Ana', false)).toHaveLength(3);
+  });
+
+  test('admin só recebe alerta do que está atribuído a ele', () => {
+    // Admin vê a equipe toda na query. Sem este corte, seria bombardeado pelos
+    // lembretes de todos os atendentes.
+    expect(alertableReminders(rows, 'Ana', true).map((r) => r.id)).toEqual([1]);
+  });
+
+  test('admin sem nada atribuído não recebe alerta nenhum', () => {
+    expect(alertableReminders(rows, 'Carla', true)).toEqual([]);
+  });
+});
+
+describe('janelas de disparo do alerta', () => {
+  test('mais de 1 min no passado → atrasado', () => {
+    expect(classifyAlert(row({ id: 1, reminderDate: at(-minutes(30)) }), NOW)).toBe('overdue');
+  });
+
+  test('na hora → dispara', () => {
+    expect(classifyAlert(row({ id: 1, reminderDate: at(0) }), NOW)).toBe('fire');
+    expect(classifyAlert(row({ id: 1, reminderDate: at(-minutes(0.5)) }), NOW)).toBe('fire');
+    expect(classifyAlert(row({ id: 1, reminderDate: at(minutes(0.5)) }), NOW)).toBe('fire');
+  });
+
+  test('a janela de fire é -60s..+60s, não os ±2 min do comentário original', () => {
+    // Achado desta refatoração: `ALERT_WINDOWS.fireFrom` é -120s, mas `overdue`
+    // é avaliado antes e pega tudo abaixo de -60s. Então 90s atrasado sai como
+    // "Atrasada", não como "Lembrete" — o hook prometia ±2 min e entrega ±1.
+    // O teste registra o comportamento real; mudar isso é decisão de produto.
+    expect(classifyAlert(row({ id: 1, reminderDate: at(-minutes(1.5)) }), NOW)).toBe('overdue');
+    expect(classifyAlert(row({ id: 1, reminderDate: at(-minutes(0.9)) }), NOW)).toBe('fire');
+  });
+
+  test('entre 1 e 5 min à frente → aviso prévio', () => {
+    expect(classifyAlert(row({ id: 1, reminderDate: at(minutes(3)) }), NOW)).toBe('warn');
+    expect(classifyAlert(row({ id: 1, reminderDate: at(minutes(5)) }), NOW)).toBe('warn');
+  });
+
+  test('longe demais no futuro → nenhum alerta', () => {
+    expect(classifyAlert(row({ id: 1, reminderDate: at(minutes(30)) }), NOW)).toBeNull();
+  });
+
+  test('atrasado tem prioridade sobre a janela de disparo', () => {
+    // -3 min cai fora de fire (que vai até -2) e dentro de overdue.
+    expect(classifyAlert(row({ id: 1, reminderDate: at(-minutes(3)) }), NOW)).toBe('overdue');
+  });
+
+  test('as janelas não deixam buraco entre fire e warn', () => {
+    // Exatamente +1 min: é o limite superior de fire. Se a ordem das checagens
+    // mudasse, esse minuto ficaria sem alerta nenhum.
+    expect(classifyAlert(row({ id: 1, reminderDate: at(ALERT_WINDOWS.fireTo) }), NOW)).toBe('fire');
+  });
+
+  test('lembrete desativado nunca alerta, mesmo atrasado', () => {
+    const r = row({ id: 1, reminderDate: at(-minutes(60)), reminderEnabled: false });
+    expect(classifyAlert(r, NOW)).toBeNull();
+  });
+
+  test('não-pendente nunca alerta', () => {
+    const r = row({ id: 1, reminderDate: at(-minutes(60)), status: 'completed' });
+    expect(classifyAlert(r, NOW)).toBeNull();
+  });
+
+  test('sem data nunca alerta', () => {
+    expect(classifyAlert(row({ id: 1, reminderDate: null }), NOW)).toBeNull();
+  });
+});
+
+describe('dedupe do alerta', () => {
+  test('atrasado repete no dia seguinte, não no mesmo dia', () => {
+    const r = row({ id: 7, reminderDate: at(-minutes(600)) });
+    const hoje = alertKey(r, 'overdue', NOW);
+    const maisTarde = alertKey(r, 'overdue', new Date('2026-04-20T18:00:00'));
+    const amanha = alertKey(r, 'overdue', new Date('2026-04-21T09:00:00'));
+    expect(maisTarde).toBe(hoje);
+    expect(amanha).not.toBe(hoje);
+  });
+
+  test('reagendar libera o alerta de novo', () => {
+    // A chave de fire/warn carrega o timestamp do lembrete: mudar a data gera
+    // chave nova, então o lembrete volta a poder tocar.
+    const antes = alertKey(row({ id: 7, reminderDate: at(0) }), 'fire', NOW);
+    const depois = alertKey(row({ id: 7, reminderDate: at(minutes(90)) }), 'fire', NOW);
+    expect(depois).not.toBe(antes);
+  });
+
+  test('warn e fire do mesmo lembrete são chaves distintas', () => {
+    const r = row({ id: 7, reminderDate: at(minutes(3)) });
+    expect(alertKey(r, 'warn', NOW)).not.toBe(alertKey(r, 'fire', NOW));
+  });
+
+  test('lembretes diferentes não compartilham chave', () => {
+    const a = row({ id: 1, reminderDate: at(0) });
+    const b = row({ id: 2, reminderDate: at(0) });
+    expect(alertKey(a, 'fire', NOW)).not.toBe(alertKey(b, 'fire', NOW));
   });
 });

@@ -1,6 +1,6 @@
 # ⚠️ LEIA ESTE ARQUIVO ANTES DE QUALQUER COISA
 
-**Última atualização:** 13/08/2026
+**Última atualização:** 13/08/2026 (auditoria do CRM de Lembretes — ver seção 6)
 **Este é o ponto de entrada único do repositório.** O repo tem 13 arquivos `.md` e várias
 sessões de IA paralelas já se atrapalharam. Leia este primeiro; ele diz o que é verdade
 hoje e para onde ir depois.
@@ -54,14 +54,18 @@ Query · Tailwind + shadcn/ui · Express serverless na Vercel (`api/index.ts`) �
 Neon Postgres · JWT em cookie HttpOnly.
 
 - **Deploy:** `git push origin main` → Vercel publica sozinha (~2 min).
-- **Antes de todo push:** `npx tsc --noEmit` e o build do Vite. Se `node_modules` não
-  existir no checkout, rode `npm install` antes.
+- **Antes de todo push:** `npx tsc --noEmit`, `npm test` e o build do Vite. Se
+  `node_modules` não existir no checkout, rode `npm install` antes.
 - **`api/bundle.js` PRECISA continuar versionado.** A Vercel só registra `/api/*` como
   função se o bundle já existir no clone. Já removeram uma vez e derrubaram a API em
   produção por ~6 min.
 - **Typecheck está em zero erros e é portão de deploy** (desde 13/08). Se `npx tsc
   --noEmit` acusar algo, é seu — não é baseline. `tsconfig.json` cobre só
-  `client/src`, `server` e `api`; `sallog/` e `tests/` estão excluídos de propósito.
+  `client/src`, `server` e `api`; `sallog/` e `tests/` estão excluídos de propósito
+  (quem checa os tipos dos testes é o Vitest, ao transformar cada arquivo).
+- **Testes são portão de PR e de `deploy-vercel.yml`, não do `vercel-build`.**
+  `npm test` roda no workflow `Typecheck e Testes`. O push direto em `main`
+  publica pela Vercel sem passar por ele — nesse caminho só o typecheck barra.
 - **Se o typecheck acusar módulo faltando** (`Cannot find module 'qrcode'` e afins),
   provavelmente é o checkout local desatualizado, não o código: rode `npm install`. O
   CI usa `npm ci`, que instala o lockfile inteiro.
@@ -145,6 +149,39 @@ minerais. Até lá, não.
 
 ## 5. O que está feito
 
+**CRM de Lembretes (13/08/2026 — sessão da noite)**
+- **Testes rodam e são portão de PR.** Vitest 3.2.4 instalado, `npm test` =
+  `vitest run`, config em `vitest.config.ts` (environment `node`, `TZ` fixo em
+  `America/Sao_Paulo` para o CI não mudar o resultado das datas). O workflow
+  `typecheck.yml` virou "Typecheck e Testes" e roda `npm test` — como o
+  `deploy-vercel.yml` o chama via `workflow_call`, teste quebrado também barra
+  aquele deploy. **Os testes NÃO entraram no `vercel-build`** de propósito: o
+  `buildCommand` tem limite de 256 caracteres e já derrubou o deploy uma vez.
+- **A suíte de lembretes passou a testar produção.** Os 41 casos antigos
+  reimplementavam cada filtro em array local e testavam a própria
+  reimplementação — verde mesmo se o dashboard mudasse a regra. A lógica foi
+  extraída para `client/src/lib/tasks/reminders.ts` (puro, sem React) e agora
+  `AdminDashboard`, `Tasks` e `useReminderNotifications` importam de lá. 42
+  casos, e a mutação `<=` → `<` na classificação de atrasado faz quebrar
+  (verificado).
+- **Achado da extração:** o hook prometia "janela de ±2 minutos" para o alerta
+  na hora, mas `overdue` é avaliado antes e captura tudo abaixo de -60s, então a
+  janela real é -60s..+60s. Um lembrete 90s atrasado sai como "Atrasada", não
+  como "Lembrete". Comportamento **mantido** (mudar é decisão de produto) e
+  registrado em teste + comentário em `ALERT_WINDOWS`.
+- **Meta Pixel não carrega mais no CRM.** O `fbq('init')` + `PageView` rodava em
+  qualquer host: toda tela do sistema interno autenticado reportava para a Meta.
+  Agora o IIFE só boota nos hosts `premium.` / `www.premium.` e na rota
+  `/sal-vita`. O JSON-LD de produto (nome, preço, disponibilidade) também é
+  removido no host `lembretes.`. Coberto por `tests/index-html-hosts.test.ts`,
+  que executa o `client/index.html` real em jsdom e checa os dois hosts.
+- **`remindersRouter` removido — era código morto.** `trpc.reminders.*` não tinha
+  um único consumidor em client/api/server; o lembrete do CRM é
+  `tasks.reminderDate` servido por `tasks.reminders`. A **tabela `reminders`
+  continua** no schema (pode ter linhas legadas em produção; o monitor de
+  storage a lista e `recoverOldDb` a copia), agora com comentário de "LEGADO —
+  não escreva aqui" para ninguém reintroduzi-la como modelo ativo.
+
 **Infra e portões (13/08/2026 — PRs #12 e #13)**
 - **Typecheck é portão de verdade** (`a29da9e` + `#12`). Os 153 erros foram zerados
   deletando ~6.300 linhas de código órfão, e `tsconfig.json` passou a excluir `sallog/`
@@ -223,6 +260,52 @@ minerais. Até lá, não.
 3. **Setar `B2B_NOTIFY_EMAIL`** na Vercel — sem isso o aviso de lead novo do `/atacado`
    não chega.
 
+### 🔴 CRM de Lembretes — achados da auditoria de 13/08/2026
+
+> **Agente: o acompanhamento vive em `PLANO-CORRECOES-CRM.md`.** Lá estão os 40 itens em 5
+> lotes com marcador de estado (⬜/🔄/✅). Reivindique um item marcando 🔄 antes de começar e
+> marque ✅ no mesmo commit da correção. A evidência completa de cada achado está em
+> `RELATORIO-AUDITORIA-CRM-2026-08-13.md`.
+
+Resumo do que é P0/P1:
+
+- **Seed de admin com senha `admin123`** (`server/db/migrate.ts:7-25`) roda em todo cold
+  start quando não existe nenhuma linha `role='admin'` — e `sellers.delete` pode apagar
+  essa linha. Credencial pública no repo = tomada de conta.
+- **Rate limit é contornável por batching do tRPC.** Os limiters estão em caminhos exatos
+  (`api/index.ts:965-966`) e o cliente usa `httpBatchLink` (`client/src/main.tsx:77-89`);
+  URL em lote não casa com o middleware. Vale para `auth.login` e `auth.emergencyReset`.
+- **Restrição de IP confia em `req.ip` com `trust proxy: 1`** (`server/trpc.ts:21-23,68-70`)
+  e é fail-open quando a lista está vazia com a restrição ligada.
+- **Comissão vem do navegador e nunca é recalculada** (`server/routers/faturamento.ts:22-186`).
+  Sem `.finite()`/faixa; editar pedido aprovado não invalida a aprovação.
+- **IDOR no E-mail Marketing:** `engagementByTaskIds` e `enrollmentsByTaskIds`
+  (`server/routers/emailMarketing.ts:1541-1626`) não recebem `ctx` nem aplicam
+  `userTaskFilter`; `enrollTasksInSequence` (`:971-1007`) idem. `attendantBroadcast`
+  (`:573-630`) aceita até 50 e-mails livres, sem ownership nem `emailConfirmed`.
+- **Migração pode deixar banco novo quebrado:** `tasks.reminder_enabled` e
+  `work_sessions.updated_at` não são garantidas, o bloco de tags consulta `tasks.tags`
+  antes do `ALTER`, e o erro é engolido em `api/index.ts:173-177`.
+- **`/api/resend-webhook` está registrado duas vezes** (`api/index.ts:291` e `:494`); só a
+  primeira responde, então o limiter da segunda nunca se aplica.
+- **`updateRole` e `delete` não invalidam o cache de usuário** (`server/routers/sellers.ts:137-147`
+  e `:74-87`). Rebaixar ou demitir continua valendo o papel antigo por até 30s por instância.
+  O JWT é de **7 dias** (`server/auth.ts:51`) e sem denylist — o `CLAUDE.md:39` diz 30 dias,
+  está errado.
+- **Importação CSV tem 3 defeitos:** vírgula não é separador reconhecido
+  (`client/src/pages/Tasks.tsx:978`), o cabeçalho entra como lead no ramo dash (`:1072`) e o
+  encoding é fixo em UTF-8 (`:1106`) enquanto Excel pt-BR salva Windows-1252. A **exportação**
+  está correta (tem BOM em `AdminDashboard.tsx:63`) — não confundir.
+- **`bulkCreate` dispara automação em laço sequencial** depois do INSERT já commitado
+  (`server/routers/tasks.ts:200-215`), com `.max(2000)` e sem fragmentação no cliente.
+  Importação grande pode morrer por timeout com as tarefas criadas e automação parcial.
+- **`vercel.json:5-6` declara `maxDuration` para `api/index.ts`**, mas as rotas servem
+  `api/bundle.js` (`:86,91,105`). Se o matcher não casar, o limite de 60s não vale — confirmar
+  num deploy antes de dimensionar o item acima.
+- **`npm audit --omit=dev`: 15 advisories** (1 critical, 6 high). O `tar` crítico entra por
+  `@capacitor/cli`, que está em `dependencies` sem precisar estar. `react-router-dom` está
+  instalado e não é usado — contraria a regra do wouter.
+
 ### 🟠 Código, ainda aberto
 4. **Sem outbox para efeitos pós-pagamento.** O pedido vira `confirmed` antes de
    `confirmOrderPaid()`. Se a notificação falhar, o retry do webhook é barrado pelo guard
@@ -234,18 +317,19 @@ minerais. Até lá, não.
 7. **Migrações rodam no cold start** com `.catch()` que só loga; o app serve requisição
    com schema incompleto.
 8. **CSP duplicada** em `vercel.json` e `api/index.ts`, ambas com `unsafe-inline`.
-9. **`client/index.html` é compartilhado** — por isso o CRM mostra título do Premium.
-10. **Sem testes executáveis.** Só `tests/reminders.test.ts`, sem runner: não há script
-    `test`, nem Vitest/Jest configurado, e vários casos testam arrays locais em vez do
-    comportamento dos routers. O typecheck já é gate (ver seção 5), os testes não.
-11. **Schema sem foreign keys declaradas** — as relações são inteiros por convenção, sem
-    `.references()`. Integridade depende só do código.
+9. **Schema sem foreign keys declaradas** — as relações são inteiros por convenção, sem
+   `.references()`. Integridade depende só do código.
+10. **Cobertura de teste é só de lembretes.** O runner existe e é portão de PR
+    (seção 5), mas as duas suítes cobrem lembretes e o head do `index.html`.
+    Nada cobre pagamento, frete, e-mail marketing ou os routers — que é onde
+    mora o risco financeiro. Testar router exige decidir como isolar o Neon
+    (banco de teste ou mock do Drizzle); nada disso está montado.
 
 ### 🔵 Operacional
-12. Pedidos com PIX inline (sem `mpPreferenceId`) não aparecem em `listOrders`.
-13. Frete da caixa de 10 kg saiu R$ 200,88 (PAC p/ SP) — mais caro que o produto. Decisão
+11. Pedidos com PIX inline (sem `mpPreferenceId`) não aparecem em `listOrders`.
+12. Frete da caixa de 10 kg saiu R$ 200,88 (PAC p/ SP) — mais caro que o produto. Decisão
     comercial, não bug.
-14. B2B Sprints 2–4 (pipeline comercial, prospecção manual assistida, outbound) não
+13. B2B Sprints 2–4 (pipeline comercial, prospecção manual assistida, outbound) não
     começaram. Domínio secundário só é necessário no Sprint 4.
 
 ---
@@ -276,7 +360,9 @@ Leia sob demanda, não todos:
 |---|---|
 | `CLAUDE.md` | Convenções de código, estrutura de pastas, variáveis de ambiente |
 | `HANDOFF.md` | Diário longo de sessões; detalhes da VPS/WhatsApp e erros já cometidos |
-| `RELATORIO-PREMIUM-2026-08-09.md` | Auditoria da loja (12 achados) — a mais recente |
+| `PLANO-CORRECOES-CRM.md` | **Handoff entre agentes.** 40 itens em 5 lotes com estado de execução — comece por aqui para trabalhar no CRM |
+| `RELATORIO-AUDITORIA-CRM-2026-08-13.md` | **Auditoria do CRM de Lembretes — a mais recente.** 32 achados com arquivo:linha, alegações falsas descartadas e o que já estava corrigido |
+| `RELATORIO-PREMIUM-2026-08-09.md` | Auditoria da loja (12 achados) |
 | `RELATORIO-AUDITORIA-PREMIUM.md` | Auditoria anterior (02/07); os 3 críticos já foram corrigidos |
 | `PLANO-PROSPECCAO-B2B.md` | Estratégia B2B completa (25 partes) |
 | `PLANO-FINAL-EXECUCAO-B2B.md` | Execução B2B por sprints + prompt do agente executor |
@@ -286,8 +372,22 @@ Leia sob demanda, não todos:
 
 ---
 
-## 9. Ao terminar sua sessão
+## 9. Plano e progresso ficam no repositório, não no chat
 
-Atualize **este arquivo**: mova o que você concluiu para a seção 5, tire da seção 6, e
-registre qualquer armadilha nova que você descobriu. Se você quebrou alguma das 6 regras
-da seção 1 e aprendeu algo, escreva lá — foi assim que essa lista nasceu.
+**Regra do dono:** todo plano e todo progresso vão versionados no GitHub, porque várias
+sessões e agentes trabalham neste repo em paralelo. O que fica só na conversa morre com a
+sessão e o próximo agente refaz o trabalho — ou pior, sobrescreve.
+
+Na prática:
+
+- **Antes de começar** uma correção, marque o item como 🔄 em `PLANO-CORRECOES-CRM.md` e
+  comite só essa linha. É o que impede dois agentes na mesma tarefa.
+- **Ao concluir**, marque ✅ no mesmo commit da correção, dizendo em uma linha como
+  verificou. Nada vira ✅ sem `npm run check`, `npm test` e build passando.
+- **Levantamento novo** (auditoria, investigação, decisão de arquitetura) vira arquivo
+  commitado, não resposta de chat.
+- **Ao terminar a sessão**, atualize também este arquivo: mova o concluído para a seção 5,
+  tire da seção 6, e registre armadilha nova que você descobriu. Se quebrou alguma das 6
+  regras da seção 1 e aprendeu algo, escreva lá — foi assim que a lista nasceu.
+- **Descobriu que um item do plano está errado?** Marque ❌ com a justificativa. Não apague:
+  a próxima sessão precisa saber que já foi investigado.
