@@ -4,6 +4,7 @@
 **Código-base auditado:** `2915130679338189100c4e7fb6a7fbfb0798f0d0`  
 **Base de produção no início:** `origin/main` em `cefe7333f0561e04daabb71fc45dfdeef0473e42`  
 **Branch:** `crm/reminders-tests-and-pixel-scope` · PR #15  
+**Issue-mãe:** [#21 — Auditoria independente completa do CRM](https://github.com/tarcyoalves/sal-vita-vendas/issues/21)  
 **Estado:** 🔄 descoberta e mapeamento em andamento
 
 > Este arquivo é o diário da auditoria e o handoff entre agentes. O relatório anterior
@@ -83,11 +84,19 @@ Marcadores: ⬜ não iniciado · 🔄 em andamento · ✅ auditado · ⛔ bloque
 - Banco: PostgreSQL via Drizzle + Neon/Postgres; schema em `server/db/schema.ts`, criação e
   migrações imperativas em `server/db/migrate.ts` e módulos auxiliares.
 - Autenticação: JWT em cookie HttpOnly; contexto e RBAC em `server/trpc.ts`.
-- Superfícies registradas no appRouter: 16 namespaces (`auth`, `tasks`, `sellers`, `clients`,
-  `ai`, `knowledge`, `workSessions`, `tv`, `shipping`, `recovery`, `emailMarketing`,
-  `premiumEmailMarketing`, `tags`, `faturamento`, `b2b`, `catalog`).
-- Páginas encontradas: 24 arquivos em `client/src/pages`; a classificação por host/rota
-  ainda está em andamento.
+- Superfícies registradas no appRouter: 16 namespaces no total; **12 namespaces diretamente
+  CRM**, com **153 procedures** (7 públicas, 49 autenticadas, 75 staff, 22 admin): `auth`,
+  `tasks`, `sellers`, `clients`, `ai`, `knowledge`, `workSessions`, `tv`, `emailMarketing`,
+  `tags`, `faturamento`, `catalog`. Os outros 4 (`shipping`, `recovery`,
+  `premiumEmailMarketing`, `b2b`) são Premium/loja, mas entram quando compartilham processo,
+  segredo, banco ou infraestrutura.
+- Entrada de produção: 14 registros Express diretamente relevantes ao CRM/infra (health,
+  unsubscribe, webhook Resend duplicado, db-stats, limiters tRPC, adapter tRPC e cron diário);
+  classificação detalhada em andamento.
+- Páginas: 17 rotas Wouter CRM declaradas (`/tv` comentada/desativada) e 24 arquivos de
+  página no repositório, ainda sendo classificados por produto/uso real.
+- Banco: 44 tabelas no schema total; `schema.ts` declara 0 foreign keys, 0 índices e 8
+  unicidades. A classificação CRM/compartilhada/Premium e a comparação com DDL continuam.
 - Código de aplicação: ~55.682 linhas TS/TSX; maiores pontos de risco incluem
   `EmailMarketing.tsx` (5.759), `emailMarketing.ts` (2.544), `Tasks.tsx` (2.244),
   `api/index.ts` (1.496), `ai.ts` (1.406), `schema.ts` (777), `migrate.ts` (771).
@@ -122,7 +131,11 @@ Marcadores: ⬜ não iniciado · 🔄 em andamento · ✅ auditado · ⛔ bloque
 ### 23/08/2026 — início
 
 - Baseline Git e sessões concorrentes verificados.
-- Inventário de alto nível iniciado.
+- Inventário de alto nível iniciado; denominadores mecânicos fechados para tRPC, rotas Wouter
+  e tabelas.
 - Auditoria anterior declarada não autoritativa.
-- Próximo passo: gerar inventário mecânico de páginas, procedures, Express, tabelas,
-  integrações e jobs; depois revisar manualmente cada matriz.
+- Issue-mãe #21 criada.
+- Seis revisores Opus 5 independentes iniciados em modo somente leitura: auth/autorização;
+  banco/concorrência; CRM/lembretes; jobs/integrações; frontend/UX; testes/infra.
+- Próximo passo: classificar cada procedure/endpoint/tabela e cruzar os seis relatórios;
+  depois executar provas e uma verificação adversarial dos achados.
