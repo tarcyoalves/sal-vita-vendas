@@ -360,7 +360,8 @@ Leia sob demanda, não todos:
 |---|---|
 | `CLAUDE.md` | Convenções de código, estrutura de pastas, variáveis de ambiente |
 | `HANDOFF.md` | Diário longo de sessões; detalhes da VPS/WhatsApp e erros já cometidos |
-| `PLANO-CORRECOES-CRM.md` | **Handoff entre agentes.** 40 itens em 5 lotes com estado de execução — comece por aqui para trabalhar no CRM |
+| `AUDITORIA-CRM-2026-08-23-PROGRESSO.md` | **Auditoria independente em andamento.** Baseline, matriz das 29 fases, cobertura e diário para handoff entre agentes |
+| `PLANO-CORRECOES-CRM.md` | Plano da auditoria anterior (13/08); não tratar como estado atual até a nova auditoria revalidar os itens |
 | `RELATORIO-AUDITORIA-CRM-2026-08-13.md` | **Auditoria do CRM de Lembretes — a mais recente.** 32 achados com arquivo:linha, alegações falsas descartadas e o que já estava corrigido |
 | `RELATORIO-PREMIUM-2026-08-09.md` | Auditoria da loja (12 achados) |
 | `RELATORIO-AUDITORIA-PREMIUM.md` | Auditoria anterior (02/07); os 3 críticos já foram corrigidos |
