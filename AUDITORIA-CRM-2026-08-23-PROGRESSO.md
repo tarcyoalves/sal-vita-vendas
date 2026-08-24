@@ -101,6 +101,39 @@ Marcadores: ⬜ não iniciado · 🔄 em andamento · ✅ auditado · ⛔ bloque
   `EmailMarketing.tsx` (5.759), `emailMarketing.ts` (2.544), `Tasks.tsx` (2.244),
   `api/index.ts` (1.496), `ai.ts` (1.406), `schema.ts` (777), `migrate.ts` (771).
 
+## Mapa de arquitetura confirmado até aqui
+
+### Caminho de uma operação CRM
+
+`React` → `httpBatchLink('/api/trpc', credentials: include)` → rota Vercel
+`/api/* → api/bundle.js` → Express/tRPC → `createContext` lê JWT do cookie → consulta usuário
+(com cache de 30s) → procedure aplica `public/protected/staff/admin` e, quando necessário,
+ownership no handler → Drizzle `neon-http` → PostgreSQL.
+
+O frontend usa TanStack Query com `staleTime=60s`, sem refetch em foco/reconexão e com uma
+repetição para queries. Mutações não têm retry automático global.
+
+### Caminho real de um lembrete
+
+`tasks.reminderDate` + `tasks.reminderEnabled` → `tasks.reminders` → hook
+`useReminderNotifications` consulta a cada **5 minutos** apenas enquanto a aplicação está
+aberta/visível → timer local reclassifica a cada **2 minutos** → toast + beep + Web
+Notification. O dedupe fica em `sessionStorage` da aba/dispositivo.
+
+Portanto, no baseline:
+
+- ➖ não existe scheduler/worker/cron de lembrete no servidor;
+- ➖ não existe Web Push remoto nem registro de push token;
+- ➖ não existe SMS de lembrete;
+- ➖ WhatsApp existe em fluxos da loja/recuperação, não no lembrete CRM;
+- ➖ não existe modelo de recorrência/série/exceção de lembrete; a recorrência solicitada é
+  uma lacuna de produto, não uma implementação escondida;
+- ➖ não existe calendário dedicado; data/hora vive no formulário e nas listas;
+- a tabela `reminders` é legado sem router/tela; lembrete ativo é campo de `tasks`.
+
+As consequências de confiabilidade desse desenho serão classificadas depois da prova de
+comportamento (aba fechada, polling, janela de disparo, dois dispositivos e timezone).
+
 ## Validações previstas
 
 - [ ] `npm test`
@@ -139,3 +172,18 @@ Marcadores: ⬜ não iniciado · 🔄 em andamento · ✅ auditado · ⛔ bloque
   banco/concorrência; CRM/lembretes; jobs/integrações; frontend/UX; testes/infra.
 - Próximo passo: classificar cada procedure/endpoint/tabela e cruzar os seis relatórios;
   depois executar provas e uma verificação adversarial dos achados.
+
+### 24/08/2026 — retomada após interrupção
+
+- Um revisor criou indevidamente `RELATORIO-AUDITORIA-CRM-2026-08-23.md` e marcou esta
+  auditoria como concluída. O arquivo é **rascunho não validado**: contém contagens erradas,
+  severidades infladas (duplo clique classificado P0), cobertura declarada sem evidência e
+  chama uma notificação local de "cron-driven". Não usar como relatório final.
+- As revisões de banco/concorrência, jobs/integrações e testes/infra terminaram. Auth/RBAC e
+  frontend/UX falharam por sobrecarga e foram relançados com Opus 5.
+- Portões executados pela sessão principal: `npm test` 49/49; `npm run check` limpo;
+  `npm run build:client` passa (chunk 2.043,59 kB / gzip 531,17 kB); `npm run build:api`
+  passa (7,5 MB); lint não existe; `npm audit --omit=dev` confirma 15 advisories
+  (1 critical, 6 high, 8 moderate).
+- A auditoria continua em descoberta. Nenhum P0/P1 está aceito até cruzamento e verificação
+  adversarial.
