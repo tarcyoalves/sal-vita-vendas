@@ -10,7 +10,7 @@ import { useAuth } from '../../_core/hooks/useAuth';
 import { trpc } from '../../lib/trpc';
 import {
   totalPedido, comissaoPedido, freteTotal, pesoTotalItens,
-  formatBRL, formatKg,
+  formatBRL, formatKg, formatDataBR,
 } from '../../lib/faturamento/calc';
 import { OrderPrintDocument } from './OrderPrintDocument';
 import { LinkTaskDialog } from './LinkTaskDialog';
@@ -26,11 +26,10 @@ interface OrderDetailDialogProps {
   onApproved?: () => void;
 }
 
-function fmtDate(iso: string | null): string {
-  if (!iso) return '--';
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? '--' : d.toLocaleDateString('pt-BR');
-}
+// Delegado ao calc: uma data pura ('2026-09-01') lida com `new Date` viraria
+// 31/08 em fuso negativo, mostrando o mês errado justamente nos campos que
+// definem a competência da comissão.
+const fmtDate = formatDataBR;
 
 // Popup de gerenciamento do pedido — visão completa (admin), com atalhos para
 // editar, marcar como faturado ou excluir. Reutiliza os dialogs já existentes
@@ -136,6 +135,10 @@ export function OrderDetailDialog({
             <div>
               <p className="text-[10px] font-semibold text-slate-400 uppercase">Criado em</p>
               <p className="text-slate-700">{fmtDate(pedido.criadoEm)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-slate-400 uppercase">Previsão faturamento</p>
+              <p className="text-slate-700">{fmtDate(pedido.previsaoFaturamentoEm ?? pedido.criadoEm)}</p>
             </div>
             <div>
               <p className="text-[10px] font-semibold text-slate-400 uppercase">Faturado em</p>

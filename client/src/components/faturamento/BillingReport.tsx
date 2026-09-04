@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { useFatStore } from "../../lib/faturamento/store";
 import {
-  totalPedido, totalItens, mesAtual, isoNoMes, formatBRL,
-  pesoTotalItens, formatKg,
+  totalPedido, totalItens, mesAtual, pedidoNoMes, formatBRL,
+  pesoTotalItens, formatKg, formatDataBR,
 } from "../../lib/faturamento/calc";
 import type { Pedido, FiltroMes } from "../../lib/faturamento/types";
 import { trpc } from "../../lib/trpc";
@@ -108,8 +108,10 @@ export default function BillingReport() {
       result = result.filter((p) => p.sellerName === sellerFilter);
     }
 
+    // Competência, não data de criação: estimado entra no mês previsto de
+    // faturamento e faturado no mês do embarque real.
     if (!showAllMonths && mesFilter) {
-      result = result.filter((p) => isoNoMes(p.criadoEm, mesFilter));
+      result = result.filter((p) => pedidoNoMes(p, mesFilter));
     }
 
     if (ufFilter.trim()) {
@@ -141,7 +143,7 @@ export default function BillingReport() {
 
   // CSV
   const handleExport = () => {
-    const headers = ["Tarefa", "CNPJ", "Razao Social", "Cidade", "UF", "Atendente", "Status", "Produtos", "Valor Estimado", "Valor Faturado"];
+    const headers = ["Tarefa", "CNPJ", "Razao Social", "Cidade", "UF", "Atendente", "Status", "Produtos", "Previsao Faturamento", "Faturado Em", "Valor Estimado", "Valor Faturado"];
     const csvRows = filtered.map((p) => [
       p.taskId ? `#${p.taskId}` : "",
       p.cnpj,
@@ -151,6 +153,8 @@ export default function BillingReport() {
       p.sellerName,
       p.status === "faturado" ? "Faturado" : "Estimado",
       p.itens.map(it => `${it.descricao} (${it.quantidade}un)`).join(", "),
+      formatDataBR(p.previsaoFaturamentoEm),
+      formatDataBR(p.faturadoEm),
       estimatedTotal(p).toFixed(2).replace(".", ","),
       p.status === "faturado" ? totalPedido(p).toFixed(2).replace(".", ",") : "",
     ]);
@@ -281,6 +285,7 @@ export default function BillingReport() {
                     <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Atendente</th>
                     <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Produtos</th>
                     <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">F.Pagamento</th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Competencia</th>
                     <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Peso</th>
                     <th className="px-3 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-500">Status</th>
                     <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Estimado</th>
@@ -311,6 +316,11 @@ export default function BillingReport() {
                         ) : "--"}
                       </td>
                       <td className="px-3 py-3 text-gray-600 text-xs whitespace-nowrap">{p.prazoPagamentoSal || "--"}</td>
+                      <td className="px-3 py-3 text-gray-600 text-xs whitespace-nowrap">
+                        {p.status === "faturado"
+                          ? `Emb. ${formatDataBR(p.faturadoEm)}`
+                          : `Prev. ${formatDataBR(p.previsaoFaturamentoEm ?? p.criadoEm)}`}
+                      </td>
                       <td className="px-3 py-3 text-right text-gray-600 text-xs whitespace-nowrap">{formatKg(pesoTotalItens(p.itens))}</td>
                       <td className="px-3 py-3 text-center">
                         <div className="flex flex-col items-center gap-1">
@@ -347,7 +357,7 @@ export default function BillingReport() {
                 </tbody>
                 <tfoot className="bg-slate-50 border-t-2 border-slate-300">
                   <tr className="font-semibold text-gray-800">
-                    <td className="px-3 py-3" colSpan={9}>
+                    <td className="px-3 py-3" colSpan={10}>
                       Total ({filtered.length} pedido{filtered.length !== 1 ? "s" : ""})
                     </td>
                     <td className="px-3 py-3 text-right">{formatBRL(totalEstimado)}</td>

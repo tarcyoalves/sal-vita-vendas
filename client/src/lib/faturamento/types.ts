@@ -52,6 +52,12 @@ export interface Pedido {
   valorFretePorUnidade: number; // R$ por TONELADA — o valor por saco/fardo é calculado a partir do peso de cada item
   observacoes: string;
   criadoEm: string;         // ISO
+  // Mês em que o pedido DEVE entrar na comissão enquanto está estimado. Um
+  // pedido fechado no fim de agosto e embarcado em setembro é comissão de
+  // setembro: sem este campo o pipeline caía no mês de criação e misturava a
+  // previsão de dois meses. Legado (importado antes deste campo) fica null e
+  // cai no criadoEm — ver dataCompetenciaPedido em calc.ts.
+  previsaoFaturamentoEm: string | null;
   faturadoEm: string | null;// ISO quando marcado como embarcado/faturado
   valorPago: number;        // valor efetivamente pago pelo cliente até o momento
   // Revisão do admin — informativa, não bloqueia nenhuma ação do atendente.

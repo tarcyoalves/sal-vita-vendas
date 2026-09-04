@@ -175,6 +175,7 @@ function buildPedido(input: Partial<Pedido> & { id?: string }): Pedido {
     valorFretePorUnidade: input.valorFretePorUnidade ?? 0,
     observacoes: input.observacoes ?? '',
     criadoEm: input.criadoEm ?? new Date().toISOString(),
+    previsaoFaturamentoEm: input.previsaoFaturamentoEm ?? null,
     faturadoEm: input.faturadoEm ?? null,
     valorPago: input.valorPago ?? 0,
     aprovadoEm: input.aprovadoEm ?? null,
@@ -207,7 +208,12 @@ export const pedidos = {
     return result;
   },
   // Marca como faturado: congela o estimado atual e grava os itens reais.
-  faturar(id: string, itensReais: ItemPedido[]): Pedido | null {
+  //
+  // `faturadoEmISO` é a data REAL do embarque, escolhida por quem fatura. Ela
+  // define o mês da comissão a pagar, então não pode ser assumida como "hoje":
+  // um embarque de setembro lançado em outubro cairia no mês errado. Sem valor
+  // informado, cai em agora — comportamento anterior.
+  faturar(id: string, itensReais: ItemPedido[], faturadoEmISO?: string | null): Pedido | null {
     const atual = mirror.pedidos.find((p) => p.id === id);
     if (!atual) return null;
     const faturado: Pedido = {
@@ -215,7 +221,7 @@ export const pedidos = {
       itensEstimadoSnapshot: atual.itensEstimadoSnapshot ?? atual.itens,
       itens: itensReais,
       status: 'faturado',
-      faturadoEm: new Date().toISOString(),
+      faturadoEm: faturadoEmISO ?? new Date().toISOString(),
     };
     mirror = { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === id ? faturado : p)) };
     emit();

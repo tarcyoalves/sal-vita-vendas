@@ -6,7 +6,9 @@ import {
 import { Button } from '../ui/button';
 import { OrderItemsEditor } from './OrderItemsEditor';
 import { useFatStore } from '../../lib/faturamento/store';
-import { totalItens, formatBRL } from '../../lib/faturamento/calc';
+import { totalItens, formatBRL, dataInputLocal, hojeInputLocal } from '../../lib/faturamento/calc';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
 import type { ItemPedido } from '../../lib/faturamento/types';
 
 interface InvoiceDialogProps {
@@ -27,6 +29,7 @@ export function InvoiceDialog({
   const pedido = pedidoId ? actions.pedidos.get(pedidoId) : null;
 
   const [itensReais, setItensReais] = useState<ItemPedido[]>([]);
+  const [faturadoEmData, setFaturadoEmData] = useState('');
   // Capture estimated baseline once when the dialog opens
   const estimadoSnapshotRef = useRef<ItemPedido[]>([]);
 
@@ -34,6 +37,10 @@ export function InvoiceDialog({
     if (!open || !pedido) return;
     // Clone current items as the "real" starting point (attendant can edit)
     setItensReais(pedido.itens.map((it) => ({ ...it })));
+    // Refaturar mantém a data já registrada; a primeira vez sugere hoje. Quem
+    // lança um embarque com atraso corrige aqui, senão a comissão cairia no mês
+    // do lançamento em vez do mês em que a mercadoria saiu.
+    setFaturadoEmData(dataInputLocal(pedido.faturadoEm) || hojeInputLocal());
     // Snapshot for comparison: use existing snapshot if already set (re-opening), else current
     estimadoSnapshotRef.current =
       pedido.itensEstimadoSnapshot ?? pedido.itens;
@@ -48,7 +55,11 @@ export function InvoiceDialog({
 
   const handleConfirm = () => {
     if (!pedidoId) return;
-    actions.pedidos.faturar(pedidoId, itensReais);
+    if (!faturadoEmData) {
+      toast.error('Informe a data do faturamento/embarque');
+      return;
+    }
+    actions.pedidos.faturar(pedidoId, itensReais, faturadoEmData);
     toast.success('Pedido marcado como faturado!');
     onDone?.();
     onOpenChange(false);
@@ -72,6 +83,24 @@ export function InvoiceDialog({
             {pedido.clienteNome}
             {pedido.cidade && ` - ${pedido.cidade}`}
             {pedido.uf && `/${pedido.uf}`}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="inv-data" className="text-xs">
+              Data do faturamento/embarque <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="inv-data"
+              type="date"
+              value={faturadoEmData}
+              onChange={(e) => setFaturadoEmData(e.target.value)}
+              className="text-sm"
+              required
+            />
+            <p className="text-[11px] text-slate-500">
+              Define o mês da comissão a pagar. Use a data real do embarque, mesmo que
+              o lançamento esteja sendo feito depois.
+            </p>
           </div>
 
           {/* Items editor (real values) */}
