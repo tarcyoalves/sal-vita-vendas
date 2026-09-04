@@ -41,7 +41,7 @@
     <meta name="twitter:description" content="Sal marinho integral premium, sem refino, com os minerais traço do mar preservados. Colhido em Mossoró/RN e entregue em todo o Brasil." />
     <meta name="twitter:image" content="https://premium.salvitarn.com.br/icon-512.png" />
     <meta name="facebook-domain-verification" content="ey4m4yzr3c5jou01pjdbw0jwolg8ps" />
-    <script type="application/ld+json">
+    <script type="application/ld+json" id="ld-product">
     {
       "@context": "https://schema.org",
       "@type": "Product",
@@ -61,7 +61,9 @@
     }
     </script>
     <script>
-      // The CRM is private: give it its own title and keep it out of search.
+      // The CRM is private: give it its own title, keep it out of search, and
+      // drop the storefront's product markup (name, prices, availability) that
+      // has no meaning inside an internal tool.
       (function () {
         if (!/(^|\.)lembretes\./.test(location.hostname)) return;
         document.title = 'Sal Vita — Lembretes';
@@ -71,6 +73,8 @@
         };
         set('meta[name="description"]', 'content', 'Sistema interno de gestão de vendas e lembretes da Sal Vita.');
         set('meta[name="robots"]', 'content', 'noindex, nofollow');
+        var ld = document.getElementById('ld-product');
+        if (ld && ld.parentNode) ld.parentNode.removeChild(ld);
       })();
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -78,16 +82,28 @@
     <link href="https://fonts.googleapis.com/css2?family=Pacifico&family=Inter:wght@400;500;600;700&family=Barlow+Condensed:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <!-- Meta Pixel Code -->
     <script>
-    !function(f,b,e,v,n,t,s)
-    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-    n.queue=[];t=b.createElement(e);t.async=!0;
-    t.src=v;s=b.getElementsByTagName(e)[0];
-    s.parentNode.insertBefore(t,s)}(window, document,'script',
-    'https://connect.facebook.net/en_US/fbevents.js');
-    fbq('init', '2209017296169541');
-    fbq('track', 'PageView');
+    // Storefront-only. This one index.html also serves the internal CRM, and the
+    // pixel used to boot there too: every logged-in attendant screen sent a
+    // PageView to Meta from a private tool. Load it on the storefront hosts and
+    // on the /sal-vita landing route (which is how previews reach the store);
+    // everywhere else `window.fbq` stays undefined and the `fbq?.()` call sites
+    // in the Premium pages no-op on their own.
+    (function () {
+      var HOSTS = ['premium.salvitarn.com.br', 'www.premium.salvitarn.com.br'];
+      var isStore = HOSTS.indexOf(location.hostname) !== -1
+        || location.pathname.indexOf('/sal-vita') === 0;
+      if (!isStore) return;
+      !function(f,b,e,v,n,t,s)
+      {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+      n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+      if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+      n.queue=[];t=b.createElement(e);t.async=!0;
+      t.src=v;s=b.getElementsByTagName(e)[0];
+      s.parentNode.insertBefore(t,s)}(window, document,'script',
+      'https://connect.facebook.net/en_US/fbevents.js');
+      fbq('init', '2209017296169541');
+      fbq('track', 'PageView');
+    })();
     </script>
     <!-- End Meta Pixel Code -->
   </head>

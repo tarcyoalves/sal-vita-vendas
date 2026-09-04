@@ -81,14 +81,72 @@ export function mesAtual(): FiltroMes {
 
 export function isoNoMes(iso: string | null, filtro: FiltroMes): boolean {
   if (!iso) return false;
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return false;
+  const d = parseDataLocal(iso);
+  if (!d) return false;
   return d.getFullYear() === filtro.ano && d.getMonth() === filtro.mes;
 }
 
+/**
+ * Lê uma data que pode chegar como `YYYY-MM-DD` (input date) ou ISO completo.
+ *
+ * `new Date('2026-09-01')` é interpretado como UTC e, em fuso negativo, volta
+ * para 31/08 — exatamente o erro de um mês que esta regra existe para evitar.
+ * Datas puras são montadas componente a componente, no fuso local.
+ */
+export function parseDataLocal(valor: string | null): Date | null {
+  if (!valor) return null;
+  const soData = /^(\d{4})-(\d{2})-(\d{2})$/.exec(valor.trim());
+  const d = soData
+    ? new Date(Number(soData[1]), Number(soData[2]) - 1, Number(soData[3]))
+    : new Date(valor);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/** `YYYY-MM-DD` no fuso local — formato aceito por <input type="date">. */
+export function dataInputLocal(valor: string | null): string {
+  const d = parseDataLocal(valor);
+  if (!d) return '';
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mes}-${dia}`;
+}
+
+export function hojeInputLocal(): string {
+  return dataInputLocal(new Date().toISOString());
+}
+
+/** dd/mm/aaaa, ou '--' quando vazio/inválido. */
+export function formatDataBR(valor: string | null): string {
+  const d = parseDataLocal(valor);
+  return d ? d.toLocaleDateString('pt-BR') : '--';
+}
+
+/**
+ * Data que decide a QUAL MÊS o pedido pertence no financeiro.
+ *
+ * Faturado → `faturadoEm`: o mês é o do embarque real, o que de fato se paga.
+ * Estimado → `previsaoFaturamentoEm`: o mês em que o pedido deve faturar, não
+ * o mês em que foi digitado. Sem previsão (pedido legado) cai em `criadoEm`,
+ * preservando o comportamento antigo em vez de sumir do relatório.
+ */
+export function dataCompetenciaPedido(pedido: Pedido): string {
+  if (pedido.status === 'faturado' && pedido.faturadoEm) return pedido.faturadoEm;
+  return pedido.previsaoFaturamentoEm ?? pedido.criadoEm;
+}
+
+/** O pedido pertence ao mês do filtro, pela sua data de competência. */
+export function pedidoNoMes(pedido: Pedido, filtro: FiltroMes): boolean {
+  return isoNoMes(dataCompetenciaPedido(pedido), filtro);
+}
+
 // ── Resumo de um atendente no mês ─────────────────────────────────────────────
-// Vendido/comissão prevista: pedidos criados no mês (pipeline).
+// Vendido/comissão prevista: pedidos cuja COMPETÊNCIA cai no mês (pipeline) —
+// para estimados, o mês previsto de faturamento; nunca o mês da digitação.
 // Embarcado/comissão embarcada: pedidos faturados no mês (realizado).
+//
+// Um pedido estimado com previsão em setembro sai do pipeline de agosto: ele
+// entra uma única vez, no mês em que vai faturar. Ao ser faturado, passa a
+// valer a data real do embarque, então ele nunca é contado em dois meses.
 //
 // IMPORTANTE: a comissão em R$ é sempre a SOMA de comissaoPedido() de cada
 // pedido — ou seja, usa a % que ficou congelada em pedido.comissaoPct no
@@ -106,7 +164,7 @@ export function resumoAtendente(
 ): ResumoAtendente {
   const meus = todosPedidos.filter((p) => p.sellerId === sellerId);
 
-  const doMes = meus.filter((p) => isoNoMes(p.criadoEm, filtro));
+  const doMes = meus.filter((p) => pedidoNoMes(p, filtro));
   const faturadosNoMes = meus.filter((p) => p.status === 'faturado' && isoNoMes(p.faturadoEm, filtro));
 
   const totalVendido = doMes.reduce((s, p) => s + totalPedido(p), 0);

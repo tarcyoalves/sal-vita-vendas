@@ -110,6 +110,19 @@ export const tasks = pgTable('tasks', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+/**
+ * LEGADO — não escreva aqui. Não é o lembrete do CRM.
+ *
+ * O lembrete que o sistema usa é um campo da tarefa: `tasks.reminderDate` +
+ * `tasks.reminderEnabled`, lido por `tasks.reminders` e consumido pelo
+ * `useReminderNotifications` e pelo AdminDashboard. Esta tabela é um segundo
+ * modelo, criado em paralelo e nunca ligado a nenhuma tela — o router que a
+ * servia (`trpc.reminders.*`) não tinha um único consumidor e foi removido.
+ *
+ * Mantida só porque pode conter linhas legadas em produção (o monitor de
+ * storage em api/index.ts a lista, e recoverOldDb a copia do banco antigo).
+ * Se for criar funcionalidade de lembrete, estenda `tasks`.
+ */
 export const reminders = pgTable('reminders', {
   id: serial('id').primaryKey(),
   userId: integer('user_id').notNull(),
@@ -669,6 +682,9 @@ export const fatOrders = pgTable('fat_orders', {
   valorFretePorUnidade: doublePrecision('valor_frete_por_unidade').notNull().default(0),
   observacoes: text('observacoes').notNull().default(''),
   criadoEm: text('criado_em').notNull(),
+  // Mês previsto de faturamento/embarque — competência da comissão estimada.
+  // Pedido fechado em agosto para embarcar em setembro é comissão de setembro.
+  previsaoFaturamentoEm: text('previsao_faturamento_em'),
   faturadoEm: text('faturado_em'),
   valorPago: doublePrecision('valor_pago').notNull().default(0),
   // Revisão do admin — informativa, não bloqueia nenhuma ação do atendente.

@@ -10,11 +10,11 @@ import { useAuth } from '../../_core/hooks/useAuth';
 import { trpc } from '../../lib/trpc';
 import {
   totalPedido, comissaoPedido, freteTotal, pesoTotalItens,
-  formatBRL, formatKg,
+  formatBRL, formatKg, formatDataBR,
 } from '../../lib/faturamento/calc';
 import { OrderPrintDocument } from './OrderPrintDocument';
 import { LinkTaskDialog } from './LinkTaskDialog';
-import { Pencil, Truck, Trash2, CheckCircle2, Printer, Link2 } from 'lucide-react';
+import { Pencil, Truck, Trash2, CheckCircle2, Printer, Link2, Undo2 } from 'lucide-react';
 
 interface OrderDetailDialogProps {
   open: boolean;
@@ -26,11 +26,10 @@ interface OrderDetailDialogProps {
   onApproved?: () => void;
 }
 
-function fmtDate(iso: string | null): string {
-  if (!iso) return '--';
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? '--' : d.toLocaleDateString('pt-BR');
-}
+// Delegado ao calc: uma data pura ('2026-09-01') lida com `new Date` viraria
+// 31/08 em fuso negativo, mostrando o mês errado justamente nos campos que
+// definem a competência da comissão.
+const fmtDate = formatDataBR;
 
 // Popup de gerenciamento do pedido — visão completa (admin), com atalhos para
 // editar, marcar como faturado ou excluir. Reutiliza os dialogs já existentes
@@ -77,6 +76,21 @@ export function OrderDetailDialog({
     actions.pedidos.aprovar(pedido.id, user.name);
     toast.success('Pedido aprovado!');
     onApproved?.();
+  };
+
+  // Confirmação explícita: desfazer descarta as quantidades reais do embarque
+  // (voltando ao estimado) e tira o pedido do faturamento do mês. Não é uma
+  // ação que se queira disparar por engano num clique.
+  const handleDesfazer = () => {
+    const ok = window.confirm(
+      'Desfazer o faturamento deste pedido?\n\n' +
+        'Ele volta para "estimado" e sai do faturamento do mês. ' +
+        'As quantidades reais digitadas no embarque serão substituídas pelos valores estimados.',
+    );
+    if (!ok) return;
+    actions.pedidos.desfazerFaturamento(pedido.id);
+    toast.success('Faturamento desfeito. O pedido voltou para estimado.');
+    onOpenChange(false);
   };
 
   return (
@@ -136,6 +150,10 @@ export function OrderDetailDialog({
             <div>
               <p className="text-[10px] font-semibold text-slate-400 uppercase">Criado em</p>
               <p className="text-slate-700">{fmtDate(pedido.criadoEm)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-slate-400 uppercase">Previsão faturamento</p>
+              <p className="text-slate-700">{fmtDate(pedido.previsaoFaturamentoEm ?? pedido.criadoEm)}</p>
             </div>
             <div>
               <p className="text-[10px] font-semibold text-slate-400 uppercase">Faturado em</p>
@@ -273,6 +291,17 @@ export function OrderDetailDialog({
             >
               <Truck size={14} />
               Marcar como faturado
+            </Button>
+          )}
+          {isFaturado && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-amber-700 border-amber-300 hover:bg-amber-50"
+              onClick={handleDesfazer}
+            >
+              <Undo2 size={14} />
+              Desfazer faturamento
             </Button>
           )}
           <Button size="sm" className="gap-1.5" onClick={onEdit}>

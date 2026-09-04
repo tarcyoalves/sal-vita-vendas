@@ -3,8 +3,8 @@ import { toast } from 'sonner';
 import { trpc } from '../../lib/trpc';
 import { useFatStore } from '../../lib/faturamento/store';
 import {
-  resumoAtendente, mesAtual, isoNoMes, totalPedido, comissaoPedido,
-  formatBRL,
+  resumoAtendente, mesAtual, pedidoNoMes, totalPedido, comissaoPedido,
+  formatBRL, formatDataBR,
 } from '../../lib/faturamento/calc';
 import type { FiltroMes, Pedido } from '../../lib/faturamento/types';
 import { OrderDialog } from './OrderDialog';
@@ -16,7 +16,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import {
   DollarSign, TrendingUp, Package, ChevronLeft, ChevronRight,
-  Plus, Pencil, Truck, Trash2, Printer, Link2,
+  Plus, Pencil, Truck, Trash2, Printer, Link2, Undo2,
 } from 'lucide-react';
 
 const MESES = [
@@ -116,8 +116,10 @@ export default function AttendantBilling() {
   // Pedidos for this seller in this month
   const pedidosDoMes = useMemo(() => {
     if (!seller) return [];
+    // Mesma regra dos KPIs: o pedido aparece no mês em que fatura, não no mês
+    // em que foi digitado. Assim a lista e os totais nunca divergem.
     return allPedidos.filter(
-      (p) => p.sellerId === seller.id && isoNoMes(p.criadoEm, filtro),
+      (p) => p.sellerId === seller.id && pedidoNoMes(p, filtro),
     );
   }, [allPedidos, seller?.id, filtro]);
 
@@ -147,6 +149,19 @@ export default function AttendantBilling() {
   const openInvoice = (pedidoId: string) => {
     setInvoicePedidoId(pedidoId);
     setInvoiceOpen(true);
+  };
+
+  // Desfaz o faturamento com confirmação: a ação descarta as quantidades reais
+  // do embarque e tira o pedido do faturamento do mês.
+  const undoInvoice = (pedidoId: string) => {
+    const ok = window.confirm(
+      'Desfazer o faturamento deste pedido?\n\n' +
+        'Ele volta para "estimado" e sai do faturamento do mês. ' +
+        'As quantidades reais digitadas no embarque serão substituídas pelos valores estimados.',
+    );
+    if (!ok) return;
+    actions.pedidos.desfazerFaturamento(pedidoId);
+    toast.success('Faturamento desfeito. O pedido voltou para estimado.');
   };
 
   const openDelete = (pedidoId: string) => {
@@ -228,7 +243,7 @@ export default function AttendantBilling() {
 
       {comissaoPct > 0 && (
         <p className="text-[11px] text-slate-400 text-center">
-          Comissao embarcada e o que de fato embarca no mes (pedidos faturados).
+          Estimado conta no mes previsto de faturamento; embarcado, no mes do embarque real.
         </p>
       )}
 
@@ -256,6 +271,7 @@ export default function AttendantBilling() {
               onOpenLinkDialog={() => setLinkingPedidoId(p.id)}
               onEdit={() => openEditOrder(p.id)}
               onInvoice={() => openInvoice(p.id)}
+              onUndoInvoice={() => undoInvoice(p.id)}
               onDelete={() => openDelete(p.id)}
               onPrint={() => openPrint(p)}
             />
@@ -301,6 +317,7 @@ function PedidoCard({
   onOpenLinkDialog,
   onEdit,
   onInvoice,
+  onUndoInvoice,
   onDelete,
   onPrint,
 }: {
@@ -308,6 +325,7 @@ function PedidoCard({
   onOpenLinkDialog: () => void;
   onEdit: () => void;
   onInvoice: () => void;
+  onUndoInvoice: () => void;
   onDelete: () => void;
   onPrint: () => void;
 }) {
@@ -327,6 +345,13 @@ function PedidoCard({
             {pedido.taskId && (
               <span className="text-[11px] text-blue-600 font-medium">Tarefa #{pedido.taskId}</span>
             )}
+            <span className="text-[11px] text-slate-500">
+              {isFaturado
+                ? `Faturado em ${formatDataBR(pedido.faturadoEm)}`
+                : pedido.previsaoFaturamentoEm
+                  ? `Previsto ${formatDataBR(pedido.previsaoFaturamentoEm)}`
+                  : 'Sem previsão'}
+            </span>
             {pedido.cnpj && (
               <span className="text-[11px] text-slate-500">{pedido.cnpj}</span>
             )}
@@ -441,6 +466,17 @@ function PedidoCard({
             >
               <Truck size={12} />
               Marcar como faturado
+            </Button>
+          )}
+          {isFaturado && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onUndoInvoice}
+              className="gap-1 text-xs h-7 text-amber-700 border-amber-300 hover:bg-amber-50"
+            >
+              <Undo2 size={12} />
+              Desfazer
             </Button>
           )}
           <Button

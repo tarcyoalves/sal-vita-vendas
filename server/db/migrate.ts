@@ -1,29 +1,40 @@
 import { neon } from '@neondatabase/serverless';
 import { hashPassword } from '../auth';
+import { readInitialAdminConfig } from './initialAdmin';
 
 const DATABASE_URL = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL!;
 export const sql = neon(DATABASE_URL);
 
-async function seedAdminIfNeeded() {
+async function bootstrapInitialAdmin() {
+  // Config primeiro, banco depois: sem INITIAL_ADMIN_* não há bootstrap nenhum,
+  // então nem vale gastar o round-trip. O fast path roda em todo cold start e
+  // uma consulta extra ali sai caro no plano free do Neon.
+  const config = readInitialAdminConfig(process.env);
+  if (!config) return;
+
   const rows = await sql`SELECT id FROM users WHERE role = 'admin' LIMIT 1`;
   if (rows.length > 0) return;
-  const hash = hashPassword('admin123');
-  await sql`
+
+  const hash = hashPassword(config.password);
+  const inserted = await sql`
     INSERT INTO users (name, email, password_hash, role, must_change_password)
-    VALUES ('Admin', 'tarcyo.alves@gmail.com', ${hash}, 'admin', false)
+    VALUES (${config.name}, ${config.email}, ${hash}, 'admin', true)
     ON CONFLICT (email) DO NOTHING
+    RETURNING id
   `;
-  console.log('[migrate] admin user seeded');
+  if (inserted.length === 0) {
+    throw new Error(
+      `[bootstrap] ${config.email} já existe, mas não é administrador; promova a conta explicitamente antes de iniciar`,
+    );
+  }
+  console.log(`[bootstrap] administrador inicial criado para ${config.email}; troca de senha obrigatória`);
 }
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-08-12b';
+const SCHEMA_VERSION = '2026-09-04a';
 
 export async function ensureTablesExist() {
-  // Always seed admin first in case DB has tables but lost the admin row
-  try { await seedAdminIfNeeded(); } catch {}
-
   // Fast path: if the schema marker matches, the DB is already fully migrated.
   // Skip the ~58 idempotent DDL/ALTER/CREATE INDEX round-trips that would
   // otherwise run on EVERY cold start and burn Neon free-tier compute. The
@@ -41,6 +52,7 @@ export async function ensureTablesExist() {
         sql`CREATE TABLE IF NOT EXISTS email_template_categories (id SERIAL PRIMARY KEY, name TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)`,
         sql`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS category_ids JSONB`,
       ]);
+      await bootstrapInitialAdmin();
       return;
     }
   } catch { /* schema_meta missing → fall through and run the full migration */ }
@@ -667,6 +679,14 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS aprovado_por TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS created_by_role TEXT`;
+
+  // ── Competência da comissão ────────────────────────────────────────────────
+  // Pedido fechado num mês e embarcado no seguinte é comissão do mês em que
+  // fatura. Antes disso o pipeline usava criado_em e misturava os dois meses.
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS previsao_faturamento_em TEXT`;
+  // Backfill dos pedidos que já existiam: preserva exatamente o mês em que eles
+  // apareciam antes desta mudança (criado_em), em vez de inventar uma previsão.
+  await sql`UPDATE fat_orders SET previsao_faturamento_em = criado_em WHERE previsao_faturamento_em IS NULL`;
   await sql`CREATE INDEX IF NOT EXISTS fat_orders_pending_approval_idx ON fat_orders(created_by_role) WHERE aprovado_em IS NULL`;
 
   // SAL MARINHO MOIDO INTEGRAL VITA PREMIUM 10X1 KG: comissão sempre 10%, nunca
@@ -754,6 +774,11 @@ export async function ensureTablesExist() {
       updated_at          TIMESTAMP NOT NULL DEFAULT now()
     )
   `;
+
+  // Depois do DDL: em banco novo a tabela `users` só existe a partir daqui, e
+  // o fast path acima nunca roda na primeira inicialização. Se o bootstrap
+  // ficasse só lá, uma instalação limpa jamais ganharia a conta inicial.
+  await bootstrapInitialAdmin();
 
   // Record the schema marker so every subsequent cold start takes the fast path
   // at the top of this function instead of re-running the whole battery above.

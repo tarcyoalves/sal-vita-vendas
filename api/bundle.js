@@ -206704,41 +206704,6 @@ var authRouter = router({
   })
 });
 
-// server/routers/reminders.ts
-init_drizzle_orm();
-init_schema2();
-var remindersRouter = router({
-  list: protectedProcedure.query(async ({ ctx }) => {
-    return db.select().from(reminders).where(eq(reminders.userId, ctx.user.id));
-  }),
-  create: protectedProcedure.input(external_exports.object({
-    clientName: external_exports.string().min(1),
-    clientPhone: external_exports.string().optional(),
-    notes: external_exports.string().optional(),
-    scheduledDate: external_exports.date()
-  })).mutation(async ({ input, ctx }) => {
-    const [created] = await db.insert(reminders).values({
-      userId: ctx.user.id,
-      clientName: input.clientName,
-      clientPhone: input.clientPhone,
-      notes: input.notes,
-      scheduledDate: input.scheduledDate,
-      status: "pending"
-    }).returning();
-    return created;
-  }),
-  complete: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ input, ctx }) => {
-    const [updated] = await db.update(reminders).set({ status: "completed", updatedAt: /* @__PURE__ */ new Date() }).where(and(eq(reminders.id, input.id), eq(reminders.userId, ctx.user.id))).returning();
-    return updated;
-  }),
-  delete: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ input, ctx }) => {
-    await db.delete(reminders).where(
-      and(eq(reminders.id, input.id), eq(reminders.userId, ctx.user.id))
-    );
-    return { ok: true };
-  })
-});
-
 // server/routers/tasks.ts
 init_drizzle_orm();
 init_schema2();
@@ -306175,7 +306140,6 @@ var catalogRouter = router({
 // server/routers/index.ts
 var appRouter = router({
   auth: authRouter,
-  reminders: remindersRouter,
   tasks: tasksRouter,
   sellers: sellersRouter,
   clients: clientsRouter,

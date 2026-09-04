@@ -175,6 +175,7 @@ function buildPedido(input: Partial<Pedido> & { id?: string }): Pedido {
     valorFretePorUnidade: input.valorFretePorUnidade ?? 0,
     observacoes: input.observacoes ?? '',
     criadoEm: input.criadoEm ?? new Date().toISOString(),
+    previsaoFaturamentoEm: input.previsaoFaturamentoEm ?? null,
     faturadoEm: input.faturadoEm ?? null,
     valorPago: input.valorPago ?? 0,
     aprovadoEm: input.aprovadoEm ?? null,
@@ -207,7 +208,12 @@ export const pedidos = {
     return result;
   },
   // Marca como faturado: congela o estimado atual e grava os itens reais.
-  faturar(id: string, itensReais: ItemPedido[]): Pedido | null {
+  //
+  // `faturadoEmISO` é a data REAL do embarque, escolhida por quem fatura. Ela
+  // define o mês da comissão a pagar, então não pode ser assumida como "hoje":
+  // um embarque de setembro lançado em outubro cairia no mês errado. Sem valor
+  // informado, cai em agora — comportamento anterior.
+  faturar(id: string, itensReais: ItemPedido[], faturadoEmISO?: string | null): Pedido | null {
     const atual = mirror.pedidos.find((p) => p.id === id);
     if (!atual) return null;
     const faturado: Pedido = {
@@ -215,12 +221,39 @@ export const pedidos = {
       itensEstimadoSnapshot: atual.itensEstimadoSnapshot ?? atual.itens,
       itens: itensReais,
       status: 'faturado',
-      faturadoEm: new Date().toISOString(),
+      faturadoEm: faturadoEmISO ?? new Date().toISOString(),
     };
     mirror = { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === id ? faturado : p)) };
     emit();
     api.faturamento.upsertPedido.mutate(faturado).catch(onWriteError);
     return faturado;
+  },
+  // Desfaz o faturamento: volta o pedido para o pipeline como estimado.
+  //
+  // Restaura os itens do snapshot do estimado, porque o que foi digitado ao
+  // faturar são as quantidades REAIS do embarque — mantê-las transformaria o
+  // dado real num "estimado" que ninguém estimou. O snapshot é limpo junto,
+  // senão um novo faturamento compararia contra o estimado de duas rodadas
+  // atrás.
+  //
+  // `previsaoFaturamentoEm` é preservada: ela é a competência do pedido
+  // enquanto estimado, e apagá-la jogaria o pedido de volta no mês da digitação.
+  desfazerFaturamento(id: string): Pedido | null {
+    const atual = mirror.pedidos.find((p) => p.id === id);
+    if (!atual || atual.status !== 'faturado') return null;
+    const estimado: Pedido = {
+      ...atual,
+      itens: atual.itensEstimadoSnapshot ?? atual.itens,
+      itensEstimadoSnapshot: null,
+      status: 'estimado',
+      faturadoEm: null,
+      // Valor pago se refere ao faturamento que está sendo desfeito.
+      valorPago: 0,
+    };
+    mirror = { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === id ? estimado : p)) };
+    emit();
+    api.faturamento.upsertPedido.mutate(estimado).catch(onWriteError);
+    return estimado;
   },
   remove(id: string, reason: string): void {
     mirror = { ...mirror, pedidos: mirror.pedidos.filter((p) => p.id !== id) };

@@ -1,6 +1,7 @@
 import { useAuth } from '../_core/hooks/useAuth';
 import { Link } from 'wouter';
 import { trpc } from '../lib/trpc';
+import { buildLocalReminderDate, toReminderFormFields } from '../lib/tasks/reminders';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 
@@ -252,7 +253,19 @@ export default function Tasks() {
   const [invoicePedidoId, setInvoicePedidoId] = useState<string | null>(null);
   const [deleteOrderDialogOpen, setDeleteOrderDialogOpen] = useState(false);
   const [deleteOrderPedidoId, setDeleteOrderPedidoId] = useState<string | null>(null);
-  const { pedidos: allPedidos, comissoes: fatComissoes } = useFatStore();
+  const { pedidos: allPedidos, comissoes: fatComissoes, actions: fatActions } = useFatStore();
+  // Desfaz o faturamento com confirmação: descarta as quantidades reais do
+  // embarque e tira o pedido do faturamento do mês.
+  const undoInvoice = (pedidoId: string) => {
+    const ok = window.confirm(
+      'Desfazer o faturamento deste pedido?\n\n' +
+        'Ele volta para "estimado" e sai do faturamento do mês. ' +
+        'As quantidades reais digitadas no embarque serão substituídas pelos valores estimados.',
+    );
+    if (!ok) return;
+    fatActions.pedidos.desfazerFaturamento(pedidoId);
+    toast.success('Faturamento desfeito. O pedido voltou para estimado.');
+  };
   // ID da tarefa mais urgente a destacar após salvar
   const [highlightTaskId, setHighlightTaskId] = useState<number | null>(null);
   // Ref para controlar alerta de ociosidade (último contato feito)
@@ -517,10 +530,8 @@ export default function Tasks() {
     try {
       const reminderDateStr = overrides?.reminderDate ?? formData.reminderDate;
       const reminderTimeStr = overrides?.reminderTime ?? formData.reminderTime;
-      let reminderDateTime: Date | undefined;
-      if (reminderDateStr && reminderTimeStr) {
-        reminderDateTime = new Date(`${reminderDateStr}T${reminderTimeStr}:00`);
-      }
+      // Hora local, nunca toISOString() — ver buildLocalReminderDate.
+      const reminderDateTime = buildLocalReminderDate(reminderDateStr, reminderTimeStr) ?? undefined;
       if (editingTask) {
         // E-mail digitado/alterado à mão = confirmado. Se não mudou, não mexe na
         // confirmação (passa undefined) — evita confirmar importados num save qualquer.
@@ -932,13 +943,8 @@ export default function Tasks() {
 
   const handleEdit = useCallback((task: Task) => {
     setEditingTask(task);
-    const d = task.reminderDate ? new Date(task.reminderDate) : null;
-    const reminderDate = d
-      ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-      : "";
-    const reminderTime = d
-      ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-      : "09:00";
+    // Componentes locais, nunca via toISOString() — ver toReminderFormFields.
+    const { reminderDate, reminderTime } = toReminderFormFields(task.reminderDate);
     // Use fullTask (from getById) for notes/description when available, since
     // tasks.list no longer returns those heavy columns.
     const taskNotes = (fullTask?.id === task.id ? fullTask.notes : task.notes) || "";
@@ -1864,6 +1870,18 @@ export default function Tasks() {
                                       }}
                                     >
                                       Marcar como faturado
+                                    </Button>
+                                  )}
+                                  {isFat && (
+                                    <Button
+                                      variant="outline" size="sm"
+                                      className="gap-1 text-[11px] h-6 px-2 text-amber-700 border-amber-300 hover:bg-amber-50"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        undoInvoice(ped.id);
+                                      }}
+                                    >
+                                      Desfazer faturamento
                                     </Button>
                                   )}
                                   <Button

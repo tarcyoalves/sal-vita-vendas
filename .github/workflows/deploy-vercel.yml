@@ -4,7 +4,7 @@ on:
     branches: [main]
   workflow_dispatch:
 jobs:
-  # Não publica com typecheck quebrado.
+  # Não publica com typecheck ou testes quebrados.
   typecheck:
     uses: ./.github/workflows/typecheck.yml
 
