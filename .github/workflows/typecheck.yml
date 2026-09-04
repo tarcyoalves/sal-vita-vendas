@@ -1,4 +1,4 @@
-name: Typecheck
+name: Typecheck & Tests
 
 # Portão de qualidade. Existe porque `vite build` transpila SEM checar tipos:
 # em agosto/2026 um commit derrubou 59 procedures do router de e-mail marketing
@@ -17,6 +17,7 @@ on:
 
 jobs:
   typecheck:
+    name: typecheck-and-tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,5 +32,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Typecheck (tsc --noEmit)
+      - name: Typecheck & Tests (tsc --noEmit)
         run: npx tsc --noEmit

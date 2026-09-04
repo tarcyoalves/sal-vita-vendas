@@ -43296,6 +43296,9 @@ var init_schema2 = __esm({
       valorFretePorUnidade: doublePrecision("valor_frete_por_unidade").notNull().default(0),
       observacoes: text("observacoes").notNull().default(""),
       criadoEm: text("criado_em").notNull(),
+      // Mês previsto de faturamento/embarque — competência da comissão estimada.
+      // Pedido fechado em agosto para embarcar em setembro é comissão de setembro.
+      previsaoFaturamentoEm: text("previsao_faturamento_em"),
       faturadoEm: text("faturado_em"),
       valorPago: doublePrecision("valor_pago").notNull().default(0),
       // Revisão do admin — informativa, não bloqueia nenhuma ação do atendente.
@@ -305591,6 +305594,9 @@ var pedidoSchema = external_exports.object({
   valorFretePorUnidade: external_exports.number(),
   observacoes: external_exports.string(),
   criadoEm: external_exports.string(),
+  // Mês de competência enquanto o pedido é estimado. Opcional para aceitar
+  // pedidos legados (e clientes antigos em cache) sem quebrar a mutation.
+  previsaoFaturamentoEm: external_exports.string().nullable().optional().default(null),
   faturadoEm: external_exports.string().nullable(),
   valorPago: external_exports.number().optional().default(0),
   aprovadoEm: external_exports.string().nullable().optional().default(null),
@@ -305671,6 +305677,7 @@ var faturamentoRouter = router({
         prazoPagamentoFrete: values.prazoPagamentoFrete,
         valorFretePorUnidade: values.valorFretePorUnidade,
         observacoes: values.observacoes,
+        previsaoFaturamentoEm: values.previsaoFaturamentoEm,
         faturadoEm: values.faturadoEm,
         valorPago: values.valorPago
       }
@@ -306211,7 +306218,7 @@ async function seedAdminIfNeeded() {
   `;
   console.log("[migrate] admin user seeded");
 }
-var SCHEMA_VERSION = "2026-08-12b";
+var SCHEMA_VERSION = "2026-09-04a";
 async function ensureTablesExist() {
   try {
     await seedAdminIfNeeded();
@@ -306758,6 +306765,8 @@ async function ensureTablesExist() {
   await sql4`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS aprovado_por TEXT`;
   await sql4`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER`;
   await sql4`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS created_by_role TEXT`;
+  await sql4`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS previsao_faturamento_em TEXT`;
+  await sql4`UPDATE fat_orders SET previsao_faturamento_em = criado_em WHERE previsao_faturamento_em IS NULL`;
   await sql4`CREATE INDEX IF NOT EXISTS fat_orders_pending_approval_idx ON fat_orders(created_by_role) WHERE aprovado_em IS NULL`;
   await sql4`
     UPDATE fat_products
