@@ -682,6 +682,9 @@ export const fatOrders = pgTable('fat_orders', {
   valorFretePorUnidade: doublePrecision('valor_frete_por_unidade').notNull().default(0),
   observacoes: text('observacoes').notNull().default(''),
   criadoEm: text('criado_em').notNull(),
+  // Mês previsto de faturamento/embarque — competência da comissão estimada.
+  // Pedido fechado em agosto para embarcar em setembro é comissão de setembro.
+  previsaoFaturamentoEm: text('previsao_faturamento_em'),
   faturadoEm: text('faturado_em'),
   valorPago: doublePrecision('valor_pago').notNull().default(0),
   // Revisão do admin — informativa, não bloqueia nenhuma ação do atendente.

@@ -13,7 +13,7 @@ import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { OrderItemsEditor } from './OrderItemsEditor';
 import { useFatStore } from '../../lib/faturamento/store';
-import { totalItens, formatBRL, parseBRL } from '../../lib/faturamento/calc';
+import { totalItens, formatBRL, parseBRL, dataInputLocal, hojeInputLocal } from '../../lib/faturamento/calc';
 import type { ItemPedido, Pedido } from '../../lib/faturamento/types';
 
 interface OrderDialogProps {
@@ -88,6 +88,7 @@ export function OrderDialog({
   const [prazoPagamentoFrete, setPrazoPagamentoFrete] = useState('');
   const [valorFreteRaw, setValorFreteRaw] = useState('');
   const [observacoes, setObservacoes] = useState('');
+  const [previsaoFaturamento, setPrevisaoFaturamento] = useState('');
 
   // Pedido recém-criado nesta sessão do diálogo: assim que o admin confirma
   // "Pedido criado!" ele pode continuar editando (agora como update) até
@@ -111,6 +112,10 @@ export function OrderDialog({
       setPrazoPagamentoFrete(existing.prazoPagamentoFrete ?? '');
       setValorFreteRaw(existing.valorFretePorUnidade ? String(existing.valorFretePorUnidade).replace('.', ',') : '');
       setObservacoes(existing.observacoes ?? '');
+      // Legado sem previsão: mostra o mês em que ele já aparecia (criação), o
+      // mesmo fallback de dataCompetenciaPedido, para não deslocar o relatório
+      // só por abrir e salvar o pedido.
+      setPrevisaoFaturamento(dataInputLocal(existing.previsaoFaturamentoEm ?? existing.criadoEm));
     } else {
       const parsed = parseTaskClientInfo(task);
       setClienteNome(task?.clientName ?? task?.title ?? '');
@@ -123,6 +128,7 @@ export function OrderDialog({
       setPrazoPagamentoFrete('');
       setValorFreteRaw('');
       setObservacoes('');
+      setPrevisaoFaturamento(hojeInputLocal());
     }
   }, [open, existingPedidoId, task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -151,6 +157,10 @@ export function OrderDialog({
       toast.error('Informe o prazo de pagamento do frete');
       return;
     }
+    if (!previsaoFaturamento) {
+      toast.error('Informe a previsão de faturamento/embarque');
+      return;
+    }
     const isFirstSave = !effectiveId;
     const pedido = actions.pedidos.upsert({
       id: effectiveId ?? undefined,
@@ -168,7 +178,10 @@ export function OrderDialog({
       prazoPagamentoFrete: prazoPagamentoFrete.trim(),
       valorFretePorUnidade: parseBRL(valorFreteRaw),
       observacoes: observacoes.trim(),
-      status: 'estimado',
+      previsaoFaturamentoEm: previsaoFaturamento,
+      // Não regride um pedido já faturado: editar dados cadastrais não pode
+      // desfazer o embarque nem descartar a data real que define a comissão.
+      status: existing?.status ?? 'estimado',
     });
     onSaved?.(pedido);
     if (isFirstSave) {
@@ -288,6 +301,23 @@ export function OrderDialog({
                   onChange={(e) => setValorFreteRaw(e.target.value)}
                   className="text-sm"
                 />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="od-previsao" className="text-xs">
+                  Previsão de faturamento/embarque <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="od-previsao"
+                  type="date"
+                  value={previsaoFaturamento}
+                  onChange={(e) => setPrevisaoFaturamento(e.target.value)}
+                  className="text-sm"
+                  required
+                />
+                <p className="text-[11px] text-slate-500">
+                  Define o mês da comissão estimada. Pedido fechado agora para embarcar
+                  no mês seguinte conta no mês do embarque.
+                </p>
               </div>
             </div>
             <div className="space-y-1.5">

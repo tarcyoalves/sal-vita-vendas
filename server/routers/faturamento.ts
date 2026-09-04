@@ -57,6 +57,9 @@ const pedidoSchema = z.object({
   valorFretePorUnidade: z.number(),
   observacoes: z.string(),
   criadoEm: z.string(),
+  // Mês de competência enquanto o pedido é estimado. Opcional para aceitar
+  // pedidos legados (e clientes antigos em cache) sem quebrar a mutation.
+  previsaoFaturamentoEm: z.string().nullable().optional().default(null),
   faturadoEm: z.string().nullable(),
   valorPago: z.number().optional().default(0),
   aprovadoEm: z.string().nullable().optional().default(null),
@@ -181,6 +184,7 @@ export const faturamentoRouter = router({
             prazoPagamentoFrete: values.prazoPagamentoFrete,
             valorFretePorUnidade: values.valorFretePorUnidade,
             observacoes: values.observacoes,
+            previsaoFaturamentoEm: values.previsaoFaturamentoEm,
             faturadoEm: values.faturadoEm,
             valorPago: values.valorPago,
           },

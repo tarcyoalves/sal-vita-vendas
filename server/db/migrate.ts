@@ -32,7 +32,7 @@ async function bootstrapInitialAdmin() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-08-12b';
+const SCHEMA_VERSION = '2026-09-04a';
 
 export async function ensureTablesExist() {
   // Fast path: if the schema marker matches, the DB is already fully migrated.
@@ -679,6 +679,14 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS aprovado_por TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS created_by_role TEXT`;
+
+  // ── Competência da comissão ────────────────────────────────────────────────
+  // Pedido fechado num mês e embarcado no seguinte é comissão do mês em que
+  // fatura. Antes disso o pipeline usava criado_em e misturava os dois meses.
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS previsao_faturamento_em TEXT`;
+  // Backfill dos pedidos que já existiam: preserva exatamente o mês em que eles
+  // apareciam antes desta mudança (criado_em), em vez de inventar uma previsão.
+  await sql`UPDATE fat_orders SET previsao_faturamento_em = criado_em WHERE previsao_faturamento_em IS NULL`;
   await sql`CREATE INDEX IF NOT EXISTS fat_orders_pending_approval_idx ON fat_orders(created_by_role) WHERE aprovado_em IS NULL`;
 
   // SAL MARINHO MOIDO INTEGRAL VITA PREMIUM 10X1 KG: comissão sempre 10%, nunca
