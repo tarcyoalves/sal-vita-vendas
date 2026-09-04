@@ -14,7 +14,7 @@ import {
 } from '../../lib/faturamento/calc';
 import { OrderPrintDocument } from './OrderPrintDocument';
 import { LinkTaskDialog } from './LinkTaskDialog';
-import { Pencil, Truck, Trash2, CheckCircle2, Printer, Link2 } from 'lucide-react';
+import { Pencil, Truck, Trash2, CheckCircle2, Printer, Link2, Undo2 } from 'lucide-react';
 
 interface OrderDetailDialogProps {
   open: boolean;
@@ -76,6 +76,21 @@ export function OrderDetailDialog({
     actions.pedidos.aprovar(pedido.id, user.name);
     toast.success('Pedido aprovado!');
     onApproved?.();
+  };
+
+  // Confirmação explícita: desfazer descarta as quantidades reais do embarque
+  // (voltando ao estimado) e tira o pedido do faturamento do mês. Não é uma
+  // ação que se queira disparar por engano num clique.
+  const handleDesfazer = () => {
+    const ok = window.confirm(
+      'Desfazer o faturamento deste pedido?\n\n' +
+        'Ele volta para "estimado" e sai do faturamento do mês. ' +
+        'As quantidades reais digitadas no embarque serão substituídas pelos valores estimados.',
+    );
+    if (!ok) return;
+    actions.pedidos.desfazerFaturamento(pedido.id);
+    toast.success('Faturamento desfeito. O pedido voltou para estimado.');
+    onOpenChange(false);
   };
 
   return (
@@ -276,6 +291,17 @@ export function OrderDetailDialog({
             >
               <Truck size={14} />
               Marcar como faturado
+            </Button>
+          )}
+          {isFaturado && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-amber-700 border-amber-300 hover:bg-amber-50"
+              onClick={handleDesfazer}
+            >
+              <Undo2 size={14} />
+              Desfazer faturamento
             </Button>
           )}
           <Button size="sm" className="gap-1.5" onClick={onEdit}>

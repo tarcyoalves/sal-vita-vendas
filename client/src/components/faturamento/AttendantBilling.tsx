@@ -16,7 +16,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import {
   DollarSign, TrendingUp, Package, ChevronLeft, ChevronRight,
-  Plus, Pencil, Truck, Trash2, Printer, Link2,
+  Plus, Pencil, Truck, Trash2, Printer, Link2, Undo2,
 } from 'lucide-react';
 
 const MESES = [
@@ -151,6 +151,19 @@ export default function AttendantBilling() {
     setInvoiceOpen(true);
   };
 
+  // Desfaz o faturamento com confirmação: a ação descarta as quantidades reais
+  // do embarque e tira o pedido do faturamento do mês.
+  const undoInvoice = (pedidoId: string) => {
+    const ok = window.confirm(
+      'Desfazer o faturamento deste pedido?\n\n' +
+        'Ele volta para "estimado" e sai do faturamento do mês. ' +
+        'As quantidades reais digitadas no embarque serão substituídas pelos valores estimados.',
+    );
+    if (!ok) return;
+    actions.pedidos.desfazerFaturamento(pedidoId);
+    toast.success('Faturamento desfeito. O pedido voltou para estimado.');
+  };
+
   const openDelete = (pedidoId: string) => {
     setDeletePedidoId(pedidoId);
     setDeleteOpen(true);
@@ -258,6 +271,7 @@ export default function AttendantBilling() {
               onOpenLinkDialog={() => setLinkingPedidoId(p.id)}
               onEdit={() => openEditOrder(p.id)}
               onInvoice={() => openInvoice(p.id)}
+              onUndoInvoice={() => undoInvoice(p.id)}
               onDelete={() => openDelete(p.id)}
               onPrint={() => openPrint(p)}
             />
@@ -303,6 +317,7 @@ function PedidoCard({
   onOpenLinkDialog,
   onEdit,
   onInvoice,
+  onUndoInvoice,
   onDelete,
   onPrint,
 }: {
@@ -310,6 +325,7 @@ function PedidoCard({
   onOpenLinkDialog: () => void;
   onEdit: () => void;
   onInvoice: () => void;
+  onUndoInvoice: () => void;
   onDelete: () => void;
   onPrint: () => void;
 }) {
@@ -450,6 +466,17 @@ function PedidoCard({
             >
               <Truck size={12} />
               Marcar como faturado
+            </Button>
+          )}
+          {isFaturado && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onUndoInvoice}
+              className="gap-1 text-xs h-7 text-amber-700 border-amber-300 hover:bg-amber-50"
+            >
+              <Undo2 size={12} />
+              Desfazer
             </Button>
           )}
           <Button
