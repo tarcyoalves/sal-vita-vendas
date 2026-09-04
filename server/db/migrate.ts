@@ -5,6 +5,27 @@ import { readInitialAdminConfig } from './initialAdmin';
 const DATABASE_URL = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL!;
 export const sql = neon(DATABASE_URL);
 
+/**
+ * Envolve o bootstrap para que um erro de configuração NÃO derrube a API.
+ *
+ * A intenção original — nunca recriar uma credencial previsível — é preservada:
+ * em caso de erro o bootstrap é PULADO, não completado com um default. O que
+ * muda é o alcance da falha: antes uma variável faltando (ex.: alguém define só
+ * INITIAL_ADMIN_EMAIL) lançava aqui e levava junto `ensureTablesExist`, ou
+ * seja, tirava o CRM inteiro do ar por um problema que só afeta a criação da
+ * conta inicial. Agora o erro aparece no log e o resto da aplicação sobe.
+ */
+async function bootstrapInitialAdminSafe() {
+  try {
+    await bootstrapInitialAdmin();
+  } catch (err) {
+    console.error(
+      '[bootstrap] administrador inicial NÃO criado —',
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
 async function bootstrapInitialAdmin() {
   // Config primeiro, banco depois: sem INITIAL_ADMIN_* não há bootstrap nenhum,
   // então nem vale gastar o round-trip. O fast path roda em todo cold start e
@@ -52,7 +73,7 @@ export async function ensureTablesExist() {
         sql`CREATE TABLE IF NOT EXISTS email_template_categories (id SERIAL PRIMARY KEY, name TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)`,
         sql`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS category_ids JSONB`,
       ]);
-      await bootstrapInitialAdmin();
+      await bootstrapInitialAdminSafe();
       return;
     }
   } catch { /* schema_meta missing → fall through and run the full migration */ }
@@ -778,7 +799,7 @@ export async function ensureTablesExist() {
   // Depois do DDL: em banco novo a tabela `users` só existe a partir daqui, e
   // o fast path acima nunca roda na primeira inicialização. Se o bootstrap
   // ficasse só lá, uma instalação limpa jamais ganharia a conta inicial.
-  await bootstrapInitialAdmin();
+  await bootstrapInitialAdminSafe();
 
   // Record the schema marker so every subsequent cold start takes the fast path
   // at the top of this function instead of re-running the whole battery above.

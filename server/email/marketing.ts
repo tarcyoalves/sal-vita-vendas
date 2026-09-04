@@ -437,6 +437,18 @@ export function renderPlainText(html: string): string {
     .replace(/&gt;/gi, '>')
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
+    // Entidades numéricas e as nomeadas acentuadas: o cabeçalho da marca usa
+    // &oacute; e os corpos costumam trazer acentos escapados, que chegavam
+    // literais ("Mossor&oacute;/RN") na alternativa em texto puro do e-mail.
+    .replace(/&#(\d+);/g, (_m, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_m, code: string) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&([aeiouAEIOU])(acute|grave|circ|uml|tilde);/g, (_m, letter: string, accent: string) => {
+      const marks: Record<string, string> = {
+        acute: '\u0301', grave: '\u0300', circ: '\u0302', uml: '\u0308', tilde: '\u0303',
+      };
+      return (letter + marks[accent]).normalize('NFC');
+    })
+    .replace(/&ccedil;/g, 'ç').replace(/&Ccedil;/g, 'Ç')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/[ \t]{2,}/g, ' ')
