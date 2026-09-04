@@ -17,6 +17,13 @@ import { emailSendCounters } from '../db/schema';
 import { spDateStr } from '../lib/tz';
 
 export const BRAND = '#0C3680';
+/**
+ * Largura máxima da coluna de texto dentro do corpo do e-mail. O card do
+ * layout() ocupa 100% da largura do leitor (nada de faixas cinza sobrando dos
+ * lados), então o conforto de leitura vem daqui: sem esse teto, uma tela larga
+ * transformaria cada parágrafo numa linha única de ponta a ponta.
+ */
+export const CONTENT_MAX_WIDTH = 820;
 const MKT_DAILY_LIMIT = parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? '90');
 
 export interface AccountLimits { daily: number; monthly: number; }
@@ -877,55 +884,87 @@ export function layout(body: string, unsubUrl: string, signatureHtml?: string): 
         return `<img${clean} width="520" style="width:520px;max-width:100%;height:auto;display:block;">`;
       });
   }
+  // Coluna de leitura compartilhada: cabeçalho, corpo, assinatura e rodapé usam
+  // o MESMO wrapper, senão cada faixa alinharia num lugar diferente (o texto
+  // centralizado em CONTENT_MAX_WIDTH e o resto encostado na borda).
+  // O recuo lateral vive DENTRO da coluna, não no <td> da faixa. Se ficasse no
+  // <td>, cada faixa teria uma largura útil diferente (a do cabeçalho seria
+  // W-80 e a do corpo W) e em telas estreitas o texto do corpo não alinharia
+  // com o do cabeçalho e do rodapé.
+  const column = (inner: string, padding: string, align = 'left') =>
+    `<table role="presentation" class="sv-col" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:${CONTENT_MAX_WIDTH}px;margin:0 auto;">
+                <tr><td align="${align}" style="padding:${padding};">${inner}</td></tr>
+              </table>`;
+
   const sigBlock = sigHtml
     ? `<tr>
-            <td style="padding:16px 40px 24px;">
-              ${sigHtml}
+            <td style="padding:0;">
+              ${column(sigHtml, '16px 40px 24px')}
             </td>
           </tr>`
     : '';
   const htmlBody = bodyToHtml(body);
+  // Um corpo já estruturado (template com <table>) traz o recuo próprio — não
+  // somar o nosso, senão o conteúdo ganha 80px de margem duplicada.
   const isStructuredHtml = /<table[\s>]/i.test(htmlBody);
-  const bodyPadding = isStructuredHtml ? 'padding:0;' : 'padding:32px 40px 24px;';
-  // Shell da marca: container centralizado de 600px (padrão de e-mail — antes a
-  // tabela era 100% e o texto esticava a tela inteira em desktop), cabeçalho
-  // Sal Vita em texto puro (imagens externas são bloqueadas por padrão em
-  // muitos clientes de e-mail), corpo em card branco e rodapé em branco-sal.
+  const bodyPadding = isStructuredHtml ? '0' : '32px 40px 24px';
+  // Shell da marca: o conteúdo preenche o corpo do e-mail. O card antes era fixo
+  // em 600px sobre um fundo cinza, e no leitor isso virava uma coluna estreita
+  // com duas faixas cinza sobrando dos lados. Agora a tabela é 100% da largura
+  // disponível (sem moldura, sem canto arredondado, fundo branco de ponta a
+  // ponta) e o limite de leitura fica só no texto, via max-width interno.
+  // Cabeçalho Sal Vita em texto puro — imagens externas são bloqueadas por
+  // padrão em muitos clientes de e-mail.
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sal Vita</title>
+  <style>
+    /* No celular, 40px de recuo de cada lado comem um terço da tela. Clientes
+       que ignoram <style> (parte do Outlook) ficam com o padding inline, que é
+       o padrão seguro — por isso a media query só reduz, nunca é obrigatória. */
+    @media only screen and (max-width:600px) {
+      .sv-col > tbody > tr > td { padding-left:20px !important; padding-right:20px !important; }
+    }
+  </style>
 </head>
-<body style="margin:0;padding:0;background:#ECEAE4;font-family:system-ui,Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ECEAE4;">
+<body style="margin:0;padding:0;background:#ffffff;font-family:system-ui,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;">
     <tr>
-      <td align="center" style="padding:24px 12px;">
-        <table width="600" cellpadding="0" cellspacing="0" border="0"
-               style="width:600px;max-width:100%;background:#ffffff;border:1px solid #E0DDD4;border-radius:10px;overflow:hidden;">
+      <td align="center" style="padding:0;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0"
+               style="width:100%;background:#ffffff;">
           <tr>
-            <td style="background:#0C3680;padding:16px 40px;">
-              <span style="font-family:Georgia,'Times New Roman',serif;font-style:italic;font-weight:bold;font-size:22px;color:#ffffff;">Sal Vita</span>
-              <span style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#9DB8E4;padding-left:10px;">Sal Marinho de Mossor&oacute;/RN</span>
+            <td style="background:#0C3680;padding:0;">
+              ${column(
+                `<span style="font-family:Georgia,'Times New Roman',serif;font-style:italic;font-weight:bold;font-size:22px;color:#ffffff;">Sal Vita</span>
+              <span style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#9DB8E4;padding-left:10px;">Sal Marinho de Mossor&oacute;/RN</span>`,
+                '16px 40px'
+              )}
             </td>
           </tr>
           <tr>
-            <td style="${bodyPadding}">
-              ${htmlBody}
+            <td style="padding:0;">
+              ${column(htmlBody, bodyPadding)}
             </td>
           </tr>
           ${sigBlock}
           <tr>
-            <td style="background:#F7F6F2;padding:20px 40px;border-top:1px solid #E0DDD4;text-align:center;">
-              <p style="margin:0;font-size:12px;color:#6B7280;">
+            <td style="background:#F7F6F2;padding:0;border-top:1px solid #E0DDD4;text-align:center;">
+              ${column(
+                `<p style="margin:0;font-size:12px;color:#6B7280;">
                 <strong>Sal Vita &mdash; Sal Marinho Premium de Mossoró/RN</strong>
               </p>
               <p style="margin:8px 0 0;font-size:11px;color:#9CA3AF;">
                 Você está recebendo este e-mail porque é cliente ou contato da Sal Vita.<br />
                 <a href="${unsubUrl}" style="color:#9CA3AF;text-decoration:underline;">Não quero mais receber e-mails</a>
               </p>
-              <p style="margin:8px 0 0;font-size:11px;color:#9CA3AF;">Sal Vita &middot; Mossor&oacute;/RN &middot; Brasil</p>
+              <p style="margin:8px 0 0;font-size:11px;color:#9CA3AF;">Sal Vita &middot; Mossor&oacute;/RN &middot; Brasil</p>`,
+                '20px 40px',
+                'center'
+              )}
             </td>
           </tr>
         </table>
