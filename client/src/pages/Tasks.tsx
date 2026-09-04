@@ -253,7 +253,19 @@ export default function Tasks() {
   const [invoicePedidoId, setInvoicePedidoId] = useState<string | null>(null);
   const [deleteOrderDialogOpen, setDeleteOrderDialogOpen] = useState(false);
   const [deleteOrderPedidoId, setDeleteOrderPedidoId] = useState<string | null>(null);
-  const { pedidos: allPedidos, comissoes: fatComissoes } = useFatStore();
+  const { pedidos: allPedidos, comissoes: fatComissoes, actions: fatActions } = useFatStore();
+  // Desfaz o faturamento com confirmação: descarta as quantidades reais do
+  // embarque e tira o pedido do faturamento do mês.
+  const undoInvoice = (pedidoId: string) => {
+    const ok = window.confirm(
+      'Desfazer o faturamento deste pedido?\n\n' +
+        'Ele volta para "estimado" e sai do faturamento do mês. ' +
+        'As quantidades reais digitadas no embarque serão substituídas pelos valores estimados.',
+    );
+    if (!ok) return;
+    fatActions.pedidos.desfazerFaturamento(pedidoId);
+    toast.success('Faturamento desfeito. O pedido voltou para estimado.');
+  };
   // ID da tarefa mais urgente a destacar após salvar
   const [highlightTaskId, setHighlightTaskId] = useState<number | null>(null);
   // Ref para controlar alerta de ociosidade (último contato feito)
@@ -1858,6 +1870,18 @@ export default function Tasks() {
                                       }}
                                     >
                                       Marcar como faturado
+                                    </Button>
+                                  )}
+                                  {isFat && (
+                                    <Button
+                                      variant="outline" size="sm"
+                                      className="gap-1 text-[11px] h-6 px-2 text-amber-700 border-amber-300 hover:bg-amber-50"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        undoInvoice(ped.id);
+                                      }}
+                                    >
+                                      Desfazer faturamento
                                     </Button>
                                   )}
                                   <Button

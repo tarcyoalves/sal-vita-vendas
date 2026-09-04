@@ -208,6 +208,75 @@ describe('o que o diálogo "Marcar como faturado" grava', () => {
   });
 });
 
+describe('desfazer faturamento', () => {
+  // Espelha desfazerFaturamento() do store: volta para estimado, restaura os
+  // itens do snapshot e limpa a data do embarque.
+  function desfazer(p: Pedido): Pedido {
+    return {
+      ...p,
+      itens: p.itensEstimadoSnapshot ?? p.itens,
+      itensEstimadoSnapshot: null,
+      status: 'estimado',
+      faturadoEm: null,
+      valorPago: 0,
+    };
+  }
+
+  test('o pedido sai do faturamento do mês e volta para o pipeline', () => {
+    const faturado = pedido({
+      status: 'faturado',
+      faturadoEm: '2026-09-30',
+      previsaoFaturamentoEm: '2026-09-10',
+    });
+    expect(resumoAtendente([faturado], 10, 'Ana', 5, SETEMBRO).comissaoEmbarcada)
+      .toBeCloseTo(50, 6);
+
+    const revertido = desfazer(faturado);
+    const resumo = resumoAtendente([revertido], 10, 'Ana', 5, SETEMBRO);
+    // Nada mais embarcado, mas continua previsto no mês da previsão.
+    expect(resumo.comissaoEmbarcada).toBe(0);
+    expect(resumo.comissaoPrevista).toBeCloseTo(50, 6);
+    expect(revertido.status).toBe('estimado');
+    expect(revertido.faturadoEm).toBeNull();
+  });
+
+  test('restaura as quantidades estimadas, descartando as reais do embarque', () => {
+    // Estimado 1000, embarcou 800: ao desfazer, volta a valer o estimado.
+    const faturado = pedido({
+      status: 'faturado',
+      faturadoEm: '2026-09-30',
+      itens: [item(800)],
+      itensEstimadoSnapshot: [item(1000)],
+    });
+    const revertido = desfazer(faturado);
+    expect(totalItens(revertido.itens)).toBe(1000);
+    // Snapshot limpo: um novo faturamento não pode comparar contra o de antes.
+    expect(revertido.itensEstimadoSnapshot).toBeNull();
+  });
+
+  test('a previsão sobrevive, senão o pedido cairia no mês da digitação', () => {
+    const faturado = pedido({
+      criadoEm: '2026-08-28',
+      previsaoFaturamentoEm: '2026-09-10',
+      status: 'faturado',
+      faturadoEm: '2026-09-30',
+    });
+    const revertido = desfazer(faturado);
+    expect(dataCompetenciaPedido(revertido)).toBe('2026-09-10');
+    expect(pedidoNoMes(revertido, SETEMBRO)).toBe(true);
+    expect(pedidoNoMes(revertido, AGOSTO)).toBe(false);
+  });
+
+  test('desfazer e refaturar em outro mês move a competência', () => {
+    const faturado = pedido({ status: 'faturado', faturadoEm: '2026-09-30' });
+    const revertido = desfazer(faturado);
+    // Refaturado com a data correta de outubro.
+    const refaturado: Pedido = { ...revertido, status: 'faturado', faturadoEm: '2026-10-05' };
+    expect(pedidoNoMes(refaturado, OUTUBRO)).toBe(true);
+    expect(pedidoNoMes(refaturado, SETEMBRO)).toBe(false);
+  });
+});
+
 describe('fuso e fronteira de ano', () => {
   test('data pura de 1º do mês não escorrega para o mês anterior', () => {
     // `new Date('2026-09-01')` é UTC e, em UTC-3, viraria 31/08 — o erro de um

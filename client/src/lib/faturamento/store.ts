@@ -228,6 +228,33 @@ export const pedidos = {
     api.faturamento.upsertPedido.mutate(faturado).catch(onWriteError);
     return faturado;
   },
+  // Desfaz o faturamento: volta o pedido para o pipeline como estimado.
+  //
+  // Restaura os itens do snapshot do estimado, porque o que foi digitado ao
+  // faturar são as quantidades REAIS do embarque — mantê-las transformaria o
+  // dado real num "estimado" que ninguém estimou. O snapshot é limpo junto,
+  // senão um novo faturamento compararia contra o estimado de duas rodadas
+  // atrás.
+  //
+  // `previsaoFaturamentoEm` é preservada: ela é a competência do pedido
+  // enquanto estimado, e apagá-la jogaria o pedido de volta no mês da digitação.
+  desfazerFaturamento(id: string): Pedido | null {
+    const atual = mirror.pedidos.find((p) => p.id === id);
+    if (!atual || atual.status !== 'faturado') return null;
+    const estimado: Pedido = {
+      ...atual,
+      itens: atual.itensEstimadoSnapshot ?? atual.itens,
+      itensEstimadoSnapshot: null,
+      status: 'estimado',
+      faturadoEm: null,
+      // Valor pago se refere ao faturamento que está sendo desfeito.
+      valorPago: 0,
+    };
+    mirror = { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === id ? estimado : p)) };
+    emit();
+    api.faturamento.upsertPedido.mutate(estimado).catch(onWriteError);
+    return estimado;
+  },
   remove(id: string, reason: string): void {
     mirror = { ...mirror, pedidos: mirror.pedidos.filter((p) => p.id !== id) };
     emit();
