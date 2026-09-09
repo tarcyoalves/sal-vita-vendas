@@ -15,6 +15,7 @@ import { describe, expect, test } from 'vitest';
 import {
   dataCompetenciaPedido,
   pedidoNoMes,
+  isoNoMes,
   resumoAtendente,
   dataInputLocal,
   formatDataBR,
@@ -299,5 +300,27 @@ describe('fuso e fronteira de ano', () => {
     expect(dataInputLocal('2026-09-01')).toBe('2026-09-01');
     expect(formatDataBR('2026-09-01')).toBe('01/09/2026');
     expect(formatDataBR(null)).toBe('--');
+  });
+
+  test('isoNoMes e parseDataLocal aceitam instâncias Date e números sem estourar e.trim', () => {
+    // Na página de progresso do atendente, tasks.lastContactedAt vem deserializado
+    // como Date pelo SuperJSON. Se parseDataLocal assumir string e chamar .trim(),
+    // a página quebra com TypeError: e.trim is not a function.
+    const dateObj = new Date('2026-08-15T14:30:00');
+    expect(isoNoMes(dateObj, AGOSTO)).toBe(true);
+    expect(isoNoMes(dateObj, SETEMBRO)).toBe(false);
+
+    const timestampNum = dateObj.getTime();
+    expect(isoNoMes(timestampNum, AGOSTO)).toBe(true);
+
+    expect(dataInputLocal(dateObj)).toBe('2026-08-15');
+    expect(formatDataBR(dateObj)).toBe('15/08/2026');
+
+    // Casos nulos / indefinidos / inválidos
+    expect(isoNoMes(null, AGOSTO)).toBe(false);
+    expect(isoNoMes(undefined, AGOSTO)).toBe(false);
+    expect(isoNoMes(new Date(NaN), AGOSTO)).toBe(false);
+    expect(isoNoMes('data inválida', AGOSTO)).toBe(false);
+    expect(isoNoMes({} as any, AGOSTO)).toBe(false);
   });
 });

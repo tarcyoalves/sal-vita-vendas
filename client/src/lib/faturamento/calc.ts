@@ -66,8 +66,8 @@ export function freteUnitItem(it: ItemPedido, valorFretePorTonelada: number): nu
 // Formata um prazo de pagamento livre (ex: "30/45/60", "25", "à vista") —
 // só acrescenta "dias" quando o texto for puramente numérico/barras, pra não
 // grudar a palavra em valores como "à vista" que já são autoexplicativos.
-export function formatPrazo(valor: string, singular = false): string {
-  const v = (valor || '').trim();
+export function formatPrazo(valor: string | number | null | undefined, singular = false): string {
+  const v = typeof valor === 'string' ? valor.trim() : String(valor ?? '').trim();
   if (!v) return '--';
   if (/^[\d/]+$/.test(v)) return `${v} ${singular ? 'dia' : 'dias'}`;
   return v;
@@ -79,7 +79,7 @@ export function mesAtual(): FiltroMes {
   return { ano: d.getFullYear(), mes: d.getMonth() };
 }
 
-export function isoNoMes(iso: string | null, filtro: FiltroMes): boolean {
+export function isoNoMes(iso: string | Date | number | null | undefined, filtro: FiltroMes): boolean {
   if (!iso) return false;
   const d = parseDataLocal(iso);
   if (!d) return false;
@@ -87,23 +87,37 @@ export function isoNoMes(iso: string | null, filtro: FiltroMes): boolean {
 }
 
 /**
- * Lê uma data que pode chegar como `YYYY-MM-DD` (input date) ou ISO completo.
+ * Lê uma data que pode chegar como `YYYY-MM-DD` (input date), ISO completo,
+ * timestamp numérico ou já como instância de `Date` (ex.: retornos deserializados
+ * pelo SuperJSON, como `tasks.lastContactedAt`).
  *
  * `new Date('2026-09-01')` é interpretado como UTC e, em fuso negativo, volta
  * para 31/08 — exatamente o erro de um mês que esta regra existe para evitar.
  * Datas puras são montadas componente a componente, no fuso local.
  */
-export function parseDataLocal(valor: string | null): Date | null {
+export function parseDataLocal(valor: unknown): Date | null {
   if (!valor) return null;
-  const soData = /^(\d{4})-(\d{2})-(\d{2})$/.exec(valor.trim());
+  if (valor instanceof Date) {
+    return isNaN(valor.getTime()) ? null : valor;
+  }
+  if (typeof valor === 'number') {
+    const d = new Date(valor);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof valor !== 'string') {
+    return null;
+  }
+  const s = valor.trim();
+  if (!s) return null;
+  const soData = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
   const d = soData
     ? new Date(Number(soData[1]), Number(soData[2]) - 1, Number(soData[3]))
-    : new Date(valor);
+    : new Date(s);
   return isNaN(d.getTime()) ? null : d;
 }
 
 /** `YYYY-MM-DD` no fuso local — formato aceito por <input type="date">. */
-export function dataInputLocal(valor: string | null): string {
+export function dataInputLocal(valor: unknown): string {
   const d = parseDataLocal(valor);
   if (!d) return '';
   const mes = String(d.getMonth() + 1).padStart(2, '0');
@@ -116,7 +130,7 @@ export function hojeInputLocal(): string {
 }
 
 /** dd/mm/aaaa, ou '--' quando vazio/inválido. */
-export function formatDataBR(valor: string | null): string {
+export function formatDataBR(valor: unknown): string {
   const d = parseDataLocal(valor);
   return d ? d.toLocaleDateString('pt-BR') : '--';
 }
