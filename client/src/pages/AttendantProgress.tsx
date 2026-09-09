@@ -9,7 +9,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import AttendantBilling from '../components/faturamento/AttendantBilling';
 import { useFatStore } from '../lib/faturamento/store';
-import { resumoAtendente, isoNoMes, formatBRL } from '../lib/faturamento/calc';
+import { resumoAtendente, isoNoMes, formatBRL, parseDataLocal } from '../lib/faturamento/calc';
 
 const MES_ABBR = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
@@ -68,13 +68,13 @@ export default function AttendantProgress() {
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const weekStart  = new Date(todayStart.getTime() - 6 * 86400000);
 
-    const contactsToday = (tasks as any[]).filter(t =>
+    const contactsToday = tasks.filter(t =>
       t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart
     );
 
     const weekDays = Array.from({ length: 7 }, (_, i) => {
       const d = new Date(todayStart.getTime() - (6 - i) * 86400000);
-      const count = (tasks as any[]).filter(t =>
+      const count = tasks.filter(t =>
         t.lastContactedAt && dayKey(new Date(t.lastContactedAt)) === dayKey(d)
       ).length;
       return { date: d, count, label: ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][d.getDay()] };
@@ -97,23 +97,26 @@ export default function AttendantProgress() {
     const contactsPct = Math.min(Math.round((contactsToday.length / dailyGoal) * 100), 100);
     const productivity = hoursWorked > 0.1 ? (contactsToday.length / hoursWorked).toFixed(1) : '--';
 
-    const overdueToday = (tasks as any[]).filter(t =>
+    const overdueToday = tasks.filter(t =>
       t.reminderDate && t.reminderEnabled !== false && new Date(t.reminderDate) < now &&
       new Date(t.reminderDate) >= todayStart
     ).length;
 
-    const weekContacts = (tasks as any[]).filter(t =>
+    const weekContacts = tasks.filter(t =>
       t.lastContactedAt && new Date(t.lastContactedAt) >= weekStart
     ).length;
 
     // 🎉 Minhas conversões (clientes ativos)
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
-    const convertedTasks = (tasks as any[]).filter(t => !!t.convertedAt);
+    const convertedTasks = tasks.filter(t => !!t.convertedAt);
     const convertedCount = convertedTasks.length;
-    const conversionRate = (tasks as any[]).length > 0
-      ? Math.round((convertedCount / (tasks as any[]).length) * 100) : 0;
+    const conversionRate = tasks.length > 0
+      ? Math.round((convertedCount / tasks.length) * 100) : 0;
     const convertedThisMonth = convertedTasks.filter(t => {
-      try { return new Date(t.convertedAt) >= thirtyDaysAgo; } catch { return false; }
+      // `convertedAt` chega como Date (ou null) — parseDataLocal cobre os dois
+      // e evita o `new Date(null)`, que vira 1970 e contaria como convertido.
+      const d = parseDataLocal(t.convertedAt);
+      return d != null && d >= thirtyDaysAgo;
     }).length;
 
     return {
@@ -146,7 +149,7 @@ export default function AttendantProgress() {
     const pontos = Array.from({ length: 6 }, (_, i) => {
       const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
       const filtroMes = { ano: d.getFullYear(), mes: d.getMonth() };
-      const contatos = (tasks as any[]).filter(t => isoNoMes(t.lastContactedAt, filtroMes)).length;
+      const contatos = tasks.filter(t => isoNoMes(t.lastContactedAt, filtroMes)).length;
       const resumo = resumoAtendente(allPedidos, sellerProfile.id, sellerProfile.name, comissaoPct, filtroMes);
       return {
         label: `${MES_ABBR[filtroMes.mes]}/${String(filtroMes.ano).slice(2)}`,

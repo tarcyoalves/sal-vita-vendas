@@ -79,12 +79,15 @@ export function mesAtual(): FiltroMes {
   return { ano: d.getFullYear(), mes: d.getMonth() };
 }
 
-export function isoNoMes(iso: string | null, filtro: FiltroMes): boolean {
+export function isoNoMes(iso: DataEntrada, filtro: FiltroMes): boolean {
   if (!iso) return false;
   const d = parseDataLocal(iso);
   if (!d) return false;
   return d.getFullYear() === filtro.ano && d.getMonth() === filtro.mes;
 }
+
+/** O que estas funções de data aceitam na prática, não só o que se espera. */
+export type DataEntrada = string | Date | number | null | undefined;
 
 /**
  * Lê uma data que pode chegar como `YYYY-MM-DD` (input date) ou ISO completo.
@@ -93,8 +96,20 @@ export function isoNoMes(iso: string | null, filtro: FiltroMes): boolean {
  * para 31/08 — exatamente o erro de um mês que esta regra existe para evitar.
  * Datas puras são montadas componente a componente, no fuso local.
  */
-export function parseDataLocal(valor: string | null): Date | null {
-  if (!valor) return null;
+export function parseDataLocal(valor: DataEntrada): Date | null {
+  if (valor == null) return null;
+
+  // Nem todo chamador manda string: `lastContactedAt` e outros campos de data
+  // chegam do tRPC/superjson já como `Date`, e a tela de progresso os passa
+  // adiante via `tasks as any[]`, que apaga o tipo. Chamar `.trim()` neles
+  // quebrava a página inteira com "e.trim is not a function".
+  if (valor instanceof Date) return isNaN(valor.getTime()) ? null : valor;
+  if (typeof valor === 'number') {
+    const porNumero = new Date(valor);
+    return isNaN(porNumero.getTime()) ? null : porNumero;
+  }
+  if (typeof valor !== 'string') return null;
+
   const soData = /^(\d{4})-(\d{2})-(\d{2})$/.exec(valor.trim());
   const d = soData
     ? new Date(Number(soData[1]), Number(soData[2]) - 1, Number(soData[3]))
@@ -103,7 +118,7 @@ export function parseDataLocal(valor: string | null): Date | null {
 }
 
 /** `YYYY-MM-DD` no fuso local — formato aceito por <input type="date">. */
-export function dataInputLocal(valor: string | null): string {
+export function dataInputLocal(valor: DataEntrada): string {
   const d = parseDataLocal(valor);
   if (!d) return '';
   const mes = String(d.getMonth() + 1).padStart(2, '0');
@@ -116,7 +131,7 @@ export function hojeInputLocal(): string {
 }
 
 /** dd/mm/aaaa, ou '--' quando vazio/inválido. */
-export function formatDataBR(valor: string | null): string {
+export function formatDataBR(valor: DataEntrada): string {
   const d = parseDataLocal(valor);
   return d ? d.toLocaleDateString('pt-BR') : '--';
 }

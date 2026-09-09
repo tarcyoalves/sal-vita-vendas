@@ -11,13 +11,14 @@
  * usada por resumoAtendente, pela lista do atendente e pelo relatório.
  */
 
-import { describe, expect, test } from 'vitest';
+import { describe, expect, it, test } from 'vitest';
 import {
   dataCompetenciaPedido,
   pedidoNoMes,
   resumoAtendente,
   dataInputLocal,
   formatDataBR,
+  isoNoMes,
   totalItens,
 } from '../client/src/lib/faturamento/calc';
 import type { ItemPedido, Pedido } from '../client/src/lib/faturamento/types';
@@ -299,5 +300,46 @@ describe('fuso e fronteira de ano', () => {
     expect(dataInputLocal('2026-09-01')).toBe('2026-09-01');
     expect(formatDataBR('2026-09-01')).toBe('01/09/2026');
     expect(formatDataBR(null)).toBe('--');
+  });
+});
+
+/**
+ * Regressão: a página de progresso do atendente quebrava inteira com
+ * "TypeError: e.trim is not a function".
+ *
+ * `isoNoMes` passou a delegar para `parseDataLocal`, que fazia `valor.trim()`
+ * assumindo string. Mas `lastContactedAt` chega do tRPC/superjson como `Date`,
+ * e AttendantProgress o repassa através de `tasks as any[]` — o cast apaga o
+ * tipo, então o typecheck não pegava e só estourava em produção.
+ */
+describe('parseDataLocal aceita o que os chamadores realmente passam', () => {
+  const marco = { ano: 2026, mes: 2 }; // março (0-based)
+
+  it('aceita Date sem lançar', () => {
+    const data = new Date(2026, 2, 15);
+    expect(() => isoNoMes(data, marco)).not.toThrow();
+    expect(isoNoMes(data, marco)).toBe(true);
+  });
+
+  it('aceita epoch em número', () => {
+    expect(isoNoMes(new Date(2026, 2, 15).getTime(), marco)).toBe(true);
+  });
+
+  it('continua tratando string pura e ISO', () => {
+    expect(isoNoMes('2026-03-15', marco)).toBe(true);
+    expect(isoNoMes('2026-03-15T10:00:00.000Z', marco)).toBe(true);
+  });
+
+  it('devolve false para vazio, undefined e lixo, sem lançar', () => {
+    for (const v of [null, undefined, '', 'abc', {} as never]) {
+      expect(() => isoNoMes(v as never, marco)).not.toThrow();
+      expect(isoNoMes(v as never, marco)).toBe(false);
+    }
+  });
+
+  it('formatDataBR e dataInputLocal também aceitam Date', () => {
+    const d = new Date(2026, 2, 15);
+    expect(formatDataBR(d)).toBe('15/03/2026');
+    expect(dataInputLocal(d)).toBe('2026-03-15');
   });
 });
