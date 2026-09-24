@@ -19,10 +19,12 @@ Leia inteiro antes da primeira alteração. Depois, consulte por seção.
 **Ordem de leitura na primeira sessão:**
 
 1. Este arquivo (`HANDOFF-HERMES.md`)
-2. `ESTADO-DO-PROJETO.md` — estado atual, pendências e **a seção 4, de
+2. **`coordenacao/README.md`** — como registrar o que você está fazendo para
+   não colidir com outras IAs. **Obrigatório em toda sessão.**
+3. `ESTADO-DO-PROJETO.md` — estado atual, pendências e **a seção 4, de
    conformidade sanitária**, que é obrigatória antes de escrever qualquer texto
    que o cliente final leia
-3. `CLAUDE.md` — convenções de código (corrigido em 24/09/2026; o que estava
+4. `CLAUDE.md` — convenções de código (corrigido em 24/09/2026; o que estava
    errado antes está na seção 12)
 
 **Não use como instrução** — são históricos ou de outros contextos:
@@ -61,6 +63,11 @@ repositório. A seção 7 conta cada caso.
    pedir explicitamente.
 10. **Conformidade sanitária do produto** — as 6 regras da seção 1 do
     `ESTADO-DO-PROJETO.md` valem integralmente. Resumo na seção 9 deste arquivo.
+11. **Registre o que está fazendo, antes de fazer.** Outras IAs trabalham aqui ao
+    mesmo tempo. Antes de alterar qualquer coisa: leia `coordenacao/ativo/`,
+    crie a sua reivindicação e **publique** (push). Ao terminar, mova para
+    `coordenacao/registro/`. Nunca toque arquivos que estejam na reivindicação
+    de outro agente. Protocolo completo em `coordenacao/README.md`. *(caso A)*
 
 ---
 
@@ -166,17 +173,26 @@ git log --oneline -3
 
 # 2. Dependências. O node_modules pode não existir no checkout.
 test -d node_modules || npm install
+
+# 3. Quem mais está trabalhando agora? (coordenacao/README.md)
+ls coordenacao/ativo/
 ```
 
-**3. Entenda antes de mudar.**
+**Coordene antes de mexer.** Leia cada reivindicação em `coordenacao/ativo/`.
+Se alguma lista arquivos que você vai tocar, **não toque neles**. Senão, crie a
+sua a partir de `coordenacao/MODELO.md`, commite e **publique antes de
+codar** — reivindicação que não foi publicada não existe para os outros.
+
+**4. Entenda antes de mudar.**
 - Leia o arquivo inteiro que você vai editar, não só o trecho.
 - Antes de apagar qualquer coisa, procure quem usa:
   `grep -rn "NomeDaCoisa" client/src server api`
 - Antes de criar feature nova, confira se já existe algo parecido.
 
-**4. Faça a mudança.** Uma finalidade por commit.
+**5. Faça a mudança.** Uma finalidade por commit. Fique dentro do escopo que
+você reivindicou; se precisar de outro arquivo, atualize a reivindicação antes.
 
-**5. Verifique — os três portões:**
+**6. Verifique — os três portões:**
 ```bash
 npm run check       # tsc --noEmit — tem que dar zero erros
 npm test            # vitest — tudo passando
@@ -184,30 +200,33 @@ npm run build:client
 npm run build:api
 ```
 
-**6. Se mudou interface:** veja a tela renderizada (seção 5, "O que os portões
+**7. Se mudou interface:** veja a tela renderizada (seção 5, "O que os portões
 NÃO pegam").
 
-**7. Revise o que vai no commit:**
+**8. Revise o que vai no commit:**
 ```bash
 git status
 git diff --stat     # arquivo encolheu muito? arquivo inesperado? PARE.
 git diff            # leia a mudança de verdade
 ```
 
-**8. Restaure o bundle se você só rodou o build para testar:**
+**9. Restaure o bundle se você só rodou o build para testar:**
 ```bash
 git checkout -- api/bundle.js
 ```
 (o bundle é regerado no deploy; commitá-lo sem motivo só gera ruído)
 
-**9. Commite e publique:**
+**10. Commite, traga o que outros publicaram, e publique.** Commite **antes**
+de puxar — o git recusa `pull --rebase` com mudança não commitada:
 ```bash
 git add <arquivos específicos>
 git commit -m "tipo(escopo): descrição em inglês"
+git pull --rebase origin main   # outro agente pode ter publicado
+npm run check && npm test       # confira de novo em cima do código dele
 git push origin main
 ```
 
-**10. Confirme que chegou:**
+**11. Confirme que chegou:**
 ```bash
 git fetch origin main
 git merge-base --is-ancestor <seu-commit> origin/main && echo "está em main"
@@ -689,27 +708,49 @@ Corrigidas no `CLAUDE.md` em 24/09/2026. Se ainda encontrar em outro arquivo,
 
 ## 13. Protocolo de sessão
 
+Detalhes completos em **`coordenacao/README.md`**. O essencial:
+
 ### Ao começar
 
 ```bash
 git fetch origin main && git checkout main && git pull origin main
-git log --oneline -5          # o que mudou desde a última sessão?
+git log --oneline -5              # o que mudou desde a última sessão?
+ls coordenacao/ativo/             # quem está trabalhando AGORA, e em quê
+ls coordenacao/registro/ | tail -5   # o que acabou de ser feito
 test -d node_modules || npm install
-npm run check && npm test     # a linha de base está saudável?
+npm run check && npm test         # a linha de base está saudável?
 ```
 
-Se a linha de base **já** estiver quebrada, conserte isso primeiro ou avise o
-dono — não empilhe trabalho novo em cima de um portão vermelho.
+1. Leia as reivindicações ativas e as entradas recentes do registro.
+2. Se a linha de base **já** estiver quebrada, conserte isso primeiro ou avise o
+   dono — não empilhe trabalho novo em cima de um portão vermelho.
+3. **Reivindique e publique** antes de alterar código:
+   ```bash
+   cp coordenacao/MODELO.md coordenacao/ativo/AAAA-MM-DD-hermes-assunto.md
+   # preencha agente, início, objetivo e arquivos
+   git add coordenacao/ativo/ && git commit -m "chore(coord): claim <assunto>"
+   git push origin main
+   ```
 
 ### Ao terminar
 
 1. Os três portões verdes (`check`, `test`, builds).
-2. Commit em `main` e push feito.
-3. Confirmado com `git merge-base --is-ancestor`.
+2. Seus commits em `main`, confirmados com `git merge-base --is-ancestor`.
+3. **Preencha a reivindicação** (resultado, commits, verificado, não verificado,
+   armadilhas) e **mova para o registro**:
+   ```bash
+   git mv coordenacao/ativo/<arquivo>.md coordenacao/registro/
+   ```
 4. **Atualize o `ESTADO-DO-PROJETO.md`**: mova o que concluiu para "O que está
-   feito", tire das pendências, registre armadilhas novas.
-5. Se aprendeu algo que evitaria um erro futuro, **acrescente na seção 7 deste
+   feito", tire das pendências.
+5. Publique — commit, `git pull --rebase origin main`, `git push origin main`.
+6. Se aprendeu algo que evitaria um erro futuro, **acrescente na seção 7 deste
    arquivo**. Foi assim que ela nasceu.
+
+**Nunca termine uma sessão deixando a sua reivindicação em `ativo/`.** Se não
+terminou o trabalho, registre como `parcial` ou `interrompido`, diga em que
+estado o código ficou, e mova assim mesmo. Reivindicação esquecida bloqueia os
+arquivos para todos os outros agentes.
 
 ### Relatório ao dono
 
@@ -729,5 +770,7 @@ dados reais, diga exatamente o quê.
 - Duas instruções se contradizem e o código não resolve qual vale
 - Vai fazer `git push --force`, reescrever histórico ou apagar branch
 - Está no terceiro "fix" seguido do mesmo problema
+- O que você precisa fazer toca arquivos da reivindicação ativa de outro agente
+- O `git pull --rebase` deu conflito num arquivo de código que outro agente alterou
 
 Nesses casos, explique o que encontrou, proponha o caminho e espere a resposta.

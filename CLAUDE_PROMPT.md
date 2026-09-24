@@ -1,3 +1,14 @@
+> # ⛔ OBSOLETO — NÃO USE COMO INSTRUÇÃO
+>
+> Este arquivo descreve uma fase antiga do projeto e contém informação **falsa hoje**
+> (por exemplo, diz que o deploy é no Render.com — é na **Vercel**, por
+> `git push origin main`). Mantido só como histórico.
+>
+> Leia em vez dele: `HANDOFF-HERMES.md`, `coordenacao/README.md` e
+> `ESTADO-DO-PROJETO.md`.
+
+---
+
 # PROMPT DE TRANSIÇÃO: SAL VITA VENDAS
 
 Olá, Claude! Você está assumindo o desenvolvimento do projeto **Sal Vita Vendas**, um dashboard de vendas inteligente com integração de IA.

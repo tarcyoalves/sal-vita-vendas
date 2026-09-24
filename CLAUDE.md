@@ -6,8 +6,11 @@
 > - `HANDOFF-HERMES.md` — regras invioláveis, fluxo de trabalho, portões de qualidade e
 >   os erros reais já cometidos por IA neste repositório. Vale para qualquer agente.
 > - `ESTADO-DO-PROJETO.md` — estado atual, pendências e a seção de conformidade sanitária.
+> - `coordenacao/README.md` — **outras IAs trabalham aqui ao mesmo tempo.** Antes de
+>   alterar qualquer coisa, leia `coordenacao/ativo/`, reivindique o trabalho e publique;
+>   ao terminar, mova para `coordenacao/registro/`.
 >
-> **Leia os dois antes de escrever qualquer linha de código.** Quando este arquivo e o
+> **Leia os três antes de escrever qualquer linha de código.** Quando este arquivo e o
 > código discordarem, o código vence.
 
 # Sal Vita Lembretes — Guia do Projeto para IA

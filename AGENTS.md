@@ -9,10 +9,12 @@
 > 1. `HANDOFF-HERMES.md` — regras invioláveis, arquitetura verificada, fluxo de
 >    trabalho, os portões de qualidade e **os erros reais já cometidos por IA
 >    neste repositório** (seção 7). Obrigatório.
-> 2. `ESTADO-DO-PROJETO.md` — estado atual, pendências e a **seção 4 de
+> 2. `coordenacao/README.md` — como registrar o que você está fazendo para não
+>    colidir com outras IAs. **Obrigatório em toda sessão.**
+> 3. `ESTADO-DO-PROJETO.md` — estado atual, pendências e a **seção 4 de
 >    conformidade sanitária**, obrigatória antes de escrever qualquer texto que o
 >    cliente leia.
-> 3. `CLAUDE.md` — convenções de código.
+> 4. `CLAUDE.md` — convenções de código.
 >
 > **Regras que não admitem exceção:**
 >
@@ -23,6 +25,10 @@
 > - Feature nova vai em arquivo novo e namespace novo — nunca sobrescreva um
 >   arquivo existente para outra finalidade.
 > - Nunca invente dado técnico, regulatório ou financeiro.
+> - **Outras IAs trabalham aqui ao mesmo tempo.** Antes de alterar qualquer coisa,
+>   leia `coordenacao/ativo/`, crie a sua reivindicação e **publique**. Ao terminar,
+>   mova-a para `coordenacao/registro/`. Nunca toque arquivos da reivindicação de
+>   outro agente. Protocolo: `coordenacao/README.md`.
 
 <!-- code-review-graph MCP tools -->
 ## Ferramentas MCP: code-review-graph (se disponíveis)

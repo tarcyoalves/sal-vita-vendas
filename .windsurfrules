@@ -1,38 +1,56 @@
+> # ⚠️ PARE — LEIA `HANDOFF-HERMES.md` PRIMEIRO
+>
+> Este repositório tem **dois produtos distintos** (CRM de Lembretes e loja
+> Premium) no mesmo código, e regras de conformidade sanitária que já foram
+> violadas por IA antes.
+>
+> **Ordem de leitura antes de escrever qualquer linha de código:**
+>
+> 1. `HANDOFF-HERMES.md` — regras invioláveis, arquitetura verificada, fluxo de
+>    trabalho, os portões de qualidade e **os erros reais já cometidos por IA
+>    neste repositório** (seção 7). Obrigatório.
+> 2. `coordenacao/README.md` — como registrar o que você está fazendo para não
+>    colidir com outras IAs. **Obrigatório em toda sessão.**
+> 3. `ESTADO-DO-PROJETO.md` — estado atual, pendências e a **seção 4 de
+>    conformidade sanitária**, obrigatória antes de escrever qualquer texto que o
+>    cliente leia.
+> 4. `CLAUDE.md` — convenções de código.
+>
+> **Regras que não admitem exceção:**
+>
+> - Deploy é `git push origin main` (a Vercel publica sozinha). Nunca
+>   `git push --force` em `main`.
+> - Antes de todo commit: `npm run check && npm test` e ler `git diff --stat`.
+> - O repositório é **público**: nunca escreva token, senha ou chave em arquivo.
+> - Feature nova vai em arquivo novo e namespace novo — nunca sobrescreva um
+>   arquivo existente para outra finalidade.
+> - Nunca invente dado técnico, regulatório ou financeiro.
+> - **Outras IAs trabalham aqui ao mesmo tempo.** Antes de alterar qualquer coisa,
+>   leia `coordenacao/ativo/`, crie a sua reivindicação e **publique**. Ao terminar,
+>   mova-a para `coordenacao/registro/`. Nunca toque arquivos da reivindicação de
+>   outro agente. Protocolo: `coordenacao/README.md`.
+
 <!-- code-review-graph MCP tools -->
-## MCP Tools: code-review-graph
+## Ferramentas MCP: code-review-graph (se disponíveis)
 
-**IMPORTANT: This project has a knowledge graph. ALWAYS use the
-code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
-the codebase.** The graph is faster, cheaper (fewer tokens), and gives
-you structural context (callers, dependents, test coverage) that file
-scanning cannot.
+**Só se o seu ambiente tiver o servidor MCP `code-review-graph` conectado.**
+Se as ferramentas abaixo não aparecerem na sua lista de ferramentas, ignore esta
+seção inteira e use as ferramentas normais de busca e leitura de arquivos. Não
+tente chamar uma ferramenta que você não tem.
 
-### When to use graph tools FIRST
+Quando disponível, o grafo dá contexto estrutural (quem chama, quem depende,
+cobertura de teste) mais barato que ler arquivo por arquivo:
 
-- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
-- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
-- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
-- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
-- **Architecture questions**: `get_architecture_overview` + `list_communities`
+| Ferramenta | Use quando |
+|---|---|
+| `semantic_search_nodes` | Encontrar funções/classes por nome ou palavra-chave |
+| `query_graph` | Rastrear quem chama, o que importa, testes de um símbolo |
+| `get_impact_radius` | Entender o alcance de uma mudança |
+| `get_affected_flows` | Ver quais caminhos de execução uma mudança afeta |
+| `detect_changes` + `get_review_context` | Revisar uma alteração |
+| `get_architecture_overview` | Visão geral da estrutura |
+| `refactor_tool` | Planejar renomeação, achar código morto |
 
-Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
-
-### Key Tools
-
-| Tool | Use when |
-|------|----------|
-| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
-| `get_review_context` | Need source snippets for review — token-efficient |
-| `get_impact_radius` | Understanding blast radius of a change |
-| `get_affected_flows` | Finding which execution paths are impacted |
-| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
-| `semantic_search_nodes` | Finding functions/classes by name or keyword |
-| `get_architecture_overview` | Understanding high-level codebase structure |
-| `refactor_tool` | Planning renames, finding dead code |
-
-### Workflow
-
-1. The graph auto-updates on file changes (via hooks).
-2. Use `detect_changes` for code review.
-3. Use `get_affected_flows` to understand impact.
-4. Use `query_graph` pattern="tests_for" to check coverage.
+Mesmo com o grafo, **antes de apagar qualquer arquivo, confirme com `grep`
+quem o importa** — um "órfão" já foi apagado aqui e era dependência de outro
+arquivo (ver `HANDOFF-HERMES.md`, seção 7, caso J).

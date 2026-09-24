@@ -322,14 +322,25 @@ Leia sob demanda, não todos:
 | `PLANO-FINAL-EXECUCAO-B2B.md` | Execução B2B por sprints + prompt do agente executor |
 | `FATURAMENTO_PLAN.md`, `REMINDER_IMPLEMENTATION.md` | Módulos do CRM de lembretes |
 | **`HANDOFF-HERMES.md`** | **Regras de trabalho para qualquer agente: fluxo, portões, erros já cometidos, permissões** |
+| **`coordenacao/`** | **Quem está trabalhando em quê agora (`ativo/`) e o histórico de cada sessão (`registro/`)** |
 | `AGENTS.md`, `GEMINI.md` | Porta de entrada para agentes — apontam para o `HANDOFF-HERMES.md` |
 | `CLAUDE_PROMPT.md` | Config antiga de ferramenta de IA |
 | `RETOMAR.md`, `SESSAO-2025-05-25.md` | Históricos antigos, provavelmente obsoletos |
 
 ---
 
-## 9. Ao terminar sua sessão
+## 9. Coordenação entre IAs e fim de sessão
 
-Atualize **este arquivo**: mova o que você concluiu para a seção 5, tire da seção 6, e
-registre qualquer armadilha nova que você descobriu. Se você quebrou alguma das 6 regras
-da seção 1 e aprendeu algo, escreva lá — foi assim que essa lista nasceu.
+**Outras IAs trabalham neste repositório ao mesmo tempo.** O protocolo completo está em
+`coordenacao/README.md`. Resumo:
+
+- **Antes de começar:** leia `coordenacao/ativo/` (quem está trabalhando em quê agora) e
+  as últimas entradas de `coordenacao/registro/`. Crie a sua reivindicação e **publique
+  antes de alterar código**. Nunca toque arquivos da reivindicação de outro agente.
+- **Ao terminar:** preencha a reivindicação e mova para `coordenacao/registro/`. Depois
+  atualize **este arquivo**: o que concluiu vai para a seção 5 e sai da seção 6; registre
+  qualquer armadilha nova. Se você quebrou alguma das 6 regras da seção 1 e aprendeu algo,
+  escreva lá — foi assim que essa lista nasceu.
+
+`coordenacao/registro/` guarda o detalhe de cada sessão; este arquivo guarda o resumo do
+que é verdade hoje.
