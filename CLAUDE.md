@@ -1,10 +1,14 @@
-> # ⚠️ PARE — LEIA `ESTADO-DO-PROJETO.md` PRIMEIRO
+> # ⚠️ PARE — LEIA `HANDOFF-HERMES.md` E `ESTADO-DO-PROJETO.md` PRIMEIRO
 >
 > Este repositório tem **dois produtos distintos** (loja Premium e CRM de Lembretes) e
-> regras de conformidade sanitária que já foram violadas por IA antes. O arquivo
-> `ESTADO-DO-PROJETO.md` na raiz é o ponto de entrada único: estado atual, pendências,
-> armadilhas conhecidas e as 6 regras invioláveis. **Leia antes de escrever qualquer
-> linha de código.**
+> regras de conformidade sanitária que já foram violadas por IA antes.
+>
+> - `HANDOFF-HERMES.md` — regras invioláveis, fluxo de trabalho, portões de qualidade e
+>   os erros reais já cometidos por IA neste repositório. Vale para qualquer agente.
+> - `ESTADO-DO-PROJETO.md` — estado atual, pendências e a seção de conformidade sanitária.
+>
+> **Leia os dois antes de escrever qualquer linha de código.** Quando este arquivo e o
+> código discordarem, o código vence.
 
 # Sal Vita Lembretes — Guia do Projeto para IA
 
@@ -32,13 +36,14 @@ SaaS interno de gestão de vendas e lembretes da empresa **Sal Vita** (sal marin
 |--------|------------|
 | Frontend | React 19 + TypeScript + Vite |
 | Roteamento | **Wouter** (NÃO react-router-dom) |
-| API client | **tRPC** + TanStack Query |
+| API client | **tRPC** + TanStack Query + superjson (datas chegam como `Date`) |
 | Estilo | Tailwind CSS + shadcn/ui (Radix) |
 | Backend | Express.js serverless (Vercel Functions) |
 | Banco | PostgreSQL Neon (serverless) + Drizzle ORM |
-| Auth | JWT em cookie HttpOnly (30 dias) |
-| IA | Groq + Cerebras + Google Gemini (fallback em cadeia) |
+| Auth | JWT em cookie HttpOnly (7 dias) |
+| IA | Groq → Cerebras → NVIDIA → OpenRouter (fallback em cadeia; não usa Gemini) |
 | PWA | vite-plugin-pwa (iOS e Android) |
+| Testes | Vitest (`npm test`) — portão de deploy |
 
 ## Estrutura de pastas
 
@@ -61,7 +66,7 @@ SaaS interno de gestão de vendas e lembretes da empresa **Sal Vita** (sal marin
 │   │   ├── schema.ts      ← Tabelas Drizzle (FONTE DA VERDADE do banco)
 │   │   ├── index.ts       ← Conexão Neon
 │   │   └── migrate.ts     ← ensureTablesExist() — cria tabelas se não existirem
-│   ├── routers/           ← auth, tasks, clients, reminders, sellers, ai, knowledge, workSessions, tv
+│   ├── routers/           ← 17 routers registrados em index.ts (lista em HANDOFF-HERMES.md, seção 3)
 │   └── trpc.ts            ← createContext (lê JWT do cookie → ctx.user)
 ├── vercel.json            ← Build command + rotas + headers de segurança
 └── drizzle.config.ts      ← Config do Drizzle Kit
@@ -76,13 +81,20 @@ Configuradas no painel Vercel (Settings → Environment Variables):
 | `DATABASE_URL` | Connection string Neon PostgreSQL |
 | `JWT_SECRET` | Segredo JWT (string longa aleatória) |
 | `ADMIN_RESET_SECRET` | Chave para recuperação de emergência de senha admin |
-| `GEMINI_API_KEY` | Google Gemini (IA — fallback 3) |
+| `ORDERS_DATABASE_URL` | Banco do Premium (em produção o servidor recusa subir sem ela) |
+| `CRON_SECRET` | Autenticação dos crons |
 | `GROQ_API_KEY` | Groq (IA principal) |
-| `CEREBRAS_API_KEY` | Cerebras (IA — fallback 2, opcional) |
+| `CEREBRAS_API_KEY` | Cerebras (IA — fallback) |
+| `NVIDIA_API_KEY` | NVIDIA (IA — fallback) |
+| `OPENROUTER_API_KEY` | OpenRouter (IA — fallback) |
 | `ALLOWED_ORIGINS` | Origens CORS extras, separadas por vírgula |
 | `NODE_ENV` | `production` |
 
-Para dev local: crie `.env` na raiz com essas variáveis.
+Lista completa (e-mail, loja, WhatsApp) em `HANDOFF-HERMES.md`, seção 10.
+
+**O repositório é público.** Nunca escreva o valor de nenhuma dessas variáveis em arquivo do repo.
+
+Para dev local: crie `.env` na raiz com essas variáveis (o `.env` está no `.gitignore`).
 
 ## Banco de dados
 
@@ -117,13 +129,14 @@ Após primeiro login, `mustChangePassword = true` obriga o usuário a definir um
 | `/tasks` | Tasks | Atendentes |
 | `/attendants` | Attendants | Admin |
 | `/admin/clients` | ClientsManagement | Admin |
-| `/vendor/reminders` | VendorReminders | Admin |
 | `/admin/ai-analysis` | AiAnalysis | Admin |
 | `/ai-chat` | AiChat | Todos |
 | `/ai-settings` | AiSettings | Admin |
 | `/knowledge-base` | KnowledgeBase | Todos |
 | `/meu-progresso` | AttendantProgress | Atendentes |
-| `/history` | CallHistory | Admin |
+| `/admin/email-marketing` | EmailMarketing | Admin, gerente |
+| `/admin/faturamento` | Faturamento | Admin, gerente |
+| `/documentos` | Documentos | Todos (anexar/editar: admin, gerente) |
 | `/tv` | TvDashboard | Painel TV (sem auth) |
 | `/sal-vita` | SalVitaLanding | Público (landing page) |
 
@@ -151,18 +164,25 @@ Após primeiro login, `mustChangePassword = true` obriga o usuário a definir um
 ### Adicionar nova tabela no banco
 
 1. Adicionar tabela em `server/db/schema.ts`
-2. Adicionar `CREATE TABLE IF NOT EXISTS` em `server/db/migrate.ts`
-3. Rodar `npm run db:push` localmente para validar
+2. Adicionar `CREATE TABLE IF NOT EXISTS` (ou `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`)
+   em `server/db/migrate.ts`
+3. **Aumentar `SCHEMA_VERSION` em `server/db/migrate.ts`.** Sem isso o caminho rápido
+   do cold start pula a migração e a tabela/coluna **nunca é criada em produção**.
+4. Tabelas do Premium vão em `server/db/ordersMigrate.ts` (banco `ORDERS_DATABASE_URL`).
 
 ## Regras obrigatórias ao editar código
 
 1. **Roteamento:** usar `import { useLocation } from 'wouter'` — nunca `react-router-dom`
 2. **API calls:** sempre via tRPC (`trpc.[router].[procedure]`) — nunca `fetch` direto para rotas próprias
-3. **Banco:** sempre Drizzle ORM — nunca SQL raw
+3. **Banco:** Drizzle ORM por padrão. **Exceção obrigatória:** as queries com `FOR UPDATE` /
+   `FOR UPDATE SKIP LOCKED` (cota de e-mail, claim de destinatários) usam SQL raw de
+   propósito. Reescrevê-las no query builder destrói a atomicidade — não "corrija".
 4. **Segurança de senha:** PBKDF2-SHA512 com 310.000 iterações em `server/auth.ts` — não alterar
 5. **Variáveis do frontend:** só `VITE_` prefix ficam disponíveis no cliente
 6. **Entry point do backend em produção:** `api/index.ts` (não `server/index.ts`)
 7. **Commits em inglês**, mensagens descritivas, sempre em `main`
+8. **Antes de commitar:** `npm run check && npm test`, e leia `git diff --stat`
+9. **Evite `as any`** — ele desliga o typecheck e já escondeu um crash em produção
 
 ## Rodar localmente
 
@@ -172,7 +192,7 @@ git clone https://github.com/tarcyoalves/sal-vita-vendas
 cd sal-vita-vendas
 npm install
 
-# 2. Criar .env na raiz com DATABASE_URL, JWT_SECRET, GEMINI_API_KEY, GROQ_API_KEY
+# 2. Criar .env na raiz com DATABASE_URL, ORDERS_DATABASE_URL, JWT_SECRET, GROQ_API_KEY
 
 # 3. Criar tabelas no banco
 npm run db:push
@@ -186,20 +206,26 @@ npm run dev:full
 ## Build e deploy
 
 ```bash
-# Deploy: apenas faça push para main
-git add .
+# 1. Portões — se algum falhar, o deploy também falha
+npm run check          # tsc --noEmit, zero erros
+npm test               # vitest
+
+# 2. Revise o que vai no commit (nada de `git add .` às cegas)
+git status
+git diff --stat
+
+# 3. Commit e push — a Vercel publica sozinha (~1-2 min)
+git add <arquivos específicos>
 git commit -m "feat: descrição da mudança"
 git push origin main
-# Vercel detecta e deploya automaticamente (~1-2 min)
 ```
 
-Build command completo (definido em `vercel.json`):
+O `vercel.json` chama `npm run vercel-build`, definido no `package.json`:
 ```bash
-npm install && \
-node node_modules/vite/bin/vite.js build client -c vite.config.ts && \
-node_modules/.bin/esbuild api/index.ts --bundle --platform=node --target=node20 \
-  --outfile=api/bundle.js --external:pg-native --external:fsevents
+npm install && npm run check && npm test && npm run build:client && npm run build:api
 ```
+O comando vive num script porque a API da Vercel corta o `buildCommand` em 256
+caracteres. `api/bundle.js` precisa continuar versionado.
 
 ## PWA (iOS e Android)
 

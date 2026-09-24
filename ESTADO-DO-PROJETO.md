@@ -1,9 +1,10 @@
 # ⚠️ LEIA ESTE ARQUIVO ANTES DE QUALQUER COISA
 
-**Última atualização:** 13/08/2026
-**Este é o ponto de entrada único do repositório.** O repo tem 13 arquivos `.md` e várias
-sessões de IA paralelas já se atrapalharam. Leia este primeiro; ele diz o que é verdade
-hoje e para onde ir depois.
+**Última atualização:** 24/09/2026
+**Este é o ponto de entrada do estado do projeto.** Junto com ele, leia
+**`HANDOFF-HERMES.md`**: regras de trabalho, portões de qualidade e os erros reais já
+cometidos por IA neste repositório. Várias sessões de IA paralelas já se atrapalharam
+aqui — os dois arquivos dizem o que é verdade hoje.
 
 ---
 
@@ -195,7 +196,40 @@ minerais. Até lá, não.
   - Webhook Svix HMAC com verificação de assinatura time-safe (`timingSafeEqual`).
   - Motor de sequências drip (`sequenceEngine.ts`) com condições de engajamento (`if_opened`, `if_clicked`), loops e motor de regras de automação.
   - Orçamento de tempo estrito (45s) no cron diário `/api/cron/email-daily`.
-  - Aba de alta performance **"E-mail Marketing"** integrada ao `AdminShell` do Sal Vita Premium (`SalVitaEmailMarketing.tsx`).
+  - Aba **"E-mail Marketing"** integrada ao `AdminShell` do Sal Vita Premium (`SalVitaEmailMarketing.tsx`).
+  - ⚠️ **Correção de 13/08 sobre este bloco.** A entrega original (`3c678a4`) **sobrescreveu
+    o router de e-mail marketing do CRM** (`server/routers/emailMarketing.ts`, 2.544 → 356
+    linhas; o CRM perdeu 59 das 65 procedures em produção), deixou as 24 procedures do
+    Premium como `publicProcedure`, e o descadastro tinha XSS refletido, aceitava `?email=`
+    e só buscava token no banco do Premium. Tudo corrigido em `c7e77aa`: o Premium passou
+    para o router próprio `premiumEmailMarketing`, todas as procedures viraram
+    `staffProcedure`, e o descadastro exige token e busca nos dois bancos. A afirmação de
+    "conformidade LGPD total" acima só passou a ser verdade depois dessa correção.
+
+**CRM de Lembretes (12/08 a 09/09/2026)**
+- **E-mail marketing do CRM restaurado** (`c7e77aa`) — ver correção no bloco do Premium acima.
+- **`/documentos` com backend real** (`dcc97fa`). A versão original (12 commits,
+  `3e2831f`..`3295925`) guardava tudo no `IndexedDB` do navegador: cada pessoa via só os
+  próprios anexos. Agora: tabelas `catalog_documents`, `catalog_images` e `catalog_specs` +
+  router `catalog`. Listagem traz só metadados; o arquivo é baixado sob demanda. Limite de
+  2,5 MB checado nos dois lados. Migração única do que estava preso no navegador.
+- **Especificações técnicas inventadas removidas** (`fe9bad0`). Pureza "NaCl ≥ 98,5%" e
+  afins tinham sido inventados (`f209d05`) e iam para o cliente via WhatsApp. Agora ficam
+  vazias ("não informado") até o dono preencher com dado de laudo.
+- **Faturamento:** data de embarque escolhida ao faturar, comissão no mês do embarque
+  (`bc26db4`), e "desfazer faturamento" nas três telas (`8667607`).
+- **Vitest como portão** (`f1ca8ef`, `9e3d632`): `npm test` roda no `vercel-build` e no CI.
+  22 testes (competência do faturamento e parsing de datas).
+- **Bootstrap do admin sem senha fixa** (`8fbc8a4` + `dab1c15`): `admin123` saiu do
+  repositório. Sem `INITIAL_ADMIN_*` o bootstrap fica desligado; configuração parcial vai
+  para o log em vez de derrubar a API.
+- **Crash da página de progresso corrigido** (`3ab6027`): `e.trim is not a function`,
+  porque datas do tRPC chegam como `Date` e um `tasks as any[]` escondia isso do typecheck.
+- **Filtros de Tarefas:** tags com modo qualquer/todas, estado, cidade, busca ampliada,
+  painel recolhível com chips de filtros ativos.
+- **Arquivos de outro projeto removidos** (24/09): `HANDOFF (1).md` e
+  `antigravityonboardingHANDOFF.md` eram do Vita Construções, entraram por `3c678a4` e
+  mandavam "nunca publique em `main`" — o oposto deste repositório.
 
 **B2B — Sprint 1 (fundação)**
 - 6 tabelas (`companies`, `contacts`, `public_sources`, `consent_records`, `suppression_list`, `audit_logs`) via `ensureB2bTablesExist()`.
@@ -224,9 +258,15 @@ minerais. Até lá, não.
    não chega.
 
 ### 🟠 Código, ainda aberto
+0. **🔴 Webhook do Resend do CRM inalcançável desde 11/08/2026** *(achado em 24/09)*.
+   `api/index.ts` registra `POST /api/resend-webhook` duas vezes; o handler do Premium
+   (`3c678a4`) vem primeiro, sempre responde e nunca chama `next()`, então o do CRM
+   nunca executa. Aberturas e cliques do CRM não chegam ao banco do CRM: o 🔥 lead
+   quente não é marcado e as estatísticas param. Detalhes e correção sugerida em
+   `HANDOFF-HERMES.md`, seção 11, item 1. **Passou a ser a maior pendência de código.**
 4. **Sem outbox para efeitos pós-pagamento.** O pedido vira `confirmed` antes de
    `confirmOrderPaid()`. Se a notificação falhar, o retry do webhook é barrado pelo guard
-   idempotente e o cliente nunca recebe aviso. **É a maior pendência de código hoje** —
+   idempotente e o cliente nunca recebe aviso. **É a maior pendência do Premium** —
    as outras não fazem o cliente pagar e não receber nada.
 5. **Webhook do Mercado Pago é fail-open no HMAC** (sem secret, ou sem os headers, segue).
 6. **Cupom:** o contador é atômico, mas o desconto já foi aplicado no checkout antes da
@@ -235,9 +275,9 @@ minerais. Até lá, não.
    com schema incompleto.
 8. **CSP duplicada** em `vercel.json` e `api/index.ts`, ambas com `unsafe-inline`.
 9. **`client/index.html` é compartilhado** — por isso o CRM mostra título do Premium.
-10. **Sem testes executáveis.** Só `tests/reminders.test.ts`, sem runner: não há script
-    `test`, nem Vitest/Jest configurado, e vários casos testam arrays locais em vez do
-    comportamento dos routers. O typecheck já é gate (ver seção 5), os testes não.
+10. **Cobertura de testes baixa.** *(Atualizado em 24/09: o Vitest existe e é portão
+    desde 04/09, com 22 testes.)* Cobre só competência do faturamento e parsing de datas.
+    Autenticação, permissões e e-mail marketing não têm teste.
 11. **Schema sem foreign keys declaradas** — as relações são inteiros por convenção, sem
     `.references()`. Integridade depende só do código.
 
@@ -281,7 +321,9 @@ Leia sob demanda, não todos:
 | `PLANO-PROSPECCAO-B2B.md` | Estratégia B2B completa (25 partes) |
 | `PLANO-FINAL-EXECUCAO-B2B.md` | Execução B2B por sprints + prompt do agente executor |
 | `FATURAMENTO_PLAN.md`, `REMINDER_IMPLEMENTATION.md` | Módulos do CRM de lembretes |
-| `AGENTS.md`, `GEMINI.md`, `CLAUDE_PROMPT.md` | Config de ferramentas de IA |
+| **`HANDOFF-HERMES.md`** | **Regras de trabalho para qualquer agente: fluxo, portões, erros já cometidos, permissões** |
+| `AGENTS.md`, `GEMINI.md` | Porta de entrada para agentes — apontam para o `HANDOFF-HERMES.md` |
+| `CLAUDE_PROMPT.md` | Config antiga de ferramenta de IA |
 | `RETOMAR.md`, `SESSAO-2025-05-25.md` | Históricos antigos, provavelmente obsoletos |
 
 ---
