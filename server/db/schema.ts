@@ -793,3 +793,22 @@ export const radarEstablishments = pgTable('radar_establishments', {
 });
 
 export type RadarEstablishment = typeof radarEstablishments.$inferSelect;
+
+// Fila + cache do enriquecimento por scraping do Radar (shared/radar.ts, Fase 2).
+// Escrita pelo router (enfileira) e pelo robô da VPS (processa). O robô pega
+// trabalho com FOR UPDATE SKIP LOCKED em SQL raw — de propósito, não reescrever.
+export const radarEnrichment = pgTable('radar_enrichment', {
+  cnpj: text('cnpj').primaryKey(),
+  status: text('status').notNull().default('pendente'),   // pendente | processando | pronto | falhou
+  priority: integer('priority').notNull().default(0),     // maior = antes
+  requestedAt: timestamp('requested_at').defaultNow().notNull(),
+  requestedByUserId: integer('requested_by_user_id'),
+  claimedAt: timestamp('claimed_at'),
+  finishedAt: timestamp('finished_at'),
+  attempts: integer('attempts').notNull().default(0),
+  result: jsonb('result'),                                // RadarEnrichmentData
+  error: text('error'),
+  expiresAt: timestamp('expires_at'),
+});
+
+export type RadarEnrichmentRow = typeof radarEnrichment.$inferSelect;

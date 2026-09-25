@@ -29,6 +29,7 @@ import {
   type RadarMunicipality,
   type RadarSearchResult,
   type RadarCnpjCheck,
+  type RadarEnrichment,
 } from '../../shared/radar';
 
 const UF = z.string().length(2).transform((s) => s.toUpperCase());
@@ -103,7 +104,7 @@ export const prospectingRadarRouter = router({
         .from(radarEstablishments);
       const datasetRelease = releaseRow?.release ?? null;
       if (datasetRelease === null) {
-        return { origin: originResult, municipalitiesInRadius: nearby.length, leads: [], truncated: false, datasetRelease: null };
+        return { origin: originResult, municipalitiesInRadius: nearby.length, leads: [], truncated: false, datasetRelease: null, enricherOnline: false };
       }
 
       const ibgeCodes = nearby.map((m) => m.ibge);
@@ -142,7 +143,7 @@ export const prospectingRadarRouter = router({
       // Nenhum estabelecimento casou os CNAEs no raio — evita `inArray` com
       // lista vazia (gera SQL inválido) e devolve resultado vazio direto.
       if (page.length === 0) {
-        return { origin: originResult, municipalitiesInRadius: nearby.length, leads: [], truncated: false, datasetRelease };
+        return { origin: originResult, municipalitiesInRadius: nearby.length, leads: [], truncated: false, datasetRelease, enricherOnline: false };
       }
 
       // Cruzamento com o CRM em lote (sem N+1): uma consulta em `tasks` e uma
@@ -208,7 +209,21 @@ export const prospectingRadarRouter = router({
         return buildLead(row, municipality, distanceKm, codes.includes(row.cnaePrincipal), phones, crm, emailSuppressed);
       });
 
-      return { origin: originResult, municipalitiesInRadius: nearby.length, leads, truncated, datasetRelease };
+      return { origin: originResult, municipalitiesInRadius: nearby.length, leads, truncated, datasetRelease, enricherOnline: false };
+    }),
+
+  // Polling da tela enquanto o robô da VPS enriquece os cards (Fase 2).
+  enrichmentStatus: protectedProcedure
+    .input(z.object({ cnpjs: z.array(CNPJ).max(200) }))
+    .query(async (): Promise<{ enricherOnline: boolean; items: Record<string, RadarEnrichment> }> => {
+      throw new TRPCError({ code: 'NOT_IMPLEMENTED', message: 'Enriquecimento em construção' });
+    }),
+
+  // "Varrer agora" num card: fura a fila (prioridade alta) ou refaz um resultado vencido/falho.
+  enrichNow: protectedProcedure
+    .input(z.object({ cnpj: CNPJ, force: z.boolean().optional() }))
+    .mutation(async (): Promise<RadarEnrichment> => {
+      throw new TRPCError({ code: 'NOT_IMPLEMENTED', message: 'Enriquecimento em construção' });
     }),
 
   // Confirma na hora, na Receita (via BrasilAPI), se o CNPJ continua ativo — a base

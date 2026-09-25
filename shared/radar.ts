@@ -72,6 +72,8 @@ export interface RadarLead {
   porte: string | null;          // código da Receita: 01 ME, 03 EPP, 05 demais, 00 não informado
   dataInicio: string | null;     // YYYY-MM-DD
   crm: RadarCrmStatus;
+  // Dados raspados da web pelo enriquecedor da VPS (null = ainda não pedido).
+  enrichment: RadarEnrichment | null;
 }
 
 export interface RadarSearchResult {
@@ -81,6 +83,8 @@ export interface RadarSearchResult {
   truncated: boolean;            // true = havia mais que o limite
   // Mês da base da Receita importada (ex.: "2026-09"); null = base vazia (importador nunca rodou)
   datasetRelease: string | null;
+  // O robô da VPS deu sinal de vida nos últimos 3 minutos. false = os cards não vão se completar.
+  enricherOnline: boolean;
 }
 
 export interface RadarCnpjCheck {
@@ -104,3 +108,58 @@ export function waMeLink(phoneDigits: string, text: string): string {
   const full = d.startsWith('55') && d.length >= 12 ? d : `55${d}`;
   return `https://wa.me/${full}?text=${encodeURIComponent(text)}`;
 }
+
+// ── Enriquecimento por scraping (Fase 2) ─────────────────────────────────────
+// Um robô Python (scripts/radar/enricher/, roda na VPS do dono) consome a fila
+// `radar_enrichment` e varre, para cada empresa: buscador → site da empresa →
+// Google Maps → Instagram/Facebook públicos. Nunca resolve captcha nem faz login.
+// Cada dado guarda a fonte e a URL de onde veio.
+
+export const RADAR_ENRICH_SOURCES = ['busca', 'site', 'maps', 'social'] as const;
+export type RadarEnrichSource = (typeof RADAR_ENRICH_SOURCES)[number];
+
+export type RadarEnrichStatus = 'pendente' | 'processando' | 'pronto' | 'falhou';
+
+export interface RadarEnrichFound {
+  value: string;                 // telefone/WhatsApp em dígitos (DDD+número), e-mail minúsculo, ou URL
+  source: RadarEnrichSource;
+  url: string | null;            // página onde foi encontrado
+}
+
+export interface RadarEnrichSourceResult {
+  source: RadarEnrichSource;
+  ok: boolean;
+  note: string | null;           // "bloqueado", "sem site", "perfil exige login"...
+}
+
+export interface RadarEnrichmentData {
+  website: string | null;
+  maps: {
+    url: string;
+    nome: string | null;
+    categoria: string | null;    // ex.: "Loja de produtos agropecuários" — ajuda a separar de pet shop
+    nota: number | null;
+    avaliacoes: number | null;
+    situacao: string | null;     // ex.: "Aberto", "Fechado permanentemente"
+    endereco: string | null;
+  } | null;
+  whatsapps: RadarEnrichFound[]; // só números vindos de link wa.me / api.whatsapp.com — esses SÃO WhatsApp
+  telefones: RadarEnrichFound[];
+  emails: RadarEnrichFound[];
+  instagram: string | null;
+  facebook: string | null;
+  fontes: RadarEnrichSourceResult[];
+}
+
+export interface RadarEnrichment {
+  status: RadarEnrichStatus;
+  updatedAt: string | null;      // ISO
+  data: RadarEnrichmentData | null;
+}
+
+// Validade do resultado: depois disso uma nova busca pede de novo.
+export const RADAR_ENRICH_TTL_DAYS = 30;
+// Quantas empresas de cada busca entram na fila (as mais próximas).
+export const RADAR_ENRICH_PER_SEARCH = 60;
+export const RADAR_ENRICHER_HEARTBEAT_KEY = 'radar_enricher_heartbeat';
+export const RADAR_ENRICHER_ONLINE_MS = 3 * 60 * 1000;

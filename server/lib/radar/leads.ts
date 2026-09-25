@@ -95,6 +95,7 @@ export function buildLead(
     porte: row.porte,
     dataInicio: row.dataInicio,
     crm,
+    enrichment: null,
   };
 }
 
