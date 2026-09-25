@@ -36,9 +36,9 @@ tabelas B2B existentes (só leitura de `suppression_list`), `tasks.ts`.
 
 ## Progresso
 
-- [ ] Contrato (tabela, tipos, geo, esqueleto do router) em `main`
-- [ ] Importador da base aberta da Receita (`scripts/radar/`)
-- [ ] Backend do router
-- [ ] IA: provedor antigravity + rascunho de mensagem
-- [ ] Tela do Radar
+- [x] Contrato (tabela, tipos, geo, esqueleto do router) em `main` — `a18b2d7`, `6a39aa9`
+- [ ] Importador da base aberta da Receita (`scripts/radar/`) — subagente em worktree
+- [ ] Backend do router — subagente em worktree
+- [ ] IA: provedor antigravity + rascunho de mensagem — subagente em worktree
+- [ ] Tela do Radar — subagente em worktree
 - [ ] Integração, verificação, deploy
