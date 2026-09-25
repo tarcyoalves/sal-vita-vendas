@@ -17,6 +17,7 @@ import {
   Mail,
   DollarSign,
   FileText,
+  Truck,
 } from "lucide-react";
 import { useAuth } from "../_core/hooks/useAuth";
 import { trpc } from "../lib/trpc";
@@ -57,6 +58,13 @@ const NAV_ITEMS: NavItem[] = [
     group: "Operação",
   },
   {
+    label: "Radar de Cargas",
+    path: "/radar-cargas",
+    icon: <Truck size={18} />,
+    roles: ["admin", "manager"],
+    group: "Operação",
+  },
+  {
     label: "E-mail Marketing",
     path: "/admin/email-marketing",
     icon: <Mail size={18} />,
@@ -92,6 +100,13 @@ const NAV_ITEMS: NavItem[] = [
     label: "Minhas Tarefas",
     path: "/tasks",
     icon: <CheckSquare size={18} />,
+    roles: ["user"],
+    group: "Meu dia",
+  },
+  {
+    label: "Radar de Cargas",
+    path: "/radar-cargas",
+    icon: <Truck size={18} />,
     roles: ["user"],
     group: "Meu dia",
   },
@@ -143,6 +158,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/dashboard": "Dashboard",
   "/tasks": "Tarefas",
   "/attendants": "Atendentes",
+  "/radar-cargas": "Radar de Cargas",
   "/admin/email-marketing": "E-mail Marketing",
   "/admin/faturamento": "Faturamento",
   "/documentos": "Documentos & Fichas Técnicas",
