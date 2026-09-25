@@ -17,6 +17,15 @@ const BASE_URLS: Record<string, string> = {
   nvidia: 'https://integrate.api.nvidia.com/v1',
 };
 
+// antigravity é opcional e resolvido em runtime: a URL é do endpoint do dono na VPS
+// (env, nunca fixa no repo — o repositório é público). `baseURLFor` é o único jeito
+// de resolver a URL de um provedor a partir daqui em diante; `BASE_URLS[provider]`
+// sozinho não cobre antigravity.
+function baseURLFor(provider: string): string | undefined {
+  if (provider === 'antigravity') return process.env.ANTIGRAVITY_BASE_URL?.replace(/\/+$/, '');
+  return BASE_URLS[provider];
+}
+
 const DEFAULT_MODELS: Record<string, string> = {
   groq:    'llama-3.3-70b-versatile',
   openai:  'gpt-3.5-turbo',
@@ -29,6 +38,9 @@ const DEFAULT_MODELS: Record<string, string> = {
 // Modelo por provedor, sobrescrevível por env (ex.: OPENROUTER_MODEL) — os IDs de
 // free tier mudam de tempos em tempos, então dá pra trocar sem alterar o código.
 function modelFor(provider: string): string {
+  // antigravity não tem "modelo padrão" embutido — ANTIGRAVITY_MODEL é uma das 3
+  // variáveis obrigatórias para ele existir na cadeia (ver antigravityConfigured).
+  if (provider === 'antigravity') return process.env.ANTIGRAVITY_MODEL || DEFAULT_MODELS.groq;
   return process.env[`${provider.toUpperCase()}_MODEL`] || DEFAULT_MODELS[provider] || DEFAULT_MODELS.groq;
 }
 
@@ -154,7 +166,14 @@ function isRetryable(err: any): boolean {
   return err?.status !== 400;
 }
 
+// antigravity só conta como configurado com as 3 variáveis presentes (endpoint
+// OpenAI-compatível opcional do dono, na VPS — PLANO-RADAR-CARGAS.md seção 4).
+function antigravityConfigured(): boolean {
+  return !!(process.env.ANTIGRAVITY_BASE_URL && process.env.ANTIGRAVITY_API_KEY && process.env.ANTIGRAVITY_MODEL);
+}
+
 function envKeyFor(provider: string): string | undefined {
+  if (provider === 'antigravity') return antigravityConfigured() ? process.env.ANTIGRAVITY_API_KEY : undefined;
   if (provider === 'groq') return process.env.GROQ_API_KEY;
   if (provider === 'cerebras') return process.env.CEREBRAS_API_KEY;
   if (provider === 'openrouter') return process.env.OPENROUTER_API_KEY;
@@ -163,6 +182,7 @@ function envKeyFor(provider: string): string | undefined {
 }
 
 function defaultProvider(): string {
+  if (antigravityConfigured()) return 'antigravity';
   if (process.env.GROQ_API_KEY) return 'groq';
   if (process.env.CEREBRAS_API_KEY) return 'cerebras';
   if (process.env.OPENROUTER_API_KEY) return 'openrouter';
@@ -170,11 +190,12 @@ function defaultProvider(): string {
   return 'groq';
 }
 
-// Free-tier provider fallback order: Groq → Cerebras → OpenRouter → NVIDIA.
-// Each quota resets independently, so chaining them multiplies the daily
-// free budget before the user sees an error.
+// Free-tier provider fallback order: antigravity (se configurado) → Groq → Cerebras →
+// OpenRouter → NVIDIA. Each quota resets independently, so chaining them multiplies
+// the daily free budget before the user sees an error.
 function getFallbackChain(primaryProvider: string): { provider: string; apiKey: string; baseURL: string; model: string }[] {
   const candidates: { provider: string; apiKey?: string }[] = [
+    { provider: 'antigravity', apiKey: antigravityConfigured() ? process.env.ANTIGRAVITY_API_KEY : undefined },
     { provider: 'groq', apiKey: process.env.GROQ_API_KEY },
     { provider: 'cerebras', apiKey: process.env.CEREBRAS_API_KEY },
     { provider: 'openrouter', apiKey: process.env.OPENROUTER_API_KEY },
@@ -182,7 +203,7 @@ function getFallbackChain(primaryProvider: string): { provider: string; apiKey: 
   ];
   return candidates
     .filter(c => c.provider !== primaryProvider && c.apiKey)
-    .map(c => ({ provider: c.provider, apiKey: c.apiKey!, baseURL: BASE_URLS[c.provider], model: modelFor(c.provider) }));
+    .map(c => ({ provider: c.provider, apiKey: c.apiKey!, baseURL: baseURLFor(c.provider)!, model: modelFor(c.provider) }));
 }
 
 // Runs `fn` against the primary provider; on any recoverable error (5xx/timeout/
@@ -937,7 +958,7 @@ export const aiRouter = router({
       try {
         const provider = defaultProvider();
         const apiKey = envKeyFor(provider) || '';
-        const baseURL = BASE_URLS[provider] ?? BASE_URLS.groq;
+        const baseURL = baseURLFor(provider) ?? BASE_URLS.groq;
         const isAdmin = ctx.user.role === 'admin';
         const model = modelFor(provider);
 
@@ -1198,7 +1219,7 @@ ${userContext}`;
     ).join('\n');
 
     try {
-      const summary = await callWithFallback(analyzeProvider, apiKey, BASE_URLS[analyzeProvider], analyzeModel, (k, b, m) =>
+      const summary = await callWithFallback(analyzeProvider, apiKey, baseURLFor(analyzeProvider)!, analyzeModel, (k, b, m) =>
         callLLM(k, b, m, [
         {
           role: 'system',
@@ -1284,7 +1305,7 @@ REGRAS ABSOLUTAS:
         const suggestModel = suggestProvider === 'groq'
           ? (process.env.SUGGEST_MODEL || 'llama-3.1-8b-instant')
           : modelFor(suggestProvider);
-        const suggestion = await callWithFallback(suggestProvider, apiKey, BASE_URLS[suggestProvider], suggestModel, (k, b, m) =>
+        const suggestion = await callWithFallback(suggestProvider, apiKey, baseURLFor(suggestProvider)!, suggestModel, (k, b, m) =>
           callLLM(k, b, m, [
           { role: 'system', content: 'Vendas B2B de sal. Sugira 1 abordagem prática em 2-3 frases. Direto, sem introdução. Português BR.' },
           { role: 'user', content: `Cliente: ${input.title}\nObservações: ${input.notes || 'sem observações'}` },
@@ -1357,7 +1378,7 @@ CORPO:
       }
 
       try {
-        const raw = await callWithFallback(provider, apiKey, BASE_URLS[provider], modelFor(provider), (k, b, m) =>
+        const raw = await callWithFallback(provider, apiKey, baseURLFor(provider)!, modelFor(provider), (k, b, m) =>
           callLLM(k, b, m, [
             { role: 'system', content: sys },
             { role: 'user', content: userMsg },
