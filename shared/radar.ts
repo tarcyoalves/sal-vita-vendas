@@ -91,3 +91,16 @@ export interface RadarCnpjCheck {
   checkedAt: string;             // ISO
   source: 'brasilapi';
 }
+
+export function formatCnpj(cnpj: string): string {
+  const d = cnpj.replace(/\D/g, '');
+  if (d.length !== 14) return cnpj;
+  return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+}
+
+// Link para o ATENDENTE abrir e enviar à mão. Nunca usar para disparo automático.
+export function waMeLink(phoneDigits: string, text: string): string {
+  const d = phoneDigits.replace(/\D/g, '');
+  const full = d.startsWith('55') && d.length >= 12 ? d : `55${d}`;
+  return `https://wa.me/${full}?text=${encodeURIComponent(text)}`;
+}

@@ -64,6 +64,9 @@ export const prospectingRadarRouter = router({
       bags: BAGS,
       message: z.string().trim().max(2000).optional(),
       phoneDigits: z.string().regex(/^\d{10,11}$/).optional(),
+      // Obrigatório quando o lead já foi excluído do CRM antes (task_deletion_logs):
+      // o atendente viu o motivo e decidiu seguir mesmo assim.
+      acknowledgeExcluded: z.boolean().optional(),
     }))
     .mutation(async (): Promise<{ taskId: number }> => notImplemented()),
 });
