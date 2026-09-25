@@ -53,7 +53,7 @@ async function bootstrapInitialAdmin() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-09-04a';
+const SCHEMA_VERSION = '2026-09-25a';
 
 export async function ensureTablesExist() {
   // Fast path: if the schema marker matches, the DB is already fully migrated.
@@ -795,6 +795,30 @@ export async function ensureTablesExist() {
       updated_at          TIMESTAMP NOT NULL DEFAULT now()
     )
   `;
+
+  // Radar de Cargas — preenchida por scripts/radar/import-receita.ts (ver schema.ts).
+  await sql`
+    CREATE TABLE IF NOT EXISTS radar_establishments (
+      cnpj            TEXT PRIMARY KEY,
+      razao_social    TEXT NOT NULL,
+      nome_fantasia   TEXT,
+      cnae_principal  TEXT NOT NULL,
+      cnaes_alvo      TEXT[] NOT NULL,
+      municipio_ibge  INTEGER NOT NULL,
+      uf              TEXT NOT NULL,
+      endereco        TEXT,
+      cep             TEXT,
+      telefone1       TEXT,
+      telefone2       TEXT,
+      email           TEXT,
+      porte           TEXT,
+      data_inicio     TEXT,
+      source_release  TEXT NOT NULL,
+      imported_at     TIMESTAMP NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS radar_establishments_municipio_idx
+            ON radar_establishments(municipio_ibge)`;
 
   // Depois do DDL: em banco novo a tabela `users` só existe a partir daqui, e
   // o fast path acima nunca roda na primeira inicialização. Se o bootstrap

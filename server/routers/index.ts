@@ -16,6 +16,7 @@ import { tagsRouter } from './tags';
 import { faturamentoRouter } from './faturamento';
 import { b2bRouter } from './b2b';
 import { catalogRouter } from './catalog';
+import { prospectingRadarRouter } from './prospectingRadar';
 export const appRouter = router({
   auth: authRouter,
   reminders: remindersRouter,
@@ -36,6 +37,7 @@ export const appRouter = router({
   faturamento: faturamentoRouter,
   b2b: b2bRouter,
   catalog: catalogRouter,
+  prospectingRadar: prospectingRadarRouter,
 });
 
 export type AppRouter = typeof appRouter;

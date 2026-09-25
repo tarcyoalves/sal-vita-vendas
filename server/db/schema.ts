@@ -765,3 +765,31 @@ export const catalogSpecs = pgTable('catalog_specs', {
 });
 
 export type CatalogSpec = typeof catalogSpecs.$inferSelect;
+
+// ── Radar de Cargas ──────────────────────────────────────────────────────────
+// Cópia local, filtrada, da base aberta de CNPJ da Receita Federal: só
+// estabelecimentos ATIVOS com algum CNAE comprador de sal (shared/radar.ts), e só
+// das UFs que o importador recebeu. É dado de referência — preenchido por
+// scripts/radar/import-receita.ts, nunca pela aplicação. Um lead só vira dado do
+// CRM quando o atendente clica em "Criar tarefa" (vai para `tasks`).
+// Neon free tier = 512 MB: o importador mede o volume antes de gravar.
+export const radarEstablishments = pgTable('radar_establishments', {
+  cnpj: text('cnpj').primaryKey(),                    // 14 dígitos
+  razaoSocial: text('razao_social').notNull(),
+  nomeFantasia: text('nome_fantasia'),
+  cnaePrincipal: text('cnae_principal').notNull(),    // 7 dígitos
+  cnaesAlvo: text('cnaes_alvo').array().notNull(),    // CNAEs-alvo presentes (principal ou secundário)
+  municipioIbge: integer('municipio_ibge').notNull(),
+  uf: text('uf').notNull(),
+  endereco: text('endereco'),
+  cep: text('cep'),
+  telefone1: text('telefone1'),                       // DDD + número, só dígitos
+  telefone2: text('telefone2'),
+  email: text('email'),
+  porte: text('porte'),
+  dataInicio: text('data_inicio'),                    // YYYY-MM-DD
+  sourceRelease: text('source_release').notNull(),    // mês da base da Receita, ex.: "2026-09"
+  importedAt: timestamp('imported_at').defaultNow().notNull(),
+});
+
+export type RadarEstablishment = typeof radarEstablishments.$inferSelect;
