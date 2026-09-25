@@ -136,6 +136,12 @@ export const prospectingRadarRouter = router({
       const truncated = withDistance.length > RADAR_MAX_RESULTS;
       const page = withDistance.slice(0, RADAR_MAX_RESULTS);
 
+      // Nenhum estabelecimento casou os CNAEs no raio — evita `inArray` com
+      // lista vazia (gera SQL inválido) e devolve resultado vazio direto.
+      if (page.length === 0) {
+        return { origin: originResult, municipalitiesInRadius: nearby.length, leads: [], truncated: false, datasetRelease };
+      }
+
       // Cruzamento com o CRM em lote (sem N+1): uma consulta em `tasks` e uma
       // em `task_deletion_logs` para todos os leads da página, por CNPJ e por
       // telefone.
