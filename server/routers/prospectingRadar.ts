@@ -7,7 +7,7 @@ import { TRPCError } from '@trpc/server';
 import { and, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { router, protectedProcedure } from '../trpc';
 import { db } from '../db';
-import { radarEstablishments, tasks, taskDeletionLogs, emailSuppressions, tags } from '../db/schema';
+import { radarEstablishments, radarEnrichment, tasks, taskDeletionLogs, emailSuppressions, tags } from '../db/schema';
 import { municipioByIbge, municipiosWithinRadius, searchMunicipios } from '../lib/radar/geo';
 import {
   establishmentPhones,
@@ -20,10 +20,20 @@ import {
 } from '../lib/radar/leads';
 import { draftRadarMessage, type RadarDraftInput } from '../lib/radar/messageDraft';
 import {
+  enqueue,
+  isEnricherOnline,
+  loadEnrichments,
+  loadHeartbeat,
+  needsEnqueue,
+  toRadarEnrichment,
+  toRadarEnrichmentData,
+} from '../lib/radar/enrichment';
+import {
   RADAR_SEGMENTS,
   RADAR_SEGMENT_KEYS,
   RADAR_MAX_RADIUS_KM,
   RADAR_MAX_RESULTS,
+  RADAR_ENRICH_PER_SEARCH,
   type RadarCrmStatus,
   type RadarLead,
   type RadarMunicipality,
@@ -72,6 +82,10 @@ const checkDraftMessageRate = makeRateLimiter(
   10, 60_000,
   'Muitos rascunhos de mensagem em pouco tempo. Aguarde um minuto e tente de novo.',
 );
+const checkEnrichNowRate = makeRateLimiter(
+  20, 60_000,
+  'Muitos pedidos de busca na web em pouco tempo. Aguarde um minuto e tente de novo.',
+);
 
 const CNPJ_CHECK_TIMEOUT_MS = 10_000;
 
@@ -91,9 +105,15 @@ export const prospectingRadarRouter = router({
       segments: z.array(z.enum(RADAR_SEGMENT_KEYS)).min(1),
       includeSecondary: z.boolean().default(false),
     }))
-    .query(async ({ input }): Promise<RadarSearchResult> => {
+    .query(async ({ input, ctx }): Promise<RadarSearchResult> => {
       const origin = municipioByIbge(input.originIbge);
       if (!origin) throw new TRPCError({ code: 'NOT_FOUND', message: 'Município de origem não encontrado' });
+
+      const now = new Date();
+      // Sinal de vida do robô: pedido cedo e reaproveitado em todo `return` desta
+      // procedure — inclusive nos caminhos vazios abaixo, para a tela saber se
+      // vale a pena esperar os cards se completarem antes mesmo de haver leads.
+      const enricherOnline = isEnricherOnline(await loadHeartbeat(), now);
 
       const nearby = municipiosWithinRadius(origin, input.radiusKm);
       const originResult = { ibge: origin.ibge, nome: origin.nome, uf: origin.uf, lat: origin.lat, lon: origin.lon };
@@ -104,7 +124,7 @@ export const prospectingRadarRouter = router({
         .from(radarEstablishments);
       const datasetRelease = releaseRow?.release ?? null;
       if (datasetRelease === null) {
-        return { origin: originResult, municipalitiesInRadius: nearby.length, leads: [], truncated: false, datasetRelease: null, enricherOnline: false };
+        return { origin: originResult, municipalitiesInRadius: nearby.length, leads: [], truncated: false, datasetRelease: null, enricherOnline };
       }
 
       const ibgeCodes = nearby.map((m) => m.ibge);
@@ -143,7 +163,7 @@ export const prospectingRadarRouter = router({
       // Nenhum estabelecimento casou os CNAEs no raio — evita `inArray` com
       // lista vazia (gera SQL inválido) e devolve resultado vazio direto.
       if (page.length === 0) {
-        return { origin: originResult, municipalitiesInRadius: nearby.length, leads: [], truncated: false, datasetRelease, enricherOnline: false };
+        return { origin: originResult, municipalitiesInRadius: nearby.length, leads: [], truncated: false, datasetRelease, enricherOnline };
       }
 
       // Cruzamento com o CRM em lote (sem N+1): uma consulta em `tasks` e uma
@@ -198,6 +218,22 @@ export const prospectingRadarRouter = router({
         return { kind: 'novo' };
       }
 
+      // Enriquecimento (Fase 2): uma consulta em lote pelos CNPJs da página, e —
+      // só se o robô estiver online, senão a fila só cresceria sem ninguém para
+      // consumi-la — enfileira os primeiros RADAR_ENRICH_PER_SEARCH (na mesma
+      // ordem de distância que `page` já tem) que precisam de refresh.
+      const enrichmentByCnpj = await loadEnrichments(cnpjs);
+      const toEnqueue = enricherOnline
+        ? page
+            .filter((p) => needsEnqueue(enrichmentByCnpj.get(p.row.cnpj), now))
+            .slice(0, RADAR_ENRICH_PER_SEARCH)
+            .map((p) => p.row.cnpj)
+        : [];
+      if (toEnqueue.length > 0) {
+        await enqueue(toEnqueue, { priority: 10, userId: ctx.user.id });
+      }
+      const justEnqueued = new Set(toEnqueue);
+
       const leads: RadarLead[] = page.map(({ row, distanceKm }) => {
         const municipio = municipioByIbge(row.municipioIbge);
         const municipality: RadarMunicipality = municipio
@@ -206,24 +242,67 @@ export const prospectingRadarRouter = router({
         const phones = phonesByRow.get(row.cnpj)!;
         const crm = crmStatusFor(row.cnpj, phones.map((p) => p.digits));
         const emailSuppressed = !!row.email && suppressedSet.has(row.email.toLowerCase().trim());
-        return buildLead(row, municipality, distanceKm, codes.includes(row.cnaePrincipal), phones, crm, emailSuppressed);
+        const enrichmentRow = enrichmentByCnpj.get(row.cnpj);
+        // Card que acabamos de mandar para a fila: mostra na hora como
+        // 'pendente' (sem esperar o próximo poll) mas mantém o dado anterior,
+        // se houver, em vez de apagar o que já se sabia sobre a empresa.
+        const enrichment: RadarEnrichment | null = justEnqueued.has(row.cnpj)
+          ? { status: 'pendente', updatedAt: null, data: enrichmentRow ? toRadarEnrichmentData(enrichmentRow.result) : null }
+          : toRadarEnrichment(enrichmentRow, now);
+        return buildLead(row, municipality, distanceKm, codes.includes(row.cnaePrincipal), phones, crm, emailSuppressed, enrichment);
       });
 
-      return { origin: originResult, municipalitiesInRadius: nearby.length, leads, truncated, datasetRelease, enricherOnline: false };
+      return { origin: originResult, municipalitiesInRadius: nearby.length, leads, truncated, datasetRelease, enricherOnline };
     }),
 
-  // Polling da tela enquanto o robô da VPS enriquece os cards (Fase 2).
+  // Polling da tela enquanto o robô da VPS enriquece os cards (Fase 2). Barato
+  // de propósito: um select em `radar_enrichment` (em lote) e a leitura do
+  // heartbeat — nada de N+1 por card.
   enrichmentStatus: protectedProcedure
     .input(z.object({ cnpjs: z.array(CNPJ).max(200) }))
-    .query(async (): Promise<{ enricherOnline: boolean; items: Record<string, RadarEnrichment> }> => {
-      throw new TRPCError({ code: 'NOT_IMPLEMENTED', message: 'Enriquecimento em construção' });
+    .query(async ({ input }): Promise<{ enricherOnline: boolean; items: Record<string, RadarEnrichment> }> => {
+      const now = new Date();
+      const [heartbeat, enrichmentByCnpj] = await Promise.all([
+        loadHeartbeat(),
+        loadEnrichments(input.cnpjs),
+      ]);
+
+      const items: Record<string, RadarEnrichment> = {};
+      for (const cnpj of input.cnpjs) {
+        const row = enrichmentByCnpj.get(cnpj);
+        if (!row) continue; // sem linha == nunca foi pedido; a tela não precisa dele aqui
+        const enrichment = toRadarEnrichment(row, now);
+        if (enrichment) items[cnpj] = enrichment;
+      }
+
+      return { enricherOnline: isEnricherOnline(heartbeat, now), items };
     }),
 
   // "Varrer agora" num card: fura a fila (prioridade alta) ou refaz um resultado vencido/falho.
+  // `force` também refaz um 'pronto' ainda dentro do prazo — mas nunca mexe num
+  // card que o robô já reservou ('processando').
   enrichNow: protectedProcedure
     .input(z.object({ cnpj: CNPJ, force: z.boolean().optional() }))
-    .mutation(async (): Promise<RadarEnrichment> => {
-      throw new TRPCError({ code: 'NOT_IMPLEMENTED', message: 'Enriquecimento em construção' });
+    .mutation(async ({ input, ctx }): Promise<RadarEnrichment> => {
+      checkEnrichNowRate(ctx.user.id);
+
+      const [establishment] = await db.select({ cnpj: radarEstablishments.cnpj }).from(radarEstablishments)
+        .where(eq(radarEstablishments.cnpj, input.cnpj));
+      if (!establishment) throw new TRPCError({ code: 'NOT_FOUND', message: 'Estabelecimento não encontrado na base do Radar' });
+
+      const now = new Date();
+      if (!isEnricherOnline(await loadHeartbeat(), now)) {
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'O robô de busca na web está desligado.' });
+      }
+
+      await enqueue([input.cnpj], { priority: 100, userId: ctx.user.id, force: input.force ?? false });
+
+      const row = (await loadEnrichments([input.cnpj])).get(input.cnpj);
+      const enrichment = toRadarEnrichment(row, now);
+      if (!enrichment) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Falha ao enfileirar o enriquecimento' });
+      }
+      return enrichment;
     }),
 
   // Confirma na hora, na Receita (via BrasilAPI), se o CNPJ continua ativo — a base
@@ -385,6 +464,13 @@ export const prospectingRadarRouter = router({
       // aparecer no filtro de tags da tela de Tarefas.
       await db.insert(tags).values({ name: RADAR_TAG }).onConflictDoNothing({ target: tags.name });
 
+      // Se o robô já enriqueceu este CNPJ (Fase 2), leva o que achou para as
+      // notas da tarefa — é o único lugar em que esse dado sobrevive além da
+      // tela de busca.
+      const [enrichmentRow] = await db.select({ result: radarEnrichment.result }).from(radarEnrichment)
+        .where(eq(radarEnrichment.cnpj, establishment.cnpj));
+      const enrichmentData = enrichmentRow ? toRadarEnrichmentData(enrichmentRow.result) : null;
+
       const assignedTo = ctx.user.role !== 'admin' ? ctx.user.name : undefined;
       const companyName = establishment.nomeFantasia || establishment.razaoSocial;
       const notes = buildTaskNotes({
@@ -395,6 +481,7 @@ export const prospectingRadarRouter = router({
         endereco: establishment.endereco,
         sourceRelease: establishment.sourceRelease,
         message: input.message,
+        enrichment: enrichmentData,
       });
 
       let created;

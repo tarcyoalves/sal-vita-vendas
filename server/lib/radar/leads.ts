@@ -7,6 +7,10 @@ import {
   formatCnpj,
   segmentsForCnaes,
   type RadarCrmStatus,
+  type RadarEnrichFound,
+  type RadarEnrichSource,
+  type RadarEnrichment,
+  type RadarEnrichmentData,
   type RadarLead,
   type RadarMunicipality,
   type RadarPhone,
@@ -69,6 +73,9 @@ export function segmentLabelsForCnaes(cnaesAlvo: readonly string[]): string[] {
   return RADAR_SEGMENTS.filter((s) => keys.has(s.key)).map((s) => s.label);
 }
 
+// `enrichment` tem default `null` para não quebrar quem já chama esta função
+// sem o dado da Fase 2 (ex.: tests/radar-leads.test.ts) — só o router de busca
+// (Fase 2) tem o que passar aqui.
 export function buildLead(
   row: RadarEstablishment,
   municipio: RadarMunicipality,
@@ -77,6 +84,7 @@ export function buildLead(
   phones: RadarPhone[],
   crm: RadarCrmStatus,
   emailSuppressed: boolean,
+  enrichment: RadarEnrichment | null = null,
 ): RadarLead {
   return {
     cnpj: row.cnpj,
@@ -95,7 +103,7 @@ export function buildLead(
     porte: row.porte,
     dataInicio: row.dataInicio,
     crm,
-    enrichment: null,
+    enrichment,
   };
 }
 
@@ -115,6 +123,46 @@ function brDate(isoYmd: string): string {
   return `${d}/${m}/${y}`;
 }
 
+// Rótulo legível da fonte, para deixar claro de onde cada dado raspado veio —
+// quem lê a tarefa depois precisa saber que isso não veio do atendente.
+const ENRICH_SOURCE_LABELS: Record<RadarEnrichSource, string> = {
+  busca: 'busca',
+  site: 'site da empresa',
+  maps: 'Google Maps',
+  social: 'redes sociais',
+};
+
+function formatEnrichFoundLine(label: string, found: RadarEnrichFound): string {
+  return `${label}: ${found.value} (fonte: ${ENRICH_SOURCE_LABELS[found.source]})`;
+}
+
+// Bloco "Dados da web" das notas da tarefa — só o que o robô da VPS achou,
+// cada item com a fonte. Vazio (sem nada aproveitável) → sem bloco nenhum,
+// nunca um cabeçalho solto.
+function buildEnrichmentNotesBlock(data: RadarEnrichmentData): string[] {
+  const lines: string[] = [];
+  if (data.website) lines.push(`Site: ${data.website}`);
+  if (data.maps) {
+    const details = [
+      data.maps.categoria,
+      data.maps.nota != null ? `nota ${data.maps.nota}` : null,
+    ].filter((v): v is string => !!v).join(' — ');
+    lines.push(`Google Maps: ${data.maps.url}${details ? ` (${details})` : ''}`);
+  }
+  if (data.instagram) lines.push(`Instagram: ${data.instagram}`);
+  if (data.facebook) lines.push(`Facebook: ${data.facebook}`);
+  for (const w of data.whatsapps) {
+    const digits = w.value.replace(/\D/g, '');
+    const value = digits.length === 10 || digits.length === 11 ? formatPhoneDigits(digits) : w.value;
+    lines.push(formatEnrichFoundLine('WhatsApp', { ...w, value }));
+  }
+  for (const e of data.emails) {
+    lines.push(formatEnrichFoundLine('E-mail', e));
+  }
+  if (lines.length === 0) return [];
+  return ['', 'Dados da web:', ...lines];
+}
+
 export interface TaskNotesInput {
   originLabel: string; // "Barracão - PR"
   bags: number;
@@ -123,6 +171,9 @@ export interface TaskNotesInput {
   endereco: string | null;
   sourceRelease: string;
   message?: string;
+  // Resultado do enriquecimento por scraping (Fase 2), se já houver algum —
+  // null/undefined omite o bloco "Dados da web" por completo.
+  enrichment?: RadarEnrichmentData | null;
   now?: Date;
 }
 
@@ -142,6 +193,9 @@ export function buildTaskNotes(input: TaskNotesInput): string {
   ];
   if (input.message) {
     lines.push('', 'Mensagem sugerida:', input.message);
+  }
+  if (input.enrichment) {
+    lines.push(...buildEnrichmentNotesBlock(input.enrichment));
   }
   return lines.join('\n');
 }
