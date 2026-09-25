@@ -76,8 +76,8 @@ export function CreateTaskDialog({
       toast.success('Tarefa criada');
       onCreated({ taskId: result.taskId, phoneDigits, message });
       onOpenChange(false);
-    } catch (err: any) {
-      toast.error(err?.message ?? 'Erro ao criar tarefa');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao criar tarefa');
     }
   };
 
