@@ -1,0 +1,330 @@
+import { useMemo, useState } from 'react';
+import { TRPCClientError } from '@trpc/client';
+import { ChevronDown, ChevronRight, Search, Truck } from 'lucide-react';
+import { useAuth } from '../_core/hooks/useAuth';
+import { trpc } from '../lib/trpc';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Switch } from '../components/ui/switch';
+import { Skeleton } from '../components/ui/skeleton';
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+} from '../components/ui/empty';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '../components/ui/select';
+import { CityAutocomplete } from '../components/radar/CityAutocomplete';
+import { SegmentChips } from '../components/radar/SegmentChips';
+import { LeadCard } from '../components/radar/LeadCard';
+import {
+  RADAR_RADIUS_OPTIONS_KM,
+  RADAR_SEGMENT_KEYS,
+  type RadarMunicipality,
+  type RadarSegmentKey,
+} from '../../../shared/radar';
+
+const DEFAULT_SEGMENTS = RADAR_SEGMENT_KEYS.filter((k) => k !== 'racao_varejo');
+
+type CrmFilter = 'all' | 'novo' | 'no_crm' | 'excluido_antes';
+
+export default function RadarCargas() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+
+  // ── Formulário de busca ──
+  const [city, setCity] = useState<RadarMunicipality | null>(null);
+  const [radiusKm, setRadiusKm] = useState(50);
+  const [bagsInput, setBagsInput] = useState('400');
+  const [segments, setSegments] = useState<RadarSegmentKey[]>(DEFAULT_SEGMENTS);
+  const [includeSecondary, setIncludeSecondary] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [loadDate, setLoadDate] = useState('');
+  const [freightNote, setFreightNote] = useState('');
+  const [crmFilter, setCrmFilter] = useState<CrmFilter>('all');
+
+  const bags = Number(bagsInput);
+  const bagsValid = Number.isInteger(bags) && bags >= 1 && bags <= 2000;
+  const canSearch = !!city && segments.length > 0 && bagsValid;
+
+  const searchInput = useMemo(
+    () => ({
+      originIbge: city?.ibge ?? 0,
+      radiusKm,
+      segments,
+      includeSecondary,
+    }),
+    [city, radiusKm, segments, includeSecondary],
+  );
+
+  const searchQuery = trpc.prospectingRadar.search.useQuery(searchInput, {
+    enabled: false,
+    retry: false,
+  });
+
+  const handleSearch = () => {
+    if (!canSearch) return;
+    searchQuery.refetch();
+  };
+
+  const notImplemented =
+    searchQuery.error instanceof TRPCClientError && searchQuery.error.data?.code === 'NOT_IMPLEMENTED';
+
+  const data = searchQuery.data;
+  const leads = data?.leads ?? [];
+
+  const counts = useMemo(() => {
+    const c = { all: leads.length, novo: 0, no_crm: 0, excluido_antes: 0 };
+    for (const l of leads) {
+      if (l.crm.kind === 'novo') c.novo++;
+      else if (l.crm.kind === 'no_crm') c.no_crm++;
+      else c.excluido_antes++;
+    }
+    return c;
+  }, [leads]);
+
+  const filteredLeads = useMemo(() => {
+    if (crmFilter === 'all') return leads;
+    return leads.filter((l) => l.crm.kind === crmFilter);
+  }, [leads, crmFilter]);
+
+  return (
+    <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-4">
+      <div className="flex items-center gap-2 text-slate-500 text-sm">
+        <Truck size={16} />
+        <p>
+          Encontre empresas dos segmentos que compram sal perto da cidade da carga, para
+          completar o espaço que sobrou na carreta.
+        </p>
+      </div>
+
+      {/* ── Busca ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Buscar empresas</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs font-semibold text-slate-500 mb-1.5">Cidade da carga</Label>
+              <CityAutocomplete value={city} onChange={setCity} />
+            </div>
+            <div>
+              <Label className="text-xs font-semibold text-slate-500 mb-1.5">Raio</Label>
+              <Select value={String(radiusKm)} onValueChange={(v) => setRadiusKm(Number(v))}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {RADAR_RADIUS_OPTIONS_KM.map((km) => (
+                    <SelectItem key={km} value={String(km)}>
+                      {km} km (linha reta)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="bags" className="text-xs font-semibold text-slate-500 mb-1.5">
+              Saldo de sacos (25 kg)
+            </Label>
+            <Input
+              id="bags"
+              type="number"
+              min={1}
+              max={2000}
+              value={bagsInput}
+              onChange={(e) => setBagsInput(e.target.value)}
+              className={!bagsValid ? 'border-red-300' : ''}
+              required
+            />
+            {!bagsValid && (
+              <p className="text-[11px] text-red-500 mt-1">Informe de 1 a 2000 sacos.</p>
+            )}
+          </div>
+
+          <div>
+            <Label className="text-xs font-semibold text-slate-500 mb-1.5">Segmentos</Label>
+            <SegmentChips selected={segments} onChange={setSegments} />
+            {segments.length === 0 && (
+              <p className="text-[11px] text-red-500 mt-1">Marque ao menos um segmento.</p>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2.5">
+            <div>
+              <p className="text-sm font-medium text-slate-700">Incluir CNAE secundário</p>
+              <p className="text-[11px] text-slate-400">Mais resultados, menos precisos</p>
+            </div>
+            <Switch checked={includeSecondary} onCheckedChange={setIncludeSecondary} />
+          </div>
+
+          {/* Detalhes opcionais da carga */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setDetailsOpen((o) => !o)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700"
+            >
+              {detailsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              Detalhes da carga (opcional)
+            </button>
+            {detailsOpen && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+                <div>
+                  <Label htmlFor="loadDate" className="text-xs font-semibold text-slate-500 mb-1.5">
+                    Data da carga
+                  </Label>
+                  <Input
+                    id="loadDate"
+                    type="date"
+                    value={loadDate}
+                    onChange={(e) => setLoadDate(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="freightNote" className="text-xs font-semibold text-slate-500 mb-1.5">
+                    Condição de frete
+                  </Label>
+                  <Input
+                    id="freightNote"
+                    maxLength={200}
+                    placeholder="Ex.: frete grátis para pedidos acima de 200 sacos"
+                    value={freightNote}
+                    onChange={(e) => setFreightNote(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <Button
+            type="button"
+            className="w-full"
+            disabled={!canSearch || searchQuery.isFetching}
+            onClick={handleSearch}
+          >
+            <Search size={15} />
+            {searchQuery.isFetching ? 'Buscando...' : 'Buscar'}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* ── Resultados ── */}
+      {searchQuery.isFetching && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-56 rounded-2xl" />
+          ))}
+        </div>
+      )}
+
+      {!searchQuery.isFetching && notImplemented && (
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>Radar em implantação</EmptyTitle>
+            <EmptyDescription>
+              Essa funcionalidade ainda está sendo construída. Volte em breve.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      )}
+
+      {!searchQuery.isFetching && !notImplemented && searchQuery.error && (
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>Não foi possível buscar</EmptyTitle>
+            <EmptyDescription>{searchQuery.error.message}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      )}
+
+      {!searchQuery.isFetching && !notImplemented && data && data.datasetRelease === null && (
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Truck />
+            </EmptyMedia>
+            <EmptyTitle>Base de empresas indisponível</EmptyTitle>
+            <EmptyDescription>
+              {isAdmin
+                ? 'A base ainda não foi importada — veja scripts/radar/README.md'
+                : 'A base de empresas ainda não foi carregada. Fale com o administrador.'}
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      )}
+
+      {!searchQuery.isFetching && !notImplemented && data && data.datasetRelease !== null && (
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <p className="text-sm text-slate-600">
+              {leads.length} {leads.length === 1 ? 'empresa' : 'empresas'} em {data.municipalitiesInRadius}{' '}
+              {data.municipalitiesInRadius === 1 ? 'município' : 'municípios'} · base Receita {data.datasetRelease}
+            </p>
+            {data.truncated && (
+              <p className="text-xs text-amber-600">Mostrando apenas as 200 empresas mais próximas.</p>
+            )}
+
+            {/* Filtros por status no CRM */}
+            <div className="flex flex-wrap gap-1.5">
+              {([
+                ['all', 'Todos', counts.all],
+                ['novo', 'Novos', counts.novo],
+                ['no_crm', 'Já no CRM', counts.no_crm],
+                ['excluido_antes', 'Excluídos antes', counts.excluido_antes],
+              ] as [CrmFilter, string, number][]).map(([key, label, count]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setCrmFilter(key)}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold border transition ${
+                    crmFilter === key
+                      ? 'bg-blue-900 text-white border-blue-900'
+                      : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  {label} ({count})
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {filteredLeads.length === 0 ? (
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle>Nenhuma empresa neste filtro</EmptyTitle>
+                <EmptyDescription>Tente outro filtro ou aumente o raio da busca.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {filteredLeads.map((lead) => (
+                <LeadCard
+                  key={lead.cnpj}
+                  lead={lead}
+                  originIbge={searchInput.originIbge}
+                  bags={bags}
+                  loadDate={loadDate || undefined}
+                  freightNote={freightNote.trim() || undefined}
+                  onConverted={() => searchQuery.refetch()}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

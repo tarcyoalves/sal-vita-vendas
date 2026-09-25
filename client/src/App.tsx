@@ -28,6 +28,7 @@ import SalVitaAdmin from "./pages/SalVitaAdmin";
 import SalVitaChat from "./components/SalVitaChat";
 import TrackOrder from "./pages/TrackOrder";
 import Atacado from "./pages/Atacado";
+import RadarCargas from "./pages/RadarCargas";
 
 function Router() {
   return (
@@ -48,6 +49,9 @@ function Router() {
       </Route>
       <Route path="/attendants">
         <AppShell><Attendants /></AppShell>
+      </Route>
+      <Route path="/radar-cargas">
+        <AppShell><RadarCargas /></AppShell>
       </Route>
       <Route path="/atendentes">
         <AppShell><Attendants /></AppShell>
