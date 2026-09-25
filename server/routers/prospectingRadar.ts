@@ -118,8 +118,11 @@ export const prospectingRadarRouter = router({
       const secondaryMatch = sql`${radarEstablishments.cnaesAlvo} && ARRAY[${sql.join(codes.map((c) => sql`${c}`), sql`, `)}]::text[]`;
       const cnaeMatch = input.includeSecondary ? or(principalMatch, secondaryMatch) : principalMatch;
 
+      // `nearby` já vem ordenado por distância: ordenar pela posição do município na
+      // lista garante que, se o teto de linhas cortar, quem fica de fora é o mais longe.
       const rows = await db.select().from(radarEstablishments)
         .where(and(inArray(radarEstablishments.municipioIbge, ibgeCodes), cnaeMatch))
+        .orderBy(sql`array_position(ARRAY[${sql.join(ibgeCodes.map((c) => sql`${c}`), sql`, `)}]::int[], ${radarEstablishments.municipioIbge})`)
         .limit(RADAR_DB_FETCH_CAP);
 
       const withDistance = rows.map((row) => ({ row, distanceKm: distanceByIbge.get(row.municipioIbge) ?? 0 }));
@@ -239,9 +242,9 @@ export const prospectingRadarRouter = router({
         });
       }
 
-      let data: any;
+      let data: { situacao_cadastral?: number; descricao_situacao_cadastral?: string; razao_social?: string };
       try {
-        data = await res.json();
+        data = await res.json() as typeof data;
       } catch {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
@@ -404,8 +407,8 @@ export const prospectingRadarRouter = router({
           // tasks.create, NÃO chama runTriggerNow — ver nota abaixo).
           emailConfirmed: false,
         }).returning();
-      } catch (err: any) {
-        if (err?.code === '23505') {
+      } catch (err) {
+        if ((err as { code?: string } | null)?.code === '23505') {
           throw new TRPCError({ code: 'CONFLICT', message: 'Este lead já foi convertido em tarefa por outro atendente.' });
         }
         throw err;

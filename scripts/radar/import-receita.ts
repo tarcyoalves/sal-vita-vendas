@@ -35,6 +35,7 @@ interface Args {
   dryRun: boolean;
   maxMb: number;
   forceSize: boolean;
+  skipCleanup: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -45,6 +46,7 @@ function parseArgs(argv: string[]): Args {
   let dryRun = false;
   let maxMb = 150;
   let forceSize = false;
+  let skipCleanup = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -66,6 +68,9 @@ function parseArgs(argv: string[]): Args {
         break;
       case '--force-size':
         forceSize = true;
+        break;
+      case '--skip-cleanup':
+        skipCleanup = true;
         break;
       default:
         if (arg.startsWith('--')) {
@@ -92,7 +97,7 @@ function parseArgs(argv: string[]): Args {
     throw new Error('--max-mb precisa ser um número positivo.');
   }
 
-  return { dir, explicitFiles, ufs, release, dryRun, maxMb, forceSize };
+  return { dir, explicitFiles, ufs, release, dryRun, maxMb, forceSize, skipCleanup };
 }
 
 /** Classifica arquivos pelo nome, como a Receita nomeia os arquivos dentro dos zips
@@ -161,7 +166,7 @@ function estimateSizeMb(rows: readonly RadarEstablishmentRow[]): number {
 
 const BATCH_SIZE = 500;
 
-async function writeToDatabase(rows: RadarEstablishmentRow[], release: string, ufs: readonly string[]): Promise<void> {
+async function writeToDatabase(rows: RadarEstablishmentRow[], release: string, ufs: readonly string[], cleanup: boolean): Promise<void> {
   // Import dinâmico de propósito: `server/db/index.ts` lê `DATABASE_URL` assim que é
   // carregado. Um import estático quebraria `--dry-run` sem a variável definida.
   const { db } = await import('../../server/db');
@@ -216,6 +221,10 @@ async function writeToDatabase(rows: RadarEstablishmentRow[], release: string, u
     console.log(`  ${Math.min(i + BATCH_SIZE, rows.length)}/${rows.length}`);
   }
 
+  if (!cleanup) {
+    console.log('Limpeza de registros antigos PULADA (--skip-cleanup ou base incompleta).');
+    return;
+  }
   console.log('Removendo registros antigos das UFs importadas (empresa fechou, saiu do CNAE, ou a base mudou)...');
   await db
     .delete(radarEstablishments)
@@ -305,7 +314,14 @@ async function main(): Promise<void> {
     throw new Error('DATABASE_URL não está definida no ambiente. Veja scripts/radar/README.md.');
   }
 
-  await writeToDatabase(rows, args.release, args.ufs);
+  // A Receita divide os estabelecimentos em 10 arquivos (Estabelecimentos0..9). Com
+  // menos que isso, a limpeza apagaria as empresas que estão nos arquivos que faltam.
+  const baseCompleta = estabelecimentos.length >= 10;
+  if (!baseCompleta) {
+    console.warn(`Aviso: só ${estabelecimentos.length} arquivo(s) ESTABELE (a base completa tem 10). ` +
+      'Os registros serão gravados, mas a limpeza de registros antigos NÃO vai rodar.');
+  }
+  await writeToDatabase(rows, args.release, args.ufs, baseCompleta && !args.skipCleanup);
   console.log('Importação concluída.');
 }
 

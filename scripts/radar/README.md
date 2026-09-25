@@ -80,6 +80,7 @@ npx tsx scripts/radar/import-receita.ts \
 | `--dry-run` | não | só mostra o resumo, não grava nada |
 | `--max-mb 150` | não (padrão 150) | o script recusa gravar se a estimativa de tamanho passar disso |
 | `--force-size` | não | grava mesmo passando de `--max-mb` |
+| `--skip-cleanup` | não | não apaga os registros antigos das UFs importadas. A limpeza também é pulada sozinha quando há menos de 10 arquivos `ESTABELE` (base incompleta), para não apagar empresas que estão nos arquivos que faltam |
 
 ### Proteções
 

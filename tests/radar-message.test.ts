@@ -152,3 +152,11 @@ describe('draftRadarMessage', () => {
     expect(result.message).toBe(modelText); // aspas em volta removidas
   });
 });
+
+describe('guard — números que já estão nos dados reais', () => {
+  it('aceita número do nome da empresa (ex.: "2 IRMÃOS")', () => {
+    const msg = 'Olá, pessoal da Agropecuária 2 Irmãos! Tenho espaço para 400 sacos de 25 kg. Querem um orçamento?';
+    expect(passesRadarMessageGuard(msg, { bags: 400, companyName: 'AGROPECUARIA 2 IRMAOS' })).toBe(true);
+    expect(passesRadarMessageGuard(msg, { bags: 400 })).toBe(false);
+  });
+});

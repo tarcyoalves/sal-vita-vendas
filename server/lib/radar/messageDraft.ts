@@ -79,12 +79,14 @@ function extractNumbers(text: string): string[] {
 }
 
 /** Dígitos que o texto pode conter sem ser considerado "valor inventado". */
-function allowedNumbers(input: Pick<RadarDraftInput, 'bags' | 'freightNote' | 'loadDate'>): Set<string> {
+function allowedNumbers(input: GuardInput): Set<string> {
   const allowed = new Set<string>();
   allowed.add(String(input.bags));
   allowed.add('25'); // peso do saco — fato fixo, não é preço
-  if (input.freightNote) {
-    for (const n of extractNumbers(input.freightNote)) allowed.add(n);
+  // Números que já estão nos dados reais (texto do atendente, nome da empresa como
+  // "2 IRMÃOS", cidades) não são invenção da IA.
+  for (const text of [input.freightNote, input.companyName, input.cityLabel, input.originLabel]) {
+    if (text) for (const n of extractNumbers(text)) allowed.add(n);
   }
   if (input.loadDate) {
     const [y, m, d] = input.loadDate.split('-');
@@ -102,10 +104,10 @@ function allowedNumbers(input: Pick<RadarDraftInput, 'bags' | 'freightNote' | 'l
  * ser usado como está, ou se precisa cair para o template fixo. Nunca deixa passar
  * preço/desconto/prazo inventado, contagem de sacos errada, termo proibido ou link.
  */
-export function passesRadarMessageGuard(
-  message: string,
-  input: Pick<RadarDraftInput, 'bags' | 'freightNote' | 'loadDate'>,
-): boolean {
+type GuardInput = Pick<RadarDraftInput, 'bags' | 'freightNote' | 'loadDate'> &
+  Partial<Pick<RadarDraftInput, 'companyName' | 'cityLabel' | 'originLabel'>>;
+
+export function passesRadarMessageGuard(message: string, input: GuardInput): boolean {
   if (!message || message.length === 0 || message.length > MAX_MESSAGE_LENGTH) return false;
 
   const lower = message.toLowerCase();
@@ -145,8 +147,8 @@ export function buildDeterministicRadarMessage(input: RadarDraftInput): string {
   return (
     `Olá! Aqui é ${input.attendantName}, da Sal Vita. Vamos enviar uma carreta para a região de ` +
     `${input.originLabel}${dateLine}, e ainda sobra espaço para ${input.bags} sacos de sal de 25 kg ` +
-    `nessa carga (espaço limitado nesta carga). Como vocês, da ${input.companyName}, ficam em ` +
-    `${input.cityLabel}, dava pra incluir o pedido de vocês nessa carga e dividir o frete.${freightLine} ` +
+    `nessa carga — o espaço é limitado. Como vocês, da ${input.companyName}, ficam em ` +
+    `${input.cityLabel}, dá para incluir o pedido de vocês nessa carga e dividir o frete.${freightLine} ` +
     `Se fizer sentido, me avisa que já preparo um orçamento. Podemos conversar?`
   );
 }
