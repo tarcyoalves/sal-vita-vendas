@@ -832,3 +832,19 @@ export const radarLeadActions = pgTable('radar_lead_actions', {
 });
 
 export type RadarLeadActionRow = typeof radarLeadActions.$inferSelect;
+
+// Histórico permanente do Radar (append-only — nunca apagar nem editar linhas):
+// cada contato, descarte, restauração e conversão em tarefa. `radar_lead_actions`
+// guarda só o estado atual; aqui fica o porquê, para não retrabalhar lead ruim.
+export const radarLeadEvents = pgTable('radar_lead_events', {
+  id: serial('id').primaryKey(),
+  cnpj: text('cnpj').notNull(),
+  type: text('type').notNull(),            // contatado | descartado | restaurado | convertido
+  channel: text('channel'),                // whatsapp | telefone (contatado)
+  reason: text('reason'),                  // motivo do descarte
+  note: text('note'),
+  taskId: integer('task_id'),              // convertido
+  userId: integer('user_id').notNull(),
+  userName: text('user_name').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});

@@ -16,7 +16,7 @@ descarte ficam registrados e visíveis para todos os atendentes.
 ## Arquivos e áreas que vou tocar
 
 - `shared/radar.ts`
-- `server/db/schema.ts` (tabela nova `radar_lead_actions`) e `server/db/migrate.ts`
+- `server/db/schema.ts` (tabelas novas `radar_lead_actions` e `radar_lead_events`) e `server/db/migrate.ts`
 - `server/routers/prospectingRadar.ts`, `server/lib/radar/leads.ts`
 - `client/src/pages/RadarCargas.tsx`, `client/src/components/radar/`
 - `tests/radar-*.test.ts`, `PLANO-RADAR-CARGAS.md`, `ESTADO-DO-PROJETO.md`
@@ -25,6 +25,7 @@ descarte ficam registrados e visíveis para todos os atendentes.
 
 ## Progresso
 
-- [ ] Contrato + tabela + backend (registrar contato, descartar, restaurar)
+- [x] Contrato + tabela + backend (registrar contato, descartar, restaurar) — `7b36444`
+- [x] Descartes permanentes: histórico append-only, restaurar só admin/gerente, descartado fora do limite e do robô
 - [ ] Tela: ações de contato no card, "Transformar em tarefa" / "Descartar"
 - [ ] Verificação e deploy

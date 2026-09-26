@@ -5,10 +5,10 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { and, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
-import { router, protectedProcedure } from '../trpc';
+import { router, protectedProcedure, staffProcedure } from '../trpc';
 import { db } from '../db';
 import { spDateStr } from '../lib/tz';
-import { radarEstablishments, radarEnrichment, radarLeadActions, tasks, taskDeletionLogs, emailSuppressions, tags } from '../db/schema';
+import { radarEstablishments, radarEnrichment, radarLeadActions, radarLeadEvents, tasks, taskDeletionLogs, emailSuppressions, tags } from '../db/schema';
 import { municipioByIbge, municipiosWithinRadius, searchMunicipios } from '../lib/radar/geo';
 import {
   establishmentPhones,
@@ -112,6 +112,17 @@ async function loadLeadAction(cnpj: string) {
   return row;
 }
 
+// Histórico permanente (radar_lead_events) — só INSERT, nunca UPDATE/DELETE.
+async function logLeadEvent(e: {
+  cnpj: string; type: 'contatado' | 'descartado' | 'restaurado' | 'convertido';
+  user: { id: number; name: string }; channel?: string; reason?: string; note?: string | null; taskId?: number;
+}) {
+  await db.insert(radarLeadEvents).values({
+    cnpj: e.cnpj, type: e.type, channel: e.channel ?? null, reason: e.reason ?? null,
+    note: e.note ?? null, taskId: e.taskId ?? null, userId: e.user.id, userName: e.user.name,
+  });
+}
+
 async function requireEstablishment(cnpj: string) {
   const [row] = await db.select().from(radarEstablishments).where(eq(radarEstablishments.cnpj, cnpj));
   if (!row) throw new TRPCError({ code: 'NOT_FOUND', message: 'Estabelecimento não encontrado na base do Radar' });
@@ -186,8 +197,22 @@ export const prospectingRadarRouter = router({
         return aName.localeCompare(bName, 'pt-BR');
       });
 
-      const truncated = withDistance.length > RADAR_MAX_RESULTS;
-      const page = withDistance.slice(0, RADAR_MAX_RESULTS);
+      // Descartados ficam para sempre (evita retrabalho com lead ruim): não ocupam
+      // vaga no limite de 200 — a lista enche com empresas úteis — e vêm no fim,
+      // para o filtro "Descartados" da tela.
+      const discardedSet = new Set<string>();
+      if (withDistance.length > 0) {
+        const discardedRows = await db.select({ cnpj: radarLeadActions.cnpj }).from(radarLeadActions)
+          .where(and(
+            inArray(radarLeadActions.cnpj, withDistance.map((w) => w.row.cnpj)),
+            sql`${radarLeadActions.discardedAt} IS NOT NULL`,
+          ));
+        for (const r of discardedRows) discardedSet.add(r.cnpj);
+      }
+      const active = withDistance.filter((w) => !discardedSet.has(w.row.cnpj));
+      const discardedOnes = withDistance.filter((w) => discardedSet.has(w.row.cnpj));
+      const truncated = active.length > RADAR_MAX_RESULTS;
+      const page = [...active.slice(0, RADAR_MAX_RESULTS), ...discardedOnes.slice(0, RADAR_MAX_RESULTS)];
 
       // Nenhum estabelecimento casou os CNAEs no raio — evita `inArray` com
       // lista vazia (gera SQL inválido) e devolve resultado vazio direto.
@@ -258,6 +283,7 @@ export const prospectingRadarRouter = router({
       const actionByCnpj = new Map(actionRows.map((r) => [r.cnpj, r]));
       const toEnqueue = enricherOnline
         ? page
+            .filter((p) => !discardedSet.has(p.row.cnpj))
             .filter((p) => needsEnqueue(enrichmentByCnpj.get(p.row.cnpj), now))
             .slice(0, RADAR_ENRICH_PER_SEARCH)
             .map((p) => p.row.cnpj)
@@ -325,6 +351,9 @@ export const prospectingRadarRouter = router({
       const [establishment] = await db.select({ cnpj: radarEstablishments.cnpj }).from(radarEstablishments)
         .where(eq(radarEstablishments.cnpj, input.cnpj));
       if (!establishment) throw new TRPCError({ code: 'NOT_FOUND', message: 'Estabelecimento não encontrado na base do Radar' });
+      if ((await loadLeadAction(input.cnpj))?.discardedAt) {
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Empresa descartada — não vale buscar na web.' });
+      }
 
       const now = new Date();
       if (!isEnricherOnline(await loadHeartbeat(), now)) {
@@ -462,11 +491,12 @@ export const prospectingRadarRouter = router({
           updatedAt: now,
         },
       });
+      await logLeadEvent({ cnpj: input.cnpj, type: 'contatado', user: ctx.user, channel: input.channel });
       return toRadarLeadActivity(await loadLeadAction(input.cnpj));
     }),
 
-  // Descarta a empresa da lista para todos os atendentes (com motivo). Reversível
-  // com `restore`. "Pediu para não ser contatado" também descadastra o e-mail
+  // Descarta a empresa da lista para todos os atendentes (com motivo). Fica para
+  // sempre — só admin/gerente desfaz, com `restore` — e vai para o histórico. "Pediu para não ser contatado" também descadastra o e-mail
   // dela de todo e-mail marketing do CRM (email_suppressions) — isso o restore
   // não desfaz, de propósito.
   discard: protectedProcedure
@@ -492,6 +522,7 @@ export const prospectingRadarRouter = router({
       };
       await db.insert(radarLeadActions).values({ cnpj: input.cnpj, ...values })
         .onConflictDoUpdate({ target: radarLeadActions.cnpj, set: values });
+      await logLeadEvent({ cnpj: input.cnpj, type: 'descartado', user: ctx.user, reason: input.reason, note: input.note || null });
       if (input.reason === 'nao_contatar' && establishment.email) {
         await db.insert(emailSuppressions)
           .values({ email: establishment.email.toLowerCase().trim(), reason: 'manual' })
@@ -500,14 +531,19 @@ export const prospectingRadarRouter = router({
       return toRadarLeadActivity(await loadLeadAction(input.cnpj));
     }),
 
-  restore: protectedProcedure
-    .input(z.object({ cnpj: CNPJ }))
+  // Só admin/gerente desfaz um descarte (o dono quer os descartados mantidos).
+  // O descarte original continua no histórico (radar_lead_events).
+  restore: staffProcedure
+    .input(z.object({ cnpj: CNPJ, note: z.string().trim().max(500).optional() }))
     .mutation(async ({ input, ctx }): Promise<RadarLeadActivity> => {
       checkLeadActionRate(ctx.user.id);
+      const current = await loadLeadAction(input.cnpj);
+      if (!current?.discardedAt) return toRadarLeadActivity(current);
       await db.update(radarLeadActions).set({
         discardedAt: null, discardedByUserId: null, discardedByName: null,
         discardReason: null, discardNote: null, updatedAt: new Date(),
       }).where(eq(radarLeadActions.cnpj, input.cnpj));
+      await logLeadEvent({ cnpj: input.cnpj, type: 'restaurado', user: ctx.user, note: input.note || null });
       return toRadarLeadActivity(await loadLeadAction(input.cnpj));
     }),
 
@@ -656,6 +692,7 @@ export const prospectingRadarRouter = router({
       // uma base pública e nunca deu consentimento algum; ele só pode entrar
       // em qualquer automação depois que o atendente confirmar o e-mail à mão.
 
+      await logLeadEvent({ cnpj: establishment.cnpj, type: 'convertido', user: ctx.user, taskId: created.id });
       return { taskId: created.id };
     }),
 });
