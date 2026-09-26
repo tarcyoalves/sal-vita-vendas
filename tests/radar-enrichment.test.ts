@@ -376,3 +376,24 @@ describe('buildTaskNotes — bloco "Dados da web"', () => {
     expect(notes.indexOf('Mensagem sugerida:')).toBeLessThan(notes.indexOf('Dados da web:'));
   });
 });
+
+describe('links raspados só aceitam http(s)', () => {
+  it('descarta javascript:, data: e lixo; mantém https', async () => {
+    const { toRadarEnrichmentData, safeHttpUrl } = await import('../server/lib/radar/enrichment');
+    expect(safeHttpUrl('javascript:alert(1)')).toBeNull();
+    expect(safeHttpUrl('JaVaScRiPt:alert(1)')).toBeNull();
+    expect(safeHttpUrl('data:text/html,<script>')).toBeNull();
+    expect(safeHttpUrl('não é url')).toBeNull();
+    expect(safeHttpUrl('https://agro.com.br/contato')).toBe('https://agro.com.br/contato');
+    const d = toRadarEnrichmentData({
+      website: 'javascript:alert(1)', instagram: 'https://instagram.com/agro', facebook: 'data:x',
+      maps: { url: 'javascript:void(0)', nome: 'X' },
+      whatsapps: [{ value: '47988887777', source: 'site', url: 'javascript:x' }],
+    });
+    expect(d?.website).toBeNull();
+    expect(d?.facebook).toBeNull();
+    expect(d?.instagram).toBe('https://instagram.com/agro');
+    expect(d?.maps).toBeNull();
+    expect(d?.whatsapps[0]).toEqual({ value: '47988887777', source: 'site', url: null });
+  });
+});

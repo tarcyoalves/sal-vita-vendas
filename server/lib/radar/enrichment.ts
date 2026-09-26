@@ -39,6 +39,18 @@ function isNonEmptyString(v: unknown): v is string {
   return typeof v === 'string' && v.trim().length > 0;
 }
 
+// Os links vêm de páginas raspadas e viram `href` na tela: só http(s). Um
+// `javascript:` ou `data:` aqui seria XSS dentro do CRM.
+export function safeHttpUrl(v: unknown): string | null {
+  if (!isNonEmptyString(v)) return null;
+  try {
+    const u = new URL(v.trim());
+    return u.protocol === 'http:' || u.protocol === 'https:' ? v.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 function isFiniteNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
 }
@@ -51,7 +63,7 @@ function toEnrichFound(v: unknown): RadarEnrichFound | null {
   return {
     value: o.value,
     source: o.source as RadarEnrichSource,
-    url: isNonEmptyString(o.url) ? o.url : null,
+    url: safeHttpUrl(o.url),
   };
 }
 
@@ -77,9 +89,10 @@ function toMaps(v: unknown): RadarEnrichmentData['maps'] {
   if (!v || typeof v !== 'object') return null;
   const o = v as Record<string, unknown>;
   // Sem URL o card de Maps não serve para nada (não dá para linkar) — descarta.
-  if (!isNonEmptyString(o.url)) return null;
+  const url = safeHttpUrl(o.url);
+  if (!url) return null;
   return {
-    url: o.url,
+    url,
     nome: isNonEmptyString(o.nome) ? o.nome : null,
     categoria: isNonEmptyString(o.categoria) ? o.categoria : null,
     nota: isFiniteNumber(o.nota) ? o.nota : null,
@@ -99,13 +112,13 @@ export function toRadarEnrichmentData(raw: unknown): RadarEnrichmentData | null 
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const o = raw as Record<string, unknown>;
   return {
-    website: isNonEmptyString(o.website) ? o.website : null,
+    website: safeHttpUrl(o.website),
     maps: toMaps(o.maps),
     whatsapps: toEnrichFoundList(o.whatsapps),
     telefones: toEnrichFoundList(o.telefones),
     emails: toEnrichFoundList(o.emails),
-    instagram: isNonEmptyString(o.instagram) ? o.instagram : null,
-    facebook: isNonEmptyString(o.facebook) ? o.facebook : null,
+    instagram: safeHttpUrl(o.instagram),
+    facebook: safeHttpUrl(o.facebook),
     fontes: toSourceResultList(o.fontes),
   };
 }
