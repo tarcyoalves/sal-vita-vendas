@@ -25,7 +25,7 @@
 | 8 | Buscar pelo nome da cidade | Há nomes repetidos entre estados (existe **Barracão** no PR e no RS). | Autocomplete que envia o código IBGE. |
 | 9 | Copy com "gatilho de escassez" | Pode, desde que seja **verdade**. | A IA recebe só fatos (saldo, cidade, data e frete digitados pelo atendente). Não inventa preço, desconto, prazo nem fala de saúde (ESTADO seção 4). |
 | 10 | Filtragem da IA ("pet shop de banho e tosa") | Com CNAE e nome, a IA adivinha. Não dá para confiar nisso para descartar lead. | Fase 1 sem filtro por IA. A IA escreve o rascunho da mensagem sob demanda, um lead por vez. |
-| 11 | CNAE 4789-0/04 como "rações" | A descrição oficial é "animais e alimentos para animais **de estimação**": vai trazer pet shop. | Mantido como segmento separado e desmarcável. **Validar a lista de CNAEs** com a carteira real (Fase 2). |
+| 11 | CNAE 4789-0/04 como "rações" | A descrição oficial é "animais e alimentos para animais **de estimação**": vai trazer pet shop. | Mantido como segmento separado e desmarcável. **Validar a lista de CNAEs** com a carteira real (Fase 3). |
 
 ## 3. Conformidade (não negociável)
 
@@ -77,20 +77,30 @@ O importador roda na VPS com o `DATABASE_URL` do CRM no `.env` de lá.
 
 ## 5. Fases
 
-**Fase 1 (MVP, este trabalho)**
+**Fase 1 (MVP, feita em 25/09)**
 1. Contrato: tabela, tipos, geo, esqueleto do router (feito por Claude).
 2. Importador da Receita + testes de parsing.
 3. Backend: busca, cruzamento com o CRM, confirmação de CNPJ, conversão em tarefa.
 4. IA: `lib/llm.ts` (cadeia reutilizável), provedor `antigravity` e rascunho da mensagem.
 5. Tela `/radar-cargas`: busca → lista → confirmar CNPJ → rascunho → criar tarefa e abrir `wa.me`.
 
-**Fase 2 (depois de usar a Fase 1)**
+**Fase 2 (feita em 26/09, a pedido do dono): enriquecimento por scraping**
+- Ao Buscar, as 60 empresas mais próximas entram na fila `radar_enrichment`; o robô
+  Python/Scrapling da VPS (`scripts/radar/enricher/`) varre buscador → site → Google
+  Maps → Instagram/Facebook públicos e os cards se completam na tela. Resultado vale 30 dias.
+- Limites: não resolve captcha, não faz login, respeita robots.txt nos sites, pausa a
+  fonte bloqueada por 60 min. Raspar o Google Maps vai contra os termos do Google e pode
+  bloquear o IP da VPS — o robô vai devagar para reduzir isso.
+- WhatsApp achado em link `wa.me` é mostrado como WhatsApp; telefone da Receita continua
+  "provável celular".
+
+**Fase 3 (depois de usar)**
 - **Perfil CNAE da carteira real:** consultar na BrasilAPI os CNPJs das tarefas convertidas
   e contar os CNAEs. É isso que valida (ou corrige) a lista de segmentos, com dado real.
 - Ranking por porte e por histórico de compra na cidade.
 - Rota da carreta (vários destinos) em vez de uma cidade só.
 
-**Fase 3 (depende de decisão e custo do dono)**
+**Fase 4 (depende de decisão e custo do dono)**
 - IE via API paga (CNPJá, que consulta o CCC, ou equivalente) ou SINTEGRA manual.
 - Distância rodoviária com OSRM próprio na VPS.
 

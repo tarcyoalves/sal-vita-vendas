@@ -146,6 +146,24 @@ minerais. Até lá, não.
 
 ## 5. O que está feito
 
+**Radar de Cargas (25–26/09/2026 — CRM)** — `/radar-cargas`, menu "Radar de Cargas".
+Plano e decisões em `PLANO-RADAR-CARGAS.md`.
+- Atendente informa cidade da carga, raio e saldo de sacos; a tela lista empresas ATIVAS
+  dos CNAEs compradores de sal no raio (linha reta), marca quem já está no CRM (e com
+  quem) e quem foi excluído antes (com o motivo), confirma o CNPJ ao vivo na BrasilAPI,
+  gera rascunho de mensagem (IA com trava de conformidade, ou texto fixo) e cria a
+  tarefa com link `wa.me` para envio **manual**. Não dispara automação de e-mail.
+- Base: tabela `radar_establishments`, preenchida pelo importador
+  `scripts/radar/import-receita.ts` (base aberta da Receita, roda na VPS).
+- Scraping: fila `radar_enrichment` consumida pelo robô Python/Scrapling
+  `scripts/radar/enricher/` (VPS): buscador → site → Google Maps → Instagram/Facebook
+  públicos. Não resolve captcha nem faz login; pausa a fonte bloqueada. Links raspados
+  só entram se forem http(s).
+- IA: provedor opcional `antigravity` (3 variáveis `ANTIGRAVITY_*`) primeiro na cadeia
+  de todo o CRM; sem elas, nada muda.
+- **Nada disso foi rodado contra o banco de produção nem contra a base real da Receita**
+  — só typecheck, testes (143 Vitest + 48 pytest) e tela com dados de teste.
+
 **Infra e portões (13/08/2026 — PRs #12 e #13)**
 - **Typecheck é portão de verdade** (`a29da9e` + `#12`). Os 153 erros foram zerados
   deletando ~6.300 linhas de código órfão, e `tsconfig.json` passou a excluir `sallog/`
@@ -256,6 +274,11 @@ minerais. Até lá, não.
    200.*
 3. **Setar `B2B_NOTIFY_EMAIL`** na Vercel — sem isso o aviso de lead novo do `/atacado`
    não chega.
+3a. **Radar de Cargas — ligar na VPS** (sem isso a tela abre vazia):
+   rodar `scripts/radar/import-receita.ts` (ver `scripts/radar/README.md`; começar por
+   PR, SC, RS com `--dry-run`), instalar o robô `scripts/radar/enricher/` (README lá) e,
+   se quiser o Gemini, setar `ANTIGRAVITY_BASE_URL`/`_API_KEY`/`_MODEL` na Vercel.
+   Validar a lista de CNAEs em `shared/radar.ts` (o 4789-0/04 traz pet shop).
 
 ### 🟠 Código, ainda aberto
 0. **🔴 Webhook do Resend do CRM inalcançável desde 11/08/2026** *(achado em 24/09)*.
@@ -278,6 +301,11 @@ minerais. Até lá, não.
 10. **Cobertura de testes baixa.** *(Atualizado em 24/09: o Vitest existe e é portão
     desde 04/09, com 22 testes.)* Cobre só competência do faturamento e parsing de datas.
     Autenticação, permissões e e-mail marketing não têm teste.
+10a. **Importação de planilha marca e-mail como confirmado** *(achado em 26/09)*.
+    `tasks.bulkCreate` grava `emailConfirmed: !!email` e dispara `lead_created`, que
+    inscreve o e-mail importado nas sequências ativas — o comentário do schema diz que
+    e-mail importado começa NÃO confirmado. Pode ser intencional (listas do dono);
+    confirmar com o dono antes de mudar.
 11. **Schema sem foreign keys declaradas** — as relações são inteiros por convenção, sem
     `.references()`. Integridade depende só do código.
 
