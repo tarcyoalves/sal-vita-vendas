@@ -1,21 +1,43 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { TRPCClientError } from '@trpc/client';
-import { CheckCircle2, XCircle, Loader2, ExternalLink, Sparkles, PlusCircle } from 'lucide-react';
+import {
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  ExternalLink,
+  Sparkles,
+  PlusCircle,
+  Ban,
+  RotateCcw,
+  MessageCircle,
+  Phone as PhoneIcon,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '../../lib/trpc';
+import { useAuth } from '../../_core/hooks/useAuth';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent } from '../ui/tooltip';
 import { Textarea } from '../ui/textarea';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/select';
 import {
   RADAR_SEGMENTS,
   formatCnpj,
+  waMeLink,
+  discardReasonLabel,
   type RadarLead,
   type RadarCnpjCheck,
   type RadarEnrichment,
+  type RadarLeadActivity,
+  type RadarContactChannel,
 } from '../../../../shared/radar';
-import { CreateTaskDialog, OpenWhatsAppButton, LinkToTasks } from './CreateTaskDialog';
+import { CreateTaskDialog, LinkToTasks } from './CreateTaskDialog';
+import { DiscardDialog } from './DiscardDialog';
 import { EnrichmentSection } from './EnrichmentSection';
+import { buildPhoneOptions, defaultPhoneDigits } from './phoneOptions';
+import { defaultContactMessage } from './contactMessage';
 
 const SEGMENT_LABELS = new Map(RADAR_SEGMENTS.map((s) => [s.key, s.label]));
 
@@ -35,30 +57,92 @@ function formatDate(iso: string | null): string | null {
   return `${d}/${m}/${y}`;
 }
 
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${dd}/${mm} ${hh}:${min}`;
+}
+
+const CHANNEL_LABELS: Record<RadarContactChannel, string> = {
+  whatsapp: 'WhatsApp',
+  telefone: 'telefone',
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Aviso de contato já feito — visível perto do topo do card, antes de outro atendente ligar de novo. */
+function ContactActivityBadge({ activity, currentUserName }: { activity: RadarLeadActivity; currentUserName: string | null }) {
+  if (!activity.contactedAt) return null;
+  const isOther = !!currentUserName && activity.contactedByName !== currentUserName;
+  const isRecent = Date.now() - new Date(activity.contactedAt).getTime() < DAY_MS;
+  const warn = isOther && isRecent;
+  const channel = activity.contactChannel ? CHANNEL_LABELS[activity.contactChannel] : null;
+  return (
+    <p
+      className={`text-xs rounded-lg px-2.5 py-1.5 ${
+        warn ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-slate-50 text-slate-600 border border-slate-200'
+      }`}
+    >
+      Contatado por {activity.contactedByName} · {formatDateTime(activity.contactedAt)}
+      {channel ? ` · ${channel}` : ''}
+      {activity.contactCount > 1 ? ` · ×${activity.contactCount}` : ''}
+    </p>
+  );
+}
+
 export function LeadCard({
   lead,
   originIbge,
+  originLabel,
   bags,
   loadDate,
   freightNote,
+  activity,
+  onActivityChange,
   enrichment,
   onEnrichmentChange,
   onConverted,
 }: {
   lead: RadarLead;
   originIbge: number;
+  originLabel: string;
   bags: number;
   loadDate?: string;
   freightNote?: string;
+  activity: RadarLeadActivity;
+  onActivityChange: (cnpj: string, activity: RadarLeadActivity) => void;
   enrichment: RadarEnrichment | null;
   onEnrichmentChange: (cnpj: string, enrichment: RadarEnrichment) => void;
   onConverted: () => void;
 }) {
+  const { user } = useAuth();
   const [verifyResult, setVerifyResult] = useState<RadarCnpjCheck | null>(null);
-  const [draftMessage, setDraftMessage] = useState<string | null>(null);
   const [draftProvider, setDraftProvider] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [created, setCreated] = useState<{ phoneDigits: string | null; message: string } | null>(null);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [discardedDetailsOpen, setDiscardedDetailsOpen] = useState(false);
+  const [created, setCreated] = useState(false);
+  const canRestore = user?.role === 'admin' || user?.role === 'manager';
+
+  const displayName = lead.nomeFantasia ?? lead.razaoSocial;
+  const showRazaoSmall = !!lead.nomeFantasia && lead.nomeFantasia !== lead.razaoSocial;
+  const dataInicio = formatDate(lead.dataInicio);
+
+  // ── Telefone escolhido para WhatsApp/Ligar ──
+  const phoneOptions = useMemo(() => buildPhoneOptions(lead, enrichment), [lead, enrichment]);
+  const [selectedPhone, setSelectedPhone] = useState<string | null>(() => defaultPhoneDigits(phoneOptions));
+  useEffect(() => {
+    setSelectedPhone((prev) => (prev && phoneOptions.some((p) => p.digits === prev) ? prev : defaultPhoneDigits(phoneOptions)));
+  }, [phoneOptions]);
+
+  // ── Mensagem: rascunho da IA (se pedido) ou padrão neutro montado aqui ──
+  const [message, setMessage] = useState(() =>
+    defaultContactMessage({ attendantName: user?.name ?? 'nossa equipe', cityLabel: originLabel, bags }),
+  );
+  const [messageOpen, setMessageOpen] = useState(false);
 
   const verifyMutation = trpc.prospectingRadar.verifyCnpj.useMutation({
     onSuccess: (data) => setVerifyResult(data),
@@ -67,8 +151,9 @@ export function LeadCard({
 
   const draftMutation = trpc.prospectingRadar.draftMessage.useMutation({
     onSuccess: (data) => {
-      setDraftMessage(data.message);
+      setMessage(data.message);
       setDraftProvider(data.provider);
+      setMessageOpen(true);
     },
     onError: (err) => toast.error(err.message ?? 'Erro ao gerar mensagem'),
   });
@@ -85,9 +170,92 @@ export function LeadCard({
     },
   });
 
-  const displayName = lead.nomeFantasia ?? lead.razaoSocial;
-  const showRazaoSmall = !!lead.nomeFantasia && lead.nomeFantasia !== lead.razaoSocial;
-  const dataInicio = formatDate(lead.dataInicio);
+  // Fire-and-forget: nunca bloqueia a navegação do WhatsApp/tel: (o botão é
+  // uma âncora de verdade, o clique já abre o link antes da mutation voltar).
+  const markContactedMutation = trpc.prospectingRadar.markContacted.useMutation({
+    onSuccess: (data) => onActivityChange(lead.cnpj, data),
+    onError: (err) => {
+      if (err instanceof TRPCClientError && err.data?.code === 'NOT_FOUND') return;
+      toast.error('Não foi possível registrar o contato agora.');
+    },
+  });
+
+  // Só admin/gerente restaura (o dono quer o descarte permanente para
+  // atendentes, para não reabrir um lead ruim por engano) — o servidor
+  // também recusa (FORBIDDEN) o atendente comum, o botão nem aparece para ele.
+  const restoreMutation = trpc.prospectingRadar.restore.useMutation({
+    onSuccess: (data) => onActivityChange(lead.cnpj, data),
+    onError: (err) => {
+      if (err instanceof TRPCClientError && err.data?.code === 'FORBIDDEN') {
+        toast.error('Somente admin ou gerente pode restaurar uma empresa descartada.');
+        return;
+      }
+      toast.error(err.message ?? 'Erro ao restaurar');
+    },
+  });
+
+  const registerContact = (channel: RadarContactChannel) => {
+    markContactedMutation.mutate({ cnpj: lead.cnpj, channel });
+  };
+
+  const isCrm = lead.crm.kind === 'no_crm';
+  const isDiscarded = !!activity.discarded;
+
+  // ── Descartado: card colapsa numa linha só (expansível para ver o que já se
+  // sabia da empresa). "Restaurar" só para admin/gerente — descarte de
+  // atendente é permanente para não reabrir um lead ruim por engano.
+  if (isDiscarded && activity.discarded) {
+    const { byName, reason, note } = activity.discarded;
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => setDiscardedDetailsOpen((o) => !o)}
+            className="flex items-center gap-1.5 min-w-0 text-left"
+          >
+            {discardedDetailsOpen ? (
+              <ChevronDown size={13} className="shrink-0 text-slate-400" />
+            ) : (
+              <ChevronRight size={13} className="shrink-0 text-slate-400" />
+            )}
+            <p className="text-xs text-slate-600 min-w-0 truncate">
+              <span className="font-semibold text-slate-800">{displayName}</span> — Descartado por {byName} —{' '}
+              {discardReasonLabel(reason)}
+            </p>
+          </button>
+          {canRestore && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              disabled={restoreMutation.isPending}
+              onClick={() => restoreMutation.mutate({ cnpj: lead.cnpj })}
+            >
+              {restoreMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
+              Restaurar
+            </Button>
+          )}
+        </div>
+        {discardedDetailsOpen && (
+          <div className="space-y-2 pl-5">
+            {note && <p className="text-xs text-slate-500 italic">“{note}”</p>}
+            <p className="text-xs text-slate-500">{formatCnpj(lead.cnpj)}</p>
+            {lead.phones.length > 0 && (
+              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {lead.phones.map((p) => (
+                  <span key={p.digits} className="text-xs text-slate-600">{p.formatted}</span>
+                ))}
+              </div>
+            )}
+            {lead.email && <p className="text-xs text-slate-600">{lead.email}</p>}
+            <EnrichmentSection enrichment={enrichment} scanning={false} onScanNow={() => {}} discarded />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
@@ -102,6 +270,9 @@ export function LeadCard({
         </div>
         <CrmBadge lead={lead} />
       </div>
+
+      {/* Contato já feito — perto do topo, para quem for ligar ver antes */}
+      <ContactActivityBadge activity={activity} currentUserName={user?.name ?? null} />
 
       {lead.crm.kind === 'excluido_antes' && (
         <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
@@ -188,60 +359,147 @@ export function LeadCard({
           <span>{verifyResult.situacao} · checado às {new Date(verifyResult.checkedAt).toLocaleTimeString('pt-BR')}</span>
         </div>
       )}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={verifyMutation.isPending}
+        onClick={() => verifyMutation.mutate({ cnpj: lead.cnpj })}
+      >
+        {verifyMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+        Confirmar na Receita
+      </Button>
 
-      {/* Rascunho de mensagem */}
-      {draftMessage !== null && (
-        <div className="space-y-1">
-          <Textarea
-            value={draftMessage}
-            onChange={(e) => setDraftMessage(e.target.value)}
-            rows={4}
-            className="text-xs"
-          />
-          <p className="text-[10px] text-slate-400">
-            Gerado por: {draftProvider === 'modelo-fixo' ? 'texto padrão' : draftProvider}
-          </p>
-        </div>
+      {!isCrm && (
+        <>
+          {/* Mensagem (rascunho ou padrão) — colapsável */}
+          <div className="rounded-lg border border-slate-200 p-2.5 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setMessageOpen((o) => !o)}
+                className="flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700"
+              >
+                {messageOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                Mensagem {draftProvider ? '(gerada)' : '(padrão)'}
+              </button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={draftMutation.isPending}
+                onClick={() => draftMutation.mutate({ cnpj: lead.cnpj, originIbge, bags, loadDate, freightNote })}
+              >
+                {draftMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                Gerar mensagem
+              </Button>
+            </div>
+            {messageOpen && (
+              <div className="space-y-1">
+                <Textarea
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  rows={4}
+                  className="text-xs"
+                />
+                {draftProvider && (
+                  <p className="text-[10px] text-slate-400">
+                    Gerado por: {draftProvider === 'modelo-fixo' ? 'texto padrão' : draftProvider}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Telefone (quando há mais de um) */}
+          {phoneOptions.length > 1 && (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-slate-500 shrink-0">Número:</span>
+              <Select value={selectedPhone ?? undefined} onValueChange={setSelectedPhone}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {phoneOptions.map((p) => (
+                    <SelectItem key={p.digits} value={p.digits} className="text-xs">
+                      {p.formatted}
+                      {p.isWhatsapp ? ' · WhatsApp' : p.likelyMobile ? ' · provável celular' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Ações primárias: contato */}
+          <div className="grid grid-cols-2 gap-2">
+            <Button asChild variant="default" className="bg-emerald-600 hover:bg-emerald-700" disabled={!selectedPhone}>
+              <a
+                href={selectedPhone ? waMeLink(selectedPhone, message) : undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-disabled={!selectedPhone}
+                onClick={(e) => {
+                  if (!selectedPhone) { e.preventDefault(); return; }
+                  registerContact('whatsapp');
+                }}
+              >
+                <MessageCircle size={14} />
+                WhatsApp
+              </a>
+            </Button>
+            <Button asChild variant="outline" disabled={!selectedPhone}>
+              <a
+                href={selectedPhone ? `tel:${selectedPhone}` : undefined}
+                aria-disabled={!selectedPhone}
+                onClick={(e) => {
+                  if (!selectedPhone) { e.preventDefault(); return; }
+                  registerContact('telefone');
+                }}
+              >
+                <PhoneIcon size={14} />
+                Ligar
+              </a>
+            </Button>
+          </div>
+
+          {/* Ações secundárias: decidir depois do contato */}
+          {!created ? (
+            <div className="grid grid-cols-2 gap-2 pt-0.5">
+              <Button
+                type="button"
+                size="sm"
+                className="h-auto min-h-8 py-1.5 whitespace-normal text-center leading-tight text-xs"
+                onClick={() => setDialogOpen(true)}
+              >
+                <PlusCircle size={13} className="shrink-0" />
+                Transformar em tarefa
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-auto min-h-8 py-1.5 whitespace-normal text-center leading-tight text-xs text-red-700 border-red-200 hover:bg-red-50"
+                onClick={() => setDiscardOpen(true)}
+              >
+                <Ban size={13} className="shrink-0" />
+                Descartar
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 pt-0.5">
+              <Badge variant="secondary" className="text-emerald-700 bg-emerald-50 border-emerald-200">Virou tarefa</Badge>
+              <LinkToTasks />
+            </div>
+          )}
+        </>
       )}
 
-      {/* Ações */}
-      <div className="flex flex-wrap items-center gap-2 pt-1">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={verifyMutation.isPending}
-          onClick={() => verifyMutation.mutate({ cnpj: lead.cnpj })}
-        >
-          {verifyMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
-          Confirmar na Receita
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={draftMutation.isPending}
-          onClick={() => draftMutation.mutate({ cnpj: lead.cnpj, originIbge, bags, loadDate, freightNote })}
-        >
-          {draftMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-          Gerar mensagem
-        </Button>
-        {lead.crm.kind !== 'no_crm' && !created && (
-          <Button type="button" size="sm" onClick={() => setDialogOpen(true)}>
-            <PlusCircle size={13} />
-            Criar tarefa
-          </Button>
-        )}
-        {lead.crm.kind === 'no_crm' && <LinkToTasks />}
-        {created && (
-          <>
-            <Badge variant="secondary" className="text-emerald-700 bg-emerald-50 border-emerald-200">Tarefa criada</Badge>
-            {created.phoneDigits && (
-              <OpenWhatsAppButton phoneDigits={created.phoneDigits} message={created.message} />
-            )}
-          </>
-        )}
-      </div>
+      {isCrm && (
+        <div className="pt-0.5">
+          <LinkToTasks />
+        </div>
+      )}
 
       <CreateTaskDialog
         open={dialogOpen}
@@ -250,11 +508,18 @@ export function LeadCard({
         enrichment={enrichment}
         originIbge={originIbge}
         bags={bags}
-        initialMessage={draftMessage ?? ''}
-        onCreated={({ phoneDigits, message }) => {
-          setCreated({ phoneDigits, message });
+        initialMessage={message}
+        onCreated={() => {
+          setCreated(true);
           onConverted();
         }}
+      />
+
+      <DiscardDialog
+        open={discardOpen}
+        onOpenChange={setDiscardOpen}
+        lead={lead}
+        onDiscarded={(next) => onActivityChange(lead.cnpj, next)}
       />
     </div>
   );

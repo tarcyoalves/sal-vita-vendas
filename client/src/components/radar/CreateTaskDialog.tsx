@@ -14,70 +14,19 @@ import { Button } from '../ui/button';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
+import { Input } from '../ui/input';
 import { Checkbox } from '../ui/checkbox';
-import { formatCnpj, waMeLink, type RadarLead, type RadarEnrichment } from '../../../../shared/radar';
-import { RADAR_ENRICH_SOURCE_LABELS, formatFoundDigits } from './EnrichmentSection';
+import { formatCnpj, type RadarLead, type RadarEnrichment } from '../../../../shared/radar';
+import { buildPhoneOptions, defaultPhoneDigits } from './phoneOptions';
 
-interface PhoneOption {
-  digits: string;
-  formatted: string;
-  isWhatsapp: boolean;
-  likelyMobile: boolean;
-  sourceLabel: string | null;
-}
-
-// Dígitos vindos do enriquecedor (achados em wa.me) já são DDD + número, mas
-// alguns links de WhatsApp trazem o "55" na frente — normaliza para o mesmo
-// formato usado pela base da Receita (10-11 dígitos, sem DDI) e o que
-// `convert` espera.
-function normalizePhoneDigits(raw: string): string {
-  let d = raw.replace(/\D/g, '');
-  if (d.length > 11 && d.startsWith('55')) d = d.slice(2);
-  return d;
-}
-
-// WhatsApps achados na web primeiro, depois telefones da Receita — deduplicado
-// por dígitos, sem repetir um telefone que já apareceu como WhatsApp.
-function buildPhoneOptions(lead: RadarLead, enrichment: RadarEnrichment | null): PhoneOption[] {
-  const seen = new Set<string>();
-  const options: PhoneOption[] = [];
-
-  const whatsapps = enrichment?.status === 'pronto' ? enrichment.data?.whatsapps ?? [] : [];
-  for (const w of whatsapps) {
-    const digits = normalizePhoneDigits(w.value);
-    if (digits.length !== 10 && digits.length !== 11) continue;
-    if (seen.has(digits)) continue;
-    seen.add(digits);
-    options.push({
-      digits,
-      formatted: formatFoundDigits(digits),
-      isWhatsapp: true,
-      likelyMobile: digits.length === 11,
-      sourceLabel: RADAR_ENRICH_SOURCE_LABELS[w.source],
-    });
-  }
-  for (const p of lead.phones) {
-    if (seen.has(p.digits)) continue;
-    seen.add(p.digits);
-    options.push({
-      digits: p.digits,
-      formatted: p.formatted,
-      isWhatsapp: false,
-      likelyMobile: p.likelyMobile,
-      sourceLabel: null,
-    });
-  }
-  return options;
-}
-
-// Padrão de seleção: primeiro WhatsApp achado na web > primeiro provável
-// celular da Receita > primeiro telefone da lista.
-function defaultPhoneDigits(options: PhoneOption[]): string | null {
-  const whatsapp = options.find((o) => o.isWhatsapp);
-  if (whatsapp) return whatsapp.digits;
-  const mobile = options.find((o) => o.likelyMobile);
-  if (mobile) return mobile.digits;
-  return options[0]?.digits ?? null;
+// `YYYY-MM-DD` no fuso local do navegador — formato aceito por
+// `<input type="date">` e pelo `reminderDate` de `convert`.
+function todayYmd(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 /**
@@ -102,7 +51,7 @@ export function CreateTaskDialog({
   originIbge: number;
   bags: number;
   initialMessage: string;
-  onCreated: (result: { taskId: number; phoneDigits: string | null; message: string }) => void;
+  onCreated: (result: { taskId: number }) => void;
 }) {
   const isExcluded = lead.crm.kind === 'excluido_antes';
 
@@ -110,6 +59,8 @@ export function CreateTaskDialog({
 
   const [phoneDigits, setPhoneDigits] = useState<string | null>(() => defaultPhoneDigits(phoneOptions));
   const [message, setMessage] = useState(initialMessage);
+  const [contactNote, setContactNote] = useState('');
+  const [reminderDate, setReminderDate] = useState(todayYmd());
   const [acknowledged, setAcknowledged] = useState(false);
 
   // Reabrir o diálogo (ex.: outro lead) começa do estado limpo.
@@ -117,6 +68,8 @@ export function CreateTaskDialog({
     if (open) {
       setPhoneDigits(defaultPhoneDigits(phoneOptions));
       setMessage(initialMessage);
+      setContactNote('');
+      setReminderDate(todayYmd());
       setAcknowledged(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -135,9 +88,11 @@ export function CreateTaskDialog({
         message: message.trim() || undefined,
         phoneDigits: phoneDigits ?? undefined,
         acknowledgeExcluded: isExcluded ? acknowledged : undefined,
+        contactNote: contactNote.trim() || undefined,
+        reminderDate: reminderDate || undefined,
       });
       toast.success('Tarefa criada');
-      onCreated({ taskId: result.taskId, phoneDigits, message });
+      onCreated({ taskId: result.taskId });
       onOpenChange(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao criar tarefa');
@@ -148,7 +103,7 @@ export function CreateTaskDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Criar tarefa</DialogTitle>
+          <DialogTitle>Transformar em tarefa</DialogTitle>
           <DialogDescription>
             {lead.nomeFantasia ?? lead.razaoSocial} · {formatCnpj(lead.cnpj)}
           </DialogDescription>
@@ -183,12 +138,36 @@ export function CreateTaskDialog({
           )}
 
           <div>
-            <p className="text-xs font-semibold text-slate-500 mb-1.5">Mensagem (editável)</p>
+            <p className="text-xs font-semibold text-slate-500 mb-1.5">Mensagem usada (editável)</p>
             <Textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              rows={5}
-              placeholder="Escreva a mensagem que será usada no WhatsApp..."
+              rows={4}
+              placeholder="Escreva a mensagem que foi usada no contato..."
+            />
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold text-slate-500 mb-1.5">Resultado do contato</p>
+            <Textarea
+              value={contactNote}
+              onChange={(e) => setContactNote(e.target.value)}
+              rows={3}
+              maxLength={2000}
+              placeholder="O que o cliente respondeu?"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="reminder-date" className="text-xs font-semibold text-slate-500 mb-1.5">
+              Próximo retorno
+            </Label>
+            <Input
+              id="reminder-date"
+              type="date"
+              value={reminderDate}
+              min={todayYmd()}
+              onChange={(e) => setReminderDate(e.target.value)}
             />
           </div>
 
@@ -217,25 +196,11 @@ export function CreateTaskDialog({
             Cancelar
           </Button>
           <Button type="button" onClick={handleSubmit} disabled={!canSubmit}>
-            {convertMutation.isPending ? 'Criando...' : 'Criar tarefa'}
+            {convertMutation.isPending ? 'Criando...' : 'Transformar em tarefa'}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-/** Botão "Abrir WhatsApp" exibido depois que a tarefa foi criada. */
-export function OpenWhatsAppButton({ phoneDigits, message }: { phoneDigits: string; message: string }) {
-  return (
-    <a
-      href={waMeLink(phoneDigits, message)}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition"
-    >
-      Abrir WhatsApp
-    </a>
   );
 }
 
