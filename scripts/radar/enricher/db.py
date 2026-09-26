@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Optional
 
@@ -67,16 +67,18 @@ def claim_job(conn: psycopg.Connection) -> Optional[dict]:
 
 
 def mark_done(conn: psycopg.Connection, cnpj: str, result: dict) -> None:
-    expires_at = datetime.now(timezone.utc) + timedelta(days=config.ENRICH_TTL_DAYS)
+    # Validade calculada no banco, com o mesmo relógio de finished_at/requested_at
+    # (colunas TIMESTAMP sem fuso) — um datetime com fuso vindo do Python seria
+    # convertido pelo TimeZone da sessão e poderia desalinhar do que o CRM compara.
     with conn.cursor() as cur:
         cur.execute(
             """
             UPDATE radar_enrichment
             SET status = 'pronto', result = %s, error = NULL,
-                finished_at = now(), expires_at = %s
+                finished_at = now(), expires_at = now() + make_interval(days => %s)
             WHERE cnpj = %s
             """,
-            (json.dumps(result, ensure_ascii=False), expires_at, cnpj),
+            (json.dumps(result, ensure_ascii=False), config.ENRICH_TTL_DAYS, cnpj),
         )
 
 
