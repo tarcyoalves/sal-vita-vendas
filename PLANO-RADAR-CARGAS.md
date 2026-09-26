@@ -94,6 +94,16 @@ O importador roda na VPS com o `DATABASE_URL` do CRM no `.env` de lá.
 - WhatsApp achado em link `wa.me` é mostrado como WhatsApp; telefone da Receita continua
   "provável celular".
 
+**Fluxo de contato (26/09, pedido do dono): a busca é só uma lista**
+- Nada vira tarefa sem clique. O atendente contata do card (WhatsApp com mensagem
+  pronta ou Ligar — envio sempre manual); o contato fica registrado para todos
+  ("Contatado por Fulano", em âmbar se foi outro atendente nas últimas 24 h).
+- Depois decide: **Transformar em tarefa** (com resultado do contato e data do próximo
+  retorno) ou **Descartar** (com motivo).
+- **Descartes são permanentes:** histórico append-only em `radar_lead_events`, só
+  admin/gerente restaura, descartado não ocupa vaga no limite de 200 nem vai para o
+  robô de scraping. "Pediu para não ser contatado" também descadastra o e-mail.
+
 **Fase 3 (depois de usar)**
 - **Perfil CNAE da carteira real:** consultar na BrasilAPI os CNPJs das tarefas convertidas
   e contar os CNAEs. É isso que valida (ou corrige) a lista de segmentos, com dado real.

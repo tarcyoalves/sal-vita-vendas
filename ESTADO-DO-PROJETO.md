@@ -161,6 +161,9 @@ Plano e decisões em `PLANO-RADAR-CARGAS.md`.
   só entram se forem http(s).
 - IA: provedor opcional `antigravity` (3 variáveis `ANTIGRAVITY_*`) primeiro na cadeia
   de todo o CRM; sem elas, nada muda.
+- **Fluxo (26/09):** a busca é uma lista; o atendente contata do card e só depois
+  transforma em tarefa ou descarta. Descartes são permanentes (histórico em
+  `radar_lead_events`, só admin/gerente restaura).
 - **Nada disso foi rodado contra o banco de produção nem contra a base real da Receita**
   — só typecheck, testes (143 Vitest + 48 pytest) e tela com dados de teste.
 
