@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { TRPCClientError } from '@trpc/client';
-import { ChevronDown, ChevronRight, Search, Truck } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, Search, Truck } from 'lucide-react';
 import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -9,6 +9,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Switch } from '../components/ui/switch';
 import { Skeleton } from '../components/ui/skeleton';
+import { Progress } from '../components/ui/progress';
 import {
   Empty,
   EmptyHeader,
@@ -26,14 +27,21 @@ import {
 import { CityAutocomplete } from '../components/radar/CityAutocomplete';
 import { SegmentChips } from '../components/radar/SegmentChips';
 import { LeadCard } from '../components/radar/LeadCard';
+import { enrichmentNeedsPolling } from '../components/radar/EnrichmentSection';
 import {
   RADAR_RADIUS_OPTIONS_KM,
   RADAR_SEGMENT_KEYS,
+  type RadarEnrichment,
   type RadarMunicipality,
   type RadarSegmentKey,
 } from '../../../shared/radar';
 
 const DEFAULT_SEGMENTS = RADAR_SEGMENT_KEYS.filter((k) => k !== 'racao_varejo');
+
+// Teto de tempo de polling por busca — depois disso paramos de perguntar ao
+// servidor mesmo que ainda reste algo pendente (robô pode ter travado).
+const ENRICH_POLL_CAP_MS = 5 * 60 * 1000;
+const ENRICH_POLL_INTERVAL_MS = 4000;
 
 type CrmFilter = 'all' | 'novo' | 'no_crm' | 'excluido_antes';
 
@@ -71,8 +79,21 @@ export default function RadarCargas() {
     retry: false,
   });
 
+  // ── Enriquecimento por scraping (Fase 2) ──
+  // Mapa local cnpj → enrichment, mesclado a cada resposta de enrichmentStatus
+  // (polling) ou de um enrichNow individual — nunca refaz a busca inteira.
+  const [enrichmentByCnpj, setEnrichmentByCnpj] = useState<Record<string, RadarEnrichment>>({});
+  const [enricherOnline, setEnricherOnline] = useState(false);
+  const [enrichUnavailable, setEnrichUnavailable] = useState(false); // enrichmentStatus NOT_IMPLEMENTED
+  const [pollDeadline, setPollDeadline] = useState<number | null>(null);
+  const [pollTimedOut, setPollTimedOut] = useState(false);
+
   const handleSearch = () => {
     if (!canSearch) return;
+    setEnrichmentByCnpj({});
+    setEnrichUnavailable(false);
+    setPollTimedOut(false);
+    setPollDeadline(Date.now() + ENRICH_POLL_CAP_MS);
     searchQuery.refetch();
   };
 
@@ -81,6 +102,78 @@ export default function RadarCargas() {
 
   const data = searchQuery.data;
   const leads = data?.leads ?? [];
+  const leadCnpjs = useMemo(() => leads.map((l) => l.cnpj), [leads]);
+
+  // O status de "robô ligado" mais recente que já vimos — a resposta da
+  // própria busca já traz um primeiro valor, o polling atualiza depois.
+  useEffect(() => {
+    if (data) setEnricherOnline(data.enricherOnline);
+  }, [data]);
+
+  // Encerra o cap de 5 min mesmo sem nenhuma outra atualização de estado
+  // (senão a barra "buscando" ficaria presa até o próximo re-render).
+  useEffect(() => {
+    if (pollDeadline === null) return;
+    const remaining = pollDeadline - Date.now();
+    if (remaining <= 0) {
+      setPollTimedOut(true);
+      return;
+    }
+    const timer = setTimeout(() => setPollTimedOut(true), remaining);
+    return () => clearTimeout(timer);
+  }, [pollDeadline]);
+
+  const enrichPending = leadCnpjs.some((c) => enrichmentNeedsPolling(enrichmentByCnpj[c] ?? null));
+
+  const enrichmentStatusQuery = trpc.prospectingRadar.enrichmentStatus.useQuery(
+    { cnpjs: leadCnpjs },
+    {
+      enabled: leadCnpjs.length > 0 && enricherOnline && !enrichUnavailable && !pollTimedOut,
+      retry: false,
+      // React Query já não refaz em background quando a aba está oculta
+      // (refetchIntervalInBackground é false por padrão) — é o que dá a
+      // pausa pedida quando o atendente troca de aba.
+      refetchInterval: (query) => {
+        if (query.state.error) return false;
+        if (pollDeadline !== null && Date.now() > pollDeadline) return false;
+        const res = query.state.data;
+        if (res && !res.enricherOnline) return false;
+        const stillPending = leadCnpjs.some((c) => enrichmentNeedsPolling(res?.items[c] ?? enrichmentByCnpj[c] ?? null));
+        return stillPending ? ENRICH_POLL_INTERVAL_MS : false;
+      },
+    },
+  );
+
+  useEffect(() => {
+    const err = enrichmentStatusQuery.error;
+    if (err instanceof TRPCClientError && err.data?.code === 'NOT_IMPLEMENTED') {
+      setEnrichUnavailable(true);
+    }
+  }, [enrichmentStatusQuery.error]);
+
+  useEffect(() => {
+    const res = enrichmentStatusQuery.data;
+    if (!res) return;
+    setEnricherOnline(res.enricherOnline);
+    setEnrichmentByCnpj((prev) => ({ ...prev, ...res.items }));
+  }, [enrichmentStatusQuery.data]);
+
+  // Chamado pelo card depois de um "Varrer agora" individual: mescla o
+  // resultado e, se ainda houver algo pendente, reabre a janela de polling
+  // (o intervalo pode ter parado se tudo já estivesse resolvido antes).
+  const handleEnrichmentChange = (cnpj: string, next: RadarEnrichment) => {
+    setEnrichmentByCnpj((prev) => ({ ...prev, [cnpj]: next }));
+    if (enrichmentNeedsPolling(next)) {
+      setPollTimedOut(false);
+      setPollDeadline(Date.now() + ENRICH_POLL_CAP_MS);
+      enrichmentStatusQuery.refetch();
+    }
+  };
+
+  const enrichmentReadyCount = leadCnpjs.filter((c) => enrichmentByCnpj[c]?.status === 'pronto').length;
+  const showEnrichProgress =
+    leadCnpjs.length > 0 && enricherOnline && !enrichUnavailable && !pollTimedOut && enrichPending;
+  const showEnricherOffline = leadCnpjs.length > 0 && !!data && !enricherOnline;
 
   const counts = useMemo(() => {
     const c = { all: leads.length, novo: 0, no_crm: 0, excluido_antes: 0 };
@@ -277,6 +370,23 @@ export default function RadarCargas() {
               <p className="text-xs text-amber-600">Mostrando apenas as 200 empresas mais próximas.</p>
             )}
 
+            {/* Progresso do enriquecimento por scraping (Fase 2) */}
+            {showEnrichProgress && (
+              <div className="space-y-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-xs text-slate-600 flex items-center gap-1.5">
+                  <Loader2 size={12} className="animate-spin text-slate-400" />
+                  Buscando dados na web: {enrichmentReadyCount} de {leadCnpjs.length} prontos
+                </p>
+                <Progress value={(enrichmentReadyCount / leadCnpjs.length) * 100} className="h-1.5" />
+              </div>
+            )}
+            {showEnricherOffline && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                Robô de busca na web desligado — mostrando só os dados da Receita.
+                {isAdmin && ' Veja scripts/radar/enricher/README.md.'}
+              </p>
+            )}
+
             {/* Filtros por status no CRM */}
             <div className="flex flex-wrap gap-1.5">
               {([
@@ -318,6 +428,8 @@ export default function RadarCargas() {
                   bags={bags}
                   loadDate={loadDate || undefined}
                   freightNote={freightNote.trim() || undefined}
+                  enrichment={enrichmentByCnpj[lead.cnpj] ?? lead.enrichment}
+                  onEnrichmentChange={handleEnrichmentChange}
                   onConverted={() => searchQuery.refetch()}
                 />
               ))}

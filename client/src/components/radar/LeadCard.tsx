@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TRPCClientError } from '@trpc/client';
 import { CheckCircle2, XCircle, Loader2, ExternalLink, Sparkles, PlusCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '../../lib/trpc';
@@ -11,8 +12,10 @@ import {
   formatCnpj,
   type RadarLead,
   type RadarCnpjCheck,
+  type RadarEnrichment,
 } from '../../../../shared/radar';
 import { CreateTaskDialog, OpenWhatsAppButton, LinkToTasks } from './CreateTaskDialog';
+import { EnrichmentSection } from './EnrichmentSection';
 
 const SEGMENT_LABELS = new Map(RADAR_SEGMENTS.map((s) => [s.key, s.label]));
 
@@ -38,6 +41,8 @@ export function LeadCard({
   bags,
   loadDate,
   freightNote,
+  enrichment,
+  onEnrichmentChange,
   onConverted,
 }: {
   lead: RadarLead;
@@ -45,6 +50,8 @@ export function LeadCard({
   bags: number;
   loadDate?: string;
   freightNote?: string;
+  enrichment: RadarEnrichment | null;
+  onEnrichmentChange: (cnpj: string, enrichment: RadarEnrichment) => void;
   onConverted: () => void;
 }) {
   const [verifyResult, setVerifyResult] = useState<RadarCnpjCheck | null>(null);
@@ -64,6 +71,18 @@ export function LeadCard({
       setDraftProvider(data.provider);
     },
     onError: (err) => toast.error(err.message ?? 'Erro ao gerar mensagem'),
+  });
+
+  const enrichNowMutation = trpc.prospectingRadar.enrichNow.useMutation({
+    onSuccess: (data) => onEnrichmentChange(lead.cnpj, data),
+    onError: (err) => {
+      if (err instanceof TRPCClientError && err.data?.code === 'PRECONDITION_FAILED') {
+        toast.error('Robô de busca na web está desligado agora. Tente novamente mais tarde.');
+        return;
+      }
+      if (err instanceof TRPCClientError && err.data?.code === 'NOT_IMPLEMENTED') return;
+      toast.error(err.message ?? 'Não foi possível varrer agora');
+    },
   });
 
   const displayName = lead.nomeFantasia ?? lead.razaoSocial;
@@ -138,6 +157,13 @@ export function LeadCard({
           </p>
         )}
       </div>
+
+      {/* Enriquecimento por scraping (Fase 2) */}
+      <EnrichmentSection
+        enrichment={enrichment}
+        scanning={enrichNowMutation.isPending}
+        onScanNow={(force) => enrichNowMutation.mutate({ cnpj: lead.cnpj, force })}
+      />
 
       {/* Metadados */}
       <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-slate-400">
@@ -221,6 +247,7 @@ export function LeadCard({
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         lead={lead}
+        enrichment={enrichment}
         originIbge={originIbge}
         bags={bags}
         initialMessage={draftMessage ?? ''}
