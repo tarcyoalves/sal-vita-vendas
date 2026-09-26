@@ -1,0 +1,4 @@
+# Robô de enriquecimento do Radar de Cargas — dependências de produção (VPS).
+# Versões maiores fixadas; ver README.md para instalação (inclui `scrapling install`).
+scrapling[fetchers]>=0.4,<0.5
+psycopg[binary]>=3.1,<4

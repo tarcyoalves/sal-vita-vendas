@@ -1,0 +1,3 @@
+# Só para rodar os testes (não precisa disso na VPS em produção).
+-r requirements.txt
+pytest>=7,<9
