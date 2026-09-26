@@ -7,7 +7,8 @@ import { TRPCError } from '@trpc/server';
 import { and, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { router, protectedProcedure } from '../trpc';
 import { db } from '../db';
-import { radarEstablishments, radarEnrichment, tasks, taskDeletionLogs, emailSuppressions, tags } from '../db/schema';
+import { spDateStr } from '../lib/tz';
+import { radarEstablishments, radarEnrichment, radarLeadActions, tasks, taskDeletionLogs, emailSuppressions, tags } from '../db/schema';
 import { municipioByIbge, municipiosWithinRadius, searchMunicipios } from '../lib/radar/geo';
 import {
   establishmentPhones,
@@ -17,6 +18,7 @@ import {
   segmentLabelsForCnaes,
   taskDescription,
   taskTitle,
+  toRadarLeadActivity,
 } from '../lib/radar/leads';
 import { draftRadarMessage, type RadarDraftInput } from '../lib/radar/messageDraft';
 import {
@@ -34,12 +36,16 @@ import {
   RADAR_MAX_RADIUS_KM,
   RADAR_MAX_RESULTS,
   RADAR_ENRICH_PER_SEARCH,
+  RADAR_CONTACT_CHANNELS,
+  RADAR_DISCARD_REASON_KEYS,
+  discardReasonLabel,
   type RadarCrmStatus,
   type RadarLead,
   type RadarMunicipality,
   type RadarSearchResult,
   type RadarCnpjCheck,
   type RadarEnrichment,
+  type RadarLeadActivity,
 } from '../../shared/radar';
 
 const UF = z.string().length(2).transform((s) => s.toUpperCase());
@@ -87,7 +93,30 @@ const checkEnrichNowRate = makeRateLimiter(
   'Muitos pedidos de busca na web em pouco tempo. Aguarde um minuto e tente de novo.',
 );
 
+const checkLeadActionRate = makeRateLimiter(
+  60, 60_000,
+  'Muitas ações em pouco tempo. Aguarde um minuto e tente de novo.',
+);
+
 const CNPJ_CHECK_TIMEOUT_MS = 10_000;
+
+// Retorno marcado para as 9h de São Paulo do dia escolhido (offset fixo -03:00,
+// ver server/lib/tz.ts). Data de hoje ou passada = agora, para não nascer atrasado.
+function reminderFromDateStr(ymd: string): Date {
+  const at9 = new Date(`${ymd}T09:00:00-03:00`);
+  return ymd <= spDateStr() ? new Date() : at9;
+}
+
+async function loadLeadAction(cnpj: string) {
+  const [row] = await db.select().from(radarLeadActions).where(eq(radarLeadActions.cnpj, cnpj));
+  return row;
+}
+
+async function requireEstablishment(cnpj: string) {
+  const [row] = await db.select().from(radarEstablishments).where(eq(radarEstablishments.cnpj, cnpj));
+  if (!row) throw new TRPCError({ code: 'NOT_FOUND', message: 'Estabelecimento não encontrado na base do Radar' });
+  return row;
+}
 
 export const prospectingRadarRouter = router({
   // Autocomplete da cidade da carga. Sempre devolve o código IBGE: há nomes
@@ -222,7 +251,11 @@ export const prospectingRadarRouter = router({
       // só se o robô estiver online, senão a fila só cresceria sem ninguém para
       // consumi-la — enfileira os primeiros RADAR_ENRICH_PER_SEARCH (na mesma
       // ordem de distância que `page` já tem) que precisam de refresh.
-      const enrichmentByCnpj = await loadEnrichments(cnpjs);
+      const [enrichmentByCnpj, actionRows] = await Promise.all([
+        loadEnrichments(cnpjs),
+        db.select().from(radarLeadActions).where(inArray(radarLeadActions.cnpj, cnpjs)),
+      ]);
+      const actionByCnpj = new Map(actionRows.map((r) => [r.cnpj, r]));
       const toEnqueue = enricherOnline
         ? page
             .filter((p) => needsEnqueue(enrichmentByCnpj.get(p.row.cnpj), now))
@@ -249,7 +282,10 @@ export const prospectingRadarRouter = router({
         const enrichment: RadarEnrichment | null = justEnqueued.has(row.cnpj)
           ? { status: 'pendente', updatedAt: null, data: enrichmentRow ? toRadarEnrichmentData(enrichmentRow.result) : null }
           : toRadarEnrichment(enrichmentRow, now);
-        return buildLead(row, municipality, distanceKm, codes.includes(row.cnaePrincipal), phones, crm, emailSuppressed, enrichment);
+        return buildLead(
+          row, municipality, distanceKm, codes.includes(row.cnaePrincipal), phones, crm, emailSuppressed, enrichment,
+          toRadarLeadActivity(actionByCnpj.get(row.cnpj)),
+        );
       });
 
       return { origin: originResult, municipalitiesInRadius: nearby.length, leads, truncated, datasetRelease, enricherOnline };
@@ -398,6 +434,83 @@ export const prospectingRadarRouter = router({
       }
     }),
 
+  // O atendente abriu o WhatsApp ou ligou a partir do card. Registra para os
+  // outros atendentes verem "contatado por Fulano" e não ligarem de novo.
+  // Não cria tarefa — isso é só no `convert`, depois do contato.
+  markContacted: protectedProcedure
+    .input(z.object({ cnpj: CNPJ, channel: z.enum(RADAR_CONTACT_CHANNELS) }))
+    .mutation(async ({ input, ctx }): Promise<RadarLeadActivity> => {
+      checkLeadActionRate(ctx.user.id);
+      await requireEstablishment(input.cnpj);
+      const now = new Date();
+      await db.insert(radarLeadActions).values({
+        cnpj: input.cnpj,
+        contactedAt: now,
+        contactedByUserId: ctx.user.id,
+        contactedByName: ctx.user.name,
+        contactChannel: input.channel,
+        contactCount: 1,
+        updatedAt: now,
+      }).onConflictDoUpdate({
+        target: radarLeadActions.cnpj,
+        set: {
+          contactedAt: now,
+          contactedByUserId: ctx.user.id,
+          contactedByName: ctx.user.name,
+          contactChannel: input.channel,
+          contactCount: sql`${radarLeadActions.contactCount} + 1`,
+          updatedAt: now,
+        },
+      });
+      return toRadarLeadActivity(await loadLeadAction(input.cnpj));
+    }),
+
+  // Descarta a empresa da lista para todos os atendentes (com motivo). Reversível
+  // com `restore`. "Pediu para não ser contatado" também descadastra o e-mail
+  // dela de todo e-mail marketing do CRM (email_suppressions) — isso o restore
+  // não desfaz, de propósito.
+  discard: protectedProcedure
+    .input(z.object({
+      cnpj: CNPJ,
+      reason: z.enum(RADAR_DISCARD_REASON_KEYS),
+      note: z.string().trim().max(500).optional(),
+    }))
+    .mutation(async ({ input, ctx }): Promise<RadarLeadActivity> => {
+      checkLeadActionRate(ctx.user.id);
+      if (input.reason === 'outro' && !input.note) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Descreva o motivo do descarte.' });
+      }
+      const establishment = await requireEstablishment(input.cnpj);
+      const now = new Date();
+      const values = {
+        discardedAt: now,
+        discardedByUserId: ctx.user.id,
+        discardedByName: ctx.user.name,
+        discardReason: input.reason,
+        discardNote: input.note || null,
+        updatedAt: now,
+      };
+      await db.insert(radarLeadActions).values({ cnpj: input.cnpj, ...values })
+        .onConflictDoUpdate({ target: radarLeadActions.cnpj, set: values });
+      if (input.reason === 'nao_contatar' && establishment.email) {
+        await db.insert(emailSuppressions)
+          .values({ email: establishment.email.toLowerCase().trim(), reason: 'manual' })
+          .onConflictDoNothing({ target: emailSuppressions.email });
+      }
+      return toRadarLeadActivity(await loadLeadAction(input.cnpj));
+    }),
+
+  restore: protectedProcedure
+    .input(z.object({ cnpj: CNPJ }))
+    .mutation(async ({ input, ctx }): Promise<RadarLeadActivity> => {
+      checkLeadActionRate(ctx.user.id);
+      await db.update(radarLeadActions).set({
+        discardedAt: null, discardedByUserId: null, discardedByName: null,
+        discardReason: null, discardNote: null, updatedAt: new Date(),
+      }).where(eq(radarLeadActions.cnpj, input.cnpj));
+      return toRadarLeadActivity(await loadLeadAction(input.cnpj));
+    }),
+
   // Transforma o lead aprovado pelo atendente em tarefa do CRM (tabela `tasks`).
   convert: protectedProcedure
     .input(z.object({
@@ -409,8 +522,19 @@ export const prospectingRadarRouter = router({
       // Obrigatório quando o lead já foi excluído do CRM antes (task_deletion_logs):
       // o atendente viu o motivo e decidiu seguir mesmo assim.
       acknowledgeExcluded: z.boolean().optional(),
+      // O que o cliente respondeu no contato feito pela lista.
+      contactNote: z.string().trim().max(2000).optional(),
+      // Próximo retorno (YYYY-MM-DD, horário de São Paulo). Sem data = hoje.
+      reminderDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     }))
     .mutation(async ({ input, ctx }): Promise<{ taskId: number }> => {
+      const action = await loadLeadAction(input.cnpj);
+      if (action?.discardedAt) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: `Esta empresa foi descartada por ${action.discardedByName} (${discardReasonLabel(action.discardReason ?? 'outro')}). Restaure antes de criar a tarefa.`,
+        });
+      }
       const [establishment] = await db.select().from(radarEstablishments).where(eq(radarEstablishments.cnpj, input.cnpj));
       if (!establishment) throw new TRPCError({ code: 'NOT_FOUND', message: 'Estabelecimento não encontrado na base do Radar' });
 
@@ -481,6 +605,10 @@ export const prospectingRadarRouter = router({
         endereco: establishment.endereco,
         sourceRelease: establishment.sourceRelease,
         message: input.message,
+        contact: action?.contactedAt
+          ? { at: action.contactedAt, byName: action.contactedByName ?? '', channel: toRadarLeadActivity(action).contactChannel }
+          : null,
+        contactNote: input.contactNote,
         enrichment: enrichmentData,
       });
 
@@ -494,7 +622,10 @@ export const prospectingRadarRouter = router({
           notes,
           email,
           tags: [RADAR_TAG],
-          reminderDate: new Date(),
+          reminderDate: input.reminderDate ? reminderFromDateStr(input.reminderDate) : new Date(),
+          // Contato feito pela lista conta como contato real da tarefa (métricas de progresso).
+          lastContactedAt: action?.contactedAt ?? null,
+          contactCount: action?.contactedAt ? action.contactCount : 0,
           reminderEnabled: true,
           priority: 'high',
           status: 'pending',

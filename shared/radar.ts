@@ -74,6 +74,8 @@ export interface RadarLead {
   crm: RadarCrmStatus;
   // Dados raspados da web pelo enriquecedor da VPS (null = ainda não pedido).
   enrichment: RadarEnrichment | null;
+  // Contato feito pela lista e descarte — compartilhado entre todos os atendentes.
+  activity: RadarLeadActivity;
 }
 
 export interface RadarSearchResult {
@@ -163,3 +165,43 @@ export const RADAR_ENRICH_TTL_DAYS = 30;
 export const RADAR_ENRICH_PER_SEARCH = 60;
 export const RADAR_ENRICHER_HEARTBEAT_KEY = 'radar_enricher_heartbeat';
 export const RADAR_ENRICHER_ONLINE_MS = 3 * 60 * 1000;
+
+// ── Contato antes da tarefa ──────────────────────────────────────────────────
+// Fluxo pedido pelo dono (26/09): a busca é só uma LISTA. O atendente contata
+// direto do card (WhatsApp/telefone, à mão) e depois decide: transformar em
+// tarefa ou descartar. Nada vira tarefa sem esse clique.
+
+export const RADAR_CONTACT_CHANNELS = ['whatsapp', 'telefone'] as const;
+export type RadarContactChannel = (typeof RADAR_CONTACT_CHANNELS)[number];
+
+export const RADAR_DISCARD_REASONS = [
+  { key: 'nao_compra', label: 'Não compra sal / fora do perfil' },
+  { key: 'sem_interesse', label: 'Sem interesse agora' },
+  { key: 'nao_contatar', label: 'Pediu para não ser contatado' },
+  { key: 'contato_invalido', label: 'Telefone/contato não existe' },
+  { key: 'fechada', label: 'Empresa fechada' },
+  { key: 'outro', label: 'Outro motivo' },
+] as const;
+export type RadarDiscardReason = (typeof RADAR_DISCARD_REASONS)[number]['key'];
+export const RADAR_DISCARD_REASON_KEYS = RADAR_DISCARD_REASONS.map((r) => r.key) as [RadarDiscardReason, ...RadarDiscardReason[]];
+
+export function discardReasonLabel(key: string): string {
+  return RADAR_DISCARD_REASONS.find((r) => r.key === key)?.label ?? key;
+}
+
+export interface RadarLeadActivity {
+  contactedAt: string | null;           // ISO do último contato registrado
+  contactedByName: string | null;
+  contactChannel: RadarContactChannel | null;
+  contactCount: number;
+  discarded: {
+    at: string;                         // ISO
+    byName: string;
+    reason: RadarDiscardReason;
+    note: string | null;
+  } | null;
+}
+
+export const EMPTY_RADAR_ACTIVITY: RadarLeadActivity = {
+  contactedAt: null, contactedByName: null, contactChannel: null, contactCount: 0, discarded: null,
+};

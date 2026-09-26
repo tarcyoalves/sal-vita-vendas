@@ -812,3 +812,23 @@ export const radarEnrichment = pgTable('radar_enrichment', {
 });
 
 export type RadarEnrichmentRow = typeof radarEnrichment.$inferSelect;
+
+// Radar de Cargas — contato feito pela lista e descarte, por empresa (estado atual,
+// uma linha por CNPJ). Compartilhado entre atendentes: evita dois ligarem para a
+// mesma empresa e esconde quem já foi descartado. Nada aqui cria tarefa.
+export const radarLeadActions = pgTable('radar_lead_actions', {
+  cnpj: text('cnpj').primaryKey(),
+  contactedAt: timestamp('contacted_at'),
+  contactedByUserId: integer('contacted_by_user_id'),
+  contactedByName: text('contacted_by_name'),
+  contactChannel: text('contact_channel'),              // whatsapp | telefone
+  contactCount: integer('contact_count').notNull().default(0),
+  discardedAt: timestamp('discarded_at'),
+  discardedByUserId: integer('discarded_by_user_id'),
+  discardedByName: text('discarded_by_name'),
+  discardReason: text('discard_reason'),                // RADAR_DISCARD_REASONS
+  discardNote: text('discard_note'),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type RadarLeadActionRow = typeof radarLeadActions.$inferSelect;

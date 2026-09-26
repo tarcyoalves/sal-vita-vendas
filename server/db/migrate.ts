@@ -53,7 +53,7 @@ async function bootstrapInitialAdmin() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-09-26a';
+const SCHEMA_VERSION = '2026-09-26b';
 
 export async function ensureTablesExist() {
   // Fast path: if the schema marker matches, the DB is already fully migrated.
@@ -832,6 +832,22 @@ export async function ensureTablesExist() {
       result                JSONB,
       error                 TEXT,
       expires_at            TIMESTAMP
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS radar_lead_actions (
+      cnpj                  TEXT PRIMARY KEY,
+      contacted_at          TIMESTAMP,
+      contacted_by_user_id  INTEGER,
+      contacted_by_name     TEXT,
+      contact_channel       TEXT,
+      contact_count         INTEGER NOT NULL DEFAULT 0,
+      discarded_at          TIMESTAMP,
+      discarded_by_user_id  INTEGER,
+      discarded_by_name     TEXT,
+      discard_reason        TEXT,
+      discard_note          TEXT,
+      updated_at            TIMESTAMP NOT NULL DEFAULT now()
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS radar_enrichment_queue_idx

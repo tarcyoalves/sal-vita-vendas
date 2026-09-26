@@ -3,6 +3,9 @@
 // prospectingRadar.ts, que é quem chama estas funções e as testa por integração.
 // Contrato de tipos: shared/radar.ts. Visão geral: PLANO-RADAR-CARGAS.md.
 import {
+  EMPTY_RADAR_ACTIVITY,
+  RADAR_CONTACT_CHANNELS,
+  RADAR_DISCARD_REASON_KEYS,
   RADAR_SEGMENTS,
   formatCnpj,
   segmentsForCnaes,
@@ -11,12 +14,15 @@ import {
   type RadarEnrichSource,
   type RadarEnrichment,
   type RadarEnrichmentData,
+  type RadarContactChannel,
+  type RadarDiscardReason,
   type RadarLead,
+  type RadarLeadActivity,
   type RadarMunicipality,
   type RadarPhone,
   type RadarSegmentKey,
 } from '../../../shared/radar';
-import type { RadarEstablishment } from '../../db/schema';
+import type { RadarEstablishment, RadarLeadActionRow } from '../../db/schema';
 import { spDateStr } from '../tz';
 
 // Heurística honesta (ver shared/radar.ts): celular brasileiro tem 9 dígitos
@@ -85,6 +91,7 @@ export function buildLead(
   crm: RadarCrmStatus,
   emailSuppressed: boolean,
   enrichment: RadarEnrichment | null = null,
+  activity: RadarLeadActivity = EMPTY_RADAR_ACTIVITY,
 ): RadarLead {
   return {
     cnpj: row.cnpj,
@@ -104,6 +111,28 @@ export function buildLead(
     dataInicio: row.dataInicio,
     crm,
     enrichment,
+    activity,
+  };
+}
+
+// Linha de `radar_lead_actions` → o que a tela mostra. Valores fora do esperado
+// (canal/motivo desconhecido) viram null/'outro' em vez de quebrar a tela.
+export function toRadarLeadActivity(row: RadarLeadActionRow | undefined): RadarLeadActivity {
+  if (!row) return EMPTY_RADAR_ACTIVITY;
+  const channel = (RADAR_CONTACT_CHANNELS as readonly string[]).includes(row.contactChannel ?? '')
+    ? (row.contactChannel as RadarContactChannel)
+    : null;
+  const reason: RadarDiscardReason = (RADAR_DISCARD_REASON_KEYS as readonly string[]).includes(row.discardReason ?? '')
+    ? (row.discardReason as RadarDiscardReason)
+    : 'outro';
+  return {
+    contactedAt: row.contactedAt ? row.contactedAt.toISOString() : null,
+    contactedByName: row.contactedAt ? row.contactedByName : null,
+    contactChannel: row.contactedAt ? channel : null,
+    contactCount: row.contactCount,
+    discarded: row.discardedAt
+      ? { at: row.discardedAt.toISOString(), byName: row.discardedByName ?? '', reason, note: row.discardNote }
+      : null,
   };
 }
 
@@ -171,6 +200,9 @@ export interface TaskNotesInput {
   endereco: string | null;
   sourceRelease: string;
   message?: string;
+  // Contato feito pela lista antes de virar tarefa, e o que o atendente anotou dele.
+  contact?: { at: Date; byName: string; channel: RadarContactChannel | null } | null;
+  contactNote?: string;
   // Resultado do enriquecimento por scraping (Fase 2), se já houver algum —
   // null/undefined omite o bloco "Dados da web" por completo.
   enrichment?: RadarEnrichmentData | null;
@@ -191,8 +223,15 @@ export function buildTaskNotes(input: TaskNotesInput): string {
     `Endereço: ${input.endereco || 'não informado'}`,
     `Base Receita: ${input.sourceRelease}`,
   ];
+  if (input.contact) {
+    const via = input.contact.channel === 'whatsapp' ? ' por WhatsApp' : input.contact.channel === 'telefone' ? ' por telefone' : '';
+    lines.push('', `Contatado pelo Radar${via} em ${brDate(spDateStr(input.contact.at))} por ${input.contact.byName}`);
+  }
+  if (input.contactNote) {
+    lines.push('', 'Resultado do contato:', input.contactNote);
+  }
   if (input.message) {
-    lines.push('', 'Mensagem sugerida:', input.message);
+    lines.push('', input.contact ? 'Mensagem usada no contato:' : 'Mensagem sugerida:', input.message);
   }
   if (input.enrichment) {
     lines.push(...buildEnrichmentNotesBlock(input.enrichment));
