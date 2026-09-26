@@ -123,12 +123,22 @@ export default function RadarCargas() {
     return () => clearTimeout(timer);
   }, [pollDeadline]);
 
-  const enrichPending = leadCnpjs.some((c) => enrichmentNeedsPolling(enrichmentByCnpj[c] ?? null));
+  // Estado efetivo de cada card: o que o polling trouxe, senão o que veio na própria busca.
+  const leadEnrichment = useMemo(
+    () => new Map(leads.map((l) => [l.cnpj, l.enrichment] as const)),
+    [leads],
+  );
+  const effectiveEnrichment = (cnpj: string): RadarEnrichment | null =>
+    enrichmentByCnpj[cnpj] ?? leadEnrichment.get(cnpj) ?? null;
+  // Só as empresas que foram para a fila contam no progresso (a busca enfileira
+  // as mais próximas; as demais ficam sem pedido até o "Varrer agora").
+  const trackedCnpjs = leadCnpjs.filter((c) => effectiveEnrichment(c) !== null);
+  const enrichPending = trackedCnpjs.some((c) => enrichmentNeedsPolling(effectiveEnrichment(c)));
 
   const enrichmentStatusQuery = trpc.prospectingRadar.enrichmentStatus.useQuery(
     { cnpjs: leadCnpjs },
     {
-      enabled: leadCnpjs.length > 0 && enricherOnline && !enrichUnavailable && !pollTimedOut,
+      enabled: leadCnpjs.length > 0 && enrichPending && enricherOnline && !enrichUnavailable && !pollTimedOut,
       retry: false,
       // React Query já não refaz em background quando a aba está oculta
       // (refetchIntervalInBackground é false por padrão) — é o que dá a
@@ -138,7 +148,7 @@ export default function RadarCargas() {
         if (pollDeadline !== null && Date.now() > pollDeadline) return false;
         const res = query.state.data;
         if (res && !res.enricherOnline) return false;
-        const stillPending = leadCnpjs.some((c) => enrichmentNeedsPolling(res?.items[c] ?? enrichmentByCnpj[c] ?? null));
+        const stillPending = leadCnpjs.some((c) => enrichmentNeedsPolling(res?.items[c] ?? effectiveEnrichment(c)));
         return stillPending ? ENRICH_POLL_INTERVAL_MS : false;
       },
     },
@@ -170,7 +180,7 @@ export default function RadarCargas() {
     }
   };
 
-  const enrichmentReadyCount = leadCnpjs.filter((c) => enrichmentByCnpj[c]?.status === 'pronto').length;
+  const enrichmentDoneCount = trackedCnpjs.filter((c) => !enrichmentNeedsPolling(effectiveEnrichment(c))).length;
   const showEnrichProgress =
     leadCnpjs.length > 0 && enricherOnline && !enrichUnavailable && !pollTimedOut && enrichPending;
   const showEnricherOffline = leadCnpjs.length > 0 && !!data && !enricherOnline;
@@ -375,9 +385,9 @@ export default function RadarCargas() {
               <div className="space-y-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                 <p className="text-xs text-slate-600 flex items-center gap-1.5">
                   <Loader2 size={12} className="animate-spin text-slate-400" />
-                  Buscando dados na web: {enrichmentReadyCount} de {leadCnpjs.length} prontos
+                  Buscando dados na web: {enrichmentDoneCount} de {trackedCnpjs.length} concluídos
                 </p>
-                <Progress value={(enrichmentReadyCount / leadCnpjs.length) * 100} className="h-1.5" />
+                <Progress value={trackedCnpjs.length ? (enrichmentDoneCount / trackedCnpjs.length) * 100 : 0} className="h-1.5" />
               </div>
             )}
             {showEnricherOffline && (
@@ -428,7 +438,7 @@ export default function RadarCargas() {
                   bags={bags}
                   loadDate={loadDate || undefined}
                   freightNote={freightNote.trim() || undefined}
-                  enrichment={enrichmentByCnpj[lead.cnpj] ?? lead.enrichment}
+                  enrichment={effectiveEnrichment(lead.cnpj)}
                   onEnrichmentChange={handleEnrichmentChange}
                   onConverted={() => searchQuery.refetch()}
                 />

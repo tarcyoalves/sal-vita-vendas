@@ -33,8 +33,10 @@ export const RADAR_ENRICH_SOURCE_LABELS: Record<RadarEnrichSource, string> = {
 // true enquanto o robô da VPS ainda não terminou (ou nem começou) este CNPJ.
 // `null` conta como "precisa" porque a busca acabou de enfileirar o
 // enriquecimento e ainda não veio nenhum status.
+// null = nunca foi pedido (a busca só enfileira as mais próximas) — não há o que
+// esperar; tratar como pendente deixaria a tela consultando até o limite de tempo.
 export function enrichmentNeedsPolling(enrichment: RadarEnrichment | null): boolean {
-  if (!enrichment) return true;
+  if (!enrichment) return false;
   return enrichment.status === 'pendente' || enrichment.status === 'processando';
 }
 
@@ -189,7 +191,7 @@ export function EnrichmentSection({
             {data.whatsapps.map((w, i) => (
               <Badge
                 key={`wa-${w.value}-${i}`}
-                className="bg-emerald-600 hover:bg-emerald-600 text-white text-[10px] font-medium"
+                className="bg-emerald-600 hover:bg-emerald-600 text-white text-[10px] font-medium whitespace-normal break-words max-w-full h-auto text-left"
               >
                 {formatFoundDigits(w.value)} · WhatsApp (achado em {RADAR_ENRICH_SOURCE_LABELS[w.source]})
               </Badge>
