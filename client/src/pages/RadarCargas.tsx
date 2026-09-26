@@ -29,9 +29,12 @@ import { SegmentChips } from '../components/radar/SegmentChips';
 import { LeadCard } from '../components/radar/LeadCard';
 import { enrichmentNeedsPolling } from '../components/radar/EnrichmentSection';
 import {
+  EMPTY_RADAR_ACTIVITY,
   RADAR_RADIUS_OPTIONS_KM,
   RADAR_SEGMENT_KEYS,
   type RadarEnrichment,
+  type RadarLead,
+  type RadarLeadActivity,
   type RadarMunicipality,
   type RadarSegmentKey,
 } from '../../../shared/radar';
@@ -43,7 +46,10 @@ const DEFAULT_SEGMENTS = RADAR_SEGMENT_KEYS.filter((k) => k !== 'racao_varejo');
 const ENRICH_POLL_CAP_MS = 5 * 60 * 1000;
 const ENRICH_POLL_INTERVAL_MS = 4000;
 
-type CrmFilter = 'all' | 'novo' | 'no_crm' | 'excluido_antes';
+// Filtros pedidos pelo dono: a busca é uma lista de "para contatar", não uma
+// fila que empurra tarefa. "Para contatar" e "Todos" continuam mostrando o
+// aviso amber de "excluído antes" (não é um filtro à parte).
+type LeadFilter = 'para_contatar' | 'contatados' | 'no_crm' | 'descartados' | 'all';
 
 export default function RadarCargas() {
   const { user } = useAuth();
@@ -58,7 +64,7 @@ export default function RadarCargas() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [loadDate, setLoadDate] = useState('');
   const [freightNote, setFreightNote] = useState('');
-  const [crmFilter, setCrmFilter] = useState<CrmFilter>('all');
+  const [leadFilter, setLeadFilter] = useState<LeadFilter>('para_contatar');
 
   const bags = Number(bagsInput);
   const bagsValid = Number.isInteger(bags) && bags >= 1 && bags <= 2000;
@@ -79,6 +85,19 @@ export default function RadarCargas() {
     retry: false,
   });
 
+  // "Cidade da carga" para a mensagem padrão de contato (não é a cidade do
+  // lead, é de onde a carreta está saindo).
+  const originLabel = city ? `${city.nome} - ${city.uf}` : '';
+
+  // ── Contato antes da tarefa: mapa local cnpj → atividade ──
+  // Igual ao padrão de enrichmentByCnpj: mescla o que markContacted/discard/
+  // restore devolvem, sem refazer a busca inteira (o dono pediu que os
+  // filtros/contadores reajam na hora).
+  const [activityByCnpj, setActivityByCnpj] = useState<Record<string, RadarLeadActivity>>({});
+  const handleActivityChange = (cnpj: string, activity: RadarLeadActivity) => {
+    setActivityByCnpj((prev) => ({ ...prev, [cnpj]: activity }));
+  };
+
   // ── Enriquecimento por scraping (Fase 2) ──
   // Mapa local cnpj → enrichment, mesclado a cada resposta de enrichmentStatus
   // (polling) ou de um enrichNow individual — nunca refaz a busca inteira.
@@ -91,6 +110,7 @@ export default function RadarCargas() {
   const handleSearch = () => {
     if (!canSearch) return;
     setEnrichmentByCnpj({});
+    setActivityByCnpj({});
     setEnrichUnavailable(false);
     setPollTimedOut(false);
     setPollDeadline(Date.now() + ENRICH_POLL_CAP_MS);
@@ -185,20 +205,34 @@ export default function RadarCargas() {
     leadCnpjs.length > 0 && enricherOnline && !enrichUnavailable && !pollTimedOut && enrichPending;
   const showEnricherOffline = leadCnpjs.length > 0 && !!data && !enricherOnline;
 
+  // Atividade efetiva de cada lead: o que markContacted/discard/restore
+  // devolveram por último, senão o que já veio na busca.
+  const effectiveActivity = (cnpj: string): RadarLeadActivity =>
+    activityByCnpj[cnpj] ?? leads.find((l) => l.cnpj === cnpj)?.activity ?? EMPTY_RADAR_ACTIVITY;
+
+  // Balde (mutuamente exclusivo) de cada lead nos novos filtros pedidos pelo
+  // dono. "Já no CRM" manda em qualquer outro estado (é o comportamento de
+  // sempre); descartado vem depois; contatado por último.
+  function bucketFor(lead: RadarLead): Exclude<LeadFilter, 'all'> {
+    if (lead.crm.kind === 'no_crm') return 'no_crm';
+    const activity = effectiveActivity(lead.cnpj);
+    if (activity.discarded) return 'descartados';
+    if (activity.contactedAt) return 'contatados';
+    return 'para_contatar';
+  }
+
   const counts = useMemo(() => {
-    const c = { all: leads.length, novo: 0, no_crm: 0, excluido_antes: 0 };
-    for (const l of leads) {
-      if (l.crm.kind === 'novo') c.novo++;
-      else if (l.crm.kind === 'no_crm') c.no_crm++;
-      else c.excluido_antes++;
-    }
+    const c = { all: leads.length, para_contatar: 0, contatados: 0, no_crm: 0, descartados: 0 };
+    for (const l of leads) c[bucketFor(l)]++;
     return c;
-  }, [leads]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads, activityByCnpj]);
 
   const filteredLeads = useMemo(() => {
-    if (crmFilter === 'all') return leads;
-    return leads.filter((l) => l.crm.kind === crmFilter);
-  }, [leads, crmFilter]);
+    if (leadFilter === 'all') return leads;
+    return leads.filter((l) => bucketFor(l) === leadFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads, leadFilter, activityByCnpj]);
 
   return (
     <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-4">
@@ -397,20 +431,21 @@ export default function RadarCargas() {
               </p>
             )}
 
-            {/* Filtros por status no CRM */}
+            {/* Filtros: a busca é uma lista — o atendente decide depois do contato */}
             <div className="flex flex-wrap gap-1.5">
               {([
-                ['all', 'Todos', counts.all],
-                ['novo', 'Novos', counts.novo],
+                ['para_contatar', 'Para contatar', counts.para_contatar],
+                ['contatados', 'Contatados', counts.contatados],
                 ['no_crm', 'Já no CRM', counts.no_crm],
-                ['excluido_antes', 'Excluídos antes', counts.excluido_antes],
-              ] as [CrmFilter, string, number][]).map(([key, label, count]) => (
+                ['descartados', 'Descartados', counts.descartados],
+                ['all', 'Todos', counts.all],
+              ] as [LeadFilter, string, number][]).map(([key, label, count]) => (
                 <button
                   key={key}
                   type="button"
-                  onClick={() => setCrmFilter(key)}
+                  onClick={() => setLeadFilter(key)}
                   className={`px-3 py-1 rounded-full text-xs font-semibold border transition ${
-                    crmFilter === key
+                    leadFilter === key
                       ? 'bg-blue-900 text-white border-blue-900'
                       : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
                   }`}
@@ -435,9 +470,12 @@ export default function RadarCargas() {
                   key={lead.cnpj}
                   lead={lead}
                   originIbge={searchInput.originIbge}
+                  originLabel={originLabel}
                   bags={bags}
                   loadDate={loadDate || undefined}
                   freightNote={freightNote.trim() || undefined}
+                  activity={effectiveActivity(lead.cnpj)}
+                  onActivityChange={handleActivityChange}
                   enrichment={effectiveEnrichment(lead.cnpj)}
                   onEnrichmentChange={handleEnrichmentChange}
                   onConverted={() => searchQuery.refetch()}

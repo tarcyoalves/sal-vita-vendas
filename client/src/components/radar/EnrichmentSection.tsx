@@ -116,10 +116,15 @@ export function EnrichmentSection({
   enrichment,
   onScanNow,
   scanning,
+  discarded = false,
 }: {
   enrichment: RadarEnrichment | null;
   onScanNow: (force: boolean) => void;
   scanning: boolean;
+  // Empresa descartada: nunca entra na fila do robô (nem antes nem depois do
+  // descarte). Sem botão de varrer, sem esqueleto de "processando" — só o
+  // que já tiver sido achado antes, ou nada.
+  discarded?: boolean;
 }) {
   const [fontesOpen, setFontesOpen] = useState(false);
 
@@ -128,7 +133,9 @@ export function EnrichmentSection({
   // Ícone de varrer fica visível quando não há nada em andamento: nunca
   // pedido, já pronto (inclusive vencido) ou falhou mostra seu próprio botão
   // "Tentar de novo" abaixo, para não duplicar a ação.
-  const showTopButton = status === null || status === 'pronto';
+  const showTopButton = !discarded && (status === null || status === 'pronto');
+
+  if (discarded && !(status === 'pronto' && enrichment?.data)) return null;
 
   let content: ReactNode;
 
@@ -269,7 +276,7 @@ export function EnrichmentSection({
           </Button>
         )}
       </div>
-      {expired && (
+      {expired && !discarded && (
         <p className="text-[10px] text-amber-600">
           Dados de mais de {RADAR_ENRICH_TTL_DAYS} dias — considere varrer de novo.
         </p>
