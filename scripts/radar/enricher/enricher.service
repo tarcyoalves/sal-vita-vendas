@@ -1,0 +1,38 @@
+# Exemplo de unit systemd para o robô de enriquecimento do Radar de Cargas.
+#
+# Instalação (como root, na VPS):
+#   1. Ajuste WorkingDirectory, ExecStart e User abaixo para o seu ambiente.
+#   2. Copie as variáveis reais para /etc/radar-enricher.env (permissão 600,
+#      NUNCA dentro do repositório — o repositório é público). Veja o
+#      exemplo de conteúdo em README.md, seção "Variáveis de ambiente".
+#   3. sudo cp enricher.service /etc/systemd/system/radar-enricher.service
+#   4. sudo systemctl daemon-reload
+#   5. sudo systemctl enable --now radar-enricher
+#   6. sudo systemctl status radar-enricher
+#   7. journalctl -u radar-enricher -f        # acompanhar os logs
+
+[Unit]
+Description=Robo de enriquecimento do Radar de Cargas (Sal Vita)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=radar
+Group=radar
+WorkingDirectory=/opt/sal-vita-vendas/scripts/radar/enricher
+EnvironmentFile=/etc/radar-enricher.env
+ExecStart=/opt/sal-vita-vendas/scripts/radar/enricher/.venv/bin/python3 worker.py
+Restart=on-failure
+RestartSec=15
+# Reinicia sozinho se cair, mas evita loop de restart maluco.
+StartLimitIntervalSec=600
+StartLimitBurst=10
+
+# Endurecimento básico (opcional, remova se causar problema com o browser
+# do Scrapling/Playwright).
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
