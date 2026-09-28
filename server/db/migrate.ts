@@ -51,11 +51,129 @@ async function bootstrapInitialAdmin() {
   console.log(`[bootstrap] administrador inicial criado para ${config.email}; troca de senha obrigatória`);
 }
 
+// ── Passo rápido, ANTES da migração longa ───────────────────────────────────
+// A migração completa abaixo tem ~175 comandos em sequência (cada um é uma ida ao Neon
+// pelo HTTP) e o api/index.ts a abandona aos 20 s. Quando estoura, o que vem depois dos
+// primeiros comandos NUNCA chega ao banco: foi assim que `smbi_solicitado_em` e as tabelas
+// do Radar ficaram de fora e o faturamento zerou em 28/09 (HANDOFF-HERMES.md, caso N).
+//
+// Aqui ficam as colunas/tabelas adicionadas recentemente, checadas com UMA consulta ao
+// catálogo (barata, sem trava) e criadas só se faltarem. Continue registrando toda coluna
+// nova também na migração longa: é ela que cria bancos novos e mantém o teste
+// tests/schema-migrations.test.ts verdadeiro.
+async function ensureRadarTables() {
+  // Radar de Cargas — preenchida por scripts/radar/import-receita.ts (ver schema.ts).
+  await sql`
+    CREATE TABLE IF NOT EXISTS radar_establishments (
+      cnpj            TEXT PRIMARY KEY,
+      razao_social    TEXT NOT NULL,
+      nome_fantasia   TEXT,
+      cnae_principal  TEXT NOT NULL,
+      cnaes_alvo      TEXT[] NOT NULL,
+      municipio_ibge  INTEGER NOT NULL,
+      uf              TEXT NOT NULL,
+      endereco        TEXT,
+      cep             TEXT,
+      telefone1       TEXT,
+      telefone2       TEXT,
+      email           TEXT,
+      porte           TEXT,
+      data_inicio     TEXT,
+      source_release  TEXT NOT NULL,
+      imported_at     TIMESTAMP NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS radar_establishments_municipio_idx
+            ON radar_establishments(municipio_ibge)`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS radar_enrichment (
+      cnpj                  TEXT PRIMARY KEY,
+      status                TEXT NOT NULL DEFAULT 'pendente',
+      priority              INTEGER NOT NULL DEFAULT 0,
+      requested_at          TIMESTAMP NOT NULL DEFAULT now(),
+      requested_by_user_id  INTEGER,
+      claimed_at            TIMESTAMP,
+      finished_at           TIMESTAMP,
+      attempts              INTEGER NOT NULL DEFAULT 0,
+      result                JSONB,
+      error                 TEXT,
+      expires_at            TIMESTAMP
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS radar_lead_actions (
+      cnpj                  TEXT PRIMARY KEY,
+      contacted_at          TIMESTAMP,
+      contacted_by_user_id  INTEGER,
+      contacted_by_name     TEXT,
+      contact_channel       TEXT,
+      contact_count         INTEGER NOT NULL DEFAULT 0,
+      discarded_at          TIMESTAMP,
+      discarded_by_user_id  INTEGER,
+      discarded_by_name     TEXT,
+      discard_reason        TEXT,
+      discard_note          TEXT,
+      updated_at            TIMESTAMP NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS radar_lead_events (
+      id          SERIAL PRIMARY KEY,
+      cnpj        TEXT NOT NULL,
+      type        TEXT NOT NULL,
+      channel     TEXT,
+      reason      TEXT,
+      note        TEXT,
+      task_id     INTEGER,
+      user_id     INTEGER NOT NULL,
+      user_name   TEXT NOT NULL,
+      created_at  TIMESTAMP NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS radar_lead_events_cnpj_idx ON radar_lead_events(cnpj, created_at)`;
+  await sql`CREATE INDEX IF NOT EXISTS radar_enrichment_queue_idx
+            ON radar_enrichment(status, priority DESC, requested_at)`;
+}
+
+async function ensureRecentSchema() {
+  const [cols, reg] = await Promise.all([
+    sql`SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'fat_orders'`,
+    sql`SELECT
+          to_regclass('public.radar_establishments') IS NOT NULL
+          AND to_regclass('public.radar_enrichment') IS NOT NULL
+          AND to_regclass('public.radar_lead_actions') IS NOT NULL
+          AND to_regclass('public.radar_lead_events') IS NOT NULL AS radar_ok`,
+  ]);
+
+  // fat_orders só é criada pela migração longa; se ainda não existe, não há o que corrigir aqui.
+  const have = new Set((cols as unknown as Array<{ column_name: string }>).map((c) => c.column_name));
+  if (have.size > 0) {
+    if (!have.has('smbi_movsai_id')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_movsai_id TEXT`;
+    if (!have.has('numero_nfe')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS numero_nfe TEXT`;
+    if (!have.has('numero_cte')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS numero_cte TEXT`;
+    if (!have.has('smbi_condpag_sal_cod')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_condpag_sal_cod TEXT`;
+    if (!have.has('smbi_condpag_frete_cod')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_condpag_frete_cod TEXT`;
+    if (!have.has('comissao_comercial_protegida')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS comissao_comercial_protegida DOUBLE PRECISION`;
+    if (!have.has('smbi_solicitado_em')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitado_em TEXT`;
+  }
+
+  const radarOk = (reg as unknown as Array<{ radar_ok: boolean }>)[0]?.radar_ok === true;
+  if (!radarOk) await ensureRadarTables();
+}
+
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-09-28c';
+const SCHEMA_VERSION = '2026-09-28d';
 
 export async function ensureTablesExist() {
+  // Antes de tudo (e antes do caminho rápido): garante o que foi criado por último.
+  try {
+    await ensureRecentSchema();
+  } catch (err) {
+    console.error('[migrate] ensureRecentSchema falhou:', err);
+  }
+
   // Fast path: if the schema marker matches, the DB is already fully migrated.
   // Skip the ~58 idempotent DDL/ALTER/CREATE INDEX round-trips that would
   // otherwise run on EVERY cold start and burn Neon free-tier compute. The
@@ -810,77 +928,7 @@ export async function ensureTablesExist() {
     )
   `;
 
-  // Radar de Cargas — preenchida por scripts/radar/import-receita.ts (ver schema.ts).
-  await sql`
-    CREATE TABLE IF NOT EXISTS radar_establishments (
-      cnpj            TEXT PRIMARY KEY,
-      razao_social    TEXT NOT NULL,
-      nome_fantasia   TEXT,
-      cnae_principal  TEXT NOT NULL,
-      cnaes_alvo      TEXT[] NOT NULL,
-      municipio_ibge  INTEGER NOT NULL,
-      uf              TEXT NOT NULL,
-      endereco        TEXT,
-      cep             TEXT,
-      telefone1       TEXT,
-      telefone2       TEXT,
-      email           TEXT,
-      porte           TEXT,
-      data_inicio     TEXT,
-      source_release  TEXT NOT NULL,
-      imported_at     TIMESTAMP NOT NULL DEFAULT now()
-    )
-  `;
-  await sql`CREATE INDEX IF NOT EXISTS radar_establishments_municipio_idx
-            ON radar_establishments(municipio_ibge)`;
-  await sql`
-    CREATE TABLE IF NOT EXISTS radar_enrichment (
-      cnpj                  TEXT PRIMARY KEY,
-      status                TEXT NOT NULL DEFAULT 'pendente',
-      priority              INTEGER NOT NULL DEFAULT 0,
-      requested_at          TIMESTAMP NOT NULL DEFAULT now(),
-      requested_by_user_id  INTEGER,
-      claimed_at            TIMESTAMP,
-      finished_at           TIMESTAMP,
-      attempts              INTEGER NOT NULL DEFAULT 0,
-      result                JSONB,
-      error                 TEXT,
-      expires_at            TIMESTAMP
-    )
-  `;
-  await sql`
-    CREATE TABLE IF NOT EXISTS radar_lead_actions (
-      cnpj                  TEXT PRIMARY KEY,
-      contacted_at          TIMESTAMP,
-      contacted_by_user_id  INTEGER,
-      contacted_by_name     TEXT,
-      contact_channel       TEXT,
-      contact_count         INTEGER NOT NULL DEFAULT 0,
-      discarded_at          TIMESTAMP,
-      discarded_by_user_id  INTEGER,
-      discarded_by_name     TEXT,
-      discard_reason        TEXT,
-      discard_note          TEXT,
-      updated_at            TIMESTAMP NOT NULL DEFAULT now()
-    )
-  `;
-  await sql`
-    CREATE TABLE IF NOT EXISTS radar_lead_events (
-      id          SERIAL PRIMARY KEY,
-      cnpj        TEXT NOT NULL,
-      type        TEXT NOT NULL,
-      channel     TEXT,
-      reason      TEXT,
-      note        TEXT,
-      task_id     INTEGER,
-      user_id     INTEGER NOT NULL,
-      user_name   TEXT NOT NULL,
-      created_at  TIMESTAMP NOT NULL DEFAULT now()
-    )
-  `;
-  await sql`CREATE INDEX IF NOT EXISTS radar_lead_events_cnpj_idx ON radar_lead_events(cnpj, created_at)`;
-  await sql`CREATE INDEX IF NOT EXISTS radar_enrichment_queue_idx
-            ON radar_enrichment(status, priority DESC, requested_at)`;
+  await ensureRadarTables();
 
   // Depois do DDL: em banco novo a tabela `users` só existe a partir daqui, e
   // o fast path acima nunca roda na primeira inicialização. Se o bootstrap

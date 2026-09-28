@@ -167,14 +167,22 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Resolve after ms regardless of whether the promise settled, to avoid hanging cold starts
-function withTimeout(p: Promise<unknown>, ms: number): Promise<unknown> {
-  return Promise.race([p, new Promise<void>(resolve => setTimeout(resolve, ms))]);
+function withTimeout(p: Promise<unknown>, ms: number, label: string): Promise<unknown> {
+  return Promise.race([
+    p,
+    new Promise<void>(resolve => setTimeout(() => {
+      // Sem este log o estouro era silencioso e a migração incompleta só aparecia como
+      // "coluna não existe" muito depois (faturamento zerado em 28/09).
+      console.warn(`[startup] ${label} passou de ${ms} ms — a migração pode ter ficado incompleta`);
+      resolve();
+    }, ms)),
+  ]);
 }
 
 const dbReady = Promise.all([
-  withTimeout(ensureTablesExist(), 20_000).catch(err => console.error('DB init error:', err)),
-  withTimeout(ensureOrdersTablesExist(), 10_000).catch(err => console.error('Orders DB init error:', err)),
-  withTimeout(ensureB2bTablesExist(), 10_000).catch(err => console.error('B2B DB init error:', err)),
+  withTimeout(ensureTablesExist(), 20_000, 'ensureTablesExist').catch(err => console.error('DB init error:', err)),
+  withTimeout(ensureOrdersTablesExist(), 10_000, 'ensureOrdersTablesExist').catch(err => console.error('Orders DB init error:', err)),
+  withTimeout(ensureB2bTablesExist(), 10_000, 'ensureB2bTablesExist').catch(err => console.error('B2B DB init error:', err)),
 ]);
 
 // Set once dbReady settles so the guard middleware only blocks the very first request
