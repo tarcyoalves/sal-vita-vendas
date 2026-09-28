@@ -440,6 +440,37 @@ convertido.
 
 **Regra:** datas do tRPC são `Date` (superjson). E `as any` desliga o portão.
 
+### M. Coluna declarada no schema sem migração — faturamento zerado (28/09/2026)
+
+O commit `497ebd6` (hermes) adicionou seis colunas a `fat_orders` em
+`server/db/schema.ts` (`smbi_movsai_id`, `numero_nfe`, `numero_cte`,
+`smbi_condpag_sal_cod`, `smbi_condpag_frete_cod`, `comissao_comercial_protegida`)
+sem o correspondente `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` em
+`server/db/migrate.ts` e sem aumentar `SCHEMA_VERSION`.
+
+O Drizzle `select()` lista **todas** as colunas declaradas. Cada query de
+`fat_orders` em produção falhou — faturamento exibiu tudo zerado e a revisão de
+pedidos desapareceu, em mobile e desktop.
+
+Os dois commits seguintes (`1de1c13`, `7efbfca`) mudaram a barra de navegação
+mobile e o filtro de mês em vez de ler o erro do servidor, e o segundo
+introduziu um novo bug: pedidos pendentes bypassed o filtro de mês e foram
+adicionados aos totais de todos os meses.
+
+`npm run check` e `npm test` passaram — nenhum porta toca um banco real, então
+não conseguem apanhar isso.
+
+Corrigido em `96503ec` (migração + `SCHEMA_VERSION` bump) e `8177ca3` (filtro de
+mês restaurado).
+
+**Regra:** toda coluna nova em `schema.ts` precisa, no mesmo commit, do
+`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` em `migrate.ts` e de um novo
+`SCHEMA_VERSION`. Quando dados "desaparecem" após um deploy, procure primeiro
+por erro do servidor/query, não na UI. Também: campo adicionado a um tipo do
+cliente é silenciosamente descartado pelo tRPC se não estiver no schema de entrada
+zod do servidor (`pedidoSchema` em `server/routers/faturamento.ts` não inclui os
+seis novos campos).
+
 ---
 
 ## 8. Armadilhas técnicas deste código
@@ -486,6 +517,9 @@ coluna nova:
    em `server/db/migrate.ts`
 3. **Aumente `SCHEMA_VERSION`** (hoje `'2026-09-04a'`). Sem isso o fast path
    pula a migração e a coluna nunca é criada.
+
+Veja caso M da seção 7 para o que acontece quando você pula qualquer um desses
+passos.
 
 Tabelas do Premium ficam em `server/db/ordersMigrate.ts` (banco
 `ORDERS_DATABASE_URL`).
