@@ -277,10 +277,13 @@ Plano e decisões em `PLANO-RADAR-CARGAS.md`.
    200.*
 3. **Setar `B2B_NOTIFY_EMAIL`** na Vercel — sem isso o aviso de lead novo do `/atacado`
    não chega.
-3b. **Integração SMBI — setar `SMBI_SYNC_SECRET`** na Vercel (Production) e na máquina
-   do robô, com o mesmo valor. Sem ela as rotas `/api/smbi/*` recusam (401). Fluxo e
-   exemplos em `docs/INTEGRACAO-SMBI.md`. Pendência de desenho: `SMBI_PRODUTOS_CATALOGO`
-   não está ligado aos produtos do CRM — o robô mapeia pelo nome.
+3b. **Integração SMBI — senha configurada e testada em 28/09.** `SMBI_SYNC_SECRET` está na
+   Vercel (Production) e em `/home/ubuntu/.secrets/smbi.env` na VPS (permissão 600); o teste
+   da VPS deu 401 sem senha e 200 com senha. **Falta o robô** `smbi_criar_pedido_express.mjs`
+   ler esse arquivo e consumir `/api/smbi/*` (contrato em `docs/INTEGRACAO-SMBI.md`).
+   Para trocar a senha: gerar outra e substituir nos dois lugares, depois redeploy.
+   Pendência de desenho: `SMBI_PRODUTOS_CATALOGO` não está ligado aos produtos do CRM —
+   o robô mapeia pelo nome.
 3a. **Radar de Cargas — ligar na VPS** (sem isso a tela abre vazia):
    rodar `scripts/radar/import-receita.ts` (ver `scripts/radar/README.md`; começar por
    PR, SC, RS com `--dry-run`), instalar o robô `scripts/radar/enricher/` (README lá) e,
