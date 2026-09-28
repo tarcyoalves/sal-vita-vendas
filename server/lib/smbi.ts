@@ -10,6 +10,7 @@
 import crypto from 'crypto';
 import { z } from 'zod';
 import type { FatOrder } from '../db/schema';
+import { condicaoPorTexto } from '../../shared/smbiCondicoes';
 
 // ── Autenticação (Bearer SMBI_SYNC_SECRET) ───────────────────────────────────
 
@@ -85,8 +86,10 @@ export function mapOrderToSmbiPayload(row: FatOrder): SmbiPedidoPayload {
     itens: row.itens,
     prazoPagamentoSal: row.prazoPagamentoSal,
     prazoPagamentoFrete: row.prazoPagamentoFrete,
-    smbiCondpagSalCod: row.smbiCondpagSalCod,
-    smbiCondpagFreteCod: row.smbiCondpagFreteCod,
+    // Pedido antigo (prazo digitado à mão) tem a coluna vazia: deriva do texto quando ele
+    // corresponde com certeza a uma condição do catálogo; senão continua null e o robô pula.
+    smbiCondpagSalCod: row.smbiCondpagSalCod ?? condicaoPorTexto(row.prazoPagamentoSal)?.cod ?? null,
+    smbiCondpagFreteCod: row.smbiCondpagFreteCod ?? condicaoPorTexto(row.prazoPagamentoFrete)?.cod ?? null,
     valorFretePorUnidade: row.valorFretePorUnidade,
     observacoes: row.observacoes,
     previsaoFaturamentoEm: row.previsaoFaturamentoEm,

@@ -36,6 +36,15 @@ salvando não é `admin` — mesmo que o payload do cliente traga outra coisa
 começam sempre `null` para quem não é admin. Só `smbi_condpag_sal_cod` e
 `smbi_condpag_frete_cod` são escritos pela tela normalmente.
 
+## Prazos de pagamento digitados à mão
+
+Pedidos antigos têm o prazo em texto livre ("30/60/90", "à vista") e a coluna do código
+SMBI vazia. O `GET /api/smbi/pedidos` **deriva o código do texto** quando ele corresponde
+com certeza a uma condição do catálogo (`shared/smbiCondicoes.ts`): "30/60/90", "30 / 60 / 90
+dias" e "30/60/90 DIAS" viram o código 46. Prazo que **não está no catálogo** (ex.: "20/40/60")
+continua com código `null` — o robô deve pular e registrar. Para incluir um prazo novo, o dono
+informa o código real do SMBI e ele entra na lista em `shared/smbiCondicoes.ts`.
+
 ## Autenticação
 
 Todas as rotas exigem `Authorization: Bearer $SMBI_SYNC_SECRET`.

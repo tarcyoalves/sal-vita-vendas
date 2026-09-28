@@ -2,24 +2,10 @@
 // Mapeamento direto com as tabelas do ERP SMBI (smbi.com.br) para integração
 // autônoma de criação de pedidos via robô (smbi_criar_pedido_express.mjs).
 
-export interface SmbiCondicaoPagamento {
-  cod: string;
-  descricao: string;
-  parcelas: number;
-}
-
-export const SMBI_CONDICOES_PAGAMENTO: SmbiCondicaoPagamento[] = [
-  { cod: '1', descricao: 'A VISTA', parcelas: 1 },
-  { cod: '11', descricao: '15 DIAS', parcelas: 1 },
-  { cod: '5', descricao: '20 DIAS', parcelas: 1 },
-  { cod: '2', descricao: '30 DIAS', parcelas: 1 },
-  { cod: '7', descricao: '30/45 DIAS', parcelas: 2 },
-  { cod: '3', descricao: '30/60 DIAS', parcelas: 2 },
-  { cod: '10', descricao: '30/45/60 DIAS', parcelas: 3 },
-  { cod: '46', descricao: '30/60/90 DIAS', parcelas: 3 },
-  { cod: '4', descricao: '45 DIAS', parcelas: 1 },
-  { cod: '6', descricao: '60 DIAS', parcelas: 1 },
-];
+// A lista de condições de pagamento vive em shared/smbiCondicoes.ts para a API do robô
+// (servidor) usar a mesma fonte. Reexportada aqui para não mudar quem já importa daqui.
+export { SMBI_CONDICOES_PAGAMENTO, condicaoPorTexto, normalizarPrazo } from '../../../../shared/smbiCondicoes';
+export type { SmbiCondicaoPagamento } from '../../../../shared/smbiCondicoes';
 
 export interface SmbiProdutoRef {
   smbiId: string;

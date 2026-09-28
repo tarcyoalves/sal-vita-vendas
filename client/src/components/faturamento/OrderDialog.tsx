@@ -14,14 +14,20 @@ import { Textarea } from '../ui/textarea';
 import { OrderItemsEditor } from './OrderItemsEditor';
 import { useFatStore } from '../../lib/faturamento/store';
 import { totalItens, formatBRL, parseBRL, dataInputLocal, hojeInputLocal } from '../../lib/faturamento/calc';
-import { SMBI_CONDICOES_PAGAMENTO } from '@/lib/faturamento/smbiCatalog';
+import { SMBI_CONDICOES_PAGAMENTO, condicaoPorTexto } from '@/lib/faturamento/smbiCatalog';
 import { type Pedido, type ItemPedido } from '@/lib/faturamento/types';
 
 // Código SMBI da condição escolhida pela descrição exibida no <select> — null
 // quando é texto legado que não está no catálogo oficial (o robô não tem
 // como criar o pedido no SMBI com esse prazo até alguém reselecionar da lista).
 function codParaDescricao(descricao: string): string | null {
-  return SMBI_CONDICOES_PAGAMENTO.find((c) => c.descricao === descricao)?.cod ?? null;
+  return condicaoPorTexto(descricao)?.cod ?? null;
+}
+
+// Pedido antigo digitado à mão ("30/60/90") vira a descrição do catálogo ("30/60/90 DIAS")
+// para o <select> mostrá-la selecionada; o que não bate com certeza fica como está.
+function descricaoCanonica(texto: string): string {
+  return condicaoPorTexto(texto)?.descricao ?? texto;
 }
 
 interface OrderDialogProps {
@@ -118,8 +124,8 @@ export function OrderDialog({
       setCidade(existing.cidade);
       setUf(existing.uf);
       setItens(existing.itens);
-      setPrazoPagamentoSal(existing.prazoPagamentoSal ?? '');
-      setPrazoPagamentoFrete(existing.prazoPagamentoFrete ?? '');
+      setPrazoPagamentoSal(descricaoCanonica(existing.prazoPagamentoSal ?? ''));
+      setPrazoPagamentoFrete(descricaoCanonica(existing.prazoPagamentoFrete ?? ''));
       // Pedido salvo antes desta integração pode ter o código nulo mesmo com
       // uma descrição que já bate com o catálogo — deriva pela descrição
       // nesse caso, sem sobrescrever um código legítimo já gravado.
