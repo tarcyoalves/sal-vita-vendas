@@ -448,19 +448,19 @@ O commit `497ebd6` (hermes) adicionou seis colunas a `fat_orders` em
 sem o correspondente `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` em
 `server/db/migrate.ts` e sem aumentar `SCHEMA_VERSION`.
 
-O Drizzle `select()` lista **todas** as colunas declaradas. Cada query de
-`fat_orders` em produção falhou — faturamento exibiu tudo zerado e a revisão de
+O Drizzle `select()` lista **todas** as colunas declaradas. Toda query em
+`fat_orders` passou a falhar em produção — faturamento exibiu tudo zerado e a revisão de
 pedidos desapareceu, em mobile e desktop.
 
 Os dois commits seguintes (`1de1c13`, `7efbfca`) mudaram a barra de navegação
 mobile e o filtro de mês em vez de ler o erro do servidor, e o segundo
-introduziu um novo bug: pedidos pendentes bypassed o filtro de mês e foram
-adicionados aos totais de todos os meses.
+introduziu um novo bug: pedidos pendentes passaram a ignorar o filtro de mês e
+entravam nos totais de todos os meses.
 
-`npm run check` e `npm test` passaram — nenhum porta toca um banco real, então
-não conseguem apanhar isso.
+`npm run check` e `npm test` passaram — nenhum dos dois portões toca um banco
+real, então não conseguem pegar isso.
 
-Corrigido em `96503ec` (migração + `SCHEMA_VERSION` bump) e `8177ca3` (filtro de
+Corrigido em `96503ec` (migração + novo `SCHEMA_VERSION`) e `8177ca3` (filtro de
 mês restaurado).
 
 **Regra:** toda coluna nova em `schema.ts` precisa, no mesmo commit, do
