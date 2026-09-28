@@ -506,6 +506,13 @@ catálogo com uma query e cria só o que falta; o timeout agora loga
 - Pendência estrutural (dono decide): rodar a migração no build ou em lote único, em vez de
   no cold start.
 
+**Resolvido em:** `scripts/migrate-build.ts` (`npm run migrate:build`), chamado por
+`vercel-build` entre `npm test` e `build:client`. Só roda com `VERCEL_ENV=production`
+(ou `--force`), sem limite de tempo; o cold start passa a cair no caminho rápido (marcador
+`schema_meta` igual). Nunca derruba o deploy: falha aparece no log de **build** como
+`[migrate:build] FALHOU: ...`. `ensureRecentSchema()` continua como rede de segurança.
+Depois de mudar o schema, confira esse log.
+
 ## 8. Armadilhas técnicas deste código
 
 ### SQL raw é necessário em pontos específicos — não "traduza"

@@ -42,8 +42,18 @@ zerou o faturamento em 28/09. [M]
       Não reescreva no query builder.
 
 - [ ] **Também** registre a coluna/tabela em `ensureRecentSchema()` (topo de
-      `server/db/migrate.ts`), guardada por `if (!have.has('coluna'))`. A migração longa é
-      abandonada aos 20 s em produção e o que está no fim dela pode nunca ser criado. [N]
+      `server/db/migrate.ts`), guardada por `if (!have.has('coluna'))`. Agora é a **rede de
+      segurança**: o build de produção já roda a migração (abaixo), mas se ela falhar ou
+      o build não tiver as variáveis, é `ensureRecentSchema()` que evita a coluna faltando. [N]
+- [ ] **O build de produção migra o banco.** `npm run vercel-build` chama
+      `npm run migrate:build` (`scripts/migrate-build.ts`) só quando `VERCEL_ENV=production`
+      (preview e development nunca migram), sem limite de tempo. Ele roda o CRM
+      (`DATABASE_URL`) e o Premium (`ORDERS_DATABASE_URL`; sem ela, só o Premium é pulado).
+      **Uma falha NÃO bloqueia o deploy**: aparece no log de BUILD como
+      `[migrate:build] FALHOU: <mensagem>`, e o sucesso termina em `[migrate:build] ok`.
+      **Depois de qualquer mudança de schema, abra o log de build da Vercel e procure
+      `[migrate:build]`**; se houver `FALHOU`, corrija e refaça o deploy. Teste local sem
+      banco: `npx tsx scripts/migrate-build.ts --dry-run`.
 - [ ] Depois do deploy, olhe os logs da Vercel: nada de `does not exist` nem
       `[startup] ... passou de`. "READY" não prova que o banco foi migrado. [N]
 

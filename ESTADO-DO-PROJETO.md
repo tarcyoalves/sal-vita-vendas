@@ -146,6 +146,10 @@ minerais. Até lá, não.
 
 ## 5. O que está feito
 
+**Migração no build (28/09/2026)** — `scripts/migrate-build.ts` roda `ensureTablesExist`,
+`ensureOrdersTablesExist` e `ensureB2bTablesExist` no build de produção da Vercel, sem limite
+de tempo; falha só é impressa (`[migrate:build] FALHOU`), não derruba o deploy. Caso N.
+
 **Radar de Cargas (25–26/09/2026 — CRM)** — `/radar-cargas`, menu "Radar de Cargas".
 Plano e decisões em `PLANO-RADAR-CARGAS.md`.
 - Atendente informa cidade da carga, raio e saldo de sacos; a tela lista empresas ATIVAS
