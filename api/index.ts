@@ -1570,7 +1570,17 @@ app.post('/api/smbi/pedidos/:id/retorno', smbiApiLimiter, express.json({ limit: 
       return;
     }
     if (Object.keys(patch).length > 0) {
-      await db.update(fatOrders).set(patch).where(eq(fatOrders.id, id));
+      // Condição no próprio UPDATE: dois retornos simultâneos com movsai diferentes
+      // passariam ambos pela checagem acima; aqui só um grava o vínculo com o ERP.
+      const where = patch.smbiMovsaiId
+        ? and(eq(fatOrders.id, id), or(isNull(fatOrders.smbiMovsaiId), eq(fatOrders.smbiMovsaiId, patch.smbiMovsaiId)))
+        : eq(fatOrders.id, id);
+      const updated = await db.update(fatOrders).set(patch).where(where).returning({ id: fatOrders.id });
+      if (updated.length === 0) {
+        console.warn(`[smbi] POST retorno pedido=${id} → 409 (movsai gravado por outra chamada)`);
+        res.status(409).json({ error: 'smbiMovsaiId já vinculado a um valor diferente' });
+        return;
+      }
     }
     console.log(`[smbi] POST retorno pedido=${id} → ok (${Object.keys(patch).join(',') || 'sem alteração, idempotente'})`);
     res.json({ ok: true });

@@ -643,7 +643,11 @@ Referência para saber o que existe — **os valores ficam só na Vercel**:
   `INITIAL_ADMIN_PASSWORD` — sem nenhuma das três, o bootstrap fica desligado
   (é o estado atual). Preenchimento parcial é registrado no log e ignorado.
 - **IA:** `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `NVIDIA_API_KEY`,
-  `OPENROUTER_API_KEY`, `SUGGEST_MODEL`
+  `OPENROUTER_API_KEY`, `SUGGEST_MODEL`, `ANTIGRAVITY_BASE_URL`, `ANTIGRAVITY_API_KEY`,
+  `ANTIGRAVITY_MODEL` (opcional; primeiro da cadeia quando as três existem)
+- **Integração SMBI:** `SMBI_SYNC_SECRET` — Bearer das rotas `/api/smbi/*` usadas pelo
+  robô `smbi_criar_pedido_express.mjs`. Sem ela, as rotas respondem 401. Mesmo valor
+  na Vercel e na máquina do robô. Detalhes: `docs/INTEGRACAO-SMBI.md`.
 - **E-mail do CRM:** `RESEND_MKT_API_KEY_1..5`, `RESEND_MKT_FROM_1..5`,
   `RESEND_MKT_WEBHOOK_SECRET_1..5`, `RESEND_MKT_DAILY_LIMIT`,
   `RESEND_MKT_MONTHLY_LIMIT`, `BREVO_API_KEY_1..5`, `BREVO_FROM_1..5`,
