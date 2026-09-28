@@ -63,6 +63,13 @@ export interface Pedido {
   // Revisão do admin — informativa, não bloqueia nenhuma ação do atendente.
   aprovadoEm: string | null;
   aprovadoPor: string | null;
+  // Integração com ERP SMBI (smbi.com.br)
+  smbiMovsaiId?: string | null;
+  numeroNfe?: string | null;
+  numeroCte?: string | null;
+  smbiCondpagSalCod?: string | null;
+  smbiCondpagFreteCod?: string | null;
+  comissaoComercialProtegida?: number | null;
   createdByUserId: number | null;
   createdByRole: string | null;
 }

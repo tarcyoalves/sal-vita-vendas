@@ -677,6 +677,13 @@ export const fatOrders = pgTable('fat_orders', {
   // Revisão do admin — informativa, não bloqueia nenhuma ação do atendente.
   aprovadoEm: text('aprovado_em'),
   aprovadoPor: text('aprovado_por'),
+  // Integração com ERP SMBI (smbi.com.br)
+  smbiMovsaiId: text('smbi_movsai_id'),
+  numeroNfe: text('numero_nfe'),
+  numeroCte: text('numero_cte'),
+  smbiCondpagSalCod: text('smbi_condpag_sal_cod'),
+  smbiCondpagFreteCod: text('smbi_condpag_frete_cod'),
+  comissaoComercialProtegida: doublePrecision('comissao_comercial_protegida'),
   createdByUserId: integer('created_by_user_id'),
   createdByRole: text('created_by_role'),
 });

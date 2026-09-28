@@ -14,7 +14,8 @@ import { Textarea } from '../ui/textarea';
 import { OrderItemsEditor } from './OrderItemsEditor';
 import { useFatStore } from '../../lib/faturamento/store';
 import { totalItens, formatBRL, parseBRL, dataInputLocal, hojeInputLocal } from '../../lib/faturamento/calc';
-import type { ItemPedido, Pedido } from '../../lib/faturamento/types';
+import { SMBI_CONDICOES_PAGAMENTO } from '@/lib/faturamento/smbiCatalog';
+import { type Pedido, type ItemPedido } from '@/lib/faturamento/types';
 
 interface OrderDialogProps {
   open: boolean;
@@ -84,8 +85,8 @@ export function OrderDialog({
   const [cidade, setCidade] = useState('');
   const [uf, setUf] = useState('');
   const [itens, setItens] = useState<ItemPedido[]>([]);
-  const [prazoPagamentoSal, setPrazoPagamentoSal] = useState('');
-  const [prazoPagamentoFrete, setPrazoPagamentoFrete] = useState('');
+  const [prazoPagamentoSal, setPrazoPagamentoSal] = useState('30/45/60 DIAS');
+  const [prazoPagamentoFrete, setPrazoPagamentoFrete] = useState('20 DIAS');
   const [valorFreteRaw, setValorFreteRaw] = useState('');
   const [observacoes, setObservacoes] = useState('');
   const [previsaoFaturamento, setPrevisaoFaturamento] = useState('');
@@ -271,25 +272,41 @@ export function OrderDialog({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="od-prazo-sal" className="text-xs">Prazo pagamento sal <span className="text-red-500">*</span></Label>
-                <Input
+                <select
                   id="od-prazo-sal"
-                  placeholder="Ex: 30 dias, a vista, 15/30/45"
                   value={prazoPagamentoSal}
                   onChange={(e) => setPrazoPagamentoSal(e.target.value)}
-                  className="text-sm"
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   required
-                />
+                >
+                  {SMBI_CONDICOES_PAGAMENTO.map((c) => (
+                    <option key={c.cod} value={c.descricao}>
+                      {c.descricao}
+                    </option>
+                  ))}
+                  {!SMBI_CONDICOES_PAGAMENTO.some((c) => c.descricao === prazoPagamentoSal) && prazoPagamentoSal && (
+                    <option value={prazoPagamentoSal}>{prazoPagamentoSal}</option>
+                  )}
+                </select>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="od-prazo-frete" className="text-xs">Prazo pagamento frete <span className="text-red-500">*</span></Label>
-                <Input
+                <select
                   id="od-prazo-frete"
-                  placeholder="Ex: a vista, 30 dias"
                   value={prazoPagamentoFrete}
                   onChange={(e) => setPrazoPagamentoFrete(e.target.value)}
-                  className="text-sm"
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   required
-                />
+                >
+                  {SMBI_CONDICOES_PAGAMENTO.map((c) => (
+                    <option key={c.cod} value={c.descricao}>
+                      {c.descricao}
+                    </option>
+                  ))}
+                  {!SMBI_CONDICOES_PAGAMENTO.some((c) => c.descricao === prazoPagamentoFrete) && prazoPagamentoFrete && (
+                    <option value={prazoPagamentoFrete}>{prazoPagamentoFrete}</option>
+                  )}
+                </select>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="od-valor-frete" className="text-xs">Valor do frete por tonelada</Label>
