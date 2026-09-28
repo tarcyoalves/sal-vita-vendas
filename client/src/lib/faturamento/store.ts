@@ -64,14 +64,19 @@ function emit() {
 }
 
 async function reload(): Promise<void> {
-  const data = await api.faturamento.getAll.query();
-  mirror = {
-    produtos: data.produtos as Produto[],
-    pedidos: data.pedidos as Pedido[],
-    comissoes: data.comissoes as ComissaoMap,
-  };
-  loaded = true;
-  emit();
+  try {
+    const data = await api.faturamento.getAll.query();
+    mirror = {
+      produtos: data.produtos as Produto[],
+      pedidos: data.pedidos as Pedido[],
+      comissoes: data.comissoes as ComissaoMap,
+    };
+    loaded = true;
+    emit();
+  } catch (err) {
+    console.error('[FatStore] Erro ao carregar dados do faturamento:', err);
+    throw err;
+  }
 }
 
 // Importa dados do localStorage antigo para o banco uma única vez por navegador.
@@ -107,7 +112,9 @@ function ensureLoaded(): void {
   loading = true;
   reload()
     .then(maybeImportLocal)
-    .catch(() => { /* fica vazio; tenta de novo na próxima montagem */ })
+    .catch((err) => {
+      console.error('[FatStore] Falha no ensureLoaded:', err);
+    })
     .finally(() => { loading = false; });
 }
 

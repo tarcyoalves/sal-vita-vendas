@@ -516,7 +516,10 @@ export default function AdminDashboard() {
   // Pedidos aguardando revisão (criados por atendentes) — admin/manager têm
   // acesso completo ao Faturamento, mesmo padrão de permissão do módulo.
   const canManageFaturamento = user?.role === "admin" || user?.role === "manager";
-  const { data: pendingPedidos = [], refetch: refetchPendingPedidos } = trpc.faturamento.pendingApproval.useQuery(undefined, { staleTime: 60_000, enabled: canManageFaturamento });
+  const { data: pendingPedidos = [], refetch: refetchPendingPedidos } = trpc.faturamento.pendingApproval.useQuery(
+    undefined,
+    { staleTime: 30_000, refetchInterval: 60_000, enabled: canManageFaturamento }
+  );
   const [showPendingPedidos, setShowPendingPedidos] = useState(false);
   const [pedidoDetailId, setPedidoDetailId] = useState<string | null>(null);
   const [pedidoDetailOpen, setPedidoDetailOpen] = useState(false);

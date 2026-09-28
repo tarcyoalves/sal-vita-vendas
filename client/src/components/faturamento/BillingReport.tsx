@@ -112,10 +112,10 @@ export default function BillingReport() {
       result = result.filter((p) => p.sellerName === sellerFilter);
     }
 
-    // Competência, não data de criação: estimado entra no mês previsto de
-    // faturamento e faturado no mês do embarque real.
-    if (!showAllMonths && mesFilter) {
-      result = result.filter((p) => pedidoNoMes(p, mesFilter));
+    // Pedidos pendentes de revisão NUNCA somem por filtro de mês, para que o
+    // admin sempre consiga vê-los e aprová-los sem ter que adivinhar a competência.
+    if (!showAllMonths && mesFilter && statusFilter !== "pendente") {
+      result = result.filter((p) => !p.aprovadoEm || pedidoNoMes(p, mesFilter));
     }
 
     if (ufFilter.trim()) {
