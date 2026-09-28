@@ -38,7 +38,10 @@ const produtoSchema = z.object({
   isentoFrete: z.boolean().optional().default(false),
 });
 
-const pedidoSchema = z.object({
+// Exportado só para teste (tests/smbi-api.test.ts confere que os 6 campos SMBI
+// sobrevivem ao parse — o bug do caso M do HANDOFF-HERMES.md era justamente o
+// zod descartando campos ausentes do schema de entrada).
+export const pedidoSchema = z.object({
   id: z.string(),
   taskId: z.number().nullable(),
   sellerId: z.number().nullable(),
@@ -64,9 +67,25 @@ const pedidoSchema = z.object({
   valorPago: z.number().optional().default(0),
   aprovadoEm: z.string().nullable().optional().default(null),
   aprovadoPor: z.string().nullable().optional().default(null),
+  // Integração com ERP SMBI (smbi.com.br) — ver server/lib/smbi.ts e
+  // docs/INTEGRACAO-SMBI.md. smbiCondpag*Cod vêm da tela (OrderDialog); os
+  // outros quatro são escritos pelo robô/admin — upsertPedido e importLocal
+  // impedem um atendente de sobrescrevê-los (ver comentário nesses handlers).
+  smbiMovsaiId: z.string().nullable().optional().default(null),
+  numeroNfe: z.string().nullable().optional().default(null),
+  numeroCte: z.string().nullable().optional().default(null),
+  smbiCondpagSalCod: z.string().nullable().optional().default(null),
+  smbiCondpagFreteCod: z.string().nullable().optional().default(null),
+  comissaoComercialProtegida: z.number().nullable().optional().default(null),
   createdByUserId: z.number().nullable().optional().default(null),
   createdByRole: z.string().nullable().optional().default(null),
 });
+
+// smbiMovsaiId, numeroNfe, numeroCte e comissaoComercialProtegida são
+// escritos só pelo robô SMBI (via /api/smbi/pedidos/:id/retorno) ou pelo
+// admin — nunca por um atendente salvando o pedido pela tela. upsertPedido e
+// importLocal impedem que um payload de UI (ou um mirror desatualizado no
+// cliente) apague ou reescreva o vínculo com o ERP.
 
 async function sellerIdForUser(userId: number): Promise<number | null> {
   const [row] = await db
@@ -136,9 +155,16 @@ export const faturamentoRouter = router({
     .input(pedidoSchema)
     .mutation(async ({ ctx, input }) => {
       const values = { ...input };
+      const isAdmin = ctx.user.role === 'admin';
 
       const [existing] = await db
-        .select({ sellerId: fatOrders.sellerId })
+        .select({
+          sellerId: fatOrders.sellerId,
+          smbiMovsaiId: fatOrders.smbiMovsaiId,
+          numeroNfe: fatOrders.numeroNfe,
+          numeroCte: fatOrders.numeroCte,
+          comissaoComercialProtegida: fatOrders.comissaoComercialProtegida,
+        })
         .from(fatOrders)
         .where(eq(fatOrders.id, input.id));
 
@@ -152,6 +178,20 @@ export const faturamentoRouter = router({
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Pedido de outro atendente' });
         }
         values.sellerId = mySellerId;
+      }
+
+      // Robot/admin-owned fields (smbiMovsaiId, numeroNfe, numeroCte,
+      // comissaoComercialProtegida): only an admin request can set them. On
+      // update, a non-admin caller (attendant or manager) keeps
+      // whatever is already stored, no matter what the payload carries — this
+      // protects the SMBI link even from a stale client mirror. On insert
+      // there's nothing stored yet, so a non-admin creating a pedido always
+      // starts these as null.
+      if (!isAdmin) {
+        values.smbiMovsaiId = existing?.smbiMovsaiId ?? null;
+        values.numeroNfe = existing?.numeroNfe ?? null;
+        values.numeroCte = existing?.numeroCte ?? null;
+        values.comissaoComercialProtegida = existing?.comissaoComercialProtegida ?? null;
       }
 
       // Stamped only at creation; the update `set` below deliberately excludes
@@ -187,6 +227,12 @@ export const faturamentoRouter = router({
             previsaoFaturamentoEm: values.previsaoFaturamentoEm,
             faturadoEm: values.faturadoEm,
             valorPago: values.valorPago,
+            smbiCondpagSalCod: values.smbiCondpagSalCod,
+            smbiCondpagFreteCod: values.smbiCondpagFreteCod,
+            smbiMovsaiId: values.smbiMovsaiId,
+            numeroNfe: values.numeroNfe,
+            numeroCte: values.numeroCte,
+            comissaoComercialProtegida: values.comissaoComercialProtegida,
           },
         })
         .returning();
@@ -396,6 +442,13 @@ ${assinatura ? `<div style="margin-top:24px;padding-top:16px;border-top:1px soli
           if (!isAdmin) {
             if (mySellerId == null) break;
             p.sellerId = mySellerId; // force ownership for attendants
+            // Same rule as upsertPedido: a non-admin import can never seed the
+            // robot/admin-owned SMBI fields (legacy localStorage payloads
+            // predate this feature and never carried real values anyway).
+            p.smbiMovsaiId = null;
+            p.numeroNfe = null;
+            p.numeroCte = null;
+            p.comissaoComercialProtegida = null;
           }
           try {
             await db.insert(fatOrders).values(p).onConflictDoNothing({ target: fatOrders.id });
