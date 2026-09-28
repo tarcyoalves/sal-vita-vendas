@@ -1,0 +1,14 @@
+{
+  "server/db/migrate.ts": {
+    "version": "2026-09-28b",
+    "hash": "7cda218d53ba40d80deb8fd6f4d99989cdc0358a5a78d7059eeb4d581460a6d1"
+  },
+  "server/db/ordersMigrate.ts": {
+    "version": "orders-2026-08-09a",
+    "hash": "d98ba23d1f5ac4f7e75c9c356fe71ecf0e56d4e58848d8f03c59b87696c29d24"
+  },
+  "server/db/b2bMigrate.ts": {
+    "version": "b2b-2026-07-03a",
+    "hash": "3dbaf25abff83ca803b2aa5eb74725f90bdb096cd69d814b5c364831951717c2"
+  }
+}

@@ -9,18 +9,23 @@
 > 1. `HANDOFF-HERMES.md` — regras invioláveis, arquitetura verificada, fluxo de
 >    trabalho, os portões de qualidade e **os erros reais já cometidos por IA
 >    neste repositório** (seção 7). Obrigatório.
-> 2. `coordenacao/README.md` — como registrar o que você está fazendo para não
+> 2. `CHECKLIST-ALTERACOES.md` — **o que não pode faltar em nenhuma alteração**, senão
+>    o CRM cai (coluna sem migração zerou o faturamento em 28/09). Obrigatório.
+> 3. `coordenacao/README.md` — como registrar o que você está fazendo para não
 >    colidir com outras IAs. **Obrigatório em toda sessão.**
-> 3. `ESTADO-DO-PROJETO.md` — estado atual, pendências e a **seção 4 de
+> 4. `ESTADO-DO-PROJETO.md` — estado atual, pendências e a **seção 4 de
 >    conformidade sanitária**, obrigatória antes de escrever qualquer texto que o
 >    cliente leia.
-> 4. `CLAUDE.md` — convenções de código.
+> 5. `CLAUDE.md` — convenções de código.
 >
 > **Regras que não admitem exceção:**
 >
 > - Deploy é `git push origin main` (a Vercel publica sozinha). Nunca
 >   `git push --force` em `main`.
 > - Antes de todo commit: `npm run check && npm test` e ler `git diff --stat`.
+> - Coluna ou tabela nova no `schema.ts` → migração + novo `SCHEMA_VERSION` +
+>   `npm run schema:lock`, no mesmo commit. O teste `tests/schema-migrations.test.ts`
+>   reprova o deploy se faltar — não o desative.
 > - O repositório é **público**: nunca escreva token, senha ou chave em arquivo.
 > - Feature nova vai em arquivo novo e namespace novo — nunca sobrescreva um
 >   arquivo existente para outra finalidade.

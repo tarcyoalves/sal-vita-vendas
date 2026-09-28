@@ -6,6 +6,7 @@
 > - `HANDOFF-HERMES.md` — regras invioláveis, fluxo de trabalho, portões de qualidade e
 >   os erros reais já cometidos por IA neste repositório. Vale para qualquer agente.
 > - `ESTADO-DO-PROJETO.md` — estado atual, pendências e a seção de conformidade sanitária.
+> - `CHECKLIST-ALTERACOES.md` — o que não pode faltar em nenhuma alteração.
 > - `coordenacao/README.md` — **outras IAs trabalham aqui ao mesmo tempo.** Antes de
 >   alterar qualquer coisa, leia `coordenacao/ativo/`, reivindique o trabalho e publique;
 >   ao terminar, mova para `coordenacao/registro/`.
@@ -171,6 +172,9 @@ Após primeiro login, `mustChangePassword = true` obriga o usuário a definir um
    em `server/db/migrate.ts`
 3. **Aumentar `SCHEMA_VERSION` em `server/db/migrate.ts`.** Sem isso o caminho rápido
    do cold start pula a migração e a tabela/coluna **nunca é criada em produção**.
+   Depois rode `npm run schema:lock` e commite `tests/schema-version.lock.json` — o
+   teste `tests/schema-migrations.test.ts` reprova o build se a coluna não tiver
+   migração ou se a versão não subir. Checklist completo: `CHECKLIST-ALTERACOES.md`.
 4. Tabelas do Premium vão em `server/db/ordersMigrate.ts` (banco `ORDERS_DATABASE_URL`).
 
 ## Regras obrigatórias ao editar código

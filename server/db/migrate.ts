@@ -53,7 +53,7 @@ async function bootstrapInitialAdmin() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-09-28a';
+const SCHEMA_VERSION = '2026-09-28b';
 
 export async function ensureTablesExist() {
   // Fast path: if the schema marker matches, the DB is already fully migrated.
@@ -445,6 +445,11 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE sellers   ADD COLUMN IF NOT EXISTS work_hours_goal    INTEGER NOT NULL DEFAULT 8`;
   await sql`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS file_url TEXT`;
   await sql`ALTER TABLE work_sessions ADD COLUMN IF NOT EXISTS daily_goal_hours INTEGER NOT NULL DEFAULT 8`;
+  // Declaradas no schema.ts desde o início, mas nunca migradas aqui: produção as tem
+  // (criadas à mão/drizzle-kit), um banco novo não teria. Achadas pelo teste
+  // tests/schema-migrations.test.ts em 28/09.
+  await sql`ALTER TABLE work_sessions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT now()`;
+  await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS reminder_enabled BOOLEAN DEFAULT true`;
   await sql`ALTER TABLE reminders ADD COLUMN IF NOT EXISTS updated_at         TIMESTAMP DEFAULT NOW()`;
   await sql`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS updated_at         TIMESTAMP DEFAULT NOW()`;
   await sql`ALTER TABLE tasks     ADD COLUMN IF NOT EXISTS converted_at       TIMESTAMP`;

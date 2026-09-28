@@ -16,6 +16,7 @@
     "db:seed": "tsx server/seed.ts",
     "db:update-admin": "tsx server/update-admin.ts",
     "test": "vitest run",
+    "schema:lock": "node scripts/schema-lock.mjs",
     "test:watch": "vitest"
   },
   "dependencies": {

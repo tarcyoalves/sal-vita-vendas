@@ -14,6 +14,9 @@
 
 ## 0. Como usar este arquivo
 
+> **Antes de qualquer alteração, leia `CHECKLIST-ALTERACOES.md`** — a lista curta do
+> que não pode faltar para o CRM não cair. Este arquivo explica o porquê de cada item.
+
 Leia inteiro antes da primeira alteração. Depois, consulte por seção.
 
 **Ordem de leitura na primeira sessão:**

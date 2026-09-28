@@ -20,11 +20,12 @@
 - `client/src/components/faturamento/OrderDialog.tsx`, `client/src/lib/faturamento/`
 - `tests/schema-migrations.test.ts`, `tests/smbi-*.test.ts` (novos)
 - `docs/INTEGRACAO-SMBI.md` (novo), `CHECKLIST-ALTERACOES.md` (novo)
+- `server/db/migrate.ts` (2 colunas antigas sem migração + bump), `scripts/schema-lock.mjs`, `package.json` (script `schema:lock`), `.kiro/steering/`
 - `HANDOFF-HERMES.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules`, `.windsurfrules`, `CLAUDE.md` (link para o checklist)
 
 ## Progresso
 
-- [ ] Teste de migração (trava do build)
-- [ ] Checklist anti-colapso
+- [x] Teste de migração (trava do build) — pega coluna sem migração e migração sem bump
+- [x] Checklist anti-colapso (`CHECKLIST-ALTERACOES.md`), linkado em todos os arquivos de entrada de IA
 - [ ] Código SMBI (subagente)
 - [ ] Revisão, deploy, registro
