@@ -41,6 +41,12 @@ zerou o faturamento em 28/09. [M]
 - [ ] Queries com `FOR UPDATE` / `FOR UPDATE SKIP LOCKED` são SQL raw **de propósito**.
       Não reescreva no query builder.
 
+- [ ] **Também** registre a coluna/tabela em `ensureRecentSchema()` (topo de
+      `server/db/migrate.ts`), guardada por `if (!have.has('coluna'))`. A migração longa é
+      abandonada aos 20 s em produção e o que está no fim dela pode nunca ser criado. [N]
+- [ ] Depois do deploy, olhe os logs da Vercel: nada de `does not exist` nem
+      `[startup] ... passou de`. "READY" não prova que o banco foi migrado. [N]
+
 > O teste `tests/schema-migrations.test.ts` reprova o build (e o deploy) quando falta
 > a migração de uma coluna ou o bump da versão. **Não desative esse teste** — a
 > mensagem de erro diz exatamente o que fazer.

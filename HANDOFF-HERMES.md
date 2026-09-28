@@ -476,6 +476,36 @@ seis novos campos).
 
 ---
 
+
+### N. Migração que nunca termina — faturamento zerado de novo (28/09/2026)
+
+Mesmo sintoma do caso M, causa diferente: desta vez o código TINHA a migração e o
+`SCHEMA_VERSION` foi subido, e a coluna `smbi_solicitado_em` continuou sem existir no banco.
+Logs da Vercel: `column "smbi_solicitado_em" does not exist` em `faturamento.getAll`,
+`pendingApproval` e `/api/smbi/pedidos`.
+
+A migração completa (`server/db/migrate.ts`) tem ~175 comandos **em sequência**, cada um uma
+ida ao Neon pelo HTTP, e `api/index.ts` a abandona aos **20 s sem gerar erro nem log**
+(`withTimeout` resolvia em silêncio). Quando estoura, o que está no fim do arquivo nunca chega
+ao banco — e o marcador de versão, que só é gravado no fim, nunca é gravado, então toda
+instância nova recomeça do zero e estoura de novo.
+
+Corrigido em `7b9b8d6`: `ensureRecentSchema()` roda ANTES da migração longa, consulta o
+catálogo com uma query e cria só o que falta; o timeout agora loga
+`[startup] ... passou de N ms`.
+
+**Regras novas:**
+- Coluna/tabela nova continua exigindo a migração longa + `SCHEMA_VERSION` + `schema:lock`
+  (é o que o teste checa), **e também** entrar em `ensureRecentSchema()` no topo de
+  `server/db/migrate.ts` (guarde com `if (!have.has('coluna'))`). Sem isso, em produção a
+  coluna pode não existir por dias.
+- **"Deploy READY" não prova que a migração rodou.** Depois de qualquer mudança de schema,
+  confira nos logs da Vercel que não há `does not exist` nem `[startup] ... passou de`.
+- Não acrescente comandos ao começo da migração longa "só para ficar organizado": cada
+  comando a mais empurra os últimos para fora dos 20 s.
+- Pendência estrutural (dono decide): rodar a migração no build ou em lote único, em vez de
+  no cold start.
+
 ## 8. Armadilhas técnicas deste código
 
 ### SQL raw é necessário em pontos específicos — não "traduza"
