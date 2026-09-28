@@ -168,15 +168,18 @@ app.set('trust proxy', 1);
 
 // Resolve after ms regardless of whether the promise settled, to avoid hanging cold starts
 function withTimeout(p: Promise<unknown>, ms: number, label: string): Promise<unknown> {
-  return Promise.race([
-    p,
-    new Promise<void>(resolve => setTimeout(() => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const estourou = new Promise<void>(resolve => {
+    timer = setTimeout(() => {
       // Sem este log o estouro era silencioso e a migração incompleta só aparecia como
-      // "coluna não existe" muito depois (faturamento zerado em 28/09).
+      // "coluna não existe" muito depois (faturamento zerado em 28/09). O cronômetro é
+      // cancelado abaixo quando `p` termina antes, senão ele avisaria à toa quando a
+      // instância acordasse do congelamento da Vercel.
       console.warn(`[startup] ${label} passou de ${ms} ms — a migração pode ter ficado incompleta`);
       resolve();
-    }, ms)),
-  ]);
+    }, ms);
+  });
+  return Promise.race([p, estourou]).finally(() => clearTimeout(timer));
 }
 
 const dbReady = Promise.all([
