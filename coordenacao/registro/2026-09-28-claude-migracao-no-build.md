@@ -3,7 +3,7 @@
 - **Agente:** claude (+ 1 subagente em worktree)
 - **Início:** 2026-09-28 BRT
 - **Fim:** 2026-09-28 BRT
-- **Status:** parcial (código em main; falta confirmar no log do build de produção)
+- **Status:** concluído (migração no build confirmada no log de produção)
 - **Branch:** `main`
 
 ## Objetivo
@@ -27,7 +27,7 @@ telas, faturamento.
 
 - [x] Script + testes (subagente) — `592cc4f`
 - [x] Revisão (check, 215 testes, dry-run, preview, falha não derruba o build)
-- [ ] Confirmar `[migrate:build] ok` no log do BUILD do primeiro deploy com o script
+- [x] `[migrate:build] ok` no log do BUILD do deploy `4180f20`: decisão RODAR, CRM 0,9 s, Premium 0,3 s, B2B 0,1 s, total 1,4 s, nenhum banco pulado
 
 ---
 
@@ -57,3 +57,14 @@ Falha vira `[migrate:build] FALHOU: ...` no log do build e o deploy segue.
 
 - Depois de qualquer mudança de schema, procure `[migrate:build] FALHOU` no log do BUILD
   (não no log de runtime).
+
+## Visto em produção (21:24)
+
+- Build `4180f20`: `[migrate:build] decisão: RODAR — VERCEL_ENV=production`, os três bancos
+  migrados, `ok`. Variáveis `DATABASE_URL`, `ORDERS_DATABASE_URL` e `JWT_SECRET` chegam ao build.
+- Foi rápido (1,4 s) porque os marcadores já batiam; a primeira migração de coluna nova é que
+  vai mostrar o tempo real de uma migração longa no build.
+- Os avisos `[startup] ... passou de N ms` continuaram no 1º acesso de instâncias novas mesmo
+  com a migração levando <1 s no build. Hipótese (NÃO medida): a Vercel congela a instância
+  entre a inicialização e a 1ª requisição e o cronômetro vence ao acordar. O aviso agora só
+  sai se a migração ainda não terminou 5 s depois do limite.

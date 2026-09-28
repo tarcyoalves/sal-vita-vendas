@@ -169,13 +169,19 @@ app.set('trust proxy', 1);
 // Resolve after ms regardless of whether the promise settled, to avoid hanging cold starts
 function withTimeout(p: Promise<unknown>, ms: number, label: string): Promise<unknown> {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let grace: ReturnType<typeof setTimeout> | undefined;
+  let settled = false;
+  p.then(() => { settled = true; clearTimeout(grace); }, () => { settled = true; clearTimeout(grace); });
   const estourou = new Promise<void>(resolve => {
     timer = setTimeout(() => {
-      // Sem este log o estouro era silencioso e a migração incompleta só aparecia como
-      // "coluna não existe" muito depois (faturamento zerado em 28/09). O cronômetro é
-      // cancelado abaixo quando `p` termina antes, senão ele avisaria à toa quando a
-      // instância acordasse do congelamento da Vercel.
-      console.warn(`[startup] ${label} passou de ${ms} ms — a migração pode ter ficado incompleta`);
+      // A Vercel pode congelar a instância entre a inicialização e a 1ª requisição: ao
+      // acordar, o cronômetro vence na hora mesmo com o banco respondendo normalmente
+      // (no build a migração inteira leva ~1 s). Por isso só avisa se ela AINDA não
+      // terminou 5 s depois do limite — aí sim é uma migração travada ou incompleta
+      // (faturamento zerado em 28/09, HANDOFF-HERMES.md caso N).
+      grace = setTimeout(() => {
+        if (!settled) console.warn(`[startup] ${label} ainda não terminou ${Math.round((ms + 5000) / 1000)} s depois de iniciar — a migração pode ter ficado incompleta`);
+      }, 5000);
       resolve();
     }, ms);
   });
