@@ -17,11 +17,13 @@ do Hermes.
 ## Arquivos e áreas que vou tocar
 
 - `server/db/migrate.ts`
+- `client/src/components/faturamento/BillingReport.tsx` (só o filtro de mês — somava pendentes de outros meses nos totais)
 
 **Não vou tocar em:** `OrderDialog.tsx`, `smbiCatalog.ts`, `store.ts`, `AppShell.tsx`
 (trabalho do Hermes).
 
 ## Progresso
 
-- [ ] Migração das 6 colunas + bump de SCHEMA_VERSION
+- [x] Migração das 6 colunas + bump de SCHEMA_VERSION — `96503ec`
+- [ ] Filtro de mês do relatório não somar pendentes de outros meses
 - [ ] Verificar deploy

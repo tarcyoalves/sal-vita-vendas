@@ -112,10 +112,13 @@ export default function BillingReport() {
       result = result.filter((p) => p.sellerName === sellerFilter);
     }
 
-    // Pedidos pendentes de revisão NUNCA somem por filtro de mês, para que o
-    // admin sempre consiga vê-los e aprová-los sem ter que adivinhar a competência.
+    // Competência, não data de criação: estimado entra no mês previsto de
+    // faturamento e faturado no mês do embarque real. Não abrir exceção para
+    // pendentes aqui — os totais do mês somariam pedidos de outros meses. Para
+    // achar pendentes de qualquer mês existe o filtro "Aguardando revisão"
+    // (statusFilter "pendente"), que ignora o mês.
     if (!showAllMonths && mesFilter && statusFilter !== "pendente") {
-      result = result.filter((p) => !p.aprovadoEm || pedidoNoMes(p, mesFilter));
+      result = result.filter((p) => pedidoNoMes(p, mesFilter));
     }
 
     if (ufFilter.trim()) {
