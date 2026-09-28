@@ -53,7 +53,7 @@ async function bootstrapInitialAdmin() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-09-26c';
+const SCHEMA_VERSION = '2026-09-28a';
 
 export async function ensureTablesExist() {
   // Fast path: if the schema marker matches, the DB is already fully migrated.
@@ -700,6 +700,14 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS aprovado_por TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS created_by_role TEXT`;
+  // Integração SMBI (497ebd6) — as colunas foram declaradas no schema.ts sem migração
+  // e todo SELECT em fat_orders passou a falhar (faturamento zerado em 28/09).
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_movsai_id TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS numero_nfe TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS numero_cte TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_condpag_sal_cod TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_condpag_frete_cod TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS comissao_comercial_protegida DOUBLE PRECISION`;
 
   // ── Competência da comissão ────────────────────────────────────────────────
   // Pedido fechado num mês e embarcado no seguinte é comissão do mês em que
