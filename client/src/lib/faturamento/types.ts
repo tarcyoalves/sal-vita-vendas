@@ -70,7 +70,8 @@ export interface Pedido {
   smbiCondpagSalCod?: string | null;
   smbiCondpagFreteCod?: string | null;
   comissaoComercialProtegida?: number | null;
-  createdByUserId: number | null;
+  smbiSolicitadoEm?: string | null;
+  createdByUserId?: number | null;
   createdByRole: string | null;
 }
 

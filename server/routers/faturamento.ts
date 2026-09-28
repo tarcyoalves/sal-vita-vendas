@@ -279,6 +279,27 @@ export const faturamentoRouter = router({
       return { ok: true };
     }),
 
+  // Envia a solicitação do pedido para criação no SMBI (ação manual do admin/manager)
+  dispararSmbi: staffProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const [pedido] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.id));
+      if (!pedido) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' });
+      if (!pedido.aprovadoEm) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'O pedido precisa estar aprovado antes de enviar ao SMBI' });
+      }
+      if (pedido.smbiMovsaiId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: `Pedido já criado no SMBI (movsai ${pedido.smbiMovsaiId})` });
+      }
+
+      const [row] = await db
+        .update(fatOrders)
+        .set({ smbiSolicitadoEm: new Date().toISOString() })
+        .where(eq(fatOrders.id, input.id))
+        .returning();
+      return row;
+    }),
+
   // Revisão do admin/manager — informativa: não bloqueia nenhuma ação do
   // atendente, só marca o pedido como conferido e libera a "cópia" para envio.
   aprovarPedido: staffProcedure

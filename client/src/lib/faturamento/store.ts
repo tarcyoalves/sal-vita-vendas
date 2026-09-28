@@ -198,6 +198,7 @@ function buildPedido(input: Partial<Pedido> & { id?: string }): Pedido {
     smbiCondpagSalCod: input.smbiCondpagSalCod ?? null,
     smbiCondpagFreteCod: input.smbiCondpagFreteCod ?? null,
     comissaoComercialProtegida: input.comissaoComercialProtegida ?? null,
+    smbiSolicitadoEm: input.smbiSolicitadoEm ?? null,
     createdByUserId: input.createdByUserId ?? null,
     createdByRole: input.createdByRole ?? null,
   };
@@ -291,6 +292,19 @@ export const pedidos = {
     emit();
     api.faturamento.aprovarPedido.mutate({ id }).catch(onWriteError);
     return aprovado;
+  },
+  // Solicitação manual de envio para o ERP SMBI
+  dispararSmbi(id: string): Pedido | null {
+    const atual = mirror.pedidos.find((p) => p.id === id);
+    if (!atual) return null;
+    const enviado: Pedido = {
+      ...atual,
+      smbiSolicitadoEm: new Date().toISOString(),
+    };
+    mirror = { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === id ? enviado : p)) };
+    emit();
+    api.faturamento.dispararSmbi.mutate({ id }).catch(onWriteError);
+    return enviado;
   },
 };
 

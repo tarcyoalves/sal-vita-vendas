@@ -53,7 +53,7 @@ async function bootstrapInitialAdmin() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-09-28b';
+const SCHEMA_VERSION = '2026-09-28c';
 
 export async function ensureTablesExist() {
   // Fast path: if the schema marker matches, the DB is already fully migrated.
@@ -713,6 +713,7 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_condpag_sal_cod TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_condpag_frete_cod TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS comissao_comercial_protegida DOUBLE PRECISION`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitado_em TEXT`;
 
   // ── Competência da comissão ────────────────────────────────────────────────
   // Pedido fechado num mês e embarcado no seguinte é comissão do mês em que

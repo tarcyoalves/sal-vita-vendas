@@ -684,6 +684,7 @@ export const fatOrders = pgTable('fat_orders', {
   smbiCondpagSalCod: text('smbi_condpag_sal_cod'),
   smbiCondpagFreteCod: text('smbi_condpag_frete_cod'),
   comissaoComercialProtegida: doublePrecision('comissao_comercial_protegida'),
+  smbiSolicitadoEm: text('smbi_solicitado_em'),
   createdByUserId: integer('created_by_user_id'),
   createdByRole: text('created_by_role'),
 });

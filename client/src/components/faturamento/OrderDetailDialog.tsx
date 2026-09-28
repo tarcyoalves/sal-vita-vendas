@@ -14,7 +14,7 @@ import {
 } from '../../lib/faturamento/calc';
 import { OrderPrintDocument } from './OrderPrintDocument';
 import { LinkTaskDialog } from './LinkTaskDialog';
-import { Pencil, Truck, Trash2, CheckCircle2, Printer, Link2, Undo2 } from 'lucide-react';
+import { Pencil, Truck, Trash2, CheckCircle2, Printer, Link2, Undo2, Send } from 'lucide-react';
 
 interface OrderDetailDialogProps {
   open: boolean;
@@ -282,6 +282,29 @@ export function OrderDetailDialog({
               <CheckCircle2 size={14} />
               Aprovar pedido
             </Button>
+          )}
+          {canApprove && pedido.aprovadoEm && !pedido.smbiMovsaiId && (
+            <Button
+              size="sm"
+              variant="outline"
+              className={
+                pedido.smbiSolicitadoEm
+                  ? 'border-indigo-300 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 gap-1.5'
+                  : 'border-blue-400 text-blue-700 bg-blue-50 hover:bg-blue-100 gap-1.5'
+              }
+              onClick={() => {
+                actions.pedidos.dispararSmbi(pedido.id);
+                toast.success('Pedido marcado para envio ao SMBI!');
+              }}
+            >
+              <Send size={14} />
+              {pedido.smbiSolicitadoEm ? 'Reenviar ao SMBI' : 'Enviar pedido para SMBI'}
+            </Button>
+          )}
+          {pedido.smbiMovsaiId && (
+            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs py-1 px-2.5">
+              SMBI: Pedido {pedido.smbiMovsaiId}
+            </Badge>
           )}
           {!isFaturado && (
             <Button
