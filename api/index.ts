@@ -17,15 +17,16 @@ import { sql as sqlClient, db } from '../server/db/index';
 import {
   siteOrders, abandonedCarts, automationRuns, msgTemplates, coupons, emailCampaignRecipients, emailSuppressions, clients,
   emailEvents, sellers, emailSequenceSends, emailSequenceEnrollments, marketingContacts, taskDeletionLogs,
-  companies, contacts, publicSources, consentRecords, suppressionList, auditLogs,
+  companies, contacts, publicSources, consentRecords, suppressionList, auditLogs, fatOrders,
 } from '../server/db/schema';
-import { eq, and, or, sql, lte, gte, isNull, inArray, desc, asc, lt } from 'drizzle-orm';
+import { eq, and, or, sql, lte, gte, isNull, isNotNull, inArray, desc, asc, lt } from 'drizzle-orm';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
 import { createPixPaymentForOrder } from '../server/lib/mercadopago';
 import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid, orderTrackLink } from '../server/lib/orderConfirmation';
 import { verifyResendWebhook } from '../server/email/marketing';
 import { evaluateInactiveDaysRules, flagEngagementByMessageId, processSequenceEnrollments, cancelAllEnrollments } from '../server/email/automations';
 import { processDueCampaigns } from '../server/email/campaigns';
+import { isAuthorized, mapOrderToSmbiPayload, resolveRetornoUpdate, retornoBodySchema } from '../server/lib/smbi';
 
 function isBusinessHours(): boolean {
   const brHour = (new Date().getUTCHours() - 3 + 24) % 24;
@@ -1486,6 +1487,96 @@ app.get('/api/orders-health', async (req, res) => {
     });
   } catch (err: any) {
     res.status(500).json({ error: err?.message ?? String(err) });
+  }
+});
+
+// ── Integração SMBI (robô externo smbi_criar_pedido_express.mjs) ────────────
+// Autenticado com Bearer SMBI_SYNC_SECRET — segredo próprio, nunca CRON_SECRET,
+// porque o chamador é um script fora deste repositório, mantido pelo Hermes.
+// Fail closed: sem o segredo configurado na Vercel, toda chamada recebe 401
+// (isAuthorized, em server/lib/smbi.ts, nunca autentica sem SMBI_SYNC_SECRET).
+// Ver docs/INTEGRACAO-SMBI.md para o fluxo completo e exemplos de curl.
+const smbiApiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: (req) => ipKeyGenerator(req.ip ?? 'unknown'),
+  message: { error: 'Too many requests' },
+});
+
+// Pedidos aprovados pelo admin/manager e ainda não criados no SMBI
+// (smbi_movsai_id IS NULL). O robô faz polling nesta rota. `?id=` busca um
+// pedido específico (qualquer status) — útil pro robô conferir o estado atual
+// antes/depois de criar no ERP.
+app.get('/api/smbi/pedidos', smbiApiLimiter, async (req, res) => {
+  if (!isAuthorized(process.env.SMBI_SYNC_SECRET, req.headers['authorization'])) {
+    console.warn('[smbi] GET /api/smbi/pedidos → 401');
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const id = typeof req.query.id === 'string' ? req.query.id : undefined;
+  try {
+    const rows = id
+      ? await db.select().from(fatOrders).where(eq(fatOrders.id, id)).limit(1)
+      : await db
+          .select()
+          .from(fatOrders)
+          .where(and(isNotNull(fatOrders.aprovadoEm), isNull(fatOrders.smbiMovsaiId)))
+          .orderBy(asc(fatOrders.aprovadoEm))
+          .limit(100);
+    const pedidos = rows.map(mapOrderToSmbiPayload);
+    console.log(`[smbi] GET /api/smbi/pedidos ${id ? `id=${id}` : 'status=pendentes'} → ${pedidos.length} pedido(s)`);
+    res.json({ ok: true, pedidos });
+  } catch (err) {
+    console.error('[smbi] GET /api/smbi/pedidos error:', err);
+    res.status(500).json({ error: 'Internal error' });
+  }
+});
+
+// O robô devolve o movsai criado no SMBI e, depois, o número da NF-e/CT-e
+// quando emitidos. NUNCA muda status/faturadoEm — marcar como "faturado"
+// continua sendo ação humana no CRM (docs/INTEGRACAO-SMBI.md).
+app.post('/api/smbi/pedidos/:id/retorno', smbiApiLimiter, express.json({ limit: '16kb' }), async (req, res) => {
+  if (!isAuthorized(process.env.SMBI_SYNC_SECRET, req.headers['authorization'])) {
+    console.warn('[smbi] POST /api/smbi/pedidos/:id/retorno → 401');
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const { id } = req.params;
+  const parsed = retornoBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    console.warn(`[smbi] POST retorno pedido=${id} → 400 (corpo inválido)`);
+    res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    return;
+  }
+  try {
+    const [existing] = await db
+      .select({
+        smbiMovsaiId: fatOrders.smbiMovsaiId,
+        numeroNfe: fatOrders.numeroNfe,
+        numeroCte: fatOrders.numeroCte,
+      })
+      .from(fatOrders)
+      .where(eq(fatOrders.id, id));
+    if (!existing) {
+      console.warn(`[smbi] POST retorno pedido=${id} → 404`);
+      res.status(404).json({ error: 'Pedido não encontrado' });
+      return;
+    }
+
+    const { conflict, patch } = resolveRetornoUpdate(existing, parsed.data);
+    if (conflict) {
+      console.warn(`[smbi] POST retorno pedido=${id} → 409 (smbiMovsaiId já vinculado a outro valor)`);
+      res.status(409).json({ error: 'smbiMovsaiId já vinculado a um valor diferente' });
+      return;
+    }
+    if (Object.keys(patch).length > 0) {
+      await db.update(fatOrders).set(patch).where(eq(fatOrders.id, id));
+    }
+    console.log(`[smbi] POST retorno pedido=${id} → ok (${Object.keys(patch).join(',') || 'sem alteração, idempotente'})`);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(`[smbi] POST retorno pedido=${id} error:`, err);
+    res.status(500).json({ error: 'Internal error' });
   }
 });
 

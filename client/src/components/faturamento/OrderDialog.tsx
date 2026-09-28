@@ -17,6 +17,13 @@ import { totalItens, formatBRL, parseBRL, dataInputLocal, hojeInputLocal } from 
 import { SMBI_CONDICOES_PAGAMENTO } from '@/lib/faturamento/smbiCatalog';
 import { type Pedido, type ItemPedido } from '@/lib/faturamento/types';
 
+// Código SMBI da condição escolhida pela descrição exibida no <select> — null
+// quando é texto legado que não está no catálogo oficial (o robô não tem
+// como criar o pedido no SMBI com esse prazo até alguém reselecionar da lista).
+function codParaDescricao(descricao: string): string | null {
+  return SMBI_CONDICOES_PAGAMENTO.find((c) => c.descricao === descricao)?.cod ?? null;
+}
+
 interface OrderDialogProps {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -85,8 +92,10 @@ export function OrderDialog({
   const [cidade, setCidade] = useState('');
   const [uf, setUf] = useState('');
   const [itens, setItens] = useState<ItemPedido[]>([]);
-  const [prazoPagamentoSal, setPrazoPagamentoSal] = useState('30/45/60 DIAS');
-  const [prazoPagamentoFrete, setPrazoPagamentoFrete] = useState('20 DIAS');
+  const [prazoPagamentoSal, setPrazoPagamentoSal] = useState('');
+  const [prazoPagamentoFrete, setPrazoPagamentoFrete] = useState('');
+  const [smbiCondpagSalCod, setSmbiCondpagSalCod] = useState<string | null>(null);
+  const [smbiCondpagFreteCod, setSmbiCondpagFreteCod] = useState<string | null>(null);
   const [valorFreteRaw, setValorFreteRaw] = useState('');
   const [observacoes, setObservacoes] = useState('');
   const [previsaoFaturamento, setPrevisaoFaturamento] = useState('');
@@ -111,6 +120,11 @@ export function OrderDialog({
       setItens(existing.itens);
       setPrazoPagamentoSal(existing.prazoPagamentoSal ?? '');
       setPrazoPagamentoFrete(existing.prazoPagamentoFrete ?? '');
+      // Pedido salvo antes desta integração pode ter o código nulo mesmo com
+      // uma descrição que já bate com o catálogo — deriva pela descrição
+      // nesse caso, sem sobrescrever um código legítimo já gravado.
+      setSmbiCondpagSalCod(existing.smbiCondpagSalCod ?? codParaDescricao(existing.prazoPagamentoSal ?? ''));
+      setSmbiCondpagFreteCod(existing.smbiCondpagFreteCod ?? codParaDescricao(existing.prazoPagamentoFrete ?? ''));
       setValorFreteRaw(existing.valorFretePorUnidade ? String(existing.valorFretePorUnidade).replace('.', ',') : '');
       setObservacoes(existing.observacoes ?? '');
       // Legado sem previsão: mostra o mês em que ele já aparecia (criação), o
@@ -127,6 +141,8 @@ export function OrderDialog({
       setItens([]);
       setPrazoPagamentoSal('');
       setPrazoPagamentoFrete('');
+      setSmbiCondpagSalCod(null);
+      setSmbiCondpagFreteCod(null);
       setValorFreteRaw('');
       setObservacoes('');
       setPrevisaoFaturamento(hojeInputLocal());
@@ -177,6 +193,8 @@ export function OrderDialog({
       itens,
       prazoPagamentoSal: prazoPagamentoSal.trim(),
       prazoPagamentoFrete: prazoPagamentoFrete.trim(),
+      smbiCondpagSalCod,
+      smbiCondpagFreteCod,
       valorFretePorUnidade: parseBRL(valorFreteRaw),
       observacoes: observacoes.trim(),
       previsaoFaturamentoEm: previsaoFaturamento,
@@ -275,10 +293,14 @@ export function OrderDialog({
                 <select
                   id="od-prazo-sal"
                   value={prazoPagamentoSal}
-                  onChange={(e) => setPrazoPagamentoSal(e.target.value)}
+                  onChange={(e) => {
+                    setPrazoPagamentoSal(e.target.value);
+                    setSmbiCondpagSalCod(codParaDescricao(e.target.value));
+                  }}
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   required
                 >
+                  <option value="" disabled>Selecione…</option>
                   {SMBI_CONDICOES_PAGAMENTO.map((c) => (
                     <option key={c.cod} value={c.descricao}>
                       {c.descricao}
@@ -294,10 +316,14 @@ export function OrderDialog({
                 <select
                   id="od-prazo-frete"
                   value={prazoPagamentoFrete}
-                  onChange={(e) => setPrazoPagamentoFrete(e.target.value)}
+                  onChange={(e) => {
+                    setPrazoPagamentoFrete(e.target.value);
+                    setSmbiCondpagFreteCod(codParaDescricao(e.target.value));
+                  }}
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   required
                 >
+                  <option value="" disabled>Selecione…</option>
                   {SMBI_CONDICOES_PAGAMENTO.map((c) => (
                     <option key={c.cod} value={c.descricao}>
                       {c.descricao}
@@ -349,6 +375,14 @@ export function OrderDialog({
               />
             </div>
           </div>
+
+          {/* SMBI — só leitura. Preenchido pelo robô/admin (ver
+              docs/INTEGRACAO-SMBI.md); o atendente nunca edita estes valores. */}
+          {existing && (existing.smbiMovsaiId || existing.numeroNfe || existing.numeroCte) && (
+            <p className="text-xs text-slate-500">
+              SMBI: pedido {existing.smbiMovsaiId ?? '—'} · NF-e {existing.numeroNfe ?? '—'} · CT-e {existing.numeroCte ?? '—'}
+            </p>
+          )}
 
           {/* Commission line */}
           {seller && (

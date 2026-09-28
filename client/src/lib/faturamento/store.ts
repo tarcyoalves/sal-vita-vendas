@@ -187,6 +187,17 @@ function buildPedido(input: Partial<Pedido> & { id?: string }): Pedido {
     valorPago: input.valorPago ?? 0,
     aprovadoEm: input.aprovadoEm ?? null,
     aprovadoPor: input.aprovadoPor ?? null,
+    // Integração SMBI — smbiCondpag*Cod vêm da tela (OrderDialog); os outros
+    // quatro (smbiMovsaiId, numeroNfe, numeroCte, comissaoComercialProtegida)
+    // são escritos só pelo robô/admin. O servidor os ignora vindos de um
+    // atendente de qualquer forma (server/routers/faturamento.ts), mas o
+    // default aqui é null para um pedido novo não carregar lixo do cliente.
+    smbiMovsaiId: input.smbiMovsaiId ?? null,
+    numeroNfe: input.numeroNfe ?? null,
+    numeroCte: input.numeroCte ?? null,
+    smbiCondpagSalCod: input.smbiCondpagSalCod ?? null,
+    smbiCondpagFreteCod: input.smbiCondpagFreteCod ?? null,
+    comissaoComercialProtegida: input.comissaoComercialProtegida ?? null,
     createdByUserId: input.createdByUserId ?? null,
     createdByRole: input.createdByRole ?? null,
   };
