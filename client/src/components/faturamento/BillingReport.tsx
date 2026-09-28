@@ -55,7 +55,7 @@ export default function BillingReport() {
   const { data: sellers = [] } = trpc.sellers.list.useQuery();
 
   // Filters
-  const [statusFilter, setStatusFilter] = useState<"todos" | "estimado" | "faturado">("todos");
+  const [statusFilter, setStatusFilter] = useState<"todos" | "pendente" | "estimado" | "faturado">("todos");
   const [sellerFilter, setSellerFilter] = useState<string>("todos");
   const [mesFilter, setMesFilter] = useState<FiltroMes | null>(mesAtual);
   const [showAllMonths, setShowAllMonths] = useState(false);
@@ -101,7 +101,11 @@ export default function BillingReport() {
     let result = allPedidos;
 
     if (statusFilter !== "todos") {
-      result = result.filter((p) => p.status === statusFilter);
+      if (statusFilter === "pendente") {
+        result = result.filter((p) => !p.aprovadoEm);
+      } else {
+        result = result.filter((p) => p.status === statusFilter);
+      }
     }
 
     if (sellerFilter !== "todos") {
@@ -183,6 +187,7 @@ export default function BillingReport() {
                 className="w-full px-3 py-2 border rounded-lg text-sm"
               >
                 <option value="todos">Todos</option>
+                <option value="pendente">⏳ Aguardando revisão</option>
                 <option value="estimado">Estimado</option>
                 <option value="faturado">Faturado</option>
               </select>

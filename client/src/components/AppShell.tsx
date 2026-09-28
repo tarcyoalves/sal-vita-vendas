@@ -136,9 +136,9 @@ const NAV_ITEMS: NavItem[] = [
 // Flat items for the mobile bottom nav — último slot é sempre "Mais" (abre sidebar)
 const BOTTOM_NAV_ADMIN = [
   { label: "Dashboard",     path: "/admin/dashboard",      icon: <LayoutDashboard size={22} /> },
+  { label: "Faturamento",   path: "/admin/faturamento",    icon: <DollarSign size={22} /> },
   { label: "Tarefas",       path: "/tasks",                icon: <CheckSquare size={22} /> },
   { label: "Atendentes",    path: "/attendants",           icon: <Users size={22} /> },
-  { label: "E-mail",        path: "/admin/email-marketing", icon: <Mail size={22} /> },
 ];
 
 const BOTTOM_NAV_MANAGER = [
@@ -196,6 +196,11 @@ export default function AppShell({ children }: AppShellProps) {
     { onlyUnreviewed: true },
     { enabled: role === "admin", refetchInterval: 120_000, staleTime: 90_000, select: (d) => d.length }
   );
+  const { data: pendingPedidosCount } = trpc.faturamento.pendingApproval.useQuery(
+    undefined,
+    { enabled: role === "admin" || role === "manager", refetchInterval: 60_000, staleTime: 30_000, select: (d) => d.length }
+  );
+  const totalDashboardAlerts = (pendingDeletions || 0) + (pendingPedidosCount || 0);
   const visibleItems = NAV_ITEMS.filter((item) => item.roles.includes(role));
   const bottomNavItems = role === "admin" ? BOTTOM_NAV_ADMIN : role === "manager" ? BOTTOM_NAV_MANAGER : BOTTOM_NAV_USER;
 
@@ -407,9 +412,9 @@ export default function AppShell({ children }: AppShellProps) {
                 >
                   <span className={`flex-shrink-0 ${active ? "text-white" : "text-blue-300"}`}>{item.icon}</span>
                   <span className="flex-1 text-left">{item.label}</span>
-                  {item.path === "/admin/dashboard" && !!pendingDeletions && pendingDeletions > 0 && (
-                    <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-bold">
-                      {pendingDeletions > 9 ? "9+" : pendingDeletions}
+                  {item.path === "/admin/dashboard" && totalDashboardAlerts > 0 && (
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] font-bold">
+                      {totalDashboardAlerts > 9 ? "9+" : totalDashboardAlerts}
                     </span>
                   )}
                 </button>
@@ -521,9 +526,9 @@ export default function AppShell({ children }: AppShellProps) {
                   >
                     {item.icon}
                   </span>
-                  {item.path === "/admin/dashboard" && !!pendingDeletions && pendingDeletions > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] font-bold">
-                      {pendingDeletions > 9 ? "9+" : pendingDeletions}
+                  {item.path === "/admin/dashboard" && totalDashboardAlerts > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-600 text-white text-[9px] font-bold">
+                      {totalDashboardAlerts > 9 ? "9+" : totalDashboardAlerts}
                     </span>
                   )}
                 </span>
