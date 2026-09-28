@@ -4,8 +4,8 @@
 
 // A lista de condições de pagamento vive em shared/smbiCondicoes.ts para a API do robô
 // (servidor) usar a mesma fonte. Reexportada aqui para não mudar quem já importa daqui.
-export { SMBI_CONDICOES_PAGAMENTO, condicaoPorTexto, normalizarPrazo } from '../../../../shared/smbiCondicoes';
-export type { SmbiCondicaoPagamento } from '../../../../shared/smbiCondicoes';
+export { SMBI_CONDICOES_PAGAMENTO, condicaoPorTexto, normalizarPrazo } from '../../../../shared/smbiCondicoes.js';
+export type { SmbiCondicaoPagamento } from '../../../../shared/smbiCondicoes.js';
 
 export interface SmbiProdutoRef {
   smbiId: string;
