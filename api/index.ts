@@ -1520,8 +1520,8 @@ app.get('/api/smbi/pedidos', smbiApiLimiter, async (req, res) => {
       : await db
           .select()
           .from(fatOrders)
-          .where(and(isNotNull(fatOrders.aprovadoEm), isNotNull(fatOrders.smbiSolicitadoEm), isNull(fatOrders.smbiMovsaiId)))
-          .orderBy(asc(fatOrders.smbiSolicitadoEm))
+          .where(and(isNotNull(fatOrders.aprovadoEm), isNull(fatOrders.smbiMovsaiId)))
+          .orderBy(asc(fatOrders.aprovadoEm))
           .limit(100);
     const pedidos = rows.map(mapOrderToSmbiPayload);
     console.log(`[smbi] GET /api/smbi/pedidos ${id ? `id=${id}` : 'status=pendentes'} → ${pedidos.length} pedido(s)`);
