@@ -49,7 +49,7 @@ desatualizado. O botão passa a mostrar que o pedido foi solicitado e que o rob�
 
 - Interface aberta no navegador (só typecheck).
 - Robô fora do ar: precisa ser religado pelo Hermes/agente da VPS.
-- Pedidos 1108–1113 criados por engano no SMBI (registro do Hermes): conferir/cancelar no ERP.
+- Pedidos 1108–1113 criados por engano no SMBI: já cancelados pelo dono (informado em 29/09/2026).
 - Demais achados da auditoria do Hermes (auto-aprovação por atendente, webhook Resend, cron de
   campanhas não atômico, `emergencyReset`, IP vazio, `workSessions.start`, limpeza de
   `work_sessions`): ainda abertos.
