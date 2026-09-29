@@ -22,19 +22,19 @@ do pedido, seis colunas de integração com o SMBI:
 |---|---|---|
 | `smbi_condpag_sal_cod` | Atendente/admin, pela tela (`OrderDialog`) | Código SMBI da condição de pagamento do sal, tirado de `client/src/lib/faturamento/smbiCatalog.ts` |
 | `smbi_condpag_frete_cod` | Atendente/admin, pela tela | Idem, para o frete |
-| `smbi_movsai_id` | **Só o robô** (via `POST .../retorno`) ou admin | ID do pedido criado no SMBI (tabela `movsai`) |
-| `numero_nfe` | **Só o robô** ou admin | Número da NF-e emitida, quando existir |
-| `numero_cte` | **Só o robô** ou admin | Número do CT-e emitido, quando existir |
-| `comissao_comercial_protegida` | **Só o robô** ou admin | Reservado para uma comissão "travada" no momento da criação no SMBI (ainda sem uso na tela) |
+| `smbi_movsai_id` | **Só o robô** (via `POST .../retorno`); nem o admin grava pela tela | ID do pedido criado no SMBI (tabela `movsai`) |
+| `numero_nfe` | **Só o robô** (via `POST .../retorno`) | Número da NF-e emitida, quando existir |
+| `numero_cte` | **Só o robô** (via `POST .../retorno`) | Número do CT-e emitido, quando existir |
+| `comissao_comercial_protegida` | Só admin; um payload nulo nunca a zera | Reservado para uma comissão "travada" no momento da criação no SMBI (ainda sem uso na tela) |
 
-**Regra de permissão:** `upsertPedido`/`importLocal`
-(`server/routers/faturamento.ts`) recusam deixar um atendente sobrescrever
-`smbi_movsai_id`, `numero_nfe`, `numero_cte` ou `comissao_comercial_protegida`.
-Numa atualização, o valor já gravado no banco é mantido sempre que quem está
-salvando não é `admin` — mesmo que o payload do cliente traga outra coisa
-(mirror desatualizado, por exemplo). Numa criação, esses quatro campos
-começam sempre `null` para quem não é admin. Só `smbi_condpag_sal_cod` e
-`smbi_condpag_frete_cod` são escritos pela tela normalmente.
+**Regra de permissão (`resolveRobotOwnedFields`, `server/lib/smbi.ts`):** `upsertPedido` e
+`importLocal` nunca gravam `smbi_movsai_id`, `numero_nfe` e `numero_cte` — para NENHUM papel,
+inclusive admin. Numa atualização o valor já gravado é sempre mantido; numa criação começam
+`null`. Motivo: com a tela desatualizada (o robô gravou o movsai depois que ela carregou), o
+admin mandava `null` e o UPDATE apagava o vínculo, devolvendo o pedido à fila do robô e
+duplicando-o no ERP. Esses três só mudam por `POST /api/smbi/pedidos/:id/retorno`.
+`comissao_comercial_protegida` só muda por admin e nunca é zerada por `null`. Só
+`smbi_condpag_sal_cod` e `smbi_condpag_frete_cod` são escritos pela tela normalmente.
 
 ## Prazos de pagamento digitados à mão
 

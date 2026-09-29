@@ -163,3 +163,31 @@ export function resolveRetornoUpdate(
   if (body.numeroCte !== undefined) patch.numeroCte = body.numeroCte;
   return { conflict: false, patch };
 }
+
+// ── upsertPedido: campos que a TELA nunca escreve ────────────────────────────
+// `smbiMovsaiId`, `numeroNfe` e `numeroCte` são gravados SÓ pela API do robô
+// (POST /api/smbi/pedidos/:id/retorno). Antes, o payload de um admin passava direto: com o
+// espelho da tela desatualizado (o robô gravou o movsai depois que a tela carregou) ela
+// mandava `null` e o UPDATE apagava o vínculo — o pedido voltava à fila e o robô o
+// criava de novo no ERP (auditoria do Hermes, 28/09). Nenhum papel escreve esses três
+// por aqui; `comissaoComercialProtegida` só muda por admin e nunca é zerada por `null`.
+export interface RobotOwnedStored {
+  smbiMovsaiId: string | null;
+  numeroNfe: string | null;
+  numeroCte: string | null;
+  comissaoComercialProtegida: number | null;
+}
+
+export function resolveRobotOwnedFields(
+  existing: RobotOwnedStored | undefined,
+  payload: { comissaoComercialProtegida?: number | null },
+  isAdmin: boolean,
+): RobotOwnedStored {
+  const storedComissao = existing?.comissaoComercialProtegida ?? null;
+  return {
+    smbiMovsaiId: existing?.smbiMovsaiId ?? null,
+    numeroNfe: existing?.numeroNfe ?? null,
+    numeroCte: existing?.numeroCte ?? null,
+    comissaoComercialProtegida: isAdmin ? (payload.comissaoComercialProtegida ?? storedComissao) : storedComissao,
+  };
+}

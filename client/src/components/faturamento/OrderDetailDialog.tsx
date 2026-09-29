@@ -294,12 +294,19 @@ export function OrderDetailDialog({
               }
               onClick={() => {
                 actions.pedidos.dispararSmbi(pedido.id);
-                toast.success('Pedido marcado para envio ao SMBI!');
+                toast.success('Solicitado! O robô cria o pedido no SMBI e o número aparece aqui quando ele responder.');
               }}
             >
               <Send size={14} />
               {pedido.smbiSolicitadoEm ? 'Reenviar ao SMBI' : 'Enviar pedido para SMBI'}
             </Button>
+          )}
+          {pedido.smbiSolicitadoEm && !pedido.smbiMovsaiId && (
+            <span className="text-xs text-indigo-700">
+              Solicitado em{' '}
+              {new Date(pedido.smbiSolicitadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+              {' '}— aguardando o robô criar no SMBI
+            </span>
           )}
           {pedido.smbiMovsaiId && (
             <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs py-1 px-2.5">

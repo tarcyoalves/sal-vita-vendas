@@ -7,6 +7,7 @@ import { eq, and, isNull, desc } from 'drizzle-orm';
 import { sendEmail } from '../email/resend';
 import { renderSignature } from '../email/marketing';
 import { gerarPedidoPdf } from '../pdf/pedidoPdf';
+import { resolveRobotOwnedFields } from '../lib/smbi';
 import type { Pedido } from '../../client/src/lib/faturamento/types';
 
 // ── Faturamento & Comissão (CRM Lembretes) ───────────────────────────────────
@@ -180,19 +181,11 @@ export const faturamentoRouter = router({
         values.sellerId = mySellerId;
       }
 
-      // Robot/admin-owned fields (smbiMovsaiId, numeroNfe, numeroCte,
-      // comissaoComercialProtegida): only an admin request can set them. On
-      // update, a non-admin caller (attendant or manager) keeps
-      // whatever is already stored, no matter what the payload carries — this
-      // protects the SMBI link even from a stale client mirror. On insert
-      // there's nothing stored yet, so a non-admin creating a pedido always
-      // starts these as null.
-      if (!isAdmin) {
-        values.smbiMovsaiId = existing?.smbiMovsaiId ?? null;
-        values.numeroNfe = existing?.numeroNfe ?? null;
-        values.numeroCte = existing?.numeroCte ?? null;
-        values.comissaoComercialProtegida = existing?.comissaoComercialProtegida ?? null;
-      }
+      // Campos do robô/admin: a tela NUNCA escreve smbiMovsaiId/numeroNfe/numeroCte (só o
+      // POST /api/smbi/pedidos/:id/retorno), nem mesmo um admin — senão um espelho
+      // desatualizado mandaria null e devolveria o pedido à fila do robô (duplicata no ERP).
+      // Ver resolveRobotOwnedFields em server/lib/smbi.ts.
+      Object.assign(values, resolveRobotOwnedFields(existing, input, isAdmin));
 
       // Stamped only at creation; the update `set` below deliberately excludes
       // createdByUserId/createdByRole/aprovadoEm/aprovadoPor so later edits
