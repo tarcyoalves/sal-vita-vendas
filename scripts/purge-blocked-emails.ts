@@ -22,33 +22,33 @@
  * Só imprime nomes de tabela, contagens e `error.message`; nunca connection string.
  */
 import { neon } from '@neondatabase/serverless';
-import { BLOCKED_EMAIL_ADDRESSES, BLOCKED_EMAIL_DOMAINS, blockedEmailPattern } from '../shared/blockedEmailDomains';
+import { BLOCKED_EMAIL_ADDRESSES, BLOCKED_EMAIL_DOMAINS, BLOCKED_EMAIL_KEYWORDS, blockedEmailPattern, protectedEmailPattern } from '../shared/blockedEmailDomains';
 
 const TAG = '[purge:blocked]';
 const TIMEOUT_MS = 3 * 60 * 1000;
 const log = (m: string) => console.log(`${TAG} ${m}`);
 
 type Sql = ReturnType<typeof neon>;
-type Job = { label: string; run: (sql: Sql, re: string) => Promise<number> };
+type Job = { label: string; run: (sql: Sql, re: string, pro: string) => Promise<number> };
 
 const n = (rows: unknown): number => Number((rows as Array<{ n: number }>)[0]?.n ?? 0);
 
 const jobs: Job[] = [
   // ── APAGA ──
-  { label: 'DELETE email_campaign_recipients', run: async (s, re) => n(await s`WITH d AS (DELETE FROM email_campaign_recipients WHERE email ~* ${re} RETURNING 1) SELECT count(*)::int AS n FROM d`) },
-  { label: 'DELETE email_sequence_enrollments', run: async (s, re) => n(await s`WITH d AS (DELETE FROM email_sequence_enrollments WHERE email ~* ${re} RETURNING 1) SELECT count(*)::int AS n FROM d`) },
-  { label: 'DELETE email_events', run: async (s, re) => n(await s`WITH d AS (DELETE FROM email_events WHERE recipient_email ~* ${re} RETURNING 1) SELECT count(*)::int AS n FROM d`) },
-  { label: 'DELETE marketing_contacts', run: async (s, re) => n(await s`WITH d AS (DELETE FROM marketing_contacts WHERE email ~* ${re} RETURNING 1) SELECT count(*)::int AS n FROM d`) },
-  { label: 'DELETE abandoned_carts', run: async (s, re) => n(await s`WITH d AS (DELETE FROM abandoned_carts WHERE customer_email ~* ${re} RETURNING 1) SELECT count(*)::int AS n FROM d`) },
+  { label: 'DELETE email_campaign_recipients', run: async (s, re, pro) => n(await s`WITH d AS (DELETE FROM email_campaign_recipients WHERE email ~* ${re} AND email !~* ${pro} RETURNING 1) SELECT count(*)::int AS n FROM d`) },
+  { label: 'DELETE email_sequence_enrollments', run: async (s, re, pro) => n(await s`WITH d AS (DELETE FROM email_sequence_enrollments WHERE email ~* ${re} AND email !~* ${pro} RETURNING 1) SELECT count(*)::int AS n FROM d`) },
+  { label: 'DELETE email_events', run: async (s, re, pro) => n(await s`WITH d AS (DELETE FROM email_events WHERE recipient_email ~* ${re} AND recipient_email !~* ${pro} RETURNING 1) SELECT count(*)::int AS n FROM d`) },
+  { label: 'DELETE marketing_contacts', run: async (s, re, pro) => n(await s`WITH d AS (DELETE FROM marketing_contacts WHERE email ~* ${re} AND email !~* ${pro} RETURNING 1) SELECT count(*)::int AS n FROM d`) },
+  { label: 'DELETE abandoned_carts', run: async (s, re, pro) => n(await s`WITH d AS (DELETE FROM abandoned_carts WHERE customer_email ~* ${re} AND customer_email !~* ${pro} RETURNING 1) SELECT count(*)::int AS n FROM d`) },
   // ── ESVAZIA o campo e-mail ──
-  { label: 'NULL clients.email', run: async (s, re) => n(await s`WITH u AS (UPDATE clients SET email = NULL WHERE email ~* ${re} RETURNING 1) SELECT count(*)::int AS n FROM u`) },
-  { label: 'NULL tasks.email', run: async (s, re) => n(await s`WITH u AS (UPDATE tasks SET email = NULL WHERE email ~* ${re} RETURNING 1) SELECT count(*)::int AS n FROM u`) },
-  { label: 'NULL radar_establishments.email', run: async (s, re) => n(await s`WITH u AS (UPDATE radar_establishments SET email = NULL WHERE email ~* ${re} RETURNING 1) SELECT count(*)::int AS n FROM u`) },
-  { label: 'NULL contacts.email (B2B)', run: async (s, re) => n(await s`WITH u AS (UPDATE contacts SET email = NULL WHERE email ~* ${re} RETURNING 1) SELECT count(*)::int AS n FROM u`) },
+  { label: 'NULL clients.email', run: async (s, re, pro) => n(await s`WITH u AS (UPDATE clients SET email = NULL WHERE email ~* ${re} AND email !~* ${pro} RETURNING 1) SELECT count(*)::int AS n FROM u`) },
+  { label: 'NULL tasks.email', run: async (s, re, pro) => n(await s`WITH u AS (UPDATE tasks SET email = NULL WHERE email ~* ${re} AND email !~* ${pro} RETURNING 1) SELECT count(*)::int AS n FROM u`) },
+  { label: 'NULL radar_establishments.email', run: async (s, re, pro) => n(await s`WITH u AS (UPDATE radar_establishments SET email = NULL WHERE email ~* ${re} AND email !~* ${pro} RETURNING 1) SELECT count(*)::int AS n FROM u`) },
+  { label: 'NULL contacts.email (B2B)', run: async (s, re, pro) => n(await s`WITH u AS (UPDATE contacts SET email = NULL WHERE email ~* ${re} AND email !~* ${pro} RETURNING 1) SELECT count(*)::int AS n FROM u`) },
   // ── SÓ CONTA (nunca altera) ──
-  { label: 'CONTA users (login) — não alterado', run: async (s, re) => n(await s`SELECT count(*)::int AS n FROM users WHERE email ~* ${re}`) },
-  { label: 'CONTA sellers (atendentes) — não alterado', run: async (s, re) => n(await s`SELECT count(*)::int AS n FROM sellers WHERE email ~* ${re}`) },
-  { label: 'CONTA site_orders (pedidos da loja) — não alterado', run: async (s, re) => n(await s`SELECT count(*)::int AS n FROM site_orders WHERE customer_email ~* ${re}`) },
+  { label: 'CONTA users (login) — não alterado', run: async (s, re, pro) => n(await s`SELECT count(*)::int AS n FROM users WHERE email ~* ${re} AND email !~* ${pro}`) },
+  { label: 'CONTA sellers (atendentes) — não alterado', run: async (s, re, pro) => n(await s`SELECT count(*)::int AS n FROM sellers WHERE email ~* ${re} AND email !~* ${pro}`) },
+  { label: 'CONTA site_orders (pedidos da loja) — não alterado', run: async (s, re, pro) => n(await s`SELECT count(*)::int AS n FROM site_orders WHERE customer_email ~* ${re} AND customer_email !~* ${pro}`) },
   // ── SEMEIA o bloqueio ──
   ...BLOCKED_EMAIL_ADDRESSES.map<Job>((addr) => ({
     label: `SEMEIA email_suppressions ${addr}`,
@@ -60,6 +60,28 @@ const jobs: Job[] = [
   })),
 ];
 
+
+/** Só relatório (nada é alterado): domínios com "sal" que existem nos dados, fora o da própria casa. */
+const REPORT_SAL = '@[^@]*sal';
+async function relatorioDominios(sql: Sql, pro: string, banco: string): Promise<void> {
+  const fontes: Array<{ nome: string; q: () => Promise<unknown> }> = [
+    { nome: 'tasks.email', q: () => sql`SELECT lower(split_part(email, '@', 2)) AS d, count(*)::int AS n FROM tasks WHERE email ~* ${REPORT_SAL} AND email !~* ${pro} GROUP BY 1 ORDER BY n DESC LIMIT 25` },
+    { nome: 'clients.email', q: () => sql`SELECT lower(split_part(email, '@', 2)) AS d, count(*)::int AS n FROM clients WHERE email ~* ${REPORT_SAL} AND email !~* ${pro} GROUP BY 1 ORDER BY n DESC LIMIT 25` },
+    { nome: 'marketing_contacts.email', q: () => sql`SELECT lower(split_part(email, '@', 2)) AS d, count(*)::int AS n FROM marketing_contacts WHERE email ~* ${REPORT_SAL} AND email !~* ${pro} GROUP BY 1 ORDER BY n DESC LIMIT 25` },
+    { nome: 'email_campaign_recipients.email', q: () => sql`SELECT lower(split_part(email, '@', 2)) AS d, count(*)::int AS n FROM email_campaign_recipients WHERE email ~* ${REPORT_SAL} AND email !~* ${pro} GROUP BY 1 ORDER BY n DESC LIMIT 25` },
+    { nome: 'contacts.email (B2B)', q: () => sql`SELECT lower(split_part(email, '@', 2)) AS d, count(*)::int AS n FROM contacts WHERE email ~* ${REPORT_SAL} AND email !~* ${pro} GROUP BY 1 ORDER BY n DESC LIMIT 25` },
+    { nome: 'radar_establishments.email', q: () => sql`SELECT lower(split_part(email, '@', 2)) AS d, count(*)::int AS n FROM radar_establishments WHERE email ~* ${REPORT_SAL} AND email !~* ${pro} GROUP BY 1 ORDER BY n DESC LIMIT 25` },
+  ];
+  for (const f of fontes) {
+    try {
+      const rows = (await f.q()) as Array<{ d: string; n: number }>;
+      if (rows.length) log(`${banco}: RELATÓRIO domínios com "sal" em ${f.nome}: ${rows.map((r) => `${r.d} (${r.n})`).join(', ')}`);
+    } catch {
+      /* tabela/coluna inexistente neste banco */
+    }
+  }
+}
+
 async function purge(): Promise<void> {
   const argv = process.argv.slice(2);
   const force = argv.includes('--force');
@@ -68,7 +90,8 @@ async function purge(): Promise<void> {
   const run = env === 'production' || (force && !env);
 
   const re = blockedEmailPattern();
-  log(`domínios: ${BLOCKED_EMAIL_DOMAINS.join(', ')}`);
+  const pro = protectedEmailPattern();
+  log(`domínios: ${BLOCKED_EMAIL_DOMAINS.join(', ')} · palavras: ${BLOCKED_EMAIL_KEYWORDS.join(', ')}`);
   log(`decisão: ${run ? 'RODAR' : 'PULAR'} — ${run ? (env === 'production' ? 'VERCEL_ENV=production' : '--force') : `VERCEL_ENV=${env ?? '(vazio)'}; use --force fora da Vercel`}`);
   if (dry) { log('--dry-run: nada foi conectado.'); for (const j of jobs) log(`  planejado: ${j.label}`); return; }
   if (!run) return;
@@ -83,9 +106,10 @@ async function purge(): Promise<void> {
     if (seen.has(db.url)) { log(`${db.name}: PULAR — mesmo banco de outro já processado`); continue; }
     seen.add(db.url);
     const sql = neon(db.url);
+    await relatorioDominios(sql, pro, db.name);
     for (const job of jobs) {
       try {
-        const count = await job.run(sql, re);
+        const count = await job.run(sql, re, pro);
         log(`${db.name}: ${job.label} → ${count}`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

@@ -10,6 +10,10 @@ describe('isBlockedEmail', () => {
     'a@mail.gruposmabrasil.com.br',
     'Fulano <fulano@gruposmabrasil.com.br>',
     'ok@outro.com; x@gruposmabrasil.com.br',
+    'salsalinasrn@gmail.com',
+    'SALSALINASRN@GMAIL.COM',
+    'salinas.rn@outlook.com',
+    'contato@salinasdorn.com.br',
   ])('bloqueia %s', (email) => {
     expect(isBlockedEmail(email)).toBe(true);
   });
@@ -19,6 +23,10 @@ describe('isBlockedEmail', () => {
     'a@gruposmabrasil.com',
     'a@gruposmabrasil.com.br.outro.com',
     'a@xgruposmabrasil.com.br',
+    'maria@salvitarn.com.br',
+    'noreply@premium.salvitarn.com.br',
+    'cliente@gmail.com',
+    'salao@gmail.com',
     'gruposmabrasil.com.br',
     '',
     null,
@@ -32,7 +40,7 @@ describe('isBlockedEmail', () => {
   });
 
   it('o padrão usa só sintaxe comum a JavaScript e PostgreSQL', () => {
-    const p = blockedEmailPattern(['exemplo.com.br']);
+    const p = blockedEmailPattern(['exemplo.com.br'], []);
     expect(p).toBe('@([a-z0-9-]+\\.)*(?:exemplo\\.com\\.br)([^a-z0-9.-]|$)');
   });
 });

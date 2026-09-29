@@ -8,7 +8,24 @@
 export const BLOCKED_EMAIL_DOMAINS: readonly string[] = ['gruposmabrasil.com.br'];
 
 /** Endereços exatos a semear nas listas de supressão por e-mail (rede de segurança). */
-export const BLOCKED_EMAIL_ADDRESSES: readonly string[] = ['salves@gruposmabrasil.com.br'];
+export const BLOCKED_EMAIL_ADDRESSES: readonly string[] = [
+  'salves@gruposmabrasil.com.br',
+  'salsalinasrn@gmail.com',
+];
+
+/**
+ * Palavras que bloqueiam o endereço INTEIRO quando aparecem em qualquer parte dele (nome ou
+ * domínio): pedido do dono para tudo que "tenha a aparência" de salsalinasrn@gmail.com — ex.:
+ * salinas.rn@outlook.com, contato@salinasdorn.com.br. Cuidado: quem tem "salinas" no sobrenome
+ * também cai aqui.
+ */
+export const BLOCKED_EMAIL_KEYWORDS: readonly string[] = ['salinas'];
+
+/**
+ * Domínios que NUNCA são bloqueados, mesmo casando com uma regra acima. A Sal Vita é uma empresa
+ * de sal: sem esta proteção, regras contra "empresas de sal" derrubariam os e-mails da própria casa.
+ */
+export const PROTECTED_EMAIL_DOMAINS: readonly string[] = ['salvitarn.com.br'];
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -17,15 +34,31 @@ const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  * subdomínio dele dentro do texto, sem casar "x@gruposmabrasil.com.br.outro.com".
  * Funciona também com "Nome <a@dominio>" e com vários e-mails no mesmo campo.
  */
-export function blockedEmailPattern(domains: readonly string[] = BLOCKED_EMAIL_DOMAINS): string {
+export function blockedEmailPattern(
+  domains: readonly string[] = BLOCKED_EMAIL_DOMAINS,
+  keywords: readonly string[] = BLOCKED_EMAIL_KEYWORDS,
+): string {
+  const alt = domains.map((d) => escapeRegex(d.trim().toLowerCase())).filter(Boolean).join('|');
+  const kw = keywords.map((k) => escapeRegex(k.trim().toLowerCase())).filter(Boolean).join('|');
+  const domainPart = alt ? `@([a-z0-9-]+\\.)*(?:${alt})([^a-z0-9.-]|$)` : '';
+  return [domainPart, kw].filter(Boolean).join('|');
+}
+
+/** Mesma sintaxe (JS e PostgreSQL): casa "@dominio-protegido" e subdomínios. */
+export function protectedEmailPattern(domains: readonly string[] = PROTECTED_EMAIL_DOMAINS): string {
   const alt = domains.map((d) => escapeRegex(d.trim().toLowerCase())).filter(Boolean).join('|');
   return `@([a-z0-9-]+\\.)*(?:${alt})([^a-z0-9.-]|$)`;
 }
 
 const BLOCKED_RE = new RegExp(blockedEmailPattern(), 'i');
+const PROTECTED_RE = new RegExp(protectedEmailPattern(), 'i');
 
-/** true se o texto contém um e-mail de domínio bloqueado. Nulo/vazio nunca é bloqueado. */
+/**
+ * true se o texto contém e-mail de domínio bloqueado ou com palavra bloqueada. Domínio protegido
+ * (o da própria Sal Vita) nunca é bloqueado. Nulo/vazio nunca é bloqueado.
+ */
 export function isBlockedEmail(email: string | null | undefined): boolean {
   if (!email) return false;
-  return BLOCKED_RE.test(email.trim());
+  const e = email.trim();
+  return BLOCKED_RE.test(e) && !PROTECTED_RE.test(e);
 }
