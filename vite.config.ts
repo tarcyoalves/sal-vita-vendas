@@ -40,6 +40,10 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
+        // O bundle único passou de 2 MiB (limite padrão do workbox) e o build da Vercel
+        // falhou em 29/09 (083ed60). Folga até 6 MiB; se estourar de novo, divida o
+        // bundle (import() por página) em vez de subir o limite outra vez.
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
