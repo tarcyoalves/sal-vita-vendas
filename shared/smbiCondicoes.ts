@@ -24,6 +24,9 @@ export const SMBI_CONDICOES_PAGAMENTO: SmbiCondicaoPagamento[] = [
   { cod: '46', descricao: '30/60/90 DIAS', parcelas: 3 },
   { cod: '4', descricao: '45 DIAS', parcelas: 1 },
   { cod: '6', descricao: '60 DIAS', parcelas: 1 },
+  // Códigos 100 e 150 informados pelo dono em 29/09/2026 (mapa de prazos do SMBI).
+  { cod: '100', descricao: '20/40/60 DIAS', parcelas: 3 },
+  { cod: '150', descricao: '40/60 DIAS', parcelas: 2 },
 ];
 
 /**

@@ -29,9 +29,15 @@ describe('condicaoPorTexto — prazos digitados à mão', () => {
     expect(condicaoPorTexto(texto)?.cod).toBe(cod);
   });
 
-  it('20/40/60 não está no catálogo: fica sem código (nunca inventa)', () => {
-    expect(condicaoPorTexto('20/40/60')).toBeNull();
-    expect(condicaoPorTexto('20/40/60 DIAS')).toBeNull();
+  it('mapa informado pelo dono: 20/40/60 → 100 e 40/60 → 150', () => {
+    expect(condicaoPorTexto('20/40/60')?.cod).toBe('100');
+    expect(condicaoPorTexto('20/40/60 DIAS')?.cod).toBe('100');
+    expect(condicaoPorTexto('40/60')?.cod).toBe('150');
+  });
+
+  it('prazo fora do catálogo continua sem código (nunca inventa)', () => {
+    expect(condicaoPorTexto('20/50/80')).toBeNull();
+    expect(condicaoPorTexto('90')).toBeNull();
   });
 
   it('texto com mais informação não casa por engano', () => {
@@ -63,13 +69,13 @@ describe('payload do robô: código derivado quando a coluna está vazia', () =>
     previsaoFaturamentoEm: null, aprovadoEm: '2026-09-28T12:00:00.000Z', aprovadoPor: 'Admin',
   } as unknown as FatOrder;
 
-  it('pedido do print: sal 30/60/90 ganha 46; frete 20/40/60 fica null', () => {
+  it('pedido do print: sal 30/60/90 ganha 46; frete 20/40/60 ganha 100', () => {
     const p = mapOrderToSmbiPayload({
       ...base, prazoPagamentoSal: '30/60/90', prazoPagamentoFrete: '20/40/60',
       smbiCondpagSalCod: null, smbiCondpagFreteCod: null,
     } as FatOrder);
     expect(p.smbiCondpagSalCod).toBe('46');
-    expect(p.smbiCondpagFreteCod).toBeNull();
+    expect(p.smbiCondpagFreteCod).toBe('100');
   });
 
   it('código já gravado nunca é sobrescrito pelo derivado', () => {

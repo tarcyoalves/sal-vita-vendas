@@ -3,7 +3,7 @@
 - **Agente:** claude
 - **Início:** 2026-09-28 BRT
 - **Fim:** 2026-09-28 BRT
-- **Status:** parcial (falta o código SMBI de "20/40/60")
+- **Status:** concluído (código 100 = 20/40/60 e 150 = 40/60 informados pelo dono em 29/09/2026)
 - **Branch:** `main`
 
 ## Objetivo
