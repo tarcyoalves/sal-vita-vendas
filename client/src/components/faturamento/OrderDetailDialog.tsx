@@ -15,6 +15,10 @@ import {
 import { OrderPrintDocument } from './OrderPrintDocument';
 import { LinkTaskDialog } from './LinkTaskDialog';
 import { Pencil, Truck, Trash2, CheckCircle2, Printer, Link2, Undo2, Send } from 'lucide-react';
+import {
+  SMBI_ESTADO_ROTULO, SMBI_MOTIVO_ROTULO,
+  type SmbiEstado, type SmbiMotivoCodigo,
+} from '../../../../shared/smbiEstados.js';
 
 interface OrderDetailDialogProps {
   open: boolean;
@@ -333,7 +337,35 @@ export function OrderDetailDialog({
               Vincular a pedido do SMBI
             </Button>
           )}
-          {pedido.smbiSolicitadoEm && !pedido.smbiMovsaiId && (
+          {/* "Por que não foi": o motivo que o robô devolveu (CONTRATO-ROBO-CRM.md, rota 2). */}
+          {pedido.smbiEstado && pedido.smbiEstado !== 'CRIADO' && (
+            <div
+              className={`basis-full rounded-lg border px-3 py-2 text-xs ${
+                pedido.smbiEstado === 'DIVERGENTE'
+                  ? 'border-red-300 bg-red-50 text-red-800'
+                  : 'border-amber-300 bg-amber-50 text-amber-900'
+              }`}
+            >
+              <p className="font-semibold">
+                {SMBI_ESTADO_ROTULO[pedido.smbiEstado as SmbiEstado] ?? pedido.smbiEstado}
+              </p>
+              <p className="mt-0.5">
+                {(pedido.smbiMotivoCodigo && SMBI_MOTIVO_ROTULO[pedido.smbiMotivoCodigo as SmbiMotivoCodigo]) ||
+                  pedido.smbiMotivoTexto ||
+                  'O robô não informou o motivo.'}
+              </p>
+              {pedido.smbiMotivoTexto && pedido.smbiMotivoCodigo && (
+                <p className="mt-0.5 opacity-80">Detalhe do robô: {pedido.smbiMotivoTexto}</p>
+              )}
+              {pedido.smbiAtualizadoEm && (
+                <p className="mt-0.5 opacity-70">
+                  {new Date(pedido.smbiAtualizadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                  {pedido.smbiTentativa ? ` · tentativa ${pedido.smbiTentativa}` : ''}
+                </p>
+              )}
+            </div>
+          )}
+          {pedido.smbiSolicitadoEm && !pedido.smbiMovsaiId && !pedido.smbiEstado && (
             <span className="text-xs text-indigo-700">
               Solicitado em{' '}
               {new Date(pedido.smbiSolicitadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}

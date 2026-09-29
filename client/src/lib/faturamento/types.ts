@@ -72,6 +72,14 @@ export interface Pedido {
   comissaoComercialProtegida?: number | null;
   smbiSolicitadoEm?: string | null;
   smbiSolicitadoPor?: string | null;
+  // Resposta do robô (só leitura na tela): selo + "por que não foi".
+  smbiEstado?: string | null;
+  smbiMotivoCodigo?: string | null;
+  smbiMotivoTexto?: string | null;
+  smbiTentativa?: number | null;
+  smbiAtualizadoEm?: string | null;
+  smbiConferidoEm?: string | null;
+  atualizadoEm?: string | null;
   createdByUserId?: number | null;
   createdByRole: string | null;
 }

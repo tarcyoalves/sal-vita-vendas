@@ -2,12 +2,13 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure, staffProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
-import { fatProducts, fatOrders, fatCommissions, fatOrderDeletionLogs, sellers, tasks } from '../db/schema';
+import { fatProducts, fatOrders, fatCommissions, fatOrderDeletionLogs, sellers, tasks, smbiRobotState } from '../db/schema';
 import { eq, and, isNull, desc } from 'drizzle-orm';
 import { sendEmail } from '../email/resend';
 import { renderSignature } from '../email/marketing';
 import { gerarPedidoPdf } from '../pdf/pedidoPdf';
-import { resolveRobotOwnedFields } from '../lib/smbi';
+import { resolveRobotOwnedFields, roboSemSinal } from '../lib/smbi';
+import { SMBI_ROBO_SEM_SINAL_MIN } from '../../shared/smbiEstados';
 import type { Pedido } from '../../client/src/lib/faturamento/types';
 
 // ── Faturamento & Comissão (CRM Lembretes) ───────────────────────────────────
@@ -194,13 +195,16 @@ export const faturamentoRouter = router({
         values.createdByUserId = ctx.user.id;
         values.createdByRole = ctx.user.role;
       }
+      // Toda gravação pela tela carimba a edição; o robô compara com o clique (payload.atualizadoEm).
+      const atualizadoEm = new Date().toISOString();
 
       const [row] = await db
         .insert(fatOrders)
-        .values(values)
+        .values({ ...values, atualizadoEm })
         .onConflictDoUpdate({
           target: fatOrders.id,
           set: {
+            atualizadoEm,
             taskId: values.taskId,
             sellerId: values.sellerId,
             sellerName: values.sellerName,
@@ -287,12 +291,55 @@ export const faturamentoRouter = router({
 
       const [row] = await db
         .update(fatOrders)
-        .set({ smbiSolicitadoEm: new Date().toISOString(), smbiSolicitadoPor: ctx.user.name })
+        .set({
+          smbiSolicitadoEm: new Date().toISOString(),
+          smbiSolicitadoPor: ctx.user.name,
+          // Novo clique = nova tentativa: o estado/motivo da anterior (ex.: PENDENTE) sai da tela.
+          smbiEstado: null,
+          smbiMotivoCodigo: null,
+          smbiMotivoTexto: null,
+          smbiTentativa: null,
+          smbiAtualizadoEm: null,
+          smbiConferidoEm: null,
+        })
         .where(eq(fatOrders.id, input.id))
         .returning();
       // Prova nos logs de quem pediu e quando (o CRM não guardava isto: caso 1115).
       console.log(`[smbi] dispararSmbi pedido=${input.id} por=${ctx.user.name} (id ${ctx.user.id})`);
       return row;
+    }),
+
+  // Painel do robô do SMBI (só admin/gerente): chave de parada + último batimento.
+  smbiRoboStatus: staffProcedure.query(async () => {
+    const [s] = await db.select().from(smbiRobotState).where(eq(smbiRobotState.id, 1));
+    const semSinal = roboSemSinal(s?.ultimoHeartbeatEm);
+    return {
+      roboAtivo: s?.roboAtivo === true,
+      ultimoHeartbeatEm: s?.ultimoHeartbeatEm ?? null,
+      versao: s?.versao ?? null,
+      ciclo: s?.ciclo ?? null,
+      pendentes: s?.pendentes ?? null,
+      pulados: s?.pulados ?? null,
+      criados: s?.criados ?? null,
+      atualizadoPor: s?.atualizadoPor ?? null,
+      atualizadoEm: s?.atualizadoEm ?? null,
+      semSinal,
+      limiteSemSinalMin: SMBI_ROBO_SEM_SINAL_MIN,
+    };
+  }),
+
+  // Chave de parada do robô (CONTRATO-ROBO-CRM.md, rota 9). Só admin. Desligada, a lista do
+  // robô sai vazia no servidor. Nasce desligada.
+  setRoboAtivo: adminProcedure
+    .input(z.object({ ativo: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const dados = { roboAtivo: input.ativo, atualizadoPor: ctx.user.name, atualizadoEm: new Date().toISOString() };
+      await db
+        .insert(smbiRobotState)
+        .values({ id: 1, ...dados })
+        .onConflictDoUpdate({ target: smbiRobotState.id, set: dados });
+      console.log(`[smbi] setRoboAtivo ativo=${input.ativo} por=${ctx.user.name} (id ${ctx.user.id})`);
+      return { ok: true, roboAtivo: input.ativo };
     }),
 
   // Vincula o pedido a um movsai que JÁ EXISTE no SMBI (ex.: pedido aprovado tarde, que já

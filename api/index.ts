@@ -17,7 +17,7 @@ import { sql as sqlClient, db } from '../server/db/index';
 import {
   siteOrders, abandonedCarts, automationRuns, msgTemplates, coupons, emailCampaignRecipients, emailSuppressions, clients,
   emailEvents, sellers, emailSequenceSends, emailSequenceEnrollments, marketingContacts, taskDeletionLogs,
-  companies, contacts, publicSources, consentRecords, suppressionList, auditLogs, fatOrders,
+  companies, contacts, publicSources, consentRecords, suppressionList, auditLogs, fatOrders, smbiRobotState,
 } from '../server/db/schema';
 import { eq, and, or, sql, lte, gte, isNull, isNotNull, inArray, desc, asc, lt } from 'drizzle-orm';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
@@ -26,7 +26,10 @@ import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, c
 import { verifyResendWebhook } from '../server/email/marketing';
 import { evaluateInactiveDaysRules, flagEngagementByMessageId, processSequenceEnrollments, cancelAllEnrollments } from '../server/email/automations';
 import { processDueCampaigns } from '../server/email/campaigns';
-import { isAuthorized, isElegivelParaSmbi, mapOrderToSmbiPayload, resolveRetornoUpdate, retornoBodySchema } from '../server/lib/smbi';
+import {
+  isAuthorized, isElegivelParaSmbi, mapOrderToSmbiPayload, resolveRetornoUpdate, retornoBodySchema,
+  validarEstadoRetorno, heartbeatBodySchema, pedidosParaRobo,
+} from '../server/lib/smbi';
 
 function isBusinessHours(): boolean {
   const brHour = (new Date().getUTCHours() - 3 + 24) % 24;
@@ -1531,7 +1534,12 @@ app.get('/api/smbi/pedidos', smbiApiLimiter, async (req, res) => {
     return;
   }
   const id = typeof req.query.id === 'string' ? req.query.id : undefined;
+  // `?simular=1`: o robô vê o que criaria (para conferir antes de ligar), sem poder criar.
+  const simular = req.query.simular === '1';
   try {
+    // Chave de parada (CONTRATO-ROBO-CRM.md, rota 9): sem linha = desligado (fail closed).
+    const [estadoRobo] = await db.select({ roboAtivo: smbiRobotState.roboAtivo }).from(smbiRobotState).where(eq(smbiRobotState.id, 1));
+    const roboAtivo = estadoRobo?.roboAtivo === true;
     // Só pedidos enviados pelo botão "Enviar pedido para SMBI" (smbiSolicitadoEm).
     // O filtro vale também para ?id= — é a re-checagem do robô antes de criar.
     const elegivel = and(
@@ -1549,9 +1557,12 @@ app.get('/api/smbi/pedidos', smbiApiLimiter, async (req, res) => {
           .orderBy(asc(fatOrders.smbiSolicitadoEm))
           .limit(100);
     // Defesa em profundidade: mesmo que a query mude, nada fora da regra sai daqui.
-    const pedidos = rows.filter(isElegivelParaSmbi).map(mapOrderToSmbiPayload);
-    console.log(`[smbi] GET /api/smbi/pedidos ${id ? `id=${id}` : 'status=pendentes'} → ${pedidos.length} pedido(s)`);
-    res.json({ ok: true, pedidos });
+    // Robô desligado: lista vazia (trava do servidor). `simular=1` mostra o que sairia.
+    const pedidos = pedidosParaRobo(roboAtivo, simular, rows.filter(isElegivelParaSmbi).map(mapOrderToSmbiPayload));
+    console.log(
+      `[smbi] GET /api/smbi/pedidos ${id ? `id=${id}` : 'status=pendentes'} roboAtivo=${roboAtivo}${simular ? ' simular' : ''} → ${pedidos.length} pedido(s)`,
+    );
+    res.json({ ok: true, roboAtivo, simulacao: simular && !roboAtivo, pedidos });
   } catch (err) {
     console.error('[smbi] GET /api/smbi/pedidos error:', err);
     res.status(500).json({ error: 'Internal error' });
@@ -1589,6 +1600,13 @@ app.post('/api/smbi/pedidos/:id/retorno', smbiApiLimiter, express.json({ limit: 
       return;
     }
 
+    const estadoInvalido = validarEstadoRetorno(existing, parsed.data);
+    if (estadoInvalido) {
+      console.warn(`[smbi] POST retorno pedido=${id} → 400 (${estadoInvalido})`);
+      res.status(400).json({ error: estadoInvalido });
+      return;
+    }
+
     const { conflict, patch } = resolveRetornoUpdate(existing, parsed.data);
     if (conflict) {
       console.warn(`[smbi] POST retorno pedido=${id} → 409 (smbiMovsaiId já vinculado a outro valor)`);
@@ -1612,6 +1630,43 @@ app.post('/api/smbi/pedidos/:id/retorno', smbiApiLimiter, express.json({ limit: 
     res.json({ ok: true });
   } catch (err) {
     console.error(`[smbi] POST retorno pedido=${id} error:`, err);
+    res.status(500).json({ error: 'Internal error' });
+  }
+});
+
+// Batimento do robô a cada ciclo (CONTRATO-ROBO-CRM.md, rota 8). O CRM mostra "sem sinal"
+// se ficar mais de 10 min sem receber. Nunca altera `roboAtivo` (só o admin, pela tela).
+app.post('/api/smbi/heartbeat', smbiApiLimiter, express.json({ limit: '4kb' }), async (req, res) => {
+  if (!isAuthorized(process.env.SMBI_SYNC_SECRET, req.headers['authorization'])) {
+    console.warn('[smbi] POST /api/smbi/heartbeat → 401');
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const parsed = heartbeatBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    console.warn('[smbi] POST /api/smbi/heartbeat → 400 (corpo inválido)');
+    res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    return;
+  }
+  try {
+    const hb = {
+      ultimoHeartbeatEm: new Date().toISOString(),
+      versao: parsed.data.versao,
+      ciclo: parsed.data.ciclo,
+      pendentes: parsed.data.pendentes,
+      pulados: parsed.data.pulados,
+      criados: parsed.data.criados,
+    };
+    // Sem `roboAtivo` no `set`: o batimento não liga nem desliga o robô. Na primeira vez a
+    // linha nasce com roboAtivo = false (padrão da coluna).
+    const [row] = await db
+      .insert(smbiRobotState)
+      .values({ id: 1, ...hb })
+      .onConflictDoUpdate({ target: smbiRobotState.id, set: hb })
+      .returning({ roboAtivo: smbiRobotState.roboAtivo });
+    res.json({ ok: true, roboAtivo: row?.roboAtivo === true });
+  } catch (err) {
+    console.error('[smbi] POST /api/smbi/heartbeat error:', err);
     res.status(500).json({ error: 'Internal error' });
   }
 });

@@ -157,7 +157,29 @@ async function ensureRecentSchema() {
     if (!have.has('comissao_comercial_protegida')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS comissao_comercial_protegida DOUBLE PRECISION`;
     if (!have.has('smbi_solicitado_em')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitado_em TEXT`;
     if (!have.has('smbi_solicitado_por')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitado_por TEXT`;
+    if (!have.has('smbi_estado')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_estado TEXT`;
+    if (!have.has('smbi_motivo_codigo')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_motivo_codigo TEXT`;
+    if (!have.has('smbi_motivo_texto')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_motivo_texto TEXT`;
+    if (!have.has('smbi_tentativa')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_tentativa INTEGER`;
+    if (!have.has('smbi_atualizado_em')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_atualizado_em TEXT`;
+    if (!have.has('smbi_conferido_em')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_conferido_em TEXT`;
+    if (!have.has('atualizado_em')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS atualizado_em TEXT`;
   }
+  // Chave/batimento do robô do SMBI: sem esta tabela a rota do robô e o painel do faturamento falham.
+  await sql`
+    CREATE TABLE IF NOT EXISTS smbi_robot_state (
+      id                   INTEGER PRIMARY KEY,
+      robo_ativo           BOOLEAN NOT NULL DEFAULT FALSE,
+      ultimo_heartbeat_em  TEXT,
+      versao               TEXT,
+      ciclo                INTEGER,
+      pendentes            INTEGER,
+      pulados              INTEGER,
+      criados              INTEGER,
+      atualizado_por       TEXT,
+      atualizado_em        TEXT
+    )
+  `;
 
   const radarOk = (reg as unknown as Array<{ radar_ok: boolean }>)[0]?.radar_ok === true;
   if (!radarOk) await ensureRadarTables();
@@ -165,7 +187,7 @@ async function ensureRecentSchema() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-09-29a';
+const SCHEMA_VERSION = '2026-09-29b';
 
 export async function ensureTablesExist() {
   // Antes de tudo (e antes do caminho rápido): garante o que foi criado por último.
@@ -834,6 +856,27 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS comissao_comercial_protegida DOUBLE PRECISION`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitado_em TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitado_por TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_estado TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_motivo_codigo TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_motivo_texto TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_tentativa INTEGER`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_atualizado_em TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_conferido_em TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS atualizado_em TEXT`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS smbi_robot_state (
+      id                   INTEGER PRIMARY KEY,
+      robo_ativo           BOOLEAN NOT NULL DEFAULT FALSE,
+      ultimo_heartbeat_em  TEXT,
+      versao               TEXT,
+      ciclo                INTEGER,
+      pendentes            INTEGER,
+      pulados              INTEGER,
+      criados              INTEGER,
+      atualizado_por       TEXT,
+      atualizado_em        TEXT
+    )
+  `;
 
   // ── Competência da comissão ────────────────────────────────────────────────
   // Pedido fechado num mês e embarcado no seguinte é comissão do mês em que

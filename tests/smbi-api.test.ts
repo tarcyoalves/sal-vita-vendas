@@ -233,6 +233,8 @@ describe('mapOrderToSmbiPayload', () => {
       previsaoFaturamentoEm: '2026-09-15',
       aprovadoEm: '2026-09-02T00:00:00.000Z',
       aprovadoPor: 'Admin',
+      // Sem edição registrada, a "última atualização" é a criação (o robô compara com o clique).
+      atualizadoEm: '2026-09-01T00:00:00.000Z',
     });
   });
 

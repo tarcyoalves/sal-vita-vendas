@@ -59,6 +59,40 @@ anterior ao campo. Caso real: o movsai 1115 foi criado para um pedido aprovado t
 usa "Vincular a pedido do SMBI" e informa o número; o robô nunca cria pedido que já tem movsai.
 Isso também corrige um vínculo errado (ação `faturamento.vincularSmbi`, só admin, com log).
 
+## Contrato robô ⇄ CRM — etapa 1 (estabilidade)
+
+Implementa as rotas 2, 8 e 9 do `CONTRATO-ROBO-CRM.md` (Hermes, 29/09/2026).
+
+**Chave de parada (`roboAtivo`).** Nasce **desligada**. Só o admin liga, no painel "Robô do SMBI"
+no topo de Faturamento. Desligada, `GET /api/smbi/pedidos` (e `?id=`) devolve `pedidos: []` —
+a trava é do servidor. A resposta traz `roboAtivo` e `simulacao`. Com `?simular=1` a lista sai
+mesmo desligado, para o robô conferir o que criaria; **nesse modo ele não pode criar nada**.
+
+**`GET /api/smbi/pedidos`** ganhou `atualizadoEm` (última edição do pedido pela tela, ou a
+criação). Se for posterior a `smbiSolicitadoEm`, o pedido foi editado depois do clique e o robô
+deve reconferir antes de criar. Continuam: `smbiSolicitadoEm`, `smbiSolicitadoPor`, cliente,
+`itens[]`, códigos de prazo e frete.
+
+**`POST /api/smbi/pedidos/:id/retorno`** aceita, além de `smbiMovsaiId`/`numeroNfe`/`numeroCte`:
+
+```json
+{ "estado": "CRIADO|PENDENTE|ERRO|DIVERGENTE", "motivoCodigo": "…", "motivoTexto": "…",
+  "tentativa": 1, "conferidoEm": "2026-09-29T15:00:00-03:00" }
+```
+
+- `motivoCodigo`: `CLIENTE_NAO_CADASTRADO`, `PRAZO_SEM_CODIGO`, `PRODUTO_SEM_CODIGO`,
+  `MAIS_DE_UM_ITEM`, `PRECO_INVALIDO`, `CRIACAO_FALHOU`, `DIVERGENTE_APOS_CRIAR`.
+- `CRIADO` exige movsai (no corpo ou já gravado) e não tem motivo; motivo só vale com `estado`
+  (HTTP 400 nos outros casos). Cada `estado` novo **substitui** o anterior, inclusive o motivo.
+- O CRM grava `smbiEstado`, `smbiMotivoCodigo`, `smbiMotivoTexto`, `smbiTentativa`,
+  `smbiAtualizadoEm`, `smbiConferidoEm` e mostra no pedido o selo e a frase de "por que não foi".
+- Um novo clique em "Enviar/Reenviar ao SMBI" **zera** o estado anterior (nova tentativa).
+- Movsai diferente do já gravado continua sendo **409**; o estado não muda o vínculo.
+
+**`POST /api/smbi/heartbeat`** a cada ciclo: `{ "versao", "ciclo", "pendentes", "pulados", "criados" }`
+(inteiros ≥ 0). Resposta `{ ok, roboAtivo }`. O batimento **nunca** liga/desliga o robô. Sem sinal
+por mais de 10 minutos, o painel do faturamento mostra o aviso em vermelho.
+
 ## Autenticação
 
 Todas as rotas exigem `Authorization: Bearer $SMBI_SYNC_SECRET`.

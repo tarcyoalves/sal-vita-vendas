@@ -9,6 +9,7 @@ import { DollarSign, BarChart2, FileText, Package, Sparkles } from "lucide-react
 import AdminBillingPanorama from "../components/faturamento/AdminBillingPanorama";
 import BillingReport from "../components/faturamento/BillingReport";
 import ProductManager from "../components/faturamento/ProductManager";
+import SmbiRoboPanel from "../components/faturamento/SmbiRoboPanel";
 
 const TAB_TRIGGER_CLASS =
   "gap-1.5 rounded-xl px-3 py-2 text-slate-500 data-[state=active]:bg-blue-900 data-[state=active]:text-white data-[state=active]:shadow-md";
@@ -48,6 +49,8 @@ export default function Faturamento() {
           </div>
         </div>
       </div>
+
+      <SmbiRoboPanel />
 
       {/* Tabs */}
       <Tabs defaultValue="panorama">

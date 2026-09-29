@@ -11,6 +11,7 @@ import crypto from 'crypto';
 import { z } from 'zod';
 import type { FatOrder } from '../db/schema';
 import { condicaoPorTexto } from '../../shared/smbiCondicoes';
+import { SMBI_ESTADOS, SMBI_MOTIVO_CODIGOS, SMBI_ROBO_SEM_SINAL_MIN } from '../../shared/smbiEstados';
 
 // ── Autenticação (Bearer SMBI_SYNC_SECRET) ───────────────────────────────────
 
@@ -70,6 +71,9 @@ export interface SmbiPedidoPayload {
   /** Prova do clique em "Enviar pedido para SMBI": quando e quem. O robô só cria com isto preenchido. */
   smbiSolicitadoEm: string | null;
   smbiSolicitadoPor: string | null;
+  /** Última edição do pedido pela tela (ou a criação). Se for depois do clique, o pedido foi
+   * editado depois de solicitado e o robô deve reconferir antes de criar. */
+  atualizadoEm: string;
 }
 
 /** Converte uma linha de `fat_orders` no payload que o robô consome. Nunca
@@ -100,6 +104,7 @@ export function mapOrderToSmbiPayload(row: FatOrder): SmbiPedidoPayload {
     aprovadoPor: row.aprovadoPor,
     smbiSolicitadoEm: row.smbiSolicitadoEm,
     smbiSolicitadoPor: row.smbiSolicitadoPor,
+    atualizadoEm: row.atualizadoEm ?? row.criadoEm,
   };
 }
 
@@ -112,15 +117,55 @@ export const retornoBodySchema = z
     smbiMovsaiId: trimmedField.optional(),
     numeroNfe: trimmedField.optional(),
     numeroCte: trimmedField.optional(),
+    // Contrato robô ⇄ CRM, rota 2 (docs/INTEGRACAO-SMBI.md).
+    estado: z.enum(SMBI_ESTADOS).optional(),
+    motivoCodigo: z.enum(SMBI_MOTIVO_CODIGOS).optional(),
+    motivoTexto: z.string().trim().min(1).max(300).optional(),
+    tentativa: z.number().int().min(0).max(50).optional(),
+    conferidoEm: z.string().datetime({ offset: true }).optional(),
   })
   .refine(
-    (v) => v.smbiMovsaiId !== undefined || v.numeroNfe !== undefined || v.numeroCte !== undefined,
-    { message: 'Informe ao menos um campo: smbiMovsaiId, numeroNfe ou numeroCte' },
+    (v) =>
+      v.smbiMovsaiId !== undefined || v.numeroNfe !== undefined || v.numeroCte !== undefined || v.estado !== undefined,
+    { message: 'Informe ao menos um campo: smbiMovsaiId, numeroNfe, numeroCte ou estado' },
   );
 
 export type RetornoBody = z.infer<typeof retornoBodySchema>;
 
-export type RetornoPatch = Partial<Pick<FatOrder, 'smbiMovsaiId' | 'numeroNfe' | 'numeroCte'>>;
+export type RetornoPatch = Partial<
+  Pick<
+    FatOrder,
+    | 'smbiMovsaiId'
+    | 'numeroNfe'
+    | 'numeroCte'
+    | 'smbiEstado'
+    | 'smbiMotivoCodigo'
+    | 'smbiMotivoTexto'
+    | 'smbiTentativa'
+    | 'smbiAtualizadoEm'
+    | 'smbiConferidoEm'
+  >
+>;
+
+/**
+ * Regra do contrato: "CRIADO" só vale com movsai (no corpo ou já gravado) — o robô só declara
+ * criado depois de conferir o pedido no SMBI. Devolve a mensagem do erro (HTTP 400) ou null.
+ */
+export function validarEstadoRetorno(
+  existing: Pick<FatOrder, 'smbiMovsaiId'>,
+  body: RetornoBody,
+): string | null {
+  if (body.estado === 'CRIADO' && !body.smbiMovsaiId && !existing.smbiMovsaiId) {
+    return 'estado CRIADO exige smbiMovsaiId';
+  }
+  if ((body.motivoCodigo || body.motivoTexto) && body.estado === undefined) {
+    return 'motivoCodigo/motivoTexto só valem junto com estado';
+  }
+  if (body.estado === 'CRIADO' && (body.motivoCodigo || body.motivoTexto)) {
+    return 'estado CRIADO não tem motivo';
+  }
+  return null;
+}
 
 export interface RetornoResolution {
   /** true quando `smbiMovsaiId` já está gravado com um valor DIFERENTE do
@@ -173,7 +218,46 @@ export function resolveRetornoUpdate(
   if (body.smbiMovsaiId !== undefined) patch.smbiMovsaiId = body.smbiMovsaiId;
   if (body.numeroNfe !== undefined) patch.numeroNfe = body.numeroNfe;
   if (body.numeroCte !== undefined) patch.numeroCte = body.numeroCte;
+  if (body.estado !== undefined) {
+    // O estado mais recente substitui o anterior por inteiro (incluindo o motivo).
+    patch.smbiEstado = body.estado;
+    patch.smbiMotivoCodigo = body.motivoCodigo ?? null;
+    patch.smbiMotivoTexto = body.motivoTexto ?? null;
+    patch.smbiTentativa = body.tentativa ?? null;
+    patch.smbiAtualizadoEm = new Date().toISOString();
+    if (body.conferidoEm !== undefined) patch.smbiConferidoEm = body.conferidoEm;
+  }
   return { conflict: false, patch };
+}
+
+// ── POST /api/smbi/heartbeat + chave de parada (`roboAtivo`) ────────────────
+
+const contador = z.number().int().min(0).max(1_000_000);
+
+export const heartbeatBodySchema = z.object({
+  versao: z.string().trim().min(1).max(40),
+  ciclo: contador,
+  pendentes: contador,
+  pulados: contador,
+  criados: contador,
+});
+export type HeartbeatBody = z.infer<typeof heartbeatBodySchema>;
+
+/** true se o robô nunca deu sinal ou o último batimento tem mais de SMBI_ROBO_SEM_SINAL_MIN minutos. */
+export function roboSemSinal(ultimoHeartbeatEm: string | null | undefined, agora: number = Date.now()): boolean {
+  if (!ultimoHeartbeatEm) return true;
+  const t = Date.parse(ultimoHeartbeatEm);
+  if (Number.isNaN(t)) return true;
+  return agora - t > SMBI_ROBO_SEM_SINAL_MIN * 60_000;
+}
+
+/**
+ * O que a lista do robô devolve, dada a chave de parada. Desligado (padrão) a lista sai VAZIA —
+ * a trava é do servidor, não da boa vontade do robô (caso 1115). `simular=1` deixa o robô ver o
+ * que criaria, para conferir antes de ligar; nesse modo ele nunca deve criar nada.
+ */
+export function pedidosParaRobo<T>(roboAtivo: boolean, simular: boolean, elegiveis: T[]): T[] {
+  return roboAtivo || simular ? elegiveis : [];
 }
 
 // ── upsertPedido: campos que a TELA nunca escreve ────────────────────────────

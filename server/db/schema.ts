@@ -687,9 +687,34 @@ export const fatOrders = pgTable('fat_orders', {
   smbiSolicitadoEm: text('smbi_solicitado_em'),
   // Quem clicou em "Enviar pedido para SMBI". Só a ação do clique grava; o robô ignora pedido sem isto.
   smbiSolicitadoPor: text('smbi_solicitado_por'),
+  // Resposta do robô (CONTRATO-ROBO-CRM.md, rota 2): só o POST /api/smbi/pedidos/:id/retorno grava.
+  smbiEstado: text('smbi_estado'), // CRIADO | PENDENTE | ERRO | DIVERGENTE (shared/smbiEstados.ts)
+  smbiMotivoCodigo: text('smbi_motivo_codigo'),
+  smbiMotivoTexto: text('smbi_motivo_texto'),
+  smbiTentativa: integer('smbi_tentativa'),
+  smbiAtualizadoEm: text('smbi_atualizado_em'),
+  smbiConferidoEm: text('smbi_conferido_em'),
+  // Última edição do pedido pela tela: o robô compara com o clique para detectar edição posterior.
+  atualizadoEm: text('atualizado_em'),
   createdByUserId: integer('created_by_user_id'),
   createdByRole: text('created_by_role'),
 });
+
+// Uma única linha (id = 1): a chave de parada do robô do SMBI e o último batimento dele.
+// `roboAtivo` nasce FALSE: o robô só cria pedido depois que o admin liga a chave na tela.
+export const smbiRobotState = pgTable('smbi_robot_state', {
+  id: integer('id').primaryKey(),
+  roboAtivo: boolean('robo_ativo').notNull().default(false),
+  ultimoHeartbeatEm: text('ultimo_heartbeat_em'),
+  versao: text('versao'),
+  ciclo: integer('ciclo'),
+  pendentes: integer('pendentes'),
+  pulados: integer('pulados'),
+  criados: integer('criados'),
+  atualizadoPor: text('atualizado_por'),
+  atualizadoEm: text('atualizado_em'),
+});
+export type SmbiRobotState = typeof smbiRobotState.$inferSelect;
 
 export const fatCommissions = pgTable('fat_commissions', {
   sellerId: integer('seller_id').primaryKey(),
