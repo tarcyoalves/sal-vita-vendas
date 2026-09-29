@@ -3,7 +3,7 @@
 - **Agente:** claude
 - **Início:** 2026-09-29
 - **Fim:** 2026-09-29
-- **Status:** parcial — falta o dono escolher quais domínios de empresas de sal bloquear
+- **Status:** concluído no código; aguardando conferir o log do deploy
 - **Branch:** `main`
 
 ## Objetivo
@@ -30,3 +30,10 @@ e-mail com domínio de empresa de sal.
 
 - Domínios de empresas de sal: NÃO foram inventados. Depende da lista do dono (ver relatório no log).
 - Palavra `salinas` também pega quem tem "Salinas" no sobrenome.
+
+## Atualização (dono escolheu os domínios)
+
+Bloqueados: salmaranata.com.br, salina.com.br, finosal.com.br, sal.com, salminas.com.br,
+grupososal.com.br. Mantidos de propósito: agrosal.com.br e fortsal.com.br (testes garantem que não são
+pegos). Domínios de alimentos que casam "sal" por acaso (saladao, salgadinhosclick, bemmaisalimentos,
+nutribrasalimentos, jimenesalimentos) também não são bloqueados.

@@ -5,7 +5,17 @@
 // Vale também para subdomínios (a@mail.dominio.com.br). Para bloquear outro domínio, acrescente
 // aqui; nada mais precisa mudar.
 
-export const BLOCKED_EMAIL_DOMAINS: readonly string[] = ['gruposmabrasil.com.br'];
+export const BLOCKED_EMAIL_DOMAINS: readonly string[] = [
+  'gruposmabrasil.com.br',
+  // Empresas de sal, bloqueadas a pedido do dono em 29/09/2026. NÃO entram: agrosal.com.br e
+  // fortsal.com.br (o dono mandou manter).
+  'salmaranata.com.br',
+  'salina.com.br',
+  'finosal.com.br',
+  'sal.com',
+  'salminas.com.br',
+  'grupososal.com.br',
+];
 
 /** Endereços exatos a semear nas listas de supressão por e-mail (rede de segurança). */
 export const BLOCKED_EMAIL_ADDRESSES: readonly string[] = [

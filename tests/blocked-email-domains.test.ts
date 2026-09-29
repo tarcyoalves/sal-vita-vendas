@@ -14,6 +14,13 @@ describe('isBlockedEmail', () => {
     'SALSALINASRN@GMAIL.COM',
     'salinas.rn@outlook.com',
     'contato@salinasdorn.com.br',
+    'x@salmaranata.com.br',
+    'x@salina.com.br',
+    'x@finosal.com.br',
+    'x@sal.com',
+    'x@vendas.sal.com',
+    'x@salminas.com.br',
+    'x@grupososal.com.br',
   ])('bloqueia %s', (email) => {
     expect(isBlockedEmail(email)).toBe(true);
   });
@@ -24,6 +31,14 @@ describe('isBlockedEmail', () => {
     'a@gruposmabrasil.com.br.outro.com',
     'a@xgruposmabrasil.com.br',
     'maria@salvitarn.com.br',
+    'x@agrosal.com.br',
+    'x@fortsal.com.br',
+    'x@saladao.com',
+    'x@bemmaisalimentos.com.br',
+    'x@nutribrasalimentos.com.br',
+    'x@jimenesalimentos.com.br',
+    'x@salgadinhosclick.com.br',
+    'x@agrosal.com',
     'noreply@premium.salvitarn.com.br',
     'cliente@gmail.com',
     'salao@gmail.com',
