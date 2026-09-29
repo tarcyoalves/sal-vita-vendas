@@ -3,7 +3,7 @@
 - **Agente:** claude
 - **Início:** 2026-09-29
 - **Fim:** 2026-09-29
-- **Status:** concluído no código; aguardando conferir o log do deploy
+- **Status:** concluído e conferido no log do deploy 492b9f7
 - **Branch:** `main`
 
 ## Objetivo
@@ -37,3 +37,11 @@ Bloqueados: salmaranata.com.br, salina.com.br, finosal.com.br, sal.com, salminas
 grupososal.com.br. Mantidos de propósito: agrosal.com.br e fortsal.com.br (testes garantem que não são
 pegos). Domínios de alimentos que casam "sal" por acaso (saladao, salgadinhosclick, bemmaisalimentos,
 nutribrasalimentos, jimenesalimentos) também não são bloqueados.
+
+## Verificado (log do build de produção, 492b9f7)
+
+O relatório de domínios com "sal" em `tasks.email` listava, antes, salmaranata (10), salina (3),
+finosal (2), sal.com (2), salminas (2), grupososal (1); depois da limpeza esses domínios não aparecem
+mais e sobram só agrosal, fortsal e os de alimentos. Somam 20 e-mails que tiveram o campo esvaziado
+(soma do relatório anterior; a contagem exata da execução que apagou não foi lida). As tarefas
+continuam; só o e-mail saiu. Nenhum login, atendente ou pedido da loja tinha esses domínios.
