@@ -288,6 +288,9 @@ Plano e decisões em `PLANO-RADAR-CARGAS.md`.
    Para trocar a senha: gerar outra e substituir nos dois lugares, depois redeploy.
    Pendência de desenho: `SMBI_PRODUTOS_CATALOGO` não está ligado aos produtos do CRM —
    o robô mapeia pelo nome.
+   **28/09 noite:** robô `smbi-crm-sync.service` PARADO e desabilitado depois de criar
+   pedidos antigos (HANDOFF §7 caso N). Filtro do botão restaurado; religar só com ordem
+   do dono.
 3a. **Radar de Cargas — ligar na VPS** (sem isso a tela abre vazia):
    rodar `scripts/radar/import-receita.ts` (ver `scripts/radar/README.md`; começar por
    PR, SC, RS com `--dry-run`), instalar o robô `scripts/radar/enricher/` (README lá) e,

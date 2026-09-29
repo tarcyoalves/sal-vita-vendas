@@ -26,7 +26,7 @@ import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, c
 import { verifyResendWebhook } from '../server/email/marketing';
 import { evaluateInactiveDaysRules, flagEngagementByMessageId, processSequenceEnrollments, cancelAllEnrollments } from '../server/email/automations';
 import { processDueCampaigns } from '../server/email/campaigns';
-import { isAuthorized, mapOrderToSmbiPayload, resolveRetornoUpdate, retornoBodySchema } from '../server/lib/smbi';
+import { isAuthorized, isElegivelParaSmbi, mapOrderToSmbiPayload, resolveRetornoUpdate, retornoBodySchema } from '../server/lib/smbi';
 
 function isBusinessHours(): boolean {
   const brHour = (new Date().getUTCHours() - 3 + 24) % 24;
@@ -1532,15 +1532,23 @@ app.get('/api/smbi/pedidos', smbiApiLimiter, async (req, res) => {
   }
   const id = typeof req.query.id === 'string' ? req.query.id : undefined;
   try {
+    // Só pedidos enviados pelo botão "Enviar pedido para SMBI" (smbiSolicitadoEm).
+    // O filtro vale também para ?id= — é a re-checagem do robô antes de criar.
+    const elegivel = and(
+      isNotNull(fatOrders.aprovadoEm),
+      isNotNull(fatOrders.smbiSolicitadoEm),
+      isNull(fatOrders.smbiMovsaiId),
+    );
     const rows = id
-      ? await db.select().from(fatOrders).where(eq(fatOrders.id, id)).limit(1)
+      ? await db.select().from(fatOrders).where(and(eq(fatOrders.id, id), elegivel)).limit(1)
       : await db
           .select()
           .from(fatOrders)
-          .where(and(isNotNull(fatOrders.aprovadoEm), isNull(fatOrders.smbiMovsaiId)))
-          .orderBy(asc(fatOrders.aprovadoEm))
+          .where(elegivel)
+          .orderBy(asc(fatOrders.smbiSolicitadoEm))
           .limit(100);
-    const pedidos = rows.map(mapOrderToSmbiPayload);
+    // Defesa em profundidade: mesmo que a query mude, nada fora da regra sai daqui.
+    const pedidos = rows.filter(isElegivelParaSmbi).map(mapOrderToSmbiPayload);
     console.log(`[smbi] GET /api/smbi/pedidos ${id ? `id=${id}` : 'status=pendentes'} → ${pedidos.length} pedido(s)`);
     res.json({ ok: true, pedidos });
   } catch (err) {

@@ -513,6 +513,21 @@ catálogo com uma query e cria só o que falta; o timeout agora loga
 `[migrate:build] FALHOU: ...`. `ensureRecentSchema()` continua como rede de segurança.
 Depois de mudar o schema, confira esse log.
 
+### N) Robô SMBI criou pedidos antigos no ERP (28/09/2026)
+
+**O que aconteceu:** o commit 6626244 tirou o filtro `smbiSolicitadoEm` de
+`GET /api/smbi/pedidos`. O robô da VPS (polling 2 min) passou a receber ~30 pedidos
+aprovados antigos e criou no SMBI os movsai 1108–1113. Dois ciclos sobrepostos criaram
+1112 **e** 1113 para o mesmo pedido CRM (8 s de diferença). O dono cancelou tudo à mão.
+
+**Regras:**
+- A rota só devolve pedido com `aprovadoEm` + `smbiSolicitadoEm` preenchidos e
+  `smbiMovsaiId` nulo — **inclusive no `?id=`**, que é a re-checagem do robô antes de criar.
+  A regra está em `isElegivelParaSmbi()` (`server/lib/smbi.ts`), com teste.
+- Nunca afrouxar esse filtro "para testar": o robô cria pedido real no ERP.
+- O robô tem trava própria (um ciclo por vez + registro
+  `~/.openclaw/workspace/data/smbi_robo_enviados.json`, gravado antes de criar).
+
 ## 8. Armadilhas técnicas deste código
 
 ### SQL raw é necessário em pontos específicos — não "traduza"

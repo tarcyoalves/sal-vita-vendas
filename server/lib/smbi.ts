@@ -129,6 +129,19 @@ export interface RetornoResolution {
 }
 
 /**
+ * Um pedido só vai para o robô do SMBI se o dono clicou em "Enviar pedido para
+ * SMBI" (`smbiSolicitadoEm`), se está aprovado e se ainda não tem movsai.
+ * Vale para a lista E para a consulta `?id=` (a re-checagem do robô antes de
+ * criar). Sem isso o robô pegou pedidos antigos e criou os movsai 1108–1113
+ * (HANDOFF-HERMES.md, seção 7, caso N).
+ */
+export function isElegivelParaSmbi(
+  row: Pick<FatOrder, 'aprovadoEm' | 'smbiSolicitadoEm' | 'smbiMovsaiId'>,
+): boolean {
+  return row.aprovadoEm != null && row.smbiSolicitadoEm != null && row.smbiMovsaiId == null;
+}
+
+/**
  * Decide o que gravar a partir do estado atual do pedido e do corpo recebido.
  * NÃO toca `status`/`faturadoEm` — marcar como faturado continua sendo ação
  * humana no CRM (ver docs/INTEGRACAO-SMBI.md).

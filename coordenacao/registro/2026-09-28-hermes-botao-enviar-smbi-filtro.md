@@ -2,8 +2,8 @@
 
 - **Agente:** hermes
 - **Início:** 2026-09-28 21:10 BRT
-- **Fim:**
-- **Status:** em andamento
+- **Fim:** 2026-09-28 21:15 BRT
+- **Status:** concluído
 - **Branch:** `main`
 
 ## Objetivo
@@ -24,5 +24,5 @@ pedidos antigos 1108–1113 (1113 duplicado do 1112).
 
 ## Progresso
 
-- [ ] filtro restaurado + trava em código puro
-- [ ] testes
+- [x] filtro restaurado + trava em código puro
+- [x] testes

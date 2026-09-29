@@ -17,6 +17,7 @@ import {
   constantTimeEqual,
   extractBearerToken,
   isAuthorized,
+  isElegivelParaSmbi,
   mapOrderToSmbiPayload,
   resolveRetornoUpdate,
   retornoBodySchema,
@@ -314,5 +315,27 @@ describe('pedidoSchema — campos SMBI', () => {
     expect(result.smbiCondpagSalCod).toBeNull();
     expect(result.smbiCondpagFreteCod).toBeNull();
     expect(result.comissaoComercialProtegida).toBeNull();
+  });
+});
+
+// ── Elegibilidade: só o que o dono enviou pelo botão ─────────────────────────
+
+describe('isElegivelParaSmbi', () => {
+  const base = { aprovadoEm: new Date('2026-09-28T12:00:00Z'), smbiSolicitadoEm: '2026-09-28T13:00:00Z', smbiMovsaiId: null };
+
+  it('aceita pedido aprovado, enviado pelo botão e sem movsai', () => {
+    expect(isElegivelParaSmbi(base as never)).toBe(true);
+  });
+
+  it('recusa pedido antigo que nunca foi enviado pelo botão (caso dos movsai 1108–1113)', () => {
+    expect(isElegivelParaSmbi({ ...base, smbiSolicitadoEm: null } as never)).toBe(false);
+  });
+
+  it('recusa pedido que já tem movsai (evita duplicar no SMBI)', () => {
+    expect(isElegivelParaSmbi({ ...base, smbiMovsaiId: '1112' } as never)).toBe(false);
+  });
+
+  it('recusa pedido não aprovado', () => {
+    expect(isElegivelParaSmbi({ ...base, aprovadoEm: null } as never)).toBe(false);
   });
 });
