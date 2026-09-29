@@ -1537,6 +1537,7 @@ app.get('/api/smbi/pedidos', smbiApiLimiter, async (req, res) => {
     const elegivel = and(
       isNotNull(fatOrders.aprovadoEm),
       isNotNull(fatOrders.smbiSolicitadoEm),
+      isNotNull(fatOrders.smbiSolicitadoPor),
       isNull(fatOrders.smbiMovsaiId),
     );
     const rows = id

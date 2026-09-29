@@ -293,12 +293,44 @@ export function OrderDetailDialog({
                   : 'border-blue-400 text-blue-700 bg-blue-50 hover:bg-blue-100 gap-1.5'
               }
               onClick={() => {
+                // Cria um pedido NOVO no ERP. Se o pedido já existe lá (ex.: já embarcado),
+                // o certo é "Vincular a pedido do SMBI", não enviar.
+                const ok = window.confirm(
+                  `Criar este pedido NOVO no SMBI?\n\n${pedido.clienteNome}\n\n` +
+                  'Se ele já existe no SMBI (por exemplo, já foi embarcado), cancele e use "Vincular a pedido do SMBI".',
+                );
+                if (!ok) return;
                 actions.pedidos.dispararSmbi(pedido.id);
                 toast.success('Solicitado! O robô cria o pedido no SMBI e o número aparece aqui quando ele responder.');
               }}
             >
               <Send size={14} />
               {pedido.smbiSolicitadoEm ? 'Reenviar ao SMBI' : 'Enviar pedido para SMBI'}
+            </Button>
+          )}
+          {user?.role === 'admin' && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              onClick={() => {
+                const n = window.prompt(
+                  pedido.smbiMovsaiId
+                    ? `Este pedido está ligado ao pedido ${pedido.smbiMovsaiId} do SMBI.\nInforme o número CORRETO no SMBI:`
+                    : 'Informe o número do pedido que JÁ existe no SMBI (o robô não vai criar outro):',
+                  pedido.smbiMovsaiId ?? '',
+                );
+                const movsai = n?.trim();
+                if (!movsai) return;
+                if (!/^\d{1,12}$/.test(movsai)) {
+                  toast.error('Informe só o número do pedido no SMBI.');
+                  return;
+                }
+                actions.pedidos.vincularSmbi(pedido.id, movsai);
+                toast.success(`Pedido vinculado ao SMBI ${movsai}.`);
+              }}
+            >
+              Vincular a pedido do SMBI
             </Button>
           )}
           {pedido.smbiSolicitadoEm && !pedido.smbiMovsaiId && (

@@ -156,6 +156,7 @@ async function ensureRecentSchema() {
     if (!have.has('smbi_condpag_frete_cod')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_condpag_frete_cod TEXT`;
     if (!have.has('comissao_comercial_protegida')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS comissao_comercial_protegida DOUBLE PRECISION`;
     if (!have.has('smbi_solicitado_em')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitado_em TEXT`;
+    if (!have.has('smbi_solicitado_por')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitado_por TEXT`;
   }
 
   const radarOk = (reg as unknown as Array<{ radar_ok: boolean }>)[0]?.radar_ok === true;
@@ -164,7 +165,7 @@ async function ensureRecentSchema() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-09-28d';
+const SCHEMA_VERSION = '2026-09-29a';
 
 export async function ensureTablesExist() {
   // Antes de tudo (e antes do caminho rápido): garante o que foi criado por último.
@@ -832,6 +833,7 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_condpag_frete_cod TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS comissao_comercial_protegida DOUBLE PRECISION`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitado_em TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitado_por TEXT`;
 
   // ── Competência da comissão ────────────────────────────────────────────────
   // Pedido fechado num mês e embarcado no seguinte é comissão do mês em que

@@ -528,6 +528,24 @@ aprovados antigos e criou no SMBI os movsai 1108–1113. Dois ciclos sobrepostos
 - O robô tem trava própria (um ciclo por vez + registro
   `~/.openclaw/workspace/data/smbi_robo_enviados.json`, gravado antes de criar).
 
+### O. Robô criou pedido que o dono não enviou — movsai 1115 (29/09/2026)
+
+**O que aconteceu:** o robô criou o movsai 1115 para um pedido que o dono aprovou tarde no CRM e
+que já era o 1071 do SMBI (embarcado). Ele **não** clicou em "Enviar pedido para SMBI" nesse
+pedido. O CRM não guardava quem clicou, então não foi possível provar como o pedido entrou na
+lista. Causa exata: **não confirmada**.
+
+**O que mudou:** o clique grava `smbi_solicitado_por` junto com a hora; a lista do robô só devolve
+pedido com os dois (resíduo sem autor nunca sai); a resposta traz `smbiSolicitadoEm` e
+`smbiSolicitadoPor`; o botão pede confirmação; o admin tem "Vincular a pedido do SMBI" para
+pedido que já existe lá (corrige 1115 → 1071).
+
+**Regras para o robô/agente:**
+- Recuse pedido que vier sem `smbiSolicitadoEm` e `smbiSolicitadoPor`, e sem hora **posterior ao
+  corte** combinado com o dono. Nunca deduza o clique por o pedido estar na lista.
+- Aprovar pedido **não** é pedir criação no SMBI. Pedido aprovado tarde, já embarcado, é
+  vinculado por um humano, nunca criado.
+
 ## 8. Armadilhas técnicas deste código
 
 ### SQL raw é necessário em pontos específicos — não "traduza"

@@ -87,3 +87,17 @@ describe('payload do robô: código derivado quando a coluna está vazia', () =>
     expect(p.smbiCondpagFreteCod).toBe('77');
   });
 });
+
+describe('payload do robô: prova do clique', () => {
+  it('leva a hora e o autor do clique', () => {
+    const p = mapOrderToSmbiPayload({
+      id: 'p1', sellerName: 'F', cnpj: '1', razaoSocial: 'X', clienteNome: 'X', cidade: 'A', uf: 'RN',
+      status: 'estimado', itens: [], valorFretePorUnidade: 0, observacoes: '', prazoPagamentoSal: '', prazoPagamentoFrete: '',
+      previsaoFaturamentoEm: null, aprovadoEm: '2026-09-29T12:00:00.000Z', aprovadoPor: 'Admin',
+      smbiCondpagSalCod: null, smbiCondpagFreteCod: null,
+      smbiSolicitadoEm: '2026-09-29T14:00:00.000Z', smbiSolicitadoPor: 'Tarcyo',
+    } as unknown as FatOrder);
+    expect(p.smbiSolicitadoEm).toBe('2026-09-29T14:00:00.000Z');
+    expect(p.smbiSolicitadoPor).toBe('Tarcyo');
+  });
+});

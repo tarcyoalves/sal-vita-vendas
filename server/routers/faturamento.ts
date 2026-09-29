@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { router, protectedProcedure, staffProcedure } from '../trpc';
+import { router, protectedProcedure, staffProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { fatProducts, fatOrders, fatCommissions, fatOrderDeletionLogs, sellers, tasks } from '../db/schema';
 import { eq, and, isNull, desc } from 'drizzle-orm';
@@ -287,9 +287,30 @@ export const faturamentoRouter = router({
 
       const [row] = await db
         .update(fatOrders)
-        .set({ smbiSolicitadoEm: new Date().toISOString() })
+        .set({ smbiSolicitadoEm: new Date().toISOString(), smbiSolicitadoPor: ctx.user.name })
         .where(eq(fatOrders.id, input.id))
         .returning();
+      // Prova nos logs de quem pediu e quando (o CRM não guardava isto: caso 1115).
+      console.log(`[smbi] dispararSmbi pedido=${input.id} por=${ctx.user.name} (id ${ctx.user.id})`);
+      return row;
+    }),
+
+  // Vincula o pedido a um movsai que JÁ EXISTE no SMBI (ex.: pedido aprovado tarde, que já
+  // tinha sido criado e embarcado lá). Ação explícita do admin: o robô nunca cria pedido
+  // que já tem movsai. Pode substituir um vínculo errado (caso 1115 → 1071).
+  vincularSmbi: adminProcedure
+    .input(z.object({ id: z.string(), movsaiId: z.string().trim().regex(/^\d{1,12}$/, 'Informe só o número do pedido no SMBI') }))
+    .mutation(async ({ ctx, input }) => {
+      const [antes] = await db.select({ smbiMovsaiId: fatOrders.smbiMovsaiId }).from(fatOrders).where(eq(fatOrders.id, input.id));
+      if (!antes) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' });
+      const [row] = await db
+        .update(fatOrders)
+        .set({ smbiMovsaiId: input.movsaiId })
+        .where(eq(fatOrders.id, input.id))
+        .returning();
+      console.log(
+        `[smbi] vincularSmbi pedido=${input.id} movsai ${antes.smbiMovsaiId ?? '(vazio)'} -> ${input.movsaiId} por=${ctx.user.name} (id ${ctx.user.id})`,
+      );
       return row;
     }),
 

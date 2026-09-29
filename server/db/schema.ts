@@ -685,6 +685,8 @@ export const fatOrders = pgTable('fat_orders', {
   smbiCondpagFreteCod: text('smbi_condpag_frete_cod'),
   comissaoComercialProtegida: doublePrecision('comissao_comercial_protegida'),
   smbiSolicitadoEm: text('smbi_solicitado_em'),
+  // Quem clicou em "Enviar pedido para SMBI". Só a ação do clique grava; o robô ignora pedido sem isto.
+  smbiSolicitadoPor: text('smbi_solicitado_por'),
   createdByUserId: integer('created_by_user_id'),
   createdByRole: text('created_by_role'),
 });

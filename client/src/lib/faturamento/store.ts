@@ -199,6 +199,7 @@ function buildPedido(input: Partial<Pedido> & { id?: string }): Pedido {
     smbiCondpagFreteCod: input.smbiCondpagFreteCod ?? null,
     comissaoComercialProtegida: input.comissaoComercialProtegida ?? null,
     smbiSolicitadoEm: input.smbiSolicitadoEm ?? null,
+    smbiSolicitadoPor: input.smbiSolicitadoPor ?? null,
     createdByUserId: input.createdByUserId ?? null,
     createdByRole: input.createdByRole ?? null,
   };
@@ -305,6 +306,16 @@ export const pedidos = {
     emit();
     api.faturamento.dispararSmbi.mutate({ id }).catch(onWriteError);
     return enviado;
+  },
+  // Admin: liga o pedido a um movsai que já existe no SMBI (o robô nunca cria esse pedido).
+  vincularSmbi(id: string, movsaiId: string): Pedido | null {
+    const atual = mirror.pedidos.find((p) => p.id === id);
+    if (!atual) return null;
+    const vinculado: Pedido = { ...atual, smbiMovsaiId: movsaiId };
+    mirror = { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === id ? vinculado : p)) };
+    emit();
+    api.faturamento.vincularSmbi.mutate({ id, movsaiId }).catch(onWriteError);
+    return vinculado;
   },
 };
 

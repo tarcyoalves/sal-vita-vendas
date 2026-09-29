@@ -67,6 +67,9 @@ export interface SmbiPedidoPayload {
   previsaoFaturamentoEm: string | null;
   aprovadoEm: string | null;
   aprovadoPor: string | null;
+  /** Prova do clique em "Enviar pedido para SMBI": quando e quem. O robô só cria com isto preenchido. */
+  smbiSolicitadoEm: string | null;
+  smbiSolicitadoPor: string | null;
 }
 
 /** Converte uma linha de `fat_orders` no payload que o robô consome. Nunca
@@ -95,6 +98,8 @@ export function mapOrderToSmbiPayload(row: FatOrder): SmbiPedidoPayload {
     previsaoFaturamentoEm: row.previsaoFaturamentoEm,
     aprovadoEm: row.aprovadoEm,
     aprovadoPor: row.aprovadoPor,
+    smbiSolicitadoEm: row.smbiSolicitadoEm,
+    smbiSolicitadoPor: row.smbiSolicitadoPor,
   };
 }
 
@@ -130,15 +135,22 @@ export interface RetornoResolution {
 
 /**
  * Um pedido só vai para o robô do SMBI se o dono clicou em "Enviar pedido para
- * SMBI" (`smbiSolicitadoEm`), se está aprovado e se ainda não tem movsai.
+ * SMBI" (`smbiSolicitadoEm` + `smbiSolicitadoPor`, gravados juntos pelo clique),
+ * se está aprovado e se ainda não tem movsai. Pedido sem `smbiSolicitadoPor` nunca
+ * sai, mesmo com hora: prova o clique e exclui qualquer resíduo anterior a ela.
  * Vale para a lista E para a consulta `?id=` (a re-checagem do robô antes de
  * criar). Sem isso o robô pegou pedidos antigos e criou os movsai 1108–1113
  * (HANDOFF-HERMES.md, seção 7, caso N).
  */
 export function isElegivelParaSmbi(
-  row: Pick<FatOrder, 'aprovadoEm' | 'smbiSolicitadoEm' | 'smbiMovsaiId'>,
+  row: Pick<FatOrder, 'aprovadoEm' | 'smbiSolicitadoEm' | 'smbiSolicitadoPor' | 'smbiMovsaiId'>,
 ): boolean {
-  return row.aprovadoEm != null && row.smbiSolicitadoEm != null && row.smbiMovsaiId == null;
+  return (
+    row.aprovadoEm != null &&
+    !!row.smbiSolicitadoEm &&
+    !!row.smbiSolicitadoPor &&
+    row.smbiMovsaiId == null
+  );
 }
 
 /**

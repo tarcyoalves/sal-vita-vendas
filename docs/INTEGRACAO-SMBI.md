@@ -22,7 +22,7 @@ do pedido, seis colunas de integração com o SMBI:
 |---|---|---|
 | `smbi_condpag_sal_cod` | Atendente/admin, pela tela (`OrderDialog`) | Código SMBI da condição de pagamento do sal, tirado de `client/src/lib/faturamento/smbiCatalog.ts` |
 | `smbi_condpag_frete_cod` | Atendente/admin, pela tela | Idem, para o frete |
-| `smbi_movsai_id` | **Só o robô** (via `POST .../retorno`); nem o admin grava pela tela | ID do pedido criado no SMBI (tabela `movsai`) |
+| `smbi_movsai_id` | **O robô** (via `POST .../retorno`) ou o **admin, só pela ação explícita "Vincular a pedido do SMBI"**; o formulário de edição nunca grava | ID do pedido criado no SMBI (tabela `movsai`) |
 | `numero_nfe` | **Só o robô** (via `POST .../retorno`) | Número da NF-e emitida, quando existir |
 | `numero_cte` | **Só o robô** (via `POST .../retorno`) | Número do CT-e emitido, quando existir |
 | `comissao_comercial_protegida` | Só admin; um payload nulo nunca a zera | Reservado para uma comissão "travada" no momento da criação no SMBI (ainda sem uso na tela) |
@@ -44,6 +44,20 @@ com certeza a uma condição do catálogo (`shared/smbiCondicoes.ts`): "30/60/90
 dias" e "30/60/90 DIAS" viram o código 46; "20/40/60" vira 100 e "40/60" vira 150. Prazo que
 **não está no catálogo** (ex.: "20/50/80") continua com código `null` — o robô deve pular e registrar. Para incluir um prazo novo, o dono
 informa o código real do SMBI e ele entra na lista em `shared/smbiCondicoes.ts`.
+
+## Só entra na lista do robô o pedido com clique provado
+
+Um pedido só aparece em `GET /api/smbi/pedidos` (e em `?id=`) se estiver aprovado, sem movsai e
+com `smbiSolicitadoEm` **e** `smbiSolicitadoPor` preenchidos. Os dois são gravados juntos, e só
+pela ação do botão "Enviar pedido para SMBI" (que agora pede confirmação). A resposta traz os dois
+campos: **o robô deve recusar pedido sem eles** (defesa dupla) e registrar hora/autor no próprio
+log. Pedido sem `smbiSolicitadoPor` nunca sai, mesmo com hora — isso exclui qualquer resíduo
+anterior ao campo. Caso real: o movsai 1115 foi criado para um pedido aprovado tarde que já era o
+1071 no SMBI; o CRM não guardava quem clicou, então não deu para provar como ele entrou.
+
+**Pedido que já existe no SMBI** (aprovado tarde, já embarcado): não use o botão de enviar. O admin
+usa "Vincular a pedido do SMBI" e informa o número; o robô nunca cria pedido que já tem movsai.
+Isso também corrige um vínculo errado (ação `faturamento.vincularSmbi`, só admin, com log).
 
 ## Autenticação
 

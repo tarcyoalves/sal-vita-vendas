@@ -2,8 +2,8 @@
 
 - **Agente:** claude
 - **Início:** 2026-09-29 11:00 BRT
-- **Fim:** —
-- **Status:** em andamento
+- **Fim:** 2026-09-29
+- **Status:** concluído no código; falta corrigir o pedido `hq7ra5rce4pb` (1115 → 1071) pela tela
 - **Branch:** `main`
 
 ## Objetivo
@@ -24,7 +24,26 @@ que já existe (corrige o 1115 → 1071).
 
 ## Progresso
 
-- [ ] coluna + migração + lock
-- [ ] clique grava autor; lista exige autor; payload com hora/autor
-- [ ] vincularSmbi (admin) + botão + confirmação
-- [ ] testes, check, build, deploy READY
+- [x] coluna + migração + lock
+- [x] clique grava autor; lista exige autor; payload com hora/autor
+- [x] vincularSmbi (admin) + botão + confirmação
+- [x] testes, check, build, deploy READY
+
+---
+
+## Resultado
+
+Só entra na lista do robô o pedido com clique provado (hora + autor). Botão com confirmação.
+Admin pode vincular o pedido a um movsai existente.
+
+## Verificado
+
+`npm run check` 0 erros; 227 testes; `build:client` e `build:api` ok localmente.
+
+## Não verificado / pendente
+
+- **Causa de o 1115 ter entrado:** não confirmada (sem log nem acesso ao banco). O código só grava
+  `smbiSolicitadoEm` no botão. Hipótese não descartada: clique em outro pedido/versão antiga da tela.
+- O dono precisa abrir o pedido `hq7ra5rce4pb` e usar "Vincular a pedido do SMBI" com **1071**.
+- Tela nova não vista no navegador.
+- Robô: só religar depois de conferir a simulação (o Hermes recusa pedido sem hora/autor).

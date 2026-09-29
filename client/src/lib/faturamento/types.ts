@@ -71,6 +71,7 @@ export interface Pedido {
   smbiCondpagFreteCod?: string | null;
   comissaoComercialProtegida?: number | null;
   smbiSolicitadoEm?: string | null;
+  smbiSolicitadoPor?: string | null;
   createdByUserId?: number | null;
   createdByRole: string | null;
 }
