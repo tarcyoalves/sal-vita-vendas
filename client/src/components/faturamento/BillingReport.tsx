@@ -38,6 +38,11 @@ function exportCsv(filename: string, headers: string[], rows: (string | number)[
   URL.revokeObjectURL(url);
 }
 
+/** Ligado a pedido do ERP SMBI: criado pelo robô ou vinculado à mão pelo admin. */
+function vinculadoSmbi(p: Pick<Pedido, "smbiMovsaiId" | "smbiVinculoEstado">): boolean {
+  return !!p.smbiMovsaiId || !!p.smbiVinculoEstado;
+}
+
 function prevMes(f: FiltroMes): FiltroMes {
   return f.mes === 0 ? { ano: f.ano - 1, mes: 11 } : { ano: f.ano, mes: f.mes - 1 };
 }
@@ -60,6 +65,8 @@ export default function BillingReport() {
   const [mesFilter, setMesFilter] = useState<FiltroMes | null>(mesAtual);
   const [showAllMonths, setShowAllMonths] = useState(false);
   const [ufFilter, setUfFilter] = useState("");
+  // Vínculo com o ERP SMBI: vinculado = tem número de pedido do SMBI (criado pelo robô ou vinculado à mão).
+  const [smbiFilter, setSmbiFilter] = useState<"todos" | "vinculados" | "nao_vinculados">("todos");
   // Busca livre: CNPJ, Razão Social, Cidade e Produtos num único campo — mesmo
   // padrão de busca já usado em Tarefas e no picker de vínculo de pedidos.
   const [searchQuery, setSearchQuery] = useState("");
@@ -121,6 +128,10 @@ export default function BillingReport() {
       result = result.filter((p) => pedidoNoMes(p, mesFilter));
     }
 
+    if (smbiFilter !== "todos") {
+      result = result.filter((p) => (smbiFilter === "vinculados") === vinculadoSmbi(p));
+    }
+
     if (ufFilter.trim()) {
       const ufLower = ufFilter.trim().toLowerCase();
       result = result.filter((p) => p.uf.toLowerCase().includes(ufLower));
@@ -139,7 +150,7 @@ export default function BillingReport() {
     }
 
     return result;
-  }, [allPedidos, statusFilter, sellerFilter, mesFilter, showAllMonths, ufFilter, searchQuery]);
+  }, [allPedidos, statusFilter, sellerFilter, mesFilter, showAllMonths, ufFilter, smbiFilter, searchQuery]);
 
   // Totals
   const totalEstimado = useMemo(() => filtered.reduce((s, p) => s + estimatedTotal(p), 0), [filtered]);
@@ -150,7 +161,7 @@ export default function BillingReport() {
 
   // CSV
   const handleExport = () => {
-    const headers = ["Tarefa", "CNPJ", "Razao Social", "Cidade", "UF", "Atendente", "Status", "Produtos", "Previsao Faturamento", "Faturado Em", "Valor Estimado", "Valor Faturado"];
+    const headers = ["Tarefa", "CNPJ", "Razao Social", "Cidade", "UF", "Atendente", "Status", "Produtos", "Previsao Faturamento", "Faturado Em", "Valor Estimado", "Valor Faturado", "Pedido SMBI"];
     const csvRows = filtered.map((p) => [
       p.taskId ? `#${p.taskId}` : "",
       p.cnpj,
@@ -164,6 +175,7 @@ export default function BillingReport() {
       formatDataBR(p.faturadoEm),
       estimatedTotal(p).toFixed(2).replace(".", ","),
       p.status === "faturado" ? totalPedido(p).toFixed(2).replace(".", ",") : "",
+      vinculadoSmbi(p) ? (p.smbiVinculoMovsais?.join(" / ") ?? p.smbiMovsaiId ?? "") : "",
     ]);
     const dateStr = new Date().toISOString().slice(0, 10);
     exportCsv(`relatorio-faturamento-${dateStr}.csv`, headers, csvRows);
@@ -181,7 +193,7 @@ export default function BillingReport() {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full px-3 py-2.5 border rounded-lg text-sm"
           />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
               <select
@@ -254,6 +266,18 @@ export default function BillingReport() {
                 {distinctUFs.map((uf) => (
                   <option key={uf} value={uf}>{uf}</option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">SMBI</label>
+              <select
+                value={smbiFilter}
+                onChange={(e) => setSmbiFilter(e.target.value as typeof smbiFilter)}
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+              >
+                <option value="todos">Todos</option>
+                <option value="vinculados">Vinculados ao SMBI</option>
+                <option value="nao_vinculados">Não vinculados ao SMBI</option>
               </select>
             </div>
             <div className="flex items-end">
@@ -349,6 +373,13 @@ export default function BillingReport() {
                             }`}
                           >
                             {p.aprovadoEm ? "Autorizado" : "Aguardando revisão"}
+                          </span>
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                              vinculadoSmbi(p) ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-slate-50 text-slate-400 border border-slate-200"
+                            }`}
+                          >
+                            {vinculadoSmbi(p) ? `SMBI ${p.smbiMovsaiId ?? p.smbiVinculoMovsais?.[0] ?? ""}` : "Sem SMBI"}
                           </span>
                         </div>
                       </td>
