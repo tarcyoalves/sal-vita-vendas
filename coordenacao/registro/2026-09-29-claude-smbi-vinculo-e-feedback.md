@@ -28,7 +28,7 @@
 
 - [x] Correção + testes (`resolveRobotOwnedFields`, 5 testes)
 - [x] Feedback na tela ("Solicitado em ... aguardando o robô" + toast explicativo)
-- [x] Deploy
+- [x] Deploy — **083ed60 FALHOU no build da Vercel** (workbox: bundle do cliente passou de 2 MiB); corrigido em d8f80fd (limite do precache em vite.config.ts). Deploy de d8f80fd ficou READY (build: check, 224 testes e migrate:build ok; sem erro de runtime; `/api/smbi/pedidos` sem senha responde 401). Ainda não verificado: a tela do pedido aberta no navegador.
 
 ---
 
@@ -44,6 +44,8 @@ desatualizado. O botão passa a mostrar que o pedido foi solicitado e que o rob�
   robô a `/api/smbi/pedidos` nas últimas 14 h** (a última foi na noite de 28/09).
 
 ## Não verificado / pendente
+
+- **Lição:** `npm run check` + `npm test` não pegam falha de `vite build`. Rode também `npm run build:client && npm run build:api` antes de dar como pronto e confira o deploy na Vercel.
 
 - Interface aberta no navegador (só typecheck).
 - Robô fora do ar: precisa ser religado pelo Hermes/agente da VPS.
