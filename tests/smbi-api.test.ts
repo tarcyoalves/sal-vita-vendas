@@ -235,6 +235,9 @@ describe('mapOrderToSmbiPayload', () => {
       aprovadoPor: 'Admin',
       // Sem edição registrada, a "última atualização" é a criação (o robô compara com o clique).
       atualizadoEm: '2026-09-01T00:00:00.000Z',
+      // Sem reserva em vigor, o token e a validade saem nulos.
+      reservaToken: null,
+      reservadoAte: null,
     });
   });
 

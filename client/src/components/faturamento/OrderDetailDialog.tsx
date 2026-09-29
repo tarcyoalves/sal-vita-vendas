@@ -14,11 +14,8 @@ import {
 } from '../../lib/faturamento/calc';
 import { OrderPrintDocument } from './OrderPrintDocument';
 import { LinkTaskDialog } from './LinkTaskDialog';
-import { Pencil, Truck, Trash2, CheckCircle2, Printer, Link2, Undo2, Send } from 'lucide-react';
-import {
-  SMBI_ESTADO_ROTULO, SMBI_MOTIVO_ROTULO,
-  type SmbiEstado, type SmbiMotivoCodigo,
-} from '../../../../shared/smbiEstados.js';
+import { Pencil, Truck, Trash2, CheckCircle2, Printer, Link2, Undo2 } from 'lucide-react';
+import SmbiPedidoControles from './SmbiPedidoControles';
 
 interface OrderDetailDialogProps {
   open: boolean;
@@ -287,96 +284,7 @@ export function OrderDetailDialog({
               Aprovar pedido
             </Button>
           )}
-          {canApprove && pedido.aprovadoEm && !pedido.smbiMovsaiId && (
-            <Button
-              size="sm"
-              variant="outline"
-              className={
-                pedido.smbiSolicitadoEm
-                  ? 'border-indigo-300 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 gap-1.5'
-                  : 'border-blue-400 text-blue-700 bg-blue-50 hover:bg-blue-100 gap-1.5'
-              }
-              onClick={() => {
-                // Cria um pedido NOVO no ERP. Se o pedido já existe lá (ex.: já embarcado),
-                // o certo é "Vincular a pedido do SMBI", não enviar.
-                const ok = window.confirm(
-                  `Criar este pedido NOVO no SMBI?\n\n${pedido.clienteNome}\n\n` +
-                  'Se ele já existe no SMBI (por exemplo, já foi embarcado), cancele e use "Vincular a pedido do SMBI".',
-                );
-                if (!ok) return;
-                actions.pedidos.dispararSmbi(pedido.id);
-                toast.success('Solicitado! O robô cria o pedido no SMBI e o número aparece aqui quando ele responder.');
-              }}
-            >
-              <Send size={14} />
-              {pedido.smbiSolicitadoEm ? 'Reenviar ao SMBI' : 'Enviar pedido para SMBI'}
-            </Button>
-          )}
-          {user?.role === 'admin' && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1.5"
-              onClick={() => {
-                const n = window.prompt(
-                  pedido.smbiMovsaiId
-                    ? `Este pedido está ligado ao pedido ${pedido.smbiMovsaiId} do SMBI.\nInforme o número CORRETO no SMBI:`
-                    : 'Informe o número do pedido que JÁ existe no SMBI (o robô não vai criar outro):',
-                  pedido.smbiMovsaiId ?? '',
-                );
-                const movsai = n?.trim();
-                if (!movsai) return;
-                if (!/^\d{1,12}$/.test(movsai)) {
-                  toast.error('Informe só o número do pedido no SMBI.');
-                  return;
-                }
-                actions.pedidos.vincularSmbi(pedido.id, movsai);
-                toast.success(`Pedido vinculado ao SMBI ${movsai}.`);
-              }}
-            >
-              Vincular a pedido do SMBI
-            </Button>
-          )}
-          {/* "Por que não foi": o motivo que o robô devolveu (CONTRATO-ROBO-CRM.md, rota 2). */}
-          {pedido.smbiEstado && pedido.smbiEstado !== 'CRIADO' && (
-            <div
-              className={`basis-full rounded-lg border px-3 py-2 text-xs ${
-                pedido.smbiEstado === 'DIVERGENTE'
-                  ? 'border-red-300 bg-red-50 text-red-800'
-                  : 'border-amber-300 bg-amber-50 text-amber-900'
-              }`}
-            >
-              <p className="font-semibold">
-                {SMBI_ESTADO_ROTULO[pedido.smbiEstado as SmbiEstado] ?? pedido.smbiEstado}
-              </p>
-              <p className="mt-0.5">
-                {(pedido.smbiMotivoCodigo && SMBI_MOTIVO_ROTULO[pedido.smbiMotivoCodigo as SmbiMotivoCodigo]) ||
-                  pedido.smbiMotivoTexto ||
-                  'O robô não informou o motivo.'}
-              </p>
-              {pedido.smbiMotivoTexto && pedido.smbiMotivoCodigo && (
-                <p className="mt-0.5 opacity-80">Detalhe do robô: {pedido.smbiMotivoTexto}</p>
-              )}
-              {pedido.smbiAtualizadoEm && (
-                <p className="mt-0.5 opacity-70">
-                  {new Date(pedido.smbiAtualizadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                  {pedido.smbiTentativa ? ` · tentativa ${pedido.smbiTentativa}` : ''}
-                </p>
-              )}
-            </div>
-          )}
-          {pedido.smbiSolicitadoEm && !pedido.smbiMovsaiId && !pedido.smbiEstado && (
-            <span className="text-xs text-indigo-700">
-              Solicitado em{' '}
-              {new Date(pedido.smbiSolicitadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-              {' '}— aguardando o robô criar no SMBI
-            </span>
-          )}
-          {pedido.smbiMovsaiId && (
-            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs py-1 px-2.5">
-              SMBI: Pedido {pedido.smbiMovsaiId}
-            </Badge>
-          )}
+          <SmbiPedidoControles pedido={pedido} />
           {!isFaturado && (
             <Button
               size="sm"

@@ -2,14 +2,23 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure, staffProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
-import { fatProducts, fatOrders, fatCommissions, fatOrderDeletionLogs, sellers, tasks, smbiRobotState } from '../db/schema';
-import { eq, and, isNull, desc } from 'drizzle-orm';
+import { fatProducts, fatOrders, fatCommissions, fatOrderDeletionLogs, sellers, tasks, smbiRobotState, smbiOrderEvents } from '../db/schema';
+import { eq, and, or, isNull, isNotNull, lte, desc } from 'drizzle-orm';
 import { sendEmail } from '../email/resend';
 import { renderSignature } from '../email/marketing';
 import { gerarPedidoPdf } from '../pdf/pedidoPdf';
 import { resolveRobotOwnedFields, roboSemSinal } from '../lib/smbi';
+import {
+  parseNumerosMovsai, PATCH_DESVINCULAR, movsaisLigados, resolverFaturamento, faturamentoDoVinculo,
+  totalAcordadoDoPedido,
+} from '../lib/smbiFaturamento';
 import { SMBI_ROBO_SEM_SINAL_MIN } from '../../shared/smbiEstados';
 import type { Pedido } from '../../client/src/lib/faturamento/types';
+
+/** Ação humana na linha do tempo do pedido no SMBI (auditoria: quem, o quê, quando). */
+async function registrarEventoSmbi(pedidoId: string, evento: string, porNome: string, dados: Record<string, unknown>) {
+  await db.insert(smbiOrderEvents).values({ pedidoId, evento, dados, origem: 'tela', porNome });
+}
 
 // ── Faturamento & Comissão (CRM Lembretes) ───────────────────────────────────
 // Backend do módulo antes mantido em localStorage. IDs são gerados no cliente
@@ -288,11 +297,24 @@ export const faturamentoRouter = router({
       if (pedido.smbiMovsaiId) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: `Pedido já criado no SMBI (movsai ${pedido.smbiMovsaiId})` });
       }
+      // Pedido já faturado no CRM é pedido que já embarcou: no SMBI ele já existe (caso 1115).
+      if (pedido.status === 'faturado') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Este pedido já está faturado. Não crie outro no SMBI: use "Vincular a pedido do SMBI".',
+        });
+      }
+      if (pedido.smbiVinculoEstado) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Este pedido está vinculado a um pedido do SMBI. Desvincule antes de enviar.' });
+      }
 
+      // UPDATE condicional: só grava se ninguém (robô) reservou o pedido nesse instante, senão o
+      // novo clique zeraria a reserva no meio da criação e o robô pegaria o pedido de novo.
+      const agoraIso = new Date().toISOString();
       const [row] = await db
         .update(fatOrders)
         .set({
-          smbiSolicitadoEm: new Date().toISOString(),
+          smbiSolicitadoEm: agoraIso,
           smbiSolicitadoPor: ctx.user.name,
           // Novo clique = nova tentativa: o estado/motivo da anterior (ex.: PENDENTE) sai da tela.
           smbiEstado: null,
@@ -301,11 +323,57 @@ export const faturamentoRouter = router({
           smbiTentativa: null,
           smbiAtualizadoEm: null,
           smbiConferidoEm: null,
+          smbiReservaToken: null,
+          smbiReservadoAte: null,
         })
-        .where(eq(fatOrders.id, input.id))
+        .where(and(
+          eq(fatOrders.id, input.id),
+          isNull(fatOrders.smbiMovsaiId),
+          or(isNull(fatOrders.smbiReservadoAte), lte(fatOrders.smbiReservadoAte, agoraIso)),
+        ))
         .returning();
+      if (!row) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'O robô está processando este pedido agora. Aguarde a resposta dele antes de enviar de novo.' });
+      }
+      await registrarEventoSmbi(input.id, 'ENVIO_SOLICITADO', ctx.user.name, { tentativaAnterior: pedido.smbiEstado ?? null });
       // Prova nos logs de quem pediu e quando (o CRM não guardava isto: caso 1115).
       console.log(`[smbi] dispararSmbi pedido=${input.id} por=${ctx.user.name} (id ${ctx.user.id})`);
+      return row;
+    }),
+
+  // Desfaz um clique por engano ANTES de o robô pegar o pedido. Sem efeito depois que o robô
+  // reservou ou criou (aí o caminho é o vínculo/desvínculo).
+  cancelarSmbi: staffProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const agoraIso = new Date().toISOString();
+      const [row] = await db
+        .update(fatOrders)
+        .set({
+          smbiSolicitadoEm: null,
+          smbiSolicitadoPor: null,
+          smbiEstado: null,
+          smbiMotivoCodigo: null,
+          smbiMotivoTexto: null,
+          smbiTentativa: null,
+          smbiAtualizadoEm: null,
+          smbiConferidoEm: null,
+        })
+        .where(and(
+          eq(fatOrders.id, input.id),
+          isNull(fatOrders.smbiMovsaiId),
+          isNotNull(fatOrders.smbiSolicitadoEm),
+          or(isNull(fatOrders.smbiReservadoAte), lte(fatOrders.smbiReservadoAte, agoraIso)),
+        ))
+        .returning();
+      if (!row) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'Não dá para cancelar: o pedido não está aguardando o robô, ou o robô já está processando/criou.',
+        });
+      }
+      await registrarEventoSmbi(input.id, 'ENVIO_CANCELADO', ctx.user.name, {});
+      console.log(`[smbi] cancelarSmbi pedido=${input.id} por=${ctx.user.name} (id ${ctx.user.id})`);
       return row;
     }),
 
@@ -345,20 +413,95 @@ export const faturamentoRouter = router({
   // Vincula o pedido a um movsai que JÁ EXISTE no SMBI (ex.: pedido aprovado tarde, que já
   // tinha sido criado e embarcado lá). Ação explícita do admin: o robô nunca cria pedido
   // que já tem movsai. Pode substituir um vínculo errado (caso 1115 → 1071).
+  // Aceita mais de um número ("1071, 1072": carga dividida em vários pedidos). O vínculo vale na
+  // hora (o robô nunca mais cria esse pedido) e o robô confere no SMBI depois (cliente, produto e
+  // quantidade); divergência fica aguardando confirmação do administrador.
   vincularSmbi: adminProcedure
-    .input(z.object({ id: z.string(), movsaiId: z.string().trim().regex(/^\d{1,12}$/, 'Informe só o número do pedido no SMBI') }))
+    .input(z.object({ id: z.string(), movsais: z.string().trim().min(1).max(200) }))
     .mutation(async ({ ctx, input }) => {
-      const [antes] = await db.select({ smbiMovsaiId: fatOrders.smbiMovsaiId }).from(fatOrders).where(eq(fatOrders.id, input.id));
+      const numeros = parseNumerosMovsai(input.movsais);
+      if (!numeros) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Informe só números do SMBI, separados por vírgula (até 20).' });
+      }
+      const [antes] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.id));
       if (!antes) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' });
+      const agoraIso = new Date().toISOString();
       const [row] = await db
         .update(fatOrders)
-        .set({ smbiMovsaiId: input.movsaiId })
+        .set({
+          smbiMovsaiId: numeros[0],
+          smbiVinculoMovsais: numeros,
+          smbiVinculoEstado: 'PENDENTE_CONFERENCIA',
+          smbiVinculoPor: ctx.user.name,
+          smbiVinculoEm: agoraIso,
+          smbiVinculoResultado: null,
+          smbiEstado: null, smbiMotivoCodigo: null, smbiMotivoTexto: null, smbiTentativa: null,
+          smbiAtualizadoEm: null, smbiConferidoEm: null,
+          smbiReservaToken: null, smbiReservadoAte: null,
+        })
         .where(eq(fatOrders.id, input.id))
         .returning();
+      await registrarEventoSmbi(input.id, 'VINCULADO', ctx.user.name, {
+        movsais: numeros,
+        anterior: antes.smbiVinculoMovsais ?? (antes.smbiMovsaiId ? [antes.smbiMovsaiId] : []),
+      });
       console.log(
-        `[smbi] vincularSmbi pedido=${input.id} movsai ${antes.smbiMovsaiId ?? '(vazio)'} -> ${input.movsaiId} por=${ctx.user.name} (id ${ctx.user.id})`,
+        `[smbi] vincularSmbi pedido=${input.id} movsais ${antes.smbiMovsaiId ?? '(vazio)'} -> ${numeros.join(',')} por=${ctx.user.name} (id ${ctx.user.id})`,
       );
       return row;
+    }),
+
+  // Desfaz o vínculo com o SMBI (vínculo errado, como o do 1115 apagado). Auditado. O pedido só
+  // volta ao robô com um NOVO clique em "Enviar pedido para SMBI".
+  desvincularSmbi: adminProcedure
+    .input(z.object({ id: z.string(), motivo: z.string().trim().min(5).max(300) }))
+    .mutation(async ({ ctx, input }) => {
+      const [antes] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.id));
+      if (!antes) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' });
+      if (!antes.smbiMovsaiId && !antes.smbiVinculoEstado) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Este pedido não está vinculado ao SMBI.' });
+      }
+      const [row] = await db.update(fatOrders).set(PATCH_DESVINCULAR).where(eq(fatOrders.id, input.id)).returning();
+      await registrarEventoSmbi(input.id, 'DESVINCULADO', ctx.user.name, {
+        motivo: input.motivo,
+        anterior: movsaisLigados(antes),
+      });
+      console.log(`[smbi] desvincularSmbi pedido=${input.id} (era ${movsaisLigados(antes).join(',') || '-'}) por=${ctx.user.name} (id ${ctx.user.id})`);
+      return row;
+    }),
+
+  // O administrador aceita um vínculo que o robô marcou com divergência (ex.: quantidade diferente
+  // por corte de carga). Se o SMBI já faturou, espelha o faturamento agora.
+  confirmarVinculoSmbi: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const [antes] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.id));
+      if (!antes) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' });
+      if (antes.smbiVinculoEstado !== 'VINCULO_COM_DIVERGENCIA') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Não há divergência de vínculo para confirmar neste pedido.' });
+      }
+      const patch: Partial<typeof fatOrders.$inferInsert> = { smbiVinculoEstado: 'CONFERIDO' };
+      const fat = antes.smbiVinculoResultado ? faturamentoDoVinculo(antes.smbiVinculoResultado) : null;
+      if (fat) {
+        const r = resolverFaturamento(antes, fat, totalAcordadoDoPedido(antes));
+        if (!r.erro) Object.assign(patch, r.patch);
+      }
+      const [row] = await db.update(fatOrders).set(patch).where(eq(fatOrders.id, input.id)).returning();
+      await registrarEventoSmbi(input.id, 'VINCULO_CONFIRMADO', ctx.user.name, { movsais: movsaisLigados(antes) });
+      console.log(`[smbi] confirmarVinculoSmbi pedido=${input.id} por=${ctx.user.name} (id ${ctx.user.id})`);
+      return row;
+    }),
+
+  // Linha do tempo do pedido no SMBI (robô + ações da tela). Só admin/gerente.
+  smbiEventos: staffProcedure
+    .input(z.object({ pedidoId: z.string() }))
+    .query(async ({ input }) => {
+      return db
+        .select()
+        .from(smbiOrderEvents)
+        .where(eq(smbiOrderEvents.pedidoId, input.pedidoId))
+        .orderBy(desc(smbiOrderEvents.id))
+        .limit(100);
     }),
 
   // Revisão do admin/manager — informativa: não bloqueia nenhuma ação do

@@ -1,4 +1,5 @@
 import { pgTable, serial, text, integer, boolean, timestamp, numeric, jsonb, doublePrecision } from 'drizzle-orm/pg-core';
+import type { SmbiEspelhoFiscal, SmbiVinculoResultado } from '../../shared/smbiEstados';
 
 // Generic key/value store for small global toggles (e.g. TV panel on/off).
 export const appSettings = pgTable('app_settings', {
@@ -696,9 +697,35 @@ export const fatOrders = pgTable('fat_orders', {
   smbiConferidoEm: text('smbi_conferido_em'),
   // Última edição do pedido pela tela: o robô compara com o clique para detectar edição posterior.
   atualizadoEm: text('atualizado_em'),
+  // Reserva para um ciclo do robô (anti-duplicidade): token + validade. Só a lista do robô grava.
+  smbiReservaToken: text('smbi_reserva_token'),
+  smbiReservadoAte: text('smbi_reservado_ate'),
+  // Espelho fiscal devolvido pelo robô (NF-e/CT-e de N movsais). Nunca altera valor comercial/comissão.
+  smbiEspelhoFiscal: jsonb('smbi_espelho_fiscal').$type<SmbiEspelhoFiscal | null>(),
+  smbiAlertaDesconto: boolean('smbi_alerta_desconto').notNull().default(false),
+  // Vínculo manual com pedido(s) que já existem no SMBI (admin) e a conferência do robô.
+  smbiVinculoEstado: text('smbi_vinculo_estado'), // PENDENTE_CONFERENCIA | CONFERIDO | VINCULO_COM_DIVERGENCIA
+  smbiVinculoMovsais: jsonb('smbi_vinculo_movsais').$type<string[] | null>(),
+  smbiVinculoPor: text('smbi_vinculo_por'),
+  smbiVinculoEm: text('smbi_vinculo_em'),
+  smbiVinculoResultado: jsonb('smbi_vinculo_resultado').$type<SmbiVinculoResultado | null>(),
   createdByUserId: integer('created_by_user_id'),
   createdByRole: text('created_by_role'),
 });
+
+// Linha do tempo do pedido no SMBI: eventos do robô (EM_OE, FATURADO…) e ações humanas
+// (clique, cancelamento, vínculo). Só acrescenta; é a prova de "quem fez o quê e quando".
+export const smbiOrderEvents = pgTable('smbi_order_events', {
+  id: serial('id').primaryKey(),
+  pedidoId: text('pedido_id').notNull(),
+  evento: text('evento').notNull(),
+  dados: jsonb('dados').$type<Record<string, unknown> | null>(),
+  em: text('em'), // hora do evento informada pelo robô (ISO); vazio nas ações da tela
+  origem: text('origem').notNull().default('robo'), // robo | tela
+  porNome: text('por_nome'),
+  criadoEm: timestamp('criado_em').defaultNow().notNull(),
+});
+export type SmbiOrderEvent = typeof smbiOrderEvents.$inferSelect;
 
 // Uma única linha (id = 1): a chave de parada do robô do SMBI e o último batimento dele.
 // `roboAtivo` nasce FALSE: o robô só cria pedido depois que o admin liga a chave na tela.

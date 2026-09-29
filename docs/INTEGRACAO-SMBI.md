@@ -93,6 +93,70 @@ deve reconferir antes de criar. Continuam: `smbiSolicitadoEm`, `smbiSolicitadoPo
 (inteiros ≥ 0). Resposta `{ ok, roboAtivo }`. O batimento **nunca** liga/desliga o robô. Sem sinal
 por mais de 10 minutos, o painel do faturamento mostra o aviso em vermelho.
 
+## Anti-duplicidade: reserva por ciclo e sem retentativa automática
+
+Contra o robô criar o mesmo pedido duas vezes (caso 1113 = duplicata do 1112, e o 1115):
+
+- **Reserva atômica.** `GET /api/smbi/pedidos` (robô ligado, sem `simular`) reserva, num único
+  UPDATE, os pedidos que devolve: cada um sai com `reservaToken` e `reservadoAte` (15 min). Duas
+  consultas ao mesmo tempo, ou dois ciclos sobrepostos, **nunca recebem o mesmo pedido**.
+- **Re-checagem exige o token.** `GET /api/smbi/pedidos?id=<id>&token=<reservaToken>` só devolve o
+  pedido se o token bate e a reserva não venceu. Sem token, ou de outro ciclo, a lista vem vazia:
+  **o robô não pode criar**. (Robô antigo que rechecava sem token fica parado — falha segura.)
+- **A resposta encerra a reserva.** `POST .../retorno` com `smbiMovsaiId` ou `estado` libera a reserva.
+  Se o robô cair no meio, o pedido volta à lista após 15 min; o robô deve procurar a marca
+  `CRM:<id>` no SMBI antes de criar.
+- **Sem retentativa automática.** Pedido devolvido como `PENDENTE`, `ERRO` ou `DIVERGENTE` sai da
+  lista até um **novo clique** do dono ("Reenviar ao SMBI"), que zera o estado.
+- **Vínculo manual bloqueia o robô.** Pedido com vínculo (`smbiVinculoEstado`) nunca é entregue.
+- **O clique é travado no servidor:** pedido já **faturado** não pode ser enviado (é o caso do 1115:
+  use "Vincular"), pedido vinculado não pode ser enviado, e não dá para reenviar enquanto o robô
+  estiver com o pedido reservado. "Cancelar envio" desfaz um clique por engano antes de o robô pegar.
+- `simular=1` nunca reserva e nunca expõe token.
+
+## Contrato robô ⇄ CRM — etapas 2 e 3
+
+**Rota 3 — `POST /api/smbi/pedidos/:id/faturamento`** (pedido ligado foi faturado no SMBI)
+
+```json
+{ "movsais": [{ "id": "1071", "pesoKg": 30000,
+    "nfe": { "numero": "123", "chave": "…", "data": "2026-09-25", "valorTotal": 0, "valorSal": 0 },
+    "cte": { "numero": "456", "chave": "…", "valorFrete": 0 } }],
+  "faturadoEm": "2026-09-25T10:00:00-03:00", "snapshotHash": "…" }
+```
+
+- Só aceita se algum `movsais[].id` está ligado ao pedido (senão **409**). Aceita N movsais.
+- Grava `status = faturado` + `faturadoEm`, `numeroNfe`/`numeroCte` (vários: "10, 11"), o espelho fiscal
+  e `smbiAlertaDesconto`. **Nunca** altera itens, valor comercial nem comissão.
+- Pedido que um humano já faturou: só o espelho é atualizado (status e data ficam).
+- `alertaDesconto` = (Σ `nfe.valorSal` + Σ `cte.valorFrete`) **menor** que o total acordado (itens +
+  frete) menos R$ 0,05. Igual = só realocação sal→frete, sem alerta. Idempotente.
+
+**Rota 7 — `POST /api/smbi/pedidos/:id/status`** `{ "evento", "dados": {…}, "em": "<iso>" }`,
+`evento` ∈ `EM_OE`, `FATURADO`, `CIOT`, `MDFE`, `CANCELADO_SMBI`, `EXCLUIDO_SMBI`. Vai para a linha do
+tempo do pedido ("Histórico do SMBI"); evento repetido (mesmo pedido, evento e `em`) é ignorado.
+`EXCLUIDO_SMBI` desfaz o vínculo (se `dados.movsaiId` vier e não for o ligado, só registra) e o pedido só
+volta ao robô com **novo clique**.
+
+**Rota 4 — `GET /api/smbi/vinculos`** → `[{ pedidoId, movsaiNumeros: [...], solicitadoEm, solicitadoPor }]`
+(vínculos aguardando conferência).
+
+**Rota 5 — `POST /api/smbi/vinculos/:pedidoId/resultado`**
+
+```json
+{ "movsais": [{ "id": "1071", "cnpj": "…", "cliente": "…", "faturado": true,
+    "itens": [{ "produto": "…", "qtdKg": 30000, "valorUnit": 0 }], "nfe": {…}, "cte": {…}, "status": "…" }],
+  "confere": { "cliente": true, "produto": true, "quantidade": true } }
+```
+
+Tudo confere **e** os movsais lidos são exatamente os do vínculo ⇒ `CONFERIDO` (e, se faturado, espelha como
+na rota 3). Senão ⇒ `VINCULO_COM_DIVERGENCIA`: nada é espelhado; o admin vê a comparação lado a lado e
+decide (confirmar ou desvincular).
+
+**Rota 6 (tela, só admin):** "Vincular a pedido do SMBI" (um ou vários números; vale na hora e bloqueia o robô;
+o robô confere depois), "Trocar vínculo", "Desvincular" (motivo obrigatório, auditado) e "Confirmar vínculo
+mesmo assim". Tudo entra na linha do tempo com **quem** fez.
+
 ## Autenticação
 
 Todas as rotas exigem `Authorization: Bearer $SMBI_SYNC_SECRET`.

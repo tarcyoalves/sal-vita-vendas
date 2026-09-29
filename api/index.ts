@@ -19,7 +19,7 @@ import {
   emailEvents, sellers, emailSequenceSends, emailSequenceEnrollments, marketingContacts, taskDeletionLogs,
   companies, contacts, publicSources, consentRecords, suppressionList, auditLogs, fatOrders, smbiRobotState,
 } from '../server/db/schema';
-import { eq, and, or, sql, lte, gte, isNull, isNotNull, inArray, desc, asc, lt } from 'drizzle-orm';
+import { eq, and, or, sql, lte, gte, isNull, isNotNull, inArray, notInArray, desc, asc, lt } from 'drizzle-orm';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
 import { createPixPaymentForOrder } from '../server/lib/mercadopago';
 import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid, orderTrackLink } from '../server/lib/orderConfirmation';
@@ -30,6 +30,9 @@ import {
   isAuthorized, isElegivelParaSmbi, mapOrderToSmbiPayload, resolveRetornoUpdate, retornoBodySchema,
   validarEstadoRetorno, heartbeatBodySchema, pedidosParaRobo,
 } from '../server/lib/smbi';
+import { reservaAte, reservaConfere } from '../server/lib/smbiFaturamento';
+import { SMBI_ESTADOS_QUE_PARAM } from '../shared/smbiEstados';
+import { registerSmbiExtraRoutes } from '../server/smbiRoutes';
 
 function isBusinessHours(): boolean {
   const brHour = (new Date().getUTCHours() - 3 + 24) % 24;
@@ -1540,22 +1543,54 @@ app.get('/api/smbi/pedidos', smbiApiLimiter, async (req, res) => {
     // Chave de parada (CONTRATO-ROBO-CRM.md, rota 9): sem linha = desligado (fail closed).
     const [estadoRobo] = await db.select({ roboAtivo: smbiRobotState.roboAtivo }).from(smbiRobotState).where(eq(smbiRobotState.id, 1));
     const roboAtivo = estadoRobo?.roboAtivo === true;
-    // Só pedidos enviados pelo botão "Enviar pedido para SMBI" (smbiSolicitadoEm).
-    // O filtro vale também para ?id= — é a re-checagem do robô antes de criar.
+    // Só pedidos enviados pelo botão "Enviar pedido para SMBI" (smbiSolicitadoEm + autor).
+    // O filtro vale também para ?id= — é a re-checagem do robô antes de criar. Pedido que o
+    // robô já devolveu como PENDENTE/ERRO só volta com NOVO clique; pedido com vínculo manual
+    // nunca é criado pelo robô.
     const elegivel = and(
       isNotNull(fatOrders.aprovadoEm),
       isNotNull(fatOrders.smbiSolicitadoEm),
       isNotNull(fatOrders.smbiSolicitadoPor),
       isNull(fatOrders.smbiMovsaiId),
+      isNull(fatOrders.smbiVinculoEstado),
+      or(isNull(fatOrders.smbiEstado), notInArray(fatOrders.smbiEstado, [...SMBI_ESTADOS_QUE_PARAM])),
     );
-    const rows = id
-      ? await db.select().from(fatOrders).where(and(eq(fatOrders.id, id), elegivel)).limit(1)
-      : await db
-          .select()
+    const agora = new Date();
+    const agoraIso = agora.toISOString();
+    const semReservaVigente = or(isNull(fatOrders.smbiReservadoAte), lte(fatOrders.smbiReservadoAte, agoraIso));
+
+    let rows: Array<typeof fatOrders.$inferSelect> = [];
+    if (roboAtivo && !simular) {
+      if (id) {
+        // Re-checagem antes de criar: só vale com o token da reserva em vigor (outro ciclo,
+        // atrasado, não confirma o mesmo pedido).
+        const token = typeof req.query.token === 'string' ? req.query.token : undefined;
+        const [row] = await db.select().from(fatOrders).where(and(eq(fatOrders.id, id), elegivel)).limit(1);
+        if (row && reservaConfere(row, token, agora)) rows = [row];
+        else if (row) console.warn(`[smbi] GET ?id=${id} → reserva ausente/vencida/token inválido`);
+      } else {
+        // Reserva ATÔMICA: o UPDATE só devolve os pedidos que ESTE chamador ganhou. Duas consultas
+        // ao mesmo tempo (ou dois ciclos sobrepostos) nunca recebem o mesmo pedido.
+        const candidatos = await db
+          .select({ id: fatOrders.id })
           .from(fatOrders)
-          .where(elegivel)
+          .where(and(elegivel, semReservaVigente))
           .orderBy(asc(fatOrders.smbiSolicitadoEm))
-          .limit(100);
+          .limit(20);
+        if (candidatos.length > 0) {
+          rows = await db
+            .update(fatOrders)
+            .set({ smbiReservaToken: globalThis.crypto.randomUUID(), smbiReservadoAte: reservaAte(agora) })
+            .where(and(inArray(fatOrders.id, candidatos.map((c) => c.id)), elegivel, semReservaVigente))
+            .returning();
+        }
+      }
+    } else if (simular) {
+      // Simulação: mostra o que sairia, SEM reservar e SEM expor token de reserva de outro ciclo.
+      const base = id ? and(eq(fatOrders.id, id), elegivel) : and(elegivel, semReservaVigente);
+      rows = (await db.select().from(fatOrders).where(base).orderBy(asc(fatOrders.smbiSolicitadoEm)).limit(id ? 1 : 100))
+        .map((r) => ({ ...r, smbiReservaToken: null, smbiReservadoAte: null }));
+    }
     // Defesa em profundidade: mesmo que a query mude, nada fora da regra sai daqui.
     // Robô desligado: lista vazia (trava do servidor). `simular=1` mostra o que sairia.
     const pedidos = pedidosParaRobo(roboAtivo, simular, rows.filter(isElegivelParaSmbi).map(mapOrderToSmbiPayload));
@@ -1619,7 +1654,10 @@ app.post('/api/smbi/pedidos/:id/retorno', smbiApiLimiter, express.json({ limit: 
       const where = patch.smbiMovsaiId
         ? and(eq(fatOrders.id, id), or(isNull(fatOrders.smbiMovsaiId), eq(fatOrders.smbiMovsaiId, patch.smbiMovsaiId)))
         : eq(fatOrders.id, id);
-      const updated = await db.update(fatOrders).set(patch).where(where).returning({ id: fatOrders.id });
+      // Resposta do robô (movsai ou estado) encerra a tentativa: libera a reserva.
+      const encerra = patch.smbiMovsaiId !== undefined || patch.smbiEstado !== undefined;
+      const set = encerra ? { ...patch, smbiReservaToken: null, smbiReservadoAte: null } : patch;
+      const updated = await db.update(fatOrders).set(set).where(where).returning({ id: fatOrders.id });
       if (updated.length === 0) {
         console.warn(`[smbi] POST retorno pedido=${id} → 409 (movsai gravado por outra chamada)`);
         res.status(409).json({ error: 'smbiMovsaiId já vinculado a um valor diferente' });
@@ -1670,6 +1708,9 @@ app.post('/api/smbi/heartbeat', smbiApiLimiter, express.json({ limit: '4kb' }), 
     res.status(500).json({ error: 'Internal error' });
   }
 });
+
+// Contrato robô ⇄ CRM, etapas 2 e 3: faturamento espelhado, linha do tempo e vínculo manual.
+registerSmbiExtraRoutes(app, smbiApiLimiter);
 
 // Migration endpoints removed — one-time migration completed.
 

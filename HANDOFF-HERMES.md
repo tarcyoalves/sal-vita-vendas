@@ -546,6 +546,15 @@ pedido que já existe lá (corrige 1115 → 1071).
 - Aprovar pedido **não** é pedir criação no SMBI. Pedido aprovado tarde, já embarcado, é
   vinculado por um humano, nunca criado.
 
+**Anti-duplicidade no CRM (29/09, contrato etapas 1–3; detalhes em `docs/INTEGRACAO-SMBI.md`):**
+- O robô só recebe pedido se a chave `roboAtivo` estiver **ligada** pelo dono na tela (nasce desligada).
+- Cada pedido entregue vem com `reservaToken` (15 min). A re-checagem é
+  `GET /api/smbi/pedidos?id=<id>&token=<reservaToken>`; sem token ou com token de outro ciclo o CRM
+  devolve lista vazia — **não crie**. Robô sem essa mudança fica parado (falha segura).
+- Depois de `PENDENTE`/`ERRO` o pedido não volta sozinho: só com novo clique do dono. Nada de loop.
+- Envie `POST /api/smbi/heartbeat` a cada ciclo e use `?simular=1` na simulação (nunca reserva).
+- Pedido com vínculo manual (`smbiVinculoEstado`) não vem na lista. Confira `GET /api/smbi/vinculos`.
+
 ## 8. Armadilhas técnicas deste código
 
 ### SQL raw é necessário em pontos específicos — não "traduza"

@@ -2,6 +2,8 @@
 // Estes tipos espelham o que virará tabela no banco em 02/07. Mantê-los estáveis
 // permite trocar o store de localStorage por tRPC sem mexer nas telas.
 
+import type { SmbiEspelhoFiscal, SmbiVinculoResultado } from '../../../../shared/smbiEstados.js';
+
 export interface Produto {
   id: string;
   nome: string;            // ex: "SAL DO FAZENDEIRO MOÍDO 25 KG"
@@ -80,6 +82,15 @@ export interface Pedido {
   smbiAtualizadoEm?: string | null;
   smbiConferidoEm?: string | null;
   atualizadoEm?: string | null;
+  // Reserva do robô (anti-duplicidade), espelho fiscal e vínculo manual — só leitura na tela.
+  smbiReservadoAte?: string | null;
+  smbiEspelhoFiscal?: SmbiEspelhoFiscal | null;
+  smbiAlertaDesconto?: boolean;
+  smbiVinculoEstado?: string | null;
+  smbiVinculoMovsais?: string[] | null;
+  smbiVinculoPor?: string | null;
+  smbiVinculoEm?: string | null;
+  smbiVinculoResultado?: SmbiVinculoResultado | null;
   createdByUserId?: number | null;
   createdByRole: string | null;
 }

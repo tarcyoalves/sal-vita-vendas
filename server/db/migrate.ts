@@ -143,7 +143,9 @@ async function ensureRecentSchema() {
           to_regclass('public.radar_establishments') IS NOT NULL
           AND to_regclass('public.radar_enrichment') IS NOT NULL
           AND to_regclass('public.radar_lead_actions') IS NOT NULL
-          AND to_regclass('public.radar_lead_events') IS NOT NULL AS radar_ok`,
+          AND to_regclass('public.radar_lead_events') IS NOT NULL AS radar_ok,
+          to_regclass('public.smbi_order_events') IS NOT NULL
+          AND to_regclass('public.smbi_robot_state') IS NOT NULL AS smbi_ok`,
   ]);
 
   // fat_orders só é criada pela migração longa; se ainda não existe, não há o que corrigir aqui.
@@ -164,22 +166,49 @@ async function ensureRecentSchema() {
     if (!have.has('smbi_atualizado_em')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_atualizado_em TEXT`;
     if (!have.has('smbi_conferido_em')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_conferido_em TEXT`;
     if (!have.has('atualizado_em')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS atualizado_em TEXT`;
+    if (!have.has('smbi_reserva_token')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_reserva_token TEXT`;
+    if (!have.has('smbi_reservado_ate')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_reservado_ate TEXT`;
+    if (!have.has('smbi_espelho_fiscal')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_espelho_fiscal JSONB`;
+    if (!have.has('smbi_alerta_desconto')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_alerta_desconto BOOLEAN NOT NULL DEFAULT FALSE`;
+    if (!have.has('smbi_vinculo_estado')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_vinculo_estado TEXT`;
+    if (!have.has('smbi_vinculo_movsais')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_vinculo_movsais JSONB`;
+    if (!have.has('smbi_vinculo_por')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_vinculo_por TEXT`;
+    if (!have.has('smbi_vinculo_em')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_vinculo_em TEXT`;
+    if (!have.has('smbi_vinculo_resultado')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_vinculo_resultado JSONB`;
   }
-  // Chave/batimento do robô do SMBI: sem esta tabela a rota do robô e o painel do faturamento falham.
-  await sql`
-    CREATE TABLE IF NOT EXISTS smbi_robot_state (
-      id                   INTEGER PRIMARY KEY,
-      robo_ativo           BOOLEAN NOT NULL DEFAULT FALSE,
-      ultimo_heartbeat_em  TEXT,
-      versao               TEXT,
-      ciclo                INTEGER,
-      pendentes            INTEGER,
-      pulados              INTEGER,
-      criados              INTEGER,
-      atualizado_por       TEXT,
-      atualizado_em        TEXT
-    )
-  `;
+  // Linha do tempo e chave/batimento do robô do SMBI: sem estas tabelas a rota do robô e o painel
+  // do faturamento falham. Só cria se faltar (senão seriam 4 idas ao Neon a cada cold start).
+  const smbiOk = (reg as unknown as Array<{ smbi_ok: boolean }>)[0]?.smbi_ok === true;
+  if (!smbiOk) {
+    await sql`
+      CREATE TABLE IF NOT EXISTS smbi_order_events (
+        id         SERIAL PRIMARY KEY,
+        pedido_id  TEXT NOT NULL,
+        evento     TEXT NOT NULL,
+        dados      JSONB,
+        em         TEXT,
+        origem     TEXT NOT NULL DEFAULT 'robo',
+        por_nome   TEXT,
+        criado_em  TIMESTAMP NOT NULL DEFAULT now()
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS smbi_order_events_pedido_idx ON smbi_order_events(pedido_id, id)`;
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS smbi_order_events_dedupe_idx ON smbi_order_events(pedido_id, evento, em)`;
+    await sql`
+      CREATE TABLE IF NOT EXISTS smbi_robot_state (
+        id                   INTEGER PRIMARY KEY,
+        robo_ativo           BOOLEAN NOT NULL DEFAULT FALSE,
+        ultimo_heartbeat_em  TEXT,
+        versao               TEXT,
+        ciclo                INTEGER,
+        pendentes            INTEGER,
+        pulados              INTEGER,
+        criados              INTEGER,
+        atualizado_por       TEXT,
+        atualizado_em        TEXT
+      )
+    `;
+  }
 
   const radarOk = (reg as unknown as Array<{ radar_ok: boolean }>)[0]?.radar_ok === true;
   if (!radarOk) await ensureRadarTables();
@@ -187,7 +216,7 @@ async function ensureRecentSchema() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-09-29b';
+const SCHEMA_VERSION = '2026-09-29d';
 
 export async function ensureTablesExist() {
   // Antes de tudo (e antes do caminho rápido): garante o que foi criado por último.
@@ -863,6 +892,29 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_atualizado_em TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_conferido_em TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS atualizado_em TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_reserva_token TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_reservado_ate TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_espelho_fiscal JSONB`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_alerta_desconto BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_vinculo_estado TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_vinculo_movsais JSONB`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_vinculo_por TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_vinculo_em TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_vinculo_resultado JSONB`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS smbi_order_events (
+      id         SERIAL PRIMARY KEY,
+      pedido_id  TEXT NOT NULL,
+      evento     TEXT NOT NULL,
+      dados      JSONB,
+      em         TEXT,
+      origem     TEXT NOT NULL DEFAULT 'robo',
+      por_nome   TEXT,
+      criado_em  TIMESTAMP NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS smbi_order_events_pedido_idx ON smbi_order_events(pedido_id, id)`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS smbi_order_events_dedupe_idx ON smbi_order_events(pedido_id, evento, em)`;
   await sql`
     CREATE TABLE IF NOT EXISTS smbi_robot_state (
       id                   INTEGER PRIMARY KEY,

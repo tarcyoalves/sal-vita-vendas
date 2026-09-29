@@ -11,7 +11,7 @@ import crypto from 'crypto';
 import { z } from 'zod';
 import type { FatOrder } from '../db/schema';
 import { condicaoPorTexto } from '../../shared/smbiCondicoes';
-import { SMBI_ESTADOS, SMBI_MOTIVO_CODIGOS, SMBI_ROBO_SEM_SINAL_MIN } from '../../shared/smbiEstados';
+import { SMBI_ESTADOS, SMBI_ESTADOS_QUE_PARAM, SMBI_MOTIVO_CODIGOS, SMBI_ROBO_SEM_SINAL_MIN } from '../../shared/smbiEstados';
 
 // ── Autenticação (Bearer SMBI_SYNC_SECRET) ───────────────────────────────────
 
@@ -74,6 +74,9 @@ export interface SmbiPedidoPayload {
   /** Última edição do pedido pela tela (ou a criação). Se for depois do clique, o pedido foi
    * editado depois de solicitado e o robô deve reconferir antes de criar. */
   atualizadoEm: string;
+  /** Reserva deste ciclo: a re-checagem `GET /api/smbi/pedidos?id=…&token=…` só vale com este token. */
+  reservaToken: string | null;
+  reservadoAte: string | null;
 }
 
 /** Converte uma linha de `fat_orders` no payload que o robô consome. Nunca
@@ -105,6 +108,8 @@ export function mapOrderToSmbiPayload(row: FatOrder): SmbiPedidoPayload {
     smbiSolicitadoEm: row.smbiSolicitadoEm,
     smbiSolicitadoPor: row.smbiSolicitadoPor,
     atualizadoEm: row.atualizadoEm ?? row.criadoEm,
+    reservaToken: row.smbiReservaToken ?? null,
+    reservadoAte: row.smbiReservadoAte ?? null,
   };
 }
 
@@ -188,13 +193,19 @@ export interface RetornoResolution {
  * (HANDOFF-HERMES.md, seção 7, caso N).
  */
 export function isElegivelParaSmbi(
-  row: Pick<FatOrder, 'aprovadoEm' | 'smbiSolicitadoEm' | 'smbiSolicitadoPor' | 'smbiMovsaiId'>,
+  row: Pick<FatOrder, 'aprovadoEm' | 'smbiSolicitadoEm' | 'smbiSolicitadoPor' | 'smbiMovsaiId'> &
+    Partial<Pick<FatOrder, 'smbiEstado' | 'smbiVinculoEstado'>>,
 ): boolean {
   return (
     row.aprovadoEm != null &&
     !!row.smbiSolicitadoEm &&
     !!row.smbiSolicitadoPor &&
-    row.smbiMovsaiId == null
+    row.smbiMovsaiId == null &&
+    // Sem retentativa automática: depois de PENDENTE/ERRO/DIVERGENTE o pedido só volta com NOVO clique
+    // (o clique zera o estado). Evita o robô repetir tentativa em loop e criar duplicata.
+    !(SMBI_ESTADOS_QUE_PARAM as readonly string[]).includes(row.smbiEstado ?? '') &&
+    // Pedido com vínculo manual nunca é criado pelo robô.
+    !row.smbiVinculoEstado
   );
 }
 

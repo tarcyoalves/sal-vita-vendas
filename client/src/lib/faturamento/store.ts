@@ -294,30 +294,40 @@ export const pedidos = {
     api.faturamento.aprovarPedido.mutate({ id }).catch(onWriteError);
     return aprovado;
   },
-  // Solicitação manual de envio para o ERP SMBI
-  dispararSmbi(id: string): Pedido | null {
-    const atual = mirror.pedidos.find((p) => p.id === id);
-    if (!atual) return null;
-    const enviado: Pedido = {
-      ...atual,
-      smbiSolicitadoEm: new Date().toISOString(),
-    };
-    mirror = { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === id ? enviado : p)) };
-    emit();
-    api.faturamento.dispararSmbi.mutate({ id }).catch(onWriteError);
-    return enviado;
+  // ── Ações do SMBI ──────────────────────────────────────────────────────────
+  // Sem atualização otimista: o servidor valida (pedido faturado, robô processando agora, vínculo…)
+  // e a tela só muda depois da resposta. Erro = a promessa rejeita; quem chama mostra a mensagem.
+  // Solicitação manual de envio para o ERP SMBI (cria pedido NOVO lá).
+  async dispararSmbi(id: string): Promise<Pedido | null> {
+    return aplicarLinhaServidor(await api.faturamento.dispararSmbi.mutate({ id }));
   },
-  // Admin: liga o pedido a um movsai que já existe no SMBI (o robô nunca cria esse pedido).
-  vincularSmbi(id: string, movsaiId: string): Pedido | null {
-    const atual = mirror.pedidos.find((p) => p.id === id);
-    if (!atual) return null;
-    const vinculado: Pedido = { ...atual, smbiMovsaiId: movsaiId };
-    mirror = { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === id ? vinculado : p)) };
-    emit();
-    api.faturamento.vincularSmbi.mutate({ id, movsaiId }).catch(onWriteError);
-    return vinculado;
+  // Desfaz um clique por engano, antes de o robô pegar o pedido.
+  async cancelarSmbi(id: string): Promise<Pedido | null> {
+    return aplicarLinhaServidor(await api.faturamento.cancelarSmbi.mutate({ id }));
+  },
+  // Admin: liga o pedido a movsai(s) que já existem no SMBI, ex. "1071" ou "1071, 1072" (o robô
+  // nunca cria esse pedido e depois confere no SMBI).
+  async vincularSmbi(id: string, movsais: string): Promise<Pedido | null> {
+    return aplicarLinhaServidor(await api.faturamento.vincularSmbi.mutate({ id, movsais }));
+  },
+  // Admin: desfaz um vínculo (auditado). O pedido só volta ao robô com novo clique.
+  async desvincularSmbi(id: string, motivo: string): Promise<Pedido | null> {
+    return aplicarLinhaServidor(await api.faturamento.desvincularSmbi.mutate({ id, motivo }));
+  },
+  // Admin: aceita um vínculo que o robô marcou com divergência.
+  async confirmarVinculoSmbi(id: string): Promise<Pedido | null> {
+    return aplicarLinhaServidor(await api.faturamento.confirmarVinculoSmbi.mutate({ id }));
   },
 };
+
+/** Troca no espelho a linha do pedido pela devolvida pelo servidor (fonte da verdade). */
+function aplicarLinhaServidor(row: unknown): Pedido | null {
+  if (!row) return null;
+  const p = row as Pedido;
+  mirror = { ...mirror, pedidos: mirror.pedidos.map((x) => (x.id === p.id ? p : x)) };
+  emit();
+  return p;
+}
 
 // ── Comissões (por atendente) ─────────────────────────────────────────────────
 export const comissoes = {
