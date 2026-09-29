@@ -16,6 +16,7 @@ import { enrollInSequence } from '../email/automations';
 import { getFrequencyCap, setFrequencyCap, overCappedEmails } from '../email/frequency';
 import { userTaskFilter } from './tasks';
 import { spDateStr, spMidnight, spDaysAgo } from '../lib/tz';
+import { isBlockedEmail } from '../../shared/blockedEmailDomains';
 
 const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL ?? 'https://lembretes.salvitarn.com.br';
 const MKT_DAILY_LIMIT = parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? '90');
@@ -2036,9 +2037,10 @@ export const emailMarketingRouter = router({
       }
 
       // Batch insert new contacts
-      if (toInsert.length > 0) {
-        for (let i = 0; i < toInsert.length; i += 500) {
-          await db.insert(marketingContacts).values(toInsert.slice(i, i + 500));
+      const toInsertOk = toInsert.filter((c) => !isBlockedEmail(c.email)); // domínio bloqueado pelo dono
+      if (toInsertOk.length > 0) {
+        for (let i = 0; i < toInsertOk.length; i += 500) {
+          await db.insert(marketingContacts).values(toInsertOk.slice(i, i + 500));
         }
       }
 

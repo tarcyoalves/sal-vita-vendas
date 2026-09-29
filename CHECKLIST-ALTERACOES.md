@@ -96,6 +96,11 @@ zerou o faturamento em 28/09. [M]
 - [ ] Texto que o cliente lê: sem alegação de saúde, sem "sem aditivos"/"natural",
       sem inventar dado técnico. `ESTADO-DO-PROJETO.md`, seção 4. [F]
 - [ ] Nunca disparar WhatsApp ou e-mail frio automático. Só link para o humano enviar.
+- [ ] **Domínios de e-mail bloqueados** (`shared/blockedEmailDomains.ts`): o dono mandou bloquear
+      `gruposmabrasil.com.br`. Todo envio novo de e-mail deve passar por `sendEmail`,
+      `sendBatch` (marketing) ou `sendBatch` (marketingQuota), que já recusam esses domínios.
+      Código novo que chame Resend/Brevo direto **precisa** usar `isBlockedEmail()`. O build de
+      produção apaga o que existir (`npm run purge:blocked`, procure `[purge:blocked]` no log).
 
 ## 6. Depois do push
 

@@ -1,6 +1,7 @@
 import { ordersDb as db } from '../db/ordersDb';
 import { sql } from 'drizzle-orm';
 import { emailSendCounters } from '../db/schema';
+import { isBlockedEmail } from '../../shared/blockedEmailDomains';
 
 export interface MarketingAccount {
   key: string;
@@ -155,6 +156,10 @@ export async function sendBatch(
   const results: SendResult[] = [];
 
   for (const msg of messages) {
+    if (isBlockedEmail(msg.to)) {
+      results.push({ ok: false, error: 'blocked_domain' });
+      continue;
+    }
     try {
       const unsubUrl = msg.unsubToken
         ? `${publicAppUrl}/api/unsubscribe?t=${msg.unsubToken}`

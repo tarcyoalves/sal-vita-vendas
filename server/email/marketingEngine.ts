@@ -16,6 +16,7 @@ import {
   OutboundMessage,
 } from './marketingQuota';
 import { randomUUID } from 'crypto';
+import { isBlockedEmail } from '../../shared/blockedEmailDomains';
 
 export interface AudienceMember {
   email: string;
@@ -215,7 +216,7 @@ export async function buildAudience(): Promise<AudienceMember[]> {
   // Filter suppressed members
   const audience: AudienceMember[] = [];
   for (const [email, member] of membersMap.entries()) {
-    if (!suppressedEmails.has(email)) {
+    if (!suppressedEmails.has(email) && !isBlockedEmail(email)) {
       audience.push(member);
     }
   }

@@ -9,6 +9,7 @@
  */
 
 import { reserveDailyQuota, refundDailyQuota } from './marketingQuota';
+import { isBlockedEmail } from '../../shared/blockedEmailDomains';
 
 const FROM = 'Sal Vita <noreply@premium.salvitarn.com.br>';
 const BRAND = '#0C3680';
@@ -22,6 +23,9 @@ export async function sendEmail(
   html: string,
   attachments?: { filename: string; content: string }[], // content = base64
 ): Promise<{ ok: boolean; reason?: string }> {
+  // Domínio bloqueado pelo dono: nunca envia (nem gasta cota).
+  if (isBlockedEmail(to)) return { ok: false, reason: 'blocked_domain' };
+
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return { ok: false, reason: 'no_api_key' };
 

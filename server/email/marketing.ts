@@ -15,6 +15,7 @@ import sanitizeHtml from 'sanitize-html';
 import { sql } from '../db';
 import { emailSendCounters } from '../db/schema';
 import { spDateStr } from '../lib/tz';
+import { isBlockedEmail } from '../../shared/blockedEmailDomains';
 
 export const BRAND = '#0C3680';
 /**
@@ -576,6 +577,13 @@ export interface BatchResult {
 /** Sends up to 100 personalized messages via the account's provider (Resend or Brevo) and updates the daily counter. */
 export async function sendBatch(account: MarketingAccount, messages: BatchMessage[]): Promise<BatchResult[]> {
   if (messages.length === 0) return [];
+  // Domínio bloqueado pelo dono: nunca vai ao provedor; o resultado mantém a ordem original.
+  if (messages.some((m) => isBlockedEmail(m.to))) {
+    const allowed = messages.filter((m) => !isBlockedEmail(m.to));
+    const sent = await sendBatch(account, allowed);
+    let i = 0;
+    return messages.map((m) => (isBlockedEmail(m.to) ? { to: m.to, ok: false, error: 'blocked_domain' } : sent[i++]));
+  }
   if (account.provider === 'brevo') return sendBatchBrevo(account, messages);
   return sendBatchResend(account, messages);
 }

@@ -7,6 +7,8 @@ import { buildAudience, processCampaignBatch } from '../email/marketingEngine';
 import { processSequenceEnrollments } from '../email/sequenceEngine';
 import { suppressEmailGlobal } from './unsubscribe';
 import { randomUUID } from 'crypto';
+import { isBlockedEmail } from '../../shared/blockedEmailDomains';
+import { TRPCError } from '@trpc/server';
 
 /**
  * E-mail Marketing do Sal Vita PREMIUM (loja/e-commerce, banco ordersDb).
@@ -339,6 +341,9 @@ export const premiumEmailMarketingRouter = router({
       state: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
+      if (isBlockedEmail(input.email)) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Este domínio de e-mail está bloqueado.' });
+      }
       await db.execute(sql`
         INSERT INTO marketing_contacts (email, name, phone, city, state, source, status, created_at, updated_at)
         VALUES (${input.email.toLowerCase()}, ${input.name ?? null}, ${input.phone ?? null}, ${input.city ?? null}, ${input.state ?? null}, 'manual', 'active', NOW(), NOW())
