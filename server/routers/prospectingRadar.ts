@@ -8,7 +8,11 @@ import { and, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { router, protectedProcedure, staffProcedure } from '../trpc';
 import { db } from '../db';
 import { spDateStr } from '../lib/tz';
-import { radarEstablishments, radarEnrichment, radarLeadActions, radarLeadEvents, tasks, taskDeletionLogs, emailSuppressions, tags } from '../db/schema';
+import { radarEstablishments, radarEnrichment, radarLeadActions, radarLeadEvents, tasks, taskDeletionLogs, emailSuppressions, tags, fatOrders, clients, sellers } from '../db/schema';
+import { userTaskFilter } from './tasks';
+import { consolidarCarteira, parseCidadeUf, type CarteiraEntrada } from '../lib/radar/portfolio';
+import { totalItens } from '../../client/src/lib/faturamento/calc';
+import type { ItemPedido } from '../../client/src/lib/faturamento/types';
 import { municipioByIbge, municipiosWithinRadius, searchMunicipios } from '../lib/radar/geo';
 import {
   establishmentPhones,
@@ -43,6 +47,8 @@ import {
   type RadarLead,
   type RadarMunicipality,
   type RadarSearchResult,
+  type RadarBaseStatus,
+  type RadarCarteiraResult,
   type RadarCnpjCheck,
   type RadarEnrichment,
   type RadarLeadActivity,
@@ -137,6 +143,117 @@ export const prospectingRadarRouter = router({
     .query(({ input }): RadarMunicipality[] =>
       searchMunicipios(input.q, input.uf).map(({ ibge, nome, uf }) => ({ ibge, nome, uf })),
     ),
+
+  // Situação da base de empresas (painel do topo): data da importação, quantidade por UF e robô.
+  baseStatus: protectedProcedure.query(async (): Promise<RadarBaseStatus> => {
+    const rows = await db
+      .select({
+        uf: radarEstablishments.uf,
+        count: sql<number>`count(*)::int`,
+        release: sql<string | null>`max(${radarEstablishments.sourceRelease})`,
+      })
+      .from(radarEstablishments)
+      .groupBy(radarEstablishments.uf);
+    const porUf = rows.map((r) => ({ uf: r.uf, count: r.count })).sort((a, b) => b.count - a.count);
+    const release = rows.map((r) => r.release).filter((r): r is string => !!r).sort().pop() ?? null;
+    return {
+      datasetRelease: release,
+      total: porUf.reduce((s, r) => s + r.count, 0),
+      porUf,
+      enricherOnline: isEnricherOnline(await loadHeartbeat(), new Date()),
+    };
+  }),
+
+  // Radar da carteira: quem o CRM já conhece perto da cidade da carga (clientes que já compraram,
+  // clientes cadastrados e leads em tarefas). Não depende da base da Receita. Admin/gerente vê
+  // tudo; atendente vê só os próprios pedidos e tarefas.
+  carteira: protectedProcedure
+    .input(z.object({
+      originIbge: z.number().int(),
+      radiusKm: z.number().int().min(1).max(RADAR_MAX_RADIUS_KM),
+    }))
+    .query(async ({ input, ctx }): Promise<RadarCarteiraResult> => {
+      const origin = municipioByIbge(input.originIbge);
+      if (!origin) throw new TRPCError({ code: 'NOT_FOUND', message: 'Município de origem não encontrado' });
+      const nearby = municipiosWithinRadius(origin, input.radiusKm);
+      const ufs = [...new Set(nearby.map((m) => m.uf))];
+      const staff = ctx.user.role === 'admin' || ctx.user.role === 'manager';
+      const entradas: CarteiraEntrada[] = [];
+
+      // Pedidos (compras de fato quando faturados).
+      let mySellerId: number | null = null;
+      if (!staff) {
+        const [s] = await db.select({ id: sellers.id }).from(sellers).where(eq(sellers.userId, ctx.user.id));
+        mySellerId = s?.id ?? null;
+      }
+      if (staff || mySellerId != null) {
+        const ped = await db
+          .select({
+            nome: fatOrders.clienteNome, razao: fatOrders.razaoSocial, cnpj: fatOrders.cnpj, cidade: fatOrders.cidade, uf: fatOrders.uf,
+            status: fatOrders.status, itens: fatOrders.itens, faturadoEm: fatOrders.faturadoEm, criadoEm: fatOrders.criadoEm,
+            sellerName: fatOrders.sellerName, taskId: fatOrders.taskId,
+          })
+          .from(fatOrders)
+          .where(and(inArray(sql`upper(${fatOrders.uf})`, ufs), staff ? undefined : eq(fatOrders.sellerId, mySellerId!)))
+          .limit(20000);
+        for (const p of ped) {
+          entradas.push({
+            fonte: 'pedido', nome: p.razao || p.nome, cnpj: p.cnpj, cidade: p.cidade, uf: p.uf, atendente: p.sellerName,
+            pedido: {
+              faturado: p.status === 'faturado',
+              data: p.status === 'faturado' ? (p.faturadoEm ?? p.criadoEm) : p.criadoEm,
+              valor: totalItens(p.itens as unknown as ItemPedido[]),
+            },
+          });
+        }
+      }
+
+      // Clientes cadastrados (sem dono na tabela: só admin/gerente).
+      if (staff) {
+        const cli = await db
+          .select({ name: clients.name, company: clients.company, phone: clients.phone, city: clients.city, state: clients.state })
+          .from(clients)
+          .where(inArray(sql`upper(trim(${clients.state}))`, ufs))
+          .limit(20000);
+        for (const c of cli) {
+          if (!c.city || !c.state) continue;
+          entradas.push({ fonte: 'cliente', nome: c.company || c.name, cidade: c.city, uf: c.state, telefone: c.phone });
+        }
+      }
+
+      // Leads e clientes em tarefas: a cidade fica na descrição ("CIDADE - UF") ou no título.
+      const ufDesc = sql`upper(right(trim(coalesce(${tasks.description}, '')), 2))`;
+      const ufTitulo = sql`upper(right(trim(${tasks.title}), 2))`;
+      const local = or(inArray(ufDesc, ufs), inArray(ufTitulo, ufs));
+      const filtroDono = staff ? undefined : await userTaskFilter(ctx.user.id, ctx.user.name ?? '');
+      const tar = await db
+        .select({
+          id: tasks.id, title: tasks.title, description: tasks.description, cnpj: tasks.cnpj, phone: tasks.phone,
+          assignedTo: tasks.assignedTo, convertedAt: tasks.convertedAt,
+        })
+        .from(tasks)
+        .where(and(local, filtroDono))
+        .limit(20000);
+      for (const t of tar) {
+        const loc = parseCidadeUf(t.description) ?? parseCidadeUf(t.title);
+        if (!loc) continue;
+        // Título "NOME - CIDADE - UF": o nome é o que vem antes da cidade.
+        const nome = t.title.includes(' - ') ? t.title.split(' - ').slice(0, -2).join(' - ').trim() || t.title : t.title;
+        entradas.push({
+          fonte: 'tarefa', nome, cnpj: t.cnpj, cidade: loc.cidade, uf: loc.uf, telefone: t.phone, atendente: t.assignedTo,
+          tarefa: { id: t.id, convertida: t.convertedAt != null },
+        });
+      }
+
+      const r = consolidarCarteira(entradas, origin, input.radiusKm);
+      return {
+        origin: { ibge: origin.ibge, nome: origin.nome, uf: origin.uf, lat: origin.lat, lon: origin.lon },
+        municipalitiesInRadius: nearby.length,
+        itens: r.itens,
+        truncated: r.truncated,
+        semLocalizacao: r.semLocalizacao,
+      };
+    }),
 
   search: protectedProcedure
     .input(z.object({

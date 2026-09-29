@@ -205,3 +205,41 @@ export interface RadarLeadActivity {
 export const EMPTY_RADAR_ACTIVITY: RadarLeadActivity = {
   contactedAt: null, contactedByName: null, contactChannel: null, contactCount: 0, discarded: null,
 };
+
+// ── Radar da carteira (clientes e leads que o CRM já conhece perto da carga) ──
+// Funciona sem a base da Receita: usa pedidos, clientes e tarefas do próprio CRM.
+export type RadarCarteiraFonte = 'pedido' | 'cliente' | 'tarefa';
+
+export interface RadarCarteiraItem {
+  chave: string;
+  nome: string;
+  cnpj: string | null;
+  cidade: string;
+  uf: string;
+  distanceKm: number;
+  fontes: RadarCarteiraFonte[];
+  pedidos: number;            // pedidos (estimados + faturados) do cliente
+  faturados: number;          // pedidos já faturados (compras de fato)
+  totalFaturado: number;      // R$ dos pedidos faturados (itens)
+  ultimaCompraEm: string | null; // ISO do último pedido faturado
+  atendentes: string[];
+  telefone: string | null;    // só dígitos
+  tarefas: Array<{ id: number; convertida: boolean }>;
+}
+
+export interface RadarCarteiraResult {
+  origin: RadarMunicipality & { lat: number; lon: number };
+  municipalitiesInRadius: number;
+  itens: RadarCarteiraItem[];
+  truncated: boolean;
+  /** Registros do CRM na região cuja cidade não deu para localizar no mapa (nome fora do padrão). */
+  semLocalizacao: number;
+}
+
+/** Situação da base de empresas da Receita (painel do topo do Radar). */
+export interface RadarBaseStatus {
+  datasetRelease: string | null; // null = importador nunca rodou
+  total: number;
+  porUf: Array<{ uf: string; count: number }>;
+  enricherOnline: boolean;
+}

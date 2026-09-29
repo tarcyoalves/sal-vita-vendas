@@ -75,3 +75,14 @@ export function municipiosWithinRadius(origin: Municipio, radiusKm: number): Arr
   }
   return out.sort((a, b) => a.distanceKm - b.distanceKm);
 }
+
+const byNomeUf = new Map(MUNICIPIOS.map((m) => [`${m.uf}|${normalizeName(m.nome)}`, m]));
+
+// Município a partir de "nome" + UF digitados à mão (tarefas, pedidos, clientes).
+// Sem UF válida ou sem nome idêntico (ignorando acento/caixa) devolve undefined:
+// nunca chuta, porque há nomes repetidos entre estados.
+export function municipioByNomeUf(nome: string, uf: string): Municipio | undefined {
+  const u = uf.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(u)) return undefined;
+  return byNomeUf.get(`${u}|${normalizeName(nome)}`);
+}

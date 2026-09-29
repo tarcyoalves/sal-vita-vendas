@@ -27,6 +27,8 @@ import {
 import { CityAutocomplete } from '../components/radar/CityAutocomplete';
 import { SegmentChips } from '../components/radar/SegmentChips';
 import { LeadCard } from '../components/radar/LeadCard';
+import { BaseStatusCard } from '../components/radar/BaseStatusCard';
+import { CarteiraList } from '../components/radar/CarteiraList';
 import { enrichmentNeedsPolling } from '../components/radar/EnrichmentSection';
 import {
   EMPTY_RADAR_ACTIVITY,
@@ -54,6 +56,8 @@ type LeadFilter = 'para_contatar' | 'contatados' | 'no_crm' | 'descartados' | 'a
 export default function RadarCargas() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  // Duas formas de buscar: quem o CRM já conhece (funciona sem a base da Receita) e empresas novas.
+  const [mode, setMode] = useState<'carteira' | 'novas'>('carteira');
 
   // ── Formulário de busca ──
   const [city, setCity] = useState<RadarMunicipality | null>(null);
@@ -85,6 +89,12 @@ export default function RadarCargas() {
     retry: false,
   });
 
+  const carteiraQuery = trpc.prospectingRadar.carteira.useQuery(
+    { originIbge: city?.ibge ?? 0, radiusKm },
+    { enabled: false, retry: false },
+  );
+  const canSearchCarteira = !!city && bagsValid;
+
   // "Cidade da carga" para a mensagem padrão de contato (não é a cidade do
   // lead, é de onde a carreta está saindo).
   const originLabel = city ? `${city.nome} - ${city.uf}` : '';
@@ -108,6 +118,10 @@ export default function RadarCargas() {
   const [pollTimedOut, setPollTimedOut] = useState(false);
 
   const handleSearch = () => {
+    if (mode === 'carteira') {
+      if (canSearchCarteira) carteiraQuery.refetch();
+      return;
+    }
     if (!canSearch) return;
     setEnrichmentByCnpj({});
     setActivityByCnpj({});
@@ -244,10 +258,32 @@ export default function RadarCargas() {
         </p>
       </div>
 
+      <BaseStatusCard isAdmin={isAdmin} />
+
+      {/* Duas formas de buscar */}
+      <div className="grid grid-cols-2 gap-2">
+        {([
+          ['carteira', 'Minha carteira', 'Clientes e leads que já temos perto da carga'],
+          ['novas', 'Empresas novas', 'Base da Receita por segmento (CNAE)'],
+        ] as const).map(([key, titulo, sub]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setMode(key)}
+            className={`rounded-xl border px-3 py-2.5 text-left transition ${
+              mode === key ? 'border-blue-900 bg-blue-900 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <p className="text-sm font-semibold">{titulo}</p>
+            <p className={`text-[11px] ${mode === key ? 'text-blue-100' : 'text-slate-500'}`}>{sub}</p>
+          </button>
+        ))}
+      </div>
+
       {/* ── Busca ── */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Buscar empresas</CardTitle>
+          <CardTitle className="text-base">{mode === 'carteira' ? 'Buscar na minha carteira' : 'Buscar empresas'}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -291,6 +327,7 @@ export default function RadarCargas() {
             )}
           </div>
 
+          {mode === 'novas' && (<>
           <div>
             <Label className="text-xs font-semibold text-slate-500 mb-1.5">Segmentos</Label>
             <SegmentChips selected={segments} onChange={setSegments} />
@@ -346,20 +383,63 @@ export default function RadarCargas() {
             )}
           </div>
 
+          </>)}
+
           <Button
             type="button"
             className="w-full"
-            disabled={!canSearch || searchQuery.isFetching}
+            disabled={(mode === 'carteira' ? !canSearchCarteira || carteiraQuery.isFetching : !canSearch || searchQuery.isFetching)}
             onClick={handleSearch}
           >
             <Search size={15} />
-            {searchQuery.isFetching ? 'Buscando...' : 'Buscar'}
+            {(mode === 'carteira' ? carteiraQuery.isFetching : searchQuery.isFetching) ? 'Buscando...' : 'Buscar'}
           </Button>
+          {/* Por que o botão está cinza */}
+          {(mode === 'carteira' ? !canSearchCarteira : !canSearch) && (
+            <p className="text-[11px] text-slate-500 -mt-2">
+              {!city
+                ? 'Escolha a cidade da carga na lista que aparece ao digitar (mínimo 2 letras).'
+                : !bagsValid
+                  ? 'Informe o saldo de sacos (1 a 2000).'
+                  : 'Marque ao menos um segmento.'}
+            </p>
+          )}
         </CardContent>
       </Card>
 
-      {/* ── Resultados ── */}
-      {searchQuery.isFetching && (
+      {/* ── Resultados: minha carteira ── */}
+      {mode === 'carteira' && carteiraQuery.isFetching && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-40 rounded-2xl" />)}
+        </div>
+      )}
+      {mode === 'carteira' && !carteiraQuery.isFetching && carteiraQuery.error && (
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>Não foi possível buscar</EmptyTitle>
+            <EmptyDescription>{carteiraQuery.error.message}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      )}
+      {mode === 'carteira' && !carteiraQuery.isFetching && carteiraQuery.data && (
+        carteiraQuery.data.itens.length === 0 ? (
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><Truck /></EmptyMedia>
+              <EmptyTitle>Ninguém da carteira neste raio</EmptyTitle>
+              <EmptyDescription>
+                O CRM não tem clientes nem leads em {carteiraQuery.data.municipalitiesInRadius} município(s) ao redor de {originLabel}.
+                Aumente o raio ou use "Empresas novas".
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <CarteiraList result={carteiraQuery.data} originLabel={originLabel} bags={bags} />
+        )
+      )}
+
+      {/* ── Resultados: empresas novas (Receita) ── */}
+      {mode === 'novas' && searchQuery.isFetching && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {[0, 1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-56 rounded-2xl" />
@@ -367,7 +447,7 @@ export default function RadarCargas() {
         </div>
       )}
 
-      {!searchQuery.isFetching && notImplemented && (
+      {mode === 'novas' && !searchQuery.isFetching && notImplemented && (
         <Empty>
           <EmptyHeader>
             <EmptyTitle>Radar em implantação</EmptyTitle>
@@ -378,7 +458,7 @@ export default function RadarCargas() {
         </Empty>
       )}
 
-      {!searchQuery.isFetching && !notImplemented && searchQuery.error && (
+      {mode === 'novas' && !searchQuery.isFetching && !notImplemented && searchQuery.error && (
         <Empty>
           <EmptyHeader>
             <EmptyTitle>Não foi possível buscar</EmptyTitle>
@@ -387,7 +467,7 @@ export default function RadarCargas() {
         </Empty>
       )}
 
-      {!searchQuery.isFetching && !notImplemented && data && data.datasetRelease === null && (
+      {mode === 'novas' && !searchQuery.isFetching && !notImplemented && data && data.datasetRelease === null && (
         <Empty>
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -403,7 +483,7 @@ export default function RadarCargas() {
         </Empty>
       )}
 
-      {!searchQuery.isFetching && !notImplemented && data && data.datasetRelease !== null && (
+      {mode === 'novas' && !searchQuery.isFetching && !notImplemented && data && data.datasetRelease !== null && (
         <div className="space-y-3">
           <div className="space-y-2">
             <p className="text-sm text-slate-600">
