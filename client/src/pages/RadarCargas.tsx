@@ -65,7 +65,7 @@ export default function RadarCargas() {
   const [bagsInput, setBagsInput] = useState('400');
   const [segments, setSegments] = useState<RadarSegmentKey[]>(DEFAULT_SEGMENTS);
   const [includeSecondary, setIncludeSecondary] = useState(false);
-  const [soAbertas2Anos, setSoAbertas2Anos] = useState(true);
+  const [minAnosAbertura, setMinAnosAbertura] = useState(2);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [loadDate, setLoadDate] = useState('');
   const [freightNote, setFreightNote] = useState('');
@@ -81,9 +81,9 @@ export default function RadarCargas() {
       radiusKm,
       segments,
       includeSecondary,
-      minAnosAbertura: soAbertas2Anos ? 2 : 0,
+      minAnosAbertura,
     }),
-    [city, radiusKm, segments, includeSecondary, soAbertas2Anos],
+    [city, radiusKm, segments, includeSecondary, minAnosAbertura],
   );
 
   const searchQuery = trpc.prospectingRadar.search.useQuery(searchInput, {
@@ -348,10 +348,20 @@ export default function RadarCargas() {
 
           <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2.5">
             <div>
-              <p className="text-sm font-medium text-slate-700">Só empresas com mais de 2 anos de abertura</p>
-              <p className="text-[11px] text-slate-400">Esconde as abertas há menos de 2 anos</p>
+              <p className="text-sm font-medium text-slate-700">Tempo de abertura</p>
+              <p className="text-[11px] text-slate-400">Esconde as empresas abertas há menos tempo que isso</p>
             </div>
-            <Switch checked={soAbertas2Anos} onCheckedChange={setSoAbertas2Anos} />
+            <Select value={String(minAnosAbertura)} onValueChange={(v) => setMinAnosAbertura(Number(v))}>
+              <SelectTrigger className="w-40 h-9 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">Qualquer</SelectItem>
+                <SelectItem value="1">Mais de 1 ano</SelectItem>
+                <SelectItem value="2">Mais de 2 anos</SelectItem>
+                <SelectItem value="3">Mais de 3 anos</SelectItem>
+                <SelectItem value="5">Mais de 5 anos</SelectItem>
+                <SelectItem value="10">Mais de 10 anos</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Detalhes opcionais da carga */}
