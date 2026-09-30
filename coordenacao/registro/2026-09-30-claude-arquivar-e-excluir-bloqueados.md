@@ -3,7 +3,7 @@
 - **Agente:** claude
 - **Início:** 2026-09-30
 - **Fim:** 2026-09-30
-- **Status:** concluído no código; aguardando conferir o log do deploy
+- **Status:** concluído e conferido no log (f9e7224 e 66cbe56)
 - **Branch:** `main`
 
 ## Objetivo
@@ -35,3 +35,18 @@ como bloqueado.
 - Tarefas que já tiveram o e-mail esvaziado na limpeza anterior não têm mais o e-mail: o log lista
   "CANDIDATAS" para o dono conferir; nada foi excluído por palpite.
 - Não há tela para ver `blocked_contacts` (só consulta no banco); os e-mails aparecem em "Bloqueados".
+
+## Verificado (log do build de produção)
+
+- Excluídas e arquivadas **33 tarefas** (nenhuma convertida nem com pedido): salmaranata.com.br 10,
+  gruposmabrasil.com.br 8, gmail.com 4, salina.com.br 3, sal.com 2, salminas.com.br 2, finosal.com.br 2,
+  grupososal.com.br 1, outlook.com 1. Os 5 de gmail/outlook casaram pela palavra "salinas".
+- Clientes e contatos de marketing: 0. 14 endereços novos na lista "Bloqueados" (`dominio_bloqueado`).
+- Execuções seguintes do mesmo build: 0 (idempotente); arquivo com 33 registros.
+- **Anomalia:** os e-mails de gruposmabrasil e dos domínios de sal já haviam sido esvaziados no deploy
+  anterior e **reapareceram** antes deste deploy. Algo (importação, edição com dados antigos ou
+  sincronização externa) os recoloca. Não identificado. A exclusão registra as tarefas em
+  `task_deletion_logs`, então reimportação pelo CRM (CNPJ/telefone) é detectada.
+- Correção: a leitura anterior de "0 para salinas" veio da última de 3 execuções repetidas do build
+  (as anteriores já limpam); não valia como prova de inexistência.
+- Relatório "CANDIDATAS" (12) são leads na cidade de Salinas (MG); nada foi excluído por isso.
