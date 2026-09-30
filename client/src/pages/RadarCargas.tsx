@@ -65,6 +65,7 @@ export default function RadarCargas() {
   const [bagsInput, setBagsInput] = useState('400');
   const [segments, setSegments] = useState<RadarSegmentKey[]>(DEFAULT_SEGMENTS);
   const [includeSecondary, setIncludeSecondary] = useState(false);
+  const [soAbertas2Anos, setSoAbertas2Anos] = useState(true);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [loadDate, setLoadDate] = useState('');
   const [freightNote, setFreightNote] = useState('');
@@ -80,8 +81,9 @@ export default function RadarCargas() {
       radiusKm,
       segments,
       includeSecondary,
+      minAnosAbertura: soAbertas2Anos ? 2 : 0,
     }),
-    [city, radiusKm, segments, includeSecondary],
+    [city, radiusKm, segments, includeSecondary, soAbertas2Anos],
   );
 
   const searchQuery = trpc.prospectingRadar.search.useQuery(searchInput, {
@@ -342,6 +344,14 @@ export default function RadarCargas() {
               <p className="text-[11px] text-slate-400">Mais resultados, menos precisos</p>
             </div>
             <Switch checked={includeSecondary} onCheckedChange={setIncludeSecondary} />
+          </div>
+
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2.5">
+            <div>
+              <p className="text-sm font-medium text-slate-700">Só empresas com mais de 2 anos de abertura</p>
+              <p className="text-[11px] text-slate-400">Esconde as abertas há menos de 2 anos</p>
+            </div>
+            <Switch checked={soAbertas2Anos} onCheckedChange={setSoAbertas2Anos} />
           </div>
 
           {/* Detalhes opcionais da carga */}

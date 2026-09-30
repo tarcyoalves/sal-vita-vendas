@@ -12,6 +12,7 @@ import type { RadarEstablishment } from '../db/schema';
 import { radarEstablishments, radarEnrichment, radarLeadActions, radarLeadEvents, tasks, taskDeletionLogs, emailSuppressions, tags, fatOrders, clients, sellers } from '../db/schema';
 import { userTaskFilter } from './tasks';
 import { cnpjsDeClientesAtivos } from '../lib/radar/clientesAtivos';
+import { dataLimiteAbertura } from '../lib/radar/abertura';
 import { consolidarCarteira, parseCidadeUf, type CarteiraEntrada } from '../lib/radar/portfolio';
 import { totalItens } from '../../client/src/lib/faturamento/calc';
 import type { ItemPedido } from '../../client/src/lib/faturamento/types';
@@ -301,6 +302,8 @@ export const prospectingRadarRouter = router({
       radiusKm: z.number().int().min(1).max(RADAR_MAX_RADIUS_KM),
       segments: z.array(z.enum(RADAR_SEGMENT_KEYS)).min(1),
       includeSecondary: z.boolean().default(false),
+      // Só empresas abertas há pelo menos N anos (0 = sem filtro). Sem data na base, não exclui.
+      minAnosAbertura: z.number().int().min(0).max(30).default(0),
     }))
     .query(async ({ input, ctx }): Promise<RadarSearchResult> => {
       const origin = municipioByIbge(input.originIbge);
@@ -338,8 +341,11 @@ export const prospectingRadarRouter = router({
 
       // `nearby` já vem ordenado por distância: ordenar pela posição do município na
       // lista garante que, se o teto de linhas cortar, quem fica de fora é o mais longe.
+      const abertaHaAnos = input.minAnosAbertura > 0
+        ? sql`(${radarEstablishments.dataInicio} IS NULL OR ${radarEstablishments.dataInicio} <= ${dataLimiteAbertura(now, input.minAnosAbertura)})`
+        : undefined;
       const rows = await db.select().from(radarEstablishments)
-        .where(and(inArray(radarEstablishments.municipioIbge, ibgeCodes), cnaeMatch))
+        .where(and(inArray(radarEstablishments.municipioIbge, ibgeCodes), cnaeMatch, abertaHaAnos))
         .orderBy(sql`array_position(ARRAY[${sql.join(ibgeCodes.map((c) => sql`${c}`), sql`, `)}]::int[], ${radarEstablishments.municipioIbge})`)
         .limit(RADAR_DB_FETCH_CAP);
 
