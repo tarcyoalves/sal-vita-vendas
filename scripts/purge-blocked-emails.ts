@@ -157,11 +157,21 @@ async function relatorioCandidatas(sql: Sql, banco: string): Promise<void> {
   for (const c of consultas) {
     try {
       const rows = (await c.q()) as Array<{ id: number; t: string }>;
-      if (rows.length) log(`${banco}: CANDIDATAS (${c.nome}) ${rows.length}: ${rows.map((r) => `#${r.id} ${r.t}`).join(' | ')}`);
+      if (rows.length) log(`${banco}: CANDIDATAS (${c.nome}) ${rows.length} (ex.: ${rows.slice(0, 3).map((r) => `#${r.id} ${r.t.slice(0, 40)}`).join(' | ')})`);
       else log(`${banco}: CANDIDATAS (${c.nome}) 0`);
     } catch {
       /* tabela/coluna inexistente neste banco */
     }
+  }
+}
+
+/** Só leitura: o que já está arquivado em blocked_contacts, por origem e domínio (para o dono conferir). */
+async function relatorioArquivo(sql: Sql, banco: string): Promise<void> {
+  try {
+    const rows = (await sql`SELECT origem, coalesce(domain, '(sem e-mail)') AS d, count(*)::int AS n FROM blocked_contacts GROUP BY 1, 2 ORDER BY n DESC LIMIT 60`) as Array<{ origem: string; d: string; n: number }>;
+    log(`${banco}: ARQUIVO blocked_contacts (${rows.reduce((s, r) => s + r.n, 0)}): ${rows.map((r) => `${r.origem}:${r.d} (${r.n})`).join(', ') || 'vazio'}`);
+  } catch {
+    /* tabela inexistente neste banco */
   }
 }
 
@@ -191,6 +201,7 @@ async function purge(): Promise<void> {
     const sql = neon(db.url);
     await relatorioDominios(sql, pro, db.name);
     await relatorioCandidatas(sql, db.name);
+    await relatorioArquivo(sql, db.name);
     for (const job of jobs) {
       try {
         const count = await job.run(sql, re, pro);
