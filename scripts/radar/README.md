@@ -90,6 +90,25 @@ npx tsx scripts/radar/import-receita.ts \
 - **Recusa gravar se a estimativa de tamanho passar de `--max-mb`.** Avisa antes de
   estourar o banco compartilhado com o resto do CRM.
 
+## Ler os ~20 GB uma vez só (`--save-filtered` / `--from-filtered`)
+
+Ler os 10 arquivos leva de 25 a 35 minutos. Sem esta opção, o dry-run e a gravação leem tudo duas vezes.
+O dry-run pode salvar o resultado já filtrado (algumas centenas de milhares de linhas) e a gravação lê
+desse arquivo em segundos:
+
+```bash
+# 1) Dry-run que também salva o filtrado (não grava no banco)
+npx tsx scripts/radar/import-receita.ts --dir ./receita-2026-09 --ufs PR,SC,RS --release 2026-09 --dry-run --save-filtered ./filtrado-2026-09.ndjson
+
+# 2) Depois do OK do dono: grava a partir do arquivo, sem reler a Receita
+set -a; source ~/.env-radar; set +a
+npx tsx scripts/radar/import-receita.ts --from-filtered ./filtrado-2026-09.ndjson --ufs PR,SC,RS --release 2026-09
+```
+
+O script **recusa** o arquivo se `--release`, `--ufs` ou a lista de CNAEs-alvo (`shared/radar.ts`) forem
+diferentes dos usados ao gerá-lo, ou se ele estiver truncado. Nesse caso, gere de novo com `--save-filtered`.
+Apague o `.ndjson` depois de gravar (tem dados de empresas; não vai para o repositório).
+
 ## `DATABASE_URL` na VPS
 
 O script lê `DATABASE_URL` só do ambiente — nunca coloque a connection string num

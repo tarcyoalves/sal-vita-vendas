@@ -9,9 +9,15 @@
 //   npx tsx scripts/radar/import-receita.ts --dir ./receita-2026-09 --ufs PR,SC,RS --release 2026-09
 //
 // Também aceita arquivos explícitos em vez de --dir:
+// Para não reler os ~20 GB duas vezes (dry-run e depois gravação), o dry-run pode salvar o
+// resultado filtrado e a gravação lê esse arquivo em segundos:
+//   ... --dir ./receita-2026-09 --ufs PR,SC,RS --release 2026-09 --dry-run --save-filtered ./filtrado-2026-09.ndjson
+//   ... --from-filtered ./filtrado-2026-09.ndjson --ufs PR,SC,RS --release 2026-09
+// (o arquivo é recusado se release, UFs ou a lista de CNAEs-alvo não baterem).
+//
 //   npx tsx scripts/radar/import-receita.ts K3241.K03200Y0.D40913.ESTABELE K3241.K03200Y0.D40913.EMPRECSV --ufs PR --release 2026-09
 import 'dotenv/config';
-import { createReadStream } from 'node:fs';
+import { createReadStream, createWriteStream } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import path from 'node:path';
@@ -25,7 +31,8 @@ import {
   type RadarEstablishmentRow,
 } from '../../server/lib/radar/receitaParse';
 import { radarEstablishments } from '../../server/db/schema';
-import { segmentsForCnaes } from '../../shared/radar';
+import { RADAR_ALL_CNAES, segmentsForCnaes } from '../../shared/radar';
+import { linhaFiltradaValida, motivoFiltradoInvalido, type FilteredMeta } from '../../server/lib/radar/filteredFile';
 
 interface Args {
   dir: string | undefined;
@@ -36,6 +43,8 @@ interface Args {
   maxMb: number;
   forceSize: boolean;
   skipCleanup: boolean;
+  saveFiltered: string | undefined;
+  fromFiltered: string | undefined;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -47,6 +56,8 @@ function parseArgs(argv: string[]): Args {
   let maxMb = 150;
   let forceSize = false;
   let skipCleanup = false;
+  let saveFiltered: string | undefined;
+  let fromFiltered: string | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -72,6 +83,12 @@ function parseArgs(argv: string[]): Args {
       case '--skip-cleanup':
         skipCleanup = true;
         break;
+      case '--save-filtered':
+        saveFiltered = argv[++i];
+        break;
+      case '--from-filtered':
+        fromFiltered = argv[++i];
+        break;
       default:
         if (arg.startsWith('--')) {
           throw new Error(`Argumento desconhecido: ${arg}`);
@@ -80,7 +97,7 @@ function parseArgs(argv: string[]): Args {
     }
   }
 
-  if (!dir && explicitFiles.length === 0) {
+  if (!fromFiltered && !dir && explicitFiles.length === 0) {
     throw new Error('Informe --dir <pasta> (com os arquivos descompactados) ou os caminhos dos arquivos.');
   }
   const ufs = (ufsRaw ?? '')
@@ -97,7 +114,8 @@ function parseArgs(argv: string[]): Args {
     throw new Error('--max-mb precisa ser um número positivo.');
   }
 
-  return { dir, explicitFiles, ufs, release, dryRun, maxMb, forceSize, skipCleanup };
+  if (fromFiltered && saveFiltered) throw new Error('Use --save-filtered OU --from-filtered, não os dois.');
+  return { dir, explicitFiles, ufs, release, dryRun, maxMb, forceSize, skipCleanup, saveFiltered, fromFiltered };
 }
 
 /** Classifica arquivos pelo nome, como a Receita nomeia os arquivos dentro dos zips
@@ -232,8 +250,7 @@ async function writeToDatabase(rows: RadarEstablishmentRow[], release: string, u
   console.log('Limpeza concluída.');
 }
 
-async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
+async function lerDaReceita(args: Args): Promise<{ rows: RadarEstablishmentRow[]; baseCompleta: boolean }> {
   const { estabelecimentos, empresas } = await resolveFiles(args);
 
   if (estabelecimentos.length === 0) {
@@ -274,6 +291,53 @@ async function main(): Promise<void> {
   if (semEmpresa > 0) {
     console.log(`Sem correspondência em Empresas (razão social = nome fantasia ou "NÃO INFORMADO"): ${semEmpresa.toLocaleString('pt-BR')}`);
   }
+  // A Receita divide os estabelecimentos em 10 arquivos (Estabelecimentos0..9). Com
+  // menos que isso, a limpeza apagaria as empresas que estão nos arquivos que faltam.
+  return { rows, baseCompleta: estabelecimentos.length >= 10 };
+}
+
+async function salvarFiltrado(file: string, rows: readonly RadarEstablishmentRow[], args: Args, baseCompleta: boolean): Promise<void> {
+  const meta: FilteredMeta = {
+    version: 1, release: args.release, ufs: [...args.ufs], cnaes: [...RADAR_ALL_CNAES],
+    baseCompleta, rows: rows.length, createdAt: new Date().toISOString(),
+  };
+  const out = createWriteStream(file, { encoding: 'utf8' });
+  const write = (s: string) => new Promise<void>((resolve, reject) => out.write(s, (e) => (e ? reject(e) : resolve())));
+  await write(JSON.stringify(meta) + '\n');
+  for (const row of rows) await write(JSON.stringify(row) + '\n');
+  await new Promise<void>((resolve, reject) => out.end((e?: Error | null) => (e ? reject(e) : resolve())));
+  console.log(`Resultado filtrado salvo em ${file} (${rows.length.toLocaleString('pt-BR')} linhas). Grave depois com --from-filtered, sem reler os arquivos da Receita.`);
+}
+
+async function lerFiltrado(args: Args): Promise<{ rows: RadarEstablishmentRow[]; baseCompleta: boolean }> {
+  const file = args.fromFiltered!;
+  const rl = createInterface({ input: createReadStream(file, { encoding: 'utf8' }), crlfDelay: Infinity });
+  let meta: FilteredMeta | null = null;
+  const rows: RadarEstablishmentRow[] = [];
+  for await (const line of rl) {
+    if (!line.trim()) continue;
+    const parsed: unknown = JSON.parse(line);
+    if (!meta) {
+      meta = parsed as FilteredMeta;
+      const motivo = motivoFiltradoInvalido(meta, { release: args.release, ufs: args.ufs, cnaes: RADAR_ALL_CNAES });
+      if (motivo) throw new Error(`Arquivo filtrado recusado: ${motivo}.`);
+      continue;
+    }
+    if (!linhaFiltradaValida(parsed, args.ufs)) throw new Error(`Arquivo filtrado com linha inválida (#${rows.length + 1}). Gere de novo.`);
+    rows.push(parsed);
+  }
+  if (!meta) throw new Error('Arquivo filtrado vazio.');
+  if (rows.length !== meta.rows) {
+    throw new Error(`Arquivo filtrado incompleto: cabeçalho diz ${meta.rows} linhas, leu ${rows.length}. Gere de novo.`);
+  }
+  console.log(`Lido ${file}: ${rows.length.toLocaleString('pt-BR')} linhas (release ${meta.release}, gerado em ${meta.createdAt}). Os arquivos da Receita NÃO foram relidos.`);
+  return { rows, baseCompleta: meta.baseCompleta };
+}
+
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
+  const { rows, baseCompleta } = args.fromFiltered ? await lerFiltrado(args) : await lerDaReceita(args);
+  if (args.saveFiltered) await salvarFiltrado(args.saveFiltered, rows, args, baseCompleta);
 
   const porUf = new Map<string, number>();
   const porSegmento = new Map<string, number>();
@@ -314,11 +378,10 @@ async function main(): Promise<void> {
     throw new Error('DATABASE_URL não está definida no ambiente. Veja scripts/radar/README.md.');
   }
 
-  // A Receita divide os estabelecimentos em 10 arquivos (Estabelecimentos0..9). Com
-  // menos que isso, a limpeza apagaria as empresas que estão nos arquivos que faltam.
-  const baseCompleta = estabelecimentos.length >= 10;
+  // `baseCompleta` = os 10 arquivos de estabelecimentos foram lidos. Com menos que isso, a
+  // limpeza apagaria as empresas que estão nos arquivos que faltam.
   if (!baseCompleta) {
-    console.warn(`Aviso: só ${estabelecimentos.length} arquivo(s) ESTABELE (a base completa tem 10). ` +
+    console.warn('Aviso: a base lida não tem os 10 arquivos ESTABELE. ' +
       'Os registros serão gravados, mas a limpeza de registros antigos NÃO vai rodar.');
   }
   await writeToDatabase(rows, args.release, args.ufs, baseCompleta && !args.skipCleanup);
