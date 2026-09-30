@@ -217,9 +217,28 @@ export const prospectingRadarRouter = router({
           .from(fatOrders)
           .where(and(inArray(sql`upper(${fatOrders.uf})`, ufs), staff ? undefined : eq(fatOrders.sellerId, mySellerId!)))
           .limit(20000);
+        // Telefone e tarefa do cliente que já comprou: vêm da tarefa com o mesmo CNPJ (a tabela de
+        // pedidos não guarda telefone). Atendente só enxerga as próprias tarefas.
+        const cnpjsPedidos = [...new Set(ped.map((p) => (p.cnpj ?? '').replace(/\D/g, '')).filter((c) => c.length === 14))];
+        const porCnpj = new Map<string, { phone: string | null; id: number; convertida: boolean }>();
+        if (cnpjsPedidos.length) {
+          const donoPed = staff ? undefined : await userTaskFilter(ctx.user.id, ctx.user.name ?? '');
+          const tp = await db
+            .select({ id: tasks.id, cnpj: tasks.cnpj, phone: tasks.phone, convertedAt: tasks.convertedAt })
+            .from(tasks)
+            .where(and(inArray(tasks.cnpj, cnpjsPedidos), donoPed));
+          for (const t of tp) {
+            const c = (t.cnpj ?? '').replace(/\D/g, '');
+            const atual = porCnpj.get(c);
+            if (!atual || (!atual.phone && t.phone)) porCnpj.set(c, { phone: t.phone, id: t.id, convertida: t.convertedAt != null });
+          }
+        }
         for (const p of ped) {
+          const extra = porCnpj.get((p.cnpj ?? '').replace(/\D/g, ''));
           entradas.push({
             fonte: 'pedido', nome: p.razao || p.nome, cnpj: p.cnpj, cidade: p.cidade, uf: p.uf, atendente: p.sellerName,
+            telefone: extra?.phone ?? null,
+            tarefa: extra ? { id: extra.id, convertida: extra.convertida } : undefined,
             pedido: {
               faturado: p.status === 'faturado',
               data: p.status === 'faturado' ? (p.faturadoEm ?? p.criadoEm) : p.criadoEm,
@@ -409,7 +428,7 @@ export const prospectingRadarRouter = router({
 
       function crmStatusFor(cnpj: string, phoneDigitsList: string[]): RadarCrmStatus {
         const task = taskByCnpj.get(cnpj) ?? phoneDigitsList.map((d) => taskByPhone.get(d)).find((t) => !!t);
-        if (task) return { kind: 'no_crm', taskId: task.id, assignedTo: task.assignedTo, converted: task.convertedAt != null };
+        if (task) return { kind: 'no_crm', taskId: task.id, assignedTo: task.assignedTo, converted: task.convertedAt != null, taskPhone: task.phone ? task.phone.replace(/\D/g, '') : null };
         const log = logByCnpj.get(cnpj) ?? phoneDigitsList.map((d) => logByPhone.get(d)).find((l) => !!l);
         if (log) return { kind: 'excluido_antes', reason: log.reason, deletedByName: log.deletedByName };
         return { kind: 'novo' };

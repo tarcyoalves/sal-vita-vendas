@@ -77,4 +77,20 @@ describe('consolidarCarteira', () => {
     expect(r.itens.find((i) => i.cidade === 'Mossoró')?.telefone).toBeNull();
     expect(r.itens).toHaveLength(2);
   });
+
+  it('o telefone de um registro vale para o mesmo cliente que aparece sem CNPJ em outro', () => {
+    const r = consolidarCarteira([
+      ped('Mercado Boa Vista', 'Mossoró', '12345678000195', true, '2026-08-01', 100),
+      { fonte: 'tarefa', nome: 'MERCADO BOA VISTA', cidade: 'Mossoró', uf: 'RN', telefone: '(84) 99999-1234', tarefa: { id: 7, convertida: false } },
+    ], mossoro, 50);
+    const comCnpj = r.itens.find((i) => i.cnpj === '12345678000195');
+    expect(comCnpj?.telefone).toBe('84999991234');
+  });
+  it('pedido com telefone e tarefa achados pelo CNPJ mostra os dois no mesmo cartão', () => {
+    const r = consolidarCarteira([
+      { ...ped('Mercado Sol', 'Mossoró', '12345678000195', true, '2026-08-01', 100), telefone: '84988887777', tarefa: { id: 9, convertida: true } },
+    ], mossoro, 50);
+    expect(r.itens[0].telefone).toBe('84988887777');
+    expect(r.itens[0].tarefas).toEqual([{ id: 9, convertida: true }]);
+  });
 });

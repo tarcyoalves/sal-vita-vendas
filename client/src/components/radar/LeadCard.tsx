@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '../../lib/trpc';
+import { Link } from 'wouter';
 import { useAuth } from '../../_core/hooks/useAuth';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -35,8 +36,8 @@ import {
 } from '../../../../shared/radar';
 import { CreateTaskDialog, LinkToTasks } from './CreateTaskDialog';
 import { DiscardDialog } from './DiscardDialog';
-import { EnrichmentSection } from './EnrichmentSection';
-import { buildPhoneOptions, defaultPhoneDigits } from './phoneOptions';
+import { EnrichmentSection, formatFoundDigits } from './EnrichmentSection';
+import { buildPhoneOptions, defaultPhoneDigits, normalizePhoneDigits } from './phoneOptions';
 import { defaultContactMessage } from './contactMessage';
 
 const SEGMENT_LABELS = new Map(RADAR_SEGMENTS.map((s) => [s.key, s.label]));
@@ -132,7 +133,15 @@ export function LeadCard({
   const dataInicio = formatDate(lead.dataInicio);
 
   // ── Telefone escolhido para WhatsApp/Ligar ──
-  const phoneOptions = useMemo(() => buildPhoneOptions(lead, enrichment), [lead, enrichment]);
+  const phoneOptions = useMemo(() => {
+    const opts = buildPhoneOptions(lead, enrichment);
+    // Lead que já é tarefa: o telefone cadastrado na tarefa entra na lista (primeiro).
+    const tp = lead.crm.kind === 'no_crm' ? normalizePhoneDigits(lead.crm.taskPhone ?? '') : '';
+    if ((tp.length === 10 || tp.length === 11) && !opts.some((o) => o.digits === tp)) {
+      opts.unshift({ digits: tp, formatted: formatFoundDigits(tp), isWhatsapp: false, likelyMobile: tp.length === 11, sourceLabel: 'cadastrado na tarefa' });
+    }
+    return opts;
+  }, [lead, enrichment]);
   const [selectedPhone, setSelectedPhone] = useState<string | null>(() => defaultPhoneDigits(phoneOptions));
   useEffect(() => {
     setSelectedPhone((prev) => (prev && phoneOptions.some((p) => p.digits === prev) ? prev : defaultPhoneDigits(phoneOptions)));
@@ -270,6 +279,16 @@ export function LeadCard({
         </div>
         <CrmBadge lead={lead} />
       </div>
+
+      {/* Atalho para a tarefa que aparece neste cartão (só se a pessoa pode abri-la). */}
+      {lead.crm.kind === 'no_crm' && podeAbrirTarefa(lead.crm.assignedTo, user) && (
+        <Link
+          href={`/tasks?tarefa=${lead.crm.taskId}`}
+          className="inline-flex w-fit items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-900 hover:bg-blue-100"
+        >
+          <ExternalLink size={13} /> Ir para a tarefa #{lead.crm.taskId}
+        </Link>
+      )}
 
       {/* Contato já feito — perto do topo, para quem for ligar ver antes */}
       <ContactActivityBadge activity={activity} currentUserName={user?.name ?? null} />
@@ -496,7 +515,20 @@ export function LeadCard({
       )}
 
       {isCrm && (
-        <div className="pt-0.5">
+        <div className="space-y-2 pt-0.5">
+          {/* Já é tarefa: contato direto sem registrar novo contato do Buscador. */}
+          {selectedPhone && (
+            <div className="grid grid-cols-2 gap-2">
+              <Button asChild variant="default" className="bg-emerald-600 hover:bg-emerald-700">
+                <a href={waMeLink(selectedPhone, message)} target="_blank" rel="noopener noreferrer">
+                  <MessageCircle size={14} /> WhatsApp
+                </a>
+              </Button>
+              <Button asChild variant="outline">
+                <a href={`tel:${selectedPhone}`}><PhoneIcon size={14} /> Ligar</a>
+              </Button>
+            </div>
+          )}
           <LinkToTasks />
         </div>
       )}
@@ -523,6 +555,12 @@ export function LeadCard({
       />
     </div>
   );
+}
+
+/** Admin e gerente abrem qualquer tarefa; atendente só as que são dele (o servidor não entrega as dos outros). */
+function podeAbrirTarefa(assignedTo: string | null, user: { name?: string | null; role?: string } | null | undefined): boolean {
+  if (user?.role === 'admin' || user?.role === 'manager') return true;
+  return !!assignedTo && assignedTo.trim().toLowerCase() === (user?.name ?? '').trim().toLowerCase();
 }
 
 function CrmBadge({ lead }: { lead: RadarLead }) {

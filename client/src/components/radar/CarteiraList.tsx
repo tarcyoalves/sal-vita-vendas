@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { MessageCircle, Phone } from 'lucide-react';
+import { ExternalLink, MessageCircle, Phone } from 'lucide-react';
+import { Link } from 'wouter';
 import { Button } from '../ui/button';
 import { useAuth } from '../../_core/hooks/useAuth';
 import { defaultContactMessage } from './contactMessage';
@@ -108,6 +109,20 @@ function CarteiraCard({ item, mensagem }: { item: RadarCarteiraItem; mensagem: s
       </div>
 
       {item.atendentes.length > 0 && <p className="text-xs text-slate-500">Atendente: {item.atendentes.join(', ')}</p>}
+
+      {item.tarefas.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {item.tarefas.slice(0, 3).map((t) => (
+            <Link
+              key={t.id}
+              href={`/tasks?tarefa=${t.id}`}
+              className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-900 hover:bg-blue-100"
+            >
+              <ExternalLink size={13} /> Ir para a tarefa #{t.id}
+            </Link>
+          ))}
+        </div>
+      )}
 
       {item.telefone ? (
         <div className="flex flex-wrap gap-2 pt-1">

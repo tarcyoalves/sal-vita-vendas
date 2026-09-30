@@ -961,6 +961,21 @@ export default function Tasks() {
 
   const handleOpenNewTask = useCallback(() => { resetForm(); setIsModalOpen(true); }, [resetForm]);
 
+  // Link direto para uma tarefa (ex.: vindo do Buscador de Clientes): /tasks?tarefa=123.
+  // Abre a edição dessa tarefa uma única vez e limpa o parâmetro da barra de endereço.
+  const deepLinkHandled = useRef(false);
+  useEffect(() => {
+    if (deepLinkHandled.current || isLoading) return;
+    const raw = new URLSearchParams(window.location.search).get('tarefa');
+    if (!raw) return;
+    deepLinkHandled.current = true;
+    const id = Number(raw);
+    const alvo = Number.isInteger(id) ? (tasks as Task[]).find((x) => x.id === id) : undefined;
+    if (alvo) handleEdit(alvo);
+    else toast.error('Tarefa não encontrada. Ela pode ter sido excluída ou ser de outro atendente.');
+    window.history.replaceState(null, '', window.location.pathname);
+  }, [tasks, isLoading, handleEdit]);
+
   const handleSelectTask = useCallback((id: number) => {
     const s = new Set(selectedTasks);
     s.has(id) ? s.delete(id) : s.add(id);

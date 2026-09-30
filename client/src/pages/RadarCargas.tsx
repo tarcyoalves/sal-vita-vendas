@@ -450,7 +450,7 @@ export default function RadarCargas() {
       {mode === 'novas' && !searchQuery.isFetching && notImplemented && (
         <Empty>
           <EmptyHeader>
-            <EmptyTitle>Radar em implantação</EmptyTitle>
+            <EmptyTitle>Buscador em implantação</EmptyTitle>
             <EmptyDescription>
               Essa funcionalidade ainda está sendo construída. Volte em breve.
             </EmptyDescription>

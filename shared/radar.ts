@@ -50,7 +50,7 @@ export interface RadarPhone {
 
 export type RadarCrmStatus =
   | { kind: 'novo' }
-  | { kind: 'no_crm'; taskId: number; assignedTo: string | null; converted: boolean }
+  | { kind: 'no_crm'; taskId: number; assignedTo: string | null; converted: boolean; taskPhone?: string | null }
   // Já foi lead e alguém excluiu (task_deletion_logs, por CNPJ ou telefone) — o motivo
   // pode ser "pediu para não ser contatado". A tela mostra o motivo e não esconde.
   | { kind: 'excluido_antes'; reason: string; deletedByName: string };

@@ -39,6 +39,9 @@ export function consolidarCarteira(
   radiusKm: number,
 ): { itens: RadarCarteiraItem[]; truncated: boolean; semLocalizacao: number } {
   const grupos = new Map<string, RadarCarteiraItem>();
+  // Quem tem CNPJ num registro e só nome em outro é o mesmo cliente: o telefone de um vale para o outro.
+  const chaveNome = new Map<string, string>();
+  const telPorNome = new Map<string, string>();
   let semLocalizacao = 0;
 
   for (const e of entradas) {
@@ -62,7 +65,12 @@ export function consolidarCarteira(
     if (!item.fontes.includes(e.fonte)) item.fontes.push(e.fonte);
     if (e.atendente && !item.atendentes.some((a) => normalizeName(a) === normalizeName(e.atendente!))) item.atendentes.push(e.atendente.trim());
     const tel = soDigitos(e.telefone);
-    if (!item.telefone && tel.length >= 10 && tel.length <= 13) item.telefone = tel;
+    const nomeKey = `${normalizeName(e.nome)}|${mun.ibge}`;
+    chaveNome.set(chave, nomeKey);
+    if (tel.length >= 10 && tel.length <= 13) {
+      if (!item.telefone) item.telefone = tel;
+      if (!telPorNome.has(nomeKey)) telPorNome.set(nomeKey, tel);
+    }
     if (e.tarefa && !item.tarefas.some((t) => t.id === e.tarefa!.id)) item.tarefas.push(e.tarefa);
     if (e.pedido) {
       item.pedidos++;
@@ -72,6 +80,10 @@ export function consolidarCarteira(
         if (e.pedido.data && (!item.ultimaCompraEm || e.pedido.data > item.ultimaCompraEm)) item.ultimaCompraEm = e.pedido.data;
       }
     }
+  }
+
+  for (const item of grupos.values()) {
+    if (!item.telefone) item.telefone = telPorNome.get(chaveNome.get(item.chave) ?? '') ?? null;
   }
 
   // Mais perto primeiro; quem já comprou vem antes de quem nunca comprou na mesma distância.

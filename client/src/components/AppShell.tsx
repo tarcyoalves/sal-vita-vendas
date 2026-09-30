@@ -58,7 +58,7 @@ const NAV_ITEMS: NavItem[] = [
     group: "Operação",
   },
   {
-    label: "Radar de Cargas",
+    label: "Buscador de Clientes",
     path: "/radar-cargas",
     icon: <Truck size={18} />,
     roles: ["admin", "manager"],
@@ -104,7 +104,7 @@ const NAV_ITEMS: NavItem[] = [
     group: "Meu dia",
   },
   {
-    label: "Radar de Cargas",
+    label: "Buscador de Clientes",
     path: "/radar-cargas",
     icon: <Truck size={18} />,
     roles: ["user"],
@@ -158,7 +158,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/dashboard": "Dashboard",
   "/tasks": "Tarefas",
   "/attendants": "Atendentes",
-  "/radar-cargas": "Radar de Cargas",
+  "/radar-cargas": "Buscador de Clientes",
   "/admin/email-marketing": "E-mail Marketing",
   "/admin/faturamento": "Faturamento",
   "/documentos": "Documentos & Fichas Técnicas",
