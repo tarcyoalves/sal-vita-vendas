@@ -145,7 +145,8 @@ async function ensureRecentSchema() {
           AND to_regclass('public.radar_lead_actions') IS NOT NULL
           AND to_regclass('public.radar_lead_events') IS NOT NULL AS radar_ok,
           to_regclass('public.smbi_order_events') IS NOT NULL
-          AND to_regclass('public.smbi_robot_state') IS NOT NULL AS smbi_ok`,
+          AND to_regclass('public.smbi_robot_state') IS NOT NULL AS smbi_ok,
+          to_regclass('public.blocked_contacts') IS NOT NULL AS bloq_ok`,
   ]);
 
   // fat_orders só é criada pela migração longa; se ainda não existe, não há o que corrigir aqui.
@@ -210,13 +211,34 @@ async function ensureRecentSchema() {
     `;
   }
 
+  // Arquivo dos contatos removidos por e-mail de domínio bloqueado (a limpeza do build grava aqui antes de excluir).
+  const bloqOk = (reg as unknown as Array<{ bloq_ok: boolean }>)[0]?.bloq_ok === true;
+  if (!bloqOk) {
+    await sql`
+      CREATE TABLE IF NOT EXISTS blocked_contacts (
+        id            SERIAL PRIMARY KEY,
+        origem        TEXT NOT NULL,
+        origem_id     TEXT NOT NULL,
+        email         TEXT,
+        domain        TEXT,
+        nome          TEXT,
+        telefone      TEXT,
+        cnpj          TEXT,
+        detalhes      JSONB,
+        motivo        TEXT NOT NULL DEFAULT 'dominio_bloqueado',
+        bloqueado_em  TIMESTAMP NOT NULL DEFAULT now()
+      )
+    `;
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS blocked_contacts_origem_idx ON blocked_contacts(origem, origem_id)`;
+  }
+
   const radarOk = (reg as unknown as Array<{ radar_ok: boolean }>)[0]?.radar_ok === true;
   if (!radarOk) await ensureRadarTables();
 }
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-09-29d';
+const SCHEMA_VERSION = '2026-09-29e';
 
 export async function ensureTablesExist() {
   // Antes de tudo (e antes do caminho rápido): garante o que foi criado por último.
@@ -915,6 +937,22 @@ export async function ensureTablesExist() {
   `;
   await sql`CREATE INDEX IF NOT EXISTS smbi_order_events_pedido_idx ON smbi_order_events(pedido_id, id)`;
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS smbi_order_events_dedupe_idx ON smbi_order_events(pedido_id, evento, em)`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS blocked_contacts (
+      id            SERIAL PRIMARY KEY,
+      origem        TEXT NOT NULL,
+      origem_id     TEXT NOT NULL,
+      email         TEXT,
+      domain        TEXT,
+      nome          TEXT,
+      telefone      TEXT,
+      cnpj          TEXT,
+      detalhes      JSONB,
+      motivo        TEXT NOT NULL DEFAULT 'dominio_bloqueado',
+      bloqueado_em  TIMESTAMP NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS blocked_contacts_origem_idx ON blocked_contacts(origem, origem_id)`;
   await sql`
     CREATE TABLE IF NOT EXISTS smbi_robot_state (
       id                   INTEGER PRIMARY KEY,

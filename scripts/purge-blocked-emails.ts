@@ -8,8 +8,9 @@
  * O que faz, em cada banco (CRM e Premium; tabela que não existe no banco é ignorada):
  *  - APAGA linhas de listas puras de e-mail: destinatários de campanha, inscrições em sequência,
  *    eventos de e-mail, contatos de marketing e carrinhos abandonados.
- *  - ESVAZIA o campo e-mail (NULL) onde o registro tem outros dados: clientes, tarefas, leads do
- *    Radar e contatos B2B. A tarefa/cliente continua; só o e-mail some.
+ *  - ARQUIVA em `blocked_contacts` e EXCLUI: tarefas (não convertidas e sem pedido), clientes sem
+ *    tarefa ligada e contatos de marketing. Tarefa excluída também entra em task_deletion_logs.
+ *  - ESVAZIA o campo e-mail (NULL) em leads do Radar (base pública da Receita) e contatos B2B.
  *  - SEMEIA o bloqueio: endereços em `email_suppressions` e o domínio em `suppression_list`.
  *  - SÓ CONTA (nunca altera): contas de login (users), atendentes (sellers) e pedidos da loja
  *    (site_orders). Se aparecer número maior que zero, é decisão do dono.
@@ -38,17 +39,71 @@ const jobs: Job[] = [
   { label: 'DELETE email_campaign_recipients', run: async (s, re, pro) => n(await s`WITH d AS (DELETE FROM email_campaign_recipients WHERE email ~* ${re} AND email !~* ${pro} RETURNING 1) SELECT count(*)::int AS n FROM d`) },
   { label: 'DELETE email_sequence_enrollments', run: async (s, re, pro) => n(await s`WITH d AS (DELETE FROM email_sequence_enrollments WHERE email ~* ${re} AND email !~* ${pro} RETURNING 1) SELECT count(*)::int AS n FROM d`) },
   { label: 'DELETE email_events', run: async (s, re, pro) => n(await s`WITH d AS (DELETE FROM email_events WHERE recipient_email ~* ${re} AND recipient_email !~* ${pro} RETURNING 1) SELECT count(*)::int AS n FROM d`) },
-  { label: 'DELETE marketing_contacts', run: async (s, re, pro) => n(await s`WITH d AS (DELETE FROM marketing_contacts WHERE email ~* ${re} AND email !~* ${pro} RETURNING 1) SELECT count(*)::int AS n FROM d`) },
+  {
+    label: 'ARQUIVA+EXCLUI marketing_contacts',
+    run: async (s, re, pro) => n(await s`
+      WITH del AS (DELETE FROM marketing_contacts WHERE email ~* ${re} AND email !~* ${pro} RETURNING id, email, name, phone, company, city, state),
+      arq AS (
+        INSERT INTO blocked_contacts (origem, origem_id, email, domain, nome, telefone, detalhes)
+        SELECT 'contato_marketing', id::text, lower(email), lower(split_part(email, '@', 2)), name, phone,
+               jsonb_build_object('empresa', company, 'cidade', city, 'uf', state)
+        FROM del ON CONFLICT DO NOTHING RETURNING 1)
+      SELECT (SELECT count(*) FROM del)::int AS n`),
+  },
   { label: 'DELETE abandoned_carts', run: async (s, re, pro) => n(await s`WITH d AS (DELETE FROM abandoned_carts WHERE customer_email ~* ${re} AND customer_email !~* ${pro} RETURNING 1) SELECT count(*)::int AS n FROM d`) },
   // ── ESVAZIA o campo e-mail ──
-  { label: 'NULL clients.email', run: async (s, re, pro) => n(await s`WITH u AS (UPDATE clients SET email = NULL WHERE email ~* ${re} AND email !~* ${pro} RETURNING 1) SELECT count(*)::int AS n FROM u`) },
-  { label: 'NULL tasks.email', run: async (s, re, pro) => n(await s`WITH u AS (UPDATE tasks SET email = NULL WHERE email ~* ${re} AND email !~* ${pro} RETURNING 1) SELECT count(*)::int AS n FROM u`) },
+  {
+    label: 'ARQUIVA+EXCLUI clients (sem tarefa ligada)',
+    run: async (s, re, pro) => n(await s`
+      WITH del AS (
+        DELETE FROM clients c WHERE c.email ~* ${re} AND c.email !~* ${pro}
+          AND NOT EXISTS (SELECT 1 FROM tasks x WHERE x.client_id = c.id)
+        RETURNING c.id, c.email, c.name, c.phone, c.company, c.city, c.state),
+      arq AS (
+        INSERT INTO blocked_contacts (origem, origem_id, email, domain, nome, telefone, detalhes)
+        SELECT 'cliente', id::text, lower(email), lower(split_part(email, '@', 2)), name, phone,
+               jsonb_build_object('empresa', company, 'cidade', city, 'uf', state)
+        FROM del ON CONFLICT DO NOTHING RETURNING 1)
+      SELECT (SELECT count(*) FROM del)::int AS n`),
+  },
+  // Tarefa inteira: arquiva (nome, telefone, CNPJ, atendente, notas), registra em task_deletion_logs
+  // (o Radar e a importação passam a tratar o lead como excluído) e só então exclui. Uma instrução:
+  // se o arquivo falhar, nada é apagado. NÃO exclui tarefa já convertida em cliente nem com pedido.
+  {
+    label: 'ARQUIVA+EXCLUI tasks (não convertidas, sem pedido)',
+    run: async (s, re, pro) => n(await s`
+      WITH del AS (
+        DELETE FROM tasks t WHERE t.email ~* ${re} AND t.email !~* ${pro}
+          AND t.converted_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM fat_orders o WHERE o.task_id = t.id)
+        RETURNING t.id, t.title, t.description, t.notes, t.email, t.phone, t.cnpj, t.assigned_to, t.created_at),
+      arq AS (
+        INSERT INTO blocked_contacts (origem, origem_id, email, domain, nome, telefone, cnpj, detalhes)
+        SELECT 'tarefa', id::text, lower(email), lower(split_part(email, '@', 2)), title, phone, cnpj,
+               jsonb_build_object('descricao', description, 'notas', notes, 'atendente', assigned_to, 'criadaEm', created_at)
+        FROM del ON CONFLICT DO NOTHING RETURNING 1),
+      logx AS (
+        INSERT INTO task_deletion_logs (task_id, task_title, task_notes, deleted_by_user_id, deleted_by_name, reason, reviewed_by_admin, cnpj, phone)
+        SELECT id, title, notes, 0, 'Sistema (domínio bloqueado)', 'E-mail de domínio bloqueado pelo dono', true, cnpj, phone FROM del RETURNING 1)
+      SELECT (SELECT count(*) FROM del)::int AS n`),
+  },
+  {
+    label: 'IGNORADAS tasks bloqueadas mas convertidas/com pedido (não excluídas)',
+    run: async (s, re, pro) => n(await s`
+      SELECT count(*)::int AS n FROM tasks t WHERE t.email ~* ${re} AND t.email !~* ${pro}
+        AND (t.converted_at IS NOT NULL OR EXISTS (SELECT 1 FROM fat_orders o WHERE o.task_id = t.id))`),
+  },
   { label: 'NULL radar_establishments.email', run: async (s, re, pro) => n(await s`WITH u AS (UPDATE radar_establishments SET email = NULL WHERE email ~* ${re} AND email !~* ${pro} RETURNING 1) SELECT count(*)::int AS n FROM u`) },
   { label: 'NULL contacts.email (B2B)', run: async (s, re, pro) => n(await s`WITH u AS (UPDATE contacts SET email = NULL WHERE email ~* ${re} AND email !~* ${pro} RETURNING 1) SELECT count(*)::int AS n FROM u`) },
   // ── SÓ CONTA (nunca altera) ──
   { label: 'CONTA users (login) — não alterado', run: async (s, re, pro) => n(await s`SELECT count(*)::int AS n FROM users WHERE email ~* ${re} AND email !~* ${pro}`) },
   { label: 'CONTA sellers (atendentes) — não alterado', run: async (s, re, pro) => n(await s`SELECT count(*)::int AS n FROM sellers WHERE email ~* ${re} AND email !~* ${pro}`) },
   { label: 'CONTA site_orders (pedidos da loja) — não alterado', run: async (s, re, pro) => n(await s`SELECT count(*)::int AS n FROM site_orders WHERE customer_email ~* ${re} AND customer_email !~* ${pro}`) },
+  // ── Lista "Bloqueados" do E-mail Marketing: todo e-mail arquivado entra (endereço único por linha) ──
+  { label: 'SEMEIA email_suppressions a partir do arquivo', run: async (s) => n(await s`
+      WITH i AS (INSERT INTO email_suppressions (email, reason)
+        SELECT DISTINCT lower(email), 'dominio_bloqueado' FROM blocked_contacts WHERE email IS NOT NULL AND email !~ '[;, ]'
+        ON CONFLICT (email) DO NOTHING RETURNING 1) SELECT count(*)::int AS n FROM i`) },
   // ── SEMEIA o bloqueio ──
   ...BLOCKED_EMAIL_ADDRESSES.map<Job>((addr) => ({
     label: `SEMEIA email_suppressions ${addr}`,
@@ -82,6 +137,34 @@ async function relatorioDominios(sql: Sql, pro: string, banco: string): Promise<
   }
 }
 
+/**
+ * Só relatório: tarefas que podem ser das empresas bloqueadas mas já tiveram o e-mail esvaziado (a
+ * limpeza anterior só apagava o campo). Nada é excluído aqui: o dono confere e decide.
+ */
+async function relatorioCandidatas(sql: Sql, banco: string): Promise<void> {
+  const rotulos = BLOCKED_EMAIL_DOMAINS.map((d) => d.split('.')[0]).filter((l) => l.length >= 5);
+  const rx = rotulos.join('|');
+  const consultas: Array<{ nome: string; q: () => Promise<unknown> }> = [
+    {
+      nome: 'tarefas sem e-mail mas com e-mail confirmado antes (provável e-mail esvaziado)',
+      q: () => sql`SELECT id, left(title, 60) AS t FROM tasks WHERE email IS NULL AND email_confirmed = true AND converted_at IS NULL ORDER BY id LIMIT 40`,
+    },
+    {
+      nome: `tarefas que citam ${rotulos.join('/')} no título, descrição ou notas`,
+      q: () => sql`SELECT id, left(title, 60) AS t FROM tasks WHERE (title ~* ${rx} OR coalesce(description, '') ~* ${rx} OR coalesce(notes, '') ~* ${rx}) AND converted_at IS NULL ORDER BY id LIMIT 40`,
+    },
+  ];
+  for (const c of consultas) {
+    try {
+      const rows = (await c.q()) as Array<{ id: number; t: string }>;
+      if (rows.length) log(`${banco}: CANDIDATAS (${c.nome}) ${rows.length}: ${rows.map((r) => `#${r.id} ${r.t}`).join(' | ')}`);
+      else log(`${banco}: CANDIDATAS (${c.nome}) 0`);
+    } catch {
+      /* tabela/coluna inexistente neste banco */
+    }
+  }
+}
+
 async function purge(): Promise<void> {
   const argv = process.argv.slice(2);
   const force = argv.includes('--force');
@@ -107,6 +190,7 @@ async function purge(): Promise<void> {
     seen.add(db.url);
     const sql = neon(db.url);
     await relatorioDominios(sql, pro, db.name);
+    await relatorioCandidatas(sql, db.name);
     for (const job of jobs) {
       try {
         const count = await job.run(sql, re, pro);

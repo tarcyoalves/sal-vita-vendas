@@ -9,6 +9,7 @@
 // este arquivo.
 import { RADAR_ALL_CNAES } from '../../../shared/radar';
 import { municipioBySiafi } from './geo';
+import { isBlockedEmail } from '../../../shared/blockedEmailDomains';
 
 // ── CSV quotado da Receita ──────────────────────────────────────────────────────────
 
@@ -110,6 +111,11 @@ export function buildPhone(ddd: string | undefined | null, numero: string | unde
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Trim + minúsculas; `null` se não tiver cara de e-mail. */
+/** E-mail de domínio bloqueado pelo dono nunca entra na base do Radar. */
+function semEmailBloqueado(email: string | null): string | null {
+  return email && isBlockedEmail(email) ? null : email;
+}
+
 export function normalizeEmail(raw: string | undefined | null): string | null {
   const trimmed = (raw ?? '').trim().toLowerCase();
   return EMAIL_RE.test(trimmed) ? trimmed : null;
@@ -260,7 +266,7 @@ export function parseEstabelecimento(
       cep: onlyDigits(fields[18]) || null,
       telefone1: buildPhone(fields[21], fields[22]),
       telefone2: buildPhone(fields[23], fields[24]),
-      email: normalizeEmail(fields[27]),
+      email: semEmailBloqueado(normalizeEmail(fields[27])),
       dataInicio: normalizeDate(fields[10]),
       nomeFantasia: (fields[4] ?? '').trim() || null,
     },

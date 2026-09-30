@@ -354,6 +354,22 @@ export const emailSuppressions = pgTable('email_suppressions', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+// Contatos removidos do CRM por terem e-mail de domínio bloqueado (shared/blockedEmailDomains.ts).
+// A limpeza do build ARQUIVA aqui antes de excluir, para o dono saber o que saiu e por quê.
+export const blockedContacts = pgTable('blocked_contacts', {
+  id: serial('id').primaryKey(),
+  origem: text('origem').notNull(),       // tarefa | cliente | contato_marketing
+  origemId: text('origem_id').notNull(),  // id do registro no momento da exclusão
+  email: text('email'),
+  domain: text('domain'),
+  nome: text('nome'),
+  telefone: text('telefone'),
+  cnpj: text('cnpj'),
+  detalhes: jsonb('detalhes').$type<Record<string, unknown> | null>(),
+  motivo: text('motivo').notNull().default('dominio_bloqueado'),
+  bloqueadoEm: timestamp('bloqueado_em').defaultNow().notNull(),
+});
+
 export const emailSendCounters = pgTable('email_send_counters', {
   id: serial('id').primaryKey(),
   accountKey: text('account_key').notNull(),
