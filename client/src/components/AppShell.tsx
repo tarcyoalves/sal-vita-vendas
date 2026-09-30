@@ -18,6 +18,7 @@ import {
   DollarSign,
   FileText,
   Truck,
+  UserSearch,
 } from "lucide-react";
 import { useAuth } from "../_core/hooks/useAuth";
 import { trpc } from "../lib/trpc";
@@ -60,7 +61,7 @@ const NAV_ITEMS: NavItem[] = [
   {
     label: "Buscador de Clientes",
     path: "/radar-cargas",
-    icon: <Truck size={18} />,
+    icon: <UserSearch size={18} />,
     roles: ["admin", "manager"],
     group: "Operação",
   },
@@ -106,7 +107,7 @@ const NAV_ITEMS: NavItem[] = [
   {
     label: "Buscador de Clientes",
     path: "/radar-cargas",
-    icon: <Truck size={18} />,
+    icon: <UserSearch size={18} />,
     roles: ["user"],
     group: "Meu dia",
   },
