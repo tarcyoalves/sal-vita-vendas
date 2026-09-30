@@ -210,14 +210,14 @@ describe('lineMightMatchCnaes (pré-filtro)', () => {
   });
 
   it('rejeita uma linha sem nenhum CNAE-alvo em lugar nenhum', () => {
-    const line = estabLine({ cnaePrincipal: '4711301', cnaeSecundaria: '9999999,8888888' });
+    const line = estabLine({ cnaePrincipal: '4712100', cnaeSecundaria: '9999999,8888888' });
     expect(lineMightMatchCnaes(line)).toBe(false);
   });
 
   it('nunca rejeita uma linha que o parser completo aceitaria', () => {
     const linhasValidas = [
       estabLine(),
-      estabLine({ cnaePrincipal: '4711301', cnaeSecundaria: '1011201' }), // casa só pelo secundário
+      estabLine({ cnaePrincipal: '4712100', cnaeSecundaria: '1011201' }), // casa só pelo secundário
       estabLine({ cnaePrincipal: '4789004' }), // outro segmento-alvo
       estabLine({ cnaePrincipal: '4623109', cnaeSecundaria: '1052000,4639701' }),
     ];
@@ -265,7 +265,7 @@ describe('parseEstabelecimento', () => {
 
   it('descarta quando nenhum CNAE (principal ou secundário) é alvo', () => {
     const result = parseEstabelecimento(
-      parseReceitaLine(estabLine({ cnaePrincipal: '4711301', cnaeSecundaria: '9999999' })),
+      parseReceitaLine(estabLine({ cnaePrincipal: '4712100', cnaeSecundaria: '9999999' })),
       { ufs: ufsPR },
     );
     expect(result).toEqual({ ok: false, reason: 'cnae' });
@@ -273,12 +273,12 @@ describe('parseEstabelecimento', () => {
 
   it('casa por CNAE secundário quando o principal não é alvo, e cnaesAlvo reflete isso', () => {
     const result = parseEstabelecimento(
-      parseReceitaLine(estabLine({ cnaePrincipal: '4711301', cnaeSecundaria: '9999999,1011201' })),
+      parseReceitaLine(estabLine({ cnaePrincipal: '4712100', cnaeSecundaria: '9999999,1011201' })),
       { ufs: ufsPR },
     );
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.row.cnaePrincipal).toBe('4711301');
+    expect(result.row.cnaePrincipal).toBe('4712100');
     expect(result.row.cnaesAlvo).toEqual(['1011201']);
   });
 
@@ -330,7 +330,7 @@ describe('passo 1 + passo 2, fim a fim (sem banco)', () => {
       // Um frigorífico em SC, casado só pelo CNAE secundário, sem Empresas correspondente.
       estabLine({
         cnpjBasico: '22222222', nomeFantasia: 'FRIGORIFICO B', uf: 'SC', siafi: '8097', // Dionísio Cerqueira/SC
-        cnaePrincipal: '4711301', cnaeSecundaria: '1011201',
+        cnaePrincipal: '4712100', cnaeSecundaria: '1011201',
       }),
       // Descartada: CNAE fora da lista-alvo. O nome fantasia carrega, de propósito, um
       // trecho igual a um CNAE-alvo (1052000) num campo que não é CNAE — isso faz a
@@ -338,7 +338,7 @@ describe('passo 1 + passo 2, fim a fim (sem banco)', () => {
       // completo, que olha só os campos de CNAE de verdade.
       estabLine({
         cnpjBasico: '33333333', nomeFantasia: 'FORA DO CNAE (ref. 1052000)', uf: 'PR',
-        cnaePrincipal: '4711301', cnaeSecundaria: '',
+        cnaePrincipal: '4712100', cnaeSecundaria: '',
       }),
       // Descartada: UF fora do conjunto pedido.
       estabLine({ cnpjBasico: '44444444', nomeFantasia: 'FORA DA UF', uf: 'SP' }),

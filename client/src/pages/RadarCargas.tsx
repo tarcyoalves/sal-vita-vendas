@@ -41,7 +41,8 @@ import {
   type RadarSegmentKey,
 } from '../../../shared/radar';
 
-const DEFAULT_SEGMENTS = RADAR_SEGMENT_KEYS.filter((k) => k !== 'racao_varejo');
+// Pet shop e supermercado ficam desmarcados: são muitos e escondem os clientes de carga maior.
+const DEFAULT_SEGMENTS = RADAR_SEGMENT_KEYS.filter((k) => k !== 'racao_varejo' && k !== 'supermercado');
 
 // Teto de tempo de polling por busca — depois disso paramos de perguntar ao
 // servidor mesmo que ainda reste algo pendente (robô pode ter travado).

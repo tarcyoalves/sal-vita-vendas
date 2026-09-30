@@ -7,12 +7,20 @@
 // foi validada contra quem de fato compra da Sal Vita. Atenção ao 4789-0/04: a descrição
 // oficial é "animais vivos e artigos e alimentos para animais de ESTIMAÇÃO" — tende a
 // trazer pet shop. Ajuste aqui quando o perfil real da carteira for levantado.
+// Códigos conferidos na tabela oficial do IBGE (API de subclasses CNAE). Minimercados,
+// mercearias e armazéns (4712100) ficam de FORA de propósito: são a maior parte das
+// empresas do comércio de alimentos e quase nunca fecham carga de sal.
 export const RADAR_SEGMENTS = [
   { key: 'racao_atacado', label: 'Atacado de rações', cnaes: ['4623109'] },
   { key: 'racao_varejo', label: 'Varejo de rações / pet', cnaes: ['4789004'] },
+  { key: 'racao_fabrica', label: 'Fábricas de ração', cnaes: ['1066000'] },
   { key: 'laticinio', label: 'Laticínios', cnaes: ['1052000'] },
-  { key: 'frigorifico', label: 'Frigoríficos (abate de bovinos)', cnaes: ['1011201'] },
-  { key: 'atacado_alimentos', label: 'Atacado de alimentos em geral', cnaes: ['4639701'] },
+  // 1011201 bovinos, 1011205 matadouro (abate sob contrato), 1012101 aves, 1012103 suínos.
+  { key: 'frigorifico', label: 'Frigoríficos (abate)', cnaes: ['1011201', '1011205', '1012101', '1012103'] },
+  // 4639702 = atacado de alimentos com fracionamento e acondicionamento.
+  { key: 'atacado_alimentos', label: 'Atacado de alimentos em geral', cnaes: ['4639701', '4639702'] },
+  { key: 'supermercado', label: 'Supermercados e hipermercados', cnaes: ['4711301', '4711302'] },
+  { key: 'quimica_sabao', label: 'Fábricas de sabão e detergente', cnaes: ['2061400'] },
 ] as const;
 
 export type RadarSegmentKey = (typeof RADAR_SEGMENTS)[number]['key'];
