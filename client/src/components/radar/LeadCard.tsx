@@ -526,13 +526,23 @@ export function LeadCard({
 }
 
 function CrmBadge({ lead }: { lead: RadarLead }) {
+  const { user } = useAuth();
+  if (lead.clienteAtivo) {
+    return <Badge className="bg-blue-900 hover:bg-blue-900 text-white shrink-0 text-[10px]">Cliente ativo</Badge>;
+  }
   if (lead.crm.kind === 'novo') {
     return <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white shrink-0">Novo</Badge>;
   }
   if (lead.crm.kind === 'no_crm') {
+    // Só aviso: qualquer atendente pode pesquisar, mas fica claro quando outro já acompanha.
+    const dono = lead.crm.assignedTo;
+    const outro = !!dono && dono.trim().toLowerCase() !== (user?.name ?? '').trim().toLowerCase();
     return (
-      <Badge variant="secondary" className="shrink-0 text-right whitespace-normal text-[10px] leading-tight">
-        Já no CRM — {lead.crm.assignedTo ?? 'sem responsável'}
+      <Badge
+        variant={outro ? 'outline' : 'secondary'}
+        className={`shrink-0 text-right whitespace-normal text-[10px] leading-tight ${outro ? 'border-amber-400 text-amber-700 bg-amber-50' : ''}`}
+      >
+        {outro ? `Outro atendente acompanha: ${dono}` : `Já no CRM — ${dono ?? 'sem responsável'}`}
         {lead.crm.converted ? ' · cliente' : ''}
       </Badge>
     );

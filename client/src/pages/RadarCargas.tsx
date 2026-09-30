@@ -490,6 +490,11 @@ export default function RadarCargas() {
               {leads.length} {leads.length === 1 ? 'empresa' : 'empresas'} em {data.municipalitiesInRadius}{' '}
               {data.municipalitiesInRadius === 1 ? 'município' : 'municípios'} · base Receita {data.datasetRelease}
             </p>
+            {!(user?.role === 'admin' || user?.role === 'manager') && (
+              <p className="text-[11px] text-slate-500">
+                Clientes que já compraram não aparecem aqui. Se outro atendente já acompanha uma empresa, o cartão avisa.
+              </p>
+            )}
             {data.truncated && (
               <p className="text-xs text-amber-600">Mostrando apenas as 200 empresas mais próximas.</p>
             )}

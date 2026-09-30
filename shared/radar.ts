@@ -72,6 +72,8 @@ export interface RadarLead {
   porte: string | null;          // código da Receita: 01 ME, 03 EPP, 05 demais, 00 não informado
   dataInicio: string | null;     // YYYY-MM-DD
   crm: RadarCrmStatus;
+  // Já comprou (pedido faturado ou tarefa convertida). Só admin/gerente recebem estes leads; a tela marca.
+  clienteAtivo?: boolean;
   // Dados raspados da web pelo enriquecedor da VPS (null = ainda não pedido).
   enrichment: RadarEnrichment | null;
   // Contato feito pela lista e descarte — compartilhado entre todos os atendentes.

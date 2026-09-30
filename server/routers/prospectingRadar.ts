@@ -8,8 +8,10 @@ import { and, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { router, protectedProcedure, staffProcedure } from '../trpc';
 import { db } from '../db';
 import { spDateStr } from '../lib/tz';
+import type { RadarEstablishment } from '../db/schema';
 import { radarEstablishments, radarEnrichment, radarLeadActions, radarLeadEvents, tasks, taskDeletionLogs, emailSuppressions, tags, fatOrders, clients, sellers } from '../db/schema';
 import { userTaskFilter } from './tasks';
+import { cnpjsDeClientesAtivos } from '../lib/radar/clientesAtivos';
 import { consolidarCarteira, parseCidadeUf, type CarteiraEntrada } from '../lib/radar/portfolio';
 import { totalItens } from '../../client/src/lib/faturamento/calc';
 import type { ItemPedido } from '../../client/src/lib/faturamento/types';
@@ -127,6 +129,25 @@ async function logLeadEvent(e: {
     cnpj: e.cnpj, type: e.type, channel: e.channel ?? null, reason: e.reason ?? null,
     note: e.note ?? null, taskId: e.taskId ?? null, userId: e.user.id, userName: e.user.name,
   });
+}
+
+/** CNPJs entre `rows` que são cliente ativo (pedido faturado ou tarefa convertida, por CNPJ ou telefone). */
+async function clientesAtivosDe(rows: Array<Pick<RadarEstablishment, 'cnpj' | 'telefone1' | 'telefone2'>>): Promise<Set<string>> {
+  if (rows.length === 0) return new Set();
+  const cnpjs = rows.map((r) => r.cnpj);
+  const phones = [...new Set(rows.flatMap((r) => establishmentPhones(r).map((p) => p.digits)))];
+  const cnpjPedido = sql<string>`regexp_replace(${fatOrders.cnpj}, '[^0-9]', '', 'g')`;
+  const pedidos = await db.select({ c: cnpjPedido }).from(fatOrders)
+    .where(and(eq(fatOrders.status, 'faturado'), inArray(cnpjPedido, cnpjs)));
+  const conds: SQL[] = [inArray(tasks.cnpj, cnpjs)];
+  if (phones.length) conds.push(inArray(tasks.phone, phones));
+  const convertidas = await db.select({ cnpj: tasks.cnpj, phone: tasks.phone }).from(tasks)
+    .where(and(sql`${tasks.convertedAt} IS NOT NULL`, or(...conds)));
+  return cnpjsDeClientesAtivos(
+    rows.map((r) => ({ cnpj: r.cnpj, phones: establishmentPhones(r).map((p) => p.digits) })),
+    pedidos.map((p) => p.c),
+    convertidas,
+  );
 }
 
 async function requireEstablishment(cnpj: string) {
@@ -303,8 +324,8 @@ export const prospectingRadarRouter = router({
         .orderBy(sql`array_position(ARRAY[${sql.join(ibgeCodes.map((c) => sql`${c}`), sql`, `)}]::int[], ${radarEstablishments.municipioIbge})`)
         .limit(RADAR_DB_FETCH_CAP);
 
-      const withDistance = rows.map((row) => ({ row, distanceKm: distanceByIbge.get(row.municipioIbge) ?? 0 }));
-      withDistance.sort((a, b) => {
+      const withDistanceAll = rows.map((row) => ({ row, distanceKm: distanceByIbge.get(row.municipioIbge) ?? 0 }));
+      withDistanceAll.sort((a, b) => {
         if (a.distanceKm !== b.distanceKm) return a.distanceKm - b.distanceKm;
         const aHasPhone = a.row.telefone1 || a.row.telefone2 ? 0 : 1;
         const bHasPhone = b.row.telefone1 || b.row.telefone2 ? 0 : 1;
@@ -313,6 +334,11 @@ export const prospectingRadarRouter = router({
         const bName = (b.row.nomeFantasia || b.row.razaoSocial).toLowerCase();
         return aName.localeCompare(bName, 'pt-BR');
       });
+
+      // Cliente ativo (já comprou): atendente NÃO recebe; admin/gerente recebem com a marca.
+      const isStaffUser = ctx.user.role === 'admin' || ctx.user.role === 'manager';
+      const clientesAtivos = await clientesAtivosDe(withDistanceAll.map((w) => w.row));
+      const withDistance = isStaffUser ? withDistanceAll : withDistanceAll.filter((w) => !clientesAtivos.has(w.row.cnpj));
 
       // Descartados ficam para sempre (evita retrabalho com lead ruim): não ocupam
       // vaga no limite de 200 — a lista enche com empresas úteis — e vêm no fim,
@@ -431,6 +457,7 @@ export const prospectingRadarRouter = router({
         );
       });
 
+      for (const l of leads) if (clientesAtivos.has(l.cnpj)) l.clienteAtivo = true;
       return { origin: originResult, municipalitiesInRadius: nearby.length, leads, truncated, datasetRelease, enricherOnline };
     }),
 
