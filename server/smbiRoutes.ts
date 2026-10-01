@@ -6,7 +6,7 @@
 // As rotas 1, 2, 8 e 9 ficam em api/index.ts. Mesma autenticação (Bearer SMBI_SYNC_SECRET,
 // falha fechado). O que o robô traz é ESPELHO FISCAL: nada aqui altera valor comercial nem comissão.
 import express, { type Express, type RequestHandler } from 'express';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNotNull, ne } from 'drizzle-orm';
 import { db } from './db';
 import { fatOrders, smbiOrderEvents } from './db/schema';
 import { isAuthorized } from './lib/smbi';
@@ -85,6 +85,33 @@ export function registerSmbiExtraRoutes(app: Express, limiter: RequestHandler): 
       res.json({ ok: true, desvinculado: desvincular });
     } catch (err) {
       console.error(`[smbi] POST status pedido=${id} error:`, err);
+      res.status(500).json({ error: 'Internal error' });
+    }
+  });
+
+  // ── Rota 4b: pedidos LIGADOS a um movsai e ainda NÃO faturados no CRM ─────────
+  // O robô confere o faturamento destes direto no SMBI (não depende de arquivo local nem do clique).
+  app.get('/api/smbi/ligados', limiter, async (req, res) => {
+    if (!auth(req, res, 'GET ligados')) return;
+    try {
+      const rows = await db
+        .select({
+          pedidoId: fatOrders.id,
+          movsaiPrincipal: fatOrders.smbiMovsaiId,
+          movsaiVinculo: fatOrders.smbiVinculoMovsais,
+          estado: fatOrders.smbiVinculoEstado,
+        })
+        .from(fatOrders)
+        .where(and(isNotNull(fatOrders.smbiMovsaiId), ne(fatOrders.status, 'faturado')));
+      const ligados = rows.map((r) => ({
+        pedidoId: r.pedidoId,
+        movsaiNumeros: movsaisLigados({ smbiMovsaiId: r.movsaiPrincipal, smbiVinculoMovsais: r.movsaiVinculo }),
+        vinculoEstado: r.estado,
+      }));
+      console.log(`[smbi] GET ligados → ${ligados.length}`);
+      res.json({ ok: true, ligados });
+    } catch (err) {
+      console.error('[smbi] GET ligados error:', err);
       res.status(500).json({ error: 'Internal error' });
     }
   });

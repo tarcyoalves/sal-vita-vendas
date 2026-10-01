@@ -42,6 +42,8 @@ export const faturamentoBodySchema = z.object({
   movsais: z.array(movsaiFiscalSchema).min(1).max(20),
   faturadoEm: dataTexto,
   snapshotHash: z.string().trim().max(128).optional(),
+  /** % de comissão do representante no SMBI. Só mande quando houver ajuste (ex.: sal baixado e frete subido). */
+  comissaoPct: z.number().finite().min(0).max(100).optional(),
 });
 export type FaturamentoBody = z.infer<typeof faturamentoBodySchema>;
 
@@ -101,7 +103,8 @@ export function numerosFiscais(movsais: SmbiMovsaiFiscal[]): { numeroNfe: string
   return { numeroNfe: nfe.length ? nfe.join(', ') : null, numeroCte: cte.length ? cte.join(', ') : null };
 }
 
-type PedidoParaFaturar = Pick<FatOrder, 'smbiMovsaiId' | 'smbiVinculoMovsais' | 'status' | 'faturadoEm'>;
+type PedidoParaFaturar = Pick<FatOrder, 'smbiMovsaiId' | 'smbiVinculoMovsais' | 'status' | 'faturadoEm'>
+  & Partial<Pick<FatOrder, 'itens' | 'itensEstimadoSnapshot' | 'valorFretePorUnidade' | 'comissaoPct'>>;
 
 /** Números de movsai ligados ao pedido (o principal + os do vínculo manual). */
 export function movsaisLigados(p: Pick<FatOrder, 'smbiMovsaiId' | 'smbiVinculoMovsais'>): string[] {
@@ -109,7 +112,42 @@ export function movsaisLigados(p: Pick<FatOrder, 'smbiMovsaiId' | 'smbiVinculoMo
 }
 
 export type FaturamentoPatch = Partial<Pick<FatOrder,
-  'smbiEspelhoFiscal' | 'smbiAlertaDesconto' | 'numeroNfe' | 'numeroCte' | 'status' | 'faturadoEm'>>;
+  'smbiEspelhoFiscal' | 'smbiAlertaDesconto' | 'numeroNfe' | 'numeroCte' | 'status' | 'faturadoEm'
+  | 'itens' | 'itensEstimadoSnapshot' | 'valorFretePorUnidade' | 'comissaoPct'>>;
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const r3 = (n: number) => Math.round(n * 1000) / 1000;
+const r4 = (n: number) => Math.round(n * 10000) / 10000;
+
+/**
+ * O SMBI é a verdade; o CRM espelha (decisão do dono). Pedido faturado de UM item: quantidade, peso,
+ * valor do sal e frete por tonelada passam a ser os do SMBI (NF-e/CT-e). O pedido original fica em
+ * `itensEstimadoSnapshot` (o "Desfazer faturamento" da tela o restaura). Vários itens: não dá para
+ * mapear com segurança, então ficam como estão (o peso proporcional cuida da comissão).
+ */
+export function espelharPedidoDoSmbi(
+  pedido: Pick<FatOrder, 'itens' | 'valorFretePorUnidade'>,
+  movsais: SmbiMovsaiFiscal[],
+): { itens: FatOrder['itens']; valorFretePorUnidade: number } | null {
+  if (pedido.itens.length !== 1) return null;
+  const peso = pesoFaturadoKg(movsais);
+  const it = pedido.itens[0];
+  if (!(peso > 0) || !(it.quantidade > 0) || !(it.pesoKg > 0)) return null;
+  const quantidade = r3(peso / (it.pesoKg / it.quantidade));
+  const sal = movsais.filter((m) => m.nfe?.valorSal !== undefined).reduce((s, m) => s + (m.nfe?.valorSal ?? 0), 0);
+  const temSal = movsais.some((m) => m.nfe?.valorSal !== undefined);
+  const frete = movsais.filter((m) => m.cte?.valorFrete !== undefined).reduce((s, m) => s + (m.cte?.valorFrete ?? 0), 0);
+  const temFrete = movsais.some((m) => m.cte?.valorFrete !== undefined);
+  const novo = {
+    ...it,
+    quantidade,
+    pesoKg: peso,
+    ...(it.pesoBrutoKg ? { pesoBrutoKg: r3(it.pesoBrutoKg * peso / it.pesoKg) } : {}),
+    ...(temSal && quantidade > 0 ? { valorUnitario: r4(sal / quantidade) } : {}),
+  };
+  const fretePorT = !it.isentoFrete && temFrete && frete > 0 ? r2(frete / (peso / 1000)) : pedido.valorFretePorUnidade;
+  return { itens: [novo], valorFretePorUnidade: fretePorT };
+}
 
 /**
  * Decide o que gravar quando o robô informa o faturamento. `erro` (HTTP 409) quando o pedido não
@@ -152,6 +190,20 @@ export function resolverFaturamento(
     smbiAlertaDesconto: parcial ? false : alertaDescontoFiscal(esperado, soma.total, soma.informado),
     ...numerosFiscais(body.movsais),
   };
+  // O SMBI manda: quantidade, peso, valores e (se vier) comissão do pedido passam a ser os dele.
+  if (!parcial && pedido.itens) {
+    const espelhado = espelharPedidoDoSmbi({ itens: pedido.itens, valorFretePorUnidade: pedido.valorFretePorUnidade ?? 0 }, body.movsais);
+    let itens = espelhado?.itens ?? pedido.itens;
+    if (body.comissaoPct !== undefined) {
+      itens = itens.map((i) => ({ ...i, comissaoFixaPct: body.comissaoPct }));
+      patch.comissaoPct = body.comissaoPct;
+    }
+    if (espelhado || body.comissaoPct !== undefined) {
+      patch.itens = itens;
+      patch.itensEstimadoSnapshot = pedido.itensEstimadoSnapshot ?? pedido.itens;
+      if (espelhado) patch.valorFretePorUnidade = espelhado.valorFretePorUnidade;
+    }
+  }
   if (pedido.status !== 'faturado' && !parcial) {
     patch.status = 'faturado';
     patch.faturadoEm = body.faturadoEm;
@@ -222,6 +274,7 @@ export const vinculoResultadoSchema = z.object({
     status: z.string().trim().max(60).optional(),
   })).min(1).max(20),
   confere: z.object({ cliente: z.boolean(), produto: z.boolean(), quantidade: z.boolean() }),
+  comissaoPct: z.number().finite().min(0).max(100).optional(),
 });
 export type VinculoResultadoBody = z.infer<typeof vinculoResultadoSchema>;
 
@@ -241,6 +294,7 @@ export function montarResultadoVinculo(body: VinculoResultadoBody, agora: Date =
   return {
     recebidoEm: agora.toISOString(),
     confere: body.confere,
+    ...(body.comissaoPct !== undefined ? { comissaoPct: body.comissaoPct } : {}),
     movsais: body.movsais.map((m) => ({
       id: m.id, cnpj: m.cnpj, cliente: m.cliente, faturado: m.faturado, status: m.status, itens: m.itens,
       pesoKg: m.pesoKg ?? null, nfe: m.nfe ?? null, cte: m.cte ?? null,
@@ -250,7 +304,7 @@ export function montarResultadoVinculo(body: VinculoResultadoBody, agora: Date =
 
 /** Movsais faturados que o robô leu, no formato do corpo da rota 3 (para reaproveitar `resolverFaturamento`). */
 export function faturamentoDoVinculo(
-  body: { movsais: Array<{ id: string; faturado?: boolean; nfe?: SmbiNfe | null; cte?: SmbiCte | null; pesoKg?: number | null }> },
+  body: { comissaoPct?: number; movsais: Array<{ id: string; faturado?: boolean; nfe?: SmbiNfe | null; cte?: SmbiCte | null; pesoKg?: number | null }> },
   agora: Date = new Date(),
 ): FaturamentoBody | null {
   const faturados = body.movsais.filter((m) => m.faturado);
@@ -259,6 +313,7 @@ export function faturamentoDoVinculo(
   return {
     movsais: faturados.map((m) => ({ id: m.id, pesoKg: m.pesoKg ?? null, nfe: m.nfe ?? null, cte: m.cte ?? null })),
     faturadoEm: data ?? agora.toISOString(),
+    ...(body.comissaoPct !== undefined ? { comissaoPct: body.comissaoPct } : {}),
   };
 }
 

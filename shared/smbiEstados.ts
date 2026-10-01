@@ -73,7 +73,7 @@ export const SMBI_VINCULO_ESTADOS = ['PENDENTE_CONFERENCIA', 'CONFERIDO', 'VINCU
 export type SmbiVinculoEstado = (typeof SMBI_VINCULO_ESTADOS)[number];
 export const SMBI_VINCULO_ROTULO: Record<SmbiVinculoEstado, string> = {
   PENDENTE_CONFERENCIA: 'Vinculado — aguardando o robô conferir no SMBI',
-  CONFERIDO: 'Vínculo conferido (cliente, produto e quantidade batem)',
+  CONFERIDO: 'Vínculo conferido com o SMBI (o SMBI manda; o CRM espelha)',
   VINCULO_COM_DIVERGENCIA: 'Vínculo com divergência — confira antes de confirmar',
 };
 
@@ -101,6 +101,7 @@ export interface SmbiEspelhoFiscal {
 
 /** Comparação lado a lado para o admin decidir um vínculo com divergência. */
 export interface SmbiVinculoResultado {
+  comissaoPct?: number;
   recebidoEm: string;
   confere: { cliente: boolean; produto: boolean; quantidade: boolean };
   movsais: Array<{

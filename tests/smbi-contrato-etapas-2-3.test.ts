@@ -266,3 +266,50 @@ describe('proximoPedidoIndividual', () => {
     expect(proximoPedidoIndividual([ped('a', '2026-10-01T10:00:00Z', null, '1116')], agora)).toBeNull();
   });
 });
+
+// ── O SMBI manda: o pedido espelha quantidade, peso, valores e comissão ──────
+import { espelharPedidoDoSmbi } from '../server/lib/smbiFaturamento';
+
+describe('espelharPedidoDoSmbi / resolverFaturamento', () => {
+  const item = { id: 'i', produtoId: null, descricao: 'Sal', quantidade: 320, pesoKg: 8000, valorUnitario: 6, pesoBrutoKg: 8000, comissaoFixaPct: null, isentoFrete: false };
+  const mov3t = [{ id: '1065', pesoKg: 3000, nfe: { numero: '931', valorSal: 720 }, cte: { numero: '873', valorFrete: 1308 } }];
+
+  it('1 item: quantidade, peso, valor do sal e frete por tonelada passam a ser os do SMBI', () => {
+    const r = espelharPedidoDoSmbi({ itens: [item], valorFretePorUnidade: 436 }, mov3t)!;
+    expect(r.itens[0]).toMatchObject({ quantidade: 120, pesoKg: 3000, valorUnitario: 6, pesoBrutoKg: 3000 });
+    expect(r.valorFretePorUnidade).toBe(436);
+  });
+  it('sal baixado e frete subido (piso de frete): o pedido passa a refletir a nota', () => {
+    const r = espelharPedidoDoSmbi({ itens: [item], valorFretePorUnidade: 436 },
+      [{ id: '1', pesoKg: 8000, nfe: { numero: 'N', valorSal: 1500 }, cte: { numero: 'C', valorFrete: 3908 } }])!;
+    expect(r.itens[0].valorUnitario).toBe(4.6875);
+    expect(r.valorFretePorUnidade).toBe(488.5);
+  });
+  it('vários itens ou sem peso: não mexe', () => {
+    expect(espelharPedidoDoSmbi({ itens: [item, item], valorFretePorUnidade: 1 }, mov3t)).toBeNull();
+    expect(espelharPedidoDoSmbi({ itens: [item], valorFretePorUnidade: 1 }, [{ id: '1' }])).toBeNull();
+  });
+  it('faturamento grava os itens do SMBI, guarda o original no snapshot e adota a comissão do SMBI', () => {
+    const body = faturamentoBodySchema.parse({ movsais: mov3t, faturadoEm: '2026-09-16T10:00:00Z', comissaoPct: 4.2 });
+    const pedidoRow = { smbiMovsaiId: '1065', smbiVinculoMovsais: null, status: 'estimado', faturadoEm: null, itens: [item], itensEstimadoSnapshot: null, valorFretePorUnidade: 436, comissaoPct: 3 };
+    const { patch } = resolverFaturamento(pedidoRow as never, body, 5408, AGORA, 8000);
+    expect(patch.status).toBe('faturado');
+    expect(patch.itens?.[0]).toMatchObject({ quantidade: 120, pesoKg: 3000, comissaoFixaPct: 4.2 });
+    expect(patch.itensEstimadoSnapshot).toEqual([item]);
+    expect(patch.comissaoPct).toBe(4.2);
+    expect(patch.smbiAlertaDesconto).toBe(false);
+  });
+  it('sem comissão no SMBI, a % do pedido não é tocada; reenviar não perde o snapshot original', () => {
+    const body = faturamentoBodySchema.parse({ movsais: mov3t, faturadoEm: '2026-09-16T10:00:00Z' });
+    const jaEspelhado = { smbiMovsaiId: '1065', smbiVinculoMovsais: null, status: 'faturado', faturadoEm: '2026-09-16', itens: [{ ...item, quantidade: 120, pesoKg: 3000 }], itensEstimadoSnapshot: [item], valorFretePorUnidade: 436, comissaoPct: 3 };
+    const { patch } = resolverFaturamento(jaEspelhado as never, body, 2028, AGORA, 3000);
+    expect(patch).not.toHaveProperty('comissaoPct');
+    expect(patch.itensEstimadoSnapshot).toEqual([item]);
+  });
+  it('faturamento parcial não reescreve o pedido', () => {
+    const body = faturamentoBodySchema.parse({ movsais: mov3t, faturadoEm: '2026-09-16T10:00:00Z' });
+    const dois = { smbiMovsaiId: '1065', smbiVinculoMovsais: ['1065', '1066'], status: 'estimado', faturadoEm: null, itens: [item], itensEstimadoSnapshot: null, valorFretePorUnidade: 436, comissaoPct: 3 };
+    expect(resolverFaturamento(dois as never, body, 5408, AGORA, 8000).patch).not.toHaveProperty('itens');
+  });
+});
+

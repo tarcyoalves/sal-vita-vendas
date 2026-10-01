@@ -239,7 +239,7 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
           <p className="font-semibold">Peso faturado diferente do pedido</p>
           <p className="mt-0.5">
             Faturado: {(espelho.pesoFaturadoKg / 1000).toLocaleString('pt-BR')} t · pedido: {(espelho.pesoPedidoKg / 1000).toLocaleString('pt-BR')} t.
-            Isso não é desconto. A comissão continua calculada pelo pedido: se ela deve seguir o que foi faturado, ajuste a quantidade do pedido.
+            Isso não é desconto. O pedido tem mais de um item (ou o faturamento ainda é parcial), então não foi reescrito; a comissão já segue o peso do SMBI.
           </p>
         </div>
       )}
