@@ -4,13 +4,19 @@ import { Button } from '../ui/button';
 import { trpc } from '../../lib/trpc';
 import { useAuth } from '../../_core/hooks/useAuth';
 
+/** Tempo desde `iso`, sem o "há": "3 h", "25 min", "2 d". */
+function duracao(iso: string): string {
+  const min = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
+  if (min < 1) return 'menos de 1 min';
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  return h < 24 ? `${h} h` : `${Math.floor(h / 24)} d`;
+}
+
 function quandoFoi(iso: string | null): string {
   if (!iso) return 'nunca';
-  const min = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
-  if (min < 1) return 'agora há pouco';
-  if (min < 60) return `há ${min} min`;
-  const h = Math.floor(min / 60);
-  return h < 24 ? `há ${h} h` : `há ${Math.floor(h / 24)} d`;
+  const d = duracao(iso);
+  return d === 'menos de 1 min' ? 'agora há pouco' : `há ${d}`;
 }
 
 /**
@@ -85,7 +91,7 @@ export default function SmbiRoboPanel() {
         <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-red-700">
           <AlertTriangle size={14} />
           {data.ultimoHeartbeatEm
-            ? `Sem sinal do robô há mais de ${data.limiteSemSinalMin} minutos: pedidos enviados ficam parados até ele voltar.`
+            ? `Sem sinal do robô há ${duracao(data.ultimoHeartbeatEm)} (o aviso aparece depois de ${data.limiteSemSinalMin} min): pedidos enviados ficam parados até ele voltar.`
             : 'O robô ainda não deu sinal: pedidos enviados ficam parados até ele ligar.'}
         </p>
       )}
