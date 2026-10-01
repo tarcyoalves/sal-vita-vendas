@@ -23,3 +23,7 @@
 ## Verificado
 
 `npm run check`, `npx vitest run` (341 testes), builds. Não visto no navegador. Não foi feita migração de dados (a leitura já cai para título/anotações); a coluna se completa conforme as tarefas são editadas.
+
+## Complemento: preenchimento em massa dos telefones antigos
+
+`scripts/backfill-task-phones.ts` (`npm run backfill:phones`), ligado ao `vercel-build` depois do `purge:blocked`. Só em produção, idempotente, só preenche `tasks.phone` NULL/vazio com o telefone achado no título/anotações (`phoneOfTask`); nunca sobrescreve, não mexe em `updated_at`, nunca quebra o build. Mesmo padrão do `purge:blocked`. **Não rodado contra o banco real** pelo Claude: o resultado aparece no log do build (`[backfill:phones] ...`).
