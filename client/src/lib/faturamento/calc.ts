@@ -27,15 +27,47 @@ export function pesoBrutoTotalItens(itens: ItemPedido[]): number {
   return itens.reduce((s, it) => s + (Number(it.pesoBrutoKg) || Number(it.pesoKg) || 0), 0);
 }
 
+// ── Quantidade faturada diferente da pedida ──────────────────────────────────
+// O vendedor fecha de um jeito e a carga sai com mais ou menos peso. Comissão, valor e peso
+// "efetivos" de um pedido FATURADO seguem o peso realmente faturado (espelho fiscal do SMBI,
+// somado dos movsais), proporcionalmente ao pedido. Não altera o pedido nem a nota: é só a
+// conta. Se o pedido for editado para a quantidade faturada, o fator volta a 1 (sem dupla correção).
+// Pedido não faturado, ou faturado sem peso no espelho, não muda.
+export function fatorPesoFaturado(pedido: Pedido): number {
+  if (pedido.status !== 'faturado') return 1;
+  const faturado = Number(pedido.smbiEspelhoFiscal?.pesoFaturadoKg) || 0;
+  const atual = pesoTotalItens(pedido.itens);
+  if (faturado <= 0 || atual <= 0 || Math.abs(faturado - atual) <= 1) return 1;
+  return faturado / atual;
+}
+
+/** Valor comercial do pedido ao peso efetivo (faturado). Para o documento do cliente use totalPedido. */
+export function totalPedidoEfetivo(pedido: Pedido): number {
+  return totalPedido(pedido) * fatorPesoFaturado(pedido);
+}
+
+export function pesoEfetivoKg(pedido: Pedido): number {
+  return pesoTotalItens(pedido.itens) * fatorPesoFaturado(pedido);
+}
+
+/** Texto para a tela quando a comissão foi ajustada ao peso faturado; null se não houve ajuste. */
+export function notaPesoFaturado(pedido: Pedido): string | null {
+  const f = fatorPesoFaturado(pedido);
+  if (f === 1) return null;
+  const t = (kg: number) => (kg / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+  return `ajustada ao peso faturado: ${t(pesoEfetivoKg(pedido))} t de ${t(pesoTotalItens(pedido.itens))} t do pedido`;
+}
+
 // Comissão por item: usa a % fixa do produto (snapshot em item.comissaoFixaPct)
 // quando existir, senão cai na % do atendente congelada em pedido.comissaoPct.
 // Itens antigos (sem comissaoFixaPct) mantêm exatamente o comportamento anterior.
 export function comissaoPedido(pedido: Pedido): number {
   const pctPadrao = Number(pedido.comissaoPct) || 0;
-  return pedido.itens.reduce((s, it) => {
+  const soma = pedido.itens.reduce((s, it) => {
     const pct = it.comissaoFixaPct ?? pctPadrao;
     return s + totalLinha(it) * (Number(pct) || 0) / 100;
   }, 0);
+  return soma * fatorPesoFaturado(pedido);
 }
 
 // Frete total do pedido: negociado por TONELADA (pedido.valorFretePorUnidade
@@ -182,12 +214,12 @@ export function resumoAtendente(
   const doMes = meus.filter((p) => pedidoNoMes(p, filtro));
   const faturadosNoMes = meus.filter((p) => p.status === 'faturado' && isoNoMes(p.faturadoEm, filtro));
 
-  const totalVendido = doMes.reduce((s, p) => s + totalPedido(p), 0);
-  const totalEmbarcado = faturadosNoMes.reduce((s, p) => s + totalPedido(p), 0);
+  const totalVendido = doMes.reduce((s, p) => s + totalPedidoEfetivo(p), 0);
+  const totalEmbarcado = faturadosNoMes.reduce((s, p) => s + totalPedidoEfetivo(p), 0);
   const comissaoPrevista = doMes.reduce((s, p) => s + comissaoPedido(p), 0);
   const comissaoEmbarcada = faturadosNoMes.reduce((s, p) => s + comissaoPedido(p), 0);
-  const pesoTotalKg = doMes.reduce((s, p) => s + pesoTotalItens(p.itens), 0);
-  const pesoEmbarcadoKg = faturadosNoMes.reduce((s, p) => s + pesoTotalItens(p.itens), 0);
+  const pesoTotalKg = doMes.reduce((s, p) => s + pesoEfetivoKg(p), 0);
+  const pesoEmbarcadoKg = faturadosNoMes.reduce((s, p) => s + pesoEfetivoKg(p), 0);
 
   return {
     sellerId,

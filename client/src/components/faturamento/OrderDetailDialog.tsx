@@ -9,7 +9,7 @@ import { useFatStore } from '../../lib/faturamento/store';
 import { useAuth } from '../../_core/hooks/useAuth';
 import { trpc } from '../../lib/trpc';
 import {
-  totalPedido, comissaoPedido, freteTotal, pesoTotalItens,
+  totalPedido, comissaoPedido, freteTotal, pesoTotalItens, notaPesoFaturado,
   formatBRL, formatKg, formatDataBR,
 } from '../../lib/faturamento/calc';
 import { OrderPrintDocument } from './OrderPrintDocument';
@@ -248,6 +248,7 @@ export function OrderDetailDialog({
           <div className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5">
             <span className="text-sm text-blue-800">
               Comissao {pedido.comissaoPct}%: <strong>{formatBRL(comissao)}</strong>
+              {notaPesoFaturado(pedido) && <span className="block text-[11px] font-normal text-blue-700">{notaPesoFaturado(pedido)}</span>}
             </span>
             <span className="text-lg font-bold text-blue-900">{formatBRL(total)}</span>
           </div>

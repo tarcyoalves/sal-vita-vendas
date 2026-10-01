@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { trpc } from '../../lib/trpc';
 import { useFatStore } from '../../lib/faturamento/store';
 import {
-  resumoAtendente, mesAtual, pedidoNoMes, totalPedido, comissaoPedido,
+  resumoAtendente, mesAtual, pedidoNoMes, totalPedido, comissaoPedido, notaPesoFaturado,
   formatBRL, formatDataBR,
 } from '../../lib/faturamento/calc';
 import type { FiltroMes, Pedido } from '../../lib/faturamento/types';
@@ -436,6 +436,7 @@ function PedidoCard({
           {pedido.comissaoPct > 0 && (
             <p className="text-[11px] text-slate-400">
               Comissao {pedido.comissaoPct}%: {formatBRL(comissao)}
+              {notaPesoFaturado(pedido) ? ` (${notaPesoFaturado(pedido)})` : ''}
             </p>
           )}
         </div>
