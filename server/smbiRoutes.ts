@@ -13,7 +13,7 @@ import { isAuthorized } from './lib/smbi';
 import {
   faturamentoBodySchema, statusBodySchema, vinculoResultadoSchema,
   resolverFaturamento, deveDesvincular, movsaisLigados, decidirVinculo, montarResultadoVinculo,
-  faturamentoDoVinculo, PATCH_DESVINCULAR, totalAcordadoDoPedido,
+  faturamentoDoVinculo, PATCH_DESVINCULAR, totalAcordadoDoPedido, pesoLiquidoDoPedido,
 } from './lib/smbiFaturamento';
 
 const json = express.json({ limit: '32kb' });
@@ -39,7 +39,7 @@ export function registerSmbiExtraRoutes(app: Express, limiter: RequestHandler): 
     try {
       const [row] = await db.select().from(fatOrders).where(eq(fatOrders.id, id));
       if (!row) { res.status(404).json({ error: 'Pedido não encontrado' }); return; }
-      const { erro, patch } = resolverFaturamento(row, parsed.data, totalAcordadoDoPedido(row));
+      const { erro, patch } = resolverFaturamento(row, parsed.data, totalAcordadoDoPedido(row), new Date(), pesoLiquidoDoPedido(row));
       if (erro) {
         console.warn(`[smbi] POST faturamento pedido=${id} → 409 (${erro})`);
         res.status(409).json({ error: erro });
@@ -139,7 +139,7 @@ export function registerSmbiExtraRoutes(app: Express, limiter: RequestHandler): 
       if (estado === 'CONFERIDO') {
         const fb = faturamentoDoVinculo(parsed.data);
         if (fb) {
-          const r = resolverFaturamento(row, fb, totalAcordadoDoPedido(row));
+          const r = resolverFaturamento(row, fb, totalAcordadoDoPedido(row), new Date(), pesoLiquidoDoPedido(row));
           if (!r.erro) Object.assign(patch, r.patch);
         }
       }

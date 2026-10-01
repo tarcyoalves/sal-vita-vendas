@@ -6,7 +6,7 @@
 // comercial nem comissão (`itens`, `comissaoPct`, `comissaoComercialProtegida`).
 import { z } from 'zod';
 import type { FatOrder } from '../db/schema';
-import { totalItens, freteTotal } from '../../client/src/lib/faturamento/calc';
+import { totalItens, freteTotal, pesoTotalItens } from '../../client/src/lib/faturamento/calc';
 import type { Pedido } from '../../client/src/lib/faturamento/types';
 import {
   SMBI_EVENTOS_ROBO, SMBI_RESERVA_MIN,
@@ -51,6 +51,11 @@ export function totalAcordadoDoPedido(row: Pick<FatOrder, 'itens' | 'valorFreteP
   return totalItens(pedido.itens) + freteTotal(pedido);
 }
 
+/** Peso líquido total do pedido no CRM (kg), a mesma base do frete por tonelada. */
+export function pesoLiquidoDoPedido(row: Pick<FatOrder, 'itens'>): number {
+  return pesoTotalItens((row as unknown as Pedido).itens);
+}
+
 /** sal (NF-e) + frete (CT-e) de todos os movsais. `informado` = ao menos um valor veio no corpo. */
 export function somarFiscal(movsais: SmbiMovsaiFiscal[]): { total: number; informado: boolean } {
   let total = 0;
@@ -62,9 +67,25 @@ export function somarFiscal(movsais: SmbiMovsaiFiscal[]): { total: number; infor
   return { total: Math.round(total * 100) / 100, informado };
 }
 
+/** Soma dos pesos (kg) informados nos movsais; 0 se nenhum trouxe peso. */
+export function pesoFaturadoKg(movsais: SmbiMovsaiFiscal[]): number {
+  return Math.round(movsais.reduce((s, m) => s + (Number(m.pesoKg) || 0), 0) * 1000) / 1000;
+}
+
 /**
- * Desconto no faturamento: o fiscal (sal + frete) ficou ABAIXO do total acordado no CRM (tolerância
- * R$ 0,05). Fiscal igual ao acordado é só realocação sal→frete: sem alerta. Sem nenhum valor
+ * Quantidade alterada não é desconto: o vendedor fecha de um jeito e a carga sai com mais ou menos
+ * peso. O total que o fiscal DEVERIA somar é o acordado proporcional ao peso efetivamente faturado
+ * (sal e frete são por peso). Sem peso do pedido ou do faturamento, não dá para ajustar e vale o acordado.
+ */
+export function totalEsperadoPeloPeso(totalAcordado: number, pesoPedidoKg: number, pesoFaturado: number): number {
+  if (!(pesoPedidoKg > 0) || !(pesoFaturado > 0)) return totalAcordado;
+  return Math.round((totalAcordado * pesoFaturado / pesoPedidoKg) * 100) / 100;
+}
+
+/**
+ * Desconto no faturamento: o fiscal (sal + frete) ficou ABAIXO do total esperado (acordado, ajustado ao
+ * peso faturado; tolerância R$ 0,05). Fiscal igual ao esperado é só realocação sal→frete (piso mínimo de
+ * frete: baixa o sal, sobe o frete, o valor final do cliente não muda): sem alerta. Sem nenhum valor
  * informado pelo robô também não alerta (não dá para comparar).
  */
 export function alertaDescontoFiscal(totalAcordado: number, totalFiscal: number, informado: boolean, tolerancia = 0.05): boolean {
@@ -101,6 +122,7 @@ export function resolverFaturamento(
   body: FaturamentoBody,
   totalAcordado: number,
   agora: Date = new Date(),
+  pesoPedidoKg = 0,
 ): { erro: string | null; patch: FaturamentoPatch } {
   const ligados = movsaisLigados(pedido);
   if (ligados.length === 0) return { erro: 'pedido sem vínculo com o SMBI', patch: {} };
@@ -108,6 +130,8 @@ export function resolverFaturamento(
     return { erro: 'nenhum dos movsais informados está ligado a este pedido', patch: {} };
   }
   const soma = somarFiscal(body.movsais);
+  const pesoFat = pesoFaturadoKg(body.movsais);
+  const esperado = totalEsperadoPeloPeso(totalAcordado, pesoPedidoKg, pesoFat);
   const espelho: SmbiEspelhoFiscal = {
     movsais: body.movsais,
     faturadoEm: body.faturadoEm,
@@ -115,10 +139,12 @@ export function resolverFaturamento(
     recebidoEm: agora.toISOString(),
     totalFiscal: soma.total,
     totalAcordado: Math.round(totalAcordado * 100) / 100,
+    ...(pesoPedidoKg > 0 ? { pesoPedidoKg } : {}),
+    ...(pesoFat > 0 ? { pesoFaturadoKg: pesoFat, totalEsperado: esperado } : {}),
   };
   const patch: FaturamentoPatch = {
     smbiEspelhoFiscal: espelho,
-    smbiAlertaDesconto: alertaDescontoFiscal(totalAcordado, soma.total, soma.informado),
+    smbiAlertaDesconto: alertaDescontoFiscal(esperado, soma.total, soma.informado),
     ...numerosFiscais(body.movsais),
   };
   if (pedido.status !== 'faturado') {

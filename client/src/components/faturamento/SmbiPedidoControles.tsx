@@ -225,10 +225,21 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
       {/* Faturado no SMBI por valor menor que o acordado (contrato, rota 3). */}
       {pedido.smbiAlertaDesconto && espelho && (
         <div className="basis-full rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">
-          <p className="font-semibold">Faturado no SMBI abaixo do valor acordado</p>
+          <p className="font-semibold">Faturado no SMBI abaixo do valor esperado</p>
           <p className="mt-0.5">
-            Fiscal (sal + frete): {formatBRL(espelho.totalFiscal)} · acordado no CRM: {formatBRL(espelho.totalAcordado)}. A comissão
+            Fiscal (sal + frete): {formatBRL(espelho.totalFiscal)} · esperado para o peso faturado: {formatBRL(espelho.totalEsperado ?? espelho.totalAcordado)}
+            {espelho.totalEsperado !== undefined && espelho.totalEsperado !== espelho.totalAcordado ? ` (acordado no CRM: ${formatBRL(espelho.totalAcordado)})` : ''}. A comissão
             não foi alterada; confira com o cliente.
+          </p>
+        </div>
+      )}
+      {/* Quantidade diferente do pedido: não é desconto, mas a comissão do representante segue o pedido. */}
+      {espelho?.pesoPedidoKg && espelho.pesoFaturadoKg && Math.abs(espelho.pesoFaturadoKg - espelho.pesoPedidoKg) > 1 && (
+        <div className="basis-full rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <p className="font-semibold">Peso faturado diferente do pedido</p>
+          <p className="mt-0.5">
+            Faturado: {(espelho.pesoFaturadoKg / 1000).toLocaleString('pt-BR')} t · pedido: {(espelho.pesoPedidoKg / 1000).toLocaleString('pt-BR')} t.
+            Isso não é desconto. A comissão continua calculada pelo pedido: se ela deve seguir o que foi faturado, ajuste a quantidade do pedido.
           </p>
         </div>
       )}

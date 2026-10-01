@@ -68,6 +68,39 @@ describe('rota 3 — faturado espelhado', () => {
     expect(resolverFaturamento(ligado, body, 1000, AGORA).patch.smbiAlertaDesconto).toBe(true);
   });
 
+  it('quantidade alterada não é desconto: 37 t faturadas de 38 t pedidas, valor proporcional, sem alerta', () => {
+    // 38 t a R$ 691,60/t (sal 240 + frete 451,60) = 26.280,80 acordado; faturou 37 t = 25.589,20
+    const body = faturamentoBodySchema.parse({
+      movsais: [{ id: '1071', pesoKg: 37000, nfe: { numero: 'N', valorSal: 8880 }, cte: { numero: 'C', valorFrete: 16709.2 } }],
+      faturadoEm: '2026-09-30T09:52:09-03:00',
+    });
+    const r = resolverFaturamento(ligado, body, 26280.8, AGORA, 38000);
+    expect(r.patch.smbiAlertaDesconto).toBe(false);
+    expect(r.patch.smbiEspelhoFiscal).toMatchObject({ totalFiscal: 25589.2, totalAcordado: 26280.8, totalEsperado: 25589.2, pesoPedidoKg: 38000, pesoFaturadoKg: 37000 });
+  });
+
+  it('com a quantidade alterada, desconto de verdade ainda liga o alerta', () => {
+    const body = faturamentoBodySchema.parse({
+      movsais: [{ id: '1071', pesoKg: 37000, nfe: { numero: 'N', valorSal: 8000 }, cte: { numero: 'C', valorFrete: 16709.2 } }],
+      faturadoEm: '2026-09-30T09:52:09-03:00',
+    });
+    expect(resolverFaturamento(ligado, body, 26280.8, AGORA, 38000).patch.smbiAlertaDesconto).toBe(true);
+  });
+
+  it('piso mínimo de frete: baixa o sal, sobe o frete, mesmo valor final — sem alerta', () => {
+    const body = faturamentoBodySchema.parse({
+      movsais: [{ id: '1071', pesoKg: 20000, nfe: { numero: 'N', valorSal: 3000 }, cte: { numero: 'C', valorFrete: 9000 } }],
+      faturadoEm: '2026-09-30T09:52:09-03:00',
+    });
+    // acordado: sal 5.000 + frete 7.000 = 12.000, mesmos 20 t
+    expect(resolverFaturamento(ligado, body, 12000, AGORA, 20000).patch.smbiAlertaDesconto).toBe(false);
+  });
+
+  it('sem peso do pedido ou do faturamento, vale o total acordado (comportamento anterior)', () => {
+    const body = faturamentoBodySchema.parse({ movsais: [mov('1071', 700, 200)], faturadoEm: '2026-09-25T10:00:00Z' });
+    expect(resolverFaturamento(ligado, body, 1000, AGORA).patch.smbiAlertaDesconto).toBe(true);
+  });
+
   it('já faturado por decisão humana: só o espelho muda; status e data ficam', () => {
     const body = faturamentoBodySchema.parse({ movsais: [mov('1071', 800, 200)], faturadoEm: '2026-09-25T10:00:00Z' });
     const { patch } = resolverFaturamento({ ...ligado, status: 'faturado', faturadoEm: '2026-09-20T00:00:00Z' }, body, 1000, AGORA);

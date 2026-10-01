@@ -90,6 +90,11 @@ export interface SmbiEspelhoFiscal {
   totalFiscal: number;
   /** total acordado no CRM (itens + frete) no momento do recebimento. */
   totalAcordado: number;
+  /** peso líquido do pedido no CRM e soma dos pesos dos movsais (kg). Ausentes em espelhos antigos. */
+  pesoPedidoKg?: number;
+  pesoFaturadoKg?: number;
+  /** total acordado ajustado ao peso faturado: com a quantidade alterada, é isso que o fiscal deveria somar. */
+  totalEsperado?: number;
 }
 
 /** Comparação lado a lado para o admin decidir um vínculo com divergência. */
