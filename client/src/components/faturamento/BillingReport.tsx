@@ -1,3 +1,4 @@
+import { AvisoMesSemPedidos } from "./AvisoMesSemPedidos";
 import { useState, useMemo } from "react";
 import { useFatStore } from "../../lib/faturamento/store";
 import {
@@ -183,6 +184,9 @@ export default function BillingReport() {
 
   return (
     <div className="space-y-4">
+      {!showAllMonths && mesFilter && (
+        <AvisoMesSemPedidos pedidos={allPedidos} filtro={mesFilter} onIr={setMesFilter} />
+      )}
       {/* Filters */}
       <Card>
         <CardContent className="pt-4 pb-4 space-y-3">

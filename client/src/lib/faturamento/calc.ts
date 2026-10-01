@@ -264,3 +264,27 @@ export function formatTons(kg: number): string {
   const t = (Number(kg) || 0) / 1000;
   return `${t.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} t`;
 }
+
+/**
+ * Mês novo começa vazio: no dia 1º tudo aparece zerado porque os painéis abrem no mês atual.
+ * Se o mês do filtro não tem nenhum pedido (pela data de competência) e algum mês ANTERIOR tem,
+ * devolve o mais recente deles, com a quantidade; senão null (nada a avisar).
+ */
+export function ultimoMesComPedidos(
+  pedidos: Pedido[],
+  filtro: FiltroMes,
+): { mes: FiltroMes; qtd: number } | null {
+  if (pedidos.some((p) => pedidoNoMes(p, filtro))) return null;
+  const chave = (ano: number, mes: number) => ano * 12 + mes;
+  const alvo = chave(filtro.ano, filtro.mes);
+  const contagem = new Map<number, number>();
+  for (const p of pedidos) {
+    const d = parseDataLocal(dataCompetenciaPedido(p));
+    if (!d) continue;
+    const k = chave(d.getFullYear(), d.getMonth());
+    if (k < alvo) contagem.set(k, (contagem.get(k) ?? 0) + 1);
+  }
+  if (contagem.size === 0) return null;
+  const k = Math.max(...contagem.keys());
+  return { mes: { ano: Math.floor(k / 12), mes: k % 12 }, qtd: contagem.get(k) ?? 0 };
+}

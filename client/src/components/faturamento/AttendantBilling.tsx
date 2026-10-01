@@ -1,3 +1,4 @@
+import { AvisoMesSemPedidos } from "./AvisoMesSemPedidos";
 import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
 import { trpc } from '../../lib/trpc';
@@ -192,6 +193,7 @@ export default function AttendantBilling() {
 
   return (
     <div className="space-y-4">
+      <AvisoMesSemPedidos pedidos={allPedidos.filter((p) => !seller || p.sellerId === seller.id)} filtro={filtro} onIr={setFiltro} />
       {/* Month selector */}
       <div className="flex items-center justify-between">
         <button

@@ -9,6 +9,7 @@ import {
 } from "../../lib/faturamento/calc";
 import type { FiltroMes, ResumoAtendente } from "../../lib/faturamento/types";
 import { trpc } from "../../lib/trpc";
+import { AvisoMesSemPedidos } from "./AvisoMesSemPedidos";
 import { Card, CardContent } from "../ui/card";
 import {
   ChevronLeft,
@@ -84,6 +85,7 @@ export default function AdminBillingPanorama() {
 
   return (
     <div className="space-y-4">
+      <AvisoMesSemPedidos pedidos={pedidos} filtro={filtro} onIr={setFiltro} />
       {/* Month selector */}
       <div className="flex items-center gap-2">
         <button
