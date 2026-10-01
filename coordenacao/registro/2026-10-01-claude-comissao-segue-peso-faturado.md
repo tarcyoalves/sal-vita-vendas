@@ -27,3 +27,9 @@ Fechamento do dia 05 e conciliação devem usar a mesma conta: comissão = Σ(it
 ## Não verificado
 
 Em tela/produção. Não é migração de dados: o cálculo é na leitura.
+
+## Complemento (decisão do dono: "o peso deve refletir exatamente ao SMBI")
+
+- Sem tolerância: para pedido faturado com peso no espelho, o peso efetivo é **exatamente** o do SMBI (soma dos `pesoKg` dos movsais), seja menor ou maior que o do pedido. Comissão e valor seguem nos dois sentidos.
+- Tela: relatório de faturamento (coluna Peso) e total do detalhe do pedido mostram o peso do SMBI; o detalhe mostra "SMBI · pedido: X" quando diferem. O documento do cliente (impressão/PDF) continua com o peso do pedido.
+- Teste: `tests/faturamento-comissao-peso.test.ts` (361 testes no total).

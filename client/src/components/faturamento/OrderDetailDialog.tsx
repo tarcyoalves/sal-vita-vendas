@@ -9,7 +9,7 @@ import { useFatStore } from '../../lib/faturamento/store';
 import { useAuth } from '../../_core/hooks/useAuth';
 import { trpc } from '../../lib/trpc';
 import {
-  totalPedido, comissaoPedido, freteTotal, pesoTotalItens, notaPesoFaturado,
+  totalPedido, comissaoPedido, freteTotal, pesoTotalItens, pesoEfetivoKg, notaPesoFaturado,
   formatBRL, formatKg, formatDataBR,
 } from '../../lib/faturamento/calc';
 import { OrderPrintDocument } from './OrderPrintDocument';
@@ -211,7 +211,12 @@ export function OrderDetailDialog({
                 <tfoot>
                   <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-xs">
                     <td className="px-3 py-2 text-slate-500" colSpan={2}>Totais</td>
-                    <td className="px-3 py-2 text-right text-slate-600">{formatKg(pesoTotalItens(pedido.itens))}</td>
+                    <td className="px-3 py-2 text-right text-slate-600">
+                      {formatKg(pesoEfetivoKg(pedido))}
+                      {pesoEfetivoKg(pedido) !== pesoTotalItens(pedido.itens) && (
+                        <span className="block text-[10px] font-normal text-slate-400">SMBI · pedido: {formatKg(pesoTotalItens(pedido.itens))}</span>
+                      )}
+                    </td>
                     <td />
                     <td />
                   </tr>

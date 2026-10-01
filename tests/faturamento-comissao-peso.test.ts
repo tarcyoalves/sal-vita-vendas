@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { comissaoPedido, fatorPesoFaturado, notaPesoFaturado, resumoAtendente, totalPedidoEfetivo } from '../client/src/lib/faturamento/calc';
+import { comissaoPedido, fatorPesoFaturado, notaPesoFaturado, pesoEfetivoKg, resumoAtendente, totalPedidoEfetivo } from '../client/src/lib/faturamento/calc';
 import type { Pedido } from '../client/src/lib/faturamento/types';
 
 // 38 sacos... na prática: 1 linha, peso 38.000 kg, R$ 100/unidade × 1.520 un. = R$ 152.000; comissão 3%.
@@ -44,5 +44,15 @@ describe('comissão segue o peso faturado', () => {
     expect(r.comissaoEmbarcada).toBeCloseTo(152000 * 0.03 * 37 / 38, 6);
     expect(r.totalEmbarcado).toBeCloseTo(152000 * 37 / 38, 6);
     expect(r.pesoEmbarcadoKg).toBeCloseTo(37000, 6);
+  });
+
+  it('o peso mostrado é EXATAMENTE o do SMBI, inclusive quando a diferença é pequena ou o faturado é maior', () => {
+    const base = pedido();
+    const com = (kg: number) => pedido({ smbiEspelhoFiscal: { ...base.smbiEspelhoFiscal!, pesoFaturadoKg: kg } });
+    expect(pesoEfetivoKg(com(37000))).toBe(37000);
+    expect(pesoEfetivoKg(com(37999.5))).toBe(37999.5);
+    expect(pesoEfetivoKg(com(39000))).toBe(39000);
+    expect(comissaoPedido(com(39000))).toBeCloseTo(152000 * 0.03 * 39 / 38, 6);
+    expect(pesoEfetivoKg(pedido({ status: 'estimado' }))).toBe(38000);
   });
 });

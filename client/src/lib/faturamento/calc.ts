@@ -32,12 +32,16 @@ export function pesoBrutoTotalItens(itens: ItemPedido[]): number {
 // "efetivos" de um pedido FATURADO seguem o peso realmente faturado (espelho fiscal do SMBI,
 // somado dos movsais), proporcionalmente ao pedido. Não altera o pedido nem a nota: é só a
 // conta. Se o pedido for editado para a quantidade faturada, o fator volta a 1 (sem dupla correção).
-// Pedido não faturado, ou faturado sem peso no espelho, não muda.
+// Pedido não faturado, ou faturado sem peso no espelho, não muda. O peso efetivo é EXATAMENTE o do SMBI.
+function pesoFaturadoSmbiKg(pedido: Pedido): number {
+  if (pedido.status !== 'faturado') return 0;
+  return Number(pedido.smbiEspelhoFiscal?.pesoFaturadoKg) || 0;
+}
+
 export function fatorPesoFaturado(pedido: Pedido): number {
-  if (pedido.status !== 'faturado') return 1;
-  const faturado = Number(pedido.smbiEspelhoFiscal?.pesoFaturadoKg) || 0;
+  const faturado = pesoFaturadoSmbiKg(pedido);
   const atual = pesoTotalItens(pedido.itens);
-  if (faturado <= 0 || atual <= 0 || Math.abs(faturado - atual) <= 1) return 1;
+  if (faturado <= 0 || atual <= 0) return 1;
   return faturado / atual;
 }
 
@@ -46,14 +50,17 @@ export function totalPedidoEfetivo(pedido: Pedido): number {
   return totalPedido(pedido) * fatorPesoFaturado(pedido);
 }
 
+/** Peso do pedido: para faturado com peso no espelho, o peso do SMBI exatamente; senão o do pedido. */
 export function pesoEfetivoKg(pedido: Pedido): number {
-  return pesoTotalItens(pedido.itens) * fatorPesoFaturado(pedido);
+  const faturado = pesoFaturadoSmbiKg(pedido);
+  return faturado > 0 ? faturado : pesoTotalItens(pedido.itens);
 }
 
 /** Texto para a tela quando a comissão foi ajustada ao peso faturado; null se não houve ajuste. */
 export function notaPesoFaturado(pedido: Pedido): string | null {
   const f = fatorPesoFaturado(pedido);
   if (f === 1) return null;
+  if (pesoEfetivoKg(pedido) === pesoTotalItens(pedido.itens)) return null;
   const t = (kg: number) => (kg / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
   return `ajustada ao peso faturado: ${t(pesoEfetivoKg(pedido))} t de ${t(pesoTotalItens(pedido.itens))} t do pedido`;
 }

@@ -3,7 +3,7 @@ import { useState, useMemo } from "react";
 import { useFatStore } from "../../lib/faturamento/store";
 import {
   totalPedido, totalItens, mesAtual, pedidoNoMes, formatBRL,
-  pesoTotalItens, formatKg, formatDataBR,
+  pesoEfetivoKg, formatKg, formatDataBR,
 } from "../../lib/faturamento/calc";
 import type { Pedido, FiltroMes } from "../../lib/faturamento/types";
 import { trpc } from "../../lib/trpc";
@@ -357,7 +357,7 @@ export default function BillingReport() {
                           ? `Emb. ${formatDataBR(p.faturadoEm)}`
                           : `Prev. ${formatDataBR(p.previsaoFaturamentoEm ?? p.criadoEm)}`}
                       </td>
-                      <td className="px-3 py-3 text-right text-gray-600 text-xs whitespace-nowrap">{formatKg(pesoTotalItens(p.itens))}</td>
+                      <td className="px-3 py-3 text-right text-gray-600 text-xs whitespace-nowrap">{formatKg(pesoEfetivoKg(p))}</td>
                       <td className="px-3 py-3 text-center">
                         <div className="flex flex-col items-center gap-1">
                           <span
