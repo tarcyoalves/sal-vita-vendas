@@ -100,6 +100,11 @@ Contra o robô criar o mesmo pedido duas vezes (caso 1113 = duplicata do 1112, e
 - **Reserva atômica.** `GET /api/smbi/pedidos` (robô ligado, sem `simular`) reserva, num único
   UPDATE, os pedidos que devolve: cada um sai com `reservaToken` e `reservadoAte` (15 min). Duas
   consultas ao mesmo tempo, ou dois ciclos sobrepostos, **nunca recebem o mesmo pedido**.
+- **Um pedido por vez, nunca lote.** `GET /api/smbi/pedidos` (robô ligado, sem `simular`) devolve no
+  máximo **um** pedido por consulta: o clique mais antigo. Enquanto esse pedido estiver reservado e sem
+  resposta do robô, a lista vem vazia; o próximo só sai depois do `POST .../retorno` (que libera a
+  reserva) ou quando a reserva vencer (15 min). Cada pedido sai só depois do clique do dono em
+  "Enviar para SMBI".
 - **Re-checagem exige o token.** `GET /api/smbi/pedidos?id=<id>&token=<reservaToken>` só devolve o
   pedido se o token bate e a reserva não venceu. Sem token, ou de outro ciclo, a lista vem vazia:
   **o robô não pode criar**. (Robô antigo que rechecava sem token fica parado — falha segura.)

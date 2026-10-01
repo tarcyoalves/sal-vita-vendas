@@ -254,3 +254,21 @@ export function reservaConfere(
   if (token !== row.smbiReservaToken) return false;
   return row.smbiReservadoAte > agora.toISOString();
 }
+
+/**
+ * Pedido INDIVIDUAL: o robô nunca recebe um lote. Devolve o id do único pedido que pode ser
+ * reservado agora (o clique mais antigo), ou null se ainda há um pedido reservado e sem resposta
+ * (reserva em vigor) — o próximo só sai depois que o robô responder o anterior
+ * (POST .../retorno libera a reserva) ou a reserva vencer.
+ */
+export function proximoPedidoIndividual(
+  elegiveis: Array<Pick<FatOrder, 'id' | 'smbiSolicitadoEm' | 'smbiReservadoAte' | 'smbiMovsaiId'>>,
+  agora: Date = new Date(),
+): string | null {
+  const agoraIso = agora.toISOString();
+  if (elegiveis.some((r) => !r.smbiMovsaiId && r.smbiReservadoAte && r.smbiReservadoAte > agoraIso)) return null;
+  const ordenados = [...elegiveis]
+    .filter((r) => !r.smbiMovsaiId)
+    .sort((a, b) => String(a.smbiSolicitadoEm ?? '').localeCompare(String(b.smbiSolicitadoEm ?? '')));
+  return ordenados[0]?.id ?? null;
+}

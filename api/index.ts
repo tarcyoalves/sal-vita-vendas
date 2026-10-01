@@ -19,7 +19,7 @@ import {
   emailEvents, sellers, emailSequenceSends, emailSequenceEnrollments, marketingContacts, taskDeletionLogs,
   companies, contacts, publicSources, consentRecords, suppressionList, auditLogs, fatOrders, smbiRobotState,
 } from '../server/db/schema';
-import { eq, and, or, sql, lte, gte, isNull, isNotNull, inArray, notInArray, desc, asc, lt } from 'drizzle-orm';
+import { eq, and, or, sql, lte, gte, isNull, isNotNull, inArray, notInArray, notExists, desc, asc, lt } from 'drizzle-orm';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
 import { createPixPaymentForOrder } from '../server/lib/mercadopago';
 import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid, orderTrackLink } from '../server/lib/orderConfirmation';
@@ -30,7 +30,7 @@ import {
   isAuthorized, isElegivelParaSmbi, mapOrderToSmbiPayload, resolveRetornoUpdate, retornoBodySchema,
   validarEstadoRetorno, heartbeatBodySchema, pedidosParaRobo,
 } from '../server/lib/smbi';
-import { reservaAte, reservaConfere } from '../server/lib/smbiFaturamento';
+import { proximoPedidoIndividual, reservaAte, reservaConfere } from '../server/lib/smbiFaturamento';
 import { SMBI_ESTADOS_QUE_PARAM } from '../shared/smbiEstados';
 import { registerSmbiExtraRoutes } from '../server/smbiRoutes';
 
@@ -1569,19 +1569,27 @@ app.get('/api/smbi/pedidos', smbiApiLimiter, async (req, res) => {
         if (row && reservaConfere(row, token, agora)) rows = [row];
         else if (row) console.warn(`[smbi] GET ?id=${id} → reserva ausente/vencida/token inválido`);
       } else {
-        // Reserva ATÔMICA: o UPDATE só devolve os pedidos que ESTE chamador ganhou. Duas consultas
-        // ao mesmo tempo (ou dois ciclos sobrepostos) nunca recebem o mesmo pedido.
-        const candidatos = await db
-          .select({ id: fatOrders.id })
+        // PEDIDO INDIVIDUAL, nunca lote: entrega no máximo UM pedido por consulta (o clique mais
+        // antigo) e só entrega outro depois que o robô responder o anterior (o retorno libera a
+        // reserva) ou a reserva vencer.
+        const fila = await db
+          .select({ id: fatOrders.id, smbiSolicitadoEm: fatOrders.smbiSolicitadoEm, smbiReservadoAte: fatOrders.smbiReservadoAte, smbiMovsaiId: fatOrders.smbiMovsaiId })
           .from(fatOrders)
-          .where(and(elegivel, semReservaVigente))
+          .where(elegivel)
           .orderBy(asc(fatOrders.smbiSolicitadoEm))
-          .limit(20);
-        if (candidatos.length > 0) {
+          .limit(50);
+        const proximo = proximoPedidoIndividual(fila, agora);
+        if (!proximo && fila.some((f) => !f.smbiMovsaiId && f.smbiReservadoAte && f.smbiReservadoAte > agoraIso)) {
+          console.log('[smbi] GET /api/smbi/pedidos → aguardando o robô responder o pedido já entregue (um por vez)');
+        }
+        if (proximo) {
+          // Reserva ATÔMICA: o UPDATE só devolve o pedido se ESTE chamador ganhou, e só se nenhum
+          // outro pedido estiver reservado e sem resposta no mesmo instante.
+          const emAndamento = db.select({ um: sql`1` }).from(fatOrders).where(and(isNull(fatOrders.smbiMovsaiId), isNotNull(fatOrders.smbiReservadoAte), gte(fatOrders.smbiReservadoAte, agoraIso)));
           rows = await db
             .update(fatOrders)
             .set({ smbiReservaToken: globalThis.crypto.randomUUID(), smbiReservadoAte: reservaAte(agora) })
-            .where(and(inArray(fatOrders.id, candidatos.map((c) => c.id)), elegivel, semReservaVigente))
+            .where(and(eq(fatOrders.id, proximo), elegivel, semReservaVigente, notExists(emAndamento)))
             .returning();
         }
       }

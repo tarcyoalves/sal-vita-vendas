@@ -190,3 +190,31 @@ describe('elegibilidade: sem retentativa automática', () => {
     expect(isElegivelParaSmbi({ ...base, smbiVinculoEstado: 'PENDENTE_CONFERENCIA' })).toBe(false);
   });
 });
+
+// ── Pedido individual: o robô nunca recebe um lote ────────────────────────────
+import { proximoPedidoIndividual } from '../server/lib/smbiFaturamento';
+
+describe('proximoPedidoIndividual', () => {
+  const agora = new Date('2026-10-01T12:00:00Z');
+  const ped = (id: string, solicitadoEm: string, reservadoAte: string | null = null, movsai: string | null = null) =>
+    ({ id, smbiSolicitadoEm: solicitadoEm, smbiReservadoAte: reservadoAte, smbiMovsaiId: movsai });
+
+  it('com vários cliques, entrega só o mais antigo', () => {
+    const r = proximoPedidoIndividual([ped('b', '2026-10-01T10:05:00Z'), ped('a', '2026-10-01T10:00:00Z'), ped('c', '2026-10-01T10:10:00Z')], agora);
+    expect(r).toBe('a');
+  });
+  it('não entrega outro enquanto um pedido está reservado e sem resposta', () => {
+    const r = proximoPedidoIndividual([ped('a', '2026-10-01T10:00:00Z', '2026-10-01T12:10:00Z'), ped('b', '2026-10-01T10:05:00Z')], agora);
+    expect(r).toBeNull();
+  });
+  it('depois que a reserva vence, o mesmo pedido pode voltar (o robô confere a marca CRM:<id>)', () => {
+    const r = proximoPedidoIndividual([ped('a', '2026-10-01T10:00:00Z', '2026-10-01T11:50:00Z'), ped('b', '2026-10-01T10:05:00Z')], agora);
+    expect(r).toBe('a');
+  });
+  it('sem nenhum clique pendente, não entrega nada', () => {
+    expect(proximoPedidoIndividual([], agora)).toBeNull();
+  });
+  it('pedido que já tem movsai não entra', () => {
+    expect(proximoPedidoIndividual([ped('a', '2026-10-01T10:00:00Z', null, '1116')], agora)).toBeNull();
+  });
+});
