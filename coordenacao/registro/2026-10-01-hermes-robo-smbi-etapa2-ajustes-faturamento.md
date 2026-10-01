@@ -43,3 +43,13 @@
 ## O que NÃO foi verificado
 - Criação real de pedidos no SMBI (aguardando Tarcyo clicar em "Enviar para SMBI" em pedido de 1 item e avisar para rodar piloto com `--max-criar 1`).
 - Envio real de faturamento para pedido multi-movsai (atualmente não há nenhum pedido multi-movsai pendente no sistema).
+
+## Simulação Final Pré-Piloto (Registro Limpo)
+- Executado `node smbi_robo_daemon.mjs --simular` às 16:54 BRT:
+  - Saída: `0 recebido(s); criaria 0 []; pularia 0 []`.
+  - Faturamento: `nenhum pedido vinculado pendente de conferência fiscal`.
+  - Duração: 1.1s, zero navegadores/sessões abertas no SMBI.
+- Status do piloto:
+  - `smbi-crm-sync.service` inativo e desabilitado (`inactive`, `disabled`).
+  - `roboAtivo` desligado (`false`).
+  - Protocolo alinhado: aguardar o aviso do Tarcyo ("clique feito no pedido X") -> rodar `--simular` e mostrar que somente ele entra -> esperar Tarcyo ligar `roboAtivo` no CRM -> rodar `--max-criar 1` -> auditar diretamente no SMBI e reportar evidências.
