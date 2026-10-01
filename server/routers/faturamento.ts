@@ -10,7 +10,7 @@ import { gerarPedidoPdf } from '../pdf/pedidoPdf';
 import { resolveRobotOwnedFields, roboSemSinal } from '../lib/smbi';
 import {
   parseNumerosMovsai, PATCH_DESVINCULAR, movsaisLigados, resolverFaturamento, faturamentoDoVinculo,
-  totalAcordadoDoPedido,
+  totalAcordadoDoPedido, pesoLiquidoDoPedido,
 } from '../lib/smbiFaturamento';
 import { SMBI_ROBO_SEM_SINAL_MIN } from '../../shared/smbiEstados';
 import type { Pedido } from '../../client/src/lib/faturamento/types';
@@ -483,7 +483,7 @@ export const faturamentoRouter = router({
       const patch: Partial<typeof fatOrders.$inferInsert> = { smbiVinculoEstado: 'CONFERIDO' };
       const fat = antes.smbiVinculoResultado ? faturamentoDoVinculo(antes.smbiVinculoResultado) : null;
       if (fat) {
-        const r = resolverFaturamento(antes, fat, totalAcordadoDoPedido(antes));
+        const r = resolverFaturamento(antes, fat, totalAcordadoDoPedido(antes), new Date(), pesoLiquidoDoPedido(antes));
         if (!r.erro) Object.assign(patch, r.patch);
       }
       const [row] = await db.update(fatOrders).set(patch).where(eq(fatOrders.id, input.id)).returning();
