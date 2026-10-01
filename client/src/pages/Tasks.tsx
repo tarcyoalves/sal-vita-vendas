@@ -29,6 +29,7 @@ import type { Pedido } from '../lib/faturamento/types';
 import { MultiSelectFilter } from '../components/tasks/MultiSelectFilter';
 import { FilterPanel, FilterSection } from '../components/tasks/FilterPanel';
 import { extractLocation, type TaskLocation } from '../lib/tasks/location';
+import { phoneOfTask } from '../../../shared/phone';
 
 type ReminderTab = "all" | "overdue" | "upcoming" | "today" | "yesterday" | "lastWeek" | "lastMonth";
 
@@ -60,9 +61,6 @@ interface Task {
 }
 
 // Extracts phones and emails from a string (for filtering)
-function hasPhone(text: string): boolean {
-  return /\(?\d{2}\)?\s*\d{4,5}[-.\s]?\d{4}/.test(text);
-}
 function hasEmail(text: string): boolean {
   return /[\w.+-]+@[\w-]+\.[a-z]{2,}/i.test(text);
 }
@@ -95,13 +93,6 @@ function taskRowBg(task: Task): string {
   return 'bg-white';
 }
 
-// Extracts the first phone number found in a string, returning only digits (or null)
-function extractPhone(text: string): string | null {
-  const m = text.match(/\(?\d{2}\)?[\s.]*\d{4,5}[-\s]?\d{4}/);
-  if (!m) return null;
-  const digits = m[0].replace(/\D/g, '');
-  return digits.length >= 10 ? digits : null;
-}
 
 // Extracts the first email found in a string (or null)
 function extractEmail(text: string): string | null {
@@ -732,7 +723,7 @@ export default function Tasks() {
       else result = result.filter(t => t.assignedTo === filterAssignee);
     }
     if (filterContact === "whatsapp") {
-      result = result.filter(t => hasPhone(`${t.title} ${t.notes ?? ''}`));
+      result = result.filter(t => phoneOfTask(t) !== null);
     } else if (filterContact === "email") {
       result = result.filter(t => hasEmail(`${t.title} ${t.notes ?? ''}`));
     }
@@ -1683,7 +1674,7 @@ export default function Tasks() {
                   <p className="font-medium text-sm leading-snug line-clamp-2 md:truncate">{task.title}</p>
                   <div className="flex gap-2 items-center flex-wrap mt-0.5">
                     {isAdmin && task.assignedTo && <p className="text-xs text-gray-500">{task.assignedTo}</p>}
-                    {hasPhone(`${task.title} ${task.notes ?? ''}`) && <Phone size={12} className="text-green-600" />}
+                    {phoneOfTask(task) !== null && <Phone size={12} className="text-green-600" />}
                     {hasEmail(`${task.title} ${task.notes ?? ''}`) && <Mail size={12} className="text-blue-600" />}
                     {task.convertedAt && <span className="text-xs text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-1"><PartyPopper size={11} /> Cliente ativo</span>}
                     {task.hotLead && <span className="text-xs text-red-700 bg-red-100 px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-1"><Flame size={11} /> Lead quente</span>}
@@ -1927,7 +1918,7 @@ export default function Tasks() {
                   <div className="flex gap-2 flex-wrap">
                     {(() => {
                       const notesText = fullTask?.notes ?? task.notes ?? '';
-                      const phone = extractPhone(`${task.title} ${notesText}`);
+                      const phone = phoneOfTask({ phone: task.phone, title: task.title, notes: notesText });
                       const email = extractEmail(`${task.title} ${notesText}`);
                       return (
                         <>

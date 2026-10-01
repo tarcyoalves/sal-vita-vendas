@@ -5,6 +5,7 @@ import { TRPCError } from '@trpc/server';
 import { db } from '../db';
 import { tasks, sellers, taskDeletionLogs } from '../db/schema';
 import { runTriggerNow, cancelAllEnrollments } from '../email/automations';
+import { normalizeBrPhone, phoneOfTask } from '../../shared/phone';
 
 // Tag aplicada/removida automaticamente junto com tasks.emailConfirmed (ver
 // confirmEmail e update abaixo), para permitir filtrar tarefas por confirmação
@@ -289,6 +290,15 @@ export const tasksRouter = router({
       if (data.notes && data.notes.trim().length > 15) {
         setData.lastContactedAt = now;
         setData.contactCount = sql`${tasks.contactCount} + 1`;
+      }
+      // Telefone digitado depois da criação (título/anotações): preenche a coluna `phone` se estiver
+      // vazia, para o Buscador, o dedupe e o botão de WhatsApp enxergarem o número.
+      if (data.title !== undefined || data.notes !== undefined) {
+        const [cur] = await db.select({ phone: tasks.phone, title: tasks.title, notes: tasks.notes }).from(tasks).where(ownerFilter).limit(1);
+        if (cur && !normalizeBrPhone(cur.phone)) {
+          const found = phoneOfTask({ title: data.title ?? cur.title, notes: data.notes ?? cur.notes });
+          if (found) setData.phone = found;
+        }
       }
       const needsPrev = data.email !== undefined || data.tags !== undefined;
       let oldEmail: string | null = null;

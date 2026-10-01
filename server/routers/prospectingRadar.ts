@@ -12,6 +12,7 @@ import type { RadarEstablishment } from '../db/schema';
 import { radarEstablishments, radarEnrichment, radarLeadActions, radarLeadEvents, tasks, taskDeletionLogs, emailSuppressions, tags, fatOrders, clients, sellers } from '../db/schema';
 import { userTaskFilter } from './tasks';
 import { cnpjsDeClientesAtivos } from '../lib/radar/clientesAtivos';
+import { phoneOfTask } from '../../shared/phone';
 import { dataLimiteAbertura } from '../lib/radar/abertura';
 import { consolidarCarteira, parseCidadeUf, type CarteiraEntrada } from '../lib/radar/portfolio';
 import { totalItens } from '../../client/src/lib/faturamento/calc';
@@ -225,13 +226,14 @@ export const prospectingRadarRouter = router({
         if (cnpjsPedidos.length) {
           const donoPed = staff ? undefined : await userTaskFilter(ctx.user.id, ctx.user.name ?? '');
           const tp = await db
-            .select({ id: tasks.id, cnpj: tasks.cnpj, phone: tasks.phone, convertedAt: tasks.convertedAt })
+            .select({ id: tasks.id, cnpj: tasks.cnpj, phone: tasks.phone, title: tasks.title, notes: tasks.notes, convertedAt: tasks.convertedAt })
             .from(tasks)
             .where(and(inArray(tasks.cnpj, cnpjsPedidos), donoPed));
           for (const t of tp) {
             const c = (t.cnpj ?? '').replace(/\D/g, '');
             const atual = porCnpj.get(c);
-            if (!atual || (!atual.phone && t.phone)) porCnpj.set(c, { phone: t.phone, id: t.id, convertida: t.convertedAt != null });
+            const fone = phoneOfTask(t);
+            if (!atual || (!atual.phone && fone)) porCnpj.set(c, { phone: fone, id: t.id, convertida: t.convertedAt != null });
           }
         }
         for (const p of ped) {
@@ -269,7 +271,7 @@ export const prospectingRadarRouter = router({
       const filtroDono = staff ? undefined : await userTaskFilter(ctx.user.id, ctx.user.name ?? '');
       const tar = await db
         .select({
-          id: tasks.id, title: tasks.title, description: tasks.description, cnpj: tasks.cnpj, phone: tasks.phone,
+          id: tasks.id, title: tasks.title, description: tasks.description, notes: tasks.notes, cnpj: tasks.cnpj, phone: tasks.phone,
           assignedTo: tasks.assignedTo, convertedAt: tasks.convertedAt,
         })
         .from(tasks)
@@ -281,7 +283,7 @@ export const prospectingRadarRouter = router({
         // Título "NOME - CIDADE - UF": o nome é o que vem antes da cidade.
         const nome = t.title.includes(' - ') ? t.title.split(' - ').slice(0, -2).join(' - ').trim() || t.title : t.title;
         entradas.push({
-          fonte: 'tarefa', nome, cnpj: t.cnpj, cidade: loc.cidade, uf: loc.uf, telefone: t.phone, atendente: t.assignedTo,
+          fonte: 'tarefa', nome, cnpj: t.cnpj, cidade: loc.cidade, uf: loc.uf, telefone: phoneOfTask(t), atendente: t.assignedTo,
           tarefa: { id: t.id, convertida: t.convertedAt != null },
         });
       }
@@ -398,7 +400,8 @@ export const prospectingRadarRouter = router({
       const taskConditions: SQL[] = [inArray(tasks.cnpj, cnpjs)];
       if (allPhoneDigits.length) taskConditions.push(inArray(tasks.phone, allPhoneDigits));
       const taskRows = await db.select({
-        id: tasks.id, cnpj: tasks.cnpj, phone: tasks.phone, assignedTo: tasks.assignedTo, convertedAt: tasks.convertedAt,
+        id: tasks.id, cnpj: tasks.cnpj, phone: tasks.phone, title: tasks.title, notes: tasks.notes,
+        assignedTo: tasks.assignedTo, convertedAt: tasks.convertedAt,
       }).from(tasks).where(or(...taskConditions));
 
       const taskByCnpj = new Map<string, typeof taskRows[number]>();
@@ -434,7 +437,7 @@ export const prospectingRadarRouter = router({
 
       function crmStatusFor(cnpj: string, phoneDigitsList: string[]): RadarCrmStatus {
         const task = taskByCnpj.get(cnpj) ?? phoneDigitsList.map((d) => taskByPhone.get(d)).find((t) => !!t);
-        if (task) return { kind: 'no_crm', taskId: task.id, assignedTo: task.assignedTo, converted: task.convertedAt != null, taskPhone: task.phone ? task.phone.replace(/\D/g, '') : null };
+        if (task) return { kind: 'no_crm', taskId: task.id, assignedTo: task.assignedTo, converted: task.convertedAt != null, taskPhone: phoneOfTask(task) };
         const log = logByCnpj.get(cnpj) ?? phoneDigitsList.map((d) => logByPhone.get(d)).find((l) => !!l);
         if (log) return { kind: 'excluido_antes', reason: log.reason, deletedByName: log.deletedByName };
         return { kind: 'novo' };
