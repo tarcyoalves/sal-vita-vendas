@@ -173,8 +173,9 @@ describe('rota 5 — conferência do vínculo manual', () => {
     expect(decidirVinculo(['1071'], corpo())).toBe('CONFERIDO');
   });
 
-  it('qualquer divergência (ou movsais diferentes dos pedidos) ⇒ VINCULO_COM_DIVERGENCIA', () => {
-    expect(decidirVinculo(['1071'], corpo({ confere: { cliente: true, produto: true, quantidade: false } }))).toBe('VINCULO_COM_DIVERGENCIA');
+  it('o SMBI é a verdade: quantidade/produto/cliente diferentes não bloqueiam; só movsais lidos diferentes dos ligados', () => {
+    expect(decidirVinculo(['1071'], corpo({ confere: { cliente: true, produto: true, quantidade: false } }))).toBe('CONFERIDO');
+    expect(decidirVinculo(['1071'], corpo({ confere: { cliente: false, produto: false, quantidade: false } }))).toBe('CONFERIDO');
     expect(decidirVinculo(['1071', '1072'], corpo())).toBe('VINCULO_COM_DIVERGENCIA');
     expect(decidirVinculo(['999'], corpo())).toBe('VINCULO_COM_DIVERGENCIA');
   });

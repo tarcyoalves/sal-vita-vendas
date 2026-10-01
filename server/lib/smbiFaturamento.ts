@@ -226,14 +226,15 @@ export const vinculoResultadoSchema = z.object({
 export type VinculoResultadoBody = z.infer<typeof vinculoResultadoSchema>;
 
 /**
- * Tudo confere E os movsais que o robô leu são exatamente os pedidos ⇒ CONFERIDO. Qualquer outra
- * coisa é divergência e fica esperando o administrador (comparação lado a lado na tela).
+ * O SMBI é a verdade; o CRM é espelho (decisão do dono, 01/10/2026). Se o robô leu exatamente os
+ * movsais que foram ligados, o vínculo é aceito (CONFERIDO) mesmo que quantidade, produto ou
+ * cliente difiram do pedido: o espelho fiscal (peso, NF-e, CT-e) passa a valer e a comissão segue o
+ * peso faturado. Só é divergência quando o robô leu movsais DIFERENTES dos ligados (erro de leitura).
  */
 export function decidirVinculo(pedidos: string[], body: VinculoResultadoBody): SmbiVinculoEstado {
   const lidos = new Set(body.movsais.map((m) => m.id));
   const mesmosMovsais = pedidos.length === lidos.size && pedidos.every((p) => lidos.has(p));
-  const c = body.confere;
-  return mesmosMovsais && c.cliente && c.produto && c.quantidade ? 'CONFERIDO' : 'VINCULO_COM_DIVERGENCIA';
+  return mesmosMovsais ? 'CONFERIDO' : 'VINCULO_COM_DIVERGENCIA';
 }
 
 export function montarResultadoVinculo(body: VinculoResultadoBody, agora: Date = new Date()): SmbiVinculoResultado {
