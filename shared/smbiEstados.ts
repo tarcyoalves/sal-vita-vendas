@@ -93,6 +93,8 @@ export interface SmbiEspelhoFiscal {
   /** peso líquido do pedido no CRM e soma dos pesos dos movsais (kg). Ausentes em espelhos antigos. */
   pesoPedidoKg?: number;
   pesoFaturadoKg?: number;
+  /** true quando o pedido tem outros movsais ligados que ainda NÃO vieram faturados: o espelho é parcial. */
+  parcial?: boolean;
   /** total acordado ajustado ao peso faturado: com a quantidade alterada, é isso que o fiscal deveria somar. */
   totalEsperado?: number;
 }

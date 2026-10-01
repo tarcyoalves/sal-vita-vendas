@@ -129,6 +129,10 @@ export function resolverFaturamento(
   if (!body.movsais.some((m) => ligados.includes(m.id))) {
     return { erro: 'nenhum dos movsais informados está ligado a este pedido', patch: {} };
   }
+  // Pedido com VÁRIOS movsais ligados: enquanto algum não vier faturado, o espelho é parcial.
+  // Parcial nunca marca o pedido como faturado, nem liga alerta de desconto, nem mexe no peso/comissão.
+  const informados = new Set(body.movsais.map((m) => m.id));
+  const parcial = ligados.some((id) => !informados.has(id));
   const soma = somarFiscal(body.movsais);
   const pesoFat = pesoFaturadoKg(body.movsais);
   const esperado = totalEsperadoPeloPeso(totalAcordado, pesoPedidoKg, pesoFat);
@@ -139,15 +143,16 @@ export function resolverFaturamento(
     recebidoEm: agora.toISOString(),
     totalFiscal: soma.total,
     totalAcordado: Math.round(totalAcordado * 100) / 100,
+    ...(parcial ? { parcial: true } : {}),
     ...(pesoPedidoKg > 0 ? { pesoPedidoKg } : {}),
-    ...(pesoFat > 0 ? { pesoFaturadoKg: pesoFat, totalEsperado: esperado } : {}),
+    ...(pesoFat > 0 && !parcial ? { pesoFaturadoKg: pesoFat, totalEsperado: esperado } : {}),
   };
   const patch: FaturamentoPatch = {
     smbiEspelhoFiscal: espelho,
-    smbiAlertaDesconto: alertaDescontoFiscal(esperado, soma.total, soma.informado),
+    smbiAlertaDesconto: parcial ? false : alertaDescontoFiscal(esperado, soma.total, soma.informado),
     ...numerosFiscais(body.movsais),
   };
-  if (pedido.status !== 'faturado') {
+  if (pedido.status !== 'faturado' && !parcial) {
     patch.status = 'faturado';
     patch.faturadoEm = body.faturadoEm;
   }

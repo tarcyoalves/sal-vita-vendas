@@ -101,6 +101,20 @@ describe('rota 3 — faturado espelhado', () => {
     expect(resolverFaturamento(ligado, body, 1000, AGORA).patch.smbiAlertaDesconto).toBe(true);
   });
 
+  it('vários movsais ligados e só um faturado: espelho parcial, NÃO marca faturado, sem alerta nem peso', () => {
+    const doisLigados = { ...ligado, smbiMovsaiId: '1071', smbiVinculoMovsais: ['1072'] };
+    const body = faturamentoBodySchema.parse({
+      movsais: [{ id: '1071', pesoKg: 20000, nfe: { numero: 'N', valorSal: 100 }, cte: { numero: 'C', valorFrete: 100 } }],
+      faturadoEm: '2026-09-30T09:52:09-03:00',
+    });
+    const r = resolverFaturamento({ ...doisLigados, status: 'estimado' }, body, 12000, AGORA, 40000);
+    expect(r.erro).toBeNull();
+    expect(r.patch.status).toBeUndefined();
+    expect(r.patch.smbiAlertaDesconto).toBe(false);
+    expect(r.patch.smbiEspelhoFiscal).toMatchObject({ parcial: true });
+    expect(r.patch.smbiEspelhoFiscal).not.toHaveProperty('pesoFaturadoKg');
+  });
+
   it('já faturado por decisão humana: só o espelho muda; status e data ficam', () => {
     const body = faturamentoBodySchema.parse({ movsais: [mov('1071', 800, 200)], faturadoEm: '2026-09-25T10:00:00Z' });
     const { patch } = resolverFaturamento({ ...ligado, status: 'faturado', faturadoEm: '2026-09-20T00:00:00Z' }, body, 1000, AGORA);
