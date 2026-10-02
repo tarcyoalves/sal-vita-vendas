@@ -87,9 +87,27 @@ Comando executado:
 - **Item 2:** 100x SAL DO FAZENDEIRO GROSSO 25 KG (2.500 kg a R$ 6,00/sc = R$ 600,00) ➔ SMBI Cód. 3.
 - **Total:** 500 sacos (12,5 t), R$ 3.000,00 sal, Frete R$ 496,00/t, Marca `CRM:1n24vlhfw8wh`.
 
-### 5.3 Simulação dos Vínculos Fiscais Manuais:
-- **Pedido #5117 (`jlysrq9s9kv4` - Delei T / Wanderley T de Oliveira):**
-  - Movsai `1035`: 38.000 kg, NF-e `893` (R$ 16.720,00, emitida em 03/09/2026), CT-e `834` (R$ 22.040,00).
-- **Pedido #2068 (`l853ovpzyzpv` - Big Ben Agro LTDA):**
-  - Movsais `1050, 1051`: 40.000 kg (38 t + 2 t), NF-e `913` (R$ 9.120,00) + NF-e `914` (R$ 480,00) = R$ 9.600,00 em 09/09/2026, CT-e `856` (R$ 13.588,80) + CT-e `857` (R$ 715,20) = R$ 14.304,00.
+### 5.3 Vínculos Fiscais Manuais (#5117 e #2068) — Auditoria de Datas e Envio Real:
+- **Auditoria de Datas no SMBI/SEFAZ:**
+  - No SMBI, `dataAutoriza` refere-se à liberação interna do pedido (02/09 ou 09/09), enquanto `dataFaturamento` / CT-e é a data real de faturamento/emissão fiscal:
+    - **NF-e 913 e 914 / CT-e 856 e 857 (#2068):** `dataFaturamento` = **10/09/2026** (10:12:00 e 10:12:37).
+    - **NF-e 893 / CT-e 834 (#5117):** `dataFaturamento` = **04/09/2026** (18:46:42).
+  - Corrigido `smbi_espelho_daemon.mjs` para priorizar `m.dataFaturamento` sobre `m.dataAutoriza`.
+- **Envio Real Realizado com Sucesso (HTTP 200 / CONFERIDO):**
+  - **#5117 (`jlysrq9s9kv4` - Delei T):**
+    - Movsai 1035: NF-e 893 (R$ 16.720,00, data 2026-09-04), CT-e 834 (R$ 22.040,00).
+    - 38.000 kg (1.520 sc a R$ 11,00), Sal R$ 16.720,00, Comissão 3% (R$ 501,60).
+    - Banco Neon: `status = 'faturado'`, `smbi_vinculo_estado = 'CONFERIDO'`.
+  - **#2068 (`l853ovpzyzpv` - Big Ben Agro):**
+    - Movsais 1050 + 1051: NF-e 913 + 914 (data 2026-09-10), CT-e 856 + 857.
+    - 40.000 kg (38 t + 2 t), Sal R$ 9.600,00 (R$ 9.120 + R$ 480), Frete R$ 14.304,00, Comissão 1,5% (R$ 144,00).
+    - Banco Neon: `status = 'faturado'`, `smbi_vinculo_estado = 'CONFERIDO'`.
+
+---
+
+## 6. Blindagem Multi-Item e Guarda de Ferramenta Instalada
+- **Guarda Anti-Quebra no Daemon:** Adicionada verificação no daemon `smbi_robo_daemon.mjs` (`ferramentaSuportaMultiItem()`). Se a ferramenta em `/home/ubuntu/.openclaw/workspace/tools/smbi_criar_pedido_express.mjs` não possuir `SUPORTA_MULTI_ITEM = true`, qualquer pedido com mais de 1 item é sumariamente recusado com `MAIS_DE_UM_ITEM` / `PENDENTE`, impedindo que o daemon invoque a ferramenta antiga para criar pedidos parciais.
+- **Modo de Teste (--parar-antes-de-salvar):** Implementado em `smbi_criar_pedido_express.multi_item.mjs`, permitindo que o formulário seja preenchido e todos os itens inseridos para inspeção sem que `Finaliza` seja acionado.
+- **Estado Operacional:** Daemons e serviços 100% desligados. Robô inativo.
+
 
