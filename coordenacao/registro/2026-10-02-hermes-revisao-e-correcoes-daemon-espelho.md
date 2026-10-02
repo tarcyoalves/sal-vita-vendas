@@ -128,6 +128,14 @@ Comando executado:
 - **Arquivo Candidato:** `/home/ubuntu/.openclaw/workspace/tools/smbi_criar_pedido_express.multi_item.mjs`
   - **sha256sum:** `34aa60d4c7c425a65c87f27aee708d2f1380f160afdd43ac822731fc54250797`
 - **Estado Operacional:** NENHUMA ferramenta foi instalada em produção (`smbi_criar_pedido_express.mjs` permanece intocado, root:root). Daemons e serviços 100% desligados (`roboAtivo: false`, `smbi-crm-sync.service` inativo). Aguardando autorização do Tarcyo.
+- **Auditoria de Pré-Cadastro Araxá (MG) — CNPJ 42.866.723/0001-18:**
+  - Varredura de 12.579 registros no SMBI (CNPJ completo, raiz `42866723` e nomes): cliente INEXISTENTE no ERP.
+  - Consulta oficial Receita / SEFAZ-MG via SMBI (`get_cadastro.php`):
+    - Razão: COMERCIAL BOM NEGOCIO LTDA | Fantasia: BOM NEGOCIO AGROSHOP
+    - Situação: ATIVA | IE: `0408138900035` (ATIVA em MG) | Regime: DEMAIS (Lucro Presumido, não Simples)
+    - Endereço oficial: Av. Getúlio Vargas, 726 - Centro, Araxá/MG - CEP 38183-192
+    - Vendedora resolvida: `Victoria Porto Lopes` (SMBI ID 26, CPF `11955463433`, comissão 7,00%)
+  - Simulação (`--dry-run`) executada com sucesso (`PRONTO_PARA_CADASTRAR`). NADA gravado. Aguardando comando explícito "cadastra" do Tarcyo.
 
 
 
