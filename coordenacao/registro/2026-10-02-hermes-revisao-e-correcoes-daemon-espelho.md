@@ -119,12 +119,15 @@ Comando executado:
 - **Auditoria #5117 (Data no CRM vs Data Fiscal):**
   - O pedido `#5117` (`jlysrq9s9kv4`) já possuía `status = 'faturado'` e `faturado_em = '2026-09-05'` no CRM antes do espelhamento, decorrente de marcação manual prévia pelo usuário.
   - Conforme a regra de negócio do CRM em `server/lib/smbiFaturamento.ts` (linhas 155-156 e 207-210), quando um pedido já se encontra faturado no CRM (decisão humana), o CRM preserva intactos o `status` e a data humana `faturadoEm`, atualizando exclusivamente o espelho fiscal. No campo `smbi_espelho_fiscal`, a data fiscal da NF-e 893 consta registrada fielmente como `2026-09-04`.
-- **Suíte de Testes Unitários:** 11 testes unitários em `/home/ubuntu/.openclaw/workspace/smbi-robo/test_multi_item_robo.mjs` executados e 100% aprovados, incluindo:
-  - Falha no 2º item sem exceção de rede (contagem de linhas na tabela ou dados divergentes).
-  - Falha depois do último item (comissão/parcelas) encapsulando `docId` sem dizer "Nada foi salvo".
-  - Falha na gravação final / timeout.
-  - Mapeamento no daemon para `ERRO` / `CRIACAO_FALHOU` com trava de `nuncaRecriar`.
-- **Estado Operacional:** NENHUMA ferramenta foi instalada em produção (`smbi_criar_pedido_express.mjs` permanece intocado, root:root). Daemons e serviços 100% desligados (`roboAtivo: false`, `smbi-crm-sync.service` inativo). Aguardando revisão do Tarcyo e do Claude.
+- **Suíte de Testes Unitários:** 15 testes unitários em `/home/ubuntu/.openclaw/workspace/smbi-robo/test_multi_item_robo.mjs` executados e 100% aprovados, incluindo:
+  - 11 testes originais (validação multi-item, limites, travas de catálogo/peso/preço, falhas intermediárias e pós-itens).
+  - Caso 12: Restauração da REGRA INVIOLÁVEL do frete de motorista (#condpag_frete_lista).
+  - Caso 13: Não reembrulhar `SALVO_COM_DIVERGENCIA` para retorno `DIVERGENTE_APOS_CRIAR`.
+  - Caso 14: Localização de item por CÓDIGO (ou descrição com erro explícito se ausente) e remoção de `import path`.
+  - Caso 15: Marcação de `nuncaRecriar` e `ERRO/CRIACAO_FALHOU` se 1º item falhar ou `docId` vier vazio.
+- **Arquivo Candidato:** `/home/ubuntu/.openclaw/workspace/tools/smbi_criar_pedido_express.multi_item.mjs`
+  - **sha256sum:** `34aa60d4c7c425a65c87f27aee708d2f1380f160afdd43ac822731fc54250797`
+- **Estado Operacional:** NENHUMA ferramenta foi instalada em produção (`smbi_criar_pedido_express.mjs` permanece intocado, root:root). Daemons e serviços 100% desligados (`roboAtivo: false`, `smbi-crm-sync.service` inativo). Aguardando autorização do Tarcyo.
 
 
 
