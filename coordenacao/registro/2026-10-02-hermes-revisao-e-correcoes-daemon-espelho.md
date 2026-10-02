@@ -67,4 +67,29 @@ Comando executado:
 ## 4. Estado Operacional
 - Daemon contínuo: **desligado**.
 - Robô SMBI: **inativo e desabilitado**.
-- **Atenção:** No pedido #2068, o Tarcyo salvou apenas `1050`. Para consolidar os 40.000 kg (38 t + 2 t) e os dois CT-es (856 + 857), é necessário preencher `"1050, 1051"`.
+
+---
+
+## 5. Implementação Multi-Item (1 a 6 itens) e Simulações de Vínculos
+
+### 5.1 Implementação e Testes das 6 Regras de Multi-Item:
+1. **Trava Intermediária Estrita:** Se a adição de um item falhar no SMBI após o 1º item já ter criado o pedido (`docId`), o robô **PARA IMEDIATAMENTE**, não adiciona os itens restantes, não tenta de novo, grava a falha e devolve `ERRO` com motivo `CRIACAO_FALHOU` informando o número exato do movsai incompleto gerado para intervenção manual.
+2. **Conferência Completa de Todos os Itens:** Após salvar no SMBI, a ferramenta relê o cabeçalho e todas as linhas da tabela de itens, conferindo produto, quantidade, valor unitário, subtotal e total do pedido. Se divergir em qualquer item, devolve `DIVERGENTE_APOS_CRIAR`.
+3. **Catálogo e Bloqueios:** Todos os itens precisam casar com o catálogo oficial. Big Bag (código 14) e Churrasco Nota 10 permanecem bloqueados (retornam `PRODUTO_SEM_CODIGO`).
+4. **Travas de Peso e Preço por Item:** `pesoKg / quantidade` validado com tolerância de 0.05 kg contra o produto cadastrado; valores unitários validados por faixa razoável por produto. Violação retorna `PRECO_INVALIDO` com `motivoTexto` explicativo. Motivos restritos aos 7 contratuais.
+5. **Marca e Busca Prévia:** Marca `CRM:<id>` injetada na observação do pedido, com verificação prévia no SMBI para evitar duplicidade.
+6. **Limite de 6 Itens:** Pedidos com mais de 6 itens devolvem `MAIS_DE_UM_ITEM` e permanecem `PENDENTE` para criação manual.
+- **Testes Unitários:** Arquivo `/home/ubuntu/.openclaw/workspace/smbi-robo/test_multi_item_robo.mjs` com 8/8 testes cobrindo todos os cenários com sucesso.
+
+### 5.2 Simulação de Pedido Real de 2 Itens:
+- **Pedido CRM:** `1n24vlhfw8wh` (#306 - AGROPECUARIA MF LTDA - SC).
+- **Item 1:** 400x SAL DO FAZENDEIRO MOIDO 25 KG (10.000 kg a R$ 6,00/sc = R$ 2.400,00) ➔ SMBI Cód. 1.
+- **Item 2:** 100x SAL DO FAZENDEIRO GROSSO 25 KG (2.500 kg a R$ 6,00/sc = R$ 600,00) ➔ SMBI Cód. 3.
+- **Total:** 500 sacos (12,5 t), R$ 3.000,00 sal, Frete R$ 496,00/t, Marca `CRM:1n24vlhfw8wh`.
+
+### 5.3 Simulação dos Vínculos Fiscais Manuais:
+- **Pedido #5117 (`jlysrq9s9kv4` - Delei T / Wanderley T de Oliveira):**
+  - Movsai `1035`: 38.000 kg, NF-e `893` (R$ 16.720,00, emitida em 03/09/2026), CT-e `834` (R$ 22.040,00).
+- **Pedido #2068 (`l853ovpzyzpv` - Big Ben Agro LTDA):**
+  - Movsais `1050, 1051`: 40.000 kg (38 t + 2 t), NF-e `913` (R$ 9.120,00) + NF-e `914` (R$ 480,00) = R$ 9.600,00 em 09/09/2026, CT-e `856` (R$ 13.588,80) + CT-e `857` (R$ 715,20) = R$ 14.304,00.
+
