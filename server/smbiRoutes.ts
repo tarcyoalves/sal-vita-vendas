@@ -100,6 +100,8 @@ export function registerSmbiExtraRoutes(app: Express, limiter: RequestHandler): 
           movsaiPrincipal: fatOrders.smbiMovsaiId,
           movsaiVinculo: fatOrders.smbiVinculoMovsais,
           estado: fatOrders.smbiVinculoEstado,
+          cnpj: fatOrders.cnpj,
+          comissaoPct: fatOrders.comissaoPct,
         })
         .from(fatOrders)
         .where(and(isNotNull(fatOrders.smbiMovsaiId), ne(fatOrders.status, 'faturado')));
@@ -107,6 +109,9 @@ export function registerSmbiExtraRoutes(app: Express, limiter: RequestHandler): 
         pedidoId: r.pedidoId,
         movsaiNumeros: movsaisLigados({ smbiMovsaiId: r.movsaiPrincipal, smbiVinculoMovsais: r.movsaiVinculo }),
         vinculoEstado: r.estado,
+        // Para a trava de documento (raiz do CNPJ/CPF) e a decisão de mandar comissaoPct.
+        cnpj: r.cnpj,
+        comissaoPct: r.comissaoPct,
       }));
       console.log(`[smbi] GET ligados → ${ligados.length}`);
       res.json({ ok: true, ligados });
@@ -126,6 +131,8 @@ export function registerSmbiExtraRoutes(app: Express, limiter: RequestHandler): 
           movsaiNumeros: fatOrders.smbiVinculoMovsais,
           solicitadoEm: fatOrders.smbiVinculoEm,
           solicitadoPor: fatOrders.smbiVinculoPor,
+          cnpj: fatOrders.cnpj,
+          comissaoPct: fatOrders.comissaoPct,
         })
         .from(fatOrders)
         .where(eq(fatOrders.smbiVinculoEstado, 'PENDENTE_CONFERENCIA'));

@@ -43,3 +43,5 @@ Objetivo: envio de pedidos estável, pedido faturado no SMBI espelhado no CRM, v
 - Rota 3 (e a conferência do vínculo): para pedido de **1 item** com todos os movsais faturados, o CRM **reescreve** quantidade, peso, valor do sal (NF-e `valorSal`) e frete por tonelada (CT-e `valorFrete`) com os do SMBI. O pedido original fica em `itensEstimadoSnapshot` ("Desfazer faturamento" restaura). Vários itens ou faturamento parcial: não reescreve; o fator de peso cuida da comissão.
 - Comissão: o corpo aceita `comissaoPct` opcional. **Só envie quando houver ajuste** (sal baixado e frete subido para atingir o piso de frete, compensado com % maior): o CRM adota esse % no pedido. Sem ele, a % do pedido não muda.
 - Rota 4b `GET /api/smbi/ligados`: pedidos com movsai ligado e ainda não faturados no CRM: `[{ pedidoId, movsaiNumeros, vinculoEstado }]`. O robô confere o faturamento deles no SMBI (não depende de arquivo local).
+
+- `GET /api/smbi/ligados` e `GET /api/smbi/vinculos` trazem também `cnpj` (do pedido) e `comissaoPct` (do pedido), para a trava de documento (raiz do CNPJ / CPF) e para decidir se manda `comissaoPct`.
