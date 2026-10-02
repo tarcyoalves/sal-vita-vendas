@@ -105,9 +105,26 @@ Comando executado:
 
 ---
 
-## 6. Blindagem Multi-Item e Guarda de Ferramenta Instalada
-- **Guarda Anti-Quebra no Daemon:** Adicionada verificação no daemon `smbi_robo_daemon.mjs` (`ferramentaSuportaMultiItem()`). Se a ferramenta em `/home/ubuntu/.openclaw/workspace/tools/smbi_criar_pedido_express.mjs` não possuir `SUPORTA_MULTI_ITEM = true`, qualquer pedido com mais de 1 item é sumariamente recusado com `MAIS_DE_UM_ITEM` / `PENDENTE`, impedindo que o daemon invoque a ferramenta antiga para criar pedidos parciais.
-- **Modo de Teste (--parar-antes-de-salvar):** Implementado em `smbi_criar_pedido_express.multi_item.mjs`, permitindo que o formulário seja preenchido e todos os itens inseridos para inspeção sem que `Finaliza` seja acionado.
-- **Estado Operacional:** Daemons e serviços 100% desligados. Robô inativo.
+## 6. Blindagem Multi-Item, Ajustes Rigorosos e Guarda de Ferramenta
+- **Remoção de `--parar-antes-de-salvar`:** Como o SMBI cria o movsai no banco logo na primeira chamada a `window.addProd()`, qualquer execução que insira itens grava registro real. O modo foi removido para não induzir a falsos testes "sem efeito". O primeiro teste real do loop multi-item será o piloto com o pedido que o Tarcyo clicar.
+- **Tratamento Estrito pós-1º Item (`FALHA_PEDIDO_INCOMPLETO: movsai X`):**
+  - Após o primeiro `addProd` bem-sucedido e obtenção de `docId`, **QUALQUER falha** subsequente (inserção de itens seguintes, contagem da tabela, comissão, condições de pagamento, parcelas `#dias`, `Finaliza` ou divergência na releitura) é encapsulada obrigatoriamente como `FALHA_PEDIDO_INCOMPLETO: movsai <docId> — <mensagem>`.
+  - A mensagem **NUNCA** diz "Nada foi salvo" quando `docId` existir.
+  - O daemon `smbi_robo_daemon.mjs` mapeia esse erro para `ERRO` com código `CRIACAO_FALHOU`, marca `nuncaRecriar: true` no arquivo de registro e **NUNCA** tenta recriar o pedido, exigindo tratamento manual.
+- **Conferência Estrita após cada `addProd`:**
+  - Após cada chamada a `addProd()`, a ferramenta lê o DOM de `#tabelaProdutos tbody tr` e exige exatamente `idx + 1` linhas. Se divergir, aborta imediatamente com `FALHA_PEDIDO_INCOMPLETO`.
+  - Confere também se a linha nova (`linhasTabela[idx]`) possui exatamente o código do produto (`Cód.`) e quantidade (`Qtd`) esperados.
+- **Datas no Fuso Horário de Brasília (`America/Sao_Paulo`):**
+  - Em `smbi_criar_pedido_express.multi_item.mjs`, `data_venda`, `data_pedido` e o retry de data retroativa utilizam `new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })` (formato `YYYY-MM-DD` de Brasília), evitando virada antecipada em UTC.
+- **Auditoria #5117 (Data no CRM vs Data Fiscal):**
+  - O pedido `#5117` (`jlysrq9s9kv4`) já possuía `status = 'faturado'` e `faturado_em = '2026-09-05'` no CRM antes do espelhamento, decorrente de marcação manual prévia pelo usuário.
+  - Conforme a regra de negócio do CRM em `server/lib/smbiFaturamento.ts` (linhas 155-156 e 207-210), quando um pedido já se encontra faturado no CRM (decisão humana), o CRM preserva intactos o `status` e a data humana `faturadoEm`, atualizando exclusivamente o espelho fiscal. No campo `smbi_espelho_fiscal`, a data fiscal da NF-e 893 consta registrada fielmente como `2026-09-04`.
+- **Suíte de Testes Unitários:** 11 testes unitários em `/home/ubuntu/.openclaw/workspace/smbi-robo/test_multi_item_robo.mjs` executados e 100% aprovados, incluindo:
+  - Falha no 2º item sem exceção de rede (contagem de linhas na tabela ou dados divergentes).
+  - Falha depois do último item (comissão/parcelas) encapsulando `docId` sem dizer "Nada foi salvo".
+  - Falha na gravação final / timeout.
+  - Mapeamento no daemon para `ERRO` / `CRIACAO_FALHOU` com trava de `nuncaRecriar`.
+- **Estado Operacional:** NENHUMA ferramenta foi instalada em produção (`smbi_criar_pedido_express.mjs` permanece intocado, root:root). Daemons e serviços 100% desligados (`roboAtivo: false`, `smbi-crm-sync.service` inativo). Aguardando revisão do Tarcyo e do Claude.
+
 
 
