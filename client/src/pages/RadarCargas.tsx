@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TRPCClientError } from '@trpc/client';
-import { ChevronDown, ChevronRight, Loader2, Search, Truck } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, Search, Truck, X } from 'lucide-react';
 import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -31,9 +31,32 @@ import { BaseStatusCard } from '../components/radar/BaseStatusCard';
 import { CarteiraList } from '../components/radar/CarteiraList';
 import { enrichmentNeedsPolling } from '../components/radar/EnrichmentSection';
 import {
+  LEAD_SORT_OPTIONS,
+  RECENT_CITIES_KEY,
+  STATE_KEY,
+  addRecentCity,
+  coverageNotice,
+  emptyAdvice,
+  filterBySegments,
+  filterByText,
+  groupByMunicipio,
+  groupTitle,
+  mergeLeadPages,
+  parseRecentCities,
+  restoreState,
+  safeGet,
+  safeSet,
+  segmentsPresent,
+  serializeState,
+  sortLeads,
+  type LeadFilterKey,
+  type LeadSort,
+} from '../components/radar/buscadorLogic';
+import {
   EMPTY_RADAR_ACTIVITY,
   RADAR_RADIUS_OPTIONS_KM,
   RADAR_SEGMENT_KEYS,
+  RADAR_SEGMENTS,
   type RadarEnrichment,
   type RadarLead,
   type RadarLeadActivity,
@@ -52,25 +75,54 @@ const ENRICH_POLL_INTERVAL_MS = 4000;
 // Filtros pedidos pelo dono: a busca é uma lista de "para contatar", não uma
 // fila que empurra tarefa. "Para contatar" e "Todos" continuam mostrando o
 // aviso amber de "excluído antes" (não é um filtro à parte).
-type LeadFilter = 'para_contatar' | 'contatados' | 'no_crm' | 'descartados' | 'all';
+type LeadFilter = LeadFilterKey;
 
 export default function RadarCargas() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   // Duas formas de buscar: quem o CRM já conhece (funciona sem a base da Receita) e empresas novas.
-  const [mode, setMode] = useState<'carteira' | 'novas'>('carteira');
+  // Estado guardado na sessão: ao voltar para a tela (ex.: depois de "Ir para a
+  // tarefa") o formulário volta como estava e a última busca é refeita.
+  const [saved] = useState(() => restoreState(safeGet('session', STATE_KEY), DEFAULT_SEGMENTS));
+  const [mode, setMode] = useState<'carteira' | 'novas'>(saved.mode);
 
   // ── Formulário de busca ──
-  const [city, setCity] = useState<RadarMunicipality | null>(null);
-  const [radiusKm, setRadiusKm] = useState(50);
-  const [bagsInput, setBagsInput] = useState('400');
-  const [segments, setSegments] = useState<RadarSegmentKey[]>(DEFAULT_SEGMENTS);
-  const [includeSecondary, setIncludeSecondary] = useState(false);
-  const [minAnosAbertura, setMinAnosAbertura] = useState(2);
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [loadDate, setLoadDate] = useState('');
-  const [freightNote, setFreightNote] = useState('');
-  const [leadFilter, setLeadFilter] = useState<LeadFilter>('para_contatar');
+  const [city, setCityState] = useState<RadarMunicipality | null>(saved.city);
+  const [radiusKm, setRadiusKm] = useState(saved.radiusKm);
+  const [bagsInput, setBagsInput] = useState(saved.bagsInput);
+  const [segments, setSegments] = useState<RadarSegmentKey[]>(saved.segments);
+  const [includeSecondary, setIncludeSecondary] = useState(saved.includeSecondary);
+  const [minAnosAbertura, setMinAnosAbertura] = useState(saved.minAnosAbertura);
+  const [detailsOpen, setDetailsOpen] = useState(!!(saved.loadDate || saved.freightNote));
+  const [loadDate, setLoadDate] = useState(saved.loadDate);
+  const [freightNote, setFreightNote] = useState(saved.freightNote);
+  const [leadFilter, setLeadFilter] = useState<LeadFilter>(saved.leadFilter);
+  // Ferramentas dos resultados (só sobre o que já foi carregado).
+  const [textFilter, setTextFilter] = useState(saved.textFilter);
+  const [segmentFilter, setSegmentFilter] = useState<RadarSegmentKey[]>(saved.segmentFilter);
+  const [sort, setSort] = useState<LeadSort>(saved.sort);
+  const [lastSearch, setLastSearch] = useState<'carteira' | 'novas' | null>(saved.lastSearch);
+
+  // Cidades recentes (preferência de interface, fica no aparelho).
+  const [recentCities, setRecentCities] = useState<RadarMunicipality[]>(() =>
+    parseRecentCities(safeGet('local', RECENT_CITIES_KEY)),
+  );
+  // Troca a chave do autocomplete para ele reler o valor ao clicar num chip.
+  const [cityBoxKey, setCityBoxKey] = useState(0);
+  const setCity = (m: RadarMunicipality | null) => {
+    setCityState(m);
+    if (m) {
+      setRecentCities((prev) => {
+        const next = addRecentCity(prev, m);
+        safeSet('local', RECENT_CITIES_KEY, JSON.stringify(next));
+        return next;
+      });
+    }
+  };
+  const pickRecentCity = (m: RadarMunicipality) => {
+    setCity(m);
+    setCityBoxKey((k) => k + 1);
+  };
 
   const bags = Number(bagsInput);
   const bagsValid = Number.isInteger(bags) && bags >= 1 && bags <= 2000;
@@ -91,6 +143,17 @@ export default function RadarCargas() {
     enabled: false,
     retry: false,
   });
+
+  // "Mostrar mais empresas": páginas seguintes acrescentadas à primeira.
+  const utils = trpc.useUtils();
+  const [extraPages, setExtraPages] = useState<Array<{ leads: RadarLead[]; hasMore: boolean }>>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  // Mudou o formulário: as páginas acumuladas não valem mais.
+  useEffect(() => {
+    setExtraPages([]);
+    setLoadMoreError(null);
+  }, [searchInput]);
 
   const carteiraQuery = trpc.prospectingRadar.carteira.useQuery(
     { originIbge: city?.ibge ?? 0, radiusKm },
@@ -131,14 +194,49 @@ export default function RadarCargas() {
     setEnrichUnavailable(false);
     setPollTimedOut(false);
     setPollDeadline(Date.now() + ENRICH_POLL_CAP_MS);
+    setExtraPages([]);
+    setLoadMoreError(null);
     searchQuery.refetch();
   };
+
+  // Refaz sozinho a última busca que tinha resultado ao voltar para a tela.
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (autoRan.current) return;
+    autoRan.current = true;
+    if (!saved.lastSearch || !saved.city) return;
+    if (saved.lastSearch !== saved.mode) return;
+    handleSearch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const notImplemented =
     searchQuery.error instanceof TRPCClientError && searchQuery.error.data?.code === 'NOT_IMPLEMENTED';
 
   const data = searchQuery.data;
-  const leads = data?.leads ?? [];
+  const leads = useMemo(
+    () => mergeLeadPages(data?.leads ?? [], ...extraPages.map((p) => p.leads)),
+    [data, extraPages],
+  );
+  const hasMore = extraPages.length > 0 ? extraPages[extraPages.length - 1].hasMore : !!data?.hasMore;
+
+  const handleLoadMore = async () => {
+    if (!data || loadingMore) return;
+    setLoadingMore(true);
+    setLoadMoreError(null);
+    try {
+      const next = (data.pagina ?? 0) + extraPages.length + 1;
+      const res = await utils.prospectingRadar.search.fetch({ ...searchInput, pagina: next });
+      setExtraPages((prev) => [...prev, { leads: res.leads, hasMore: !!res.hasMore }]);
+      // Reabre a janela de polling: as novas empresas podem ter entrado na fila.
+      setPollTimedOut(false);
+      setPollDeadline(Date.now() + ENRICH_POLL_CAP_MS);
+    } catch (e) {
+      setLoadMoreError(e instanceof Error ? e.message : 'Não foi possível carregar mais empresas.');
+    } finally {
+      setLoadingMore(false);
+    }
+  };
   const leadCnpjs = useMemo(() => leads.map((l) => l.cnpj), [leads]);
 
   // O status de "robô ligado" mais recente que já vimos — a resposta da
@@ -170,12 +268,14 @@ export default function RadarCargas() {
   // Só as empresas que foram para a fila contam no progresso (a busca enfileira
   // as mais próximas; as demais ficam sem pedido até o "Varrer agora").
   const trackedCnpjs = leadCnpjs.filter((c) => effectiveEnrichment(c) !== null);
+  // O servidor aceita até 200 CNPJs por consulta: perguntamos só pelos que estão na fila (as mais próximas).
+  const pollCnpjs = trackedCnpjs.slice(0, 200);
   const enrichPending = trackedCnpjs.some((c) => enrichmentNeedsPolling(effectiveEnrichment(c)));
 
   const enrichmentStatusQuery = trpc.prospectingRadar.enrichmentStatus.useQuery(
-    { cnpjs: leadCnpjs },
+    { cnpjs: pollCnpjs },
     {
-      enabled: leadCnpjs.length > 0 && enrichPending && enricherOnline && !enrichUnavailable && !pollTimedOut,
+      enabled: pollCnpjs.length > 0 && enrichPending && enricherOnline && !enrichUnavailable && !pollTimedOut,
       retry: false,
       // React Query já não refaz em background quando a aba está oculta
       // (refetchIntervalInBackground é false por padrão) — é o que dá a
@@ -185,7 +285,7 @@ export default function RadarCargas() {
         if (pollDeadline !== null && Date.now() > pollDeadline) return false;
         const res = query.state.data;
         if (res && !res.enricherOnline) return false;
-        const stillPending = leadCnpjs.some((c) => enrichmentNeedsPolling(res?.items[c] ?? effectiveEnrichment(c)));
+        const stillPending = pollCnpjs.some((c) => enrichmentNeedsPolling(res?.items[c] ?? effectiveEnrichment(c)));
         return stillPending ? ENRICH_POLL_INTERVAL_MS : false;
       },
     },
@@ -224,8 +324,9 @@ export default function RadarCargas() {
 
   // Atividade efetiva de cada lead: o que markContacted/discard/restore
   // devolveram por último, senão o que já veio na busca.
+  const leadActivity = useMemo(() => new Map(leads.map((l) => [l.cnpj, l.activity] as const)), [leads]);
   const effectiveActivity = (cnpj: string): RadarLeadActivity =>
-    activityByCnpj[cnpj] ?? leads.find((l) => l.cnpj === cnpj)?.activity ?? EMPTY_RADAR_ACTIVITY;
+    activityByCnpj[cnpj] ?? leadActivity.get(cnpj) ?? EMPTY_RADAR_ACTIVITY;
 
   // Balde (mutuamente exclusivo) de cada lead nos novos filtros pedidos pelo
   // dono. "Já no CRM" manda em qualquer outro estado (é o comportamento de
@@ -238,21 +339,124 @@ export default function RadarCargas() {
     return 'para_contatar';
   }
 
+  // Texto e segmento reduzem o conjunto; os contadores dos filtros (Para
+  // contatar, Contatados...) contam esse conjunto, então batem com a lista.
+  const segmentOptions = useMemo(() => segmentsPresent(leads), [leads]);
+  const scopedLeads = useMemo(
+    () => filterBySegments(filterByText(leads, textFilter), segmentFilter),
+    [leads, textFilter, segmentFilter],
+  );
+
   const counts = useMemo(() => {
-    const c = { all: leads.length, para_contatar: 0, contatados: 0, no_crm: 0, descartados: 0 };
-    for (const l of leads) c[bucketFor(l)]++;
+    const c = { all: scopedLeads.length, para_contatar: 0, contatados: 0, no_crm: 0, descartados: 0 };
+    for (const l of scopedLeads) c[bucketFor(l)]++;
     return c;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leads, activityByCnpj]);
+  }, [scopedLeads, activityByCnpj]);
 
   const filteredLeads = useMemo(() => {
-    if (leadFilter === 'all') return leads;
-    return leads.filter((l) => bucketFor(l) === leadFilter);
+    const byBucket = leadFilter === 'all' ? scopedLeads : scopedLeads.filter((l) => bucketFor(l) === leadFilter);
+    return sortLeads(byBucket, sort);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leads, leadFilter, activityByCnpj]);
+  }, [scopedLeads, leadFilter, sort, activityByCnpj]);
+
+  // Por distância os cartões ficam agrupados por município; nas outras
+  // ordenações a lista é corrida (agrupar quebraria a ordem escolhida).
+  const groups = useMemo(
+    () => (sort === 'distancia' ? groupByMunicipio(filteredLeads) : null),
+    [filteredLeads, sort],
+  );
+
+  const toolsActive = textFilter.trim() !== '' || segmentFilter.length > 0;
+  const clearTools = () => {
+    setTextFilter('');
+    setSegmentFilter([]);
+  };
+
+  // UFs que a base cobre (para explicar o aviso de cobertura).
+  const baseStatus = trpc.prospectingRadar.baseStatus.useQuery(undefined, { staleTime: 60_000 });
+  const ufsCobertas = useMemo(() => (baseStatus.data?.porUf ?? []).map((u) => u.uf), [baseStatus.data]);
+  const coverage = coverageNotice(data?.ufsSemBase, ufsCobertas);
+
+  // ── Guardar a busca (sessionStorage) ──
+  // Lembra que a última busca teve resultado, para refazê-la ao voltar.
+  useEffect(() => {
+    if (mode === 'novas' && data && data.leads.length > 0) setLastSearch('novas');
+  }, [mode, data]);
+  useEffect(() => {
+    if (mode === 'carteira' && carteiraQuery.data && carteiraQuery.data.itens.length > 0) setLastSearch('carteira');
+  }, [mode, carteiraQuery.data]);
+
+  const rootRef = useRef<HTMLDivElement>(null);
+  const getScroller = useCallback((): HTMLElement | null => {
+    let el = rootRef.current?.parentElement ?? null;
+    while (el) {
+      const oy = getComputedStyle(el).overflowY;
+      if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight) return el;
+      el = el.parentElement;
+    }
+    return document.scrollingElement as HTMLElement | null;
+  }, []);
+
+  const scrollTopRef = useRef(saved.scrollTop);
+  const persist = useCallback(() => {
+    safeSet(
+      'session',
+      STATE_KEY,
+      serializeState({
+        mode, city, radiusKm, bagsInput, segments, includeSecondary, minAnosAbertura,
+        loadDate, freightNote, leadFilter, textFilter, segmentFilter, sort, lastSearch,
+        scrollTop: scrollTopRef.current,
+      }),
+    );
+  }, [mode, city, radiusKm, bagsInput, segments, includeSecondary, minAnosAbertura, loadDate, freightNote, leadFilter, textFilter, segmentFilter, sort, lastSearch]);
+  useEffect(() => { persist(); }, [persist]);
+
+  // Posição de rolagem: guarda ao rolar (e ao sair da tela) e restaura quando os resultados voltam.
+  useEffect(() => {
+    const el = getScroller();
+    if (!el) return;
+    const onScroll = () => { scrollTopRef.current = el.scrollTop; };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      persist();
+    };
+  }, [getScroller, persist]);
+
+  const scrollRestored = useRef(false);
+  const resultsReady = mode === 'novas' ? !!data : !!carteiraQuery.data;
+  useEffect(() => {
+    if (scrollRestored.current || !resultsReady) return;
+    scrollRestored.current = true;
+    if (saved.scrollTop <= 0 || saved.lastSearch !== saved.mode) return;
+    // Espera os cartões entrarem no DOM antes de rolar.
+    const t = setTimeout(() => {
+      const el = getScroller();
+      if (el) el.scrollTop = saved.scrollTop;
+    }, 150);
+    return () => clearTimeout(t);
+  }, [resultsReady, saved, getScroller]);
+
+  const renderCard = (lead: RadarLead) => (
+    <LeadCard
+      key={lead.cnpj}
+      lead={lead}
+      originIbge={searchInput.originIbge}
+      originLabel={originLabel}
+      bags={bags}
+      loadDate={loadDate || undefined}
+      freightNote={freightNote.trim() || undefined}
+      activity={effectiveActivity(lead.cnpj)}
+      onActivityChange={handleActivityChange}
+      enrichment={effectiveEnrichment(lead.cnpj)}
+      onEnrichmentChange={handleEnrichmentChange}
+      onConverted={() => searchQuery.refetch()}
+    />
+  );
 
   return (
-    <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-4">
+    <div ref={rootRef} className="p-4 md:p-6 max-w-4xl mx-auto space-y-4">
       <div className="flex items-center gap-2 text-slate-500 text-sm">
         <Truck size={16} />
         <p>
@@ -292,7 +496,26 @@ export default function RadarCargas() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label className="text-xs font-semibold text-slate-500 mb-1.5">Cidade da carga</Label>
-              <CityAutocomplete value={city} onChange={setCity} />
+              <CityAutocomplete key={cityBoxKey} value={city} onChange={setCity} />
+              {recentCities.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] text-slate-400">Recentes:</span>
+                  {recentCities.map((m) => (
+                    <button
+                      key={m.ibge}
+                      type="button"
+                      onClick={() => pickRecentCity(m)}
+                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium border transition ${
+                        city?.ibge === m.ibge
+                          ? 'bg-blue-900 text-white border-blue-900'
+                          : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      {m.nome} - {m.uf}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div>
               <Label className="text-xs font-semibold text-slate-500 mb-1.5">Raio</Label>
@@ -516,8 +739,13 @@ export default function RadarCargas() {
                 Clientes que já compraram não aparecem aqui. Se outro atendente já acompanha uma empresa, o cartão avisa.
               </p>
             )}
-            {data.truncated && (
+            {data.truncated && data.hasMore === undefined && (
               <p className="text-xs text-amber-600">Mostrando apenas as 200 empresas mais próximas.</p>
+            )}
+            {coverage && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                {coverage}
+              </p>
             )}
 
             {/* Progresso do enriquecimento por scraping (Fase 2) */}
@@ -535,6 +763,73 @@ export default function RadarCargas() {
                 Robô de busca na web desligado — mostrando só os dados da Receita.
                 {isAdmin && ' Veja scripts/radar/enricher/README.md.'}
               </p>
+            )}
+
+            {/* Ferramentas sobre o que já foi carregado */}
+            {leads.length > 0 && (
+              <div className="space-y-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="relative flex-1">
+                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      value={textFilter}
+                      onChange={(e) => setTextFilter(e.target.value)}
+                      placeholder="Filtrar por nome, CNPJ ou cidade"
+                      aria-label="Filtrar empresas carregadas"
+                      className="pl-8 pr-8 h-9 text-sm"
+                    />
+                    {textFilter && (
+                      <button
+                        type="button"
+                        onClick={() => setTextFilter('')}
+                        aria-label="Limpar filtro de texto"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <Select value={sort} onValueChange={(v) => setSort(v as LeadSort)}>
+                    <SelectTrigger className="w-full sm:w-52 h-9 text-xs" aria-label="Ordenar por">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LEAD_SORT_OPTIONS.map(([key, label]) => (
+                        <SelectItem key={key} value={key}>
+                          Ordenar: {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {segmentOptions.length > 1 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {segmentOptions.map(({ key, count }) => {
+                      const on = segmentFilter.includes(key);
+                      const label = RADAR_SEGMENTS.find((x) => x.key === key)?.label ?? key;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() =>
+                            setSegmentFilter((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
+                          }
+                          className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium border transition ${
+                            on ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          {label} ({count})
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {toolsActive && (
+                  <button type="button" onClick={clearTools} className="text-[11px] font-semibold text-blue-900 hover:underline">
+                    Limpar filtros de texto e segmento
+                  </button>
+                )}
+              </div>
             )}
 
             {/* Filtros: a busca é uma lista — o atendente decide depois do contato */}
@@ -562,31 +857,59 @@ export default function RadarCargas() {
             </div>
           </div>
 
-          {filteredLeads.length === 0 ? (
+          {leads.length === 0 ? (
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><Truck /></EmptyMedia>
+                <EmptyTitle>Nenhuma empresa encontrada</EmptyTitle>
+                <EmptyDescription>
+                  {(() => {
+                    const advice = emptyAdvice({ minAnosAbertura, segmentsCount: segments.length });
+                    if (advice === 'abertura')
+                      return 'O filtro "Tempo de abertura" pode estar escondendo empresas. Troque para "Qualquer" e busque de novo.';
+                    if (advice === 'segmentos')
+                      return 'Só alguns segmentos estão marcados. Marque mais segmentos (ou o CNAE secundário) e busque de novo.';
+                    return 'Aumente o raio da busca ou escolha outra cidade.';
+                  })()}
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : filteredLeads.length === 0 ? (
             <Empty>
               <EmptyHeader>
                 <EmptyTitle>Nenhuma empresa neste filtro</EmptyTitle>
-                <EmptyDescription>Tente outro filtro ou aumente o raio da busca.</EmptyDescription>
+                <EmptyDescription>
+                  {toolsActive
+                    ? 'Nenhuma empresa carregada combina com o texto ou segmento escolhido. Limpe os filtros acima.'
+                    : 'Tente outro filtro (por exemplo "Todos") ou aumente o raio da busca.'}
+                  {hasMore && ' Também há mais empresas para carregar abaixo.'}
+                </EmptyDescription>
               </EmptyHeader>
             </Empty>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {filteredLeads.map((lead) => (
-                <LeadCard
-                  key={lead.cnpj}
-                  lead={lead}
-                  originIbge={searchInput.originIbge}
-                  originLabel={originLabel}
-                  bags={bags}
-                  loadDate={loadDate || undefined}
-                  freightNote={freightNote.trim() || undefined}
-                  activity={effectiveActivity(lead.cnpj)}
-                  onActivityChange={handleActivityChange}
-                  enrichment={effectiveEnrichment(lead.cnpj)}
-                  onEnrichmentChange={handleEnrichmentChange}
-                  onConverted={() => searchQuery.refetch()}
-                />
+          ) : groups ? (
+            <div className="space-y-4">
+              {groups.map((g) => (
+                <Fragment key={g.ibge}>
+                  <section>
+                    <h3 className="sticky top-0 z-10 -mx-1 px-2 py-1.5 mb-2 bg-slate-50/95 backdrop-blur text-xs font-semibold text-slate-700 border-b border-slate-200">
+                      {groupTitle(g)}
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{g.leads.map(renderCard)}</div>
+                  </section>
+                </Fragment>
               ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{filteredLeads.map(renderCard)}</div>
+          )}
+
+          {hasMore && (
+            <div className="flex flex-col items-center gap-1.5 pt-1">
+              <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={loadingMore} onClick={handleLoadMore}>
+                {loadingMore ? <Loader2 size={15} className="animate-spin" /> : null}
+                {loadingMore ? 'Carregando...' : 'Mostrar mais empresas'}
+              </Button>
+              {loadMoreError && <p className="text-xs text-red-600">{loadMoreError}</p>}
             </div>
           )}
         </div>
