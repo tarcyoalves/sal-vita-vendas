@@ -2,8 +2,8 @@
 
 - **Agente:** hermes
 - **Início:** 2026-10-02 21:00 BRT
-- **Fim:** 
-- **Status:** em andamento
+- **Fim:** 2026-10-02 21:25 BRT
+- **Status:** bloqueado (parada conforme regra: VPS sem acesso ao Docker para o usuário ubuntu)
 - **Branch:** `main`
 
 ## Objetivo
@@ -28,9 +28,13 @@ A avaliação é estritamente de teste e isolada:
 ## Progresso
 
 - [x] Reivindicar tarefa em `coordenacao/ativo/`
-- [ ] Checar recursos da VPS (Docker, CPU, RAM)
-- [ ] Obter amostra de 30 empresas já enriquecidas do Radar (somente leitura)
-- [ ] Configurar e rodar avaliação isolada do scraper
-- [ ] Comparar resultados (taxa de acerto, telefones, WhatsApp, balcão vs escritório)
-- [ ] Medir consumo de CPU/RAM
-- [ ] Mover reivindicação para `coordenacao/registro/` e documentar
+- [x] Checar recursos da VPS (Docker, CPU, RAM):
+  - RAM disponível: 8.7 GiB livre/disponível de 11 GiB (suficiente).
+  - Docker daemon instalado em `/usr/bin/docker`, porém socket `/var/run/docker.sock` pertence ao grupo `docker` (660).
+  - Usuário `ubuntu` NÃO pertence ao grupo `docker` e não possui privilégio sudo para executar docker (`permission denied while trying to connect to the docker API at unix:///var/run/docker.sock`).
+  - Conforme regra estrita do Tarcyo ("Se a VPS não tiver Docker ou RAM suficiente, pare e avise; não instale nada além disso"), a execução foi paralisada imediatamente sem instalar nada.
+- [x] Amostra do enriquecedor atual auditada (somente leitura): 400 empresas com fonte `maps` válida no banco Neon.
+- [ ] Configurar e rodar avaliação isolada do scraper (bloqueado aguardando liberação de acesso ao Docker ou execução externa).
+- [ ] Comparar resultados (taxa de acerto, telefones, WhatsApp, balcão vs escritório).
+- [ ] Medir consumo de CPU/RAM.
+- [ ] Mover reivindicação para `coordenacao/registro/`.
