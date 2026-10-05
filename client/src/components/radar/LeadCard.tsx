@@ -37,19 +37,11 @@ import {
 import { CreateTaskDialog, LinkToTasks } from './CreateTaskDialog';
 import { DiscardDialog } from './DiscardDialog';
 import { EnrichmentSection, formatFoundDigits } from './EnrichmentSection';
-import { buildPhoneOptions, defaultPhoneDigits, normalizePhoneDigits } from './phoneOptions';
+import { buildPhoneOptions, defaultPhoneDigits, isTelefoneCompartilhado, normalizePhoneDigits, sharedPhoneLabel } from './phoneOptions';
+import { companyAgeLabel, daysAgoLabel, porteLabel } from './leadCardInfo';
 import { defaultContactMessage } from './contactMessage';
 
 const SEGMENT_LABELS = new Map(RADAR_SEGMENTS.map((s) => [s.key, s.label]));
-
-function porteLabel(porte: string | null): string {
-  switch (porte) {
-    case '01': return 'ME';
-    case '03': return 'EPP';
-    case '05': return 'Demais';
-    default: return 'Não informado';
-  }
-}
 
 function formatDate(iso: string | null): string | null {
   if (!iso) return null;
@@ -74,21 +66,22 @@ const CHANNEL_LABELS: Record<RadarContactChannel, string> = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Aviso de contato já feito — visível perto do topo do card, antes de outro atendente ligar de novo. */
+/** Aviso de contato já feito — em destaque no topo, antes de outro atendente ligar de novo. */
 function ContactActivityBadge({ activity, currentUserName }: { activity: RadarLeadActivity; currentUserName: string | null }) {
   if (!activity.contactedAt) return null;
   const isOther = !!currentUserName && activity.contactedByName !== currentUserName;
   const isRecent = Date.now() - new Date(activity.contactedAt).getTime() < DAY_MS;
   const warn = isOther && isRecent;
   const channel = activity.contactChannel ? CHANNEL_LABELS[activity.contactChannel] : null;
+  const quando = daysAgoLabel(activity.contactedAt) ?? formatDateTime(activity.contactedAt);
   return (
     <p
-      className={`text-xs rounded-lg px-2.5 py-1.5 ${
-        warn ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-slate-50 text-slate-600 border border-slate-200'
+      className={`text-xs font-semibold rounded-lg px-2.5 py-2 ${
+        warn ? 'bg-amber-50 text-amber-900 border border-amber-300' : 'bg-blue-50 text-blue-900 border border-blue-200'
       }`}
     >
-      Contatado por {activity.contactedByName} · {formatDateTime(activity.contactedAt)}
-      {channel ? ` · ${channel}` : ''}
+      Contatado por {activity.contactedByName ?? 'alguém'} {quando}
+      {channel ? ` (${channel})` : ''}
       {activity.contactCount > 1 ? ` · ×${activity.contactCount}` : ''}
     </p>
   );
@@ -126,6 +119,10 @@ export function LeadCard({
   const [discardOpen, setDiscardOpen] = useState(false);
   const [discardedDetailsOpen, setDiscardedDetailsOpen] = useState(false);
   const [created, setCreated] = useState(false);
+  // "Mais detalhes": aberto no desktop (md+), fechado no celular. Estado só local.
+  const [detailsOpen, setDetailsOpen] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(min-width: 768px)').matches,
+  );
   const canRestore = user?.role === 'admin' || user?.role === 'manager';
 
   const displayName = lead.nomeFantasia ?? lead.razaoSocial;
@@ -138,7 +135,7 @@ export function LeadCard({
     // Lead que já é tarefa: o telefone cadastrado na tarefa entra na lista (primeiro).
     const tp = lead.crm.kind === 'no_crm' ? normalizePhoneDigits(lead.crm.taskPhone ?? '') : '';
     if ((tp.length === 10 || tp.length === 11) && !opts.some((o) => o.digits === tp)) {
-      opts.unshift({ digits: tp, formatted: formatFoundDigits(tp), isWhatsapp: false, likelyMobile: tp.length === 11, sourceLabel: 'cadastrado na tarefa' });
+      opts.unshift({ digits: tp, formatted: formatFoundDigits(tp), isWhatsapp: false, likelyMobile: tp.length === 11, sourceLabel: 'cadastrado na tarefa', compartilhado: false });
     }
     return opts;
   }, [lead, enrichment]);
@@ -266,9 +263,18 @@ export function LeadCard({
     );
   }
 
+  const porte = porteLabel(lead.porte);
+  const idade = companyAgeLabel(lead.dataInicio);
+  const tarefaLink =
+    lead.crm.kind === 'no_crm' && podeAbrirTarefa(lead.crm.assignedTo, user)
+      ? `/tasks?tarefa=${lead.crm.taskId}`
+      : null;
+  const selectedOption = phoneOptions.find((p) => p.digits === selectedPhone) ?? null;
+  const selectedShared = selectedOption ? sharedPhoneLabel(selectedOption) : null;
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
-      {/* Header */}
+      {/* Topo compacto: quem é, onde fica, o que vende */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="text-sm font-bold text-slate-900 truncate">{displayName}</h3>
@@ -280,27 +286,11 @@ export function LeadCard({
         <CrmBadge lead={lead} />
       </div>
 
-      {/* Atalho para a tarefa que aparece neste cartão (só se a pessoa pode abri-la). */}
-      {lead.crm.kind === 'no_crm' && podeAbrirTarefa(lead.crm.assignedTo, user) && (
-        <Link
-          href={`/tasks?tarefa=${lead.crm.taskId}`}
-          className="inline-flex w-fit items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-900 hover:bg-blue-100"
-        >
-          <ExternalLink size={13} /> Ir para a tarefa #{lead.crm.taskId}
-        </Link>
-      )}
+      <p className="text-xs text-slate-600">
+        {lead.municipio.nome}/{lead.municipio.uf} · ~{lead.distanceKm} km
+      </p>
 
-      {/* Contato já feito — perto do topo, para quem for ligar ver antes */}
-      <ContactActivityBadge activity={activity} currentUserName={user?.name ?? null} />
-
-      {lead.crm.kind === 'excluido_antes' && (
-        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-          Excluído antes: {lead.crm.reason} (por {lead.crm.deletedByName})
-        </p>
-      )}
-
-      {/* Segmentos */}
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         {lead.segments.map((s) => (
           <Badge key={s} variant="secondary" className="text-[10px]">
             {SEGMENT_LABELS.get(s) ?? s}
@@ -311,225 +301,259 @@ export function LeadCard({
             CNAE secundário
           </Badge>
         )}
+        {porte && <Badge variant="outline" className="text-[10px]">{porte}</Badge>}
+        {idade && <span className="text-[11px] text-slate-500">{idade}</span>}
       </div>
 
-      {/* Localização */}
-      <p className="text-xs text-slate-600">
-        {lead.municipio.nome} - {lead.municipio.uf} · ~{lead.distanceKm} km (linha reta)
-      </p>
-      {lead.endereco && <p className="text-xs text-slate-500">{lead.endereco}{lead.cep ? ` · CEP ${lead.cep}` : ''}</p>}
+      {/* Contato já feito — em destaque, para dois atendentes não ligarem para o mesmo cliente */}
+      <ContactActivityBadge activity={activity} currentUserName={user?.name ?? null} />
 
-      {/* Contato */}
-      <div className="space-y-1">
-        {lead.phones.length === 0 ? (
-          <p className="text-xs text-slate-400">Sem telefone na base</p>
-        ) : (
-          <div className="flex flex-wrap gap-x-3 gap-y-1">
-            {lead.phones.map((p) => (
-              <span key={p.digits} className="text-xs text-slate-700 inline-flex items-center gap-1">
-                {p.formatted}
-                {p.likelyMobile && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="text-[10px] font-semibold text-emerald-600 cursor-help">provável celular</span>
-                    </TooltipTrigger>
-                    <TooltipContent>não garante que tem WhatsApp</TooltipContent>
-                  </Tooltip>
-                )}
-              </span>
-            ))}
-          </div>
-        )}
-        {lead.email && (
-          <p className={`text-xs ${lead.emailSuppressed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
-            {lead.email}
-            {lead.emailSuppressed && <span className="ml-1.5 no-underline text-[10px] text-amber-600">descadastrado</span>}
-          </p>
-        )}
-      </div>
+      {lead.crm.kind === 'excluido_antes' && (
+        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+          Excluído antes: {lead.crm.reason} (por {lead.crm.deletedByName})
+        </p>
+      )}
 
-      {/* Enriquecimento por scraping (Fase 2) */}
-      <EnrichmentSection
-        enrichment={enrichment}
-        scanning={enrichNowMutation.isPending}
-        onScanNow={(force) => enrichNowMutation.mutate({ cnpj: lead.cnpj, force })}
-      />
-
-      {/* Metadados */}
-      <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-slate-400">
-        <span>Porte: {porteLabel(lead.porte)}</span>
-        {dataInicio && <span>Início: {dataInicio}</span>}
-        <a
-          href="http://www.sintegra.gov.br/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-0.5 text-blue-700 hover:underline"
-        >
-          IE: consultar no SINTEGRA <ExternalLink size={10} />
-        </a>
-      </div>
-
-      {/* Verificação de CNPJ */}
-      {verifyResult && (
-        <div className={`flex items-center gap-1.5 text-xs rounded-lg px-2.5 py-1.5 ${
-          verifyResult.ativa ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
-        }`}>
-          {verifyResult.ativa ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
-          <span>{verifyResult.situacao} · checado às {new Date(verifyResult.checkedAt).toLocaleTimeString('pt-BR')}</span>
+      {/* Ações principais — sempre visíveis */}
+      {phoneOptions.length > 1 && (
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-semibold text-slate-500 shrink-0">Número:</span>
+          <Select value={selectedPhone ?? undefined} onValueChange={setSelectedPhone}>
+            <SelectTrigger className="h-9 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {phoneOptions.map((p) => (
+                <SelectItem key={p.digits} value={p.digits} className="text-xs">
+                  {p.formatted}
+                  {p.isWhatsapp ? ' · WhatsApp' : p.likelyMobile ? ' · provável celular' : ''}
+                  {sharedPhoneLabel(p) ? ` · ${sharedPhoneLabel(p)}` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={verifyMutation.isPending}
-        onClick={() => verifyMutation.mutate({ cnpj: lead.cnpj })}
-      >
-        {verifyMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
-        Confirmar na Receita
-      </Button>
+      {selectedShared && (
+        <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1">
+          {selectedShared}
+        </p>
+      )}
 
-      {!isCrm && (
-        <>
-          {/* Mensagem (rascunho ou padrão) — colapsável */}
-          <div className="rounded-lg border border-slate-200 p-2.5 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => setMessageOpen((o) => !o)}
-                className="flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700"
-              >
-                {messageOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                Mensagem {draftProvider ? '(gerada)' : '(padrão)'}
-              </button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={draftMutation.isPending}
-                onClick={() => draftMutation.mutate({ cnpj: lead.cnpj, originIbge, bags, loadDate, freightNote })}
-              >
-                {draftMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                Gerar mensagem
-              </Button>
-            </div>
-            {messageOpen && (
-              <div className="space-y-1">
-                <Textarea
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  rows={4}
-                  className="text-xs"
-                />
-                {draftProvider && (
-                  <p className="text-[10px] text-slate-400">
-                    Gerado por: {draftProvider === 'modelo-fixo' ? 'texto padrão' : draftProvider}
-                  </p>
-                )}
+      {!isCrm || selectedPhone ? (
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            asChild
+            variant="default"
+            className="h-10 bg-emerald-600 hover:bg-emerald-700"
+            disabled={!selectedPhone}
+          >
+            <a
+              href={selectedPhone ? waMeLink(selectedPhone, message) : undefined}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-disabled={!selectedPhone}
+              onClick={(e) => {
+                if (!selectedPhone) { e.preventDefault(); return; }
+                // Lead que já é tarefa: contato direto, sem registrar novo contato do Buscador.
+                if (!isCrm) registerContact('whatsapp');
+              }}
+            >
+              <MessageCircle size={14} />
+              WhatsApp
+            </a>
+          </Button>
+          <Button asChild variant="outline" className="h-10" disabled={!selectedPhone}>
+            <a
+              href={selectedPhone ? `tel:${selectedPhone}` : undefined}
+              aria-disabled={!selectedPhone}
+              onClick={(e) => {
+                if (!selectedPhone) { e.preventDefault(); return; }
+                if (!isCrm) registerContact('telefone');
+              }}
+            >
+              <PhoneIcon size={14} />
+              Ligar
+            </a>
+          </Button>
+        </div>
+      ) : null}
+
+      {/* Atalho para a tarefa que aparece neste cartão (só se a pessoa pode abri-la). */}
+      {tarefaLink && lead.crm.kind === 'no_crm' && (
+        <Link
+          href={tarefaLink}
+          className="inline-flex w-fit items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-900 hover:bg-blue-100"
+        >
+          <ExternalLink size={13} /> Ir para a tarefa #{lead.crm.taskId}
+        </Link>
+      )}
+      {isCrm && <LinkToTasks />}
+
+      {/* Mais detalhes — recolhível (aberto no desktop, fechado no celular) */}
+      <button
+        type="button"
+        onClick={() => setDetailsOpen((o) => !o)}
+        aria-expanded={detailsOpen}
+        className="flex w-full items-center gap-1 border-t border-slate-100 pt-2 text-xs font-semibold text-slate-500 hover:text-slate-700"
+      >
+        {detailsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        Mais detalhes
+      </button>
+
+      {detailsOpen && (
+        <div className="space-y-3">
+          {lead.endereco && (
+            <p className="text-xs text-slate-500">{lead.endereco}{lead.cep ? ` · CEP ${lead.cep}` : ''}</p>
+          )}
+
+          {/* Telefones e e-mail da base */}
+          <div className="space-y-1">
+            {lead.phones.length === 0 ? (
+              <p className="text-xs text-slate-400">Sem telefone na base</p>
+            ) : (
+              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {lead.phones.map((p) => (
+                  <span key={p.digits} className="text-xs text-slate-700 inline-flex flex-wrap items-center gap-1">
+                    {p.formatted}
+                    {p.likelyMobile && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="text-[10px] font-semibold text-emerald-600 cursor-help">provável celular</span>
+                        </TooltipTrigger>
+                        <TooltipContent>não garante que tem WhatsApp</TooltipContent>
+                      </Tooltip>
+                    )}
+                    {isTelefoneCompartilhado(p.compartilhadoPor) && (
+                      <span className="text-[10px] font-semibold text-amber-700">
+                        provável contabilidade · usado por {p.compartilhadoPor} empresas
+                      </span>
+                    )}
+                  </span>
+                ))}
               </div>
+            )}
+            {lead.email && (
+              <p className={`text-xs ${lead.emailSuppressed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+                {lead.email}
+                {lead.emailSuppressed && <span className="ml-1.5 no-underline text-[10px] text-amber-600">descadastrado</span>}
+              </p>
             )}
           </div>
 
-          {/* Telefone (quando há mais de um) */}
-          {phoneOptions.length > 1 && (
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold text-slate-500 shrink-0">Número:</span>
-              <Select value={selectedPhone ?? undefined} onValueChange={setSelectedPhone}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {phoneOptions.map((p) => (
-                    <SelectItem key={p.digits} value={p.digits} className="text-xs">
-                      {p.formatted}
-                      {p.isWhatsapp ? ' · WhatsApp' : p.likelyMobile ? ' · provável celular' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+          {/* Enriquecimento por scraping (Fase 2) */}
+          <EnrichmentSection
+            enrichment={enrichment}
+            scanning={enrichNowMutation.isPending}
+            onScanNow={(force) => enrichNowMutation.mutate({ cnpj: lead.cnpj, force })}
+          />
 
-          {/* Ações primárias: contato */}
-          <div className="grid grid-cols-2 gap-2">
-            <Button asChild variant="default" className="bg-emerald-600 hover:bg-emerald-700" disabled={!selectedPhone}>
-              <a
-                href={selectedPhone ? waMeLink(selectedPhone, message) : undefined}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-disabled={!selectedPhone}
-                onClick={(e) => {
-                  if (!selectedPhone) { e.preventDefault(); return; }
-                  registerContact('whatsapp');
-                }}
-              >
-                <MessageCircle size={14} />
-                WhatsApp
-              </a>
-            </Button>
-            <Button asChild variant="outline" disabled={!selectedPhone}>
-              <a
-                href={selectedPhone ? `tel:${selectedPhone}` : undefined}
-                aria-disabled={!selectedPhone}
-                onClick={(e) => {
-                  if (!selectedPhone) { e.preventDefault(); return; }
-                  registerContact('telefone');
-                }}
-              >
-                <PhoneIcon size={14} />
-                Ligar
-              </a>
-            </Button>
+          {/* Metadados */}
+          <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-slate-400">
+            <span>Porte: {porte ?? 'Não informado'}</span>
+            {dataInicio && <span>Início: {dataInicio}</span>}
+            <a
+              href="http://www.sintegra.gov.br/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-0.5 text-blue-700 hover:underline"
+            >
+              IE: consultar no SINTEGRA <ExternalLink size={10} />
+            </a>
           </div>
 
-          {/* Ações secundárias: decidir depois do contato */}
-          {!created ? (
-            <div className="grid grid-cols-2 gap-2 pt-0.5">
-              <Button
-                type="button"
-                size="sm"
-                className="h-auto min-h-8 py-1.5 whitespace-normal text-center leading-tight text-xs"
-                onClick={() => setDialogOpen(true)}
-              >
-                <PlusCircle size={13} className="shrink-0" />
-                Transformar em tarefa
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-auto min-h-8 py-1.5 whitespace-normal text-center leading-tight text-xs text-red-700 border-red-200 hover:bg-red-50"
-                onClick={() => setDiscardOpen(true)}
-              >
-                <Ban size={13} className="shrink-0" />
-                Descartar
-              </Button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 pt-0.5">
-              <Badge variant="secondary" className="text-emerald-700 bg-emerald-50 border-emerald-200">Virou tarefa</Badge>
-              <LinkToTasks />
+          {/* Verificação de CNPJ */}
+          {verifyResult && (
+            <div className={`flex items-center gap-1.5 text-xs rounded-lg px-2.5 py-1.5 ${
+              verifyResult.ativa ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+            }`}>
+              {verifyResult.ativa ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+              <span>{verifyResult.situacao} · checado às {new Date(verifyResult.checkedAt).toLocaleTimeString('pt-BR')}</span>
             </div>
           )}
-        </>
-      )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={verifyMutation.isPending}
+            onClick={() => verifyMutation.mutate({ cnpj: lead.cnpj })}
+          >
+            {verifyMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+            Confirmar na Receita
+          </Button>
 
-      {isCrm && (
-        <div className="space-y-2 pt-0.5">
-          {/* Já é tarefa: contato direto sem registrar novo contato do Buscador. */}
-          {selectedPhone && (
-            <div className="grid grid-cols-2 gap-2">
-              <Button asChild variant="default" className="bg-emerald-600 hover:bg-emerald-700">
-                <a href={waMeLink(selectedPhone, message)} target="_blank" rel="noopener noreferrer">
-                  <MessageCircle size={14} /> WhatsApp
-                </a>
-              </Button>
-              <Button asChild variant="outline">
-                <a href={`tel:${selectedPhone}`}><PhoneIcon size={14} /> Ligar</a>
-              </Button>
-            </div>
+          {!isCrm && (
+            <>
+              {/* Mensagem (rascunho ou padrão) — colapsável */}
+              <div className="rounded-lg border border-slate-200 p-2.5 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMessageOpen((o) => !o)}
+                    className="flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700"
+                  >
+                    {messageOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                    Mensagem {draftProvider ? '(gerada)' : '(padrão)'}
+                  </button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={draftMutation.isPending}
+                    onClick={() => draftMutation.mutate({ cnpj: lead.cnpj, originIbge, bags, loadDate, freightNote })}
+                  >
+                    {draftMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                    Gerar mensagem
+                  </Button>
+                </div>
+                {messageOpen && (
+                  <div className="space-y-1">
+                    <Textarea
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      rows={4}
+                      className="text-xs"
+                    />
+                    {draftProvider && (
+                      <p className="text-[10px] text-slate-400">
+                        Gerado por: {draftProvider === 'modelo-fixo' ? 'texto padrão' : draftProvider}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Ações secundárias: decidir depois do contato */}
+              {!created ? (
+                <div className="grid grid-cols-2 gap-2 pt-0.5">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-auto min-h-8 py-1.5 whitespace-normal text-center leading-tight text-xs"
+                    onClick={() => setDialogOpen(true)}
+                  >
+                    <PlusCircle size={13} className="shrink-0" />
+                    Transformar em tarefa
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-auto min-h-8 py-1.5 whitespace-normal text-center leading-tight text-xs text-red-700 border-red-200 hover:bg-red-50"
+                    onClick={() => setDiscardOpen(true)}
+                  >
+                    <Ban size={13} className="shrink-0" />
+                    Descartar
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 pt-0.5">
+                  <Badge variant="secondary" className="text-emerald-700 bg-emerald-50 border-emerald-200">Virou tarefa</Badge>
+                  <LinkToTasks />
+                </div>
+              )}
+            </>
           )}
-          <LinkToTasks />
         </div>
       )}
 

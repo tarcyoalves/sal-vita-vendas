@@ -17,7 +17,7 @@ import { Textarea } from '../ui/textarea';
 import { Input } from '../ui/input';
 import { Checkbox } from '../ui/checkbox';
 import { formatCnpj, type RadarLead, type RadarEnrichment } from '../../../../shared/radar';
-import { buildPhoneOptions, defaultPhoneDigits } from './phoneOptions';
+import { buildPhoneOptions, defaultPhoneDigits, sharedPhoneLabel } from './phoneOptions';
 
 // `YYYY-MM-DD` no fuso local do navegador — formato aceito por
 // `<input type="date">` e pelo `reminderDate` de `convert`.
@@ -127,6 +127,9 @@ export function CreateTaskDialog({
                         p.likelyMobile && (
                           <span className="ml-1.5 text-[10px] text-emerald-600 font-semibold">provável celular</span>
                         )
+                      )}
+                      {sharedPhoneLabel(p) && (
+                        <span className="ml-1.5 text-[10px] text-amber-700 font-semibold">{sharedPhoneLabel(p)}</span>
                       )}
                     </Label>
                   </div>
