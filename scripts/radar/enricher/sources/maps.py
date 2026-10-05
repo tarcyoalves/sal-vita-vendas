@@ -21,8 +21,14 @@ logger = logging.getLogger("radar_enricher.sources.maps")
 
 
 def build_query(establishment: dict, cidade: str, uf: str) -> str:
-    nome = establishment.get("nome_fantasia") or establishment["razao_social"]
-    return f"{nome} {cidade} {uf}"
+    raw_name = (establishment.get("nome_fantasia") or "").strip() or (establishment.get("razao_social") or "").strip()
+    nome = extract.strip_legal_suffixes(raw_name)
+    parts = [nome]
+    if cidade and cidade.strip():
+        parts.append(cidade.strip())
+    if uf and uf.strip():
+        parts.append(uf.strip())
+    return " ".join(parts).strip()
 
 
 def _fetch_html(url: str) -> str:
@@ -57,6 +63,7 @@ def run(establishment: dict, cidade: str, uf: str, breaker, rate_limiter) -> dic
         return {**empty, "ok": False, "note": paused_note}
 
     company_name = establishment.get("nome_fantasia") or establishment["razao_social"]
+    cleaned_company = extract.strip_legal_suffixes(company_name)
     query = build_query(establishment, cidade, uf)
     url = "https://www.google.com/maps/search/" + urllib.parse.quote(query)
 
@@ -75,7 +82,11 @@ def run(establishment: dict, cidade: str, uf: str, breaker, rate_limiter) -> dic
     if place is None:
         return {**empty, "ok": False, "note": "nenhum resultado"}
 
-    if not extract.matches_company(place.get("nome"), place.get("endereco"), company_name, cidade):
+    matched = (
+        extract.matches_company(place.get("nome"), place.get("endereco"), company_name, cidade)
+        or extract.matches_company(place.get("nome"), place.get("endereco"), cleaned_company, cidade)
+    )
+    if not matched:
         return {**empty, "ok": False, "note": "nenhum resultado compatível"}
 
     maps_data = {

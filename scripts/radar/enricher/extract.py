@@ -233,6 +233,34 @@ _LEGAL_SUFFIXES = {
     "dos", "das", "e", "cia", "companhia",
 }
 
+_LEGAL_SUFFIX_RE = re.compile(
+    r"(?:\s*[-/]?\s*(?:"
+    r"\bem\s+recupera[cç][aã]o\s+judicial\b|"
+    r"\bltda\.?\b|"
+    r"\bepp\.?\b|"
+    r"\bme\.?\b|"
+    r"\beireli\.?\b|"
+    r"\bs/?a\.?\b|"
+    r"\bs\.a\.?\b|"
+    r"\bsociedade\s+an[oô]nima\b|"
+    r"\bsociedade\s+limitada\b"
+    r"))+\s*$",
+    re.IGNORECASE,
+)
+
+
+def strip_legal_suffixes(name: str) -> str:
+    """Remove sufixos jurídicos e societários (LTDA, ME, EPP, EIRELI, S/A,
+    'EM RECUPERACAO JUDICIAL', etc.) do final de uma razão social ou nome.
+    """
+    cleaned = (name or "").strip()
+    prev = None
+    while prev != cleaned:
+        prev = cleaned
+        cleaned = _LEGAL_SUFFIX_RE.sub("", cleaned).strip(" -/,. ")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -/,. ")
+    return cleaned or (name or "").strip()
+
 
 def strip_accents(text: str) -> str:
     normalized = unicodedata.normalize("NFKD", text or "")
@@ -514,6 +542,14 @@ _MAPS_STATUS_MARKERS = (
     "closed", "open",
 )
 
+_GENERIC_MAPS_HEADINGS = (
+    "resultados",
+    "results",
+    "search results",
+    "resultados da pesquisa",
+    "resultados da busca",
+)
+
 
 def parse_maps_place(html: str, url: str) -> Optional[dict]:
     """Extrai o primeiro lugar de uma página de busca/lugar do Google Maps.
@@ -567,14 +603,20 @@ def parse_maps_place(html: str, url: str) -> Optional[dict]:
                 except ValueError:
                     avaliacoes = None
             break
-    # Nome: primeiro h1 (página de lugar) ou primeiro aria-label "grande" que
-    # não seja de botão de ação conhecido.
+    # Nome: primeiro h1 (página de lugar) se não for título genérico de lista,
+    # ou primeiro a.hfpxzc[aria-label] (página de lista de busca do Maps).
     h1_text = sel.css("h1::text").get()
     if h1_text:
-        nome = h1_text.strip()
-    else:
+        h1_clean = h1_text.strip()
+        h1_lower = h1_clean.lower()
+        if any(h1_lower == gen or h1_lower.startswith(gen + " ") or h1_lower.startswith(gen + ":") for gen in _GENERIC_MAPS_HEADINGS):
+            h1_text = None
+        else:
+            nome = h1_clean
+
+    if not nome:
         for aria in sel.css("a.hfpxzc::attr(aria-label)").getall():
-            if aria:
+            if aria and aria.strip():
                 nome = aria.strip()
                 break
 
@@ -593,6 +635,52 @@ def parse_maps_place(html: str, url: str) -> Optional[dict]:
         addr_button = sel.css('button[data-item-id="address"] div.fontBodyMedium::text').get()
         if addr_button:
             endereco = addr_button.strip()
+
+    # Fallback para páginas de lista de busca (cards Nv2PK)
+    cards = sel.css("div.Nv2PK, div[role='article']")
+    if cards:
+        first_card = cards[0]
+        if not website:
+            for a in first_card.css("a"):
+                href = a.attrib.get("href")
+                if href and "google.com" not in href:
+                    aria = (a.attrib.get("aria-label") or "").lower()
+                    text = " ".join(a.css("*::text").getall()).lower()
+                    if "site" in aria or "website" in text:
+                        website = href
+                        break
+
+        for div in first_card.css("div.W4Efsd"):
+            txts = [t.strip() for t in div.css("*::text").getall() if t.strip()]
+            for t in txts:
+                if not phone:
+                    candidate = normalize_phone(t)
+                    if candidate:
+                        phone = candidate
+            if len(txts) >= 3 and "·" in txts:
+                if not categoria and txts[0] not in ("Aberto", "Fechado", "Closed", "Open"):
+                    categoria = txts[0]
+                for item in txts[1:]:
+                    if item not in ("·", "\ue934") and not normalize_phone(item) and item not in ("Aberto", "Fechado", "Closed", "Open"):
+                        if not endereco and len(item) > 3:
+                            endereco = item
+
+        if nota is None:
+            for aria in first_card.css("[aria-label]::attr(aria-label)").getall():
+                if not aria:
+                    continue
+                m = re.match(r"^\s*([\d.,]+)\s*(?:estrelas|stars)[^\d(]*\(?([\d.,]+)?", aria, re.IGNORECASE)
+                if m:
+                    try:
+                        nota = float(m.group(1).replace(",", "."))
+                    except ValueError:
+                        nota = None
+                    if m.group(2):
+                        try:
+                            avaliacoes = int(re.sub(r"\D", "", m.group(2)))
+                        except ValueError:
+                            avaliacoes = None
+                    break
 
     situacao = None
     full_text = sel.get_all_text().lower()

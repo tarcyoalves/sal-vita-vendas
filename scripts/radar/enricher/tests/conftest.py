@@ -54,5 +54,10 @@ def maps_place_no_match_html() -> str:
 
 
 @pytest.fixture
+def maps_search_list_html() -> str:
+    return _load("maps_search_list.html")
+
+
+@pytest.fixture
 def site_home_html() -> str:
     return _load("site_home.html")

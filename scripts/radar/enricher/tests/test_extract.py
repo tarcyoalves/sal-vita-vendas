@@ -268,6 +268,75 @@ def test_matches_company_by_city_in_address():
     )
 
 
+def test_strip_legal_suffixes():
+    assert (
+        extract.strip_legal_suffixes("AGROSUL INDUSTRIA AGRICOLA LTDA EM RECUPERACAO JUDICIAL")
+        == "AGROSUL INDUSTRIA AGRICOLA"
+    )
+    assert (
+        extract.strip_legal_suffixes("BIOAROMAS DO BRASIL COMERCIO E IMPORTACAO DE PRODUTOS VETERINARIOS LTDA")
+        == "BIOAROMAS DO BRASIL COMERCIO E IMPORTACAO DE PRODUTOS VETERINARIOS"
+    )
+    assert extract.strip_legal_suffixes("MERCEARIA MARONESI LTDA") == "MERCEARIA MARONESI"
+    assert extract.strip_legal_suffixes("POSTO ESTRELA S/A") == "POSTO ESTRELA"
+    assert extract.strip_legal_suffixes("POSTO ESTRELA S.A.") == "POSTO ESTRELA"
+    assert extract.strip_legal_suffixes("DISTRIBUIDORA ALFA EPP") == "DISTRIBUIDORA ALFA"
+    assert extract.strip_legal_suffixes("MERCADO MODELO - ME") == "MERCADO MODELO"
+    assert extract.strip_legal_suffixes("AUTO PECAS BETA EIRELI") == "AUTO PECAS BETA"
+    assert extract.strip_legal_suffixes("COOPERATIVA AGROINDUSTRIAL - S/A") == "COOPERATIVA AGROINDUSTRIAL"
+
+
+def test_build_query_maps():
+    from sources.maps import build_query
+
+    # Preferência por nome fantasia
+    est1 = {
+        "razao_social": "BIOAROMAS DO BRASIL COMERCIO E IMPORTACAO DE PRODUTOS VETERINARIOS LTDA",
+        "nome_fantasia": "BIOAROMAS DO BRASIL",
+    }
+    assert build_query(est1, "Chapecó", "SC") == "BIOAROMAS DO BRASIL Chapecó SC"
+
+    # Sem nome fantasia: limpa sufixos jurídicos da razão social
+    est2 = {
+        "razao_social": "AGROSUL INDUSTRIA AGRICOLA LTDA EM RECUPERACAO JUDICIAL",
+        "nome_fantasia": None,
+    }
+    assert build_query(est2, "Chapecó", "SC") == "AGROSUL INDUSTRIA AGRICOLA Chapecó SC"
+
+
+def test_parse_maps_place_search_list(maps_search_list_html):
+    place = extract.parse_maps_place(maps_search_list_html, "https://maps.example/search")
+    assert place is not None
+    assert place["nome"] == "Agrosul Indústria Agrícola"
+    assert place["nota"] == 5.0
+    assert place["avaliacoes"] == 12
+    assert place["phone"] == "4933286292"
+    assert place["website"] == "http://agrosulindustria.com.br/"
+    assert place["endereco"] == "R. Recife, 1007"
+    assert place["categoria"] == "Atacadista de produtos agropecuários"
+
+    assert extract.matches_company(
+        place["nome"], place["endereco"], "AGROSUL INDUSTRIA AGRICOLA", "Chapecó"
+    )
+
+
+def test_parse_maps_place_ignores_generic_headings():
+    html_template = """
+    <html>
+    <body>
+    <h1>{heading}</h1>
+    <div class="Nv2PK">
+      <a class="hfpxzc" aria-label="Loja Modelo Real" href="https://maps.example/place/1"></a>
+    </div>
+    </body>
+    </html>
+    """
+    for heading in ["Resultados", "Results", "Search results", "Resultados da pesquisa"]:
+        place = extract.parse_maps_place(html_template.format(heading=heading), "https://maps.example/search")
+        assert place is not None
+        assert place["nome"] == "Loja Modelo Real"
+
+
 # ── Circuit breaker ──────────────────────────────────────────────────────
 
 def test_circuit_breaker_trips_and_recovers(monkeypatch):
