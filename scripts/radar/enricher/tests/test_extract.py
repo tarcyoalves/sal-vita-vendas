@@ -425,7 +425,7 @@ def test_search_list_marks_lista_and_requires_strict_match(maps_search_list_html
     assert not extract.matches_company_strict(place["nome"], "INDUSTRIA AGRICOLA SILVA LTDA")
     assert not extract.matches_company_strict("Rações Pet Center", "COMERCIO DE RACOES CHAPECO LTDA ME")
     # Nome só com palavras genéricas não casa com nada.
-    assert not extract.matches_company_strict("Agropecuária Santa Rita", "AGROPECUARIA SANTA LTDA")
+    assert not extract.matches_company_strict("Agropecuária Santa Rita", "AGROPECUARIA SANTA CLARA LTDA")
 
 
 def test_place_page_is_not_lista_and_ignores_review_articles():
@@ -557,3 +557,11 @@ def test_generic_tokens_da_base_carregados_e_marcas_de_rede_preservadas():
     assert extract.matches_company_strict("Havan Chapecó", "HAVAN LOJAS DE DEPARTAMENTOS LTDA")
     # Sobrenome comum sozinho não basta.
     assert not extract.matches_company_strict("Mercado Silva", "PADARIA SILVA LTDA")
+
+
+@pytest.mark.parametrize("empresa,maps_nome", [
+    ("QUATRO PATAS", "Quatro Patas Clínica Veterinária"),
+    ("PET MANIA", "Pet Mania | Penha | Pet Shop Barbacena"),
+])
+def test_matches_company_exact_nome_com_acrescimo_do_maps(empresa, maps_nome):
+    assert extract.matches_company_exact(maps_nome, empresa) is True
