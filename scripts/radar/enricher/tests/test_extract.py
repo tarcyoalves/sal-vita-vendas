@@ -543,3 +543,17 @@ def test_maps_run_ddd_de_outro_estado_mantem_lugar_so_se_nome_igual(monkeypatch)
     maps._T = {"nome": "Pegada Natural", "fone": "11956560587"}
     r = maps.run({"razao_social": "PEGADA ALIMENTOS LTDA", "nome_fantasia": None, "uf": "SC"}, "Chapecó", "SC", _B(), _R())
     assert r["ok"] is False and r["note"] == "nenhum resultado compatível"
+
+
+def test_generic_tokens_da_base_carregados_e_marcas_de_rede_preservadas():
+    # Lista gerada da base (generic_tokens.txt) está ativa...
+    assert "silva" in extract._GENERIC_NAME_TOKENS
+    assert "agropecuaria" in extract._GENERIC_NAME_TOKENS
+    # ...mas marcas de rede continuam identificando a empresa.
+    assert "atacadao" not in extract._GENERIC_NAME_TOKENS
+    assert extract.matches_company_strict(
+        "Atacadão Dia a Dia - Goiânia (Jd. Balneário Meia Ponte)", "ATACADAO DIA A DIA S.A"
+    )
+    assert extract.matches_company_strict("Havan Chapecó", "HAVAN LOJAS DE DEPARTAMENTOS LTDA")
+    # Sobrenome comum sozinho não basta.
+    assert not extract.matches_company_strict("Mercado Silva", "PADARIA SILVA LTDA")

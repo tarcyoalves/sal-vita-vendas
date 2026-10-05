@@ -781,6 +781,12 @@ try:
 except OSError:
     pass
 
+# Marcas de rede com muitas lojas: aparecem em centenas de CNPJs (por isso entram
+# na lista gerada), mas identificam a empresa — "Atacadão Dia a Dia" tem que casar
+# com "Atacadão Dia a Dia - Goiânia".
+_BRAND_ALLOWLIST = {"atacadao", "americanas", "cencosud", "havan", "zaffari", "koch", "aurora"}
+_GENERIC_NAME_TOKENS -= _BRAND_ALLOWLIST
+
 # DDDs por UF das 9 UFs da base: telefone do Maps com DDD de OUTRO estado é
 # quase sempre empresa homônima de outro lugar (ex.: "JC ..." de SP).
 _DDD_UF = {
