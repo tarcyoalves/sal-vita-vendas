@@ -69,8 +69,12 @@ const DEFAULT_SEGMENTS = RADAR_SEGMENT_KEYS.filter((k) => k !== 'racao_varejo' &
 
 // Teto de tempo de polling por busca — depois disso paramos de perguntar ao
 // servidor mesmo que ainda reste algo pendente (robô pode ter travado).
-const ENRICH_POLL_CAP_MS = 5 * 60 * 1000;
+// O robô faz ~170 empresas/hora, uma por vez: a fila de uma busca pode levar vários minutos.
+// Pergunta a cada 4 s nos primeiros 5 min e a cada 15 s depois, até 30 min.
+const ENRICH_POLL_CAP_MS = 30 * 60 * 1000;
 const ENRICH_POLL_INTERVAL_MS = 4000;
+const ENRICH_POLL_SLOW_AFTER_MS = 5 * 60 * 1000;
+const ENRICH_POLL_SLOW_INTERVAL_MS = 15000;
 
 // Filtros pedidos pelo dono: a busca é uma lista de "para contatar", não uma
 // fila que empurra tarefa. "Para contatar" e "Todos" continuam mostrando o
@@ -286,7 +290,9 @@ export default function RadarCargas() {
         const res = query.state.data;
         if (res && !res.enricherOnline) return false;
         const stillPending = pollCnpjs.some((c) => enrichmentNeedsPolling(res?.items[c] ?? effectiveEnrichment(c)));
-        return stillPending ? ENRICH_POLL_INTERVAL_MS : false;
+        if (!stillPending) return false;
+        const elapsed = pollDeadline !== null ? Date.now() - (pollDeadline - ENRICH_POLL_CAP_MS) : 0;
+        return elapsed > ENRICH_POLL_SLOW_AFTER_MS ? ENRICH_POLL_SLOW_INTERVAL_MS : ENRICH_POLL_INTERVAL_MS;
       },
     },
   );
@@ -756,6 +762,26 @@ export default function RadarCargas() {
                   Buscando dados na web: {enrichmentDoneCount} de {trackedCnpjs.length} concluídos
                 </p>
                 <Progress value={trackedCnpjs.length ? (enrichmentDoneCount / trackedCnpjs.length) * 100 : 0} className="h-1.5" />
+              </div>
+            )}
+            {/* Passou o tempo de acompanhar e ainda há cartões na fila: o robô continua trabalhando. */}
+            {pollTimedOut && enrichPending && enricherOnline && !enrichUnavailable && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-xs text-slate-600">
+                  O robô ainda está buscando dados na web ({enrichmentDoneCount} de {trackedCnpjs.length} prontos).
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setPollTimedOut(false);
+                    setPollDeadline(Date.now() + ENRICH_POLL_CAP_MS);
+                    enrichmentStatusQuery.refetch();
+                  }}
+                >
+                  Atualizar dados da web
+                </Button>
               </div>
             )}
             {showEnricherOffline && (

@@ -186,7 +186,8 @@ export interface RadarEnrichment {
 // Validade do resultado: depois disso uma nova busca pede de novo.
 export const RADAR_ENRICH_TTL_DAYS = 30;
 // Quantas empresas de cada busca entram na fila (as mais próximas).
-export const RADAR_ENRICH_PER_SEARCH = 60;
+// O robô faz ~170/h (uma por vez): 20 cabem em ~7 min. As demais vão pelo "Varrer agora".
+export const RADAR_ENRICH_PER_SEARCH = 20;
 export const RADAR_ENRICHER_HEARTBEAT_KEY = 'radar_enricher_heartbeat';
 export const RADAR_ENRICHER_ONLINE_MS = 3 * 60 * 1000;
 
