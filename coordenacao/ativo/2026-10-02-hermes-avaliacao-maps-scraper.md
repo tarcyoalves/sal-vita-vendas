@@ -38,3 +38,22 @@ A avaliação é estritamente de teste e isolada:
 - [ ] Comparar resultados (taxa de acerto, telefones, WhatsApp, balcão vs escritório).
 - [ ] Medir consumo de CPU/RAM.
 - [ ] Mover reivindicação para `coordenacao/registro/`.
+
+## Diagnóstico Read-Only do Robô Radar-Enricher (05/10/2026)
+
+- **Status do Serviço:** `radar-enricher.service` (systemd user `user@1001`) ativo e saudável (`running` há 4 dias contínuos), PID 3274851.
+- **Circuit Breaker:**
+  - `maps` (Google Maps): ATIVO e operando normalmente (HTTP 200). Sem bloqueio de Google Maps.
+  - `busca` (DuckDuckGo): Pausado temporariamente às 08:53 BRT por 60 minutos devido a sinalização de captcha.
+- **Banco Neon (`radar_enrichment`):**
+  - Status: 832 `pronto`, 5 `pendente`, 1 `processando`.
+  - Concluídos na última hora: 66 empresas.
+  - Linhas processando com `claimed_at` antigo: **ZERO** (fila andando sem travamentos).
+- **Ritmo Real e Vazão:**
+  - ~18 a 22 segundos por empresa (~160 a 180 empresas/hora).
+  - Fila pendente (5 empresas) leva ~1,5 minuto para esvaziar.
+- **Causa Raiz de "Procurando..." demorado no Frontend:**
+  - `RADAR_ENRICH_PER_SEARCH = 60`: cada busca no Radar enfileira até 60 empresas.
+  - 60 empresas × ~20s = 20 minutos de fila.
+  - O frontend possui `ENRICH_POLL_CAP_MS = 5 * 60 * 1000` (5 minutos). Após 5 minutos, o front desiste do polling (`pollTimedOut`), deixando os cards da 16ª posição em diante travados visualmente em "Procurando no Google Maps..." mesmo com o robô trabalhando perfeitamente.
+  - Nenhuma configuração ou serviço foi alterado (diagnóstico 100% read-only).
