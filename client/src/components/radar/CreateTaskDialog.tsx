@@ -17,7 +17,7 @@ import { Textarea } from '../ui/textarea';
 import { Input } from '../ui/input';
 import { Checkbox } from '../ui/checkbox';
 import { formatCnpj, type RadarLead, type RadarEnrichment } from '../../../../shared/radar';
-import { buildPhoneOptions, defaultPhoneDigits, sharedPhoneLabel } from './phoneOptions';
+import { buildPhoneOptions, defaultPhoneDigits, phoneKindLabel, sharedPhoneLabel } from './phoneOptions';
 
 // `YYYY-MM-DD` no fuso local do navegador — formato aceito por
 // `<input type="date">` e pelo `reminderDate` de `convert`.
@@ -124,8 +124,8 @@ export function CreateTaskDialog({
                           WhatsApp · {p.sourceLabel}
                         </span>
                       ) : (
-                        p.likelyMobile && (
-                          <span className="ml-1.5 text-[10px] text-emerald-600 font-semibold">provável celular</span>
+                        phoneKindLabel(p) && (
+                          <span className="ml-1.5 text-[10px] text-emerald-600 font-semibold">{phoneKindLabel(p)}</span>
                         )
                       )}
                       {sharedPhoneLabel(p) && (

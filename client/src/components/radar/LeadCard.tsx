@@ -37,7 +37,7 @@ import {
 import { CreateTaskDialog, LinkToTasks } from './CreateTaskDialog';
 import { DiscardDialog } from './DiscardDialog';
 import { EnrichmentSection, formatFoundDigits } from './EnrichmentSection';
-import { buildPhoneOptions, defaultPhoneDigits, isTelefoneCompartilhado, normalizePhoneDigits, sharedPhoneLabel } from './phoneOptions';
+import { buildPhoneOptions, defaultPhoneDigits, isTelefoneCompartilhado, normalizePhoneDigits, phoneKindLabel, sharedPhoneLabel } from './phoneOptions';
 import { companyAgeLabel, daysAgoLabel, porteLabel } from './leadCardInfo';
 import { defaultContactMessage } from './contactMessage';
 
@@ -326,13 +326,18 @@ export function LeadCard({
               {phoneOptions.map((p) => (
                 <SelectItem key={p.digits} value={p.digits} className="text-xs">
                   {p.formatted}
-                  {p.isWhatsapp ? ' · WhatsApp' : p.likelyMobile ? ' · provável celular' : ''}
+                  {phoneKindLabel(p) ? ` · ${phoneKindLabel(p)}` : ''}
                   {sharedPhoneLabel(p) ? ` · ${sharedPhoneLabel(p)}` : ''}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
+      )}
+      {selectedOption?.daWeb && selectedOption.likelyMobile && !selectedShared && (
+        <p className="text-[11px] text-slate-500">
+          Celular achado no {selectedOption.sourceLabel ?? 'web'} — pode não ter WhatsApp.
+        </p>
       )}
       {selectedShared && (
         <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1">

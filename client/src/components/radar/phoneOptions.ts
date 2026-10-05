@@ -14,6 +14,24 @@ export interface PhoneOption {
   compartilhadoPor?: number;
   // true = número repetido em muitas empresas, provável escritório de contabilidade.
   compartilhado: boolean;
+  // true = achado na web (Google Maps, site...) como telefone comum, não em link
+  // de WhatsApp. Celular daqui pode ter WhatsApp, mas não está confirmado.
+  daWeb?: boolean;
+}
+
+/** Celular brasileiro: DDD + 9 + 8 dígitos. */
+export function isProvavelCelular(digits: string): boolean {
+  return digits.length === 11 && digits[2] === '9';
+}
+
+/** Sufixo curto do número na lista de escolha. */
+export function phoneKindLabel(opt: Pick<PhoneOption, 'isWhatsapp' | 'likelyMobile' | 'daWeb' | 'sourceLabel'>): string {
+  if (opt.isWhatsapp) return 'WhatsApp';
+  if (opt.daWeb) {
+    const onde = opt.sourceLabel ? ` (${opt.sourceLabel})` : '';
+    return opt.likelyMobile ? `celular${onde} · WhatsApp não confirmado` : `fixo${onde}`;
+  }
+  return opt.likelyMobile ? 'provável celular' : '';
 }
 
 export function isTelefoneCompartilhado(compartilhadoPor: number | undefined): boolean {
@@ -36,8 +54,9 @@ export function normalizePhoneDigits(raw: string): string {
   return d;
 }
 
-// WhatsApps achados na web primeiro, depois telefones da Receita — deduplicado
-// por dígitos, sem repetir um telefone que já apareceu como WhatsApp.
+// WhatsApps achados na web primeiro, depois telefones achados na web, depois
+// os da Receita — deduplicado por dígitos, sem repetir um telefone que já
+// apareceu antes.
 export function buildPhoneOptions(lead: RadarLead, enrichment: RadarEnrichment | null): PhoneOption[] {
   const seen = new Set<string>();
   const options: PhoneOption[] = [];
@@ -55,6 +74,27 @@ export function buildPhoneOptions(lead: RadarLead, enrichment: RadarEnrichment |
       likelyMobile: digits.length === 11,
       sourceLabel: RADAR_ENRICH_SOURCE_LABELS[w.source],
       compartilhado: false,
+    });
+  }
+  // Telefones achados na web (Maps costuma ter o celular atual da loja). Se o
+  // mesmo número também está na Receita, herda o aviso de contabilidade.
+  const receitaPorDigitos = new Map(lead.phones.map((p) => [p.digits, p]));
+  const telefonesWeb = enrichment?.status === 'pronto' ? enrichment.data?.telefones ?? [] : [];
+  for (const t of telefonesWeb) {
+    const digits = normalizePhoneDigits(t.value);
+    if (digits.length !== 10 && digits.length !== 11) continue;
+    if (seen.has(digits)) continue;
+    seen.add(digits);
+    const receita = receitaPorDigitos.get(digits);
+    options.push({
+      digits,
+      formatted: formatFoundDigits(digits),
+      isWhatsapp: false,
+      likelyMobile: isProvavelCelular(digits),
+      sourceLabel: RADAR_ENRICH_SOURCE_LABELS[t.source],
+      compartilhadoPor: receita?.compartilhadoPor,
+      compartilhado: isTelefoneCompartilhado(receita?.compartilhadoPor),
+      daWeb: true,
     });
   }
   for (const p of lead.phones) {
@@ -75,8 +115,9 @@ export function buildPhoneOptions(lead: RadarLead, enrichment: RadarEnrichment |
   return options.sort((a, b) => Number(a.compartilhado) - Number(b.compartilhado));
 }
 
-// Padrão de seleção: WhatsApp achado na web > celular não compartilhado >
-// fixo não compartilhado > qualquer número compartilhado (contabilidade).
+// Padrão de seleção: WhatsApp achado na web > celular não compartilhado (web
+// antes da Receita, pela ordem da lista) > fixo não compartilhado > qualquer
+// número compartilhado (contabilidade).
 export function defaultPhoneDigits(options: PhoneOption[]): string | null {
   const whatsapp = options.find((o) => o.isWhatsapp);
   if (whatsapp) return whatsapp.digits;

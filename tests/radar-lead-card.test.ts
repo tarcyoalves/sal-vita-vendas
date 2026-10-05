@@ -1,7 +1,7 @@
 /** Helpers puros do cartão do Buscador (idade, porte, "há N dias") e escolha de telefone. */
 import { describe, expect, it } from 'vitest';
 import { companyAgeLabel, companyAgeYears, daysAgoLabel, porteLabel } from '../client/src/components/radar/leadCardInfo';
-import { buildPhoneOptions, defaultPhoneDigits, sharedPhoneLabel } from '../client/src/components/radar/phoneOptions';
+import { buildPhoneOptions, defaultPhoneDigits, phoneKindLabel, sharedPhoneLabel } from '../client/src/components/radar/phoneOptions';
 import type { RadarLead, RadarEnrichment } from '../shared/radar';
 
 const NOW = new Date(2026, 9, 5, 12, 0, 0);
@@ -89,6 +89,41 @@ describe('phoneOptions com telefones compartilhados', () => {
     const [a, b] = buildPhoneOptions(lead([ph('8435441234', false, 1), ph('8435441235', false, 7)]), null);
     expect(sharedPhoneLabel(a)).toBeNull();
     expect(sharedPhoneLabel(b)).toBe('provável contabilidade · usado por 7 empresas');
+  });
+  it('celular achado no Maps entra como opção, antes da Receita, e vira padrão', () => {
+    const enr = {
+      status: 'pronto',
+      data: { whatsapps: [], telefones: [{ value: '49991234567', source: 'maps', url: null }] },
+    } as unknown as RadarEnrichment;
+    const opts = buildPhoneOptions(lead([ph('4933286292', false, 1)]), enr);
+    expect(opts.map((o) => o.digits)).toEqual(['49991234567', '4933286292']);
+    expect(opts[0]).toMatchObject({ daWeb: true, likelyMobile: true, isWhatsapp: false, sourceLabel: 'Google Maps' });
+    expect(defaultPhoneDigits(opts)).toBe('49991234567');
+    expect(phoneKindLabel(opts[0])).toBe('celular (Google Maps) · WhatsApp não confirmado');
+  });
+  it('WhatsApp confirmado continua vencendo o celular do Maps', () => {
+    const enr = {
+      status: 'pronto',
+      data: {
+        whatsapps: [{ value: '5549988887777', source: 'site', url: null }],
+        telefones: [{ value: '49991234567', source: 'maps', url: null }],
+      },
+    } as unknown as RadarEnrichment;
+    expect(defaultPhoneDigits(buildPhoneOptions(lead([]), enr))).toBe('49988887777');
+  });
+  it('fixo da web não é celular; número da web igual ao da Receita herda o aviso de contabilidade', () => {
+    const enr = {
+      status: 'pronto',
+      data: { whatsapps: [], telefones: [{ value: '4933286292', source: 'maps', url: null }, { value: '8435441234', source: 'site', url: null }] },
+    } as unknown as RadarEnrichment;
+    const opts = buildPhoneOptions(lead([ph('8435441234', false, 9)]), enr);
+    const fixo = opts.find((o) => o.digits === '4933286292')!;
+    expect(fixo.likelyMobile).toBe(false);
+    expect(phoneKindLabel(fixo)).toBe('fixo (Google Maps)');
+    const contab = opts.find((o) => o.digits === '8435441234')!;
+    expect(contab.compartilhado).toBe(true);
+    expect(opts[opts.length - 1].digits).toBe('8435441234');
+    expect(defaultPhoneDigits(opts)).toBe('4933286292');
   });
   it('lista vazia', () => {
     expect(defaultPhoneDigits([])).toBeNull();
