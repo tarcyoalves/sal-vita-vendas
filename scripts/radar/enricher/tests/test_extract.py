@@ -489,3 +489,13 @@ def test_phone_ddd_conflicts_uf():
     assert extract.phone_ddd_conflicts_uf("4635638100", "PR") is False
     assert extract.phone_ddd_conflicts_uf("4635638100", "SC") is True
     assert extract.phone_ddd_conflicts_uf(None, "SC") is False
+
+
+@pytest.mark.parametrize("empresa,maps_nome", [
+    ("DEUSDEDITH EMPREENDIMENTOS IMOBILIARIOS", "D Costa Empreendimentos Imobiliários"),
+    ("RJS UTILIDADES LTDA", "Lojão Total Utilidades"),
+    ("SANTA CATARINA BUSINESS LTDA", "Holiday & Business Hotel"),
+    ("ATENDE TUDO INDUSTRIAL LTDA", "FAZ TUDO GOIÂNIA"),
+])
+def test_matches_company_strict_rejeita_palavra_generica_do_lote(empresa, maps_nome):
+    assert extract.matches_company_strict(maps_nome, empresa) is False

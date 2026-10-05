@@ -12,6 +12,7 @@ O formato final (RadarEnrichmentData) precisa bater com shared/radar.ts.
 from __future__ import annotations
 
 import base64
+import os
 import re
 import unicodedata
 from typing import Optional
@@ -762,7 +763,23 @@ _GENERIC_NAME_TOKENS = {
     "bar", "lanchonete", "petiscaria", "real", "super", "natural", "vida",
     "bom", "boa", "mix", "max", "top", "plus", "total", "geral", "unica",
     "uniao", "popular", "economico", "economica", "universal",
+    "empreendimentos", "empreendimento", "imobiliarios", "imobiliaria",
+    "imobiliario", "imoveis", "utilidades", "utilidade", "business", "tudo",
+    "hotel", "pousada", "construcoes", "construtora", "engenharia",
+    "participacoes", "holding", "locacao", "locadora", "negocios",
+    "investimentos", "consultoria", "assessoria", "organizacoes",
+    "organizacao", "associacao", "sindicato", "prefeitura", "municipal",
+    "estadual", "federal",
 }
+
+# Lista gerada a partir da própria base (gen_generic_tokens.py): palavras que
+# aparecem em muitas razões sociais não identificam empresa nenhuma.
+_EXTRA_GENERIC_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generic_tokens.txt")
+try:
+    with open(_EXTRA_GENERIC_PATH, encoding="utf-8") as _f:
+        _GENERIC_NAME_TOKENS |= {ln.strip() for ln in _f if ln.strip() and not ln.startswith("#")}
+except OSError:
+    pass
 
 # DDDs por UF das 9 UFs da base: telefone do Maps com DDD de OUTRO estado é
 # quase sempre empresa homônima de outro lugar (ex.: "JC ..." de SP).
