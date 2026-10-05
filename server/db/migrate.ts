@@ -85,6 +85,12 @@ async function ensureRadarTables() {
   `;
   await sql`CREATE INDEX IF NOT EXISTS radar_establishments_municipio_idx
             ON radar_establishments(municipio_ibge)`;
+  // Buscador: contar quantas empresas da base usam o mesmo telefone (escritório de
+  // contabilidade costuma aparecer em dezenas). Consulta só pelos telefones da página.
+  await sql`CREATE INDEX IF NOT EXISTS radar_establishments_telefone1_idx
+            ON radar_establishments(telefone1) WHERE telefone1 IS NOT NULL`;
+  await sql`CREATE INDEX IF NOT EXISTS radar_establishments_telefone2_idx
+            ON radar_establishments(telefone2) WHERE telefone2 IS NOT NULL`;
   await sql`
     CREATE TABLE IF NOT EXISTS radar_enrichment (
       cnpj                  TEXT PRIMARY KEY,
@@ -238,7 +244,7 @@ async function ensureRecentSchema() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-09-29e';
+const SCHEMA_VERSION = '2026-10-05a';
 
 export async function ensureTablesExist() {
   // Antes de tudo (e antes do caminho rápido): garante o que foi criado por último.

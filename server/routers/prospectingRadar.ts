@@ -304,6 +304,8 @@ export const prospectingRadarRouter = router({
       radiusKm: z.number().int().min(1).max(RADAR_MAX_RADIUS_KM),
       segments: z.array(z.enum(RADAR_SEGMENT_KEYS)).min(1),
       includeSecondary: z.boolean().default(false),
+      // Página de RADAR_MAX_RESULTS (0 = primeira). Implementada no servidor pelo agente do Buscador.
+      pagina: z.number().int().min(0).max(20).default(0),
       // Só empresas abertas há pelo menos N anos (0 = sem filtro). Sem data na base, não exclui.
       minAnosAbertura: z.number().int().min(0).max(30).default(0),
     }))

@@ -54,7 +54,13 @@ export interface RadarPhone {
   // Heurística honesta: celular brasileiro tem 9 dígitos começando com 9. NÃO significa
   // que o número tem WhatsApp — isso não dá para verificar legitimamente.
   likelyMobile: boolean;
+  // Quantos estabelecimentos da base usam este mesmo número (inclui o próprio).
+  // >= RADAR_TELEFONE_COMPARTILHADO_MIN: provável escritório de contabilidade.
+  compartilhadoPor?: number;
 }
+
+/** A partir de quantas empresas com o mesmo telefone a tela avisa "provável contabilidade". */
+export const RADAR_TELEFONE_COMPARTILHADO_MIN = 4;
 
 export type RadarCrmStatus =
   | { kind: 'novo' }
@@ -97,6 +103,11 @@ export interface RadarSearchResult {
   datasetRelease: string | null;
   // O robô da VPS deu sinal de vida nos últimos 3 minutos. false = os cards não vão se completar.
   enricherOnline: boolean;
+  // Paginação: página devolvida (0 = primeira) e se existe a próxima.
+  pagina?: number;
+  hasMore?: boolean;
+  // UFs dentro do raio que a base da Receita NÃO cobre (a tela explica por que veio pouco).
+  ufsSemBase?: string[];
 }
 
 export interface RadarCnpjCheck {
