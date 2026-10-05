@@ -2,7 +2,7 @@
 // Compartilhado entre LeadCard (botões de contato) e CreateTaskDialog (rádio
 // de telefone ao transformar em tarefa) para não duplicar a ordenação.
 import { RADAR_ENRICH_SOURCE_LABELS, formatFoundDigits } from './EnrichmentSection';
-import type { RadarEnrichment, RadarLead } from '../../../../shared/radar';
+import { RADAR_TELEFONE_COMPARTILHADO_MIN, type RadarEnrichment, type RadarLead } from '../../../../shared/radar';
 
 export interface PhoneOption {
   digits: string;
@@ -10,6 +10,20 @@ export interface PhoneOption {
   isWhatsapp: boolean;
   likelyMobile: boolean;
   sourceLabel: string | null;
+  // Quantas empresas da base usam este número (undefined = desconhecido).
+  compartilhadoPor?: number;
+  // true = número repetido em muitas empresas, provável escritório de contabilidade.
+  compartilhado: boolean;
+}
+
+export function isTelefoneCompartilhado(compartilhadoPor: number | undefined): boolean {
+  return typeof compartilhadoPor === 'number' && compartilhadoPor >= RADAR_TELEFONE_COMPARTILHADO_MIN;
+}
+
+/** Aviso curto ao lado do número; null quando o número não é compartilhado (ou é desconhecido). */
+export function sharedPhoneLabel(opt: Pick<PhoneOption, 'compartilhado' | 'compartilhadoPor'>): string | null {
+  if (!opt.compartilhado || opt.compartilhadoPor === undefined) return null;
+  return `provável contabilidade · usado por ${opt.compartilhadoPor} empresas`;
 }
 
 // Dígitos vindos do enriquecedor (achados em wa.me) já são DDD + número, mas
@@ -40,6 +54,7 @@ export function buildPhoneOptions(lead: RadarLead, enrichment: RadarEnrichment |
       isWhatsapp: true,
       likelyMobile: digits.length === 11,
       sourceLabel: RADAR_ENRICH_SOURCE_LABELS[w.source],
+      compartilhado: false,
     });
   }
   for (const p of lead.phones) {
@@ -51,17 +66,24 @@ export function buildPhoneOptions(lead: RadarLead, enrichment: RadarEnrichment |
       isWhatsapp: false,
       likelyMobile: p.likelyMobile,
       sourceLabel: null,
+      compartilhadoPor: p.compartilhadoPor,
+      compartilhado: isTelefoneCompartilhado(p.compartilhadoPor),
     });
   }
-  return options;
+  // Números compartilhados (contabilidade) vão para o fim; sort é estável, então a
+  // ordem WhatsApp > Receita é preservada dentro de cada grupo.
+  return options.sort((a, b) => Number(a.compartilhado) - Number(b.compartilhado));
 }
 
-// Padrão de seleção: primeiro WhatsApp achado na web > primeiro provável
-// celular da Receita > primeiro telefone da lista.
+// Padrão de seleção: WhatsApp achado na web > celular não compartilhado >
+// fixo não compartilhado > qualquer número compartilhado (contabilidade).
 export function defaultPhoneDigits(options: PhoneOption[]): string | null {
   const whatsapp = options.find((o) => o.isWhatsapp);
   if (whatsapp) return whatsapp.digits;
-  const mobile = options.find((o) => o.likelyMobile);
+  const mobile = options.find((o) => o.likelyMobile && !o.compartilhado);
   if (mobile) return mobile.digits;
-  return options[0]?.digits ?? null;
+  const fixo = options.find((o) => !o.compartilhado);
+  if (fixo) return fixo.digits;
+  const shared = options.find((o) => o.likelyMobile) ?? options[0];
+  return shared?.digits ?? null;
 }
