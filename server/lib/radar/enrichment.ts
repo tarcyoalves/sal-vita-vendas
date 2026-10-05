@@ -157,6 +157,13 @@ export function isEnricherOnline(heartbeatIso: string | null, now: Date): boolea
  * 'pendente' e 'processando' nunca precisam — já estão na fila ou em execução,
  * e reenfileirar resetaria o trabalho que o robô já reservou.
  */
+/** Alguma fonte estava pausada pelo disjuntor (bloqueio temporário) quando o robô rodou. */
+export function resultadoComFontePausada(result: unknown): boolean {
+  const fontes = (result as { fontes?: unknown } | null)?.fontes;
+  return Array.isArray(fontes) && fontes.some((f) => typeof (f as { note?: unknown })?.note === 'string'
+    && ((f as { note: string }).note).startsWith('pausado'));
+}
+
 export function needsEnqueue(row: RadarEnrichmentRow | undefined, now: Date): boolean {
   if (!row) return true;
   if (row.status === 'pendente' || row.status === 'processando') return false;
@@ -166,6 +173,12 @@ export function needsEnqueue(row: RadarEnrichmentRow | undefined, now: Date): bo
     return now.getTime() - last.getTime() > RADAR_ENRICH_RETRY_COOLDOWN_MS;
   }
   if (row.status === 'pronto') {
+    // Resultado feito com fonte pausada (ex.: DuckDuckGo bloqueou por 1 h) é incompleto:
+    // vale de novo depois do cooldown, em vez de ficar 30 dias.
+    if (resultadoComFontePausada(row.result)) {
+      const last = row.finishedAt ?? row.requestedAt;
+      if (now.getTime() - last.getTime() > RADAR_ENRICH_RETRY_COOLDOWN_MS) return true;
+    }
     return !row.expiresAt || row.expiresAt.getTime() < now.getTime();
   }
   // Status corrompido/desconhecido (não devia acontecer — a coluna não tem
@@ -208,6 +221,10 @@ const NEEDS_ENQUEUE_SQL = sql`(
 ) OR (
   ${radarEnrichment.status} = 'pronto'
   AND (${radarEnrichment.expiresAt} IS NULL OR ${radarEnrichment.expiresAt} < now())
+) OR (
+  ${radarEnrichment.status} = 'pronto'
+  AND jsonb_path_exists(coalesce(${radarEnrichment.result}, '{}'::jsonb), '$.fontes[*] ? (@.note starts with "pausado")')
+  AND coalesce(${radarEnrichment.finishedAt}, ${radarEnrichment.requestedAt}) < now() - interval '1 hour'
 ) OR ${radarEnrichment.status} NOT IN ('pendente', 'processando', 'falhou', 'pronto')`;
 
 /**

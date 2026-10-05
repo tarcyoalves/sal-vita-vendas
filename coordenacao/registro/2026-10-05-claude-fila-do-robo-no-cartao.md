@@ -12,3 +12,7 @@ Verificado: `npm run check`, 409 testes. Não testado contra o banco real.
 
 Robô saudável: ~170 empresas/h, sem travas, Maps sem bloqueio. Causa real: a tela parava de consultar após 5 min (ENRICH_POLL_CAP_MS) enquanto a fila de 60 empresas leva ~20 min; os cartões congelavam em "Procurando…".
 Correção: acompanhamento até 30 min (4 s nos 5 primeiros min, depois 15 s); botão "Atualizar dados da web" quando o acompanhamento termina com cartões ainda na fila; RADAR_ENRICH_PER_SEARCH 60 → 20 (~7 min). Verificado: check + 409 testes. Não visto no navegador.
+
+## Complemento 2: resultado incompleto por fonte pausada
+
+Cartões processados durante a pausa do DuckDuckGo ficaram "pronto" com "buscador: pausado: bloqueio" e sem site, valendo 30 dias. Agora `needsEnqueue` e o SQL de reenfileiramento tratam 'pronto' com qualquer fonte "pausado…" como vencido depois de 1 h (`resultadoComFontePausada`). Próxima busca ou "Varrer agora" refaz. Testes em tests/radar-enrichment.test.ts (411 no total). "Google Maps: nenhum resultado compatível" em todos os cartões fica para diagnóstico do Hermes (provável problema em extract.parse_maps_place / matches_company).

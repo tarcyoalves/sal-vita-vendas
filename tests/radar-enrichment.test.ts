@@ -27,6 +27,7 @@ process.env.DATABASE_URL ??= 'postgres://test:test@localhost:5432/test';
 const {
   isEnricherOnline,
   needsEnqueue,
+  resultadoComFontePausada,
   toRadarEnrichment,
   toRadarEnrichmentData,
   RADAR_ENRICH_MAX_ATTEMPTS,
@@ -395,5 +396,20 @@ describe('links raspados só aceitam http(s)', () => {
     expect(d?.instagram).toBe('https://instagram.com/agro');
     expect(d?.maps).toBeNull();
     expect(d?.whatsapps[0]).toEqual({ value: '47988887777', source: 'site', url: null });
+  });
+});
+
+describe('resultado com fonte pausada', () => {
+  const pausado = { fontes: [{ source: 'busca', ok: false, note: 'pausado: bloqueio' }, { source: 'maps', ok: true, note: null }] };
+  it('detecta fonte pausada', () => {
+    expect(resultadoComFontePausada(pausado)).toBe(true);
+    expect(resultadoComFontePausada({ fontes: [{ source: 'maps', ok: false, note: 'nenhum resultado' }] })).toBe(false);
+    expect(resultadoComFontePausada(null)).toBe(false);
+  });
+  it('pronto com fonte pausada volta para a fila depois de 1 h, mesmo dentro do prazo', () => {
+    const futuro = new Date(NOW.getTime() + 10 * 864e5);
+    expect(needsEnqueue(makeRow({ status: 'pronto', expiresAt: futuro, result: pausado, finishedAt: new Date(NOW.getTime() - 2 * 3600e3) }), NOW)).toBe(true);
+    expect(needsEnqueue(makeRow({ status: 'pronto', expiresAt: futuro, result: pausado, finishedAt: new Date(NOW.getTime() - 10 * 60e3) }), NOW)).toBe(false);
+    expect(needsEnqueue(makeRow({ status: 'pronto', expiresAt: futuro, result: { fontes: [] }, finishedAt: new Date(NOW.getTime() - 2 * 3600e3) }), NOW)).toBe(false);
   });
 });
