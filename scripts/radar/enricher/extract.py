@@ -756,11 +756,34 @@ _GENERIC_NAME_TOKENS = {
     "nova", "novo", "santa", "santo", "sao", "irmaos", "filhos", "familia",
     "fabrica", "industrias", "industriais", "comercial", "empresa",
     "grupo", "rede", "the", "and",
+    # siglas/abreviações de razão social e palavras comuns demais
+    "com", "imp", "exp", "ind", "log", "adm", "serv", "administrativos",
+    "administrativo", "processamento", "pets", "petisco", "petiscos",
+    "bar", "lanchonete", "petiscaria", "real", "super", "natural", "vida",
+    "bom", "boa", "mix", "max", "top", "plus", "total", "geral", "unica",
+    "uniao", "popular", "economico", "economica", "universal",
+}
+
+# DDDs por UF das 9 UFs da base: telefone do Maps com DDD de OUTRO estado é
+# quase sempre empresa homônima de outro lugar (ex.: "JC ..." de SP).
+_DDD_UF = {
+    **{d: "PR" for d in range(41, 47)}, **{d: "SC" for d in (47, 48, 49)},
+    **{d: "RS" for d in (51, 53, 54, 55)}, 63: "TO", 62: "GO", 64: "GO",
+    65: "MT", 66: "MT", **{d: "MG" for d in range(31, 39)}, 98: "MA", 99: "MA",
+    **{d: "BA" for d in (71, 73, 74, 75, 77)},
 }
 
 
+def phone_ddd_conflicts_uf(phone: Optional[str], uf: Optional[str]) -> bool:
+    """True se o DDD do telefone é de uma UF conhecida diferente de `uf`."""
+    if not phone or not uf or len(phone) < 10:
+        return False
+    # DDD fora das 9 UFs da base (ex.: 11 = SP) também é conflito.
+    return _DDD_UF.get(int(phone[:2])) != uf.upper()
+
+
 def distinctive_name_tokens(name: str) -> set[str]:
-    return {t for t in normalize_name_tokens(name) if t not in _GENERIC_NAME_TOKENS}
+    return {t for t in normalize_name_tokens(name) if len(t) >= 4 and t not in _GENERIC_NAME_TOKENS}
 
 
 def matches_company_strict(place_name: Optional[str], company_name: str) -> bool:

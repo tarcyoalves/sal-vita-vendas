@@ -82,15 +82,14 @@ def run(establishment: dict, cidade: str, uf: str, breaker, rate_limiter) -> dic
     if place is None:
         return {**empty, "ok": False, "note": "nenhum resultado"}
 
-    if place.get("lista"):
-        # Lista de resultados: o 1º cartão pode ser outra empresa da cidade.
-        nomes = {company_name, establishment.get("razao_social") or ""}
-        matched = any(extract.matches_company_strict(place.get("nome"), n) for n in nomes if n)
-    else:
-        matched = (
-            extract.matches_company(place.get("nome"), place.get("endereco"), company_name, cidade)
-            or extract.matches_company(place.get("nome"), place.get("endereco"), cleaned_company, cidade)
-        )
+    # Casamento forte SEMPRE (lista ou página de lugar): palavra distintiva do
+    # nome em comum. Cidade no endereço não basta — o Maps devolve outra empresa
+    # da cidade (outro supermercado, a prefeitura...) e o telefone errado vai
+    # para o cartão do Buscador.
+    nomes = {company_name, cleaned_company, establishment.get("razao_social") or ""}
+    matched = any(extract.matches_company_strict(place.get("nome"), n) for n in nomes if n)
+    if matched and extract.phone_ddd_conflicts_uf(place.get("phone"), uf or establishment.get("uf")):
+        matched = False
     if not matched:
         return {**empty, "ok": False, "note": "nenhum resultado compatível"}
 

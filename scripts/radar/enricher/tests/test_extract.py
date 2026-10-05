@@ -1,3 +1,4 @@
+import pytest
 """Testes unitários de scripts/radar/enricher/extract.py — 100% offline,
 sem rede, só HTML/texto sintético."""
 
@@ -463,3 +464,28 @@ def test_maps_run_rejects_unrelated_first_card(maps_search_list_html, monkeypatc
     certa = {"razao_social": "AGROSUL INDUSTRIA AGRICOLA LTDA EM RECUPERACAO JUDICIAL", "nome_fantasia": None}
     res = maps.run(certa, "Chapecó", "SC", _Breaker(), _Rate())
     assert res["ok"] is True and res["phone"] == "4933286292"
+
+
+# Casos reais do lote de 05/10 (relatório do Hermes): (razão social, nome no Maps, esperado)
+@pytest.mark.parametrize("empresa,maps_nome,esperado", [
+    ("COOPERATIVA AGROINDUSTRIAL ALFA COOPERALFA", "Cooperalfa - São José do Cedro - Agropecuária e Supermercado", True),
+    ("CARMINATTI CEREAIS LTDA", "Avícola Carminatti Ltda", True),
+    ("SUPER HACK", "Super Hack São Cristovão", True),
+    ("REAL COMERCIAL LTDA", "Real Color", False),
+    ("JC COM IMP & EXP LTDA", "JC Distribuição Log Exp Prod Ind", False),
+    ("99 PETS INDUSTRIA DE PETISCOS LTDA", "Braspet Industria e Comercio de Embalagens Ltda.", False),
+    ("SUPERMERCADO MFB LTDA", "Supermercado Boniatti", False),
+    ("GRANDI SERVICOS ADMINISTRATIVOS LTDA", "Prefeitura Municipal de Santa Lúcia", False),
+    ("GELOW BAR E LANCHONETE", "Pajé Lanchonete E Petiscaria", False),
+])
+def test_matches_company_strict_casos_reais(empresa, maps_nome, esperado):
+    assert extract.matches_company_strict(maps_nome, empresa) is esperado
+
+
+def test_phone_ddd_conflicts_uf():
+    assert extract.phone_ddd_conflicts_uf("11956560587", "SC") is True   # SP em empresa de SC
+    assert extract.phone_ddd_conflicts_uf("1132849142", "SC") is True
+    assert extract.phone_ddd_conflicts_uf("49991163708", "SC") is False
+    assert extract.phone_ddd_conflicts_uf("4635638100", "PR") is False
+    assert extract.phone_ddd_conflicts_uf("4635638100", "SC") is True
+    assert extract.phone_ddd_conflicts_uf(None, "SC") is False
