@@ -22,3 +22,7 @@ CREDENCIAIS.txt
 # in via .claude/skills/get-shit-done, which was a clone rather than plain
 # files. If you add a skill, commit its files — never a nested repo.
 .claude/worktrees/
+
+# Scripts de depuração locais do robô (leem .env-radar) — nunca versionar
+scripts/radar/enricher/test_db.py
+scripts/radar/enricher/test_*.sh

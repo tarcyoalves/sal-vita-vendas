@@ -412,3 +412,54 @@ def test_full_build_result_example_matches_shape():
     result["emails"].append(extract.make_found("contato@agroexemplo.com.br", "site", "https://www.agroexemplo.com.br"))
     result = extract.finalize_result(result)
     assert extract.validate_enrichment_shape(result) == []
+
+
+def test_search_list_marks_lista_and_requires_strict_match(maps_search_list_html):
+    place = extract.parse_maps_place(maps_search_list_html, "https://maps.example/search")
+    assert place["lista"] is True
+    # Palavra distintiva em comum ("agrosul") → casa.
+    assert extract.matches_company_strict(place["nome"], "AGROSUL INDUSTRIA AGRICOLA LTDA")
+    # Só palavras de ramo em comum ("industria", "agricola") → NÃO casa: o 1º
+    # cartão de uma lista pode ser outra empresa da cidade.
+    assert not extract.matches_company_strict(place["nome"], "INDUSTRIA AGRICOLA SILVA LTDA")
+    assert not extract.matches_company_strict("Rações Pet Center", "COMERCIO DE RACOES CHAPECO LTDA ME")
+    # Nome só com palavras genéricas não casa com nada.
+    assert not extract.matches_company_strict("Agropecuária Santa Rita", "AGROPECUARIA SANTA LTDA")
+
+
+def test_place_page_is_not_lista_and_ignores_review_articles():
+    html = """
+    <html><body>
+    <h1>Mercearia Maronesi</h1>
+    <div role="article"><div class="W4Efsd"><span>Liguei no (45) 99999-0000 e ninguém atendeu</span></div></div>
+    </body></html>
+    """
+    place = extract.parse_maps_place(html, "https://maps.example/place/1")
+    assert place["nome"] == "Mercearia Maronesi"
+    assert place["lista"] is False
+    assert place["phone"] is None
+
+
+def test_maps_run_rejects_unrelated_first_card(maps_search_list_html, monkeypatch):
+    from sources import maps
+
+    class _Breaker:
+        def note_if_paused(self, _s):
+            return None
+
+        def trip(self, *_a):
+            raise AssertionError("não deveria pausar")
+
+    class _Rate:
+        def wait(self, _s):
+            return None
+
+    monkeypatch.setattr(maps, "_fetch_html", lambda _url: maps_search_list_html)
+    outra = {"razao_social": "INDUSTRIA AGRICOLA SILVA LTDA", "nome_fantasia": None}
+    res = maps.run(outra, "Chapecó", "SC", _Breaker(), _Rate())
+    assert res["ok"] is False and res["phone"] is None
+    assert res["note"] == "nenhum resultado compatível"
+
+    certa = {"razao_social": "AGROSUL INDUSTRIA AGRICOLA LTDA EM RECUPERACAO JUDICIAL", "nome_fantasia": None}
+    res = maps.run(certa, "Chapecó", "SC", _Breaker(), _Rate())
+    assert res["ok"] is True and res["phone"] == "4933286292"

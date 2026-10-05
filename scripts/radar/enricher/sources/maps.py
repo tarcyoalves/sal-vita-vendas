@@ -82,10 +82,15 @@ def run(establishment: dict, cidade: str, uf: str, breaker, rate_limiter) -> dic
     if place is None:
         return {**empty, "ok": False, "note": "nenhum resultado"}
 
-    matched = (
-        extract.matches_company(place.get("nome"), place.get("endereco"), company_name, cidade)
-        or extract.matches_company(place.get("nome"), place.get("endereco"), cleaned_company, cidade)
-    )
+    if place.get("lista"):
+        # Lista de resultados: o 1º cartão pode ser outra empresa da cidade.
+        nomes = {company_name, establishment.get("razao_social") or ""}
+        matched = any(extract.matches_company_strict(place.get("nome"), n) for n in nomes if n)
+    else:
+        matched = (
+            extract.matches_company(place.get("nome"), place.get("endereco"), company_name, cidade)
+            or extract.matches_company(place.get("nome"), place.get("endereco"), cleaned_company, cidade)
+        )
     if not matched:
         return {**empty, "ok": False, "note": "nenhum resultado compatível"}
 

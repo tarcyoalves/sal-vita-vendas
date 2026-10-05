@@ -605,6 +605,10 @@ def parse_maps_place(html: str, url: str) -> Optional[dict]:
             break
     # Nome: primeiro h1 (página de lugar) se não for título genérico de lista,
     # ou primeiro a.hfpxzc[aria-label] (página de lista de busca do Maps).
+    # `lista`: a página é uma lista de resultados (o Maps não abriu um lugar
+    # único). O 1º cartão pode ser OUTRA empresa da cidade — quem chama deve
+    # exigir casamento forte de nome (matches_company_strict).
+    lista = False
     h1_text = sel.css("h1::text").get()
     if h1_text:
         h1_clean = h1_text.strip()
@@ -618,6 +622,7 @@ def parse_maps_place(html: str, url: str) -> Optional[dict]:
         for aria in sel.css("a.hfpxzc::attr(aria-label)").getall():
             if aria and aria.strip():
                 nome = aria.strip()
+                lista = True
                 break
 
     categoria = None
@@ -637,8 +642,12 @@ def parse_maps_place(html: str, url: str) -> Optional[dict]:
             endereco = addr_button.strip()
 
     # Fallback para páginas de lista de busca (cards Nv2PK)
-    cards = sel.css("div.Nv2PK, div[role='article']")
+    # Só em página de lista: numa página de lugar, div[role='article'] são as
+    # avaliações de clientes, não cartões de empresa.
+    cards = sel.css("div.Nv2PK, div[role='article']") if (lista or not nome) else []
     if cards:
+        if not nome:
+            lista = True
         first_card = cards[0]
         if not website:
             for a in first_card.css("a"):
@@ -701,6 +710,7 @@ def parse_maps_place(html: str, url: str) -> Optional[dict]:
         "endereco": endereco,
         "website": website,
         "phone": phone,
+        "lista": lista,
     }
 
 
@@ -725,6 +735,46 @@ def matches_company(
         if normalize_text_loose(city_name).strip() in normalize_text_loose(address):
             return True
     return False
+
+
+# Palavras de ramo/genéricas: duas empresas diferentes da mesma cidade as
+# compartilham o tempo todo ("Rações", "Agropecuária", "Distribuidora"...).
+_GENERIC_NAME_TOKENS = {
+    "agro", "agricola", "agropecuaria", "agropecuario", "agroindustrial",
+    "agronegocio", "agronegocios", "pecuaria", "racao", "racoes", "nutricao",
+    "animal", "animais", "pet", "shop", "petshop", "vet", "veterinaria",
+    "veterinarios", "veterinario", "alimentos", "alimento", "alimenticios",
+    "produtos", "produto", "distribuidora", "distribuidor", "distribuicao",
+    "atacado", "atacadista", "atacarejo", "varejo", "supermercado",
+    "supermercados", "mercado", "mercados", "mercearia", "minimercado",
+    "laticinio", "laticinios", "leite", "frigorifico", "frigorificos",
+    "carnes", "quimica", "quimicos", "limpeza", "saneantes", "cooperativa",
+    "coop", "importacao", "exportacao", "importadora", "exportadora",
+    "transportes", "transporte", "servicos", "representacoes", "loja",
+    "lojas", "casa", "center", "centro", "posto", "brasil", "brasileira",
+    "nacional", "regional", "sul", "norte", "nordeste", "oeste", "leste",
+    "nova", "novo", "santa", "santo", "sao", "irmaos", "filhos", "familia",
+    "fabrica", "industrias", "industriais", "comercial", "empresa",
+    "grupo", "rede", "the", "and",
+}
+
+
+def distinctive_name_tokens(name: str) -> set[str]:
+    return {t for t in normalize_name_tokens(name) if t not in _GENERIC_NAME_TOKENS}
+
+
+def matches_company_strict(place_name: Optional[str], company_name: str) -> bool:
+    """Casamento para cartão de LISTA do Maps: exige ao menos uma palavra
+    distintiva do nome em comum. Cidade no endereço NÃO basta — numa lista o
+    1º cartão costuma ser outra empresa da mesma cidade, e um telefone errado
+    no cartão do Buscador é pior que nenhum.
+    """
+    if not place_name:
+        return False
+    company = distinctive_name_tokens(company_name)
+    if not company:
+        return False
+    return bool(company & distinctive_name_tokens(place_name))
 
 
 # ── Montagem do resultado final (RadarEnrichmentData) ───────────────────────
