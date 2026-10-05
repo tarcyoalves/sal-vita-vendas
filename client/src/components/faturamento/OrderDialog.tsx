@@ -14,7 +14,7 @@ import { Textarea } from '../ui/textarea';
 import { OrderItemsEditor } from './OrderItemsEditor';
 import { useFatStore } from '../../lib/faturamento/store';
 import { totalItens, formatBRL, parseBRL, dataInputLocal, hojeInputLocal } from '../../lib/faturamento/calc';
-import { SMBI_CONDICOES_PAGAMENTO, condicaoPorTexto } from '@/lib/faturamento/smbiCatalog';
+import { SMBI_CONDICOES_PAGAMENTO, condicaoPorTexto } from '../../../../shared/smbiCondicoes';
 import { type Pedido, type ItemPedido } from '@/lib/faturamento/types';
 
 // Código SMBI da condição escolhida pela descrição exibida no <select> — null
