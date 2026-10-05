@@ -499,3 +499,47 @@ def test_phone_ddd_conflicts_uf():
 ])
 def test_matches_company_strict_rejeita_palavra_generica_do_lote(empresa, maps_nome):
     assert extract.matches_company_strict(maps_nome, empresa) is False
+
+
+@pytest.mark.parametrize("empresa,maps_nome", [
+    ("SUPERMERCADO UNIAO", "supermercado União"),
+    ("BUNGE ALIMENTOS S/A", "Bunge Alimentos"),
+    ("AMERICANAS S.A - EM RECUPERACAO JUDICIAL", "Americanas"),
+    ("DOCES VOVO ANA", "Laticínio Caminhos Verdes - Doces Vovó Ana"),
+])
+def test_matches_company_exact_aceita_marca_de_palavra_comum(empresa, maps_nome):
+    assert extract.matches_company_exact(maps_nome, empresa) is True
+
+
+@pytest.mark.parametrize("empresa,maps_nome", [
+    ("REAL COMERCIAL LTDA", "Real Color"),
+    ("PEGADA ALIMENTOS LTDA", "Pegada Natural"),
+    ("SILVA TAVARES LATICINIOS LTDA", "Laticínios Silva"),
+    ("MTM COMERCIO DE PRODUTOS ALIMENTICIOS LTDA", "MTM Containers"),
+])
+def test_matches_company_exact_rejeita_homonimas(empresa, maps_nome):
+    assert extract.matches_company_exact(maps_nome, empresa) is False
+
+
+def test_maps_run_ddd_de_outro_estado_mantem_lugar_so_se_nome_igual(monkeypatch):
+    from sources import maps
+
+    class _B:
+        def note_if_paused(self, _s):
+            return None
+
+    class _R:
+        def wait(self, _s):
+            return None
+
+    def html(nome, fone):
+        return f'<html><body><h1>{nome}</h1><button data-item-id="phone:tel:{fone}" aria-label="Telefone: {fone}"></button></body></html>'
+
+    monkeypatch.setattr(extract, "parse_maps_place", lambda _h, _u: {"nome": maps._T["nome"], "phone": maps._T["fone"], "endereco": None, "website": None, "categoria": None, "nota": None, "avaliacoes": None, "situacao": None, "lista": False})
+    monkeypatch.setattr(maps, "_fetch_html", lambda _u: "<html></html>")
+    maps._T = {"nome": "Bunge Alimentos", "fone": "11972063752"}
+    r = maps.run({"razao_social": "BUNGE ALIMENTOS S/A", "nome_fantasia": None, "uf": "SC"}, "Gaspar", "SC", _B(), _R())
+    assert r["ok"] is True and r["phone"] is None and r["maps"]["nome"] == "Bunge Alimentos"
+    maps._T = {"nome": "Pegada Natural", "fone": "11956560587"}
+    r = maps.run({"razao_social": "PEGADA ALIMENTOS LTDA", "nome_fantasia": None, "uf": "SC"}, "Chapecó", "SC", _B(), _R())
+    assert r["ok"] is False and r["note"] == "nenhum resultado compatível"

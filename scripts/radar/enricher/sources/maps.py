@@ -89,7 +89,13 @@ def run(establishment: dict, cidade: str, uf: str, breaker, rate_limiter) -> dic
     nomes = {company_name, cleaned_company, establishment.get("razao_social") or ""}
     matched = any(extract.matches_company_strict(place.get("nome"), n) for n in nomes if n)
     if matched and extract.phone_ddd_conflicts_uf(place.get("phone"), uf or establishment.get("uf")):
-        matched = False
+        # Telefone de outro estado: se o NOME é igual (rede/matriz com SAC em SP,
+        # divisa de DDD), mantém o lugar do Maps mas descarta só o telefone;
+        # se o nome só se parece (homônima de outro estado), descarta tudo.
+        if any(extract.matches_company_exact(place.get("nome"), n) for n in nomes if n):
+            place = {**place, "phone": None}
+        else:
+            matched = False
     if not matched:
         return {**empty, "ok": False, "note": "nenhum resultado compatível"}
 

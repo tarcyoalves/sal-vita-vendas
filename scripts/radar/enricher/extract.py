@@ -803,6 +803,21 @@ def distinctive_name_tokens(name: str) -> set[str]:
     return {t for t in normalize_name_tokens(name) if len(t) >= 4 and t not in _GENERIC_NAME_TOKENS}
 
 
+def matches_company_exact(place_name: Optional[str], company_name: str) -> bool:
+    """Mesmo nome (ignorando sufixos jurídicos e palavras de ligação): conjunto
+    de palavras igual, ou todas as palavras da empresa dentro do nome do Maps
+    quando ela tem ao menos 3 (com 2, "Agropecuária Santa" cabia em "Agropecuária Santa Rita"). Cobre rede/marca de palavra comum ("Supermercado
+    União", "Bunge Alimentos") que a lista de palavras genéricas esconderia.
+    """
+    if not place_name:
+        return False
+    company = set(normalize_name_tokens(strip_legal_suffixes(company_name)))
+    place = set(normalize_name_tokens(place_name))
+    if not company or not place:
+        return False
+    return company == place or (len(company) >= 3 and company <= place)
+
+
 def matches_company_strict(place_name: Optional[str], company_name: str) -> bool:
     """Casamento para cartão de LISTA do Maps: exige ao menos uma palavra
     distintiva do nome em comum. Cidade no endereço NÃO basta — numa lista o
@@ -811,6 +826,8 @@ def matches_company_strict(place_name: Optional[str], company_name: str) -> bool
     """
     if not place_name:
         return False
+    if matches_company_exact(place_name, company_name):
+        return True
     company = distinctive_name_tokens(company_name)
     if not company:
         return False
