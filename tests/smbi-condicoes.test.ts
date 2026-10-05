@@ -29,10 +29,13 @@ describe('condicaoPorTexto — prazos digitados à mão', () => {
     expect(condicaoPorTexto(texto)?.cod).toBe(cod);
   });
 
-  it('mapa informado pelo dono: 20/40/60 → 100 e 40/60 → 150', () => {
+  it('mapa informado pelo dono: 20/40/60 → 100, 40/60 → 150 e 15/25 → 104', () => {
     expect(condicaoPorTexto('20/40/60')?.cod).toBe('100');
     expect(condicaoPorTexto('20/40/60 DIAS')?.cod).toBe('100');
     expect(condicaoPorTexto('40/60')?.cod).toBe('150');
+    expect(condicaoPorTexto('15/25')?.cod).toBe('104');
+    expect(condicaoPorTexto('15/25 DIAS')?.cod).toBe('104');
+    expect(condicaoPorTexto('15/25 dias')?.cod).toBe('104');
   });
 
   it('prazo fora do catálogo continua sem código (nunca inventa)', () => {

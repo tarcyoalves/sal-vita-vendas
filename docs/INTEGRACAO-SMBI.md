@@ -41,7 +41,7 @@ duplicando-o no ERP. Esses três só mudam por `POST /api/smbi/pedidos/:id/retor
 Pedidos antigos têm o prazo em texto livre ("30/60/90", "à vista") e a coluna do código
 SMBI vazia. O `GET /api/smbi/pedidos` **deriva o código do texto** quando ele corresponde
 com certeza a uma condição do catálogo (`shared/smbiCondicoes.ts`): "30/60/90", "30 / 60 / 90
-dias" e "30/60/90 DIAS" viram o código 46; "20/40/60" vira 100 e "40/60" vira 150. Prazo que
+dias" e "30/60/90 DIAS" viram o código 46; "20/40/60" vira 100, "40/60" vira 150 e "15/25" vira 104. Prazo que
 **não está no catálogo** (ex.: "20/50/80") continua com código `null` — o robô deve pular e registrar. Para incluir um prazo novo, o dono
 informa o código real do SMBI e ele entra na lista em `shared/smbiCondicoes.ts`.
 
