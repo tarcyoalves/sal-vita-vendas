@@ -28,6 +28,7 @@ import {
   taskTitle,
   toRadarLeadActivity,
 } from '../lib/radar/leads';
+import { aplicarCompartilhado, ordenarPorRanking, paginar, ufsSemBase } from '../lib/radar/ranking';
 import { draftRadarMessage, type RadarDraftInput } from '../lib/radar/messageDraft';
 import {
   enqueue,
@@ -152,6 +153,54 @@ async function clientesAtivosDe(rows: Array<Pick<RadarEstablishment, 'cnpj' | 't
   );
 }
 
+// Contagem de empresas por UF (e a release mais nova da base). Um GROUP BY na tabela
+// inteira: o `baseStatus` chama direto; a busca usa a versão com cache abaixo.
+async function consultarContagemPorUf(): Promise<{ release: string | null; porUf: Array<{ uf: string; count: number }> }> {
+  const rows = await db
+    .select({
+      uf: radarEstablishments.uf,
+      count: sql<number>`count(*)::int`,
+      release: sql<string | null>`max(${radarEstablishments.sourceRelease})`,
+    })
+    .from(radarEstablishments)
+    .groupBy(radarEstablishments.uf);
+  const porUf = rows.map((r) => ({ uf: r.uf, count: r.count })).sort((a, b) => b.count - a.count);
+  const release = rows.map((r) => r.release).filter((r): r is string => !!r).sort().pop() ?? null;
+  return { release, porUf };
+}
+
+// Cache de módulo (1 hora, chaveado pela release): a base só muda na importação
+// mensal, então a busca não precisa varrer a tabela a cada consulta.
+const CONTAGEM_UF_TTL_MS = 60 * 60 * 1000;
+let contagemUfCache: { release: string; porUf: Array<{ uf: string; count: number }>; at: number } | null = null;
+
+async function contagemPorUfEmCache(release: string, now: number): Promise<Array<{ uf: string; count: number }>> {
+  if (contagemUfCache && contagemUfCache.release === release && now - contagemUfCache.at < CONTAGEM_UF_TTL_MS) {
+    return contagemUfCache.porUf;
+  }
+  const { porUf } = await consultarContagemPorUf();
+  contagemUfCache = { release, porUf, at: now };
+  return porUf;
+}
+
+// Quantas empresas da base usam cada telefone (dígitos), para marcar número de
+// escritório de contabilidade. Uma consulta só, usando os índices em
+// radar_establishments(telefone1) e (telefone2).
+async function contarEmpresasPorTelefone(digitos: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (digitos.length === 0) return out;
+  const lista = sql`ARRAY[${sql.join(digitos.map((d) => sql`${d}`), sql`, `)}]::text[]`;
+  const res = await db.execute(sql`
+    SELECT tel, count(*)::int AS n FROM (
+      SELECT telefone1 AS tel FROM radar_establishments WHERE telefone1 = ANY(${lista})
+      UNION ALL
+      SELECT telefone2 AS tel FROM radar_establishments WHERE telefone2 = ANY(${lista}) AND telefone2 IS DISTINCT FROM telefone1
+    ) x GROUP BY tel
+  `);
+  for (const r of res.rows as Array<{ tel: string; n: number }>) out.set(r.tel, Number(r.n));
+  return out;
+}
+
 async function requireEstablishment(cnpj: string) {
   const [row] = await db.select().from(radarEstablishments).where(eq(radarEstablishments.cnpj, cnpj));
   if (!row) throw new TRPCError({ code: 'NOT_FOUND', message: 'Estabelecimento não encontrado na base do Radar' });
@@ -169,16 +218,7 @@ export const prospectingRadarRouter = router({
 
   // Situação da base de empresas (painel do topo): data da importação, quantidade por UF e robô.
   baseStatus: protectedProcedure.query(async (): Promise<RadarBaseStatus> => {
-    const rows = await db
-      .select({
-        uf: radarEstablishments.uf,
-        count: sql<number>`count(*)::int`,
-        release: sql<string | null>`max(${radarEstablishments.sourceRelease})`,
-      })
-      .from(radarEstablishments)
-      .groupBy(radarEstablishments.uf);
-    const porUf = rows.map((r) => ({ uf: r.uf, count: r.count })).sort((a, b) => b.count - a.count);
-    const release = rows.map((r) => r.release).filter((r): r is string => !!r).sort().pop() ?? null;
+    const { release, porUf } = await consultarContagemPorUf();
     return {
       datasetRelease: release,
       total: porUf.reduce((s, r) => s + r.count, 0),
@@ -304,7 +344,7 @@ export const prospectingRadarRouter = router({
       radiusKm: z.number().int().min(1).max(RADAR_MAX_RADIUS_KM),
       segments: z.array(z.enum(RADAR_SEGMENT_KEYS)).min(1),
       includeSecondary: z.boolean().default(false),
-      // Página de RADAR_MAX_RESULTS (0 = primeira). Implementada no servidor pelo agente do Buscador.
+      // Página de RADAR_MAX_RESULTS (0 = primeira), aplicada sobre a lista ativa já ordenada.
       pagina: z.number().int().min(0).max(20).default(0),
       // Só empresas abertas há pelo menos N anos (0 = sem filtro). Sem data na base, não exclui.
       minAnosAbertura: z.number().int().min(0).max(30).default(0),
@@ -320,6 +360,7 @@ export const prospectingRadarRouter = router({
       const enricherOnline = isEnricherOnline(await loadHeartbeat(), now);
 
       const nearby = municipiosWithinRadius(origin, input.radiusKm);
+      const ufsDoRaio = nearby.map((m) => m.uf);
       const originResult = { ibge: origin.ibge, nome: origin.nome, uf: origin.uf, lat: origin.lat, lon: origin.lon };
 
       // Base vazia (importador nunca rodou) → resultado vazio, não erro.
@@ -328,9 +369,13 @@ export const prospectingRadarRouter = router({
         .from(radarEstablishments);
       const datasetRelease = releaseRow?.release ?? null;
       if (datasetRelease === null) {
-        return { origin: originResult, municipalitiesInRadius: nearby.length, leads: [], truncated: false, datasetRelease: null, enricherOnline };
+        return {
+          origin: originResult, municipalitiesInRadius: nearby.length, leads: [], truncated: false, datasetRelease: null, enricherOnline,
+          pagina: input.pagina, hasMore: false, ufsSemBase: ufsSemBase(ufsDoRaio, []),
+        };
       }
 
+      const ufsSemBaseRaio = ufsSemBase(ufsDoRaio, await contagemPorUfEmCache(datasetRelease, now.getTime()));
       const ibgeCodes = nearby.map((m) => m.ibge);
       const distanceByIbge = new Map(nearby.map((m) => [m.ibge, m.distanceKm]));
 
@@ -353,16 +398,23 @@ export const prospectingRadarRouter = router({
         .orderBy(sql`array_position(ARRAY[${sql.join(ibgeCodes.map((c) => sql`${c}`), sql`, `)}]::int[], ${radarEstablishments.municipioIbge})`)
         .limit(RADAR_DB_FETCH_CAP);
 
-      const withDistanceAll = rows.map((row) => ({ row, distanceKm: distanceByIbge.get(row.municipioIbge) ?? 0 }));
-      withDistanceAll.sort((a, b) => {
-        if (a.distanceKm !== b.distanceKm) return a.distanceKm - b.distanceKm;
-        const aHasPhone = a.row.telefone1 || a.row.telefone2 ? 0 : 1;
-        const bHasPhone = b.row.telefone1 || b.row.telefone2 ? 0 : 1;
-        if (aHasPhone !== bHasPhone) return aHasPhone - bHasPhone;
-        const aName = (a.row.nomeFantasia || a.row.razaoSocial).toLowerCase();
-        const bName = (b.row.nomeFantasia || b.row.razaoSocial).toLowerCase();
-        return aName.localeCompare(bName, 'pt-BR');
-      });
+      // Telefone compartilhado (provável escritório de contabilidade): uma consulta para
+      // todas as linhas buscadas; o resultado entra no ranking e em cada RadarPhone.
+      const phonesBase = new Map(rows.map((r) => [r.cnpj, establishmentPhones(r)]));
+      const contagemTel = await contarEmpresasPorTelefone(
+        [...new Set([...phonesBase.values()].flatMap((ps) => ps.map((p) => p.digits)))],
+      );
+      const phonesByRow = new Map(rows.map((r) => [r.cnpj, aplicarCompartilhado(phonesBase.get(r.cnpj)!, contagemTel)]));
+
+      const withDistanceAll = ordenarPorRanking(
+        rows.map((row) => ({ row, distanceKm: distanceByIbge.get(row.municipioIbge) ?? 0 })),
+        (w) => ({
+          distanceKm: w.distanceKm,
+          phones: phonesByRow.get(w.row.cnpj)!,
+          porte: w.row.porte,
+          nome: w.row.nomeFantasia || w.row.razaoSocial,
+        }),
+      );
 
       // Cliente ativo (já comprou): atendente NÃO recebe; admin/gerente recebem com a marca.
       const isStaffUser = ctx.user.role === 'admin' || ctx.user.role === 'manager';
@@ -383,20 +435,23 @@ export const prospectingRadarRouter = router({
       }
       const active = withDistance.filter((w) => !discardedSet.has(w.row.cnpj));
       const discardedOnes = withDistance.filter((w) => discardedSet.has(w.row.cnpj));
-      const truncated = active.length > RADAR_MAX_RESULTS;
-      const page = [...active.slice(0, RADAR_MAX_RESULTS), ...discardedOnes.slice(0, RADAR_MAX_RESULTS)];
+      const { fatia, hasMore } = paginar(active, input.pagina, RADAR_MAX_RESULTS);
+      // Descartados só vêm na primeira página.
+      const page = input.pagina === 0 ? [...fatia, ...discardedOnes.slice(0, RADAR_MAX_RESULTS)] : fatia;
+      // Há mais resultados OU o SELECT bateu no teto de linhas do banco.
+      const truncated = hasMore || rows.length >= RADAR_DB_FETCH_CAP;
+      const paginacao = { pagina: input.pagina, hasMore, ufsSemBase: ufsSemBaseRaio };
 
       // Nenhum estabelecimento casou os CNAEs no raio — evita `inArray` com
       // lista vazia (gera SQL inválido) e devolve resultado vazio direto.
       if (page.length === 0) {
-        return { origin: originResult, municipalitiesInRadius: nearby.length, leads: [], truncated: false, datasetRelease, enricherOnline };
+        return { origin: originResult, municipalitiesInRadius: nearby.length, leads: [], truncated, datasetRelease, enricherOnline, ...paginacao };
       }
 
       // Cruzamento com o CRM em lote (sem N+1): uma consulta em `tasks` e uma
       // em `task_deletion_logs` para todos os leads da página, por CNPJ e por
       // telefone.
       const cnpjs = page.map((p) => p.row.cnpj);
-      const phonesByRow = new Map(page.map((p) => [p.row.cnpj, establishmentPhones(p.row)]));
       const allPhoneDigits = [...new Set(page.flatMap((p) => phonesByRow.get(p.row.cnpj)!.map((ph) => ph.digits)))];
 
       const taskConditions: SQL[] = [inArray(tasks.cnpj, cnpjs)];
@@ -488,7 +543,7 @@ export const prospectingRadarRouter = router({
       });
 
       for (const l of leads) if (clientesAtivos.has(l.cnpj)) l.clienteAtivo = true;
-      return { origin: originResult, municipalitiesInRadius: nearby.length, leads, truncated, datasetRelease, enricherOnline };
+      return { origin: originResult, municipalitiesInRadius: nearby.length, leads, truncated, datasetRelease, enricherOnline, ...paginacao };
     }),
 
   // Polling da tela enquanto o robô da VPS enriquece os cards (Fase 2). Barato
