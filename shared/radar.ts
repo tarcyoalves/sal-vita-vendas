@@ -178,6 +178,9 @@ export interface RadarEnrichment {
   status: RadarEnrichStatus;
   updatedAt: string | null;      // ISO
   data: RadarEnrichmentData | null;
+  // Só para 'pendente' (via enrichmentStatus): quantas empresas estão na frente na fila do
+  // robô e a estimativa em minutos pelo ritmo da última hora (null = sem ritmo medido).
+  fila?: { aFrente: number; estimativaMin: number | null };
 }
 
 // Validade do resultado: depois disso uma nova busca pede de novo.

@@ -145,7 +145,13 @@ export function EnrichmentSection({
         <Skeleton className="h-3 w-3/4" />
         <Skeleton className="h-3 w-1/2" />
         <Skeleton className="h-3 w-2/3" />
-        <p className="text-[11px] text-slate-400">Procurando no Google Maps, site e redes…</p>
+        <p className="text-[11px] text-slate-400">
+          {status === 'processando'
+            ? 'O robô está procurando agora no Google Maps, site e redes…'
+            : enrichment?.fila
+              ? `Na fila do robô · ${enrichment.fila.aFrente === 0 ? 'é a próxima' : `${enrichment.fila.aFrente} empresa(s) na frente`}${enrichment.fila.estimativaMin !== null ? ` · ~${enrichment.fila.estimativaMin} min` : ' · robô sem ritmo na última hora'}`
+              : 'Na fila do robô para buscar no Google Maps, site e redes…'}
+        </p>
       </div>
     );
   } else if (status === 'falhou') {

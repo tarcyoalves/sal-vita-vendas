@@ -566,6 +566,29 @@ export const prospectingRadarRouter = router({
         if (enrichment) items[cnpj] = enrichment;
       }
 
+      // Posição na fila (mesma ordem do robô: priority DESC, requested_at ASC) e ritmo da
+      // última hora, para o cartão dizer "N na frente · ~X min" em vez de esperar sem explicação.
+      const pendentes = Object.entries(items).filter(([, e]) => e.status === 'pendente').map(([c]) => c);
+      if (pendentes.length > 0) {
+        const lista = sql`ARRAY[${sql.join(pendentes.map((c) => sql`${c}`), sql`, `)}]::text[]`;
+        const [posRes, ritmoRes] = await Promise.all([
+          db.execute(sql`
+            SELECT cnpj, pos::int AS pos FROM (
+              SELECT cnpj, row_number() OVER (ORDER BY priority DESC, requested_at ASC) - 1 AS pos
+              FROM radar_enrichment WHERE status = 'pendente'
+            ) q WHERE cnpj = ANY(${lista})
+          `),
+          db.execute(sql`SELECT count(*)::int AS n FROM radar_enrichment WHERE finished_at > now() - interval '1 hour'`),
+        ]);
+        const porHora = Number((ritmoRes.rows[0] as { n?: number } | undefined)?.n ?? 0);
+        for (const r of posRes.rows as Array<{ cnpj: string; pos: number }>) {
+          const e = items[r.cnpj];
+          if (!e) continue;
+          const aFrente = Number(r.pos);
+          e.fila = { aFrente, estimativaMin: porHora > 0 ? Math.max(1, Math.round(((aFrente + 1) / porHora) * 60)) : null };
+        }
+      }
+
       return { enricherOnline: isEnricherOnline(heartbeat, now), items };
     }),
 
