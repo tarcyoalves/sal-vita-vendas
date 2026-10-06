@@ -9,7 +9,7 @@ import { router, protectedProcedure, staffProcedure } from '../trpc';
 import { db } from '../db';
 import { spDateStr } from '../lib/tz';
 import type { RadarEstablishment } from '../db/schema';
-import { radarEstablishments, radarEnrichment, radarLeadActions, radarLeadEvents, tasks, taskDeletionLogs, emailSuppressions, tags, fatOrders, clients, sellers } from '../db/schema';
+import { appSettings, radarEstablishments, radarEnrichment, radarLeadActions, radarLeadEvents, tasks, taskDeletionLogs, emailSuppressions, tags, fatOrders, clients, sellers } from '../db/schema';
 import { userTaskFilter } from './tasks';
 import { cnpjsDeClientesAtivos } from '../lib/radar/clientesAtivos';
 import { phoneOfTask } from '../../shared/phone';
@@ -207,7 +207,33 @@ async function requireEstablishment(cnpj: string) {
   return row;
 }
 
+// Modelo de mensagem de contato de cada atendente (chave/valor pequeno em app_settings;
+// sem tabela nem coluna nova, então não mexe em migração).
+const MSG_TEMPLATE_MAX = 1000;
+const msgTemplateKey = (userId: number) => `radar_msg_template:${userId}`;
+
 export const prospectingRadarRouter = router({
+  messageTemplate: protectedProcedure.query(async ({ ctx }) => {
+    const [row] = await db.select({ value: appSettings.value }).from(appSettings)
+      .where(eq(appSettings.key, msgTemplateKey(ctx.user.id)));
+    return { template: row?.value ?? null };
+  }),
+
+  // Texto vazio/null volta ao padrão da empresa.
+  setMessageTemplate: protectedProcedure
+    .input(z.object({ template: z.string().max(MSG_TEMPLATE_MAX).nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      const key = msgTemplateKey(ctx.user.id);
+      const template = input.template?.trim() ?? '';
+      if (!template) {
+        await db.delete(appSettings).where(eq(appSettings.key, key));
+        return { template: null };
+      }
+      await db.insert(appSettings).values({ key, value: template })
+        .onConflictDoUpdate({ target: appSettings.key, set: { value: template, updatedAt: new Date() } });
+      return { template };
+    }),
+
   // Autocomplete da cidade da carga. Sempre devolve o código IBGE: há nomes
   // repetidos entre estados (Barracão existe no PR e no RS).
   municipalities: protectedProcedure

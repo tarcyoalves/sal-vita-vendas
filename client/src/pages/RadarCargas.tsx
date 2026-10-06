@@ -27,6 +27,7 @@ import {
 import { CityAutocomplete } from '../components/radar/CityAutocomplete';
 import { SegmentChips } from '../components/radar/SegmentChips';
 import { LeadCard } from '../components/radar/LeadCard';
+import { MessageTemplateDialog } from '../components/radar/MessageTemplateDialog';
 import { BaseStatusCard } from '../components/radar/BaseStatusCard';
 import { CarteiraList } from '../components/radar/CarteiraList';
 import { enrichmentNeedsPolling } from '../components/radar/EnrichmentSection';
@@ -49,6 +50,7 @@ import {
   segmentsPresent,
   serializeState,
   sortLeads,
+  sortByContactedDesc,
   type LeadFilterKey,
   type LeadSort,
 } from '../components/radar/buscadorLogic';
@@ -362,6 +364,9 @@ export default function RadarCargas() {
 
   const filteredLeads = useMemo(() => {
     const byBucket = leadFilter === 'all' ? scopedLeads : scopedLeads.filter((l) => bucketFor(l) === leadFilter);
+    // Contatados seguem a ordem cronológica dos contatos (mais recente no topo),
+    // para o acompanhamento não depender da distância nem do acaso.
+    if (leadFilter === 'contatados') return sortByContactedDesc(byBucket, (c) => effectiveActivity(c).contactedAt);
     return sortLeads(byBucket, sort);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopedLeads, leadFilter, sort, activityByCnpj]);
@@ -369,8 +374,8 @@ export default function RadarCargas() {
   // Por distância os cartões ficam agrupados por município; nas outras
   // ordenações a lista é corrida (agrupar quebraria a ordem escolhida).
   const groups = useMemo(
-    () => (sort === 'distancia' ? groupByMunicipio(filteredLeads) : null),
-    [filteredLeads, sort],
+    () => (sort === 'distancia' && leadFilter !== 'contatados' ? groupByMunicipio(filteredLeads) : null),
+    [filteredLeads, sort, leadFilter],
   );
 
   const toolsActive = textFilter.trim() !== '' || segmentFilter.length > 0;
@@ -496,7 +501,10 @@ export default function RadarCargas() {
       {/* ── Busca ── */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{mode === 'carteira' ? 'Buscar na minha carteira' : 'Buscar empresas'}</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-base">{mode === 'carteira' ? 'Buscar na minha carteira' : 'Buscar empresas'}</CardTitle>
+            <MessageTemplateDialog />
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -881,6 +889,9 @@ export default function RadarCargas() {
                 </button>
               ))}
             </div>
+            {leadFilter === 'contatados' && (
+              <p className="text-[11px] text-slate-500">Do contato mais recente para o mais antigo.</p>
+            )}
           </div>
 
           {leads.length === 0 ? (

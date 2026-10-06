@@ -4,6 +4,7 @@ import { Link } from 'wouter';
 import { Button } from '../ui/button';
 import { useAuth } from '../../_core/hooks/useAuth';
 import { defaultContactMessage } from './contactMessage';
+import { useContactTemplate } from './useContactTemplate';
 import { formatCnpj, waMeLink, type RadarCarteiraItem, type RadarCarteiraResult } from '../../../../shared/radar';
 
 type Filtro = 'todos' | 'compraram' | 'sem_compra';
@@ -33,7 +34,8 @@ export function CarteiraList({
   }), [result.itens]);
 
   const lista = result.itens.filter((i) => (filtro === 'todos' ? true : filtro === 'compraram' ? i.faturados > 0 : i.faturados === 0));
-  const mensagem = defaultContactMessage({ attendantName: user?.name ?? 'nossa equipe', cityLabel: originLabel, bags });
+  const contactTemplate = useContactTemplate();
+  const mensagem = defaultContactMessage({ attendantName: user?.name ?? 'nossa equipe', cityLabel: originLabel, bags, template: contactTemplate });
 
   return (
     <div className="space-y-3">

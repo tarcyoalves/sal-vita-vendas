@@ -82,6 +82,18 @@ export function sortLeads(leads: RadarLead[], sort: LeadSort): RadarLead[] {
   return indexed.map((x) => x.l);
 }
 
+/** Contatados: o contato mais recente primeiro (quem acabou de ser contatado abre a lista). Empate mantém a ordem recebida. */
+export function sortByContactedDesc(leads: RadarLead[], contactedAt: (cnpj: string) => string | null): RadarLead[] {
+  const indexed = leads.map((l, i) => ({ l, i, t: Date.parse(contactedAt(l.cnpj) ?? '') }));
+  indexed.sort((a, b) => {
+    const ta = Number.isNaN(a.t) ? -Infinity : a.t;
+    const tb = Number.isNaN(b.t) ? -Infinity : b.t;
+    if (ta !== tb) return tb > ta ? 1 : -1;
+    return a.i - b.i;
+  });
+  return indexed.map((x) => x.l);
+}
+
 // ── Agrupamento por município ───────────────────────────────────────────────
 export interface MunicipioGroup {
   ibge: number;

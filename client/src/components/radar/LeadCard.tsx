@@ -40,6 +40,7 @@ import { EnrichmentSection, formatFoundDigits } from './EnrichmentSection';
 import { buildPhoneOptions, defaultPhoneDigits, isTelefoneCompartilhado, normalizePhoneDigits, phoneKindLabel, sharedPhoneLabel } from './phoneOptions';
 import { companyAgeLabel, daysAgoLabel, porteLabel } from './leadCardInfo';
 import { defaultContactMessage } from './contactMessage';
+import { useContactTemplate } from './useContactTemplate';
 
 const SEGMENT_LABELS = new Map(RADAR_SEGMENTS.map((s) => [s.key, s.label]));
 
@@ -145,9 +146,14 @@ export function LeadCard({
   }, [phoneOptions]);
 
   // ── Mensagem: rascunho da IA (se pedido) ou padrão neutro montado aqui ──
-  const [message, setMessage] = useState(() =>
-    defaultContactMessage({ attendantName: user?.name ?? 'nossa equipe', cityLabel: originLabel, bags }),
+  const contactTemplate = useContactTemplate();
+  const defaultMessage = useMemo(
+    () => defaultContactMessage({ attendantName: user?.name ?? 'nossa equipe', cityLabel: originLabel, bags, template: contactTemplate }),
+    [user?.name, originLabel, bags, contactTemplate],
   );
+  // Texto editado à mão ou gerado pela IA vence o padrão; null = usa o padrão (que acompanha o modelo salvo).
+  const [messageOverride, setMessage] = useState<string | null>(null);
+  const message = messageOverride ?? defaultMessage;
   const [messageOpen, setMessageOpen] = useState(false);
 
   const verifyMutation = trpc.prospectingRadar.verifyCnpj.useMutation({
