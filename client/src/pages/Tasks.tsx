@@ -27,7 +27,7 @@ import { useFatStore } from '../lib/faturamento/store';
 import { totalPedido, formatBRL } from '../lib/faturamento/calc';
 import type { Pedido } from '../lib/faturamento/types';
 import { MultiSelectFilter } from '../components/tasks/MultiSelectFilter';
-import { FILTER_ALL, FILTER_ME, FILTER_NONE, applyAssigneeFilter, buildMyIdentity, otherAttendantNames } from '../lib/myTasks';
+import { FILTER_ALL, FILTER_ME, FILTER_NONE, applyAssigneeFilter, assignableNames, buildMyIdentity, otherAttendantNames } from '../lib/myTasks';
 import { FilterPanel, FilterSection } from '../components/tasks/FilterPanel';
 import { extractLocation, type TaskLocation } from '../lib/tasks/location';
 import { phoneOfTask } from '../../../shared/phone';
@@ -267,6 +267,7 @@ export default function Tasks() {
   const { data: attendants = [] } = trpc.sellers.list.useQuery();
   const me = useMemo(() => buildMyIdentity(user, attendants as any[]), [user, attendants]);
   const otherAttendants = useMemo(() => otherAttendantNames(attendants as any[], me), [attendants, me]);
+  const assignOptions = useMemo(() => assignableNames(user, attendants as any[], me), [user, attendants, me]);
   // staleTime: avoids redundant server calls; session/profile rarely change
   const { data: workSession } = trpc.workSessions.current.useQuery(undefined, { enabled: !isAdmin, staleTime: 60_000 });
   const { data: sellerProfile } = trpc.sellers.myProfile.useQuery(undefined, { enabled: !isAdmin, staleTime: 300_000 });
@@ -1395,8 +1396,7 @@ export default function Tasks() {
             <>
               <select value={bulkRepresentative} onChange={(e) => setBulkRepresentative(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
                 <option value="">Atendente...</option>
-                {user?.name && <option value={user.name}>{user.name}</option>}
-                {attendants.map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
+                {assignOptions.map((name) => <option key={name} value={name}>{name}</option>)}
               </select>
               <Button size="sm" onClick={handleBulkAssign} variant="outline">Designar ({selectedTasks.size})</Button>
               <Button size="sm" variant="outline" onClick={() => setCampaignPickerTaskIds(Array.from(selectedTasks))}>Campanha ({selectedTasks.size})</Button>
@@ -1436,8 +1436,7 @@ export default function Tasks() {
                 </div>
                 <select value={selectedRepresentative} onChange={(e) => setSelectedRepresentative(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
                   <option value="">Selecionar atendente...</option>
-                  {user?.name && <option value={user.name}>{user.name}</option>}
-                  {attendants.map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
+                  {assignOptions.map((name) => <option key={name} value={name}>{name}</option>)}
                 </select>
                 <Button onClick={handleImportTasks} className="w-full" disabled={importLoading}>
                   {importLoading ? `Importando...` : `Importar ${importedTasks.length} tarefas`}
@@ -1572,8 +1571,7 @@ export default function Tasks() {
                   <label className="block text-xs font-medium mb-1 text-gray-600">Designar para</label>
                   <select value={formData.assignedTo} onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })} className="w-full px-2 py-1.5 border rounded-lg text-sm">
                     <option value="">Nenhum</option>
-                    {user?.name && <option value={user.name}>{user.name}</option>}
-                    {attendants.map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
+                    {assignOptions.map((name) => <option key={name} value={name}>{name}</option>)}
                   </select>
                 </div>
               )}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FILTER_ALL, FILTER_ME, FILTER_NONE, applyAssigneeFilter, buildMyIdentity, isMine, otherAttendantNames } from '../client/src/lib/myTasks';
+import { FILTER_ALL, FILTER_ME, FILTER_NONE, applyAssigneeFilter, assignableNames, buildMyIdentity, isMine, otherAttendantNames } from '../client/src/lib/myTasks';
 
 const user = { id: 1, name: 'Admin Sal Vita', email: 'tarcyo@exemplo.com' };
 const attendants = [
@@ -40,5 +40,16 @@ describe('minhas tarefas (admin = atendente)', () => {
   it('sem usuário logado não há "minhas"', () => {
     const vazio = buildMyIdentity(null, attendants);
     expect(isMine({ assignedTo: 'Tarcyo', userId: 1 }, vazio)).toBe(false);
+  });
+});
+
+describe('opções de designar para', () => {
+  it('eu uma vez só (nome do meu atendente) e depois os outros', () => {
+    expect(assignableNames(user, attendants, me)).toEqual(['Tarcyo', 'Maria']);
+  });
+  it('sem registro de atendente, usa o nome da conta e não duplica homônimo', () => {
+    const u = { id: 9, name: 'Tarcyo Alves', email: 'x@y.com' };
+    const lista = [{ name: 'Tarcyo Alves', userId: null, email: null }, { name: 'ANALICE', userId: 3, email: null }];
+    expect(assignableNames(u, lista, buildMyIdentity(u, lista))).toEqual(['Tarcyo Alves', 'ANALICE']);
   });
 });

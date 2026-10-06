@@ -13,3 +13,11 @@
   é no cliente).
 - Não mexi nos recursos exclusivos de atendente (meta diária, sessão de trabalho).
 - Testes: tests/my-tasks.test.ts (+6). Gates: check ok, 420 testes.
+
+## Complemento (mesmo dia): nome duplicado nos menus de designar
+- Print do dono: "Tarcyo Alves" aparecia 2x no menu "Atendente..." (designação em lote).
+  Mesmo padrão em 3 menus de Tasks.tsx (lote, importação CSV, modal "Designar para"):
+  conta admin + registro de atendente homônimo.
+- `assignableNames` (myTasks.ts): eu uma vez só (nome do meu atendente, senão o da
+  conta) + os outros sem repetir. Os 3 menus usam essa lista.
+- Testes: 422.

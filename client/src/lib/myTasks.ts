@@ -56,3 +56,14 @@ export function applyAssigneeFilter<T extends TaskLike>(tasks: T[], filter: stri
   if (filter === FILTER_NONE) return tasks.filter((t) => !t.assignedTo || t.assignedTo.trim() === '');
   return tasks.filter((t) => norm(t.assignedTo) === norm(filter));
 }
+
+/**
+ * Opções de "designar para": eu primeiro (uma vez só) e depois os outros, sem
+ * repetir. Se tenho registro de atendente, uso o nome dele (é por ele que
+ * relatórios e metas contam); senão, o nome da conta.
+ */
+export function assignableNames(user: UserLike | null | undefined, attendants: AttendantLike[], me: MyIdentity): string[] {
+  const meuAtendente = user ? attendants.find((a) => a.userId != null && a.userId === user.id && a.name?.trim()) : undefined;
+  const meuNome = meuAtendente?.name?.trim() || user?.name?.trim() || '';
+  return [...(meuNome ? [meuNome] : []), ...otherAttendantNames(attendants, me)];
+}
