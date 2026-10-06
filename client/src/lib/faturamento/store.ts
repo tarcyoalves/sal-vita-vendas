@@ -245,7 +245,7 @@ export const pedidos = {
     };
     mirror = { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === id ? faturado : p)) };
     emit();
-    api.faturamento.upsertPedido.mutate(faturado).catch(onWriteError);
+    api.faturamento.upsertPedido.mutate({ ...faturado, acao: 'faturar' }).catch(onWriteError);
     return faturado;
   },
   // Desfaz o faturamento: volta o pedido para o pipeline como estimado.
@@ -272,7 +272,7 @@ export const pedidos = {
     };
     mirror = { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === id ? estimado : p)) };
     emit();
-    api.faturamento.upsertPedido.mutate(estimado).catch(onWriteError);
+    api.faturamento.upsertPedido.mutate({ ...estimado, acao: 'desfazer' }).catch(onWriteError);
     return estimado;
   },
   remove(id: string, reason: string): void {

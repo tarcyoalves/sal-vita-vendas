@@ -12,3 +12,18 @@
   - client/src/pages/Tasks.tsx (ids em lote <= 500; clique duplo; lembrete nativo)
   - client/src/components/ui/dialog.tsx, client/src/components/AppShell.tsx (rolagem de diálogos no celular)
 - Regras do SMBI/faturamento (CRM é espelho) preservadas; Hermes: não tocar nestes arquivos até o registro.
+
+## Concluído (Lote 1)
+- c33fbd5: segurança — lote tRPC não contorna mais os limitadores; atendente inativo e
+  mustChangePassword valem no servidor; ferramentas de IA só as oferecidas ao papel;
+  tv.dashboard só staff; enroll/engagement respeitam dono; webhook Resend do CRM alcançável.
+- Faturamento: atendente não se aprova nem escolhe comissão; save com cache velho não
+  desfaz espelho do SMBI (mergeProtegidoPeloEspelho; Faturar/Desfazer continuam via `acao`);
+  edição de pedido mantém comissão congelada; prévia usa comissaoPedido; parseBRL com milhar;
+  validações min/max; atendente não remove pedido faturado/ligado ao SMBI.
+- Tarefas: contato só conta se a nota mudou; excluir lead cancela sequências; ids em lote <= 500;
+  busca adiada; lembrete nativo reagenda e usa service worker; salvar sem clique duplo.
+- Mobile: DialogContent com max-h/overflow; modais de senha do AppShell; h-dvh.
+- Efeito para o Hermes: a tela não sobrescreve mais status/itens/comissão/frete de pedido já
+  espelhado pelo SMBI; só ações `faturar`/`desfazer` explícitas.
+- Testes: 452 (+23 em tests/faturamento-protecao.test.ts, +sec-guards, +resend). Gates ok.

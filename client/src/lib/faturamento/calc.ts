@@ -33,12 +33,14 @@ export function pesoBrutoTotalItens(itens: ItemPedido[]): number {
 // somado dos movsais), proporcionalmente ao pedido. Não altera o pedido nem a nota: é só a
 // conta. Se o pedido for editado para a quantidade faturada, o fator volta a 1 (sem dupla correção).
 // Pedido não faturado, ou faturado sem peso no espelho, não muda. O peso efetivo é EXATAMENTE o do SMBI.
-function pesoFaturadoSmbiKg(pedido: Pedido): number {
+type PedidoParaPeso = Pick<Pedido, 'status' | 'smbiEspelhoFiscal' | 'itens'>;
+
+function pesoFaturadoSmbiKg(pedido: PedidoParaPeso): number {
   if (pedido.status !== 'faturado') return 0;
   return Number(pedido.smbiEspelhoFiscal?.pesoFaturadoKg) || 0;
 }
 
-export function fatorPesoFaturado(pedido: Pedido): number {
+export function fatorPesoFaturado(pedido: PedidoParaPeso): number {
   const faturado = pesoFaturadoSmbiKg(pedido);
   const atual = pesoTotalItens(pedido.itens);
   if (faturado <= 0 || atual <= 0) return 1;
@@ -68,7 +70,7 @@ export function notaPesoFaturado(pedido: Pedido): string | null {
 // Comissão por item: usa a % fixa do produto (snapshot em item.comissaoFixaPct)
 // quando existir, senão cai na % do atendente congelada em pedido.comissaoPct.
 // Itens antigos (sem comissaoFixaPct) mantêm exatamente o comportamento anterior.
-export function comissaoPedido(pedido: Pedido): number {
+export function comissaoPedido(pedido: PedidoParaPeso & Pick<Pedido, 'comissaoPct'>): number {
   const pctPadrao = Number(pedido.comissaoPct) || 0;
   const soma = pedido.itens.reduce((s, it) => {
     const pct = it.comissaoFixaPct ?? pctPadrao;
@@ -283,10 +285,16 @@ export function parseBRL(input: string): number {
   if (typeof input === 'number') return input;
   const s = String(input).replace(/[^\d.,-]/g, '').trim();
   if (!s) return 0;
+  // Valor negativo nunca é válido nestes campos (preço, peso, %): devolve 0.
+  if (s.includes('-')) return 0;
   // Se tem vírgula, ela é o separador decimal (padrão BR): remove pontos de milhar.
+  // Sem vírgula, ponto(s) seguido(s) de exatamente 3 dígitos é milhar ("1.500" = 1500);
+  // ponto com outra quantidade de dígitos é decimal ("1.5", "6.00").
   let normalized: string;
   if (s.includes(',')) {
     normalized = s.replace(/\./g, '').replace(',', '.');
+  } else if (/^[1-9]\d{0,2}(\.\d{3})+$/.test(s)) {
+    normalized = s.replace(/\./g, '');
   } else {
     normalized = s;
   }

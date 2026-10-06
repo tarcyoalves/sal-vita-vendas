@@ -457,7 +457,7 @@ export default function AppShell({ children }: AppShellProps) {
   );
 
   return (
-    <div className="flex h-screen bg-slate-50/50 overflow-hidden">
+    <div className="flex h-dvh bg-slate-50/50 overflow-hidden">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-60 flex-col bg-[#081F47] flex-shrink-0 border-r border-slate-800">
         <SidebarContent />
@@ -564,8 +564,8 @@ export default function AppShell({ children }: AppShellProps) {
 
       {/* ── Force password change modal (first access) — blocks everything ── */}
       {!!user && user.mustChangePassword && (
-        <div className="fixed inset-0 z-[300] bg-brand-deep flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm">
+        <div className="fixed inset-0 z-[300] bg-brand-deep flex items-start sm:items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm max-h-[90dvh] overflow-y-auto">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 378" style={{ height: "56px", width: "auto" }} className="mx-auto mb-5" aria-label="Sal Vita">
               <defs><clipPath id="oval-m1"><ellipse cx="250" cy="187" rx="228" ry="164"/></clipPath></defs>
               <ellipse cx="250" cy="187" rx="228" ry="164" fill="white"/>
@@ -684,8 +684,8 @@ export default function AppShell({ children }: AppShellProps) {
 
       {/* ── Change Password Modal ── */}
       {showChangePwd && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+        <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90dvh] overflow-y-auto">
             <div className="p-6 border-b">
               <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                 <KeyRound size={18} className="text-brand" />

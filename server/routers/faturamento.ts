@@ -8,6 +8,7 @@ import { sendEmail } from '../email/resend';
 import { renderSignature } from '../email/marketing';
 import { gerarPedidoPdf } from '../pdf/pedidoPdf';
 import { resolveRobotOwnedFields, roboSemSinal } from '../lib/smbi';
+import { mergeProtegidoPeloEspelho, atendentePodeRemover } from '../lib/faturamentoProtecao';
 import {
   parseNumerosMovsai, PATCH_DESVINCULAR, movsaisLigados, resolverFaturamento, faturamentoDoVinculo,
   totalAcordadoDoPedido, pesoLiquidoDoPedido,
@@ -30,9 +31,9 @@ const itemPedidoSchema = z.object({
   id: z.string(),
   produtoId: z.string().nullable(),
   descricao: z.string(),
-  quantidade: z.number(),
-  pesoKg: z.number(),
-  valorUnitario: z.number(),
+  quantidade: z.number().nonnegative(),
+  pesoKg: z.number().nonnegative(),
+  valorUnitario: z.number().nonnegative(),
   pesoBrutoKg: z.number().optional().default(0),
   comissaoFixaPct: z.number().nullable().optional().default(null),
   isentoFrete: z.boolean().optional().default(false),
@@ -97,6 +98,12 @@ export const pedidoSchema = z.object({
 // admin — nunca por um atendente salvando o pedido pela tela. upsertPedido e
 // importLocal impedem que um payload de UI (ou um mirror desatualizado no
 // cliente) apague ou reescreva o vínculo com o ERP.
+
+// % de comissão cadastrada para o atendente (0 se não houver): pedido novo de atendente nasce com ela.
+async function comissaoDoVendedor(sellerId: number): Promise<number> {
+  const [row] = await db.select({ pct: fatCommissions.pct }).from(fatCommissions).where(eq(fatCommissions.sellerId, sellerId));
+  return row?.pct ?? 0;
+}
 
 async function sellerIdForUser(userId: number): Promise<number | null> {
   const [row] = await db
@@ -163,21 +170,14 @@ export const faturamentoRouter = router({
 
   // ── Pedidos ────────────────────────────────────────────────────────────────
   upsertPedido: protectedProcedure
-    .input(pedidoSchema)
-    .mutation(async ({ ctx, input }) => {
+    // `acao`: o store marca "Faturar"/"Desfazer faturamento" (decisão humana); sem ela, um pedido
+    // espelhado do SMBI não tem status/itens/comissão sobrescritos (cache velho da tela).
+    .input(pedidoSchema.extend({ acao: z.enum(['faturar', 'desfazer']).optional() }))
+    .mutation(async ({ ctx, input: { acao, ...input } }) => {
       const values = { ...input };
       const isAdmin = ctx.user.role === 'admin';
 
-      const [existing] = await db
-        .select({
-          sellerId: fatOrders.sellerId,
-          smbiMovsaiId: fatOrders.smbiMovsaiId,
-          numeroNfe: fatOrders.numeroNfe,
-          numeroCte: fatOrders.numeroCte,
-          comissaoComercialProtegida: fatOrders.comissaoComercialProtegida,
-        })
-        .from(fatOrders)
-        .where(eq(fatOrders.id, input.id));
+      const [existing] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.id));
 
       if (ctx.user.role !== 'admin' && ctx.user.role !== 'manager') {
         const mySellerId = await sellerIdForUser(ctx.user.id);
@@ -189,6 +189,21 @@ export const faturamentoRouter = router({
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Pedido de outro atendente' });
         }
         values.sellerId = mySellerId;
+        // Atendente nunca se aprova nem escolhe a própria comissão: a % de pedido novo vem do
+        // cadastro (fat_commissions) e a de pedido existente é a já gravada (congelada).
+        // Status/faturadoEm/valorPago de pedido existente continuam livres: "Faturar" e
+        // "Desfazer" são ações legítimas do atendente (AttendantBilling). Pedido NOVO nunca
+        // nasce faturado pela tela.
+        values.aprovadoEm = null;
+        values.aprovadoPor = null;
+        if (existing) {
+          values.comissaoPct = existing.comissaoPct;
+        } else {
+          values.comissaoPct = await comissaoDoVendedor(mySellerId);
+          values.status = 'estimado';
+          values.faturadoEm = null;
+          values.valorPago = 0;
+        }
       }
 
       // Campos do robô/admin: a tela NUNCA escreve smbiMovsaiId/numeroNfe/numeroCte (só o
@@ -196,6 +211,8 @@ export const faturamentoRouter = router({
       // desatualizado mandaria null e devolveria o pedido à fila do robô (duplicata no ERP).
       // Ver resolveRobotOwnedFields em server/lib/smbi.ts.
       Object.assign(values, resolveRobotOwnedFields(existing, input, isAdmin));
+      // Espelho do SMBI: o save da tela não desfaz o que o robô já gravou.
+      Object.assign(values, mergeProtegidoPeloEspelho(existing, values, acao));
 
       // Stamped only at creation; the update `set` below deliberately excludes
       // createdByUserId/createdByRole/aprovadoEm/aprovadoPor so later edits
@@ -261,6 +278,12 @@ export const faturamentoRouter = router({
         const mySellerId = await sellerIdForUser(ctx.user.id);
         if (existing.sellerId !== mySellerId) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Pedido de outro atendente' });
+        }
+        if (!atendentePodeRemover(existing)) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Pedido faturado ou ligado ao SMBI só pode ser excluído por administrador ou gerente.',
+          });
         }
       }
 
@@ -627,7 +650,7 @@ ${assinatura ? `<div style="margin-top:24px;padding-top:16px;border-top:1px soli
 
   // ── Comissões (por atendente — admin) ──────────────────────────────────────
   setComissao: staffProcedure
-    .input(z.object({ sellerId: z.number(), pct: z.number() }))
+    .input(z.object({ sellerId: z.number(), pct: z.number().min(0).max(100) }))
     .mutation(async ({ input }) => {
       await db
         .insert(fatCommissions)
@@ -651,6 +674,7 @@ ${assinatura ? `<div style="margin-top:24px;padding-top:16px;border-top:1px soli
     .mutation(async ({ ctx, input }) => {
       const isAdmin = ctx.user.role === 'admin' || ctx.user.role === 'manager';
       const mySellerId = isAdmin ? null : await sellerIdForUser(ctx.user.id);
+      const pctDoVendedor = mySellerId != null ? await comissaoDoVendedor(mySellerId) : 0;
       let produtos = 0, pedidos = 0, comissoes = 0;
 
       if (isAdmin && input.produtos?.length) {
@@ -674,6 +698,12 @@ ${assinatura ? `<div style="margin-top:24px;padding-top:16px;border-top:1px soli
             p.numeroNfe = null;
             p.numeroCte = null;
             p.comissaoComercialProtegida = null;
+            // Autoria e aprovação são do servidor; a % vem do cadastro, não do localStorage.
+            p.createdByUserId = ctx.user.id;
+            p.createdByRole = ctx.user.role;
+            p.aprovadoEm = null;
+            p.aprovadoPor = null;
+            p.comissaoPct = pctDoVendedor;
           }
           try {
             await db.insert(fatOrders).values(p).onConflictDoNothing({ target: fatOrders.id });

@@ -6,6 +6,7 @@ import { db } from '../db';
 import { tasks, sellers, taskDeletionLogs } from '../db/schema';
 import { runTriggerNow, cancelAllEnrollments } from '../email/automations';
 import { normalizeBrPhone, phoneOfTask } from '../../shared/phone';
+import { isNewContact } from '../lib/taskNotes';
 
 // Tag aplicada/removida automaticamente junto com tasks.emailConfirmed (ver
 // confirmEmail e update abaixo), para permitir filtrar tarefas por confirmação
@@ -287,14 +288,15 @@ export const tasksRouter = router({
         }
         // emailConfirmed === undefined → e-mail inalterado: não mexe na confirmação.
       }
-      if (data.notes && data.notes.trim().length > 15) {
-        setData.lastContactedAt = now;
-        setData.contactCount = sql`${tasks.contactCount} + 1`;
-      }
-      // Telefone digitado depois da criação (título/anotações): preenche a coluna `phone` se estiver
-      // vazia, para o Buscador, o dedupe e o botão de WhatsApp enxergarem o número.
+      // Uma leitura só do registro atual: serve ao contato (notas mudaram?) e ao telefone.
       if (data.title !== undefined || data.notes !== undefined) {
         const [cur] = await db.select({ phone: tasks.phone, title: tasks.title, notes: tasks.notes }).from(tasks).where(ownerFilter).limit(1);
+        if (cur && data.notes !== undefined && isNewContact(cur.notes, data.notes)) {
+          setData.lastContactedAt = now;
+          setData.contactCount = sql`${tasks.contactCount} + 1`;
+        }
+        // Telefone digitado depois da criação (título/anotações): preenche a coluna `phone` se estiver
+        // vazia, para o Buscador, o dedupe e o botão de WhatsApp enxergarem o número.
         if (cur && !normalizeBrPhone(cur.phone)) {
           const found = phoneOfTask({ title: data.title ?? cur.title, notes: data.notes ?? cur.notes });
           if (found) setData.phone = found;
@@ -480,7 +482,7 @@ export const tasksRouter = router({
         ? eq(tasks.id, input.id)
         : and(eq(tasks.id, input.id), await userTaskFilter(ctx.user.id, ctx.user.name ?? ''));
 
-      const [task] = await db.select({ id: tasks.id, title: tasks.title, notes: tasks.notes, cnpj: tasks.cnpj, phone: tasks.phone })
+      const [task] = await db.select({ id: tasks.id, title: tasks.title, notes: tasks.notes, cnpj: tasks.cnpj, phone: tasks.phone, email: tasks.email })
         .from(tasks).where(ownerFilter).limit(1);
       if (!task) throw new TRPCError({ code: 'NOT_FOUND', message: 'Tarefa não encontrada ou sem permissão' });
 
@@ -496,6 +498,15 @@ export const tasksRouter = router({
         phone: task.phone,
       });
 
+      // Lead excluído não pode continuar recebendo sequência de e-mail (mesmo cancelamento do update).
+      if (task.email) {
+        try {
+          await cancelAllEnrollments(task.email);
+        } catch (err) {
+          console.error('[tasks.delete] cancelAllEnrollments failed:', err);
+        }
+      }
+
       await db.delete(tasks).where(eq(tasks.id, task.id));
       return { ok: true };
     }),
@@ -510,7 +521,7 @@ export const tasksRouter = router({
         ? inArray(tasks.id, input.ids)
         : and(inArray(tasks.id, input.ids), await userTaskFilter(ctx.user.id, ctx.user.name ?? ''));
 
-      const found = await db.select({ id: tasks.id, title: tasks.title, notes: tasks.notes, cnpj: tasks.cnpj, phone: tasks.phone })
+      const found = await db.select({ id: tasks.id, title: tasks.title, notes: tasks.notes, cnpj: tasks.cnpj, phone: tasks.phone, email: tasks.email })
         .from(tasks).where(ownerFilter);
       if (found.length === 0) throw new TRPCError({ code: 'NOT_FOUND', message: 'Nenhuma tarefa encontrada ou sem permissão' });
 
@@ -525,6 +536,15 @@ export const tasksRouter = router({
         cnpj: t.cnpj,
         phone: t.phone,
       })));
+
+      const emails = [...new Set(found.map(t => t.email?.toLowerCase().trim()).filter((e): e is string => !!e))];
+      for (const email of emails) {
+        try {
+          await cancelAllEnrollments(email);
+        } catch (err) {
+          console.error('[tasks.deleteMany] cancelAllEnrollments failed:', err);
+        }
+      }
 
       await db.delete(tasks).where(inArray(tasks.id, found.map(t => t.id)));
       return { ok: true, count: found.length };

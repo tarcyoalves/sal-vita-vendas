@@ -13,7 +13,7 @@ import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { OrderItemsEditor } from './OrderItemsEditor';
 import { useFatStore } from '../../lib/faturamento/store';
-import { totalItens, formatBRL, parseBRL, dataInputLocal, hojeInputLocal } from '../../lib/faturamento/calc';
+import { totalItens, comissaoPedido, formatBRL, parseBRL, dataInputLocal, hojeInputLocal } from '../../lib/faturamento/calc';
 import { SMBI_CONDICOES_PAGAMENTO, condicaoPorTexto } from '../../../../shared/smbiCondicoes';
 import { type Pedido, type ItemPedido } from '@/lib/faturamento/types';
 
@@ -155,9 +155,18 @@ export function OrderDialog({
     }
   }, [open, existingPedidoId, task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const comissaoPct = seller ? (comissoes[seller.id] ?? 0) : 0;
+  // A % é congelada no pedido (calc.ts): editar um pedido já gravado mantém a dele; só pedido
+  // novo usa a % atual do atendente.
+  const gravado = effectiveId ? actions.pedidos.get(effectiveId) : null;
+  const comissaoPct = gravado ? gravado.comissaoPct : seller ? (comissoes[seller.id] ?? 0) : 0;
   const total = useMemo(() => totalItens(itens), [itens]);
-  const comissaoValor = total * comissaoPct / 100;
+  // Mesma conta do resto do sistema (% fixa por item e peso faturado).
+  const comissaoValor = comissaoPedido({
+    itens,
+    comissaoPct,
+    status: gravado?.status ?? 'estimado',
+    smbiEspelhoFiscal: gravado?.smbiEspelhoFiscal ?? null,
+  });
 
   const handleSave = () => {
     if (!clienteNome.trim()) {

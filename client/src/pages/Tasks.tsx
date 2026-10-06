@@ -4,7 +4,7 @@ import { trpc } from '../lib/trpc';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef, useDeferredValue } from "react";
 import { toast } from "sonner";
 import {
   Search, X, Bell, Phone, Timer, CheckCircle2, XCircle, Clock, Flag, PartyPopper, Flame, Mail,
@@ -218,6 +218,8 @@ export default function Tasks() {
   // o que fazia o TypeScript tratar esses dois ramos do filtro como inalcançáveis.
   const [reminderTab, setReminderTab] = useState<ReminderTab>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  // A busca filtra milhares de leads e dispara queries: adia o filtro para não refazer a cada tecla.
+  const deferredSearch = useDeferredValue(searchQuery);
   const [importedTasks, setImportedTasks] = useState<{ title: string; description: string; notes: string; cnpj?: string; phone?: string }[]>([]);
   const [importSkipped, setImportSkipped] = useState(0);
   const [selectedRepresentative, setSelectedRepresentative] = useState("");
@@ -443,16 +445,23 @@ export default function Tasks() {
 
       scheduledRemindersRef.current.add(t.id);
       timers.push(setTimeout(() => {
-        new Notification('Lembrete Sal Vita', {
-          body: t.title,
-          icon: '/favicon.ico',
-          tag: `reminder-${t.id}`,
-        });
+        const opts = { body: t.title, icon: '/favicon.ico', tag: `reminder-${t.id}` };
+        // Android/PWA só mostra notificação pelo service worker; `new Notification` lança lá.
+        const nativa = () => { try { new Notification('Lembrete Sal Vita', opts); } catch { /* sem suporte */ } };
+        if (navigator.serviceWorker?.controller) {
+          navigator.serviceWorker.ready.then((r) => r.showNotification('Lembrete Sal Vita', opts)).catch(nativa);
+        } else {
+          nativa();
+        }
         scheduledRemindersRef.current.delete(t.id);
       }, delay));
     });
 
-    return () => timers.forEach(clearTimeout);
+    return () => {
+      timers.forEach(clearTimeout);
+      // Timers cancelados: o próximo efeito precisa poder reagendar os mesmos ids.
+      scheduledRemindersRef.current.clear();
+    };
   }, [tasks, isAdmin]);
 
   // ─── 2. ALERTA DE OCIOSIDADE ───────────────────────────────────────────────
@@ -521,7 +530,11 @@ export default function Tasks() {
     }
   }, []);
 
+  const savingRef = useRef(false);
+  const saving = createMutation.isPending || updateMutation.isPending;
   const doSave = async (overrides?: { reminderDate: string; reminderTime: string }) => {
+    if (savingRef.current) return; // duplo clique / atalho + botão
+    savingRef.current = true;
     try {
       const reminderDateStr = overrides?.reminderDate ?? formData.reminderDate;
       const reminderTimeStr = overrides?.reminderTime ?? formData.reminderTime;
@@ -552,6 +565,7 @@ export default function Tasks() {
       const { data: fresh } = await refetch();
       if (!isAdmin && fresh) highlightNextUrgent(fresh as any[]);
     } catch { toast.error("Erro ao salvar tarefa"); }
+    finally { savingRef.current = false; }
   };
 
   // Atalho: ajusta a data/hora do lembrete (30min ou amanhã, mantendo a hora atual) e já salva.
@@ -762,11 +776,11 @@ export default function Tasks() {
     if (filterHot) {
       result = result.filter(t => t.hotLead);
     }
-    if (searchQuery.trim()) {
+    if (deferredSearch.trim()) {
       // Busca por todos os termos (E): "laticinios chapada" acha a linha que
       // tem as duas palavras, em qualquer ordem e em qualquer um dos campos.
       // Também varre CNPJ/telefone/e-mail, que antes ficavam de fora.
-      const terms = searchQuery.toLowerCase().split(/\s+/).filter(Boolean);
+      const terms = deferredSearch.toLowerCase().split(/\s+/).filter(Boolean);
       result = result.filter(t => {
         const loc = locationByTaskId.get(t.id);
         const haystack = [
@@ -801,7 +815,7 @@ export default function Tasks() {
       if (aOverdue && bOverdue) return bDate! - aDate!;
       return 0;
     });
-  }, [tasks, me, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTags, tagMatchMode, filterStates, filterCities, locationByTaskId, filterHot, reminderTab, isAdmin, searchQuery]);
+  }, [tasks, me, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTags, tagMatchMode, filterStates, filterCities, locationByTaskId, filterHot, reminderTab, isAdmin, deferredSearch]);
 
   const clearAllFilters = useCallback(() => {
     setFilterStatus("all");
@@ -853,7 +867,8 @@ export default function Tasks() {
   }, [searchQuery, reminderTab, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTags, tagMatchMode, filterStates, filterCities, filterHot, isAdmin]);
 
   // ── E-mail Marketing: engagement badges (single batched query for visible tasks) ──
-  const visibleTaskIds = useMemo(() => filteredTasks.map((t: Task) => t.id), [filteredTasks]);
+  // O servidor aceita no máximo 500 ids por consulta (.max(500)): manda só os primeiros da lista.
+  const visibleTaskIds = useMemo(() => filteredTasks.slice(0, 500).map((t: Task) => t.id), [filteredTasks]);
   const { data: engagementData } = trpc.emailMarketing.engagementByTaskIds.useQuery(
     { taskIds: visibleTaskIds },
     { enabled: visibleTaskIds.length > 0 }
@@ -1550,10 +1565,10 @@ export default function Tasks() {
               <label htmlFor="reminderEnabled" className="text-xs font-medium text-blue-800">Ativar notificação no navegador</label>
             </div>
             <div className="flex gap-2">
-              <Button type="button" size="sm" variant="outline" className="flex-1 text-xs" onClick={() => handleQuickReminder('30min')}>
+              <Button type="button" size="sm" variant="outline" className="flex-1 text-xs" disabled={saving} onClick={() => handleQuickReminder('30min')}>
                 Lembrar em 30 min
               </Button>
-              <Button type="button" size="sm" variant="outline" className="flex-1 text-xs" onClick={() => handleQuickReminder('tomorrow')}>
+              <Button type="button" size="sm" variant="outline" className="flex-1 text-xs" disabled={saving} onClick={() => handleQuickReminder('tomorrow')}>
                 Lembrar amanhã
               </Button>
             </div>
@@ -1577,7 +1592,7 @@ export default function Tasks() {
               )}
             </div>
             <DialogFooter className="flex gap-2 pt-1">
-              <Button type="submit" size="sm" className="flex-1 bg-blue-600 hover:bg-blue-700">{editingTask ? "Salvar" : "Criar Tarefa"}</Button>
+              <Button type="submit" size="sm" disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700">{editingTask ? "Salvar" : "Criar Tarefa"}</Button>
               {editingTask && <Button type="button" size="sm" variant="destructive" onClick={() => handleDelete(editingTask.id)}><Trash2 size={14} /></Button>}
               <Button type="button" size="sm" variant="outline" onClick={() => { setIsModalOpen(false); resetForm(); }}>Cancelar</Button>
             </DialogFooter>
@@ -2111,6 +2126,7 @@ export default function Tasks() {
                 </button>
                 <button
                   onClick={() => doSave()}
+                  disabled={saving}
                   className="w-full py-3.5 bg-green-50 active:bg-green-100 hover:bg-green-100 text-green-700 text-sm font-semibold rounded-2xl border border-green-200 transition-all active:scale-[0.98]"
                 >
                   Já documentei — Salvar
