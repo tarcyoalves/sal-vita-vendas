@@ -89,6 +89,9 @@ export default function AttendantProgress() {
       const extraPause = (session.status === 'paused' && session.pausedAt)
         ? now.getTime() - new Date(session.pausedAt).getTime() : 0;
       workedMs = Math.max(0, end - start - paused - extraPause);
+      // Horas de hoje = esta sessão (relógio ao vivo) + as outras sessões de hoje já
+      // encerradas (encerrar e reiniciar não pode zerar as horas da manhã)
+      workedMs += session.todayOtherMs ?? 0;
     }
     const goalMs  = (sellerProfile?.workHoursGoal ?? 8) * 3600000;
     const hoursWorked = workedMs / 3600000;

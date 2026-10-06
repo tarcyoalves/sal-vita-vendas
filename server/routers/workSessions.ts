@@ -2,44 +2,99 @@ import { z } from 'zod';
 import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { workSessions, sellers, tasks } from '../db/schema';
-import { eq, and, desc, gte, or, isNotNull, isNull, lt, count } from 'drizzle-orm';
+import { eq, and, desc, gte, or, isNotNull, isNull, lt, count, sql } from 'drizzle-orm';
 import { spMidnight } from '../lib/tz';
+import { closeSessionValues, sessionWorkedMs, todayWorkedMs } from '../lib/workHours';
 
 export const workSessionsRouter = router({
 
-  // Get current active/paused session for the user
+  // Sessão atual do usuário: a aberta (ativa de preferência, senão pausada) ou, se
+  // não há aberta, a última de hoje (encerrada) — assim as horas da manhã não somem
+  // depois de encerrar e reiniciar. Campos acrescentados (contrato antigo intacto):
+  //  - todayWorkedMs: horas de hoje (SP), somando todas as sessões, inclusive encerradas
+  //  - todayOtherMs: o mesmo, sem a sessão devolvida (o cliente soma o relógio ao vivo dela)
   current: protectedProcedure.query(async ({ ctx }) => {
-    const [session] = await db.select().from(workSessions)
-      .where(and(eq(workSessions.userId, ctx.user.id), eq(workSessions.status, 'active')))
-      .orderBy(desc(workSessions.startedAt))
-      .limit(1);
-    if (session) return session;
+    const now = new Date();
+    const todayStart = spMidnight(now);
+    const rows = await db.select().from(workSessions)
+      .where(and(
+        eq(workSessions.userId, ctx.user.id),
+        or(
+          eq(workSessions.status, 'active'),
+          eq(workSessions.status, 'paused'),
+          gte(workSessions.startedAt, todayStart),
+          gte(workSessions.endedAt, todayStart),
+        ),
+      ))
+      .orderBy(desc(workSessions.startedAt));
 
-    const [paused] = await db.select().from(workSessions)
-      .where(and(eq(workSessions.userId, ctx.user.id), eq(workSessions.status, 'paused')))
-      .orderBy(desc(workSessions.startedAt))
-      .limit(1);
-    return paused ?? null;
+    const session = rows.find(r => r.status === 'active')
+      ?? rows.find(r => r.status === 'paused')
+      ?? rows.find(r => new Date(r.startedAt) >= todayStart || (r.endedAt && new Date(r.endedAt) >= todayStart));
+    if (!session) return null;
+    return {
+      ...session,
+      todayWorkedMs: todayWorkedMs(rows, now),
+      todayOtherMs: todayWorkedMs(rows.filter(r => r.id !== session.id), now),
+    };
   }),
 
-  // Start work — only one active session at a time
+  // Start work — idempotente: no máximo uma sessão aberta por usuário.
+  // Sessão aberta de DIA ANTERIOR é encerrada (fim limitado ao último sinal de vida,
+  // não ao "agora"); sessão aberta de hoje é devolvida (retomada, se pausada). Só se
+  // não houver nenhuma o INSERT condicional cria a nova — dois cliques simultâneos
+  // não geram duas 'active'.
   start: protectedProcedure
     .input(z.object({ dailyGoalHours: z.number().min(1).max(24).default(8) }))
     .mutation(async ({ input, ctx }) => {
       const now = new Date();
-      // End any stale active or paused sessions
-      await db.update(workSessions)
-        .set({ status: 'ended', endedAt: now, updatedAt: now })
-        .where(and(
-          eq(workSessions.userId, ctx.user.id),
-          or(eq(workSessions.status, 'active'), eq(workSessions.status, 'paused')),
-        ));
+      const todayStart = spMidnight(now);
+      const uid = ctx.user.id;
+      const openWhere = (id?: number) => and(
+        eq(workSessions.userId, uid),
+        id === undefined ? undefined : eq(workSessions.id, id),
+        or(eq(workSessions.status, 'active'), eq(workSessions.status, 'paused')),
+      );
 
-      const [session] = await db.insert(workSessions).values({
-        userId: ctx.user.id,
-        dailyGoalHours: input.dailyGoalHours,
-        status: 'active',
-      }).returning();
+      const open = await db.select().from(workSessions).where(openWhere())
+        .orderBy(desc(workSessions.startedAt));
+      const todays = open.filter(s => new Date(s.startedAt) >= todayStart);
+      // Preferida: ativa mais recente; senão a pausada mais recente. As demais (legado
+      // de cliques duplos) e as de dias anteriores são encerradas.
+      const keep = todays.find(s => s.status === 'active') ?? todays[0];
+      for (const s of open) {
+        if (keep && s.id === keep.id) continue;
+        await db.update(workSessions)
+          .set({ status: 'ended', ...closeSessionValues(s, now), pausedAt: null, updatedAt: now })
+          .where(openWhere(s.id));
+      }
+
+      if (keep) {
+        if (keep.status === 'paused') {
+          // Retomar soma a pausa em curso ao total (antes ela era descartada)
+          const pausedMs = keep.pausedAt ? Math.max(0, now.getTime() - new Date(keep.pausedAt).getTime()) : 0;
+          const [resumed] = await db.update(workSessions)
+            .set({ status: 'active', pausedAt: null, totalPausedMs: (keep.totalPausedMs ?? 0) + pausedMs, updatedAt: now })
+            .where(and(eq(workSessions.id, keep.id), eq(workSessions.status, 'paused')))
+            .returning();
+          if (resumed) return resumed;
+        } else {
+          return keep;
+        }
+      }
+
+      const ins = await db.execute(sql`
+        INSERT INTO work_sessions (user_id, daily_goal_hours, status)
+        SELECT ${uid}::integer, ${input.dailyGoalHours}::integer, 'active'
+        WHERE NOT EXISTS (
+          SELECT 1 FROM work_sessions WHERE user_id = ${uid}::integer AND status IN ('active', 'paused')
+        )
+        RETURNING id`);
+      const newId = (ins.rows[0] as { id?: number } | undefined)?.id;
+      const [session] = await db.select().from(workSessions)
+        .where(newId !== undefined ? eq(workSessions.id, newId) : openWhere())
+        .orderBy(desc(workSessions.startedAt))
+        .limit(1);
       return session;
     }),
 
@@ -77,36 +132,26 @@ export const workSessionsRouter = router({
     return session;
   }),
 
-  // End — finalizes session
+  // End — finaliza a sessão aberta (e qualquer duplicada legada), somando a pausa em curso
   end: protectedProcedure.mutation(async ({ ctx }) => {
     const now = new Date();
-    const [current] = await db.select().from(workSessions)
+    const open = await db.select().from(workSessions)
       .where(and(
         eq(workSessions.userId, ctx.user.id),
-        eq(workSessions.status, 'active'),
-      )).limit(1);
+        or(eq(workSessions.status, 'active'), eq(workSessions.status, 'paused')),
+      ))
+      .orderBy(desc(workSessions.startedAt));
+    if (open.length === 0) return null;
 
-    const [paused] = !current ? await db.select().from(workSessions)
-      .where(and(eq(workSessions.userId, ctx.user.id), eq(workSessions.status, 'paused')))
-      .limit(1) : [null];
-
-    const target = current ?? paused;
-    if (!target) return null;
-
-    const extraPausedMs = target.pausedAt
-      ? now.getTime() - new Date(target.pausedAt).getTime()
-      : 0;
-
-    const [session] = await db.update(workSessions)
-      .set({
-        status: 'ended',
-        endedAt: now,
-        totalPausedMs: (target.totalPausedMs ?? 0) + extraPausedMs,
-        updatedAt: now,
-      })
-      .where(eq(workSessions.id, target.id))
-      .returning();
-    return session;
+    let result = null;
+    for (const s of open) {
+      const [ended] = await db.update(workSessions)
+        .set({ status: 'ended', ...closeSessionValues(s, now), updatedAt: now })
+        .where(and(eq(workSessions.id, s.id), or(eq(workSessions.status, 'active'), eq(workSessions.status, 'paused'))))
+        .returning();
+      result ??= ended ?? null;
+    }
+    return result;
   }),
 
   // History — last 30 sessions for this user
@@ -127,9 +172,15 @@ export const workSessionsRouter = router({
 
     const [allSellers, todaySessions, todayTasks, allRecentSessions, ghostCounts, burstTasks] = await Promise.all([
       db.select().from(sellers).where(eq(sellers.status, 'active')),
-      // Include active AND paused sessions — paused attendant must still appear on admin view
+      // Sessões de hoje (SP), inclusive as já encerradas, mais qualquer sessão ainda
+      // aberta (mesmo iniciada antes de 00:00 SP) — pausado também aparece no admin
       db.select().from(workSessions)
-        .where(and(gte(workSessions.startedAt, todayStart), or(eq(workSessions.status, 'active'), eq(workSessions.status, 'paused'))))
+        .where(or(
+          gte(workSessions.startedAt, todayStart),
+          gte(workSessions.endedAt, todayStart),
+          eq(workSessions.status, 'active'),
+          eq(workSessions.status, 'paused'),
+        ))
         .orderBy(desc(workSessions.startedAt)),
       // Today's edited tasks — include title so we can show what they worked on
       db.select({
@@ -167,8 +218,15 @@ export const workSessionsRouter = router({
     ]);
 
     return allSellers.map(seller => {
-      // Most recent session today
-      const session = todaySessions.find(s => s.userId === seller.userId) ?? null;
+      // Sessão aberta (ativa de preferência, senão pausada); o contrato `session` segue
+      // sendo só a aberta. Quem já encerrou hoje aparece em todayWorkedMs/endedTodayAt.
+      const userSessions = todaySessions.filter(s => s.userId === seller.userId);
+      const session = userSessions.find(s => s.status === 'active')
+        ?? userSessions.find(s => s.status === 'paused') ?? null;
+      const todayMs = todayWorkedMs(userSessions, now);
+      const endedToday = userSessions.filter(s => s.endedAt && new Date(s.endedAt) >= todayStart);
+      const endedTodayAt = endedToday.length > 0
+        ? new Date(Math.max(...endedToday.map(s => new Date(s.endedAt!).getTime()))) : null;
 
       // Tasks touched today by this seller
       const mine = todayTasks.filter(
@@ -197,13 +255,7 @@ export const workSessionsRouter = router({
       let workedMs = 0;
       let idleSinceMs = 0;
       if (session) {
-        const end = session.endedAt ? new Date(session.endedAt) : now;
-        const elapsed = end.getTime() - new Date(session.startedAt).getTime();
-        let pausedTotal = session.totalPausedMs ?? 0;
-        if (session.status === 'paused' && session.pausedAt) {
-          pausedTotal += now.getTime() - new Date(session.pausedAt).getTime();
-        }
-        workedMs = Math.max(0, elapsed - pausedTotal);
+        workedMs = sessionWorkedMs(session, now);
 
         // Idle = active session but last activity > 30 min ago
         if (session.status === 'active' && lastActivityDate) {
@@ -243,6 +295,8 @@ export const workSessionsRouter = router({
           pausedAt: session.pausedAt ?? null,
           workedMs,
         } : null,
+        todayWorkedMs: todayMs,
+        endedTodayAt,
         contactsToday,
         lastActivityDate,
         idleSinceMs,

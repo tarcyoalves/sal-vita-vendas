@@ -22,7 +22,7 @@ import {
 import { eq, and, or, sql, lte, gte, isNull, isNotNull, inArray, notInArray, notExists, desc, asc, lt } from 'drizzle-orm';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
 import { createPixPaymentForOrder } from '../server/lib/mercadopago';
-import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid, orderTrackLink } from '../server/lib/orderConfirmation';
+import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid, orderTrackLink, podeConfirmarPagamento } from '../server/lib/orderConfirmation';
 import { verifyResendWebhook } from '../server/email/marketing';
 import { evaluateInactiveDaysRules, flagEngagementByMessageId, processSequenceEnrollments, cancelAllEnrollments } from '../server/email/automations';
 import { processDueCampaigns } from '../server/email/campaigns';
@@ -305,6 +305,7 @@ function unsubscribePage(message: string): string {
 }
 
 import { handleUnsubscribe } from '../server/routers/unsubscribe';
+import { safeEqual } from '../server/lib/safeEqual';
 import { handleResendWebhook, verifySvixSignature } from '../server/routers/resendWebhook';
 import { isForbiddenBatch, emailFromTrpcBody } from '../server/lib/trpcBatchGuard';
 
@@ -344,7 +345,8 @@ const adminApiLimiter = rateLimit({
 // DB storage and row-count monitor — admin only
 app.get('/api/db-stats', adminApiLimiter, async (req, res) => {
   const secret = process.env.ADMIN_RESET_SECRET;
-  if (!secret || req.headers['x-admin-secret'] !== secret) {
+  const adminHeader = req.headers['x-admin-secret'];
+  if (!secret || typeof adminHeader !== 'string' || !safeEqual(adminHeader, secret)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   try {
@@ -471,7 +473,8 @@ app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/jso
       // CAPI/coupon-bump twice for the same order).
       const updated = await ordersDb.update(siteOrders)
         .set({ status: 'confirmed', paymentStatus: 'confirmed', mpPaymentId: mpId, updatedAt: new Date() })
-        .where(and(eq(siteOrders.id, orderId), eq(siteOrders.paymentStatus, 'awaiting')))
+        // 'failed' também confirma: o cliente pode pagar um PIX depois de um cartão recusado.
+        .where(and(eq(siteOrders.id, orderId), podeConfirmarPagamento))
         .returning();
 
       if (updated.length > 0) {
@@ -490,9 +493,10 @@ app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/jso
         .where(eq(siteOrders.id, orderId));
     } else if (payment.status === 'rejected' || payment.status === 'cancelled') {
       // Payment attempt failed/expired — order stays recoverable for a retry.
+      // Só rebaixa 'awaiting': um rejected tardio não pode derrubar pedido já 'confirmed'.
       await ordersDb.update(siteOrders)
         .set({ paymentStatus: 'failed', mpPaymentId: mpId, updatedAt: new Date() })
-        .where(eq(siteOrders.id, orderId));
+        .where(and(eq(siteOrders.id, orderId), eq(siteOrders.paymentStatus, 'awaiting')));
     } else if (payment.status === 'refunded' || payment.status === 'charged_back') {
       // Money reversed after payment — cancel the order and return the coupon use.
       // Conditional on the row still being 'confirmed' so that MP's repeated
@@ -513,8 +517,10 @@ app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/jso
 
     res.json({ ok: true });
   } catch (err) {
+    // Erro de banco/rede: 500 para o MP reenviar. Eventos já tratados ou ignorados
+    // respondem 200 acima, e os UPDATEs condicionais mantêm o reenvio idempotente.
     console.error('MP webhook error:', err);
-    res.json({ ok: true }); // Always 200 so MP doesn't retry endlessly
+    res.status(500).json({ error: 'temporary failure' });
   }
 });
 
@@ -611,7 +617,7 @@ app.post('/api/brevo-webhook', brevoWebhookLimiter, express.json({ limit: '256kb
     }
     if (secret) {
       const provided = (req.query.secret as string) || req.headers['x-webhook-secret'];
-      if (provided !== secret) {
+      if (typeof provided !== 'string' || !safeEqual(provided, secret)) {
         console.warn('[brevo-webhook] Invalid secret');
         res.status(401).json({ error: 'Invalid secret' });
         return;
@@ -1175,7 +1181,7 @@ async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
       eq(siteOrders.paymentStatus, 'awaiting'),
       lte(siteOrders.createdAt, oneHourAgo),
       gte(siteOrders.createdAt, thirtyDaysAgo),
-    )).limit(20); // lightweight DB/API check only — no WA sends
+    )).orderBy(desc(siteOrders.createdAt)).limit(20); // lightweight DB/API check only — no WA sends
 
     for (const o of orders) {
       try {
@@ -1216,7 +1222,7 @@ async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
         // WhatsApp/e-mail/CAPI/coupon side effects.
         const updated = await ordersDb.update(siteOrders)
           .set({ status: 'confirmed', paymentStatus: 'confirmed', mpPaymentId: payId, updatedAt: new Date() })
-          .where(and(eq(siteOrders.id, o.id), eq(siteOrders.paymentStatus, 'awaiting')))
+          .where(and(eq(siteOrders.id, o.id), podeConfirmarPagamento))
           .returning();
 
         if (updated.length > 0) {
@@ -1225,7 +1231,7 @@ async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
           await confirmOrderPaid(updated[0]);
           confirmed++;
         }
-      } catch { /* skip this order */ }
+      } catch (e) { console.error(`[cron] reconcile: pedido ${o.id} falhou:`, e); }
     }
   } catch (e) { console.error('[cron] reconcile error:', e); }
   return { confirmed };
@@ -1283,20 +1289,15 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
   const provided = req.headers['x-cron-secret'] ?? req.headers['authorization']?.replace('Bearer ', '');
   // Fail closed: with the old `if (secret && ...)` an unset CRON_SECRET left this
   // endpoint — which sends WhatsApp and e-mail — open to anyone.
-  if (!secret || provided !== secret) {
+  if (!secret || typeof provided !== 'string' || !safeEqual(provided, secret)) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
   try {
-    const { lte } = await import('drizzle-orm');
     const { automationRuns: runs, abandonedCarts: carts } = await import('../server/db/schema');
-    const now = new Date();
-    // Batch sizes are bounded by `maxDuration` (60s in vercel.json), not by the
-    // 10s figure the previous comments assumed — that mismatch capped the whole
-    // system at 3 recovery messages per day once the cron went to daily.
-    const due = await withDbRetry('due-runs', () => ordersDb.select().from(runs).where(
-      and(eq(runs.status, 'scheduled'), lte(runs.scheduledFor, now))
-    ).limit(20));
+    // Orçamento de tempo: a função é limitada a 60s (vercel.json). O laço de envio
+    // para em ~45s contados daqui e devolve o que sobrou para 'scheduled'.
+    const cronDeadline = Date.now() + 45_000;
 
     // Load all abandoned templates once (small table) and index by slug for the cadence.
     const abandonedTpls = await ordersDb.select().from(msgTemplates).where(eq(msgTemplates.type, 'abandoned'));
@@ -1342,7 +1343,52 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
       res.json({ ok: true, processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: 'outside business hours', unpaid, reconciled, reorder });
       return;
     }
+    // Claim atômico (mesmo padrão de campaigns.ts): GET+POST/retry simultâneos nunca
+    // pegam as mesmas linhas, então ninguém recebe o mesmo WhatsApp duas vezes.
+    // 'sending' órfã (função morreu no meio do envio) há >15 min volta para 'scheduled';
+    // automation_runs não tem claimed_at, então updated_at (gravado no claim) serve de relógio.
+    await withDbRetry('recycle-sending-runs', () => ordersDb.execute(sql`
+      UPDATE automation_runs
+      SET status = 'scheduled', updated_at = now()
+      WHERE status = 'sending' AND updated_at < now() - interval '15 minutes'
+    `));
+    // Batch sizes are bounded by `maxDuration` (60s in vercel.json), not by the
+    // 10s figure the previous comments assumed — that mismatch capped the whole
+    // system at 3 recovery messages per day once the cron went to daily.
+    const claimed = await withDbRetry('claim-due-runs', () => ordersDb.execute<{
+      id: number; cartId: number; customerPhone: string; ruleName: string;
+      attempts: number | null; aiBody: string | null;
+    }>(sql`
+      UPDATE automation_runs
+      SET status = 'sending', updated_at = now()
+      WHERE id IN (
+        SELECT id FROM automation_runs
+        WHERE status = 'scheduled' AND scheduled_for <= now()
+        ORDER BY scheduled_for
+        LIMIT 20
+        FOR UPDATE SKIP LOCKED
+      )
+      RETURNING id, cart_id AS "cartId", customer_phone AS "customerPhone",
+                rule_name AS "ruleName", attempts, ai_body AS "aiBody"
+    `));
+    const due = claimed.rows;
+    // Libera de volta para a fila o que foi reivindicado mas não será enviado agora.
+    const releaseClaimed = async (ids: number[]) => {
+      if (ids.length === 0) return;
+      try {
+        await ordersDb.update(runs).set({ status: 'scheduled', updatedAt: new Date() })
+          .where(and(inArray(runs.id, ids), eq(runs.status, 'sending')));
+      } catch (e) { console.error('[cron] release claimed runs failed:', e); }
+    };
+    const pendingIds = new Set(due.map(r => r.id));
+
     for (const run of due) {
+      if (Date.now() > cronDeadline) {
+        console.warn(`[cron] abandoned-cart: orçamento de tempo esgotado — ${pendingIds.size} run(s) voltam para a fila`);
+        await releaseClaimed([...pendingIds]);
+        break;
+      }
+      pendingIds.delete(run.id);
       const [cart] = await ordersDb.select().from(carts).where(eq(carts.id, run.cartId)).limit(1);
       if (!cart || cart.status === 'converted' || cart.recovered || cart.optedOut) {
         await ordersDb.update(runs).set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
@@ -1366,8 +1412,9 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
       try {
         const ok = await sendWhatsApp(run.customerPhone, msg);
         if (ok) {
-          await ordersDb.update(runs).set({ status: 'sent', sentAt: new Date(), updatedAt: new Date() })
-            .where(eq(runs.id, run.id));
+          // Já entregue: gravar 'sent' com retry, para não cair em requeue e duplicar.
+          await withDbRetry('mark-run-sent', () => ordersDb.update(runs).set({ status: 'sent', sentAt: new Date(), updatedAt: new Date() })
+            .where(eq(runs.id, run.id)));
           await ordersDb.update(carts).set({ recoverySentAt: new Date(), updatedAt: new Date() })
             .where(eq(carts.id, run.cartId));
           sent++;
@@ -1404,7 +1451,7 @@ app.get('/api/health', (_req, res) => {
 app.get('/api/cron/email-daily', async (req, res) => {
   const secret = process.env.CRON_SECRET;
   const provided = (req.headers['authorization'] as string | undefined)?.replace('Bearer ', '');
-  if (!secret || provided !== secret) {
+  if (!secret || typeof provided !== 'string' || !safeEqual(provided, secret)) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
@@ -1484,7 +1531,9 @@ app.get('/api/cron/email-daily', async (req, res) => {
     // Purge old marketing data to stay within Neon free-tier 512 MB
     try { await db.delete(emailCampaignRecipients).where(sql`created_at < NOW() - INTERVAL '90 days' AND status != 'pending'`); } catch {}
     try { await db.delete(emailSequenceSends).where(sql`created_at < NOW() - INTERVAL '90 days'`); } catch {}
-    try { await db.delete(taskDeletionLogs).where(sql`created_at < NOW() - INTERVAL '180 days'`); } catch {}
+    // 730 dias: este log é a memória de "lead já excluído" (checkCancelledMatches e o Radar);
+    // com 180 dias o lead removido voltava a ser reimportado. Linhas pequenas, custo desprezível.
+    try { await db.delete(taskDeletionLogs).where(sql`created_at < NOW() - INTERVAL '730 days'`); } catch {}
 
     console.log('[cron/email-daily] summary:', summary);
     res.json({ ok: true, ...summary });
@@ -1506,7 +1555,7 @@ app.get('/api/orders-health', async (req, res) => {
   const secret = process.env.CRON_SECRET;
   const provided = (req.headers['x-cron-secret'] as string | undefined)
     ?? (req.headers['authorization'] as string | undefined)?.replace('Bearer ', '');
-  if (!secret || provided !== secret) {
+  if (!secret || typeof provided !== 'string' || !safeEqual(provided, secret)) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }

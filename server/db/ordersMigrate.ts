@@ -3,7 +3,7 @@ import { neon } from '@neondatabase/serverless';
 type Step = { name: string; ok: boolean; error?: string };
 
 // Bump whenever the DDL below changes, to force exactly one full re-run.
-const ORDERS_SCHEMA_VERSION = 'orders-2026-08-09a';
+const ORDERS_SCHEMA_VERSION = 'orders-2026-10-06a';
 
 /**
  * Ensures all e-commerce/recovery tables exist in the ORDERS database.
@@ -113,6 +113,7 @@ export async function ensureOrdersTablesExist(force = false): Promise<Step[]> {
   await run('site_orders_track_token_idx', () => sql`CREATE INDEX IF NOT EXISTS site_orders_track_token_idx ON site_orders(track_token)`);
   await run('site_orders_status_idx', () => sql`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`);
   await run('site_orders_phone_idx', () => sql`CREATE INDEX IF NOT EXISTS site_orders_phone_idx ON site_orders(customer_phone)`);
+  await run('site_orders_payment_created_idx', () => sql`CREATE INDEX IF NOT EXISTS site_orders_payment_created_idx ON site_orders(payment_status, created_at)`);
 
   await run('abandoned_carts', () => sql`
     CREATE TABLE IF NOT EXISTS abandoned_carts (
@@ -147,6 +148,7 @@ export async function ensureOrdersTablesExist(force = false): Promise<Step[]> {
   await run('abandoned_carts.opted_out', () => sql`ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS opted_out BOOLEAN NOT NULL DEFAULT FALSE`);
   await run('abandoned_carts_phone_idx', () => sql`CREATE INDEX IF NOT EXISTS abandoned_carts_phone_idx ON abandoned_carts(customer_phone)`);
   await run('abandoned_carts_status_idx', () => sql`CREATE INDEX IF NOT EXISTS abandoned_carts_status_idx ON abandoned_carts(status)`);
+  await run('abandoned_carts_created_idx', () => sql`CREATE INDEX IF NOT EXISTS abandoned_carts_created_idx ON abandoned_carts(created_at)`);
 
   await run('automation_runs', () => sql`
     CREATE TABLE IF NOT EXISTS automation_runs (

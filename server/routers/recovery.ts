@@ -177,7 +177,8 @@ export const recoveryRouter = router({
       // Check if already converted to a real order in the last 24 hours
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const recent = await db.select().from(siteOrders)
-        .where(and(eq(siteOrders.customerPhone, phone), sql`${siteOrders.createdAt} > ${oneDayAgo}`))
+        // Pedidos antigos guardam o telefone com máscara: normaliza os dois lados por dígitos.
+        .where(and(sql`regexp_replace(${siteOrders.customerPhone}, '[^0-9]', '', 'g') = ${phone}`, sql`${siteOrders.createdAt} > ${oneDayAgo}`))
         .limit(1);
       if (recent.length > 0) return { tracked: false, reason: 'converted' };
 
@@ -370,9 +371,15 @@ export const recoveryRouter = router({
       minOrderValue: z.number().min(0).default(0),
       maxUses: z.number().int().min(1).default(100),
       expiresAt: z.string().optional(),
+    }).refine(i => i.discountType !== 'percent' || i.discountValue <= 100, {
+      message: 'Desconto percentual não pode passar de 100%',
+      path: ['discountValue'],
     }))
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      // Checa antes (sem depender só do UNIQUE) para devolver um erro claro.
+      const [dup] = await db.select({ id: coupons.id }).from(coupons).where(eq(coupons.code, input.code)).limit(1);
+      if (dup) throw new TRPCError({ code: 'CONFLICT', message: `Já existe um cupom com o código ${input.code}` });
       const [created] = await db.insert(coupons).values({
         code: input.code,
         description: input.description ?? null,
@@ -614,23 +621,46 @@ export const recoveryRouter = router({
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       if (!isBusinessHours()) return { sent: 0, total: 0, skipped: 'outside business hours (08:00–21:00 BRT)' };
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const pending = await db.select().from(abandonedCarts).where(
-        and(
-          eq(abandonedCarts.recovered, false),
-          eq(abandonedCarts.optedOut, false),
-          sql`(${abandonedCarts.recoverySentAt} IS NULL OR ${abandonedCarts.recoverySentAt} < ${oneDayAgo})`,
+      // Claim atômico: carimba recovery_sent_at (guarda o valor anterior) antes de
+      // enviar, com FOR UPDATE SKIP LOCKED — clique duplo/retry nunca pega o mesmo carrinho.
+      const claimed = await db.execute<{ id: number; customerName: string; customerPhone: string; prev: Date | string | null }>(sql`
+        WITH c AS (
+          SELECT id, recovery_sent_at AS prev FROM abandoned_carts
+          WHERE recovered = false AND opted_out = false
+            AND (recovery_sent_at IS NULL OR recovery_sent_at < ${oneDayAgo})
+          ORDER BY id
+          LIMIT 50
+          FOR UPDATE SKIP LOCKED
         )
-      ).limit(50);
+        UPDATE abandoned_carts a
+        SET recovery_sent_at = now(), updated_at = now()
+        FROM c
+        WHERE a.id = c.id
+        RETURNING a.id, a.customer_name AS "customerName", a.customer_phone AS "customerPhone", c.prev
+      `);
+      const pending = claimed.rows;
 
-      let sent = 0;
-      for (const cart of pending) {
-        const { ok } = await sendViaWhatsApp(cart.customerPhone, recoveryMsg(cart.customerName));
-        if (ok) {
+      // Não estoura os 60s da função: para em ~45s e devolve o resto sem carimbo.
+      const deadline = Date.now() + 45_000;
+      const restore = async (c: { id: number; prev: Date | string | null }) => {
+        try {
           await db.update(abandonedCarts)
-            .set({ recoverySentAt: new Date(), updatedAt: new Date() })
-            .where(eq(abandonedCarts.id, cart.id));
-          sent++;
+            .set({ recoverySentAt: c.prev ? new Date(c.prev) : null })
+            .where(eq(abandonedCarts.id, c.id));
+        } catch (e) { console.error(`[recovery] restaurar carrinho ${c.id} falhou:`, e); }
+      };
+      let sent = 0;
+      for (let i = 0; i < pending.length; i++) {
+        const cart = pending[i];
+        if (Date.now() > deadline) {
+          for (const rest of pending.slice(i)) await restore(rest);
+          break;
         }
+        let ok = false;
+        try { ({ ok } = await sendViaWhatsApp(cart.customerPhone, recoveryMsg(cart.customerName))); }
+        catch (e) { console.error(`[recovery] envio ao carrinho ${cart.id} falhou:`, e); }
+        if (ok) sent++;
+        else await restore(cart); // falhou: o carrinho volta a ser elegível
         await new Promise(r => setTimeout(r, 1500));
       }
       return { sent, total: pending.length };

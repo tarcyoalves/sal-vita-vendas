@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, or, ne, sql } from 'drizzle-orm';
 import { ordersDb } from '../db/ordersDb';
 import { siteOrders, abandonedCarts, automationRuns, msgTemplates, coupons } from '../db/schema';
 import { sendEmail, orderConfirmedHtml } from '../email/resend';
@@ -153,28 +153,59 @@ export async function sendWhatsApp(phone: string, message: string): Promise<bool
 // admin's manual "Confirmar Pgto" action — all three mark a payment as
 // confirmed and must produce the same customer-facing result.
 export async function confirmOrderPaid(order: SiteOrder): Promise<void> {
-  await bumpCouponUsage(order.couponCode, 1);
-  await sendCapiPurchase(order);
+  // Cada passo tem o seu try/catch: o pedido já está 'confirmed' quando chegamos
+  // aqui, então ninguém refaz esta função — um passo que falha não pode impedir
+  // os seguintes.
+  try { await bumpCouponUsage(order.couponCode, 1); }
+  catch (e) { console.error(`[order-confirmation] pedido ${order.id}: cupom falhou:`, e); }
+  try { await sendCapiPurchase(order); }
+  catch (e) { console.error(`[order-confirmation] pedido ${order.id}: CAPI falhou:`, e); }
 
   const phone = order.customerPhone.replace(/\D/g, '');
-  await ordersDb.update(automationRuns)
-    .set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
-    .where(and(eq(automationRuns.customerPhone, phone), eq(automationRuns.status, 'scheduled')));
-  await ordersDb.update(abandonedCarts)
-    .set({ status: 'converted', recovered: true, convertedAt: new Date(), updatedAt: new Date() })
-    .where(eq(abandonedCarts.customerPhone, phone));
+  try {
+    await ordersDb.update(automationRuns)
+      .set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(automationRuns.customerPhone, phone), eq(automationRuns.status, 'scheduled')));
+  } catch (e) { console.error(`[order-confirmation] pedido ${order.id}: cancelar automações falhou:`, e); }
+  try {
+    await ordersDb.update(abandonedCarts)
+      .set({ status: 'converted', recovered: true, convertedAt: new Date(), updatedAt: new Date() })
+      .where(eq(abandonedCarts.customerPhone, phone));
+  } catch (e) { console.error(`[order-confirmation] pedido ${order.id}: converter carrinho falhou:`, e); }
 
+  let msg: string | null = null;
   try {
     const [tpl] = await ordersDb.select().from(msgTemplates)
       .where(and(eq(msgTemplates.type, 'confirmed'), eq(msgTemplates.isDefault, true))).limit(1);
     const vars = { nome: order.customerName, pedido: String(order.id), valor: brl(order.totalPrice) };
-    const msg = tpl
+    msg = tpl
       ? renderTemplate(tpl.body, vars)
       : `Olá *${order.customerName}*! 🎉\n\nSeu pagamento foi *confirmado*! ✅\n\n📦 Pedido *#${order.id}* — R$ ${brl(order.totalPrice)}\n\nJá estamos preparando seu envio. Você receberá o código de rastreio assim que postarmos. 🚚\n\nObrigado por escolher a Sal Vita! 🌊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
-    await sendWhatsApp(order.customerPhone, msg);
-    if (order.customerEmail) {
+  } catch (e) { console.error(`[order-confirmation] pedido ${order.id}: template falhou:`, e); }
+
+  // await: a função serverless pode ser congelada logo após o res.json()
+  if (msg) {
+    try { await sendWhatsApp(order.customerPhone, msg); }
+    catch (e) { console.error(`[order-confirmation] pedido ${order.id}: WhatsApp falhou:`, e); }
+  }
+  if (order.customerEmail) {
+    try {
       const emailHtml = orderConfirmedHtml(order.customerName, order.id, brl(order.totalPrice));
-      sendEmail(order.customerEmail, `Pedido #${order.id} confirmado — obrigado, ${order.customerName}!`, emailHtml).catch(() => {});
-    }
-  } catch (e) { console.error('[order-confirmation] notification failed:', e); }
+      await sendEmail(order.customerEmail, `Pedido #${order.id} confirmado — obrigado, ${order.customerName}!`, emailHtml);
+    } catch (e) { console.error(`[order-confirmation] pedido ${order.id}: e-mail falhou:`, e); }
+  }
 }
+
+// Estados de pagamento em que um pagamento aprovado confirma o pedido. 'failed'
+// entra porque o cliente pode pagar um PIX depois de um cartão recusado.
+export const CONFIRMABLE_PAYMENT_STATUSES = ['awaiting', 'failed'] as const;
+
+/**
+ * Condição SQL de "este pedido ainda pode ser confirmado por um pagamento aprovado":
+ * 'awaiting' sempre; 'failed' só se o pedido NÃO foi cancelado (cancelar manualmente ou por
+ * estorno também grava 'failed' — um pagamento tardio não pode ressuscitar pedido cancelado).
+ */
+export const podeConfirmarPagamento = or(
+  eq(siteOrders.paymentStatus, 'awaiting'),
+  and(eq(siteOrders.paymentStatus, 'failed'), ne(siteOrders.status, 'cancelled')),
+);

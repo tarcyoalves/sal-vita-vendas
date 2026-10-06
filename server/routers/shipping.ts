@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { router, publicProcedure, protectedProcedure } from '../trpc';
 import { ordersDb as db } from '../db/ordersDb';
 import { siteOrders, coupons, msgTemplates } from '../db/schema';
-import { desc, eq, and, sql } from 'drizzle-orm';
+import { desc, eq, and, or, isNull, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 import { confirmOrderPaid } from '../lib/orderConfirmation';
 
@@ -220,6 +220,32 @@ async function quoteShipping(
     } catch {}
   }
   return { source: 'static', options: staticCalc(uf || 'RN', qty) };
+}
+
+// Reserva da etiqueta: o Melhor Envio cobra no checkout, então dois cliques (ou dois
+// admins) não podem comprar a mesma etiqueta. Sem transação interativa no neon-http,
+// a reserva é um UPDATE condicional — só um chamador recebe a linha de volta.
+// 'pending' preso (função morta no meio) pode ser retomado depois de 5 minutos.
+const LABEL_BUSY_MSG = 'Etiqueta já gerada ou em geração para este pedido.';
+async function reserveLabel(orderId: number): Promise<boolean> {
+  const rows = await db.update(siteOrders)
+    .set({ meOrderId: 'pending', updatedAt: new Date() })
+    .where(and(
+      eq(siteOrders.id, orderId),
+      isNull(siteOrders.meLabelUrl),
+      or(
+        isNull(siteOrders.meOrderId),
+        and(eq(siteOrders.meOrderId, 'pending'), sql`${siteOrders.updatedAt} < now() - interval '5 minutes'`),
+      ),
+    ))
+    .returning({ id: siteOrders.id });
+  return rows.length > 0;
+}
+async function releaseLabel(orderId: number): Promise<void> {
+  try {
+    await db.update(siteOrders).set({ meOrderId: null, updatedAt: new Date() })
+      .where(and(eq(siteOrders.id, orderId), eq(siteOrders.meOrderId, 'pending')));
+  } catch (e) { console.error(`[label] liberar reserva do pedido ${orderId} falhou:`, e); }
 }
 
 export const shippingRouter = router({
@@ -824,64 +850,75 @@ Seja direto e use emojis para facilitar leitura.`;
         }],
       };
 
-      const cartRes = await fetch(`${ME_BASE}/api/v2/me/cart`, { method: 'POST', headers, body: JSON.stringify(cartBody) });
-      if (!cartRes.ok) {
-        const txt = await cartRes.text();
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro cart ME: ${txt}` });
+      if (!(await reserveLabel(input.orderId))) {
+        throw new TRPCError({ code: 'CONFLICT', message: LABEL_BUSY_MSG });
       }
-      const cartData = await cartRes.json();
-      const meOrderId: string = cartData.id;
-
-      let checkRes: Response;
+      let purchased = false;
       try {
-        checkRes = await fetch(`${ME_BASE}/api/v2/me/shipment/checkout`, {
+        const cartRes = await fetch(`${ME_BASE}/api/v2/me/cart`, { method: 'POST', headers, body: JSON.stringify(cartBody) });
+        if (!cartRes.ok) {
+          const txt = await cartRes.text();
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro cart ME: ${txt}` });
+        }
+        const cartData = await cartRes.json();
+        const meOrderId: string = cartData.id;
+
+        let checkRes: Response;
+        try {
+          checkRes = await fetch(`${ME_BASE}/api/v2/me/shipment/checkout`, {
+            method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }),
+          });
+          if (!checkRes.ok) {
+            const txt = await checkRes.text();
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro checkout ME: ${txt}` });
+          }
+        } catch (err) {
+          // Attempt to cancel the dangling ME cart order (best-effort)
+          try {
+            await fetch(`${ME_BASE}/api/v2/me/cart/${meOrderId}`, {
+              method: 'DELETE',
+              headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'SalVita/1.0 (contato@salvitarn.com.br)' },
+            });
+          } catch {} // best-effort cancel
+          throw err; // re-throw original error
+        }
+
+        purchased = true; // etiqueta paga: a reserva NÃO pode mais ser liberada, nem se o UPDATE abaixo falhar
+        // Persist meOrderId right after checkout succeeds (label is now paid) so it can be
+        // cancelled/reprinted later even if generate/print below fails.
+        await db.update(siteOrders).set({ meOrderId, updatedAt: new Date() }).where(eq(siteOrders.id, input.orderId));
+
+        const genRes = await fetch(`${ME_BASE}/api/v2/me/shipment/generate`, {
           method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }),
         });
-        if (!checkRes.ok) {
-          const txt = await checkRes.text();
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro checkout ME: ${txt}` });
+        if (!genRes.ok) {
+          const txt = await genRes.text();
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro gerar etiqueta ME: ${txt}` });
         }
-      } catch (err) {
-        // Attempt to cancel the dangling ME cart order (best-effort)
-        try {
-          await fetch(`${ME_BASE}/api/v2/me/cart/${meOrderId}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'SalVita/1.0 (contato@salvitarn.com.br)' },
-          });
-        } catch {} // best-effort cancel
-        throw err; // re-throw original error
-      }
 
-      // Persist meOrderId right after checkout succeeds (label is now paid) so it can be
-      // cancelled/reprinted later even if generate/print below fails.
-      await db.update(siteOrders).set({ meOrderId, updatedAt: new Date() }).where(eq(siteOrders.id, input.orderId));
+        const printRes = await fetch(`${ME_BASE}/api/v2/me/shipment/print`, {
+          method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId], mode: 'private' }),
+        });
+        if (!printRes.ok) {
+          const txt = await printRes.text();
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro imprimir etiqueta ME: ${txt}` });
+        }
+        const printData = await printRes.json();
+        const labelUrl: string = printData.url;
 
-      const genRes = await fetch(`${ME_BASE}/api/v2/me/shipment/generate`, {
-        method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }),
-      });
-      if (!genRes.ok) {
-        const txt = await genRes.text();
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro gerar etiqueta ME: ${txt}` });
-      }
-
-      const printRes = await fetch(`${ME_BASE}/api/v2/me/shipment/print`, {
-        method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId], mode: 'private' }),
-      });
-      if (!printRes.ok) {
-        const txt = await printRes.text();
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro imprimir etiqueta ME: ${txt}` });
-      }
-      const printData = await printRes.json();
-      const labelUrl: string = printData.url;
-
-      // Label generated but NOT yet physically posted — use 'label_generated' so the
-      // "Pendentes Envio" admin tab works and we don't tell the customer it shipped early.
-      const [updated] = await db.update(siteOrders)
-        .set({ meOrderId, meLabelUrl: labelUrl, status: 'label_generated', updatedAt: new Date() })
-        .where(eq(siteOrders.id, input.orderId))
-        .returning();
+        // Label generated but NOT yet physically posted — use 'label_generated' so the
+        // "Pendentes Envio" admin tab works and we don't tell the customer it shipped early.
+        const [updated] = await db.update(siteOrders)
+          .set({ meOrderId, meLabelUrl: labelUrl, status: 'label_generated', updatedAt: new Date() })
+          .where(eq(siteOrders.id, input.orderId))
+          .returning();
 
       return { labelUrl, meOrderId, order: updated };
+      } catch (err) {
+        // Falha antes do checkout (nada foi cobrado): libera a reserva para nova tentativa.
+        if (!purchased) await releaseLabel(input.orderId);
+        throw err;
+      }
     }),
 
   cancelOrder: protectedProcedure
@@ -896,7 +933,32 @@ Seja direto e use emojis para facilitar leitura.`;
 
       const results: string[] = [];
 
-      if (order.meOrderId) {
+      // Reembolso PRIMEIRO: se falhar, o pedido continua como está (não vira 'cancelled'
+      // com o dinheiro ainda com a loja) e a etiqueta não é mexida. Reembolso feito à mão
+      // no painel do MP chega pelo webhook (refunded), que cancela o pedido sozinho.
+      if (order.paymentStatus === 'confirmed' && order.mpPaymentId) {
+        const mpToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+        if (!mpToken) {
+          throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'MERCADO_PAGO_ACCESS_TOKEN não configurado — reembolse no painel do Mercado Pago; o webhook cancela o pedido.' });
+        }
+        try {
+          const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}/refunds`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${mpToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          });
+          if (!mpRes.ok) {
+            const txt = await mpRes.text();
+            throw new TRPCError({ code: 'BAD_GATEWAY', message: `Reembolso MP falhou (${mpRes.status}): ${txt.slice(0, 100)}. Pedido NÃO cancelado.` });
+          }
+          results.push('Reembolso MP solicitado');
+        } catch (err) {
+          if (err instanceof TRPCError) throw err;
+          throw new TRPCError({ code: 'BAD_GATEWAY', message: 'Falha ao reembolsar no MP — pedido NÃO cancelado. Tente de novo ou reembolse no painel do Mercado Pago.' });
+        }
+      }
+
+      if (order.meOrderId && order.meOrderId !== 'pending') {
         const meToken = process.env.MELHOR_ENVIO_TOKEN;
         if (meToken) {
           try {
@@ -918,26 +980,6 @@ Seja direto e use emojis para facilitar leitura.`;
         }
       }
 
-      if (order.paymentStatus === 'confirmed' && order.mpPaymentId) {
-        const mpToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
-        if (mpToken) {
-          try {
-            const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}/refunds`, {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${mpToken}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({}),
-            });
-            if (mpRes.ok) results.push('Reembolso MP solicitado');
-            else {
-              const txt = await mpRes.text();
-              results.push(`Aviso: reembolso MP retornou ${mpRes.status}: ${txt.slice(0, 100)}`);
-            }
-          } catch {
-            results.push('Aviso: falha ao reembolsar no MP — faça manualmente');
-          }
-        }
-      }
-
       const [updated] = await db.update(siteOrders)
         .set({ status: 'cancelled', updatedAt: new Date() })
         .where(eq(siteOrders.id, input.id))
@@ -953,8 +995,15 @@ Seja direto e use emojis para facilitar leitura.`;
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
-      const [deleted] = await db.delete(siteOrders).where(eq(siteOrders.id, input.id)).returning();
-      if (!deleted) throw new TRPCError({ code: 'NOT_FOUND' });
+      // Condicional no próprio DELETE: pedido pago não some (perde-se o rastro do dinheiro).
+      const [deleted] = await db.delete(siteOrders)
+        .where(and(eq(siteOrders.id, input.id), sql`${siteOrders.paymentStatus} <> 'confirmed'`))
+        .returning();
+      if (!deleted) {
+        const [exists] = await db.select({ id: siteOrders.id }).from(siteOrders).where(eq(siteOrders.id, input.id)).limit(1);
+        if (exists) throw new TRPCError({ code: 'FORBIDDEN', message: 'Pedido com pagamento confirmado não pode ser excluído. Cancele (com reembolso) em vez de excluir.' });
+        throw new TRPCError({ code: 'NOT_FOUND' });
+      }
       return { ok: true };
     }),
 
@@ -990,7 +1039,7 @@ Seja direto e use emojis para facilitar leitura.`;
 
   // Admin: generate shipping labels in batch for multiple paid orders
   batchGenerateLabels: protectedProcedure
-    .input(z.object({ orderIds: z.array(z.number()) }))
+    .input(z.object({ orderIds: z.array(z.number()).max(25) }))
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       if (!input.orderIds.length) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Nenhum pedido selecionado.' });
@@ -999,7 +1048,14 @@ Seja direto e use emojis para facilitar leitura.`;
       if (!token) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Configure MELHOR_ENVIO_TOKEN no painel Vercel' });
 
       const results: Array<{ orderId: number; success: boolean; labelUrl?: string; error?: string }> = [];
+      const deadline = Date.now() + 45_000; // função serverless limitada a 60s
       for (const orderId of input.orderIds) {
+        if (Date.now() > deadline) {
+          results.push({ orderId, success: false, error: 'Tempo esgotado — tente novamente com os pedidos restantes' });
+          continue;
+        }
+        let reserved = false;
+        let purchased = false;
         try {
           const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, orderId));
           const order = orders[0];
@@ -1021,6 +1077,12 @@ Seja direto e use emojis para facilitar leitura.`;
             results.push({ orderId, success: false, error: 'Serviço de frete inválido' });
             continue;
           }
+
+          if (!(await reserveLabel(orderId))) {
+            results.push({ orderId, success: false, error: LABEL_BUSY_MSG });
+            continue;
+          }
+          reserved = true;
 
           const labelProduct = resolveProduct(null, order.quantity);
           const labelPacks = Math.max(1, Math.round(order.quantity / CATALOG[labelProduct].kgPerUnit));
@@ -1075,6 +1137,7 @@ Seja direto e use emojis para facilitar leitura.`;
           const cartRes = await fetch(`${ME_BASE}/api/v2/me/cart`, { method: 'POST', headers, body: JSON.stringify(cartBody) });
           if (!cartRes.ok) {
             const txt = await cartRes.text();
+            await releaseLabel(orderId);
             results.push({ orderId, success: false, error: `Cart ME: ${txt.slice(0, 80)}` });
             continue;
           }
@@ -1087,10 +1150,12 @@ Seja direto e use emojis para facilitar leitura.`;
           if (!checkRes.ok) {
             await fetch(`${ME_BASE}/api/v2/me/cart/${meOrderId}`, { method: 'DELETE', headers }).catch(() => {});
             const txt = await checkRes.text();
+            await releaseLabel(orderId);
             results.push({ orderId, success: false, error: `Checkout ME: ${txt.slice(0, 80)}` });
             continue;
           }
 
+          purchased = true; // etiqueta paga: não libera mais a reserva
           await db.update(siteOrders).set({ meOrderId, updatedAt: new Date() }).where(eq(siteOrders.id, orderId));
 
           const genRes = await fetch(`${ME_BASE}/api/v2/me/shipment/generate`, {
@@ -1117,6 +1182,7 @@ Seja direto e use emojis para facilitar leitura.`;
 
           results.push({ orderId, success: true, labelUrl });
         } catch (e: any) {
+          if (reserved && !purchased) await releaseLabel(orderId);
           results.push({ orderId, success: false, error: e?.message ?? 'Erro desconhecido' });
         }
       }

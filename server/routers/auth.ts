@@ -1,14 +1,20 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { eq, and, gt, isNull } from 'drizzle-orm';
+import { eq, and, gt, isNull, count, sql } from 'drizzle-orm';
 import { randomBytes, randomInt } from 'crypto';
 import { router, publicProcedure, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { users, passwordResetTokens } from '../db/schema';
-import { hashPassword, verifyPassword, signToken, DUMMY_HASH } from '../auth';
+import { hashPassword, verifyPassword, signToken, getDummyHash } from '../auth';
 import { sendEmail } from '../email/resend';
 import { COOKIE_NAME } from '../../shared/const';
 import { cached, cacheInvalidate } from '../lib/cache';
+import { safeEqual } from '../lib/safeEqual';
+import { emailEquals } from '../lib/userEmail';
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 
 function generatePassword(length = 12): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
@@ -36,8 +42,10 @@ export const authRouter = router({
   login: publicProcedure
     .input(z.object({ email: z.string().email(), password: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
-      const [user] = await db.select().from(users).where(eq(users.email, input.email));
-      const valid = user ? verifyPassword(input.password, user.passwordHash) : (verifyPassword(input.password, DUMMY_HASH), false);
+      // Se houver duas contas que só diferem em maiúsculas (legado), a de grafia idêntica vem primeiro
+      const [user] = await db.select().from(users).where(emailEquals(users.email, input.email))
+        .orderBy(sql`(${users.email} = ${input.email}) desc`, users.id).limit(1);
+      const valid = user ? verifyPassword(input.password, user.passwordHash) : (verifyPassword(input.password, getDummyHash()), false);
       if (!valid) {
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Email ou senha inválidos' });
       }
@@ -122,7 +130,7 @@ export const authRouter = router({
       const envSecret = process.env.ADMIN_RESET_SECRET;
       const genericError = 'Credenciais de recuperação inválidas';
 
-      if (!envSecret || input.secret !== envSecret) {
+      if (!envSecret || !safeEqual(input.secret, envSecret)) {
         const prev = emergencyAttempts.get(ip) ?? { count: 0, blockedUntil: 0 };
         prev.count++;
         prev.blockedUntil = Date.now() + Math.min(prev.count * 30_000, 300_000);
@@ -130,7 +138,7 @@ export const authRouter = router({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: genericError });
       }
 
-      const [user] = await db.select().from(users).where(eq(users.email, input.email));
+      const [user] = await db.select().from(users).where(emailEquals(users.email, input.email));
       if (!user || user.role !== 'admin') {
         throw new TRPCError({ code: 'UNAUTHORIZED', message: genericError });
       }
@@ -146,8 +154,17 @@ export const authRouter = router({
   requestPasswordReset: publicProcedure
     .input(z.object({ email: z.string().email() }))
     .mutation(async ({ input }) => {
-      const [user] = await db.select().from(users).where(eq(users.email, input.email));
+      const [user] = await db.select().from(users).where(emailEquals(users.email, input.email));
       if (!user) return { ok: true };
+
+      // Limite por e-mail: no máximo 3 links ainda não usados nos últimos 15 min.
+      // Acima disso devolve a mesma resposta genérica, sem enviar (anti-spam de caixa postal).
+      const [recent] = await db.select({ n: count() }).from(passwordResetTokens).where(and(
+        eq(passwordResetTokens.userId, user.id),
+        isNull(passwordResetTokens.usedAt),
+        gt(passwordResetTokens.createdAt, new Date(Date.now() - 15 * 60 * 1000)),
+      ));
+      if (Number(recent?.n ?? 0) >= 3) return { ok: true };
 
       const token = randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
@@ -168,7 +185,7 @@ export const authRouter = router({
 <tr><td align="center" style="padding:24px 8px;">
 <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
 <tr><td style="padding:32px 32px 24px;">
-<p style="margin:0 0 16px;font-size:15px;color:#444;">Olá, <strong>${user.name}</strong>!</p>
+<p style="margin:0 0 16px;font-size:15px;color:#444;">Olá, <strong>${escapeHtml(user.name)}</strong>!</p>
 <p style="margin:0 0 16px;font-size:15px;color:#444;">Recebemos uma solicitação para redefinir sua senha. Clique no botão abaixo para criar uma nova senha:</p>
 <table cellpadding="0" cellspacing="0" border="0" style="margin:24px auto;">
 <tr><td style="background:#0C3680;border-radius:6px;">
@@ -182,7 +199,7 @@ export const authRouter = router({
 </td></tr>
 </table></td></tr></table></body></html>`;
 
-      await sendEmail(input.email, 'Recuperação de Senha — Sal Vita', html);
+      await sendEmail(user.email, 'Recuperação de Senha — Sal Vita', html);
       return { ok: true };
     }),
 
@@ -192,16 +209,17 @@ export const authRouter = router({
       newPassword: z.string().min(6, 'Mínimo 6 caracteres'),
     }))
     .mutation(async ({ input }) => {
-      const [resetToken] = await db
-        .select()
-        .from(passwordResetTokens)
-        .where(
-          and(
-            eq(passwordResetTokens.token, input.token),
-            gt(passwordResetTokens.expiresAt, new Date()),
-            isNull(passwordResetTokens.usedAt),
-          ),
-        );
+      // Consome o token de forma atômica ANTES de trocar a senha: duas requisições
+      // simultâneas com o mesmo link não passam as duas (só um UPDATE devolve linha).
+      const now = new Date();
+      const [resetToken] = await db.update(passwordResetTokens)
+        .set({ usedAt: now })
+        .where(and(
+          eq(passwordResetTokens.token, input.token),
+          isNull(passwordResetTokens.usedAt),
+          gt(passwordResetTokens.expiresAt, now),
+        ))
+        .returning({ userId: passwordResetTokens.userId });
 
       if (!resetToken) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Link inválido ou expirado. Solicite uma nova recuperação.' });
@@ -215,10 +233,6 @@ export const authRouter = router({
       await db.update(users)
         .set({ passwordHash: hashPassword(input.newPassword), mustChangePassword: false })
         .where(eq(users.id, user.id));
-
-      await db.update(passwordResetTokens)
-        .set({ usedAt: new Date() })
-        .where(eq(passwordResetTokens.id, resetToken.id));
 
       cacheInvalidate(`auth:me:${user.id}`);
       cacheInvalidate(`user:${user.id}`);

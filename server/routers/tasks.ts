@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { eq, inArray, or, isNotNull, and, gte, count, sql, SQL, asc, desc } from 'drizzle-orm';
+import { eq, inArray, or, isNotNull, isNull, and, gte, count, sql, SQL, asc, desc } from 'drizzle-orm';
 import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { TRPCError } from '@trpc/server';
 import { db } from '../db';
@@ -228,7 +228,7 @@ export const tasksRouter = router({
   bulkAssign: protectedProcedure
     .input(z.object({
       ids: z.array(z.number()).min(1).max(2000),
-      assignedTo: z.string().min(1),
+      assignedTo: z.string().trim().min(1),
     }))
     .mutation(async ({ input, ctx }) => {
       const ownerFilter = ctx.user.role === 'admin'
@@ -244,7 +244,7 @@ export const tasksRouter = router({
   update: protectedProcedure
     .input(z.object({
       id: z.number(),
-      title: z.string().max(500).optional(),
+      title: z.string().trim().min(1, 'Título não pode ficar vazio').max(500).optional(),
       description: z.string().max(2000).optional(),
       notes: z.string().max(5000).optional(),
       email: z.string().email().max(200).optional().or(z.literal('')),
@@ -252,7 +252,7 @@ export const tasksRouter = router({
       reminderDate: z.date().optional().nullable(),
       reminderEnabled: z.boolean().optional(),
       priority: z.enum(['low', 'medium', 'high']).optional(),
-      assignedTo: z.string().optional(),
+      assignedTo: z.string().trim().optional(),
       status: z.enum(['pending', 'completed', 'cancelled']).optional(),
       // Quando o atendente edita o e-mail para um novo valor, o front envia
       // `emailConfirmed: true` (e-mail digitado = confirmado). Em saves que não
@@ -267,6 +267,8 @@ export const tasksRouter = router({
       // Mark real contact: attendant manually saved notes (>15 chars = real annotation)
       const now = new Date();
       const setData: Record<string, any> = { ...data, updatedAt: now };
+      // assignedTo vazio = tarefa sem responsável (null), nunca a string vazia
+      if (data.assignedTo !== undefined) setData.assignedTo = data.assignedTo || null;
       let confirmedNow = false;
       if (data.email !== undefined) {
         const newEmail = data.email ? data.email.toLowerCase().trim() : null;
@@ -402,6 +404,16 @@ export const tasksRouter = router({
         .where(ownerFilter)
         .returning();
 
+      // Ao desconfirmar, o lead deixa de ser elegível: cancela as sequências pendentes
+      // (mesmo cancelamento que update/delete já fazem), senão elas seguiriam enviando.
+      if (!input.confirmed && task.email) {
+        try {
+          await cancelAllEnrollments(task.email);
+        } catch (err) {
+          console.error('[tasks.confirmEmail] cancelAllEnrollments failed:', err);
+        }
+      }
+
       // Ao confirmar, o lead "entra" de fato no marketing → dispara a automação
       // "lead criado" (idempotente, seguro re-disparar).
       if (input.confirmed && updated?.email) {
@@ -431,31 +443,45 @@ export const tasksRouter = router({
         ? eq(tasks.id, input.id)
         : and(eq(tasks.id, input.id), await userTaskFilter(ctx.user.id, ctx.user.name ?? ''));
 
-      const [existing] = await db.select({ tags: tasks.tags }).from(tasks).where(eq(tasks.id, input.id));
-      const currentTags = existing?.tags ?? [];
+      // Leitura já com ownerFilter: atendente não lê/regrava tags de tarefa alheia
+      const [existing] = await db.select({ tags: tasks.tags, convertedAt: tasks.convertedAt })
+        .from(tasks).where(ownerFilter).limit(1);
+      if (!existing) throw new TRPCError({ code: 'FORBIDDEN', message: 'Tarefa não encontrada ou sem permissão' });
+      const currentTags = existing.tags ?? [];
       const newTags = input.converted
         ? (currentTags.includes('ativo') ? currentTags : [...currentTags, 'ativo'])
         : currentTags.filter(t => t !== 'ativo');
+      const alreadyConverted = !!existing.convertedAt;
 
       const setData: Record<string, any> = {
-        convertedAt: input.converted ? new Date() : null,
         updatedAt: new Date(),
         tags: newTags,
       };
       if (input.converted) {
+        // Já convertida: não regrava convertedAt (mantém a data original). Só atualiza valor/pedido.
+        if (!alreadyConverted) setData.convertedAt = new Date();
         if (input.orderValue !== undefined) setData.orderValue = input.orderValue.toFixed(2);
         if (input.orderId !== undefined) setData.orderId = input.orderId;
       } else {
+        setData.convertedAt = null;
         setData.orderValue = null;
         setData.orderId = null;
       }
+
+      // Não convertida → convertida: UPDATE condicional (converted_at IS NULL). Num clique
+      // duplo só uma das requisições "vira" a conversão e dispara lead_converted.
+      const becomingConverted = input.converted && !alreadyConverted;
       const [updated] = await db.update(tasks)
         .set(setData)
-        .where(ownerFilter)
+        .where(becomingConverted ? and(ownerFilter, isNull(tasks.convertedAt)) : ownerFilter)
         .returning();
-      if (!updated) throw new TRPCError({ code: 'FORBIDDEN', message: 'Tarefa não encontrada ou sem permissão' });
+      if (!updated) {
+        const [current] = await db.select().from(tasks).where(ownerFilter).limit(1);
+        if (!current) throw new TRPCError({ code: 'FORBIDDEN', message: 'Tarefa não encontrada ou sem permissão' });
+        return current; // perdeu a corrida: a outra requisição já converteu e disparou a automação
+      }
 
-      if (input.converted && updated.email) {
+      if (becomingConverted && updated.email) {
         try {
           await runTriggerNow('lead_converted', {
             id: updated.id,

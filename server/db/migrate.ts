@@ -244,7 +244,7 @@ async function ensureRecentSchema() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-10-05a';
+const SCHEMA_VERSION = '2026-10-06a';
 
 export async function ensureTablesExist() {
   // Antes de tudo (e antes do caminho rápido): garante o que foi criado por último.
@@ -266,8 +266,8 @@ export async function ensureTablesExist() {
       // ~4 network round-trips to ~1, since neon-http pays a fresh HTTP+TLS hop
       // per query with no connection reuse.
       await Promise.allSettled([
-        sql`DELETE FROM chat_messages WHERE created_at < CURRENT_DATE`,
-        sql`DELETE FROM work_sessions WHERE status = 'completed' AND ended_at < NOW() - INTERVAL '90 days'`,
+        sql`DELETE FROM chat_messages WHERE created_at < (((now() AT TIME ZONE 'America/Sao_Paulo')::date)::timestamp AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'UTC'`,
+        sql`DELETE FROM work_sessions WHERE status = 'ended' AND ended_at < NOW() - INTERVAL '90 days'`,
         sql`CREATE TABLE IF NOT EXISTS email_template_categories (id SERIAL PRIMARY KEY, name TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)`,
         sql`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS category_ids JSONB`,
       ]);
@@ -784,6 +784,14 @@ export async function ensureTablesExist() {
   await sql`CREATE INDEX IF NOT EXISTS work_sessions_status_idx    ON work_sessions(status)`;
   await sql`CREATE INDEX IF NOT EXISTS work_sessions_started_at_idx ON work_sessions(started_at)`;
   await sql`CREATE INDEX IF NOT EXISTS chat_messages_user_id_idx   ON chat_messages(user_id)`;
+  // Índices comuns (não únicos, para não falhar com duplicatas já existentes em produção)
+  await sql`CREATE INDEX IF NOT EXISTS tasks_created_at_idx        ON tasks(created_at)`;
+  await sql`CREATE INDEX IF NOT EXISTS tasks_cnpj_idx              ON tasks(cnpj)`;
+  await sql`CREATE INDEX IF NOT EXISTS tasks_phone_idx             ON tasks(phone)`;
+  await sql`CREATE INDEX IF NOT EXISTS tasks_client_id_idx         ON tasks(client_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS reminders_user_id_idx       ON reminders(user_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS email_recipients_task_id_idx ON email_campaign_recipients(task_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS email_seq_enroll_task_id_idx ON email_sequence_enrollments(task_id)`;
   await sql`CREATE INDEX IF NOT EXISTS knowledge_docs_user_id_idx  ON knowledge_documents(user_id)`;
   await sql`CREATE INDEX IF NOT EXISTS sellers_status_idx          ON sellers(status)`;
   await sql`CREATE INDEX IF NOT EXISTS sellers_user_id_idx         ON sellers(user_id)`;
@@ -1085,8 +1093,10 @@ export async function ensureTablesExist() {
   } catch {}
 
   // Purge old data to stay within Neon free-tier limits (512 MB storage, ~5 GB transfer/month)
+  // Chat: só o dia de hoje em São Paulo. CURRENT_DATE (UTC) apagava a conversa depois das 21h BRT;
+  // created_at é gravado em UTC, então a meia-noite de SP é convertida de volta para UTC.
   // Chat: keep only today's messages — each session starts fresh, old history wastes storage+transfer
-  try { await sql`DELETE FROM chat_messages WHERE created_at < CURRENT_DATE`; } catch {}
-  // Work sessions: keep last 90 days of completed sessions
-  try { await sql`DELETE FROM work_sessions WHERE status = 'completed' AND ended_at < NOW() - INTERVAL '90 days'`; } catch {}
+  try { await sql`DELETE FROM chat_messages WHERE created_at < (((now() AT TIME ZONE 'America/Sao_Paulo')::date)::timestamp AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'UTC'`; } catch {}
+  // Work sessions: keep last 90 days of ended sessions (o valor real do status é 'ended', não 'completed')
+  try { await sql`DELETE FROM work_sessions WHERE status = 'ended' AND ended_at < NOW() - INTERVAL '90 days'`; } catch {}
 }

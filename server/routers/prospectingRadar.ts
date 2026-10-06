@@ -11,6 +11,7 @@ import { spDateStr } from '../lib/tz';
 import type { RadarEstablishment } from '../db/schema';
 import { appSettings, radarEstablishments, radarEnrichment, radarLeadActions, radarLeadEvents, tasks, taskDeletionLogs, emailSuppressions, tags, fatOrders, clients, sellers } from '../db/schema';
 import { userTaskFilter } from './tasks';
+import { conditionalRadarTaskInsert } from '../lib/radar/convertInsert';
 import { cnpjsDeClientesAtivos } from '../lib/radar/clientesAtivos';
 import { phoneOfTask } from '../../shared/phone';
 import { dataLimiteAbertura } from '../lib/radar/abertura';
@@ -926,41 +927,34 @@ export const prospectingRadarRouter = router({
         enrichment: enrichmentData,
       });
 
-      let created;
-      try {
-        [created] = await db.insert(tasks).values({
-          userId: ctx.user.id,
-          clientId: 0,
-          title: taskTitle(companyName, municipioNome, uf),
-          description: taskDescription(municipioNome, uf),
-          notes,
-          email,
-          tags: [RADAR_TAG],
-          reminderDate: input.reminderDate ? reminderFromDateStr(input.reminderDate) : new Date(),
-          // Contato feito pela lista conta como contato real da tarefa (métricas de progresso).
-          lastContactedAt: action?.contactedAt ?? null,
-          contactCount: action?.contactedAt ? action.contactCount : 0,
-          reminderEnabled: true,
-          priority: 'high',
-          status: 'pending',
-          assignedTo,
-          cnpj: establishment.cnpj,
-          phone: phoneToUse,
-          // E-mail importado nunca entra confirmado — só o atendente confirma à
-          // mão depois (tasks.confirmEmail), igual a qualquer outra importação.
-          // Isso é o que impede runTriggerNow('lead_created') de disparar
-          // automação de e-mail marketing para um lead que nunca deu
-          // consentimento (por isso este `convert`, ao contrário de
-          // tasks.create, NÃO chama runTriggerNow — ver nota abaixo).
-          emailConfirmed: false,
-        }).returning();
-      } catch (err) {
-        if ((err as { code?: string } | null)?.code === '23505') {
-          throw new TRPCError({ code: 'CONFLICT', message: 'Este lead já foi convertido em tarefa por outro atendente.' });
-        }
-        throw err;
+      // INSERT condicional (WHERE NOT EXISTS por CNPJ/telefone) — não há índice único, então
+      // o select de duplicidade acima não basta contra dois atendentes simultâneos.
+      // E-mail importado nunca entra confirmado (email_confirmed = FALSE) — só o atendente
+      // confirma à mão depois (tasks.confirmEmail), igual a qualquer outra importação.
+      // Isso é o que impede runTriggerNow('lead_created') de disparar automação de e-mail
+      // marketing para um lead que nunca deu consentimento (por isso este `convert`, ao
+      // contrário de tasks.create, NÃO chama runTriggerNow — ver nota abaixo).
+      const insertRes = await db.execute(conditionalRadarTaskInsert({
+        userId: ctx.user.id,
+        title: taskTitle(companyName, municipioNome, uf),
+        description: taskDescription(municipioNome, uf),
+        notes,
+        email: email ?? null,
+        tag: RADAR_TAG,
+        reminderDate: input.reminderDate ? reminderFromDateStr(input.reminderDate) : new Date(),
+        // Contato feito pela lista conta como contato real da tarefa (métricas de progresso).
+        lastContactedAt: action?.contactedAt ?? null,
+        contactCount: action?.contactedAt ? action.contactCount : 0,
+        assignedTo: assignedTo ?? null,
+        cnpj: establishment.cnpj,
+        phone: phoneToUse ?? null,
+        dedupePhones: phoneCandidates,
+      }));
+      const createdId = (insertRes.rows[0] as { id?: number } | undefined)?.id;
+      if (createdId === undefined) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'Este lead já foi convertido em tarefa por outro atendente.' });
       }
-      if (!created) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Falha ao criar a tarefa' });
+      const created = { id: createdId };
 
       // Deliberadamente NÃO chama runTriggerNow('lead_created', ...) aqui (ao
       // contrário de tasks.create/bulkCreate/confirmEmail): esse hook enrola o

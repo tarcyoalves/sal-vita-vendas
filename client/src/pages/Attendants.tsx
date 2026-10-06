@@ -223,8 +223,12 @@ export default function Attendants() {
   const handleDelete = async (id: number, name: string) => {
     if (!confirm(`Deletar atendente "${name}" e sua conta de acesso?`)) return;
     try {
-      await deleteMutation.mutateAsync({ id });
-      toast.success("Atendente removido");
+      const res = await deleteMutation.mutateAsync({ id });
+      if (res.deactivated) {
+        toast.success("Atendente possui dados vinculados (tarefas, pedidos ou sessões): foi desativado em vez de excluído", { duration: 6000 });
+      } else {
+        toast.success("Atendente removido");
+      }
       refetch();
     } catch {
       toast.error("Erro ao deletar atendente");
