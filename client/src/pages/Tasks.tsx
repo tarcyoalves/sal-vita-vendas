@@ -27,6 +27,7 @@ import { useFatStore } from '../lib/faturamento/store';
 import { totalPedido, formatBRL } from '../lib/faturamento/calc';
 import type { Pedido } from '../lib/faturamento/types';
 import { MultiSelectFilter } from '../components/tasks/MultiSelectFilter';
+import { FILTER_ALL, FILTER_ME, FILTER_NONE, applyAssigneeFilter, buildMyIdentity, otherAttendantNames } from '../lib/myTasks';
 import { FilterPanel, FilterSection } from '../components/tasks/FilterPanel';
 import { extractLocation, type TaskLocation } from '../lib/tasks/location';
 import { phoneOfTask } from '../../../shared/phone';
@@ -203,7 +204,8 @@ export default function Tasks() {
   const utils = trpc.useUtils();
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
-  const [filterAssignee, setFilterAssignee] = useState<string>("all");
+  // Admin abre as tarefas como atendente: só as dele. "Todos" fica nos filtros.
+  const [filterAssignee, setFilterAssignee] = useState<string>(FILTER_ME);
   const [filterContact, setFilterContact] = useState<"all" | "whatsapp" | "email">("all");
   const [filterReminder, setFilterReminder] = useState<"all" | "active" | "inactive">("all");
   const [filterConverted, setFilterConverted] = useState<"all" | "active_clients" | "leads">("all");
@@ -263,6 +265,8 @@ export default function Tasks() {
 
   const { data: tasks = [], isLoading, refetch } = trpc.tasks.list.useQuery();
   const { data: attendants = [] } = trpc.sellers.list.useQuery();
+  const me = useMemo(() => buildMyIdentity(user, attendants as any[]), [user, attendants]);
+  const otherAttendants = useMemo(() => otherAttendantNames(attendants as any[], me), [attendants, me]);
   // staleTime: avoids redundant server calls; session/profile rarely change
   const { data: workSession } = trpc.workSessions.current.useQuery(undefined, { enabled: !isAdmin, staleTime: 60_000 });
   const { data: sellerProfile } = trpc.sellers.myProfile.useQuery(undefined, { enabled: !isAdmin, staleTime: 300_000 });
@@ -718,10 +722,7 @@ export default function Tasks() {
     }
 
     if (filterStatus !== "all") result = result.filter(t => t.status === filterStatus);
-    if (isAdmin && filterAssignee !== "all") {
-      if (filterAssignee === "__none__") result = result.filter(t => !t.assignedTo || t.assignedTo.trim() === "");
-      else result = result.filter(t => t.assignedTo === filterAssignee);
-    }
+    if (isAdmin) result = applyAssigneeFilter(result, filterAssignee, me);
     if (filterContact === "whatsapp") {
       result = result.filter(t => phoneOfTask(t) !== null);
     } else if (filterContact === "email") {
@@ -799,11 +800,11 @@ export default function Tasks() {
       if (aOverdue && bOverdue) return bDate! - aDate!;
       return 0;
     });
-  }, [tasks, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTags, tagMatchMode, filterStates, filterCities, locationByTaskId, filterHot, reminderTab, isAdmin, searchQuery]);
+  }, [tasks, me, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTags, tagMatchMode, filterStates, filterCities, locationByTaskId, filterHot, reminderTab, isAdmin, searchQuery]);
 
   const clearAllFilters = useCallback(() => {
     setFilterStatus("all");
-    setFilterAssignee("all");
+    setFilterAssignee(FILTER_ME);
     setFilterContact("all");
     setFilterReminder("all");
     setFilterConverted("all");
@@ -820,7 +821,7 @@ export default function Tasks() {
   const panelFilterCount = useMemo(() => {
     let n = 0;
     if (filterStatus !== "all") n++;
-    if (isAdmin && filterAssignee !== "all") n++;
+    if (isAdmin && filterAssignee !== FILTER_ME) n++;
     if (filterContact !== "all") n++;
     if (filterReminder !== "all") n++;
     if (filterConverted !== "all") n++;
@@ -839,7 +840,7 @@ export default function Tasks() {
       chips.push({ key: "tab", label: "Período", value: labels[reminderTab] ?? reminderTab, clear: () => setReminderTab("all") });
     }
     if (filterStatus !== "all") chips.push({ key: "status", label: "Status", value: "Ativas", clear: () => setFilterStatus("all") });
-    if (isAdmin && filterAssignee !== "all") chips.push({ key: "assignee", label: "Atendente", value: filterAssignee === "__none__" ? "Sem atendente" : filterAssignee, clear: () => setFilterAssignee("all") });
+    if (isAdmin && filterAssignee !== FILTER_ME) chips.push({ key: "assignee", label: "Atendente", value: filterAssignee === FILTER_NONE ? "Sem atendente" : filterAssignee === FILTER_ALL ? "Todos os atendentes" : filterAssignee, clear: () => setFilterAssignee(FILTER_ME) });
     if (filterContact !== "all") chips.push({ key: "contact", label: "Contato", value: filterContact === "whatsapp" ? "WhatsApp" : "E-mail", clear: () => setFilterContact("all") });
     if (filterReminder !== "all") chips.push({ key: "rem", label: "Lembrete", value: filterReminder === "active" ? "Com lembrete" : "Sem lembrete", clear: () => setFilterReminder("all") });
     if (filterConverted !== "all") chips.push({ key: "conv", label: "Situação", value: filterConverted === "active_clients" ? "Clientes ativos" : "Só leads", clear: () => setFilterConverted("all") });
@@ -1285,12 +1286,12 @@ export default function Tasks() {
               <select
                 value={filterAssignee}
                 onChange={(e) => setFilterAssignee(e.target.value)}
-                className={`px-3 py-2 border rounded-lg text-sm font-medium ${filterAssignee !== "all" ? "bg-blue-900 text-white border-blue-900" : "bg-white text-gray-700"}`}
+                className={`px-3 py-2 border rounded-lg text-sm font-medium ${filterAssignee !== FILTER_ME ? "bg-blue-900 text-white border-blue-900" : "bg-white text-gray-700"}`}
               >
-                <option value="all">Todos os atendentes</option>
-                <option value="__none__">Sem atendente</option>
-                {user?.name && <option value={user.name}>{user.name}</option>}
-                {(attendants as any[]).map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}
+                <option value={FILTER_ME}>Minhas tarefas</option>
+                <option value={FILTER_ALL}>Todos os atendentes</option>
+                <option value={FILTER_NONE}>Sem atendente</option>
+                {otherAttendants.map((name) => <option key={name} value={name}>{name}</option>)}
               </select>
             </FilterSection>
           )}
@@ -1614,6 +1615,15 @@ export default function Tasks() {
       {/* Filtros ativos — mostra o recorte atual e deixa remover um a um.
           Sem isto, com vários filtros combinados o atendente perde a noção de
           por que a lista está pequena. */}
+      {/* Admin abre só com as próprias tarefas: avisa e dá a saída em um clique. */}
+      {isAdmin && filterAssignee === FILTER_ME && activeFilterChips.length === 0 && (
+        <p className="text-xs text-slate-500">
+          Mostrando só as suas tarefas ({filteredTasks.length} de {tasks.length}) ·{" "}
+          <button onClick={() => setFilterAssignee(FILTER_ALL)} className="font-medium text-blue-900 underline-offset-2 hover:underline">
+            ver de todos os atendentes
+          </button>
+        </p>
+      )}
       {activeFilterChips.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs text-slate-500">
