@@ -9,12 +9,13 @@
 //   • IDs continuam gerados no cliente (uid()), então upsert retorna o objeto
 //     imediatamente — sem quebrar o contrato síncrono.
 
-import { useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { createTRPCClient, httpBatchLink } from '@trpc/client';
 import superjson from 'superjson';
 import { toast } from 'sonner';
 import type { AppRouter } from '../../../../server/routers';
 import type { Produto, Pedido, ComissaoMap, ItemPedido } from './types';
+import { FAT_FOCUS_REFETCH_MS, isStale } from '../refetchPolicy';
 
 const api = createTRPCClient<AppRouter>({
   links: [
@@ -56,27 +57,66 @@ function readLS<T>(key: string, fallback: T): T {
 type Snapshot = { produtos: Produto[]; pedidos: Pedido[]; comissoes: ComissaoMap };
 let mirror: Snapshot = { produtos: [], pedidos: [], comissoes: {} };
 let loaded = false;
-let loading = false;
+
+// Estado da carga (separado do mirror para não trocar a referência dos dados à toa).
+type Meta = { loading: boolean; error: boolean };
+let meta: Meta = { loading: false, error: false };
+function setMeta(next: Partial<Meta>) {
+  meta = { ...meta, ...next };
+  emit();
+}
+let lastLoadAt = 0;
+let inflight: Promise<void> | null = null;
+// Escritas otimistas em voo: uma recarga que começou antes delas pode trazer o estado
+// antigo do servidor e desfazer a tela do usuário. Descartamos essa resposta e refazemos.
+let pendingWrites = 0;
+let writeEpoch = 0;
+let needsReload = false;
 
 const listeners = new Set<() => void>();
 function emit() {
   for (const l of listeners) l();
 }
 
-async function reload(): Promise<void> {
-  try {
-    const data = await api.faturamento.getAll.query();
-    mirror = {
-      produtos: data.produtos as Produto[],
-      pedidos: data.pedidos as Pedido[],
-      comissoes: data.comissoes as ComissaoMap,
-    };
-    loaded = true;
-    emit();
-  } catch (err) {
-    console.error('[FatStore] Erro ao carregar dados do faturamento:', err);
-    throw err;
-  }
+function reload(): Promise<void> {
+  if (inflight) return inflight;
+  setMeta({ loading: true });
+  inflight = (async () => {
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const epoch = writeEpoch;
+        const data = await api.faturamento.getAll.query();
+        if (pendingWrites > 0 || epoch !== writeEpoch) {
+          // Houve escrita durante a busca: a resposta pode estar velha. Tenta de novo.
+          if (pendingWrites > 0) { needsReload = true; break; }
+          continue;
+        }
+        mirror = {
+          produtos: data.produtos as Produto[],
+          pedidos: data.pedidos as Pedido[],
+          comissoes: data.comissoes as ComissaoMap,
+        };
+        loaded = true;
+        lastLoadAt = Date.now();
+        break;
+      }
+      setMeta({ loading: false, error: false });
+    } catch (err) {
+      console.error('[FatStore] Erro ao carregar dados do faturamento:', err);
+      setMeta({ loading: false, error: true });
+      throw err;
+    } finally {
+      inflight = null;
+    }
+  })();
+  return inflight;
+}
+
+/** Recarrega só se os dados têm mais de `maxAgeMs` (ou nunca carregaram). Sem erro para quem chama. */
+function refreshIfStale(maxAgeMs: number): void {
+  if (inflight) return;
+  if (!isStale(lastLoadAt, Date.now(), maxAgeMs)) return;
+  reload().catch(() => {});
 }
 
 // Importa dados do localStorage antigo para o banco uma única vez por navegador.
@@ -108,19 +148,31 @@ async function maybeImportLocal(): Promise<void> {
 }
 
 function ensureLoaded(): void {
-  if (loaded || loading) return;
-  loading = true;
-  reload()
-    .then(maybeImportLocal)
-    .catch((err) => {
-      console.error('[FatStore] Falha no ensureLoaded:', err);
-    })
-    .finally(() => { loading = false; });
+  if (loaded || inflight) return;
+  reload().then(maybeImportLocal).catch(() => {});
 }
 
 function onWriteError(): void {
   toast.error('Não foi possível salvar no servidor. Recarregando dados…');
+  needsReload = true;
+  flushReload();
+}
+
+// Recarga adiada porque havia escrita em voo: roda quando a fila esvazia.
+function flushReload(): void {
+  if (!needsReload || pendingWrites > 0) return;
+  needsReload = false;
   reload().catch(() => {});
+}
+
+/** Acompanha uma escrita em segundo plano. Resolve true/false (nunca rejeita). */
+function track(p: Promise<unknown>): Promise<boolean> {
+  pendingWrites++;
+  writeEpoch++;
+  return p.then(
+    () => { pendingWrites--; flushReload(); return true; },
+    () => { pendingWrites--; onWriteError(); return false; },
+  );
 }
 
 // ── Produtos ──────────────────────────────────────────────────────────────────
@@ -151,13 +203,13 @@ export const produtos = {
       mirror = { ...mirror, produtos: [...mirror.produtos, result] };
     }
     emit();
-    api.faturamento.upsertProduto.mutate(result).catch(onWriteError);
+    void track(api.faturamento.upsertProduto.mutate(result));
     return result;
   },
   remove(id: string): void {
     mirror = { ...mirror, produtos: mirror.produtos.filter((p) => p.id !== id) };
     emit();
-    api.faturamento.removeProduto.mutate({ id }).catch(onWriteError);
+    void track(api.faturamento.removeProduto.mutate({ id }));
   },
 };
 
@@ -224,7 +276,7 @@ export const pedidos = {
       ? { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === result.id ? result : p)) }
       : { ...mirror, pedidos: [result, ...mirror.pedidos] };
     emit();
-    api.faturamento.upsertPedido.mutate(result).catch(onWriteError);
+    void track(api.faturamento.upsertPedido.mutate(result));
     return result;
   },
   // Marca como faturado: congela o estimado atual e grava os itens reais.
@@ -245,7 +297,7 @@ export const pedidos = {
     };
     mirror = { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === id ? faturado : p)) };
     emit();
-    api.faturamento.upsertPedido.mutate({ ...faturado, acao: 'faturar' }).catch(onWriteError);
+    void track(api.faturamento.upsertPedido.mutate({ ...faturado, acao: 'faturar' }));
     return faturado;
   },
   // Desfaz o faturamento: volta o pedido para o pipeline como estimado.
@@ -272,13 +324,13 @@ export const pedidos = {
     };
     mirror = { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === id ? estimado : p)) };
     emit();
-    api.faturamento.upsertPedido.mutate({ ...estimado, acao: 'desfazer' }).catch(onWriteError);
+    void track(api.faturamento.upsertPedido.mutate({ ...estimado, acao: 'desfazer' }));
     return estimado;
   },
   remove(id: string, reason: string): void {
     mirror = { ...mirror, pedidos: mirror.pedidos.filter((p) => p.id !== id) };
     emit();
-    api.faturamento.removePedido.mutate({ id, reason }).catch(onWriteError);
+    void track(api.faturamento.removePedido.mutate({ id, reason }));
   },
   // Revisão do admin/manager — informativa, não bloqueia ações do atendente.
   aprovar(id: string, aprovadoPorNome: string): Pedido | null {
@@ -291,8 +343,24 @@ export const pedidos = {
     };
     mirror = { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === id ? aprovado : p)) };
     emit();
-    api.faturamento.aprovarPedido.mutate({ id }).catch(onWriteError);
+    void track(api.faturamento.aprovarPedido.mutate({ id }));
     return aprovado;
+  },
+  // Igual a aprovar(), mas só resolve depois da resposta do servidor: devolve null se a
+  // gravação falhou (o toast de erro e a recarga já foram disparados) — a tela só deve
+  // anunciar "aprovado" quando isto devolver o pedido.
+  async aprovarConfirmando(id: string, aprovadoPorNome: string): Promise<Pedido | null> {
+    const atual = mirror.pedidos.find((p) => p.id === id);
+    if (!atual) return null;
+    const aprovado: Pedido = {
+      ...atual,
+      aprovadoEm: new Date().toISOString(),
+      aprovadoPor: aprovadoPorNome,
+    };
+    mirror = { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === id ? aprovado : p)) };
+    emit();
+    const ok = await track(api.faturamento.aprovarPedido.mutate({ id }));
+    return ok ? aprovado : null;
   },
   // ── Ações do SMBI ──────────────────────────────────────────────────────────
   // Sem atualização otimista: o servidor valida (pedido faturado, robô processando agora, vínculo…)
@@ -340,16 +408,24 @@ export const comissoes = {
   set(sellerId: number, pct: number): void {
     mirror = { ...mirror, comissoes: { ...mirror.comissoes, [sellerId]: pct } };
     emit();
-    api.faturamento.setComissao.mutate({ sellerId, pct }).catch(onWriteError);
+    void track(api.faturamento.setComissao.mutate({ sellerId, pct }));
   },
 };
 
 // ── Reatividade ────────────────────────────────────────────────────────────────
 function subscribe(callback: () => void): () => void {
   listeners.add(callback);
+  if (listeners.size === 1 && typeof window !== 'undefined') {
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+  }
   ensureLoaded();
   return () => {
     listeners.delete(callback);
+    if (listeners.size === 0 && typeof window !== 'undefined') {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+    }
   };
 }
 
@@ -357,17 +433,40 @@ function getSnapshot(): Snapshot {
   return mirror;
 }
 
+function getMeta(): Meta {
+  return meta;
+}
+
+// Volta o foco na aba (PWA aberto o dia todo): recarrega se passaram >2 min.
+// O listener só existe enquanto há alguma tela usando o store.
+function onVisible() {
+  if (document.visibilityState === 'visible') refreshIfStale(FAT_FOCUS_REFETCH_MS);
+}
+function onFocus() {
+  refreshIfStale(FAT_FOCUS_REFETCH_MS);
+}
+
 /**
  * Hook reativo. Retorna os dados atuais + as ações do store.
  * Re-renderiza automaticamente quando qualquer parte é escrita.
- * Mesma assinatura da fase localStorage — nenhuma tela precisou mudar.
+ * `loading`/`error`/`reload` deixam a tela distinguir "sem pedidos" de "falhou ao carregar".
  */
 export function useFatStore() {
   const snap = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const m = useSyncExternalStore(subscribe, getMeta, getMeta);
+  // Ao montar qualquer tela de faturamento, busca de novo se os dados têm >10 s
+  // (as várias telas montando juntas compartilham a mesma busca em voo).
+  useEffect(() => {
+    refreshIfStale(10_000);
+  }, []);
   return {
     produtos: snap.produtos,
     pedidos: snap.pedidos,
     comissoes: snap.comissoes,
+    loading: m.loading,
+    loaded,
+    error: m.error,
+    reload: () => reload().catch(() => {}),
     actions: { produtos, pedidos, comissoes },
   };
 }

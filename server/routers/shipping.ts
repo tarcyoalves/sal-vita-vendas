@@ -187,10 +187,12 @@ function assertOrderAccess(
   const real = order.customerPhone.replace(/\D/g, '');
   // Require the whole number (10+ digits), not a 4-digit suffix.
   if (given.length >= 10 && (given === real || given === `55${real}` || `55${given}` === real)) return;
-  throw new TRPCError({
-    code: 'FORBIDDEN',
-    message: 'Não foi possível confirmar o acesso a este pedido. Informe o telefone completo usado na compra.',
-  });
+  throw orderNotFound();
+}
+
+/** Mesmo erro para pedido inexistente e acesso negado: não permite enumerar pedidos. */
+function orderNotFound(): TRPCError {
+  return new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' });
 }
 
 type ShipOption = { serviceId: string; name: string; company: string; price: number; days: string };
@@ -537,7 +539,7 @@ Seja direto e use emojis para facilitar leitura.`;
     .query(async ({ input }) => {
       const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
       const order = orders[0];
-      if (!order) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado.' });
+      if (!order) throw orderNotFound();
       assertOrderAccess(order, { token: input.token, phone: input.phone });
       return {
         id: order.id,
@@ -600,9 +602,10 @@ Seja direto e use emojis para facilitar leitura.`;
 
       const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
       const order = orders[0];
-      if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
-      if (order.paymentStatus === 'confirmed') throw new TRPCError({ code: 'CONFLICT', message: 'Este pedido já foi pago.' });
+      if (!order) throw orderNotFound();
+      // Acesso antes do status: "já foi pago" não pode vazar para quem não é dono.
       assertOrderAccess(order, { token: input.token, phone: input.phone });
+      if (order.paymentStatus === 'confirmed') throw new TRPCError({ code: 'CONFLICT', message: 'Este pedido já foi pago.' });
 
       // Return URLs carry the opaque token, never the phone digits — this link is
       // handed to Mercado Pago and ends up in history/Referer.
@@ -643,8 +646,8 @@ Seja direto e use emojis para facilitar leitura.`;
         body: JSON.stringify(preference),
       });
       if (!res.ok) {
-        const txt = await res.text();
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro MP: ${txt}` });
+        console.error(`[shipping] createPayment MP ${res.status}:`, await res.text().catch(() => ''));
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Não foi possível gerar o pagamento agora. Tente novamente em instantes.' });
       }
       const data = await res.json();
 
@@ -667,9 +670,10 @@ Seja direto e use emojis para facilitar leitura.`;
       if (!token) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Configure MERCADO_PAGO_ACCESS_TOKEN' });
       const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
       const order = orders[0];
-      if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
-      if (order.paymentStatus === 'confirmed') throw new TRPCError({ code: 'CONFLICT', message: 'Este pedido já foi pago.' });
+      if (!order) throw orderNotFound();
+      // Acesso antes do status: "já foi pago" não pode vazar para quem não é dono.
       assertOrderAccess(order, { token: input.token, phone: input.phone });
+      if (order.paymentStatus === 'confirmed') throw new TRPCError({ code: 'CONFLICT', message: 'Este pedido já foi pago.' });
 
       const amount = parseFloat(order.totalPrice ?? '0');
 
@@ -723,8 +727,8 @@ Seja direto e use emojis para facilitar leitura.`;
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const txt = await res.text();
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro PIX MP: ${txt}` });
+        console.error(`[shipping] createPixPayment MP ${res.status}:`, await res.text().catch(() => ''));
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Não foi possível gerar o PIX agora. Tente novamente em instantes.' });
       }
       const data = await res.json();
       const td = data?.point_of_interaction?.transaction_data;
@@ -756,7 +760,7 @@ Seja direto e use emojis para facilitar leitura.`;
         trackToken: siteOrders.trackToken,
       }).from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
       const order = orders[0];
-      if (!order) return { paid: false, status: 'not_found' };
+      if (!order) throw orderNotFound();
       assertOrderAccess(order, { token: input.token, phone: input.phone });
       if (order.paymentStatus === 'confirmed') return { paid: true, status: 'approved' };
       const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;

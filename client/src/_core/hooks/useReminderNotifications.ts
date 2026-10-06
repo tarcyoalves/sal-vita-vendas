@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { trpc } from "../../lib/trpc";
 import { toast } from "sonner";
 
@@ -32,22 +32,32 @@ export function useReminderNotifications(enabled: boolean, userName: string = ''
     refetchOnWindowFocus: false,
   });
 
+  // A permissão de notificação NÃO é pedida aqui: sem gesto do usuário o iOS ignora o
+  // pedido. O botão "Ativar" (banner em Tasks.tsx) chama Notification.requestPermission().
+
+  // Dados em refs: os intervalos vivem enquanto `enabled` e leem sempre o valor mais novo.
+  // Antes o effect dependia de `reminders`, então cada refetch recriava os intervalos e a
+  // dica de 1h nunca chegava a disparar.
+  const remindersRef = useRef<any[]>([]);
+  const userNameRef = useRef(userName);
+  const isAdminRef = useRef(isAdmin);
+  userNameRef.current = userName;
+  isAdminRef.current = isAdmin;
+  remindersRef.current = (reminders as any[] | undefined) ?? [];
+
+  // Admin só recebe alertas das tarefas atribuídas a ele mesmo.
+  const getAlertable = (): any[] =>
+    isAdminRef.current
+      ? remindersRef.current.filter((r) => r.assignedTo === userNameRef.current)
+      : remindersRef.current;
+
+  const checkRef = useRef<() => void>(() => {});
+
   useEffect(() => {
     if (!enabled) return;
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-  }, [enabled]);
-
-  useEffect(() => {
-    if (!reminders || !enabled) return;
-    // Admin only gets alerts for tasks assigned to themselves
-    const alertable = isAdmin
-      ? (reminders as any[]).filter(r => r.assignedTo === userName)
-      : reminders as any[];
-
     const check = () => {
       try {
+        const alertable = getAlertable();
         const now = new Date();
         const today = now.toDateString();
         const fired = getFired();
@@ -98,12 +108,14 @@ export function useReminderNotifications(enabled: boolean, userName: string = ''
       } catch (_) {}
     };
 
+    checkRef.current = check;
     check();
     const id = setInterval(check, 120000);
 
     // Motivational + productivity push tip every 1h
     const motivationId = setInterval(() => {
       try {
+        const alertable = getAlertable();
         if (!alertable.length) return;
         const now = new Date();
         const h = now.getHours();
@@ -146,5 +158,10 @@ export function useReminderNotifications(enabled: boolean, userName: string = ''
     }, 60 * 60 * 1000);
 
     return () => { clearInterval(id); clearInterval(motivationId); };
+  }, [enabled]);
+
+  // Chegou lista nova de lembretes: confere já (sem recriar os intervalos).
+  useEffect(() => {
+    if (reminders && enabled) checkRef.current();
   }, [reminders, enabled, userName, isAdmin]);
 }

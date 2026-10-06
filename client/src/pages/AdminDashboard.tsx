@@ -2,7 +2,7 @@ import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import {
   Users,
@@ -40,6 +40,8 @@ import {
 } from "lucide-react";
 import AttendantDetailModal from '../components/AttendantDetailModal';
 import { useFatStore } from '../lib/faturamento/store';
+import { computeDashboardAgg, type DashSeller, type DashTask } from '../lib/dashboardAgg';
+import { QueryError } from '../components/QueryError';
 import { panoramaPorAtendente, somarResumos, mesAtual, formatBRL } from '../lib/faturamento/calc';
 import { OrderDetailDialog } from '../components/faturamento/OrderDetailDialog';
 import { OrderDialog } from '../components/faturamento/OrderDialog';
@@ -506,8 +508,8 @@ export default function AdminDashboard() {
   // Gerente (atendente promovido) vê o dashboard principal, mas sem as seções
   // de gestão de atendentes/IA — só o admin de verdade (Tarcyo) tem isFullAdmin.
   const isFullAdmin = user?.role === "admin";
-  const { data: sellers = [], isLoading } = trpc.sellers.list.useQuery(undefined, { staleTime: 300_000 });
-  const { data: tasks = [] } = trpc.tasks.list.useQuery(undefined, { staleTime: 120_000 });
+  const { data: sellers = [], isLoading, isError: sellersError, isFetching: sellersFetching, refetch: refetchSellers } = trpc.sellers.list.useQuery(undefined, { staleTime: 300_000 });
+  const { data: tasks = [], isError: tasksError, isFetching: tasksFetching, refetch: refetchTasks } = trpc.tasks.list.useQuery(undefined, { staleTime: 120_000 });
   const { data: reminders = [] } = trpc.tasks.reminders.useQuery(undefined, { staleTime: 120_000 });
   const { data: deletionLogs = [], refetch: refetchDeletionLogs } = trpc.tasks.deletionLogs.useQuery({ onlyUnreviewed: true }, { staleTime: 120_000, enabled: isFullAdmin });
   const markDeletionReviewedMutation = trpc.tasks.markDeletionReviewed.useMutation({ onSuccess: () => refetchDeletionLogs() });
@@ -526,11 +528,13 @@ export default function AdminDashboard() {
   const [pedidoEditOpen, setPedidoEditOpen] = useState(false);
   const [pedidoInvoiceOpen, setPedidoInvoiceOpen] = useState(false);
   const [pedidoDeleteOpen, setPedidoDeleteOpen] = useState(false);
-  const { pedidos: allPedidosForReview } = useFatStore();
+  const { pedidos: allPedidosForReview, reload: reloadPedidos } = useFatStore();
   const pedidoEmRevisao = pedidoDetailId ? allPedidosForReview.find((p) => p.id === pedidoDetailId) ?? null : null;
   const openPedidoRevisao = (id: string) => {
     setPedidoDetailId(id);
     setPedidoDetailOpen(true);
+    // Pedido recém-criado por outro atendente pode não estar no espelho local ainda.
+    void reloadPedidos();
   };
   const analyzeAttendantsMutation = trpc.ai.analyzeAttendants.useMutation();
   const { data: sessionData = [], refetch: refetchSessions, isFetching: sessionsFetching } = trpc.workSessions.allActiveToday.useQuery(undefined, { staleTime: 90_000, enabled: isFullAdmin });
@@ -546,6 +550,19 @@ export default function AdminDashboard() {
   const [monitorCached, setMonitorCached] = useState<{ cached: boolean; at: number } | null>(null);
   const [reminderFilter, setReminderFilter] = useState<string>("all");
   const [selectedSeller, setSelectedSeller] = useState<any | null>(null);
+
+  // "Agora" fixo por minuto: os cálculos abaixo não criam Date por tarefa a cada render.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  // Atrasadas seguem a regra de Tasks.tsx (reminderEnabled !== false) e o dono da tarefa é
+  // comparado sem diferenciar maiúsculas/espaços, como o servidor faz (lower()).
+  const agg = useMemo(
+    () => computeDashboardAgg(tasks as DashTask[], sellers as DashSeller[], nowMs),
+    [tasks, sellers, nowMs],
+  );
 
   const handleRunMonitor = async (forceRefresh = false) => {
     setMonitorLoading(true);
@@ -573,113 +590,14 @@ export default function AdminDashboard() {
 
   if (!user || (user.role !== "admin" && user.role !== "manager")) return null;
 
-  const pending = (tasks as any[]).filter(t => t.status === 'pending');
-  const completed = (tasks as any[]).filter(t => t.status === 'completed');
-  const overdue = (tasks as any[]).filter(t => {
-    if (t.status !== 'pending') return false;
-    if (!t.reminderDate) return false;
-    return new Date(t.reminderDate) < new Date();
-  });
-  const completionRate = tasks.length > 0 ? Math.round((completed.length / tasks.length) * 100) : 0;
-  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-  const contactsToday = (tasks as any[]).filter(t => t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart).length;
-
-  // Conversão: leads (lembretes recorrentes) que viraram clientes ativos.
-  // contactCount registra quantos contatos reais foram feitos até a conversão — mede esforço de venda.
-  const convertedTasks = (tasks as any[]).filter(t => t.convertedAt);
-  const convertedCount = convertedTasks.length;
-  const conversionRate = tasks.length > 0 ? Math.round((convertedCount / tasks.length) * 100) : 0;
-  const avgContactsToConvert = convertedCount > 0
-    ? Math.round(convertedTasks.reduce((sum, t) => sum + (t.contactCount || 0), 0) / convertedCount)
-    : 0;
-  const convertedThisMonth = convertedTasks.filter(t => {
-    const d = new Date(t.convertedAt);
-    const now = new Date();
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  }).length;
-
-  // ── Funil de conversão: total de leads → contatados → convertidos ──────────
-  const contactedTasks = (tasks as any[]).filter(t => t.lastContactedAt);
-  const funnel = {
-    total: tasks.length,
-    contacted: contactedTasks.length,
-    converted: convertedCount,
-  };
-
-  // ── Tempo médio até o 1º contato (createdAt → lastContactedAt) ──────────────
-  const firstContactDeltas = contactedTasks
-    .map(t => new Date(t.lastContactedAt).getTime() - new Date(t.createdAt).getTime())
-    .filter(d => d > 0);
-  const avgFirstContactMs = firstContactDeltas.length > 0
-    ? firstContactDeltas.reduce((a, b) => a + b, 0) / firstContactDeltas.length
-    : 0;
-  const avgFirstContactDays = avgFirstContactMs > 0 ? (avgFirstContactMs / 86400000) : 0;
-
-  // ── Tempo médio até a conversão (createdAt → convertedAt) ───────────────────
-  const conversionTimeDeltas = convertedTasks
-    .map(t => new Date(t.convertedAt).getTime() - new Date(t.createdAt).getTime())
-    .filter(d => d > 0);
-  const avgConversionMs = conversionTimeDeltas.length > 0
-    ? conversionTimeDeltas.reduce((a, b) => a + b, 0) / conversionTimeDeltas.length
-    : 0;
-  const avgConversionDays = avgConversionMs > 0 ? (avgConversionMs / 86400000) : 0;
-  const staleNoContact = (tasks as any[]).filter(t => {
-    if (t.lastContactedAt || t.convertedAt) return false;
-    const ageMs = Date.now() - new Date(t.createdAt).getTime();
-    return ageMs > 48 * 3600000; // > 48h sem nenhum contato
-  });
-
-  // ── Leads "quentes": contactCount próximo da média necessária para converter, ainda não convertidos ─
-  const hotLeads = avgContactsToConvert > 0
-    ? (tasks as any[])
-        .filter(t => !t.convertedAt && (t.contactCount || 0) >= Math.max(1, avgContactsToConvert - 1))
-        .sort((a, b) => (b.contactCount || 0) - (a.contactCount || 0))
-        .slice(0, 8)
-    : [];
-
-  // ── Ranking de conversão por atendente (+ ticket de esforço individual e taxa de perdidos) ─
-  const conversionRanking = (sellers as any[] || []).map((seller: any) => {
-    const mine = (tasks as any[]).filter(t => t.assignedTo === seller.name || t.userId === seller.userId);
-    const minePending = mine.length;
-    const mineConvertedTasks = mine.filter(t => t.convertedAt);
-    const mineConverted = mineConvertedTasks.length;
-    const mineCancelled = mine.filter(t => t.status === 'cancelled').length;
-    const rate = minePending > 0 ? Math.round((mineConverted / minePending) * 100) : 0;
-    // Ticket de esforço individual: quantos contatos esse atendente precisa, em média, até converter
-    const myAvgContacts = mineConverted > 0
-      ? Math.round(mineConvertedTasks.reduce((acc, t) => acc + (t.contactCount || 0), 0) / mineConverted)
-      : 0;
-    // Taxa de leads perdidos: cancelados em relação ao que já teve um desfecho (convertido ou cancelado)
-    const decided = mineConverted + mineCancelled;
-    const lostRate = decided > 0 ? Math.round((mineCancelled / decided) * 100) : 0;
-    return { name: seller.name, total: minePending, converted: mineConverted, rate, myAvgContacts, cancelled: mineCancelled, lostRate };
-  }).filter(r => r.total > 0).sort((a, b) => b.converted - a.converted || b.rate - a.rate);
-
-  // ── Tendência semanal de conversões (últimas 8 semanas, agrupado por convertedAt) ──
-  const weeklyTrend = (() => {
-    const weeks: { label: string; start: number; end: number; count: number }[] = [];
-    const now = new Date();
-    const startOfWeek = (d: Date) => { const x = new Date(d); const day = x.getDay(); x.setDate(x.getDate() - day); x.setHours(0, 0, 0, 0); return x; };
-    let cursor = startOfWeek(now);
-    for (let i = 7; i >= 0; i--) {
-      const start = new Date(cursor); start.setDate(start.getDate() - i * 7);
-      const end = new Date(start); end.setDate(end.getDate() + 7);
-      const p = (n: number) => String(n).padStart(2, '0');
-      weeks.push({ label: `${p(start.getDate())}/${p(start.getMonth() + 1)}`, start: start.getTime(), end: end.getTime(), count: 0 });
-    }
-    for (const t of convertedTasks) {
-      const ts = new Date(t.convertedAt).getTime();
-      const wk = weeks.find(w => ts >= w.start && ts < w.end);
-      if (wk) wk.count++;
-    }
-    return weeks;
-  })();
-  const weeklyTrendMax = Math.max(1, ...weeklyTrend.map(w => w.count));
-
-  // ── Taxa geral de leads perdidos (cancelados vs. convertidos — leads com desfecho) ──
-  const cancelledTotal = (tasks as any[]).filter(t => t.status === 'cancelled').length;
-  const decidedTotal = convertedCount + cancelledTotal;
-  const lostRateGlobal = decidedTotal > 0 ? Math.round((cancelledTotal / decidedTotal) * 100) : 0;
+  // Agregados vindos do useMemo acima (calculados uma vez por tarefas/atendentes/minuto).
+  const {
+    pending, overdue, completionRate, contactsToday, reminderOn,
+    convertedCount, conversionRate, avgContactsToConvert, convertedThisMonth,
+    funnel, avgFirstContactMs, avgFirstContactDays, avgConversionMs, avgConversionDays, staleNoContact, hotLeads,
+    sellerStats, conversionRanking, weeklyTrend, weeklyTrendMax,
+    cancelledTotal, decidedTotal, lostRateGlobal,
+  } = agg;
 
   // Filter reminders based on selection
   const filteredReminders = (reminders as any[]).filter(r => {
@@ -737,7 +655,7 @@ export default function AdminDashboard() {
     },
     {
       label: "Com lembrete",
-      value: (tasks as any[]).filter(t => t.reminderDate && t.reminderEnabled).length,
+      value: reminderOn,
       sub: `de ${tasks.length} total`,
       icon: <CheckCircle2 size={22} />,
       color: "text-teal-600",
@@ -786,6 +704,14 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      {tasksError && tasks.length === 0 && (
+        <QueryError
+          message="Falha ao carregar — os números abaixo podem estar zerados"
+          onRetry={() => { void refetchTasks(); }}
+          retrying={tasksFetching}
+        />
+      )}
 
       {/* Task Deletion Alert Banner */}
       {deletionLogs.length > 0 && (
@@ -1112,17 +1038,17 @@ export default function AdminDashboard() {
                 <div key={i} className="h-16 bg-gray-100 rounded-lg animate-pulse" />
               ))}
             </div>
+          ) : sellersError && sellers.length === 0 ? (
+            <QueryError onRetry={() => { void refetchSellers(); }} retrying={sellersFetching} />
           ) : sellers && sellers.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {sellers.map((seller: any) => {
-                const sellerTasks = (tasks as any[]).filter(t => t.assignedTo === seller.name || t.userId === seller.userId);
-                const sellerContactsToday = sellerTasks.filter(t => t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart).length;
+                const stats = sellerStats.get(seller.id);
+                const sellerTasks = stats?.tasks ?? [];
+                const sellerContactsToday = stats?.contactsToday ?? 0;
                 const GOAL = effectiveDailyGoal(seller.dailyGoal);
                 const pct = Math.min(Math.round((sellerContactsToday / GOAL) * 100), 100);
-                const sellerOverdue = sellerTasks.filter(t => {
-                  if (t.status !== 'pending' || !t.reminderDate || !t.reminderEnabled) return false;
-                  return new Date(t.reminderDate) < new Date();
-                }).length;
+                const sellerOverdue = stats?.overdue ?? 0;
                 const sessionRow = (sessionData as any[]).find((s: any) => s.name === seller.name);
                 const isActive = sessionRow?.session?.status === 'active';
                 const isPaused = sessionRow?.session?.status === 'paused';

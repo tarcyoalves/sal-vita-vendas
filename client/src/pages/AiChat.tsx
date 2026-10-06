@@ -56,10 +56,14 @@ export default function AiChat() {
 
   const handleClearHistory = async () => {
     if (!confirm("Limpar todo o histórico do chat?")) return;
-    await clearHistoryMutation.mutateAsync();
-    setMessages([{ role: "assistant", content: "Histórico limpo. Como posso ajudar?", timestamp: new Date() }]);
-    utils.ai.history.invalidate();
-    toast.success("Histórico limpo");
+    try {
+      await clearHistoryMutation.mutateAsync();
+      setMessages([{ role: "assistant", content: "Histórico limpo. Como posso ajudar?", timestamp: new Date() }]);
+      utils.ai.history.invalidate();
+      toast.success("Histórico limpo");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Não foi possível limpar o histórico");
+    }
   };
 
   const handleSendMessage = async () => {
@@ -75,7 +79,10 @@ export default function AiChat() {
     } catch (error: any) {
       const errMsg = error?.message ?? "Erro ao processar mensagem";
       toast.error(errMsg);
-      setMessages(prev => [...prev, { role: "assistant", content: errMsg, timestamp: new Date() }]);
+      // Falhou: tira a mensagem otimista e devolve o texto ao campo (se o usuário ainda
+      // não digitou outra coisa) para ele reenviar sem redigitar.
+      setMessages(prev => prev.filter(m => m !== userMessage));
+      setInput(prev => prev || currentInput);
     } finally {
       setIsLoading(false);
     }
@@ -159,7 +166,8 @@ export default function AiChat() {
           <Button
             onClick={handleSendMessage}
             disabled={isLoading || !historyReady || !input.trim()}
-            className="px-5 rounded-xl bg-[#0C3680] hover:bg-[#081F47] text-white shadow-xs transition-all min-h-[44px] flex items-center justify-center gap-2"
+            aria-label="Enviar mensagem"
+            className="px-5 rounded-xl bg-[#0C3680] hover:bg-[#081F47] text-white shadow-xs transition-all min-h-[44px] min-w-10 flex items-center justify-center gap-2"
           >
             {isLoading ? <Loader2 size={18} className="animate-spin" /> : <Send size={17} />}
           </Button>

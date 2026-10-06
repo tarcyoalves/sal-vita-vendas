@@ -107,7 +107,7 @@ export function InvoiceDialog({
           <OrderItemsEditor itens={itensReais} onChange={setItensReais} />
 
           {/* Comparison */}
-          <div className="grid grid-cols-3 gap-2 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-center">
               <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">
                 Estimado

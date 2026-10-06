@@ -8,7 +8,7 @@ import { useState, useMemo, useCallback, useEffect, useRef, useDeferredValue } f
 import { toast } from "sonner";
 import {
   Search, X, Bell, Phone, Timer, CheckCircle2, XCircle, Clock, Flag, PartyPopper, Flame, Mail,
-  AlertTriangle, Trash2, ClipboardList, Package, Boxes, Tag, MailCheck,
+  AlertTriangle, Trash2, ClipboardList, Package, Boxes, Tag, MailCheck, RefreshCw,
 } from "lucide-react";
 import {
   Dialog,
@@ -27,6 +27,7 @@ import { useFatStore } from '../lib/faturamento/store';
 import { totalPedido, formatBRL } from '../lib/faturamento/calc';
 import type { Pedido } from '../lib/faturamento/types';
 import { MultiSelectFilter } from '../components/tasks/MultiSelectFilter';
+import { QueryError } from '../components/QueryError';
 import { FILTER_ALL, FILTER_ME, FILTER_NONE, applyAssigneeFilter, assignableNames, buildMyIdentity, otherAttendantNames } from '../lib/myTasks';
 import { FilterPanel, FilterSection } from '../components/tasks/FilterPanel';
 import { extractLocation, type TaskLocation } from '../lib/tasks/location';
@@ -265,7 +266,7 @@ export default function Tasks() {
   // Ref para controlar alerta de ociosidade (último contato feito)
   const lastContactTimeRef = useRef<number>(Date.now());
 
-  const { data: tasks = [], isLoading, refetch } = trpc.tasks.list.useQuery();
+  const { data: tasks = [], isLoading, isError, isFetching, refetch } = trpc.tasks.list.useQuery();
   const { data: attendants = [] } = trpc.sellers.list.useQuery();
   const me = useMemo(() => buildMyIdentity(user, attendants as any[]), [user, attendants]);
   const otherAttendants = useMemo(() => otherAttendantNames(attendants as any[], me), [attendants, me]);
@@ -425,12 +426,13 @@ export default function Tasks() {
   // Agenda setTimeout para cada tarefa com lembrete nas próximas 4h.
   // Dispara Notification API nativa — zero custo de servidor.
   const scheduledRemindersRef = useRef<Set<number>>(new Set());
+  const [notifPerm, setNotifPerm] = useState<NotificationPermission | 'unsupported'>(
+    typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
+  );
   useEffect(() => {
     if (isAdmin || !('Notification' in window)) return;
-    if (Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-    if (Notification.permission !== 'granted') return;
+    // Permissão só pelo botão "Ativar" abaixo (sem gesto o iOS ignora o pedido).
+    if (notifPerm !== 'granted') return;
 
     const now = Date.now();
     const fourHours = 4 * 3600_000;
@@ -462,7 +464,7 @@ export default function Tasks() {
       // Timers cancelados: o próximo efeito precisa poder reagendar os mesmos ids.
       scheduledRemindersRef.current.clear();
     };
-  }, [tasks, isAdmin]);
+  }, [tasks, isAdmin, notifPerm]);
 
   // ─── 2. ALERTA DE OCIOSIDADE ───────────────────────────────────────────────
   // A cada 15 min verifica se o atendente ainda não registrou nenhum contato.
@@ -1166,7 +1168,10 @@ export default function Tasks() {
           phone: t.phone,
         })),
       });
-      toast.success(`${created.length} tarefas importadas com sucesso para ${selectedRepresentative}!`, { duration: 8000 });
+      const ignoradas = created.duplicadas > 0
+        ? ` ${created.duplicadas} ${created.duplicadas === 1 ? 'linha já existia' : 'linhas já existiam'} (mesmo CNPJ ou telefone) e foi ignorada.`
+        : '';
+      toast.success(`${created.length} tarefas importadas com sucesso para ${selectedRepresentative}!${ignoradas}`, { duration: 8000 });
       setImportedTasks([]);
       setImportSkipped(0);
       setShowImport(false);
@@ -1218,15 +1223,15 @@ export default function Tasks() {
           <button onClick={() => { setShowMonitorBanner(false); sessionStorage.setItem('monitorBannerDismissed', '1'); }} className="text-amber-600 hover:text-amber-900 flex-shrink-0 mt-0.5" title="Fechar"><X size={16} /></button>
         </div>
       )}
-      {!isAdmin && 'Notification' in window && Notification.permission === 'default' && (
+      {notifPerm === 'default' && (
         <div className="flex items-center gap-3 bg-blue-50 border border-blue-300 rounded-xl px-4 py-3 text-sm text-blue-900">
           <Bell size={18} className="flex-shrink-0" />
           <div className="flex-1">
             <strong>Ative as notificações</strong> para receber lembretes no horário certo, mesmo com o celular bloqueado.
           </div>
           <button
-            onClick={() => Notification.requestPermission()}
-            className="flex-shrink-0 px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition"
+            onClick={() => { void Notification.requestPermission().then(setNotifPerm).catch(() => {}); }}
+            className="flex-shrink-0 min-h-10 px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition"
           >
             Ativar
           </button>
@@ -1593,7 +1598,7 @@ export default function Tasks() {
             </div>
             <DialogFooter className="flex gap-2 pt-1">
               <Button type="submit" size="sm" disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700">{editingTask ? "Salvar" : "Criar Tarefa"}</Button>
-              {editingTask && <Button type="button" size="sm" variant="destructive" onClick={() => handleDelete(editingTask.id)}><Trash2 size={14} /></Button>}
+              {editingTask && <Button type="button" size="sm" variant="destructive" aria-label="Excluir tarefa" title="Excluir tarefa" className="min-h-10 min-w-10" onClick={() => handleDelete(editingTask.id)}><Trash2 size={14} /></Button>}
               <Button type="button" size="sm" variant="outline" onClick={() => { setIsModalOpen(false); resetForm(); }}>Cancelar</Button>
             </DialogFooter>
           </form>
@@ -1601,7 +1606,8 @@ export default function Tasks() {
       </Dialog>
 
       {/* Reminder Tabs */}
-      <div className="flex gap-1 overflow-x-auto pb-1">
+      <div className="flex items-center gap-1">
+      <div className="flex gap-1 overflow-x-auto pb-1 flex-1 min-w-0">
         {([
           { key: "all",       label: "Todas",           cls: "bg-blue-600 border-blue-600" },
           { key: "overdue",   label: "Atrasados",        cls: "bg-red-600 border-red-600" },
@@ -1623,6 +1629,17 @@ export default function Tasks() {
             {tab.label}
           </button>
         ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => { void refetch(); }}
+        disabled={isFetching}
+        aria-label="Atualizar lista de tarefas"
+        title="Atualizar"
+        className="flex-shrink-0 min-h-10 min-w-10 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+      >
+        <RefreshCw size={16} className={isFetching ? 'animate-spin' : ''} />
+      </button>
       </div>
 
       {/* Filtros ativos — mostra o recorte atual e deixa remover um a um.
@@ -1666,6 +1683,8 @@ export default function Tasks() {
       {/* Tasks List */}
       {isLoading ? (
         <p className="text-center text-gray-500 py-8">Carregando...</p>
+      ) : isError && tasks.length === 0 ? (
+        <QueryError onRetry={() => { void refetch(); }} retrying={isFetching} />
       ) : filteredTasks.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-gray-500 text-lg">Nenhuma tarefa encontrada</p>

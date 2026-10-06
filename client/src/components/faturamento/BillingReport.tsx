@@ -1,6 +1,7 @@
 import { AvisoMesSemPedidos } from "./AvisoMesSemPedidos";
 import { useState, useMemo } from "react";
 import { useFatStore } from "../../lib/faturamento/store";
+import { QueryError } from '../QueryError';
 import {
   totalPedido, totalItens, mesAtual, pedidoNoMes, formatBRL,
   pesoEfetivoKg, formatKg, formatDataBR,
@@ -57,7 +58,7 @@ function estimatedTotal(pedido: Pedido): number {
 }
 
 export default function BillingReport() {
-  const { pedidos: allPedidos } = useFatStore();
+  const { pedidos: allPedidos, error: fatError, loaded: fatLoaded, loading: fatLoading, reload: fatReload } = useFatStore();
   const { data: sellers = [] } = trpc.sellers.list.useQuery();
 
   // Filters
@@ -300,7 +301,9 @@ export default function BillingReport() {
       </Card>
 
       {/* Report table */}
-      {filtered.length === 0 ? (
+      {filtered.length === 0 && fatError && !fatLoaded ? (
+        <QueryError message="Falha ao carregar os pedidos" onRetry={fatReload} retrying={fatLoading} />
+      ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 py-10 px-4 text-center">
           <FileText size={28} className="text-slate-300" />
           <p className="text-sm text-slate-500 max-w-sm">

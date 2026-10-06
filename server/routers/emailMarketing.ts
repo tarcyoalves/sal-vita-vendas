@@ -10,7 +10,7 @@ import {
   emailEvents, automationRules, emailSendCounters,
   tasks, clients, sellers, marketingContacts, marketingLists, fatOrders,
 } from '../db/schema';
-import { reserveSendQuota, refundDailyQuota, sendBatch, layout, renderTemplate, renderSignature, sanitizeCampaignHtml, getUsage, getAllDomainTracking, setDomainTracking, getAccounts, type BatchMessage } from '../email/marketing';
+import { reserveSendQuota, refundDailyQuota, sendBatch, layout, renderTemplate, renderSignature, sanitizeCampaignHtml, sanitizeUntrustedHtml, isAllowedAttachmentName, getUsage, getAllDomainTracking, setDomainTracking, getAccounts, type BatchMessage } from '../email/marketing';
 import { processCampaignBatch } from '../email/campaigns';
 import { enrollInSequence } from '../email/automations';
 import { getFrequencyCap, setFrequencyCap, overCappedEmails } from '../email/frequency';
@@ -27,6 +27,8 @@ async function restrictToOwnTaskIds(user: { id: number; name: string; role: stri
 }
 
 const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL ?? 'https://lembretes.salvitarn.com.br';
+// Teto diário de destinatários do Disparo Rápido por atendente comum (staff não tem).
+const ATTENDANT_BROADCAST_DAILY_LIMIT = 200;
 const MKT_DAILY_LIMIT = parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? '90');
 
 // F4 — "Enviar teste para mim": rate limit em memória (máx. 10 testes/dia por
@@ -599,10 +601,31 @@ export const emailMarketingRouter = router({
       }
       if (!seller) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Atendente não encontrado. Peça ao admin para configurar seu cadastro.' });
 
-      input.htmlBody = sanitizeCampaignHtml(input.htmlBody);
+      const isStaff = ctx.user.role === 'admin' || ctx.user.role === 'manager';
+      // Staff: documento preservado (templates dependem de <style>); atendente: allowlist estrita.
+      input.htmlBody = isStaff ? sanitizeCampaignHtml(input.htmlBody) : sanitizeUntrustedHtml(input.htmlBody);
       if (input.attachments && input.attachments.length > 0) {
+        if (!isStaff && input.attachments.some(a => !isAllowedAttachmentName(a.filename))) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Tipo de anexo não permitido. Use PDF, imagem, Word, Excel, CSV ou TXT.' });
+        }
         const totalBase64 = input.attachments.reduce((sum, a) => sum + a.content.length, 0);
         if (totalBase64 > 3_500_000) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Anexos muito grandes (máx. ~3,5 MB).' });
+      }
+
+      // Atendente comum só dispara para e-mail CONFIRMADO de tarefa PRÓPRIA (mesma
+      // definição de tasks.emailConfirmed usada em addRecipientsFromTasks), com teto diário.
+      let allowedOwn: Set<string> | null = null;
+      if (!isStaff) {
+        const [{ total }] = await db.select({ total: sql<number>`coalesce(sum(${emailCampaigns.totalRecipients}), 0)::int` })
+          .from(emailCampaigns)
+          .where(and(eq(emailCampaigns.createdByUserId, ctx.user.id), eq(emailCampaigns.isBroadcast, true), gte(emailCampaigns.createdAt, spMidnight())));
+        if (total + input.recipients.length > ATTENDANT_BROADCAST_DAILY_LIMIT) {
+          throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: `Limite diário de ${ATTENDANT_BROADCAST_DAILY_LIMIT} destinatários no Disparo Rápido atingido.` });
+        }
+        const mine = await userTaskFilter(ctx.user.id, ctx.user.name ?? '');
+        const own = await db.select({ email: tasks.email }).from(tasks)
+          .where(and(mine, eq(tasks.emailConfirmed, true), isNotNull(tasks.email)));
+        allowedOwn = new Set(own.map(t => (t.email ?? '').toLowerCase().trim()));
       }
 
       const suppressed = await db.select({ email: emailSuppressions.email }).from(emailSuppressions);
@@ -611,11 +634,12 @@ export const emailMarketingRouter = router({
       const clean: { email: string; name?: string }[] = [];
       for (const r of input.recipients) {
         const email = r.email.toLowerCase().trim();
-        if (seen.has(email) || suppressedSet.has(email)) continue;
+        if (seen.has(email) || suppressedSet.has(email) || isBlockedEmail(email)) continue;
+        if (allowedOwn && !allowedOwn.has(email)) continue;
         seen.add(email);
         clean.push({ email, name: r.name?.trim() || undefined });
       }
-      if (clean.length === 0) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Nenhum destinatário válido.' });
+      if (clean.length === 0) throw new TRPCError({ code: 'BAD_REQUEST', message: allowedOwn ? 'Nenhum destinatário válido. Só é possível enviar para e-mails confirmados das suas próprias tarefas.' : 'Nenhum destinatário válido.' });
 
       const [campaign] = await db.insert(emailCampaigns).values({
         name: `Disparo ${seller.name} — ${new Date().toLocaleDateString('pt-BR')}`,
@@ -644,6 +668,10 @@ export const emailMarketingRouter = router({
     .mutation(async ({ input }) => {
       const [campaign] = await db.select().from(emailCampaigns).where(eq(emailCampaigns.id, input.campaignId));
       if (!campaign) throw new TRPCError({ code: 'NOT_FOUND', message: 'Campanha não encontrada' });
+      // Campanha em envio/concluída/pausada não aceita destinatários novos (entrariam fora do total/lote).
+      if (campaign.status !== 'draft' && campaign.status !== 'scheduled') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Só é possível adicionar destinatários a campanhas em rascunho ou agendadas.' });
+      }
 
       const sellerRows = await db.select({ name: sellers.name, email: sellers.email }).from(sellers);
       const sellerMap = new Map(sellerRows.map(s => [s.name.toLowerCase(), s.email]));
@@ -679,18 +707,35 @@ export const emailMarketingRouter = router({
         });
       }
 
+      // INSERT ... WHERE NOT EXISTS (campanha + e-mail): duas chamadas simultâneas não duplicam o
+      // destinatário (não há índice único). O total soma só o que de fato entrou.
+      let added = 0;
       if (toInsert.length > 0) {
-        await db.insert(emailCampaignRecipients).values(toInsert);
-        await db.update(emailCampaigns)
-          .set({ totalRecipients: sql`${emailCampaigns.totalRecipients} + ${toInsert.length}`, updatedAt: new Date() })
-          .where(eq(emailCampaigns.id, input.campaignId));
+        const values = sql.join(toInsert.map(r =>
+          sql`(${r.email}::text, ${r.name ?? null}::text, ${r.replyTo ?? null}::text, ${r.taskId ?? null}::int, ${r.unsubToken}::text)`), sql`, `);
+        const inserted = await db.execute<{ id: number }>(sql`
+          INSERT INTO email_campaign_recipients (campaign_id, email, name, reply_to, task_id, unsub_token)
+          SELECT ${input.campaignId}::int, v.email, v.name, v.reply_to, v.task_id, v.unsub_token
+          FROM (VALUES ${values}) AS v(email, name, reply_to, task_id, unsub_token)
+          WHERE NOT EXISTS (
+            SELECT 1 FROM email_campaign_recipients x
+            WHERE x.campaign_id = ${input.campaignId} AND lower(x.email) = v.email
+          )
+          RETURNING id
+        `);
+        added = inserted.rows.length;
+        if (added > 0) {
+          await db.update(emailCampaigns)
+            .set({ totalRecipients: sql`${emailCampaigns.totalRecipients} + ${added}`, updatedAt: new Date() })
+            .where(and(eq(emailCampaigns.id, input.campaignId), inArray(emailCampaigns.status, ['draft', 'scheduled'])));
+        }
       }
 
       return {
-        added: toInsert.length,
+        added,
         skippedNoEmail,
         skippedUnconfirmed,
-        skippedDuplicateOrSuppressed: taskRows.length - toInsert.length - skippedNoEmail - skippedUnconfirmed,
+        skippedDuplicateOrSuppressed: taskRows.length - added - skippedNoEmail - skippedUnconfirmed,
       };
     }),
 

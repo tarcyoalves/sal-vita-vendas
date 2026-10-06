@@ -3,12 +3,13 @@ import { trpc } from '../lib/trpc';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { useState, useMemo } from "react";
 import { Users, UserCheck, UserX, Search } from "lucide-react";
+import { QueryError } from "../components/QueryError";
 
 type StatusFilter = "all" | "active" | "inactive";
 
 export default function ClientsManagement() {
   const { user, loading: authLoading } = useAuth();
-  const { data: allTasks, isLoading } = trpc.tasks.list.useQuery();
+  const { data: allTasks, isLoading, isError, isFetching, refetch } = trpc.tasks.list.useQuery();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -156,6 +157,8 @@ export default function ClientsManagement() {
               <div className="animate-spin rounded-full h-7 w-7 border-2 border-slate-200 border-t-[#0C3680] mx-auto mb-2" />
               <p className="text-xs text-slate-400">Carregando dados...</p>
             </div>
+          ) : isError && !allTasks ? (
+            <QueryError className="m-4" onRetry={() => { void refetch(); }} retrying={isFetching} />
           ) : filtered.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[540px]">

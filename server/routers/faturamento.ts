@@ -6,6 +6,7 @@ import { fatProducts, fatOrders, fatCommissions, fatOrderDeletionLogs, sellers, 
 import { eq, and, or, isNull, isNotNull, lte, desc } from 'drizzle-orm';
 import { sendEmail } from '../email/resend';
 import { renderSignature } from '../email/marketing';
+import { escapeHtml } from '../lib/emailSanitize';
 import { gerarPedidoPdf } from '../pdf/pedidoPdf';
 import { resolveRobotOwnedFields, roboSemSinal } from '../lib/smbi';
 import { mergeProtegidoPeloEspelho, atendentePodeRemover } from '../lib/faturamentoProtecao';
@@ -20,6 +21,12 @@ import type { Pedido } from '../../client/src/lib/faturamento/types';
 async function registrarEventoSmbi(pedidoId: string, evento: string, porNome: string, dados: Record<string, unknown>) {
   await db.insert(smbiOrderEvents).values({ pedidoId, evento, dados, origem: 'tela', porNome });
 }
+
+// Anti clique-duplo do "Enviar pedido por e-mail": a tabela não tem coluna de "enviado em",
+// então o controle é em memória (por instância serverless; reinicia no cold start).
+// Limitação: duas instâncias diferentes ainda podem enviar duas vezes.
+const ENVIO_PEDIDO_JANELA_MS = 60_000;
+const envioPedidoRecente = new Map<string, number>();
 
 // ── Faturamento & Comissão (CRM Lembretes) ───────────────────────────────────
 // Backend do módulo antes mantido em localStorage. IDs são gerados no cliente
@@ -590,9 +597,22 @@ export const faturamentoRouter = router({
         }).from(sellers).where(eq(sellers.id, pedido.sellerId));
       }
 
-      const pdfBuffer = await gerarPedidoPdf(pedido as unknown as Pedido);
+      const agora = Date.now();
+      for (const [k, t] of envioPedidoRecente) if (agora - t > ENVIO_PEDIDO_JANELA_MS) envioPedidoRecente.delete(k);
+      if (envioPedidoRecente.has(pedido.id)) {
+        throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Enviado há pouco' });
+      }
+      envioPedidoRecente.set(pedido.id, agora);
+
+      let pdfBuffer: Buffer;
+      try {
+        pdfBuffer = await gerarPedidoPdf(pedido as unknown as Pedido);
+      } catch (e) {
+        envioPedidoRecente.delete(pedido.id);
+        throw e;
+      }
       const numeroPedido = pedido.id.slice(0, 8).toUpperCase();
-      const nomeCliente = pedido.razaoSocial || pedido.clienteNome || 'Cliente';
+      const nomeCliente = escapeHtml(pedido.razaoSocial || pedido.clienteNome || 'Cliente');
       const assinatura = seller?.sigOn && seller.sigHtml ? renderSignature(seller.sigHtml, seller) : '';
 
       const html = `<!DOCTYPE html>
@@ -603,7 +623,7 @@ export const faturamentoRouter = router({
 <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
 <tr><td style="padding:32px 32px 24px;">
 <p style="margin:0 0 16px;font-size:15px;color:#444;">Olá, <strong>${nomeCliente}</strong>!</p>
-<p style="margin:0 0 16px;font-size:15px;color:#444;">Segue em anexo o pedido de compras nº <strong>${numeroPedido}</strong> para sua aprovação.</p>
+<p style="margin:0 0 16px;font-size:15px;color:#444;">Segue em anexo o pedido de compras nº <strong>${escapeHtml(numeroPedido)}</strong> para sua aprovação.</p>
 <p style="margin:0 0 16px;font-size:15px;color:#444;">Qualquer dúvida, estamos à disposição.</p>
 ${assinatura ? `<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e5e5;">${assinatura}</div>` : ''}
 </td></tr>
@@ -620,6 +640,7 @@ ${assinatura ? `<div style="margin-top:24px;padding-top:16px;border-top:1px soli
       );
 
       if (!result.ok) {
+        envioPedidoRecente.delete(pedido.id); // falhou: permite tentar de novo
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Falha ao enviar e-mail (${result.reason ?? 'erro desconhecido'})` });
       }
       return { ok: true, email: task.email };

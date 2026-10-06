@@ -730,6 +730,10 @@ export default function Documentos() {
       }));
       toast.success(`Arquivo "${file.name}" pronto para ser anexado!`);
     };
+    reader.onerror = () => {
+      toast.error(`Não foi possível ler "${file.name}". Tente novamente ou escolha outro arquivo.`);
+      e.target.value = "";
+    };
     reader.readAsDataURL(file);
   };
 
@@ -839,7 +843,7 @@ export default function Documentos() {
     }
 
     if (!newDocData.fileUrl || newDocData.fileUrl === "#") {
-      toast.error("Por favor, selecione um arquivo do computador.");
+      toast.error("Por favor, selecione um arquivo do aparelho.");
       return;
     }
 
@@ -1059,7 +1063,7 @@ ${docsListText}
               Documentos & Fichas Técnicas Sal Vita
             </h1>
             <p className="text-slate-300 text-sm md:text-base max-w-2xl">
-              Anexe os arquivos reais do seu computador diretamente no card de cada produto ou categoria da empresa.
+              Anexe os arquivos reais do seu aparelho diretamente no card de cada produto ou categoria da empresa.
             </p>
           </div>
           
@@ -1281,7 +1285,7 @@ ${docsListText}
                                 <button
                                   type="button"
                                   onClick={() => handleDownloadFile(doc)}
-                                  title="Baixar arquivo real do computador"
+                                  title="Baixar arquivo real do aparelho"
                                   className="text-xs font-bold text-blue-700 bg-white border border-blue-200 hover:bg-blue-600 hover:text-white px-2.5 py-1.5 rounded-lg transition flex items-center gap-1 shadow-sm"
                                 >
                                   <Download size={13} />
@@ -1531,7 +1535,7 @@ ${docsListText}
                 Alterar Foto do Produto
               </DialogTitle>
               <DialogDescription className="text-xs text-slate-500">
-                Selecione a foto do produto <strong className="text-slate-800">{editingProduct.name}</strong> diretamente do seu computador.
+                Selecione a foto do produto <strong className="text-slate-800">{editingProduct.name}</strong> diretamente do seu aparelho.
               </DialogDescription>
             </DialogHeader>
 
@@ -1636,7 +1640,7 @@ ${docsListText}
                 Inserir Arquivo do Computador no Card
               </DialogTitle>
               <DialogDescription className="text-xs text-slate-500">
-                Escolha o arquivo PDF ou laudo no seu computador para este card.
+                Escolha o arquivo PDF ou laudo no seu aparelho para este card.
               </DialogDescription>
             </DialogHeader>
 
@@ -1792,27 +1796,27 @@ ${docsListText}
                   </p>
                 )}
                 <div className="border rounded-xl overflow-hidden divide-y text-xs">
-                  <div className="grid grid-cols-3 p-2.5 bg-slate-50 font-semibold text-slate-700">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-0.5 p-2.5 bg-slate-50 font-semibold text-slate-700">
                     <span>Parâmetro</span>
-                    <span className="col-span-2">Especificação Técnica</span>
+                    <span className="sm:col-span-2">Especificação Técnica</span>
                   </div>
-                  <div className="grid grid-cols-3 p-2.5 text-slate-800">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-0.5 p-2.5 text-slate-800">
                     <span className="font-semibold text-slate-600">Embalagem</span>
-                    <span className="col-span-2">{specValue(selectedProduct.specs.weight)}</span>
+                    <span className="sm:col-span-2">{specValue(selectedProduct.specs.weight)}</span>
                   </div>
-                  <div className="grid grid-cols-3 p-2.5 text-slate-800 bg-slate-50/50">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-0.5 p-2.5 text-slate-800 bg-slate-50/50">
                     <span className="font-semibold text-slate-600">Granulometria</span>
-                    <span className="col-span-2">{specValue(selectedProduct.specs.granulometry)}</span>
+                    <span className="sm:col-span-2">{specValue(selectedProduct.specs.granulometry)}</span>
                   </div>
-                  <div className="grid grid-cols-3 p-2.5 text-slate-800">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-0.5 p-2.5 text-slate-800">
                     <span className="font-semibold text-slate-600">Solubilidade</span>
-                    <span className="col-span-2">{specValue(selectedProduct.specs.solubility)}</span>
+                    <span className="sm:col-span-2">{specValue(selectedProduct.specs.solubility)}</span>
                   </div>
-                  <div className="grid grid-cols-3 p-2.5 text-slate-800 bg-slate-50/50">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-0.5 p-2.5 text-slate-800 bg-slate-50/50">
                     <span className="font-semibold text-slate-600">Pureza / NaCl</span>
-                    <span className="col-span-2">{specValue(selectedProduct.specs.purity)}</span>
+                    <span className="sm:col-span-2">{specValue(selectedProduct.specs.purity)}</span>
                   </div>
-                  <div className="grid grid-cols-3 p-2.5 text-slate-800">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-0.5 p-2.5 text-slate-800">
                     <span className="font-semibold text-slate-600">Armazenamento</span>
                     <span className="col-span-2">{specValue(selectedProduct.specs.storage)}</span>
                   </div>

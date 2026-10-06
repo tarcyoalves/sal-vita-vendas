@@ -3,8 +3,8 @@ import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { chatMessages, tasks, clients, sellers, workSessions, knowledgeDocuments } from '../db/schema';
-import { eq, desc, or, gte, and, ilike } from 'drizzle-orm';
-import { spMidnight, spEndOfDay, spDateStr } from '../lib/tz';
+import { eq, desc, or, gte, and, ilike, sql } from 'drizzle-orm';
+import { spMidnight, spEndOfDay, spDateStr, spNextBusinessDay, spHHmm, spDDMM } from '../lib/tz';
 import { isToolAllowed } from '../lib/aiToolGuard';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -75,12 +75,6 @@ function shortCacheSet(key: string, data: any): void {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function nextBusinessDay(d: Date): Date {
-  const next = new Date(d.getTime() + 86400000);
-  while (next.getDay() === 0 || next.getDay() === 6) next.setTime(next.getTime() + 86400000);
-  return next;
-}
 
 function addMinutes(d: Date, mins: number): Date {
   return new Date(d.getTime() + mins * 60000);
@@ -341,7 +335,8 @@ Esta ação é IRREVERSÍVEL — os lembretes serão redistribuídos para datas 
         properties: {
           attendant_name: { type: 'string', description: 'Nome exato do atendente' },
           tasks_per_day: { type: 'number', description: 'Quantos lembretes por dia útil (padrão: 50)' },
-          start_hour: { type: 'number', description: 'Hora inicial do dia para o primeiro lembrete (padrão: 8)' },
+          start_hour: { type: 'number', description: 'Hora inicial do dia para o primeiro lembrete, 0 a 23 (padrão: 8)' },
+          limit: { type: 'number', description: 'Máximo de lembretes a reagendar nesta chamada, 1 a 200 (padrão: todos os vencidos)' },
           dry_run: { type: 'boolean', description: 'Se true (padrão), apenas mostra o que SERIA feito sem alterar o banco. SEMPRE use true primeiro.' },
           confirmation_code: { type: 'string', description: 'Para executar de verdade, passe exatamente "CONFIRMAR_REAGENDAMENTO". Só use após mostrar o dry_run ao usuário e ele confirmar.' },
         },
@@ -402,6 +397,20 @@ async function ownTasksFor(callerUserId: number) {
     : eq(tasks.userId, callerUserId);
   const rows = await db.select().from(tasks).where(where);
   return { seller, rows };
+}
+
+// Busca atendente para ferramentas que ESCREVEM: igualdade exata (sem caixa/espaços) primeiro;
+// se não houver, aceita só um parcial ÚNICO. Mais de um resultado vira erro, nunca "o primeiro".
+async function findSellerForWrite(rawName: string): Promise<{ seller?: typeof sellers.$inferSelect; error?: string }> {
+  const nome = rawName.trim();
+  if (!nome) return { error: 'Informe o nome do atendente.' };
+  const exact = await db.select().from(sellers).where(sql`lower(trim(${sellers.name})) = ${nome.toLowerCase()}`);
+  if (exact.length === 1) return { seller: exact[0] };
+  if (exact.length > 1) return { error: `Mais de um resultado para "${nome}". Informe o nome completo e exato.` };
+  const partial = await db.select().from(sellers).where(ilike(sellers.name, `%${nome}%`)).limit(2);
+  if (partial.length === 1) return { seller: partial[0] };
+  if (partial.length > 1) return { error: `Mais de um resultado para "${nome}". Informe o nome completo e exato.` };
+  return { error: `Atendente "${nome}" não encontrado.` };
 }
 
 async function executeTool(name: string, args: any, callerUserId?: number): Promise<any> {
@@ -690,8 +699,8 @@ async function executeTool(name: string, args: any, callerUserId?: number): Prom
       .orderBy(desc(workSessions.startedAt));
 
     const pad2 = (n: number) => String(n).padStart(2, '0');
-    const fmtTime = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-    const fmtDate = (d: Date) => `${pad2(d.getDate())}/${pad2(d.getMonth()+1)}`;
+    const fmtTime = spHHmm;
+    const fmtDate = spDDMM;
     const fmtMs = (ms: number) => {
       const h = Math.floor(ms / 3600000);
       const m = Math.floor((ms % 3600000) / 60000);
@@ -725,26 +734,33 @@ async function executeTool(name: string, args: any, callerUserId?: number): Prom
 
   if (name === 'reschedule_tasks') {
     const name_ = String(args.attendant_name ?? '');
+    // Argumentos vindos do LLM: valida em vez de confiar (perDay 0 viraria divisão por zero / NaN).
     const perDay = Number(args.tasks_per_day ?? 50);
     const startHour = Number(args.start_hour ?? 8);
+    const limit = args.limit === undefined ? Infinity : Number(args.limit);
+    if (!Number.isInteger(perDay) || perDay < 1 || perDay > 50) return { error: 'tasks_per_day deve ser um inteiro de 1 a 50.' };
+    if (!Number.isInteger(startHour) || startHour < 0 || startHour > 23) return { error: 'start_hour deve ser um inteiro de 0 a 23.' };
+    if (limit !== Infinity && (!Number.isInteger(limit) || limit < 1 || limit > 200)) return { error: 'limit deve ser um inteiro de 1 a 200.' };
     const RESCHEDULE_CONFIRM = 'CONFIRMAR_REAGENDAMENTO';
     const dryRun = args.dry_run !== false || args.confirmation_code !== RESCHEDULE_CONFIRM;
 
-    const [seller] = await db.select().from(sellers).where(ilike(sellers.name, `%${name_}%`)).limit(1);
-    if (!seller) return { error: `Atendente "${name_}" não encontrado.` };
+    const found = await findSellerForWrite(name_);
+    if (!found.seller) return { error: found.error };
+    const seller = found.seller;
 
     const now = new Date();
     const allTasks = await db.select().from(tasks).where(
       or(eq(tasks.assignedTo, seller.name), eq(tasks.userId, seller.userId))
     );
 
+    // Só tarefas pendentes: concluídas/canceladas não devem ganhar lembrete novo.
     const overdue = allTasks.filter(t =>
-      t.reminderDate && new Date(t.reminderDate) < now && t.reminderEnabled !== false
-    );
+      t.status === 'pending' && t.reminderDate && new Date(t.reminderDate) < now && t.reminderEnabled !== false
+    ).slice(0, limit);
     if (overdue.length === 0) return { message: `Nenhum lembrete vencido para ${seller.name}.` };
 
     const daysNeeded = Math.ceil(overdue.length / perDay);
-    const firstDay = nextBusinessDay(now);
+    const firstDay = spNextBusinessDay(now);
 
     if (dryRun) {
       return {
@@ -766,12 +782,12 @@ async function executeTool(name: string, args: any, callerUserId?: number): Prom
 
     for (const task of overdue) {
       if (countToday >= perDay) {
-        currentDay = nextBusinessDay(currentDay);
+        currentDay = spNextBusinessDay(currentDay);
         countToday = 0;
       }
       // Monta o horário direto no fuso de São Paulo (offset -03:00 fixo, ver tz.ts) —
       // setHours() usaria o fuso do processo (UTC na Vercel), agendando 3h adiantado.
-      const startHourInt = Math.trunc(startHour);
+      const startHourInt = startHour;
       const reminderDate = new Date(`${spDateStr(currentDay)}T${String(startHourInt).padStart(2, '0')}:00:00-03:00`);
       const offsetMins = countToday * minutesBetween;
       const final = addMinutes(reminderDate, offsetMins);
@@ -860,7 +876,7 @@ ${overdue.slice(0, 5).map(t => `- "${t.title.slice(0, 60)}" (${t.assignedTo ?? '
         let pausedMs = sess.totalPausedMs ?? 0;
         if (sess.status === 'paused' && sess.pausedAt) pausedMs += now.getTime() - new Date(sess.pausedAt).getTime();
         const workedMs = Math.max(0, elapsed - pausedMs);
-        const entrada = `${pad2(start.getHours())}:${pad2(start.getMinutes())}`;
+        const entrada = spHHmm(start);
         sessionInfo = `entrada=${entrada}, trabalhado=${fmtMs(workedMs)}, pausas=${fmtMs(pausedMs)}, status=${sess.status}`;
       }
 
@@ -875,7 +891,7 @@ export const aiRouter = router({
   bulkReschedule: adminProcedure
     .input(z.object({
       sellerName: z.string().min(1),
-      tasksPerDay: z.number().min(1).max(200).default(50),
+      tasksPerDay: z.number().int().min(1).max(50).default(50),
       startHour: z.number().min(6).max(12).default(8),
       dryRun: z.boolean().default(false),
     }))
@@ -1039,7 +1055,10 @@ ${userContext}`;
 
       } catch (err: any) {
         console.error('[AI_CHAT_ERROR]', err?.message, '| status:', err?.status, '| stack:', err?.stack?.slice(0, 500));
-        throw new Error(err?.message ?? 'Erro interno na IA');
+        // Detalhe do provedor (chave, modelo, URL) só no log — o usuário recebe mensagem genérica.
+        throw new Error(isRateLimit(err)
+          ? 'A IA está com muitas solicitações no momento. Tente novamente em instantes.'
+          : 'Não foi possível obter resposta da IA agora. Tente novamente em instantes.');
       }
     }),
 
@@ -1090,7 +1109,7 @@ ${userContext}`;
         const paused = (s.totalPausedMs ?? 0) + (s.status === 'paused' && s.pausedAt ? now.getTime() - new Date(s.pausedAt).getTime() : 0);
         return acc + Math.max(0, elapsed - paused);
       }, 0);
-      const lastAccess = mine[0] ? new Date(mine[0].startedAt).toLocaleString('pt-BR') : 'nunca';
+      const lastAccess = mine[0] ? new Date(mine[0].startedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'nunca';
 
       let todayInfo = 'não acessou hoje';
       if (todaySess) {
@@ -1100,7 +1119,7 @@ ${userContext}`;
         let pausedMs = todaySess.totalPausedMs ?? 0;
         if (todaySess.status === 'paused' && todaySess.pausedAt) pausedMs += now.getTime() - new Date(todaySess.pausedAt).getTime();
         const workedMs = Math.max(0, elapsed - pausedMs);
-        todayInfo = `entrada=${pad2(start.getHours())}:${pad2(start.getMinutes())}, trabalhado=${fmtMs(workedMs)}, status=${todaySess.status}`;
+        todayInfo = `entrada=${spHHmm(start)}, trabalhado=${fmtMs(workedMs)}, status=${todaySess.status}`;
       }
 
       return { todayInfo, daysActive7, totalWorkedMs7Fmt: fmtMs(totalWorkedMs7), lastAccess };
@@ -1289,7 +1308,7 @@ REGRAS ABSOLUTAS:
       return { report, summary, cached: false };
     } catch (err: any) {
       console.error('[ANALYZE_ERROR]', err?.message);
-      return { report, summary: 'Análise indisponível: ' + (err?.message ?? 'erro') };
+      return { report, summary: 'Análise indisponível no momento. Tente novamente em instantes.' };
     }
   }),
 
@@ -1318,7 +1337,8 @@ REGRAS ABSOLUTAS:
         shortCacheSet(cacheKey, result);
         return result;
       } catch (err: any) {
-        return { suggestion: 'Erro ao gerar sugestão: ' + (err?.message ?? 'tente novamente') };
+        console.error('[AI_SUGGEST_ERROR]', err?.message);
+        return { suggestion: 'Erro ao gerar sugestão. Tente novamente em instantes.' };
       }
     }),
 
@@ -1411,7 +1431,8 @@ CORPO:
         shortCacheSet(cacheKey, result);
         return result;
       } catch (err: any) {
-        return { subjects: [], html: '', error: 'Erro ao gerar: ' + (err?.message ?? 'tente novamente') };
+        console.error('[AI_COPY_ERROR]', err?.message);
+        return { subjects: [], html: '', error: 'Erro ao gerar. Tente novamente em instantes.' };
       }
     }),
 

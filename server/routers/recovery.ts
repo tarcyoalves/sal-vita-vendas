@@ -1222,7 +1222,9 @@ Seja específico, prático e use dados fornecidos. Formate com emojis e seções
   // Public: customer chat powered by Groq
   chat: publicProcedure
     .input(z.object({
-      messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string() })).max(20),
+      // Endpoint público que gasta cota do Groq: teto por mensagem, nº de mensagens e total.
+      messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(1000) })).max(20)
+        .refine(m => m.reduce((n, x) => n + x.content.length, 0) <= 8000, 'Conversa muito longa.'),
     }))
     .mutation(async ({ input }) => {
       const apiKey = process.env.SAL_VITA_PREMIUM_1KG_GROQ ?? process.env.GROQ_API_KEY_PREMIUM ?? process.env.GROQ_API_KEY;

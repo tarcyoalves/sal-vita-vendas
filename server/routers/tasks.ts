@@ -3,10 +3,11 @@ import { eq, inArray, or, isNotNull, isNull, and, gte, count, sql, SQL, asc, des
 import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { TRPCError } from '@trpc/server';
 import { db } from '../db';
-import { tasks, sellers, taskDeletionLogs } from '../db/schema';
+import { tasks, sellers, users, taskDeletionLogs } from '../db/schema';
 import { runTriggerNow, cancelAllEnrollments } from '../email/automations';
 import { normalizeBrPhone, phoneOfTask } from '../../shared/phone';
 import { isNewContact } from '../lib/taskNotes';
+import { matchAssignee, ehDuplicada, lembreteEscalonado, executarComOrcamento } from '../lib/taskImport';
 
 // Tag aplicada/removida automaticamente junto com tasks.emailConfirmed (ver
 // confirmEmail e update abaixo), para permitir filtrar tarefas por confirmação
@@ -38,6 +39,19 @@ export async function userTaskFilter(userId: number, userName: string) {
   if (userName) conditions.push(sql`lower(${tasks.assignedTo}) = ${userName.toLowerCase()}`);
   if (sellerName) conditions.push(sql`lower(${tasks.assignedTo}) = ${sellerName.toLowerCase()}`);
   return or(...conditions);
+}
+
+// "Dono da tarefa" tem que existir: atendente cadastrado ou conta admin/gerente. Devolve a grafia
+// do cadastro (lista, filtros e userTaskFilter comparam o nome em minúsculas, mas a tela mostra o texto).
+async function resolveAssignee(raw: string): Promise<string> {
+  const alvo = raw.trim().toLowerCase();
+  const [sellerRows, staffRows] = await Promise.all([
+    db.select({ name: sellers.name }).from(sellers).where(sql`lower(trim(${sellers.name})) = ${alvo}`),
+    db.select({ name: users.name }).from(users).where(and(sql`lower(trim(${users.name})) = ${alvo}`, inArray(users.role, ['admin', 'manager']))),
+  ]);
+  const nome = matchAssignee(raw, sellerRows.map(r => r.name), staffRows.map(r => r.name));
+  if (!nome) throw new TRPCError({ code: 'BAD_REQUEST', message: `Atendente "${raw.trim()}" não encontrado no cadastro. Escolha um atendente da lista.` });
+  return nome;
 }
 
 // Columns returned by tasks.list — excludes `notes` (up to 5000 chars) and
@@ -165,7 +179,9 @@ export const tasksRouter = router({
         notes: z.string().max(5000).optional(),
         email: z.string().email().max(200).optional().or(z.literal('')),
         tags: z.array(z.string()).optional(),
-        reminderDate: z.date({ required_error: 'Data do lembrete é obrigatória' }),
+        // Sem data: o servidor escalona (1 a cada 2 min a partir de agora + 5 min) em vez de
+        // empilhar todas no mesmo minuto.
+        reminderDate: z.date().optional(),
         reminderEnabled: z.boolean().optional().default(true),
         priority: z.enum(['low', 'medium', 'high']).optional().default('medium'),
         assignedTo: z.string().optional(),
@@ -175,7 +191,29 @@ export const tasksRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const emailConfirmer = ctx.user.name ?? ctx.user.email;
-      const rows = input.items.map(item => {
+
+      // Reimportar o mesmo arquivo não pode duplicar: ignora linhas cujo CNPJ ou telefone
+      // (normalizados) já existem em tasks.
+      const cnpjs = [...new Set(input.items.map(i => normalizeCnpj(i.cnpj)).filter((v): v is string => !!v))];
+      const phones = [...new Set(input.items.map(i => normalizePhone(i.phone)).filter((v): v is string => !!v))];
+      const jaExistem = { cnpjs: new Set<string>(), phones: new Set<string>() };
+      const conds: SQL<unknown>[] = [];
+      if (cnpjs.length) conds.push(inArray(tasks.cnpj, cnpjs));
+      if (phones.length) conds.push(inArray(tasks.phone, phones));
+      if (conds.length) {
+        const existentes = await db.select({ cnpj: tasks.cnpj, phone: tasks.phone }).from(tasks).where(or(...conds));
+        for (const e of existentes) {
+          if (e.cnpj) jaExistem.cnpjs.add(e.cnpj);
+          if (e.phone) jaExistem.phones.add(e.phone);
+        }
+      }
+      const novos = input.items.filter(item => !ehDuplicada({ cnpj: normalizeCnpj(item.cnpj), phone: normalizePhone(item.phone) }, jaExistem));
+      const duplicadas = input.items.length - novos.length;
+      if (novos.length === 0) return { created: [], length: 0, duplicadas };
+
+      const baseLembrete = new Date(Date.now() + 5 * 60 * 1000);
+      let semData = 0;
+      const rows = novos.map(item => {
         const assignedTo = item.assignedTo || (ctx.user.role !== 'admin' ? ctx.user.name : undefined);
         const email = item.email ? item.email.toLowerCase().trim() : undefined;
         return {
@@ -186,7 +224,7 @@ export const tasksRouter = router({
           notes: item.notes,
           email,
           tags: item.tags,
-          reminderDate: item.reminderDate,
+          reminderDate: item.reminderDate ?? lembreteEscalonado(baseLembrete, semData++),
           reminderEnabled: item.reminderEnabled,
           priority: item.priority,
           assignedTo,
@@ -201,8 +239,11 @@ export const tasksRouter = router({
 
       const created = await db.insert(tasks).values(rows).returning();
 
-      for (const row of created) {
-        if (!row.email) continue;
+      // 2000 runTriggerNow em sequência estouram os 60 s da função: as 200 primeiras uma a uma,
+      // o resto 10 por vez, tudo sob orçamento de 40 s. A tarefa já está criada; o que não rodar
+      // só perde a automação "lead criado" (reaparece ao confirmar o e-mail) e fica no log.
+      const comEmail = created.filter(r => !!r.email);
+      const r = await executarComOrcamento(comEmail, async (row) => {
         try {
           await runTriggerNow('lead_created', {
             id: row.id,
@@ -214,9 +255,13 @@ export const tasksRouter = router({
         } catch (err) {
           console.error('[tasks.bulkCreate] runTriggerNow(lead_created) failed:', err);
         }
+      }, { sequenciais: 200, concorrencia: 10, orcamentoMs: 40_000 });
+      if (r.naoExecutados.length > 0) {
+        console.warn(`[tasks.bulkCreate] orçamento de tempo esgotado: ${r.naoExecutados.length} automações lead_created não rodaram (ids ${r.naoExecutados.slice(0, 20).map(t => t.id).join(',')}...)`);
       }
 
-      return created;
+      // `length` mantém compatibilidade com o front antigo (que lia `created.length` do array).
+      return { created, length: created.length, duplicadas };
     }),
 
   // Reatribuição em massa (usada pelo botão "Designar" da seleção múltipla).
@@ -231,11 +276,12 @@ export const tasksRouter = router({
       assignedTo: z.string().trim().min(1),
     }))
     .mutation(async ({ input, ctx }) => {
+      const assignedTo = await resolveAssignee(input.assignedTo);
       const ownerFilter = ctx.user.role === 'admin'
         ? inArray(tasks.id, input.ids)
         : and(inArray(tasks.id, input.ids), await userTaskFilter(ctx.user.id, ctx.user.name ?? ''));
       const updated = await db.update(tasks)
-        .set({ assignedTo: input.assignedTo, updatedAt: new Date() })
+        .set({ assignedTo, updatedAt: new Date() })
         .where(ownerFilter)
         .returning({ id: tasks.id });
       return { updated: updated.length };
@@ -268,7 +314,17 @@ export const tasksRouter = router({
       const now = new Date();
       const setData: Record<string, any> = { ...data, updatedAt: now };
       // assignedTo vazio = tarefa sem responsável (null), nunca a string vazia
-      if (data.assignedTo !== undefined) setData.assignedTo = data.assignedTo || null;
+      if (data.assignedTo !== undefined) {
+        setData.assignedTo = data.assignedTo || null;
+        if (data.assignedTo) {
+          // A tela reenvia o responsável atual em todo save: só valida (e normaliza) quando mudou,
+          // senão uma tarefa antiga com nome fora do cadastro ficaria impossível de editar.
+          const [atual] = await db.select({ assignedTo: tasks.assignedTo }).from(tasks).where(ownerFilter).limit(1);
+          if ((atual?.assignedTo ?? '').trim().toLowerCase() !== data.assignedTo.trim().toLowerCase()) {
+            setData.assignedTo = await resolveAssignee(data.assignedTo);
+          }
+        }
+      }
       let confirmedNow = false;
       if (data.email !== undefined) {
         const newEmail = data.email ? data.email.toLowerCase().trim() : null;

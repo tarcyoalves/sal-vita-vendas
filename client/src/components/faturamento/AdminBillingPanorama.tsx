@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useFatStore } from "../../lib/faturamento/store";
+import { QueryError } from '../QueryError';
 import {
   panoramaPorAtendente,
   somarResumos,
@@ -60,7 +61,7 @@ function KpiTile({ label, value, sub, icon, color, bgColor }: KpiTileProps) {
 
 export default function AdminBillingPanorama() {
   const [filtro, setFiltro] = useState<FiltroMes>(mesAtual);
-  const { pedidos, comissoes } = useFatStore();
+  const { pedidos, comissoes, error: fatError, loaded: fatLoaded, loading: fatLoading, reload: fatReload } = useFatStore();
   const { data: sellers = [] } = trpc.sellers.list.useQuery();
 
   const sellerList = useMemo(
@@ -157,7 +158,9 @@ export default function AdminBillingPanorama() {
         />
       </div>
 
-      {!hasData ? (
+      {!hasData && fatError && !fatLoaded ? (
+        <QueryError message="Falha ao carregar os pedidos" onRetry={fatReload} retrying={fatLoading} />
+      ) : !hasData ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 py-10 px-4 text-center">
           <BarChart2 size={28} className="text-slate-300" />
           <p className="text-sm text-slate-500 max-w-sm">

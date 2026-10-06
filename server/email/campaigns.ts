@@ -7,6 +7,7 @@
  */
 
 import { and, eq, count, inArray, lt, lte, or, isNotNull, sql as dsql } from 'drizzle-orm';
+import { isRetryableProviderError, retryMarker, jaTentouDeNovo } from '../lib/emailRetry';
 import { db } from '../db';
 import { emailCampaigns, emailCampaignRecipients, emailSuppressions, sellers } from '../db/schema';
 import {
@@ -114,7 +115,7 @@ export async function processCampaignBatch(campaignId: number): Promise<Campaign
   // grab the same rows — each one only sends what it actually claimed here.
   const claimed = await db.execute<{
     id: number; email: string; name: string | null; replyTo: string | null;
-    taskId: number | null; unsubToken: string; variant: string | null;
+    taskId: number | null; unsubToken: string; variant: string | null; error: string | null;
   }>(dsql`
     UPDATE email_campaign_recipients
     SET status = 'sending', claimed_at = now()
@@ -125,7 +126,7 @@ export async function processCampaignBatch(campaignId: number): Promise<Campaign
       LIMIT ${batchSize}
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING id, email, name, reply_to AS "replyTo", task_id AS "taskId", unsub_token AS "unsubToken", variant
+    RETURNING id, email, name, reply_to AS "replyTo", task_id AS "taskId", unsub_token AS "unsubToken", variant, error
   `);
   const recipients = claimed.rows;
 
@@ -149,7 +150,7 @@ export async function processCampaignBatch(campaignId: number): Promise<Campaign
   // Broadcasts may carry file attachments (base64) — applied to every message.
   const campaignAttachments = (campaign.attachments as { filename: string; content: string }[] | null) ?? undefined;
 
-  let sentNow = 0, failedNow = 0, confirmedFailures = 0;
+  let sentNow = 0, failedNow = 0, confirmedFailures = 0, retriedNow = 0;
   if (toSend.length > 0) {
     const signatureMap = await buildSignatureMap();
     const messages: BatchMessage[] = toSend.map(r => {
@@ -176,6 +177,14 @@ export async function processCampaignBatch(campaignId: number): Promise<Campaign
         await db.update(emailCampaignRecipients)
           .set({ status: 'sent', accountKey: account.key, messageId: res.messageId, sentAt: new Date() })
           .where(eq(emailCampaignRecipients.id, r.id));
+      } else if (isRetryableProviderError(res.error) && !jaTentouDeNovo(r.error)) {
+        // 429/5xx do provedor é transitório: volta a 'pending' UMA vez (sem coluna de tentativas,
+        // o marcador fica em `error`) e devolve a cota — a mensagem não saiu.
+        retriedNow++;
+        confirmedFailures++;
+        await db.update(emailCampaignRecipients)
+          .set({ status: 'pending', claimedAt: null, accountKey: account.key, error: retryMarker(res.error ?? '') })
+          .where(eq(emailCampaignRecipients.id, r.id));
       } else {
         failedNow++;
         // Only definitive provider rejections free their reserved slot;
@@ -197,7 +206,8 @@ export async function processCampaignBatch(campaignId: number): Promise<Campaign
   await db.update(emailCampaigns).set({
     sentCount: dsql`${emailCampaigns.sentCount} + ${sentNow}`,
     failedCount: dsql`${emailCampaigns.failedCount} + ${failedNow}`,
-    status: 'sending',
+    // Não reabre campanha já concluída ('sent'): outro lote concorrente pode ter fechado antes.
+    status: dsql`CASE WHEN ${emailCampaigns.status} = 'sent' THEN ${emailCampaigns.status} ELSE 'sending' END`,
     updatedAt: new Date(),
   }).where(eq(emailCampaigns.id, campaignId));
 

@@ -439,14 +439,16 @@ export default function AppShell({ children }: AppShellProps) {
         <div className="grid grid-cols-2 gap-1 pt-1">
           <button
             onClick={() => setShowChangePwd(true)}
-            className="flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-medium text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+            aria-label="Alterar senha"
+            className="flex items-center justify-center gap-1.5 min-h-10 px-2 py-1.5 text-[11px] font-medium text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
           >
             <KeyRound size={13} />
             <span>Senha</span>
           </button>
           <button
             onClick={handleLogout}
-            className="flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition-colors"
+            aria-label="Sair da conta"
+            className="flex items-center justify-center gap-1.5 min-h-10 px-2 py-1.5 text-[11px] font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition-colors"
           >
             <LogOut size={13} />
             <span>Sair</span>
@@ -499,7 +501,11 @@ export default function AppShell({ children }: AppShellProps) {
         </header>
 
         {/* Page content — bottom padding on mobile to avoid bottom nav overlap */}
-        <main className="flex-1 overflow-y-auto pb-24 md:pb-0">
+        {/* Atendente tem dois botões flutuantes (timer e e-mail marketing) acima da barra
+            inferior: o espaço extra deixa o fim das listas rolar para fora deles. */}
+        <main className={`flex-1 overflow-y-auto md:pb-0 ${role === "user"
+          ? "pb-[calc(10.5rem_+_env(safe-area-inset-bottom))]"
+          : "pb-[calc(6rem_+_env(safe-area-inset-bottom))]"}`}>
           {children}
         </main>
       </div>

@@ -7,6 +7,8 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { QueryError } from '../components/QueryError';
+import { safePercent } from '../lib/numbers';
 import AttendantBilling from '../components/faturamento/AttendantBilling';
 import { useFatStore } from '../lib/faturamento/store';
 import { resumoAtendente, isoNoMes, formatBRL, parseDataLocal } from '../lib/faturamento/calc';
@@ -45,7 +47,7 @@ function ProgressRing({ pct, size = 96, stroke = 9, color }: { pct: number; size
 export default function AttendantProgress() {
   const { user } = useAuth();
   // No refetchInterval — mutations invalidate the cache; server is not polled
-  const { data: tasks = [], isLoading } = trpc.tasks.list.useQuery();
+  const { data: tasks = [], isLoading, isError, isFetching, refetch } = trpc.tasks.list.useQuery();
   const { data: session } = trpc.workSessions.current.useQuery(undefined, { staleTime: 60_000 });
   const { data: sellerProfile } = trpc.sellers.myProfile.useQuery(undefined, { staleTime: 300_000 });
   // Mesma store já usada na aba Faturamento — reaproveitada aqui (sem query
@@ -93,11 +95,13 @@ export default function AttendantProgress() {
       // encerradas (encerrar e reiniciar não pode zerar as horas da manhã)
       workedMs += session.todayOtherMs ?? 0;
     }
-    const goalMs  = (sellerProfile?.workHoursGoal ?? 8) * 3600000;
+    // workHoursGoal=0 (perfil sem meta) dividia por zero e a barra virava NaN%.
+    const goalHours = sellerProfile?.workHoursGoal && sellerProfile.workHoursGoal > 0 ? sellerProfile.workHoursGoal : 8;
+    const goalMs  = goalHours * 3600000;
     const hoursWorked = workedMs / 3600000;
-    const hoursPct = Math.min(Math.round((workedMs / goalMs) * 100), 100);
+    const hoursPct = safePercent(workedMs, goalMs);
     const dailyGoal = effectiveDailyGoal(sellerProfile?.dailyGoal);
-    const contactsPct = Math.min(Math.round((contactsToday.length / dailyGoal) * 100), 100);
+    const contactsPct = safePercent(contactsToday.length, dailyGoal);
     const productivity = hoursWorked > 0.1 ? (contactsToday.length / hoursWorked).toFixed(1) : '--';
 
     const overdueToday = tasks.filter(t =>
@@ -186,6 +190,13 @@ export default function AttendantProgress() {
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+    </div>
+  );
+
+  // Falha da API não pode parecer "zero contatos" (perda de dados).
+  if (isError && tasks.length === 0) return (
+    <div className="p-4 md:p-6 max-w-2xl mx-auto">
+      <QueryError onRetry={() => { void refetch(); }} retrying={isFetching} />
     </div>
   );
 

@@ -4,6 +4,8 @@ import { Button } from '../components/ui/button';
 import { useState } from "react";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
+import { QueryError } from "../components/QueryError";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 
 interface KnowledgeDoc {
   id: number;
@@ -24,7 +26,8 @@ export default function KnowledgeBase() {
     category: "",
   });
 
-  const { data: docs = [], isLoading, refetch } = trpc.knowledge.list.useQuery();
+  const { data: docs = [], isLoading, isError, isFetching, refetch } = trpc.knowledge.list.useQuery();
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const createMutation = trpc.knowledge.create.useMutation();
   const deleteMutation = trpc.knowledge.delete.useMutation();
 
@@ -53,14 +56,12 @@ export default function KnowledgeBase() {
   };
 
   const handleDelete = async (id: number) => {
-    if (confirm("Deletar este documento?")) {
-      try {
-        await deleteMutation.mutateAsync({ id });
-        toast.success("Documento deletado");
-        refetch();
-      } catch (error) {
-        toast.error("Erro ao deletar documento");
-      }
+    try {
+      await deleteMutation.mutateAsync({ id });
+      toast.success("Documento deletado");
+      refetch();
+    } catch (error) {
+      toast.error("Erro ao deletar documento");
     }
   };
 
@@ -147,6 +148,8 @@ export default function KnowledgeBase() {
           <div className="animate-spin rounded-full h-7 w-7 border-2 border-slate-200 border-t-[#0C3680] mx-auto mb-2" />
           <p className="text-xs text-slate-400">Carregando documentos...</p>
         </div>
+      ) : isError && docs.length === 0 ? (
+        <QueryError onRetry={() => refetch()} retrying={isFetching} />
       ) : docs.length === 0 ? (
         <div className="saas-card p-8 text-center bg-blue-50/40 border-blue-100">
           <p className="text-sm font-medium text-slate-700">
@@ -169,8 +172,9 @@ export default function KnowledgeBase() {
                     )}
                   </div>
                   <button
-                    onClick={() => handleDelete(doc.id)}
-                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                    onClick={() => setConfirmDeleteId(doc.id)}
+                    aria-label="Excluir documento"
+                    className="p-2 min-h-10 min-w-10 inline-flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                     title="Excluir documento"
                   >
                     <Trash2 size={16} />
@@ -217,6 +221,13 @@ export default function KnowledgeBase() {
           </div>
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        onOpenChange={(o) => { if (!o) setConfirmDeleteId(null); }}
+        title="Deletar este documento?"
+        confirmLabel="Deletar"
+        onConfirm={() => { if (confirmDeleteId !== null) void handleDelete(confirmDeleteId); }}
+      />
     </div>
   );
 }

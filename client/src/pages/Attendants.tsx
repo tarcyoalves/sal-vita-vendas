@@ -6,6 +6,8 @@ import { useState, useMemo, useEffect } from "react";
 import DOMPurify from 'dompurify';
 import { toast } from "sonner";
 import { AlertCircle } from "lucide-react";
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { numberInputValue, parseIntOr } from '../lib/numbers';
 import { useFatStore } from '../lib/faturamento/store';
 import {
   Dialog,
@@ -115,9 +117,11 @@ export default function Attendants() {
   const deleteMutation = trpc.sellers.delete.useMutation();
   const updateRoleMutation = trpc.sellers.updateRole.useMutation();
   const resetPasswordMutation = trpc.auth.adminResetPassword.useMutation();
+  // Confirmações (substituem window.confirm)
+  const [confirmReset, setConfirmReset] = useState<Attendant | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: number; name: string } | null>(null);
 
   const handleResetPassword = async (attendant: Attendant) => {
-    if (!confirm(`Resetar a senha de "${attendant.name}"? Uma nova senha será gerada.`)) return;
     try {
       const result = await resetPasswordMutation.mutateAsync({ userId: attendant.userId });
       setResetInfo({ name: result.name, email: result.email, password: result.generatedPassword });
@@ -161,7 +165,7 @@ export default function Attendants() {
         email: editFormData.email || undefined,
         phone: editFormData.phone || undefined,
         department: editFormData.department || undefined,
-        dailyGoal: editFormData.dailyGoal,
+        dailyGoal: Number.isFinite(editFormData.dailyGoal) && editFormData.dailyGoal >= 1 ? editFormData.dailyGoal : 100,
         workHoursGoal: editFormData.workHoursGoal,
         status: editFormData.status,
         emailMarketingEnabled: editFormData.emailMarketingEnabled,
@@ -187,7 +191,7 @@ export default function Attendants() {
         email: formData.email,
         phone: formData.phone || undefined,
         department: formData.department || undefined,
-        dailyGoal: formData.dailyGoal,
+        dailyGoal: Number.isFinite(formData.dailyGoal) && formData.dailyGoal >= 1 ? formData.dailyGoal : 100,
         workHoursGoal: formData.workHoursGoal,
         status: formData.status,
       }) as CreatedResult;
@@ -221,7 +225,6 @@ export default function Attendants() {
   };
 
   const handleDelete = async (id: number, name: string) => {
-    if (!confirm(`Deletar atendente "${name}" e sua conta de acesso?`)) return;
     try {
       const res = await deleteMutation.mutateAsync({ id });
       if (res.deactivated) {
@@ -583,11 +586,11 @@ export default function Attendants() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Meta Diária (tarefas)</label>
-                  <input type="number" value={formData.dailyGoal} onChange={(e) => setFormData({ ...formData, dailyGoal: parseInt(e.target.value) })} className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs" min="1" />
+                  <input type="number" value={numberInputValue(formData.dailyGoal)} onChange={(e) => setFormData({ ...formData, dailyGoal: parseIntOr(e.target.value, NaN) })} className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs" min="1" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Expediente</label>
-                  <select value={formData.workHoursGoal} onChange={(e) => setFormData({ ...formData, workHoursGoal: parseInt(e.target.value) })} className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs">
+                  <select value={formData.workHoursGoal} onChange={(e) => setFormData({ ...formData, workHoursGoal: parseIntOr(e.target.value, 8) })} className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs">
                     <option value={4}>4h — Meio período</option>
                     <option value={6}>6h — Período parcial</option>
                     <option value={8}>8h — Período integral</option>
@@ -663,7 +666,7 @@ export default function Attendants() {
                         <Button size="sm" variant="outline" className="flex-1" onClick={() => handleEditOpen(attendant)}>
                           Editar
                         </Button>
-                        <Button size="sm" variant="destructive" className="flex-1" onClick={() => handleDelete(attendant.id, attendant.name)}>
+                        <Button size="sm" variant="destructive" className="flex-1" onClick={() => setConfirmDelete({ id: attendant.id, name: attendant.name })}>
                           Remover
                         </Button>
                       </div>
@@ -679,7 +682,7 @@ export default function Attendants() {
                         size="sm"
                         variant="outline"
                         className="w-full border-orange-300 text-orange-700 hover:bg-orange-50"
-                        onClick={() => handleResetPassword(attendant)}
+                        onClick={() => setConfirmReset(attendant)}
                         disabled={resetPasswordMutation.isPending}
                       >
                         Resetar Senha
@@ -715,7 +718,7 @@ export default function Attendants() {
           <DialogContent className="max-w-lg">
             <DialogHeader><DialogTitle>Editar Atendente</DialogTitle></DialogHeader>
             <form onSubmit={handleEditSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Nome *</label>
                   <input type="text" value={editFormData.name} onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })} placeholder="Nome completo" className="w-full px-3 py-2 border rounded-lg" required />
@@ -725,7 +728,7 @@ export default function Attendants() {
                   <input type="email" value={editFormData.email} onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })} placeholder="email@example.com" className="w-full px-3 py-2 border rounded-lg" required />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Telefone</label>
                   <input type="tel" value={editFormData.phone} onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })} placeholder="(11) 99999-9999" className="w-full px-3 py-2 border rounded-lg" />
@@ -735,14 +738,14 @@ export default function Attendants() {
                   <input type="text" value={editFormData.department} onChange={(e) => setEditFormData({ ...editFormData, department: e.target.value })} placeholder="Ex: Vendas" className="w-full px-3 py-2 border rounded-lg" />
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Meta Diária</label>
-                  <input type="number" value={editFormData.dailyGoal} onChange={(e) => setEditFormData({ ...editFormData, dailyGoal: parseInt(e.target.value) })} className="w-full px-3 py-2 border rounded-lg" min="1" />
+                  <input type="number" value={numberInputValue(editFormData.dailyGoal)} onChange={(e) => setEditFormData({ ...editFormData, dailyGoal: parseIntOr(e.target.value, NaN) })} className="w-full px-3 py-2 border rounded-lg" min="1" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Expediente</label>
-                  <select value={editFormData.workHoursGoal} onChange={(e) => setEditFormData({ ...editFormData, workHoursGoal: parseInt(e.target.value) })} className="w-full px-3 py-2 border rounded-lg">
+                  <select value={editFormData.workHoursGoal} onChange={(e) => setEditFormData({ ...editFormData, workHoursGoal: parseIntOr(e.target.value, 8) })} className="w-full px-3 py-2 border rounded-lg">
                     <option value={4}>4h — Meio período</option>
                     <option value={6}>6h — Período parcial</option>
                     <option value={8}>8h — Período integral</option>
@@ -1065,6 +1068,23 @@ export default function Attendants() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <ConfirmDialog
+          open={!!confirmReset}
+          onOpenChange={(o) => { if (!o) setConfirmReset(null); }}
+          title={`Resetar a senha de "${confirmReset?.name ?? ''}"?`}
+          description="Uma nova senha será gerada."
+          confirmLabel="Resetar"
+          onConfirm={() => { if (confirmReset) void handleResetPassword(confirmReset); }}
+        />
+        <ConfirmDialog
+          open={!!confirmDelete}
+          onOpenChange={(o) => { if (!o) setConfirmDelete(null); }}
+          title={`Deletar atendente "${confirmDelete?.name ?? ''}"?`}
+          description="A conta de acesso dele também será removida."
+          confirmLabel="Deletar"
+          onConfirm={() => { if (confirmDelete) void handleDelete(confirmDelete.id, confirmDelete.name); }}
+        />
     </div>
   );
 }

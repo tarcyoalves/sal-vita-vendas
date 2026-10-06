@@ -3,6 +3,7 @@ import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
 import { trpc } from '../../lib/trpc';
 import { useFatStore } from '../../lib/faturamento/store';
+import { QueryError } from '../QueryError';
 import {
   resumoAtendente, mesAtual, pedidoNoMes, totalPedido, comissaoPedido, notaPesoFaturado,
   formatBRL, formatDataBR,
@@ -69,7 +70,7 @@ export default function AttendantBilling() {
   const { data: sellerProfile, isLoading: profileLoading } =
     trpc.sellers.myProfile.useQuery(undefined, { staleTime: 300_000 });
 
-  const { pedidos: allPedidos, comissoes, actions } = useFatStore();
+  const { pedidos: allPedidos, comissoes, actions, error: fatError, loaded: fatLoaded, loading: fatLoading, reload: fatReload } = useFatStore();
 
   const [filtro, setFiltro] = useState<FiltroMes>(mesAtual);
 
@@ -258,7 +259,9 @@ export default function AttendantBilling() {
       </div>
 
       {/* Pedidos list */}
-      {pedidosDoMes.length === 0 ? (
+      {pedidosDoMes.length === 0 && fatError && !fatLoaded ? (
+        <QueryError message="Falha ao carregar os pedidos" onRetry={fatReload} retrying={fatLoading} />
+      ) : pedidosDoMes.length === 0 ? (
         <div className="text-center py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
           <Package size={32} className="mx-auto text-slate-300 mb-2" />
           <p className="text-sm text-slate-400">Nenhum pedido neste mes</p>

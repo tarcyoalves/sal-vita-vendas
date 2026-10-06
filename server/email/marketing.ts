@@ -777,13 +777,7 @@ async function sendBatchBrevo(account: MarketingAccount, messages: BatchMessage[
   }
 }
 
-export function sanitizeCampaignHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]*)/gi, '')
-    .replace(/\bhref\s*=\s*["']?\s*javascript\s*:/gi, 'href="')
-    .replace(/\bsrc\s*=\s*["']?\s*javascript\s*:/gi, 'src="');
-}
+export { sanitizeCampaignHtml, sanitizeUntrustedHtml, isAllowedAttachmentName } from '../lib/emailSanitize';
 
 /** Replaces {nome}, {empresa}, {unsubscribe} placeholders in a template string. */
 export function renderTemplate(text: string, vars: { nome?: string; empresa?: string; unsubscribe?: string }): string {

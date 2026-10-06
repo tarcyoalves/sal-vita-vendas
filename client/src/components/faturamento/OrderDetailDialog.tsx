@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
@@ -14,7 +14,7 @@ import {
 } from '../../lib/faturamento/calc';
 import { OrderPrintDocument } from './OrderPrintDocument';
 import { LinkTaskDialog } from './LinkTaskDialog';
-import { Pencil, Truck, Trash2, CheckCircle2, Printer, Link2, Undo2 } from 'lucide-react';
+import { Pencil, Truck, Trash2, CheckCircle2, Printer, Link2, Undo2, Loader2 } from 'lucide-react';
 import SmbiPedidoControles from './SmbiPedidoControles';
 
 interface OrderDetailDialogProps {
@@ -44,8 +44,9 @@ export function OrderDetailDialog({
   onDelete,
   onApproved,
 }: OrderDetailDialogProps) {
-  const { actions } = useFatStore();
+  const { actions, reload, loading: fatLoading } = useFatStore();
   const { user } = useAuth();
+  const [aprovando, setAprovando] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const pedido = pedidoId ? actions.pedidos.get(pedidoId) : null;
@@ -60,7 +61,46 @@ export function OrderDetailDialog({
     enabled: canApprove && !!pedido && !pedido.taskId,
   });
 
-  if (!pedido) return null;
+  // Pedido recém-criado por outro atendente ainda não está no espelho local: busca de novo
+  // em vez de abrir um diálogo vazio. `tentouRecarregar` evita laço se ele realmente não existe.
+  const [tentouRecarregar, setTentouRecarregar] = useState(false);
+  const faltaNoEspelho = open && !!pedidoId && !pedido;
+  useEffect(() => {
+    if (!faltaNoEspelho) { setTentouRecarregar(false); return; }
+    let vivo = true;
+    void Promise.resolve(reload()).finally(() => { if (vivo) setTentouRecarregar(true); });
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [faltaNoEspelho, pedidoId]);
+
+  if (!pedido) {
+    if (!faltaNoEspelho) return null;
+    const buscando = fatLoading || !tentouRecarregar;
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{buscando ? 'Carregando pedido…' : 'Pedido não encontrado'}</DialogTitle>
+            <DialogDescription>
+              {buscando
+                ? 'Buscando os dados mais recentes no servidor.'
+                : 'Não foi possível localizar este pedido. Ele pode ter sido excluído ou a conexão falhou.'}
+            </DialogDescription>
+          </DialogHeader>
+          {buscando ? (
+            <div className="flex justify-center py-4">
+              <Loader2 className="animate-spin text-blue-600" size={24} />
+            </div>
+          ) : (
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setTentouRecarregar(false); void reload().finally(() => setTentouRecarregar(true)); }}>Tentar de novo</Button>
+              <Button onClick={() => onOpenChange(false)}>Fechar</Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   const handleLinkTask = (taskId: number) => {
     actions.pedidos.upsert({ id: pedido.id, taskId });
@@ -72,11 +112,20 @@ export function OrderDetailDialog({
   const frete = freteTotal(pedido);
   const isFaturado = pedido.status === 'faturado';
 
-  const handleAprovar = () => {
-    if (!user) return;
-    actions.pedidos.aprovar(pedido.id, user.name);
-    toast.success('Pedido aprovado!');
-    onApproved?.();
+  // O aviso de sucesso só sai depois que o servidor confirma; se falhar, o store já
+  // mostrou o erro e desfez o otimismo (recarga) — não anunciamos nada aqui.
+  const handleAprovar = async () => {
+    if (!user || aprovando) return;
+    setAprovando(true);
+    try {
+      const ok = await actions.pedidos.aprovarConfirmando(pedido.id, user.name);
+      if (ok) {
+        toast.success('Pedido aprovado!');
+        onApproved?.();
+      }
+    } finally {
+      setAprovando(false);
+    }
   };
 
   // Confirmação explícita: desfazer descarta as quantidades reais do embarque
@@ -285,6 +334,7 @@ export function OrderDetailDialog({
               size="sm"
               className="bg-blue-600 hover:bg-blue-700 gap-1.5"
               onClick={handleAprovar}
+              disabled={aprovando}
             >
               <CheckCircle2 size={14} />
               Aprovar pedido

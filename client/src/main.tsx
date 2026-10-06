@@ -1,12 +1,14 @@
 import { trpc } from "./lib/trpc";
 import { UNAUTHED_ERR_MSG } from '../../shared/const';
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { httpBatchLink, httpLink, splitLink, TRPCClientError } from "@trpc/client";
 import { isRateLimitedProcedure } from "../../server/lib/trpcBatchGuard";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
 import { getLoginUrl } from "./const";
+import { shouldNotify, shouldRefetchOnFocus } from "./lib/refetchPolicy";
 import "./index.css";
 
 // Sanitize stale aiConfigs in localStorage — small models (8b-instant) have
@@ -29,17 +31,35 @@ try {
   if (changed) localStorage.setItem('aiConfigs', JSON.stringify(stored));
 } catch { /* ignore */ }
 
+// Um único aviso discreto por janela de 10 s: uma queda de rede derruba várias queries
+// de uma vez e não queremos empilhar toasts. UNAUTHED já redireciona para o login.
+let lastQueryErrorToastAt = 0;
+const queryCache = new QueryCache({
+  onError: (error) => {
+    if (error instanceof TRPCClientError && error.message === UNAUTHED_ERR_MSG) return;
+    const now = Date.now();
+    if (!shouldNotify(lastQueryErrorToastAt, now)) return;
+    lastQueryErrorToastAt = now;
+    toast.error('Não foi possível carregar. Tentando de novo…', { id: 'query-error' });
+  },
+});
+
 const queryClient = new QueryClient({
+  queryCache,
   defaultOptions: {
     queries: {
-      // Neon free-tier guard: don't re-pull every query on each tab focus /
-      // reconnect. The CRM was refetching the full `tasks` table (notes up to
+      // Neon free-tier guard: don't re-pull every query on each tab focus.
+      // The CRM was refetching the full `tasks` table (notes up to
       // 5000 chars) on every window focus, which dominated the 5 GB/month
       // network-transfer budget. Mutations already invalidate the cache, so the
       // UI still updates immediately after any action.
+      // Exceção controlada: só tasks.list e workSessions refazem a busca ao voltar o
+      // foco, e só se os dados têm mais de 5 min (PWA aberto o dia todo não fica velho).
       staleTime: 60_000,
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
+      refetchOnWindowFocus: (query) =>
+        shouldRefetchOnFocus(query.queryKey, query.state.dataUpdatedAt),
+      // Voltar a ficar online refaz só o que está velho (staleTime) — barato e evita tela congelada.
+      refetchOnReconnect: true,
       retry: 1,
     },
   },

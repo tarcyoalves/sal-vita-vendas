@@ -3,6 +3,7 @@ import { trpc } from '../lib/trpc';
 import { useAuth } from '../_core/hooks/useAuth';
 import { toast } from 'sonner';
 import { Pause, Play, Square, Clock } from 'lucide-react';
+import { ConfirmDialog } from './ConfirmDialog';
 
 function fmt(ms: number) {
   const s = Math.floor(ms / 1000);
@@ -29,13 +30,14 @@ export default function ActiveTimer() {
   const { user } = useAuth();
   const [, setTick] = useState(0);
   const [expanded, setExpanded] = useState(false);
+  const [confirmEnd, setConfirmEnd] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const { data: session, refetch } = trpc.workSessions.current.useQuery(undefined, {
     enabled: !!user,
     refetchInterval: 180_000,
     staleTime: 120_000,
-    refetchOnWindowFocus: false,
+    // refetchOnWindowFocus: política global (main.tsx) — refaz só se passaram >5 min.
   });
 
   const pauseMut  = trpc.workSessions.pause.useMutation();
@@ -66,7 +68,6 @@ export default function ActiveTimer() {
         await resumeMut.mutateAsync();
         toast.success('Retomado!');
       } else if (action === 'end') {
-        if (!confirm('Finalizar o trabalho agora?')) return;
         await endMut.mutateAsync();
         toast.success('Trabalho finalizado!');
         setExpanded(false);
@@ -76,6 +77,9 @@ export default function ActiveTimer() {
       toast.error(e?.message ?? 'Erro no registro');
     }
   }, []);
+
+  // Bloqueia os botões durante a chamada: duplo toque disparava pause/end duas vezes.
+  const busy = pauseMut.isPending || resumeMut.isPending || endMut.isPending;
 
   if (!user || !session || session.status === 'ended') return null;
 
@@ -104,8 +108,10 @@ export default function ActiveTimer() {
             {isActive && (
               <button
                 onClick={() => handle('pause')}
+                disabled={busy}
                 title="Pausar"
-                className="p-2.5 rounded-lg bg-yellow-50 hover:bg-yellow-100 text-yellow-600 border border-yellow-200 transition"
+                aria-label="Pausar"
+                className="p-2.5 min-h-10 min-w-10 inline-flex items-center justify-center disabled:opacity-50 rounded-lg bg-yellow-50 hover:bg-yellow-100 text-yellow-600 border border-yellow-200 transition"
               >
                 <Pause size={15} />
               </button>
@@ -113,16 +119,20 @@ export default function ActiveTimer() {
             {isPaused && (
               <button
                 onClick={() => handle('resume')}
+                disabled={busy}
                 title="Retomar"
-                className="p-2.5 rounded-lg bg-green-50 hover:bg-green-100 text-green-600 border border-green-200 transition"
+                aria-label="Retomar"
+                className="p-2.5 min-h-10 min-w-10 inline-flex items-center justify-center disabled:opacity-50 rounded-lg bg-green-50 hover:bg-green-100 text-green-600 border border-green-200 transition"
               >
                 <Play size={15} />
               </button>
             )}
             <button
-              onClick={() => handle('end')}
+              onClick={() => setConfirmEnd(true)}
+              disabled={busy}
               title="Finalizar trabalho"
-              className="p-2.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition"
+              aria-label="Finalizar trabalho"
+              className="p-2.5 min-h-10 min-w-10 inline-flex items-center justify-center disabled:opacity-50 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition"
             >
               <Square size={15} />
             </button>
@@ -141,6 +151,14 @@ export default function ActiveTimer() {
         <Clock size={13} className="flex-shrink-0" />
         <span className="tracking-widest">{fmt(elapsed)}</span>
       </button>
+
+      <ConfirmDialog
+        open={confirmEnd}
+        onOpenChange={setConfirmEnd}
+        title="Finalizar o trabalho agora?"
+        confirmLabel="Finalizar"
+        onConfirm={() => handle('end')}
+      />
     </div>
   );
 }

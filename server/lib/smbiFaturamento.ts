@@ -69,6 +69,28 @@ export function somarFiscal(movsais: SmbiMovsaiFiscal[]): { total: number; infor
   return { total: Math.round(total * 100) / 100, informado };
 }
 
+/** Quais componentes o robô trouxe: sal (NF-e valorSal) e/ou frete (CT-e valorFrete). */
+export function componentesFiscais(movsais: SmbiMovsaiFiscal[]): { temSal: boolean; temFrete: boolean } {
+  return {
+    temSal: movsais.some((m) => m.nfe?.valorSal !== undefined),
+    temFrete: movsais.some((m) => m.cte?.valorFrete !== undefined),
+  };
+}
+
+/**
+ * O total esperado (sal + frete) só é comparável com o fiscal quando o robô trouxe os DOIS
+ * componentes. Só sal (frete por conta do cliente ou CT-e ainda não emitido) compara contra o
+ * esperado apenas se o pedido não tem frete; só frete nunca compara. Sem isso o fiscal parcial
+ * parecia "desconto" (sal < sal + frete) sem haver desconto algum.
+ */
+export function fiscalComparavel(
+  c: { temSal: boolean; temFrete: boolean },
+  freteEsperado: number | null,
+): boolean {
+  if (!c.temSal) return false;
+  return c.temFrete || freteEsperado === 0;
+}
+
 /** Soma dos pesos (kg) informados nos movsais; 0 se nenhum trouxe peso. */
 export function pesoFaturadoKg(movsais: SmbiMovsaiFiscal[]): number {
   return Math.round(movsais.reduce((s, m) => s + (Number(m.pesoKg) || 0), 0) * 1000) / 1000;
@@ -172,6 +194,8 @@ export function resolverFaturamento(
   const informados = new Set(body.movsais.map((m) => m.id));
   const parcial = ligados.some((id) => !informados.has(id));
   const soma = somarFiscal(body.movsais);
+  const freteEsperado = pedido.itens ? Math.max(0, Math.round((totalAcordado - totalItens((pedido as unknown as Pedido).itens)) * 100) / 100) : null;
+  const comparavel = fiscalComparavel(componentesFiscais(body.movsais), freteEsperado);
   const pesoFat = pesoFaturadoKg(body.movsais);
   const esperado = totalEsperadoPeloPeso(totalAcordado, pesoPedidoKg, pesoFat);
   const espelho: SmbiEspelhoFiscal = {
@@ -187,7 +211,7 @@ export function resolverFaturamento(
   };
   const patch: FaturamentoPatch = {
     smbiEspelhoFiscal: espelho,
-    smbiAlertaDesconto: parcial ? false : alertaDescontoFiscal(esperado, soma.total, soma.informado),
+    smbiAlertaDesconto: parcial ? false : alertaDescontoFiscal(esperado, soma.total, soma.informado && comparavel),
     ...numerosFiscais(body.movsais),
   };
   // O SMBI manda: quantidade, peso, valores e (se vier) comissão do pedido passam a ser os dele.

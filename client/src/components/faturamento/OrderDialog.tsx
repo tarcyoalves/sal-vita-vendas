@@ -273,8 +273,8 @@ export function OrderDialog({
                 onChange={(e) => setRazaoSocial(e.target.value)}
               />
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="space-y-1.5 col-span-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="od-cidade">Cidade</Label>
                 <Input
                   id="od-cidade"
