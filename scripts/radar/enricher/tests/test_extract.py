@@ -565,3 +565,33 @@ def test_generic_tokens_da_base_carregados_e_marcas_de_rede_preservadas():
 ])
 def test_matches_company_exact_nome_com_acrescimo_do_maps(empresa, maps_nome):
     assert extract.matches_company_exact(maps_nome, empresa) is True
+
+
+def _est(razao, fantasia=None):
+    return {"razao_social": razao, "nome_fantasia": fantasia}
+
+
+def test_revalidate_maps_avaliar():
+    import revalidate_maps as rv
+
+    def res(nome, fone=None):
+        return {"maps": {"nome": nome}, "telefones": [{"value": fone, "source": "maps", "url": None}] if fone else []}
+
+    assert rv.avaliar(res("Cooperalfa - São José do Cedro", "4936430300"), _est("COOPERATIVA ALFA", "COOPERALFA"), "SC") == "ok"
+    assert rv.avaliar(res("Supermercado Boniatti", "4532481002"), _est("SUPERMERCADO MFB LTDA"), "PR") == "rejeitar"
+    assert rv.avaliar(res("Prefeitura Municipal de Santa Lúcia"), _est("GRANDI SERVICOS ADMINISTRATIVOS LTDA"), "PR") == "rejeitar"
+    assert rv.avaliar(res("Bunge Alimentos", "11972063752"), _est("BUNGE ALIMENTOS S/A"), "SC") == "tirar_telefone"
+    assert rv.avaliar(res("Pegada Natural", "11956560587"), _est("PEGADA ALIMENTOS LTDA"), "SC") == "rejeitar"
+    assert rv.avaliar({"maps": None, "telefones": []}, _est("X"), "SC") == "sem_maps"
+
+
+def test_revalidate_maps_sem_maps_preserva_outras_fontes():
+    import revalidate_maps as rv
+
+    r = {"maps": {"nome": "x"}, "telefones": [
+        {"value": "4933286292", "source": "maps", "url": None},
+        {"value": "4933000000", "source": "site", "url": "http://a"},
+    ]}
+    novo = rv.sem_maps(r)
+    assert novo["maps"] is None
+    assert [t["source"] for t in novo["telefones"]] == ["site"]
