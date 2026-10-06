@@ -5,6 +5,7 @@ import { db } from '../db';
 import { chatMessages, tasks, clients, sellers, workSessions, knowledgeDocuments } from '../db/schema';
 import { eq, desc, or, gte, and, ilike } from 'drizzle-orm';
 import { spMidnight, spEndOfDay, spDateStr } from '../lib/tz';
+import { isToolAllowed } from '../lib/aiToolGuard';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -128,7 +129,9 @@ async function callLLMWithTools(
       for (const tc of msg.tool_calls) {
         let args: any = {};
         try { args = JSON.parse(tc.function.arguments ?? '{}'); } catch { /* truncated args, use empty */ }
-        const result = await executeTool(tc.function.name, args, callerUserId);
+        const result = isToolAllowed(tc.function.name, tools)
+          ? await executeTool(tc.function.name, args, callerUserId)
+          : { error: 'Ferramenta não permitida.' };
         newMsgs.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result) });
       }
       return loop(newMsgs);

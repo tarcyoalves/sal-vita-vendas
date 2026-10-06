@@ -7,7 +7,7 @@ import { suppressEmailGlobal } from './unsubscribe';
 /**
  * Verifies Svix/Resend HMAC signature using timingSafeEqual to prevent timing attacks.
  */
-function verifySvixSignature(req: Request, rawBodyBuf: Buffer): boolean {
+export function verifySvixSignature(req: Request, rawBodyBuf: Buffer): boolean {
   const secret = process.env.RESEND_WEBHOOK_SECRET;
   if (!secret) {
     // If webhook secret is not configured, fallback to accepting in dev/staging only if explicitly flagged

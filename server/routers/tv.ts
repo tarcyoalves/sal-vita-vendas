@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { router, publicProcedure, protectedProcedure, adminProcedure } from '../trpc';
+import { router, publicProcedure, staffProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { sellers, tasks, workSessions, clients, appSettings } from '../db/schema';
 import { eq, or, and, gte, sql, isNotNull } from 'drizzle-orm';
@@ -36,7 +36,7 @@ export const tvRouter = router({
       return { enabled: input.enabled };
     }),
 
-  dashboard: protectedProcedure.query(async () => {
+  dashboard: staffProcedure.query(async () => {
     return cached('tv:dashboard', 120_000, async () => tvDashboardQuery());
   }),
 });

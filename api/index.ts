@@ -305,14 +305,25 @@ function unsubscribePage(message: string): string {
 }
 
 import { handleUnsubscribe } from '../server/routers/unsubscribe';
-import { handleResendWebhook } from '../server/routers/resendWebhook';
+import { handleResendWebhook, verifySvixSignature } from '../server/routers/resendWebhook';
+import { isForbiddenBatch, emailFromTrpcBody } from '../server/lib/trpcBatchGuard';
 
 app.get('/api/unsubscribe', handleUnsubscribe);
 // RFC 8058 one-click unsubscribe sends a POST request
 app.post('/api/unsubscribe', express.urlencoded({ extended: false }), handleUnsubscribe);
 
-// Webhook Resend/Svix HMAC time-safe signature verification
-app.post('/api/resend-webhook', express.raw({ type: 'application/json' }), handleResendWebhook);
+// Webhook Resend/Svix HMAC time-safe signature verification.
+// Dois produtos recebem em /api/resend-webhook: o Premium assina com RESEND_WEBHOOK_SECRET
+// (tratado aqui) e o CRM com RESEND_MKT_WEBHOOK_SECRET_1..5 (handler mais abaixo). Se a
+// assinatura não é do Premium, cai no handler do CRM, que valida e responde 401 se também falhar.
+app.post('/api/resend-webhook', express.raw({ type: 'application/json' }), (req, res, next) => {
+  const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body ?? {}));
+  if (process.env.RESEND_WEBHOOK_SECRET && verifySvixSignature(req, raw)) {
+    void handleResendWebhook(req, res);
+    return;
+  }
+  next();
+});
 
 
 // Run schema migration in background — do NOT block requests.
@@ -937,8 +948,8 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
-    const body = req.body as Record<string, unknown>;
-    const email = typeof body?.email === 'string' ? body.email.trim() : '';
+    // Corpo tRPC: {json:{email}}; o formato antigo {email} continua valendo.
+    const email = emailFromTrpcBody(req.body);
     return email || ipKeyGenerator(req.ip ?? 'unknown');
   },
   validate: { xForwardedForHeader: false },
@@ -986,6 +997,14 @@ const chatLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 
+// Lote tRPC (`a,b?batch=1`) escaparia dos limiters por prefixo abaixo.
+app.use('/api/trpc', (req, res, next) => {
+  if (isForbiddenBatch(req.path)) {
+    res.status(400).json({ error: 'Requisição em lote não permitida para esta operação' });
+    return;
+  }
+  next();
+});
 app.use('/api/trpc/auth.login', authLimiter);
 app.use('/api/trpc/auth.emergencyReset', authLimiter);
 app.use('/api/trpc/shipping.calculate', storeLimiter);

@@ -4,9 +4,10 @@ import superjson from 'superjson';
 import { getCookieFromRequest, verifyToken } from './auth';
 import { COOKIE_NAME, UNAUTHED_ERR_MSG } from '../shared/const';
 import { db } from './db';
-import { users } from './db/schema';
+import { users, sellers } from './db/schema';
 import { eq } from 'drizzle-orm';
 import { cached, cacheInvalidate } from './lib/cache';
+import { canProceed, isSellerBlocked } from './lib/authGate';
 
 export function invalidateUserCache(userId: number) {
   cacheInvalidate(`user:${userId}`);
@@ -49,7 +50,7 @@ function ipToNum(ip: string): number {
 
 export async function createContext({ req, res }: CreateExpressContextOptions) {
   const token = getCookieFromRequest(req.headers.cookie, COOKIE_NAME);
-  let user: { id: number; email: string; name: string; role: string } | null = null;
+  let user: { id: number; email: string; name: string; role: string; mustChangePassword: boolean } | null = null;
 
   if (token) {
     try {
@@ -59,22 +60,27 @@ export async function createContext({ req, res }: CreateExpressContextOptions) {
           .select({
             id: users.id, email: users.email, name: users.name, role: users.role,
             ipRestrictionEnabled: users.ipRestrictionEnabled, allowedIps: users.allowedIps,
+            mustChangePassword: users.mustChangePassword,
           })
           .from(users)
           .where(eq(users.id, decoded.id));
-        return row ?? null;
+        if (!row) return null;
+        // Status do atendente entra no mesmo cache de 30 s (sem query extra por chamada).
+        const [seller] = await db.select({ status: sellers.status }).from(sellers)
+          .where(eq(sellers.userId, row.id)).limit(1);
+        return { ...row, sellerInactive: isSellerBlocked(row.role, seller?.status) };
       });
-      if (dbUser) {
+      if (dbUser && !dbUser.sellerInactive) {
+        const base = {
+          id: dbUser.id, email: dbUser.email, name: dbUser.name, role: dbUser.role,
+          mustChangePassword: dbUser.mustChangePassword,
+        };
         if (dbUser.ipRestrictionEnabled && dbUser.allowedIps.length > 0 && dbUser.role !== 'admin') {
           const clientIp = getClientIp(req);
           const allowed = dbUser.allowedIps.some(entry => ipMatchesEntry(clientIp, entry));
-          if (!allowed) {
-            user = null;
-          } else {
-            user = { id: dbUser.id, email: dbUser.email, name: dbUser.name, role: dbUser.role };
-          }
+          user = allowed ? base : null;
         } else {
-          user = { id: dbUser.id, email: dbUser.email, name: dbUser.name, role: dbUser.role };
+          user = base;
         }
       }
     } catch {
@@ -92,9 +98,12 @@ const t = initTRPC.context<Context>().create({ transformer: superjson });
 export const router = t.router;
 export const publicProcedure = t.procedure;
 
-export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
+export const protectedProcedure = t.procedure.use(({ ctx, next, path }) => {
   if (!ctx.user) {
     throw new TRPCError({ code: 'UNAUTHORIZED', message: UNAUTHED_ERR_MSG });
+  }
+  if (!canProceed(ctx.user, path)) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Troque a senha para continuar' });
   }
   return next({ ctx: { ...ctx, user: ctx.user } });
 });

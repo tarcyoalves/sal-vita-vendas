@@ -18,6 +18,14 @@ import { userTaskFilter } from './tasks';
 import { spDateStr, spMidnight, spDaysAgo } from '../lib/tz';
 import { isBlockedEmail } from '../../shared/blockedEmailDomains';
 
+// Quem não é admin/manager só enxerga/mexe nos taskIds que são seus (mesmo filtro de tasks.list).
+async function restrictToOwnTaskIds(user: { id: number; name: string; role: string }, taskIds: number[]): Promise<number[]> {
+  if (user.role === 'admin' || user.role === 'manager' || taskIds.length === 0) return taskIds;
+  const filter = await userTaskFilter(user.id, user.name ?? '');
+  const rows = await db.select({ id: tasks.id }).from(tasks).where(and(inArray(tasks.id, taskIds), filter));
+  return rows.map(r => r.id);
+}
+
 const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL ?? 'https://lembretes.salvitarn.com.br';
 const MKT_DAILY_LIMIT = parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? '90');
 
@@ -979,6 +987,11 @@ export const emailMarketingRouter = router({
       const [sequence] = await db.select().from(emailSequences).where(eq(emailSequences.id, input.sequenceId));
       if (!sequence) throw new TRPCError({ code: 'NOT_FOUND', message: 'Sequência não encontrada' });
 
+      const ownIds = new Set(await restrictToOwnTaskIds(ctx.user, input.taskIds));
+      if (input.taskIds.some(id => !ownIds.has(id))) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Você só pode inscrever suas próprias tarefas' });
+      }
+
       const sellerRows = await db.select({ name: sellers.name, email: sellers.email }).from(sellers);
       const sellerMap = new Map(sellerRows.map(s => [s.name.toLowerCase(), s.email]));
 
@@ -1541,7 +1554,8 @@ export const emailMarketingRouter = router({
   // and email_sequence_sends (via email_sequence_enrollments).
   engagementByTaskIds: protectedProcedure
     .input(z.object({ taskIds: z.array(z.number()).max(500) }))
-    .query(async ({ input }) => {
+    .query(async ({ input: rawInput, ctx }) => {
+      const input = { taskIds: await restrictToOwnTaskIds(ctx.user, rawInput.taskIds) };
       if (input.taskIds.length === 0) return {};
 
       const result = await db.execute<{ task_id: number; opens: number; clicks: number; last_event_at: string }>(sql`
@@ -1583,7 +1597,8 @@ export const emailMarketingRouter = router({
   // exibir badges e permitir remoção direto no card da tarefa.
   enrollmentsByTaskIds: protectedProcedure
     .input(z.object({ taskIds: z.array(z.number()).max(500) }))
-    .query(async ({ input }) => {
+    .query(async ({ input: rawInput, ctx }) => {
+      const input = { taskIds: await restrictToOwnTaskIds(ctx.user, rawInput.taskIds) };
       const out: Record<number, {
         campaigns: { recipientId: number; campaignId: number; name: string; status: string }[];
         sequences: { enrollmentId: number; sequenceId: number; name: string; status: string; currentStep: number }[];
