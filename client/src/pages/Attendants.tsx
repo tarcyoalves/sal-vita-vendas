@@ -1081,7 +1081,7 @@ export default function Attendants() {
           open={!!confirmDelete}
           onOpenChange={(o) => { if (!o) setConfirmDelete(null); }}
           title={`Deletar atendente "${confirmDelete?.name ?? ''}"?`}
-          description="A conta de acesso dele também será removida."
+          description="Sem tarefas, pedidos ou sessões vinculados, ele e a conta de acesso são removidos; com dados vinculados, é apenas desativado."
           confirmLabel="Deletar"
           onConfirm={() => { if (confirmDelete) void handleDelete(confirmDelete.id, confirmDelete.name); }}
         />

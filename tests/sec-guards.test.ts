@@ -60,3 +60,18 @@ describe('isToolAllowed', () => {
     expect(isToolAllowed(undefined, attendant)).toBe(false);
   });
 });
+
+
+describe('SEC2-1: caminho codificado não esconde o procedure do limiter', () => {
+  it('auth%2Elogin e variações são bloqueados', () => {
+    expect(isForbiddenBatch('/auth%2Elogin')).toBe(true);
+    expect(isForbiddenBatch('/auth%2elogin')).toBe(true);
+    expect(isForbiddenBatch('/%61uth.login')).toBe(true);
+    expect(isForbiddenBatch('/tasks.list%2Cauth.me')).toBe(true);
+  });
+  it('caminho normal continua passando', () => {
+    expect(isForbiddenBatch('/tasks.list')).toBe(false);
+    expect(isForbiddenBatch('/auth.login')).toBe(false);
+    expect(isForbiddenBatch('/tasks.list,auth.me')).toBe(false);
+  });
+});

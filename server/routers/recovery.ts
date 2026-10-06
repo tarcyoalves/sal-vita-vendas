@@ -1223,8 +1223,10 @@ Seja específico, prático e use dados fornecidos. Formate com emojis e seções
   chat: publicProcedure
     .input(z.object({
       // Endpoint público que gasta cota do Groq: teto por mensagem, nº de mensagens e total.
-      messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(1000) })).max(20)
-        .refine(m => m.reduce((n, x) => n + x.content.length, 0) <= 8000, 'Conversa muito longa.'),
+      // Trunca em vez de rejeitar: o widget reenvia o histórico (inclusive respostas do assistente) e uma
+      // resposta longa ou texto colado não pode travar a conversa. Fica só o fim da conversa.
+      messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().transform(c => c.slice(0, 1000)) }))
+        .transform(m => m.slice(-12)),
     }))
     .mutation(async ({ input }) => {
       const apiKey = process.env.SAL_VITA_PREMIUM_1KG_GROQ ?? process.env.GROQ_API_KEY_PREMIUM ?? process.env.GROQ_API_KEY;

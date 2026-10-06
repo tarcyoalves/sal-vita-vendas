@@ -956,8 +956,11 @@ const authLimiter = rateLimit({
   keyGenerator: (req) => {
     // Corpo tRPC: {json:{email}}; o formato antigo {email} continua valendo.
     const email = emailFromTrpcBody(req.body);
-    return email || ipKeyGenerator(req.ip ?? 'unknown');
+    // IP + e-mail: só o e-mail deixava qualquer pessoa trancar o login de uma conta (negação de serviço).
+    return `${ipKeyGenerator(req.ip ?? 'unknown')}|${email}`;
   },
+  // Login certo não gasta tentativa: o limite é contra erro de senha, não contra uso normal.
+  skipSuccessfulRequests: true,
   validate: { xForwardedForHeader: false },
 });
 

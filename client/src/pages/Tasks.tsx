@@ -1223,7 +1223,7 @@ export default function Tasks() {
           <button onClick={() => { setShowMonitorBanner(false); sessionStorage.setItem('monitorBannerDismissed', '1'); }} className="text-amber-600 hover:text-amber-900 flex-shrink-0 mt-0.5" title="Fechar"><X size={16} /></button>
         </div>
       )}
-      {notifPerm === 'default' && (
+      {!isAdmin && notifPerm === 'default' && (
         <div className="flex items-center gap-3 bg-blue-50 border border-blue-300 rounded-xl px-4 py-3 text-sm text-blue-900">
           <Bell size={18} className="flex-shrink-0" />
           <div className="flex-1">

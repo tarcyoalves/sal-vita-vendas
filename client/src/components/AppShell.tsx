@@ -264,6 +264,7 @@ export default function AppShell({ children }: AppShellProps) {
 
   // Force password change on first access
   const forceChangePwdMut = trpc.auth.forceChangePassword.useMutation();
+  const utils = trpc.useUtils();
   const [forcePwdForm, setForcePwdForm] = useState({ next: "", confirm: "" });
   const [forcePwdLoading, setForcePwdLoading] = useState(false);
 
@@ -277,6 +278,9 @@ export default function AppShell({ children }: AppShellProps) {
     try {
       await forceChangePwdMut.mutateAsync({ newPassword: forcePwdForm.next });
       await refreshUser();
+      // Enquanto a senha era obrigatória o servidor recusava as demais consultas (FORBIDDEN):
+      // refaz todas para a tela de trás não ficar em erro até o F5.
+      await utils.invalidate();
       toast.success("Senha definida! Bem-vindo ao sistema.");
       setForcePwdForm({ next: "", confirm: "" });
     } catch (err: any) {

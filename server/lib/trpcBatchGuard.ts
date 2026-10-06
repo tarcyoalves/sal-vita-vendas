@@ -25,6 +25,9 @@ export function isRateLimitedProcedure(path: string): boolean {
 
 /** path = req.path dentro de app.use('/api/trpc'), ex.: '/tasks.list,auth.me'. true = bloquear. */
 export function isForbiddenBatch(path: string): boolean {
+  // Nomes de procedure só têm [A-Za-z0-9._,]. Qualquer "%" é tentativa de esconder o nome do limiter
+  // (`auth%2Elogin` não casa o prefixo no Express, mas o tRPC decodifica e executa o login).
+  if (path.includes('%')) return true;
   let decoded = path;
   try { decoded = decodeURIComponent(path); } catch { /* mantém o original */ }
   if (!decoded.includes(',')) return false;

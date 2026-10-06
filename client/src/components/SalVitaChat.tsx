@@ -47,7 +47,7 @@ export default function SalVitaChat() {
     setMsgs(newMsgs);
 
     try {
-      const res = await chatMut.mutateAsync({ messages: newMsgs });
+      const res = await chatMut.mutateAsync({ messages: newMsgs.slice(-12) });
       setMsgs(prev => [...prev, { role: 'assistant', content: res.reply }]);
     } catch {
       setMsgs(prev => [...prev, { role: 'assistant', content: 'Desculpe, houve um erro. Tente novamente em instantes.' }]);
