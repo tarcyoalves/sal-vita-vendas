@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 const calls: string[] = [];
@@ -21,7 +21,18 @@ const order = {
 } as unknown as Parameters<typeof confirmOrderPaid>[0];
 
 describe('confirmOrderPaid (DB-5)', () => {
-  beforeEach(() => { calls.length = 0; vi.spyOn(console, 'error').mockImplementation(() => {}); });
+  beforeEach(() => {
+    calls.length = 0;
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // O build da Vercel tem FB_CAPI_TOKEN e WA_API_KEY: sem isto o teste mandava um
+    // evento de compra real ao Pixel e um WhatsApp real, e estourava os 5 s (deploy
+    // travado desde 6f3b035). Teste nunca fala com a rede.
+    vi.stubEnv('FB_CAPI_TOKEN', '');
+    vi.stubEnv('WA_API_KEY', '');
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('rede proibida em teste'); }));
+  });
+  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
   it('um passo de banco falho não impede os seguintes e o e-mail é aguardado', async () => {
     await expect(confirmOrderPaid(order)).resolves.toBeUndefined();
