@@ -1,22 +1,15 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { TRPCClientError } from '@trpc/client';
 import { ChevronDown, ChevronRight, Loader2, Search, Truck, X } from 'lucide-react';
 import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { EmptyState, Page, PageHeader, Panel } from '../components/layout/Page';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Switch } from '../components/ui/switch';
 import { Skeleton } from '../components/ui/skeleton';
 import { Progress } from '../components/ui/progress';
-import {
-  Empty,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-  EmptyDescription,
-} from '../components/ui/empty';
 import {
   Select,
   SelectTrigger,
@@ -467,490 +460,520 @@ export default function RadarCargas() {
     />
   );
 
+  const searching = mode === 'carteira' ? carteiraQuery.isFetching : searchQuery.isFetching;
+  const cannotSearch = mode === 'carteira' ? !canSearchCarteira : !canSearch;
+
   return (
-    <div ref={rootRef} className="p-4 md:p-6 max-w-4xl mx-auto space-y-4">
-      <div className="flex items-center gap-2 text-slate-500 text-sm">
-        <Truck size={16} />
-        <p>
-          Encontre empresas dos segmentos que compram sal perto da cidade da carga, para
-          completar o espaço que sobrou na carreta.
-        </p>
-      </div>
-
-      <BaseStatusCard isAdmin={isAdmin} />
-
-      {/* Duas formas de buscar */}
-      <div className="grid grid-cols-2 gap-2">
-        {([
-          ['carteira', 'Minha carteira', 'Clientes e leads que já temos perto da carga'],
-          ['novas', 'Empresas novas', 'Base da Receita por segmento (CNAE)'],
-        ] as const).map(([key, titulo, sub]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setMode(key)}
-            className={`rounded-xl border px-3 py-2.5 text-left transition ${
-              mode === key ? 'border-blue-900 bg-blue-900 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            <p className="text-sm font-semibold">{titulo}</p>
-            <p className={`text-[11px] ${mode === key ? 'text-blue-100' : 'text-slate-500'}`}>{sub}</p>
-          </button>
-        ))}
-      </div>
-
-      {/* ── Busca ── */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between gap-2">
-            <CardTitle className="text-base">{mode === 'carteira' ? 'Buscar na minha carteira' : 'Buscar empresas'}</CardTitle>
-            <MessageTemplateDialog />
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs font-semibold text-slate-500 mb-1.5">Cidade da carga</Label>
-              <CityAutocomplete key={cityBoxKey} value={city} onChange={setCity} />
-              {recentCities.length > 0 && (
-                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] text-slate-400">Recentes:</span>
-                  {recentCities.map((m) => (
-                    <button
-                      key={m.ibge}
-                      type="button"
-                      onClick={() => pickRecentCity(m)}
-                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium border transition ${
-                        city?.ibge === m.ibge
-                          ? 'bg-blue-900 text-white border-blue-900'
-                          : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
-                      }`}
-                    >
-                      {m.nome} - {m.uf}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div>
-              <Label className="text-xs font-semibold text-slate-500 mb-1.5">Raio</Label>
-              <Select value={String(radiusKm)} onValueChange={(v) => setRadiusKm(Number(v))}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {RADAR_RADIUS_OPTIONS_KM.map((km) => (
-                    <SelectItem key={km} value={String(km)}>
-                      {km} km (linha reta)
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div>
-            <Label htmlFor="bags" className="text-xs font-semibold text-slate-500 mb-1.5">
-              Saldo de sacos (25 kg)
-            </Label>
-            <Input
-              id="bags"
-              type="number"
-              min={1}
-              max={2000}
-              value={bagsInput}
-              onChange={(e) => setBagsInput(e.target.value)}
-              className={!bagsValid ? 'border-red-300' : ''}
-              required
-            />
-            {!bagsValid && (
-              <p className="text-[11px] text-red-500 mt-1">Informe de 1 a 2000 sacos.</p>
-            )}
-          </div>
-
-          {mode === 'novas' && (<>
-          <div>
-            <Label className="text-xs font-semibold text-slate-500 mb-1.5">Segmentos</Label>
-            <SegmentChips selected={segments} onChange={setSegments} />
-            {segments.length === 0 && (
-              <p className="text-[11px] text-red-500 mt-1">Marque ao menos um segmento.</p>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2.5">
-            <div>
-              <p className="text-sm font-medium text-slate-700">Incluir CNAE secundário</p>
-              <p className="text-[11px] text-slate-400">Mais resultados, menos precisos</p>
-            </div>
-            <Switch checked={includeSecondary} onCheckedChange={setIncludeSecondary} />
-          </div>
-
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2.5">
-            <div>
-              <p className="text-sm font-medium text-slate-700">Tempo de abertura</p>
-              <p className="text-[11px] text-slate-400">Esconde as empresas abertas há menos tempo que isso</p>
-            </div>
-            <Select value={String(minAnosAbertura)} onValueChange={(v) => setMinAnosAbertura(Number(v))}>
-              <SelectTrigger className="w-40 h-9 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="0">Qualquer</SelectItem>
-                <SelectItem value="1">Mais de 1 ano</SelectItem>
-                <SelectItem value="2">Mais de 2 anos</SelectItem>
-                <SelectItem value="3">Mais de 3 anos</SelectItem>
-                <SelectItem value="5">Mais de 5 anos</SelectItem>
-                <SelectItem value="10">Mais de 10 anos</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Detalhes opcionais da carga */}
-          <div>
-            <button
-              type="button"
-              onClick={() => setDetailsOpen((o) => !o)}
-              className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700"
-            >
-              {detailsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              Detalhes da carga (opcional)
-            </button>
-            {detailsOpen && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
-                <div>
-                  <Label htmlFor="loadDate" className="text-xs font-semibold text-slate-500 mb-1.5">
-                    Data da carga
-                  </Label>
-                  <Input
-                    id="loadDate"
-                    type="date"
-                    value={loadDate}
-                    onChange={(e) => setLoadDate(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="freightNote" className="text-xs font-semibold text-slate-500 mb-1.5">
-                    Condição de frete
-                  </Label>
-                  <Input
-                    id="freightNote"
-                    maxLength={200}
-                    placeholder="Ex.: frete grátis para pedidos acima de 200 sacos"
-                    value={freightNote}
-                    onChange={(e) => setFreightNote(e.target.value)}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          </>)}
-
-          <Button
-            type="button"
-            className="w-full"
-            disabled={(mode === 'carteira' ? !canSearchCarteira || carteiraQuery.isFetching : !canSearch || searchQuery.isFetching)}
-            onClick={handleSearch}
-          >
-            <Search size={15} />
-            {(mode === 'carteira' ? carteiraQuery.isFetching : searchQuery.isFetching) ? 'Buscando...' : 'Buscar'}
-          </Button>
-          {/* Por que o botão está cinza */}
-          {(mode === 'carteira' ? !canSearchCarteira : !canSearch) && (
-            <p className="text-[11px] text-slate-500 -mt-2">
-              {!city
-                ? 'Escolha a cidade da carga na lista que aparece ao digitar (mínimo 2 letras).'
-                : !bagsValid
-                  ? 'Informe o saldo de sacos (1 a 2000).'
-                  : 'Marque ao menos um segmento.'}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ── Resultados: minha carteira ── */}
-      {mode === 'carteira' && carteiraQuery.isFetching && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-40 rounded-2xl" />)}
-        </div>
-      )}
-      {mode === 'carteira' && !carteiraQuery.isFetching && carteiraQuery.error && (
-        <QueryError
-          message={`Não foi possível buscar na carteira: ${carteiraQuery.error.message}`}
-          onRetry={() => void carteiraQuery.refetch()}
-          retrying={carteiraQuery.isFetching}
+    <div ref={rootRef}>
+      <Page wide>
+        <PageHeader
+          title="Buscador de Clientes"
+          description="Encontre empresas dos segmentos que compram sal perto da cidade da carga, para completar o espaço que sobrou na carreta."
+          actions={<MessageTemplateDialog />}
         />
-      )}
-      {mode === 'carteira' && !carteiraQuery.isFetching && carteiraQuery.data && (
-        carteiraQuery.data.itens.length === 0 ? (
-          <Empty>
-            <EmptyHeader>
-              <EmptyMedia variant="icon"><Truck /></EmptyMedia>
-              <EmptyTitle>Ninguém da carteira neste raio</EmptyTitle>
-              <EmptyDescription>
-                O CRM não tem clientes nem leads em {carteiraQuery.data.municipalitiesInRadius} município(s) ao redor de {originLabel}.
-                Aumente o raio ou use "Empresas novas".
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        ) : (
-          <CarteiraList result={carteiraQuery.data} originLabel={originLabel} bags={bags} />
-        )
-      )}
 
-      {/* ── Resultados: empresas novas (Receita) ── */}
-      {mode === 'novas' && searchQuery.isFetching && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-56 rounded-2xl" />
-          ))}
-        </div>
-      )}
+        <BaseStatusCard isAdmin={isAdmin} />
 
-      {mode === 'novas' && !searchQuery.isFetching && notImplemented && (
-        <Empty>
-          <EmptyHeader>
-            <EmptyTitle>Buscador em implantação</EmptyTitle>
-            <EmptyDescription>
-              Essa funcionalidade ainda está sendo construída. Volte em breve.
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      )}
-
-      {mode === 'novas' && !searchQuery.isFetching && !notImplemented && searchQuery.error && (
-        <Empty>
-          <EmptyHeader>
-            <EmptyTitle>Não foi possível buscar</EmptyTitle>
-            <EmptyDescription>{searchQuery.error.message}</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      )}
-
-      {mode === 'novas' && !searchQuery.isFetching && !notImplemented && data && data.datasetRelease === null && (
-        <Empty>
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <Truck />
-            </EmptyMedia>
-            <EmptyTitle>Base de empresas indisponível</EmptyTitle>
-            <EmptyDescription>
-              {isAdmin
-                ? 'A base ainda não foi importada — veja scripts/radar/README.md'
-                : 'A base de empresas ainda não foi carregada. Fale com o administrador.'}
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      )}
-
-      {mode === 'novas' && !searchQuery.isFetching && !notImplemented && data && data.datasetRelease !== null && (
-        <div className="space-y-3">
-          <div className="space-y-2">
-            <p className="text-sm text-slate-600">
-              {leads.length} {leads.length === 1 ? 'empresa' : 'empresas'} em {data.municipalitiesInRadius}{' '}
-              {data.municipalitiesInRadius === 1 ? 'município' : 'municípios'} · base Receita {data.datasetRelease}
-            </p>
-            {!(user?.role === 'admin' || user?.role === 'manager') && (
-              <p className="text-[11px] text-slate-500">
-                Clientes que já compraram não aparecem aqui. Se outro atendente já acompanha uma empresa, o cartão avisa.
-              </p>
-            )}
-            {data.truncated && data.hasMore === undefined && (
-              <p className="text-xs text-amber-600">Mostrando apenas as 200 empresas mais próximas.</p>
-            )}
-            {coverage && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-                {coverage}
-              </p>
-            )}
-
-            {/* Progresso do enriquecimento por scraping (Fase 2) */}
-            {showEnrichProgress && (
-              <div className="space-y-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                <p className="text-xs text-slate-600 flex items-center gap-1.5">
-                  <Loader2 size={12} className="animate-spin text-slate-400" />
-                  Buscando dados na web: {enrichmentDoneCount} de {trackedCnpjs.length} concluídos
-                </p>
-                <Progress value={trackedCnpjs.length ? (enrichmentDoneCount / trackedCnpjs.length) * 100 : 0} className="h-1.5" />
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[340px_minmax(0,1fr)] lg:items-start">
+          {/* ── Busca ── */}
+          <Panel className="lg:sticky lg:top-4">
+            <div className="border-b border-slate-200 p-3">
+              <div role="group" aria-label="Onde buscar" className="grid grid-cols-2 gap-1 rounded-md bg-slate-100 p-1">
+                {([
+                  ['carteira', 'Minha carteira'],
+                  ['novas', 'Empresas novas'],
+                ] as const).map(([key, titulo]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={mode === key}
+                    onClick={() => setMode(key)}
+                    className={`h-9 rounded-sm px-2 text-sm font-medium transition-colors max-md:h-10 ${
+                      mode === key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {titulo}
+                  </button>
+                ))}
               </div>
-            )}
-            {/* Passou o tempo de acompanhar e ainda há cartões na fila: o robô continua trabalhando. */}
-            {pollTimedOut && enrichPending && enricherOnline && !enrichUnavailable && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                <p className="text-xs text-slate-600">
-                  O robô ainda está buscando dados na web ({enrichmentDoneCount} de {trackedCnpjs.length} prontos).
-                </p>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setPollTimedOut(false);
-                    setPollDeadline(Date.now() + ENRICH_POLL_CAP_MS);
-                    enrichmentStatusQuery.refetch();
-                  }}
-                >
-                  Atualizar dados da web
-                </Button>
-              </div>
-            )}
-            {showEnricherOffline && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-                Robô de busca na web desligado — mostrando só os dados da Receita.
-                {isAdmin && ' Veja scripts/radar/enricher/README.md.'}
+              <p className="mt-2 text-xs text-slate-500">
+                {mode === 'carteira'
+                  ? 'Clientes e leads que já temos perto da carga.'
+                  : 'Base da Receita por segmento (CNAE).'}
               </p>
-            )}
+            </div>
 
-            {/* Ferramentas sobre o que já foi carregado */}
-            {leads.length > 0 && (
-              <div className="space-y-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <div className="relative flex-1">
-                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <Input
-                      value={textFilter}
-                      onChange={(e) => setTextFilter(e.target.value)}
-                      placeholder="Filtrar por nome, CNPJ ou cidade"
-                      aria-label="Filtrar empresas carregadas"
-                      className="pl-8 pr-8 h-9 text-sm"
-                    />
-                    {textFilter && (
+            <div className="space-y-4 p-4">
+              <div className="space-y-1.5">
+                <Label>Cidade da carga</Label>
+                <CityAutocomplete key={cityBoxKey} value={city} onChange={setCity} />
+                {recentCities.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                    <span className="text-xs text-slate-500">Recentes:</span>
+                    {recentCities.map((m) => (
                       <button
+                        key={m.ibge}
                         type="button"
-                        onClick={() => setTextFilter('')}
-                        aria-label="Limpar filtro de texto"
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        onClick={() => pickRecentCity(m)}
+                        className={`rounded-md border px-2 py-1 text-xs font-medium transition-colors max-md:py-2 ${
+                          city?.ibge === m.ibge
+                            ? 'border-brand-700 bg-brand-700 text-white'
+                            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                        }`}
                       >
-                        <X size={14} />
+                        {m.nome} - {m.uf}
                       </button>
-                    )}
+                    ))}
                   </div>
-                  <Select value={sort} onValueChange={(v) => setSort(v as LeadSort)}>
-                    <SelectTrigger className="w-full sm:w-52 h-9 text-xs" aria-label="Ordenar por">
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Raio</Label>
+                  <Select value={String(radiusKm)} onValueChange={(v) => setRadiusKm(Number(v))}>
+                    <SelectTrigger className="w-full" aria-label="Raio da busca">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {LEAD_SORT_OPTIONS.map(([key, label]) => (
-                        <SelectItem key={key} value={key}>
-                          Ordenar: {label}
+                      {RADAR_RADIUS_OPTIONS_KM.map((km) => (
+                        <SelectItem key={km} value={String(km)}>
+                          {km} km (linha reta)
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                {segmentOptions.length > 1 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {segmentOptions.map(({ key, count }) => {
-                      const on = segmentFilter.includes(key);
-                      const label = RADAR_SEGMENTS.find((x) => x.key === key)?.label ?? key;
-                      return (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() =>
-                            setSegmentFilter((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
-                          }
-                          className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium border transition ${
-                            on ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
-                          }`}
-                        >
-                          {label} ({count})
-                        </button>
-                      );
-                    })}
+                <div className="space-y-1.5">
+                  <Label htmlFor="bags">Saldo (sacos 25 kg)</Label>
+                  <Input
+                    id="bags"
+                    type="number"
+                    min={1}
+                    max={2000}
+                    value={bagsInput}
+                    onChange={(e) => setBagsInput(e.target.value)}
+                    className={!bagsValid ? 'border-red-300' : ''}
+                    aria-invalid={!bagsValid}
+                    required
+                  />
+                </div>
+              </div>
+              {!bagsValid && <p className="-mt-2 text-xs text-red-700">Informe de 1 a 2000 sacos.</p>}
+
+              {mode === 'novas' && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label>Segmentos</Label>
+                    <SegmentChips selected={segments} onChange={setSegments} />
+                    {segments.length === 0 && (
+                      <p className="text-xs text-red-700">Marque ao menos um segmento.</p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <Label htmlFor="sec-cnae">Incluir CNAE secundário</Label>
+                      <p className="text-xs text-slate-500">Mais resultados, menos precisos</p>
+                    </div>
+                    <Switch id="sec-cnae" checked={includeSecondary} onCheckedChange={setIncludeSecondary} />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label>Tempo de abertura</Label>
+                    <Select value={String(minAnosAbertura)} onValueChange={(v) => setMinAnosAbertura(Number(v))}>
+                      <SelectTrigger className="w-full" aria-label="Tempo de abertura"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">Qualquer</SelectItem>
+                        <SelectItem value="1">Mais de 1 ano</SelectItem>
+                        <SelectItem value="2">Mais de 2 anos</SelectItem>
+                        <SelectItem value="3">Mais de 3 anos</SelectItem>
+                        <SelectItem value="5">Mais de 5 anos</SelectItem>
+                        <SelectItem value="10">Mais de 10 anos</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-slate-500">Esconde as empresas abertas há menos tempo que isso.</p>
+                  </div>
+
+                  {/* Detalhes opcionais da carga */}
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setDetailsOpen((o) => !o)}
+                      aria-expanded={detailsOpen}
+                      className="flex min-h-8 items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900"
+                    >
+                      {detailsOpen ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
+                      Detalhes da carga (opcional)
+                    </button>
+                    {detailsOpen && (
+                      <div className="mt-2 space-y-3">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="loadDate">Data da carga</Label>
+                          <Input
+                            id="loadDate"
+                            type="date"
+                            value={loadDate}
+                            onChange={(e) => setLoadDate(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="freightNote">Condição de frete</Label>
+                          <Input
+                            id="freightNote"
+                            maxLength={200}
+                            placeholder="Ex.: frete grátis para pedidos acima de 200 sacos"
+                            value={freightNote}
+                            onChange={(e) => setFreightNote(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              <div className="space-y-2">
+                <Button type="button" className="w-full" disabled={cannotSearch || searching} onClick={handleSearch}>
+                  {searching ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Search size={15} aria-hidden />}
+                  {searching ? 'Buscando...' : 'Buscar'}
+                </Button>
+                {/* Por que o botão está cinza */}
+                {cannotSearch && (
+                  <p className="text-xs text-slate-500">
+                    {!city
+                      ? 'Escolha a cidade da carga na lista que aparece ao digitar (mínimo 2 letras).'
+                      : !bagsValid
+                        ? 'Informe o saldo de sacos (1 a 2000).'
+                        : 'Marque ao menos um segmento.'}
+                  </p>
+                )}
+              </div>
+            </div>
+          </Panel>
+
+          {/* ── Resultados ── */}
+          <div className="min-w-0 space-y-4">
+            {mode === 'novas' && !searchQuery.isFetching && !notImplemented && !searchQuery.error && !data && (
+              <Panel>
+                <EmptyState
+                  icon={<Search />}
+                  title="Escolha a cidade da carga"
+                  description="Os resultados aparecem aqui depois de buscar."
+                />
+              </Panel>
+            )}
+            {mode === 'carteira' && !carteiraQuery.isFetching && !carteiraQuery.error && !carteiraQuery.data && (
+              <Panel>
+                <EmptyState
+                  icon={<Search />}
+                  title="Escolha a cidade da carga"
+                  description="Os clientes e leads da carteira perto dela aparecem aqui depois de buscar."
+                />
+              </Panel>
+            )}
+
+            {/* Minha carteira */}
+            {mode === 'carteira' && carteiraQuery.isFetching && <ResultsSkeleton />}
+            {mode === 'carteira' && !carteiraQuery.isFetching && carteiraQuery.error && (
+              <QueryError
+                message={`Não foi possível buscar na carteira: ${carteiraQuery.error.message}`}
+                onRetry={() => void carteiraQuery.refetch()}
+                retrying={carteiraQuery.isFetching}
+              />
+            )}
+            {mode === 'carteira' && !carteiraQuery.isFetching && carteiraQuery.data && (
+              carteiraQuery.data.itens.length === 0 ? (
+                <Panel>
+                  <EmptyState
+                    icon={<Truck />}
+                    title="Ninguém da carteira neste raio"
+                    description={`O CRM não tem clientes nem leads em ${carteiraQuery.data.municipalitiesInRadius} município(s) ao redor de ${originLabel}. Aumente o raio ou use "Empresas novas".`}
+                  />
+                </Panel>
+              ) : (
+                <CarteiraList result={carteiraQuery.data} originLabel={originLabel} bags={bags} />
+              )
+            )}
+
+            {/* Empresas novas (Receita) */}
+            {mode === 'novas' && searchQuery.isFetching && <ResultsSkeleton />}
+
+            {mode === 'novas' && !searchQuery.isFetching && notImplemented && (
+              <Panel>
+                <EmptyState
+                  title="Buscador em implantação"
+                  description="Essa funcionalidade ainda está sendo construída. Volte em breve."
+                />
+              </Panel>
+            )}
+
+            {mode === 'novas' && !searchQuery.isFetching && !notImplemented && searchQuery.error && (
+              <QueryError
+                message={`Não foi possível buscar: ${searchQuery.error.message}`}
+                onRetry={handleSearch}
+                retrying={searchQuery.isFetching}
+              />
+            )}
+
+            {mode === 'novas' && !searchQuery.isFetching && !notImplemented && data && data.datasetRelease === null && (
+              <Panel>
+                <EmptyState
+                  icon={<Truck />}
+                  title="Base de empresas indisponível"
+                  description={
+                    isAdmin
+                      ? 'A base ainda não foi importada — veja scripts/radar/README.md'
+                      : 'A base de empresas ainda não foi carregada. Fale com o administrador.'
+                  }
+                />
+              </Panel>
+            )}
+
+            {mode === 'novas' && !searchQuery.isFetching && !notImplemented && data && data.datasetRelease !== null && (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <p className="text-sm text-slate-700">
+                    {leads.length} {leads.length === 1 ? 'empresa' : 'empresas'} em {data.municipalitiesInRadius}{' '}
+                    {data.municipalitiesInRadius === 1 ? 'município' : 'municípios'}
+                    <span className="text-slate-500"> · base Receita {data.datasetRelease}</span>
+                  </p>
+                  {!(user?.role === 'admin' || user?.role === 'manager') && (
+                    <p className="text-xs text-slate-500">
+                      Clientes que já compraram não aparecem aqui. Se outro atendente já acompanha uma empresa, o cartão avisa.
+                    </p>
+                  )}
+                  {data.truncated && data.hasMore === undefined && (
+                    <p className="text-xs text-amber-700">Mostrando apenas as 200 empresas mais próximas.</p>
+                  )}
+                  {coverage && (
+                    <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">{coverage}</p>
+                  )}
+
+                  {/* Progresso do enriquecimento por scraping (Fase 2) */}
+                  {showEnrichProgress && (
+                    <div className="space-y-1 rounded-md bg-slate-50 px-3 py-2">
+                      <p className="flex items-center gap-1.5 text-xs text-slate-600">
+                        <Loader2 size={12} className="animate-spin text-slate-500" aria-hidden />
+                        Buscando dados na web: {enrichmentDoneCount} de {trackedCnpjs.length} concluídos
+                      </p>
+                      <Progress value={trackedCnpjs.length ? (enrichmentDoneCount / trackedCnpjs.length) * 100 : 0} className="h-1.5" />
+                    </div>
+                  )}
+                  {/* Passou o tempo de acompanhar e ainda há cartões na fila: o robô continua trabalhando. */}
+                  {pollTimedOut && enrichPending && enricherOnline && !enrichUnavailable && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-slate-50 px-3 py-2">
+                      <p className="text-xs text-slate-600">
+                        O robô ainda está buscando dados na web ({enrichmentDoneCount} de {trackedCnpjs.length} prontos).
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setPollTimedOut(false);
+                          setPollDeadline(Date.now() + ENRICH_POLL_CAP_MS);
+                          enrichmentStatusQuery.refetch();
+                        }}
+                      >
+                        Atualizar dados da web
+                      </Button>
+                    </div>
+                  )}
+                  {showEnricherOffline && (
+                    <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      Robô de busca na web desligado — mostrando só os dados da Receita.
+                      {isAdmin && ' Veja scripts/radar/enricher/README.md.'}
+                    </p>
+                  )}
+                </div>
+
+                {/* Ferramentas sobre o que já foi carregado */}
+                {leads.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <div className="relative flex-1">
+                        <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden />
+                        <Input
+                          value={textFilter}
+                          onChange={(e) => setTextFilter(e.target.value)}
+                          placeholder="Filtrar por nome, CNPJ ou cidade"
+                          aria-label="Filtrar empresas carregadas"
+                          className="pl-8 pr-9"
+                        />
+                        {textFilter && (
+                          <button
+                            type="button"
+                            onClick={() => setTextFilter('')}
+                            aria-label="Limpar filtro de texto"
+                            className="absolute right-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center text-slate-500 hover:text-slate-700"
+                          >
+                            <X size={14} aria-hidden />
+                          </button>
+                        )}
+                      </div>
+                      <Select value={sort} onValueChange={(v) => setSort(v as LeadSort)}>
+                        <SelectTrigger className="w-full sm:w-52" aria-label="Ordenar por">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {LEAD_SORT_OPTIONS.map(([key, label]) => (
+                            <SelectItem key={key} value={key}>
+                              Ordenar: {label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {segmentOptions.length > 1 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {segmentOptions.map(({ key, count }) => {
+                          const on = segmentFilter.includes(key);
+                          const label = RADAR_SEGMENTS.find((x) => x.key === key)?.label ?? key;
+                          return (
+                            <FilterChip
+                              key={key}
+                              active={on}
+                              onClick={() =>
+                                setSegmentFilter((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
+                              }
+                            >
+                              {label} ({count})
+                            </FilterChip>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {toolsActive && (
+                      <button type="button" onClick={clearTools} className="min-h-8 text-xs font-medium text-brand-700 hover:underline">
+                        Limpar filtros de texto e segmento
+                      </button>
+                    )}
                   </div>
                 )}
-                {toolsActive && (
-                  <button type="button" onClick={clearTools} className="text-[11px] font-semibold text-blue-900 hover:underline">
-                    Limpar filtros de texto e segmento
-                  </button>
+
+                {/* Filtros: a busca é uma lista — o atendente decide depois do contato */}
+                <div className="flex flex-wrap gap-1.5 border-b border-slate-200 pb-3">
+                  {([
+                    ['para_contatar', 'Para contatar', counts.para_contatar],
+                    ['contatados', 'Contatados', counts.contatados],
+                    ['no_crm', 'Já no CRM', counts.no_crm],
+                    ['descartados', 'Descartados', counts.descartados],
+                    ['all', 'Todos', counts.all],
+                  ] as [LeadFilter, string, number][]).map(([key, label, count]) => (
+                    <FilterChip key={key} active={leadFilter === key} onClick={() => setLeadFilter(key)}>
+                      {label} ({count})
+                    </FilterChip>
+                  ))}
+                </div>
+                {leadFilter === 'contatados' && (
+                  <p className="text-xs text-slate-500">Do contato mais recente para o mais antigo.</p>
+                )}
+
+                {leads.length === 0 ? (
+                  <Panel>
+                    <EmptyState
+                      icon={<Truck />}
+                      title="Nenhuma empresa encontrada"
+                      description={(() => {
+                        const advice = emptyAdvice({ minAnosAbertura, segmentsCount: segments.length });
+                        if (advice === 'abertura')
+                          return 'O filtro "Tempo de abertura" pode estar escondendo empresas. Troque para "Qualquer" e busque de novo.';
+                        if (advice === 'segmentos')
+                          return 'Só alguns segmentos estão marcados. Marque mais segmentos (ou o CNAE secundário) e busque de novo.';
+                        return 'Aumente o raio da busca ou escolha outra cidade.';
+                      })()}
+                    />
+                  </Panel>
+                ) : filteredLeads.length === 0 ? (
+                  <Panel>
+                    <EmptyState
+                      title="Nenhuma empresa neste filtro"
+                      description={`${
+                        toolsActive
+                          ? 'Nenhuma empresa carregada combina com o texto ou segmento escolhido. Limpe os filtros acima.'
+                          : 'Tente outro filtro (por exemplo "Todos") ou aumente o raio da busca.'
+                      }${hasMore ? ' Também há mais empresas para carregar abaixo.' : ''}`}
+                      action={
+                        toolsActive ? (
+                          <Button type="button" variant="outline" size="sm" onClick={clearTools}>
+                            Limpar filtros
+                          </Button>
+                        ) : undefined
+                      }
+                    />
+                  </Panel>
+                ) : groups ? (
+                  <div className="space-y-4">
+                    {groups.map((g) => (
+                      <Fragment key={g.ibge}>
+                        <Panel>
+                          <h3 className="sticky top-0 z-10 rounded-t-lg border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium text-slate-600">
+                            {groupTitle(g)}
+                          </h3>
+                          <div className="divide-y divide-slate-200">{g.leads.map(renderCard)}</div>
+                        </Panel>
+                      </Fragment>
+                    ))}
+                  </div>
+                ) : (
+                  <Panel>
+                    <div className="divide-y divide-slate-200">{filteredLeads.map(renderCard)}</div>
+                  </Panel>
+                )}
+
+                {hasMore && (
+                  <div className="flex flex-col items-center gap-1.5 pt-1">
+                    <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={loadingMore} onClick={handleLoadMore}>
+                      {loadingMore ? <Loader2 size={15} className="animate-spin" aria-hidden /> : null}
+                      {loadingMore ? 'Carregando...' : 'Mostrar mais empresas'}
+                    </Button>
+                    {loadMoreError && <p className="text-xs text-red-700">{loadMoreError}</p>}
+                  </div>
                 )}
               </div>
             )}
-
-            {/* Filtros: a busca é uma lista — o atendente decide depois do contato */}
-            <div className="flex flex-wrap gap-1.5">
-              {([
-                ['para_contatar', 'Para contatar', counts.para_contatar],
-                ['contatados', 'Contatados', counts.contatados],
-                ['no_crm', 'Já no CRM', counts.no_crm],
-                ['descartados', 'Descartados', counts.descartados],
-                ['all', 'Todos', counts.all],
-              ] as [LeadFilter, string, number][]).map(([key, label, count]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setLeadFilter(key)}
-                  className={`px-3 py-1 rounded-full text-xs font-semibold border transition ${
-                    leadFilter === key
-                      ? 'bg-blue-900 text-white border-blue-900'
-                      : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
-                  }`}
-                >
-                  {label} ({count})
-                </button>
-              ))}
-            </div>
-            {leadFilter === 'contatados' && (
-              <p className="text-[11px] text-slate-500">Do contato mais recente para o mais antigo.</p>
-            )}
           </div>
-
-          {leads.length === 0 ? (
-            <Empty>
-              <EmptyHeader>
-                <EmptyMedia variant="icon"><Truck /></EmptyMedia>
-                <EmptyTitle>Nenhuma empresa encontrada</EmptyTitle>
-                <EmptyDescription>
-                  {(() => {
-                    const advice = emptyAdvice({ minAnosAbertura, segmentsCount: segments.length });
-                    if (advice === 'abertura')
-                      return 'O filtro "Tempo de abertura" pode estar escondendo empresas. Troque para "Qualquer" e busque de novo.';
-                    if (advice === 'segmentos')
-                      return 'Só alguns segmentos estão marcados. Marque mais segmentos (ou o CNAE secundário) e busque de novo.';
-                    return 'Aumente o raio da busca ou escolha outra cidade.';
-                  })()}
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          ) : filteredLeads.length === 0 ? (
-            <Empty>
-              <EmptyHeader>
-                <EmptyTitle>Nenhuma empresa neste filtro</EmptyTitle>
-                <EmptyDescription>
-                  {toolsActive
-                    ? 'Nenhuma empresa carregada combina com o texto ou segmento escolhido. Limpe os filtros acima.'
-                    : 'Tente outro filtro (por exemplo "Todos") ou aumente o raio da busca.'}
-                  {hasMore && ' Também há mais empresas para carregar abaixo.'}
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          ) : groups ? (
-            <div className="space-y-4">
-              {groups.map((g) => (
-                <Fragment key={g.ibge}>
-                  <section>
-                    <h3 className="sticky top-0 z-10 -mx-1 px-2 py-1.5 mb-2 bg-slate-50/95 backdrop-blur text-xs font-semibold text-slate-700 border-b border-slate-200">
-                      {groupTitle(g)}
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{g.leads.map(renderCard)}</div>
-                  </section>
-                </Fragment>
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{filteredLeads.map(renderCard)}</div>
-          )}
-
-          {hasMore && (
-            <div className="flex flex-col items-center gap-1.5 pt-1">
-              <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={loadingMore} onClick={handleLoadMore}>
-                {loadingMore ? <Loader2 size={15} className="animate-spin" /> : null}
-                {loadingMore ? 'Carregando...' : 'Mostrar mais empresas'}
-              </Button>
-              {loadMoreError && <p className="text-xs text-red-600">{loadMoreError}</p>}
-            </div>
-          )}
         </div>
-      )}
+      </Page>
     </div>
+  );
+}
+
+/** Botão de filtro em linha (estado ligado/desligado). */
+function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`h-8 rounded-md border px-3 text-xs font-medium transition-colors max-md:h-10 ${
+        active
+          ? 'border-brand-700 bg-brand-700 text-white'
+          : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Esqueleto no formato da lista de empresas. */
+function ResultsSkeleton() {
+  return (
+    <Panel>
+      <div className="divide-y divide-slate-200" aria-busy="true" aria-label="Buscando empresas">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div key={i} className="space-y-2 px-4 py-3">
+            <Skeleton className="h-4 w-1/2" />
+            <Skeleton className="h-3 w-3/4" />
+            <div className="flex gap-2">
+              <Skeleton className="h-8 w-24" />
+              <Skeleton className="h-8 w-20" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </Panel>
   );
 }

@@ -49,33 +49,33 @@ export function DeleteOrderDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-red-700">🗑️ Excluir pedido</DialogTitle>
+          <DialogTitle className="text-base">Excluir pedido</DialogTitle>
           <DialogDescription>
             Esta ação não pode ser desfeita. O pedido será removido permanentemente.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm space-y-0.5">
-          <p className="font-semibold text-slate-800">{pedido.clienteNome || 'Sem cliente'}</p>
+        <div className="rounded-md bg-slate-50 px-3 py-2 text-sm space-y-0.5">
+          <p className="font-semibold text-slate-900">{pedido.clienteNome || 'Sem cliente'}</p>
           {pedido.cnpj && <p className="text-xs text-slate-500">{pedido.cnpj}</p>}
-          <p className="text-sm font-bold text-slate-700">{formatBRL(totalPedido(pedido))}</p>
+          <p className="text-sm font-semibold tabular-nums text-slate-900">{formatBRL(totalPedido(pedido))}</p>
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="del-reason" className="block text-sm font-medium text-gray-700">
-            Motivo da exclusão <span className="text-red-500">*</span>
+          <label htmlFor="del-reason" className="block text-sm font-medium text-slate-700">
+            Motivo da exclusão <span className="text-red-700" aria-hidden>*</span>
           </label>
           <textarea
             id="del-reason"
-            className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-300"
+            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/20 focus-visible:border-brand-500"
             rows={3}
-            placeholder="Descreva o motivo (ex: pedido duplicado, cliente desistiu...)"
+            placeholder="Descreva o motivo (ex.: pedido duplicado, cliente desistiu)"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             maxLength={500}
             autoFocus
           />
-          <p className="text-xs text-gray-400 text-right">{reason.length}/500</p>
+          <p className="text-xs text-slate-500 text-right">{reason.length}/500</p>
         </div>
 
         <DialogFooter className="gap-2 pt-2">
@@ -83,9 +83,9 @@ export function DeleteOrderDialog({
             Cancelar
           </Button>
           <Button
+            variant="destructive"
             onClick={handleConfirm}
             disabled={reason.trim().length < MIN_REASON_LENGTH}
-            className="bg-red-600 hover:bg-red-700 disabled:opacity-50"
           >
             Excluir pedido
           </Button>

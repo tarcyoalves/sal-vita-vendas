@@ -1,11 +1,25 @@
 import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
-import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { useState, useMemo, useEffect } from "react";
 import DOMPurify from 'dompurify';
 import { toast } from "sonner";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, MoreHorizontal, Plus, Users } from "lucide-react";
+import { Badge } from '../components/ui/badge';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Textarea } from '../components/ui/textarea';
+import { Skeleton } from '../components/ui/skeleton';
+import { QueryError } from '../components/QueryError';
+import { Page, PageHeader, Panel, PanelHeader, EmptyState } from '../components/layout/Page';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../components/ui/dropdown-menu';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { numberInputValue, parseIntOr } from '../lib/numbers';
 import { useFatStore } from '../lib/faturamento/store';
@@ -21,6 +35,61 @@ import {
 // while the gamification has always targeted 100 — treat 10 as "not customized".
 function effectiveDailyGoal(dailyGoal?: number | null): number {
   return dailyGoal && dailyGoal !== 10 ? dailyGoal : 100;
+}
+
+const selectCls =
+  "h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none focus-visible:border-brand-500 focus-visible:ring-[3px] focus-visible:ring-brand-500/30 max-md:h-10";
+
+function Field({ id, label, hint, children }: { id: string; label: string; hint?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      {children}
+      {hint && <p className="text-xs text-slate-500">{hint}</p>}
+    </div>
+  );
+}
+
+// Credenciais geradas (criação / reset de senha): só fecha pelo botão, para a senha não se perder sem querer.
+function CredentialsDialog({
+  open, title, intro, passwordLabel, info, onClose,
+}: {
+  open: boolean;
+  title: string;
+  intro: string;
+  passwordLabel: string;
+  info: { name: string; email: string; password: string } | null;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={() => { /* fecha só pelo botão */ }}>
+      <DialogContent showCloseButton={false} aria-describedby={undefined} className="max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-slate-500">{intro}</p>
+        {info && (
+          <dl className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm">
+            <div>
+              <dt className="text-xs text-slate-500">Nome</dt>
+              <dd className="font-medium text-slate-900">{info.name}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-slate-500">E-mail (login)</dt>
+              <dd className="text-slate-900">{info.email}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-slate-500">{passwordLabel}</dt>
+              <dd className="mt-1 select-all rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-base font-semibold text-amber-800">{info.password}</dd>
+            </div>
+          </dl>
+        )}
+        <DialogFooter>
+          <Button className="w-full sm:w-auto" onClick={onClose}>Entendi, já copiei a senha</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function fmtTimeAgo(date: Date | string): string {
@@ -103,7 +172,7 @@ export default function Attendants() {
   const [newIp, setNewIp] = useState("");
   const ipMutation = trpc.sellers.setIpRestriction.useMutation();
 
-  const { data: attendants = [], isLoading, refetch } = trpc.sellers.listWithRole.useQuery();
+  const { data: attendants = [], isLoading, isError, isFetching, refetch } = trpc.sellers.listWithRole.useQuery();
   // Sem polling — protege o plano free do Neon/Vercel. Cache válido por 2min.
   const { data: fraudAlerts = [] } = trpc.tasks.fraudAlerts.useQuery(undefined, { staleTime: 120_000 });
 
@@ -403,688 +472,650 @@ export default function Attendants() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-      </div>
+      <Page>
+        <Skeleton className="h-7 w-48" />
+        <Skeleton className="h-64 w-full" />
+      </Page>
     );
   }
 
   if (!user || user.role !== "admin") return null;
 
-  return (
-    <div className="p-4 md:p-6 space-y-4">
+  const roleLabel = (r?: string | null) => (r === "admin" ? "Admin" : r === "manager" ? "Gerente" : "Atendente");
+  const ipRestricted = (a: Attendant) => !!a.ipRestrictionEnabled && (a.allowedIps?.length ?? 0) > 0;
 
-        {/* Fraud alerts banner */}
-        {fraudAlerts.length > 0 && (
-          <div className="bg-red-50 border border-red-300 rounded-xl p-4 space-y-2">
-            <p className="font-semibold text-red-800 flex items-center gap-2">Alertas de comportamento suspeito detectados agora</p>
+  const renderActions = (attendant: Attendant) => (
+    <div className="flex items-center justify-end gap-1">
+      <Button size="sm" variant="outline" onClick={() => handleEditOpen(attendant)}>
+        Editar
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size="icon-sm" variant="ghost" aria-label={`Mais ações de ${attendant.name}`}>
+            <MoreHorizontal />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuItem onSelect={() => handleSignatureOpen(attendant)}>Assinatura de e-mail</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => handleIpOpen(attendant)}>
+            {ipRestricted(attendant) ? "Editar restrição de IP (ativa)" : "Restringir IP"}
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={resetPasswordMutation.isPending} onSelect={() => setConfirmReset(attendant)}>
+            Resetar senha
+          </DropdownMenuItem>
+          {attendant.userRole !== "admin" && (
+            <DropdownMenuItem disabled={updateRoleMutation.isPending} onSelect={() => handleToggleRole(attendant)}>
+              {attendant.userRole === "manager" ? "Rebaixar para Atendente" : "Promover a Gerente"}
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onSelect={() => setConfirmDelete({ id: attendant.id, name: attendant.name })}>
+            Remover atendente
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+
+  return (
+    <Page>
+      <PageHeader
+        title="Atendentes"
+        description="Equipe, metas diárias, expediente, comissão e permissões de acesso."
+        actions={
+          <>
+            <Button variant="outline" onClick={handleMySignatureOpen}>
+              Minha assinatura
+            </Button>
+            <Button
+              variant={showForm ? "outline" : "default"}
+              onClick={() => { setFormData({ name: "", email: "", phone: "", department: "", dailyGoal: 100, workHoursGoal: 8, status: "active" }); setShowForm(!showForm); }}
+            >
+              {showForm ? "Cancelar" : (<><Plus /> Novo atendente</>)}
+            </Button>
+          </>
+        }
+      />
+
+      {fraudAlerts.length > 0 && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50">
+          <p className="border-b border-red-200 px-4 py-2.5 text-sm font-semibold text-red-800">
+            Comportamento suspeito detectado agora ({fraudAlerts.length})
+          </p>
+          <ul className="divide-y divide-red-200">
             {fraudAlerts.map((alert, i) => (
-              <div key={i} className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${alert.severity === 'high' ? 'bg-red-100 text-red-800' : 'bg-orange-100 text-orange-800'}`}>
-                <AlertCircle size={14} className={alert.severity === 'high' ? 'text-red-600' : 'text-orange-500'} />
-                <strong>{alert.sellerName}</strong>: {alert.message}
+              <li key={i} className="flex items-start gap-2 px-4 py-2 text-sm text-red-800">
+                <AlertCircle size={14} className="mt-0.5 shrink-0 text-red-700" aria-hidden />
+                <span><strong>{alert.sellerName}</strong>: {alert.message}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <CredentialsDialog
+        open={!!resetInfo}
+        title="Senha redefinida"
+        intro="Anote a nova senha — ela não será exibida novamente."
+        passwordLabel="Nova senha gerada"
+        info={resetInfo}
+        onClose={() => setResetInfo(null)}
+      />
+      <CredentialsDialog
+        open={!!createdInfo}
+        title="Atendente criado"
+        intro="Anote as credenciais — a senha não poderá ser recuperada depois."
+        passwordLabel="Senha gerada automaticamente"
+        info={createdInfo}
+        onClose={() => setCreatedInfo(null)}
+      />
+
+      {showForm && (
+        <Panel>
+          <PanelHeader title="Novo atendente" description="Uma senha de acesso será gerada automaticamente e exibida após o cadastro." />
+          <form onSubmit={handleSubmit} className="space-y-4 p-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field id="new-name" label="Nome *">
+                <Input id="new-name" type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Nome completo" required />
+              </Field>
+              <Field id="new-email" label="E-mail (login) *">
+                <Input id="new-email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="email@exemplo.com" required />
+              </Field>
+              <Field id="new-phone" label="Telefone">
+                <Input id="new-phone" type="tel" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} placeholder="(11) 99999-9999" />
+              </Field>
+              <Field id="new-dept" label="Departamento">
+                <Input id="new-dept" type="text" value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} placeholder="Ex: Vendas" />
+              </Field>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Field id="new-goal" label="Meta diária (tarefas)">
+                <Input id="new-goal" type="number" value={numberInputValue(formData.dailyGoal)} onChange={(e) => setFormData({ ...formData, dailyGoal: parseIntOr(e.target.value, NaN) })} min="1" />
+              </Field>
+              <Field id="new-hours" label="Expediente">
+                <select id="new-hours" value={formData.workHoursGoal} onChange={(e) => setFormData({ ...formData, workHoursGoal: parseIntOr(e.target.value, 8) })} className={selectCls}>
+                  <option value={4}>4h — Meio período</option>
+                  <option value={6}>6h — Período parcial</option>
+                  <option value={8}>8h — Período integral</option>
+                </select>
+              </Field>
+              <Field id="new-status" label="Status">
+                <select id="new-status" value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value as "active" | "inactive" })} className={selectCls}>
+                  <option value="active">Ativo</option>
+                  <option value="inactive">Inativo</option>
+                </select>
+              </Field>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending ? "Criando..." : "Criar atendente"}
+              </Button>
+            </div>
+          </form>
+        </Panel>
+      )}
+
+      <Panel>
+        <PanelHeader
+          title={`${attendants.length} atendente${attendants.length !== 1 ? 's' : ''} cadastrado${attendants.length !== 1 ? 's' : ''}`}
+          description={activeFilterCount > 0 ? `Mostrando ${filteredAttendants.length} de ${attendants.length}` : undefined}
+          actions={
+            activeFilterCount > 0 ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => { setSearch(""); setFilterStatus("all"); setFilterRole("all"); setOnlyAlerts(false); }}
+              >
+                Limpar filtros ({activeFilterCount})
+              </Button>
+            ) : undefined
+          }
+        />
+
+        {/* Filtros */}
+        <div className="grid grid-cols-1 gap-3 border-b border-slate-200 px-4 py-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_auto]">
+          <Input
+            type="text"
+            aria-label="Buscar atendente"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nome, e-mail ou departamento"
+          />
+          <select aria-label="Filtrar por status" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as any)} className={selectCls}>
+            <option value="all">Todos os status</option>
+            <option value="active">Ativos</option>
+            <option value="inactive">Inativos</option>
+          </select>
+          <select aria-label="Filtrar por permissão" value={filterRole} onChange={(e) => setFilterRole(e.target.value as any)} className={selectCls}>
+            <option value="all">Todas as permissões</option>
+            <option value="admin">Admins</option>
+            <option value="manager">Gerentes</option>
+            <option value="user">Atendentes</option>
+          </select>
+          <label className="flex min-h-9 cursor-pointer select-none items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" checked={onlyAlerts} onChange={(e) => setOnlyAlerts(e.target.checked)} className="size-4 accent-brand-700" />
+            Só com alerta de fraude
+          </label>
+        </div>
+
+        {isLoading ? (
+          <div className="divide-y divide-slate-200" aria-busy="true">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 px-4 py-3">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="ml-auto h-5 w-16" />
               </div>
             ))}
           </div>
-        )}
-
-        {/* Reset password modal */}
-        {resetInfo && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
-              <h2 className="text-2xl font-bold text-orange-600 mb-2">Senha Resetada!</h2>
-              <p className="text-gray-600 mb-6">Anote a nova senha — ela não será exibida novamente.</p>
-              <div className="bg-gray-50 rounded-xl p-4 space-y-3 border">
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Nome</p>
-                  <p className="font-semibold text-gray-800">{resetInfo.name}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Email (login)</p>
-                  <p className="font-mono text-blue-700">{resetInfo.email}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Nova senha gerada</p>
-                  <p className="font-mono text-lg font-bold text-orange-700 bg-orange-50 px-3 py-2 rounded-lg border border-orange-200 select-all tracking-widest">{resetInfo.password}</p>
-                </div>
-              </div>
-              <p className="text-xs text-orange-600 mt-3">Copie a senha agora. Ela não será exibida novamente.</p>
-              <Button className="w-full mt-4 bg-orange-600 hover:bg-orange-700" onClick={() => setResetInfo(null)}>
-                Entendido, já copiei a senha
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Password reveal modal */}
-        {createdInfo && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
-              <h2 className="text-2xl font-bold text-green-700 mb-2">Atendente criado!</h2>
-              <p className="text-gray-600 mb-6">Anote as credenciais — a senha não poderá ser recuperada depois.</p>
-              <div className="bg-gray-50 rounded-xl p-4 space-y-3 border">
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Nome</p>
-                  <p className="font-semibold text-gray-800">{createdInfo.name}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Email (login)</p>
-                  <p className="font-mono text-blue-700">{createdInfo.email}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Senha gerada automaticamente</p>
-                  <p className="font-mono text-lg font-bold text-green-700 bg-green-50 px-3 py-2 rounded-lg border border-green-200 select-all tracking-widest">{createdInfo.password}</p>
-                </div>
-              </div>
-              <p className="text-xs text-orange-600 mt-3">Copie a senha agora. Ela não será exibida novamente.</p>
-              <Button className="w-full mt-4 bg-green-600 hover:bg-green-700" onClick={() => setCreatedInfo(null)}>
-                Entendido, já copiei a senha
-              </Button>
-            </div>
-          </div>
-        )}
-
-        <div className="flex justify-between items-center gap-2 flex-wrap">
-          <h2 className="text-base font-bold text-slate-800 tracking-tight">
-            {attendants.length} atendente{attendants.length !== 1 ? 's' : ''} cadastrado{attendants.length !== 1 ? 's' : ''}
-          </h2>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" className="border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold rounded-lg" onClick={handleMySignatureOpen}>
-              Minha assinatura
-            </Button>
-            <Button className="bg-[#0C3680] hover:bg-[#081F47] text-white text-xs font-semibold rounded-lg" onClick={() => { setFormData({ name: "", email: "", phone: "", department: "", dailyGoal: 100, workHoursGoal: 8, status: "active" }); setShowForm(!showForm); }}>
-              {showForm ? "Cancelar" : "Novo Atendente"}
-            </Button>
-          </div>
-        </div>
-
-        {/* Filtro avançado */}
-        <div className="saas-card p-4 space-y-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-              Filtro avançado
-              {activeFilterCount > 0 && (
-                <span className="saas-badge saas-badge-info">
-                  {activeFilterCount} ativo{activeFilterCount > 1 ? 's' : ''}
-                </span>
-              )}
-            </h3>
-            {activeFilterCount > 0 && (
-              <button
-                type="button"
-                className="text-xs text-blue-600 hover:underline font-medium"
-                onClick={() => { setSearch(""); setFilterStatus("all"); setFilterRole("all"); setOnlyAlerts(false); }}
-              >
-                Limpar filtros
-              </button>
-            )}
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <div>
-              <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1 text-slate-600">Buscar</label>
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Nome, email ou departamento..."
-                className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:bg-white focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680]"
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1 text-slate-600">Status</label>
-              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as any)} className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:bg-white focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680]">
-                <option value="all">Todos</option>
-                <option value="active">Ativos</option>
-                <option value="inactive">Inativos</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1 text-slate-600">Permissão</label>
-              <select value={filterRole} onChange={(e) => setFilterRole(e.target.value as any)} className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:bg-white focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680]">
-                <option value="all">Todas</option>
-                <option value="admin">Admins</option>
-                <option value="manager">Gerentes</option>
-                <option value="user">Atendentes</option>
-              </select>
-            </div>
-            <div className="flex items-end">
-              <label className="flex items-center gap-2 text-xs font-medium cursor-pointer select-none px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg w-full hover:bg-slate-100/50 text-slate-700">
-                <input type="checkbox" checked={onlyAlerts} onChange={(e) => setOnlyAlerts(e.target.checked)} className="h-3.5 w-3.5 rounded text-[#0C3680]" />
-                Só com alerta de fraude
-              </label>
-            </div>
-          </div>
-          {activeFilterCount > 0 && (
-            <p className="text-[11px] text-slate-500">
-              Mostrando {filteredAttendants.length} de {attendants.length} atendente{attendants.length !== 1 ? 's' : ''}
-            </p>
-          )}
-        </div>
-
-        {showForm && (
-          <div className="saas-card p-5">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Nome *</label>
-                  <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Nome completo" className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs" required />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Email * (login)</label>
-                  <input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="email@example.com" className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs" required />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Telefone</label>
-                  <input type="tel" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} placeholder="(11) 99999-9999" className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Departamento</label>
-                  <input type="text" value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} placeholder="Ex: Vendas" className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs" />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Meta Diária (tarefas)</label>
-                  <input type="number" value={numberInputValue(formData.dailyGoal)} onChange={(e) => setFormData({ ...formData, dailyGoal: parseIntOr(e.target.value, NaN) })} className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs" min="1" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Expediente</label>
-                  <select value={formData.workHoursGoal} onChange={(e) => setFormData({ ...formData, workHoursGoal: parseIntOr(e.target.value, 8) })} className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs">
-                    <option value={4}>4h — Meio período</option>
-                    <option value={6}>6h — Período parcial</option>
-                    <option value={8}>8h — Período integral</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Status</label>
-                  <select value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value as "active" | "inactive" })} className="w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-lg text-xs">
-                    <option value="active">Ativo</option>
-                    <option value="inactive">Inativo</option>
-                  </select>
-                </div>
-              </div>
-              <div className="bg-blue-50/70 p-3 rounded-lg text-xs text-blue-800 border border-blue-200/60">
-                Uma senha de acesso será gerada automaticamente e exibida após o cadastro.
-              </div>
-              <div className="flex gap-2">
-                <Button type="submit" className="flex-1 bg-[#0C3680] hover:bg-[#081F47] text-xs font-semibold" disabled={createMutation.isPending}>
-                  {createMutation.isPending ? "Criando..." : "Criar Atendente"}
-                </Button>
-                <Button type="button" variant="outline" onClick={() => setShowForm(false)} className="flex-1 text-xs">Cancelar</Button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {isLoading ? (
-          <p className="text-center text-slate-500 py-8 text-xs">Carregando...</p>
+        ) : isError && attendants.length === 0 ? (
+          <QueryError className="m-4" onRetry={() => { void refetch(); }} retrying={isFetching} />
         ) : attendants.length === 0 ? (
-          <div className="saas-card p-6 text-center text-xs text-slate-500">Nenhum atendente cadastrado</div>
+          <EmptyState
+            icon={<Users />}
+            title="Nenhum atendente cadastrado"
+            description="Cadastre o primeiro atendente para liberar o acesso ao CRM."
+            action={<Button onClick={() => setShowForm(true)}><Plus /> Novo atendente</Button>}
+          />
         ) : filteredAttendants.length === 0 ? (
-          <div className="saas-card p-6 text-center text-xs text-slate-500">Nenhum atendente encontrado com esse filtro</div>
+          <EmptyState title="Nenhum atendente encontrado" description="Nenhum registro corresponde aos filtros aplicados." />
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredAttendants.map((attendant: Attendant) => {
-              const alert = fraudAlerts.find(a => a.sellerName === attendant.name);
-              return (
-              <div key={attendant.id} className={`saas-card p-4 space-y-3 ${alert ? 'border-rose-400 bg-rose-50/20' : ''}`}>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-bold text-slate-900 text-sm">{attendant.name}</h3>
-                    {alert && <span className="saas-badge saas-badge-danger text-[10px]">{alert.severity === 'high' ? 'ALERTA' : 'Suspeito'}</span>}
-                  </div>
-                  <p className="text-xs text-slate-500">{attendant.email}</p>
-                  {alert && <p className="text-xs text-rose-600 mt-1 font-medium">{alert.message}</p>}
-                </div>
-                <div className="space-y-1 text-xs text-slate-600 border-t border-slate-100 pt-2.5">
-                  {attendant.phone && <p>📞 {attendant.phone}</p>}
-                  {attendant.department && <p>🏢 {attendant.department}</p>}
-                  <p>🎯 Meta: {effectiveDailyGoal(attendant.dailyGoal)} contatos/dia</p>
-                  <p>⏱️ Expediente: {attendant.workHoursGoal ?? 8}h</p>
-                  <p>💰 Comissão: {fatActions.comissoes.get(attendant.id)}%</p>
-                  <div className="flex gap-1.5 flex-wrap pt-1">
-                    <span className={`saas-badge ${attendant.status === "active" ? "saas-badge-success" : "saas-badge-danger"}`}>
-                      {attendant.status === "active" ? "Ativo" : "Inativo"}
-                    </span>
-                    <span className={`saas-badge ${
-                      attendant.userRole === "admin" ? "saas-badge-info"
-                      : attendant.userRole === "manager" ? "saas-badge-warning"
-                      : "saas-badge-neutral"
-                    }`}>
-                      {attendant.userRole === "admin" ? "Admin" : attendant.userRole === "manager" ? "Gerente" : "Atendente"}
-                    </span>
-                    {attendant.emailMarketingEnabled && (
-                      <span className="saas-badge saas-badge-info">
-                        Email Mkt
-                      </span>
-                    )}
+          <>
+            {/* Desktop: tabela */}
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Atendente</TableHead>
+                    <TableHead className="hidden lg:table-cell">Contato</TableHead>
+                    <TableHead className="text-right">Meta/dia</TableHead>
+                    <TableHead className="text-right">Expediente</TableHead>
+                    <TableHead className="text-right">Comissão</TableHead>
+                    <TableHead>Permissão</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right"><span className="sr-only">Ações</span></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredAttendants.map((attendant: Attendant) => {
+                    const alert = fraudAlerts.find(a => a.sellerName === attendant.name);
+                    return (
+                      <TableRow key={attendant.id} className={alert ? 'bg-red-50' : undefined}>
+                        <TableCell>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-medium text-slate-900">{attendant.name}</span>
+                            {alert && <Badge variant="danger">{alert.severity === 'high' ? 'Alerta' : 'Suspeito'}</Badge>}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            {attendant.email}
+                            {attendant.emailMarketingEnabled && ' · E-mail marketing liberado'}
+                          </div>
+                          {alert && <div className="text-xs text-red-700">{alert.message}</div>}
+                        </TableCell>
+                        <TableCell className="hidden text-slate-700 lg:table-cell">
+                          <div>{attendant.phone || '—'}</div>
+                          <div className="text-xs text-slate-500">{attendant.department || '—'}</div>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{effectiveDailyGoal(attendant.dailyGoal)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{attendant.workHoursGoal ?? 8}h</TableCell>
+                        <TableCell className="text-right tabular-nums">{fatActions.comissoes.get(attendant.id)}%</TableCell>
+                        <TableCell className="text-slate-700">{roleLabel(attendant.userRole)}</TableCell>
+                        <TableCell>
+                          <Badge variant={attendant.status === "active" ? "success" : "neutral"}>
+                            {attendant.status === "active" ? "Ativo" : "Inativo"}
+                          </Badge>
+                          {ipRestricted(attendant) && <span className="ml-2 text-xs text-slate-500">IP restrito</span>}
+                        </TableCell>
+                        <TableCell>{renderActions(attendant)}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Celular: lista de linhas */}
+            <ul className="divide-y divide-slate-200 md:hidden">
+              {filteredAttendants.map((attendant: Attendant) => {
+                const alert = fraudAlerts.find(a => a.sellerName === attendant.name);
+                return (
+                  <li key={attendant.id} className={`space-y-2 px-4 py-3 ${alert ? 'bg-red-50' : ''}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-900">{attendant.name}</p>
+                        <p className="truncate text-xs text-slate-500">{attendant.email}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {alert && <Badge variant="danger">{alert.severity === 'high' ? 'Alerta' : 'Suspeito'}</Badge>}
+                        <Badge variant={attendant.status === "active" ? "success" : "neutral"}>
+                          {attendant.status === "active" ? "Ativo" : "Inativo"}
+                        </Badge>
                       </div>
                     </div>
-                    <div className="flex flex-col gap-2">
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline" className="flex-1" onClick={() => handleEditOpen(attendant)}>
-                          Editar
-                        </Button>
-                        <Button size="sm" variant="destructive" className="flex-1" onClick={() => setConfirmDelete({ id: attendant.id, name: attendant.name })}>
-                          Remover
-                        </Button>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-full border-blue-300 text-blue-700 hover:bg-blue-50"
-                        onClick={() => handleSignatureOpen(attendant)}
-                      >
-                        Assinatura de e-mail
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-full border-orange-300 text-orange-700 hover:bg-orange-50"
-                        onClick={() => setConfirmReset(attendant)}
-                        disabled={resetPasswordMutation.isPending}
-                      >
-                        Resetar Senha
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className={`w-full ${attendant.ipRestrictionEnabled && (attendant.allowedIps?.length ?? 0) > 0 ? 'border-red-300 text-red-700 hover:bg-red-50' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
-                        onClick={() => handleIpOpen(attendant)}
-                      >
-                        {attendant.ipRestrictionEnabled && (attendant.allowedIps?.length ?? 0) > 0 ? 'IP Restrito' : 'Restringir IP'}
-                      </Button>
-                      {attendant.userRole !== "admin" && (
-                        <Button
-                          size="sm"
-                          variant={attendant.userRole === "manager" ? "outline" : "default"}
-                          className="w-full"
-                          onClick={() => handleToggleRole(attendant)}
-                          disabled={updateRoleMutation.isPending}
-                        >
-                          {attendant.userRole === "manager" ? "Rebaixar para Atendente" : "Promover a Gerente"}
-                        </Button>
-                      )}
-                    </div>
-              </div>
-              );
-            })}
-          </div>
+                    {alert && <p className="text-xs text-red-700">{alert.message}</p>}
+                    <p className="text-xs text-slate-500">
+                      {roleLabel(attendant.userRole)} · meta {effectiveDailyGoal(attendant.dailyGoal)}/dia · {attendant.workHoursGoal ?? 8}h · comissão {fatActions.comissoes.get(attendant.id)}%
+                      {attendant.phone ? ` · ${attendant.phone}` : ''}
+                      {attendant.department ? ` · ${attendant.department}` : ''}
+                    </p>
+                    {renderActions(attendant)}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
         )}
+      </Panel>
 
-        {/* Edit Attendant Modal */}
-        <Dialog open={!!editingAttendant} onOpenChange={(open) => { if (!open) setEditingAttendant(null); }}>
-          <DialogContent className="max-w-lg">
-            <DialogHeader><DialogTitle>Editar Atendente</DialogTitle></DialogHeader>
-            <form onSubmit={handleEditSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Nome *</label>
-                  <input type="text" value={editFormData.name} onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })} placeholder="Nome completo" className="w-full px-3 py-2 border rounded-lg" required />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Email (login) *</label>
-                  <input type="email" value={editFormData.email} onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })} placeholder="email@example.com" className="w-full px-3 py-2 border rounded-lg" required />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Telefone</label>
-                  <input type="tel" value={editFormData.phone} onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })} placeholder="(11) 99999-9999" className="w-full px-3 py-2 border rounded-lg" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Departamento</label>
-                  <input type="text" value={editFormData.department} onChange={(e) => setEditFormData({ ...editFormData, department: e.target.value })} placeholder="Ex: Vendas" className="w-full px-3 py-2 border rounded-lg" />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Meta Diária</label>
-                  <input type="number" value={numberInputValue(editFormData.dailyGoal)} onChange={(e) => setEditFormData({ ...editFormData, dailyGoal: parseIntOr(e.target.value, NaN) })} className="w-full px-3 py-2 border rounded-lg" min="1" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Expediente</label>
-                  <select value={editFormData.workHoursGoal} onChange={(e) => setEditFormData({ ...editFormData, workHoursGoal: parseIntOr(e.target.value, 8) })} className="w-full px-3 py-2 border rounded-lg">
-                    <option value={4}>4h — Meio período</option>
-                    <option value={6}>6h — Período parcial</option>
-                    <option value={8}>8h — Período integral</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Status</label>
-                  <select value={editFormData.status} onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value as "active" | "inactive" })} className="w-full px-3 py-2 border rounded-lg">
-                    <option value="active">Ativo</option>
-                    <option value="inactive">Inativo</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="flex items-center gap-2 text-sm cursor-pointer select-none px-3 py-2 border rounded-lg hover:bg-gray-50">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4"
-                    checked={editFormData.emailMarketingEnabled}
-                    onChange={(e) => setEditFormData({ ...editFormData, emailMarketingEnabled: e.target.checked })}
-                  />
-                  Liberar Email Marketing (inscrever em sequências)
-                </label>
-                <p className="text-xs text-gray-500 mt-1 ml-1">
-                  Quando ativo, o atendente poderá inscrever seus leads em sequências de e-mail.
-                </p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Comissao (%)</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.5"
-                  value={editFormData.commissionPct}
-                  onChange={(e) => setEditFormData({ ...editFormData, commissionPct: parseFloat(e.target.value) || 0 })}
-                  className="w-full px-3 py-2 border rounded-lg"
-                  placeholder="Ex: 5"
-                />
-                <p className="text-xs text-gray-500 mt-1 ml-1">
-                  Percentual de comissao sobre vendas faturadas (salvo localmente).
-                </p>
-              </div>
-              <DialogFooter className="flex gap-2 pt-2">
-                <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700" disabled={updateMutation.isPending}>
-                  {updateMutation.isPending ? "Salvando..." : "Salvar"}
-                </Button>
-                <Button type="button" variant="outline" onClick={() => setEditingAttendant(null)}>Cancelar</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-
-        {/* IP Restriction Modal */}
-        <Dialog open={!!ipAttendant} onOpenChange={(open) => { if (!open) setIpAttendant(null); }}>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Restrição de IP — {ipAttendant?.name}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <label className="flex items-center gap-2 text-sm cursor-pointer select-none px-3 py-2 border rounded-lg hover:bg-gray-50">
+      {/* Editar atendente */}
+      <Dialog open={!!editingAttendant} onOpenChange={(open) => { if (!open) setEditingAttendant(null); }}>
+        <DialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Editar atendente</DialogTitle></DialogHeader>
+          <form onSubmit={handleEditSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field id="ed-name" label="Nome *">
+                <Input id="ed-name" type="text" value={editFormData.name} onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })} placeholder="Nome completo" required />
+              </Field>
+              <Field id="ed-email" label="E-mail (login) *">
+                <Input id="ed-email" type="email" value={editFormData.email} onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })} placeholder="email@exemplo.com" required />
+              </Field>
+              <Field id="ed-phone" label="Telefone">
+                <Input id="ed-phone" type="tel" value={editFormData.phone} onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })} placeholder="(11) 99999-9999" />
+              </Field>
+              <Field id="ed-dept" label="Departamento">
+                <Input id="ed-dept" type="text" value={editFormData.department} onChange={(e) => setEditFormData({ ...editFormData, department: e.target.value })} placeholder="Ex: Vendas" />
+              </Field>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Field id="ed-goal" label="Meta diária">
+                <Input id="ed-goal" type="number" value={numberInputValue(editFormData.dailyGoal)} onChange={(e) => setEditFormData({ ...editFormData, dailyGoal: parseIntOr(e.target.value, NaN) })} min="1" />
+              </Field>
+              <Field id="ed-hours" label="Expediente">
+                <select id="ed-hours" value={editFormData.workHoursGoal} onChange={(e) => setEditFormData({ ...editFormData, workHoursGoal: parseIntOr(e.target.value, 8) })} className={selectCls}>
+                  <option value={4}>4h — Meio período</option>
+                  <option value={6}>6h — Período parcial</option>
+                  <option value={8}>8h — Período integral</option>
+                </select>
+              </Field>
+              <Field id="ed-status" label="Status">
+                <select id="ed-status" value={editFormData.status} onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value as "active" | "inactive" })} className={selectCls}>
+                  <option value="active">Ativo</option>
+                  <option value="inactive">Inativo</option>
+                </select>
+              </Field>
+            </div>
+            <Field id="ed-comm" label="Comissão (%)" hint="Percentual de comissão sobre vendas faturadas (salvo localmente).">
+              <Input
+                id="ed-comm"
+                type="number"
+                min="0"
+                max="100"
+                step="0.5"
+                value={editFormData.commissionPct}
+                onChange={(e) => setEditFormData({ ...editFormData, commissionPct: parseFloat(e.target.value) || 0 })}
+                placeholder="Ex: 5"
+              />
+            </Field>
+            <div>
+              <label className="flex min-h-9 cursor-pointer select-none items-center gap-2 text-sm text-slate-700">
                 <input
                   type="checkbox"
-                  className="h-4 w-4"
+                  className="size-4 accent-brand-700"
+                  checked={editFormData.emailMarketingEnabled}
+                  onChange={(e) => setEditFormData({ ...editFormData, emailMarketingEnabled: e.target.checked })}
+                />
+                Liberar e-mail marketing (inscrever em sequências)
+              </label>
+              <p className="ml-6 text-xs text-slate-500">
+                Quando ativo, o atendente poderá inscrever seus leads em sequências de e-mail.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditingAttendant(null)}>Cancelar</Button>
+              <Button type="submit" disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? "Salvando..." : "Salvar"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Restrição de IP */}
+      <Dialog open={!!ipAttendant} onOpenChange={(open) => { if (!open) setIpAttendant(null); }}>
+        <DialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Restrição de IP — {ipAttendant?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="flex min-h-9 cursor-pointer select-none items-center gap-2 text-sm text-slate-900">
+                <input
+                  type="checkbox"
+                  className="size-4 accent-brand-700"
                   checked={ipEnabled}
                   onChange={(e) => setIpEnabled(e.target.checked)}
                 />
                 Ativar restrição de IP para este atendente
               </label>
-              <p className="text-xs text-gray-500">
+              <p className="ml-6 text-xs text-slate-500">
                 Quando ativo, este atendente só consegue acessar o sistema a partir dos IPs listados abaixo.
                 O admin nunca é restrito.
               </p>
+            </div>
 
-              {ipEnabled && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">IPs permitidos</label>
-                    {ipList.length === 0 && (
-                      <p className="text-xs text-amber-600 mb-2">
-                        Nenhum IP adicionado — o atendente será bloqueado de qualquer lugar enquanto a restrição estiver ativa.
-                      </p>
-                    )}
-                    <div className="space-y-1">
+            {ipEnabled && (
+              <>
+                <div className="space-y-1.5">
+                  <Label>IPs permitidos</Label>
+                  {ipList.length === 0 && (
+                    <p className="text-xs text-amber-700">
+                      Nenhum IP adicionado — o atendente será bloqueado de qualquer lugar enquanto a restrição estiver ativa.
+                    </p>
+                  )}
+                  {ipList.length > 0 && (
+                    <ul className="divide-y divide-slate-200 rounded-md border border-slate-200">
                       {ipList.map((ip, i) => (
-                        <div key={i} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-1.5">
-                          <code className="flex-1 text-sm text-gray-800">{ip}</code>
-                          <button
+                        <li key={i} className="flex items-center gap-2 px-3 py-1.5">
+                          <code className="flex-1 text-sm text-slate-800">{ip}</code>
+                          <Button
                             type="button"
-                            className="text-xs text-red-500 hover:text-red-700"
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-700 hover:text-red-800"
                             onClick={() => setIpList(prev => prev.filter((_, idx) => idx !== i))}
                           >
                             Remover
-                          </button>
-                        </div>
+                          </Button>
+                        </li>
                       ))}
-                    </div>
-                  </div>
+                    </ul>
+                  )}
+                </div>
 
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      className="flex-1 px-3 py-2 border rounded-lg text-sm font-mono"
-                      placeholder="189.33.120.45 ou 189.33.120.0/24"
-                      value={newIp}
-                      onChange={(e) => setNewIp(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddIp(newIp); } }}
-                    />
+                <div className="flex gap-2">
+                  <Input
+                    type="text"
+                    aria-label="Novo IP permitido"
+                    className="flex-1"
+                    placeholder="189.33.120.45 ou 189.33.120.0/24"
+                    value={newIp}
+                    onChange={(e) => setNewIp(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddIp(newIp); } }}
+                  />
+                  <Button type="button" variant="outline" onClick={() => handleAddIp(newIp)}>
+                    Adicionar
+                  </Button>
+                </div>
+
+                {ipAttendant?.lastLoginIp ? (
+                  <>
                     <Button
                       type="button"
-                      size="sm"
-                      className="bg-blue-600 hover:bg-blue-700"
-                      onClick={() => handleAddIp(newIp)}
+                      variant="outline"
+                      className="h-auto w-full whitespace-normal py-2 text-left"
+                      onClick={() => {
+                        handleAddIp(ipAttendant.lastLoginIp!);
+                        toast.success(`IP ${ipAttendant.lastLoginIp} adicionado (último login de ${ipAttendant.name})`);
+                      }}
                     >
-                      Adicionar
+                      Usar último IP de login de {ipAttendant.name} ({ipAttendant.lastLoginIp}
+                      {ipAttendant.lastLoginAt ? `, ${fmtTimeAgo(ipAttendant.lastLoginAt)}` : ''})
                     </Button>
-                  </div>
-
-                  {ipAttendant?.lastLoginIp ? (
-                    <>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="w-full border-green-300 text-green-700 hover:bg-green-50"
-                        onClick={() => {
-                          handleAddIp(ipAttendant.lastLoginIp!);
-                          toast.success(`IP ${ipAttendant.lastLoginIp} adicionado (último login de ${ipAttendant.name})`);
-                        }}
-                      >
-                        Usar último IP de login de {ipAttendant.name} ({ipAttendant.lastLoginIp}
-                        {ipAttendant.lastLoginAt ? `, ${fmtTimeAgo(ipAttendant.lastLoginAt)}` : ''})
-                      </Button>
-                      {ipAttendant.lastLoginIp.includes(':') && (
-                        <p className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
-                          Essa conexão usa IPv6 ({ipAttendant.lastLoginIp}). Se o provedor mudar o IPv6 com
-                          frequência, considere desativar a restrição para este atendente.
-                        </p>
-                      )}
-                    </>
-                  ) : (
-                    <p className="text-xs text-gray-500 bg-gray-50 px-3 py-2 rounded-lg">
-                      Nenhum login registrado ainda pra {ipAttendant?.name}. Peça pra ela(e) tentar logar uma vez
-                      — o IP usado aparece aqui pra você adicionar com um clique.
-                    </p>
-                  )}
-                  <p className="text-xs text-gray-500">
-                    Dica: se o IP da empresa muda frequentemente, use um range CIDR (ex: 189.33.120.0/24). Aceita IPv4 e IPv6.
+                    {ipAttendant.lastLoginIp.includes(':') && (
+                      <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        Essa conexão usa IPv6 ({ipAttendant.lastLoginIp}). Se o provedor mudar o IPv6 com
+                        frequência, considere desativar a restrição para este atendente.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    Nenhum login registrado ainda pra {ipAttendant?.name}. Peça pra ela(e) tentar logar uma vez
+                    — o IP usado aparece aqui pra você adicionar com um clique.
                   </p>
-                </>
-              )}
-            </div>
-            <DialogFooter className="flex gap-2 pt-2">
-              <Button
-                type="button"
-                className="flex-1 bg-blue-600 hover:bg-blue-700"
-                onClick={handleIpSave}
-                disabled={ipMutation.isPending}
-              >
-                {ipMutation.isPending ? "Salvando..." : "Salvar"}
-              </Button>
-              <Button type="button" variant="outline" onClick={() => setIpAttendant(null)}>Cancelar</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Minha assinatura de e-mail (admin/gerente logado) */}
-        <Dialog open={showMySignature} onOpenChange={(open) => { if (!open) setShowMySignature(false); }}>
-          <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Minha assinatura de e-mail</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <p className="text-xs text-gray-500">
-                Essa assinatura é anexada automaticamente aos e-mails das suas campanhas e sequências
-                de e-mail marketing.
-              </p>
-              <label className="flex items-center gap-2 text-sm cursor-pointer select-none px-3 py-2 border rounded-lg hover:bg-gray-50">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={mySignatureForm.enabled}
-                  onChange={(e) => setMySignatureForm(f => ({ ...f, enabled: e.target.checked }))}
-                />
-                Anexar esta assinatura nos meus e-mails de campanhas/sequências
-              </label>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">URL de uma imagem (opcional)</label>
-                <input
-                  type="text"
-                  value={mySignatureForm.imageUrl}
-                  onChange={(e) => setMySignatureForm(f => ({ ...f, imageUrl: e.target.value }))}
-                  placeholder="https://exemplo.com/assinatura.png"
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Imagens vêm bloqueadas por padrão em vários e-mails (Gmail, Outlook) — por isso
-                  recomendamos manter também a versão em texto.
+                )}
+                <p className="text-xs text-slate-500">
+                  Dica: se o IP da empresa muda frequentemente, use um range CIDR (ex: 189.33.120.0/24). Aceita IPv4 e IPv6.
                 </p>
-              </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIpAttendant(null)}>Cancelar</Button>
+            <Button type="button" onClick={handleIpSave} disabled={ipMutation.isPending}>
+              {ipMutation.isPending ? "Salvando..." : "Salvar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" variant="outline" onClick={handleMySignatureGenerate}>
-                  Gerar HTML a partir dos meus dados
-                </Button>
-              </div>
+      {/* Minha assinatura de e-mail (admin/gerente logado) */}
+      <Dialog open={showMySignature} onOpenChange={(open) => { if (!open) setShowMySignature(false); }}>
+        <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Minha assinatura de e-mail</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-500">
+              Essa assinatura é anexada automaticamente aos e-mails das suas campanhas e sequências
+              de e-mail marketing.
+            </p>
+            <label className="flex min-h-9 cursor-pointer select-none items-center gap-2 text-sm text-slate-900">
+              <input
+                type="checkbox"
+                className="size-4 accent-brand-700"
+                checked={mySignatureForm.enabled}
+                onChange={(e) => setMySignatureForm(f => ({ ...f, enabled: e.target.checked }))}
+              />
+              Anexar esta assinatura nos meus e-mails de campanhas e sequências
+            </label>
 
-              <div>
-                <label className="block text-sm font-medium mb-1">HTML da assinatura</label>
-                <textarea
-                  value={mySignatureForm.html}
-                  onChange={(e) => setMySignatureForm(f => ({ ...f, html: e.target.value }))}
-                  rows={8}
-                  className="w-full px-3 py-2 border rounded-lg text-sm font-mono"
-                  placeholder="<p>Seu nome</p><br><p>Seu telefone</p>"
-                />
-              </div>
+            <Field
+              id="mysig-img"
+              label="URL de uma imagem (opcional)"
+              hint="Imagens vêm bloqueadas por padrão em vários e-mails (Gmail, Outlook) — por isso recomendamos manter também a versão em texto."
+            >
+              <Input
+                id="mysig-img"
+                type="text"
+                value={mySignatureForm.imageUrl}
+                onChange={(e) => setMySignatureForm(f => ({ ...f, imageUrl: e.target.value }))}
+                placeholder="https://exemplo.com/assinatura.png"
+              />
+            </Field>
 
-              {mySignatureForm.html.trim() && (
-                <div>
-                  <label className="block text-sm font-medium mb-1">Pré-visualização</label>
-                  <div
-                    className="border rounded-lg p-4 bg-gray-50 text-sm"
-                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(mySignatureForm.html) }}
-                  />
-                </div>
-              )}
-            </div>
-            <DialogFooter className="flex gap-2 pt-2">
-              <Button
-                type="button"
-                className="flex-1 bg-blue-600 hover:bg-blue-700"
-                onClick={handleMySignatureSave}
-                disabled={mySignatureMutation.isPending}
-              >
-                {mySignatureMutation.isPending ? "Salvando..." : "Salvar assinatura"}
+            <div>
+              <Button type="button" size="sm" variant="outline" onClick={handleMySignatureGenerate}>
+                Gerar HTML a partir dos meus dados
               </Button>
-              <Button type="button" variant="outline" onClick={() => setShowMySignature(false)}>Cancelar</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </div>
 
-        {/* Email Signature Modal */}
-        <Dialog open={!!signatureAttendant} onOpenChange={(open) => { if (!open) setSignatureAttendant(null); }}>
-          <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Assinatura de e-mail — {signatureAttendant?.name}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <label className="flex items-center gap-2 text-sm cursor-pointer select-none px-3 py-2 border rounded-lg hover:bg-gray-50">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={signatureForm.enabled}
-                  onChange={(e) => setSignatureForm(f => ({ ...f, enabled: e.target.checked }))}
-                />
-                Anexar esta assinatura nos e-mails enviados para os leads/clientes deste atendente
-              </label>
+            <Field id="mysig-html" label="HTML da assinatura">
+              <Textarea
+                id="mysig-html"
+                value={mySignatureForm.html}
+                onChange={(e) => setMySignatureForm(f => ({ ...f, html: e.target.value }))}
+                rows={8}
+                className="font-mono text-xs"
+                placeholder="<p>Seu nome</p><br><p>Seu telefone</p>"
+              />
+            </Field>
 
-              <div>
-                <label className="block text-sm font-medium mb-1">URL de uma imagem (opcional)</label>
-                <input
-                  type="text"
-                  value={signatureForm.imageUrl}
-                  onChange={(e) => setSignatureForm(f => ({ ...f, imageUrl: e.target.value }))}
-                  placeholder="https://exemplo.com/assinatura.png"
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
+            {mySignatureForm.html.trim() && (
+              <div className="space-y-1.5">
+                <Label>Pré-visualização</Label>
+                <div
+                  className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm"
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(mySignatureForm.html) }}
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  Se você já tem uma imagem hospedada (ex: foto/logo), cole a URL aqui e use o botão abaixo para
-                  inseri-la no HTML. Imagens vêm bloqueadas por padrão em vários e-mails (Gmail, Outlook) — por isso
-                  recomendamos manter também a versão em texto.
-                </p>
               </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setShowMySignature(false)}>Cancelar</Button>
+            <Button type="button" onClick={handleMySignatureSave} disabled={mySignatureMutation.isPending}>
+              {mySignatureMutation.isPending ? "Salvando..." : "Salvar assinatura"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" variant="outline" onClick={handleSignatureGenerate}>
-                  Gerar HTML a partir dos dados do atendente
-                </Button>
-              </div>
+      {/* Assinatura de e-mail do atendente */}
+      <Dialog open={!!signatureAttendant} onOpenChange={(open) => { if (!open) setSignatureAttendant(null); }}>
+        <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Assinatura de e-mail — {signatureAttendant?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <label className="flex min-h-9 cursor-pointer select-none items-center gap-2 text-sm text-slate-900">
+              <input
+                type="checkbox"
+                className="size-4 accent-brand-700"
+                checked={signatureForm.enabled}
+                onChange={(e) => setSignatureForm(f => ({ ...f, enabled: e.target.checked }))}
+              />
+              Anexar esta assinatura nos e-mails enviados para os leads e clientes deste atendente
+            </label>
 
-              <div>
-                <label className="block text-sm font-medium mb-1">HTML da assinatura</label>
-                <textarea
-                  value={signatureForm.html}
-                  onChange={(e) => setSignatureForm(f => ({ ...f, html: e.target.value }))}
-                  rows={8}
-                  className="w-full px-3 py-2 border rounded-lg text-sm font-mono"
-                  placeholder="<p>{atendente_nome}</p><br><p>{atendente_telefone}</p>"
-                />
-                <p className="text-xs text-gray-500 mt-1">
+            <Field
+              id="sig-img"
+              label="URL de uma imagem (opcional)"
+              hint="Se você já tem uma imagem hospedada (ex: foto/logo), cole a URL aqui e use o botão abaixo para inseri-la no HTML. Imagens vêm bloqueadas por padrão em vários e-mails (Gmail, Outlook) — por isso recomendamos manter também a versão em texto."
+            >
+              <Input
+                id="sig-img"
+                type="text"
+                value={signatureForm.imageUrl}
+                onChange={(e) => setSignatureForm(f => ({ ...f, imageUrl: e.target.value }))}
+                placeholder="https://exemplo.com/assinatura.png"
+              />
+            </Field>
+
+            <div>
+              <Button type="button" size="sm" variant="outline" onClick={handleSignatureGenerate}>
+                Gerar HTML a partir dos dados do atendente
+              </Button>
+            </div>
+
+            <Field
+              id="sig-html"
+              label="HTML da assinatura"
+              hint={
+                <>
                   Tokens disponíveis: <code>{'{atendente_nome}'}</code>, <code>{'{atendente_telefone}'}</code>,{' '}
                   <code>{'{atendente_email}'}</code>, <code>{'{atendente_cargo}'}</code>. Se um campo do atendente
                   estiver vazio, a linha (separada por <code>&lt;br&gt;</code>) que contém o token é removida
                   automaticamente. Tags e atributos não permitidos são removidos ao salvar.
-                </p>
+                </>
+              }
+            >
+              <Textarea
+                id="sig-html"
+                value={signatureForm.html}
+                onChange={(e) => setSignatureForm(f => ({ ...f, html: e.target.value }))}
+                rows={8}
+                className="font-mono text-xs"
+                placeholder="<p>{atendente_nome}</p><br><p>{atendente_telefone}</p>"
+              />
+            </Field>
+
+            {signatureForm.html.trim() && (
+              <div className="space-y-1.5">
+                <Label>Pré-visualização</Label>
+                <div
+                  className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm"
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(signaturePreviewHtml) }}
+                />
               </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setSignatureAttendant(null)}>Cancelar</Button>
+            <Button type="button" onClick={handleSignatureSave} disabled={signatureMutation.isPending}>
+              {signatureMutation.isPending ? "Salvando..." : "Salvar assinatura"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-              {signatureForm.html.trim() && (
-                <div>
-                  <label className="block text-sm font-medium mb-1">Pré-visualização</label>
-                  <div
-                    className="border rounded-lg p-4 bg-gray-50 text-sm"
-                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(signaturePreviewHtml) }}
-                  />
-                </div>
-              )}
-            </div>
-            <DialogFooter className="flex gap-2 pt-2">
-              <Button
-                type="button"
-                className="flex-1 bg-blue-600 hover:bg-blue-700"
-                onClick={handleSignatureSave}
-                disabled={signatureMutation.isPending}
-              >
-                {signatureMutation.isPending ? "Salvando..." : "Salvar assinatura"}
-              </Button>
-              <Button type="button" variant="outline" onClick={() => setSignatureAttendant(null)}>Cancelar</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <ConfirmDialog
-          open={!!confirmReset}
-          onOpenChange={(o) => { if (!o) setConfirmReset(null); }}
-          title={`Resetar a senha de "${confirmReset?.name ?? ''}"?`}
-          description="Uma nova senha será gerada."
-          confirmLabel="Resetar"
-          onConfirm={() => { if (confirmReset) void handleResetPassword(confirmReset); }}
-        />
-        <ConfirmDialog
-          open={!!confirmDelete}
-          onOpenChange={(o) => { if (!o) setConfirmDelete(null); }}
-          title={`Deletar atendente "${confirmDelete?.name ?? ''}"?`}
-          description="Sem tarefas, pedidos ou sessões vinculados, ele e a conta de acesso são removidos; com dados vinculados, é apenas desativado."
-          confirmLabel="Deletar"
-          onConfirm={() => { if (confirmDelete) void handleDelete(confirmDelete.id, confirmDelete.name); }}
-        />
-    </div>
+      <ConfirmDialog
+        open={!!confirmReset}
+        onOpenChange={(o) => { if (!o) setConfirmReset(null); }}
+        title={`Resetar a senha de "${confirmReset?.name ?? ''}"?`}
+        description="Uma nova senha será gerada."
+        confirmLabel="Resetar"
+        onConfirm={() => { if (confirmReset) void handleResetPassword(confirmReset); }}
+      />
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onOpenChange={(o) => { if (!o) setConfirmDelete(null); }}
+        title={`Deletar atendente "${confirmDelete?.name ?? ''}"?`}
+        description="Sem tarefas, pedidos ou sessões vinculados, ele e a conta de acesso são removidos; com dados vinculados, é apenas desativado."
+        confirmLabel="Deletar"
+        onConfirm={() => { if (confirmDelete) void handleDelete(confirmDelete.id, confirmDelete.name); }}
+      />
+    </Page>
   );
 }

@@ -101,7 +101,7 @@ export function CreateTaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Transformar em tarefa</DialogTitle>
           <DialogDescription>
@@ -112,7 +112,7 @@ export function CreateTaskDialog({
         <div className="space-y-4">
           {phoneOptions.length > 0 ? (
             <div>
-              <p className="text-xs font-semibold text-slate-500 mb-1.5">Telefone para contato</p>
+              <p className="text-sm font-medium text-slate-700 mb-1.5">Telefone para contato</p>
               <RadioGroup value={phoneDigits ?? undefined} onValueChange={setPhoneDigits}>
                 {phoneOptions.map((p) => (
                   <div key={p.digits} className="flex items-center gap-2">
@@ -120,16 +120,16 @@ export function CreateTaskDialog({
                     <Label htmlFor={`phone-${p.digits}`} className="text-sm font-normal cursor-pointer">
                       {p.formatted}
                       {p.isWhatsapp ? (
-                        <span className="ml-1.5 text-[10px] text-emerald-600 font-semibold">
+                        <span className="ml-1.5 text-xs text-green-700 font-medium">
                           WhatsApp · {p.sourceLabel}
                         </span>
                       ) : (
                         phoneKindLabel(p) && (
-                          <span className="ml-1.5 text-[10px] text-emerald-600 font-semibold">{phoneKindLabel(p)}</span>
+                          <span className="ml-1.5 text-xs text-green-700 font-medium">{phoneKindLabel(p)}</span>
                         )
                       )}
                       {sharedPhoneLabel(p) && (
-                        <span className="ml-1.5 text-[10px] text-amber-700 font-semibold">{sharedPhoneLabel(p)}</span>
+                        <span className="ml-1.5 text-xs text-amber-700 font-medium">{sharedPhoneLabel(p)}</span>
                       )}
                     </Label>
                   </div>
@@ -137,11 +137,11 @@ export function CreateTaskDialog({
               </RadioGroup>
             </div>
           ) : (
-            <p className="text-xs text-slate-400">Nenhum telefone encontrado.</p>
+            <p className="text-xs text-slate-500">Nenhum telefone encontrado.</p>
           )}
 
           <div>
-            <p className="text-xs font-semibold text-slate-500 mb-1.5">Mensagem usada (editável)</p>
+            <p className="text-sm font-medium text-slate-700 mb-1.5">Mensagem usada (editável)</p>
             <Textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
@@ -151,7 +151,7 @@ export function CreateTaskDialog({
           </div>
 
           <div>
-            <p className="text-xs font-semibold text-slate-500 mb-1.5">Resultado do contato</p>
+            <p className="text-sm font-medium text-slate-700 mb-1.5">Resultado do contato</p>
             <Textarea
               value={contactNote}
               onChange={(e) => setContactNote(e.target.value)}
@@ -162,7 +162,7 @@ export function CreateTaskDialog({
           </div>
 
           <div>
-            <Label htmlFor="reminder-date" className="text-xs font-semibold text-slate-500 mb-1.5">
+            <Label htmlFor="reminder-date" className="text-sm font-medium text-slate-700 mb-1.5">
               Próximo retorno
             </Label>
             <Input
@@ -175,7 +175,7 @@ export function CreateTaskDialog({
           </div>
 
           {isExcluded && lead.crm.kind === 'excluido_antes' && (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2">
+            <div className="rounded-md bg-amber-50 p-3 space-y-2">
               <p className="text-xs text-amber-800">
                 <strong>Excluído antes:</strong> {lead.crm.reason} (por {lead.crm.deletedByName})
               </p>
@@ -186,7 +186,7 @@ export function CreateTaskDialog({
                   onCheckedChange={(v) => setAcknowledged(v === true)}
                   className="mt-0.5"
                 />
-                <Label htmlFor="ack-excluded" className="text-xs font-medium text-amber-900 cursor-pointer">
+                <Label htmlFor="ack-excluded" className="text-sm font-medium text-amber-900 cursor-pointer">
                   Vi o motivo e quero seguir
                 </Label>
               </div>
@@ -209,7 +209,7 @@ export function CreateTaskDialog({
 
 export function LinkToTasks() {
   return (
-    <Link href="/tasks" className="text-xs font-semibold text-blue-800 hover:underline">
+    <Link href="/tasks" className="text-xs font-medium text-brand-700 hover:underline">
       Ver em Tarefas
     </Link>
   );

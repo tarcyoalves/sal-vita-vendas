@@ -2,7 +2,10 @@ import { useState, useRef } from "react";
 import { useFatStore } from "../../lib/faturamento/store";
 import { useConfirm } from "../useConfirm";
 import { formatBRL, parseBRL, formatKg } from "../../lib/faturamento/calc";
-import { Card, CardContent } from "../ui/card";
+import { Panel, PanelHeader, EmptyState } from "../layout/Page";
+import { StatusBadge } from "../StatusBadge";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -130,230 +133,224 @@ export default function ProductManager() {
     toast.success("Dados de faturamento limpos");
   };
 
+  const ativoToggle = (prod: Produto) => (
+    <button
+      type="button"
+      onClick={() => handleToggleAtivo(prod)}
+      aria-label={prod.ativo ? `Desativar ${prod.nome}` : `Ativar ${prod.nome}`}
+      title={prod.ativo ? "Clique para desativar" : "Clique para ativar"}
+      className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/20"
+    >
+      <StatusBadge tone={prod.ativo ? "success" : "neutral"}>{prod.ativo ? "Ativo" : "Inativo"}</StatusBadge>
+    </button>
+  );
+
+  const regras = (prod: Produto) => (
+    <div className="flex flex-wrap gap-1">
+      {prod.comissaoFixaPct != null && <StatusBadge tone="info">Comissão {prod.comissaoFixaPct}%</StatusBadge>}
+      {prod.isentoFrete && <StatusBadge tone="warning">Preço final (sem frete)</StatusBadge>}
+      {prod.comissaoFixaPct == null && !prod.isentoFrete && <span className="text-xs text-slate-500">--</span>}
+    </div>
+  );
+
+  const acoes = (prod: Produto) => (
+    <div className="flex items-center justify-end gap-1">
+      <Button type="button" variant="ghost" size="icon-sm" onClick={() => handleEditOpen(prod)} aria-label={`Editar ${prod.nome}`} title="Editar">
+        <Pencil size={14} />
+      </Button>
+      <Button type="button" variant="ghost" size="icon-sm" className="text-red-700" onClick={() => handleRemove(prod)} aria-label={`Excluir ${prod.nome}`} title="Excluir">
+        <Trash2 size={14} />
+      </Button>
+    </div>
+  );
+
   return (
     <div className="space-y-4">
       {confirmDialog}
-      {/* Inline add form */}
-      <Card>
-        <CardContent className="pt-5">
-          <form onSubmit={handleAdd} className="space-y-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Plus size={16} className="text-blue-600" />
-              <h3 className="text-sm font-semibold text-gray-700">Adicionar Produto</h3>
+      <Panel>
+        <PanelHeader title="Adicionar produto" />
+        <form onSubmit={handleAdd} className="space-y-3 px-4 py-4">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label htmlFor="pm-nome">Nome do produto</Label>
+              <Input
+                id="pm-nome"
+                ref={nomeRef}
+                type="text"
+                value={nome}
+                onChange={(e) => setNome(e.target.value)}
+                placeholder="Ex: SAL GROSSO MARINHO 25 KG"
+                autoFocus
+              />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-medium text-gray-600 mb-1">Nome do produto</label>
-                <input
-                  ref={nomeRef}
-                  type="text"
-                  value={nome}
-                  onChange={(e) => setNome(e.target.value)}
-                  placeholder="Ex: SAL GROSSO MARINHO 25 KG"
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Peso unitario (kg)</label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={peso}
-                  onChange={(e) => setPeso(e.target.value)}
-                  placeholder="25"
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Valor unitario (R$)</label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={valor}
-                  onChange={(e) => setValor(e.target.value)}
-                  placeholder="6,00"
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                />
-              </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pm-peso">Peso unitário (kg)</Label>
+              <Input
+                id="pm-peso"
+                type="text"
+                inputMode="decimal"
+                value={peso}
+                onChange={(e) => setPeso(e.target.value)}
+                placeholder="25"
+              />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Comissao fixa (%)</label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={comissaoFixa}
-                  onChange={(e) => setComissaoFixa(e.target.value)}
-                  placeholder="Padrao do atendente"
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                />
-              </div>
-              <div className="sm:col-span-3 flex items-center gap-2 pb-2">
-                <input
-                  id="pm-isento-frete"
-                  type="checkbox"
-                  checked={isentoFrete}
-                  onChange={(e) => setIsentoFrete(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300"
-                />
-                <label htmlFor="pm-isento-frete" className="text-xs text-gray-600">
-                  Preco final fixo — frete nunca soma no preco deste produto
-                </label>
-              </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pm-valor">Valor unitário (R$)</Label>
+              <Input
+                id="pm-valor"
+                type="text"
+                inputMode="decimal"
+                value={valor}
+                onChange={(e) => setValor(e.target.value)}
+                placeholder="6,00"
+              />
             </div>
-            <div className="flex items-center justify-between">
-              <Button type="submit" size="sm" className="bg-blue-600 hover:bg-blue-700">
-                <Plus size={14} className="mr-1" /> Adicionar
-              </Button>
-              <div className="flex items-center gap-2">
-                <Button type="button" size="sm" variant="outline" className="text-xs text-red-600 border-red-200 hover:bg-red-50" onClick={handleClear}>
-                  <Trash2 size={12} className="mr-1" /> Limpar dados
-                </Button>
-              </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+            <div className="space-y-1.5">
+              <Label htmlFor="pm-comissao">Comissão fixa (%)</Label>
+              <Input
+                id="pm-comissao"
+                type="text"
+                inputMode="decimal"
+                value={comissaoFixa}
+                onChange={(e) => setComissaoFixa(e.target.value)}
+                placeholder="Padrão do atendente"
+              />
             </div>
-          </form>
-        </CardContent>
-      </Card>
+            <div className="sm:col-span-3 flex items-center gap-2 pb-2">
+              <input
+                id="pm-isento-frete"
+                type="checkbox"
+                checked={isentoFrete}
+                onChange={(e) => setIsentoFrete(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300"
+              />
+              <label htmlFor="pm-isento-frete" className="text-sm text-slate-700">
+                Preço final fixo: o frete nunca soma no preço deste produto
+              </label>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <Button type="button" variant="outline" className="text-red-700" onClick={handleClear}>
+              <Trash2 size={14} className="mr-1" /> Limpar dados
+            </Button>
+            <Button type="submit">
+              <Plus size={14} className="mr-1" /> Adicionar
+            </Button>
+          </div>
+        </form>
+      </Panel>
 
-      {/* Product list */}
       {produtosList.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 py-10 px-4 text-center">
-          <Package size={28} className="text-slate-300" />
-          <p className="text-sm text-slate-500 max-w-sm">
-            Nenhum produto cadastrado. Adicione produtos acima.
-          </p>
-        </div>
+        <Panel>
+          <EmptyState
+            icon={<Package />}
+            title="Nenhum produto cadastrado"
+            description="Preencha o formulário acima para cadastrar o primeiro produto."
+          />
+        </Panel>
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Nome</th>
-                    <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Peso</th>
-                    <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Valor</th>
-                    <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Regras</th>
-                    <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-500">Ativo</th>
-                    <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Acoes</th>
+        <Panel>
+          <PanelHeader title={`Produtos (${produtosList.length})`} />
+          {/* Celular: lista de linhas */}
+          <ul className="divide-y divide-slate-200 md:hidden">
+            {produtosList.map((prod) => (
+              <li key={prod.id} className="px-4 py-3 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-medium text-slate-900 min-w-0 break-words">{prod.nome}</p>
+                  {ativoToggle(prod)}
+                </div>
+                <div className="flex items-center justify-between gap-2 text-sm tabular-nums">
+                  <span className="text-slate-500">{formatKg(prod.pesoUnitarioKg)}</span>
+                  <span className="font-medium text-slate-900">{formatBRL(prod.valorUnitario)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  {regras(prod)}
+                  {acoes(prod)}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-sm tabular-nums">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr className="text-xs text-slate-500">
+                  <th className="px-4 py-2.5 text-left font-medium">Nome</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Peso</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Valor</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Regras</th>
+                  <th className="px-4 py-2.5 text-center font-medium">Situação</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {produtosList.map((prod) => (
+                  <tr key={prod.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-2.5 font-medium text-slate-900">{prod.nome}</td>
+                    <td className="px-4 py-2.5 text-right text-slate-700">{formatKg(prod.pesoUnitarioKg)}</td>
+                    <td className="px-4 py-2.5 text-right text-slate-900">{formatBRL(prod.valorUnitario)}</td>
+                    <td className="px-4 py-2.5">{regras(prod)}</td>
+                    <td className="px-4 py-2.5 text-center">{ativoToggle(prod)}</td>
+                    <td className="px-4 py-2.5 text-right">{acoes(prod)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {produtosList.map((prod) => (
-                    <tr key={prod.id} className="border-b border-slate-100 hover:bg-blue-50/50 transition-colors">
-                      <td className="px-4 py-3 font-medium text-gray-800">{prod.nome}</td>
-                      <td className="px-4 py-3 text-right text-gray-600">{formatKg(prod.pesoUnitarioKg)}</td>
-                      <td className="px-4 py-3 text-right text-gray-600">{formatBRL(prod.valorUnitario)}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {prod.comissaoFixaPct != null && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-700">
-                              Comissao {prod.comissaoFixaPct}%
-                            </span>
-                          )}
-                          {prod.isentoFrete && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-700">
-                              Preco final (sem frete)
-                            </span>
-                          )}
-                          {prod.comissaoFixaPct == null && !prod.isentoFrete && (
-                            <span className="text-[11px] text-slate-300">--</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <button
-                          onClick={() => handleToggleAtivo(prod)}
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${
-                            prod.ativo
-                              ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
-                              : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                          }`}
-                        >
-                          {prod.ativo ? "Ativo" : "Inativo"}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => handleEditOpen(prod)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                            title="Editar"
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          <button
-                            onClick={() => handleRemove(prod)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                            title="Excluir"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
       )}
 
       {/* Edit dialog */}
       <Dialog open={!!editing} onOpenChange={(open) => { if (!open) setEditing(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Pencil size={16} className="text-blue-600" />
-              Editar Produto
-            </DialogTitle>
+            <DialogTitle className="text-base">Editar produto</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleEditSave} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Nome</label>
-              <input
+            <div className="space-y-1.5">
+              <Label htmlFor="pm-edit-nome">Nome</Label>
+              <Input
+                id="pm-edit-nome"
                 type="text"
                 value={editNome}
                 onChange={(e) => setEditNome(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
                 required
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Peso unitario (kg)</label>
-                <input
+              <div className="space-y-1.5">
+                <Label htmlFor="pm-edit-peso">Peso unitário (kg)</Label>
+                <Input
+                  id="pm-edit-peso"
                   type="text"
                   inputMode="decimal"
                   value={editPeso}
                   onChange={(e) => setEditPeso(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
                   required
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Valor unitario (R$)</label>
-                <input
+              <div className="space-y-1.5">
+                <Label htmlFor="pm-edit-valor">Valor unitário (R$)</Label>
+                <Input
+                  id="pm-edit-valor"
                   type="text"
                   inputMode="decimal"
                   value={editValor}
                   onChange={(e) => setEditValor(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
                   required
                 />
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Comissao fixa (%)</label>
-              <input
+            <div className="space-y-1.5">
+              <Label htmlFor="pm-edit-comissao">Comissão fixa (%)</Label>
+              <Input
+                id="pm-edit-comissao"
                 type="text"
                 inputMode="decimal"
                 value={editComissaoFixa}
                 onChange={(e) => setEditComissaoFixa(e.target.value)}
-                placeholder="Deixe em branco para usar a comissao padrao do atendente"
-                className="w-full px-3 py-2 border rounded-lg text-sm"
+                placeholder="Em branco usa a comissão padrão do atendente"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -362,19 +359,17 @@ export default function ProductManager() {
                 type="checkbox"
                 checked={editIsentoFrete}
                 onChange={(e) => setEditIsentoFrete(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300"
+                className="h-4 w-4 rounded border-slate-300"
               />
-              <label htmlFor="pm-edit-isento-frete" className="text-sm text-gray-600">
-                Preco final fixo — frete nunca soma no preco deste produto
+              <label htmlFor="pm-edit-isento-frete" className="text-sm text-slate-700">
+                Preço final fixo: o frete nunca soma no preço deste produto
               </label>
             </div>
-            <DialogFooter className="flex gap-2 pt-2">
-              <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700">
-                Salvar
-              </Button>
+            <DialogFooter className="gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setEditing(null)}>
                 Cancelar
               </Button>
+              <Button type="submit">Salvar</Button>
             </DialogFooter>
           </form>
         </DialogContent>

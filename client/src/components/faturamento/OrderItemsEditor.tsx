@@ -145,7 +145,7 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
         </SelectContent>
       </Select>
     ) : (
-      <p className="text-xs text-amber-600 py-1">Nenhum produto cadastrado. Solicite ao admin.</p>
+      <p className="text-xs text-amber-700 py-1">Nenhum produto cadastrado. Solicite ao admin.</p>
     );
 
   const quantidadeField = (item: ItemPedido, cls: string) => (
@@ -175,77 +175,80 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
   };
 
   const removeButton = (item: ItemPedido, cls: string) => (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="icon-sm"
       onClick={() => removeRow(item.id)}
       aria-label="Remover item"
       className={cls}
     >
       <Trash2 size={16} />
-    </button>
+    </Button>
   );
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 border-t border-slate-200 pt-4">
+      <h3 className="text-sm font-semibold text-slate-900">Itens</h3>
       {/* Celular: um cartão por item (a tabela de 760px obrigava a rolar de lado). */}
       <div className="space-y-3 md:hidden">
         {itens.map((item) => (
-          <div key={item.id} className="rounded-xl border border-slate-200 p-3 space-y-3">
+          <div key={item.id} className="rounded-lg border border-slate-200 p-3 space-y-3">
             <div>
-              <span className="block text-xs font-semibold text-slate-600 mb-1">Produto</span>
+              <span className="block text-xs font-medium text-slate-700 mb-1">Produto</span>
               {produtoField(item, 'w-full text-sm h-10')}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
-                <span className="block text-xs font-semibold text-slate-600 mb-1">Qtd</span>
+                <span className="block text-xs font-medium text-slate-700 mb-1">Qtd</span>
                 {quantidadeField(item, 'w-full h-10')}
               </label>
               <label className="block">
-                <span className="block text-xs font-semibold text-slate-600 mb-1">Valor unit.</span>
+                <span className="block text-xs font-medium text-slate-700 mb-1">Valor unit.</span>
                 {valorField(item, 'w-full h-10')}
               </label>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <div className="text-xs text-slate-600">
+              <div className="text-xs text-slate-500">
                 Peso: {formatKg(item.pesoKg)}
-                <span className="block text-sm font-semibold text-slate-800">
+                <span className="block text-sm font-semibold tabular-nums text-slate-900">
                   Total: {formatBRL(totalLinha(item))}
                 </span>
               </div>
-              {removeButton(item, 'text-slate-500 hover:text-red-600 size-10 flex items-center justify-center rounded-lg border border-slate-200')}
+              {removeButton(item, 'text-slate-500 hover:text-red-700 border border-slate-200')}
             </div>
           </div>
         ))}
         {itens.length === 0 && (
-          <p className="rounded-xl border border-slate-200 px-3 py-6 text-center text-sm text-slate-500">
+          <p className="rounded-lg border border-slate-200 px-3 py-6 text-center text-sm text-slate-500">
             Nenhum item adicionado
           </p>
         )}
         {itens.length > 0 && (
-          <div className="flex items-center justify-between rounded-xl bg-slate-50 border-2 border-slate-200 px-3 py-2 text-sm font-semibold">
-            <span className="text-slate-600">Totais · {formatKg(pesoTotalItens(itens))}</span>
-            <span className="text-blue-900 font-bold">{formatBRL(totalItens(itens))}</span>
+          <div className="flex items-center justify-between rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-sm font-semibold tabular-nums text-slate-900">
+            <span>Totais · {formatKg(pesoTotalItens(itens))}</span>
+            <span>{formatBRL(totalItens(itens))}</span>
           </div>
         )}
       </div>
 
-      <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200">
-        <table className="w-full text-sm min-w-[760px]">
+      <div className="hidden md:block overflow-x-auto rounded-lg border border-slate-200">
+        <table className="w-full text-sm tabular-nums min-w-[760px]">
           <thead>
             <tr className="bg-slate-50 text-left">
-              <th className="px-3 py-2 font-semibold text-slate-600 text-xs uppercase tracking-wide">
+              <th className="px-3 py-2 font-medium text-slate-500 text-xs">
                 Produto
               </th>
-              <th className="px-3 py-2 font-semibold text-slate-600 text-xs uppercase tracking-wide w-20">
+              <th className="px-3 py-2 font-medium text-slate-500 text-xs w-20">
                 Qtd
               </th>
-              <th className="px-3 py-2 font-semibold text-slate-600 text-xs uppercase tracking-wide w-24">
+              <th className="px-3 py-2 font-medium text-slate-500 text-xs w-24 text-right">
                 Peso (kg)
               </th>
-              <th className="px-3 py-2 font-semibold text-slate-600 text-xs uppercase tracking-wide w-28">
+              <th className="px-3 py-2 font-medium text-slate-500 text-xs w-28 text-right">
                 Valor unit.
               </th>
-              <th className="px-3 py-2 font-semibold text-slate-600 text-xs uppercase tracking-wide w-28 text-right">
+              <th className="px-3 py-2 font-medium text-slate-500 text-xs w-28 text-right">
                 Total
               </th>
               <th className="px-3 py-2 w-10" />
@@ -259,18 +262,18 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
                 {/* Quantidade */}
                 <td className="px-3 py-2">{quantidadeField(item, 'text-xs h-8 w-20')}</td>
                 {/* Peso — travado no peso unitário do produto × quantidade, não editável */}
-                <td className="px-3 py-2 text-xs text-slate-600 whitespace-nowrap">
+                <td className="px-3 py-2 text-xs text-right text-slate-700 whitespace-nowrap">
                   {formatKg(item.pesoKg)}
                 </td>
                 {/* Valor unitário */}
-                <td className="px-3 py-2">{valorField(item, 'text-xs h-8 w-28')}</td>
+                <td className="px-3 py-2">{valorField(item, 'text-xs h-8 w-28 text-right')}</td>
                 {/* Total (read-only) */}
-                <td className="px-3 py-2 text-right font-semibold text-slate-700 whitespace-nowrap">
+                <td className="px-3 py-2 text-right font-semibold text-slate-900 whitespace-nowrap">
                   {formatBRL(totalLinha(item))}
                 </td>
                 {/* Remove */}
                 <td className="px-3 py-2">
-                  {removeButton(item, 'text-slate-400 hover:text-red-600 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center')}
+                  {removeButton(item, 'text-slate-500 hover:text-red-700')}
                 </td>
               </tr>
             ))}
@@ -278,7 +281,7 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
               <tr>
                 <td
                   colSpan={6}
-                  className="px-3 py-6 text-center text-sm text-slate-400"
+                  className="px-3 py-6 text-center text-sm text-slate-500"
                 >
                   Nenhum item adicionado
                 </td>
@@ -287,15 +290,15 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
           </tbody>
           {itens.length > 0 && (
             <tfoot>
-              <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-sm">
-                <td colSpan={2} className="px-3 py-2 text-slate-500">
+              <tr className="border-t border-slate-300 bg-slate-50 font-semibold text-sm text-slate-900">
+                <td colSpan={2} className="px-3 py-2">
                   Totais
                 </td>
-                <td className="px-3 py-2 text-slate-600">
+                <td className="px-3 py-2 text-right">
                   {formatKg(pesoTotalItens(itens))}
                 </td>
                 <td className="px-3 py-2" />
-                <td className="px-3 py-2 text-right text-blue-900 font-bold">
+                <td className="px-3 py-2 text-right">
                   {formatBRL(totalItens(itens))}
                 </td>
                 <td />

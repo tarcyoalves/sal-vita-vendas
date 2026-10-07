@@ -4,7 +4,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '../ui/dialog';
 import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
+import { StatusBadge } from '../StatusBadge';
 import { useFatStore } from '../../lib/faturamento/store';
 import { useConfirm } from '../useConfirm';
 import { useAuth } from '../../_core/hooks/useAuth';
@@ -91,7 +91,7 @@ export function OrderDetailDialog({
           </DialogHeader>
           {buscando ? (
             <div className="flex justify-center py-4">
-              <Loader2 className="animate-spin text-blue-600" size={24} />
+              <Loader2 className="animate-spin text-brand-600" size={24} />
             </div>
           ) : (
             <DialogFooter>
@@ -150,28 +150,16 @@ export function OrderDetailDialog({
       <DialogContent className="max-w-2xl max-h-[92dvh] overflow-y-auto overflow-x-hidden">
         {confirmDialog}
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 flex-wrap">
+          <DialogTitle className="flex items-center gap-2 flex-wrap text-base">
             {pedido.clienteNome || 'Sem cliente'}
-            <Badge
-              className={
-                isFaturado
-                  ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                  : 'bg-amber-100 text-amber-700 border-amber-200'
-              }
-            >
+            <StatusBadge tone={isFaturado ? 'success' : 'warning'}>
               {isFaturado ? 'Faturado' : 'Estimado'}
-            </Badge>
-            <Badge
-              className={
-                pedido.aprovadoEm
-                  ? 'bg-blue-100 text-blue-700 border-blue-200'
-                  : 'bg-slate-100 text-slate-500 border-slate-200'
-              }
-            >
+            </StatusBadge>
+            <StatusBadge tone={pedido.aprovadoEm ? 'info' : 'neutral'}>
               {pedido.aprovadoEm ? 'Autorizada' : 'Aguardando revisão'}
-            </Badge>
+            </StatusBadge>
             {pedido.taskId && (
-              <span className="text-blue-600 text-sm font-normal">Tarefa #{pedido.taskId}</span>
+              <span className="text-brand-700 text-sm font-normal">Tarefa #{pedido.taskId}</span>
             )}
           </DialogTitle>
           <DialogDescription>
@@ -181,53 +169,53 @@ export function OrderDetailDialog({
 
         <div className="space-y-4 min-w-0">
           {/* Client info */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-sm bg-slate-50 border border-slate-200 rounded-xl p-3">
+          <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3 text-sm border-b border-slate-200 pb-4">
             <div>
-              <p className="text-[10px] font-semibold text-slate-400 uppercase">CNPJ</p>
-              <p className="text-slate-700">{pedido.cnpj || '--'}</p>
+              <dt className="text-xs text-slate-500">CNPJ</dt>
+              <dd className="text-slate-900">{pedido.cnpj || '--'}</dd>
             </div>
             <div>
-              <p className="text-[10px] font-semibold text-slate-400 uppercase">Razao Social</p>
-              <p className="text-slate-700">{pedido.razaoSocial || '--'}</p>
+              <dt className="text-xs text-slate-500">Razão social</dt>
+              <dd className="text-slate-900">{pedido.razaoSocial || '--'}</dd>
             </div>
             <div>
-              <p className="text-[10px] font-semibold text-slate-400 uppercase">Cidade/UF</p>
-              <p className="text-slate-700">
+              <dt className="text-xs text-slate-500">Cidade/UF</dt>
+              <dd className="text-slate-900">
                 {[pedido.cidade, pedido.uf].filter(Boolean).join('/') || '--'}
-              </p>
+              </dd>
             </div>
             <div>
-              <p className="text-[10px] font-semibold text-slate-400 uppercase">Atendente</p>
-              <p className="text-slate-700">{pedido.sellerName || '--'}</p>
+              <dt className="text-xs text-slate-500">Atendente</dt>
+              <dd className="text-slate-900">{pedido.sellerName || '--'}</dd>
             </div>
             <div>
-              <p className="text-[10px] font-semibold text-slate-400 uppercase">Criado em</p>
-              <p className="text-slate-700">{fmtDate(pedido.criadoEm)}</p>
+              <dt className="text-xs text-slate-500">Criado em</dt>
+              <dd className="text-slate-900">{fmtDate(pedido.criadoEm)}</dd>
             </div>
             <div>
-              <p className="text-[10px] font-semibold text-slate-400 uppercase">Previsão faturamento</p>
-              <p className="text-slate-700">{fmtDate(pedido.previsaoFaturamentoEm ?? pedido.criadoEm)}</p>
+              <dt className="text-xs text-slate-500">Previsão faturamento</dt>
+              <dd className="text-slate-900">{fmtDate(pedido.previsaoFaturamentoEm ?? pedido.criadoEm)}</dd>
             </div>
             <div>
-              <p className="text-[10px] font-semibold text-slate-400 uppercase">Faturado em</p>
-              <p className="text-slate-700">{fmtDate(pedido.faturadoEm)}</p>
+              <dt className="text-xs text-slate-500">Faturado em</dt>
+              <dd className="text-slate-900">{fmtDate(pedido.faturadoEm)}</dd>
             </div>
             {pedido.aprovadoEm && (
               <div>
-                <p className="text-[10px] font-semibold text-slate-400 uppercase">Aprovado por</p>
-                <p className="text-slate-700">{pedido.aprovadoPor} · {fmtDate(pedido.aprovadoEm)}</p>
+                <dt className="text-xs text-slate-500">Aprovado por</dt>
+                <dd className="text-slate-900">{pedido.aprovadoPor} · {fmtDate(pedido.aprovadoEm)}</dd>
               </div>
             )}
-          </div>
+          </dl>
 
           {/* Vincular a uma tarefa — só para pedidos antigos sem esse vínculo */}
           {!pedido.taskId && canApprove && (
-            <div className="flex items-center justify-between gap-2 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 text-sm text-orange-800">
+            <div className="flex items-center justify-between gap-2 rounded-md bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
               <div className="flex items-center gap-1.5">
                 <Link2 size={14} />
                 <span className="font-medium">Sem tarefa vinculada</span>
               </div>
-              <Button size="sm" className="h-8 gap-1.5 shrink-0" onClick={() => setLinkDialogOpen(true)}>
+              <Button size="sm" className="gap-1.5 shrink-0" onClick={() => setLinkDialogOpen(true)}>
                 <Link2 size={14} />
                 Vincular tarefa
               </Button>
@@ -236,37 +224,37 @@ export function OrderDetailDialog({
 
           {/* Items */}
           {pedido.itens.length > 0 && (
-            <div className="rounded-xl border border-slate-200 overflow-x-auto">
-              <table className="w-full text-sm min-w-[560px]">
+            <div className="rounded-lg border border-slate-200 overflow-x-auto">
+              <table className="w-full text-sm tabular-nums min-w-[560px]">
                 <thead>
                   <tr className="bg-slate-50 text-left">
-                    <th className="px-3 py-2 text-xs font-semibold text-slate-600 uppercase">Produto</th>
-                    <th className="px-3 py-2 text-xs font-semibold text-slate-600 uppercase text-right">Qtd</th>
-                    <th className="px-3 py-2 text-xs font-semibold text-slate-600 uppercase text-right">Peso</th>
-                    <th className="px-3 py-2 text-xs font-semibold text-slate-600 uppercase text-right">Valor unit.</th>
-                    <th className="px-3 py-2 text-xs font-semibold text-slate-600 uppercase text-right">Total</th>
+                    <th className="px-3 py-2 text-xs font-medium text-slate-500">Produto</th>
+                    <th className="px-3 py-2 text-xs font-medium text-slate-500 text-right">Qtd</th>
+                    <th className="px-3 py-2 text-xs font-medium text-slate-500 text-right">Peso</th>
+                    <th className="px-3 py-2 text-xs font-medium text-slate-500 text-right">Valor unit.</th>
+                    <th className="px-3 py-2 text-xs font-medium text-slate-500 text-right">Total</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pedido.itens.map((it) => (
                     <tr key={it.id} className="border-t border-slate-100">
                       <td className="px-3 py-2 text-slate-700">{it.descricao || 'Item'}</td>
-                      <td className="px-3 py-2 text-right text-slate-600">{it.quantidade}</td>
-                      <td className="px-3 py-2 text-right text-slate-600">{formatKg(it.pesoKg)}</td>
-                      <td className="px-3 py-2 text-right text-slate-600">{formatBRL(it.valorUnitario)}</td>
-                      <td className="px-3 py-2 text-right font-semibold text-slate-800">
+                      <td className="px-3 py-2 text-right text-slate-700">{it.quantidade}</td>
+                      <td className="px-3 py-2 text-right text-slate-700">{formatKg(it.pesoKg)}</td>
+                      <td className="px-3 py-2 text-right text-slate-700">{formatBRL(it.valorUnitario)}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-slate-900">
                         {formatBRL(it.quantidade * it.valorUnitario)}
                       </td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-xs">
-                    <td className="px-3 py-2 text-slate-500" colSpan={2}>Totais</td>
-                    <td className="px-3 py-2 text-right text-slate-600">
+                  <tr className="border-t border-slate-300 bg-slate-50 font-semibold text-xs">
+                    <td className="px-3 py-2 text-slate-700" colSpan={2}>Totais</td>
+                    <td className="px-3 py-2 text-right text-slate-900">
                       {formatKg(pesoEfetivoKg(pedido))}
                       {pesoEfetivoKg(pedido) !== pesoTotalItens(pedido.itens) && (
-                        <span className="block text-[10px] font-normal text-slate-400">SMBI · pedido: {formatKg(pesoTotalItens(pedido.itens))}</span>
+                        <span className="block text-xs font-normal text-slate-500">SMBI · pedido: {formatKg(pesoTotalItens(pedido.itens))}</span>
                       )}
                     </td>
                     <td />
@@ -277,37 +265,37 @@ export function OrderDetailDialog({
             </div>
           )}
 
-          {/* Payment/freight/obs */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-sm text-amber-800">
+          {/* Condições */}
+          <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3 text-sm">
             <div>
-              <p className="text-[10px] font-semibold text-amber-500 uppercase">F. Pagamento</p>
-              <p>{pedido.prazoPagamentoSal || '--'}</p>
+              <dt className="text-xs text-slate-500">Forma de pagamento</dt>
+              <dd className="text-slate-900">{pedido.prazoPagamentoSal || '--'}</dd>
             </div>
             <div>
-              <p className="text-[10px] font-semibold text-amber-500 uppercase">Prazo frete</p>
-              <p>{pedido.prazoPagamentoFrete || '--'}</p>
+              <dt className="text-xs text-slate-500">Prazo do frete</dt>
+              <dd className="text-slate-900">{pedido.prazoPagamentoFrete || '--'}</dd>
             </div>
             {frete > 0 && (
               <div>
-                <p className="text-[10px] font-semibold text-amber-500 uppercase">Frete total</p>
-                <p>{formatBRL(frete)}</p>
+                <dt className="text-xs text-slate-500">Frete total</dt>
+                <dd className="tabular-nums text-slate-900">{formatBRL(frete)}</dd>
               </div>
             )}
             {pedido.observacoes && (
               <div className="col-span-2 sm:col-span-3">
-                <p className="text-[10px] font-semibold text-amber-500 uppercase">Obs</p>
-                <p>{pedido.observacoes}</p>
+                <dt className="text-xs text-slate-500">Observações</dt>
+                <dd className="whitespace-pre-wrap text-slate-900">{pedido.observacoes}</dd>
               </div>
             )}
-          </div>
+          </dl>
 
-          {/* Totals */}
-          <div className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5">
-            <span className="text-sm text-blue-800">
-              Comissao {pedido.comissaoPct}%: <strong>{formatBRL(comissao)}</strong>
-              {notaPesoFaturado(pedido) && <span className="block text-[11px] font-normal text-blue-700">{notaPesoFaturado(pedido)}</span>}
+          {/* Totais */}
+          <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-3">
+            <span className="text-sm text-slate-700">
+              Comissão {pedido.comissaoPct}%: <strong className="font-semibold tabular-nums text-slate-900">{formatBRL(comissao)}</strong>
+              {notaPesoFaturado(pedido) && <span className="block text-xs font-normal text-slate-500">{notaPesoFaturado(pedido)}</span>}
             </span>
-            <span className="text-lg font-bold text-blue-900">{formatBRL(total)}</span>
+            <span className="text-base font-semibold tabular-nums text-slate-900">Total {formatBRL(total)}</span>
           </div>
         </div>
 
@@ -315,7 +303,7 @@ export function OrderDetailDialog({
           <Button
             variant="outline"
             size="sm"
-            className="text-red-600 border-red-200 hover:bg-red-50 gap-1.5"
+            className="text-red-700 gap-1.5 sm:mr-auto"
             onClick={onDelete}
           >
             <Trash2 size={14} />
@@ -335,7 +323,7 @@ export function OrderDetailDialog({
           {canApprove && !pedido.aprovadoEm && (
             <Button
               size="sm"
-              className="bg-blue-600 hover:bg-blue-700 gap-1.5"
+              className="gap-1.5"
               onClick={handleAprovar}
               disabled={aprovando}
             >
@@ -347,7 +335,7 @@ export function OrderDetailDialog({
           {!isFaturado && (
             <Button
               size="sm"
-              className="bg-emerald-600 hover:bg-emerald-700 gap-1.5"
+              className="gap-1.5"
               onClick={onInvoice}
             >
               <Truck size={14} />
@@ -358,14 +346,14 @@ export function OrderDetailDialog({
             <Button
               size="sm"
               variant="outline"
-              className="gap-1.5 text-amber-700 border-amber-300 hover:bg-amber-50"
+              className="gap-1.5"
               onClick={handleDesfazer}
             >
               <Undo2 size={14} />
               Desfazer faturamento
             </Button>
           )}
-          <Button size="sm" className="gap-1.5" onClick={onEdit}>
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={onEdit}>
             <Pencil size={14} />
             Editar pedido
           </Button>

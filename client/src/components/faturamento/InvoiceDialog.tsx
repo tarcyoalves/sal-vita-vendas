@@ -71,14 +71,14 @@ export function InvoiceDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[92dvh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Faturar pedido</DialogTitle>
+          <DialogTitle className="text-base">Faturar pedido</DialogTitle>
           <DialogDescription>
-            Ajuste as quantidades e valores reais embarcados. Estes dados serao registrados como faturamento.
+            Ajuste as quantidades e valores reais embarcados. Estes dados serão registrados como faturamento.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="text-sm text-slate-600">
+          <div className="text-sm text-slate-700">
             <span className="font-medium">Cliente:</span>{' '}
             {pedido.clienteNome}
             {pedido.cidade && ` - ${pedido.cidade}`}
@@ -87,7 +87,7 @@ export function InvoiceDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="inv-data" className="text-xs">
-              Data do faturamento/embarque <span className="text-red-500">*</span>
+              Data do faturamento/embarque <span className="text-red-700" aria-hidden>*</span>
             </Label>
             <Input
               id="inv-data"
@@ -97,7 +97,7 @@ export function InvoiceDialog({
               className="text-sm"
               required
             />
-            <p className="text-[11px] text-slate-500">
+            <p className="text-xs text-slate-500">
               Define o mês da comissão a pagar. Use a data real do embarque, mesmo que
               o lançamento esteja sendo feito depois.
             </p>
@@ -106,58 +106,31 @@ export function InvoiceDialog({
           {/* Items editor (real values) */}
           <OrderItemsEditor itens={itensReais} onChange={setItensReais} />
 
-          {/* Comparison */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-center">
-              <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">
-                Estimado
-              </p>
-              <p className="text-base font-bold text-amber-700">
-                {formatBRL(estimadoTotal)}
-              </p>
+          {/* Comparação */}
+          <dl className="grid grid-cols-3 gap-3 border-t border-slate-200 pt-3 text-sm tabular-nums">
+            <div>
+              <dt className="text-xs text-slate-500">Estimado</dt>
+              <dd className="text-base font-semibold text-slate-900">{formatBRL(estimadoTotal)}</dd>
             </div>
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-center">
-              <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wide">
-                Faturado
-              </p>
-              <p className="text-base font-bold text-emerald-700">
-                {formatBRL(realTotal)}
-              </p>
+            <div>
+              <dt className="text-xs text-slate-500">Faturado</dt>
+              <dd className="text-base font-semibold text-slate-900">{formatBRL(realTotal)}</dd>
             </div>
-            <div
-              className={`rounded-xl px-3 py-2 text-center border ${
-                delta >= 0
-                  ? 'bg-blue-50 border-blue-200'
-                  : 'bg-red-50 border-red-200'
-              }`}
-            >
-              <p
-                className={`text-[10px] font-semibold uppercase tracking-wide ${
-                  delta >= 0 ? 'text-blue-600' : 'text-red-600'
-                }`}
-              >
-                Diferenca
-              </p>
-              <p
-                className={`text-base font-bold ${
-                  delta >= 0 ? 'text-blue-700' : 'text-red-700'
-                }`}
-              >
+            <div>
+              <dt className="text-xs text-slate-500">Diferença</dt>
+              <dd className={`text-base font-semibold ${delta >= 0 ? 'text-slate-900' : 'text-red-700'}`}>
                 {delta >= 0 ? '+' : ''}
                 {formatBRL(delta)}
-              </p>
+              </dd>
             </div>
-          </div>
+          </dl>
         </div>
 
         <DialogFooter className="gap-2 pt-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button
-            onClick={handleConfirm}
-            className="bg-emerald-600 hover:bg-emerald-700"
-          >
+          <Button onClick={handleConfirm}>
             Confirmar faturamento
           </Button>
         </DialogFooter>

@@ -63,11 +63,11 @@ export function MessageTemplateDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button type="button" variant="outline" size="sm" className="h-8 text-xs gap-1.5">
-          <MessageSquareText size={13} /> Minha mensagem
+        <Button type="button" variant="outline" size="sm" className="gap-1.5">
+          <MessageSquareText size={14} aria-hidden /> Minha mensagem
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Minha mensagem padrão</DialogTitle>
           <DialogDescription>
@@ -86,22 +86,22 @@ export function MessageTemplateDialog() {
             aria-label="Texto da mensagem padrão"
           />
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] text-slate-500">Inserir:</span>
+            <span className="text-xs text-slate-500">Inserir:</span>
             {CONTACT_TEMPLATE_FIELDS.map((f) => (
               <button
                 key={f.key}
                 type="button"
                 onClick={() => insertField(f.key)}
                 title={f.label}
-                className="rounded-full border border-slate-300 bg-white px-2.5 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
+                className="rounded-md border border-slate-300 bg-white px-2 py-1 max-md:py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
               >
                 {`{${f.key}}`}
               </button>
             ))}
           </div>
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5">
-            <p className="text-[11px] font-semibold text-emerald-800 mb-1">Como vai aparecer (exemplo)</p>
-            <p className="text-xs text-emerald-900 whitespace-pre-wrap">{preview}</p>
+          <div className="rounded-md bg-green-50 p-3">
+            <p className="text-xs font-medium text-green-800 mb-1">Como vai aparecer (exemplo)</p>
+            <p className="text-sm text-green-900 whitespace-pre-wrap">{preview}</p>
           </div>
         </div>
 

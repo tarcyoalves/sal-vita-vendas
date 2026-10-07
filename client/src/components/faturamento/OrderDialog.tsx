@@ -232,12 +232,12 @@ export function OrderDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[92dvh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
-          <DialogTitle>
+          <DialogTitle className="text-base">
             {existingPedidoId ? 'Editar pedido' : 'Novo pedido (estimativa)'}
-            {task && <span className="text-blue-600 text-sm font-normal ml-2">Tarefa #{task.id}</span>}
+            {task && <span className="text-brand-700 text-sm font-normal ml-2">Tarefa #{task.id}</span>}
           </DialogTitle>
           <DialogDescription>
-            Preencha os dados do cliente e os itens do pedido. Selecione os produtos do catalogo.
+            Preencha os dados do cliente, os itens e as condições do pedido. Selecione os produtos do catálogo.
           </DialogDescription>
         </DialogHeader>
 
@@ -245,6 +245,7 @@ export function OrderDialog({
             inteira para caber a tabela de itens — o scroll fica contido nela. */}
         <div className="space-y-4 min-w-0">
           {/* Client fields */}
+          <h3 className="text-sm font-semibold text-slate-900">Cliente</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="od-cliente">Cliente</Label>
@@ -265,10 +266,10 @@ export function OrderDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="od-razao">Razao Social</Label>
+              <Label htmlFor="od-razao">Razão social</Label>
               <Input
                 id="od-razao"
-                placeholder="Razao Social"
+                placeholder="Razão social"
                 value={razaoSocial}
                 onChange={(e) => setRazaoSocial(e.target.value)}
               />
@@ -300,11 +301,11 @@ export function OrderDialog({
           <OrderItemsEditor itens={itens} onChange={setItens} />
 
           {/* Payment & freight info */}
-          <div className="space-y-3 bg-slate-50 border border-slate-200 rounded-xl p-3">
-            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Condicoes e Frete</p>
+          <div className="space-y-3 border-t border-slate-200 pt-4">
+            <h3 className="text-sm font-semibold text-slate-900">Condições e frete</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="od-prazo-sal" className="text-xs">Prazo pagamento sal <span className="text-red-500">*</span></Label>
+                <Label htmlFor="od-prazo-sal" className="text-xs">Prazo pagamento sal <span className="text-red-700" aria-hidden>*</span></Label>
                 <select
                   id="od-prazo-sal"
                   value={prazoPagamentoSal}
@@ -312,7 +313,7 @@ export function OrderDialog({
                     setPrazoPagamentoSal(e.target.value);
                     setSmbiCondpagSalCod(codParaDescricao(e.target.value));
                   }}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/20 focus-visible:border-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
                   required
                 >
                   <option value="" disabled>Selecione…</option>
@@ -327,7 +328,7 @@ export function OrderDialog({
                 </select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="od-prazo-frete" className="text-xs">Prazo pagamento frete <span className="text-red-500">*</span></Label>
+                <Label htmlFor="od-prazo-frete" className="text-xs">Prazo pagamento frete <span className="text-red-700" aria-hidden>*</span></Label>
                 <select
                   id="od-prazo-frete"
                   value={prazoPagamentoFrete}
@@ -335,7 +336,7 @@ export function OrderDialog({
                     setPrazoPagamentoFrete(e.target.value);
                     setSmbiCondpagFreteCod(codParaDescricao(e.target.value));
                   }}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/20 focus-visible:border-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
                   required
                 >
                   <option value="" disabled>Selecione…</option>
@@ -362,7 +363,7 @@ export function OrderDialog({
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="od-previsao" className="text-xs">
-                  Previsão de faturamento/embarque <span className="text-red-500">*</span>
+                  Previsão de faturamento/embarque <span className="text-red-700" aria-hidden>*</span>
                 </Label>
                 <Input
                   id="od-previsao"
@@ -372,17 +373,17 @@ export function OrderDialog({
                   className="text-sm"
                   required
                 />
-                <p className="text-[11px] text-slate-500">
+                <p className="text-xs text-slate-500">
                   Define o mês da comissão estimada. Pedido fechado agora para embarcar
                   no mês seguinte conta no mês do embarque.
                 </p>
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="od-obs" className="text-xs">Observacoes</Label>
+              <Label htmlFor="od-obs" className="text-xs">Observações</Label>
               <Textarea
                 id="od-obs"
-                placeholder="Informacoes adicionais do pedido..."
+                placeholder="Informações adicionais do pedido"
                 value={observacoes}
                 onChange={(e) => setObservacoes(e.target.value)}
                 rows={3}
@@ -401,11 +402,11 @@ export function OrderDialog({
 
           {/* Commission line */}
           {seller && (
-            <div className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5">
-              <span className="text-sm text-blue-800">
-                Comissao: <strong>{comissaoPct}%</strong>
+            <div className="flex items-center justify-between border-t border-slate-200 pt-3">
+              <span className="text-sm text-slate-700">
+                Comissão: <strong className="font-semibold">{comissaoPct}%</strong>
               </span>
-              <span className="text-sm font-bold text-blue-900">
+              <span className="text-sm font-semibold tabular-nums text-slate-900">
                 {formatBRL(comissaoValor)}
               </span>
             </div>
@@ -417,7 +418,7 @@ export function OrderDialog({
             Cancelar
           </Button>
           <Button onClick={handleSave}>
-            {effectiveId ? 'Salvar alteracoes' : 'Criar pedido'}
+            {effectiveId ? 'Salvar alterações' : 'Criar pedido'}
           </Button>
         </DialogFooter>
       </DialogContent>

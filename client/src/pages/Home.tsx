@@ -3,11 +3,46 @@ import { trpc } from '../lib/trpc';
 import { useLocation } from 'wouter';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { KeyRound, X } from 'lucide-react';
+import { X } from 'lucide-react';
+import SalVitaLogo from '../components/SalVitaLogo';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+
+function Overlay({ title, onClose, children }: { title: string; onClose?: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 pt-[10vh]">
+      <div role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-sm max-h-[85dvh] overflow-y-auto rounded-lg border border-slate-200 bg-white p-5 shadow-xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+          {onClose && (
+            <Button type="button" variant="ghost" size="icon-sm" onClick={onClose} aria-label="Fechar">
+              <X size={16} />
+            </Button>
+          )}
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Field({ id, label, children }: { id: string; label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      {children}
+    </div>
+  );
+}
 
 export default function Home() {
   const { user, loading, isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    document.title = "Entrar · Sal Vita CRM";
+  }, []);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -66,260 +101,218 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-brand-deep">
-        <div className="text-white text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4" />
-          <p>Carregando...</p>
+      <div className="min-h-dvh flex items-center justify-center bg-slate-50">
+        <div className="text-center text-slate-500">
+          <div className="animate-spin rounded-full h-6 w-6 border-2 border-slate-300 border-t-brand-700 mx-auto mb-3" />
+          <p className="text-sm">Carregando...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-dvh flex items-center justify-center bg-[#081F47] relative p-4 overflow-y-auto">
-      {/* Subtle radial glow background */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/30 via-[#081F47] to-[#05132d] pointer-events-none" />
-
-      <div className="relative z-10 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-white/20 p-8 w-full max-w-md transition-all">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center p-2 bg-slate-50 rounded-2xl border border-slate-100 shadow-xs mb-4">
-            <img
-              src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
-              alt="Sal Vita"
-              style={{ height: "48px", width: "auto" }}
-              className="object-contain rounded-lg"
-            />
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Lembretes & CRM</h1>
-          <p className="text-slate-500 text-sm mt-1">Acesse sua conta profissional Sal Vita</p>
+    <div className="min-h-dvh flex flex-col items-center justify-center bg-slate-50 p-4 overflow-y-auto">
+      <div className="w-full max-w-sm">
+        <div className="mb-6 flex flex-col items-center text-center">
+          <SalVitaLogo className="h-20 w-auto" />
+          <h1 className="mt-4 text-xl font-semibold tracking-tight text-slate-900">Entrar no CRM</h1>
+          <p className="mt-1 text-sm text-slate-500">Use o e-mail e a senha da sua conta Sal Vita.</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">E-mail</label>
-            <input
-              type="email"
-              inputMode="email"
-              autoComplete="username"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="seu@email.com"
-              required
-              className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680] transition-all shadow-xs"
-            />
-          </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-5">
+          <form onSubmit={handleLogin} className="space-y-4">
+            <Field id="login-email" label="E-mail">
+              <Input
+                id="login-email"
+                type="email"
+                inputMode="email"
+                autoComplete="username"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="seu@email.com"
+                required
+              />
+            </Field>
 
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">Senha</label>
-              <button
-                type="button"
-                onClick={() => { setShowRecovery(true); setRecoveryResult(null); setEmailSent(false); setRecoveryMode('email'); }}
-                className="text-xs text-[#0C3680] hover:text-[#081F47] font-medium hover:underline transition-all"
-              >
-                Esqueci minha senha
-              </button>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="login-password">Senha</Label>
+                <button
+                  type="button"
+                  onClick={() => { setShowRecovery(true); setRecoveryResult(null); setEmailSent(false); setRecoveryMode('email'); }}
+                  className="text-xs font-medium text-brand-700 hover:underline py-1"
+                >
+                  Esqueci minha senha
+                </button>
+              </div>
+              <Input
+                id="login-password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+              />
             </div>
-            <input
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680] transition-all shadow-xs"
-            />
-          </div>
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full py-2.5 px-4 bg-[#0C3680] hover:bg-[#081F47] text-white font-medium rounded-lg text-sm transition-all duration-150 shadow-sm hover:shadow active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
-          >
-            {submitting ? (
-              <>
-                <span className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white" />
-                Entrando...
-              </>
-            ) : 'Entrar no Sistema'}
-          </button>
-        </form>
+            {loginMutation.isError && (
+              <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+                {loginMutation.error?.message || 'Não foi possível entrar. Confira o e-mail e a senha.'}
+              </p>
+            )}
 
-        <div className="pt-6 mt-6 border-t border-slate-100 text-center">
-          <p className="text-xs text-slate-400 font-medium">
-            Sal Vita — Plataforma Inteligente de Vendas & CRM
-          </p>
+            <Button type="submit" disabled={submitting} size="lg" className="w-full">
+              {submitting ? (
+                <>
+                  <span className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white" />
+                  Entrando...
+                </>
+              ) : 'Entrar'}
+            </Button>
+          </form>
         </div>
+
+        <p className="mt-4 text-center text-xs text-slate-500">Sal Vita — Lembretes e CRM de vendas</p>
       </div>
 
       {/* Reset password via token (from email link) */}
       {resetToken && !resetSuccess && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center pt-[10vh] overflow-y-auto p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm max-h-[85dvh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <KeyRound size={18} className="text-blue-600" />
-                <h2 className="font-semibold text-gray-800">Nova Senha</h2>
-              </div>
-              <button onClick={() => setResetToken('')} className="text-gray-400 hover:text-gray-600 p-2 -m-2 min-h-[44px] min-w-[44px] flex items-center justify-center" aria-label="Fechar">
-                <X size={18} />
-              </button>
-            </div>
-            <form
-              onSubmit={async e => {
-                e.preventDefault();
-                if (newPassword !== confirmPassword) {
-                  toast.error('As senhas não coincidem');
-                  return;
-                }
-                setResetting(true);
-                try {
-                  await resetWithTokenMutation.mutateAsync({ token: resetToken, newPassword });
-                  setResetSuccess(true);
-                  setResetToken('');
-                  toast.success('Senha redefinida com sucesso!');
-                } catch (err: any) {
-                  toast.error(err?.message ?? 'Erro ao redefinir senha');
-                } finally {
-                  setResetting(false);
-                }
-              }}
-              className="space-y-3"
-            >
-              <p className="text-sm text-gray-500">Defina sua nova senha abaixo.</p>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nova senha</label>
-                <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required minLength={6} className="w-full px-3 py-3 border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="Mínimo 6 caracteres" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar senha</label>
-                <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required minLength={6} className="w-full px-3 py-3 border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="Repita a senha" />
-              </div>
-              <button type="submit" disabled={resetting} className="w-full py-3 bg-brand hover:bg-brand-deep text-white rounded-lg text-sm font-semibold transition disabled:opacity-50">
-                {resetting ? 'Salvando...' : 'Salvar nova senha'}
-              </button>
-            </form>
-          </div>
-        </div>
+        <Overlay title="Nova senha" onClose={() => setResetToken('')}>
+          <form
+            onSubmit={async e => {
+              e.preventDefault();
+              if (newPassword !== confirmPassword) {
+                toast.error('As senhas não coincidem');
+                return;
+              }
+              setResetting(true);
+              try {
+                await resetWithTokenMutation.mutateAsync({ token: resetToken, newPassword });
+                setResetSuccess(true);
+                setResetToken('');
+                toast.success('Senha redefinida com sucesso!');
+              } catch (err: any) {
+                toast.error(err?.message ?? 'Erro ao redefinir senha');
+              } finally {
+                setResetting(false);
+              }
+            }}
+            className="space-y-4"
+          >
+            <p className="text-sm text-slate-500">Defina sua nova senha abaixo.</p>
+            <Field id="reset-new" label="Nova senha">
+              <Input id="reset-new" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required minLength={6} placeholder="Mínimo 6 caracteres" />
+            </Field>
+            <Field id="reset-confirm" label="Confirmar senha">
+              <Input id="reset-confirm" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required minLength={6} placeholder="Repita a senha" />
+            </Field>
+            <Button type="submit" disabled={resetting} className="w-full">
+              {resetting ? 'Salvando...' : 'Salvar nova senha'}
+            </Button>
+          </form>
+        </Overlay>
       )}
 
       {/* Success after reset */}
       {resetSuccess && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center pt-[10vh] overflow-y-auto p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm max-h-[85dvh] overflow-y-auto text-center space-y-4">
-            <h2 className="font-bold text-lg text-green-700">Senha redefinida!</h2>
-            <p className="text-sm text-gray-600">Sua nova senha está pronta. Faça login abaixo.</p>
-            <button onClick={() => setResetSuccess(false)} className="w-full py-3 bg-brand hover:bg-brand-deep text-white rounded-lg text-sm font-semibold">
+        <Overlay title="Senha redefinida">
+          <div className="space-y-4">
+            <p className="text-sm text-slate-500">Sua nova senha está pronta. Faça login abaixo.</p>
+            <Button onClick={() => setResetSuccess(false)} className="w-full">
               Fazer login
-            </button>
+            </Button>
           </div>
-        </div>
+        </Overlay>
       )}
 
       {/* Recovery modal (email + emergency secret) */}
       {showRecovery && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center pt-[10vh] overflow-y-auto p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm max-h-[85dvh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <KeyRound size={18} className="text-blue-600" />
-                <h2 className="font-semibold text-gray-800">Recuperar Senha</h2>
-              </div>
-              <button onClick={() => setShowRecovery(false)} className="text-gray-400 hover:text-gray-600 p-2 -m-2 min-h-[44px] min-w-[44px] flex items-center justify-center" aria-label="Fechar">
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Tab switch */}
-            <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1">
-              <button type="button" onClick={() => setRecoveryMode('email')} className={`flex-1 py-2.5 text-sm font-semibold rounded-md transition ${recoveryMode === 'email' ? 'bg-white shadow text-blue-700' : 'text-gray-500'}`}>
-                Via E-mail
-              </button>
-              <button type="button" onClick={() => setRecoveryMode('secret')} className={`flex-1 py-2.5 text-sm font-semibold rounded-md transition ${recoveryMode === 'secret' ? 'bg-white shadow text-orange-700' : 'text-gray-500'}`}>
-                Chave Secreta
-              </button>
-            </div>
-
-            {recoveryMode === 'email' ? (
-              emailSent ? (
-                <div className="space-y-3 text-center">
-                  <p className="text-sm text-green-700 font-medium">E-mail de recuperação enviado!</p>
-                  <p className="text-sm text-gray-500">Verifique sua caixa de entrada (e spam) para o link de redefinição. O link expira em 30 minutos.</p>
-                  <button onClick={() => { setShowRecovery(false); setEmailSent(false); }} className="w-full py-3 bg-blue-700 text-white rounded-lg text-sm font-medium hover:bg-blue-800">
-                    Fechar
-                  </button>
-                </div>
-              ) : (
-                <form
-                  onSubmit={async e => {
-                    e.preventDefault();
-                    setRecovering(true);
-                    try {
-                      await requestResetMutation.mutateAsync({ email: recoveryEmail });
-                      setEmailSent(true);
-                    } catch (err: any) {
-                      toast.error(err?.message ?? 'Erro ao solicitar recuperação');
-                    } finally {
-                      setRecovering(false);
-                    }
-                  }}
-                  className="space-y-3"
-                >
-                  <p className="text-sm text-gray-500">Insira seu e-mail cadastrado. Enviaremos um link para redefinir sua senha.</p>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
-                    <input type="email" value={recoveryEmail} onChange={e => setRecoveryEmail(e.target.value)} required className="w-full px-3 py-3 border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="seu@email.com" />
-                  </div>
-                  <button type="submit" disabled={recovering} className="w-full py-3 bg-brand hover:bg-brand-deep text-white rounded-lg text-sm font-semibold transition disabled:opacity-50">
-                    {recovering ? 'Enviando...' : 'Enviar link de recuperação'}
-                  </button>
-                </form>
-              )
-            ) : (
-              recoveryResult ? (
-                <div className="space-y-3">
-                  <p className="text-sm text-green-700 font-medium">Senha redefinida para <strong>{recoveryResult.name}</strong>:</p>
-                  <div className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-3 text-center">
-                    <p className="font-mono text-lg font-bold text-orange-700 tracking-widest">{recoveryResult.generatedPassword}</p>
-                  </div>
-                  <p className="text-sm text-gray-500">Anote esta senha — ela não será exibida novamente.</p>
-                  <button onClick={() => { setShowRecovery(false); setRecoveryResult(null); }} className="w-full py-3 bg-blue-700 text-white rounded-lg text-sm font-medium hover:bg-blue-800">
-                    Fechar e fazer login
-                  </button>
-                </div>
-              ) : (
-                <form
-                  onSubmit={async e => {
-                    e.preventDefault();
-                    setRecovering(true);
-                    try {
-                      const res = await emergencyResetMutation.mutateAsync({ email: recoveryEmail, secret: recoverySecret });
-                      setRecoveryResult(res);
-                    } catch (err: any) {
-                      toast.error(err?.message ?? 'Erro na recuperação');
-                    } finally {
-                      setRecovering(false);
-                    }
-                  }}
-                  className="space-y-3"
-                >
-                  <p className="text-sm text-gray-500">Insira seu email e a chave secreta configurada no servidor (ADMIN_RESET_SECRET).</p>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                    <input type="email" value={recoveryEmail} onChange={e => setRecoveryEmail(e.target.value)} required className="w-full px-3 py-3 border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="admin@empresa.com" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Chave secreta</label>
-                    <input type="password" value={recoverySecret} onChange={e => setRecoverySecret(e.target.value)} required className="w-full px-3 py-3 border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="Chave secreta do servidor" />
-                  </div>
-                  <button type="submit" disabled={recovering} className="w-full py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-semibold transition disabled:opacity-50">
-                    {recovering ? 'Verificando...' : 'Redefinir Senha'}
-                  </button>
-                </form>
-              )
-            )}
+        <Overlay title="Recuperar senha" onClose={() => setShowRecovery(false)}>
+          <div className="mb-4 flex gap-1 rounded-md bg-slate-100 p-1" role="tablist">
+            <button type="button" role="tab" aria-selected={recoveryMode === 'email'} onClick={() => setRecoveryMode('email')} className={`flex-1 rounded-sm py-2 text-sm font-medium transition-colors ${recoveryMode === 'email' ? 'bg-white text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
+              Por e-mail
+            </button>
+            <button type="button" role="tab" aria-selected={recoveryMode === 'secret'} onClick={() => setRecoveryMode('secret')} className={`flex-1 rounded-sm py-2 text-sm font-medium transition-colors ${recoveryMode === 'secret' ? 'bg-white text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
+              Chave secreta
+            </button>
           </div>
-        </div>
+
+          {recoveryMode === 'email' ? (
+            emailSent ? (
+              <div className="space-y-4">
+                <p className="text-sm font-medium text-green-700">E-mail de recuperação enviado.</p>
+                <p className="text-sm text-slate-500">Verifique sua caixa de entrada (e spam) para o link de redefinição. O link expira em 30 minutos.</p>
+                <Button onClick={() => { setShowRecovery(false); setEmailSent(false); }} className="w-full">
+                  Fechar
+                </Button>
+              </div>
+            ) : (
+              <form
+                onSubmit={async e => {
+                  e.preventDefault();
+                  setRecovering(true);
+                  try {
+                    await requestResetMutation.mutateAsync({ email: recoveryEmail });
+                    setEmailSent(true);
+                  } catch (err: any) {
+                    toast.error(err?.message ?? 'Erro ao solicitar recuperação');
+                  } finally {
+                    setRecovering(false);
+                  }
+                }}
+                className="space-y-4"
+              >
+                <p className="text-sm text-slate-500">Insira seu e-mail cadastrado. Enviaremos um link para redefinir sua senha.</p>
+                <Field id="rec-email" label="E-mail">
+                  <Input id="rec-email" type="email" value={recoveryEmail} onChange={e => setRecoveryEmail(e.target.value)} required placeholder="seu@email.com" />
+                </Field>
+                <Button type="submit" disabled={recovering} className="w-full">
+                  {recovering ? 'Enviando...' : 'Enviar link de recuperação'}
+                </Button>
+              </form>
+            )
+          ) : (
+            recoveryResult ? (
+              <div className="space-y-4">
+                <p className="text-sm text-slate-700">Senha redefinida para <strong>{recoveryResult.name}</strong>:</p>
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-center">
+                  <p className="select-all text-base font-semibold text-amber-800">{recoveryResult.generatedPassword}</p>
+                </div>
+                <p className="text-sm text-slate-500">Anote esta senha — ela não será exibida novamente.</p>
+                <Button onClick={() => { setShowRecovery(false); setRecoveryResult(null); }} className="w-full">
+                  Fechar e fazer login
+                </Button>
+              </div>
+            ) : (
+              <form
+                onSubmit={async e => {
+                  e.preventDefault();
+                  setRecovering(true);
+                  try {
+                    const res = await emergencyResetMutation.mutateAsync({ email: recoveryEmail, secret: recoverySecret });
+                    setRecoveryResult(res);
+                  } catch (err: any) {
+                    toast.error(err?.message ?? 'Erro na recuperação');
+                  } finally {
+                    setRecovering(false);
+                  }
+                }}
+                className="space-y-4"
+              >
+                <p className="text-sm text-slate-500">Insira seu email e a chave secreta configurada no servidor (ADMIN_RESET_SECRET).</p>
+                <Field id="sec-email" label="E-mail">
+                  <Input id="sec-email" type="email" value={recoveryEmail} onChange={e => setRecoveryEmail(e.target.value)} required placeholder="admin@empresa.com" />
+                </Field>
+                <Field id="sec-key" label="Chave secreta">
+                  <Input id="sec-key" type="password" value={recoverySecret} onChange={e => setRecoverySecret(e.target.value)} required placeholder="Chave secreta do servidor" />
+                </Field>
+                <Button type="submit" disabled={recovering} className="w-full">
+                  {recovering ? 'Verificando...' : 'Redefinir senha'}
+                </Button>
+              </form>
+            )
+          )}
+        </Overlay>
       )}
     </div>
   );

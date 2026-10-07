@@ -1,4 +1,4 @@
-import { AlertTriangle, Database } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { trpc } from '../../lib/trpc';
 
 /**
@@ -11,9 +11,9 @@ export function BaseStatusCard({ isAdmin }: { isAdmin: boolean }) {
 
   if (data.datasetRelease === null) {
     return (
-      <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+      <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         <p className="flex items-center gap-2 font-semibold">
-          <AlertTriangle size={16} /> Base de empresas da Receita ainda não importada
+          <AlertTriangle size={16} aria-hidden /> Base de empresas da Receita ainda não importada
         </p>
         <p className="mt-1 text-xs">
           Por isso "Empresas novas" não encontra ninguém. A aba <strong>Minha carteira</strong> funciona agora, com os
@@ -27,17 +27,13 @@ export function BaseStatusCard({ isAdmin }: { isAdmin: boolean }) {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs text-slate-600">
-      <span className="flex items-center gap-1.5 font-semibold text-slate-700">
-        <Database size={14} className="text-blue-900" /> Base da Receita {data.datasetRelease}
-      </span>
+    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+      <span className="font-medium text-slate-700">Base da Receita {data.datasetRelease}</span>
       <span>{data.total.toLocaleString('pt-BR')} empresas</span>
-      <span className="text-slate-500">
-        {data.porUf.slice(0, 8).map((u) => `${u.uf} ${u.count.toLocaleString('pt-BR')}`).join(' · ')}
-      </span>
-      <span className={data.enricherOnline ? 'text-emerald-700' : 'text-amber-700'}>
+      <span>{data.porUf.slice(0, 8).map((u) => `${u.uf} ${u.count.toLocaleString('pt-BR')}`).join(' · ')}</span>
+      <span className={data.enricherOnline ? 'text-green-700' : 'text-amber-700'}>
         Robô de busca na web: {data.enricherOnline ? 'ligado' : 'desligado'}
       </span>
-    </div>
+    </p>
   );
 }

@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { ExternalLink, MessageCircle, Phone } from 'lucide-react';
 import { Link } from 'wouter';
 import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
+import { EmptyState, Panel } from '../layout/Page';
 import { useAuth } from '../../_core/hooks/useAuth';
 import { defaultContactMessage } from './contactMessage';
 import { useContactTemplate } from './useContactTemplate';
@@ -39,18 +41,18 @@ export function CarteiraList({
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-slate-700">
         {result.itens.length} {result.itens.length === 1 ? 'cliente/lead' : 'clientes/leads'} do CRM em {result.municipalitiesInRadius}{' '}
         {result.municipalitiesInRadius === 1 ? 'município' : 'municípios'} · distância em linha reta
       </p>
-      {result.truncated && <p className="text-xs text-amber-600">Mostrando apenas os 300 mais próximos.</p>}
+      {result.truncated && <p className="text-xs text-amber-700">Mostrando apenas os 300 mais próximos.</p>}
       {result.semLocalizacao > 0 && (
         <p className="text-xs text-slate-500">
           {result.semLocalizacao} registro(s) da região ficaram de fora porque o nome da cidade não bate com o mapa (ex.: erro de digitação).
         </p>
       )}
 
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-1.5 border-b border-slate-200 pb-3">
         {([
           ['todos', 'Todos'],
           ['compraram', 'Já compraram'],
@@ -60,8 +62,9 @@ export function CarteiraList({
             key={key}
             type="button"
             onClick={() => setFiltro(key)}
-            className={`px-3 py-1 rounded-full text-xs font-semibold border transition ${
-              filtro === key ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+            aria-pressed={filtro === key}
+            className={`h-8 max-md:h-10 rounded-md border px-3 text-xs font-medium transition-colors ${
+              filtro === key ? 'border-brand-700 bg-brand-700 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
             }`}
           >
             {label} ({counts[key]})
@@ -70,76 +73,82 @@ export function CarteiraList({
       </div>
 
       {lista.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-8 text-center text-sm text-slate-500">
-          Ninguém do CRM neste filtro. Aumente o raio ou use a aba "Empresas novas".
-        </div>
+        <Panel>
+          <EmptyState title="Ninguém do CRM neste filtro" description={'Aumente o raio ou use a aba "Empresas novas".'} />
+        </Panel>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {lista.map((i) => <CarteiraCard key={i.chave} item={i} mensagem={mensagem} />)}
-        </div>
+        <Panel>
+          <div className="divide-y divide-slate-200">
+            {lista.map((i) => <CarteiraCard key={i.chave} item={i} mensagem={mensagem} />)}
+          </div>
+        </Panel>
       )}
     </div>
   );
 }
 
 function CarteiraCard({ item, mensagem }: { item: RadarCarteiraItem; mensagem: string }) {
+  const compra =
+    item.faturados > 0
+      ? { variant: 'success' as const, text: `Já comprou ${item.faturados}× · última ${dataBr(item.ultimaCompraEm)} · ${brl(item.totalFaturado)}` }
+      : item.pedidos > 0
+        ? { variant: 'warning' as const, text: `${item.pedidos} pedido(s) ainda não faturado(s)` }
+        : item.fontes.includes('cliente')
+          ? { variant: 'info' as const, text: 'Cliente cadastrado' }
+          : null;
+  const meta = [
+    `${item.cidade}/${item.uf} · ${item.distanceKm.toLocaleString('pt-BR')} km`,
+    item.cnpj ? formatCnpj(item.cnpj) : null,
+    item.atendentes.length > 0 ? `Atendente: ${item.atendentes.join(', ')}` : null,
+    // O badge mostra o pedido pendente; o cadastro não pode sumir junto.
+    item.pedidos > 0 && item.faturados === 0 && item.fontes.includes('cliente') ? 'Cliente cadastrado' : null,
+  ].filter(Boolean);
+
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2">
-      <div>
-        <p className="font-semibold text-slate-800 leading-tight">{item.nome}</p>
-        <p className="text-xs text-slate-500">
-          {item.cidade}/{item.uf} · {item.distanceKm.toLocaleString('pt-BR')} km{item.cnpj ? ` · ${formatCnpj(item.cnpj)}` : ''}
-        </p>
-      </div>
-
-      <div className="flex flex-wrap gap-1.5 text-[11px]">
-        {item.faturados > 0 ? (
-          <span className="rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 font-medium">
-            Já comprou {item.faturados}× · última {dataBr(item.ultimaCompraEm)} · {brl(item.totalFaturado)}
-          </span>
-        ) : item.pedidos > 0 ? (
-          <span className="rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 font-medium">{item.pedidos} pedido(s) ainda não faturado(s)</span>
-        ) : null}
-        {item.fontes.includes('cliente') && item.faturados === 0 && (
-          <span className="rounded-full bg-blue-100 text-blue-800 px-2 py-0.5 font-medium">Cliente cadastrado</span>
-        )}
-        {item.tarefas.length > 0 && (
-          <span className="rounded-full bg-slate-100 text-slate-700 px-2 py-0.5 font-medium">
-            {item.tarefas.some((t) => t.convertida) ? 'Lead convertido' : 'Lead em andamento'} · tarefa #{item.tarefas[0].id}
-          </span>
+    <div className="space-y-2 px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold leading-tight text-slate-900">{item.nome}</p>
+          <p className="text-xs text-slate-500">{meta.join(' · ')}</p>
+        </div>
+        {compra && (
+          <Badge variant={compra.variant} className="max-w-[55%] whitespace-normal text-right leading-tight">
+            {compra.text}
+          </Badge>
         )}
       </div>
-
-      {item.atendentes.length > 0 && <p className="text-xs text-slate-500">Atendente: {item.atendentes.join(', ')}</p>}
 
       {item.tarefas.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {item.tarefas.slice(0, 3).map((t) => (
-            <Link
-              key={t.id}
-              href={`/tasks?tarefa=${t.id}`}
-              className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-900 hover:bg-blue-100"
-            >
-              <ExternalLink size={13} /> Ir para a tarefa #{t.id}
-            </Link>
-          ))}
-        </div>
+        <p className="text-xs text-slate-600">
+          {item.tarefas.some((t) => t.convertida) ? 'Lead convertido' : 'Lead em andamento'} · tarefa #{item.tarefas[0].id}
+        </p>
       )}
 
-      {item.telefone ? (
-        <div className="flex flex-wrap gap-2 pt-1">
-          <Button asChild size="sm" className="gap-1.5 bg-emerald-600 hover:bg-emerald-700">
-            <a href={waMeLink(item.telefone, mensagem)} target="_blank" rel="noopener noreferrer">
-              <MessageCircle size={14} /> WhatsApp
-            </a>
-          </Button>
-          <Button asChild size="sm" variant="outline" className="gap-1.5">
-            <a href={`tel:+55${item.telefone.replace(/^55(?=\d{10,11}$)/, '')}`}><Phone size={14} /> {fmtTel(item.telefone)}</a>
-          </Button>
-        </div>
-      ) : (
-        <p className="text-xs text-slate-400 pt-1">Sem telefone cadastrado.</p>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        {item.telefone ? (
+          <>
+            <Button asChild size="sm" className="bg-green-600 hover:bg-green-700 active:bg-green-800">
+              <a href={waMeLink(item.telefone, mensagem)} target="_blank" rel="noopener noreferrer">
+                <MessageCircle size={14} aria-hidden /> WhatsApp
+              </a>
+            </Button>
+            <Button asChild size="sm" variant="outline">
+              <a href={`tel:+55${item.telefone.replace(/^55(?=\d{10,11}$)/, '')}`}><Phone size={14} aria-hidden /> {fmtTel(item.telefone)}</a>
+            </Button>
+          </>
+        ) : (
+          <p className="text-xs text-slate-500">Sem telefone cadastrado.</p>
+        )}
+        {item.tarefas.slice(0, 3).map((t) => (
+          <Link
+            key={t.id}
+            href={`/tasks?tarefa=${t.id}`}
+            className="inline-flex min-h-8 items-center gap-1.5 text-xs font-medium text-brand-700 hover:underline"
+          >
+            <ExternalLink size={13} aria-hidden /> Ir para a tarefa #{t.id}
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

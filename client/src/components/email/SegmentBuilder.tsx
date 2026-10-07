@@ -177,9 +177,9 @@ export function SegmentBuilder({
   };
 
   return (
-    <Card className="rounded-2xl border-slate-200">
+    <Card className="rounded-lg border-slate-200">
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-blue-900 text-base">
+        <CardTitle className="flex items-center gap-2">
           <Filter size={18} /> Segmentação dinâmica
         </CardTitle>
       </CardHeader>
@@ -187,18 +187,18 @@ export function SegmentBuilder({
         <p className="text-sm text-slate-600">
           Crie filtros combinados (lógica <strong>E</strong>) e clique <strong>Aplicar</strong> para ver
           quantos contatos da sua base (Leads importados) correspondem. Os segmentos ficam salvos no navegador
-          para reusar. <span className="text-slate-400">Campo "Último contato" = dias desde que o contato foi adicionado.</span>
+          para reusar. <span className="text-slate-500">Campo "Último contato" = dias desde que o contato foi adicionado.</span>
         </p>
 
         {filters.map(f => (
-          <div key={f.id} className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+          <div key={f.id} className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
             {filters.indexOf(f) > 0 && (
               <Badge variant="outline" className="mb-1 bg-blue-50 text-blue-700 border-blue-200 text-[10px] font-bold">
                 E
               </Badge>
             )}
             <div className="min-w-[130px] flex-1">
-              <Label className="text-[11px] text-slate-500">Campo</Label>
+              <Label className="text-xs text-slate-500">Campo</Label>
               <Select value={f.field} onValueChange={v => updateFilter(f.id, { field: v as FilterField })}>
                 <SelectTrigger className="w-full h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -209,7 +209,7 @@ export function SegmentBuilder({
               </Select>
             </div>
             <div className="min-w-[120px]">
-              <Label className="text-[11px] text-slate-500">Operador</Label>
+              <Label className="text-xs text-slate-500">Operador</Label>
               <Select value={f.operator} onValueChange={v => updateFilter(f.id, { operator: v })}>
                 <SelectTrigger className="w-full h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -220,7 +220,7 @@ export function SegmentBuilder({
               </Select>
             </div>
             <div className="min-w-[140px] flex-1">
-              <Label className="text-[11px] text-slate-500">Valor</Label>
+              <Label className="text-xs text-slate-500">Valor</Label>
               <Input
                 className="h-9"
                 value={f.value}
@@ -231,7 +231,7 @@ export function SegmentBuilder({
             <Button
               size="sm"
               variant="ghost"
-              className="text-slate-400 hover:text-red-600 h-9 w-9 p-0"
+              className="text-slate-500 hover:text-red-600 h-9 w-9 p-0"
               onClick={() => removeFilter(f.id)}
             >
               <Trash2 size={14} />
@@ -286,13 +286,13 @@ export function SegmentBuilder({
         </div>
 
         {showSaved && segments.length > 0 && (
-          <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Segmentos salvos</p>
+          <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+            <p className="text-xs font-semibold text-slate-500">Segmentos salvos</p>
             {segments.map(seg => (
               <div key={seg.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-slate-700 truncate">{seg.name}</p>
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-xs text-slate-500">
                     {seg.filters.length} filtro{seg.filters.length !== 1 ? "s" : ""} &middot;{" "}
                     {new Date(seg.createdAt).toLocaleDateString("pt-BR")}
                   </p>
@@ -304,7 +304,7 @@ export function SegmentBuilder({
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-7 w-7 p-0 text-slate-400 hover:text-red-600"
+                    className="h-7 w-7 p-0 text-slate-500 hover:text-red-600"
                     onClick={() => handleDelete(seg.id)}
                   >
                     <X size={14} />
@@ -316,7 +316,7 @@ export function SegmentBuilder({
         )}
 
         {preview && (
-          <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 space-y-2">
+          <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 space-y-2">
             <div className="flex items-center gap-2">
               <Users size={16} className="text-blue-700" />
               <span className="text-sm font-semibold text-blue-900">
@@ -325,17 +325,17 @@ export function SegmentBuilder({
             </div>
             {preview.sample.length > 0 && (
               <div className="space-y-1">
-                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Amostra</p>
+                <p className="text-xs font-semibold text-slate-500">Amostra</p>
                 {preview.sample.map((c) => (
                   <div key={c.email} className="text-xs text-slate-600 flex flex-wrap gap-x-2">
                     <span className="font-medium text-slate-800">{c.name || c.email}</span>
-                    <span className="text-slate-400">{c.email}</span>
-                    {(c.city || c.state) && <span className="text-slate-400">{[c.city, c.state].filter(Boolean).join("/")}</span>}
-                    {c.company && <span className="text-slate-400">{c.company}</span>}
+                    <span className="text-slate-500">{c.email}</span>
+                    {(c.city || c.state) && <span className="text-slate-500">{[c.city, c.state].filter(Boolean).join("/")}</span>}
+                    {c.company && <span className="text-slate-500">{c.company}</span>}
                   </div>
                 ))}
                 {preview.count > preview.sample.length && (
-                  <p className="text-[11px] text-slate-400">… e mais {preview.count - preview.sample.length}.</p>
+                  <p className="text-xs text-slate-500">… e mais {preview.count - preview.sample.length}.</p>
                 )}
               </div>
             )}
@@ -343,7 +343,7 @@ export function SegmentBuilder({
           </div>
         )}
 
-        <p className="text-[11px] text-slate-400">
+        <p className="text-xs text-slate-500">
           A contagem roda sobre a base de <strong>Leads importados</strong> (contatos de e-mail marketing).
           Os filtros ficam salvos no navegador para reuso.
         </p>

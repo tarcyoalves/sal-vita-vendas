@@ -1,20 +1,25 @@
 import { useAuth } from '../_core/hooks/useAuth';
 import { Link } from 'wouter';
 import { trpc } from '../lib/trpc';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Textarea } from '../components/ui/textarea';
+import { Skeleton } from '../components/ui/skeleton';
+import { Page, PageHeader, Panel, PanelHeader, EmptyState } from '../components/layout/Page';
+import { StatusBadge } from '../components/StatusBadge';
 
 import { useState, useMemo, useCallback, useEffect, useRef, useDeferredValue } from "react";
 import { toast } from "sonner";
 import {
-  Search, X, Bell, Phone, Timer, CheckCircle2, XCircle, Clock, Flag, PartyPopper, Flame, Mail,
-  AlertTriangle, Trash2, ClipboardList, MessageCircle, Package, Boxes, Tag, MailCheck, RefreshCw,
+  Search, X, Bell, Phone, Timer, Flame, Mail, Info, Plus, Upload, Pencil,
+  Trash2, ClipboardList, MessageCircle, Package, Boxes, Tag, MailCheck, RefreshCw,
 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '../components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
@@ -83,19 +88,29 @@ function taskUrgency(task: Task): { isOverdue: boolean; daysOverdue: number; isT
   return { isOverdue, daysOverdue, isToday };
 }
 
-// Cor de fundo do card de tarefa — sinaliza o que precisa de atenção primeiro:
-// lead quente (existente) > muito atrasado (>7d) > atrasado > lembrete hoje >
-// cliente ativo (informativo, cede a qualquer urgência de prazo).
-function taskRowBg(task: Task): string {
-  if (task.hotLead) return 'bg-red-50';
+// Dados do próximo lembrete para exibição (data, hora e urgência). null = sem lembrete ativo.
+function reminderInfo(task: Task): { dateStr: string; timeStr: string; isOverdue: boolean; daysOverdue: number; isToday: boolean } | null {
+  if (!task.reminderDate || !task.reminderEnabled) return null;
+  const rd = new Date(task.reminderDate);
+  if (isNaN(rd.getTime())) return null;
   const { isOverdue, daysOverdue, isToday } = taskUrgency(task);
-  if (isOverdue && daysOverdue > 7) return 'bg-red-50';
-  if (isOverdue) return 'bg-orange-50';
-  if (isToday) return 'bg-yellow-50';
-  if (task.convertedAt) return 'bg-emerald-50';
-  return 'bg-white';
+  const p = (n: number) => String(n).padStart(2, '0');
+  return {
+    dateStr: `${p(rd.getDate())}/${p(rd.getMonth() + 1)}`,
+    timeStr: `${p(rd.getHours())}:${p(rd.getMinutes())}`,
+    isOverdue,
+    daysOverdue,
+    isToday,
+  };
 }
 
+const PRIORITY_LABEL: Record<string, string> = { low: 'Baixa', medium: 'Média', high: 'Alta' };
+
+// <select> nativo (lista longa de atendentes, melhor no celular) com a aparência dos inputs do sistema.
+const selectCls =
+  'h-9 rounded-md border border-input bg-surface px-3 text-sm text-slate-900 outline-none transition-[color,border-color,box-shadow] hover:border-slate-400 focus-visible:border-brand-500 focus-visible:ring-[3px] focus-visible:ring-brand-500/20 max-md:h-10';
+// Controle de filtro com valor diferente do padrão.
+const selectActiveCls = 'border-brand-600 bg-brand-50 text-brand-800 hover:bg-brand-50';
 
 // Extracts the first email found in a string (or null)
 function extractEmail(text: string): string | null {
@@ -1204,100 +1219,161 @@ export default function Tasks() {
     }
   };
 
-  const priorityIcon: Record<string, React.ReactNode> = {
-    low: <Flag size={13} className="text-blue-500" />,
-    medium: <Flag size={13} className="text-amber-500" />,
-    high: <Flag size={13} className="text-red-500" />,
-  };
-  const statusIcon: Record<string, React.ReactNode> = {
-    pending: <Clock size={13} className="text-slate-400" />,
-    completed: <CheckCircle2 size={13} className="text-green-600" />,
-    cancelled: <XCircle size={13} className="text-red-500" />,
-  };
+  // Contagens dos filtros rápidos de período — respeitam só o escopo de atendente
+  // (admin vê as próprias por padrão), não os demais filtros, para o número
+  // anunciado no botão ser o que aparece ao clicar nele.
+  const tabCounts = useMemo(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    let base = tasks as Task[];
+    if (isAdmin) base = applyAssigneeFilter(base, filterAssignee, me);
+    let overdue = 0, todayN = 0, upcoming = 0;
+    for (const t of base) {
+      if (!t.reminderDate) continue;
+      const rd = new Date(t.reminderDate);
+      const rdDay = new Date(rd.getFullYear(), rd.getMonth(), rd.getDate()).getTime();
+      if (rd < now && t.reminderEnabled !== false && t.status === 'pending') overdue++;
+      if (rd >= now && t.reminderEnabled !== false) upcoming++;
+      if (rdDay === today) todayN++;
+    }
+    return { all: base.length, overdue, today: todayN, upcoming };
+  }, [tasks, isAdmin, filterAssignee, me]);
 
-  if (!user) return <div className="p-4 text-center">Carregando...</div>;
+  if (!user) return <div className="p-4 text-center text-slate-500">Carregando...</div>;
+
+  const hasFilters = activeFilterChips.length > 0;
+  const allSelected = selectedTasks.size === filteredTasks.length && filteredTasks.length > 0;
+
+  const primaryTabs: { key: ReminderTab; label: string; count: number; tone?: 'danger' }[] = [
+    { key: "all", label: "Todas", count: tabCounts.all },
+    { key: "overdue", label: "Atrasadas", count: tabCounts.overdue, tone: "danger" },
+    { key: "today", label: "Hoje", count: tabCounts.today },
+    { key: "upcoming", label: "Agendadas", count: tabCounts.upcoming },
+  ];
+  const moreTabs: { key: ReminderTab; label: string }[] = [
+    { key: "yesterday", label: "Ontem" },
+    { key: "lastWeek", label: "Semana passada" },
+    { key: "lastMonth", label: "Mês passado" },
+  ];
+  const tabBase = "inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md border px-3 text-sm font-medium transition-colors max-md:h-10";
+  const tabOff = "border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900";
+  const tabOn = "border-brand-200 bg-brand-50 text-brand-800";
+  const tabOnDanger = "border-red-200 bg-red-50 text-red-800";
 
   return (
-    <div className="p-3 md:p-6 space-y-3 md:space-y-4">
+    <Page wide>
       {confirmDialog}
+      <PageHeader
+        title="Tarefas"
+        description={isLoading ? undefined : `${filteredTasks.length} de ${tasks.length} ${tasks.length === 1 ? 'tarefa' : 'tarefas'}`}
+        actions={
+          <>
+            {isAdmin && (
+              <Button variant="outline" onClick={() => setShowImport(!showImport)}>
+                <Upload aria-hidden /> Importar CSV
+              </Button>
+            )}
+            <Button onClick={handleOpenNewTask}>
+              <Plus aria-hidden /> Nova tarefa
+            </Button>
+          </>
+        }
+      />
+
       {!isAdmin && showMonitorBanner && (
-        <div className="flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 text-sm text-amber-900">
-          <Search size={18} className="flex-shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <strong>Trabalho monitorado</strong> — anotações, qualidade e velocidade dos contatos são acompanhados diariamente pela gestão.
-          </div>
-          <button onClick={() => { setShowMonitorBanner(false); sessionStorage.setItem('monitorBannerDismissed', '1'); }} className="text-amber-700 hover:text-amber-900 flex-shrink-0 mt-0.5" title="Fechar" aria-label="Fechar aviso"><X size={16} /></button>
-        </div>
-      )}
-      {!isAdmin && notifPerm === 'default' && (
-        <div className="flex items-center gap-3 bg-blue-50 border border-blue-300 rounded-xl px-4 py-3 text-sm text-blue-900">
-          <Bell size={18} className="flex-shrink-0" />
-          <div className="flex-1">
-            <strong>Ative as notificações</strong> para receber lembretes no horário certo, mesmo com o celular bloqueado.
-          </div>
+        <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <Info size={16} aria-hidden className="mt-0.5 shrink-0" />
+          <p className="flex-1">
+            <strong className="font-semibold">Trabalho monitorado.</strong> Anotações, qualidade e velocidade dos contatos são acompanhados diariamente pela gestão.
+          </p>
           <button
-            onClick={() => { void Notification.requestPermission().then(setNotifPerm).catch(() => {}); }}
-            className="flex-shrink-0 min-h-10 px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition"
+            onClick={() => { setShowMonitorBanner(false); sessionStorage.setItem('monitorBannerDismissed', '1'); }}
+            className="-m-2 inline-flex size-10 shrink-0 items-center justify-center rounded-md text-amber-800 hover:bg-amber-100 md:-m-1 md:size-8"
+            title="Fechar"
+            aria-label="Fechar aviso"
           >
-            Ativar
+            <X size={16} />
           </button>
         </div>
       )}
+      {!isAdmin && notifPerm === 'default' && (
+        <div className="flex items-center gap-3 rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-900">
+          <Bell size={16} aria-hidden className="shrink-0" />
+          <p className="flex-1">
+            <strong className="font-semibold">Ative as notificações</strong> para receber lembretes no horário certo, mesmo com o celular bloqueado.
+          </p>
+          <Button
+            size="sm"
+            onClick={() => { void Notification.requestPermission().then(setNotifPerm).catch(() => {}); }}
+          >
+            Ativar
+          </Button>
+        </div>
+      )}
       {dailyProgress && (
-        <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <Phone size={16} />
-              <span className="text-sm font-semibold text-gray-700">Contatos hoje</span>
-              <span className="text-lg font-black" style={{ color: dailyProgress.color }}>{dailyProgress.contacts}</span>
-              <span className="text-xs text-gray-400">/ {dailyProgress.goal}</span>
+        <Panel className="px-4 py-3">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <div className="flex items-baseline gap-2">
+              <Phone size={15} aria-hidden className="self-center text-slate-500" />
+              <span className="text-sm font-medium text-slate-700">Contatos hoje</span>
+              <span className="text-xl font-semibold tabular-nums" style={{ color: dailyProgress.color }}>{dailyProgress.contacts}</span>
+              <span className="text-sm text-slate-500">/ {dailyProgress.goal}</span>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5">
-                <Timer size={13} className="text-gray-400" />
-                <span className="text-xs font-semibold text-gray-600">{dailyProgress.hoursLabel}</span>
-                {dailyProgress.hoursPct > 0 && (
-                  <div className="w-12 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-slate-500 rounded-full transition-all" style={{ width: `${dailyProgress.hoursPct}%` }} />
-                  </div>
-                )}
+            <div className="flex min-w-[140px] flex-1 items-center gap-2">
+              <div
+                className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100"
+                role="progressbar"
+                aria-valuenow={dailyProgress.pct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label="Meta de contatos de hoje"
+              >
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${dailyProgress.pct}%`, backgroundColor: dailyProgress.color }}
+                />
               </div>
-              <span className="text-sm font-bold" style={{ color: dailyProgress.color }}>{dailyProgress.pct}%</span>
+              <span className="w-10 text-right text-sm font-semibold tabular-nums" style={{ color: dailyProgress.color }}>{dailyProgress.pct}%</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-sm text-slate-600">
+              <Timer size={14} aria-hidden className="text-slate-500" />
+              <span className="tabular-nums">{dailyProgress.hoursLabel}</span>
+              {dailyProgress.hoursPct > 0 && (
+                <div className="h-1.5 w-12 overflow-hidden rounded-full bg-slate-100">
+                  <div className="h-full rounded-full bg-slate-500 transition-all" style={{ width: `${dailyProgress.hoursPct}%` }} />
+                </div>
+              )}
             </div>
           </div>
-          <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-700"
-              style={{ width: `${dailyProgress.pct}%`, backgroundColor: dailyProgress.color }}
-            />
-          </div>
-          <div className="flex items-center justify-between mt-1.5">
+          <div className="mt-1.5 flex items-center justify-between gap-3">
             {dailyProgress.contacts >= dailyProgress.goal ? (
-              <p className="text-xs text-green-600 font-semibold">Meta atingida! Excelente trabalho!</p>
+              <p className="text-xs font-medium text-green-700">Meta atingida. Bom trabalho.</p>
             ) : (
-              <p className="text-xs text-gray-400">Faltam <strong>{dailyProgress.remaining}</strong> contatos para a meta de hoje</p>
+              <p className="text-xs text-slate-500">Faltam <strong className="font-semibold text-slate-700">{dailyProgress.remaining}</strong> contatos para a meta de hoje</p>
             )}
-            <Link href="/meu-progresso" className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 shrink-0 ml-3">
+            <Link href="/meu-progresso" className="shrink-0 text-xs font-medium text-brand-700 hover:underline max-md:py-2">
               Ver meu desempenho
             </Link>
           </div>
-        </div>
+        </Panel>
       )}
 
+      {/* Barra de ferramentas: busca + filtros + quentes + atualizar. */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[220px] flex-1">
-          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar por Nome, CNPJ, Telefone, E-mail, Cidade..."
+        <div className="relative min-w-[200px] flex-1">
+          <Search size={15} aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Input
+            type="search"
+            placeholder="Buscar por nome, CNPJ, telefone, e-mail, cidade..."
+            aria-label="Buscar tarefas"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-xl bg-slate-50/50 border border-slate-200/90 py-2.5 pl-9 pr-8 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680] transition-all"
+            className="pl-9 pr-9 max-md:h-10 [&::-webkit-search-cancel-button]:hidden"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery("")}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              className="absolute right-1 top-1/2 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700 max-md:size-10 max-md:right-0"
               aria-label="Limpar busca"
             >
               <X size={14} />
@@ -1313,7 +1389,8 @@ export default function Tasks() {
               <select
                 value={filterAssignee}
                 onChange={(e) => setFilterAssignee(e.target.value)}
-                className={`px-3 py-2 border rounded-lg text-sm font-medium ${filterAssignee !== FILTER_ME ? "bg-blue-900 text-white border-blue-900" : "bg-white text-gray-700"}`}
+                aria-label="Responsável"
+                className={`${selectCls} ${filterAssignee !== FILTER_ME ? selectActiveCls : ""}`}
               >
                 <option value={FILTER_ME}>Minhas tarefas</option>
                 <option value={FILTER_ALL}>Todos os atendentes</option>
@@ -1327,7 +1404,8 @@ export default function Tasks() {
             <select
               value={filterConverted}
               onChange={(e) => setFilterConverted(e.target.value as "all" | "active_clients" | "leads")}
-              className={`px-3 py-2 border rounded-lg text-sm font-medium ${filterConverted === "active_clients" ? "bg-emerald-500 text-white border-emerald-500" : filterConverted === "leads" ? "bg-amber-500 text-white border-amber-500" : "bg-white text-gray-700"}`}
+              aria-label="Situação do cliente"
+              className={`${selectCls} ${filterConverted !== "all" ? selectActiveCls : ""}`}
             >
               <option value="all">Leads + clientes</option>
               <option value="active_clients">Só clientes ativos</option>
@@ -1336,7 +1414,8 @@ export default function Tasks() {
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className={`px-3 py-2 border rounded-lg text-sm font-medium ${filterStatus !== "all" ? "bg-blue-900 text-white border-blue-900" : "bg-white text-gray-700"}`}
+              aria-label="Status da tarefa"
+              className={`${selectCls} ${filterStatus !== "all" ? selectActiveCls : ""}`}
             >
               <option value="all">Qualquer status</option>
               <option value="pending">Só ativas</option>
@@ -1344,24 +1423,33 @@ export default function Tasks() {
           </FilterSection>
 
           <FilterSection label="Canal de contato">
-            <button
+            <Button
+              type="button"
+              variant="outline"
+              aria-pressed={filterContact === "whatsapp"}
+              className={filterContact === "whatsapp" ? selectActiveCls : ""}
               onClick={() => setFilterContact(filterContact === "whatsapp" ? "all" : "whatsapp")}
-              className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterContact === "whatsapp" ? "bg-green-500 text-white border-green-500" : "bg-white text-gray-700 hover:bg-green-50"}`}
             >
               Tem WhatsApp
-            </button>
-            <button
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              aria-pressed={filterContact === "email"}
+              className={filterContact === "email" ? selectActiveCls : ""}
               onClick={() => setFilterContact(filterContact === "email" ? "all" : "email")}
-              className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterContact === "email" ? "bg-blue-500 text-white border-blue-500" : "bg-white text-gray-700 hover:bg-blue-50"}`}
             >
               Tem e-mail
-            </button>
-            <button
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              aria-pressed={filterReminder !== "all"}
+              className={filterReminder !== "all" ? selectActiveCls : ""}
               onClick={() => setFilterReminder(filterReminder === "active" ? "inactive" : filterReminder === "inactive" ? "all" : "active")}
-              className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${filterReminder === "active" ? "bg-orange-500 text-white border-orange-500" : filterReminder === "inactive" ? "bg-gray-500 text-white border-gray-500" : "bg-white text-gray-700 hover:bg-orange-50"}`}
             >
               {filterReminder === "inactive" ? "Sem lembrete" : "Com lembrete"}
-            </button>
+            </Button>
           </FilterSection>
 
           <FilterSection label="Tags">
@@ -1378,7 +1466,6 @@ export default function Tasks() {
               onChange={setFilterTags}
               matchMode={tagMatchMode}
               onMatchModeChange={setTagMatchMode}
-              activeClass="bg-indigo-500 text-white border-indigo-500"
               searchable={availableTags.length > 8}
             />
           </FilterSection>
@@ -1390,7 +1477,6 @@ export default function Tasks() {
               options={stateOptions}
               selected={filterStates}
               onChange={setFilterStates}
-              activeClass="bg-teal-600 text-white border-teal-600"
               searchable={stateOptions.length > 8}
               emptyHint="Nenhuma tarefa com UF identificada"
             />
@@ -1400,7 +1486,6 @@ export default function Tasks() {
               options={cityOptions}
               selected={filterCities}
               onChange={setFilterCities}
-              activeClass="bg-cyan-600 text-white border-cyan-600"
               searchable
               emptyHint={filterStates.length > 0 ? "Nenhuma cidade nos estados escolhidos" : "Nenhuma tarefa com cidade identificada"}
             />
@@ -1408,261 +1493,278 @@ export default function Tasks() {
         </FilterPanel>
 
         {!!hotLeadsData?.count && (
-          <button
+          <Button
+            variant={filterHot ? "default" : "outline"}
             onClick={() => setFilterHot(h => !h)}
-            className={`px-3 py-2 rounded-lg text-sm border font-medium transition flex items-center gap-1.5 ${filterHot ? "bg-red-500 text-white border-red-500" : "bg-white text-red-600 border-red-200 hover:bg-red-50"}`}
+            aria-pressed={filterHot}
+            className={filterHot ? "" : "text-red-700"}
             title="Leads que abriram ou clicaram em e-mails recentemente"
           >
-            <Flame size={14} /> {filterHot ? "Só quentes" : `${hotLeadsData.count} quente${hotLeadsData.count === 1 ? "" : "s"}`}
-          </button>
+            <Flame aria-hidden /> {filterHot ? "Só quentes" : `${hotLeadsData.count} quente${hotLeadsData.count === 1 ? "" : "s"}`}
+          </Button>
         )}
 
-        <div className="ml-auto flex gap-2 flex-wrap">
-          {isAdmin && selectedTasks.size > 0 && (
-            <>
-              <select value={bulkRepresentative} onChange={(e) => setBulkRepresentative(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
-                <option value="">Atendente...</option>
-                {assignOptions.map((name) => <option key={name} value={name}>{name}</option>)}
-              </select>
-              <Button size="sm" onClick={handleBulkAssign} variant="outline">Designar ({selectedTasks.size})</Button>
-              <Button size="sm" variant="outline" onClick={() => setCampaignPickerTaskIds(Array.from(selectedTasks))}>Campanha ({selectedTasks.size})</Button>
-              <Button size="sm" variant="outline" onClick={() => setSequencePickerTaskIds(Array.from(selectedTasks))}>Sequência ({selectedTasks.size})</Button>
-              <Button size="sm" variant="destructive" onClick={handleBulkDelete}>Deletar ({selectedTasks.size})</Button>
-            </>
-          )}
-          {!isAdmin && canEmailMarketing && selectedTasks.size > 0 && (
-            <Button size="sm" variant="outline" onClick={() => setSequencePickerTaskIds(Array.from(selectedTasks))}>Sequência ({selectedTasks.size})</Button>
-          )}
-          {isAdmin && <Button onClick={() => setShowImport(!showImport)} variant="outline" size="sm">CSV</Button>}
-          <Button onClick={handleOpenNewTask} size="sm">Nova</Button>
-        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => { void refetch(); }}
+          disabled={isFetching}
+          aria-label="Atualizar lista de tarefas"
+          title="Atualizar"
+        >
+          <RefreshCw aria-hidden className={isFetching ? 'animate-spin' : ''} />
+        </Button>
       </div>
 
       {isAdmin && showImport && (
-        <Card className="border-blue-300 bg-blue-50">
-          <CardHeader><CardTitle className="text-base">Importar CSV ou lista de clientes</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-xs text-gray-600">Suporta CSV com ponto-e-vírgula e listas com traço (nome - telefone - email - cidade - estado).</p>
-            <input type="file" accept=".csv,.txt" onChange={handleCSVImport} className="w-full px-3 py-2 border rounded-lg bg-white" />
+        <Panel>
+          <PanelHeader
+            title="Importar CSV ou lista de clientes"
+            description="Suporta CSV com ponto-e-vírgula e listas com traço (nome - telefone - email - cidade - estado)."
+            actions={<Button variant="ghost" size="icon-sm" aria-label="Fechar importação" onClick={() => setShowImport(false)}><X aria-hidden /></Button>}
+          />
+          <div className="space-y-3 p-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="import-file">Arquivo (.csv ou .txt)</Label>
+              <Input id="import-file" type="file" accept=".csv,.txt" onChange={handleCSVImport} />
+            </div>
             {importedTasks.length > 0 && (
               <>
                 {importSkipped > 0 && (
-                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
+                  <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
                     {importSkipped} registro{importSkipped > 1 ? 's' : ''} ignorado{importSkipped > 1 ? 's' : ''} — já {importSkipped > 1 ? 'foram excluídos' : 'foi excluído'} anteriormente.
                   </p>
                 )}
-                <div className="bg-white rounded-lg border p-3 max-h-40 overflow-y-auto space-y-1">
+                <div className="max-h-40 divide-y divide-slate-200 overflow-y-auto rounded-md border border-slate-200 bg-white">
                   {importedTasks.slice(0, 10).map((t, i) => (
-                    <div key={i} className="text-xs text-gray-700 border-b pb-1">
-                      <span className="font-medium">{t.title}</span>
-                      {t.notes && <span className="text-gray-500 ml-1">— {t.notes.split('\n')[0]}</span>}
+                    <div key={i} className="px-3 py-1.5 text-xs text-slate-700">
+                      <span className="font-medium text-slate-900">{t.title}</span>
+                      {t.notes && <span className="ml-1 text-slate-500">— {t.notes.split('\n')[0]}</span>}
                     </div>
                   ))}
-                  {importedTasks.length > 10 && <p className="text-xs text-gray-500">... e mais {importedTasks.length - 10}</p>}
+                  {importedTasks.length > 10 && <p className="px-3 py-1.5 text-xs text-slate-500">... e mais {importedTasks.length - 10}</p>}
                 </div>
-                <select value={selectedRepresentative} onChange={(e) => setSelectedRepresentative(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
-                  <option value="">Selecionar atendente...</option>
-                  {assignOptions.map((name) => <option key={name} value={name}>{name}</option>)}
-                </select>
-                <p className="text-xs text-gray-600">Os lembretes serão distribuídos automaticamente.</p>
-                <Button onClick={handleImportTasks} className="w-full" disabled={importLoading}>
-                  {importLoading ? `Importando...` : `Importar ${importedTasks.length} tarefas`}
-                </Button>
+                <div className="space-y-1.5">
+                  <Label htmlFor="import-rep">Atribuir a</Label>
+                  <select id="import-rep" value={selectedRepresentative} onChange={(e) => setSelectedRepresentative(e.target.value)} className={`${selectCls} w-full`}>
+                    <option value="">Selecionar atendente...</option>
+                    {assignOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </div>
+                <p className="text-xs text-slate-500">Os lembretes serão distribuídos automaticamente.</p>
+                <div className="flex justify-end">
+                  <Button onClick={handleImportTasks} disabled={importLoading}>
+                    {importLoading ? `Importando...` : `Importar ${importedTasks.length} tarefas`}
+                  </Button>
+                </div>
               </>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </Panel>
       )}
 
       {/* Task Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-2xl w-[calc(100vw-2rem)] max-h-[90dvh] overflow-y-auto">
-          <DialogHeader><DialogTitle className="text-base">{editingTask ? "Editar Tarefa" : "Nova Tarefa"}</DialogTitle></DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div>
-              <label className="block text-xs font-medium mb-1 text-gray-600">Título *</label>
-              <input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} placeholder="Título da tarefa" className="w-full px-3 py-1.5 border rounded-lg text-sm" required />
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader><DialogTitle>{editingTask ? "Editar tarefa" : "Nova tarefa"}</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="task-title">Título <span className="text-red-700">*</span></Label>
+                <Input id="task-title" type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} placeholder="Nome do cliente ou assunto" required />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="task-notes">Anotações</Label>
+                <Textarea id="task-notes" ref={notesRef} value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Anotações, telefone, e-mail..." style={{ height: 'clamp(120px, 30vh, 260px)', resize: 'vertical' }} />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium mb-1 text-gray-600">Anotações</label>
-              <textarea ref={notesRef} value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Anotações, telefone, email..." className="w-full px-3 py-2 border rounded-lg text-sm" style={{ height: 'clamp(120px, 30vh, 260px)', resize: 'vertical' }} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1 text-gray-600">E-mail (e-mail marketing)</label>
-              <input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="cliente@exemplo.com" className="w-full px-3 py-1.5 border rounded-lg text-sm" />
-              {editingTask?.email && !editingTask.emailConfirmed && (
-                (formData.email || '').trim().toLowerCase() !== (editingTask.email || '').trim().toLowerCase()
-                  ? <p className="mt-1 text-xs text-green-700">E-mail alterado — será confirmado ao salvar.</p>
-                  : (
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <span className="text-xs text-amber-700">E-mail não confirmado — não será usado em e-mail marketing.</span>
-                      <button type="button" onClick={() => handleConfirmEmail(editingTask.id, editingTask.email)} className="px-2 py-0.5 rounded-md bg-green-600 text-white text-xs font-medium hover:bg-green-700">Confirmar agora</button>
-                    </div>
-                  )
-              )}
-              {editingTask?.email && editingTask.emailConfirmed && (
-                <p className="mt-1 text-xs text-green-700">E-mail confirmado — usável em e-mail marketing.</p>
-              )}
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1 text-gray-600">
-                Tags (segmentação de e-mail marketing) {tagCatalog.length > 0 && <span className="text-red-500">*</span>}
-              </label>
-              <div className={`rounded-xl border p-2.5 ${tagCatalog.length > 0 && formData.tags.length === 0 ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50/60'}`}>
-                {formData.tags.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {formData.tags.map(tag => (
-                      <span
-                        key={tag}
-                        className="group inline-flex items-center gap-1.5 text-white text-xs font-semibold pl-2.5 pr-1.5 py-1 rounded-full shadow-sm animate-in fade-in zoom-in-95 duration-150"
-                        style={{ backgroundColor: tagColorMap.get(tag) || '#6366f1' }}
-                      >
-                        {tag}
-                        <button
-                          type="button"
-                          onClick={() => removeTag(tag)}
-                          title="Remover tag"
-                          aria-label={`Remover tag ${tag}`}
-                          className="flex items-center justify-center w-4 h-4 rounded-full bg-white/15 hover:bg-white/30 text-white leading-none transition-colors"
-                        >
-                          <X size={10} />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-400 italic mb-2">
-                    {tagCatalog.length > 0 ? "Nenhuma tag selecionada. Escolha ao menos uma abaixo." : "Nenhuma tag adicionada ainda."}
-                  </p>
+
+            <div className="space-y-4 border-t border-slate-200 pt-4">
+              <h3 className="text-sm font-semibold text-slate-900">E-mail marketing</h3>
+              <div className="space-y-1.5">
+                <Label htmlFor="task-email">E-mail do cliente</Label>
+                <Input id="task-email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="cliente@exemplo.com" />
+                {editingTask?.email && !editingTask.emailConfirmed && (
+                  (formData.email || '').trim().toLowerCase() !== (editingTask.email || '').trim().toLowerCase()
+                    ? <p className="text-xs text-green-700">E-mail alterado — será confirmado ao salvar.</p>
+                    : (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-amber-800">E-mail não confirmado — não será usado em e-mail marketing.</span>
+                        <Button type="button" size="sm" variant="outline" onClick={() => handleConfirmEmail(editingTask.id, editingTask.email)}>Confirmar agora</Button>
+                      </div>
+                    )
                 )}
-                <DropdownMenu open={tagPickerOpen} onOpenChange={setTagPickerOpen}>
-                  <DropdownMenuTrigger asChild>
-                    <Button type="button" variant="outline" size="sm" className="bg-white">
-                      Selecionar tags...
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-64 max-h-64 overflow-y-auto">
-                    {tagCatalog.length > 0 ? (
-                      tagCatalog.map(tag => (
-                        <DropdownMenuCheckboxItem
-                          key={tag.id}
-                          checked={formData.tags.includes(tag.name)}
-                          onSelect={(e) => e.preventDefault()}
-                          onCheckedChange={() => toggleTag(tag.name)}
+                {editingTask?.email && editingTask.emailConfirmed && (
+                  <p className="text-xs text-green-700">E-mail confirmado — usável em e-mail marketing.</p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label>
+                  Tags {tagCatalog.length > 0 && <span className="text-red-700">*</span>}
+                </Label>
+                <div className={`rounded-md border p-3 ${tagCatalog.length > 0 && formData.tags.length === 0 ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50'}`}>
+                  {formData.tags.length > 0 ? (
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {formData.tags.map(tag => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center gap-1 rounded-md py-0.5 pl-2 pr-1 text-xs font-medium text-white"
+                          style={{ backgroundColor: tagColorMap.get(tag) || '#6366f1' }}
                         >
-                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: tag.color }} />
-                          <span className="flex-1 truncate">{tag.name}</span>
-                        </DropdownMenuCheckboxItem>
-                      ))
-                    ) : (
-                      <p className="text-xs text-gray-500 p-2">
-                        Nenhuma tag cadastrada. {isAdmin ? "Crie tags em E-mail Marketing → Tags." : "Peça a um administrador para cadastrar tags em E-mail Marketing → Tags."}
-                      </p>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                          {tag}
+                          <button
+                            type="button"
+                            onClick={() => removeTag(tag)}
+                            title="Remover tag"
+                            aria-label={`Remover tag ${tag}`}
+                            className="flex size-5 items-center justify-center rounded-sm text-white hover:bg-white/25 max-md:size-8"
+                          >
+                            <X size={11} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mb-2 text-xs text-slate-500">
+                      {tagCatalog.length > 0 ? "Nenhuma tag selecionada. Escolha ao menos uma abaixo." : "Nenhuma tag adicionada ainda."}
+                    </p>
+                  )}
+                  <DropdownMenu open={tagPickerOpen} onOpenChange={setTagPickerOpen}>
+                    <DropdownMenuTrigger asChild>
+                      <Button type="button" variant="outline" size="sm">
+                        Selecionar tags...
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="max-h-64 w-64 overflow-y-auto">
+                      {tagCatalog.length > 0 ? (
+                        tagCatalog.map(tag => (
+                          <DropdownMenuCheckboxItem
+                            key={tag.id}
+                            checked={formData.tags.includes(tag.name)}
+                            onSelect={(e) => e.preventDefault()}
+                            onCheckedChange={() => toggleTag(tag.name)}
+                          >
+                            <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: tag.color }} />
+                            <span className="flex-1 truncate">{tag.name}</span>
+                          </DropdownMenuCheckboxItem>
+                        ))
+                      ) : (
+                        <p className="p-2 text-xs text-slate-600">
+                          Nenhuma tag cadastrada. {isAdmin ? "Crie tags em E-mail Marketing → Tags." : "Peça a um administrador para cadastrar tags em E-mail Marketing → Tags."}
+                        </p>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs font-medium mb-1 text-gray-600">Data <span className="text-red-500">*</span></label>
-                <input type="date" value={formData.reminderDate} onChange={(e) => setFormData({ ...formData, reminderDate: e.target.value })} className={`w-full px-2 py-1.5 border rounded-lg text-sm ${!formData.reminderDate ? 'border-red-300 bg-red-50' : 'border-gray-300'}`} required />
+
+            <div className="space-y-4 border-t border-slate-200 pt-4">
+              <h3 className="text-sm font-semibold text-slate-900">Lembrete</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="task-date">Data <span className="text-red-700">*</span></Label>
+                  <Input id="task-date" type="date" value={formData.reminderDate} onChange={(e) => setFormData({ ...formData, reminderDate: e.target.value })} aria-invalid={!formData.reminderDate} required />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="task-time">Hora</Label>
+                  <Input id="task-time" type="time" value={formData.reminderTime} onChange={(e) => setFormData({ ...formData, reminderTime: e.target.value })} />
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium mb-1 text-gray-600">Hora</label>
-                <input type="time" value={formData.reminderTime} onChange={(e) => setFormData({ ...formData, reminderTime: e.target.value })} className="w-full px-2 py-1.5 border rounded-lg text-sm" />
+              <div className="flex gap-2">
+                <Button type="button" size="sm" variant="outline" className="flex-1" disabled={saving} onClick={() => handleQuickReminder('30min')}>
+                  Lembrar em 30 min
+                </Button>
+                <Button type="button" size="sm" variant="outline" className="flex-1" disabled={saving} onClick={() => handleQuickReminder('tomorrow')}>
+                  Lembrar amanhã
+                </Button>
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="reminderEnabled" checked={formData.reminderEnabled} onChange={(e) => setFormData({ ...formData, reminderEnabled: e.target.checked })} className="size-4 accent-brand-700" />
+                <Label htmlFor="reminderEnabled" className="font-normal">Ativar notificação no navegador</Label>
               </div>
             </div>
-            <div className="flex items-center gap-2 bg-blue-50 px-2 py-1.5 rounded-lg">
-              <input type="checkbox" id="reminderEnabled" checked={formData.reminderEnabled} onChange={(e) => setFormData({ ...formData, reminderEnabled: e.target.checked })} className="w-3.5 h-3.5" />
-              <label htmlFor="reminderEnabled" className="text-xs font-medium text-blue-800">Ativar notificação no navegador</label>
-            </div>
-            <div className="flex gap-2">
-              <Button type="button" size="sm" variant="outline" className="flex-1 text-xs" disabled={saving} onClick={() => handleQuickReminder('30min')}>
-                Lembrar em 30 min
-              </Button>
-              <Button type="button" size="sm" variant="outline" className="flex-1 text-xs" disabled={saving} onClick={() => handleQuickReminder('tomorrow')}>
-                Lembrar amanhã
-              </Button>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs font-medium mb-1 text-gray-600">Prioridade</label>
-                <select value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })} className="w-full px-2 py-1.5 border rounded-lg text-sm">
+
+            <div className={`grid grid-cols-1 gap-3 border-t border-slate-200 pt-4 ${isAdmin ? 'sm:grid-cols-2' : ''}`}>
+              <div className="space-y-1.5">
+                <Label htmlFor="task-priority">Prioridade</Label>
+                <select id="task-priority" value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })} className={`${selectCls} w-full`}>
                   <option value="low">Baixa</option>
                   <option value="medium">Média</option>
                   <option value="high">Alta</option>
                 </select>
               </div>
               {isAdmin && (
-                <div>
-                  <label className="block text-xs font-medium mb-1 text-gray-600">Designar para</label>
-                  <select value={formData.assignedTo} onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })} className="w-full px-2 py-1.5 border rounded-lg text-sm">
+                <div className="space-y-1.5">
+                  <Label htmlFor="task-assignee">Designar para</Label>
+                  <select id="task-assignee" value={formData.assignedTo} onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })} className={`${selectCls} w-full`}>
                     <option value="">Nenhum</option>
                     {assignOptions.map((name) => <option key={name} value={name}>{name}</option>)}
                   </select>
                 </div>
               )}
             </div>
-            <DialogFooter className="flex gap-2 pt-1">
-              <Button type="submit" size="sm" disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700">{editingTask ? "Salvar" : "Criar Tarefa"}</Button>
-              {editingTask && <Button type="button" size="sm" variant="destructive" aria-label="Excluir tarefa" title="Excluir tarefa" className="min-h-10 min-w-10" onClick={() => handleDelete(editingTask.id)}><Trash2 size={14} /></Button>}
-              <Button type="button" size="sm" variant="outline" onClick={() => { setIsModalOpen(false); resetForm(); }}>Cancelar</Button>
+
+            <DialogFooter>
+              {editingTask && (
+                <Button type="button" variant="destructive" className="sm:mr-auto" onClick={() => handleDelete(editingTask.id)}>
+                  <Trash2 aria-hidden /> Excluir
+                </Button>
+              )}
+              <Button type="button" variant="outline" onClick={() => { setIsModalOpen(false); resetForm(); }}>Cancelar</Button>
+              <Button type="submit" disabled={saving}>{editingTask ? "Salvar" : "Criar tarefa"}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Reminder Tabs */}
-      <div className="flex items-center gap-1">
-      <div className="flex gap-1 overflow-x-auto pb-1 flex-1 min-w-0">
-        {([
-          { key: "all",       label: "Todas",           cls: "bg-blue-600 border-blue-600" },
-          { key: "overdue",   label: "Atrasados",        cls: "bg-red-600 border-red-600" },
-          { key: "upcoming",  label: "Agendados",        cls: "bg-green-600 border-green-600" },
-          { key: "today",     label: "Hoje",             cls: "bg-blue-600 border-blue-600" },
-          { key: "yesterday", label: "Ontem",            cls: "bg-blue-600 border-blue-600" },
-          { key: "lastWeek",  label: "Semana passada",   cls: "bg-blue-600 border-blue-600" },
-          { key: "lastMonth", label: "Mês passado",      cls: "bg-blue-600 border-blue-600" },
-        ] as { key: ReminderTab; label: string; cls: string }[]).map(tab => (
+      {/* Filtros de período com contagem: atrasadas / hoje / agendadas são o que o
+          atendente persegue; o resto fica à direita, em tom mais discreto. */}
+      <div className="-mt-1 flex items-center gap-1 overflow-x-auto pb-1" role="group" aria-label="Filtrar por período do lembrete">
+        {primaryTabs.map(tab => {
+          const on = reminderTab === tab.key;
+          const danger = tab.tone === "danger" && tab.count > 0;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setReminderTab(tab.key)}
+              aria-pressed={on}
+              className={`${tabBase} ${on ? (tab.tone === "danger" ? tabOnDanger : tabOn) : tabOff}`}
+            >
+              {tab.label}
+              <span className={`tabular-nums ${on ? "" : danger ? "font-semibold text-red-700" : "text-slate-500"}`}>{tab.count}</span>
+            </button>
+          );
+        })}
+        <span className="mx-1 h-5 w-px shrink-0 bg-slate-200" aria-hidden />
+        {moreTabs.map(tab => (
           <button
             key={tab.key}
+            type="button"
             onClick={() => setReminderTab(tab.key)}
-            className={`px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap border transition ${
-              reminderTab === tab.key
-                ? `${tab.cls} text-white`
-                : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
-            }`}
+            aria-pressed={reminderTab === tab.key}
+            className={`${tabBase} ${reminderTab === tab.key ? tabOn : tabOff}`}
           >
             {tab.label}
           </button>
         ))}
-      </div>
-      <button
-        type="button"
-        onClick={() => { void refetch(); }}
-        disabled={isFetching}
-        aria-label="Atualizar lista de tarefas"
-        title="Atualizar"
-        className="flex-shrink-0 min-h-10 min-w-10 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-60"
-      >
-        <RefreshCw size={16} className={isFetching ? 'animate-spin' : ''} />
-      </button>
       </div>
 
       {/* Filtros ativos — mostra o recorte atual e deixa remover um a um.
           Sem isto, com vários filtros combinados o atendente perde a noção de
           por que a lista está pequena. */}
       {/* Admin abre só com as próprias tarefas: avisa e dá a saída em um clique. */}
-      {isAdmin && filterAssignee === FILTER_ME && activeFilterChips.length === 0 && (
+      {isAdmin && filterAssignee === FILTER_ME && !hasFilters && (
         <p className="text-xs text-slate-500">
           Mostrando só as suas tarefas ({filteredTasks.length} de {tasks.length}) ·{" "}
-          <button onClick={() => setFilterAssignee(FILTER_ALL)} className="font-medium text-blue-900 underline-offset-2 hover:underline">
+          <button onClick={() => setFilterAssignee(FILTER_ALL)} className="font-medium text-brand-700 underline-offset-2 hover:underline">
             ver de todos os atendentes
           </button>
         </p>
       )}
-      {activeFilterChips.length > 0 && (
+      {hasFilters && (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs text-slate-500">
             {filteredTasks.length} de {tasks.length} ·
@@ -1671,17 +1773,17 @@ export default function Tasks() {
             <button
               key={chip.key}
               onClick={chip.clear}
-              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition"
+              className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 max-md:min-h-10"
               title="Remover este filtro"
             >
-              <span className="text-slate-400">{chip.label}:</span>
+              <span className="text-slate-500">{chip.label}:</span>
               <span className="font-medium">{chip.value}</span>
-              <X size={11} />
+              <X size={11} aria-hidden />
             </button>
           ))}
           <button
             onClick={clearAllFilters}
-            className="rounded-full px-2.5 py-1 text-xs font-medium text-slate-500 underline-offset-2 hover:text-red-600 hover:underline transition"
+            className="rounded-md px-2 py-1 text-xs font-medium text-slate-600 underline-offset-2 transition hover:text-red-700 hover:underline max-md:min-h-10"
           >
             Limpar tudo
           </button>
@@ -1690,77 +1792,138 @@ export default function Tasks() {
 
       {/* Tasks List */}
       {isLoading ? (
-        <p className="text-center text-gray-500 py-8">Carregando...</p>
+        <Panel className="divide-y divide-slate-200">
+          {Array.from({ length: 7 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 px-4 py-3">
+              <Skeleton className="size-4" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+              <Skeleton className="hidden h-4 w-20 md:block" />
+              <Skeleton className="size-8" />
+              <Skeleton className="size-8" />
+            </div>
+          ))}
+        </Panel>
       ) : isError && tasks.length === 0 ? (
         <QueryError onRetry={() => { void refetch(); }} retrying={isFetching} />
       ) : filteredTasks.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-gray-500 text-lg">Nenhuma tarefa encontrada</p>
-          <Button onClick={handleOpenNewTask} className="mt-4">Criar primeira tarefa</Button>
-        </div>
+        <Panel>
+          <EmptyState
+            icon={<ClipboardList aria-hidden />}
+            title="Nenhuma tarefa encontrada"
+            description={hasFilters ? "Nenhuma tarefa bate com os filtros atuais. Remova um filtro ou limpe todos para ver a lista completa." : "Quando houver tarefas, elas aparecem aqui ordenadas pelo próximo lembrete."}
+            action={hasFilters
+              ? <Button variant="outline" onClick={clearAllFilters}>Limpar filtros</Button>
+              : <Button onClick={handleOpenNewTask}><Plus aria-hidden /> Criar primeira tarefa</Button>}
+          />
+        </Panel>
       ) : (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 p-2 bg-gray-100 rounded">
-            <label className="flex items-center gap-2 cursor-pointer min-h-[44px]">
-              <input type="checkbox" checked={selectedTasks.size === filteredTasks.length && filteredTasks.length > 0} onChange={handleSelectAll} className="w-5 h-5 cursor-pointer" />
-              <span className="text-sm font-medium text-gray-700">Selecionar tudo ({filteredTasks.length})</span>
+        <Panel>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-slate-200 bg-slate-50 px-4 py-1.5">
+            <label className="flex min-h-10 cursor-pointer items-center gap-3 md:min-h-9">
+              <input type="checkbox" checked={allSelected} onChange={handleSelectAll} className="size-4 cursor-pointer accent-brand-700" />
+              <span className="text-xs font-medium text-slate-600">
+                {selectedTasks.size > 0 ? `${selectedTasks.size} selecionada(s)` : `Selecionar tudo (${filteredTasks.length})`}
+              </span>
             </label>
-            {selectedTasks.size > 0 && <span className="text-sm text-blue-600 font-medium ml-2">{selectedTasks.size} selecionada(s)</span>}
+            {/* Ações em massa: aparecem só com seleção. */}
+            {isAdmin && selectedTasks.size > 0 && (
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                <select value={bulkRepresentative} onChange={(e) => setBulkRepresentative(e.target.value)} aria-label="Designar para atendente" className={selectCls}>
+                  <option value="">Atendente...</option>
+                  {assignOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+                </select>
+                <Button size="sm" onClick={handleBulkAssign} variant="outline">Designar ({selectedTasks.size})</Button>
+                <Button size="sm" variant="outline" onClick={() => setCampaignPickerTaskIds(Array.from(selectedTasks))}>Campanha ({selectedTasks.size})</Button>
+                <Button size="sm" variant="outline" onClick={() => setSequencePickerTaskIds(Array.from(selectedTasks))}>Sequência ({selectedTasks.size})</Button>
+                <Button size="sm" variant="destructive" onClick={handleBulkDelete}>Deletar ({selectedTasks.size})</Button>
+              </div>
+            )}
+            {!isAdmin && canEmailMarketing && selectedTasks.size > 0 && (
+              <div className="ml-auto">
+                <Button size="sm" variant="outline" onClick={() => setSequencePickerTaskIds(Array.from(selectedTasks))}>Sequência ({selectedTasks.size})</Button>
+              </div>
+            )}
           </div>
-          {filteredTasks.map((task: Task) => (
-            <div key={task.id} className={`border rounded-lg overflow-hidden shadow-sm transition-all duration-300 ${highlightTaskId === task.id ? 'ring-2 ring-blue-500 ring-offset-1 shadow-blue-200 shadow-md' : task.hotLead ? 'ring-1 ring-red-300 border-red-200' : ''}`}
+          <ul className="divide-y divide-slate-200">
+          {filteredTasks.map((task: Task) => {
+            const rem = reminderInfo(task);
+            const rowPhone = phoneOfTask(task);
+            const expanded = expandedTaskId === task.id;
+            const selected = selectedTasks.has(task.id);
+            const prio = task.priority ?? 'medium';
+            return (
+            <li key={task.id}
+              className={`${highlightTaskId === task.id ? 'relative z-10 ring-2 ring-inset ring-brand-500' : ''}`}
               style={highlightTaskId === task.id ? { animation: 'pulse-highlight 1s ease-in-out 3' } : {}}>
-              <div className={`flex items-center gap-2 md:gap-3 p-3 hover:bg-gray-50 transition cursor-pointer ${taskRowBg(task)}`} onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}>
-                <label className="flex-shrink-0 p-1 -m-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
-                  <input type="checkbox" checked={selectedTasks.has(task.id)} onChange={() => handleSelectTask(task.id)} className="w-5 h-5 cursor-pointer" />
+              <div
+                className={`flex cursor-pointer items-start gap-2 px-3 py-2.5 transition-colors md:items-center md:gap-3 md:px-4 ${selected ? 'bg-brand-50' : expanded ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
+                onClick={() => setExpandedTaskId(expanded ? null : task.id)}
+              >
+                <label className="-m-2 flex shrink-0 cursor-pointer items-center justify-center p-2" onClick={(e) => e.stopPropagation()}>
+                  <input type="checkbox" checked={selected} onChange={() => handleSelectTask(task.id)} aria-label={`Selecionar ${task.title}`} className="size-4 cursor-pointer accent-brand-700" />
                 </label>
-                <div className="flex gap-1 flex-shrink-0">
-                  <span>{statusIcon[task.status || 'pending']}</span>
-                  <span>{priorityIcon[task.priority || 'medium']}</span>
-                  {task.convertedAt && <span title="Cliente ativo"><PartyPopper size={14} className="text-emerald-600" /></span>}
-                  {task.hotLead && <span title="Lead quente: abriu/clicou em e-mail recentemente"><Flame size={14} className="text-red-500" /></span>}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm leading-snug line-clamp-2 md:truncate">{task.title}</p>
-                  <div className="flex gap-2 items-center flex-wrap mt-0.5">
-                    {isAdmin && task.assignedTo && <p className="text-xs text-gray-500">{task.assignedTo}</p>}
-                    {hasEmail(`${task.title} ${task.notes ?? ''}`) && <Mail size={12} className="text-blue-600" />}
-                    {task.convertedAt && <span className="text-xs text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-1"><PartyPopper size={11} /> Cliente ativo</span>}
-                    {task.hotLead && <span className="text-xs text-red-700 bg-red-100 px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-1"><Flame size={11} /> Lead quente</span>}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start gap-2">
+                    <button type="button" aria-expanded={expanded} className="min-w-0 flex-1 text-left outline-none focus-visible:underline">
+                      <span className="block text-sm font-medium leading-snug text-slate-900 line-clamp-2 md:truncate">{task.title}</span>
+                    </button>
+                    {prio !== 'medium' && (
+                      <StatusBadge status={prio} className="hidden md:inline-flex">{prio === 'high' ? 'Prioridade alta' : 'Prioridade baixa'}</StatusBadge>
+                    )}
+                    {task.status && task.status !== 'pending' && (
+                      <StatusBadge status={task.status}>{task.status === 'completed' ? 'Concluída' : 'Cancelada'}</StatusBadge>
+                    )}
+                  </div>
+                  {/* Lembrete no celular: abaixo do título, onde a coluna de data não cabe. */}
+                  {rem && (
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs md:hidden">
+                      <span className={`font-medium tabular-nums ${rem.isOverdue ? 'text-red-700' : rem.isToday ? 'text-amber-800' : 'text-slate-700'}`}>{rem.dateStr} {rem.timeStr}</span>
+                      {rem.isOverdue && <StatusBadge tone="danger">Atrasada{rem.daysOverdue > 0 ? ` ${rem.daysOverdue}d` : ''}</StatusBadge>}
+                      {!rem.isOverdue && rem.isToday && <StatusBadge tone="warning">Hoje</StatusBadge>}
+                      {prio !== 'medium' && <StatusBadge status={prio}>{prio === 'high' ? 'Alta' : 'Baixa'}</StatusBadge>}
+                    </p>
+                  )}
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                    {isAdmin && task.assignedTo && <span className="text-xs text-slate-500">{task.assignedTo}</span>}
+                    {task.convertedAt && <StatusBadge tone="success">Cliente ativo</StatusBadge>}
+                    {task.hotLead && <StatusBadge tone="danger"><Flame aria-hidden /> Lead quente</StatusBadge>}
+                    {hasEmail(`${task.title} ${task.notes ?? ''}`) && <Mail size={12} aria-label="Tem e-mail" className="text-slate-500" />}
                     {task.email && !task.emailConfirmed && (
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); handleConfirmEmail(task.id, task.email); }}
                         title="E-mail não confirmado — clique para confirmar e liberar para e-mail marketing"
-                        className="text-xs text-amber-800 bg-amber-100 hover:bg-amber-200 px-1.5 py-0.5 rounded font-medium transition-colors"
+                        className="rounded-sm bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100"
                       >
-                        confirmar e-mail
+                        Confirmar e-mail
                       </button>
                     )}
                     {task.email && task.emailConfirmed && (
-                      <span title="E-mail confirmado — usável em e-mail marketing" className="text-xs text-green-700 bg-green-100 px-1.5 py-0.5 rounded font-medium inline-flex items-center"><MailCheck size={12} /></span>
+                      <span title="E-mail confirmado — usável em e-mail marketing" className="inline-flex items-center text-green-700"><MailCheck size={13} aria-label="E-mail confirmado" /></span>
                     )}
                     {(() => {
                       const eng = engagementData?.[task.id];
                       if (!eng || (eng.opens === 0 && eng.clicks === 0)) return null;
                       const title = `Último engajamento: ${eng.lastEventAt ? new Date(eng.lastEventAt).toLocaleString('pt-BR') : '--'}`;
                       return (
-                        <span
-                          className="text-xs text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-medium"
-                          title={title}
-                        >
-                          {eng.opens > 0 && `${eng.opens}x`}
-                          {eng.opens > 0 && eng.clicks > 0 && ' · '}
-                          {eng.clicks > 0 && 'clicou'}
-                        </span>
+                        <StatusBadge tone="warning">
+                          <span title={title}>
+                            {eng.opens > 0 && `${eng.opens}x`}
+                            {eng.opens > 0 && eng.clicks > 0 && ' · '}
+                            {eng.clicks > 0 && 'clicou'}
+                          </span>
+                        </StatusBadge>
                       );
                     })()}
                     {task.tags && task.tags.length > 0 && (
-                      <span className="flex gap-1 flex-wrap">
+                      <span className="flex flex-wrap gap-1">
                         {task.tags.map(tag => {
                           const color = tagColorMap.get(tag) || '#6366f1';
                           return (
-                            <span key={tag} className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: `${color}1A`, color }}>{tag}</span>
+                            <span key={tag} className="rounded-sm px-1.5 py-0.5 text-xs font-medium" style={{ backgroundColor: `${color}1A`, color }}>{tag}</span>
                           );
                         })}
                       </span>
@@ -1769,116 +1932,116 @@ export default function Tasks() {
                       const enr = enrollmentsData?.[task.id];
                       if (!enr || (enr.campaigns.length === 0 && enr.sequences.length === 0)) return null;
                       const seqStatusLabel: Record<string, string> = { active: 'ativa', paused: 'pausada', completed: 'concluída', cancelled: 'cancelada' };
-                      const seqStatusColor: Record<string, string> = {
-                        active: 'bg-blue-100 text-blue-700',
-                        paused: 'bg-amber-100 text-amber-700',
-                        completed: 'bg-gray-100 text-gray-600',
-                        cancelled: 'bg-gray-100 text-gray-400 line-through',
+                      const seqStatusTone: Record<string, 'info' | 'warning' | 'neutral'> = {
+                        active: 'info',
+                        paused: 'warning',
+                        completed: 'neutral',
+                        cancelled: 'neutral',
                       };
                       const campStatusLabel: Record<string, string> = { pending: 'pendente', sent: 'enviada', failed: 'falhou', skipped: 'pulada' };
-                      const campStatusColor: Record<string, string> = {
-                        pending: 'bg-purple-100 text-purple-700',
-                        sent: 'bg-emerald-100 text-emerald-700',
-                        failed: 'bg-red-100 text-red-700',
-                        skipped: 'bg-gray-100 text-gray-500',
+                      const campStatusTone: Record<string, 'info' | 'success' | 'danger' | 'neutral'> = {
+                        pending: 'info',
+                        sent: 'success',
+                        failed: 'danger',
+                        skipped: 'neutral',
                       };
                       return (
-                        <span className="flex gap-1 flex-wrap">
+                        <span className="flex flex-wrap gap-1">
                           {enr.sequences.map(seq => (
-                            <span key={`seq-${seq.enrollmentId}`} className={`text-xs px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-1 ${seqStatusColor[seq.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                            <StatusBadge key={`seq-${seq.enrollmentId}`} tone={seqStatusTone[seq.status] ?? 'neutral'} className={seq.status === 'cancelled' ? 'line-through' : ''}>
                               {seq.name} · {seqStatusLabel[seq.status] ?? seq.status}
                               {isAdmin && (seq.status === 'active' || seq.status === 'paused') && (
                                 <button
                                   type="button"
                                   title="Remover da sequência" aria-label="Remover da sequência"
-                                  className="hover:text-red-600"
+                                  className="rounded-sm hover:text-red-700"
                                   onClick={(e) => { e.stopPropagation(); handleCancelEnrollment(seq.enrollmentId); }}
                                 ><X size={10} /></button>
                               )}
-                            </span>
+                            </StatusBadge>
                           ))}
                           {enr.campaigns.map(camp => (
-                            <span key={`camp-${camp.recipientId}`} className={`text-xs px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-1 ${campStatusColor[camp.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                            <StatusBadge key={`camp-${camp.recipientId}`} tone={campStatusTone[camp.status] ?? 'neutral'}>
                               {camp.name} · {campStatusLabel[camp.status] ?? camp.status}
                               {isAdmin && (
                                 <button
                                   type="button"
                                   title="Remover da campanha" aria-label="Remover da campanha"
-                                  className="hover:text-red-600"
+                                  className="rounded-sm hover:text-red-700"
                                   onClick={(e) => { e.stopPropagation(); handleRemoveCampaignRecipient(camp.recipientId); }}
                                 ><X size={10} /></button>
                               )}
-                            </span>
+                            </StatusBadge>
                           ))}
                         </span>
                       );
                     })()}
                   </div>
                 </div>
-                {(() => {
-                  // Atalhos na linha recolhida. Sem contexto de carga aqui, o WhatsApp abre só com o
-                  // número (sem mensagem pronta): a mensagem padrão exige região e sacos.
-                  const rowPhone = phoneOfTask(task);
-                  if (rowPhone === null) return null;
-                  const iconBtn = 'inline-flex size-10 items-center justify-center rounded-lg border hover:bg-gray-100 transition-colors';
-                  return (
-                    <div className="flex flex-shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
-                      <a href={waLink(rowPhone)} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${task.title} no WhatsApp`} className={`${iconBtn} border-green-300 text-green-700`}>
-                        <MessageCircle size={18} />
-                      </a>
-                      <a href={telLink(rowPhone)} aria-label={`Ligar para ${task.title}`} className={`${iconBtn} border-gray-300 text-gray-700`}>
-                        <Phone size={18} />
-                      </a>
-                    </div>
-                  );
-                })()}
-                {task.reminderDate && task.reminderEnabled && (() => {
-                  try {
-                    const rd = new Date(task.reminderDate);
-                    if (isNaN(rd.getTime())) return null;
-                    const { isOverdue, daysOverdue, isToday } = taskUrgency(task);
-                    const veryOverdue = isOverdue && daysOverdue > 7;
-                    const p = (n: number) => String(n).padStart(2, '0');
-                    const dateStr = `${p(rd.getDate())}/${p(rd.getMonth() + 1)}`;
-                    const timeStr = `${p(rd.getHours())}:${p(rd.getMinutes())}`;
-                    const chipCls = veryOverdue ? 'bg-red-100 text-red-700'
-                      : isOverdue ? 'bg-orange-100 text-orange-700'
-                      : isToday ? 'bg-yellow-100 text-yellow-800'
-                      : 'bg-blue-100 text-blue-700';
-                    return (
-                      <div className={`text-xs px-1.5 py-1 rounded-lg text-center flex-shrink-0 font-medium leading-tight ${chipCls}`}>
-                        <div className="flex justify-center">{isOverdue ? <AlertTriangle size={13} /> : isToday ? <Clock size={13} /> : <Bell size={13} />}</div>
-                        <div>{dateStr}</div>
-                        <div>{timeStr}</div>
-                      </div>
-                    );
-                  } catch { return null; }
-                })()}
+                {/* Próximo lembrete (desktop). */}
+                {rem && (
+                  <div className="hidden w-28 shrink-0 text-right md:block">
+                    <p className={`text-sm font-medium tabular-nums ${rem.isOverdue ? 'text-red-700' : rem.isToday ? 'text-amber-800' : 'text-slate-900'}`}>
+                      {rem.dateStr} <span className="font-normal text-slate-500">{rem.timeStr}</span>
+                    </p>
+                    {rem.isOverdue ? (
+                      <StatusBadge tone="danger" className="mt-0.5">Atrasada{rem.daysOverdue > 0 ? ` ${rem.daysOverdue}d` : ''}</StatusBadge>
+                    ) : rem.isToday ? (
+                      <StatusBadge tone="warning" className="mt-0.5">Hoje</StatusBadge>
+                    ) : null}
+                  </div>
+                )}
+                {/* Atalhos na linha recolhida. Sem contexto de carga aqui, o WhatsApp abre só com o
+                    número (sem mensagem pronta): a mensagem padrão exige região e sacos. */}
+                <div className="flex shrink-0 items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                  {rowPhone !== null && (
+                    <>
+                      <Button asChild variant="ghost" size="icon-sm" className="text-green-700 hover:bg-green-50 hover:text-green-800">
+                        <a href={waLink(rowPhone)} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${task.title} no WhatsApp`} title="WhatsApp">
+                          <MessageCircle aria-hidden />
+                        </a>
+                      </Button>
+                      <Button asChild variant="ghost" size="icon-sm">
+                        <a href={telLink(rowPhone)} aria-label={`Ligar para ${task.title}`} title="Ligar">
+                          <Phone aria-hidden />
+                        </a>
+                      </Button>
+                    </>
+                  )}
+                  <Button variant="ghost" size="icon-sm" className="max-md:hidden" aria-label={`Editar ${task.title}`} title="Editar" onClick={() => handleEdit(task)}>
+                    <Pencil aria-hidden />
+                  </Button>
+                </div>
               </div>
-              {expandedTaskId === task.id && (
-                <div className="p-3 bg-gray-50 border-t space-y-2">
-                  {(fullTask?.notes ?? task.notes) && <div className="text-sm bg-yellow-50 p-3 rounded border border-yellow-200"><strong>Anotações:</strong><p className="whitespace-pre-wrap mt-2 leading-relaxed">{fullTask?.notes ?? task.notes}</p></div>}
-                  <p className="text-xs text-gray-500">
-                    Criada: {new Date(task.createdAt).toLocaleDateString("pt-BR")}
+              {expanded && (
+                <div className="space-y-3 border-t border-slate-200 bg-slate-50 px-3 py-3 md:px-4">
+                  {(fullTask?.notes ?? task.notes) && (
+                    <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm">
+                      <p className="text-xs font-medium text-slate-500">Anotações</p>
+                      <p className="mt-1 whitespace-pre-wrap leading-relaxed text-slate-800">{fullTask?.notes ?? task.notes}</p>
+                    </div>
+                  )}
+                  <p className="text-xs text-slate-500">
+                    Prioridade: {PRIORITY_LABEL[prio] ?? prio}
+                    {` · Criada: ${new Date(task.createdAt).toLocaleDateString("pt-BR")}`}
                     {!!task.contactCount && ` · ${task.contactCount} contato(s)`}
                     {task.convertedAt && ` · Cliente ativo desde ${new Date(task.convertedAt).toLocaleDateString("pt-BR")}`}
                   </p>
                   {aiSuggestion?.taskId === task.id && (
-                    <div className="text-sm bg-purple-50 p-2 rounded border border-purple-200">
-                      <strong>Sugestão de abordagem:</strong>
-                      <p className="mt-1 text-gray-700">{aiSuggestion.text}</p>
+                    <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm">
+                      <p className="text-xs font-medium text-slate-500">Sugestão de abordagem</p>
+                      <p className="mt-1 text-slate-800">{aiSuggestion.text}</p>
                     </div>
                   )}
                   {/* ── Pedidos vinculados a esta tarefa ──────────────────── */}
                   {!isAdmin && (() => {
                     const taskPedidos = allPedidos.filter(p => p.taskId === task.id);
                     return (
-                      <div className="bg-white border border-blue-100 rounded-lg p-2.5 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold text-blue-800">Pedidos ({taskPedidos.length})</span>
+                      <div className="rounded-md border border-slate-200 bg-white">
+                        <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-2">
+                          <span className="text-sm font-semibold text-slate-900">Pedidos ({taskPedidos.length})</span>
                           <Button
                             size="sm"
-                            className="gap-1 text-xs h-10 md:h-8 px-3"
                             onClick={(e) => {
                               e.stopPropagation();
                               setEditingPedidoId(null);
@@ -1886,48 +2049,44 @@ export default function Tasks() {
                               setOrderDialogOpen(true);
                             }}
                           >
-                            + Novo pedido
+                            <Plus aria-hidden /> Novo pedido
                           </Button>
                         </div>
                         {taskPedidos.length === 0 ? (
-                          <p className="text-xs text-slate-400 text-center py-2">Nenhum pedido criado para esta tarefa</p>
+                          <p className="px-3 py-4 text-center text-sm text-slate-500">Nenhum pedido criado para esta tarefa.</p>
                         ) : (
-                          taskPedidos.map((ped) => {
+                          <div className="divide-y divide-slate-200">
+                          {taskPedidos.map((ped) => {
                             const total = totalPedido(ped);
                             const isFat = ped.status === 'faturado';
                             return (
-                              <div key={ped.id} className="bg-slate-50 rounded-lg px-2.5 py-2 space-y-1">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex flex-wrap gap-x-2 items-center">
-                                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${isFat ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                                      {isFat ? 'Faturado' : 'Estimado'}
-                                    </span>
-                                    <span className="text-sm font-bold text-slate-800">{formatBRL(total)}</span>
-                                    {ped.cnpj && <span className="text-xs text-slate-600">{ped.cnpj}</span>}
-                                  </div>
+                              <div key={ped.id} className="space-y-1.5 px-3 py-2.5">
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                  <StatusBadge tone={isFat ? 'success' : 'warning'}>{isFat ? 'Faturado' : 'Estimado'}</StatusBadge>
+                                  <span className="text-sm font-semibold tabular-nums text-slate-900">{formatBRL(total)}</span>
+                                  {ped.cnpj && <span className="text-xs text-slate-500">{ped.cnpj}</span>}
                                 </div>
                                 {ped.itens.length > 0 && (
                                   <div className="space-y-0.5">
                                     {ped.itens.map((it) => (
                                       <div key={it.id} className="flex justify-between text-xs text-slate-600">
-                                        <span className="truncate mr-2">{it.descricao}</span>
-                                        <span className="whitespace-nowrap">{it.quantidade}un x {formatBRL(it.valorUnitario)}</span>
+                                        <span className="mr-2 truncate">{it.descricao}</span>
+                                        <span className="whitespace-nowrap tabular-nums">{it.quantidade}un x {formatBRL(it.valorUnitario)}</span>
                                       </div>
                                     ))}
                                   </div>
                                 )}
                                 {(ped.prazoPagamentoSal || ped.prazoPagamentoFrete || ped.valorFretePorUnidade || ped.observacoes) && (
-                                  <div className="text-xs text-amber-800 bg-amber-50 rounded px-2 py-1 space-y-0.5">
-                                    {ped.prazoPagamentoSal && <div><strong>Prazo sal:</strong> {ped.prazoPagamentoSal}</div>}
-                                    {ped.prazoPagamentoFrete && <div><strong>Prazo frete:</strong> {ped.prazoPagamentoFrete}</div>}
-                                    {!!ped.valorFretePorUnidade && <div><strong>Frete/ton:</strong> {formatBRL(ped.valorFretePorUnidade)}</div>}
-                                    {ped.observacoes && <div><strong>Obs:</strong> {ped.observacoes}</div>}
+                                  <div className="space-y-0.5 rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
+                                    {ped.prazoPagamentoSal && <div><strong className="font-semibold">Prazo sal:</strong> {ped.prazoPagamentoSal}</div>}
+                                    {ped.prazoPagamentoFrete && <div><strong className="font-semibold">Prazo frete:</strong> {ped.prazoPagamentoFrete}</div>}
+                                    {!!ped.valorFretePorUnidade && <div><strong className="font-semibold">Frete/ton:</strong> {formatBRL(ped.valorFretePorUnidade)}</div>}
+                                    {ped.observacoes && <div><strong className="font-semibold">Obs:</strong> {ped.observacoes}</div>}
                                   </div>
                                 )}
                                 <div className="flex flex-wrap gap-1.5 pt-0.5">
                                   <Button
                                     variant="outline" size="sm"
-                                    className="gap-1 text-xs h-10 md:h-8 px-3"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setEditingPedidoId(ped.id);
@@ -1940,7 +2099,7 @@ export default function Tasks() {
                                   {!isFat && (
                                     <Button
                                       size="sm"
-                                      className="gap-1 text-xs h-10 md:h-8 px-3 bg-emerald-600 hover:bg-emerald-700 basis-full md:basis-auto"
+                                      variant="outline"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setInvoicePedidoId(ped.id);
@@ -1953,7 +2112,6 @@ export default function Tasks() {
                                   {isFat && (
                                     <Button
                                       variant="outline" size="sm"
-                                      className="gap-1 text-xs h-10 md:h-8 px-3 text-amber-700 border-amber-300 hover:bg-amber-50"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         undoInvoice(ped.id);
@@ -1963,8 +2121,8 @@ export default function Tasks() {
                                     </Button>
                                   )}
                                   <Button
-                                    variant="outline" size="sm"
-                                    className="gap-1 text-xs h-10 md:h-8 px-3 text-red-600 border-red-200 hover:bg-red-50"
+                                    variant="ghost" size="sm"
+                                    className="text-red-700 hover:bg-red-50 hover:text-red-800"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setDeleteOrderPedidoId(ped.id);
@@ -1976,12 +2134,13 @@ export default function Tasks() {
                                 </div>
                               </div>
                             );
-                          })
+                          })}
+                          </div>
                         )}
                       </div>
                     );
                   })()}
-                  <div className="flex gap-2 flex-wrap">
+                  <div className="flex flex-wrap items-center gap-2">
                     {(() => {
                       const notesText = fullTask?.notes ?? task.notes ?? '';
                       const phone = phoneOfTask({ phone: task.phone, title: task.title, notes: notesText });
@@ -1989,285 +2148,262 @@ export default function Tasks() {
                       return (
                         <>
                           {phone && (
-                            <Button asChild size="sm" variant="outline" className="text-green-700 border-green-300 hover:bg-green-50" onClick={(e) => e.stopPropagation()}>
-                              <a href={waLink(phone)} target="_blank" rel="noopener noreferrer">WhatsApp</a>
+                            <Button asChild size="sm" variant="outline" onClick={(e) => e.stopPropagation()}>
+                              <a href={waLink(phone)} target="_blank" rel="noopener noreferrer"><MessageCircle aria-hidden /> WhatsApp</a>
                             </Button>
                           )}
                           {phone && (
                             <Button asChild size="sm" variant="outline" onClick={(e) => e.stopPropagation()}>
-                              <a href={telLink(phone)}>Ligar</a>
+                              <a href={telLink(phone)}><Phone aria-hidden /> Ligar</a>
                             </Button>
                           )}
                           {email && (
-                            <Button asChild size="sm" variant="outline" className="text-blue-700 border-blue-300 hover:bg-blue-50" onClick={(e) => e.stopPropagation()}>
-                              <a href={`mailto:${email}`}>E-mail</a>
+                            <Button asChild size="sm" variant="outline" onClick={(e) => e.stopPropagation()}>
+                              <a href={`mailto:${email}`}><Mail aria-hidden /> E-mail</a>
                             </Button>
                           )}
                         </>
                       );
                     })()}
+                    <Button size="sm" variant="outline" onClick={() => handleEdit(task)}><Pencil aria-hidden /> Editar</Button>
                     <Button
                       size="sm"
                       variant={task.convertedAt ? "outline" : "default"}
-                      className={task.convertedAt ? "text-emerald-700 border-emerald-300 hover:bg-emerald-50" : "bg-emerald-600 hover:bg-emerald-700 text-white"}
                       onClick={(e) => handleToggleConverted(task, e)}
                       disabled={toggleConvertedMutation.isPending}
                     >
-                      {task.convertedAt ? "Cliente ativo — desmarcar" : "Marcar como Cliente Ativo"}
+                      {task.convertedAt ? "Cliente ativo — desmarcar" : "Marcar como cliente ativo"}
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => handleEdit(task)}>Editar</Button>
-                    <Button size="sm" variant="destructive" onClick={() => handleDelete(task.id)}>Deletar</Button>
                     {isAdmin && task.email && (
                       <Button size="sm" variant="outline" onClick={() => setCampaignPickerTaskIds([task.id])}>Campanha</Button>
                     )}
                     {canEmailMarketing && task.email && (
                       <Button size="sm" variant="outline" onClick={() => setSequencePickerTaskIds([task.id])}>Sequência</Button>
                     )}
-                    <Button size="sm" variant="outline" className="text-purple-700 border-purple-300 hover:bg-purple-50" onClick={() => handleAiSuggest(task)} disabled={loadingSuggestion}>
+                    <Button size="sm" variant="outline" onClick={() => handleAiSuggest(task)} disabled={loadingSuggestion}>
                       {loadingSuggestion && aiSuggestion === null ? "Gerando..." : "Sugestão IA"}
                     </Button>
+                    <Button size="sm" variant="destructive" className="md:ml-auto" onClick={() => handleDelete(task.id)}>Deletar</Button>
                   </div>
                 </div>
               )}
-            </div>
-          ))}
-        </div>
+            </li>
+            );
+          })}
+          </ul>
+        </Panel>
       )}
 
       {/* Delete confirmation modal */}
-      {(deleteConfirm !== null || bulkDeleteConfirm) && (
-        <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
-            <div className="text-center mb-4">
-              <div className="flex justify-center mb-2"><Trash2 size={36} className="text-red-500" /></div>
-              <h3 className="text-base font-bold text-gray-800">Confirmar exclusão</h3>
-              <p className="text-sm text-gray-500 mt-1">
-                {bulkDeleteConfirm
-                  ? `Deletar ${selectedTasks.size} tarefa(s) selecionada(s)?`
-                  : "Tem certeza que deseja deletar esta tarefa?"}
-              </p>
-            </div>
-            <div className="mb-5">
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Motivo da exclusão <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-300"
-                rows={3}
-                placeholder="Descreva o motivo (ex: tarefa duplicada, cliente cancelou...)"
-                value={deleteReason}
-                onChange={e => setDeleteReason(e.target.value)}
-                maxLength={500}
-                autoFocus
-              />
-              <p className="text-xs text-gray-400 mt-0.5 text-right">{deleteReason.length}/500</p>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => { setDeleteConfirm(null); setBulkDeleteConfirm(false); setDeleteReason(""); }}
-                className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={bulkDeleteConfirm ? confirmBulkDelete : confirmDelete}
-                disabled={deleteReason.trim().length < 5}
-                className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold transition"
-              >
-                Deletar
-              </button>
-            </div>
+      <Dialog
+        open={deleteConfirm !== null || bulkDeleteConfirm}
+        onOpenChange={(open) => { if (!open) { setDeleteConfirm(null); setBulkDeleteConfirm(false); setDeleteReason(""); } }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirmar exclusão</DialogTitle>
+            <DialogDescription>
+              {bulkDeleteConfirm
+                ? `Deletar ${selectedTasks.size} tarefa(s) selecionada(s)?`
+                : "Tem certeza que deseja deletar esta tarefa?"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="delete-reason">
+              Motivo da exclusão <span className="text-red-700">*</span>
+            </Label>
+            <Textarea
+              id="delete-reason"
+              className="resize-none"
+              rows={3}
+              placeholder="Descreva o motivo (ex: tarefa duplicada, cliente cancelou...)"
+              value={deleteReason}
+              onChange={e => setDeleteReason(e.target.value)}
+              maxLength={500}
+              autoFocus
+            />
+            <p className="text-right text-xs text-slate-500">{deleteReason.length}/500</p>
           </div>
-        </div>
-      )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => { setDeleteConfirm(null); setBulkDeleteConfirm(false); setDeleteReason(""); }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={bulkDeleteConfirm ? confirmBulkDelete : confirmDelete}
+              disabled={deleteReason.trim().length < 5}
+            >
+              Deletar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Convert to active client modal */}
-      {convertModalTask && (
-        <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
-            <div className="text-center mb-5">
-              <div className="flex justify-center mb-2"><PartyPopper size={36} className="text-emerald-600" /></div>
-              <h3 className="text-base font-bold text-gray-800">Marcar como Cliente Ativo</h3>
-              <p className="text-sm text-gray-500 mt-1">{convertModalTask.title}</p>
-              <p className="text-xs text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2 mt-3">
-                A tag <strong>"ativo"</strong> sera aplicada e voce podera criar o pedido com os produtos.
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setConvertModalTask(null)}
-                className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={confirmConvert}
-                disabled={toggleConvertedMutation.isPending}
-                className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold transition"
-              >
-                Confirmar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Dialog open={!!convertModalTask} onOpenChange={(open) => { if (!open) setConvertModalTask(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Marcar como cliente ativo</DialogTitle>
+            <DialogDescription>{convertModalTask?.title}</DialogDescription>
+          </DialogHeader>
+          <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-800">
+            A tag <strong className="font-semibold">"ativo"</strong> será aplicada e você poderá criar o pedido com os produtos.
+          </p>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setConvertModalTask(null)}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={confirmConvert} disabled={toggleConvertedMutation.isPending}>
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Notes warning modal */}
-      {showNotesWarning && (
-        <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-y-auto max-h-[92dvh]">
-            {/* Drag handle (mobile) */}
-            <div className="flex justify-center pt-3 pb-1 sm:hidden">
-              <div className="w-10 h-1 bg-gray-300 rounded-full" />
-            </div>
-
-            <div className="px-6 pt-4 pb-6 space-y-5">
-              {/* Header */}
-              <div className="text-center">
-                <div className="flex justify-center mb-2"><ClipboardList size={36} className="text-blue-600" /></div>
-                <h3 className="text-lg font-bold text-gray-800">Anotou as informações importantes?</h3>
-                <p className="text-xs text-gray-400 mt-1">Contato recorrente — cada conversa deve ser documentada.</p>
-              </div>
-
-              {/* Checklist */}
-              <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 space-y-3">
-                <p className="text-[11px] font-semibold text-blue-600 uppercase tracking-wider">Lembre de registrar:</p>
-                <div className="flex items-start gap-3">
-                  <Package size={20} className="text-blue-500 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">Tipo de sal</p>
-                    <p className="text-xs text-gray-500">Refinado, grosso, marinho, industrial…</p>
-                  </div>
+      <Dialog open={showNotesWarning} onOpenChange={(open) => { if (!open) setShowNotesWarning(false); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Anotou as informações importantes?</DialogTitle>
+            <DialogDescription>Contato recorrente — cada conversa deve ser documentada.</DialogDescription>
+          </DialogHeader>
+          <div>
+            <p className="mb-2 text-xs font-medium text-slate-500">Lembre de registrar</p>
+            <ul className="divide-y divide-slate-200 rounded-md border border-slate-200">
+              <li className="flex items-start gap-3 px-3 py-2.5">
+                <Package size={18} aria-hidden className="mt-0.5 shrink-0 text-slate-500" />
+                <div>
+                  <p className="text-sm font-medium text-slate-900">Tipo de sal</p>
+                  <p className="text-xs text-slate-500">Refinado, grosso, marinho, industrial…</p>
                 </div>
-                <div className="flex items-start gap-3">
-                  <Boxes size={20} className="text-blue-500 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">Volume e frequência</p>
-                    <p className="text-xs text-gray-500">Ex.: 1.200 sacos/mês de 25kg, pedido trimestral / mensal…</p>
-                  </div>
+              </li>
+              <li className="flex items-start gap-3 px-3 py-2.5">
+                <Boxes size={18} aria-hidden className="mt-0.5 shrink-0 text-slate-500" />
+                <div>
+                  <p className="text-sm font-medium text-slate-900">Volume e frequência</p>
+                  <p className="text-xs text-slate-500">Ex.: 1.200 sacos/mês de 25kg, pedido trimestral / mensal…</p>
                 </div>
-                <div className="flex items-start gap-3">
-                  <Tag size={20} className="text-blue-500 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">Marca atual</p>
-                    <p className="text-xs text-gray-500">Qual fornecedor está usando hoje?</p>
-                  </div>
+              </li>
+              <li className="flex items-start gap-3 px-3 py-2.5">
+                <Tag size={18} aria-hidden className="mt-0.5 shrink-0 text-slate-500" />
+                <div>
+                  <p className="text-sm font-medium text-slate-900">Marca atual</p>
+                  <p className="text-xs text-slate-500">Qual fornecedor está usando hoje?</p>
                 </div>
-              </div>
-
-              {/* Buttons */}
-              <div className="flex flex-col gap-3">
-                <button
-                  onClick={() => {
-                    setShowNotesWarning(false);
-                    setIsModalOpen(true); // reopen Dialog so user can edit notes
-                    setTimeout(() => notesRef.current?.focus(), 200);
-                  }}
-                  className="w-full py-4 bg-blue-600 active:bg-blue-800 hover:bg-blue-700 text-white text-base font-bold rounded-2xl transition-all active:scale-[0.98] shadow-md"
-                >
-                  Voltar e Anotar
-                </button>
-                <button
-                  onClick={() => doSave()}
-                  disabled={saving}
-                  className="w-full py-3.5 bg-green-50 active:bg-green-100 hover:bg-green-100 text-green-700 text-sm font-semibold rounded-2xl border border-green-200 transition-all active:scale-[0.98]"
-                >
-                  Já documentei — Salvar
-                </button>
-              </div>
-            </div>
+              </li>
+            </ul>
           </div>
-        </div>
-      )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => doSave()} disabled={saving}>
+              Já documentei — salvar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setShowNotesWarning(false);
+                setIsModalOpen(true); // reopen Dialog so user can edit notes
+                setTimeout(() => notesRef.current?.focus(), 200);
+              }}
+            >
+              Voltar e anotar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add to campaign modal */}
       <Dialog open={campaignPickerTaskIds !== null} onOpenChange={(open) => { if (!open) setCampaignPickerTaskIds(null); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Adicionar à campanha de e-mail</DialogTitle></DialogHeader>
-          <div className="space-y-2">
-            <p className="text-sm text-gray-500">
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Adicionar à campanha de e-mail</DialogTitle>
+            <DialogDescription>
               {campaignPickerTaskIds?.length === 1 ? "1 tarefa selecionada" : `${campaignPickerTaskIds?.length ?? 0} tarefas selecionadas`}. Apenas tarefas com e-mail cadastrado serão adicionadas.
-            </p>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
             {draftCampaigns.length > 0 ? (
-              <div className="space-y-2 max-h-64 overflow-y-auto">
+              <div className="max-h-64 space-y-2 overflow-y-auto">
                 {draftCampaigns.map(c => (
                   <button
                     key={c.id}
                     onClick={() => handleAddToCampaign(c.id)}
                     disabled={addToCampaignMutation.isPending}
-                    className="w-full text-left px-3 py-2 border rounded-lg hover:bg-blue-50 transition disabled:opacity-50"
+                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-left transition hover:bg-slate-50 disabled:opacity-50 max-md:min-h-10"
                   >
-                    <p className="font-medium text-sm">{c.name}</p>
-                    <p className="text-xs text-gray-500">{c.totalRecipients} destinatário(s) · rascunho</p>
+                    <p className="text-sm font-medium text-slate-900">{c.name}</p>
+                    <p className="text-xs text-slate-500">{c.totalRecipients} destinatário(s) · rascunho</p>
                   </button>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-slate-600">
                 Nenhuma campanha em rascunho. Crie uma campanha na aba{' '}
-                <a href="/admin/email-marketing" className="text-blue-600 underline">E-mail Marketing</a>.
+                <a href="/admin/email-marketing" className="text-brand-700 underline">E-mail Marketing</a>.
               </p>
             )}
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" className="w-full" onClick={() => setCampaignPickerTaskIds(null)}>Cancelar</Button>
+            <Button type="button" variant="outline" onClick={() => setCampaignPickerTaskIds(null)}>Cancelar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Confirmar e-mail + escolher sequência, tudo num único popup */}
       <Dialog open={!!confirmEmailTarget} onOpenChange={(open) => { if (!open && !confirmEmailBusy) setConfirmEmailTarget(null); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Confirmar e-mail</DialogTitle>
+            <DialogDescription>
+              Confirmar que o e-mail <strong className="font-semibold text-slate-900">{confirmEmailTarget?.email}</strong> está correto? Após confirmar, ele poderá ser usado em campanhas e sequências de e-mail.
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-sm text-gray-600">
-              Confirmar que o e-mail <strong>{confirmEmailTarget?.email}</strong> está correto? Após confirmar, ele poderá ser usado em campanhas e sequências de e-mail.
-            </p>
-            <div className="pt-1 border-t">
-              <p className="text-sm font-medium text-gray-700 mt-3 mb-2">Incluir em uma sequência agora? (opcional)</p>
-              {sequencesLoading ? (
-                <div className="flex items-center gap-2 text-sm text-gray-400 px-3 py-2">
-                  <span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-gray-400" />
-                  Carregando sequências...
-                </div>
-              ) : (
-                <RadioGroup
-                  value={confirmEmailSequenceId !== null ? String(confirmEmailSequenceId) : "none"}
-                  onValueChange={(v: string) => setConfirmEmailSequenceId(v === "none" ? null : Number(v))}
-                  className="max-h-56 overflow-y-auto"
-                >
-                  <label className="flex items-start gap-2 px-3 py-2 border rounded-lg hover:bg-gray-50 transition cursor-pointer">
-                    <RadioGroupItem value="none" className="mt-0.5" />
-                    <p className="font-medium text-sm">Decidir depois</p>
+          <div className="space-y-2 border-t border-slate-200 pt-4">
+            <p className="text-sm font-medium text-slate-900">Incluir em uma sequência agora? <span className="font-normal text-slate-500">(opcional)</span></p>
+            {sequencesLoading ? (
+              <div className="flex items-center gap-2 px-1 py-2 text-sm text-slate-500">
+                <span className="size-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                Carregando sequências...
+              </div>
+            ) : (
+              <RadioGroup
+                value={confirmEmailSequenceId !== null ? String(confirmEmailSequenceId) : "none"}
+                onValueChange={(v: string) => setConfirmEmailSequenceId(v === "none" ? null : Number(v))}
+                className="max-h-56 overflow-y-auto"
+              >
+                <label className="flex cursor-pointer items-start gap-2 rounded-md border border-slate-200 px-3 py-2 transition hover:bg-slate-50 max-md:min-h-10">
+                  <RadioGroupItem value="none" className="mt-0.5" />
+                  <p className="text-sm font-medium text-slate-900">Decidir depois</p>
+                </label>
+                {activeSequences.map(s => (
+                  <label key={s.id} className="flex cursor-pointer items-start gap-2 rounded-md border border-slate-200 px-3 py-2 transition hover:bg-slate-50">
+                    <RadioGroupItem value={String(s.id)} className="mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">{s.name}</p>
+                      {'stepCount' in s && <p className="text-xs text-slate-500">{(s as any).stepCount} passo(s) · {(s as any).activeEnrollments} inscrito(s) ativo(s)</p>}
+                    </div>
                   </label>
-                  {activeSequences.map(s => (
-                    <label key={s.id} className="flex items-start gap-2 px-3 py-2 border rounded-lg hover:bg-indigo-50 transition cursor-pointer">
-                      <RadioGroupItem value={String(s.id)} className="mt-0.5" />
-                      <div>
-                        <p className="font-medium text-sm">{s.name}</p>
-                        {'stepCount' in s && <p className="text-xs text-gray-500">{(s as any).stepCount} passo(s) · {(s as any).activeEnrollments} inscrito(s) ativo(s)</p>}
-                      </div>
-                    </label>
-                  ))}
-                </RadioGroup>
-              )}
-              {!sequencesLoading && !canEmailMarketing && (
-                <p className="text-xs text-amber-600 mt-2">
-                  Você ainda não tem acesso a E-mail Marketing. Peça ao administrador para liberar em Atendentes → editar → "Email Marketing".
-                </p>
-              )}
-              {!sequencesLoading && canEmailMarketing && activeSequences.length === 0 && (
-                <p className="text-xs text-gray-400 mt-2">Nenhuma sequência ativa no momento.</p>
-              )}
-            </div>
+                ))}
+              </RadioGroup>
+            )}
+            {!sequencesLoading && !canEmailMarketing && (
+              <p className="text-xs text-amber-800">
+                Você ainda não tem acesso a E-mail Marketing. Peça ao administrador para liberar em Atendentes → editar → "Email Marketing".
+              </p>
+            )}
+            {!sequencesLoading && canEmailMarketing && activeSequences.length === 0 && (
+              <p className="text-xs text-slate-500">Nenhuma sequência ativa no momento.</p>
+            )}
           </div>
-          <DialogFooter className="flex gap-2 pt-2">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setConfirmEmailTarget(null)} disabled={confirmEmailBusy}>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setConfirmEmailTarget(null)} disabled={confirmEmailBusy}>
               Cancelar
             </Button>
-            <Button type="button" className="flex-1" onClick={confirmEmailNow} disabled={confirmEmailBusy}>
+            <Button type="button" onClick={confirmEmailNow} disabled={confirmEmailBusy}>
               {confirmEmailBusy ? "Confirmando..." : confirmEmailSequenceId !== null ? "Confirmar e inscrever" : "Confirmar"}
             </Button>
           </DialogFooter>
@@ -2276,40 +2412,41 @@ export default function Tasks() {
 
       {/* Enroll in sequence modal */}
       <Dialog open={sequencePickerTaskIds !== null} onOpenChange={(open) => { if (!open) { setSequencePickerTaskIds(null); setSelectedSequenceId(null); } }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Inscrever em sequência de e-mail</DialogTitle></DialogHeader>
-          <div className="space-y-2">
-            <p className="text-sm text-gray-500">
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Inscrever em sequência de e-mail</DialogTitle>
+            <DialogDescription>
               {sequencePickerTaskIds?.length === 1 ? "1 tarefa selecionada" : `${sequencePickerTaskIds?.length ?? 0} tarefas selecionadas`}. Apenas tarefas com e-mail cadastrado serão inscritas.
-            </p>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
             {activeSequences.length > 0 ? (
               <RadioGroup value={selectedSequenceId !== null ? String(selectedSequenceId) : ""} onValueChange={(v: string) => setSelectedSequenceId(Number(v))} className="max-h-64 overflow-y-auto">
                 {activeSequences.map(s => (
-                  <label key={s.id} className="flex items-start gap-2 px-3 py-2 border rounded-lg hover:bg-indigo-50 transition cursor-pointer">
+                  <label key={s.id} className="flex cursor-pointer items-start gap-2 rounded-md border border-slate-200 px-3 py-2 transition hover:bg-slate-50 max-md:min-h-10">
                     <RadioGroupItem value={String(s.id)} className="mt-0.5" />
                     <div>
-                      <p className="font-medium text-sm">{s.name}</p>
-                      {'stepCount' in s && <p className="text-xs text-gray-500">{(s as any).stepCount} passo(s) · {(s as any).activeEnrollments} inscrito(s) ativo(s)</p>}
+                      <p className="text-sm font-medium text-slate-900">{s.name}</p>
+                      {'stepCount' in s && <p className="text-xs text-slate-500">{(s as any).stepCount} passo(s) · {(s as any).activeEnrollments} inscrito(s) ativo(s)</p>}
                     </div>
                   </label>
                 ))}
               </RadioGroup>
             ) : (
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-slate-600">
                 Nenhuma sequência ativa. Peça ao administrador para criar sequências.
               </p>
             )}
           </div>
-          <DialogFooter className="flex gap-2 pt-2">
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => { setSequencePickerTaskIds(null); setSelectedSequenceId(null); }}>Cancelar</Button>
             <Button
               type="button"
-              className="flex-1"
               onClick={handleEnrollInSequence}
               disabled={enrollInSequenceMutation.isPending || selectedSequenceId === null}
             >
               {enrollInSequenceMutation.isPending ? "Inscrevendo..." : "Inscrever"}
             </Button>
-            <Button type="button" variant="outline" className="flex-1" onClick={() => { setSequencePickerTaskIds(null); setSelectedSequenceId(null); }}>Cancelar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2342,6 +2479,6 @@ export default function Tasks() {
         pedidoId={deleteOrderPedidoId}
       />
 
-    </div>
+    </Page>
   );
 }

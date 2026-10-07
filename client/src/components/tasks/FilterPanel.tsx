@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react';
 import { SlidersHorizontal, ChevronDown } from 'lucide-react';
+import { Button } from '../ui/button';
 
 /**
  * Botão "Filtros" + painel recolhível.
@@ -43,61 +44,54 @@ export function FilterPanel({
 
   return (
     <div className="relative" ref={ref}>
-      <button
+      <Button
         type="button"
+        variant={active ? 'default' : 'outline'}
         onClick={() => setOpen(o => !o)}
-        className={`px-3 py-2 rounded-lg text-sm border font-medium transition flex items-center gap-2 ${
-          active
-            ? 'bg-blue-900 text-white border-blue-900'
-            : 'bg-white text-gray-700 hover:bg-gray-50'
-        }`}
+        aria-expanded={open}
+        aria-haspopup="dialog"
       >
-        <SlidersHorizontal size={15} />
+        <SlidersHorizontal size={15} aria-hidden />
         Filtros
         {active && (
-          <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white/25 px-1.5 text-[11px] font-bold">
+          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-sm bg-white px-1.5 text-xs font-semibold text-brand-700">
             {activeCount}
           </span>
         )}
-        <ChevronDown size={14} className={`opacity-70 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
+        <ChevronDown size={14} aria-hidden className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </Button>
 
-      {/* Ancorado à DIREITA em todos os tamanhos: a busca ao lado é flex-1 e
-          empurra este botão para perto da borda direita, então um painel
-          left-0 abria ~336px fora da tela e era recortado pelo overflow-y-auto
-          do main do AppShell (o painel aparecia como uma tira estreita).
-          A largura acompanha a viewport e só então é limitada a 560px, para
-          nunca ultrapassar a tela em telas pequenas.
-          Sem overflow no corpo: os multi-selects internos abrem dropdowns
-          próprios, que um contêiner de rolagem aqui recortaria. */}
-      {/* Abaixo de md: painel fixo com rolagem própria e fundo escurecido (no celular não há Esc;
-          "Concluir" e o toque no fundo são a saída). Em md+ segue ancorado como antes. */}
+      {/* Posicionamento (o painel já abriu fora da tela uma vez):
+          - abaixo de lg: folha fixa com 12px de margem lateral, rolagem própria e
+            fundo escurecido (no celular não há Esc; "Concluir" e o toque no fundo
+            são a saída). Nunca ultrapassa a viewport, inclusive em 390px;
+          - de lg para cima: ancorado à DIREITA do botão (a busca ao lado é flex-1 e
+            empurra o botão para a direita; ancorar à esquerda abria fora da tela),
+            com largura máxima de 560px limitada à viewport.
+          Sem overflow no corpo em lg+: os multi-selects abrem dropdowns próprios,
+          que um contêiner de rolagem recortaria. */}
       {open && (
         <>
-          <div className="fixed inset-0 z-40 bg-black/30 md:hidden" onClick={() => setOpen(false)} aria-hidden="true" />
-          <div className="fixed inset-x-3 top-20 z-50 max-h-[75dvh] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-xl md:absolute md:inset-x-auto md:right-0 md:top-auto md:mt-1.5 md:max-h-none md:w-[calc(100vw-1.5rem)] md:max-w-[560px] md:overflow-visible">
-            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-t-2xl border-b border-slate-100 bg-white px-4 py-2.5">
-              <span className="text-sm font-semibold text-slate-700">
+          <div className="fixed inset-0 z-40 bg-black/30 lg:hidden" onClick={() => setOpen(false)} aria-hidden="true" />
+          <div
+            role="dialog"
+            aria-label="Filtrar tarefas"
+            className="fixed inset-x-3 top-20 z-50 max-h-[75dvh] overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg lg:absolute lg:inset-x-auto lg:right-0 lg:top-auto lg:mt-1.5 lg:max-h-none lg:w-[min(560px,calc(100vw-3rem))] lg:overflow-visible"
+          >
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-t-lg border-b border-slate-200 bg-white px-4 py-2.5">
+              <span className="text-sm font-semibold text-slate-900">
                 Filtrar tarefas
-                {active && <span className="ml-2 text-xs font-medium text-slate-500 md:hidden">{activeCount} {activeCount === 1 ? 'filtro' : 'filtros'}</span>}
+                {active && <span className="ml-2 text-xs font-normal text-slate-500">{activeCount} {activeCount === 1 ? 'filtro' : 'filtros'}</span>}
               </span>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 {active && (
-                  <button
-                    type="button"
-                    onClick={onClearAll}
-                    className="text-xs font-medium text-slate-500 hover:text-red-600 transition"
-                  >
+                  <Button type="button" variant="ghost" size="sm" onClick={onClearAll} className="text-slate-600 hover:text-red-700">
                     Limpar tudo
-                  </button>
+                  </Button>
                 )}
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="min-h-10 rounded-lg bg-blue-900 px-4 text-sm font-medium text-white md:hidden"
-                >
+                <Button type="button" size="sm" onClick={() => setOpen(false)} className="lg:hidden">
                   Concluir
-                </button>
+                </Button>
               </div>
             </div>
             <div className="space-y-4 p-4">
@@ -114,7 +108,7 @@ export function FilterPanel({
 export function FilterSection({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="space-y-2">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</p>
+      <p className="text-xs font-medium text-slate-500">{label}</p>
       <div className="flex flex-wrap items-center gap-2">{children}</div>
     </div>
   );

@@ -119,12 +119,12 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight = 220 }
   };
 
   const btn =
-    "inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-600 hover:bg-blue-50 hover:text-blue-900 transition active:scale-95";
+    "inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-600 hover:bg-blue-50 hover:text-blue-900 transition";
   const selectCls =
     "h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200";
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm focus-within:ring-2 focus-within:ring-blue-200">
+    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm focus-within:ring-2 focus-within:ring-blue-200">
       <style>{`
         .sv-rte:empty:before { content: attr(data-placeholder); color: #9ca3af; pointer-events: none; }
         .sv-rte ul { list-style: disc; padding-left: 1.4em; margin: 0 0 12px; }

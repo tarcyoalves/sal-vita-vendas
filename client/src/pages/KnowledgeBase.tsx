@@ -1,9 +1,14 @@
 import { trpc } from '../lib/trpc';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Textarea } from '../components/ui/textarea';
+import { Badge } from '../components/ui/badge';
+import { Skeleton } from '../components/ui/skeleton';
+import { Page, PageHeader, Panel, PanelHeader, EmptyState } from '../components/layout/Page';
 import { useState } from "react";
 import { toast } from "sonner";
-import { Trash2 } from "lucide-react";
+import { BookOpen, Plus, Trash2 } from "lucide-react";
 import { QueryError } from "../components/QueryError";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 
@@ -66,66 +71,56 @@ export default function KnowledgeBase() {
   };
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="pb-4 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">Base de Conhecimento IA</h1>
-          <p className="text-xs md:text-sm text-slate-500 mt-0.5">
-            Adicione documentos e diretrizes para alimentar o contexto do assistente de IA
-          </p>
-        </div>
-        <Button
-          size="sm"
-          onClick={() => setShowForm(!showForm)}
-          className="bg-[#0C3680] hover:bg-[#081F47] text-white font-medium shadow-xs transition-all flex-shrink-0"
-        >
-          {showForm ? "Cancelar" : "+ Novo Documento"}
-        </Button>
-      </div>
+    <Page>
+      <PageHeader
+        title="Base de Conhecimento"
+        description="Documentos e diretrizes que alimentam o contexto do assistente de IA."
+        actions={
+          <Button variant={showForm ? "outline" : "default"} onClick={() => setShowForm(!showForm)}>
+            {showForm ? "Cancelar" : (<><Plus /> Novo documento</>)}
+          </Button>
+        }
+      />
 
-      {/* Form */}
       {showForm && (
-        <div className="saas-card p-5 border-slate-200 shadow-md">
-          <h2 className="text-sm font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100">Adicionar Novo Documento</h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">Título do Documento *</label>
-              <input
-                type="text"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="Ex: Diretrizes de Vendas Sal Vita"
-                className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680] transition-all shadow-xs"
-              />
+        <Panel>
+          <PanelHeader title="Novo documento" />
+          <form onSubmit={handleSubmit} className="space-y-4 p-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="kb-title">Título *</Label>
+                <Input
+                  id="kb-title"
+                  type="text"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="Ex: Diretrizes de vendas Sal Vita"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="kb-category">Categoria</Label>
+                <Input
+                  id="kb-category"
+                  type="text"
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  placeholder="Ex: Políticas, Procedimentos, Catálogo"
+                />
+              </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">Categoria</label>
-              <input
-                type="text"
-                value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                placeholder="Ex: Políticas, Procedimentos, Catálogo"
-                className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680] transition-all shadow-xs"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">Conteúdo Textual *</label>
-              <textarea
+            <div className="space-y-1.5">
+              <Label htmlFor="kb-content">Conteúdo *</Label>
+              <Textarea
+                id="kb-content"
                 value={formData.content}
                 onChange={(e) => setFormData({ ...formData, content: e.target.value })}
                 placeholder="Cole aqui o conteúdo explicativo, regras de frete, scripts de vendas..."
                 rows={7}
-                className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680] transition-all shadow-xs font-mono"
               />
             </div>
 
-            <div className="flex gap-2 pt-2">
-              <Button type="submit" disabled={createMutation.isPending} className="bg-[#0C3680] hover:bg-[#081F47] text-white text-sm font-medium">
-                {createMutation.isPending ? "Salvando..." : "Salvar Documento"}
-              </Button>
+            <div className="flex justify-end gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -133,94 +128,94 @@ export default function KnowledgeBase() {
                   setShowForm(false);
                   setFormData({ title: "", content: "", category: "" });
                 }}
-                className="text-slate-600 border-slate-200 hover:bg-slate-50 text-sm"
               >
                 Cancelar
               </Button>
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending ? "Salvando..." : "Salvar documento"}
+              </Button>
             </div>
           </form>
-        </div>
+        </Panel>
       )}
 
-      {/* Documents List */}
       {isLoading ? (
-        <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-7 w-7 border-2 border-slate-200 border-t-[#0C3680] mx-auto mb-2" />
-          <p className="text-xs text-slate-400">Carregando documentos...</p>
-        </div>
+        <Panel className="divide-y divide-slate-200" as="div">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="space-y-2 px-4 py-3" aria-busy="true">
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-3 w-4/5" />
+            </div>
+          ))}
+        </Panel>
       ) : isError && docs.length === 0 ? (
         <QueryError onRetry={() => refetch()} retrying={isFetching} />
       ) : docs.length === 0 ? (
-        <div className="saas-card p-8 text-center bg-blue-50/40 border-blue-100">
-          <p className="text-sm font-medium text-slate-700">
-            Nenhum documento cadastrado na base de conhecimento.
-          </p>
-          <p className="text-xs text-slate-500 mt-1">
-            Clique no botão acima para adicionar instruções e politicas de negócio para a IA.
-          </p>
-        </div>
+        <Panel>
+          <EmptyState
+            icon={<BookOpen />}
+            title="Nenhum documento na base de conhecimento"
+            description="Adicione instruções e políticas do negócio para a IA usar nas respostas."
+            action={!showForm ? <Button onClick={() => setShowForm(true)}><Plus /> Novo documento</Button> : undefined}
+          />
+        </Panel>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {docs.map((doc: KnowledgeDoc) => (
-            <div key={doc.id} className="saas-card p-5 flex flex-col justify-between hover:border-slate-300 transition-all">
-              <div>
-                <div className="flex justify-between items-start gap-2 mb-3">
-                  <div>
-                    <h2 className="text-base font-bold text-slate-900 tracking-tight">{doc.title}</h2>
-                    {doc.category && (
-                      <span className="saas-badge saas-badge-info mt-1.5">{doc.category}</span>
-                    )}
+        <Panel>
+          <PanelHeader title="Documentos" description={`${docs.length} ${docs.length === 1 ? "documento" : "documentos"}`} />
+          <ul className="divide-y divide-slate-200">
+            {docs.map((doc: KnowledgeDoc) => (
+              <li key={doc.id} className="flex items-start gap-3 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-sm font-semibold text-slate-900">{doc.title}</h2>
+                    {doc.category && <Badge variant="info">{doc.category}</Badge>}
                   </div>
-                  <button
-                    onClick={() => setConfirmDeleteId(doc.id)}
-                    aria-label="Excluir documento"
-                    className="p-2 min-h-10 min-w-10 inline-flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                    title="Excluir documento"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-
-                <div className="bg-slate-50 border border-slate-100 p-3 rounded-lg max-h-36 overflow-y-auto">
-                  <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
+                  <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-700 line-clamp-3">
                     {doc.content.substring(0, 220)}
                     {doc.content.length > 220 ? "..." : ""}
                   </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Adicionado em {new Date(doc.createdAt).toLocaleDateString("pt-BR")}
+                  </p>
                 </div>
-              </div>
-
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-[11px] text-slate-400 font-medium">
-                  Adicionado em {new Date(doc.createdAt).toLocaleDateString("pt-BR")}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => setConfirmDeleteId(doc.id)}
+                  aria-label={`Excluir documento ${doc.title}`}
+                  title="Excluir documento"
+                  className="text-slate-500 hover:text-red-700"
+                >
+                  <Trash2 />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </Panel>
       )}
 
-      {/* Info Box */}
-      <div className="saas-card p-5 bg-slate-50/60 border-slate-200/80">
-        <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3">Boas práticas para Base de Conhecimento</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-600">
-          <div className="p-3 bg-white rounded-lg border border-slate-200/60">
-            <strong className="text-slate-800 block mb-1">Políticas & Preços:</strong>
-            Regras de frete, descontos por volume, procedimentos comerciais.
+      <Panel>
+        <PanelHeader title="O que vale cadastrar" />
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 p-4 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="font-medium text-slate-900">Políticas e preços</dt>
+            <dd className="text-slate-500">Regras de frete, descontos por volume, procedimentos comerciais.</dd>
           </div>
-          <div className="p-3 bg-white rounded-lg border border-slate-200/60">
-            <strong className="text-slate-800 block mb-1">Informações do Produto:</strong>
-            Origem marinha de Sal Vita, processos de secagem, diferenciais de mercado.
+          <div>
+            <dt className="font-medium text-slate-900">Informações do produto</dt>
+            <dd className="text-slate-500">Origem marinha do Sal Vita, processos de secagem, diferenciais de mercado.</dd>
           </div>
-          <div className="p-3 bg-white rounded-lg border border-slate-200/60">
-            <strong className="text-slate-800 block mb-1">Scripts de Atendimento:</strong>
-            Dicas para reativação de clientes inativos e contornar objeções comuns.
+          <div>
+            <dt className="font-medium text-slate-900">Scripts de atendimento</dt>
+            <dd className="text-slate-500">Dicas para reativar clientes inativos e contornar objeções comuns.</dd>
           </div>
-          <div className="p-3 bg-white rounded-lg border border-slate-200/60">
-            <strong className="text-slate-800 block mb-1">Metas & Indicadores:</strong>
-            Metas diárias de prospecção e acompanhamento de vendedores.
+          <div>
+            <dt className="font-medium text-slate-900">Metas e indicadores</dt>
+            <dd className="text-slate-500">Metas diárias de prospecção e acompanhamento de vendedores.</dd>
           </div>
-        </div>
-      </div>
+        </dl>
+      </Panel>
+
       <ConfirmDialog
         open={confirmDeleteId !== null}
         onOpenChange={(o) => { if (!o) setConfirmDeleteId(null); }}
@@ -228,6 +223,6 @@ export default function KnowledgeBase() {
         confirmLabel="Deletar"
         onConfirm={() => { if (confirmDeleteId !== null) void handleDelete(confirmDeleteId); }}
       />
-    </div>
+    </Page>
   );
 }

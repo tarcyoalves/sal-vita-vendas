@@ -1,14 +1,17 @@
 import { useAuth } from '../_core/hooks/useAuth';
 import { Button } from '../components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Badge } from '../components/ui/badge';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Skeleton } from '../components/ui/skeleton';
+import { Page, PageHeader, Panel, PanelHeader, AccessDenied } from '../components/layout/Page';
 import { useState } from "react";
 import { trpc } from '../lib/trpc';
-import { Rocket, Zap, Cpu, CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 
 interface AIProvider {
   id: string;
   name: string;
-  icon: React.ReactNode;
   description: string;
   defaultModel: string;
   requiresKey: boolean;
@@ -27,24 +30,21 @@ const AI_PROVIDERS: AIProvider[] = [
   {
     id: "groq",
     name: "Groq",
-    icon: <Rocket size={28} className="text-blue-600" />,
-    description: "Llama 3.3 70B — Líder, 14.400 req/dia grátis, confiável",
+    description: "Llama 3.3 70B — principal, 14.400 req/dia grátis, confiável",
     defaultModel: "llama-3.3-70b-versatile",
     requiresKey: true,
   },
   {
     id: "cerebras",
     name: "Cerebras",
-    icon: <Zap size={28} className="text-amber-500" />,
-    description: "GPT-OSS 120B — Fallback ultra-rápido, tier grátis generoso",
+    description: "GPT-OSS 120B — fallback ultra-rápido, tier grátis generoso",
     defaultModel: "gpt-oss-120b",
     requiresKey: true,
   },
   {
     id: "nvidia",
     name: "NVIDIA NIM",
-    icon: <Cpu size={28} className="text-emerald-500" />,
-    description: "Llama 3.3 70B — Fallback, tier grátis via build.nvidia.com",
+    description: "Llama 3.3 70B — fallback, tier grátis via build.nvidia.com",
     defaultModel: "meta/llama-3.3-70b-instruct",
     requiresKey: true,
   },
@@ -72,16 +72,17 @@ export default function AiSettings() {
 
   if (authLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-      </div>
+      <Page>
+        <Skeleton className="h-7 w-64" />
+        <Skeleton className="h-32 w-full" />
+      </Page>
     );
   }
 
   if (user?.role !== 'admin') {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-slate-500">Apenas administradores podem acessar configurações de IA.</p>
+        <p className="text-sm text-slate-500">Apenas administradores podem acessar configurações de IA.</p>
       </div>
     );
   }
@@ -171,129 +172,112 @@ export default function AiSettings() {
   };
 
   if (!user || user.role !== "admin") {
-    return <div className="p-4">Acesso negado</div>;
+    return <AccessDenied area="Configurações de IA" />;
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="pb-4 border-b border-slate-200/80">
-        <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">Configurações de Inteligência Artificial</h1>
-        <p className="text-xs md:text-sm text-slate-500 mt-0.5">
-          Gerenciamento e teste de provedores LLM (Groq, Cerebras, NVIDIA NIM)
-        </p>
-      </div>
+    <Page>
+      <PageHeader
+        title="Configurações IA"
+        description="Teste e confira os provedores de modelo de linguagem (Groq, Cerebras, NVIDIA NIM)."
+      />
 
-      {/* Select Provider */}
-      <div className="saas-card p-5 space-y-4">
-        <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Provedores Suportados</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <Panel>
+        <PanelHeader title="Provedor" description="Escolha qual provedor testar." />
+        <div role="radiogroup" aria-label="Provedor de IA" className="divide-y divide-slate-200">
           {AI_PROVIDERS.map((provider) => {
             const isSelected = selectedProvider === provider.id;
             return (
-              <div
+              <button
                 key={provider.id}
+                type="button"
+                role="radio"
+                aria-checked={isSelected}
                 onClick={() => {
                   setSelectedProvider(provider.id);
                   setApiKey("");
                   setError("");
                   setAvailableModels(null);
                 }}
-                className={`p-4 rounded-xl border cursor-pointer transition-all ${
-                  isSelected
-                    ? "bg-blue-50/50 border-[#0C3680] shadow-xs"
-                    : "bg-white border-slate-200/80 hover:border-slate-300 hover:bg-slate-50/50"
+                className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors ${
+                  isSelected ? "bg-brand-50" : "hover:bg-slate-50"
                 }`}
               >
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 rounded-lg bg-white border border-slate-100 shadow-2xs">
-                    {provider.icon}
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-sm">{provider.name}</h3>
-                    {provider.id === "groq" && (
-                      <span className="saas-badge saas-badge-info text-[10px] py-0 px-1.5 mt-0.5">Líder</span>
-                    )}
-                  </div>
-                </div>
-                <p className="text-xs text-slate-500 leading-relaxed">{provider.description}</p>
-              </div>
+                <span
+                  aria-hidden
+                  className={`mt-1 size-3.5 shrink-0 rounded-full border ${
+                    isSelected ? "border-brand-700 bg-brand-700 ring-2 ring-inset ring-white" : "border-slate-300 bg-white"
+                  }`}
+                />
+                <span className="min-w-0">
+                  <span className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-slate-900">{provider.name}</span>
+                    {provider.id === "groq" && <Badge variant="info">Principal</Badge>}
+                  </span>
+                  <span className="block text-xs text-slate-500">{provider.description}</span>
+                </span>
+              </button>
             );
           })}
         </div>
-      </div>
+      </Panel>
 
-      {/* Test Provider Form */}
       {currentProvider && (
-        <div className="saas-card p-5 space-y-4">
-          <h2 className="text-sm font-bold text-slate-900">Testar Chave de API — {currentProvider.name}</h2>
-          <p className="text-xs text-slate-500">
-            Informe sua API Key pessoal para validar conexões ou inspecionar os modelos disponíveis.
-          </p>
-
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
-                Chave da API ({currentProvider.name})
-              </label>
-              <div className="relative">
-                <input
+        <Panel>
+          <PanelHeader
+            title={`Testar chave de API — ${currentProvider.name}`}
+            description="Informe uma chave para validar a conexão ou listar os modelos disponíveis. A chave não é salva."
+          />
+          <div className="space-y-4 p-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="ai-key">Chave da API ({currentProvider.name})</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="ai-key"
                   type={showKey ? "text" : "password"}
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={`Cole sua API Key do ${currentProvider.name}...`}
-                  className="w-full pl-3.5 pr-20 py-2.5 bg-slate-50/50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0C3680]/20 focus:border-[#0C3680] transition-all font-mono"
+                  placeholder={`Cole a API key do ${currentProvider.name}`}
+                  autoComplete="off"
+                  className="flex-1"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowKey(!showKey)}
-                  className="absolute right-2 top-2 px-2.5 py-1 text-xs text-slate-500 hover:text-slate-800 bg-slate-100 rounded font-medium"
-                >
+                <Button type="button" variant="outline" onClick={() => setShowKey(!showKey)}>
                   {showKey ? "Ocultar" : "Mostrar"}
-                </button>
+                </Button>
               </div>
             </div>
 
             {error && (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 font-medium">
+              <div role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
                 {error}
               </div>
             )}
 
             {saved && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-700 font-medium flex items-center gap-1.5">
-                <CheckCircle2 size={16} />
-                <span>Conexão testada com sucesso no modelo {currentProvider.defaultModel}!</span>
+              <div role="status" className="flex items-center gap-2 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">
+                <CheckCircle2 size={16} aria-hidden />
+                <span>Conexão testada com sucesso no modelo {currentProvider.defaultModel}.</span>
               </div>
             )}
 
-            <div className="flex flex-wrap gap-2 pt-2">
-              <Button
-                onClick={handleTestConnection}
-                disabled={testing || !apiKey.trim()}
-                className="bg-[#0C3680] hover:bg-[#081F47] text-white text-xs font-semibold py-2 px-4 rounded-lg"
-              >
-                {testing ? "Testando..." : "Testar Conexão"}
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={handleTestConnection} disabled={testing || !apiKey.trim()}>
+                {testing ? "Testando..." : "Testar conexão"}
               </Button>
-              <Button
-                variant="outline"
-                onClick={handleListModels}
-                disabled={!apiKey.trim() || listModelsMutation.isPending}
-                className="text-xs border-slate-200 text-slate-700 hover:bg-slate-50 py-2 px-4 rounded-lg"
-              >
-                {listModelsMutation.isPending ? "Listando..." : "Ver todos os modelos desta chave"}
+              <Button variant="outline" onClick={handleListModels} disabled={!apiKey.trim() || listModelsMutation.isPending}>
+                {listModelsMutation.isPending ? "Listando..." : "Ver modelos desta chave"}
               </Button>
             </div>
 
             {availableModels && (
-              <div className="mt-3 border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-64 overflow-y-auto bg-slate-50/50">
+              <div className="max-h-64 divide-y divide-slate-200 overflow-y-auto rounded-md border border-slate-200">
                 {availableModels.length === 0 ? (
-                  <p className="text-xs text-slate-500 p-3">Nenhum modelo retornado para essa chave.</p>
+                  <p className="p-3 text-sm text-slate-500">Nenhum modelo retornado para essa chave.</p>
                 ) : (
                   availableModels.map((m) => (
-                    <div key={m.id} className="flex items-center justify-between p-2.5 text-xs">
-                      <span className="font-mono font-medium text-slate-800">{m.id}</span>
-                      <span className="text-[11px] text-slate-400">
+                    <div key={m.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                      <span className="break-all font-medium text-slate-900">{m.id}</span>
+                      <span className="shrink-0 text-xs text-slate-500">
                         {m.ownedBy ? `${m.ownedBy} · ` : ""}{m.contextLength ? `${m.contextLength.toLocaleString("pt-BR")} tokens` : ""}
                       </span>
                     </div>
@@ -302,81 +286,66 @@ export default function AiSettings() {
               </div>
             )}
           </div>
-        </div>
+        </Panel>
       )}
 
-      {/* Configured IAs Status */}
-      <div className="saas-card p-5 space-y-3">
-        <h2 className="text-sm font-bold text-slate-900">Status das IAs Testadas nesta Sessão</h2>
-        <div className="space-y-2">
-          {Object.values(testStatus).length === 0 ? (
-            <p className="text-xs text-slate-500 italic">Nenhum teste de IA realizado ainda nesta sessão.</p>
-          ) : (
-            Object.values(testStatus).map((config) => (
-              <div
-                key={config.provider}
-                className="flex items-center justify-between p-3 bg-slate-50/80 rounded-lg border border-slate-200/80 text-xs"
-              >
-                <div>
-                  <p className="font-bold text-slate-900">
+      <Panel>
+        <PanelHeader title="Testes desta sessão" description="Resultados ficam só nesta tela e somem ao recarregar." />
+        {Object.values(testStatus).length === 0 ? (
+          <p className="px-4 py-6 text-sm text-slate-500">Nenhum teste realizado ainda nesta sessão.</p>
+        ) : (
+          <ul className="divide-y divide-slate-200">
+            {Object.values(testStatus).map((config) => (
+              <li key={config.provider} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-900">
                     {AI_PROVIDERS.find((p) => p.id === config.provider)?.name ?? config.provider}
-                    {config.provider === "groq" && <span className="saas-badge saas-badge-info ml-2 text-[10px]">Líder</span>}
                   </p>
-                  <p className="text-slate-500 font-mono text-[11px] mt-0.5">{config.model}</p>
+                  <p className="text-xs text-slate-500">{config.model}</p>
                   {config.status === "error" && config.errorMessage && (
-                    <p className="text-[11px] text-rose-600 mt-1 break-all">{config.errorMessage}</p>
+                    <p className="mt-1 break-all text-xs text-red-700">{config.errorMessage}</p>
                   )}
                 </div>
-                <div className="flex items-center gap-3">
-                  {config.status === "configured" && (
-                    <span className="saas-badge saas-badge-success">Conectado OK</span>
-                  )}
-                  {config.status === "error" && (
-                    <span className="saas-badge saas-badge-danger">Erro</span>
-                  )}
-                  <button
+                <div className="flex shrink-0 items-center gap-2">
+                  {config.status === "configured" && <Badge variant="success">Conectado</Badge>}
+                  {config.status === "error" && <Badge variant="danger">Erro</Badge>}
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => {
                       setTestStatus(prev => { const n = { ...prev }; delete n[config.provider]; return n; });
                     }}
                     title="Só limpa este resultado da tela; não altera nenhuma configuração"
-                    className="text-xs text-slate-500 hover:text-rose-600 transition-colors font-medium min-h-10 px-1"
                   >
-                    Limpar resultado
-                  </button>
+                    Limpar
+                  </Button>
                 </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
 
-      {/* Free API Keys Guide */}
-      <div className="saas-card p-5 bg-slate-50/50 border-slate-200/80 space-y-3">
-        <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Como obter Chaves Gratuitas</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-700">
-          <div className="p-3 bg-white rounded-lg border border-slate-200/70">
-            <strong className="text-slate-900 block mb-1">1. Groq (Recomendado)</strong>
-            <p>• Acesse <span className="font-mono font-semibold text-blue-600">console.groq.com</span></p>
-            <p>• 14.400 requisições/dia gratuitas</p>
-            <p>• Modelo: <span className="font-mono">llama-3.3-70b-versatile</span></p>
+      <Panel>
+        <PanelHeader title="Como obter chaves gratuitas" />
+        <div className="grid grid-cols-1 gap-x-6 gap-y-4 p-4 text-sm text-slate-700 md:grid-cols-3">
+          <div>
+            <p className="font-medium text-slate-900">1. Groq (recomendado)</p>
+            <p className="mt-1 text-slate-500">Acesse <span className="font-medium text-brand-700">console.groq.com</span>. 14.400 requisições/dia grátis. Modelo: llama-3.3-70b-versatile.</p>
           </div>
-          <div className="p-3 bg-white rounded-lg border border-slate-200/70">
-            <strong className="text-slate-900 block mb-1">2. Cerebras</strong>
-            <p>• Acesse <span className="font-mono font-semibold text-amber-600">cloud.cerebras.ai</span></p>
-            <p>• Respostas instantâneas em milissegundos</p>
-            <p>• Modelo: <span className="font-mono">gpt-oss-120b</span></p>
+          <div>
+            <p className="font-medium text-slate-900">2. Cerebras</p>
+            <p className="mt-1 text-slate-500">Acesse <span className="font-medium text-brand-700">cloud.cerebras.ai</span>. Respostas em milissegundos. Modelo: gpt-oss-120b.</p>
           </div>
-          <div className="p-3 bg-white rounded-lg border border-slate-200/70">
-            <strong className="text-slate-900 block mb-1">3. NVIDIA NIM</strong>
-            <p>• Acesse <span className="font-mono font-semibold text-emerald-600">build.nvidia.com</span></p>
-            <p>• Tier gratuito via API Key NVIDIA</p>
-            <p>• Modelo: <span className="font-mono">meta/llama-3.3-70b-instruct</span></p>
+          <div>
+            <p className="font-medium text-slate-900">3. NVIDIA NIM</p>
+            <p className="mt-1 text-slate-500">Acesse <span className="font-medium text-brand-700">build.nvidia.com</span>. Tier grátis com API key NVIDIA. Modelo: meta/llama-3.3-70b-instruct.</p>
           </div>
         </div>
-        <p className="text-[11px] text-slate-500 pt-1">
-          As chaves de produção definitivas são armazenadas com segurança no ambiente Vercel (<code className="bg-slate-100 px-1 py-0.5 rounded text-slate-700">GROQ_API_KEY</code>, <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-700">CEREBRAS_API_KEY</code>, etc.).
+        <p className="border-t border-slate-200 px-4 py-3 text-xs text-slate-500">
+          As chaves de produção ficam no ambiente Vercel (<code className="rounded-sm bg-slate-100 px-1 py-0.5 text-slate-700">GROQ_API_KEY</code>, <code className="rounded-sm bg-slate-100 px-1 py-0.5 text-slate-700">CEREBRAS_API_KEY</code>, etc.).
         </p>
-      </div>
-    </div>
+      </Panel>
+    </Page>
   );
 }

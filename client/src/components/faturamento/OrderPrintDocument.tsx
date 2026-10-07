@@ -66,19 +66,19 @@ function PedidoPrintContent({ pedido }: { pedido: Pedido }) {
       {/* Cliente */}
       <div className="grid grid-cols-2 gap-x-6 gap-y-2 mb-4 border border-slate-300 rounded-lg p-3">
         <div className="col-span-2">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase">Cliente</p>
+          <p className="text-[10px] font-semibold text-slate-500 uppercase">Cliente</p>
           <p className="font-medium">{nomePrincipal}</p>
         </div>
         <div>
-          <p className="text-[10px] font-semibold text-slate-400 uppercase">CNPJ</p>
+          <p className="text-[10px] font-semibold text-slate-500 uppercase">CNPJ</p>
           <p>{pedido.cnpj || '--'}</p>
         </div>
         <div>
-          <p className="text-[10px] font-semibold text-slate-400 uppercase">Cidade/UF</p>
+          <p className="text-[10px] font-semibold text-slate-500 uppercase">Cidade/UF</p>
           <p>{[pedido.cidade, pedido.uf].filter(Boolean).join('/') || '--'}</p>
         </div>
         <div className="col-span-2">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase">Atendente</p>
+          <p className="text-[10px] font-semibold text-slate-500 uppercase">Atendente</p>
           <p>{pedido.sellerName || '--'}</p>
         </div>
       </div>
@@ -134,9 +134,9 @@ function PedidoPrintContent({ pedido }: { pedido: Pedido }) {
       <table className="w-full border-collapse mb-4 border border-slate-300 rounded-lg overflow-hidden">
         <thead>
           <tr className="bg-slate-50 border-b border-slate-300">
-            <th className="text-left py-1.5 px-3 text-[10px] font-semibold text-slate-400 uppercase">&nbsp;</th>
-            <th className="text-right py-1.5 px-3 text-[10px] font-semibold text-slate-400 uppercase">Valor</th>
-            <th className="text-right py-1.5 px-3 text-[10px] font-semibold text-slate-400 uppercase">Condição de pagamento</th>
+            <th className="text-left py-1.5 px-3 text-[10px] font-semibold text-slate-500 uppercase">&nbsp;</th>
+            <th className="text-right py-1.5 px-3 text-[10px] font-semibold text-slate-500 uppercase">Valor</th>
+            <th className="text-right py-1.5 px-3 text-[10px] font-semibold text-slate-500 uppercase">Condição de pagamento</th>
           </tr>
         </thead>
         <tbody>
@@ -159,11 +159,11 @@ function PedidoPrintContent({ pedido }: { pedido: Pedido }) {
 
       {/* Observações gerais — bloco sempre presente, mesmo vazio */}
       <div className="border border-slate-300 rounded-lg p-3 mb-4 min-h-[52px]">
-        <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1">Observações gerais do pedido</p>
+        <p className="text-[10px] font-semibold text-slate-500 uppercase mb-1">Observações gerais do pedido</p>
         {pedido.observacoes && <p className="whitespace-pre-wrap text-[13px]">{pedido.observacoes}</p>}
       </div>
 
-      <p className="text-center text-xs text-slate-400 pt-2 border-t border-slate-200">
+      <p className="text-center text-xs text-slate-500 pt-2 border-t border-slate-200">
         {EMPRESA.site}
       </p>
     </div>
@@ -218,7 +218,7 @@ export function OrderPrintDocument({ open, onOpenChange, pedido }: OrderPrintDoc
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[92dvh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Cópia do pedido</DialogTitle>
+          <DialogTitle className="text-base">Cópia do pedido</DialogTitle>
           <DialogDescription>
             Documento pronto para enviar ao cliente. Baixe o PDF, ou envie direto por e-mail.
           </DialogDescription>

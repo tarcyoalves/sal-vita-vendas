@@ -1,20 +1,19 @@
 import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Badge } from '../components/ui/badge';
+import { Skeleton } from '../components/ui/skeleton';
+import { Page, PageHeader, Panel, PanelHeader, StatStrip, Stat, EmptyState } from '../components/layout/Page';
 import { Button } from '../components/ui/button';
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import {
   Users,
   ClipboardList,
-  CheckCircle2,
-  TrendingUp,
   ArrowRight,
   MessageSquare,
   Settings,
   Scan,
   BarChart2,
-  Timer,
   Activity,
   ChevronDown,
   ChevronRight,
@@ -22,21 +21,15 @@ import {
   Trash2,
   AlertTriangle,
   Eye,
-  Phone,
   RefreshCw,
   Download,
   DollarSign,
   Mail,
-  MousePointerClick,
-  MailOpen,
-  MailX,
   ShieldAlert,
   Zap,
-  Workflow,
   PackageCheck,
   Ghost,
   Flame,
-  Target,
 } from "lucide-react";
 import AttendantDetailModal from '../components/AttendantDetailModal';
 import { useFatStore } from '../lib/faturamento/store';
@@ -77,16 +70,22 @@ function exportCsv(filename: string, headers: string[], rows: (string | number)[
 // Uses inline styles (not Tailwind dynamic classes) + manual table parser
 // (avoids remark-gfm ESM issues and Tailwind JIT missing dynamic strings)
 
-type SectionTheme = { bg: string; border: string; headerBg: string; headerText: string; dot: string };
+type SectionTheme = { dot: string };
 
+// O tema é escolhido pelo emoji que a IA coloca no título (dado, não UI): só o
+// ponto de cor muda; o emoji em si não é exibido (ver stripLeadingSymbols).
 function getSectionTheme(h: string): SectionTheme {
-  if (h.includes('🏆')) return { bg:'#fffbeb', border:'#f59e0b', headerBg:'#fef3c7', headerText:'#92400e', dot:'#f59e0b' };
-  if (h.includes('💰')) return { bg:'#ecfdf5', border:'#10b981', headerBg:'#d1fae5', headerText:'#065f46', dot:'#10b981' };
-  if (h.includes('🔴')) return { bg:'#fef2f2', border:'#ef4444', headerBg:'#fee2e2', headerText:'#991b1b', dot:'#ef4444' };
-  if (h.includes('📊')) return { bg:'#eff6ff', border:'#3b82f6', headerBg:'#dbeafe', headerText:'#1e40af', dot:'#3b82f6' };
-  if (h.includes('✅')) return { bg:'#f0fdf4', border:'#22c55e', headerBg:'#dcfce7', headerText:'#166534', dot:'#22c55e' };
-  if (h.includes('🌟')) return { bg:'#faf5ff', border:'#8b5cf6', headerBg:'#ede9fe', headerText:'#5b21b6', dot:'#8b5cf6' };
-  return { bg:'#f8fafc', border:'#94a3b8', headerBg:'#f1f5f9', headerText:'#1e293b', dot:'#64748b' };
+  if (h.includes('🏆')) return { dot:'#d97706' };
+  if (h.includes('💰')) return { dot:'#16a34a' };
+  if (h.includes('🔴')) return { dot:'#dc2626' };
+  if (h.includes('📊')) return { dot:'#0C3680' };
+  if (h.includes('✅')) return { dot:'#16a34a' };
+  if (h.includes('🌟')) return { dot:'#7c3aed' };
+  return { dot:'#64748b' };
+}
+
+function stripLeadingSymbols(s: string): string {
+  return s.replace(/^[^\p{L}\p{N}]+/u, '').trim();
 }
 
 function renderInline(text: string): React.ReactNode {
@@ -94,7 +93,7 @@ function renderInline(text: string): React.ReactNode {
   if (parts.length === 1) return text;
   return <>{parts.map((p, i) =>
     p.startsWith('**') && p.endsWith('**')
-      ? <strong key={i} style={{ fontWeight:700, color:'#111827' }}>{p.slice(2,-2)}</strong>
+      ? <strong key={i} style={{ fontWeight:600, color:'#0f172a' }}>{p.slice(2,-2)}</strong>
       : <span key={i}>{p}</span>
   )}</>;
 }
@@ -117,17 +116,17 @@ function MdSection({ body }: { body: string }) {
         const headers = splitRow(tl[0]);
         const rows = tl.slice(2).map(splitRow).filter(r => r.some(c => c && !/^[:\-\s]+$/.test(c)));
         nodes.push(
-          <div key={k++} style={{ overflowX:'auto', margin:'10px 0', borderRadius:'8px', border:'1px solid #e5e7eb' }}>
+          <div key={k++} style={{ overflowX:'auto', margin:'10px 0', borderRadius:'6px', border:'1px solid #e2e8f0' }}>
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px' }}>
               <thead>
-                <tr style={{ background:'#f3f4f6' }}>
-                  {headers.map((h,j) => <th key={j} style={{ padding:'8px 12px', textAlign:'left', fontWeight:600, color:'#4b5563', borderBottom:'2px solid #e5e7eb', whiteSpace:'nowrap' }}>{h}</th>)}
+                <tr style={{ background:'#f8fafc' }}>
+                  {headers.map((h,j) => <th key={j} style={{ padding:'8px 12px', textAlign:'left', fontWeight:500, color:'#64748b', borderBottom:'1px solid #e2e8f0', whiteSpace:'nowrap' }}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row,ri) => (
-                  <tr key={ri} style={{ background: ri%2===0 ? '#fff' : '#f9fafb' }}>
-                    {row.map((cell,ci) => <td key={ci} style={{ padding:'8px 12px', color:'#374151', borderBottom:'1px solid #f3f4f6', verticalAlign:'top' }}>{cell}</td>)}
+                  <tr key={ri}>
+                    {row.map((cell,ci) => <td key={ci} style={{ padding:'8px 12px', color:'#334155', borderBottom:'1px solid #f1f5f9', verticalAlign:'top' }}>{cell}</td>)}
                   </tr>
                 ))}
               </tbody>
@@ -140,12 +139,12 @@ function MdSection({ body }: { body: string }) {
 
     // ### attendant sub-heading
     if (t.startsWith('### ')) {
-      nodes.push(<p key={k++} style={{ fontWeight:700, fontSize:'13px', color:'#1f2937', marginTop:'14px', marginBottom:'4px', paddingTop:'10px', borderTop:'1px solid #f3f4f6' }}>{t.slice(4)}</p>);
+      nodes.push(<p key={k++} style={{ fontWeight:600, fontSize:'13px', color:'#0f172a', marginTop:'14px', marginBottom:'4px', paddingTop:'10px', borderTop:'1px solid #f1f5f9' }}>{stripLeadingSymbols(t.slice(4))}</p>);
       i++; continue;
     }
     // #### small heading
     if (t.startsWith('#### ')) {
-      nodes.push(<p key={k++} style={{ fontWeight:600, fontSize:'11px', color:'#6b7280', textTransform:'uppercase', letterSpacing:'0.06em', marginTop:'10px', marginBottom:'2px' }}>{t.slice(5)}</p>);
+      nodes.push(<p key={k++} style={{ fontWeight:500, fontSize:'12px', color:'#64748b', marginTop:'10px', marginBottom:'2px' }}>{stripLeadingSymbols(t.slice(5))}</p>);
       i++; continue;
     }
     // List item
@@ -153,14 +152,14 @@ function MdSection({ body }: { body: string }) {
       const txt = t.replace(/^[-*•]\s/,'').replace(/^\d+\.\s/,'');
       nodes.push(
         <div key={k++} style={{ display:'flex', gap:'8px', marginBottom:'5px', paddingLeft:'2px' }}>
-          <span style={{ color:'#9ca3af', flexShrink:0, fontSize:'12px', marginTop:'3px' }}>▸</span>
-          <span style={{ fontSize:'13px', color:'#374151', lineHeight:'1.55' }}>{renderInline(txt)}</span>
+          <span aria-hidden="true" style={{ color:'#94a3b8', flexShrink:0, fontSize:'12px', marginTop:'3px' }}>•</span>
+          <span style={{ fontSize:'13px', color:'#334155', lineHeight:'1.55' }}>{renderInline(txt)}</span>
         </div>
       );
       i++; continue;
     }
     // Paragraph
-    nodes.push(<p key={k++} style={{ fontSize:'13px', color:'#374151', lineHeight:'1.6', marginBottom:'4px' }}>{renderInline(t)}</p>);
+    nodes.push(<p key={k++} style={{ fontSize:'13px', color:'#334155', lineHeight:'1.6', marginBottom:'4px' }}>{renderInline(t)}</p>);
     i++;
   }
   return <>{nodes}</>;
@@ -172,14 +171,11 @@ function AiAnalysisReport({ markdown }: { markdown: string }) {
   const sections = raw.filter(s => s.startsWith('## '));
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-        <div style={{ width:8, height:8, borderRadius:'50%', background:'#8b5cf6', flexShrink:0 }} />
-        <p style={{ fontWeight:600, color:'#6d28d9', fontSize:'13px', margin:0 }}>Parecer Executivo da IA</p>
-      </div>
+    <div className="space-y-3">
+      <p className="text-sm font-semibold text-slate-900">Parecer executivo da IA</p>
 
       {intro && (
-        <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:'10px', padding:'12px 16px', fontSize:'13px', color:'#475569', lineHeight:'1.6' }}>
+        <div className="rounded-md bg-slate-50 px-4 py-3 text-sm leading-relaxed text-slate-700">
           {intro.trim()}
         </div>
       )}
@@ -190,17 +186,27 @@ function AiAnalysisReport({ markdown }: { markdown: string }) {
         const body = lines.slice(1).join('\n').trim();
         const th = getSectionTheme(heading);
         return (
-          <div key={i} style={{ background:th.bg, border:`1.5px solid ${th.border}`, borderRadius:'12px', overflow:'hidden' }}>
-            <div style={{ background:th.headerBg, padding:'10px 16px', borderBottom:`1px solid ${th.border}`, display:'flex', alignItems:'center', gap:'8px' }}>
-              <div style={{ width:8, height:8, borderRadius:'50%', background:th.dot, flexShrink:0 }} />
-              <h3 style={{ fontWeight:700, fontSize:'13px', color:th.headerText, margin:0 }}>{heading}</h3>
+          <div key={i} className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+            <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+              <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ background: th.dot }} />
+              <h3 className="text-sm font-semibold text-slate-900">{stripLeadingSymbols(heading)}</h3>
             </div>
-            <div style={{ padding:'14px 16px' }}>
+            <div className="px-4 py-3">
               <MdSection body={body} />
             </div>
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// Barra fina de progresso usada nas listas compactas.
+function MiniBar({ pct, tone = 'brand' }: { pct: number; tone?: 'brand' | 'success' | 'warning' | 'danger' }) {
+  const color = tone === 'success' ? 'bg-green-600' : tone === 'warning' ? 'bg-amber-500' : tone === 'danger' ? 'bg-red-500' : 'bg-brand-600';
+  return (
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+      <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.max(0, Math.min(pct, 100))}%` }} />
     </div>
   );
 }
@@ -213,16 +219,12 @@ function EmailStrategicCard() {
 
   if (emailLoading) {
     return (
-      <Card>
-        <CardContent className="pt-4 px-4 pb-3">
-          <div className="flex items-center gap-3">
-            <div className="bg-violet-100 text-violet-700 p-2.5 rounded-xl flex-shrink-0">
-              <Mail size={20} />
-            </div>
-            <div className="flex-1 h-8 bg-gray-100 rounded animate-pulse" />
-          </div>
-        </CardContent>
-      </Card>
+      <Panel>
+        <PanelHeader title="E-mail Marketing" />
+        <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-6">
+          {[0, 1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-12" />)}
+        </div>
+      </Panel>
     );
   }
 
@@ -243,167 +245,100 @@ function EmailStrategicCard() {
     : 0;
 
   const trendMax = Math.max(1, ...emailStats.dailyTrend.map((d: { sent: number }) => d.sent));
+  const quotaTone = quotaPct >= 90 ? 'danger' : quotaPct >= 70 ? 'warning' : 'brand';
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center justify-between text-base">
-          <span className="flex items-center gap-2">
-            <Mail size={18} className="text-violet-600" />
-            E-mail Marketing — Painel Estrategico
-          </span>
-          {emailStats.bouncesToday > 0 || emailStats.complaintsToday > 0 ? (
-            <span className="flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2 py-1 rounded-lg">
-              <ShieldAlert size={12} />
+    <Panel>
+      <PanelHeader
+        title="E-mail Marketing"
+        description="Envios, confirmações e engajamento de hoje"
+        actions={
+          emailStats.bouncesToday > 0 || emailStats.complaintsToday > 0 ? (
+            <Badge variant="danger">
+              <ShieldAlert aria-hidden="true" />
               {emailStats.bouncesToday > 0 && `${emailStats.bouncesToday} bounce${emailStats.bouncesToday > 1 ? 's' : ''}`}
               {emailStats.bouncesToday > 0 && emailStats.complaintsToday > 0 && ' · '}
-              {emailStats.complaintsToday > 0 && `${emailStats.complaintsToday} reclamacao`}
-            </span>
-          ) : null}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        {/* KPIs do dia */}
-        {/* Tiles neutros; cor aparece apenas como informação (alerta de pendentes). */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <div className="bg-white border border-border rounded-xl p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Mail size={14} className="text-muted-foreground" />
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Enviados hoje</span>
-            </div>
-            <p className="font-cond text-3xl font-bold text-ink tabular-nums leading-none">{emailStats.totalSentToday}</p>
-            <p className="text-[11px] text-muted-foreground mt-1.5">
-              Cota: {emailStats.quotaUsed}/{emailStats.quotaTotal}
-            </p>
-          </div>
-          <div className="bg-white border border-border rounded-xl p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <CheckCircle2 size={14} className="text-emerald-600" />
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Confirmados hoje</span>
-            </div>
-            <p className="font-cond text-3xl font-bold text-ink tabular-nums leading-none">{emailStats.confirmedToday}</p>
-            <p className="text-[11px] text-muted-foreground mt-1.5">
-              {confirmationRatePct}% da base confirmada
-            </p>
-          </div>
-          <div className={`rounded-xl p-3 border ${emailStats.pendingConfirmation > 500 ? 'bg-red-50 border-red-200' : 'bg-white border-border'}`}>
-            <div className="flex items-center gap-1.5 mb-1">
-              <MailX size={14} className={emailStats.pendingConfirmation > 500 ? 'text-red-600' : 'text-amber-600'} />
-              <span className={`text-[10px] font-semibold uppercase tracking-wide ${emailStats.pendingConfirmation > 500 ? 'text-red-600' : 'text-muted-foreground'}`}>Pendentes</span>
-            </div>
-            <p className={`font-cond text-3xl font-bold tabular-nums leading-none ${emailStats.pendingConfirmation > 500 ? 'text-red-700' : 'text-ink'}`}>{emailStats.pendingConfirmation}</p>
-            <p className={`text-[11px] mt-1.5 ${emailStats.pendingConfirmation > 500 ? 'text-red-500' : 'text-muted-foreground'}`}>
-              de {emailStats.totalWithEmail} com e-mail
-            </p>
-          </div>
-          <div className="bg-white border border-border rounded-xl p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Workflow size={14} className="text-muted-foreground" />
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Em sequência hoje</span>
-            </div>
-            <p className="font-cond text-3xl font-bold text-ink tabular-nums leading-none">{emailStats.sequencesEnrolledToday}</p>
-            <p className="text-[11px] text-muted-foreground mt-1.5">novas inscrições</p>
-          </div>
-          <div className="bg-white border border-border rounded-xl p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <MailOpen size={14} className="text-muted-foreground" />
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Aberturas hoje</span>
-            </div>
-            <p className="font-cond text-3xl font-bold text-ink tabular-nums leading-none">{emailStats.opensToday}</p>
-            <p className="text-[11px] text-muted-foreground mt-1.5">
-              {emailStats.totalOpensToday} total · {openRateToday}% taxa
-            </p>
-          </div>
-          <div className="bg-white border border-border rounded-xl p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <MousePointerClick size={14} className="text-sand" />
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Cliques hoje</span>
-            </div>
-            <p className="font-cond text-3xl font-bold text-ink tabular-nums leading-none">{emailStats.clicksToday}</p>
-            <p className="text-[11px] text-muted-foreground mt-1.5">
-              {emailStats.totalClicksToday} total · {clickRateToday}% click-to-open
-            </p>
-          </div>
-        </div>
+              {emailStats.complaintsToday > 0 && `${emailStats.complaintsToday} reclamação`}
+            </Badge>
+          ) : undefined
+        }
+      />
+      {/* KPIs do dia: faixa única, sem card por número */}
+      <StatStrip className="rounded-none border-0 border-b">
+        <Stat label="Enviados hoje" value={emailStats.totalSentToday} hint={`Cota ${emailStats.quotaUsed}/${emailStats.quotaTotal}`} />
+        <Stat label="Confirmados hoje" value={emailStats.confirmedToday} hint={`${confirmationRatePct}% da base confirmada`} />
+        <Stat
+          label="Pendentes"
+          value={emailStats.pendingConfirmation}
+          hint={`de ${emailStats.totalWithEmail} com e-mail`}
+          tone={emailStats.pendingConfirmation > 500 ? 'danger' : 'default'}
+        />
+        <Stat label="Em sequência hoje" value={emailStats.sequencesEnrolledToday} hint="novas inscrições" />
+        <Stat label="Aberturas hoje" value={emailStats.opensToday} hint={`${emailStats.totalOpensToday} total · ${openRateToday}% taxa`} />
+        <Stat label="Cliques hoje" value={emailStats.clicksToday} hint={`${emailStats.totalClicksToday} total · ${clickRateToday}% click-to-open`} />
+      </StatStrip>
 
-        {/* Cota diaria — barra fina em vez de tile, pra nao competir com os KPIs de atividade */}
+      <div className="space-y-5 p-4">
+        {/* Cota diária */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <Zap size={13} className={quotaPct >= 90 ? 'text-red-500' : quotaPct >= 70 ? 'text-amber-500' : 'text-slate-400'} />
-            <span className="text-[11px] font-medium text-gray-500">Cota diária</span>
-          </div>
-          <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${quotaPct >= 90 ? 'bg-red-500' : quotaPct >= 70 ? 'bg-amber-400' : 'bg-violet-400'}`}
-              style={{ width: `${Math.min(quotaPct, 100)}%` }}
-            />
-          </div>
-          <span className={`text-[11px] font-semibold flex-shrink-0 ${quotaPct >= 90 ? 'text-red-600' : quotaPct >= 70 ? 'text-amber-600' : 'text-gray-500'}`}>
+          <span className="shrink-0 text-xs font-medium text-slate-500">Cota diária</span>
+          <MiniBar pct={quotaPct} tone={quotaTone} />
+          <span className={`shrink-0 text-xs font-semibold tabular-nums ${quotaPct >= 90 ? 'text-red-700' : quotaPct >= 70 ? 'text-amber-700' : 'text-slate-500'}`}>
             {quotaPct}%
           </span>
         </div>
 
-        {/* Tendencia 7 dias + Envios por atendente */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {/* Envios por atendente hoje */}
+        {/* Envios por atendente + tendência 7 dias */}
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
           <div>
-            <p className="text-xs font-medium text-gray-500 mb-2">Envios por atendente — hoje</p>
+            <p className="mb-2 text-xs font-medium text-slate-500">Envios por atendente — hoje</p>
             {emailStats.attendantSends.length > 0 ? (
-              <div className="space-y-2">
+              <ul className="divide-y divide-slate-200">
                 {emailStats.attendantSends.map((a: { name: string; campaigns: number; sequences: number; total: number }) => {
                   const pct = emailStats.totalSentToday > 0 ? Math.round((a.total / emailStats.totalSentToday) * 100) : 0;
                   return (
-                    <div key={a.name}>
-                      <div className="flex items-center justify-between text-sm mb-1">
-                        <span className="text-gray-700 font-medium truncate flex-1">{a.name}</span>
-                        <span className="text-violet-700 font-bold text-xs ml-2">{a.total}</span>
+                    <li key={a.name} className="py-2">
+                      <div className="flex items-center justify-between gap-2 text-sm">
+                        <span className="min-w-0 flex-1 truncate font-medium text-slate-900">{a.name}</span>
+                        <span className="text-xs tabular-nums text-slate-500">{pct}%</span>
+                        <span className="w-10 text-right text-sm font-semibold tabular-nums text-slate-900">{a.total}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-violet-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                      <div className="mt-1.5"><MiniBar pct={pct} /></div>
+                      {(a.campaigns > 0 || a.sequences > 0) && (
+                        <div className="mt-1 flex gap-3 text-xs text-slate-500">
+                          {a.campaigns > 0 && <span>Campanhas: {a.campaigns}</span>}
+                          {a.sequences > 0 && <span>Sequências: {a.sequences}</span>}
                         </div>
-                        <span className="text-[10px] text-gray-400 w-8 text-right">{pct}%</span>
-                      </div>
-                      <div className="flex gap-3 text-[10px] text-gray-400 mt-0.5 pl-0.5">
-                        {a.campaigns > 0 && <span>Campanhas: {a.campaigns}</span>}
-                        {a.sequences > 0 && <span>Sequencias: {a.sequences}</span>}
-                      </div>
-                    </div>
+                      )}
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             ) : (
-              <div className="text-center py-6 text-gray-400">
-                <Mail size={24} className="mx-auto mb-1 opacity-30" />
-                <p className="text-xs">Nenhum e-mail enviado hoje</p>
-              </div>
+              <p className="py-4 text-sm text-slate-500">Nenhum e-mail enviado hoje.</p>
             )}
           </div>
 
-          {/* Tendencia 7 dias */}
           <div>
-            <p className="text-xs font-medium text-gray-500 mb-2">Volume de envios — ultimos 7 dias</p>
+            <p className="mb-2 text-xs font-medium text-slate-500">Volume de envios — últimos 7 dias</p>
             {emailStats.dailyTrend.length > 0 ? (
-              <div className="flex items-end gap-2 h-24">
+              <div className="flex h-28 items-end gap-2">
                 {emailStats.dailyTrend.map((d: { day: string; sent: number }) => {
                   const dayLabel = d.day.slice(8, 10) + '/' + d.day.slice(5, 7);
                   return (
-                    <div key={d.day} className="flex-1 flex flex-col items-center justify-end gap-1">
-                      <span className="text-[10px] text-gray-500 font-medium">{d.sent > 0 ? d.sent : ''}</span>
+                    <div key={d.day} className="flex flex-1 flex-col items-center justify-end gap-1">
+                      <span className="text-xs tabular-nums text-slate-500">{d.sent > 0 ? d.sent : ''}</span>
                       <div
-                        className={`w-full rounded-t ${d.sent > 0 ? 'bg-violet-400' : 'bg-gray-100'} transition-all`}
+                        className={`w-full rounded-t-sm ${d.sent > 0 ? 'bg-brand-600' : 'bg-slate-100'}`}
                         style={{ height: `${Math.max(4, Math.round((d.sent / trendMax) * 72))}px` }}
                       />
-                      <span className="text-[9px] text-gray-400">{dayLabel}</span>
+                      <span className="text-xs text-slate-500">{dayLabel}</span>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <div className="text-center py-6 text-gray-400">
-                <BarChart2 size={24} className="mx-auto mb-1 opacity-30" />
-                <p className="text-xs">Sem dados de envio recentes</p>
-              </div>
+              <p className="py-4 text-sm text-slate-500">Sem dados de envio recentes.</p>
             )}
           </div>
         </div>
@@ -411,61 +346,57 @@ function EmailStrategicCard() {
         {/* Top campanhas por abertura */}
         {emailStats.topCampaigns.length > 0 && (
           <div>
-            <p className="text-xs font-medium text-gray-500 mb-2">Melhores campanhas por abertura — ultimos 30 dias</p>
-            <div className="space-y-1.5">
+            <p className="mb-1 text-xs font-medium text-slate-500">Melhores campanhas por abertura — últimos 30 dias</p>
+            <ul className="divide-y divide-slate-200">
               {emailStats.topCampaigns.map((c: { id: number; name: string; subject: string; sent: number; opened: number; clicked: number; openRate: number }, i: number) => (
-                <div key={c.id} className="flex items-center gap-2 text-sm">
-                  <span className={`text-xs w-5 text-center font-bold ${i === 0 ? 'text-amber-500' : 'text-gray-400'}`}>
-                    {i + 1}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-gray-700 truncate text-xs font-medium">{c.subject}</p>
-                    <div className="flex gap-3 text-[10px] text-gray-400">
-                      <span>{c.sent} enviados</span>
-                      <span className="text-blue-500">{c.opened} abriram</span>
-                      <span className="text-emerald-500">{c.clicked} clicaram</span>
-                    </div>
+                <li key={c.id} className="flex items-center gap-3 py-2">
+                  <span className="w-5 text-center text-xs font-medium tabular-nums text-slate-500">{i + 1}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-slate-900">{c.subject}</p>
+                    <p className="text-xs text-slate-500">
+                      {c.sent} enviados · {c.opened} abriram · {c.clicked} clicaram
+                    </p>
                   </div>
-                  <div className="flex-shrink-0 text-right">
-                    <p className={`text-sm font-bold ${c.openRate >= 30 ? 'text-emerald-600' : c.openRate >= 15 ? 'text-blue-600' : 'text-amber-600'}`}>
+                  <div className="shrink-0 text-right">
+                    <p className={`text-sm font-semibold tabular-nums ${c.openRate >= 30 ? 'text-green-700' : c.openRate >= 15 ? 'text-slate-900' : 'text-amber-700'}`}>
                       {c.openRate}%
                     </p>
-                    <p className="text-[9px] text-gray-400">abertura</p>
+                    <p className="text-xs text-slate-500">abertura</p>
                   </div>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         )}
 
-        {/* Insights estrategicos */}
+        {/* Insights */}
         {(emailStats.totalSentToday > 0 || emailStats.pendingConfirmation > 100) && (
-          <div className="bg-violet-50 border border-violet-100 rounded-xl px-4 py-3 space-y-1">
-            <p className="text-xs font-semibold text-violet-700 mb-1">Insights do dia</p>
+          <div className="space-y-1 rounded-md bg-slate-50 px-4 py-3">
+            <p className="text-xs font-semibold text-slate-900">Insights do dia</p>
             {emailStats.pendingConfirmation > 100 && (
-              <p className="text-[11px] text-amber-700">
+              <p className="text-xs text-amber-800">
                 {emailStats.pendingConfirmation} e-mails aguardando confirmação ({100 - confirmationRatePct}% da base) — confirme em Tarefas para liberar para campanhas e sequências.
               </p>
             )}
             {openRateToday >= 25 && (
-              <p className="text-[11px] text-violet-600">Taxa de abertura em {openRateToday}% — acima da media do mercado (15-25%)</p>
+              <p className="text-xs text-slate-700">Taxa de abertura em {openRateToday}% — acima da média do mercado (15-25%).</p>
             )}
             {openRateToday > 0 && openRateToday < 15 && (
-              <p className="text-[11px] text-amber-700">Taxa de abertura de {openRateToday}% esta abaixo da media. Considere revisar os assuntos dos e-mails.</p>
+              <p className="text-xs text-amber-800">Taxa de abertura de {openRateToday}% está abaixo da média. Considere revisar os assuntos dos e-mails.</p>
             )}
             {clickRateToday >= 3 && (
-              <p className="text-[11px] text-emerald-700">Click-to-open de {clickRateToday}% — bom engajamento com o conteudo</p>
+              <p className="text-xs text-green-700">Click-to-open de {clickRateToday}% — bom engajamento com o conteúdo.</p>
             )}
             {emailStats.bouncesToday > 0 && (
-              <p className="text-[11px] text-red-600">{emailStats.bouncesToday} bounce(s) hoje — verifique a qualidade dos e-mails da base</p>
+              <p className="text-xs text-red-700">{emailStats.bouncesToday} bounce(s) hoje — verifique a qualidade dos e-mails da base.</p>
             )}
             {quotaPct >= 80 && (
-              <p className="text-[11px] text-amber-700">Cota em {quotaPct}% — planeje os envios restantes com cuidado</p>
+              <p className="text-xs text-amber-800">Cota em {quotaPct}% — planeje os envios restantes com cuidado.</p>
             )}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }
 
@@ -478,27 +409,24 @@ function FaturamentoQuickCard({ setLocation }: { setLocation: (to: string) => vo
   const totals = somarResumos(rows);
 
   return (
-    <Card
-      className="cursor-pointer hover:shadow-md transition-shadow"
-      onClick={() => setLocation("/admin/faturamento")}
-    >
-      <CardContent className="pt-4 px-4 pb-3">
-        <div className="flex items-center gap-3">
-          <div className="bg-blue-100 text-blue-700 p-2.5 rounded-xl flex-shrink-0">
-            <DollarSign size={20} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-gray-800">Faturamento & Comissao</p>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {totals.totalEmbarcado > 0
-                ? `Embarcado este mes: ${formatBRL(totals.totalEmbarcado)}`
-                : "Acompanhe vendas, comissoes e relatorios"}
-            </p>
-          </div>
-          <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />
-        </div>
-      </CardContent>
-    </Card>
+    <Panel>
+      <button
+        type="button"
+        onClick={() => setLocation("/admin/faturamento")}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+      >
+        <DollarSign aria-hidden="true" size={18} className="shrink-0 text-slate-500" />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-slate-900">Faturamento e comissão</span>
+          <span className="block text-xs text-slate-500">
+            {totals.totalEmbarcado > 0
+              ? `Embarcado este mês: ${formatBRL(totals.totalEmbarcado)}`
+              : "Acompanhe vendas, comissões e relatórios"}
+          </span>
+        </span>
+        <ChevronRight aria-hidden="true" size={16} className="shrink-0 text-slate-400" />
+      </button>
+    </Panel>
   );
 }
 
@@ -582,11 +510,14 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-      </div>
+      <Page>
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-20" />
+        <Skeleton className="h-64" />
+      </Page>
     );
   }
+
 
   if (!user || (user.role !== "admin" && user.role !== "manager")) return null;
 
@@ -616,94 +547,49 @@ export default function AdminDashboard() {
 
   const teamDailyGoal = (sellers as any[] || []).reduce((sum, s) => sum + effectiveDailyGoal(s.dailyGoal), 0);
 
-  const kpis = [
-    {
-      label: "Contatos hoje",
-      value: contactsToday,
-      sub: `meta: ${teamDailyGoal}`,
-      icon: <Phone size={22} />,
-      color: "text-blue-600",
-      bg: "bg-blue-50",
-      border: "border-blue-100",
-    },
-    ...(isFullAdmin ? [{
-      label: "Atendentes",
-      value: sellers?.length || 0,
-      sub: `${(sessionData as any[]).filter((s: any) => s.session?.status === 'active').length} ativos agora`,
-      icon: <Users size={22} />,
-      color: "text-indigo-600",
-      bg: "bg-indigo-50",
-      border: "border-indigo-100",
-    }] : []),
-    {
-      label: "Pendentes",
-      value: pending.length,
-      sub: `${completionRate}% concluídos`,
-      icon: <ClipboardList size={22} />,
-      color: "text-orange-500",
-      bg: "bg-orange-50",
-      border: "border-orange-100",
-    },
-    {
-      label: "Atrasados",
-      value: overdue.length,
-      sub: overdue.length > 0 ? "precisam de ação" : "tudo em dia",
-      icon: <AlertTriangle size={22} />,
-      color: overdue.length > 0 ? "text-red-600" : "text-green-600",
-      bg: overdue.length > 0 ? "bg-red-50" : "bg-green-50",
-      border: overdue.length > 0 ? "border-red-100" : "border-green-100",
-    },
-    {
-      label: "Com lembrete",
-      value: reminderOn,
-      sub: `de ${tasks.length} total`,
-      icon: <CheckCircle2 size={22} />,
-      color: "text-teal-600",
-      bg: "bg-teal-50",
-      border: "border-teal-100",
-    },
-    {
-      label: "Conversões",
-      value: convertedCount,
-      sub: `${conversionRate}% taxa · ${convertedThisMonth} este mês · ~${avgContactsToConvert} contatos p/ converter`,
-      icon: <TrendingUp size={22} />,
-      color: "text-emerald-600",
-      bg: "bg-emerald-50",
-      border: "border-emerald-100",
-    },
-  ];
-
-  const quickActions = isFullAdmin ? [
-    { label: "Tarefas", path: "/tasks", icon: <ClipboardList size={20} />, color: "bg-blue-600 hover:bg-blue-700" },
-    { label: "Atendentes", path: "/attendants", icon: <Users size={20} />, color: "bg-emerald-600 hover:bg-emerald-700" },
-    { label: "Chat IA", path: "/ai-chat", icon: <MessageSquare size={20} />, color: "bg-purple-600 hover:bg-purple-700" },
-    { label: "Config IA", path: "/ai-settings", icon: <Settings size={20} />, color: "bg-slate-600 hover:bg-slate-700" },
-  ] : [
-    { label: "Tarefas", path: "/tasks", icon: <ClipboardList size={20} />, color: "bg-blue-600 hover:bg-blue-700" },
-    { label: "E-mail Marketing", path: "/admin/email-marketing", icon: <Mail size={20} />, color: "bg-violet-600 hover:bg-violet-700" },
-    { label: "Faturamento", path: "/admin/faturamento", icon: <DollarSign size={20} />, color: "bg-cyan-600 hover:bg-cyan-700" },
-  ];
+  const firstName = user.name?.split(' ')[0];
+  const activeNow = (sessionData as any[]).filter((s: any) => s.session?.status === 'active').length;
+  const needsAction = pendingPedidos.length > 0 || deletionLogs.length > 0 || overdue.length > 0 || staleNoContact.length > 0;
+  const fmtShort = (d: any) => new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const statusLabel = (s: string) => s.replace(/^[^\p{L}\p{N}]+/u, '').trim();
 
   return (
-    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
-
-      {/* Welcome banner */}
-      <div className="relative overflow-hidden rounded-2xl bg-[#081F47] px-6 py-5 text-white shadow-sm border border-slate-800 flex items-center justify-between gap-4">
-        <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-blue-500/10 blur-2xl" />
-        <div>
-          <h2 className="text-xl font-bold tracking-tight">Olá, {user.name?.split(' ')[0]}</h2>
-          <p className="text-blue-200/80 text-xs md:text-sm mt-0.5">
-            {overdue.length > 0
-              ? `${overdue.length} tarefa${overdue.length > 1 ? 's' : ''} em atraso`
-              : 'Tudo em ordem no sistema'}
-          </p>
-        </div>
-        <div className="flex items-center gap-3 md:gap-4">
-          <div className="hidden md:flex items-center gap-2 text-slate-300 text-xs font-medium bg-white/10 px-3 py-1.5 rounded-lg ring-1 ring-white/15">
-            <span>{(() => { try { return new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }); } catch { const d = new Date(); return `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`; } })()}</span>
-          </div>
-        </div>
-      </div>
+    <Page>
+      <PageHeader
+        title="Dashboard"
+        description={`${firstName ? `Olá, ${firstName}. ` : ''}${overdue.length > 0
+          ? `${overdue.length} tarefa${overdue.length > 1 ? 's' : ''} em atraso.`
+          : 'Tudo em ordem no sistema.'}`}
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={() => setLocation('/tasks')}>
+              <ClipboardList aria-hidden="true" /> Tarefas
+            </Button>
+            {isFullAdmin ? (
+              <>
+                <Button variant="outline" size="sm" onClick={() => setLocation('/attendants')}>
+                  <Users aria-hidden="true" /> Atendentes
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setLocation('/ai-chat')}>
+                  <MessageSquare aria-hidden="true" /> Chat IA
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setLocation('/ai-settings')}>
+                  <Settings aria-hidden="true" /> Config IA
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" size="sm" onClick={() => setLocation('/admin/email-marketing')}>
+                  <Mail aria-hidden="true" /> E-mail Marketing
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setLocation('/admin/faturamento')}>
+                  <DollarSign aria-hidden="true" /> Faturamento
+                </Button>
+              </>
+            )}
+          </>
+        }
+      />
 
       {tasksError && tasks.length === 0 && (
         <QueryError
@@ -713,335 +599,307 @@ export default function AdminDashboard() {
         />
       )}
 
-      {/* Task Deletion Alert Banner */}
-      {deletionLogs.length > 0 && (
-        <div
-          className="flex items-center justify-between gap-3 bg-amber-50/80 border border-amber-200/80 rounded-xl px-4 py-3 cursor-pointer hover:bg-amber-100/80 transition-colors shadow-2xs"
-          onClick={() => setShowDeletionLogs(v => !v)}
-        >
-          <div className="flex items-center gap-2 text-amber-900">
-            <AlertTriangle size={18} className="text-amber-600 shrink-0" />
-            <span className="font-semibold text-xs md:text-sm">
-              {deletionLogs.length} tarefa{deletionLogs.length > 1 ? 's' : ''} excluída{deletionLogs.length > 1 ? 's' : ''} aguarda{deletionLogs.length > 1 ? 'm' : ''} revisão
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-600 text-white text-xs font-bold">
-              {deletionLogs.length}
-            </span>
-            {showDeletionLogs ? <ChevronDown size={16} className="text-amber-700" /> : <ChevronRight size={16} className="text-amber-700" />}
-          </div>
-        </div>
-      )}
-
-      {/* Task Deletion Logs Panel */}
-      {showDeletionLogs && deletionLogs.length > 0 && (
-        <Card className="saas-card">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-bold text-amber-900">
-              <Trash2 size={16} />
-              Tarefas Excluídas — Pendentes de Revisão
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="divide-y divide-amber-100">
-              {deletionLogs.map((log: any) => (
-                <div key={log.id} className="px-4 py-3 flex items-start justify-between gap-3 text-xs">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-slate-800 truncate">{log.taskTitle}</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Excluída por <span className="font-semibold text-slate-700">{log.deletedByName}</span>
-                      {' · '}
-                      {new Date(log.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                    <div className="mt-1.5 flex items-start gap-1.5">
-                      <span className="text-[11px] text-amber-700 font-medium shrink-0">Motivo:</span>
-                      <span className="text-[11px] text-slate-700 break-words">{log.reason}</span>
-                    </div>
-                    {log.taskNotes && (
-                      <p className="text-[11px] text-slate-400 mt-1 italic truncate">Nota: {log.taskNotes.slice(0, 80)}</p>
-                    )}
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="shrink-0 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-                    onClick={() => markDeletionReviewedMutation.mutate({ id: log.id })}
-                    disabled={markDeletionReviewedMutation.isPending}
-                  >
-                    <Eye size={13} className="mr-1" />
-                    Revisei
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Pedidos Pending Approval Alert Banner */}
-      {pendingPedidos.length > 0 && (
-        <div
-          className="flex items-center justify-between gap-3 bg-blue-50/80 border border-blue-200/80 rounded-xl px-4 py-3 cursor-pointer hover:bg-blue-100/80 transition-colors shadow-2xs"
-          onClick={() => setShowPendingPedidos(v => !v)}
-        >
-          <div className="flex items-center gap-2 text-blue-900">
-            <PackageCheck size={18} className="text-blue-600 shrink-0" />
-            <span className="font-semibold text-xs md:text-sm">
-              {pendingPedidos.length} pedido{pendingPedidos.length > 1 ? 's' : ''} aguarda{pendingPedidos.length > 1 ? 'm' : ''} sua revisão
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-600 text-white text-xs font-bold">
-              {pendingPedidos.length}
-            </span>
-            {showPendingPedidos ? <ChevronDown size={16} className="text-blue-700" /> : <ChevronRight size={16} className="text-blue-700" />}
-          </div>
-        </div>
-      )}
-
-      {/* Pedidos Pending Approval Panel */}
-      {showPendingPedidos && pendingPedidos.length > 0 && (
-        <Card className="saas-card">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-bold text-blue-900">
-              <PackageCheck size={16} />
-              Pedidos Novos — Pendentes de Revisão
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="divide-y divide-blue-100">
-              {pendingPedidos.map((p: any) => (
-                <div key={p.id} className="px-4 py-3 flex items-start justify-between gap-3 text-xs">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-slate-800 truncate">{p.clienteNome || p.razaoSocial || 'Sem cliente'}</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Criado por <span className="font-semibold text-slate-700">{p.sellerName}</span>
-                      {' · '}
-                      {new Date(p.criadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="shrink-0 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"
-                    onClick={() => openPedidoRevisao(p.id)}
-                  >
-                    <Eye size={13} className="mr-1" />
-                    Revisar
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3.5">
-        {kpis.map((kpi) => (
-          <div
-            key={kpi.label}
-            className={`saas-card p-4 relative overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-md ${kpi.border}`}
-          >
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                <span className={`w-1.5 h-1.5 rounded-full ${kpi.color.replace('text-', 'bg-')}`} />
-                {kpi.label}
-              </span>
-              <div className={`p-1.5 rounded-lg ${kpi.bg} ${kpi.color}`}>
-                {kpi.icon}
-              </div>
-            </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="text-3xl font-bold font-mono text-slate-900 tracking-tight">{kpi.value}</p>
-            </div>
-            {(kpi as any).sub && (
-              <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                <span className="text-slate-500 font-medium truncate">{(kpi as any).sub}</span>
-              </div>
+      {/* O que exige ação agora */}
+      {needsAction && (
+        <Panel>
+          <PanelHeader title="Exige ação agora" />
+          <ul className="divide-y divide-slate-200">
+            {pendingPedidos.length > 0 && (
+              <li>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+                  onClick={() => setShowPendingPedidos(v => !v)}
+                  aria-expanded={showPendingPedidos}
+                >
+                  <PackageCheck aria-hidden="true" size={16} className="shrink-0 text-brand-700" />
+                  <span className="min-w-0 flex-1 text-sm font-medium text-slate-900">
+                    {pendingPedidos.length} pedido{pendingPedidos.length > 1 ? 's' : ''} aguarda{pendingPedidos.length > 1 ? 'm' : ''} sua revisão
+                  </span>
+                  <Badge variant="info">{pendingPedidos.length}</Badge>
+                  {showPendingPedidos ? <ChevronDown aria-hidden="true" size={16} className="text-slate-500" /> : <ChevronRight aria-hidden="true" size={16} className="text-slate-500" />}
+                </button>
+                {showPendingPedidos && (
+                  <ul className="divide-y divide-slate-200 border-t border-slate-200 bg-slate-50">
+                    {pendingPedidos.map((p: any) => (
+                      <li key={p.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-slate-900">{p.clienteNome || p.razaoSocial || 'Sem cliente'}</p>
+                          <p className="text-xs text-slate-500">
+                            Criado por <span className="font-medium text-slate-700">{p.sellerName}</span> · {fmtShort(p.criadoEm)}
+                          </p>
+                        </div>
+                        <Button size="sm" variant="outline" className="shrink-0" onClick={() => openPedidoRevisao(p.id)}>
+                          <Eye aria-hidden="true" /> Revisar
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
             )}
-          </div>
-        ))}
-      </div>
 
-      {/* Email Marketing — Painel Estrategico */}
-      <EmailStrategicCard />
+            {deletionLogs.length > 0 && (
+              <li>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+                  onClick={() => setShowDeletionLogs(v => !v)}
+                  aria-expanded={showDeletionLogs}
+                >
+                  <Trash2 aria-hidden="true" size={16} className="shrink-0 text-amber-700" />
+                  <span className="min-w-0 flex-1 text-sm font-medium text-slate-900">
+                    {deletionLogs.length} tarefa{deletionLogs.length > 1 ? 's' : ''} excluída{deletionLogs.length > 1 ? 's' : ''} aguarda{deletionLogs.length > 1 ? 'm' : ''} revisão
+                  </span>
+                  <Badge variant="warning">{deletionLogs.length}</Badge>
+                  {showDeletionLogs ? <ChevronDown aria-hidden="true" size={16} className="text-slate-500" /> : <ChevronRight aria-hidden="true" size={16} className="text-slate-500" />}
+                </button>
+                {showDeletionLogs && (
+                  <ul className="divide-y divide-slate-200 border-t border-slate-200 bg-slate-50">
+                    {deletionLogs.map((log: any) => (
+                      <li key={log.id} className="flex items-start justify-between gap-3 px-4 py-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-slate-900">{log.taskTitle}</p>
+                          <p className="text-xs text-slate-500">
+                            Excluída por <span className="font-medium text-slate-700">{log.deletedByName}</span> · {fmtShort(log.createdAt)}
+                          </p>
+                          <p className="mt-1 break-words text-xs text-slate-700">
+                            <span className="font-medium text-amber-800">Motivo:</span> {log.reason}
+                          </p>
+                          {log.taskNotes && (
+                            <p className="mt-1 truncate text-xs italic text-slate-500">Nota: {log.taskNotes.slice(0, 80)}</p>
+                          )}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0"
+                          onClick={() => markDeletionReviewedMutation.mutate({ id: log.id })}
+                          disabled={markDeletionReviewedMutation.isPending}
+                        >
+                          <Eye aria-hidden="true" /> Revisei
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            )}
 
-      {/* Funil de Conversão & Performance de Vendas */}
-      <div className="saas-card p-5 space-y-5">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-blue-50 text-[#0C3680]">
-              <Target size={16} />
-            </div>
-            Funil de Conversão & Performance de Vendas
-          </h3>
-          <span className="saas-badge saas-badge-info text-[10px]">Visão em tempo real</span>
-        </div>
-
-        <div className="space-y-5">
-          {/* Funil visual */}
-          <div className="bg-slate-50/60 p-4 rounded-xl border border-slate-200/70 space-y-3">
-            <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Etapas do Funil (Lead → Cliente Ativo)</p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {[
-                { label: 'Leads Totais', value: funnel.total, color: 'from-slate-600 to-slate-700', badgeClass: 'saas-badge-neutral' },
-                { label: 'Contatados', value: funnel.contacted, color: 'from-blue-600 to-indigo-600', badgeClass: 'saas-badge-info' },
-                { label: 'Convertidos', value: funnel.converted, color: 'from-emerald-500 to-teal-600', badgeClass: 'saas-badge-success' },
-              ].map((stage, i) => {
-                const pct = funnel.total > 0 ? Math.round((stage.value / funnel.total) * 100) : 0;
-                return (
-                  <div key={stage.label} className="p-3 bg-white rounded-lg border border-slate-200/80 shadow-2xs space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-slate-800">{stage.label}</span>
-                      <span className={`saas-badge ${stage.badgeClass} font-mono`}>{pct}%</span>
-                    </div>
-                    <p className="text-xl font-bold font-mono text-slate-900">{stage.value.toLocaleString('pt-BR')}</p>
-                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div className={`h-full bg-gradient-to-r ${stage.color} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            {overdue.length > 0 && (
+              <li>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+                  onClick={() => setLocation('/tasks')}
+                >
+                  <AlertTriangle aria-hidden="true" size={16} className="shrink-0 text-red-700" />
+                  <span className="min-w-0 flex-1 text-sm font-medium text-slate-900">
+                    {overdue.length} tarefa{overdue.length > 1 ? 's' : ''} atrasada{overdue.length > 1 ? 's' : ''} na equipe
+                  </span>
+                  <Badge variant="danger">{overdue.length}</Badge>
+                  <ChevronRight aria-hidden="true" size={16} className="text-slate-500" />
+                </button>
+              </li>
+            )}
 
             {staleNoContact.length > 0 && (
-              <div className="p-2.5 bg-amber-50 border border-amber-200/80 rounded-lg text-xs text-amber-800 font-medium flex items-center gap-1.5">
-                <AlertTriangle size={14} className="text-amber-600 flex-shrink-0" />
-                <span>{staleNoContact.length} lead(s) há mais de 48h sem nenhum contato — esfriando</span>
-              </div>
+              <li className="flex items-center gap-3 px-4 py-3">
+                <Flame aria-hidden="true" size={16} className="shrink-0 text-amber-700" />
+                <span className="min-w-0 flex-1 text-sm font-medium text-slate-900">
+                  {staleNoContact.length} lead(s) há mais de 48h sem nenhum contato — esfriando
+                </span>
+              </li>
             )}
-            <div className="flex flex-wrap gap-4 text-xs text-slate-500 pt-1">
-              {avgFirstContactDays > 0 && (
-                <span>⏱️ 1º contato médio: <strong className="text-slate-800">{avgFirstContactDays < 1 ? `${Math.round(avgFirstContactMs / 3600000)}h` : `${avgFirstContactDays.toFixed(1)} dias`}</strong></span>
-              )}
-              {avgConversionDays > 0 && (
-                <span>🏆 Conversão média: <strong className="text-slate-800">{avgConversionDays < 1 ? `${Math.round(avgConversionMs / 3600000)}h` : `${avgConversionDays.toFixed(1)} dias`}</strong></span>
-              )}
-            </div>
-          </div>
+          </ul>
+        </Panel>
+      )}
 
-          {/* Tendência semanal de conversões */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-gray-500">Tendência de conversões — últimas 8 semanas</p>
-              {decidedTotal > 0 && (
-                <p className="text-[11px] text-gray-400">
-                  Taxa de leads perdidos: <strong className={lostRateGlobal >= 50 ? 'text-red-500' : lostRateGlobal >= 25 ? 'text-amber-600' : 'text-gray-600'}>{lostRateGlobal}%</strong>
-                  <span className="text-gray-300"> ({cancelledTotal} cancelado{cancelledTotal !== 1 ? 's' : ''} de {decidedTotal} com desfecho)</span>
-                </p>
-              )}
-            </div>
-            <div className="flex items-end gap-2 h-20">
-              {weeklyTrend.map(w => (
-                <div key={w.label} className="flex-1 flex flex-col items-center justify-end gap-1">
-                  <span className="text-[10px] text-gray-500 font-medium">{w.count > 0 ? w.count : ''}</span>
-                  <div
-                    className={`w-full rounded-t ${w.count > 0 ? 'bg-emerald-400' : 'bg-gray-100'} transition-all`}
-                    style={{ height: `${Math.max(4, Math.round((w.count / weeklyTrendMax) * 64))}px` }}
-                  />
-                  <span className="text-[9px] text-gray-400">{w.label}</span>
-                </div>
-              ))}
-            </div>
-            {convertedCount === 0 && <p className="text-xs text-gray-400 mt-1">Sem conversões registradas ainda — o gráfico vai ganhar vida conforme as vendas acontecerem.</p>}
-          </div>
+      {/* Indicadores */}
+      <StatStrip>
+        <Stat label="Contatos hoje" value={contactsToday} hint={`meta: ${teamDailyGoal}`} />
+        {isFullAdmin && <Stat label="Atendentes" value={sellers?.length || 0} hint={`${activeNow} ativos agora`} />}
+        <Stat label="Pendentes" value={pending.length} hint={`${completionRate}% concluídos`} onClick={() => setLocation('/tasks')} />
+        <Stat
+          label="Atrasados"
+          value={overdue.length}
+          hint={overdue.length > 0 ? 'precisam de ação' : 'tudo em dia'}
+          tone={overdue.length > 0 ? 'danger' : 'success'}
+          onClick={() => setLocation('/tasks')}
+        />
+        <Stat label="Com lembrete" value={reminderOn} hint={`de ${tasks.length} total`} />
+        <Stat
+          label="Conversões"
+          value={convertedCount}
+          hint={`${conversionRate}% taxa · ${convertedThisMonth} este mês · ~${avgContactsToConvert} contatos p/ converter`}
+        />
+      </StatStrip>
 
-          <div className={`grid grid-cols-1 ${isFullAdmin ? 'md:grid-cols-2' : ''} gap-5`}>
-            {/* Ranking de conversão — cross-atendente, só admin */}
-            {isFullAdmin && (
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-medium text-gray-500">Ranking de conversão por atendente</p>
-                {conversionRanking.length > 0 && (
-                  <button
-                    onClick={() => exportCsv(
-                      `ranking-conversao-${new Date().toISOString().slice(0, 10)}.csv`,
-                      ['Atendente', 'Total leads', 'Convertidos', 'Taxa (%)', 'Contatos médios/venda', 'Perdidos', 'Taxa perdidos (%)'],
-                      conversionRanking.map(r => [r.name, r.total, r.converted, r.rate, r.myAvgContacts, r.cancelled, r.lostRate])
-                    )}
-                    className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-emerald-600 transition"
-                    title="Exportar CSV"
-                  >
-                    <Download size={12} /> CSV
-                  </button>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        {/* Funil de conversão */}
+        <Panel>
+          <PanelHeader title="Funil de conversão" description="Lead → cliente ativo, em tempo real" />
+          <div className="space-y-5 p-4">
+            <ul className="space-y-3">
+              {[
+                { label: 'Leads totais', value: funnel.total, tone: 'brand' as const },
+                { label: 'Contatados', value: funnel.contacted, tone: 'brand' as const },
+                { label: 'Convertidos', value: funnel.converted, tone: 'success' as const },
+              ].map((stage) => {
+                const pct = funnel.total > 0 ? Math.round((stage.value / funnel.total) * 100) : 0;
+                return (
+                  <li key={stage.label}>
+                    <div className="mb-1 flex items-baseline justify-between gap-2 text-sm">
+                      <span className="font-medium text-slate-900">{stage.label}</span>
+                      <span className="tabular-nums text-slate-900">
+                        <span className="font-semibold">{stage.value.toLocaleString('pt-BR')}</span>
+                        <span className="ml-2 text-xs text-slate-500">{pct}%</span>
+                      </span>
+                    </div>
+                    <MiniBar pct={pct} tone={stage.tone} />
+                  </li>
+                );
+              })}
+            </ul>
+
+            {(avgFirstContactDays > 0 || avgConversionDays > 0) && (
+              <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500">
+                {avgFirstContactDays > 0 && (
+                  <span>1º contato médio: <strong className="font-semibold text-slate-900">{avgFirstContactDays < 1 ? `${Math.round(avgFirstContactMs / 3600000)}h` : `${avgFirstContactDays.toFixed(1)} dias`}</strong></span>
+                )}
+                {avgConversionDays > 0 && (
+                  <span>Conversão média: <strong className="font-semibold text-slate-900">{avgConversionDays < 1 ? `${Math.round(avgConversionMs / 3600000)}h` : `${avgConversionDays.toFixed(1)} dias`}</strong></span>
                 )}
               </div>
-              {conversionRanking.length > 0 ? (
-                <div className="space-y-2">
-                  {conversionRanking.slice(0, 6).map((r, i) => (
-                    <div key={r.name} className="text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-400 w-4">{i + 1}º</span>
-                        <span className="flex-1 truncate text-gray-700">{r.name}</span>
-                        <span className="text-emerald-700 font-semibold text-xs">{r.converted}</span>
-                        <span className="text-[11px] text-gray-400 w-12 text-right">{r.rate}%</span>
-                      </div>
-                      <div className="flex items-center gap-3 pl-6 mt-0.5 text-[10px] text-gray-400">
-                        {r.myAvgContacts > 0 && <span>~{r.myAvgContacts} contatos/venda</span>}
-                        {r.cancelled > 0 && <span className={r.lostRate >= 50 ? 'text-red-500' : ''}>{r.cancelled} perdido(s) ({r.lostRate}%)</span>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-gray-400">Sem conversões registradas ainda.</p>
-              )}
+            )}
+
+            {/* Tendência semanal de conversões */}
+            <div className="border-t border-slate-200 pt-4">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3">
+                <p className="text-xs font-medium text-slate-500">Conversões — últimas 8 semanas</p>
+                {decidedTotal > 0 && (
+                  <p className="text-xs text-slate-500">
+                    Leads perdidos: <strong className={lostRateGlobal >= 50 ? 'text-red-700' : lostRateGlobal >= 25 ? 'text-amber-700' : 'text-slate-700'}>{lostRateGlobal}%</strong>
+                    <span> ({cancelledTotal} cancelado{cancelledTotal !== 1 ? 's' : ''} de {decidedTotal} com desfecho)</span>
+                  </p>
+                )}
+              </div>
+              <div className="flex h-24 items-end gap-2">
+                {weeklyTrend.map(w => (
+                  <div key={w.label} className="flex flex-1 flex-col items-center justify-end gap-1">
+                    <span className="text-xs tabular-nums text-slate-500">{w.count > 0 ? w.count : ''}</span>
+                    <div
+                      className={`w-full rounded-t-sm ${w.count > 0 ? 'bg-green-600' : 'bg-slate-100'}`}
+                      style={{ height: `${Math.max(4, Math.round((w.count / weeklyTrendMax) * 64))}px` }}
+                    />
+                    <span className="text-xs text-slate-500">{w.label}</span>
+                  </div>
+                ))}
+              </div>
+              {convertedCount === 0 && <p className="mt-2 text-xs text-slate-500">Sem conversões registradas ainda.</p>}
             </div>
+          </div>
+        </Panel>
+
+        {/* Ranking + leads quentes */}
+        <Panel>
+          <PanelHeader
+            title={isFullAdmin ? 'Ranking e leads quentes' : 'Leads quentes'}
+            actions={isFullAdmin && conversionRanking.length > 0 ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => exportCsv(
+                  `ranking-conversao-${new Date().toISOString().slice(0, 10)}.csv`,
+                  ['Atendente', 'Total leads', 'Convertidos', 'Taxa (%)', 'Contatos médios/venda', 'Perdidos', 'Taxa perdidos (%)'],
+                  conversionRanking.map(r => [r.name, r.total, r.converted, r.rate, r.myAvgContacts, r.cancelled, r.lostRate])
+                )}
+                title="Exportar ranking em CSV"
+              >
+                <Download aria-hidden="true" /> CSV
+              </Button>
+            ) : undefined}
+          />
+          <div className="space-y-5 p-4">
+            {/* Ranking de conversão — cross-atendente, só admin */}
+            {isFullAdmin && (
+              <div>
+                <p className="mb-1 text-xs font-medium text-slate-500">Conversão por atendente</p>
+                {conversionRanking.length > 0 ? (
+                  <ul className="divide-y divide-slate-200">
+                    {conversionRanking.slice(0, 6).map((r, i) => (
+                      <li key={r.name} className="py-2">
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="w-5 text-xs tabular-nums text-slate-500">{i + 1}º</span>
+                          <span className="min-w-0 flex-1 truncate font-medium text-slate-900">{r.name}</span>
+                          <span className="text-sm font-semibold tabular-nums text-green-700">{r.converted}</span>
+                          <span className="w-12 text-right text-xs tabular-nums text-slate-500">{r.rate}%</span>
+                        </div>
+                        {(r.myAvgContacts > 0 || r.cancelled > 0) && (
+                          <div className="flex items-center gap-3 pl-7 text-xs text-slate-500">
+                            {r.myAvgContacts > 0 && <span>~{r.myAvgContacts} contatos/venda</span>}
+                            {r.cancelled > 0 && <span className={r.lostRate >= 50 ? 'text-red-700' : ''}>{r.cancelled} perdido(s) ({r.lostRate}%)</span>}
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-slate-500">Sem conversões registradas ainda.</p>
+                )}
+              </div>
             )}
 
             {/* Leads quentes */}
-            <div>
-              <p className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1.5">
-                <Flame size={13} className="text-orange-500" /> Leads quentes — perto de converter
-                {avgContactsToConvert > 0 && <span className="text-gray-400 font-normal"> (≥ {Math.max(1, avgContactsToConvert - 1)} contatos)</span>}
+            <div className={isFullAdmin ? 'border-t border-slate-200 pt-4' : ''}>
+              <p className="mb-1 text-xs font-medium text-slate-500">
+                Leads quentes — perto de converter
+                {avgContactsToConvert > 0 && <span className="font-normal"> (≥ {Math.max(1, avgContactsToConvert - 1)} contatos)</span>}
               </p>
               {hotLeads.length > 0 ? (
-                <div className="space-y-1.5">
+                <ul className="divide-y divide-slate-200">
                   {hotLeads.map((t: any) => (
-                    <div key={t.id} className="flex items-center gap-2 text-sm">
-                      <span className="truncate flex-1 text-gray-700">{(t.title || '').split(' - ')[0].slice(0, 36)}</span>
-                      {t.assignedTo && <span className="text-[11px] text-gray-400 truncate max-w-[80px]">{t.assignedTo}</span>}
-                      <span className="text-orange-600 font-semibold text-xs flex-shrink-0">{t.contactCount}</span>
-                    </div>
+                    <li key={t.id} className="flex items-center gap-2 py-2 text-sm">
+                      <span className="min-w-0 flex-1 truncate text-slate-900">{(t.title || '').split(' - ')[0].slice(0, 36)}</span>
+                      {t.assignedTo && <span className="max-w-[90px] truncate text-xs text-slate-500">{t.assignedTo}</span>}
+                      <span className="shrink-0 text-sm font-semibold tabular-nums text-slate-900" title="Contatos feitos">{t.contactCount}</span>
+                    </li>
                   ))}
-                </div>
+                </ul>
               ) : (
-                <p className="text-xs text-gray-400">
+                <p className="text-sm text-slate-500">
                   {avgContactsToConvert > 0 ? 'Nenhum lead próximo do ponto médio de conversão agora.' : 'Ainda sem dados suficientes de conversão para calcular.'}
                 </p>
               )}
             </div>
           </div>
-        </div>
+        </Panel>
       </div>
 
-      {/* Attendants overview — cross-atendente, só admin */}
+      {/* Desempenho dos atendentes — cross-atendente, só admin */}
       {isFullAdmin && (
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center justify-between text-base">
-            <span className="flex items-center gap-2">
-              <Users size={18} className="text-gray-600" />
-              Desempenho dos Atendentes
-            </span>
-            <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => setLocation('/attendants')}>
-              Gerenciar <ArrowRight size={13} />
-            </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+        <Panel>
+          <PanelHeader
+            title="Desempenho dos atendentes"
+            description="Contatos de hoje contra a meta diária"
+            actions={
+              <Button size="sm" variant="outline" onClick={() => setLocation('/attendants')}>
+                Gerenciar <ArrowRight aria-hidden="true" />
+              </Button>
+            }
+          />
           {isLoading ? (
-            <div className="space-y-3">
+            <div className="divide-y divide-slate-200">
               {[1, 2, 3].map(i => (
-                <div key={i} className="h-16 bg-gray-100 rounded-lg animate-pulse" />
+                <div key={i} className="px-4 py-3"><Skeleton className="h-9" /></div>
               ))}
             </div>
           ) : sellersError && sellers.length === 0 ? (
-            <QueryError onRetry={() => { void refetchSellers(); }} retrying={sellersFetching} />
+            <div className="p-4">
+              <QueryError onRetry={() => { void refetchSellers(); }} retrying={sellersFetching} />
+            </div>
           ) : sellers && sellers.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <ul className="divide-y divide-slate-200">
               {sellers.map((seller: any) => {
                 const stats = sellerStats.get(seller.id);
                 const sellerTasks = stats?.tasks ?? [];
@@ -1052,192 +910,67 @@ export default function AdminDashboard() {
                 const sessionRow = (sessionData as any[]).find((s: any) => s.name === seller.name);
                 const isActive = sessionRow?.session?.status === 'active';
                 const isPaused = sessionRow?.session?.status === 'paused';
-                const barColor = pct >= 100 ? 'bg-green-500' : pct >= 60 ? 'bg-blue-500' : pct >= 30 ? 'bg-amber-400' : 'bg-red-400';
+                const barTone = pct >= 100 ? 'success' : pct >= 60 ? 'brand' : pct >= 30 ? 'warning' : 'danger';
                 return (
-                  <div key={seller.id} className="p-4 border rounded-xl bg-white hover:shadow-sm transition-shadow">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="relative flex-shrink-0">
-                        <div className="w-9 h-9 rounded-full bg-slate-700 text-white flex items-center justify-center text-sm font-bold">
-                          {seller.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${isActive ? 'bg-green-500' : isPaused ? 'bg-yellow-400' : 'bg-gray-300'}`} />
+                  <li key={seller.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+                    <div className="flex min-w-0 basis-full items-center gap-3 sm:basis-56 sm:flex-1">
+                      <span
+                        aria-label={isActive ? 'Ativo' : isPaused ? 'Pausado' : 'Sem sessão'}
+                        title={isActive ? 'Ativo' : isPaused ? 'Pausado' : 'Sem sessão'}
+                        className={`size-2.5 shrink-0 rounded-full ${isActive ? 'bg-green-500' : isPaused ? 'bg-amber-500' : 'bg-slate-300'}`}
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-900">{seller.name}</p>
+                        <p className="truncate text-xs text-slate-500">{seller.email}</p>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-sm text-gray-800 truncate">{seller.name}</p>
-                        <p className="text-xs text-gray-400 truncate">{seller.email}</p>
-                      </div>
-                      <button
-                        onClick={() => setSelectedSeller(seller)}
-                        className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
-                        title="Análise detalhada"
-                      >
-                        <BarChart2 size={12} />
-                        Analisar
-                      </button>
                     </div>
-                    {/* Contatos hoje vs meta */}
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="flex-1 bg-gray-100 rounded-full h-2">
-                        <div className={`h-2 rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
-                      </div>
-                      <span className="text-xs font-bold text-gray-700 w-14 text-right tabular-nums">
+                    <div className="flex min-w-[160px] flex-1 items-center gap-2">
+                      <MiniBar pct={pct} tone={barTone} />
+                      <span className="w-14 shrink-0 text-right text-xs font-semibold tabular-nums text-slate-700">
                         {sellerContactsToday}/{GOAL}
                       </span>
                     </div>
-                    {/* Carteira: total / contatos hoje / atrasados */}
-                    <div className="grid grid-cols-3 gap-1.5 text-center">
-                      <div className="bg-slate-50 rounded-lg py-1.5 px-1">
-                        <p className="text-sm font-bold text-slate-700 tabular-nums">{sellerTasks.length}</p>
-                        <p className="text-xs text-gray-600 flex items-center justify-center gap-0.5"><Users size={9} /> total</p>
+                    <dl className="flex items-center gap-4 text-xs text-slate-500">
+                      <div className="text-center">
+                        <dt>Carteira</dt>
+                        <dd className="text-sm font-semibold tabular-nums text-slate-900">{sellerTasks.length}</dd>
                       </div>
-                      <div className="bg-blue-50 rounded-lg py-1.5 px-1">
-                        <p className="text-sm font-bold text-blue-700 tabular-nums">{sellerContactsToday}</p>
-                        <p className="text-xs text-gray-600 flex items-center justify-center gap-0.5"><Phone size={9} /> hoje</p>
+                      <div className="text-center">
+                        <dt>Atrasadas</dt>
+                        <dd className={`text-sm font-semibold tabular-nums ${sellerOverdue > 0 ? 'text-red-700' : 'text-slate-500'}`}>{sellerOverdue}</dd>
                       </div>
-                      <div className={`rounded-lg py-1.5 px-1 ${sellerOverdue > 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
-                        <p className={`text-sm font-bold tabular-nums ${sellerOverdue > 0 ? 'text-red-600' : 'text-gray-400'}`}>{sellerOverdue}</p>
-                        <p className={`text-xs flex items-center justify-center gap-0.5 ${sellerOverdue > 0 ? 'text-red-700' : 'text-gray-600'}`}>
-                          <AlertTriangle size={9} /> atrasado{sellerOverdue !== 1 ? 's' : ''}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                    </dl>
+                    <Button size="sm" variant="outline" onClick={() => setSelectedSeller(seller)} title="Análise detalhada">
+                      <BarChart2 aria-hidden="true" /> Analisar
+                    </Button>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           ) : (
-            <div className="text-center py-8 text-gray-400">
-              <Users size={32} className="mx-auto mb-2 opacity-40" />
-              <p className="text-sm">Nenhum atendente cadastrado.</p>
-              <button onClick={() => setLocation('/attendants')} className="mt-2 text-blue-600 text-sm underline hover:no-underline">
-                Adicionar agora
-              </button>
-            </div>
+            <EmptyState
+              icon={<Users />}
+              title="Nenhum atendente cadastrado"
+              description="Cadastre atendentes para acompanhar metas e contatos."
+              action={<Button size="sm" onClick={() => setLocation('/attendants')}>Adicionar atendente</Button>}
+            />
           )}
-        </CardContent>
-      </Card>
+        </Panel>
       )}
 
-      {/* Monitor IA — recurso de IA, só admin */}
+      {/* Sessões de trabalho — cross-atendente, só admin */}
       {isFullAdmin && (
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center justify-between text-base">
-            <span className="flex items-center gap-2">
-              <Scan size={18} className="text-purple-600" />
-              Monitor IA — Comportamento
-            </span>
-            <Button
-              onClick={() => handleRunMonitor(false)}
-              disabled={monitorLoading}
-              className="bg-purple-600 hover:bg-purple-700 text-white gap-1 text-xs"
-              size="sm"
-            >
-              {monitorLoading ? (
-                <>
-                  <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full" />
-                  Analisando...
-                </>
-              ) : (
-                <>Analisar Agora</>
-              )}
-            </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {monitorCached?.cached && (
-            <div className="flex items-center justify-between gap-2 text-xs bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
-              <span className="text-purple-700">
-                Resultado em cache de {new Date(monitorCached.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} — economiza sua cota gratuita de IA
-              </span>
-              <button
-                type="button"
-                className="text-purple-700 font-medium hover:underline whitespace-nowrap"
-                onClick={() => handleRunMonitor(true)}
-                disabled={monitorLoading}
-              >
-                Forçar nova análise
-              </button>
-            </div>
-          )}
-          {!monitorReport && !monitorSummary && !monitorLoading && (
-            <div className="text-center py-8 text-gray-400">
-              <Scan size={36} className="mx-auto mb-2 opacity-30" />
-              <p className="text-sm">Clique em "Analisar Agora" para verificar o comportamento de cada atendente.</p>
-              <p className="text-xs mt-1 text-gray-300">Detecta: tarefas sem anotação, adiamentos suspeitos, baixa produtividade.</p>
-            </div>
-          )}
-
-          {monitorReport && monitorReport.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {monitorReport.map((r: any) => (
-                <div key={r.sellerId} className={`p-4 rounded-xl border-2 ${r.status === '🔴 Suspeito' ? 'border-red-300 bg-red-50' : r.status === '🟡 Atenção' ? 'border-yellow-300 bg-yellow-50' : 'border-green-300 bg-green-50'}`}>
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <p className="font-bold text-gray-800">{r.name}</p>
-                      <p className="text-xs text-gray-500">{r.email}</p>
-                    </div>
-                    <span className="text-sm font-bold">{r.status}</span>
-                  </div>
-                  <div className="grid grid-cols-4 gap-1.5 text-center mb-2">
-                    <div className="bg-white rounded-lg p-1.5">
-                      <p className="text-base font-bold text-blue-600">{r.total}</p>
-                      <p className="text-xs text-gray-500">Clientes</p>
-                    </div>
-                    <div className="bg-white rounded-lg p-1.5">
-                      <p className={`text-base font-bold ${r.overdue > 0 ? 'text-red-600' : 'text-gray-500'}`}>{r.overdue}</p>
-                      <p className="text-xs text-gray-500">Vencidos</p>
-                    </div>
-                    <div className="bg-white rounded-lg p-1.5">
-                      <p className={`text-base font-bold ${r.noNotes > 0 ? 'text-orange-500' : 'text-gray-500'}`}>{r.noNotes}</p>
-                      <p className="text-xs text-gray-500">Sem nota</p>
-                    </div>
-                    <div className="bg-white rounded-lg p-1.5">
-                      <p className={`text-base font-bold ${r.disabledReminders > 0 ? 'text-red-700' : 'text-gray-500'}`}>{r.disabledReminders}</p>
-                      <p className="text-xs text-gray-500">Desativados</p>
-                    </div>
-                  </div>
-                  {r.flags.length > 0 && (
-                    <div className="mt-2 space-y-1">
-                      {r.flags.map((flag: string, i: number) => (
-                        <p key={i} className="text-xs text-red-700 bg-red-100 px-2 py-1 rounded flex items-start gap-1"><AlertTriangle size={12} className="mt-0.5 flex-shrink-0" /> {flag}</p>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {monitorSummary && (
-            <AiAnalysisReport markdown={monitorSummary} />
-          )}
-        </CardContent>
-      </Card>
-      )}
-
-      {/* Work Sessions — cross-atendente, só admin */}
-      {isFullAdmin && (
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center justify-between text-base">
-            <span className="flex items-center gap-2">
-              <Timer size={18} className="text-cyan-600" />
-              Sessões de Trabalho Hoje
-            </span>
-            <button
-              onClick={() => refetchSessions()}
-              disabled={sessionsFetching}
-              className="flex items-center gap-1 text-xs text-gray-400 hover:text-cyan-600 transition disabled:opacity-50"
-              title="Atualizar"
-            >
-              <RefreshCw size={13} className={sessionsFetching ? 'animate-spin' : ''} />
-              {sessionsFetching ? 'Atualizando...' : 'Atualizar'}
-            </button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
+        <Panel>
+          <PanelHeader
+            title="Sessões de trabalho hoje"
+            actions={
+              <Button size="sm" variant="ghost" onClick={() => refetchSessions()} disabled={sessionsFetching}>
+                <RefreshCw aria-hidden="true" className={sessionsFetching ? 'animate-spin' : ''} />
+                {sessionsFetching ? 'Atualizando...' : 'Atualizar'}
+              </Button>
+            }
+          />
+          <ul className="divide-y divide-slate-200">
             {(sessionData as any[]).map((row: any) => {
               const s = row.session;
               const idleMin = Math.floor((row.idleSinceMs ?? 0) / 60000);
@@ -1263,197 +996,250 @@ export default function AdminDashboard() {
               const hasDetail = (row.recentTasks?.length > 0) || lastOnline;
 
               return (
-                <div key={row.sellerId} className={`rounded-xl border overflow-hidden ${
-                  isIdle ? 'border-amber-200' :
-                  isPaused ? 'border-yellow-200' :
-                  s ? 'border-green-200' : 'border-gray-100'
-                }`}>
-                  {/* Main row */}
-                  <div
-                    className={`flex items-center gap-3 p-3 cursor-pointer select-none ${
-                      isIdle ? 'bg-amber-50 hover:bg-amber-100' :
-                      isPaused ? 'bg-yellow-50 hover:bg-yellow-100' :
-                      s ? 'bg-green-50 hover:bg-green-100' : 'bg-gray-50 hover:bg-gray-100'
-                    } transition-colors`}
+                <li key={row.sellerId}>
+                  <button
+                    type="button"
+                    className={`flex w-full flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-left transition-colors ${hasDetail ? 'hover:bg-slate-50' : 'cursor-default'}`}
                     onClick={() => hasDetail && toggleSession(row.sellerId)}
+                    aria-expanded={hasDetail ? isExpanded : undefined}
                   >
-                    {/* Status dot */}
-                    <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                      isIdle ? 'bg-amber-400' : isPaused ? 'bg-yellow-400' : s ? 'bg-green-500 animate-pulse' : 'bg-gray-300'
-                    }`} />
+                    <span className="flex min-w-0 basis-full items-center gap-2.5 sm:basis-52">
+                      <span className={`size-2.5 shrink-0 rounded-full ${
+                        isIdle ? 'bg-amber-500' : isPaused ? 'bg-amber-500' : s ? 'bg-green-500' : 'bg-slate-300'
+                      }`} />
+                      <span className="truncate text-sm font-medium text-slate-900">{row.name}</span>
+                    </span>
 
-                    {/* Name */}
-                    <div className="w-28 flex-shrink-0">
-                      <p className="text-sm font-semibold text-gray-800 truncate">{row.name}</p>
-                    </div>
+                    <span className="w-28 shrink-0 text-xs">
+                      {!s && <span className="text-slate-500">Sem sessão hoje</span>}
+                      {s?.status === 'active' && !isIdle && <span className="inline-flex items-center gap-1 font-medium text-green-700"><Activity aria-hidden="true" size={12} /> Ativo</span>}
+                      {isIdle && <span className="font-medium text-amber-700">Ocioso {idleMin}min</span>}
+                      {isPaused && <span className="font-medium text-amber-700">Pausado</span>}
+                    </span>
 
-                    {/* Status label */}
-                    <div className="w-28 flex-shrink-0">
-                      {!s && <span className="text-xs text-gray-400">Sem sessão hoje</span>}
-                      {s?.status === 'active' && !isIdle && <span className="text-xs font-semibold text-green-700 flex items-center gap-1"><Activity size={11} /> Ativo</span>}
-                      {isIdle && <span className="text-xs font-semibold text-amber-700">Ocioso {idleMin}min</span>}
-                      {isPaused && <span className="text-xs font-semibold text-yellow-700">Pausado</span>}
-                    </div>
-
-                    {/* Metrics */}
-                    <div className="flex items-center gap-4 flex-1 text-xs text-gray-600 flex-wrap">
-                      {startTime && <span title="Entrada"><strong>{startTime}</strong></span>}
+                    <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+                      {startTime && <span title="Entrada"><strong className="font-semibold text-slate-900">{startTime}</strong></span>}
                       {s && (
                         <span title="Tempo trabalhado">
-                          <strong>{workedH > 0 ? `${workedH}h ` : ''}{workedM}min</strong>
+                          <strong className="font-semibold text-slate-900">{workedH > 0 ? `${workedH}h ` : ''}{workedM}min</strong>
                         </span>
                       )}
                       <span title="Tarefas com anotação hoje">
-                        <strong>{row.contactsToday}</strong> contatos
+                        <strong className="font-semibold text-slate-900">{row.contactsToday}</strong> contatos
                       </span>
-                      {lastAct && <span title="Última edição de tarefa"><strong>{lastAct}</strong></span>}
+                      {lastAct && <span title="Última edição de tarefa"><strong className="font-semibold text-slate-900">{lastAct}</strong></span>}
                       {!s && lastOnline && (
-                        <span className="text-gray-400" title="Último acesso registrado">
-                          último acesso: <strong>{lastOnline}</strong>
+                        <span className="text-slate-500" title="Último acesso registrado">
+                          último acesso: <strong className="font-semibold text-slate-700">{lastOnline}</strong>
                         </span>
                       )}
                       {row.ghostCount > 0 && (
-                        <span className="px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-semibold inline-flex items-center gap-1" title={`${row.ghostCount} clientes sem contato há 30+ dias`}>
-                          <Ghost size={11} /> {row.ghostCount}
-                        </span>
+                        <Badge variant="warning" title={`${row.ghostCount} clientes sem contato há 30+ dias`}>
+                          <Ghost aria-hidden="true" /> {row.ghostCount} sem contato
+                        </Badge>
                       )}
                       {row.burstAlert && (
-                        <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-bold animate-pulse inline-flex items-center gap-1" title={`Alerta de fraude: ${row.burstMax} contatos em <10min`}>
-                          <Zap size={11} /> Burst
-                        </span>
+                        <Badge variant="danger" title={`Alerta de fraude: ${row.burstMax} contatos em <10min`}>
+                          <Zap aria-hidden="true" /> Burst
+                        </Badge>
                       )}
-                    </div>
+                    </span>
 
-                    {/* Expand chevron */}
                     {hasDetail && (
-                      <div className="text-gray-400 flex-shrink-0">
-                        {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-                      </div>
+                      <span className="shrink-0 text-slate-500" aria-hidden="true">
+                        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      </span>
                     )}
-                  </div>
+                  </button>
 
-                  {/* Expanded detail — recent tasks */}
                   {isExpanded && (
-                    <div className="border-t border-dashed px-4 py-3 bg-white">
+                    <div className="border-t border-slate-200 bg-slate-50 px-4 py-3">
                       {row.recentTasks?.length > 0 ? (
                         <div className="space-y-1.5">
-                          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
-                            Tarefas editadas hoje
-                          </p>
+                          <p className="mb-2 text-xs font-medium text-slate-500">Tarefas editadas hoje</p>
                           {row.recentTasks.map((t: any, i: number) => (
-                            <div key={i} className="flex items-start gap-2 text-xs text-gray-700">
-                              <FileText size={12} className="text-cyan-500 mt-0.5 flex-shrink-0" />
+                            <div key={i} className="flex items-start gap-2 text-xs text-slate-700">
+                              <FileText aria-hidden="true" size={12} className="mt-0.5 shrink-0 text-slate-400" />
                               <span className="flex-1 truncate font-medium">{t.title}</span>
-                              <span className="text-gray-400 flex-shrink-0 tabular-nums">
+                              <span className="shrink-0 tabular-nums text-slate-500">
                                 {fmtAgo(t.lastContactedAt)}
                               </span>
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <p className="text-xs text-gray-400 italic">
+                        <p className="text-xs italic text-slate-500">
                           Nenhuma tarefa editada hoje.
                           {lastOnline && <> Último acesso: <strong>{lastOnline}</strong>.</>}
                         </p>
                       )}
                     </div>
                   )}
-                </div>
+                </li>
               );
             })}
             {(sessionData as any[]).length === 0 && (
-              <p className="text-sm text-gray-400 text-center py-4">Nenhum atendente cadastrado.</p>
+              <li><EmptyState className="py-6" title="Nenhum atendente cadastrado" /></li>
             )}
-          </div>
-        </CardContent>
-      </Card>
+          </ul>
+        </Panel>
       )}
 
-      {/* Reminders Overview */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center justify-between text-base">
-            <span className="flex items-center gap-2">
-              <ClipboardList size={18} className="text-gray-600" />
-              Lembretes
-            </span>
-            <select
-              value={reminderFilter}
-              onChange={(e) => setReminderFilter(e.target.value)}
-              className="px-3 py-1 border rounded-lg text-xs font-normal bg-white"
-            >
-              <option value="all">Todos</option>
-              <option value="__admin__">Administrador</option>
-              {(sellers ?? []).map((s: any) => (
-                <option key={s.id} value={s.name}>{s.name}</option>
-              ))}
-            </select>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {filteredReminders.length === 0 ? (
-            <div className="text-center py-6 text-gray-400">
-              <ClipboardList size={32} className="mx-auto mb-2 opacity-30" />
-              <p className="text-sm">Nenhum lembrete</p>
-            </div>
-          ) : (
-            <>
-              {overdueReminders.length > 0 && (
-                <div>
-                  <p className="text-xs font-bold text-red-600 mb-2">ATRASADOS ({overdueReminders.length})</p>
-                  <div className="space-y-2">
-                    {overdueReminders.slice(0, 5).map((reminder: any) => (
-                      <div key={reminder.id} className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                        <div className="flex items-start justify-between mb-1">
-                          <p className="font-medium text-sm text-red-900">{reminder.title}</p>
-                          <span className="text-xs text-red-700">{(() => { try { const d=new Date(reminder.reminderDate); const p=(n:number)=>String(n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)}`; } catch { return ''; } })()}</span>
+      {/* Monitor IA — recurso de IA, só admin */}
+      {isFullAdmin && (
+        <Panel>
+          <PanelHeader
+            title="Monitor IA — comportamento"
+            description="Tarefas sem anotação, adiamentos suspeitos e baixa produtividade"
+            actions={
+              <Button size="sm" onClick={() => handleRunMonitor(false)} disabled={monitorLoading}>
+                {monitorLoading ? (
+                  <>
+                    <span className="inline-block size-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    Analisando...
+                  </>
+                ) : (
+                  <><Scan aria-hidden="true" /> Analisar agora</>
+                )}
+              </Button>
+            }
+          />
+          <div className="space-y-4 p-4">
+            {monitorCached?.cached && (
+              <div className="flex items-center justify-between gap-2 rounded-md bg-slate-50 px-3 py-2 text-xs">
+                <span className="text-slate-700">
+                  Resultado em cache de {new Date(monitorCached.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} — economiza sua cota gratuita de IA
+                </span>
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs whitespace-nowrap"
+                  onClick={() => handleRunMonitor(true)}
+                  disabled={monitorLoading}
+                >
+                  Forçar nova análise
+                </Button>
+              </div>
+            )}
+            {!monitorReport && !monitorSummary && !monitorLoading && (
+              <EmptyState
+                className="py-6"
+                icon={<Scan />}
+                title="Nenhuma análise executada"
+                description='Clique em "Analisar agora" para verificar o comportamento de cada atendente.'
+              />
+            )}
+
+            {monitorReport && monitorReport.length > 0 && (
+              <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200">
+                {monitorReport.map((r: any) => {
+                  const tone = r.status === '🔴 Suspeito' ? 'danger' : r.status === '🟡 Atenção' ? 'warning' : 'success';
+                  return (
+                    <li key={r.sellerId} className="space-y-2 px-4 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-900">{r.name}</p>
+                          <p className="truncate text-xs text-slate-500">{r.email}</p>
                         </div>
-                        {reminder.assignedTo && <p className="text-xs text-red-600">{reminder.assignedTo}</p>}
+                        <Badge variant={tone}>{statusLabel(String(r.status))}</Badge>
                       </div>
+                      <dl className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500">
+                        <div className="flex items-baseline gap-1.5"><dd className="text-sm font-semibold tabular-nums text-slate-900">{r.total}</dd><dt>clientes</dt></div>
+                        <div className="flex items-baseline gap-1.5"><dd className={`text-sm font-semibold tabular-nums ${r.overdue > 0 ? 'text-red-700' : 'text-slate-900'}`}>{r.overdue}</dd><dt>vencidos</dt></div>
+                        <div className="flex items-baseline gap-1.5"><dd className={`text-sm font-semibold tabular-nums ${r.noNotes > 0 ? 'text-amber-700' : 'text-slate-900'}`}>{r.noNotes}</dd><dt>sem nota</dt></div>
+                        <div className="flex items-baseline gap-1.5"><dd className={`text-sm font-semibold tabular-nums ${r.disabledReminders > 0 ? 'text-red-700' : 'text-slate-900'}`}>{r.disabledReminders}</dd><dt>desativados</dt></div>
+                      </dl>
+                      {r.flags.length > 0 && (
+                        <ul className="space-y-1">
+                          {r.flags.map((flag: string, i: number) => (
+                            <li key={i} className="flex items-start gap-1.5 text-xs text-red-700">
+                              <AlertTriangle aria-hidden="true" size={12} className="mt-0.5 shrink-0" /> {flag}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            {monitorSummary && (
+              <AiAnalysisReport markdown={monitorSummary} />
+            )}
+          </div>
+        </Panel>
+      )}
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        {/* Lembretes */}
+        <Panel>
+          <PanelHeader
+            title="Lembretes"
+            actions={
+              <select
+                value={reminderFilter}
+                onChange={(e) => setReminderFilter(e.target.value)}
+                aria-label="Filtrar lembretes por responsável"
+                className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-900 max-md:h-10"
+              >
+                <option value="all">Todos</option>
+                <option value="__admin__">Administrador</option>
+                {(sellers ?? []).map((s: any) => (
+                  <option key={s.id} value={s.name}>{s.name}</option>
+                ))}
+              </select>
+            }
+          />
+          {filteredReminders.length === 0 ? (
+            <EmptyState className="py-6" icon={<ClipboardList />} title="Nenhum lembrete" />
+          ) : (
+            <div className="divide-y divide-slate-200">
+              {overdueReminders.length > 0 && (
+                <div className="px-4 py-3">
+                  <p className="mb-1 text-xs font-semibold text-red-700">Atrasados ({overdueReminders.length})</p>
+                  <ul className="divide-y divide-slate-200">
+                    {overdueReminders.slice(0, 5).map((reminder: any) => (
+                      <li key={reminder.id} className="flex items-start justify-between gap-3 py-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-900">{reminder.title}</p>
+                          {reminder.assignedTo && <p className="text-xs text-slate-500">{reminder.assignedTo}</p>}
+                        </div>
+                        <span className="shrink-0 text-xs tabular-nums text-red-700">{(() => { try { const d=new Date(reminder.reminderDate); const p=(n:number)=>String(n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)}`; } catch { return ''; } })()}</span>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 </div>
               )}
               {upcomingReminders.length > 0 && (
-                <div>
-                  <p className="text-xs font-bold text-blue-600 mb-2">PRÓXIMOS ({upcomingReminders.length})</p>
-                  <div className="space-y-2">
+                <div className="px-4 py-3">
+                  <p className="mb-1 text-xs font-semibold text-slate-700">Próximos ({upcomingReminders.length})</p>
+                  <ul className="divide-y divide-slate-200">
                     {upcomingReminders.slice(0, 5).map((reminder: any) => (
-                      <div key={reminder.id} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                        <div className="flex items-start justify-between mb-1">
-                          <p className="font-medium text-sm text-blue-900">{reminder.title}</p>
-                          <span className="text-xs text-blue-700">{(() => { try { const d=new Date(reminder.reminderDate); const p=(n:number)=>String(n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)} ${p(d.getHours())}:${p(d.getMinutes())}`; } catch { return ''; } })()}</span>
+                      <li key={reminder.id} className="flex items-start justify-between gap-3 py-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-900">{reminder.title}</p>
+                          {reminder.assignedTo && <p className="text-xs text-slate-500">{reminder.assignedTo}</p>}
                         </div>
-                        {reminder.assignedTo && <p className="text-xs text-blue-600">{reminder.assignedTo}</p>}
-                      </div>
+                        <span className="shrink-0 text-xs tabular-nums text-slate-500">{(() => { try { const d=new Date(reminder.reminderDate); const p=(n:number)=>String(n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)} ${p(d.getHours())}:${p(d.getMinutes())}`; } catch { return ''; } })()}</span>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 </div>
               )}
-            </>
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </Panel>
 
-      {/* Faturamento & Comissão — quick link */}
-      <FaturamentoQuickCard setLocation={setLocation} />
-
-      {/* Quick Actions */}
-      <div>
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Ações Rápidas</p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {quickActions.map((action) => (
-            <button
-              key={action.path}
-              onClick={() => setLocation(action.path)}
-              className={`${action.color} text-white rounded-xl p-4 text-center transition-all hover:scale-[1.02] active:scale-95 flex flex-col items-center gap-2`}
-            >
-              {action.icon}
-              <span className="text-sm font-medium">{action.label}</span>
-            </button>
-          ))}
+        {/* Faturamento e comissão — atalho */}
+        <div className="self-start">
+          <FaturamentoQuickCard setLocation={setLocation} />
         </div>
       </div>
+
+      {/* E-mail Marketing */}
+      <EmailStrategicCard />
 
       {/* Attendant Detail Modal */}
       {selectedSeller && (
@@ -1491,7 +1277,6 @@ export default function AdminDashboard() {
         onOpenChange={setPedidoDeleteOpen}
         pedidoId={pedidoDetailId}
       />
-
-    </div>
+    </Page>
   );
 }

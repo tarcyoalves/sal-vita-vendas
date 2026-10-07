@@ -43,9 +43,9 @@ export function FrequencySettings() {
   };
 
   return (
-    <Card className="rounded-2xl border-slate-200">
+    <Card className="rounded-lg border-slate-200">
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-blue-900 text-base">
+        <CardTitle className="flex items-center gap-2">
           <Shield size={18} /> Controle de frequência
           {!isLoading && (
             <Badge variant="secondary" className={enabled ? "bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px]" : "bg-slate-100 text-slate-500 border-slate-200 text-[10px]"}>
@@ -61,7 +61,7 @@ export function FrequencySettings() {
           Vale para as duas fontes de envio.
         </p>
 
-        <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+        <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/60 p-3">
           <Label className="flex items-center gap-1.5 text-sm font-medium">
             <Shield size={14} className="text-blue-700" /> Ativar controle de frequência
           </Label>
@@ -81,7 +81,7 @@ export function FrequencySettings() {
               disabled={!enabled}
               onChange={(e) => { setMaxEmails(Math.max(1, Math.min(50, Number(e.target.value) || 1))); setDirty(true); }}
             />
-            <p className="text-[11px] text-slate-400">Teto de mensagens que um mesmo contato pode receber na janela</p>
+            <p className="text-xs text-slate-500">Teto de mensagens que um mesmo contato pode receber na janela</p>
           </div>
 
           <div className="space-y-1.5">
@@ -96,11 +96,11 @@ export function FrequencySettings() {
               disabled={!enabled}
               onChange={(e) => { setWindowDays(Math.max(1, Math.min(90, Number(e.target.value) || 1))); setDirty(true); }}
             />
-            <p className="text-[11px] text-slate-400">Período considerado para contar os envios</p>
+            <p className="text-xs text-slate-500">Período considerado para contar os envios</p>
           </div>
         </div>
 
-        <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50/60 p-3">
+        <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50/60 p-3">
           <Info size={16} className="mt-0.5 flex-shrink-0 text-blue-700" />
           <p className="text-xs text-blue-800 leading-relaxed">
             Resumo atual: {enabled

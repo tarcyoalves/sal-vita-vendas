@@ -8,7 +8,9 @@ import {
 } from "../../lib/faturamento/calc";
 import type { Pedido, FiltroMes } from "../../lib/faturamento/types";
 import { trpc } from "../../lib/trpc";
-import { Card, CardContent } from "../ui/card";
+import { Panel, EmptyState } from "../layout/Page";
+import { StatusBadge } from "../StatusBadge";
+import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { Download, FileText, ChevronLeft, ChevronRight } from "lucide-react";
 import { OrderDetailDialog } from "./OrderDetailDialog";
@@ -196,35 +198,35 @@ export default function BillingReport() {
         <AvisoMesSemPedidos pedidos={allPedidos} filtro={mesFilter} onIr={setMesFilter} />
       )}
       {/* Filters */}
-      <Card>
-        <CardContent className="pt-4 pb-4 space-y-3">
-          <input
-            type="text"
-            placeholder="🔍 Buscar por CNPJ, Razão Social, Cidade ou Produto..."
+      <Panel>
+        <div className="space-y-3 px-4 py-3">
+          <Input
+            type="search"
+            aria-label="Buscar pedidos"
+            placeholder="Buscar por CNPJ, razão social, cidade ou produto"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-3 py-2.5 border rounded-lg text-sm"
           />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+              <label className="mb-1 block text-xs font-medium text-slate-700">Status</label>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
+                className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
               >
                 <option value="todos">Todos</option>
-                <option value="pendente">⏳ Aguardando revisão</option>
+                <option value="pendente">Aguardando revisão</option>
                 <option value="estimado">Estimado</option>
                 <option value="faturado">Faturado</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Atendente</label>
+              <label className="mb-1 block text-xs font-medium text-slate-700">Atendente</label>
               <select
                 value={sellerFilter}
                 onChange={(e) => setSellerFilter(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
+                className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
               >
                 <option value="todos">Todos</option>
                 {sellerNames.map((name) => (
@@ -233,46 +235,48 @@ export default function BillingReport() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Mes</label>
+              <label className="mb-1 block text-xs font-medium text-slate-700">Mês</label>
               {showAllMonths ? (
-                <button
+                <Button
+                  variant="outline"
+                  className="w-full justify-start text-brand-700"
                   onClick={() => { setShowAllMonths(false); setMesFilter(mesAtual()); }}
-                  className="w-full px-3 py-2 border rounded-lg text-sm text-left text-blue-600 hover:bg-blue-50 transition-colors"
                 >
                   Todos os meses (filtrar)
-                </button>
+                </Button>
               ) : (
                 <div className="flex items-center gap-1">
-                  <button
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    aria-label="Mês anterior"
                     onClick={() => mesFilter && setMesFilter(prevMes(mesFilter))}
-                    className="p-1.5 rounded border hover:bg-gray-50 transition-colors"
                   >
                     <ChevronLeft size={14} />
-                  </button>
-                  <span className="flex-1 text-center text-sm font-medium text-gray-700">
+                  </Button>
+                  <span className="flex-1 text-center text-sm font-medium text-slate-900">
                     {mesFilter ? `${MONTH_NAMES[mesFilter.mes].slice(0, 3)}/${mesFilter.ano}` : "--"}
                   </span>
-                  <button
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    aria-label="Próximo mês"
                     onClick={() => mesFilter && setMesFilter(nextMes(mesFilter))}
-                    className="p-1.5 rounded border hover:bg-gray-50 transition-colors"
                   >
                     <ChevronRight size={14} />
-                  </button>
-                  <button
-                    onClick={() => setShowAllMonths(true)}
-                    className="text-[10px] text-blue-600 hover:underline ml-1"
-                  >
+                  </Button>
+                  <Button variant="link" size="sm" onClick={() => setShowAllMonths(true)}>
                     Todos
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">UF</label>
+              <label className="mb-1 block text-xs font-medium text-slate-700">UF</label>
               <select
                 value={ufFilter}
                 onChange={(e) => setUfFilter(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
+                className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
               >
                 <option value="">Todas</option>
                 {distinctUFs.map((uf) => (
@@ -281,11 +285,11 @@ export default function BillingReport() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">SMBI</label>
+              <label className="mb-1 block text-xs font-medium text-slate-700">SMBI</label>
               <select
                 value={smbiFilter}
                 onChange={(e) => setSmbiFilter(e.target.value as typeof smbiFilter)}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
+                className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
               >
                 <option value="todos">Todos</option>
                 <option value="vinculados">Vinculados ao SMBI</option>
@@ -294,7 +298,6 @@ export default function BillingReport() {
             </div>
             <div className="flex items-end">
               <Button
-                size="sm"
                 variant="outline"
                 className="w-full gap-1"
                 onClick={handleExport}
@@ -304,22 +307,23 @@ export default function BillingReport() {
               </Button>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </Panel>
 
       {/* Report table */}
       {filtered.length === 0 && fatError && !fatLoaded ? (
         <QueryError message="Falha ao carregar os pedidos" onRetry={fatReload} retrying={fatLoading} />
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 py-10 px-4 text-center">
-          <FileText size={28} className="text-slate-300" />
-          <p className="text-sm text-slate-500 max-w-sm">
-            Nenhum pedido encontrado com os filtros selecionados.
-          </p>
-        </div>
+        <Panel>
+          <EmptyState
+            icon={<FileText />}
+            title="Nenhum pedido encontrado"
+            description="Ajuste os filtros, a busca ou o mês para ver outros pedidos."
+          />
+        </Panel>
       ) : (
-        <Card>
-          <CardContent className="p-0">
+        <Panel>
+          <div>
             {/* Celular: cartões clicáveis (a tabela tem 12 colunas). */}
             <div className="md:hidden divide-y divide-slate-200">
               {filtered.map((p) => (
@@ -329,19 +333,15 @@ export default function BillingReport() {
                   tabIndex={0}
                   onClick={() => openDetail(p.id)}
                   onKeyDown={(e) => abrirComTeclado(e, p.id)}
-                  className="px-3 py-3 space-y-1.5 cursor-pointer active:bg-blue-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  className="px-4 py-3 space-y-1.5 cursor-pointer active:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <p className="font-medium text-gray-800 text-sm min-w-0 break-words">{p.razaoSocial || p.clienteNome || "--"}</p>
-                    <span
-                      className={`flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                        p.status === "faturado" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                      }`}
-                    >
+                    <p className="font-medium text-slate-900 text-sm min-w-0 break-words">{p.razaoSocial || p.clienteNome || "--"}</p>
+                    <StatusBadge tone={p.status === "faturado" ? "success" : "warning"} className="flex-shrink-0">
                       {p.status === "faturado" ? "Faturado" : "Estimado"}
-                    </span>
+                    </StatusBadge>
                   </div>
-                  <div className="flex items-center justify-between gap-2 text-xs text-gray-600">
+                  <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
                     <span>{p.sellerName || "--"} · {formatKg(pesoEfetivoKg(p))}</span>
                     <span>
                       {p.status === "faturado"
@@ -350,55 +350,53 @@ export default function BillingReport() {
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2 text-sm">
-                    <span className="text-gray-600">Estimado {formatBRL(estimatedTotal(p))}</span>
+                    <span className="tabular-nums text-slate-700">Estimado {formatBRL(estimatedTotal(p))}</span>
                     {p.status === "faturado"
-                      ? <span className="font-semibold text-emerald-700">Faturado {formatBRL(totalPedido(p))}</span>
-                      : <span className="text-gray-500">Faturado --</span>}
+                      ? <span className="font-semibold tabular-nums text-slate-900">Faturado {formatBRL(totalPedido(p))}</span>
+                      : <span className="text-slate-500">Faturado --</span>}
                   </div>
                 </div>
               ))}
-              <div className="px-3 py-3 bg-slate-50 text-sm font-semibold text-gray-800 space-y-0.5">
+              <div className="px-4 py-3 bg-slate-50 text-sm font-semibold tabular-nums text-slate-900 space-y-0.5">
                 <div>Total ({filtered.length} pedido{filtered.length !== 1 ? "s" : ""})</div>
-                <div className="flex justify-between"><span className="font-medium text-gray-600">Estimado</span><span>{formatBRL(totalEstimado)}</span></div>
-                <div className="flex justify-between"><span className="font-medium text-gray-600">Faturado</span><span className="text-emerald-700">{formatBRL(totalFaturado)}</span></div>
+                <div className="flex justify-between"><span className="font-medium text-slate-500">Estimado</span><span>{formatBRL(totalEstimado)}</span></div>
+                <div className="flex justify-between"><span className="font-medium text-slate-500">Faturado</span><span>{formatBRL(totalFaturado)}</span></div>
               </div>
             </div>
             <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm tabular-nums">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Tarefa</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">CNPJ</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Razao Social</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Cidade/UF</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Atendente</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Produtos</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">F.Pagamento</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Competencia</th>
-                    <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Peso</th>
-                    <th className="px-3 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-500">Status</th>
-                    <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Estimado</th>
-                    <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Faturado</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-slate-500">Tarefa</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-slate-500">CNPJ</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-slate-500">Razão social</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-slate-500">Cidade/UF</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-slate-500">Atendente</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-slate-500">Produtos</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-slate-500">Pagamento</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-slate-500">Competência</th>
+                    <th className="px-3 py-2.5 text-right text-xs font-medium text-slate-500">Peso</th>
+                    <th className="px-3 py-2.5 text-center text-xs font-medium text-slate-500">Status</th>
+                    <th className="px-3 py-2.5 text-right text-xs font-medium text-slate-500">Estimado</th>
+                    <th className="px-3 py-2.5 text-right text-xs font-medium text-slate-500">Faturado</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((p, i) => (
+                  {filtered.map((p) => (
                     <tr
                       key={p.id}
                       onClick={() => openDetail(p.id)}
                       role="button"
                       tabIndex={0}
                       onKeyDown={(e) => abrirComTeclado(e, p.id)}
-                      className={`border-b-2 border-slate-300 hover:bg-blue-50/50 transition-colors align-top cursor-pointer ${
-                        i % 2 === 1 ? 'bg-slate-50/60' : ''
-                      }`}
+                      className="border-b border-slate-200 hover:bg-slate-50 transition-colors align-top cursor-pointer focus-visible:outline-none focus-visible:bg-brand-50"
                     >
-                      <td className="px-3 py-3 text-blue-600 text-xs font-medium">{p.taskId ? `#${p.taskId}` : "--"}</td>
-                      <td className="px-3 py-3 text-gray-600 font-mono text-xs">{p.cnpj || "--"}</td>
-                      <td className="px-3 py-3 font-medium text-gray-800 max-w-[180px] truncate">{p.razaoSocial || p.clienteNome || "--"}</td>
-                      <td className="px-3 py-3 text-gray-600 text-xs whitespace-nowrap">{[p.cidade, p.uf].filter(Boolean).join("/") || "--"}</td>
-                      <td className="px-3 py-3 text-gray-600 text-xs">{p.sellerName || "--"}</td>
-                      <td className="px-3 py-3 text-xs text-gray-600 max-w-[200px]">
+                      <td className="px-3 py-3 text-brand-700 text-xs font-medium">{p.taskId ? `#${p.taskId}` : "--"}</td>
+                      <td className="px-3 py-3 text-slate-700 text-xs">{p.cnpj || "--"}</td>
+                      <td className="px-3 py-3 font-medium text-slate-900 max-w-[180px] truncate">{p.razaoSocial || p.clienteNome || "--"}</td>
+                      <td className="px-3 py-3 text-slate-700 text-xs whitespace-nowrap">{[p.cidade, p.uf].filter(Boolean).join("/") || "--"}</td>
+                      <td className="px-3 py-3 text-slate-700 text-xs">{p.sellerName || "--"}</td>
+                      <td className="px-3 py-3 text-xs text-slate-700 max-w-[200px]">
                         {p.itens.length > 0 ? (
                           <div className="space-y-0.5">
                             {p.itens.map((it) => (
@@ -407,66 +405,50 @@ export default function BillingReport() {
                           </div>
                         ) : "--"}
                       </td>
-                      <td className="px-3 py-3 text-gray-600 text-xs whitespace-nowrap">{p.prazoPagamentoSal || "--"}</td>
-                      <td className="px-3 py-3 text-gray-600 text-xs whitespace-nowrap">
+                      <td className="px-3 py-3 text-slate-700 text-xs whitespace-nowrap">{p.prazoPagamentoSal || "--"}</td>
+                      <td className="px-3 py-3 text-slate-700 text-xs whitespace-nowrap">
                         {p.status === "faturado"
                           ? `Emb. ${formatDataBR(p.faturadoEm)}`
                           : `Prev. ${formatDataBR(p.previsaoFaturamentoEm ?? p.criadoEm)}`}
                       </td>
-                      <td className="px-3 py-3 text-right text-gray-600 text-xs whitespace-nowrap">{formatKg(pesoEfetivoKg(p))}</td>
+                      <td className="px-3 py-3 text-right text-slate-700 text-xs whitespace-nowrap">{formatKg(pesoEfetivoKg(p))}</td>
                       <td className="px-3 py-3 text-center">
                         <div className="flex flex-col items-center gap-1">
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                              p.status === "faturado"
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-amber-100 text-amber-700"
-                            }`}
-                          >
+                          <StatusBadge tone={p.status === "faturado" ? "success" : "warning"}>
                             {p.status === "faturado" ? "Faturado" : "Estimado"}
-                          </span>
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                              p.aprovadoEm
-                                ? "bg-blue-100 text-blue-700"
-                                : "bg-slate-100 text-slate-500"
-                            }`}
-                          >
+                          </StatusBadge>
+                          <StatusBadge tone={p.aprovadoEm ? "info" : "neutral"}>
                             {p.aprovadoEm ? "Autorizado" : "Aguardando revisão"}
-                          </span>
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                              vinculadoSmbi(p) ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-slate-50 text-slate-400 border border-slate-200"
-                            }`}
-                          >
+                          </StatusBadge>
+                          <StatusBadge tone={vinculadoSmbi(p) ? "success" : "neutral"}>
                             {vinculadoSmbi(p) ? `SMBI ${p.smbiMovsaiId ?? p.smbiVinculoMovsais?.[0] ?? ""}` : "Sem SMBI"}
-                          </span>
+                          </StatusBadge>
                         </div>
                       </td>
-                      <td className="px-3 py-3 text-right text-gray-600">{formatBRL(estimatedTotal(p))}</td>
-                      <td className="px-3 py-3 text-right font-semibold">
+                      <td className="px-3 py-3 text-right text-slate-700">{formatBRL(estimatedTotal(p))}</td>
+                      <td className="px-3 py-3 text-right font-semibold text-slate-900">
                         {p.status === "faturado" ? (
-                          <span className="text-emerald-700">{formatBRL(totalPedido(p))}</span>
+                          <span>{formatBRL(totalPedido(p))}</span>
                         ) : (
-                          <span className="text-gray-400">--</span>
+                          <span className="font-normal text-slate-500">--</span>
                         )}
                       </td>
                     </tr>
                   ))}
                 </tbody>
-                <tfoot className="bg-slate-50 border-t-2 border-slate-300">
-                  <tr className="font-semibold text-gray-800">
+                <tfoot className="bg-slate-50 border-t border-slate-300">
+                  <tr className="font-semibold text-slate-900">
                     <td className="px-3 py-3" colSpan={10}>
                       Total ({filtered.length} pedido{filtered.length !== 1 ? "s" : ""})
                     </td>
                     <td className="px-3 py-3 text-right">{formatBRL(totalEstimado)}</td>
-                    <td className="px-3 py-3 text-right text-emerald-700">{formatBRL(totalFaturado)}</td>
+                    <td className="px-3 py-3 text-right">{formatBRL(totalFaturado)}</td>
                   </tr>
                 </tfoot>
               </table>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </Panel>
       )}
 
       {/* Manage popup: view everything + edit/faturar/excluir shortcuts */}

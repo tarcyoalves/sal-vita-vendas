@@ -1,43 +1,37 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { 
-  FileText, 
-  Download, 
-  Share2, 
-  Search, 
-  Building2, 
-  Package, 
-  ShieldCheck, 
-  Copy, 
-  Check, 
-  ExternalLink,
+import {
+  FileText,
+  Download,
+  Share2,
+  Search,
+  Building2,
+  Package,
+  ShieldCheck,
+  Copy,
+  Check,
   Eye,
-  Sparkles,
-  Info,
   Layers,
-  Factory,
-  Truck,
   ShoppingCart,
-  Award,
   Plus,
   Trash2,
   Paperclip,
   FilePlus,
-  X,
   FileCheck,
   Microscope,
   FileSpreadsheet,
   Camera,
-  ImageIcon,
   RotateCcw,
   Upload,
   FolderPlus
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "../components/ui/card";
+import { Page, PageHeader, Panel, PanelHeader, EmptyState } from "../components/layout/Page";
+import { Skeleton } from "../components/ui/skeleton";
+import { Label } from "../components/ui/label";
+import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui/dialog";
-import { Textarea } from "../components/ui/textarea";
 import { toast } from "sonner";
 import { useAuth } from "../_core/hooks/useAuth";
 import { trpc } from "../lib/trpc";
@@ -972,32 +966,34 @@ ${docsListText}
   const specValue = (v?: string) =>
     (v ?? "").trim().length > 0
       ? <>{v}</>
-      : <span className="text-slate-400 italic">não informado</span>;
+      : <span className="text-slate-500 italic">não informado</span>;
 
   const hasAnySpec = (p: TechnicalProduct) =>
     Object.values(p.specs).some(v => (v ?? "").trim().length > 0);
 
+  // Ícone neutro: o tipo do arquivo já aparece no título/tamanho, cor não carrega informação.
   const getDocIcon = (type: string) => {
     switch (type) {
       case "LAUDO":
-        return <Microscope size={16} className="text-purple-600 flex-shrink-0" />;
+        return <Microscope aria-hidden="true" size={16} className="text-slate-500 flex-shrink-0" />;
       case "CERTIFICADO":
-        return <FileCheck size={16} className="text-emerald-600 flex-shrink-0" />;
+        return <FileCheck aria-hidden="true" size={16} className="text-slate-500 flex-shrink-0" />;
       case "IMAGEM":
-        return <FileSpreadsheet size={16} className="text-amber-600 flex-shrink-0" />;
+        return <FileSpreadsheet aria-hidden="true" size={16} className="text-slate-500 flex-shrink-0" />;
       default:
-        return <FileText size={16} className="text-blue-600 flex-shrink-0" />;
+        return <FileText aria-hidden="true" size={16} className="text-slate-500 flex-shrink-0" />;
     }
   };
 
-  const renderProductIllustration = (product: TechnicalProduct) => {
+  // Miniatura do produto: a foto cadastrada ou um ícone neutro da linha de embalagem.
+  const renderProductThumb = (product: TechnicalProduct) => {
     if (product.imageUrl) {
       return (
-        <div className="w-full h-36 bg-slate-100 rounded-xl p-2 flex items-center justify-center relative overflow-hidden group shadow-inner border border-slate-200">
-          <img 
-            src={product.imageUrl} 
+        <div className="size-16 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-50 p-1">
+          <img
+            src={product.imageUrl}
             alt={product.name}
-            className="w-full h-full object-contain transform group-hover:scale-105 transition-transform duration-300"
+            className="size-full object-contain"
             onError={(e) => {
               (e.target as HTMLElement).style.display = "none";
             }}
@@ -1005,124 +1001,78 @@ ${docsListText}
         </div>
       );
     }
-
-    if (product.iconType === "bigbag") {
-      return (
-        <div className="w-full h-36 bg-gradient-to-b from-blue-900 via-slate-900 to-slate-950 rounded-xl p-3 flex flex-col items-center justify-center relative overflow-hidden group shadow-inner">
-          <div className="absolute inset-0 bg-blue-500/10 backdrop-blur-3xl group-hover:bg-blue-500/20 transition-all duration-300" />
-          <div className="relative z-10 flex flex-col items-center text-center">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-400 via-amber-200 to-white flex items-center justify-center shadow-lg mb-1.5 transform group-hover:scale-105 transition-transform">
-              <Package className="w-8 h-8 text-slate-900" />
-            </div>
-            <span className="text-[10px] font-bold uppercase tracking-widest text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded-full border border-amber-500/40">
-              BIG BAG 1.000 KG
-            </span>
-          </div>
-        </div>
-      );
-    }
-    if (product.iconType === "sacaria") {
-      return (
-        <div className="w-full h-36 bg-gradient-to-b from-orange-950 via-slate-900 to-slate-950 rounded-xl p-3 flex flex-col items-center justify-center relative overflow-hidden group shadow-inner">
-          <div className="absolute inset-0 bg-orange-500/10 backdrop-blur-3xl group-hover:bg-orange-500/20 transition-all duration-300" />
-          <div className="relative z-10 flex flex-col items-center text-center">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-orange-400 via-amber-300 to-white flex items-center justify-center shadow-lg mb-1.5 transform group-hover:scale-105 transition-transform">
-              <Layers className="w-8 h-8 text-slate-900" />
-            </div>
-            <span className="text-[10px] font-bold uppercase tracking-widest text-orange-300 bg-orange-950/80 px-2 py-0.5 rounded-full border border-orange-500/40">
-              SACARIA 25 KG
-            </span>
-          </div>
-        </div>
-      );
-    }
+    const Icon = product.iconType === "bigbag" ? Package : product.iconType === "sacaria" ? Layers : ShoppingCart;
     return (
-      <div className="w-full h-36 bg-gradient-to-b from-cyan-950 via-slate-900 to-slate-950 rounded-xl p-3 flex flex-col items-center justify-center relative overflow-hidden group shadow-inner">
-        <div className="absolute inset-0 bg-cyan-500/10 backdrop-blur-3xl group-hover:bg-cyan-500/20 transition-all duration-300" />
-        <div className="relative z-10 flex flex-col items-center text-center">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-300 via-blue-200 to-white flex items-center justify-center shadow-lg mb-1.5 transform group-hover:scale-105 transition-transform">
-            <ShoppingCart className="w-8 h-8 text-slate-900" />
-          </div>
-          <span className="text-[10px] font-bold uppercase tracking-widest text-cyan-300 bg-cyan-950/80 px-2 py-0.5 rounded-full border border-cyan-500/40">
-            FARDO VAREJO 1 KG
-          </span>
-        </div>
+      <div aria-hidden="true" className="flex size-16 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-500">
+        <Icon size={24} />
       </div>
     );
   };
 
-  return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
-      {confirmDialog}
-      {/* Header Banner */}
-      <div className="relative rounded-2xl overflow-hidden bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white p-6 md:p-8 shadow-xl border border-white/10">
-        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-300 text-xs font-medium">
-              <Award size={14} />
-              Central Oficial de Documentação & Fichas Técnicas
-            </div>
-            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-              Documentos & Fichas Técnicas Sal Vita
-            </h1>
-            <p className="text-slate-300 text-sm md:text-base max-w-2xl">
-              Anexe os arquivos reais do seu aparelho diretamente no card de cada produto ou categoria da empresa.
-            </p>
-          </div>
-          
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="bg-white/10 backdrop-blur-md px-4 py-3 rounded-xl border border-white/10 text-center min-w-[110px]">
-              <span className="block text-2xl font-bold text-amber-400">{productsList.length}</span>
-              <span className="text-xs text-slate-300">Produtos</span>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md px-4 py-3 rounded-xl border border-white/10 text-center min-w-[110px]">
-              <span className="block text-2xl font-bold text-emerald-400">{companyCategoriesList.length}</span>
-              <span className="text-xs text-slate-300">Docs Empresa</span>
-            </div>
-          </div>
+  const renderDocRow = (doc: AttachedDoc, ownerId: string, isProduct: boolean, downloadLabel: string) => (
+    <li key={doc.id} className="flex items-start justify-between gap-2 py-2">
+      <div className="flex min-w-0 flex-1 items-start gap-2">
+        <span className="mt-0.5 shrink-0">{getDocIcon(doc.fileType)}</span>
+        <div className="min-w-0 flex-1">
+          {/* Título sempre inteiro, sem truncar */}
+          <span className="block break-words whitespace-normal text-xs font-medium leading-snug text-slate-900">
+            {doc.title}
+          </span>
+          {doc.fileSize && (
+            <span className="mt-0.5 block text-xs text-slate-500">{doc.fileSize}</span>
+          )}
         </div>
       </div>
-
-      {/* Control Toolbar & Search */}
-      <div className="flex flex-col lg:flex-row gap-4 justify-between items-stretch lg:items-center bg-white p-4 rounded-xl border shadow-sm">
-        {/* Navigation Tabs */}
-        <div className="flex bg-slate-100 p-1 rounded-xl shrink-0">
-          <button
+      <div className="flex shrink-0 items-center gap-1">
+        <Button type="button" variant="outline" size="sm" onClick={() => handleDownloadFile(doc)} title="Baixar arquivo">
+          <Download aria-hidden="true" /> {downloadLabel}
+        </Button>
+        {isAdmin && (
+          <Button
             type="button"
-            onClick={() => setActiveTab("produtos")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-              activeTab === "produtos"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => handleDeleteAttachedDoc(ownerId, doc.id, isProduct)}
+            title="Remover anexo"
+            aria-label="Remover anexo"
           >
-            <Package size={16} className="text-blue-600" />
-            Fichas dos Produtos ({productsList.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("empresa")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-              activeTab === "empresa"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            <Building2 size={16} className="text-emerald-600" />
-            Documentos da Empresa ({companyCategoriesList.length})
-          </button>
-        </div>
+            <Trash2 aria-hidden="true" />
+          </Button>
+        )}
+      </div>
+    </li>
+  );
 
-        {/* Search Input */}
+  return (
+    <Page>
+      {confirmDialog}
+      <PageHeader
+        title="Documentos & Fichas Técnicas"
+        description="Fichas dos produtos e documentos da empresa para enviar a clientes. Anexe os arquivos direto no card de cada item."
+      />
+
+      {/* Abas + busca */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "produtos" | "empresa")} className="shrink-0">
+          <TabsList>
+            <TabsTrigger value="produtos">
+              <Package aria-hidden="true" /> Produtos ({productsList.length})
+            </TabsTrigger>
+            <TabsTrigger value="empresa">
+              <Building2 aria-hidden="true" /> Documentos da empresa ({companyCategoriesList.length})
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+
         <div className="relative flex-1 lg:max-w-md">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search aria-hidden="true" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <Input
-            type="text"
+            type="search"
+            aria-label="Buscar documentos"
             placeholder={activeTab === "produtos" ? "Buscar por produto, laudo, aplicação..." : "Buscar por CNPJ, alvará, licença..."}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 bg-slate-50 border-slate-200 focus:bg-white text-sm w-full"
+            className="w-full pl-9"
           />
         </div>
       </div>
@@ -1130,356 +1080,211 @@ ${docsListText}
       {/* Anexos vêm do servidor: avisa enquanto carregam, para os cards não
           parecerem vazios por um instante. */}
       {catalogLoading && (
-        <p className="text-xs text-slate-500 flex items-center gap-2">
-          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-blue-700" />
-          Carregando documentos do servidor...
-        </p>
+        <div className="flex items-center gap-3" role="status">
+          <Skeleton className="h-3 w-40" />
+          <span className="text-xs text-slate-500">Carregando anexos do servidor...</span>
+        </div>
       )}
       {catalogError && !catalog && (
         <QueryError message="Não foi possível carregar os anexos do servidor" onRetry={() => void refetchCatalog()} retrying={catalogFetching} />
       )}
 
-      {/* Category Pills (Product Mode Only) */}
+      {/* Filtro de categoria (só produtos) */}
       {activeTab === "produtos" && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider mr-2">Filtrar Categoria:</span>
           {[
-            { id: "todos", label: "Todos os Produtos" },
+            { id: "todos", label: "Todos" },
             { id: "bigbag", label: "Big Bags (1.000 KG)" },
             { id: "sacaria", label: "Sacarias (25 KG)" },
             { id: "varejo", label: "Linha Varejo (1 KG)" },
           ].map((cat) => (
-            <button
+            <Button
               key={cat.id}
               type="button"
+              size="sm"
+              variant={categoryFilter === cat.id ? "default" : "outline"}
+              aria-pressed={categoryFilter === cat.id}
               onClick={() => setCategoryFilter(cat.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                categoryFilter === cat.id
-                  ? "bg-slate-900 text-white shadow"
-                  : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50"
-              }`}
             >
               {cat.label}
-            </button>
+            </Button>
           ))}
         </div>
       )}
 
-      {/* TAB 1: PRODUCT CARDS WITH UNTRUNCATED FULL DOCUMENT TITLES */}
+      {/* ABA 1: PRODUTOS */}
       {activeTab === "produtos" && (
-        <div className="space-y-6">
+        <>
           {filteredProducts.length === 0 ? (
-            <Card className="bg-slate-50 border-dashed border-2 text-center p-8">
-              <Package size={40} className="mx-auto text-slate-400 mb-2" />
-              <p className="text-slate-600 font-medium">Nenhum produto encontrado para a busca "{searchQuery}".</p>
-              <Button variant="outline" size="sm" onClick={() => { setSearchQuery(""); setCategoryFilter("todos"); }} className="mt-4">
-                Limpar Filtros
-              </Button>
-            </Card>
+            <Panel>
+              <EmptyState
+                icon={<Package />}
+                title={searchQuery ? `Nenhum produto encontrado para "${searchQuery}"` : "Nenhum produto nesta categoria"}
+                description="Ajuste a busca ou volte para todos os produtos."
+                action={
+                  <Button variant="outline" size="sm" onClick={() => { setSearchQuery(""); setCategoryFilter("todos"); }}>
+                    Limpar filtros
+                  </Button>
+                }
+              />
+            </Panel>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {filteredProducts.map((product) => (
-                <Card key={product.id} className="flex flex-col overflow-hidden hover:shadow-xl transition-all duration-200 border-slate-200 group bg-white">
-                  {/* Card Visual Header */}
-                  <div className="p-3 bg-slate-50 border-b relative">
-                    {renderProductIllustration(product)}
-
-                    <Badge className={`absolute top-4 right-4 ${product.badgeColor} shadow-md text-[10px] font-bold uppercase tracking-wider`}>
-                      {product.packageType}
-                    </Badge>
-
-                    {/* Admin Button to Alter Product Photo */}
+                <Panel key={product.id} as="article" className="flex flex-col">
+                  <div className="flex items-start gap-3 border-b border-slate-200 p-4">
+                    {renderProductThumb(product)}
+                    <div className="min-w-0 flex-1">
+                      <h2 className="text-sm font-semibold leading-tight text-slate-900">{product.name}</h2>
+                      {product.subTitle && <p className="mt-0.5 text-xs text-slate-500">{product.subTitle}</p>}
+                      <Badge variant="neutral" className="mt-2">{product.packageType}</Badge>
+                    </div>
                     {isAdmin && (
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="icon-sm"
                         onClick={() => handleOpenImageModal(product)}
-                        className="absolute bottom-4 left-4 z-20 bg-slate-900/90 hover:bg-slate-950 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg shadow-md flex items-center gap-1.5 backdrop-blur-md border border-white/20 transition transform active:scale-95"
+                        title="Alterar foto"
+                        aria-label={`Alterar foto de ${product.name}`}
                       >
-                        <Camera size={13} className="text-amber-400" />
-                        Alterar Foto
-                      </button>
+                        <Camera aria-hidden="true" />
+                      </Button>
                     )}
                   </div>
 
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base font-bold text-slate-900 leading-tight">
-                      {product.name}
-                    </CardTitle>
-                    <CardDescription className="text-xs text-blue-600 font-semibold mt-0.5">
-                      {product.subTitle}
-                    </CardDescription>
-                  </CardHeader>
-
-                  <CardContent className="flex-1 space-y-4 text-xs">
-                    {/* Marcas & Iodo */}
-                    <div className="bg-slate-50 p-2.5 rounded-lg space-y-1 border border-slate-100">
-                      <div className="flex items-center gap-1.5 text-slate-700">
-                        <Award size={14} className="text-amber-500 flex-shrink-0" />
-                        <span className="font-semibold">Marcas:</span>
-                        <span className="text-slate-900 font-medium">{product.brands.join(", ")}</span>
+                  <div className="flex-1 space-y-4 p-4 text-xs">
+                    <dl className="space-y-1 text-slate-700">
+                      <div className="flex gap-1.5">
+                        <dt className="font-medium text-slate-500">Marcas:</dt>
+                        <dd className="text-slate-900">{product.brands.join(", ")}</dd>
                       </div>
-                      <div className="flex items-center gap-1.5 text-slate-700">
-                        <Info size={14} className="text-blue-500 flex-shrink-0" />
-                        <span className="font-semibold">Iodo:</span>
-                        <span className="text-slate-900">{product.iodineOptions}</span>
+                      <div className="flex gap-1.5">
+                        <dt className="font-medium text-slate-500">Iodo:</dt>
+                        <dd className="text-slate-900">{product.iodineOptions}</dd>
                       </div>
-                    </div>
+                    </dl>
 
-                    {/* Aplicações Recomendadas */}
                     <div>
-                      <h4 className="font-bold text-slate-900 text-xs mb-1.5 flex items-center gap-1">
-                        <Factory size={13} className="text-slate-500" />
-                        Aplicações Recomendadas:
-                      </h4>
-                      <ul className="space-y-1 text-slate-600">
+                      <h3 className="mb-1.5 text-xs font-semibold text-slate-900">Aplicações recomendadas</h3>
+                      <ul className="space-y-1 text-slate-700">
                         {product.applications.map((app, idx) => (
                           <li key={idx} className="flex items-start gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1 flex-shrink-0" />
+                            <span aria-hidden="true" className="mt-1.5 size-1 shrink-0 rounded-full bg-slate-400" />
                             <span>{app}</span>
                           </li>
                         ))}
                       </ul>
                     </div>
 
-                    {/* 📂 DOCUMENTOS COM TÍTULOS 100% VISÍVEIS (SEM CORTES OU TRUNCATE) */}
-                    <div className="pt-2 border-t border-slate-100">
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                          <Paperclip size={14} className="text-emerald-600" />
-                          Arquivo Anexado ({product.documents.length}):
-                        </h4>
-                        
-                        {/* Admin Add Document Button to this specific Product Card */}
+                    <div className="border-t border-slate-200 pt-3">
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <h3 className="flex items-center gap-1.5 text-xs font-semibold text-slate-900">
+                          <Paperclip aria-hidden="true" size={14} className="text-slate-500" />
+                          Anexos ({product.documents.length})
+                        </h3>
                         {isAdmin && (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenAttachModal(product.id, "product")}
-                            className="text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-md flex items-center gap-1 transition"
-                          >
-                            <Plus size={13} />
-                            Anexar Arquivo
-                          </button>
+                          <Button type="button" variant="outline" size="sm" onClick={() => handleOpenAttachModal(product.id, "product")}>
+                            <Plus aria-hidden="true" /> Anexar
+                          </Button>
                         )}
                       </div>
 
                       {product.documents.length === 0 ? (
-                        <div className="bg-slate-50 p-3 rounded-xl text-center text-slate-400 text-[11px] border border-dashed">
-                          Nenhum arquivo anexado ainda neste produto.
-                        </div>
+                        <p className="py-2 text-xs text-slate-500">Nenhum arquivo anexado neste produto.</p>
                       ) : (
-                        <div className="space-y-2">
-                          {product.documents.map((doc) => (
-                            <div
-                              key={doc.id}
-                              className="flex items-start justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-blue-50/60 border border-slate-200 transition gap-2"
-                            >
-                              <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                                <div className="mt-0.5 shrink-0">
-                                  {getDocIcon(doc.fileType)}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  {/* FULL UNTRUNCATED TEXT DISPLAY */}
-                                  <span className="font-bold text-slate-900 text-xs block leading-snug break-words whitespace-normal">
-                                    {doc.title}
-                                  </span>
-                                  {doc.fileSize && (
-                                    <span className="text-[10px] text-slate-400 block mt-0.5 font-medium">{doc.fileSize}</span>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-1 shrink-0 mt-0.5">
-                                <button
-                                  type="button"
-                                  onClick={() => handleDownloadFile(doc)}
-                                  title="Baixar arquivo real do aparelho"
-                                  className="text-xs font-bold text-blue-700 bg-white border border-blue-200 hover:bg-blue-600 hover:text-white px-2.5 py-1.5 rounded-lg transition flex items-center gap-1 shadow-sm"
-                                >
-                                  <Download size={13} />
-                                  Baixar
-                                </button>
-
-                                {isAdmin && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteAttachedDoc(product.id, doc.id, true)}
-                                    title="Remover anexo"
-                                    aria-label="Remover anexo"
-                                    className="text-slate-400 hover:text-red-600 min-h-10 min-w-10 inline-flex items-center justify-center rounded transition"
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                        <ul className="divide-y divide-slate-200">
+                          {product.documents.map((doc) => renderDocRow(doc, product.id, true, "Baixar"))}
+                        </ul>
                       )}
                     </div>
-                  </CardContent>
+                  </div>
 
-                  <CardFooter className="pt-3 border-t bg-slate-50/50 gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSelectedProduct(product)}
-                      className="flex-1 text-xs gap-1.5 min-h-[38px]"
-                    >
-                      <Eye size={14} />
-                      Ver Ficha
+                  <div className="flex gap-2 border-t border-slate-200 bg-slate-50 p-3">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setSelectedProduct(product)} className="flex-1">
+                      <Eye aria-hidden="true" /> Ver ficha
                     </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => handleCopyWhatsApp(product)}
-                      className="flex-1 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white min-h-[38px]"
-                    >
-                      {copiedId === product.id ? <Check size={14} /> : <Share2 size={14} />}
-                      {copiedId === product.id ? "Copiado!" : "WhatsApp"}
+                    <Button type="button" size="sm" onClick={() => handleCopyWhatsApp(product)} className="flex-1">
+                      {copiedId === product.id ? <Check aria-hidden="true" /> : <Share2 aria-hidden="true" />}
+                      {copiedId === product.id ? "Copiado" : "WhatsApp"}
                     </Button>
-                  </CardFooter>
-                </Card>
+                  </div>
+                </Panel>
               ))}
             </div>
           )}
-        </div>
+        </>
       )}
 
-      {/* TAB 2: COMPANY CARDS WITH UNTRUNCATED FULL DOCUMENT TITLES */}
+      {/* ABA 2: EMPRESA */}
       {activeTab === "empresa" && (
-        <div className="space-y-6">
+        <>
           {filteredCompanyCategories.length === 0 ? (
-            <Card className="bg-slate-50 border-dashed border-2 text-center p-8">
-              <Building2 size={40} className="mx-auto text-slate-400 mb-2" />
-              <p className="text-slate-600 font-medium">Nenhum card cadastral encontrado.</p>
-            </Card>
+            <Panel>
+              <EmptyState
+                icon={<Building2 />}
+                title="Nenhum documento da empresa encontrado"
+                description="Ajuste a busca para ver os cards cadastrais."
+                action={searchQuery ? <Button variant="outline" size="sm" onClick={() => setSearchQuery("")}>Limpar busca</Button> : undefined}
+              />
+            </Panel>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {filteredCompanyCategories.map((comp) => (
-                <Card key={comp.id} className="hover:shadow-md transition-shadow border-slate-200 flex flex-col">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl ${comp.iconBg} flex items-center justify-center flex-shrink-0 font-bold`}>
-                          <Building2 size={20} />
-                        </div>
-                        <div>
-                          <CardTitle className="text-base font-bold text-slate-900">{comp.title}</CardTitle>
-                          <span className="text-xs text-blue-600 font-medium">{comp.categoryLabel}</span>
-                        </div>
-                      </div>
-                      
-                      {isAdmin && (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenAttachModal(comp.id, "company")}
-                          className="text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1 transition shrink-0"
-                        >
-                          <Plus size={14} />
-                          Anexar Arquivo
-                        </button>
-                      )}
-                    </div>
-                  </CardHeader>
-                  
-                  <CardContent className="space-y-4 text-xs flex-1">
-                    <p className="text-slate-600">{comp.description}</p>
+                <Panel key={comp.id} as="article" className="flex flex-col">
+                  <PanelHeader
+                    title={comp.title}
+                    description={comp.categoryLabel}
+                    actions={isAdmin ? (
+                      <Button type="button" variant="outline" size="sm" onClick={() => handleOpenAttachModal(comp.id, "company")}>
+                        <Plus aria-hidden="true" /> Anexar
+                      </Button>
+                    ) : undefined}
+                  />
 
-                    {/* Detalhes do cadastro */}
+                  <div className="flex-1 space-y-4 p-4 text-xs">
+                    <p className="text-slate-700">{comp.description}</p>
+
                     {comp.details && comp.details.length > 0 && (
-                      <div className="bg-slate-50 p-3 rounded-xl space-y-1.5 text-slate-700 border border-slate-100">
+                      <ul className="space-y-1.5 rounded-md bg-slate-50 p-3 text-slate-700">
                         {comp.details.map((detail, i) => (
-                          <div key={i} className="flex items-center gap-1.5">
-                            <ShieldCheck size={14} className="text-emerald-600 flex-shrink-0" />
+                          <li key={i} className="flex items-start gap-1.5">
+                            <ShieldCheck aria-hidden="true" size={14} className="mt-0.5 shrink-0 text-slate-500" />
                             <span>{detail}</span>
-                          </div>
+                          </li>
                         ))}
-                      </div>
+                      </ul>
                     )}
 
-                    {/* 📂 DOCUMENTOS DA EMPRESA COM TÍTULOS FULL VISÍVEIS */}
-                    <div className="pt-2 border-t border-slate-100 space-y-2">
-                      <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                        <Paperclip size={14} className="text-blue-600" />
-                        Arquivo Anexado ({comp.documents.length}):
-                      </h4>
+                    <div className="border-t border-slate-200 pt-3">
+                      <h3 className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-slate-900">
+                        <Paperclip aria-hidden="true" size={14} className="text-slate-500" />
+                        Anexos ({comp.documents.length})
+                      </h3>
 
                       {comp.documents.length === 0 ? (
-                        <div className="bg-slate-50 p-3 rounded-lg text-center text-slate-400 text-[11px] border border-dashed">
-                          Nenhum arquivo anexado ainda neste card.
-                        </div>
+                        <p className="py-2 text-xs text-slate-500">Nenhum arquivo anexado neste card.</p>
                       ) : (
-                        <div className="space-y-2">
-                          {comp.documents.map((doc) => (
-                            <div
-                              key={doc.id}
-                              className="flex items-start justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 transition gap-2"
-                            >
-                              <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                                <div className="mt-0.5 shrink-0">
-                                  {getDocIcon(doc.fileType)}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  {/* FULL UNTRUNCATED TEXT DISPLAY */}
-                                  <span className="font-bold text-slate-900 text-xs block leading-snug break-words whitespace-normal">
-                                    {doc.title}
-                                  </span>
-                                  {doc.fileSize && (
-                                    <span className="text-[10px] text-slate-400 block mt-0.5 font-medium">{doc.fileSize}</span>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
-                                <button
-                                  type="button"
-                                  onClick={() => handleDownloadFile(doc)}
-                                  className="text-xs font-bold text-slate-900 bg-white border border-slate-300 hover:bg-slate-900 hover:text-white px-3 py-1.5 rounded-lg transition flex items-center gap-1 shadow-sm"
-                                >
-                                  <Download size={13} />
-                                  Baixar PDF
-                                </button>
-
-                                {isAdmin && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteAttachedDoc(comp.id, doc.id, false)}
-                                    title="Remover arquivo"
-                                    aria-label="Remover arquivo"
-                                    className="text-slate-400 hover:text-red-600 min-h-10 min-w-10 inline-flex items-center justify-center rounded transition"
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                        <ul className="divide-y divide-slate-200">
+                          {comp.documents.map((doc) => renderDocRow(doc, comp.id, false, "Baixar PDF"))}
+                        </ul>
                       )}
                     </div>
-                  </CardContent>
+                  </div>
 
                   {comp.copyContent && (
-                    <CardFooter className="pt-3 border-t bg-slate-50/50 justify-between items-center text-xs">
-                      <span className="text-slate-400 text-[11px]">Sal Vita Oficial</span>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleCopyText(comp.copyContent, comp.id)}
-                        className="text-xs gap-1"
-                      >
-                        {copiedId === comp.id ? <Check size={14} /> : <Copy size={14} />}
-                        Copiar Dados Texto
+                    <div className="flex items-center justify-end border-t border-slate-200 bg-slate-50 p-3">
+                      <Button type="button" size="sm" variant="outline" onClick={() => handleCopyText(comp.copyContent, comp.id)}>
+                        {copiedId === comp.id ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+                        Copiar dados
                       </Button>
-                    </CardFooter>
+                    </div>
                   )}
-                </Card>
+                </Panel>
               ))}
             </div>
           )}
-        </div>
+        </>
       )}
 
       {/* MODAL ADMIN: ESPECIFICAÇÕES TÉCNICAS REAIS */}
@@ -1487,13 +1292,13 @@ ${docsListText}
         <Dialog open={specsModalOpen} onOpenChange={(open) => { setSpecsModalOpen(open); if (!open) setSpecsProduct(null); }}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle className="text-base">Especificações — {specsProduct.name}</DialogTitle>
+              <DialogTitle>Especificações — {specsProduct.name}</DialogTitle>
               <DialogDescription className="text-xs">
                 Preencha com os dados do laudo. O que ficar em branco aparece como
                 "não informado" e é omitido da ficha enviada ao cliente.
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSaveSpecs} className="space-y-3">
+            <form onSubmit={handleSaveSpecs} className="space-y-4">
               {([
                 ['weight', 'Embalagem', 'Ex: 25 KG (saco de polietileno)'],
                 ['granulometry', 'Granulometria', 'Ex: fina e uniforme'],
@@ -1501,25 +1306,25 @@ ${docsListText}
                 ['purity', 'Pureza / NaCl', 'Copie exatamente o valor do laudo'],
                 ['storage', 'Armazenamento', 'Ex: local seco, sobre estrados'],
               ] as const).map(([field, label, placeholder]) => (
-                <div key={field}>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">{label}</label>
+                <div key={field} className="space-y-1.5">
+                  <Label htmlFor={`spec-${field}`}>{label}</Label>
                   <Input
+                    id={`spec-${field}`}
                     value={specsForm[field]}
                     onChange={(e) => setSpecsForm(f => ({ ...f, [field]: e.target.value }))}
                     placeholder={placeholder}
-                    className="text-xs h-9"
                   />
                 </div>
               ))}
-              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
+              <p className="rounded-md bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">
                 Pureza e granulometria são declarações reguladas para sal alimentício.
                 Informe só o que constar no laudo — não estime.
               </p>
               <DialogFooter className="gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => setSpecsModalOpen(false)}>
+                <Button type="button" variant="outline" onClick={() => setSpecsModalOpen(false)}>
                   Cancelar
                 </Button>
-                <Button type="submit" size="sm" disabled={setSpecsMutation.isPending}>
+                <Button type="submit" disabled={setSpecsMutation.isPending}>
                   {setSpecsMutation.isPending ? "Salvando..." : "Salvar especificações"}
                 </Button>
               </DialogFooter>
@@ -1539,19 +1344,15 @@ ${docsListText}
         }}>
           <DialogContent className="max-w-md w-full">
             <DialogHeader>
-              <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Camera size={20} className="text-amber-500" />
-                Alterar Foto do Produto
-              </DialogTitle>
-              <DialogDescription className="text-xs text-slate-500">
-                Selecione a foto do produto <strong className="text-slate-800">{editingProduct.name}</strong> diretamente do seu aparelho.
+              <DialogTitle>Alterar foto do produto</DialogTitle>
+              <DialogDescription className="text-xs">
+                Selecione a foto de <strong className="text-slate-900">{editingProduct.name}</strong> no seu aparelho.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 py-2 text-xs md:text-sm">
-              {/* Native Computer File Picker */}
-              <div>
-                <label className="block font-semibold mb-1.5 text-slate-800">Escolher Imagem do Computador (PNG/JPG)</label>
+            <div className="space-y-4 py-2 text-sm">
+              <div className="space-y-1.5">
+                <Label>Imagem do aparelho (PNG/JPG)</Label>
                 <input
                   type="file"
                   ref={photoInputRef}
@@ -1564,56 +1365,49 @@ ${docsListText}
                   onClick={() => photoInputRef.current?.click()}
                   disabled={isCompressingPhoto}
                   variant="outline"
-                  className="w-full h-12 bg-slate-50 hover:bg-slate-100 border-dashed border-2 border-slate-300 font-bold text-slate-700 flex items-center justify-center gap-2 text-xs"
+                  className="w-full"
                 >
-                  <Upload size={16} className="text-blue-600 shrink-0" />
-                  <span>{isCompressingPhoto ? "Otimizando Imagem..." : "Selecionar Foto do Computador..."}</span>
+                  <Upload aria-hidden="true" />
+                  <span>{isCompressingPhoto ? "Otimizando imagem..." : "Selecionar foto"}</span>
                 </Button>
               </div>
 
-              {/* Optional URL Input */}
-              <div>
-                <label className="block font-semibold mb-1 text-slate-700 text-xs">Ou insira o Link/URL da Imagem</label>
+              <div className="space-y-1.5">
+                <Label htmlFor="photo-url">Ou informe o link da imagem</Label>
                 <Input
+                  id="photo-url"
                   type="text"
                   placeholder="https://exemplo.com/foto.png"
                   value={imageUrlInput}
                   onChange={e => setImageUrlInput(e.target.value)}
-                  className="text-xs text-slate-900 bg-white"
                 />
               </div>
 
-              {/* Preview */}
               {imageUrlInput.trim() && (
-                <div className="bg-slate-100 p-3 rounded-xl border text-center space-y-1">
-                  <span className="text-[11px] font-semibold text-slate-500 block uppercase">Pré-visualização da Foto</span>
-                  <div className="h-36 flex items-center justify-center overflow-hidden bg-white p-2 rounded-lg border">
-                    <img 
-                      src={imageUrlInput.trim()} 
-                      alt="Pré-visualização" 
-                      className="max-h-full max-w-full object-contain rounded"
+                <div className="space-y-1 rounded-md border border-slate-200 bg-slate-50 p-3 text-center">
+                  <span className="block text-xs font-medium text-slate-500">Pré-visualização</span>
+                  <div className="flex h-36 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-white p-2">
+                    <img
+                      src={imageUrlInput.trim()}
+                      alt="Pré-visualização"
+                      className="max-h-full max-w-full rounded object-contain"
                       onError={() => toast.error("Erro ao carregar pré-visualização da imagem.")}
                     />
                   </div>
                 </div>
               )}
 
-              <DialogFooter className="gap-2 pt-2 justify-between flex-row sm:justify-between">
+              <DialogFooter className="flex-row justify-between gap-2 pt-2 sm:justify-between">
                 {editingProduct.imageUrl ? (
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={handleResetProductImage}
-                    className="text-xs text-slate-600 gap-1"
-                  >
-                    <RotateCcw size={13} /> Restaurar Padrão
+                  <Button type="button" variant="outline" onClick={handleResetProductImage}>
+                    <RotateCcw aria-hidden="true" /> Restaurar padrão
                   </Button>
                 ) : <div />}
 
                 <div className="flex gap-2">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
+                  <Button
+                    type="button"
+                    variant="outline"
                     onClick={() => {
                       setEditImageModalOpen(false);
                       setEditingProduct(null);
@@ -1621,13 +1415,8 @@ ${docsListText}
                   >
                     Cancelar
                   </Button>
-                  <Button 
-                    type="button" 
-                    onClick={handleSaveProductImage}
-                    disabled={isCompressingPhoto}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                  >
-                    Salvar Foto
+                  <Button type="button" onClick={handleSaveProductImage} disabled={isCompressingPhoto}>
+                    Salvar foto
                   </Button>
                 </div>
               </DialogFooter>
@@ -1636,7 +1425,7 @@ ${docsListText}
         </Dialog>
       )}
 
-      {/* MODAL ADMIN: INSERIR ARQUIVO DO COMPUTADOR NO CARD */}
+      {/* MODAL ADMIN: ANEXAR ARQUIVO AO CARD */}
       {attachModalOpen && (
         <Dialog open={attachModalOpen} onOpenChange={(open) => {
           setAttachModalOpen(open);
@@ -1644,19 +1433,15 @@ ${docsListText}
         }}>
           <DialogContent className="max-w-md w-full overflow-hidden">
             <DialogHeader>
-              <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Paperclip size={20} className="text-emerald-600" />
-                Inserir Arquivo do Computador no Card
-              </DialogTitle>
-              <DialogDescription className="text-xs text-slate-500">
-                Escolha o arquivo PDF ou laudo no seu aparelho para este card.
+              <DialogTitle>Anexar arquivo ao card</DialogTitle>
+              <DialogDescription className="text-xs">
+                Escolha o PDF ou laudo no seu aparelho para este card.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 py-2 text-xs md:text-sm">
-              {/* Native File Input Picker */}
-              <div>
-                <label className="block font-semibold mb-1.5 text-slate-800">Escolher Arquivo do Computador (PDF/Laudo) *</label>
+            <div className="space-y-4 py-2 text-sm">
+              <div className="space-y-1.5">
+                <Label>Arquivo (PDF/Laudo) *</Label>
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -1666,36 +1451,37 @@ ${docsListText}
                 />
                 <Button
                   type="button"
+                  variant="outline"
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-full min-h-[48px] h-auto py-2 px-3 bg-emerald-50 hover:bg-emerald-100 border-2 border-dashed border-emerald-300 text-emerald-900 font-bold flex items-center justify-center gap-2 text-xs shadow-sm max-w-full overflow-hidden"
+                  className="h-auto min-h-9 w-full max-w-full py-2"
                 >
-                  <FolderPlus size={18} className="text-emerald-600 shrink-0" />
-                  <span className="truncate max-w-full">
-                    {newDocData.fileName ? `Substituir: ${newDocData.fileName}` : "Selecionar Arquivo do Seu Computador..."}
+                  <FolderPlus aria-hidden="true" />
+                  <span className="max-w-full truncate">
+                    {newDocData.fileName ? `Substituir: ${newDocData.fileName}` : "Selecionar arquivo..."}
                   </span>
                 </Button>
               </div>
 
-              {/* Title of document */}
-              <div>
-                <label className="block font-semibold mb-1 text-slate-800">Título / Nome de Exibição do Arquivo *</label>
+              <div className="space-y-1.5">
+                <Label htmlFor="doc-title">Título de exibição *</Label>
                 <Input
+                  id="doc-title"
                   type="text"
                   placeholder="Ex: FICHA TECNICA SAL GRANULADO COM IODO"
                   value={newDocData.title}
                   onChange={e => setNewDocData({ ...newDocData, title: e.target.value })}
-                  className="text-xs text-slate-900 bg-white"
                   required
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold mb-1 text-slate-800">Tipo de Documento</label>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="doc-type">Tipo de documento</Label>
                   <select
+                    id="doc-type"
                     value={newDocData.fileType}
                     onChange={e => setNewDocData({ ...newDocData, fileType: e.target.value as any })}
-                    className="w-full px-3 py-2 border rounded-md text-xs bg-white text-slate-900"
+                    className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 max-md:h-10"
                   >
                     <option value="PDF">Ficha Técnica / PDF</option>
                     <option value="LAUDO">Laudo de Análise</option>
@@ -1705,32 +1491,31 @@ ${docsListText}
                   </select>
                 </div>
 
-                <div>
-                  <label className="block font-semibold mb-1 text-slate-800">Tamanho / Detalhe</label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="doc-size">Tamanho / detalhe</Label>
                   <Input
+                    id="doc-size"
                     type="text"
                     placeholder="Ex: PDF • 786 KB"
                     value={newDocData.fileSize}
                     onChange={e => setNewDocData({ ...newDocData, fileSize: e.target.value })}
-                    className="text-xs text-slate-900 bg-white"
                   />
                 </div>
               </div>
 
-              {/* Status File Confirmation */}
               {newDocData.fileUrl && newDocData.fileUrl !== "#" && (
-                <div className="bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 flex items-center gap-2 text-emerald-800 text-xs font-semibold max-w-full overflow-hidden">
-                  <Check size={16} className="text-emerald-600 shrink-0" />
-                  <span className="truncate max-w-full">
+                <div className="flex max-w-full items-center gap-2 overflow-hidden rounded-md bg-green-50 px-3 py-2 text-xs font-medium text-green-700">
+                  <Check aria-hidden="true" size={16} className="shrink-0" />
+                  <span className="max-w-full truncate">
                     Arquivo pronto: {newDocData.fileName || "Carregado"}
                   </span>
                 </div>
               )}
 
               <DialogFooter className="gap-2 pt-2">
-                <Button 
-                  type="button" 
-                  variant="outline" 
+                <Button
+                  type="button"
+                  variant="outline"
                   onClick={() => {
                     setAttachModalOpen(false);
                     setTargetTargetId(null);
@@ -1738,12 +1523,8 @@ ${docsListText}
                 >
                   Cancelar
                 </Button>
-                <Button 
-                  type="button" 
-                  onClick={handleSaveAttachedDoc}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                >
-                  Inserir Arquivo no Card
+                <Button type="button" onClick={handleSaveAttachedDoc}>
+                  Anexar arquivo
                 </Button>
               </DialogFooter>
             </div>
@@ -1758,75 +1539,67 @@ ${docsListText}
         }}>
           <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
             <DialogHeader>
-              <div className="flex items-center gap-2 mb-1">
-                <Badge className={`${selectedProduct.badgeColor}`}>
-                  {selectedProduct.packageType}
-                </Badge>
-                <span className="text-xs text-slate-500 font-medium">{hasAnySpec(selectedProduct) ? "Especificação Técnica Oficial" : "Ficha do Produto"}</span>
+              <div className="mb-1 flex items-center gap-2">
+                <Badge variant="neutral">{selectedProduct.packageType}</Badge>
+                <span className="text-xs text-slate-500">{hasAnySpec(selectedProduct) ? "Especificação técnica" : "Ficha do produto"}</span>
               </div>
-              <DialogTitle className="text-xl font-bold text-slate-900">
-                {selectedProduct.name}
-              </DialogTitle>
-              <DialogDescription className="text-sm text-blue-600 font-semibold">
+              <DialogTitle>{selectedProduct.name}</DialogTitle>
+              <DialogDescription className="text-sm">
                 {selectedProduct.subTitle}
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 text-sm py-2">
-              <p className="text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs md:text-sm leading-relaxed">
+            <div className="space-y-4 py-2 text-sm">
+              <p className="rounded-md bg-slate-50 p-3 text-sm leading-relaxed text-slate-700">
                 {selectedProduct.description}
               </p>
 
               {/* Tabela de Especificações */}
               <div>
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <h4 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                    <Sparkles size={16} className="text-amber-500" />
-                    Especificações Técnicas:
-                  </h4>
+                  <h4 className="text-sm font-semibold text-slate-900">Especificações técnicas</h4>
                   {isAdmin && (
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="h-7 text-[11px] gap-1"
                       onClick={() => handleOpenSpecsModal(selectedProduct)}
                     >
-                      <FilePlus size={12} /> Preencher especificações
+                      <FilePlus aria-hidden="true" /> Preencher especificações
                     </Button>
                   )}
                 </div>
                 {!hasAnySpec(selectedProduct) && (
-                  <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
+                  <p className="mb-2 rounded-md bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">
                     Nenhuma especificação foi informada para este produto ainda.
                     {isAdmin
                       ? " Preencha com os dados do laudo antes de enviar a ficha a um cliente."
                       : " Peça ao administrador para preencher com os dados do laudo."}
                   </p>
                 )}
-                <div className="border rounded-xl overflow-hidden divide-y text-xs">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-0.5 p-2.5 bg-slate-50 font-semibold text-slate-700">
+                <div className="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 text-xs">
+                  <div className="grid grid-cols-1 gap-0.5 bg-slate-50 px-3 py-2 font-medium text-slate-500 sm:grid-cols-3">
                     <span>Parâmetro</span>
-                    <span className="sm:col-span-2">Especificação Técnica</span>
+                    <span className="sm:col-span-2">Especificação técnica</span>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-0.5 p-2.5 text-slate-800">
-                    <span className="font-semibold text-slate-600">Embalagem</span>
+                  <div className="grid grid-cols-1 gap-0.5 px-3 py-2.5 text-slate-900 sm:grid-cols-3">
+                    <span className="font-medium text-slate-500">Embalagem</span>
                     <span className="sm:col-span-2">{specValue(selectedProduct.specs.weight)}</span>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-0.5 p-2.5 text-slate-800 bg-slate-50/50">
-                    <span className="font-semibold text-slate-600">Granulometria</span>
+                  <div className="grid grid-cols-1 gap-0.5 px-3 py-2.5 text-slate-900 sm:grid-cols-3">
+                    <span className="font-medium text-slate-500">Granulometria</span>
                     <span className="sm:col-span-2">{specValue(selectedProduct.specs.granulometry)}</span>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-0.5 p-2.5 text-slate-800">
-                    <span className="font-semibold text-slate-600">Solubilidade</span>
+                  <div className="grid grid-cols-1 gap-0.5 px-3 py-2.5 text-slate-900 sm:grid-cols-3">
+                    <span className="font-medium text-slate-500">Solubilidade</span>
                     <span className="sm:col-span-2">{specValue(selectedProduct.specs.solubility)}</span>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-0.5 p-2.5 text-slate-800 bg-slate-50/50">
-                    <span className="font-semibold text-slate-600">Pureza / NaCl</span>
+                  <div className="grid grid-cols-1 gap-0.5 px-3 py-2.5 text-slate-900 sm:grid-cols-3">
+                    <span className="font-medium text-slate-500">Pureza / NaCl</span>
                     <span className="sm:col-span-2">{specValue(selectedProduct.specs.purity)}</span>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-0.5 p-2.5 text-slate-800">
-                    <span className="font-semibold text-slate-600">Armazenamento</span>
+                  <div className="grid grid-cols-1 gap-0.5 px-3 py-2.5 text-slate-900 sm:grid-cols-3">
+                    <span className="font-medium text-slate-500">Armazenamento</span>
                     <span className="sm:col-span-2">{specValue(selectedProduct.specs.storage)}</span>
                   </div>
                 </div>
@@ -1835,57 +1608,38 @@ ${docsListText}
               {/* Documentos Anexados */}
               {selectedProduct.documents.length > 0 && (
                 <div>
-                  <h4 className="font-bold text-slate-900 text-sm mb-2 flex items-center gap-1.5">
-                    <Paperclip size={16} className="text-emerald-600" />
-                    Arquivo Anexado a este Produto:
-                  </h4>
-                  <div className="space-y-2">
+                  <h4 className="mb-1 text-sm font-semibold text-slate-900">Anexos deste produto</h4>
+                  <ul className="divide-y divide-slate-200">
                     {selectedProduct.documents.map((doc) => (
-                      <div key={doc.id} className="flex items-start justify-between bg-slate-50 p-2.5 rounded-xl border gap-2">
-                        <div className="flex items-start gap-2 flex-1 min-w-0">
-                          <div className="mt-0.5 shrink-0">
-                            {getDocIcon(doc.fileType)}
-                          </div>
-                          <span className="font-bold text-xs text-slate-800 break-words whitespace-normal leading-snug">
+                      <li key={doc.id} className="flex items-start justify-between gap-2 py-2">
+                        <div className="flex min-w-0 flex-1 items-start gap-2">
+                          <span className="mt-0.5 shrink-0">{getDocIcon(doc.fileType)}</span>
+                          <span className="break-words whitespace-normal text-xs font-medium leading-snug text-slate-900">
                             {doc.title}
                           </span>
                         </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() => handleDownloadFile(doc)}
-                          className="text-xs gap-1 bg-blue-600 hover:bg-blue-700 text-white shrink-0"
-                        >
-                          <Download size={13} /> Baixar
+                        <Button type="button" size="sm" variant="outline" onClick={() => handleDownloadFile(doc)} className="shrink-0">
+                          <Download aria-hidden="true" /> Baixar
                         </Button>
-                      </div>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 </div>
               )}
             </div>
 
             <DialogFooter className="gap-2 sm:gap-0">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setSelectedProduct(null)}
-                className="text-xs"
-              >
+              <Button type="button" variant="outline" onClick={() => setSelectedProduct(null)}>
                 Fechar
               </Button>
-              <Button
-                type="button"
-                onClick={() => handleCopyWhatsApp(selectedProduct)}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5"
-              >
-                <Share2 size={14} />
-                Enviar no WhatsApp
+              <Button type="button" onClick={() => handleCopyWhatsApp(selectedProduct)}>
+                <Share2 aria-hidden="true" />
+                Copiar para WhatsApp
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       )}
-    </div>
+    </Page>
   );
 }

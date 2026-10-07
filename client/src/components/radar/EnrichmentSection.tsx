@@ -77,14 +77,14 @@ function CategoryHintBadge({ categoria }: { categoria: string | null }) {
   const low = categoria.toLowerCase();
   if (low.includes('pet')) {
     return (
-      <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 bg-amber-50">
+      <Badge variant="warning">
         Maps: pet shop
       </Badge>
     );
   }
   if (low.includes('agropecu') || low.includes('ração') || low.includes('racao')) {
     return (
-      <Badge variant="outline" className="text-[10px] border-emerald-400 text-emerald-700 bg-emerald-50">
+      <Badge variant="success">
         Maps: agropecuária
       </Badge>
     );
@@ -98,7 +98,7 @@ function ExternalLinkRow({ href, label, icon }: { href: string; label: string; i
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 text-xs text-blue-700 hover:underline min-w-0 max-w-[47%]"
+      className="inline-flex items-center gap-1 text-xs text-brand-700 hover:underline min-w-0 max-w-[47%]"
     >
       {icon}
       <span className="shrink-0">{label}:</span>
@@ -145,7 +145,7 @@ export function EnrichmentSection({
         <Skeleton className="h-3 w-3/4" />
         <Skeleton className="h-3 w-1/2" />
         <Skeleton className="h-3 w-2/3" />
-        <p className="text-[11px] text-slate-400">
+        <p className="text-xs text-slate-500">
           {status === 'processando'
             ? 'O robô está procurando agora no Google Maps, site e redes…'
             : enrichment?.fila
@@ -157,7 +157,7 @@ export function EnrichmentSection({
   } else if (status === 'falhou') {
     content = (
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs text-slate-400">Não foi possível buscar agora</p>
+        <p className="text-xs text-slate-500">Não foi possível buscar agora</p>
         <Button type="button" variant="outline" size="sm" disabled={scanning} onClick={() => onScanNow(true)}>
           {scanning ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
           Tentar de novo
@@ -174,7 +174,7 @@ export function EnrichmentSection({
         {data.maps && (
           <p className="text-xs text-slate-600 flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="inline-flex items-center gap-1 shrink-0">
-              <MapPin size={12} className="text-slate-400" />
+              <MapPin size={12} className="text-slate-500" aria-hidden />
               {data.maps.categoria ?? 'Google Maps'}
             </span>
             {data.maps.nota != null && (
@@ -185,7 +185,7 @@ export function EnrichmentSection({
               </span>
             )}
             {data.maps.situacao && (
-              <span className={situacaoFechada ? 'text-red-600 font-semibold shrink-0' : 'text-slate-500 shrink-0'}>
+              <span className={situacaoFechada ? 'text-red-700 font-semibold shrink-0' : 'text-slate-500 shrink-0'}>
                 {data.maps.situacao}
               </span>
             )}
@@ -204,7 +204,7 @@ export function EnrichmentSection({
             {data.whatsapps.map((w, i) => (
               <Badge
                 key={`wa-${w.value}-${i}`}
-                className="bg-emerald-600 hover:bg-emerald-600 text-white text-[10px] font-medium whitespace-normal break-words max-w-full h-auto text-left"
+                variant="success" className="whitespace-normal break-words max-w-full h-auto text-left"
               >
                 {formatFoundDigits(w.value)} · WhatsApp (achado em {RADAR_ENRICH_SOURCE_LABELS[w.source]})
               </Badge>
@@ -218,14 +218,14 @@ export function EnrichmentSection({
               <p key={`tel-${i}`} className="text-xs text-slate-600 flex items-center gap-1">
                 <Phone size={11} className="text-slate-400 shrink-0" />
                 {formatFoundDigits(t.value)}
-                <span className="text-[10px] text-slate-400">({RADAR_ENRICH_SOURCE_LABELS[t.source]})</span>
+                <span className="text-xs text-slate-500">({RADAR_ENRICH_SOURCE_LABELS[t.source]})</span>
               </p>
             ))}
             {data.emails.map((e, i) => (
               <p key={`email-${i}`} className="text-xs text-slate-600 flex items-center gap-1 min-w-0">
                 <Mail size={11} className="text-slate-400 shrink-0" />
                 <span className="truncate">{e.value}</span>
-                <span className="text-[10px] text-slate-400 shrink-0">({RADAR_ENRICH_SOURCE_LABELS[e.source]})</span>
+                <span className="text-xs text-slate-500 shrink-0">({RADAR_ENRICH_SOURCE_LABELS[e.source]})</span>
               </p>
             ))}
           </div>
@@ -236,7 +236,7 @@ export function EnrichmentSection({
             <button
               type="button"
               onClick={() => setFontesOpen((o) => !o)}
-              className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-600"
+              className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 min-h-8"
             >
               {fontesOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
               Fontes
@@ -244,7 +244,7 @@ export function EnrichmentSection({
             {fontesOpen && (
               <ul className="mt-1 space-y-0.5 pl-3">
                 {data.fontes.map((f) => (
-                  <li key={f.source} className="text-[11px] text-slate-500">
+                  <li key={f.source} className="text-xs text-slate-500">
                     {RADAR_ENRICH_SOURCE_LABELS[f.source]}: {f.ok ? 'ok' : f.note ?? 'falhou'}
                   </li>
                 ))}
@@ -253,29 +253,30 @@ export function EnrichmentSection({
           </div>
         )}
 
-        {enrichment.updatedAt && <p className="text-[10px] text-slate-400">{formatUpdatedAt(enrichment.updatedAt)}</p>}
+        {enrichment.updatedAt && <p className="text-xs text-slate-500">{formatUpdatedAt(enrichment.updatedAt)}</p>}
       </div>
     );
   } else {
-    content = <p className="text-xs text-slate-400 italic">Ainda não buscado na web.</p>;
+    content = <p className="text-xs text-slate-500 italic">Ainda não buscado na web.</p>;
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-2.5 space-y-2 min-w-0">
+    <div className="rounded-md bg-slate-50 p-2.5 space-y-2 min-w-0">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Da web</p>
+        <p className="text-xs font-medium text-slate-600">Da web</p>
         {showTopButton && (
           <Button
             type="button"
             variant="ghost"
-            size="icon"
-            className="h-6 w-6 shrink-0"
+            size="icon-sm"
+            aria-label={expired ? 'Dados vencidos — varrer de novo' : 'Varrer agora'}
+            className="shrink-0"
             disabled={scanning}
             title={expired ? 'Dados vencidos — varrer de novo' : 'Varrer agora'}
             onClick={() => onScanNow(true)}
           >
             {scanning ? (
-              <Loader2 size={13} className="animate-spin text-slate-500" />
+              <Loader2 size={13} className="animate-spin text-slate-500" aria-hidden />
             ) : (
               <RefreshCw size={13} className="text-slate-500" />
             )}
@@ -283,7 +284,7 @@ export function EnrichmentSection({
         )}
       </div>
       {expired && !discarded && (
-        <p className="text-[10px] text-amber-600">
+        <p className="text-xs text-amber-700">
           Dados de mais de {RADAR_ENRICH_TTL_DAYS} dias — considere varrer de novo.
         </p>
       )}

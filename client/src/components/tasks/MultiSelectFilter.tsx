@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Check, ChevronDown, X, Search } from 'lucide-react';
+import { Button } from '../ui/button';
 
 export interface MultiSelectOption {
   value: string;
@@ -35,7 +36,7 @@ export function MultiSelectFilter({
   options,
   selected,
   onChange,
-  activeClass = 'bg-indigo-500 text-white border-indigo-500',
+  activeClass = 'border-brand-600 bg-brand-50 text-brand-800 hover:bg-brand-50',
   searchable = false,
   matchMode,
   onMatchModeChange,
@@ -85,76 +86,77 @@ export function MultiSelectFilter({
       : `${selected.length} ${noun}`;
 
   return (
-    <div className="relative" ref={ref}>
-      <button
+    <div className="relative max-md:w-full" ref={ref}>
+      <Button
         type="button"
+        variant="outline"
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
-        className={`px-3 py-2 border rounded-lg text-sm font-medium flex items-center gap-1.5 max-w-[220px] transition disabled:opacity-50 disabled:cursor-not-allowed ${
-          active ? activeClass : 'bg-white text-gray-700 hover:bg-gray-50'
-        }`}
+        aria-expanded={open}
+        className={`max-w-[220px] justify-between max-md:w-full max-md:max-w-none ${active ? activeClass : ''}`}
         title={active ? selected.join(', ') : placeholder}
       >
         <span className="truncate">{summary}</span>
         {active && matchMode === 'all' && (
-          <span className="text-[10px] font-bold opacity-80 shrink-0">E</span>
+          <span className="shrink-0 text-xs font-semibold">E</span>
         )}
-        <ChevronDown size={14} className="shrink-0 opacity-70" />
-      </button>
+        <ChevronDown size={14} aria-hidden className="shrink-0 text-slate-500" />
+      </Button>
 
       {open && (
-        <div className="absolute z-50 mt-1 w-64 max-h-80 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg flex flex-col">
+        <div className="absolute left-0 z-50 mt-1 flex max-h-80 w-64 max-w-[calc(100vw-3rem)] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
           {matchMode && onMatchModeChange && (
-            <div className="flex items-center gap-1 border-b border-slate-100 p-2">
-              <span className="text-[11px] text-slate-500 mr-1">Combinar:</span>
+            <div className="flex items-center gap-1 border-b border-slate-200 p-2">
+              <span className="mr-1 text-xs text-slate-500">Combinar:</span>
               <button
                 type="button"
                 onClick={() => onMatchModeChange('any')}
-                className={`px-2 py-1 rounded-md text-[11px] font-semibold transition ${
+                className={`rounded-md px-2 py-1 text-xs font-medium transition max-md:min-h-10 ${
                   matchMode === 'any'
-                    ? 'bg-blue-900 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    ? 'bg-brand-700 text-white'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
                 title="Mostra quem tem QUALQUER uma das tags marcadas"
               >
-                QUALQUER
+                Qualquer
               </button>
               <button
                 type="button"
                 onClick={() => onMatchModeChange('all')}
-                className={`px-2 py-1 rounded-md text-[11px] font-semibold transition ${
+                className={`rounded-md px-2 py-1 text-xs font-medium transition max-md:min-h-10 ${
                   matchMode === 'all'
-                    ? 'bg-blue-900 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    ? 'bg-brand-700 text-white'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
                 title="Mostra só quem tem TODAS as tags marcadas ao mesmo tempo"
               >
-                TODAS
+                Todas
               </button>
             </div>
           )}
 
           {searchable && (
-            <div className="flex items-center gap-2 border-b border-slate-100 px-2.5 py-2">
-              <Search size={13} className="text-slate-400 shrink-0" />
+            <div className="flex items-center gap-2 border-b border-slate-200 px-2.5 py-2">
+              <Search size={13} aria-hidden className="shrink-0 text-slate-400" />
               <input
                 autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Buscar..."
-                className="w-full text-sm outline-none placeholder:text-slate-400"
+                aria-label="Buscar nas opções"
+                className="w-full text-sm outline-none placeholder:text-slate-500"
               />
               {query && (
-                <button type="button" onClick={() => setQuery('')} aria-label="Limpar busca" className="text-slate-400 hover:text-slate-600">
+                <button type="button" onClick={() => setQuery('')} aria-label="Limpar busca" className="text-slate-500 hover:text-slate-700">
                   <X size={13} />
                 </button>
               )}
             </div>
           )}
 
-          <div className="overflow-y-auto flex-1">
+          <div className="flex-1 overflow-y-auto">
             {visible.length === 0 ? (
-              <p className="px-3 py-4 text-xs text-slate-400 text-center">
+              <p className="px-3 py-4 text-center text-xs text-slate-500">
                 {options.length === 0 ? (emptyHint ?? 'Nenhuma opção') : 'Nada encontrado'}
               </p>
             ) : (
@@ -165,11 +167,11 @@ export function MultiSelectFilter({
                     key={o.value}
                     type="button"
                     onClick={() => toggle(o.value)}
-                    className="w-full flex items-center gap-2 px-2.5 py-2 text-left text-sm hover:bg-slate-50 transition"
+                    className="flex w-full items-center gap-2 px-2.5 py-2 text-left text-sm transition hover:bg-slate-50 max-md:min-h-10"
                   >
                     <span
-                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
-                        on ? 'bg-blue-900 border-blue-900 text-white' : 'border-slate-300 bg-white'
+                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border transition ${
+                        on ? 'border-brand-700 bg-brand-700 text-white' : 'border-slate-300 bg-white'
                       }`}
                     >
                       {on && <Check size={11} strokeWidth={3} />}
@@ -182,7 +184,7 @@ export function MultiSelectFilter({
                     )}
                     <span className="flex-1 truncate text-slate-700">{o.label}</span>
                     {o.count != null && (
-                      <span className="shrink-0 text-[11px] text-slate-400">{o.count}</span>
+                      <span className="shrink-0 text-xs tabular-nums text-slate-500">{o.count}</span>
                     )}
                   </button>
                 );
@@ -194,7 +196,7 @@ export function MultiSelectFilter({
             <button
               type="button"
               onClick={() => onChange([])}
-              className="border-t border-slate-100 px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-red-600 transition"
+              className="border-t border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50 hover:text-red-700 max-md:min-h-10"
             >
               Limpar seleção ({selected.length})
             </button>

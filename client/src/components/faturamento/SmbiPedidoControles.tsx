@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Send } from 'lucide-react';
 import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
+import { StatusBadge } from '../StatusBadge';
 import { useFatStore } from '../../lib/faturamento/store';
 import { useAuth } from '../../_core/hooks/useAuth';
 import { useConfirm } from '../useConfirm';
@@ -119,11 +119,7 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
           size="sm"
           variant="outline"
           disabled={ocupado || roboProcessando}
-          className={
-            solicitado
-              ? 'border-indigo-300 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 gap-1.5'
-              : 'border-blue-400 text-blue-700 bg-blue-50 hover:bg-blue-100 gap-1.5'
-          }
+          className="gap-1.5"
           onClick={() => void enviar()}
         >
           <Send size={14} />
@@ -141,14 +137,14 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
         </Button>
       )}
       {isAdmin && temVinculo && (
-        <Button size="sm" variant="outline" disabled={ocupado} className="text-red-700 border-red-300 hover:bg-red-50" onClick={() => setTextoPara('desvincular')}>
+        <Button size="sm" variant="outline" disabled={ocupado} className="text-red-700" onClick={() => setTextoPara('desvincular')}>
           Desvincular
         </Button>
       )}
 
       {/* Faturado e sem vínculo: é exatamente o caso do movsai 1115. */}
       {canApprove && isFaturado && !temVinculo && (
-        <div className="basis-full rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        <div className="basis-full rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           Pedido já faturado: não é enviado ao SMBI (criaria um pedido duplicado). Se ele já existe lá, use
           "Vincular a pedido do SMBI".
         </div>
@@ -157,8 +153,8 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
       {/* "Por que não foi": o motivo que o robô devolveu. */}
       {pedido.smbiEstado && pedido.smbiEstado !== 'CRIADO' && (
         <div
-          className={`basis-full rounded-lg border px-3 py-2 text-xs ${
-            pedido.smbiEstado === 'DIVERGENTE' ? 'border-red-300 bg-red-50 text-red-800' : 'border-amber-300 bg-amber-50 text-amber-900'
+          className={`basis-full rounded-md border px-3 py-2 text-xs ${
+            pedido.smbiEstado === 'DIVERGENTE' ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'
           }`}
         >
           <p className="font-semibold">{SMBI_ESTADO_ROTULO[pedido.smbiEstado as SmbiEstado] ?? pedido.smbiEstado}</p>
@@ -177,22 +173,22 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
         </div>
       )}
       {solicitado && !pedido.smbiMovsaiId && !pedido.smbiEstado && (
-        <span className="text-xs text-indigo-700">
+        <span className="text-xs text-slate-500">
           {roboProcessando ? 'O robô está criando este pedido agora…' : `Solicitado em ${quando(pedido.smbiSolicitadoEm)}${pedido.smbiSolicitadoPor ? ` por ${pedido.smbiSolicitadoPor}` : ''} — aguardando o robô criar no SMBI`}
         </span>
       )}
 
       {pedido.smbiMovsaiId && (
-        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs py-1 px-2.5">
+        <StatusBadge tone="success">
           SMBI: Pedido {pedido.smbiVinculoMovsais && pedido.smbiVinculoMovsais.length > 1 ? pedido.smbiVinculoMovsais.join(', ') : pedido.smbiMovsaiId}
-        </Badge>
+        </StatusBadge>
       )}
 
       {/* Vínculo manual e a conferência do robô. */}
       {vinculo && (
         <div
-          className={`basis-full rounded-lg border px-3 py-2 text-xs ${
-            vinculo === 'VINCULO_COM_DIVERGENCIA' ? 'border-red-300 bg-red-50 text-red-800' : 'border-slate-200 bg-slate-50 text-slate-700'
+          className={`basis-full rounded-md border px-3 py-2 text-xs ${
+            vinculo === 'VINCULO_COM_DIVERGENCIA' ? 'border-red-200 bg-red-50 text-red-800' : 'border-slate-200 bg-slate-50 text-slate-700'
           }`}
         >
           <p className="font-semibold">{SMBI_VINCULO_ROTULO[vinculo] ?? vinculo}</p>
@@ -244,7 +240,7 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
 
       {/* Faturado no SMBI por valor menor que o acordado (contrato, rota 3). */}
       {pedido.smbiAlertaDesconto && espelho && (
-        <div className="basis-full rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">
+        <div className="basis-full rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
           <p className="font-semibold">Faturado no SMBI abaixo do valor esperado</p>
           <p className="mt-0.5">
             Fiscal (sal + frete): {formatBRL(espelho.totalFiscal)} · esperado para o peso faturado: {formatBRL(espelho.totalEsperado ?? espelho.totalAcordado)}
@@ -255,7 +251,7 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
       )}
       {/* Quantidade diferente do pedido: não é desconto, mas a comissão do representante segue o pedido. */}
       {espelho?.pesoPedidoKg && espelho.pesoFaturadoKg && Math.abs(espelho.pesoFaturadoKg - espelho.pesoPedidoKg) > 1 && (
-        <div className="basis-full rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        <div className="basis-full rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           <p className="font-semibold">Peso faturado diferente do pedido</p>
           <p className="mt-0.5">
             Faturado: {(espelho.pesoFaturadoKg / 1000).toLocaleString('pt-BR')} t · pedido: {(espelho.pesoPedidoKg / 1000).toLocaleString('pt-BR')} t.
@@ -264,7 +260,7 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
         </div>
       )}
       {espelho && (
-        <div className="basis-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+        <div className="basis-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
           <p className="font-semibold">Espelho fiscal (SMBI) — só leitura</p>
           {espelho.movsais.map((m) => (
             <p key={m.id}>
@@ -283,7 +279,7 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
         </Button>
       )}
       {canApprove && historico && (
-        <div className="basis-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+        <div className="basis-full rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
           {eventos.length === 0 ? (
             <p>Nenhum evento registrado ainda.</p>
           ) : (

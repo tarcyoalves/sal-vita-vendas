@@ -15,6 +15,7 @@ import { QueryError } from "../components/QueryError";
 import { FrequencySettings } from "../components/email/FrequencySettings";
 import { EmailDashboard } from "../components/email/EmailDashboard";
 import { Label } from "../components/ui/label";
+import { Page, PageHeader, AccessDenied } from "../components/layout/Page";
 import { Badge } from "../components/ui/badge";
 import { Progress } from "../components/ui/progress";
 import { Switch } from "../components/ui/switch";
@@ -134,13 +135,13 @@ const ENROLLMENT_STATUS_BADGE_CLASS: Record<string, string> = {
 
 // Shared table chrome classes used across every list/table in this page.
 const THEAD_CLASS = "bg-slate-50 border-b border-slate-200";
-const TH_CLASS = "px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500";
-const TR_CLASS = "border-b border-slate-100 hover:bg-blue-50/50 transition-colors";
+const TH_CLASS = "px-3 py-2.5 text-left text-xs font-semibold text-slate-500";
+const TR_CLASS = "border-b border-slate-100 hover:bg-slate-50 transition-colors";
 
 // Friendly placeholder shown when a table/list has no rows yet.
 function EmptyState({ icon: Icon, message }: { icon: LucideIcon; message: string }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 py-10 px-4 text-center">
+    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 py-10 px-4 text-center">
       <Icon size={28} className="text-slate-300" />
       <p className="text-sm text-slate-500 max-w-sm">{message}</p>
     </div>
@@ -150,14 +151,12 @@ function EmptyState({ icon: Icon, message }: { icon: LucideIcon; message: string
 // Small stat tile with an icon accent, used in stat grids and detail dialogs.
 function StatTile({ icon: Icon, label, value, accent }: { icon: LucideIcon; label: string; value: ReactNode; accent: string }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-      <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg ${accent}`}>
-        <Icon size={16} />
-      </div>
-      <div className="min-w-0">
-        <p className="text-[11px] uppercase tracking-wide text-slate-400">{label}</p>
-        <p className="text-lg font-bold text-slate-800 truncate">{value}</p>
-      </div>
+    <div className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+      <p className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+        <Icon size={13} aria-hidden className="shrink-0 text-slate-400" />
+        <span className="truncate">{label}</span>
+      </p>
+      <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-900 truncate">{value}</p>
     </div>
   );
 }
@@ -286,7 +285,9 @@ export default function EmailMarketing() {
   }
 
   if (!isStaff) {
-    return <div className="p-4">Acesso negado</div>;
+    return (
+      <AccessDenied area="E-mail Marketing" hint="Seu usuário ainda não tem o e-mail marketing liberado. Peça ao administrador para ativar em Atendentes." />
+    );
   }
 
   const activeGroup = MKT_GROUPS.find(g => g.tabs.some(t => t.id === activeTab)) ?? MKT_GROUPS[0];
@@ -296,45 +297,37 @@ export default function EmailMarketing() {
     : 0;
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
-      {/* Barra de título com a cota do dia */}
-      <div className="bg-white border border-border rounded-xl px-4 md:px-5 py-3.5 flex items-center gap-3 flex-wrap">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-soft text-brand flex-shrink-0">
-          <Mail size={18} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <h1 className="font-cond text-xl md:text-2xl font-bold tracking-tight text-ink leading-tight">E-mail Marketing</h1>
-          <p className="text-xs text-muted-foreground hidden sm:block">
-            Campanhas, sequências e automações para nutrir e converter leads
-          </p>
-        </div>
-        {totals && totals.dailyLimit > 0 && (
+    <Page>
+      <PageHeader
+        title="E-mail Marketing"
+        description="Campanhas, sequências e automações para nutrir e converter leads"
+        actions={totals && totals.dailyLimit > 0 ? (
           <div
-            className="flex items-center gap-2.5 text-xs text-muted-foreground"
+            className="flex items-center gap-2.5 text-xs text-slate-500"
             title="Envios de hoje somando todas as contas da cascata (Resend + Brevo)"
           >
-            <span className="hidden sm:inline">Cota de hoje</span>
-            <span className="block w-24 h-1.5 rounded-full bg-secondary overflow-hidden">
+            <span>Cota de hoje</span>
+            <span className="block w-24 h-1.5 rounded-full bg-slate-100 overflow-hidden">
               <span
-                className={`block h-full rounded-full transition-all ${quotaPct >= 90 ? 'bg-destructive' : 'bg-sand'}`}
+                className={`block h-full rounded-full transition-all ${quotaPct >= 90 ? 'bg-red-600' : 'bg-brand-600'}`}
                 style={{ width: `${quotaPct}%` }}
               />
             </span>
-            <span className="font-semibold text-ink tabular-nums">{totals.sentToday}/{totals.dailyLimit}</span>
+            <span className="font-semibold text-slate-900 tabular-nums">{totals.sentToday}/{totals.dailyLimit}</span>
           </div>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {/* Grupos */}
-      <div className="border-b border-border flex items-end gap-1 overflow-x-auto scrollbar-hide">
+      <div className="border-b border-slate-200 flex items-end gap-1 overflow-x-auto scrollbar-hide">
         {MKT_GROUPS.map(g => {
           const on = g.id === activeGroup.id;
           return (
             <button
               key={g.id}
               onClick={() => setActiveTab(g.tabs[0].id)}
-              className={`px-3.5 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors ${
-                on ? 'border-brand text-brand' : 'border-transparent text-muted-foreground hover:text-ink'
+              className={`px-3.5 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${
+                on ? 'border-brand-700 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >
               {g.label}
@@ -355,8 +348,8 @@ export default function EmailMarketing() {
                 onClick={() => setActiveTab(t.id)}
                 className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${
                   on
-                    ? 'bg-brand text-white shadow-sm'
-                    : 'bg-white border border-border text-muted-foreground hover:text-ink hover:bg-secondary'
+                    ? 'bg-brand-700 text-white'
+                    : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
                 <Icon size={14} /> {t.label}
@@ -376,7 +369,7 @@ export default function EmailMarketing() {
         {activeTab === 'usage' && <UsageTab />}
         {activeTab === 'stats' && <StatsTab />}
       </div>
-    </div>
+    </Page>
   );
 }
 
@@ -476,7 +469,7 @@ function AiEmailComposer({ html, onApply }: {
               </div>
             </div>
           )}
-          <p className="text-[11px] text-slate-400">A IA gera um rascunho — sempre revise antes de enviar. Use {"{{nome}}"} e {"{{empresa}}"} para personalizar.</p>
+          <p className="text-xs text-slate-500">A IA gera um rascunho — sempre revise antes de enviar. Use {"{{nome}}"} e {"{{empresa}}"} para personalizar.</p>
         </div>
       )}
     </div>
@@ -490,7 +483,7 @@ function ListSkeleton({ rows = 3 }: { rows?: number }) {
   return (
     <div className="space-y-2" role="status" aria-label="Carregando">
       {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="h-14 rounded-xl bg-slate-100 animate-pulse" />
+        <div key={i} className="h-14 rounded-lg bg-slate-100 animate-pulse" />
       ))}
     </div>
   );
@@ -514,13 +507,13 @@ function CampaignActions({ c, sendingId, sendProgress, sendDisabled, cancelDisab
   return (
     <>
       <div className="flex gap-1 flex-wrap">
-        <Button size="sm" variant="outline" className="max-md:h-10" onClick={() => onView(c.id)}>
+        <Button size="sm" variant="ghost" onClick={() => onView(c.id)}>
           <Eye size={14} className="mr-1" /> Ver
         </Button>
         {c.status !== "sent" && (
           <Button
             size="sm"
-            className="bg-blue-900 hover:bg-blue-800 max-md:h-10"
+            variant="outline"
             onClick={() => onSend({ id: c.id, subject: c.subject, count: c.totalRecipients })}
             disabled={sendDisabled}
           >
@@ -532,7 +525,6 @@ function CampaignActions({ c, sendingId, sendProgress, sendDisabled, cancelDisab
           <Button
             size="sm"
             variant="outline"
-            className="border-violet-200 text-violet-700 hover:bg-violet-50 max-md:h-10"
             onClick={() => onCancelSchedule(c.id)}
             disabled={cancelDisabled}
           >
@@ -541,8 +533,8 @@ function CampaignActions({ c, sendingId, sendProgress, sendDisabled, cancelDisab
         )}
         <Button
           size="sm"
-          variant="destructive"
-          className="max-md:h-10 max-md:min-w-10"
+          variant="ghost"
+          className="text-slate-500 hover:text-red-700 hover:bg-red-50"
           aria-label="Excluir campanha"
           title="Excluir campanha"
           onClick={() => onDelete(c.id)}
@@ -846,12 +838,12 @@ function CampaignsTab() {
       <div className="flex flex-wrap justify-end gap-2">
         <Button
           variant="outline"
-          className="border-blue-200 text-blue-900 hover:bg-blue-50 shadow-sm"
+          className="border-blue-200 text-blue-900 hover:bg-blue-50"
           onClick={() => setShowBroadcast(true)}
         >
           <Megaphone size={16} className="mr-1" /> Disparo Rápido
         </Button>
-        <Button className="bg-blue-900 hover:bg-blue-800 shadow-sm" onClick={() => setShowCreate(true)}>
+        <Button  onClick={() => setShowCreate(true)}>
           <Plus size={16} className="mr-1" /> Nova Campanha
         </Button>
       </div>
@@ -859,7 +851,7 @@ function CampaignsTab() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Send size={16} className="text-blue-900" /> Campanhas <span className="text-slate-400 font-normal">({campaigns?.length ?? 0})</span>
+            <Send size={16} className="text-blue-900" /> Campanhas <span className="text-slate-500 font-normal">({campaigns?.length ?? 0})</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -872,7 +864,7 @@ function CampaignsTab() {
             {/* Celular: cartões com as ações sempre à vista (a tabela esconde Ações fora da tela) */}
             <ul className="space-y-3 md:hidden">
               {campaigns.map(c => (
-                <li key={c.id} className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+                <li key={c.id} className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-medium text-slate-700 break-words">{c.name}</p>
@@ -903,7 +895,7 @@ function CampaignsTab() {
                 </li>
               ))}
             </ul>
-            <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200">
+            <div className="hidden md:block overflow-x-auto -mx-4 border-y border-slate-200">
               <table className="w-full text-sm min-w-[640px]">
                 <thead className={THEAD_CLASS}>
                   <tr>
@@ -933,7 +925,7 @@ function CampaignsTab() {
                           {STATUS_LABELS[c.status] ?? c.status}
                         </Badge>
                         {c.status === "scheduled" && (c as any).scheduledAt && (
-                          <p className="mt-1 flex items-center gap-1 text-[11px] text-violet-600">
+                          <p className="mt-1 flex items-center gap-1 text-xs text-violet-600">
                             <CalendarClock size={11} /> {formatDateTime((c as any).scheduledAt)}
                           </p>
                         )}
@@ -961,7 +953,7 @@ function CampaignsTab() {
         <DialogContent className="max-w-6xl w-[95vw] max-h-[90dvh] overflow-y-auto max-sm:p-4">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Mail size={16} /></span>
+              <Mail size={16} aria-hidden className="text-slate-500" />
               Nova Campanha
             </DialogTitle>
           </DialogHeader>
@@ -1000,7 +992,7 @@ function CampaignsTab() {
               </div>
               <Input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} placeholder="Ex: Olá {nome}, confira nossas novidades!" />
               {abEnabled && (
-                <div className="mt-2 rounded-lg border border-dashed border-amber-300 bg-amber-50/50 p-2.5 space-y-1.5">
+                <div className="mt-2 rounded-lg border border-dashed border-amber-300 bg-amber-50 p-2.5 space-y-1.5">
                   <div className="flex items-center gap-1.5">
                     <SplitSquareVertical size={13} className="text-amber-600" />
                     <Label className="text-xs text-amber-700 font-medium">Variante B (assunto)</Label>
@@ -1021,14 +1013,14 @@ function CampaignsTab() {
                 <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
                   <button
                     type="button"
-                    className={`px-2 py-1 rounded text-xs font-medium transition ${!useBlockEditor ? 'bg-white shadow-sm text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
+                    className={`px-2 py-1 rounded text-xs font-medium transition ${!useBlockEditor ? 'bg-white text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
                     onClick={() => setUseBlockEditor(false)}
                   >
                     Editor
                   </button>
                   <button
                     type="button"
-                    className={`px-2 py-1 rounded text-xs font-medium transition flex items-center gap-1 ${useBlockEditor ? 'bg-white shadow-sm text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
+                    className={`px-2 py-1 rounded text-xs font-medium transition flex items-center gap-1 ${useBlockEditor ? 'bg-white text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
                     onClick={() => setUseBlockEditor(true)}
                   >
                     <Blocks size={12} /> Blocos
@@ -1082,12 +1074,12 @@ function CampaignsTab() {
               )}
             </div>
 
-            <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+            <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
               <Users size={18} className="mt-0.5 flex-shrink-0 text-blue-700" />
               <div>
                 Público estimado: <strong>{preview?.count ?? 0}</strong> destinatário(s)
                 {preview?.sample && preview.sample.length > 0 && (
-                  <p className="text-xs text-blue-700/80 mt-1">
+                  <p className="text-xs text-blue-700 mt-1">
                     Exemplos: {preview.sample.slice(0, 5).map(s => s.name || s.email).join(", ")}
                     {preview.count > 5 ? "..." : ""}
                   </p>
@@ -1096,20 +1088,20 @@ function CampaignsTab() {
             </div>
 
             {/* Agendamento (F4): enviar agora vs. agendar */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2.5">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2.5">
               <Label className="flex items-center gap-1.5 text-slate-700"><Clock size={13} /> Quando enviar</Label>
               <div className="flex gap-1.5">
                 <button
                   type="button"
                   onClick={() => setSendMode("now")}
-                  className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition-all ${sendMode === "now" ? "border-blue-300 bg-blue-50 text-blue-900 shadow-sm" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${sendMode === "now" ? "border-blue-300 bg-blue-50 text-blue-900" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}
                 >
                   <Send size={14} className="inline mr-1.5 -mt-0.5" /> Enviar agora
                 </button>
                 <button
                   type="button"
                   onClick={() => setSendMode("schedule")}
-                  className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition-all ${sendMode === "schedule" ? "border-violet-300 bg-violet-50 text-violet-800 shadow-sm" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${sendMode === "schedule" ? "border-violet-300 bg-violet-50 text-violet-800" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}
                 >
                   <Clock size={14} className="inline mr-1.5 -mt-0.5" /> Agendar
                 </button>
@@ -1122,7 +1114,7 @@ function CampaignsTab() {
                     onChange={e => setScheduleAt(e.target.value)}
                     className="bg-white"
                   />
-                  <p className="text-[11px] text-slate-500 mt-1">
+                  <p className="text-xs text-slate-500 mt-1">
                     A campanha fica <strong>Agendada</strong> e é enviada automaticamente no ciclo diário (8h, horário de Brasília) a partir dessa data — mesmo com esta tela fechada.
                   </p>
                 </div>
@@ -1134,7 +1126,7 @@ function CampaignsTab() {
               <TestEmailButton subject={form.subject} htmlBody={form.htmlBody} />
             </div>
             <div className="flex gap-2">
-              <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleCreate} disabled={createMutation.isPending || sendingId !== null}>
+              <Button className="flex-1" onClick={handleCreate} disabled={createMutation.isPending || sendingId !== null}>
                 {createMutation.isPending
                   ? (sendMode === "schedule" ? "Agendando..." : "Criando...")
                   : (sendMode === "schedule" ? "Agendar Campanha" : "Criar e revisar envio")}
@@ -1150,12 +1142,12 @@ function CampaignsTab() {
         <DialogContent className="max-w-6xl w-[95vw] max-h-[90dvh] overflow-y-auto max-sm:p-4">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-700"><Megaphone size={16} /></span>
+              <Megaphone size={16} aria-hidden className="text-slate-500" />
               Disparo Rápido
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
               <Sparkles size={16} className="mt-0.5 flex-shrink-0" />
               <p>Envie um e-mail avulso com anexos opcionais. Selecione destinatários manualmente ou use filtros da sua base de contatos.</p>
             </div>
@@ -1166,7 +1158,7 @@ function CampaignsTab() {
                 <button
                   type="button"
                   onClick={() => setBcastMode("manual")}
-                  className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition-all ${bcastMode === "manual" ? "border-blue-300 bg-blue-50 text-blue-900 shadow-sm" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${bcastMode === "manual" ? "border-blue-300 bg-blue-50 text-blue-900" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}
                 >
                   <Pencil size={14} className="inline mr-1.5 -mt-0.5" />
                   Manual
@@ -1174,7 +1166,7 @@ function CampaignsTab() {
                 <button
                   type="button"
                   onClick={() => setBcastMode("audience")}
-                  className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition-all ${bcastMode === "audience" ? "border-blue-300 bg-blue-50 text-blue-900 shadow-sm" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${bcastMode === "audience" ? "border-blue-300 bg-blue-50 text-blue-900" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}
                 >
                   <Users size={14} className="inline mr-1.5 -mt-0.5" />
                   Audiência (filtros)
@@ -1203,7 +1195,7 @@ function CampaignsTab() {
                 </div>
               </div>
             ) : (
-              <div className="space-y-3 rounded-xl border border-blue-200 bg-blue-50/50 p-3">
+              <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50/50 p-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <Label>Público</Label>
@@ -1316,7 +1308,7 @@ function CampaignsTab() {
               </div>
               <Input value={bcast.subject} onChange={e => setBcast(b => ({ ...b, subject: e.target.value }))} placeholder="Ex: Comunicado importante" />
               {abEnabledBcast && (
-                <div className="mt-2 rounded-lg border border-dashed border-amber-300 bg-amber-50/50 p-2.5 space-y-1.5">
+                <div className="mt-2 rounded-lg border border-dashed border-amber-300 bg-amber-50 p-2.5 space-y-1.5">
                   <div className="flex items-center gap-1.5">
                     <SplitSquareVertical size={13} className="text-amber-600" />
                     <Label className="text-xs text-amber-700 font-medium">Variante B (assunto)</Label>
@@ -1337,14 +1329,14 @@ function CampaignsTab() {
                 <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
                   <button
                     type="button"
-                    className={`px-2 py-1 rounded text-xs font-medium transition ${!useBlockEditorBcast ? 'bg-white shadow-sm text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
+                    className={`px-2 py-1 rounded text-xs font-medium transition ${!useBlockEditorBcast ? 'bg-white text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
                     onClick={() => setUseBlockEditorBcast(false)}
                   >
                     Editor
                   </button>
                   <button
                     type="button"
-                    className={`px-2 py-1 rounded text-xs font-medium transition flex items-center gap-1 ${useBlockEditorBcast ? 'bg-white shadow-sm text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
+                    className={`px-2 py-1 rounded text-xs font-medium transition flex items-center gap-1 ${useBlockEditorBcast ? 'bg-white text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
                     onClick={() => setUseBlockEditorBcast(true)}
                   >
                     <Blocks size={12} /> Blocos
@@ -1370,7 +1362,7 @@ function CampaignsTab() {
 
             <div>
               <Label>Anexos (opcional)</Label>
-              <label className="mt-1 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500 hover:border-blue-300 hover:bg-blue-50/50 transition">
+              <label className="mt-1 flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500 hover:border-blue-300 hover:bg-slate-50 transition">
                 <Paperclip size={16} />
                 <span>Clique para anexar arquivos</span>
                 <input type="file" multiple className="hidden" onChange={e => { handleAddFiles(e.target.files); e.target.value = ""; }} />
@@ -1381,17 +1373,17 @@ function CampaignsTab() {
                     <div key={i} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm">
                       <FileText size={14} className="flex-shrink-0 text-blue-700" />
                       <span className="flex-1 truncate text-slate-700">{f.filename}</span>
-                      <span className="text-xs text-slate-400">{(f.size / 1024).toFixed(0)} KB</span>
+                      <span className="text-xs text-slate-500">{(f.size / 1024).toFixed(0)} KB</span>
                       <button aria-label="Remover anexo"
                         type="button"
-                        className="text-slate-400 hover:text-red-600 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center max-md:min-h-10 max-md:min-w-10"
+                        className="text-slate-500 hover:text-red-600 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center max-md:min-h-10 max-md:min-w-10"
                         onClick={() => setBcastFiles(files => files.filter((_, idx) => idx !== i))}
                       >
                         <X size={14} />
                       </button>
                     </div>
                   ))}
-                  <p className={`text-xs ${totalAttachBytes > 3_500_000 ? "text-red-600 font-medium" : "text-slate-400"}`}>
+                  <p className={`text-xs ${totalAttachBytes > 3_500_000 ? "text-red-600 font-medium" : "text-slate-500"}`}>
                     Total: {(totalAttachBytes / 1024 / 1024).toFixed(2)} MB / 3,5 MB
                   </p>
                 </div>
@@ -1404,7 +1396,7 @@ function CampaignsTab() {
             </div>
             <div className="flex gap-2">
               <Button
-                className="flex-1 bg-blue-900 hover:bg-blue-800"
+                className="flex-1"
                 onClick={() => setConfirmBroadcast(true)}
                 disabled={broadcastMutation.isPending || sendingId !== null}
               >
@@ -1422,7 +1414,7 @@ function CampaignsTab() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Send size={16} /></span>
+              <Send size={16} aria-hidden className="text-slate-500" />
               Confirmar envio
             </DialogTitle>
           </DialogHeader>
@@ -1433,14 +1425,14 @@ function CampaignsTab() {
               <p><span className="font-medium text-slate-700">Assunto:</span> {confirmCampaign?.subject}</p>
             </div>
             <p className="flex items-start gap-1.5 text-xs text-slate-500">
-              <CalendarClock size={13} className="mt-0.5 flex-shrink-0 text-slate-400" />
+              <CalendarClock size={13} className="mt-0.5 flex-shrink-0 text-slate-500" />
               Se você fechar esta tela, o envio continua automaticamente no próximo ciclo diário (8h).
             </p>
-            <p className="text-xs text-slate-400">O envio não pode ser desfeito depois de iniciado.</p>
+            <p className="text-xs text-slate-500">O envio não pode ser desfeito depois de iniciado.</p>
           </div>
           <DialogFooter className="flex gap-2 pt-2">
             <Button
-              className="flex-1 bg-blue-900 hover:bg-blue-800"
+              className="flex-1"
               disabled={sendingId !== null}
               onClick={() => {
                 const target = confirmCampaign;
@@ -1460,7 +1452,7 @@ function CampaignsTab() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-700"><Megaphone size={16} /></span>
+              <Megaphone size={16} aria-hidden className="text-slate-500" />
               Confirmar disparo
             </DialogTitle>
           </DialogHeader>
@@ -1471,11 +1463,11 @@ function CampaignsTab() {
               <p><span className="font-medium text-slate-700">Assunto:</span> {bcast.subject}</p>
               <p><span className="font-medium text-slate-700">Remetente:</span> {bcast.replyTo || "Padrão do sistema"}</p>
             </div>
-            <p className="text-xs text-slate-400">O envio não pode ser desfeito depois de iniciado.</p>
+            <p className="text-xs text-slate-500">O envio não pode ser desfeito depois de iniciado.</p>
           </div>
           <DialogFooter className="flex gap-2 pt-2">
             <Button
-              className="flex-1 bg-blue-900 hover:bg-blue-800"
+              className="flex-1"
               disabled={broadcastMutation.isPending || sendingId !== null}
               onClick={() => { setConfirmBroadcast(false); handleSendBroadcast(); }}
             >
@@ -1504,7 +1496,7 @@ function CampaignDetailDialog({ campaignId, onClose }: { campaignId: number | nu
       <DialogContent className="max-w-3xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Send size={16} /></span>
+            <Send size={16} aria-hidden className="text-slate-500" />
             {data?.campaign.name ?? "Campanha"}
           </DialogTitle>
         </DialogHeader>
@@ -1517,12 +1509,12 @@ function CampaignDetailDialog({ campaignId, onClose }: { campaignId: number | nu
               <StatTile icon={Mail} label="Status" value={STATUS_LABELS[data.campaign.status] ?? data.campaign.status} accent="bg-blue-100 text-blue-900" />
             </div>
 
-            <div className="rounded-xl border border-slate-200 overflow-hidden">
-              <div className="bg-slate-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Assunto</div>
+            <div className="rounded-lg border border-slate-200 overflow-hidden">
+              <div className="bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-500">Assunto</div>
               <div className="px-3 py-2 text-sm text-slate-700">{data.campaign.subject}</div>
             </div>
 
-            <div className="overflow-x-auto max-h-80 rounded-xl border border-slate-200">
+            <div className="overflow-x-auto max-h-80 rounded-lg border border-slate-200">
               <table className="w-full text-sm min-w-[480px]">
                 <thead className={`${THEAD_CLASS} sticky top-0`}>
                   <tr>
@@ -1713,7 +1705,7 @@ function TemplatesTab() {
             <Sparkles size={14} className="mr-1" /> Adicionar modelos da marca
           </Button>
         </div>
-        <Button className="bg-blue-900 hover:bg-blue-800 shadow-sm" onClick={openNewTemplate}>
+        <Button  onClick={openNewTemplate}>
           <Plus size={16} className="mr-1" /> Novo Template
         </Button>
       </div>
@@ -1723,7 +1715,7 @@ function TemplatesTab() {
           <div className="flex flex-wrap gap-1.5 border-b border-slate-200 pb-3">
             <button
               onClick={() => setActiveTab('all')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'all' ? 'bg-blue-900 text-white shadow-sm' : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'all' ? 'bg-blue-900 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
             >
               Todos ({templates?.length ?? 0})
             </button>
@@ -1734,14 +1726,14 @@ function TemplatesTab() {
                 <div key={cat.id} className="relative group">
                   <button
                     onClick={() => setActiveTab(String(cat.id))}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${isActive ? 'bg-blue-900 text-white shadow-sm' : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${isActive ? 'bg-blue-900 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
                   >
                     {cat.name} ({count})
                   </button>
                   <div className="absolute -top-1 -right-1 flex sm:hidden sm:group-hover:flex gap-0.5">
                     <button aria-label="Renomear aba"
                       onClick={(e) => { e.stopPropagation(); setEditingCat({ id: cat.id, name: cat.name }); }}
-                      className="flex h-7 w-7 items-center justify-center rounded-full bg-white border border-slate-300 shadow-sm text-slate-500 hover:text-blue-700 hover:border-blue-400"
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-white border border-slate-300 text-slate-500 hover:text-blue-700 hover:border-blue-400"
                       title="Renomear"
                     >
                       <Pencil size={10} />
@@ -1749,7 +1741,7 @@ function TemplatesTab() {
                     <button aria-label="Excluir aba"
                       onClick={(e) => { e.stopPropagation(); handleDeleteCat(cat.id, cat.name); }}
                       disabled={deleteCatMutation.isPending}
-                      className="flex h-7 w-7 items-center justify-center rounded-full bg-white border border-slate-300 shadow-sm text-slate-500 hover:text-red-600 hover:border-red-400 disabled:opacity-50"
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-white border border-slate-300 text-slate-500 hover:text-red-600 hover:border-red-400 disabled:opacity-50"
                       title="Excluir"
                     >
                       <X size={10} />
@@ -1761,7 +1753,7 @@ function TemplatesTab() {
             {templates?.some(t => getCatIds(t).length === 0) && (
               <button
                 onClick={() => setActiveTab('uncategorized')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'uncategorized' ? 'bg-blue-900 text-white shadow-sm' : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'uncategorized' ? 'bg-blue-900 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
               >
                 Sem categoria ({templates?.filter(t => getCatIds(t).length === 0).length ?? 0})
               </button>
@@ -1772,7 +1764,7 @@ function TemplatesTab() {
           {isLoading ? (
             <p className="text-sm text-slate-500">Carregando...</p>
           ) : filteredTemplates.length > 0 ? (
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <div className="overflow-x-auto -mx-4 border-y border-slate-200">
               <p className="text-xs text-slate-600 px-3 py-1.5 md:hidden sticky left-0">Role para o lado para ver todas as colunas →</p>
               <table className="w-full text-sm min-w-[480px]">
                 <thead className={THEAD_CLASS}>
@@ -1791,7 +1783,7 @@ function TemplatesTab() {
                     return (
                       <tr key={t.id} className={TR_CLASS}>
                         <td className="px-3 py-2.5 font-medium text-slate-700">{t.name}</td>
-                        <td className="px-3 py-2.5 text-slate-400 text-xs font-mono">{t.slug}</td>
+                        <td className="px-3 py-2.5 text-slate-500 text-xs font-mono">{t.slug}</td>
                         <td className="px-3 py-2.5 text-xs text-slate-500">{t.subject}</td>
                         {activeTab === 'all' && (
                           <td className="px-3 py-2.5 text-xs">
@@ -1815,7 +1807,7 @@ function TemplatesTab() {
                             <Button aria-label="Editar template" className="max-md:min-h-10 max-md:min-w-10" size="sm" variant="outline" onClick={() => setEditing({ id: t.id, categoryIds: ids, slug: t.slug, name: t.name, subject: t.subject, htmlBody: t.htmlBody, active: t.active, attachments: Array.isArray((t as any).attachments) ? (t as any).attachments.map((a: any) => ({ filename: a.filename, content: a.content, size: Math.ceil((a.content?.length ?? 0) * 0.75) })) : [] })}>
                               <Pencil size={14} />
                             </Button>
-                            <Button aria-label="Excluir template" className="max-md:min-h-10 max-md:min-w-10" size="sm" variant="destructive" onClick={() => handleDelete(t.id)} disabled={deleteMutation.isPending}>
+                            <Button aria-label="Excluir template" className="text-slate-500 hover:text-red-700 hover:bg-red-50" size="icon-sm" variant="ghost" onClick={() => handleDelete(t.id)} disabled={deleteMutation.isPending}>
                               <Trash2 size={14} />
                             </Button>
                           </div>
@@ -1837,7 +1829,7 @@ function TemplatesTab() {
         <DialogContent className="max-w-6xl w-[95vw] max-h-[90dvh] overflow-y-auto max-sm:p-4">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><LayoutTemplate size={16} /></span>
+              <LayoutTemplate size={16} aria-hidden className="text-slate-500" />
               {editing?.id ? "Editar Template" : "Novo Template"}
             </DialogTitle>
           </DialogHeader>
@@ -1884,14 +1876,14 @@ function TemplatesTab() {
                   <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
                     <button
                       type="button"
-                      className={`px-2 py-1 rounded text-xs font-medium transition ${!useBlockEditorTpl ? 'bg-white shadow-sm text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
+                      className={`px-2 py-1 rounded text-xs font-medium transition ${!useBlockEditorTpl ? 'bg-white text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
                       onClick={() => setUseBlockEditorTpl(false)}
                     >
                       Editor
                     </button>
                     <button
                       type="button"
-                      className={`px-2 py-1 rounded text-xs font-medium transition flex items-center gap-1 ${useBlockEditorTpl ? 'bg-white shadow-sm text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
+                      className={`px-2 py-1 rounded text-xs font-medium transition flex items-center gap-1 ${useBlockEditorTpl ? 'bg-white text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
                       onClick={() => setUseBlockEditorTpl(true)}
                     >
                       <Blocks size={12} /> Blocos
@@ -1907,7 +1899,7 @@ function TemplatesTab() {
               </div>
               <div>
                 <Label>Anexos (opcional)</Label>
-                <label className="mt-1 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500 hover:border-blue-300 hover:bg-blue-50/50 transition">
+                <label className="mt-1 flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500 hover:border-blue-300 hover:bg-slate-50 transition">
                   <Paperclip size={16} />
                   <span>Clique para anexar arquivos</span>
                   <input type="file" multiple className="hidden" onChange={e => { handleAddTplFiles(e.target.files); e.target.value = ""; }} />
@@ -1918,17 +1910,17 @@ function TemplatesTab() {
                       <div key={i} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm">
                         <FileText size={14} className="flex-shrink-0 text-blue-700" />
                         <span className="flex-1 truncate text-slate-700">{f.filename}</span>
-                        <span className="text-xs text-slate-400">{(f.size / 1024).toFixed(0)} KB</span>
+                        <span className="text-xs text-slate-500">{(f.size / 1024).toFixed(0)} KB</span>
                         <button aria-label="Remover anexo"
                           type="button"
-                          className="text-slate-400 hover:text-red-600 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center max-md:min-h-10 max-md:min-w-10"
+                          className="text-slate-500 hover:text-red-600 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center max-md:min-h-10 max-md:min-w-10"
                           onClick={() => setEditing(e => e && ({ ...e, attachments: e.attachments?.filter((_, idx) => idx !== i) }))}
                         >
                           <X size={14} />
                         </button>
                       </div>
                     ))}
-                    <p className={`text-xs ${tplAttachBytes > 3_500_000 ? "text-red-600 font-medium" : "text-slate-400"}`}>
+                    <p className={`text-xs ${tplAttachBytes > 3_500_000 ? "text-red-600 font-medium" : "text-slate-500"}`}>
                       Total: {(tplAttachBytes / 1024 / 1024).toFixed(2)} MB / 3,5 MB
                     </p>
                   </div>
@@ -1943,7 +1935,7 @@ function TemplatesTab() {
               </div>
             )}
             <div className="flex gap-2">
-              <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleSave} disabled={upsertMutation.isPending}>
+              <Button className="flex-1" onClick={handleSave} disabled={upsertMutation.isPending}>
                 {upsertMutation.isPending ? "Salvando..." : "Salvar"}
               </Button>
               <Button variant="outline" className="flex-1" onClick={() => setEditing(null)}>Cancelar</Button>
@@ -1969,7 +1961,7 @@ function TemplatesTab() {
             />
           </div>
           <DialogFooter className="flex gap-2 pt-2">
-            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleSaveCat} disabled={upsertCatMutation.isPending}>
+            <Button className="flex-1" onClick={handleSaveCat} disabled={upsertCatMutation.isPending}>
               {upsertCatMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => setEditingCat(null)}>Cancelar</Button>
@@ -2076,7 +2068,7 @@ function SequencesTab() {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button className="bg-blue-900 hover:bg-blue-800 shadow-sm" onClick={() => setShowCreate(true)}>
+        <Button  onClick={() => setShowCreate(true)}>
           <Plus size={16} className="mr-1" /> Nova sequência
         </Button>
       </div>
@@ -2084,7 +2076,7 @@ function SequencesTab() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Workflow size={16} className="text-blue-900" /> Sequências <span className="text-slate-400 font-normal">({sequences?.length ?? 0})</span>
+            <Workflow size={16} className="text-blue-900" /> Sequências <span className="text-slate-500 font-normal">({sequences?.length ?? 0})</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -2093,7 +2085,7 @@ function SequencesTab() {
           ) : isError ? (
             <QueryError onRetry={() => refetch()} retrying={isFetching} message="Falha ao carregar as sequências" />
           ) : sequences && sequences.length > 0 ? (
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <div className="overflow-x-auto -mx-4 border-y border-slate-200">
               <p className="text-xs text-slate-600 px-3 py-1.5 md:hidden sticky left-0">Role para o lado para ver todas as colunas →</p>
               <table className="w-full text-sm min-w-[640px]">
                 <thead className={THEAD_CLASS}>
@@ -2135,7 +2127,7 @@ function SequencesTab() {
                           <Button aria-label="Editar sequência" className="max-md:min-h-10 max-md:min-w-10" size="sm" variant="outline" onClick={() => handleEdit(s)}>
                             <Pencil size={14} />
                           </Button>
-                          <Button aria-label="Excluir sequência" className="max-md:min-h-10 max-md:min-w-10" size="sm" variant="destructive" onClick={() => handleDelete(s.id)} disabled={deleteMutation.isPending}>
+                          <Button aria-label="Excluir sequência" className="text-slate-500 hover:text-red-700 hover:bg-red-50" size="icon-sm" variant="ghost" onClick={() => handleDelete(s.id)} disabled={deleteMutation.isPending}>
                             <Trash2 size={14} />
                           </Button>
                         </div>
@@ -2156,7 +2148,7 @@ function SequencesTab() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Workflow size={16} /></span>
+              <Workflow size={16} aria-hidden className="text-slate-500" />
               Nova sequência
             </DialogTitle>
           </DialogHeader>
@@ -2186,7 +2178,7 @@ function SequencesTab() {
             {form.repeat && <p className="text-xs text-gray-500">{REPEAT_HINT}</p>}
           </div>
           <DialogFooter className="flex gap-2 pt-2">
-            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleCreate} disabled={upsertMutation.isPending}>
+            <Button className="flex-1" onClick={handleCreate} disabled={upsertMutation.isPending}>
               {upsertMutation.isPending ? "Criando..." : "Criar"}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => setShowCreate(false)}>Cancelar</Button>
@@ -2199,7 +2191,7 @@ function SequencesTab() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Pencil size={16} /></span>
+              <Pencil size={16} aria-hidden className="text-slate-500" />
               Editar sequência
             </DialogTitle>
           </DialogHeader>
@@ -2229,7 +2221,7 @@ function SequencesTab() {
             {editingSeq?.repeat && <p className="text-xs text-gray-500">{REPEAT_HINT}</p>}
           </div>
           <DialogFooter className="flex gap-2 pt-2">
-            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleSaveEdit} disabled={upsertMutation.isPending}>
+            <Button className="flex-1" onClick={handleSaveEdit} disabled={upsertMutation.isPending}>
               {upsertMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => setEditingSeq(null)}>Cancelar</Button>
@@ -2355,7 +2347,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
       <DialogContent className="max-w-6xl w-[95vw] max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Workflow size={16} /></span>
+            <Workflow size={16} aria-hidden className="text-slate-500" />
             {sequence?.name ?? "Sequência"}
           </DialogTitle>
         </DialogHeader>
@@ -2370,7 +2362,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
               </h3>
               <Button
                 size="sm"
-                className="bg-blue-900 hover:bg-blue-800 max-md:h-10"
+                className="max-md:h-10"
                 onClick={() => setEditingStep({ stepOrder: (steps?.length ?? 0) + 1, delayDays: 0, subject: "", htmlBody: "", sendCondition: "always", retryIfNotOpened: false, retryDelayHours: 24, maxRetries: 1, retrySubject: "" })}
               >
                 <Plus size={14} className="mr-1" /> Adicionar passo
@@ -2387,7 +2379,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                           {step.stepOrder}
                         </div>
                       </div>
-                      <div className="flex-1 border border-slate-200 rounded-xl p-3 bg-white shadow-sm">
+                      <div className="flex-1 border border-slate-200 rounded-lg p-3 bg-white">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -2401,7 +2393,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                                 <Badge variant="outline" className="text-xs bg-amber-100 text-amber-700 border-amber-200">{SEND_CONDITION_BADGES[(step as any).sendCondition] ?? (step as any).sendCondition}</Badge>
                               )}
                               {(step as any).retryIfNotOpened && (
-                                <Badge variant="outline" className="text-xs bg-orange-100 text-orange-700 border-orange-200 gap-1"><RotateCcw size={11} /> reenvio {(step as any).retryDelayHours}h (max {(step as any).maxRetries}x)</Badge>
+                                <Badge variant="outline" className="text-xs bg-amber-100 text-amber-700 border-amber-200 gap-1"><RotateCcw size={11} /> reenvio {(step as any).retryDelayHours}h (max {(step as any).maxRetries}x)</Badge>
                               )}
                             </div>
                             <p className="text-xs text-gray-500 mt-1 line-clamp-2">
@@ -2424,7 +2416,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                             }}>
                               <Pencil size={14} />
                             </Button>
-                            <Button aria-label="Excluir passo" className="max-md:min-h-10 max-md:min-w-10" size="sm" variant="destructive" onClick={() => handleDeleteStep(step.id)} disabled={deleteStepMutation.isPending}>
+                            <Button aria-label="Excluir passo" className="text-slate-500 hover:text-red-700 hover:bg-red-50" size="icon-sm" variant="ghost" onClick={() => handleDeleteStep(step.id)} disabled={deleteStepMutation.isPending}>
                               <Trash2 size={14} />
                             </Button>
                           </div>
@@ -2443,7 +2435,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
           <div>
             <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
               <h3 className="font-semibold text-sm flex items-center gap-2 text-slate-700">
-                <Users size={14} className="text-blue-900" /> Inscritos <span className="text-slate-400 font-normal">({enrollments?.total ?? 0})</span>
+                <Users size={14} className="text-blue-900" /> Inscritos <span className="text-slate-500 font-normal">({enrollments?.total ?? 0})</span>
               </h3>
               <div className="flex items-center gap-2">
                 <Select value={enrollStatus ?? "__all__"} onValueChange={(v) => { setEnrollStatus(v === "__all__" ? undefined : v as any); setPage(0); }}>
@@ -2456,13 +2448,13 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                     <SelectItem value="cancelled">Cancelada</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button size="sm" className="bg-blue-900 hover:bg-blue-800 max-md:h-10" onClick={() => setShowEnroll(true)}>
+                <Button size="sm" className="max-md:h-10" onClick={() => setShowEnroll(true)}>
                   <Users size={14} className="mr-1" /> Inscrever leads
                 </Button>
               </div>
             </div>
             {enrollments && enrollments.rows.length > 0 ? (
-              <div className="overflow-x-auto max-h-72 rounded-xl border border-slate-200">
+              <div className="overflow-x-auto max-h-72 rounded-lg border border-slate-200">
                 <p className="text-xs text-slate-600 px-3 py-1.5 md:hidden sticky left-0">Role para o lado para ver todas as colunas →</p>
                 <table className="w-full text-sm min-w-[560px]">
                   <thead className={`${THEAD_CLASS} sticky top-0`}>
@@ -2500,7 +2492,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                               </Button>
                             )}
                             {(e.status === "active" || e.status === "paused") && (
-                              <Button aria-label="Cancelar inscrição" className="max-md:min-h-10 max-md:min-w-10" size="sm" variant="destructive" onClick={() => handleEnrollmentAction(e.id, "cancel")} title="Cancelar">
+                              <Button aria-label="Cancelar inscrição" className="text-slate-500 hover:text-red-700 hover:bg-red-50" size="icon-sm" variant="ghost" onClick={() => handleEnrollmentAction(e.id, "cancel")} title="Cancelar">
                                 <X size={14} />
                               </Button>
                             )}
@@ -2529,7 +2521,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
           <DialogContent className="max-w-6xl w-[95vw] max-h-[90dvh] overflow-y-auto max-sm:p-4">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900">{editingStep?.id ? <Pencil size={16} /> : <Plus size={16} />}</span>
+                {editingStep?.id ? <Pencil size={16} aria-hidden className="text-slate-500" /> : <Plus size={16} aria-hidden className="text-slate-500" />}
                 {editingStep?.id ? "Editar passo" : "Novo passo"}
               </DialogTitle>
             </DialogHeader>
@@ -2577,14 +2569,14 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                     <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
                       <button
                         type="button"
-                        className={`px-2 py-1 rounded text-xs font-medium transition ${!useBlockEditorStep ? 'bg-white shadow-sm text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`px-2 py-1 rounded text-xs font-medium transition ${!useBlockEditorStep ? 'bg-white text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
                         onClick={() => setUseBlockEditorStep(false)}
                       >
                         Editor
                       </button>
                       <button
                         type="button"
-                        className={`px-2 py-1 rounded text-xs font-medium transition flex items-center gap-1 ${useBlockEditorStep ? 'bg-white shadow-sm text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`px-2 py-1 rounded text-xs font-medium transition flex items-center gap-1 ${useBlockEditorStep ? 'bg-white text-blue-900' : 'text-slate-500 hover:text-slate-700'}`}
                         onClick={() => setUseBlockEditorStep(true)}
                       >
                         <Blocks size={12} /> Blocos
@@ -2610,7 +2602,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                   </Select>
                   <p className="text-xs text-gray-500 mt-1">{SEND_CONDITION_HINT}</p>
                 </div>
-                <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-3 space-y-3">
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3">
                   <label className="flex items-center gap-2 text-sm font-medium cursor-pointer select-none">
                     <input
                       type="checkbox"
@@ -2645,7 +2637,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
               </div>
             )}
             <DialogFooter className="flex gap-2 pt-2 max-sm:sticky max-sm:bottom-0 max-sm:z-10 max-sm:bg-background max-sm:border-t max-sm:-mx-4 max-sm:px-4 max-sm:py-3">
-              <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleSaveStep} disabled={upsertStepMutation.isPending}>
+              <Button className="flex-1" onClick={handleSaveStep} disabled={upsertStepMutation.isPending}>
                 {upsertStepMutation.isPending ? "Salvando..." : "Salvar"}
               </Button>
               <Button variant="outline" className="flex-1" onClick={() => setEditingStep(null)}>Cancelar</Button>
@@ -2719,7 +2711,7 @@ function EnrollLeadsDialog({ sequenceId, open, onClose, onEnrolled }: { sequence
       <DialogContent className="max-w-lg max-h-[80dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Users size={16} /></span>
+            <Users size={16} aria-hidden className="text-slate-500" />
             Inscrever leads na sequência
           </DialogTitle>
         </DialogHeader>
@@ -2738,9 +2730,9 @@ function EnrollLeadsDialog({ sequenceId, open, onClose, onEnrolled }: { sequence
             <Checkbox checked={tasksWithEmail.length > 0 && selectedIds.size === tasksWithEmail.length} onCheckedChange={toggleSelectAll} />
             Selecionar todos ({tasksWithEmail.length})
           </label>
-          <div className="rounded-xl border border-slate-200 max-h-72 overflow-y-auto divide-y divide-slate-100">
+          <div className="rounded-lg border border-slate-200 max-h-72 overflow-y-auto divide-y divide-slate-100">
             {tasksWithEmail.length > 0 ? tasksWithEmail.map((t: any) => (
-              <label key={t.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-blue-50/50 transition-colors">
+              <label key={t.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-slate-50 transition-colors">
                 <Checkbox checked={selectedIds.has(t.id)} onCheckedChange={() => toggleSelect(t.id)} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-slate-700">{t.title}</p>
@@ -2753,7 +2745,7 @@ function EnrollLeadsDialog({ sequenceId, open, onClose, onEnrolled }: { sequence
           </div>
         </div>
         <DialogFooter className="flex gap-2 pt-2">
-          <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleEnroll} disabled={enrollMutation.isPending || selectedIds.size === 0}>
+          <Button className="flex-1" onClick={handleEnroll} disabled={enrollMutation.isPending || selectedIds.size === 0}>
             {enrollMutation.isPending ? "Inscrevendo..." : `Inscrever (${selectedIds.size})`}
           </Button>
           <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
@@ -2911,7 +2903,7 @@ function AutomationsTab() {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button className="bg-blue-900 hover:bg-blue-800 shadow-sm" onClick={openNew}>
+        <Button  onClick={openNew}>
           <Plus size={16} className="mr-1" /> Nova automação
         </Button>
       </div>
@@ -2919,14 +2911,14 @@ function AutomationsTab() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Zap size={16} className="text-blue-900" /> Automações <span className="text-slate-400 font-normal">({parsedRules.length})</span>
+            <Zap size={16} className="text-blue-900" /> Automações <span className="text-slate-500 font-normal">({parsedRules.length})</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <p className="text-sm text-slate-500">Carregando...</p>
           ) : parsedRules.length > 0 ? (
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <div className="overflow-x-auto -mx-4 border-y border-slate-200">
               <p className="text-xs text-slate-600 px-3 py-1.5 md:hidden sticky left-0">Role para o lado para ver todas as colunas →</p>
               <table className="w-full text-sm min-w-[640px]">
                 <thead className={THEAD_CLASS}>
@@ -2960,7 +2952,7 @@ function AutomationsTab() {
                           <Button aria-label="Editar automação" className="max-md:min-h-10 max-md:min-w-10" size="sm" variant="outline" onClick={() => openEdit(r)}>
                             <Pencil size={14} />
                           </Button>
-                          <Button aria-label="Excluir automação" className="max-md:min-h-10 max-md:min-w-10" size="sm" variant="destructive" onClick={() => handleDelete(r.id)} disabled={deleteMutation.isPending}>
+                          <Button aria-label="Excluir automação" className="text-slate-500 hover:text-red-700 hover:bg-red-50" size="icon-sm" variant="ghost" onClick={() => handleDelete(r.id)} disabled={deleteMutation.isPending}>
                             <Trash2 size={14} />
                           </Button>
                         </div>
@@ -2980,7 +2972,7 @@ function AutomationsTab() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Zap size={16} /></span>
+              <Zap size={16} aria-hidden className="text-slate-500" />
               {editing?.id ? "Editar automação" : "Nova automação"}
             </DialogTitle>
           </DialogHeader>
@@ -3066,7 +3058,7 @@ function AutomationsTab() {
                 </div>
               )}
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
-                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Filtro por tags</p>
+                <p className="text-xs font-semibold text-slate-600">Filtro por tags</p>
                 <div>
                   <Label className="text-xs">Só dispara se o lead TEM estas tags (todas)</Label>
                   <div className="flex flex-wrap gap-1.5 mt-1">
@@ -3083,7 +3075,7 @@ function AutomationsTab() {
                         >{tag}</button>
                       );
                     })}
-                    {(availTags ?? []).length === 0 && <span className="text-xs text-slate-400">Nenhuma tag cadastrada</span>}
+                    {(availTags ?? []).length === 0 && <span className="text-xs text-slate-500">Nenhuma tag cadastrada</span>}
                   </div>
                 </div>
                 <div>
@@ -3118,7 +3110,7 @@ function AutomationsTab() {
             </div>
           )}
           <DialogFooter className="flex gap-2 pt-2">
-            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleSave} disabled={upsertMutation.isPending}>
+            <Button className="flex-1" onClick={handleSave} disabled={upsertMutation.isPending}>
               {upsertMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => setEditing(null)}>Cancelar</Button>
@@ -3202,7 +3194,7 @@ function TagsTab() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Tag size={16} className="text-blue-900" /> Tags <span className="text-slate-400 font-normal">({tagList?.length ?? 0})</span>
+            <Tag size={16} className="text-blue-900" /> Tags <span className="text-slate-500 font-normal">({tagList?.length ?? 0})</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -3211,7 +3203,7 @@ function TagsTab() {
             Assim todo mundo usa o mesmo padrão, sem variações ou duplicatas.
           </p>
 
-          <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl border border-dashed border-slate-300 bg-slate-50">
+          <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg border border-dashed border-slate-300 bg-slate-50">
             <Input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
@@ -3231,7 +3223,7 @@ function TagsTab() {
                 />
               ))}
             </div>
-            <Button size="sm" className="bg-blue-900 hover:bg-blue-800 shadow-sm gap-1.5 max-md:h-10" onClick={handleCreate} disabled={!newName.trim() || createMutation.isPending}>
+            <Button size="sm" className="gap-1.5 max-md:h-10" onClick={handleCreate} disabled={!newName.trim() || createMutation.isPending}>
               <Plus size={14} /> Adicionar
             </Button>
           </div>
@@ -3239,7 +3231,7 @@ function TagsTab() {
           {isLoading ? (
             <p className="text-sm text-slate-500">Carregando...</p>
           ) : tagList && tagList.length > 0 ? (
-            <div className="rounded-xl border border-slate-200 divide-y divide-slate-100">
+            <div className="rounded-lg border border-slate-200 divide-y divide-slate-100">
               {tagList.map(tag => (
                 <div key={tag.id} className="flex items-center gap-2 p-2.5 group">
                   {editingId === tag.id ? (
@@ -3263,7 +3255,7 @@ function TagsTab() {
                         className="flex-1 h-8"
                         autoFocus
                       />
-                      <Button size="sm" className="bg-blue-900 hover:bg-blue-800 shadow-sm max-md:h-10" onClick={saveEdit} disabled={!editName.trim() || updateMutation.isPending}>Salvar</Button>
+                      <Button size="sm" className="max-md:h-10" onClick={saveEdit} disabled={!editName.trim() || updateMutation.isPending}>Salvar</Button>
                       <Button size="sm" className="max-md:h-10" variant="outline" onClick={() => setEditingId(null)}>Cancelar</Button>
                     </>
                   ) : (
@@ -3273,7 +3265,7 @@ function TagsTab() {
                       <button aria-label="Renomear tag"
                         type="button"
                         onClick={() => startEdit(tag)}
-                        className="p-1.5 -m-2 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-md text-slate-400 hover:text-blue-700 hover:bg-blue-50 sm:opacity-0 sm:group-hover:opacity-100 transition"
+                        className="p-1.5 -m-2 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-md text-slate-500 hover:text-blue-700 hover:bg-blue-50 sm:opacity-0 sm:group-hover:opacity-100 transition"
                         title="Renomear / cor"
                       >
                         <Pencil size={14} />
@@ -3281,7 +3273,7 @@ function TagsTab() {
                       <button aria-label="Excluir tag"
                         type="button"
                         onClick={async () => { if (await confirm(`Excluir a tag "${tag.name}"? Ela será removida de todas as tarefas.`)) deleteMutation.mutate({ id: tag.id }); }}
-                        className="p-1.5 -m-2 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 sm:opacity-0 sm:group-hover:opacity-100 transition"
+                        className="p-1.5 -m-2 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-md text-slate-500 hover:text-red-600 hover:bg-red-50 sm:opacity-0 sm:group-hover:opacity-100 transition"
                         title="Excluir"
                       >
                         <Trash2 size={14} />
@@ -3380,18 +3372,18 @@ function ContactActions({ c, onEdit, onUnsub, onDelete, withLabels = false }: {
 }) {
   const base = withLabels
     ? "inline-flex items-center justify-center gap-1.5 min-h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium"
-    : "p-1.5 -m-1.5 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-md text-slate-400 transition";
+    : "p-1.5 -m-1.5 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-md text-slate-500 transition";
   return (
     <div className={withLabels ? "flex gap-2 flex-wrap" : "flex gap-1"}>
       <button type="button" onClick={() => onEdit(c)} aria-label="Editar contato" title="Editar" className={`${base} ${withLabels ? "text-blue-800" : "hover:text-blue-700 hover:bg-blue-50"}`}>
         <Pencil size={14} />{withLabels && "Editar"}
       </button>
       {c.status === 'active' && (
-        <button type="button" onClick={() => onUnsub(c)} aria-label="Descadastrar contato" title="Descadastrar" className={`${base} ${withLabels ? "text-orange-700" : "hover:text-orange-600 hover:bg-orange-50"}`}>
+        <button type="button" onClick={() => onUnsub(c)} aria-label="Descadastrar contato" title="Descadastrar" className={`${base} ${withLabels ? "text-amber-700" : "hover:text-amber-600 hover:bg-amber-50"}`}>
           <MailX size={14} />{withLabels && "Descadastrar"}
         </button>
       )}
-      <button type="button" onClick={() => onDelete(c)} aria-label="Excluir contato" title="Excluir" className={`${base} ${withLabels ? "text-red-700" : "hover:text-red-600 hover:bg-red-50"}`}>
+      <button type="button" onClick={() => onDelete(c)} aria-label="Excluir contato" title="Excluir" className={`${base} ${withLabels ? "text-red-700" : "hover:text-red-700 hover:bg-red-50"}`}>
         <Trash2 size={14} />{withLabels && "Excluir"}
       </button>
     </div>
@@ -3705,7 +3697,7 @@ function MarketingContactsSection() {
                 className={`w-full text-left text-sm px-3 py-2 rounded-lg transition-colors flex items-center justify-between ${activeListId === "all" ? "bg-blue-900 text-white font-medium" : "text-slate-600 hover:bg-slate-100"}`}
               >
                 <span>Todos os contatos</span>
-                <span className={`text-xs ${activeListId === "all" ? "text-blue-200" : "text-slate-400"}`}>{stats?.total ?? 0}</span>
+                <span className={`text-xs ${activeListId === "all" ? "text-blue-200" : "text-slate-500"}`}>{stats?.total ?? 0}</span>
               </button>
               {lists?.map(list => (
                 <div key={list.id} className="group relative">
@@ -3715,7 +3707,7 @@ function MarketingContactsSection() {
                     className={`w-full text-left text-sm px-3 py-2 rounded-lg transition-colors flex items-center justify-between ${activeListId === list.id ? "bg-blue-900 text-white font-medium" : "text-slate-600 hover:bg-slate-100"}`}
                   >
                     <span className="truncate pr-1">{list.name}</span>
-                    <span className={`text-xs flex-shrink-0 ${activeListId === list.id ? "text-blue-200" : "text-slate-400"}`}>{list.contactCount}</span>
+                    <span className={`text-xs flex-shrink-0 ${activeListId === list.id ? "text-blue-200" : "text-slate-500"}`}>{list.contactCount}</span>
                   </button>
                   <button aria-label="Excluir lista"
                     type="button"
@@ -3746,7 +3738,7 @@ function MarketingContactsSection() {
                       <FolderOpen size={16} className="text-blue-900" /> {activeListObj?.name ?? "Lista"}
                     </>
                   )}
-                  <span className="text-slate-400 font-normal">({contactsData?.total ?? 0})</span>
+                  <span className="text-slate-500 font-normal">({contactsData?.total ?? 0})</span>
                 </CardTitle>
                 <div className="flex gap-2">
                   {activeListId !== "all" && (
@@ -3761,7 +3753,7 @@ function MarketingContactsSection() {
                   )}
                   <Button
                     size="sm"
-                    className="bg-blue-900 hover:bg-blue-800 shadow-sm gap-1.5 max-md:h-10"
+                    className="gap-1.5 max-md:h-10"
                     onClick={() => setShowImport(true)}
                   >
                     <Upload size={14} /> Importar CSV
@@ -3774,7 +3766,7 @@ function MarketingContactsSection() {
               <div className="flex flex-col gap-2.5">
                 <div className="flex gap-2">
                   <div className="relative flex-1">
-                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                     <Input
                       value={search}
                       onChange={e => handleSearch(e.target.value)}
@@ -3795,7 +3787,7 @@ function MarketingContactsSection() {
 
               {/* Bulk actions */}
               {selectedIds.size > 0 && (
-                <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 p-2.5 text-sm text-blue-900 flex-wrap">
+                <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 p-2.5 text-sm text-blue-900 flex-wrap">
                   <span className="font-medium">{selectedIds.size} selecionado(s)</span>
                   <Button size="sm" variant="outline" className="gap-1 text-xs max-md:h-10" onClick={handleBulkDelete} disabled={deleteMutation.isPending}>
                     <Trash2 size={12} /> Excluir
@@ -3813,7 +3805,7 @@ function MarketingContactsSection() {
                       <Workflow size={12} /> Inscrever em sequência
                     </Button>
                   )}
-                  <button aria-label="Limpar seleção" type="button" onClick={() => setSelectedIds(new Set())} className="ml-auto p-1 text-slate-400 hover:text-slate-600 max-md:min-h-10 max-md:min-w-10">
+                  <button aria-label="Limpar seleção" type="button" onClick={() => setSelectedIds(new Set())} className="ml-auto p-1 text-slate-500 hover:text-slate-600 max-md:min-h-10 max-md:min-w-10">
                     <X size={14} />
                   </button>
                 </div>
@@ -3829,7 +3821,7 @@ function MarketingContactsSection() {
                   {/* Celular: cartões com as ações à vista */}
                   <ul className="space-y-3 md:hidden">
                     {contactsData.contacts.map((c) => (
-                      <li key={c.id} className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+                      <li key={c.id} className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
                         <div className="flex items-start gap-3">
                           <Checkbox
                             className="mt-1"
@@ -3849,7 +3841,7 @@ function MarketingContactsSection() {
                       </li>
                     ))}
                   </ul>
-                  <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200">
+                  <div className="hidden md:block overflow-x-auto -mx-4 border-y border-slate-200">
                     <table className="w-full text-sm min-w-[600px]">
                       <thead className={THEAD_CLASS}>
                         <tr>
@@ -3919,12 +3911,12 @@ function MarketingContactsSection() {
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-700"><Upload size={16} /></span>
+              <Upload size={16} aria-hidden className="text-slate-500" />
               Importar leads via CSV
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">
+            <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">
               <FileText size={16} className="mt-0.5 flex-shrink-0" />
               <p>
                 Envie um CSV com colunas: <strong>email</strong> (obrigatório), nome, telefone, empresa, cidade, estado/UF.
@@ -4009,7 +4001,7 @@ function MarketingContactsSection() {
                       </tbody>
                     </table>
                     {importPreview.rows.length > 10 && (
-                      <p className="text-xs text-slate-400 px-2 py-1.5 bg-slate-50">... e mais {importPreview.rows.length - 10} contato(s)</p>
+                      <p className="text-xs text-slate-500 px-2 py-1.5 bg-slate-50">... e mais {importPreview.rows.length - 10} contato(s)</p>
                     )}
                   </div>
                 )}
@@ -4027,7 +4019,7 @@ function MarketingContactsSection() {
           </div>
           <DialogFooter className="flex gap-2 pt-2">
             <Button
-              className="flex-1 bg-blue-900 hover:bg-blue-800"
+              className="flex-1"
               onClick={handleImport}
               disabled={importMutation.isPending || !importPreview || importPreview.rows.length === 0 || (importListMode === "new" && !importNewListName.trim())}
             >
@@ -4043,7 +4035,7 @@ function MarketingContactsSection() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-700"><Pencil size={16} /></span>
+              <Pencil size={16} aria-hidden className="text-slate-500" />
               Editar contato
             </DialogTitle>
           </DialogHeader>
@@ -4059,7 +4051,7 @@ function MarketingContactsSection() {
             <div><Label>Notas</Label><Textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} rows={2} /></div>
           </div>
           <DialogFooter className="flex gap-2 pt-2">
-            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleSaveEdit} disabled={updateMutation.isPending}>
+            <Button className="flex-1" onClick={handleSaveEdit} disabled={updateMutation.isPending}>
               {updateMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => setEditContact(null)}>Cancelar</Button>
@@ -4073,7 +4065,7 @@ function MarketingContactsSection() {
           <DialogHeader><DialogTitle>Adicionar tag</DialogTitle></DialogHeader>
           <div><Label>Nome da tag</Label><Input value={bulkTagInput} onChange={e => setBulkTagInput(e.target.value)} placeholder="Ex: Feira 2026" autoFocus onKeyDown={e => { if (e.key === 'Enter') handleBulkAddTag(); }} /></div>
           <DialogFooter className="flex gap-2 pt-2">
-            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleBulkAddTag} disabled={tagMutation.isPending || !bulkTagInput.trim()}>
+            <Button className="flex-1" onClick={handleBulkAddTag} disabled={tagMutation.isPending || !bulkTagInput.trim()}>
               {tagMutation.isPending ? "Adicionando..." : `Adicionar a ${selectedIds.size} contato(s)`}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => setShowBulkTag(false)}>Cancelar</Button>
@@ -4097,7 +4089,7 @@ function MarketingContactsSection() {
             </Select>
           </div>
           <DialogFooter className="flex gap-2 pt-2">
-            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleEnroll} disabled={enrollMutation.isPending || !enrollSeqId}>
+            <Button className="flex-1" onClick={handleEnroll} disabled={enrollMutation.isPending || !enrollSeqId}>
               {enrollMutation.isPending ? "Inscrevendo..." : `Inscrever ${selectedIds.size} contato(s)`}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => setShowEnroll(false)}>Cancelar</Button>
@@ -4121,7 +4113,7 @@ function MarketingContactsSection() {
             </Select>
           </div>
           <DialogFooter className="flex gap-2 pt-2">
-            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleMoveToList} disabled={moveContactsMutation.isPending || !moveListId}>
+            <Button className="flex-1" onClick={handleMoveToList} disabled={moveContactsMutation.isPending || !moveListId}>
               {moveContactsMutation.isPending ? "Movendo..." : `Mover ${selectedIds.size} contato(s)`}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => setShowMoveList(false)}>Cancelar</Button>
@@ -4135,7 +4127,7 @@ function MarketingContactsSection() {
           <DialogHeader><DialogTitle>Renomear lista</DialogTitle></DialogHeader>
           <div><Label>Nome</Label><Input value={renameListName} onChange={e => setRenameListName(e.target.value)} autoFocus onKeyDown={e => { if (e.key === 'Enter') handleRenameList(); }} /></div>
           <DialogFooter className="flex gap-2 pt-2">
-            <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleRenameList} disabled={upsertListMutation.isPending || !renameListName.trim()}>
+            <Button className="flex-1" onClick={handleRenameList} disabled={upsertListMutation.isPending || !renameListName.trim()}>
               {upsertListMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => setShowRenameList(false)}>Cancelar</Button>
@@ -4163,21 +4155,13 @@ function OverviewKpi({ icon: Icon, label, value, sub, tone }: {
   icon: LucideIcon; label: string; value: string | number; sub?: string;
   tone: 'slate' | 'emerald' | 'rose' | 'violet' | 'amber' | 'blue';
 }) {
-  const tones: Record<string, string> = {
-    slate: 'bg-slate-100 text-slate-600',
-    emerald: 'bg-emerald-100 text-emerald-600',
-    rose: 'bg-rose-100 text-rose-600',
-    violet: 'bg-violet-100 text-violet-600',
-    amber: 'bg-amber-100 text-amber-600',
-    blue: 'bg-blue-100 text-blue-600',
-  };
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
+    <div className="rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
       <div className="flex items-center gap-2">
-        <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${tones[tone]}`}><Icon size={16} /></span>
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+        <Icon size={14} aria-hidden className="text-slate-400" />
+        <span className="text-xs font-medium text-slate-500">{label}</span>
       </div>
-      <p className="mt-2 text-2xl font-bold tabular-nums text-slate-800">{value}</p>
+      <p className="mt-2 text-xl font-semibold tabular-nums text-slate-900">{value}</p>
       {sub && <p className="text-xs text-slate-500">{sub}</p>}
     </div>
   );
@@ -4186,7 +4170,7 @@ function OverviewKpi({ icon: Icon, label, value, sub, tone }: {
 function BarList({ items, total, emptyLabel }: {
   items: { label: string; count: number }[]; total: number; emptyLabel: string;
 }) {
-  if (items.length === 0) return <p className="text-sm text-slate-400 italic py-2">{emptyLabel}</p>;
+  if (items.length === 0) return <p className="text-sm text-slate-500 italic py-2">{emptyLabel}</p>;
   const max = Math.max(...items.map(i => i.count), 1);
   return (
     <div className="space-y-2.5">
@@ -4198,7 +4182,7 @@ function BarList({ items, total, emptyLabel }: {
             <div className="flex items-center justify-between gap-2 text-sm">
               <span className="truncate text-slate-700">{it.label}</span>
               <span className="shrink-0 tabular-nums text-slate-500">
-                {it.count.toLocaleString('pt-BR')} <span className="text-slate-400">· {pctOfTotal}%</span>
+                {it.count.toLocaleString('pt-BR')} <span className="text-slate-500">· {pctOfTotal}%</span>
               </span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-slate-100">
@@ -4231,7 +4215,7 @@ function OverviewPanel({ icon: Icon, title, children }: { icon: LucideIcon; titl
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base"><Icon size={16} className="text-slate-400" /> {title}</CardTitle>
+        <CardTitle className="flex items-center gap-2"><Icon size={16} className="text-slate-500" /> {title}</CardTitle>
       </CardHeader>
       <CardContent>{children}</CardContent>
     </Card>
@@ -4246,7 +4230,7 @@ function ContactsOverviewSection() {
     return (
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="h-24 animate-pulse rounded-xl bg-slate-100" />
+          <div key={i} className="h-24 animate-pulse rounded-lg bg-slate-100" />
         ))}
       </div>
     );
@@ -4270,10 +4254,10 @@ function ContactsOverviewSection() {
       </div>
 
       {total === 0 ? (
-        <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 py-12 text-center">
+        <div className="rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 py-12 text-center">
           <Upload className="mx-auto mb-2 text-slate-300" size={32} />
           <p className="font-medium text-slate-600">Nenhum contato importado ainda</p>
-          <p className="mt-1 text-sm text-slate-400">Vá em <strong>Importados → Importar CSV</strong> para começar.<br />Assim que houver contatos, este painel mostra distribuição por lista, estado, tags e qualidade dos dados.</p>
+          <p className="mt-1 text-sm text-slate-500">Vá em <strong>Importados → Importar CSV</strong> para começar.<br />Assim que houver contatos, este painel mostra distribuição por lista, estado, tags e qualidade dos dados.</p>
         </div>
       ) : (
         <>
@@ -4300,7 +4284,7 @@ function ContactsOverviewSection() {
               </div>
               {ov.bySource.length > 0 && (
                 <div className="mt-4 border-t border-slate-100 pt-3">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Origem</p>
+                  <p className="mb-2 text-xs font-semibold text-slate-500">Origem</p>
                   <div className="flex flex-wrap gap-2">
                     {ov.bySource.map((s, i) => (
                       <span key={i} className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">
@@ -4321,20 +4305,20 @@ function ContactsOverviewSection() {
 function ContactsTab() {
   return (
     <Tabs defaultValue="overview" className="space-y-4">
-      <TabsList className="h-auto justify-start gap-1 rounded-xl bg-slate-100 p-1 flex-nowrap overflow-x-auto scrollbar-hide">
-        <TabsTrigger value="overview" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-2.5 sm:px-3 py-1.5">
+      <TabsList className="h-auto justify-start gap-1 rounded-lg bg-slate-100 p-1 flex-nowrap overflow-x-auto scrollbar-hide">
+        <TabsTrigger value="overview" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white gap-1.5 px-2.5 sm:px-3 py-1.5">
           <BarChart3 size={15} className="sm:w-[13px] sm:h-[13px]" /> <span className="hidden sm:inline">Visão Geral</span>
         </TabsTrigger>
-        <TabsTrigger value="imported" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-2.5 sm:px-3 py-1.5">
+        <TabsTrigger value="imported" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white gap-1.5 px-2.5 sm:px-3 py-1.5">
           <Upload size={15} className="sm:w-[13px] sm:h-[13px]" /> <span className="hidden sm:inline">Importados</span>
         </TabsTrigger>
-        <TabsTrigger value="confirmed" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-2.5 sm:px-3 py-1.5">
+        <TabsTrigger value="confirmed" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white gap-1.5 px-2.5 sm:px-3 py-1.5">
           <CheckCircle size={15} className="sm:w-[13px] sm:h-[13px]" /> <span className="hidden sm:inline">Confirmados</span>
         </TabsTrigger>
-        <TabsTrigger value="export" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-2.5 sm:px-3 py-1.5">
+        <TabsTrigger value="export" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white gap-1.5 px-2.5 sm:px-3 py-1.5">
           <Download size={15} className="sm:w-[13px] sm:h-[13px]" /> <span className="hidden sm:inline">Exportar</span>
         </TabsTrigger>
-        <TabsTrigger value="segments" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 px-2.5 sm:px-3 py-1.5">
+        <TabsTrigger value="segments" className="flex-shrink-0 rounded-lg text-xs data-[state=active]:bg-white gap-1.5 px-2.5 sm:px-3 py-1.5">
           <Filter size={15} className="sm:w-[13px] sm:h-[13px]" /> <span className="hidden sm:inline">Segmentação</span>
         </TabsTrigger>
       </TabsList>
@@ -4438,7 +4422,7 @@ function ConfirmedContactsSection() {
           <StatTile icon={CheckCircle} label="Leads confirmados" value={stats.confirmedLeads} accent="bg-emerald-100 text-emerald-700" />
           <StatTile icon={Users} label="Clientes" value={stats.totalClients} accent="bg-slate-100 text-slate-600" />
           <StatTile icon={XCircle} label="Aguard. confirmação" value={stats.unconfirmedLeads} accent="bg-amber-100 text-amber-700" />
-          <StatTile icon={MailX} label="Descadastrados" value={stats.unsubscribed} accent="bg-orange-100 text-orange-600" />
+          <StatTile icon={MailX} label="Descadastrados" value={stats.unsubscribed} accent="bg-amber-100 text-amber-600" />
           <StatTile icon={AlertTriangle} label="Bounced" value={stats.bounced} accent="bg-red-100 text-red-600" />
           <StatTile icon={XCircle} label="Reclamações" value={stats.complained} accent="bg-rose-100 text-rose-600" />
         </div>
@@ -4447,14 +4431,14 @@ function ConfirmedContactsSection() {
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <CardTitle className="flex items-center gap-2 text-base">
+            <CardTitle className="flex items-center gap-2">
               <Contact size={16} className="text-blue-900" /> Contatos do sistema
-              <span className="text-slate-400 font-normal text-sm">({contactsData?.total ?? 0})</span>
+              <span className="text-slate-500 font-normal text-sm">({contactsData?.total ?? 0})</span>
             </CardTitle>
             <Button
               variant="outline"
               size="sm"
-              className="border-red-200 text-red-600 hover:bg-red-50 shadow-sm max-md:h-10"
+              className="border-red-200 text-red-600 hover:bg-red-50 max-md:h-10"
               onClick={() => setShowAddSupp(true)}
             >
               <MailX size={14} className="mr-1" /> Descadastrar
@@ -4465,7 +4449,7 @@ function ConfirmedContactsSection() {
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
             <div className="relative flex-1 min-w-[180px]">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
               <Input
                 value={search}
                 onChange={e => handleSearch(e.target.value)}
@@ -4531,7 +4515,7 @@ function ConfirmedContactsSection() {
             <p className="text-sm text-slate-500">Carregando...</p>
           ) : contactsData && contactsData.contacts.length > 0 ? (
             <>
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <div className="overflow-x-auto -mx-4 border-y border-slate-200">
                 <p className="text-xs text-slate-600 px-3 py-1.5 md:hidden sticky left-0">Role para o lado para ver todas as colunas →</p>
                 <table className="w-full text-sm min-w-[600px]">
                   <thead className={THEAD_CLASS}>
@@ -4611,12 +4595,12 @@ function ConfirmedContactsSection() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-100 text-red-600"><MailX size={16} /></span>
+              <MailX size={16} aria-hidden className="text-slate-500" />
               Descadastrar e-mail
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+            <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
               <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
               <p>O e-mail será adicionado à lista de descadastrados e não receberá mais nenhum disparo (campanhas, sequências ou disparo rápido).</p>
             </div>
@@ -4633,7 +4617,7 @@ function ConfirmedContactsSection() {
             </div>
           </div>
           <DialogFooter className="flex gap-2 pt-2">
-            <Button className="flex-1 bg-red-600 hover:bg-red-700" onClick={handleAddSuppression} disabled={addSuppMutation.isPending || !suppEmail.trim()}>
+            <Button variant="destructive" className="flex-1" onClick={handleAddSuppression} disabled={addSuppMutation.isPending || !suppEmail.trim()}>
               {addSuppMutation.isPending ? "Descadastrando..." : "Descadastrar"}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => { setShowAddSupp(false); setSuppEmail(""); }}>Cancelar</Button>
@@ -4859,7 +4843,7 @@ function ExportSection() {
             </div>
             <div className="flex items-center gap-2 pt-6">
               <Checkbox checked={filters.hotOnly} onCheckedChange={(checked) => setFilters(f => ({ ...f, hotOnly: checked === true }))} />
-              <Label className="!mb-0 flex items-center gap-1"><Flame size={13} className="text-orange-500" /> Só quentes</Label>
+              <Label className="!mb-0 flex items-center gap-1"><Flame size={13} className="text-amber-500" /> Só quentes</Label>
             </div>
           </div>
 
@@ -4867,7 +4851,7 @@ function ExportSection() {
             <Button variant="outline" onClick={handlePreview} disabled={exportQuery.isFetching}>
               <Eye size={14} className="mr-1" /> {exportQuery.isFetching ? "Buscando..." : "Pré-visualizar"}
             </Button>
-            <Button className="bg-blue-900 hover:bg-blue-800 shadow-sm" onClick={handleDownload} disabled={exportQuery.isFetching}>
+            <Button  onClick={handleDownload} disabled={exportQuery.isFetching}>
               <Download size={14} className="mr-1" /> {exportQuery.isFetching ? "Gerando..." : "Baixar CSV"}
             </Button>
           </div>
@@ -4878,12 +4862,12 @@ function ExportSection() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Inbox size={16} className="text-blue-900" /> Resultado <span className="text-slate-400 font-normal">({result.length} lead{result.length === 1 ? "" : "s"})</span>
+              <Inbox size={16} className="text-blue-900" /> Resultado <span className="text-slate-500 font-normal">({result.length} lead{result.length === 1 ? "" : "s"})</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
             {result.length > 0 ? (
-              <div className="overflow-x-auto max-h-96 rounded-xl border border-slate-200">
+              <div className="overflow-x-auto max-h-96 -mx-4 border-y border-slate-200">
                 <table className="w-full text-sm min-w-[720px]">
                   <thead className={`${THEAD_CLASS} sticky top-0`}>
                     <tr>
@@ -4976,9 +4960,9 @@ function UsageTab() {
   return (
     <div className="space-y-4">
       {/* Intro / explanation card */}
-      <Card className="rounded-2xl border-slate-200">
+      <Card className="rounded-lg border-slate-200">
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-blue-900">
+          <CardTitle className="flex items-center gap-2">
             <Gauge size={18} /> Consumo de envios
           </CardTitle>
         </CardHeader>
@@ -4993,7 +4977,7 @@ function UsageTab() {
 
       {/* Summary strip — two big progress bars */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Card className="rounded-2xl border-slate-200">
+        <Card className="rounded-lg border-slate-200">
           <CardContent className="pt-5 pb-4 px-5">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-semibold text-slate-700">Total hoje</span>
@@ -5011,7 +4995,7 @@ function UsageTab() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl border-slate-200">
+        <Card className="rounded-lg border-slate-200">
           <CardContent className="pt-5 pb-4 px-5">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-semibold text-slate-700">Total no mês</span>
@@ -5031,9 +5015,9 @@ function UsageTab() {
       </div>
 
       {/* Free plan limits monitor */}
-      <Card className={`rounded-2xl ${monthlyPct > 80 ? 'border-red-300 bg-gradient-to-br from-red-50/80 to-white' : monthlyPct > 60 ? 'border-amber-300 bg-gradient-to-br from-amber-50/80 to-white' : 'border-blue-200 bg-gradient-to-br from-blue-50/80 to-white'}`}>
+      <Card className={`rounded-lg ${monthlyPct > 80 ? 'border-red-300 bg-white' : monthlyPct > 60 ? 'border-amber-300 bg-white' : 'border-blue-200 bg-white'}`}>
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-blue-900 text-base">
+          <CardTitle className="flex items-center gap-2">
             <AlertTriangle size={18} className={monthlyPct > 80 ? 'text-red-600' : monthlyPct > 60 ? 'text-amber-600' : 'text-blue-700'} />
             Limites dos planos gratuitos
             {monthlyPct > 80 && <Badge className="bg-red-600 text-white border-0 text-xs">ATENÇÃO</Badge>}
@@ -5054,7 +5038,7 @@ function UsageTab() {
               const resendDailyPct = resendDailyTotal > 0 ? (resendDailyUsed / resendDailyTotal) * 100 : 0;
               const resendMonthlyPct = resendTotalFreeMonthly > 0 ? (resendMonthly / resendTotalFreeMonthly) * 100 : 0;
               return (
-                <div className="rounded-xl bg-white border border-slate-200 p-4 space-y-3">
+                <div className="rounded-lg bg-white border border-slate-200 p-4 space-y-3">
                   <div className="flex items-center gap-2">
                     <Badge className="bg-slate-900 text-white hover:bg-slate-800 border-0">Resend</Badge>
                     <Badge variant="outline" className="text-xs py-0 px-1.5 text-blue-700 border-blue-300">FREE</Badge>
@@ -5093,7 +5077,7 @@ function UsageTab() {
               const brevoDailyPct = brevoDailyTotal > 0 ? (brevoDailyUsed / brevoDailyTotal) * 100 : 0;
               const brevoMonthlyPct = brevoTotalFreeMonthly > 0 ? (brevoMonthly / brevoTotalFreeMonthly) * 100 : 0;
               return (
-                <div className="rounded-xl bg-white border border-slate-200 p-4 space-y-3">
+                <div className="rounded-lg bg-white border border-slate-200 p-4 space-y-3">
                   <div className="flex items-center gap-2">
                     <Badge className="bg-emerald-600 text-white hover:bg-emerald-700 border-0">Brevo</Badge>
                     <Badge variant="outline" className="text-xs py-0 px-1.5 text-blue-700 border-blue-300">FREE</Badge>
@@ -5128,7 +5112,7 @@ function UsageTab() {
           </div>
 
           {/* Combined capacity overview */}
-          <div className="rounded-xl bg-white border border-slate-200 p-3">
+          <div className="rounded-lg bg-white border border-slate-200 p-3">
             <div className="flex items-center gap-2 mb-3">
               <TrendingUp size={14} className="text-blue-700" />
               <span className="text-xs font-semibold text-blue-800">Capacidade total combinada (multi-conta free)</span>
@@ -5159,7 +5143,7 @@ function UsageTab() {
           const remainDay = Math.max(0, a.dailyLimit - a.sentToday);
           const remainMonth = Math.max(0, a.monthlyLimit - a.sentThisMonth);
           return (
-            <Card key={a.key} className="rounded-2xl border-slate-200">
+            <Card key={a.key} className="rounded-lg border-slate-200">
               <CardContent className="pt-4 pb-4 px-5">
                 {/* Header row */}
                 <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -5200,7 +5184,7 @@ function UsageTab() {
                       style={{ width: `${Math.min(100, dPct)}%` }}
                     />
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
+                  <p className="text-xs text-slate-500 mt-0.5">
                     {fmt(a.sentToday)} / {fmt(a.dailyLimit)} ({dPct.toFixed(1)}%)
                   </p>
                 </div>
@@ -5217,13 +5201,13 @@ function UsageTab() {
                       style={{ width: `${Math.min(100, mPct)}%` }}
                     />
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
+                  <p className="text-xs text-slate-500 mt-0.5">
                     {fmt(a.sentThisMonth)} / {fmt(a.monthlyLimit)} ({mPct.toFixed(1)}%)
                   </p>
                 </div>
 
                 {/* Plan caption */}
-                <p className="text-[11px] text-slate-400">
+                <p className="text-xs text-slate-500">
                   Plano: {fmt(a.dailyLimit)}/dia &middot; {fmt(a.monthlyLimit)}/mês
                 </p>
               </CardContent>
@@ -5233,7 +5217,7 @@ function UsageTab() {
       </div>
 
       {/* Legend / help footer */}
-      <Card className="rounded-2xl border-slate-200 bg-slate-50/60">
+      <Card className="rounded-lg border-slate-200 bg-slate-50">
         <CardContent className="pt-4 pb-3 px-5">
           <p className="text-xs text-slate-500 leading-relaxed">
             <strong>Limites dos planos gratuitos:</strong> Resend Free: {fmt(resendFreeLimits.daily)}/dia &middot; {fmt(resendFreeLimits.monthly)}/mês por conta.
@@ -5247,8 +5231,6 @@ function UsageTab() {
       <DomainTrackingPanel />
 
       <FrequencySettings />
-
-      <DoubleOptInToggle />
     </div>
   );
 }
@@ -5257,7 +5239,7 @@ function UsageTab() {
 // por domínio Resend, se abertura/clique estão ativos, o status de verificação e
 // o subdomínio de rastreio (CNAME que habilita o clique). Ligar/desligar é feito
 // no painel do Resend (é config de DNS + domínio, não faz sentido botão no app).
-// Serve para o admin saber, sem sair do sistema, se o 🔥 lead quente (que depende
+// Serve para o admin saber, sem sair do sistema, se o lead quente (que depende
 // de CLIQUE) vai funcionar.
 function DomainTrackingPanel() {
   const { data, isLoading } = trpc.emailMarketing.domainTrackingStatus.useQuery();
@@ -5267,9 +5249,9 @@ function DomainTrackingPanel() {
   const clickOn = trackable.length > 0 && trackable.every((d) => d.clickTracking);
 
   return (
-    <Card className="rounded-2xl border-slate-200">
+    <Card className="rounded-lg border-slate-200">
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-blue-900 text-base">
+        <CardTitle className="flex items-center gap-2">
           <MousePointerClick size={18} className="text-blue-700" />
           Rastreamento de abertura e clique
           {!isLoading && trackable.length > 0 && (
@@ -5282,7 +5264,7 @@ function DomainTrackingPanel() {
       <CardContent className="space-y-3">
         <p className="text-sm text-slate-600 leading-relaxed">
           No Resend, rastrear abertura/clique é config do <strong>domínio</strong>. <strong>Abertura</strong> conta
-          o quanto o e-mail é aberto; <strong>clique</strong> é o que aciona o <strong>lead quente (🔥)</strong> e o
+          o quanto o e-mail é aberto; <strong>clique</strong> é o que aciona o <strong>lead quente</strong> e o
           lembrete automático — e o clique só funciona com um <strong>subdomínio de rastreio (CNAME) verificado</strong>.
           Este painel é só diagnóstico: liga/desliga é no painel do Resend (é DNS).
         </p>
@@ -5297,7 +5279,7 @@ function DomainTrackingPanel() {
               if (!d.domainId) {
                 return (
                   <div key={`${d.accountKey}-${idx}`} className="flex items-center gap-2 text-xs text-slate-500 border rounded-lg px-3 py-2 bg-slate-50">
-                    <AlertTriangle size={14} className="text-slate-400 shrink-0" />
+                    <AlertTriangle size={14} className="text-slate-500 shrink-0" />
                     <span>{d.fromEmail} ({d.accountKey}): {d.error === 'no_domains' ? 'nenhum domínio configurado no Resend' : d.error}</span>
                   </div>
                 );
@@ -5312,11 +5294,11 @@ function DomainTrackingPanel() {
                         <span className="ml-1.5 text-xs text-amber-700 font-normal">({d.status})</span>
                       )}
                     </p>
-                    <div className="flex items-center gap-3 mt-0.5 text-[11px]">
-                      <span className={`inline-flex items-center gap-1 ${d.openTracking ? 'text-emerald-700' : 'text-slate-400'}`}>
+                    <div className="flex items-center gap-3 mt-0.5 text-xs">
+                      <span className={`inline-flex items-center gap-1 ${d.openTracking ? 'text-emerald-700' : 'text-slate-500'}`}>
                         {d.openTracking ? <CheckCircle size={12} /> : <XCircle size={12} />} abertura
                       </span>
-                      <span className={`inline-flex items-center gap-1 ${d.clickTracking ? 'text-emerald-700' : 'text-slate-400'}`}>
+                      <span className={`inline-flex items-center gap-1 ${d.clickTracking ? 'text-emerald-700' : 'text-slate-500'}`}>
                         {d.clickTracking ? <CheckCircle size={12} /> : <XCircle size={12} />} clique
                       </span>
                     </div>
@@ -5324,7 +5306,7 @@ function DomainTrackingPanel() {
                       <p className="text-xs text-amber-700 mt-0.5">
                         {d.trackingSubdomain
                           ? <>subdomínio de rastreio <span className="font-mono">{d.trackingSubdomain}</span> ainda não verificado — clique não conta até verificar o CNAME no DNS</>
-                          : <>sem subdomínio de rastreio — o 🔥 lead quente só funciona depois de criar um CNAME de tracking no Resend (Domains → tracking) e verificar no HostGator</>}
+                          : <>sem subdomínio de rastreio — o lead quente só funciona depois de criar um CNAME de tracking no Resend (Domains → tracking) e verificar no HostGator</>}
                       </p>
                     )}
                   </div>
@@ -5341,55 +5323,6 @@ function DomainTrackingPanel() {
   );
 }
 
-function DoubleOptInToggle() {
-  const [enabled, setEnabled] = useState(() => {
-    try { return localStorage.getItem('sv_email_double_optin') === 'true'; } catch { return false; }
-  });
-
-  const toggle = (v: boolean) => {
-    setEnabled(v);
-    localStorage.setItem('sv_email_double_optin', String(v));
-  };
-
-  return (
-    <Card className="rounded-2xl border-slate-200">
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-blue-900 text-base">
-          <ShieldCheck size={18} /> Double Opt-In
-          <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200 text-xs">
-            Em breve
-          </Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-sm text-slate-600 leading-relaxed">
-          Quando ativado, novos contatos importados receberão um e-mail de confirmação antes de
-          entrarem nas listas de envio. Isso melhora a qualidade da lista e protege contra bounces.
-        </p>
-        <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-          <div className="flex items-center gap-2">
-            <ShieldCheck size={16} className="text-blue-700" />
-            <span className="text-sm font-medium text-slate-700">Exigir confirmação por e-mail</span>
-          </div>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div>
-                  <Switch checked={enabled} onCheckedChange={toggle} disabled title="Disponível em julho" />
-                </div>
-              </TooltipTrigger>
-              <TooltipContent><p className="text-xs">Disponível em julho</p></TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-        <p className="text-[11px] text-slate-400">
-          A preferência é salva localmente. Quando o backend estiver pronto, a verificação será aplicada automaticamente.
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
 // ── Estatísticas ───────────────────────────────────────────────────────────
 
 // Uma etapa do funil: barra proporcional ao topo do funil (enviados),
@@ -5401,21 +5334,21 @@ function FunnelStage({ label, icon: Icon, count, pct, base, color, tint, hint }:
   const widthPct = base > 0 ? Math.max(2, Math.round((count / base) * 100)) : 0;
   return (
     <div className="flex items-center gap-3">
-      <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${tint}`}>
-        <Icon size={15} />
+      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center text-slate-500">
+        <Icon size={16} aria-hidden />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-sm font-semibold text-slate-700">{label}</span>
           <span className="text-sm font-bold text-slate-800 tabular-nums">
             {count.toLocaleString('pt-BR')}
-            <span className="ml-1.5 text-xs font-medium text-slate-400">{(pct * 100).toFixed(1)}%</span>
+            <span className="ml-1.5 text-xs font-medium text-slate-500">{(pct * 100).toFixed(1)}%</span>
           </span>
         </div>
         <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-slate-100">
           <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${widthPct}%` }} />
         </div>
-        {hint && <p className="mt-0.5 text-[11px] text-slate-400 truncate">{hint}</p>}
+        {hint && <p className="mt-0.5 text-xs text-slate-500 truncate">{hint}</p>}
       </div>
     </div>
   );
@@ -5443,15 +5376,12 @@ function StatsTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-white">
+      <Card className="border-slate-200 bg-white">
         <CardContent className="py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
-              <TrendingUp size={20} />
-            </div>
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Receita atribuída ao e-mail</p>
-              <p className="text-2xl font-bold text-slate-800 tabular-nums">
+              <p className="text-xs font-medium text-slate-500">Receita atribuída ao e-mail</p>
+              <p className="text-xl font-semibold text-slate-900 tabular-nums">
                 {loadedCampaigns > 0 ? formatBRL(totalAttributed) : "—"}
               </p>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -5480,7 +5410,7 @@ function StatsTab() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <TrendingUp size={16} className="text-blue-900" /> Funil de engajamento
-                <span className="text-slate-400 font-normal text-sm">(detalhado)</span>
+                <span className="text-slate-500 font-normal text-sm">(detalhado)</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -5491,7 +5421,7 @@ function StatsTab() {
               />
               <FunnelStage
                 label="Entregues" icon={CheckCircle} count={overview.delivered30d}
-                pct={overview.deliveryRate} base={funnelBase} color="bg-cyan-600" tint="bg-cyan-50 text-cyan-700"
+                pct={overview.deliveryRate} base={funnelBase} color="bg-brand-600" tint="bg-brand-50 text-brand-700"
                 hint={`${(overview.deliveryRate * 100).toFixed(1)}% dos enviados`}
               />
               <FunnelStage
@@ -5594,7 +5524,7 @@ function CampaignStatsRow({ campaignId, name, onRevenue }: { campaignId: number;
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 p-3 hover:border-blue-200 transition-colors">
+    <div className="rounded-lg border border-slate-200 p-3 hover:border-blue-200 transition-colors">
       <div className="flex items-center justify-between gap-2">
         <p className="font-medium text-sm text-slate-700">{name}</p>
         <Button size="sm" className="max-md:h-10" variant="outline" onClick={() => setShow(!show)}>
@@ -5610,7 +5540,7 @@ function CampaignStatsRow({ campaignId, name, onRevenue }: { campaignId: number;
             <div className="flex gap-1.5 flex-wrap">
               <Badge variant="outline" className="text-xs bg-slate-100 text-slate-600 border-slate-200 gap-1"><Users size={11} /> {stats.recipients} destinatários</Badge>
               <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 gap-1"><Send size={11} /> {stats.sent} enviados</Badge>
-              <Badge variant="outline" className="text-xs bg-cyan-50 text-cyan-700 border-cyan-200 gap-1"><Inbox size={11} /> {stats.delivered} entregues</Badge>
+              <Badge variant="outline" className="text-xs bg-brand-50 text-brand-700 border-brand-200 gap-1"><Inbox size={11} /> {stats.delivered} entregues</Badge>
               <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200 gap-1"><Eye size={11} /> {stats.opened} abriram ({pct(stats.opened, stats.delivered || stats.sent)})</Badge>
               <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200 gap-1"><MousePointerClick size={11} /> {stats.clicked} clicaram ({pct(stats.clicked, stats.delivered || stats.sent)})</Badge>
               {stats.bounced > 0 && <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200 gap-1"><AlertTriangle size={11} /> {stats.bounced} bounce</Badge>}
@@ -5660,7 +5590,7 @@ function CampaignStatsRow({ campaignId, name, onRevenue }: { campaignId: number;
                       {stats.attributedOrders > 0 ? formatBRL(stats.attributedRevenue) : "—"}
                     </span>
                     {stats.attributedOrders > 0 && (
-                      <span className="text-[11px] text-slate-500">({stats.attributedOrders} pedido{stats.attributedOrders === 1 ? '' : 's'})</span>
+                      <span className="text-xs text-slate-500">({stats.attributedOrders} pedido{stats.attributedOrders === 1 ? '' : 's'})</span>
                     )}
                   </div>
                 </TooltipTrigger>
@@ -5693,7 +5623,7 @@ function CampaignStatsRow({ campaignId, name, onRevenue }: { campaignId: number;
             {loadingRecipients ? (
               <p className="text-xs text-gray-500">Carregando destinatários...</p>
             ) : recipients && recipients.length > 0 ? (
-              <div className="overflow-x-auto rounded-xl border border-slate-200 max-h-[400px] overflow-y-auto">
+              <div className="overflow-x-auto rounded-lg border border-slate-200 max-h-[400px] overflow-y-auto">
                 <table className="w-full text-sm min-w-[600px]">
                   <thead className={THEAD_CLASS + " sticky top-0 z-10"}>
                     <tr>
@@ -5710,7 +5640,7 @@ function CampaignStatsRow({ campaignId, name, onRevenue }: { campaignId: number;
                       <tr key={r.id} className={TR_CLASS}>
                         <td className="px-3 py-2">
                           <p className="font-medium text-slate-700 truncate">{r.name || r.email}</p>
-                          {r.name && <p className="text-xs text-slate-400 truncate">{r.email}</p>}
+                          {r.name && <p className="text-xs text-slate-500 truncate">{r.email}</p>}
                         </td>
                         <td className="px-3 py-2">
                           {r.bounced ? (
@@ -5738,7 +5668,7 @@ function CampaignStatsRow({ campaignId, name, onRevenue }: { campaignId: number;
               <p className="text-xs text-slate-500">Nenhum destinatário neste filtro.</p>
             )}
             {recipients && recipients.length >= 500 && (
-              <p className="text-[11px] text-slate-400">Exibindo os primeiros 500 destinatários.</p>
+              <p className="text-xs text-slate-500">Exibindo os primeiros 500 destinatários.</p>
             )}
           </div>
         )
@@ -5787,7 +5717,7 @@ function SequenceStatsRow({ sequenceId, name }: { sequenceId: number; name: stri
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 p-3 hover:border-blue-200 transition-colors">
+    <div className="rounded-lg border border-slate-200 p-3 hover:border-blue-200 transition-colors">
       <div className="flex items-center justify-between gap-2">
         <p className="font-medium text-sm text-slate-700">{name}</p>
         <Button size="sm" className="max-md:h-10" variant="outline" onClick={() => setShow(!show)}>
@@ -5800,7 +5730,7 @@ function SequenceStatsRow({ sequenceId, name }: { sequenceId: number; name: stri
           {isLoading ? (
             <p className="text-xs text-gray-500">Carregando...</p>
           ) : stats && stats.length > 0 ? (
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="w-full text-sm min-w-[500px]">
                 <thead className={THEAD_CLASS}>
                   <tr>
@@ -5822,13 +5752,13 @@ function SequenceStatsRow({ sequenceId, name }: { sequenceId: number; name: stri
                       <td className="px-3 py-2 tabular-nums font-medium">{s.sent}</td>
                       <td className="px-3 py-2 tabular-nums">
                         <span className="text-emerald-700">{s.opened}</span>
-                        {s.sent > 0 && <span className="text-xs text-slate-400 ml-1">({pct(s.opened, s.sent)})</span>}
+                        {s.sent > 0 && <span className="text-xs text-slate-500 ml-1">({pct(s.opened, s.sent)})</span>}
                       </td>
                       <td className="px-3 py-2 tabular-nums">
                         <span className="text-violet-700">{s.clicked}</span>
-                        {s.sent > 0 && <span className="text-xs text-slate-400 ml-1">({pct(s.clicked, s.sent)})</span>}
+                        {s.sent > 0 && <span className="text-xs text-slate-500 ml-1">({pct(s.clicked, s.sent)})</span>}
                       </td>
-                      <td className="px-3 py-2 tabular-nums text-slate-400">{(s as any).skipped ?? 0}</td>
+                      <td className="px-3 py-2 tabular-nums text-slate-500">{(s as any).skipped ?? 0}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -5860,7 +5790,7 @@ function SequenceStatsRow({ sequenceId, name }: { sequenceId: number; name: stri
           {loadingRecipients ? (
             <p className="text-xs text-gray-500">Carregando contatos...</p>
           ) : recipients && recipients.length > 0 ? (
-            <div className="overflow-x-auto rounded-xl border border-slate-200 max-h-[400px] overflow-y-auto">
+            <div className="overflow-x-auto rounded-lg border border-slate-200 max-h-[400px] overflow-y-auto">
               <table className="w-full text-sm min-w-[600px]">
                 <thead className={THEAD_CLASS + " sticky top-0 z-10"}>
                   <tr>
@@ -5877,7 +5807,7 @@ function SequenceStatsRow({ sequenceId, name }: { sequenceId: number; name: stri
                     <tr key={r.id} className={TR_CLASS}>
                       <td className="px-3 py-2">
                         <p className="font-medium text-slate-700 truncate">{r.name || r.email}</p>
-                        {r.name && <p className="text-xs text-slate-400 truncate">{r.email}</p>}
+                        {r.name && <p className="text-xs text-slate-500 truncate">{r.email}</p>}
                       </td>
                       <td className="px-3 py-2">
                         {r.clicks > 0 ? (
@@ -5903,7 +5833,7 @@ function SequenceStatsRow({ sequenceId, name }: { sequenceId: number; name: stri
             <p className="text-xs text-slate-500">Nenhum contato neste filtro.</p>
           )}
           {recipients && recipients.length >= 500 && (
-            <p className="text-[11px] text-slate-400">Exibindo os primeiros 500 contatos.</p>
+            <p className="text-xs text-slate-500">Exibindo os primeiros 500 contatos.</p>
           )}
         </div>
       )}

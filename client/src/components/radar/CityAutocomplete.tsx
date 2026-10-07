@@ -93,19 +93,19 @@ export function CityAutocomplete({
             else if (e.key === 'Enter') { e.preventDefault(); const m = list[highlight]; if (m) select(m); }
           }}
           placeholder="Digite a cidade (ex.: Barracão)"
-          className="w-full pl-9 pr-9 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full h-9 max-md:h-10 pl-9 pr-16 rounded-md border border-slate-300 bg-white text-sm text-slate-900 placeholder:text-slate-400 outline-none focus-visible:border-brand-500 focus-visible:ring-[3px] focus-visible:ring-brand-500/30 disabled:opacity-45 disabled:cursor-not-allowed"
         />
         {isFetching && (
-          <Loader2 size={14} className="absolute right-9 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />
+          <Loader2 size={14} className="absolute right-10 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />
         )}
         {(query || value) && !disabled && (
           <button
             type="button"
             onClick={clear}
             aria-label="Limpar cidade"
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            className="absolute right-0.5 top-1/2 flex size-8 max-md:size-10 -translate-y-1/2 items-center justify-center text-slate-500 hover:text-slate-700"
           >
-            <X size={14} />
+            <X size={14} aria-hidden />
           </button>
         )}
       </div>
@@ -113,12 +113,12 @@ export function CityAutocomplete({
       {open && !value && (
         <div
           role="listbox"
-          className="absolute z-50 mt-1 w-full max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg"
+          className="absolute z-50 mt-1 w-full max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg"
         >
           {debouncedQuery.length < 2 ? (
-            <p className="px-3 py-3 text-xs text-slate-400 text-center">Digite ao menos 2 letras</p>
+            <p className="px-3 py-3 text-xs text-slate-500 text-center">Digite ao menos 2 letras</p>
           ) : list.length === 0 ? (
-            <p className="px-3 py-3 text-xs text-slate-400 text-center">
+            <p className="px-3 py-3 text-xs text-slate-500 text-center">
               {isFetching ? 'Buscando...' : 'Nenhum município encontrado'}
             </p>
           ) : (
@@ -130,11 +130,11 @@ export function CityAutocomplete({
                 aria-selected={i === highlight}
                 onMouseEnter={() => setHighlight(i)}
                 onClick={() => select(m)}
-                className={`w-full text-left px-3 py-2 text-sm transition ${
-                  i === highlight ? 'bg-blue-50 text-blue-900' : 'text-slate-700 hover:bg-slate-50'
+                className={`w-full text-left px-3 py-2 max-md:py-3 text-sm transition-colors ${
+                  i === highlight ? 'bg-brand-50 text-brand-800' : 'text-slate-700 hover:bg-slate-50'
                 }`}
               >
-                {m.nome} <span className="text-slate-400">- {m.uf}</span>
+                {m.nome} <span className="text-slate-500">- {m.uf}</span>
               </button>
             ))
           )}

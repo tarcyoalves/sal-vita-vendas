@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
-import { X, AlertCircle, CheckCircle2, Calendar, Clock, TrendingUp, BarChart2, Users, RefreshCw, Shield, Ghost, Zap, FileSearch } from 'lucide-react';
-import { Card, CardContent } from './ui/card';
+import { X, CheckCircle2, RefreshCw, Zap } from 'lucide-react';
+import { Badge } from './ui/badge';
+import { StatStrip, Stat } from './layout/Page';
 import { Button } from './ui/button';
 import { trpc } from '../lib/trpc';
 import { Dialog, DialogContent, DialogTitle } from './ui/dialog';
@@ -211,13 +212,15 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
     }
   };
 
-  const tabs: { key: Tab; label: string; icon: React.ReactNode; alert?: boolean }[] = [
-    { key: 'resumo',        label: 'Resumo',        icon: <BarChart2 size={14} /> },
-    { key: 'agenda',        label: 'Agenda',        icon: <Clock size={14} /> },
-    { key: 'historico',     label: 'Histórico',     icon: <Calendar size={14} /> },
-    { key: 'comparacao',    label: 'Comparação',    icon: <Users size={14} /> },
-    { key: 'monitoramento', label: 'Monitor',       icon: <Shield size={14} />, alert: m.hasBurst || m.ghostClients.length > 0 },
+  const tabs: { key: Tab; label: string; alert?: boolean }[] = [
+    { key: 'resumo',        label: 'Resumo' },
+    { key: 'agenda',        label: 'Agenda' },
+    { key: 'historico',     label: 'Histórico' },
+    { key: 'comparacao',    label: 'Comparação' },
+    { key: 'monitoramento', label: 'Monitoramento', alert: m.hasBurst || m.ghostClients.length > 0 },
   ];
+
+  const safeDate = (v: unknown) => { try { return fmtDate(new Date(v as string)); } catch { return '—'; } };
 
   return (
     <>
@@ -225,170 +228,127 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
       <DialogContent
         showCloseButton={false}
         aria-describedby={undefined}
-        className="bg-white rounded-2xl shadow-2xl max-w-2xl flex flex-col gap-0 p-0 overflow-hidden"
+        className="max-w-3xl flex flex-col gap-0 p-0 overflow-hidden"
       >
         <DialogTitle className="sr-only">Detalhes de {seller.name}</DialogTitle>
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b bg-slate-800 rounded-t-2xl gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold flex-shrink-0 text-sm">
-              {seller.name.charAt(0).toUpperCase()}
-            </div>
-            <div className="min-w-0">
-              <p className="font-semibold text-white text-sm truncate">{seller.name}</p>
-              <p className="text-xs text-slate-400 truncate">{m.total} clientes</p>
-            </div>
+        {/* Cabeçalho */}
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+          <div className="min-w-0">
+            <p className="truncate text-base font-semibold text-slate-900">{seller.name}</p>
+            <p className="truncate text-xs text-slate-500">{m.total} clientes · {seller.email}</p>
           </div>
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+          <div className="flex shrink-0 items-center gap-1.5">
             {m.overdue.length > 0 && (
-              <Button
-                size="sm"
-                disabled={rescheduleLoading}
-                onClick={handleReschedule}
-                className="bg-orange-500 hover:bg-orange-600 text-white text-xs gap-1 px-2"
-              >
+              <Button size="sm" variant="outline" disabled={rescheduleLoading} onClick={handleReschedule}>
                 {rescheduleLoading
-                  ? <span className="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full inline-block" />
-                  : <RefreshCw size={13} />}
-                <span>
-                  {rescheduleLoading ? 'Reagendando...' : 'Reagendar Vencidos'}
-                </span>
+                  ? <span className="inline-block size-3 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" />
+                  : <RefreshCw />}
+                {rescheduleLoading ? 'Reagendando...' : 'Reagendar vencidos'}
               </Button>
             )}
-            <button
-              onClick={onClose}
-              aria-label="Fechar"
-              className="p-2.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 flex-shrink-0"
-            >
-              <X size={18} />
-            </button>
+            <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Fechar">
+              <X />
+            </Button>
           </div>
         </div>
 
         {rescheduleResult && (
-          <div className={`px-5 py-2.5 text-sm border-b ${rescheduleResult.startsWith('Erro') ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-800 border-green-200'}`}>
+          <div role="status" className={`px-4 py-2 text-sm border-b ${rescheduleResult.startsWith('Erro') ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-800 border-green-200'}`}>
             {rescheduleResult}
           </div>
         )}
 
-        {/* Tabs */}
-        <div className="flex gap-0.5 px-3 pt-2 pb-0 border-b bg-gray-50 overflow-x-auto scrollbar-none">
+        {/* Abas */}
+        <div role="tablist" className="flex gap-1 overflow-x-auto border-b border-slate-200 px-3 scrollbar-none">
           {tabs.map(t => (
             <button
               key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.key}
               onClick={() => setTab(t.key)}
-              className={`relative flex items-center gap-1 px-2.5 py-2 text-xs font-medium rounded-t-lg border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${tab === t.key ? 'border-blue-600 text-blue-700 bg-white' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+              className={`relative -mb-px flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors max-md:min-h-10 ${tab === t.key ? 'border-brand-700 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
             >
-              {t.icon}
-              <span>{t.label}</span>
-              {t.alert && <span className="absolute top-1 right-0.5 w-1.5 h-1.5 rounded-full bg-red-500" />}
+              {t.label}
+              {t.alert && <span className="size-1.5 rounded-full bg-red-500" aria-label="com alertas" />}
             </button>
           ))}
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-5">
+        {/* Conteúdo */}
+        <div className="max-h-[70dvh] flex-1 overflow-y-auto p-4">
 
           {/* ── RESUMO ── */}
           {tab === 'resumo' && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {[
-                  { label: 'Total Clientes', value: m.total, color: 'text-slate-700', border: 'border-slate-200' },
-                  { label: 'Com Lembrete', value: m.withReminder.length, color: 'text-blue-600', border: 'border-blue-200' },
-                  { label: 'Vencidos', value: m.overdue.length, color: m.overdue.length > 0 ? 'text-red-600' : 'text-gray-400', border: m.overdue.length > 0 ? 'border-red-200' : 'border-gray-200' },
-                  { label: 'Reagendados Hoje', value: m.rescheduledToday.length, color: 'text-green-600', border: 'border-green-200' },
-                ].map(k => (
-                  <Card key={k.label} className={`border ${k.border}`}>
-                    <CardContent className="pt-4 pb-3">
-                      <p className={`text-2xl font-bold ${k.color}`}>{k.value}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{k.label}</p>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+            <div className="space-y-5">
+              <StatStrip>
+                <Stat label="Total de clientes" value={m.total} />
+                <Stat label="Com lembrete" value={m.withReminder.length} />
+                <Stat label="Vencidos" value={m.overdue.length} tone={m.overdue.length > 0 ? 'danger' : 'default'} />
+                <Stat label="Reagendados hoje" value={m.rescheduledToday.length} tone="success" />
+              </StatStrip>
 
-              {/* 🎉 Performance de conversão (vendas) */}
-              <div className="p-3 bg-green-50 border border-green-200 rounded-xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-green-800 flex items-center gap-1.5">
-                    Performance de Conversão (Vendas)
-                  </p>
+              <section>
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-slate-900">Conversão (vendas)</h3>
                   {m.teamConversion.length > 0 && (
-                    <span className="text-[11px] text-green-700 bg-green-100 px-2 py-0.5 rounded-full font-medium">
-                      #{m.myConversionRank} da equipe
-                    </span>
+                    <Badge variant="success">{m.myConversionRank}º da equipe</Badge>
                   )}
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <div>
-                    <p className="text-lg font-bold text-green-700">{m.convertedCount}</p>
-                    <p className="text-[11px] text-gray-500">Clientes ativos</p>
-                  </div>
-                  <div>
-                    <p className="text-lg font-bold text-green-700">{m.conversionRate}%</p>
-                    <p className="text-[11px] text-gray-500">Taxa de conversão</p>
-                  </div>
-                  <div>
-                    <p className="text-lg font-bold text-green-700">{m.convertedThisMonth}</p>
-                    <p className="text-[11px] text-gray-500">Convertidos (30d)</p>
-                  </div>
-                  <div>
-                    <p className="text-lg font-bold text-green-700">{m.avgContactsToConvert || '—'}</p>
-                    <p className="text-[11px] text-gray-500">Média de contatos p/ converter</p>
-                  </div>
-                </div>
+                <StatStrip>
+                  <Stat label="Clientes ativos" value={m.convertedCount} />
+                  <Stat label="Taxa de conversão" value={`${m.conversionRate}%`} />
+                  <Stat label="Convertidos (30d)" value={m.convertedThisMonth} />
+                  <Stat label="Contatos p/ converter" value={m.avgContactsToConvert || '—'} hint="média" />
+                </StatStrip>
                 {m.cancelledCount > 0 && (
-                  <p className="text-[11px] text-gray-500">
-                    Taxa de leads perdidos: <span className={`font-semibold ${m.lostRate > 50 ? 'text-red-600' : 'text-gray-600'}`}>{m.lostRate}%</span> ({m.cancelledCount} cancelado{m.cancelledCount !== 1 ? 's' : ''})
+                  <p className="mt-2 text-xs text-slate-500">
+                    Leads perdidos: <span className={`font-medium ${m.lostRate > 50 ? 'text-red-700' : 'text-slate-700'}`}>{m.lostRate}%</span> ({m.cancelledCount} cancelado{m.cancelledCount !== 1 ? 's' : ''})
                   </p>
                 )}
-              </div>
+              </section>
 
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { label: 'Sem anotação', value: m.noNotes.length, total: m.total, warn: true },
-                  { label: 'Desativados', value: m.disabledReminders.length, total: m.total, warn: true },
-                  { label: 'Nunca atualizados', value: m.neverUpdated.length, total: m.total, warn: true },
-                  { label: 'Ativos esta semana', value: m.upcoming.length, total: m.withReminder.length, warn: false },
-                ].map(k => (
-                  <div key={k.label} className="p-3 bg-gray-50 rounded-xl border">
-                    <div className="flex justify-between mb-1.5">
-                      <span className="text-xs text-gray-500">{k.label}</span>
-                      <span className={`text-xs font-bold ${k.warn && k.value > 0 ? 'text-orange-600' : 'text-gray-600'}`}>{k.value}/{k.total}</span>
-                    </div>
-                    <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${k.warn ? 'bg-orange-400' : 'bg-blue-400'}`}
-                        style={{ width: k.total > 0 ? `${Math.round((k.value / k.total) * 100)}%` : '0%' }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {m.overdue.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-red-600 mb-2">Lembretes vencidos (primeiros 8)</p>
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                    {m.overdue.slice(0, 8).map(t => (
-                      <div key={t.id} className="flex items-center justify-between px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs">
-                        <span className="truncate flex-1 mr-3 text-red-800">{t.title}</span>
-                        <span className="flex-shrink-0 text-red-500">
-                          {(() => { try { return fmtDate(new Date(t.reminderDate as string)); } catch { return '—'; } })()}
-                        </span>
+              <section>
+                <h3 className="mb-2 text-sm font-semibold text-slate-900">Qualidade da carteira</h3>
+                <div className="divide-y divide-slate-200 rounded-lg border border-slate-200">
+                  {[
+                    { label: 'Sem anotação', value: m.noNotes.length, total: m.total, warn: true },
+                    { label: 'Lembrete desativado', value: m.disabledReminders.length, total: m.total, warn: true },
+                    { label: 'Nunca atualizados', value: m.neverUpdated.length, total: m.total, warn: true },
+                    { label: 'Com lembrete esta semana', value: m.upcoming.length, total: m.withReminder.length, warn: false },
+                  ].map(k => (
+                    <div key={k.label} className="flex items-center gap-3 px-3 py-2">
+                      <span className="w-44 shrink-0 text-sm text-slate-700">{k.label}</span>
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className={`h-full rounded-full ${k.warn ? 'bg-amber-500' : 'bg-brand-600'}`}
+                          style={{ width: k.total > 0 ? `${Math.round((k.value / k.total) * 100)}%` : '0%' }}
+                        />
                       </div>
-                    ))}
-                  </div>
-                  {m.overdue.length > 8 && <p className="text-xs text-gray-400 mt-1 text-center">+ {m.overdue.length - 8} outros vencidos</p>}
+                      <span className={`w-14 text-right text-sm font-medium tabular-nums ${k.warn && k.value > 0 ? 'text-amber-700' : 'text-slate-700'}`}>{k.value}/{k.total}</span>
+                    </div>
+                  ))}
                 </div>
-              )}
+              </section>
 
-              {m.overdue.length === 0 && (
-                <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-sm text-green-700">
-                  <CheckCircle2 size={16} />
-                  Sem lembretes vencidos — atendente em dia!
+              {m.overdue.length > 0 ? (
+                <section>
+                  <h3 className="mb-2 text-sm font-semibold text-slate-900">Lembretes vencidos <span className="font-normal text-slate-500">(primeiros 8)</span></h3>
+                  <ul className="max-h-48 divide-y divide-slate-200 overflow-y-auto rounded-lg border border-slate-200">
+                    {m.overdue.slice(0, 8).map(t => (
+                      <li key={t.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                        <span className="min-w-0 flex-1 truncate text-slate-900">{t.title}</span>
+                        <span className="shrink-0 tabular-nums text-red-700">{safeDate(t.reminderDate)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {m.overdue.length > 8 && <p className="mt-1 text-center text-xs text-slate-500">+ {m.overdue.length - 8} outros vencidos</p>}
+                </section>
+              ) : (
+                <div className="flex items-center gap-2 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">
+                  <CheckCircle2 size={16} aria-hidden />
+                  Sem lembretes vencidos. Atendente em dia.
                 </div>
               )}
             </div>
@@ -396,183 +356,178 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
 
           {/* ── AGENDA ── */}
           {tab === 'agenda' && (
-            <div className="space-y-4">
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Hoje</p>
+            <div className="space-y-5">
+              <section>
+                <h3 className="mb-2 text-sm font-semibold text-slate-900">Hoje</h3>
                 {m.todayTasks.length === 0 ? (
-                  <p className="text-sm text-gray-400 py-4 text-center">Nenhum lembrete para hoje.</p>
+                  <p className="py-4 text-center text-sm text-slate-500">Nenhum lembrete para hoje.</p>
                 ) : (
-                  <div className="space-y-1.5">
+                  <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200">
                     {[...m.todayTasks]
                       .sort((a, b) => new Date(a.reminderDate as string).getTime() - new Date(b.reminderDate as string).getTime())
                       .map(t => {
                         const d = new Date(t.reminderDate as string);
                         const overdue = d < new Date();
                         return (
-                          <div key={t.id} className={`flex items-center justify-between px-3 py-2.5 rounded-lg border text-sm ${overdue ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-100'}`}>
-                            <span className={`truncate flex-1 mr-3 ${overdue ? 'text-red-700 font-medium' : 'text-gray-700'}`}>{t.title}</span>
-                            <span className={`flex-shrink-0 text-xs font-semibold ${overdue ? 'text-red-500' : 'text-blue-600'}`}>{fmtTime(d)}</span>
-                          </div>
+                          <li key={t.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                            <span className={`min-w-0 flex-1 truncate ${overdue ? 'font-medium text-red-700' : 'text-slate-900'}`}>{t.title}</span>
+                            <span className={`shrink-0 tabular-nums ${overdue ? 'text-red-700' : 'text-slate-500'}`}>{fmtTime(d)}</span>
+                          </li>
                         );
                       })}
-                  </div>
+                  </ul>
                 )}
-              </div>
+              </section>
 
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Próximos 7 dias</p>
+              <section>
+                <h3 className="mb-2 text-sm font-semibold text-slate-900">Próximos 7 dias</h3>
                 {m.upcoming.length === 0 ? (
-                  <p className="text-sm text-gray-400 py-4 text-center">Nenhum lembrete agendado esta semana.</p>
+                  <p className="py-4 text-center text-sm text-slate-500">Nenhum lembrete agendado esta semana.</p>
                 ) : (
-                  <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                  <ul className="max-h-60 divide-y divide-slate-200 overflow-y-auto rounded-lg border border-slate-200">
                     {[...m.upcoming]
                       .sort((a, b) => new Date(a.reminderDate as string).getTime() - new Date(b.reminderDate as string).getTime())
                       .slice(0, 20)
                       .map(t => {
                         const d = new Date(t.reminderDate as string);
                         return (
-                          <div key={t.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50 border text-sm">
-                            <span className="truncate flex-1 mr-3 text-gray-700">{t.title}</span>
-                            <span className="flex-shrink-0 text-xs text-gray-500">{fmtDate(d)} {fmtTime(d)}</span>
-                          </div>
+                          <li key={t.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                            <span className="min-w-0 flex-1 truncate text-slate-900">{t.title}</span>
+                            <span className="shrink-0 tabular-nums text-slate-500">{fmtDate(d)} {fmtTime(d)}</span>
+                          </li>
                         );
                       })}
-                  </div>
+                  </ul>
                 )}
-              </div>
+              </section>
             </div>
           )}
 
           {/* ── HISTÓRICO ── */}
           {tab === 'historico' && (
-            <div className="space-y-4">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Lembretes por dia — últimos 30 dias</p>
-              <div className="grid grid-cols-10 gap-1">
-                {m.days30.map((day, i) => {
-                  const isToday = day.key === todayKey();
-                  const pct = day.count / m.maxDay;
-                  const bg = day.count === 0 ? 'bg-gray-100'
-                    : pct < 0.3 ? 'bg-blue-200'
-                    : pct < 0.6 ? 'bg-blue-400'
-                    : 'bg-blue-600';
-                  return (
-                    <div key={i} title={`${fmtDate(day.d)}: ${day.count} lembretes`} className="flex flex-col items-center gap-0.5">
-                      <div className={`w-full aspect-square rounded-sm ${bg} ${isToday ? 'ring-2 ring-blue-400' : ''}`} />
-                      {i % 5 === 0 && <span className="text-[9px] text-gray-400">{fmtDate(day.d)}</span>}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Semanas recentes</p>
-                {Array.from({ length: 4 }, (_, w) => {
-                  const weekDays = m.days30.slice(m.days30.length - 30 + w * 7, m.days30.length - 30 + (w + 1) * 7);
-                  const total = weekDays.reduce((s, d) => s + d.count, 0);
-                  const label = w === 3 ? 'Esta semana' : w === 2 ? 'Semana passada' : `Há ${4 - w} semanas`;
-                  return (
-                    <div key={w} className="flex items-center justify-between py-2 border-b last:border-0">
-                      <span className="text-sm text-gray-600">{label}</span>
-                      <div className="flex items-center gap-2">
-                        <div className="w-24 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-blue-400 rounded-full" style={{ width: m.maxDay > 0 ? `${Math.min(100, Math.round((total / (m.maxDay * 7)) * 100))}%` : '0%' }} />
-                        </div>
-                        <span className="text-sm font-semibold text-gray-700 w-8 text-right">{total}</span>
+            <div className="space-y-5">
+              <section>
+                <h3 className="mb-2 text-sm font-semibold text-slate-900">Lembretes por dia <span className="font-normal text-slate-500">(últimos 30 dias)</span></h3>
+                <div className="grid grid-cols-10 gap-1">
+                  {m.days30.map((day, i) => {
+                    const isToday = day.key === todayKey();
+                    const pct = day.count / m.maxDay;
+                    const bg = day.count === 0 ? 'bg-slate-100'
+                      : pct < 0.3 ? 'bg-brand-200'
+                      : pct < 0.6 ? 'bg-brand-400'
+                      : 'bg-brand-700';
+                    return (
+                      <div key={i} title={`${fmtDate(day.d)}: ${day.count} lembretes`} className="flex flex-col items-center gap-0.5">
+                        <div className={`aspect-square w-full rounded-sm ${bg} ${isToday ? 'ring-2 ring-brand-700 ring-offset-1' : ''}`} />
+                        {i % 5 === 0 && <span className="text-[10px] tabular-nums text-slate-500">{fmtDate(day.d)}</span>}
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-sm font-semibold text-slate-900">Semanas recentes</h3>
+                <div className="divide-y divide-slate-200 rounded-lg border border-slate-200">
+                  {Array.from({ length: 4 }, (_, w) => {
+                    const weekDays = m.days30.slice(m.days30.length - 30 + w * 7, m.days30.length - 30 + (w + 1) * 7);
+                    const total = weekDays.reduce((s, d) => s + d.count, 0);
+                    const label = w === 3 ? 'Esta semana' : w === 2 ? 'Semana passada' : `Há ${4 - w} semanas`;
+                    return (
+                      <div key={w} className="flex items-center justify-between px-3 py-2">
+                        <span className="text-sm text-slate-700">{label}</span>
+                        <div className="flex items-center gap-3">
+                          <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
+                            <div className="h-full rounded-full bg-brand-600" style={{ width: m.maxDay > 0 ? `${Math.min(100, Math.round((total / (m.maxDay * 7)) * 100))}%` : '0%' }} />
+                          </div>
+                          <span className="w-8 text-right text-sm font-medium tabular-nums text-slate-900">{total}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
             </div>
           )}
 
           {/* ── MONITORAMENTO ── */}
           {tab === 'monitoramento' && (
-            <div className="space-y-4">
+            <div className="space-y-5">
 
-              {/* Fraud burst alert */}
               {m.hasBurst && (
-                <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-300 rounded-xl">
-                  <Zap size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
+                <div role="alert" className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-3">
+                  <Zap size={18} className="mt-0.5 shrink-0 text-red-700" aria-hidden />
                   <div>
-                    <p className="text-sm font-bold text-red-700">Alerta de Fraude — Burst Detectado</p>
-                    <p className="text-xs text-red-600 mt-0.5">
+                    <p className="text-sm font-semibold text-red-800">Alerta: marcação em massa detectada</p>
+                    <p className="mt-0.5 text-sm text-red-700">
                       {m.burstMax} clientes "contatados" em menos de 10 minutos. Isso é estatisticamente improvável para contatos reais — provável marcação em massa.
                     </p>
                   </div>
                 </div>
               )}
 
-              {/* Summary cards */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className={`p-3 rounded-xl border ${m.ghostClients.length > 0 ? 'bg-orange-50 border-orange-200' : 'bg-green-50 border-green-200'}`}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <Ghost size={14} className={m.ghostClients.length > 0 ? 'text-orange-500' : 'text-green-500'} />
-                    <span className="text-xs font-semibold text-gray-600">Clientes Fantasma</span>
-                  </div>
-                  <p className={`text-2xl font-bold ${m.ghostClients.length > 0 ? 'text-orange-600' : 'text-green-600'}`}>{m.ghostClients.length}</p>
-                  <p className="text-xs text-gray-400">sem contato real em 30+ dias</p>
-                </div>
+              <StatStrip>
+                <Stat
+                  label="Clientes fantasma"
+                  value={m.ghostClients.length}
+                  hint="sem contato real em 30+ dias"
+                  tone={m.ghostClients.length > 0 ? 'warning' : 'success'}
+                />
+                <Stat
+                  label="Reagendados sem contato"
+                  value={m.reschedNoContact.length}
+                  hint="atualizados sem contato real (7d)"
+                  tone={m.reschedNoContact.length > 0 ? 'warning' : 'success'}
+                />
+              </StatStrip>
 
-                <div className={`p-3 rounded-xl border ${m.reschedNoContact.length > 0 ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'}`}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <FileSearch size={14} className={m.reschedNoContact.length > 0 ? 'text-yellow-600' : 'text-green-500'} />
-                    <span className="text-xs font-semibold text-gray-600">Reagend. sem Contato</span>
-                  </div>
-                  <p className={`text-2xl font-bold ${m.reschedNoContact.length > 0 ? 'text-yellow-600' : 'text-green-600'}`}>{m.reschedNoContact.length}</p>
-                  <p className="text-xs text-gray-400">atualizados sem contato real (7d)</p>
-                </div>
-              </div>
-
-              {/* Note quality */}
-              <div className="p-3 bg-gray-50 rounded-xl border">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-gray-600">Qualidade das Anotações</span>
-                  <span className={`text-xs font-bold ${m.avgNoteLen < 20 ? 'text-orange-600' : m.avgNoteLen < 60 ? 'text-yellow-600' : 'text-green-600'}`}>
-                    {m.avgNoteLen} chars/nota
+              <section>
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-slate-900">Qualidade das anotações</h3>
+                  <span className={`text-sm font-medium tabular-nums ${m.avgNoteLen < 20 ? 'text-red-700' : m.avgNoteLen < 60 ? 'text-amber-700' : 'text-green-700'}`}>
+                    {m.avgNoteLen} caracteres por nota
                   </span>
                 </div>
-                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
                   <div
-                    className={`h-full rounded-full transition-all ${m.avgNoteLen < 20 ? 'bg-red-400' : m.avgNoteLen < 60 ? 'bg-yellow-400' : 'bg-green-400'}`}
+                    className={`h-full rounded-full ${m.avgNoteLen < 20 ? 'bg-red-500' : m.avgNoteLen < 60 ? 'bg-amber-500' : 'bg-green-500'}`}
                     style={{ width: `${Math.min(100, Math.round((m.avgNoteLen / 150) * 100))}%` }}
                   />
                 </div>
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="mt-1 text-xs text-slate-500">
                   {m.avgNoteLen < 20 ? 'Muito curtas — sem detalhe de contato' : m.avgNoteLen < 60 ? 'Razoável — pode melhorar' : 'Bom nível de detalhamento'}
                 </p>
-              </div>
+              </section>
 
-              {/* Ghost clients list */}
               {m.ghostClients.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-orange-600 uppercase tracking-wider mb-2">
-                    Clientes Fantasma — últimos contatados (primeiros 10)
-                  </p>
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                <section>
+                  <h3 className="mb-2 text-sm font-semibold text-slate-900">
+                    Clientes fantasma <span className="font-normal text-slate-500">(primeiros 10)</span>
+                  </h3>
+                  <ul className="max-h-48 divide-y divide-slate-200 overflow-y-auto rounded-lg border border-slate-200">
                     {m.ghostClients.slice(0, 10).map(t => {
                       const lc = t.lastContactedAt ? new Date(t.lastContactedAt as string) : null;
                       const daysAgo = lc ? Math.floor((Date.now() - lc.getTime()) / 86400000) : null;
                       return (
-                        <div key={t.id} className="flex items-center justify-between px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-xs">
-                          <span className="truncate flex-1 mr-3 text-orange-800">{t.title}</span>
-                          <span className="flex-shrink-0 text-orange-500 font-medium">
+                        <li key={t.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                          <span className="min-w-0 flex-1 truncate text-slate-900">{t.title}</span>
+                          <span className="shrink-0 text-amber-700">
                             {lc ? `${daysAgo}d atrás` : 'nunca contatado'}
                           </span>
-                        </div>
+                        </li>
                       );
                     })}
-                  </div>
+                  </ul>
                   {m.ghostClients.length > 10 && (
-                    <p className="text-xs text-gray-400 mt-1 text-center">+ {m.ghostClients.length - 10} outros clientes fantasma</p>
+                    <p className="mt-1 text-center text-xs text-slate-500">+ {m.ghostClients.length - 10} outros clientes fantasma</p>
                   )}
-                </div>
+                </section>
               )}
 
               {!m.hasBurst && m.ghostClients.length === 0 && m.reschedNoContact.length === 0 && m.avgNoteLen >= 60 && (
-                <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-sm text-green-700">
-                  <CheckCircle2 size={16} />
-                  Sem alertas de monitoramento — padrão de atividade saudável!
+                <div className="flex items-center gap-2 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">
+                  <CheckCircle2 size={16} aria-hidden />
+                  Sem alertas de monitoramento. Padrão de atividade saudável.
                 </div>
               )}
             </div>
@@ -580,39 +535,41 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
 
           {/* ── COMPARAÇÃO ── */}
           {tab === 'comparacao' && (
-            <div className="space-y-3">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Ranking — menor nº de vencidos</p>
-              {m.teamStats.map((s, i) => {
-                const isMine = s.name === seller.name;
-                const pct = s.total > 0 ? Math.round((s.overdue / s.total) * 100) : 0;
-                return (
-                  <div key={s.name} className={`p-3 rounded-xl border ${isMine ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-gray-50'}`}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className={`text-xs font-bold w-5 ${i === 0 ? 'text-green-600' : 'text-gray-400'}`}>#{i + 1}</span>
-                      <span className={`text-sm font-semibold flex-1 ${isMine ? 'text-blue-800' : 'text-gray-700'}`}>{s.name} {isMine && '← você'}</span>
-                      <span className={`text-xs font-bold ${s.overdue > 0 ? 'text-red-600' : 'text-green-600'}`}>{s.overdue} vencidos</span>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-                      {[
-                        { l: 'Clientes', v: s.total },
-                        { l: 'C/ lembrete', v: s.withReminder },
-                        { l: 'Vencidos', v: s.overdue },
-                        { l: 'Sem nota', v: s.noNotes },
-                      ].map(k => (
-                        <div key={k.l}>
-                          <p className="text-xs text-gray-500">{k.l}</p>
-                          <p className="text-sm font-bold text-gray-700">{k.v}</p>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-2 h-1 bg-gray-200 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full ${pct === 0 ? 'bg-green-400' : pct < 20 ? 'bg-yellow-400' : 'bg-red-400'}`} style={{ width: `${Math.min(100, pct)}%` }} />
-                    </div>
-                    <p className="text-xs text-gray-400 mt-0.5 text-right">{pct}% vencidos</p>
-                  </div>
-                );
-              })}
-            </div>
+            <section>
+              <h3 className="mb-2 text-sm font-semibold text-slate-900">Ranking <span className="font-normal text-slate-500">(menor nº de vencidos primeiro)</span></h3>
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full min-w-[480px] text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 text-xs font-medium text-slate-500">
+                      <th className="px-3 py-2 text-left font-medium">#</th>
+                      <th className="px-3 py-2 text-left font-medium">Atendente</th>
+                      <th className="px-3 py-2 text-right font-medium">Clientes</th>
+                      <th className="px-3 py-2 text-right font-medium">C/ lembrete</th>
+                      <th className="px-3 py-2 text-right font-medium">Vencidos</th>
+                      <th className="px-3 py-2 text-right font-medium">% venc.</th>
+                      <th className="px-3 py-2 text-right font-medium">Sem nota</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {m.teamStats.map((s, i) => {
+                      const isMine = s.name === seller.name;
+                      const pct = s.total > 0 ? Math.round((s.overdue / s.total) * 100) : 0;
+                      return (
+                        <tr key={s.name} className={isMine ? 'bg-brand-50' : ''}>
+                          <td className="px-3 py-2 tabular-nums text-slate-500">{i + 1}</td>
+                          <td className={`px-3 py-2 ${isMine ? 'font-semibold text-brand-800' : 'text-slate-900'}`}>{s.name}{isMine && ' (este atendente)'}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-slate-700">{s.total}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-slate-700">{s.withReminder}</td>
+                          <td className={`px-3 py-2 text-right tabular-nums font-medium ${s.overdue > 0 ? 'text-red-700' : 'text-green-700'}`}>{s.overdue}</td>
+                          <td className={`px-3 py-2 text-right tabular-nums ${pct === 0 ? 'text-green-700' : pct < 20 ? 'text-amber-700' : 'text-red-700'}`}>{pct}%</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-slate-700">{s.noNotes}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
           )}
         </div>
       </DialogContent>

@@ -1,6 +1,7 @@
 import { toast } from 'sonner';
 import { Bot, AlertTriangle } from 'lucide-react';
 import { Button } from '../ui/button';
+import { StatusBadge } from '../StatusBadge';
 import { trpc } from '../../lib/trpc';
 import { useAuth } from '../../_core/hooks/useAuth';
 import { useConfirm } from '../useConfirm';
@@ -54,29 +55,25 @@ export default function SmbiRoboPanel() {
 
   return (
     <div
-      className={`rounded-xl border px-4 py-3 text-sm ${
-        data.semSinal && data.roboAtivo ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'
+      className={`rounded-lg border px-4 py-3 text-sm ${
+        data.semSinal && data.roboAtivo ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-white'
       }`}
     >
       {confirmDialog}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="flex items-center gap-2 font-semibold text-slate-800">
-          <Bot size={16} className="text-blue-900" /> Robô do SMBI
+          <Bot size={16} className="text-slate-500" aria-hidden /> Robô do SMBI
         </div>
-        <span
-          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-            data.roboAtivo ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'
-          }`}
-        >
+        <StatusBadge tone={data.roboAtivo ? 'success' : 'neutral'} dot>
           {data.roboAtivo ? 'Ligado' : 'Desligado'}
-        </span>
-        <span className="text-xs text-slate-600">
+        </StatusBadge>
+        <span className="text-xs text-slate-500">
           Último sinal: {quandoFoi(data.ultimoHeartbeatEm)}
           {data.versao ? ` · versão ${data.versao}` : ''}
           {data.ciclo != null ? ` · ciclo ${data.ciclo}` : ''}
         </span>
         {data.criados != null && (
-          <span className="text-xs text-slate-600">
+          <span className="text-xs text-slate-500">
             Último ciclo: {data.criados} criado(s), {data.pulados ?? 0} pulado(s), {data.pendentes ?? 0} pendente(s)
           </span>
         )}
@@ -94,7 +91,7 @@ export default function SmbiRoboPanel() {
       </div>
       {data.semSinal && (
         <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-red-700">
-          <AlertTriangle size={14} />
+          <AlertTriangle size={14} aria-hidden />
           {data.ultimoHeartbeatEm
             ? `Sem sinal do robô há ${duracao(data.ultimoHeartbeatEm)} (o aviso aparece depois de ${data.limiteSemSinalMin} min): pedidos enviados ficam parados até ele voltar.`
             : 'O robô ainda não deu sinal: pedidos enviados ficam parados até ele ligar.'}

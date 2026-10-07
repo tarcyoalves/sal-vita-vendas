@@ -297,7 +297,7 @@ function BlockSettings({ block, onChange }: { block: Block; onChange: (b: Block)
         <div className="flex items-center gap-2">
           <Label className="text-xs !mb-0">Altura</Label>
           <Input value={block.height} onChange={e => onChange({ ...block, height: e.target.value })} placeholder="24px" className="w-24" />
-          <div className="flex-1 rounded bg-slate-100 border border-dashed border-slate-300 text-center text-[10px] text-slate-400 py-1" style={{ height: block.height, minHeight: 16 }}>
+          <div className="flex-1 rounded bg-slate-100 border border-dashed border-slate-300 text-center text-[10px] text-slate-500 py-1" style={{ height: block.height, minHeight: 16 }}>
             {block.height}
           </div>
         </div>
@@ -388,7 +388,7 @@ export function BlockEditor({ value, onChange, minHeight = 350 }: BlockEditorPro
 
   if (htmlMode) {
     return (
-      <div className="rounded-xl border border-slate-200 overflow-hidden">
+      <div className="rounded-lg border border-slate-200 overflow-hidden">
         <div className="flex items-center justify-between bg-slate-50 border-b border-slate-100 px-3 py-1.5">
           <span className="text-xs font-medium text-slate-500">Modo HTML</span>
           <Button size="sm" variant="outline" onClick={() => setHtmlMode(false)} className="h-7 text-xs gap-1">
@@ -407,7 +407,7 @@ export function BlockEditor({ value, onChange, minHeight = 350 }: BlockEditorPro
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden" style={{ minHeight }}>
+    <div className="rounded-lg border border-slate-200 bg-white overflow-hidden" style={{ minHeight }}>
       <div className="flex items-center justify-between bg-slate-50 border-b border-slate-100 px-3 py-1.5">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-slate-500">Editor de blocos</span>
@@ -425,14 +425,14 @@ export function BlockEditor({ value, onChange, minHeight = 350 }: BlockEditorPro
 
       {showPalette && (
         <div className="border-b border-slate-100 bg-blue-50/50 px-3 py-2">
-          <p className="text-[11px] text-slate-500 mb-1.5">Adicionar bloco:</p>
+          <p className="text-xs text-slate-500 mb-1.5">Adicionar bloco:</p>
           <div className="flex flex-wrap gap-1.5">
             {BLOCK_TYPES.map(({ type, label, icon: Icon }) => (
               <button
                 key={type}
                 type="button"
                 onClick={() => addBlock(type)}
-                className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-900 transition shadow-sm"
+                className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-900 transition"
               >
                 <Icon size={13} /> {label}
               </button>
@@ -453,14 +453,14 @@ export function BlockEditor({ value, onChange, minHeight = 350 }: BlockEditorPro
               onDragEnter={() => handleDragEnter(idx)}
               onDragEnd={handleDragEnd}
               onDragOver={e => e.preventDefault()}
-              className={`rounded-lg border transition-all ${isSelected ? "border-blue-300 bg-blue-50/30 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300"}`}
+              className={`rounded-lg border transition-all ${isSelected ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-white hover:border-slate-300"}`}
             >
               <div
                 className="flex items-center gap-1.5 px-2 py-1.5 cursor-pointer select-none"
                 onClick={() => setSelectedId(isSelected ? null : block.id)}
               >
                 <GripVertical size={14} className="text-slate-300 cursor-grab flex-shrink-0" />
-                <Icon size={13} className="text-slate-400 flex-shrink-0" />
+                <Icon size={13} className="text-slate-500 flex-shrink-0" />
                 <span className="text-xs font-medium text-slate-600 flex-1">{blockLabel(block.type)}</span>
                 <div className="flex gap-0.5 flex-shrink-0">
                   <button type="button" onClick={e => { e.stopPropagation(); moveBlock(idx, idx - 1); }} disabled={idx === 0} className="p-1 rounded text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronUp size={12} /></button>

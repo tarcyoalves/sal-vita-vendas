@@ -2,12 +2,15 @@ import { trpc } from '../lib/trpc';
 import { useAuth } from '../_core/hooks/useAuth';
 import { useMemo, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Phone, Clock, Zap, TrendingUp, AlertCircle, Trophy, DollarSign, Flame, Target, PartyPopper } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { QueryError } from '../components/QueryError';
+import { Page, PageHeader, Panel, PanelHeader, StatStrip, Stat } from '../components/layout/Page';
+import { Badge } from '../components/ui/badge';
+import { Skeleton } from '../components/ui/skeleton';
 import { safePercent } from '../lib/numbers';
 // Módulos puros do servidor (sem banco): mesma conta de horas do servidor, sem duplicar a regra.
 import { spMidnight } from '../../../server/lib/tz';
@@ -33,17 +36,17 @@ function fmtMs(ms: number) {
   return `${pad(h)}:${pad(m)}`;
 }
 
-function ProgressRing({ pct, size = 96, stroke = 9, color }: { pct: number; size?: number; stroke?: number; color: string }) {
-  const r = (size - stroke) / 2;
-  const circ = 2 * Math.PI * r;
-  const dash = Math.min(pct / 100, 1) * circ;
+function GoalBar({ label, valueLabel, pct, color }: { label: string; valueLabel: string; pct: number; color: string }) {
   return (
-    <svg width={size} height={size} className="-rotate-90">
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#e5e7eb" strokeWidth={stroke} />
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke}
-        strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
-        style={{ transition: 'stroke-dasharray 0.6s ease' }} />
-    </svg>
+    <div>
+      <div className="mb-1.5 flex items-baseline justify-between gap-2 text-sm">
+        <span className="font-medium text-slate-900">{label}</span>
+        <span className="tabular-nums text-slate-700">{valueLabel} <span className="text-xs text-slate-500">· {pct}%</span></span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+        <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color, transition: 'width 0.4s ease-out' }} />
+      </div>
+    </div>
   );
 }
 
@@ -114,7 +117,7 @@ export default function AttendantProgress() {
       t.lastContactedAt && new Date(t.lastContactedAt) >= weekStart
     ).length;
 
-    // 🎉 Minhas conversões (clientes ativos)
+    // Minhas conversões (clientes ativos)
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
     const convertedTasks = tasks.filter(t => !!t.convertedAt);
     const convertedCount = convertedTasks.length;
@@ -146,7 +149,7 @@ export default function AttendantProgress() {
     };
   }, [tasks, session, sellerProfile, tick]);
 
-  // 📈 Evolução: contatos (esforço) x comissão prevista (resultado), mês a mês.
+  // Evolução: contatos (esforço) x comissão prevista (resultado), mês a mês.
   // O objetivo é tornar visível, com números do próprio atendente, que fazer
   // mais tarefas/contatos se traduz em mais vendas e mais comissão no fim do
   // mês — sem depender de dados de outros atendentes (só o que já é seu).
@@ -181,241 +184,169 @@ export default function AttendantProgress() {
     if (prev < 0) { prevContactsRef.current = cur; return; }
     const goal = m.dailyGoal;
     const q1 = Math.round(goal * 0.25), half = Math.round(goal * 0.5), q3 = Math.round(goal * 0.75);
-    if (prev < q1   && cur >= q1)   toast.success(`${q1} contatos! Ótimo começo!`);
-    if (prev < half && cur >= half) toast.success(`${half} contatos! Você está na metade da meta!`);
-    if (prev < q3   && cur >= q3)   toast.success(`${q3} contatos! Falta só ${goal - q3} pra fechar!`);
-    if (prev < goal && cur >= goal) toast.success(`META BATIDA! ${goal} contatos hoje!`, { duration: 6000 });
+    if (prev < q1   && cur >= q1)   toast.success(`${q1} contatos feitos. Bom começo`);
+    if (prev < half && cur >= half) toast.success(`${half} contatos: metade da meta`);
+    if (prev < q3   && cur >= q3)   toast.success(`${q3} contatos: faltam ${goal - q3} para a meta`);
+    if (prev < goal && cur >= goal) toast.success(`Meta batida: ${goal} contatos hoje`, { duration: 6000 });
     prevContactsRef.current = cur;
   }, [m.contactsToday, m.dailyGoal]);
 
   if (isLoading) return (
-    <div className="flex items-center justify-center h-64">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-    </div>
+    <Page className="max-w-3xl">
+      <Skeleton className="h-8 w-48" />
+      <Skeleton className="h-20" />
+      <Skeleton className="h-40" />
+    </Page>
   );
 
   // Falha da API não pode parecer "zero contatos" (perda de dados).
   if (isError && tasks.length === 0) return (
-    <div className="p-4 md:p-6 max-w-2xl mx-auto">
+    <Page className="max-w-3xl">
       <QueryError onRetry={() => { void refetch(); }} retrying={isFetching} />
-    </div>
+    </Page>
   );
 
-  const contactColor = m.contactsPct >= 100 ? '#16a34a' : m.contactsPct >= 60 ? '#2563eb' : m.contactsPct >= 30 ? '#d97706' : '#dc2626';
-  const hoursColor   = m.hoursPct   >= 100 ? '#16a34a' : m.hoursPct   >= 60 ? '#2563eb' : '#94a3b8';
+  const contactColor = m.contactsPct >= 100 ? '#16a34a' : m.contactsPct >= 60 ? '#0C3680' : m.contactsPct >= 30 ? '#d97706' : '#dc2626';
+  const hoursColor   = m.hoursPct   >= 100 ? '#16a34a' : m.hoursPct   >= 60 ? '#0C3680' : '#94a3b8';
+  const remaining = m.dailyGoal - m.contactsToday;
+  const goalMessage = m.contactsToday >= m.dailyGoal
+    ? `Meta de ${m.dailyGoal} contatos atingida. Bom trabalho hoje, ${user?.name?.split(' ')[0] ?? ''}.`
+    : m.contactsToday >= Math.round(m.dailyGoal * 0.75)
+      ? `Quase lá: faltam ${remaining} contatos.`
+      : m.contactsToday >= Math.round(m.dailyGoal * 0.5)
+        ? `Na metade: ${remaining} contatos para fechar a meta.`
+        : `Meta de hoje: ${m.dailyGoal} contatos. Cada anotação salva conta como um contato.`;
 
   return (
-    <div className="p-4 md:p-6 max-w-2xl mx-auto">
+    <Page className="max-w-3xl">
+      <PageHeader
+        title="Meu Progresso"
+        description={
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              aria-hidden="true"
+              className={`inline-block size-2 rounded-full ${m.sessionStatus === 'active' ? 'bg-green-500' : m.sessionStatus === 'paused' ? 'bg-amber-500' : 'bg-slate-300'}`}
+            />
+            {user?.name} ·{' '}
+            {m.sessionStatus === 'active' ? 'Trabalhando agora'
+             : m.sessionStatus === 'paused' ? 'Sessão pausada'
+             : 'Sem sessão ativa'}
+          </span>
+        }
+        actions={m.contactsToday >= m.dailyGoal ? <Badge variant="success">Meta batida</Badge> : undefined}
+      />
+
       <Tabs defaultValue="progresso">
-        <TabsList className="w-full mb-4">
+        <TabsList className="mb-4 w-full">
           <TabsTrigger value="progresso" className="flex-1">Progresso</TabsTrigger>
           <TabsTrigger value="faturamento" className="flex-1">Faturamento</TabsTrigger>
         </TabsList>
 
         <TabsContent value="progresso">
-          <div className="space-y-4">
+          <div className="space-y-5">
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-800">{user?.name}</h1>
-          <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1.5">
-            <span className={`inline-block w-2 h-2 rounded-full ${m.sessionStatus === 'active' ? 'bg-green-500 animate-pulse' : m.sessionStatus === 'paused' ? 'bg-yellow-400' : 'bg-gray-300'}`} />
-            {m.sessionStatus === 'active' ? 'Trabalhando agora'
-             : m.sessionStatus === 'paused' ? 'Sessão pausada'
-             : 'Sem sessão ativa'}
-          </p>
-        </div>
-        {m.contactsToday >= m.dailyGoal && (
-          <div className="flex items-center gap-1.5 bg-green-100 text-green-700 px-3 py-1.5 rounded-full text-sm font-bold">
-            <Trophy size={15} /> META BATIDA!
-          </div>
-        )}
-      </div>
+            <StatStrip>
+              <Stat
+                label="Contatos hoje"
+                value={`${m.contactsToday}/${m.dailyGoal}`}
+                hint={remaining > 0 ? `faltam ${remaining}` : 'completo'}
+                tone={m.contactsToday >= m.dailyGoal ? 'success' : 'default'}
+              />
+              <Stat label="Horas trabalhadas" value={m.hoursWorked} hint={`de ${m.hoursGoal}`} />
+              <Stat label="Contatos na semana" value={m.weekContacts} hint="últimos 7 dias" />
+              <Stat label="Contatos por hora" value={m.productivity} />
+            </StatStrip>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-white border border-gray-200 rounded-2xl p-4 flex flex-col items-center gap-2 shadow-sm">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Contatos hoje</p>
-          <div className="relative">
-            <ProgressRing pct={m.contactsPct} size={100} stroke={9} color={contactColor} />
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-2xl font-black" style={{ color: contactColor }}>{m.contactsToday}</span>
-              <span className="text-[10px] text-gray-400 font-medium">/ {m.dailyGoal}</span>
-            </div>
-          </div>
-          <div className="text-center">
-            <p className="text-sm font-bold" style={{ color: contactColor }}>{m.contactsPct}%</p>
-            <p className="text-xs text-gray-400">{m.dailyGoal - m.contactsToday > 0 ? `faltam ${m.dailyGoal - m.contactsToday}` : 'completo'}</p>
-          </div>
-        </div>
-
-        <div className="bg-white border border-gray-200 rounded-2xl p-4 flex flex-col items-center gap-2 shadow-sm">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Horas trabalhadas</p>
-          <div className="relative">
-            <ProgressRing pct={m.hoursPct} size={100} stroke={9} color={hoursColor} />
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-lg font-black" style={{ color: hoursColor }}>{m.hoursWorked}</span>
-              <span className="text-[10px] text-gray-400 font-medium">/ {m.hoursGoal}</span>
-            </div>
-          </div>
-          <div className="text-center">
-            <p className="text-sm font-bold" style={{ color: hoursColor }}>{m.hoursPct}%</p>
-            <p className="text-xs text-gray-400">da meta de horas</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-2">
-        <div className="bg-indigo-50 rounded-xl p-3 flex flex-col gap-1">
-          <div className="flex items-center gap-1 text-indigo-600"><Phone size={14} /><span className="text-[10px] font-semibold text-gray-500">Semana</span></div>
-          <p className="text-xl font-black text-indigo-600">{m.weekContacts}</p>
-        </div>
-        <div className="bg-amber-50 rounded-xl p-3 flex flex-col gap-1">
-          <div className="flex items-center gap-1 text-amber-600"><Zap size={14} /><span className="text-[10px] font-semibold text-gray-500">Contatos/h</span></div>
-          <p className="text-xl font-black text-amber-600">{m.productivity}</p>
-        </div>
-        <div className="bg-slate-50 rounded-xl p-3 flex flex-col gap-1">
-          <div className="flex items-center gap-1 text-slate-600"><Clock size={14} /><span className="text-[10px] font-semibold text-gray-500">Trabalhado</span></div>
-          <p className="text-xl font-black text-slate-600">{m.hoursWorked}</p>
-        </div>
-      </div>
-
-      {m.convertedCount > 0 && (
-        <div className="bg-green-50 border border-green-200 rounded-2xl p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-3">
-            <PartyPopper size={16} className="text-green-600" />
-            <p className="text-sm font-semibold text-green-800">Minhas conversões (clientes ativos)</p>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <div className="text-center">
-              <p className="text-xl font-black text-green-700">{m.convertedCount}</p>
-              <p className="text-[10px] text-gray-500 mt-0.5">Total convertidos</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xl font-black text-green-700">{m.conversionRate}%</p>
-              <p className="text-[10px] text-gray-500 mt-0.5">Taxa de conversão</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xl font-black text-green-700">{m.convertedThisMonth}</p>
-              <p className="text-[10px] text-gray-500 mt-0.5">Últimos 30 dias</p>
-            </div>
-          </div>
-          <p className="text-[11px] text-green-600 mt-2 text-center">Continue mantendo contato — cada conversa aproxima de uma nova venda!</p>
-        </div>
-      )}
-
-      {m.overdueToday > 0 && (
-        <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-xl">
-          <AlertCircle size={16} className="text-red-500 mt-0.5 shrink-0" />
-          <div>
-            <p className="text-sm font-semibold text-red-700">{m.overdueToday} lembrete{m.overdueToday > 1 ? 's' : ''} em atraso hoje</p>
-            <p className="text-xs text-red-500 mt-0.5">Entre em contato com os clientes o quanto antes.</p>
-          </div>
-        </div>
-      )}
-
-      <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-        <div className="flex items-center gap-2 mb-4">
-          <TrendingUp size={15} className="text-blue-500" />
-          <p className="text-sm font-semibold text-gray-700">Contatos — últimos 7 dias</p>
-        </div>
-        <div className="flex items-end gap-1.5 h-24">
-          {m.weekDays.map((day, i) => {
-            const isToday = i === 6;
-            const pct = m.maxBar > 0 ? (day.count / m.maxBar) * 100 : 0;
-            const barColor = isToday ? (day.count >= m.dailyGoal ? '#16a34a' : '#2563eb') : '#93c5fd';
-            return (
-              <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0">
-                {day.count > 0 && (
-                  <span className={`text-[10px] font-bold ${isToday ? 'text-blue-700' : 'text-gray-400'}`}>{day.count}</span>
-                )}
-                <div className="w-full rounded-t-md transition-all duration-500" style={{
-                  height: `${Math.max(pct, day.count > 0 ? 8 : 2)}%`,
-                  backgroundColor: barColor,
-                  opacity: isToday ? 1 : 0.6,
-                }} />
-                <span className={`text-[9px] ${isToday ? 'font-bold text-blue-700' : 'text-gray-400'}`}>
-                  {isToday ? 'hoje' : day.label}
-                </span>
-                <span className="text-[8px] text-gray-300">{fmtDate(day.date)}</span>
+            {m.overdueToday > 0 && (
+              <div role="alert" className="flex items-start gap-3 rounded-lg bg-red-50 px-4 py-3">
+                <AlertCircle aria-hidden="true" size={16} className="mt-0.5 shrink-0 text-red-700" />
+                <div>
+                  <p className="text-sm font-medium text-red-800">{m.overdueToday} lembrete{m.overdueToday > 1 ? 's' : ''} em atraso hoje</p>
+                  <p className="text-xs text-red-700">Entre em contato com os clientes o quanto antes.</p>
+                </div>
               </div>
-            );
-          })}
-        </div>
-        <div className="mt-3 flex items-center gap-2">
-          <div className="w-3 h-3 rounded-sm bg-green-500" />
-          <span className="text-xs text-gray-500">Meta diária: <strong>{m.dailyGoal} contatos</strong></span>
-        </div>
-      </div>
+            )}
 
-      {evolucao?.temDados && (
-        <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-1">
-            <DollarSign size={15} className="text-emerald-500" />
-            <p className="text-sm font-semibold text-gray-700">Seu impacto: tarefas geram vendas</p>
-          </div>
-          <p className="text-[11px] text-gray-400 mb-3">Contatos feitos (barras) x comissão prevista (linha) — últimos 6 meses</p>
+            <Panel>
+              <PanelHeader title="Metas de hoje" description={goalMessage} />
+              <div className="space-y-4 p-4">
+                <GoalBar label="Contatos" valueLabel={`${m.contactsToday} / ${m.dailyGoal}`} pct={m.contactsPct} color={contactColor} />
+                <GoalBar label="Horas trabalhadas" valueLabel={`${m.hoursWorked} / ${m.hoursGoal}`} pct={m.hoursPct} color={hoursColor} />
+              </div>
+            </Panel>
 
-          <div className="h-44 -ml-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={evolucao.pontos} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                <YAxis yAxisId="contatos" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={26} allowDecimals={false} />
-                <YAxis yAxisId="comissao" orientation="right" hide domain={[0, (max: number) => max * 1.15 || 1]} />
-                <Tooltip
-                  formatter={(value: number, name: string) =>
-                    name === 'Comissão prevista' ? [formatBRL(value), name] : [value, name]
-                  }
-                  contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}
+            {m.convertedCount > 0 && (
+              <Panel>
+                <PanelHeader title="Minhas conversões" description="Clientes ativos" />
+                <StatStrip className="rounded-none border-0">
+                  <Stat label="Total convertidos" value={m.convertedCount} tone="success" />
+                  <Stat label="Taxa de conversão" value={`${m.conversionRate}%`} tone="success" />
+                  <Stat label="Últimos 30 dias" value={m.convertedThisMonth} tone="success" />
+                </StatStrip>
+              </Panel>
+            )}
+
+            <Panel>
+              <PanelHeader title="Contatos — últimos 7 dias" description={`Meta diária: ${m.dailyGoal} contatos`} />
+              <div className="p-4">
+                <div className="flex h-28 items-end gap-1.5">
+                  {m.weekDays.map((day, i) => {
+                    const isToday = i === 6;
+                    const pct = m.maxBar > 0 ? (day.count / m.maxBar) * 100 : 0;
+                    const barColor = isToday ? (day.count >= m.dailyGoal ? '#16a34a' : '#0C3680') : '#94a3b8';
+                    return (
+                      <div key={i} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1">
+                        {day.count > 0 && (
+                          <span className={`text-xs font-medium tabular-nums ${isToday ? 'text-slate-900' : 'text-slate-500'}`}>{day.count}</span>
+                        )}
+                        <div className="w-full rounded-t-sm" style={{
+                          height: `${Math.max(pct * 0.7, day.count > 0 ? 6 : 2)}%`,
+                          backgroundColor: barColor,
+                          opacity: isToday ? 1 : 0.7,
+                        }} />
+                        <span className={`text-xs ${isToday ? 'font-semibold text-slate-900' : 'text-slate-500'}`}>
+                          {isToday ? 'hoje' : day.label}
+                        </span>
+                        <span className="text-[11px] text-slate-500">{fmtDate(day.date)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </Panel>
+
+            {evolucao?.temDados && (
+              <Panel>
+                <PanelHeader
+                  title="Seu impacto: contatos e comissão"
+                  description="Contatos feitos (barras) e comissão prevista (linha) nos últimos 6 meses"
                 />
-                <Bar yAxisId="contatos" dataKey="contatos" name="Contatos" fill="#a5b4fc" radius={[4, 4, 0, 0]} barSize={20} />
-                <Line yAxisId="comissao" dataKey="comissao" name="Comissão prevista" stroke="#059669" strokeWidth={2.5} dot={{ r: 3, fill: '#059669' }} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 mt-2">
-            <div className="bg-emerald-50 rounded-xl p-2.5 text-center">
-              <p className="text-lg font-black text-emerald-700">{formatBRL(evolucao.valorPorContato)}</p>
-              <p className="text-[10px] text-gray-500">em comissão por contato feito</p>
-            </div>
-            <div className="bg-indigo-50 rounded-xl p-2.5 text-center">
-              <p className="text-lg font-black text-indigo-700">{evolucao.melhorMes?.label ?? '--'}</p>
-              <p className="text-[10px] text-gray-500">seu melhor mês ({formatBRL(evolucao.melhorMes?.comissao ?? 0)})</p>
-            </div>
-          </div>
-
-          <p className="text-[11px] text-gray-400 mt-3 text-center">
-            Quanto mais tarefas você trabalha, mais contatos vira orçamento — e mais orçamento vira comissão no fim do mês.
-          </p>
-        </div>
-      )}
-
-      <div className={`rounded-2xl p-4 text-center ${m.contactsToday >= m.dailyGoal ? 'bg-green-50 border border-green-200' : 'bg-blue-50 border border-blue-100'}`}>
-        {m.contactsToday >= m.dailyGoal ? (
-          <>
-            <div className="flex justify-center mb-1"><Trophy size={32} className="text-green-600" /></div>
-            <p className="font-bold text-green-700">Parabéns! Meta de {m.dailyGoal} contatos atingida!</p>
-            <p className="text-xs text-green-600 mt-0.5">Excelente trabalho hoje, {user?.name?.split(' ')[0]}!</p>
-          </>
-        ) : m.contactsToday >= Math.round(m.dailyGoal * 0.75) ? (
-          <>
-            <div className="flex justify-center mb-1"><Zap size={32} className="text-blue-600" /></div>
-            <p className="font-bold text-blue-700">Quase lá! Só faltam {m.dailyGoal - m.contactsToday} contatos!</p>
-          </>
-        ) : m.contactsToday >= Math.round(m.dailyGoal * 0.5) ? (
-          <>
-            <div className="flex justify-center mb-1"><Flame size={32} className="text-orange-500" /></div>
-            <p className="font-bold text-blue-700">Na metade! {m.dailyGoal - m.contactsToday} contatos pra fechar.</p>
-          </>
-        ) : (
-          <>
-            <div className="flex justify-center mb-1"><Target size={32} className="text-blue-600" /></div>
-            <p className="font-bold text-blue-700">Meta de hoje: {m.dailyGoal} contatos</p>
-            <p className="text-xs text-blue-500 mt-0.5">Cada anotação salva conta como um contato!</p>
-          </>
-        )}
-      </div>
+                <div className="p-4">
+                  <div className="-ml-2 h-44">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={evolucao.pontos} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                        <YAxis yAxisId="contatos" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} width={26} allowDecimals={false} />
+                        <YAxis yAxisId="comissao" orientation="right" hide domain={[0, (max: number) => max * 1.15 || 1]} />
+                        <Tooltip
+                          formatter={(value: number, name: string) =>
+                            name === 'Comissão prevista' ? [formatBRL(value), name] : [value, name]
+                          }
+                          contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}
+                        />
+                        <Bar yAxisId="contatos" dataKey="contatos" name="Contatos" fill="#94a3b8" radius={[4, 4, 0, 0]} barSize={20} />
+                        <Line yAxisId="comissao" dataKey="comissao" name="Comissão prevista" stroke="#0C3680" strokeWidth={2.5} dot={{ r: 3, fill: '#0C3680' }} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+                <StatStrip className="rounded-none border-0 border-t">
+                  <Stat label="Comissão por contato feito" value={formatBRL(evolucao.valorPorContato)} />
+                  <Stat label={`Melhor mês (${evolucao.melhorMes?.label ?? '--'})`} value={formatBRL(evolucao.melhorMes?.comissao ?? 0)} />
+                </StatStrip>
+              </Panel>
+            )}
 
           </div>
         </TabsContent>
@@ -424,6 +355,6 @@ export default function AttendantProgress() {
           <AttendantBilling />
         </TabsContent>
       </Tabs>
-    </div>
+    </Page>
   );
 }

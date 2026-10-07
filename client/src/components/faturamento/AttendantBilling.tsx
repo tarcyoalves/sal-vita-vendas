@@ -16,56 +16,17 @@ import { DeleteOrderDialog } from './DeleteOrderDialog';
 import { OrderPrintDocument } from './OrderPrintDocument';
 import { LinkTaskDialog } from './LinkTaskDialog';
 import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
+import { StatusBadge } from '../StatusBadge';
+import { Panel, StatStrip, Stat, EmptyState } from '../layout/Page';
 import {
-  DollarSign, TrendingUp, Package, ChevronLeft, ChevronRight,
-  Plus, Pencil, Truck, Trash2, Printer, Link2, Undo2,
+  Package, ChevronLeft, ChevronRight,
+  Pencil, Truck, Trash2, Printer, Link2, Undo2,
 } from 'lucide-react';
 
 const MESES = [
   'Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
-
-function StatTile({
-  label,
-  value,
-  icon: Icon,
-  color,
-}: {
-  label: string;
-  value: string;
-  icon: typeof DollarSign;
-  color: string;
-}) {
-  const bgMap: Record<string, string> = {
-    blue: 'bg-blue-50 text-blue-600',
-    emerald: 'bg-emerald-50 text-emerald-600',
-    amber: 'bg-amber-50 text-amber-600',
-    indigo: 'bg-indigo-50 text-indigo-600',
-  };
-  const valMap: Record<string, string> = {
-    blue: 'text-blue-700',
-    emerald: 'text-emerald-700',
-    amber: 'text-amber-700',
-    indigo: 'text-indigo-700',
-  };
-  return (
-    <div className="bg-white border border-gray-200 rounded-2xl p-3 shadow-sm">
-      <div className="flex items-center gap-1.5 mb-1">
-        <div className={`p-1 rounded-md ${bgMap[color] ?? 'bg-slate-50 text-slate-600'}`}>
-          <Icon size={13} />
-        </div>
-        <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
-          {label}
-        </span>
-      </div>
-      <p className={`text-lg font-black ${valMap[color] ?? 'text-slate-700'}`}>
-        {value}
-      </p>
-    </div>
-  );
-}
 
 export default function AttendantBilling() {
   const { data: sellerProfile, isLoading: profileLoading } =
@@ -182,16 +143,16 @@ export default function AttendantBilling() {
   if (profileLoading) {
     return (
       <div className="flex items-center justify-center h-40">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600" />
       </div>
     );
   }
 
   if (!seller) {
     return (
-      <div className="text-center py-12 text-gray-400 text-sm">
-        Perfil de vendedor nao encontrado.
-      </div>
+      <Panel>
+        <EmptyState title="Perfil de vendedor não encontrado" description="Peça ao administrador para vincular seu usuário a um perfil de atendente." />
+      </Panel>
     );
   }
 
@@ -199,82 +160,53 @@ export default function AttendantBilling() {
     <div className="space-y-4">
       {confirmDialog}
       <AvisoMesSemPedidos pedidos={allPedidos.filter((p) => !seller || p.sellerId === seller.id)} filtro={filtro} onIr={setFiltro} />
-      {/* Month selector */}
       <div className="flex items-center justify-between">
-        <button
-          onClick={prevMonth}
-          aria-label="Mês anterior"
-          className="p-2.5 rounded-lg hover:bg-slate-100 transition"
-        >
-          <ChevronLeft size={18} className="text-slate-500" />
-        </button>
-        <p className="text-sm font-semibold text-slate-700">
+        <Button variant="outline" size="icon-sm" onClick={prevMonth} aria-label="Mês anterior">
+          <ChevronLeft size={16} />
+        </Button>
+        <p className="text-sm font-semibold text-slate-900">
           {MESES[filtro.mes]} {filtro.ano}
         </p>
-        <button
-          onClick={nextMonth}
-          aria-label="Próximo mês"
-          className="p-2.5 rounded-lg hover:bg-slate-100 transition"
-        >
-          <ChevronRight size={18} className="text-slate-500" />
-        </button>
+        <Button variant="outline" size="icon-sm" onClick={nextMonth} aria-label="Próximo mês">
+          <ChevronRight size={16} />
+        </Button>
       </div>
 
-      {/* KPI cards */}
       {resumo && (
-        <div className="grid grid-cols-2 gap-3">
-          <StatTile
-            label="Total vendido"
-            value={formatBRL(resumo.totalVendido)}
-            icon={DollarSign}
-            color="blue"
-          />
-          <StatTile
-            label="Total embarcado"
-            value={formatBRL(resumo.totalEmbarcado)}
-            icon={Package}
-            color="emerald"
-          />
-          <StatTile
-            label="Comissao prevista"
-            value={formatBRL(resumo.comissaoPrevista)}
-            icon={TrendingUp}
-            color="amber"
-          />
-          <StatTile
-            label="Comissao embarcada"
-            value={formatBRL(resumo.comissaoEmbarcada)}
-            icon={Truck}
-            color="indigo"
-          />
-        </div>
+        <StatStrip>
+          <Stat label="Total vendido" value={formatBRL(resumo.totalVendido)} />
+          <Stat label="Total embarcado" value={formatBRL(resumo.totalEmbarcado)} />
+          <Stat label="Comissão prevista" value={formatBRL(resumo.comissaoPrevista)} />
+          <Stat label="Comissão embarcada" value={formatBRL(resumo.comissaoEmbarcada)} />
+        </StatStrip>
       )}
 
       {comissaoPct > 0 && (
-        <p className="text-[11px] text-slate-400 text-center">
-          Estimado conta no mes previsto de faturamento; embarcado, no mes do embarque real.
+        <p className="text-xs text-slate-500">
+          Estimado conta no mês previsto de faturamento; embarcado, no mês do embarque real.
         </p>
       )}
 
-      {/* Action bar */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-700">
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-900">
           Pedidos ({pedidosDoMes.length})
         </h3>
-        <p className="text-xs text-slate-400">Crie pedidos a partir das tarefas</p>
+        <p className="text-xs text-slate-500">Crie pedidos a partir das tarefas</p>
       </div>
 
       {/* Pedidos list */}
       {pedidosDoMes.length === 0 && fatError && !fatLoaded ? (
         <QueryError message="Falha ao carregar os pedidos" onRetry={fatReload} retrying={fatLoading} />
       ) : pedidosDoMes.length === 0 ? (
-        <div className="text-center py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-          <Package size={32} className="mx-auto text-slate-300 mb-2" />
-          <p className="text-sm text-slate-400">Nenhum pedido neste mes</p>
-          <p className="text-xs text-slate-400 mt-1">Acesse suas tarefas para criar pedidos</p>
-        </div>
+        <Panel>
+          <EmptyState
+            icon={<Package />}
+            title="Nenhum pedido neste mês"
+            description="Acesse suas tarefas para criar pedidos."
+          />
+        </Panel>
       ) : (
-        <div className="space-y-2">
+        <Panel className="divide-y divide-slate-200">
           {pedidosDoMes.map((p) => (
             <PedidoCard
               key={p.id}
@@ -287,7 +219,7 @@ export default function AttendantBilling() {
               onPrint={() => openPrint(p)}
             />
           ))}
-        </div>
+        </Panel>
       )}
 
       {/* Dialogs */}
@@ -345,18 +277,18 @@ function PedidoCard({
   const isFaturado = pedido.status === 'faturado';
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm space-y-2">
+    <div className="space-y-2.5 px-4 py-3">
       {/* Header: client + status */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-slate-800 truncate">
+          <p className="text-sm font-semibold text-slate-900 truncate">
             {pedido.clienteNome || 'Sem cliente'}
           </p>
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
             {pedido.taskId && (
-              <span className="text-[11px] text-blue-600 font-medium">Tarefa #{pedido.taskId}</span>
+              <span className="text-xs text-brand-700 font-medium">Tarefa #{pedido.taskId}</span>
             )}
-            <span className="text-[11px] text-slate-500">
+            <span className="text-xs text-slate-500">
               {isFaturado
                 ? `Faturado em ${formatDataBR(pedido.faturadoEm)}`
                 : pedido.previsaoFaturamentoEm
@@ -364,48 +296,36 @@ function PedidoCard({
                   : 'Sem previsão'}
             </span>
             {pedido.cnpj && (
-              <span className="text-[11px] text-slate-500">{pedido.cnpj}</span>
+              <span className="text-xs text-slate-500">{pedido.cnpj}</span>
             )}
             {pedido.razaoSocial && (
-              <span className="text-[11px] text-slate-500">{pedido.razaoSocial}</span>
+              <span className="text-xs text-slate-500">{pedido.razaoSocial}</span>
             )}
             {(pedido.cidade || pedido.uf) && (
-              <span className="text-[11px] text-slate-500">
+              <span className="text-xs text-slate-500">
                 {pedido.cidade}{pedido.cidade && pedido.uf ? '/' : ''}{pedido.uf}
               </span>
             )}
           </div>
         </div>
         <div className="flex flex-col items-end gap-1">
-          <Badge
-            className={
-              isFaturado
-                ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                : 'bg-amber-100 text-amber-700 border-amber-200'
-            }
-          >
+          <StatusBadge tone={isFaturado ? 'success' : 'warning'}>
             {isFaturado ? 'Faturado' : 'Estimado'}
-          </Badge>
-          <Badge
-            className={
-              pedido.aprovadoEm
-                ? 'bg-blue-100 text-blue-700 border-blue-200'
-                : 'bg-slate-100 text-slate-500 border-slate-200'
-            }
-          >
+          </StatusBadge>
+          <StatusBadge tone={pedido.aprovadoEm ? 'info' : 'neutral'}>
             {pedido.aprovadoEm ? 'Autorizado' : 'Aguardando revisão'}
-          </Badge>
+          </StatusBadge>
         </div>
       </div>
 
       {/* Vincular a uma tarefa — pedidos antigos sem esse vínculo */}
       {!pedido.taskId && (
-        <div className="flex items-center justify-between gap-2 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-2 text-xs text-orange-800">
+        <div className="flex items-center justify-between gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
           <div className="flex items-center gap-1.5">
             <Link2 size={13} />
             <span className="font-medium">Sem tarefa vinculada</span>
           </div>
-          <Button size="sm" className="h-7 gap-1 text-xs shrink-0" onClick={onOpenLinkDialog}>
+          <Button size="sm" className="gap-1 shrink-0" onClick={onOpenLinkDialog}>
             <Link2 size={12} />
             Vincular tarefa
           </Button>
@@ -414,12 +334,12 @@ function PedidoCard({
 
       {/* Product details */}
       {pedido.itens.length > 0 && (
-        <div className="bg-slate-50 rounded-lg px-2.5 py-1.5 space-y-0.5">
+        <div className="rounded-md bg-slate-50 px-3 py-2 space-y-1">
           {pedido.itens.map((item) => (
-            <div key={item.id} className="flex items-center justify-between text-[11px]">
-              <span className="text-slate-600 truncate mr-2">{item.descricao || 'Item'}</span>
-              <span className="text-slate-500 whitespace-nowrap">
-                {item.quantidade}un x {formatBRL(item.valorUnitario)} = <strong className="text-slate-700">{formatBRL(item.quantidade * item.valorUnitario)}</strong>
+            <div key={item.id} className="flex items-center justify-between gap-2 text-xs">
+              <span className="text-slate-700 truncate">{item.descricao || 'Item'}</span>
+              <span className="text-slate-500 whitespace-nowrap tabular-nums">
+                {item.quantidade}un x {formatBRL(item.valorUnitario)} = <strong className="font-semibold text-slate-900">{formatBRL(item.quantidade * item.valorUnitario)}</strong>
               </span>
             </div>
           ))}
@@ -428,7 +348,7 @@ function PedidoCard({
 
       {/* Payment/freight/obs details */}
       {(pedido.prazoPagamentoSal || pedido.prazoPagamentoFrete || pedido.valorFretePorUnidade || pedido.observacoes) && (
-        <div className="bg-amber-50 rounded-lg px-2.5 py-1.5 text-[11px] text-amber-800 space-y-0.5">
+        <div className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700 space-y-0.5">
           {pedido.prazoPagamentoSal && <div><strong>Prazo sal:</strong> {pedido.prazoPagamentoSal}</div>}
           {pedido.prazoPagamentoFrete && <div><strong>Prazo frete:</strong> {pedido.prazoPagamentoFrete}</div>}
           {!!pedido.valorFretePorUnidade && <div><strong>Frete/ton:</strong> {formatBRL(pedido.valorFretePorUnidade)}</div>}
@@ -437,25 +357,25 @@ function PedidoCard({
       )}
 
       {/* Total + actions */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-base font-bold text-slate-800">
+          <p className="text-base font-semibold tabular-nums text-slate-900">
             {formatBRL(total)}
           </p>
           {pedido.comissaoPct > 0 && (
-            <p className="text-[11px] text-slate-400">
-              Comissao {pedido.comissaoPct}%: {formatBRL(comissao)}
+            <p className="text-xs text-slate-500 tabular-nums">
+              Comissão {pedido.comissaoPct}%: {formatBRL(comissao)}
               {notaPesoFaturado(pedido) ? ` (${notaPesoFaturado(pedido)})` : ''}
             </p>
           )}
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap gap-1.5">
           {pedido.aprovadoEm && (
             <Button
               variant="outline"
               size="sm"
               onClick={onPrint}
-              className="gap-1 text-xs h-7"
+              className="gap-1"
             >
               <Printer size={12} />
               Gerar cópia
@@ -465,7 +385,7 @@ function PedidoCard({
             variant="outline"
             size="sm"
             onClick={onEdit}
-            className="gap-1 text-xs h-7"
+            className="gap-1"
           >
             <Pencil size={12} />
             Editar
@@ -474,7 +394,7 @@ function PedidoCard({
             <Button
               size="sm"
               onClick={onInvoice}
-              className="gap-1 text-xs h-7 bg-emerald-600 hover:bg-emerald-700"
+              className="gap-1"
             >
               <Truck size={12} />
               Marcar como faturado
@@ -485,7 +405,7 @@ function PedidoCard({
               variant="outline"
               size="sm"
               onClick={onUndoInvoice}
-              className="gap-1 text-xs h-7 text-amber-700 border-amber-300 hover:bg-amber-50"
+              className="gap-1"
             >
               <Undo2 size={12} />
               Desfazer
@@ -495,7 +415,8 @@ function PedidoCard({
             variant="outline"
             size="sm"
             onClick={onDelete}
-            className="gap-1 text-xs h-7 text-red-600 border-red-200 hover:bg-red-50"
+            aria-label="Excluir pedido"
+            className="gap-1 text-red-700"
           >
             <Trash2 size={12} />
           </Button>

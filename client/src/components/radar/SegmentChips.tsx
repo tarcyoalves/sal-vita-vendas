@@ -17,7 +17,7 @@ export function SegmentChips({
 
   return (
     <div className="space-y-1.5">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1.5">
         {RADAR_SEGMENTS.map((seg) => {
           const on = selected.includes(seg.key);
           const isPetHint = seg.key === 'racao_varejo';
@@ -28,19 +28,19 @@ export function SegmentChips({
               disabled={disabled}
               onClick={() => toggle(seg.key)}
               title={isPetHint ? 'Costuma trazer pet shop' : undefined}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition disabled:opacity-50 disabled:cursor-not-allowed ${
+              className={`inline-flex items-center gap-1.5 h-8 max-md:h-10 px-3 rounded-md text-xs font-medium border transition-colors disabled:opacity-45 disabled:cursor-not-allowed ${
                 on
-                  ? 'bg-blue-900 text-white border-blue-900'
-                  : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+                  ? 'bg-brand-700 text-white border-brand-700'
+                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
               }`}
             >
               {seg.label}
-              {isPetHint && <Info size={12} className={on ? 'text-blue-200' : 'text-slate-400'} />}
+              {isPetHint && <Info size={12} className={on ? 'text-brand-100' : 'text-slate-500'} />}
             </button>
           );
         })}
       </div>
-      <p className="text-[11px] text-slate-400 flex items-center gap-1">
+      <p className="text-xs text-slate-500 flex items-center gap-1">
         <Info size={11} className="shrink-0" />
         "Varejo de rações / pet" costuma trazer pet shop, não só distribuidor de sal.
       </p>

@@ -10,8 +10,8 @@ export default function AiAnalysis() {
   }, [setLocation]);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <p className="text-gray-500">Redirecionando para o Dashboard...</p>
+    <div className="flex h-64 items-center justify-center">
+      <p className="text-sm text-slate-500">Redirecionando para o Dashboard...</p>
     </div>
   );
 }
