@@ -19,10 +19,10 @@ import {
   emailEvents, sellers, emailSequenceSends, emailSequenceEnrollments, marketingContacts, taskDeletionLogs,
   companies, contacts, publicSources, consentRecords, suppressionList, auditLogs, fatOrders, smbiRobotState,
 } from '../server/db/schema';
-import { eq, and, or, sql, lte, gte, isNull, isNotNull, inArray, notInArray, notExists, desc, asc, lt } from 'drizzle-orm';
+import { eq, ne, and, or, sql, lte, gte, isNull, isNotNull, inArray, notInArray, notExists, desc, asc, lt } from 'drizzle-orm';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
 import { createPixPaymentForOrder } from '../server/lib/mercadopago';
-import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid, orderTrackLink, podeConfirmarPagamento } from '../server/lib/orderConfirmation';
+import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid, orderTrackLink, podeConfirmarPagamento, appendReviewNote } from '../server/lib/orderConfirmation';
 import { verifyResendWebhook } from '../server/email/marketing';
 import { evaluateInactiveDaysRules, flagEngagementByMessageId, processSequenceEnrollments, cancelAllEnrollments } from '../server/email/automations';
 import { processDueCampaigns } from '../server/email/campaigns';
@@ -309,7 +309,7 @@ import { safeEqual } from '../server/lib/safeEqual';
 import { handleResendWebhook, verifySvixSignature } from '../server/routers/resendWebhook';
 import { isForbiddenBatch, emailFromTrpcBody } from '../server/lib/trpcBatchGuard';
 import { csrfRejection } from '../server/lib/csrfGuard';
-import { decidirTransicaoPagamento } from '../server/lib/paymentTransition';
+import { decidirTransicaoPagamento, idPagamentoMpValido, pagamentoAprovadoDuplicado, estornoPertenceAoPedido, motivoValorDivergente } from '../server/lib/paymentTransition';
 
 app.get('/api/unsubscribe', handleUnsubscribe);
 // RFC 8058 one-click unsubscribe sends a POST request
@@ -427,8 +427,12 @@ app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/jso
             console.warn('[mp-webhook] Invalid HMAC signature — ignoring notification');
             res.status(401).json({ error: 'Invalid signature' }); return;
           }
+          // Sem janela de validade para o `ts`: o replay é inofensivo (status e valor vêm da API
+          // do MP e a confirmação é idempotente), e recusar um reenvio legítimo do MP atrasaria
+          // a confirmação até o cron diário.
         }
       } else {
+        // Fail-open de propósito (ver pendência do segredo do webhook em ESTADO-DO-PROJETO.md): fechar aqui pode barrar pagamento real.
         console.log('[mp-webhook] No x-signature headers — processing without HMAC (IPN-style notification)');
       }
     } else {
@@ -437,12 +441,16 @@ app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/jso
 
     const { type, data } = body;
     if (type !== 'payment' || !data?.id) { res.json({ ok: true }); return; }
+    // O id vai direto na URL da API do MP: só dígitos.
+    if (!idPagamentoMpValido(data.id)) { res.json({ ok: true, ignored: 'bad_id' }); return; }
 
     const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
     if (!token) { res.status(500).json({ error: 'no token' }); return; }
 
+    // Timeout lança → catch geral → 500 → o MP reenvia.
     const payRes = await fetch(`https://api.mercadopago.com/v1/payments/${data.id}`, {
       headers: { 'Authorization': `Bearer ${token}` },
+      signal: AbortSignal.timeout(8000),
     });
     if (!payRes.ok) { res.json({ ok: true }); return; }
 
@@ -460,15 +468,27 @@ app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/jso
     if (payment.status === 'approved') {
       // Idempotency: don't reprocess an already-confirmed order (avoids duplicate side effects)
       const transicao = decidirTransicaoPagamento(order, payment.status);
-      if (transicao === 'ja_confirmado') { res.json({ ok: true, already: true }); return; }
+      if (transicao === 'ja_confirmado') {
+        // Pedido já pago por OUTRO pagamento: o cliente pagou duas vezes (ex.: PIX e cartão). Sem estorno automático.
+        if (pagamentoAprovadoDuplicado(order.mpPaymentId, mpId)) {
+          console.error(`[mp-webhook] order ${orderId}: second approved payment ${mpId} (confirmed with ${order.mpPaymentId})`);
+          await appendReviewNote(orderId, `segundo pagamento aprovado — MP ${mpId} — possível cobrança em duplicidade, estornar`);
+        }
+        res.json({ ok: true, already: true }); return;
+      }
       // 'failed' cancelado: pagamento tardio não ressuscita o pedido (o UPDATE abaixo também barra).
-      if (transicao === 'ignorar') { res.json({ ok: true, ignored: true }); return; }
+      if (transicao === 'ignorar') {
+        console.error(`[mp-webhook] order ${orderId}: approved payment ${mpId} on a cancelled order — refund manually`);
+        await appendReviewNote(orderId, `pagamento aprovado em pedido cancelado — MP ${mpId} — estornar manualmente`);
+        res.json({ ok: true, ignored: true }); return;
+      }
       // Validate payment amount before marking as paid
       if (payment.transaction_amount !== undefined) {
         const expectedTotal = parseFloat(order.totalPrice ?? '0');
         if (expectedTotal > 0 && Math.abs(payment.transaction_amount - expectedTotal) > 0.01) {
           console.warn(`[mp-webhook] Amount mismatch for order ${orderId}: expected ${expectedTotal}, got ${payment.transaction_amount}`);
           // Return 200 (not 400) so MP doesn't retry forever; flag for manual review.
+          await appendReviewNote(orderId, motivoValorDivergente(payment.transaction_amount, expectedTotal, mpId));
           res.json({ ok: true, mismatch: true }); return;
         }
       }
@@ -493,9 +513,10 @@ app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/jso
 
     } else if (payment.status === 'pending' || payment.status === 'in_process' || payment.status === 'authorized') {
       // PIX/boleto awaiting payment — keep awaiting but persist the payment id for follow-up
+      // Condicional: pedido já confirmado/falho não troca o id do pagamento que o confirmou.
       await ordersDb.update(siteOrders)
         .set({ mpPaymentId: mpId, updatedAt: new Date() })
-        .where(eq(siteOrders.id, orderId));
+        .where(and(eq(siteOrders.id, orderId), eq(siteOrders.paymentStatus, 'awaiting')));
     } else if (payment.status === 'rejected' || payment.status === 'cancelled') {
       // Payment attempt failed/expired — order stays recoverable for a retry.
       // Só rebaixa 'awaiting': um rejected tardio não pode derrubar pedido já 'confirmed'.
@@ -506,6 +527,12 @@ app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/jso
       // Money reversed after payment — cancel the order and return the coupon use.
       // Conditional on the row still being 'confirmed' so that MP's repeated
       // refund notifications can't give the coupon back more than once.
+      // Só vale para o pagamento que confirmou o pedido: estorno de OUTRO pagamento não cancela a venda.
+      if (!estornoPertenceAoPedido(order.mpPaymentId, mpId)) {
+        console.error(`[mp-webhook] order ${orderId}: ${payment.status} for payment ${mpId}, not the order's payment — order left as is`);
+        await appendReviewNote(orderId, `${payment.status === 'refunded' ? 'estorno' : 'chargeback'} do pagamento MP ${mpId}, que não é o pagamento do pedido — conferir`);
+        res.json({ ok: true, ignored: 'other_payment' }); return;
+      }
       const reversed = await ordersDb.update(siteOrders)
         .set({ status: 'cancelled', paymentStatus: 'failed', mpPaymentId: mpId, updatedAt: new Date() })
         .where(and(eq(siteOrders.id, orderId), eq(siteOrders.paymentStatus, 'confirmed')))
@@ -797,6 +824,9 @@ async function findCompanyIdByContact(emailNorm: string, phoneDigits: string): P
 
 app.post('/api/b2b/inbound', b2bInboundLimiter, express.json({ limit: '256kb' }), async (req, res) => {
   try {
+    // Honeypot: campo `website` oculto no formulário — humano não preenche. Responde ok sem gravar nada.
+    const honeypot = (req.body as { website?: unknown } | undefined)?.website;
+    if (typeof honeypot === 'string' && honeypot.trim() !== '') { res.json({ ok: true }); return; }
     const parsed = b2bInboundSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' });
@@ -836,13 +866,15 @@ app.post('/api/b2b/inbound', b2bInboundLimiter, express.json({ limit: '256kb' })
     const now = new Date();
     const stateUpper = data.state.toUpperCase();
     if (companyId) {
+      // Lead repetido só PREENCHE campos vazios: nunca sobrescreve o que a equipe já corrigiu/qualificou.
+      const [existingCompany] = await ordersDb.select().from(companies).where(eq(companies.id, companyId)).limit(1);
       await ordersDb.update(companies).set({
-        name: data.companyName,
-        segment: data.segment,
-        city: data.city,
-        state: stateUpper,
+        ...(!existingCompany?.name ? { name: data.companyName } : {}),
+        ...(!existingCompany?.segment ? { segment: data.segment } : {}),
+        ...(!existingCompany?.city ? { city: data.city } : {}),
+        ...(!existingCompany?.state ? { state: stateUpper } : {}),
+        ...(cnpjDigits && !existingCompany?.cnpj ? { cnpj: cnpjDigits } : {}),
         updatedAt: now,
-        ...(cnpjDigits ? { cnpj: cnpjDigits } : {}),
       }).where(eq(companies.id, companyId));
     } else {
       const [created] = await ordersDb.insert(companies).values({
@@ -877,10 +909,10 @@ app.post('/api/b2b/inbound', b2bInboundLimiter, express.json({ limit: '256kb' })
     let contactId: number;
     if (existingContact) {
       await ordersDb.update(contacts).set({
-        name: data.contactName,
-        email: emailNorm || existingContact.email,
-        phone: phoneDigits || existingContact.phone,
-        whatsapp: phoneDigits || existingContact.whatsapp,
+        name: existingContact.name || data.contactName,
+        email: existingContact.email || emailNorm || null,
+        phone: existingContact.phone || phoneDigits || null,
+        whatsapp: existingContact.whatsapp || phoneDigits || null,
         updatedAt: now,
       }).where(eq(contacts.id, existingContact.id));
       contactId = existingContact.id;
@@ -933,12 +965,14 @@ app.post('/api/b2b/inbound', b2bInboundLimiter, express.json({ limit: '256kb' })
       },
     });
 
-    // Internal notification — best-effort, never blocks the response.
-    notifyB2bLead({
-      companyId, companyName: data.companyName, contactName: data.contactName, email: emailNorm,
-      whatsapp: data.whatsapp, segment: data.segment, city: data.city, state: stateUpper,
-      volumeInterest: data.volumeInterest, message: data.message,
-    }).catch(err => console.error('[b2b] notification error:', err));
+    // Internal notification — aguardada (a função serverless pode ser congelada após o res.json), mas nunca falha o envio do lead.
+    try {
+      await notifyB2bLead({
+        companyId, companyName: data.companyName, contactName: data.contactName, email: emailNorm,
+        whatsapp: data.whatsapp, segment: data.segment, city: data.city, state: stateUpper,
+        volumeInterest: data.volumeInterest, message: data.message,
+      });
+    } catch (err) { console.error('[b2b] notification error:', err); }
 
     res.json({ ok: true });
   } catch (err) {
@@ -1023,6 +1057,15 @@ const chatLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 
+// Pagamento tem limiter próprio: retentar PIX/cartão não pode gastar a cota de criar pedido.
+const paymentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  message: { error: 'Muitas tentativas de pagamento. Tente novamente em 15 minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Lote tRPC (`a,b?batch=1`) escaparia dos limiters por prefixo abaixo.
 app.use('/api/trpc', (req, res, next) => {
   if (isForbiddenBatch(req.path)) {
@@ -1051,8 +1094,8 @@ app.use('/api/trpc/auth.emergencyReset', authLimiter, authIpLimiter);
 app.use('/api/trpc/shipping.calculate', storeLimiter);
 app.use('/api/trpc/shipping.trackOrder', storeLimiter);
 app.use('/api/trpc/shipping.createOrder', orderLimiter);
-app.use('/api/trpc/shipping.createPayment', orderLimiter);
-app.use('/api/trpc/shipping.createPixPayment', orderLimiter);
+app.use('/api/trpc/shipping.createPayment', paymentLimiter);
+app.use('/api/trpc/shipping.createPixPayment', paymentLimiter);
 app.use('/api/trpc/shipping.pixStatus', pixStatusLimiter);
 app.use('/api/trpc/recovery.trackCart', cartTrackLimiter);
 app.use('/api/trpc/recovery.validateCoupon', couponCheckLimiter);
@@ -1134,6 +1177,7 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
     const orders = await ordersDb.select().from(siteOrders).where(and(
       inArray(siteOrders.paymentStatus, ['awaiting', 'failed']),
+      ne(siteOrders.status, 'cancelled'), // cancelado não recebe cobrança (nem PIX novo)
       isNull(siteOrders.unpaidFollowupSentAt),
       lte(siteOrders.createdAt, twoHoursAgo),
       gte(siteOrders.createdAt, threeDaysAgo),
@@ -1192,7 +1236,8 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
         const emailSubject = o.paymentStatus === 'failed'
           ? `Problema no pagamento do pedido #${o.id} — tente novamente`
           : `Pedido #${o.id} aguardando pagamento — R$ ${brl(o.totalPrice)}`;
-        sendEmail(o.customerEmail, emailSubject, emailHtml).catch(() => {});
+        try { await sendEmail(o.customerEmail, emailSubject, emailHtml); }
+        catch (e) { console.error(`[cron] unpaid-followup: e-mail do pedido ${o.id} falhou:`, e); }
       }
       await new Promise(r => setTimeout(r, 1000));
     }
@@ -1225,14 +1270,14 @@ async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
         let payId = o.mpPaymentId ?? '';
         let transactionAmount: number | undefined;
         if (payId) {
-          const r = await fetch(`https://api.mercadopago.com/v1/payments/${payId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+          const r = await fetch(`https://api.mercadopago.com/v1/payments/${payId}`, { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(8000) });
           if (r.ok) {
             const p = (await r.json()) as any;
             approved = p?.status === 'approved';
             transactionAmount = p?.transaction_amount;
           }
         } else {
-          const r = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${o.id}&sort=date_created&criteria=desc`, { headers: { 'Authorization': `Bearer ${token}` } });
+          const r = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${o.id}&sort=date_created&criteria=desc`, { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(8000) });
           if (r.ok) {
             const results = ((await r.json()) as any)?.results ?? [];
             const ap = results.find((p: any) => p.status === 'approved');
@@ -1248,6 +1293,7 @@ async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
           const expectedTotal = parseFloat(o.totalPrice ?? '0');
           if (expectedTotal > 0 && Math.abs(transactionAmount - expectedTotal) > 0.01) {
             console.warn(`[cron] reconcile amount mismatch for order ${o.id}: expected ${expectedTotal}, got ${transactionAmount}`);
+            await appendReviewNote(o.id, motivoValorDivergente(transactionAmount, expectedTotal, payId));
             continue; // leave order 'awaiting' for manual review; do not confirm
           }
         }
@@ -1456,7 +1502,8 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
           // Email only on 3rd touch (cupom) to save Resend daily quota for confirmations
           if (cart.customerEmail && ruleCfg.coupon) {
             const emailHtml = abandonedCartHtml(cart.customerName, 'https://premium.salvitarn.com.br', ruleCfg.coupon);
-            sendEmail(cart.customerEmail, `Seu cupom ${ruleCfg.coupon} — finalize seu pedido Sal Vita`, emailHtml).catch(() => {});
+            try { await sendEmail(cart.customerEmail, `Seu cupom ${ruleCfg.coupon} — finalize seu pedido Sal Vita`, emailHtml); }
+            catch (e) { console.error(`[cron] abandoned-cart: e-mail do carrinho ${cart.id} falhou:`, e); }
           }
         } else {
           await requeueOrFail(runs, run);

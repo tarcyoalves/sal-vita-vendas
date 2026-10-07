@@ -3,6 +3,7 @@ import { eq, and, or, ne, sql } from 'drizzle-orm';
 import { ordersDb } from '../db/ordersDb';
 import { siteOrders, abandonedCarts, automationRuns, msgTemplates, coupons } from '../db/schema';
 import { sendEmail, orderConfirmedHtml } from '../email/resend';
+import { linhaRevisar } from './paymentTransition';
 
 type SiteOrder = typeof siteOrders.$inferSelect;
 
@@ -35,7 +36,26 @@ export function orderTrackLink(
   return extraQuery ? `${withToken}&${extraQuery}` : withToken;
 }
 
-export async function bumpCouponUsage(code: string | null | undefined, delta: 1 | -1): Promise<void> {
+/**
+ * Anexa "[REVISAR] <data ISO> <motivo>" a site_orders.notes (UPDATE atômico, nunca sobrescreve).
+ * Idempotente: não repete o mesmo motivo. Não lança — falha de nota não pode derrubar o webhook.
+ */
+export async function appendReviewNote(orderId: number, motivo: string): Promise<void> {
+  try {
+    const linha = linhaRevisar(motivo);
+    await ordersDb.update(siteOrders)
+      .set({
+        notes: sql`CASE WHEN coalesce(${siteOrders.notes}, '') = '' THEN ${linha}::text ELSE ${siteOrders.notes} || chr(10) || ${linha}::text END`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(siteOrders.id, orderId), sql`strpos(coalesce(${siteOrders.notes}, ''), ${motivo}::text) = 0`));
+  } catch (e) { console.error(`[review-note] pedido ${orderId}: falhou:`, e); }
+}
+
+/** Telefone para log: só os 4 últimos dígitos. */
+export const maskPhone = (p: string | null | undefined) => `***${(p ?? '').replace(/\D/g, '').slice(-4)}`;
+
+export async function bumpCouponUsage(code: string | null | undefined, delta: 1 | -1, orderId?: number): Promise<void> {
   if (!code) return;
   try {
     if (delta > 0) {
@@ -52,6 +72,7 @@ export async function bumpCouponUsage(code: string | null | undefined, delta: 1 
         .returning({ id: coupons.id });
       if (bumped.length === 0) {
         console.warn(`[coupon] ${code} already at max_uses — discount was granted but the counter was not bumped`);
+        if (orderId) await appendReviewNote(orderId, `cupom ${code} acima do limite de usos`);
       }
     } else {
       await ordersDb.update(coupons)
@@ -106,7 +127,11 @@ export async function sendCapiPurchase(order: SiteOrder): Promise<void> {
       signal: ac.signal,
     });
     clearTimeout(timer);
-    if (!r.ok) console.error('[capi] Purchase failed', r.status, await r.text().catch(() => ''));
+    if (!r.ok) {
+      // Só status + código do erro da Meta: o corpo pode ecoar dados do usuário.
+      const j = await r.json().catch(() => null) as { error?: { code?: number; type?: string } } | null;
+      console.error('[capi] Purchase failed', r.status, j?.error?.code ?? '', j?.error?.type ?? '');
+    }
     else console.log(`[capi] Purchase sent for order ${order.id}`);
   } catch (e) { console.error('[capi] error:', e); }
 }
@@ -135,13 +160,13 @@ export async function sendWhatsApp(phone: string, message: string): Promise<bool
         signal: ac.signal,
       });
       clearTimeout(timer);
-      if (!r.ok) return false;
+      if (!r.ok) { console.warn(`[wa] send to ${maskPhone(phoneNum)} failed: HTTP ${r.status}`); return false; }
       let body: Record<string, unknown> = {};
       try { body = await r.json() as Record<string, unknown>; } catch {}
-      if (body.success === false) return false;
-      console.log(`[wa] dispatched to ${phoneNum}`);
+      if (body.success === false) { console.warn(`[wa] send to ${maskPhone(phoneNum)} failed: success=false`); return false; }
+      console.log(`[wa] dispatched to ${maskPhone(phoneNum)}`);
       return true;
-    } catch { clearTimeout(timer); return false; }
+    } catch { clearTimeout(timer); console.warn(`[wa] send to ${maskPhone(phoneNum)} failed: network/timeout`); return false; }
   }));
   return results.some(Boolean);
 }
@@ -156,7 +181,7 @@ export async function confirmOrderPaid(order: SiteOrder): Promise<void> {
   // Cada passo tem o seu try/catch: o pedido já está 'confirmed' quando chegamos
   // aqui, então ninguém refaz esta função — um passo que falha não pode impedir
   // os seguintes.
-  try { await bumpCouponUsage(order.couponCode, 1); }
+  try { await bumpCouponUsage(order.couponCode, 1, order.id); }
   catch (e) { console.error(`[order-confirmation] pedido ${order.id}: cupom falhou:`, e); }
   try { await sendCapiPurchase(order); }
   catch (e) { console.error(`[order-confirmation] pedido ${order.id}: CAPI falhou:`, e); }

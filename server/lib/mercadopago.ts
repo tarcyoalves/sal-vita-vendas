@@ -10,6 +10,8 @@ type SiteOrder = typeof siteOrders.$inferSelect;
 export async function createPixPaymentForOrder(order: SiteOrder): Promise<{ paymentId: string; qrCode: string; qrCodeBase64: string } | null> {
   const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
   if (!token) return null;
+  // Pedido cancelado não gera cobrança: um PIX pago depois seria ignorado pelo webhook.
+  if (order.status === 'cancelled') return null;
 
   const amount = parseFloat(order.totalPrice ?? '0');
   if (!(amount > 0)) return null;
@@ -35,9 +37,10 @@ export async function createPixPaymentForOrder(order: SiteOrder): Promise<{ paym
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
-        'X-Idempotency-Key': `pix-${order.id}-${Date.now()}`,
+        'X-Idempotency-Key': `pix-${order.id}`,
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return null;
     const data = await res.json() as Record<string, any>;

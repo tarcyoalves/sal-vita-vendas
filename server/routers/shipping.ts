@@ -4,9 +4,17 @@ import crypto from 'crypto';
 import { router, publicProcedure, protectedProcedure } from '../trpc';
 import { ordersDb as db } from '../db/ordersDb';
 import { siteOrders, coupons, msgTemplates } from '../db/schema';
-import { desc, eq, and, or, isNull, sql } from 'drizzle-orm';
+import { desc, eq, and, or, ne, gte, isNull, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
-import { confirmOrderPaid } from '../lib/orderConfirmation';
+import { confirmOrderPaid, appendReviewNote } from '../lib/orderConfirmation';
+import { quantidadeValida, cupomAtendeMinimo, acharPedidoDuplicado, mesmosDadosDoPedido, IDEMPOTENCIA_PEDIDO_MS } from '../lib/paymentTransition';
+
+/** Erro do MP para log: só status + código/mensagem curta do `error`/`message`, nunca o corpo inteiro (pode ter dados do pagador). */
+async function mpErrorTag(res: Response): Promise<string> {
+  const j = await res.json().catch(() => null) as { error?: unknown; message?: unknown } | null;
+  const pick = (v: unknown) => (typeof v === 'string' ? v.slice(0, 80) : '');
+  return `${res.status} ${pick(j?.error)} ${pick(j?.message)}`.trim();
+}
 
 const ME_BASE = 'https://melhorenvio.com.br';
 const ORIGIN_CEP = process.env.MELHOR_ENVIO_ORIGIN_CEP ?? '59600000';
@@ -142,6 +150,7 @@ async function meCalculate(destCep: string, qty: number, productId?: string | nu
         'Accept':        'application/json',
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(8000),
     });
     const rawText = await res.text();
     if (!res.ok) return null;
@@ -217,7 +226,7 @@ async function quoteShipping(
   let uf = ufHint?.toUpperCase() || '';
   if (!uf) {
     try {
-      const r = await fetch(`https://viacep.com.br/ws/${cep.replace(/\D/g,'')}/json/`);
+      const r = await fetch(`https://viacep.com.br/ws/${cep.replace(/\D/g,'')}/json/`, { signal: AbortSignal.timeout(8000) });
       const d = await r.json();
       if (d.uf) uf = d.uf;
     } catch {}
@@ -310,6 +319,44 @@ export const shippingRouter = router({
       const prod = CATALOG[productId];
       const productCount = Math.max(1, Math.round(input.quantity / prod.kgPerUnit));
 
+      if (!quantidadeValida(input.quantity, prod.kgPerUnit)) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Quantidade inválida para este produto.' });
+      }
+
+      // Duplo clique / reenvio: devolve o pedido igual ainda aguardando pagamento (últimos 15 min).
+      const cepDigits = input.postalCode.replace(/\D/g, '');
+      const recentes = await db.select().from(siteOrders).where(and(
+        eq(siteOrders.paymentStatus, 'awaiting'),
+        ne(siteOrders.status, 'cancelled'),
+        eq(siteOrders.product, prod.name),
+        eq(siteOrders.quantity, input.quantity),
+        eq(siteOrders.postalCode, cepDigits),
+        gte(siteOrders.createdAt, new Date(Date.now() - IDEMPOTENCIA_PEDIDO_MS)),
+      )).orderBy(desc(siteOrders.createdAt)).limit(20);
+      const dup = acharPedidoDuplicado(recentes, { customerPhone: input.customerPhone, product: prod.name, quantity: input.quantity, postalCode: cepDigits });
+      if (dup && mesmosDadosDoPedido(dup, {
+        customerName: input.customerName,
+        customerEmail: input.customerEmail || null,
+        customerCpf: input.customerCpf ?? null,
+        address: input.address,
+        number: input.number,
+        complement: input.complement || null,
+        neighborhood: input.neighborhood,
+        city: input.city,
+        state: input.state,
+        shippingServiceName: input.shippingServiceName ?? null,
+        couponCode: input.couponCode ? input.couponCode.trim().toUpperCase() : null,
+      })) {
+        return {
+          id: dup.id,
+          total: parseFloat(dup.totalPrice ?? '0'),
+          shipping: parseFloat(dup.shippingPrice ?? '0'),
+          couponDiscount: parseFloat(dup.couponDiscount ?? '0'),
+          couponApplied: dup.couponCode,
+          trackToken: dup.trackToken,
+        };
+      }
+
       if (input.shippingPrice !== undefined && (input.shippingPrice < 0 || input.shippingPrice > 200)) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Valor de frete inválido.' });
       }
@@ -354,7 +401,7 @@ export const shippingRouter = router({
           const c = found[0];
           const notExpired = !c.expiresAt || new Date() < new Date(c.expiresAt);
           const notMaxed = !c.maxUses || c.usedCount < c.maxUses;
-          if (notExpired && notMaxed) {
+          if (notExpired && notMaxed && cupomAtendeMinimo(subtotal, c.minOrderValue)) {
             if (c.discountType === 'percent') {
               couponDiscount = +(subtotal * parseFloat(c.discountValue) / 100).toFixed(2);
             } else {
@@ -621,6 +668,8 @@ Seja direto e use emojis para facilitar leitura.`;
       // Acesso antes do status: "já foi pago" não pode vazar para quem não é dono.
       assertOrderAccess(order, { token: input.token, phone: input.phone });
       if (order.paymentStatus === 'confirmed') throw new TRPCError({ code: 'CONFLICT', message: 'Este pedido já foi pago.' });
+      // Pagamento em pedido cancelado seria ignorado pelo webhook (dinheiro sem pedido).
+      if (order.status === 'cancelled') throw new TRPCError({ code: 'CONFLICT', message: 'Este pedido foi cancelado.' });
 
       // Return URLs carry the opaque token, never the phone digits — this link is
       // handed to Mercado Pago and ends up in history/Referer.
@@ -659,9 +708,10 @@ Seja direto e use emojis para facilitar leitura.`;
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(preference),
+        signal: AbortSignal.timeout(8000),
       });
       if (!res.ok) {
-        console.error(`[shipping] createPayment MP ${res.status}:`, await res.text().catch(() => ''));
+        console.error(`[shipping] createPayment MP ${await mpErrorTag(res)}`);
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Não foi possível gerar o pagamento agora. Tente novamente em instantes.' });
       }
       const data = await res.json();
@@ -689,6 +739,8 @@ Seja direto e use emojis para facilitar leitura.`;
       // Acesso antes do status: "já foi pago" não pode vazar para quem não é dono.
       assertOrderAccess(order, { token: input.token, phone: input.phone });
       if (order.paymentStatus === 'confirmed') throw new TRPCError({ code: 'CONFLICT', message: 'Este pedido já foi pago.' });
+      // Pagamento em pedido cancelado seria ignorado pelo webhook (dinheiro sem pedido).
+      if (order.status === 'cancelled') throw new TRPCError({ code: 'CONFLICT', message: 'Este pedido foi cancelado.' });
 
       const amount = parseFloat(order.totalPrice ?? '0');
 
@@ -700,6 +752,7 @@ Seja direto e use emojis para facilitar leitura.`;
         try {
           const existing = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, {
             headers: { 'Authorization': `Bearer ${token}` },
+            signal: AbortSignal.timeout(8000),
           });
           if (existing.ok) {
             const p = await existing.json() as any;
@@ -740,9 +793,10 @@ Seja direto e use emojis para facilitar leitura.`;
           'X-Idempotency-Key': `pix-${order.id}`,
         },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(8000),
       });
       if (!res.ok) {
-        console.error(`[shipping] createPixPayment MP ${res.status}:`, await res.text().catch(() => ''));
+        console.error(`[shipping] createPixPayment MP ${await mpErrorTag(res)}`);
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Não foi possível gerar o PIX agora. Tente novamente em instantes.' });
       }
       const data = await res.json();
@@ -766,7 +820,8 @@ Seja direto e use emojis para facilitar leitura.`;
       phone: z.string().optional(),
       token: z.string().max(64).optional(),
     }))
-    .query(async ({ input }) => {
+    // .mutation: o storefront chama com POST (tRPC 11 responde 405 a POST em query).
+    .mutation(async ({ input }) => {
       const orders = await db.select({
         id: siteOrders.id,
         paymentStatus: siteOrders.paymentStatus,
@@ -781,7 +836,7 @@ Seja direto e use emojis para facilitar leitura.`;
       const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
       if (!token || !order.mpPaymentId) return { paid: false, status: order.paymentStatus };
       try {
-        const r = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const r = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(8000) });
         if (!r.ok) return { paid: false, status: order.paymentStatus };
         const p = await r.json() as any;
         return { paid: p.status === 'approved', status: p.status as string };
@@ -883,7 +938,7 @@ Seja direto e use emojis para facilitar leitura.`;
         if (resume) {
           meOrderId = order.meOrderId!;
         } else {
-          const cartRes = await fetch(`${ME_BASE}/api/v2/me/cart`, { method: 'POST', headers, body: JSON.stringify(cartBody) });
+          const cartRes = await fetch(`${ME_BASE}/api/v2/me/cart`, { method: 'POST', headers, body: JSON.stringify(cartBody), signal: AbortSignal.timeout(8000) });
           if (!cartRes.ok) {
             const txt = await cartRes.text();
             throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro cart ME: ${txt}` });
@@ -906,6 +961,7 @@ Seja direto e use emojis para facilitar leitura.`;
               await fetch(`${ME_BASE}/api/v2/me/cart/${meOrderId}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'SalVita/1.0 (contato@salvitarn.com.br)' },
+                signal: AbortSignal.timeout(8000),
               });
             } catch {} // best-effort cancel
             throw err; // re-throw original error
@@ -917,7 +973,7 @@ Seja direto e use emojis para facilitar leitura.`;
         }
 
         const genRes = await fetch(`${ME_BASE}/api/v2/me/shipment/generate`, {
-          method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }),
+          method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }), signal: AbortSignal.timeout(8000),
         });
         if (!genRes.ok) {
           const txt = await genRes.text();
@@ -925,7 +981,7 @@ Seja direto e use emojis para facilitar leitura.`;
         }
 
         const printRes = await fetch(`${ME_BASE}/api/v2/me/shipment/print`, {
-          method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId], mode: 'private' }),
+          method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId], mode: 'private' }), signal: AbortSignal.timeout(8000),
         });
         if (!printRes.ok) {
           const txt = await printRes.text();
@@ -974,6 +1030,7 @@ Seja direto e use emojis para facilitar leitura.`;
             method: 'POST',
             headers: { 'Authorization': `Bearer ${mpToken}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({}),
+            signal: AbortSignal.timeout(8000),
           });
           if (!mpRes.ok) {
             const txt = await mpRes.text();
@@ -999,6 +1056,7 @@ Seja direto e use emojis para facilitar leitura.`;
                 'Accept': 'application/json',
               },
               body: JSON.stringify({ orders: [order.meOrderId] }),
+              signal: AbortSignal.timeout(8000),
             });
             if (meRes.ok) results.push('Etiqueta ME cancelada');
             else results.push(`Aviso: ME retornou ${meRes.status} — verifique manualmente`);
