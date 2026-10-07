@@ -3,6 +3,11 @@
 // sessões esquecidas abertas por dias.
 import { spMidnight } from './tz';
 
+/** Folga para o relógio do banco vs. o do servidor: updatedAt <= início + isto não é sinal de vida. */
+const SIGNAL_EPSILON_MS = 60_000;
+/** Sem batimento (a cada 5 min) por este tempo, a sessão de dia anterior é tida como esquecida. */
+const STALE_SIGNAL_MS = 15 * 60_000;
+
 type D = Date | string | number;
 
 export interface WorkSessionLike {
@@ -12,6 +17,7 @@ export interface WorkSessionLike {
   totalPausedMs?: number | null;
   status: string;
   updatedAt?: D | null;
+  dailyGoalHours?: number | null;
 }
 
 const ms = (d: D) => new Date(d).getTime();
@@ -21,16 +27,39 @@ export function isOpenSession(s: Pick<WorkSessionLike, 'status'>): boolean {
 }
 
 /**
+ * Sessão aberta de dia anterior (SP) sem sinal de vida recente: foi esquecida aberta.
+ * Quem trabalha atravessando a meia-noite com a aba aberta mantém o batimento e não
+ * é tido como esquecido.
+ */
+export function isForgottenSession(
+  s: Pick<WorkSessionLike, 'status' | 'startedAt' | 'endedAt' | 'updatedAt'>, now: Date,
+): boolean {
+  if (s.endedAt || !isOpenSession(s)) return false;
+  const start = ms(s.startedAt);
+  if (start >= spMidnight(now).getTime()) return false;
+  const last = s.updatedAt ? Math.max(start, ms(s.updatedAt)) : start;
+  return now.getTime() - last > STALE_SIGNAL_MS;
+}
+
+/**
  * Fim efetivo da sessão. Sessão aberta cujo dia de início (São Paulo) já passou é
- * esquecida (a pessoa fechou a aba e foi embora): não conta até "agora", só até o
- * último sinal de vida registrado (`updatedAt` = início/pausa/retomada).
+ * esquecida (a pessoa fechou a aba e foi embora) e não conta até "agora":
+ *  - COM sinal de vida (`updatedAt` depois do início: batimento a cada 5 min enquanto
+ *    a aba está visível, pausa ou retomada) o fim é esse último sinal;
+ *  - SEM nenhum sinal (updatedAt == início; ex.: nunca clicou em "Finalizar" e a aba
+ *    ficou oculta) o fim é o menor entre o fim do dia de SP em que começou e
+ *    início + max(meta diária, 8) h. Nunca zera por falta de sinal e nunca fica
+ *    abaixo do último sinal.
  */
 export function effectiveEndMs(s: WorkSessionLike, now: Date): number {
   if (s.endedAt) return ms(s.endedAt);
   const start = ms(s.startedAt);
-  if (isOpenSession(s) && start < spMidnight(now).getTime()) {
-    const last = s.updatedAt ? ms(s.updatedAt) : start;
-    return Math.min(now.getTime(), Math.max(start, last));
+  if (isForgottenSession(s, now)) {
+    const last = s.updatedAt ? Math.max(start, ms(s.updatedAt)) : start;
+    if (last - start > SIGNAL_EPSILON_MS) return Math.min(now.getTime(), last);
+    const dayEnd = spMidnight(new Date(start)).getTime() + 86400000;
+    const maxMs = Math.max(s.dailyGoalHours ?? 8, 8) * 3600000;
+    return Math.min(now.getTime(), Math.max(last, Math.min(dayEnd, start + maxMs)));
   }
   return now.getTime();
 }

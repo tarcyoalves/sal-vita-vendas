@@ -4,10 +4,11 @@ import { eq, and, gt, isNull, count, sql } from 'drizzle-orm';
 import { randomBytes, randomInt } from 'crypto';
 import { router, publicProcedure, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
-import { users, passwordResetTokens } from '../db/schema';
-import { hashPassword, verifyPassword, signToken, getDummyHash } from '../auth';
+import { users, sellers, passwordResetTokens } from '../db/schema';
+import { hashPassword, verifyPassword, signToken, getDummyHash, sessionCookieHeader } from '../auth';
 import { sendEmail } from '../email/resend';
 import { COOKIE_NAME } from '../../shared/const';
+import { isSellerBlocked } from '../lib/authGate';
 import { cached, cacheInvalidate } from '../lib/cache';
 import { safeEqual } from '../lib/safeEqual';
 import { emailEquals } from '../lib/userEmail';
@@ -49,12 +50,15 @@ export const authRouter = router({
       if (!valid) {
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Email ou senha inválidos' });
       }
-      const token = signToken({ id: user.id, email: user.email, name: user.name, role: user.role });
-      const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
-      ctx.res.setHeader(
-        'Set-Cookie',
-        `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly${secure}; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax`,
-      );
+      // Atendente desativado: antes recebia o cookie e voltava ao login sem aviso
+      // (createContext o tratava como deslogado). Avisa só depois de a senha conferir.
+      const [seller] = await db.select({ status: sellers.status }).from(sellers)
+        .where(eq(sellers.userId, user.id)).limit(1);
+      if (isSellerBlocked(user.role, seller?.status)) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Conta desativada. Fale com o administrador.' });
+      }
+      const token = signToken({ id: user.id, email: user.email, name: user.name, role: user.role }, user.passwordHash);
+      ctx.res.setHeader('Set-Cookie', sessionCookieHeader(token));
       // login não é bloqueado por restrição de IP (só as chamadas seguintes são) —
       // por isso captura o IP real mesmo se o usuário estiver restrito, dando ao
       // admin o dado que falta pra configurar a restrição corretamente. Aguarda
@@ -82,11 +86,15 @@ export const authRouter = router({
       if (!verifyPassword(input.currentPassword, user.passwordHash)) {
         throw new Error('Senha atual incorreta');
       }
+      const newHash = hashPassword(input.newPassword);
       await db.update(users)
-        .set({ passwordHash: hashPassword(input.newPassword), mustChangePassword: false })
+        .set({ passwordHash: newHash, mustChangePassword: false })
         .where(eq(users.id, ctx.user.id));
       cacheInvalidate(`auth:me:${ctx.user.id}`);
       cacheInvalidate(`user:${ctx.user.id}`);
+      // O pv do token mudou com a senha: reemite o cookie para não derrubar quem trocou.
+      const token = signToken({ id: user.id, email: user.email, name: user.name, role: user.role }, newHash);
+      ctx.res.setHeader('Set-Cookie', sessionCookieHeader(token));
       return { ok: true };
     }),
 
@@ -96,11 +104,15 @@ export const authRouter = router({
       const [user] = await db.select().from(users).where(eq(users.id, ctx.user.id));
       if (!user) throw new Error('Usuário não encontrado');
       if (!user.mustChangePassword) throw new Error('Operação não permitida');
+      const newHash = hashPassword(input.newPassword);
       await db.update(users)
-        .set({ passwordHash: hashPassword(input.newPassword), mustChangePassword: false })
+        .set({ passwordHash: newHash, mustChangePassword: false })
         .where(eq(users.id, ctx.user.id));
       cacheInvalidate(`auth:me:${ctx.user.id}`);
       cacheInvalidate(`user:${ctx.user.id}`);
+      // O pv do token mudou com a senha: reemite o cookie para não derrubar quem trocou.
+      const token = signToken({ id: user.id, email: user.email, name: user.name, role: user.role }, newHash);
+      ctx.res.setHeader('Set-Cookie', sessionCookieHeader(token));
       return { ok: true };
     }),
 
@@ -148,6 +160,8 @@ export const authRouter = router({
       await db.update(users)
         .set({ passwordHash: hashPassword(generated), mustChangePassword: true })
         .where(eq(users.id, user.id));
+      cacheInvalidate(`auth:me:${user.id}`);
+      cacheInvalidate(`user:${user.id}`);
       return { name: user.name, generatedPassword: generated };
     }),
 
@@ -155,7 +169,11 @@ export const authRouter = router({
     .input(z.object({ email: z.string().email() }))
     .mutation(async ({ input }) => {
       const [user] = await db.select().from(users).where(emailEquals(users.email, input.email));
-      if (!user) return { ok: true };
+      if (!user) {
+        // Iguala o tempo de resposta ao do e-mail existente (que aguarda o envio).
+        await new Promise(r => setTimeout(r, 300));
+        return { ok: true };
+      }
 
       // Limite por e-mail: no máximo 3 links ainda não usados nos últimos 15 min.
       // Acima disso devolve a mesma resposta genérica, sem enviar (anti-spam de caixa postal).
@@ -233,6 +251,10 @@ export const authRouter = router({
       await db.update(users)
         .set({ passwordHash: hashPassword(input.newPassword), mustChangePassword: false })
         .where(eq(users.id, user.id));
+      // Invalida os demais links pendentes do usuário (um e-mail antigo não vale mais).
+      await db.update(passwordResetTokens)
+        .set({ usedAt: now })
+        .where(and(eq(passwordResetTokens.userId, user.id), isNull(passwordResetTokens.usedAt)));
 
       cacheInvalidate(`auth:me:${user.id}`);
       cacheInvalidate(`user:${user.id}`);

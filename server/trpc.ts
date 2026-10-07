@@ -1,7 +1,8 @@
 import { initTRPC, TRPCError } from '@trpc/server';
 import type { CreateExpressContextOptions } from '@trpc/server/adapters/express';
 import superjson from 'superjson';
-import { getCookieFromRequest, verifyToken } from './auth';
+import { getCookieFromRequest, verifyToken, currentPasswordVersion } from './auth';
+import { tokenMatchesPassword } from './lib/sessionToken';
 import { COOKIE_NAME, UNAUTHED_ERR_MSG } from '../shared/const';
 import { db } from './db';
 import { users, sellers } from './db/schema';
@@ -55,12 +56,12 @@ export async function createContext({ req, res }: CreateExpressContextOptions) {
   if (token) {
     try {
       const decoded = verifyToken(token) as any;
-      const dbUser = await cached(`user:${decoded.id}`, 30_000, async () => {
+      const loadUser = async () => {
         const [row] = await db
           .select({
             id: users.id, email: users.email, name: users.name, role: users.role,
             ipRestrictionEnabled: users.ipRestrictionEnabled, allowedIps: users.allowedIps,
-            mustChangePassword: users.mustChangePassword,
+            mustChangePassword: users.mustChangePassword, passwordHash: users.passwordHash,
           })
           .from(users)
           .where(eq(users.id, decoded.id));
@@ -68,8 +69,18 @@ export async function createContext({ req, res }: CreateExpressContextOptions) {
         // Status do atendente entra no mesmo cache de 30 s (sem query extra por chamada).
         const [seller] = await db.select({ status: sellers.status }).from(sellers)
           .where(eq(sellers.userId, row.id)).limit(1);
-        return { ...row, sellerInactive: isSellerBlocked(row.role, seller?.status) };
-      });
+        // No cache fica só o pv (impressão digital da senha), nunca o hash.
+        const { passwordHash, ...rest } = row;
+        return { ...rest, pv: currentPasswordVersion(passwordHash), sellerInactive: isSellerBlocked(row.role, seller?.status) };
+      };
+      let dbUser = await cached(`user:${decoded.id}`, 30_000, loadUser);
+      // Troca de senha em outra instância: o cache local (30 s) ainda tem o pv antigo.
+      // Divergência → relê do banco uma vez antes de recusar (evita derrubar quem acabou de trocar).
+      if (dbUser && !tokenMatchesPassword(decoded, dbUser.pv)) {
+        cacheInvalidate(`user:${decoded.id}`);
+        dbUser = await cached(`user:${decoded.id}`, 30_000, loadUser);
+        if (dbUser && !tokenMatchesPassword(decoded, dbUser.pv)) dbUser = null;
+      }
       if (dbUser && !dbUser.sellerInactive) {
         const base = {
           id: dbUser.id, email: dbUser.email, name: dbUser.name, role: dbUser.role,

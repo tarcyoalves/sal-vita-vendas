@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  sessionWorkedMs, todayWorkedMs, closeSessionValues, workedMsInDay, effectiveEndMs,
+  sessionWorkedMs, todayWorkedMs, closeSessionValues, workedMsInDay, effectiveEndMs, isForgottenSession,
 } from '../server/lib/workHours';
 
 const H = 3600000;
@@ -44,13 +44,39 @@ describe('work hours', () => {
     expect(todayWorkedMs([s], now)).toBe(H);
   });
 
-  it('sessão esquecida aberta há dias não acumula horas até agora', () => {
+  it('sessão esquecida sem batimento não zera: fim = início + 8h (REG-2)', () => {
     const s = { status: 'active', startedAt: sp('2026-10-01T08:00:00'), totalPausedMs: 0, updatedAt: sp('2026-10-01T08:00:00') };
-    expect(effectiveEndMs(s, now)).toBe(sp('2026-10-01T08:00:00').getTime());
-    expect(sessionWorkedMs(s, now)).toBe(0);
+    expect(effectiveEndMs(s, now)).toBe(sp('2026-10-01T16:00:00').getTime());
+    expect(sessionWorkedMs(s, now)).toBe(8 * H);
     expect(todayWorkedMs([s], now)).toBe(0);
-    const v = closeSessionValues(s, now);
-    expect(v.endedAt.getTime()).toBe(sp('2026-10-01T08:00:00').getTime());
+    expect(closeSessionValues(s, now).endedAt.getTime()).toBe(sp('2026-10-01T16:00:00').getTime());
+  });
+
+  it('sessão esquecida com batimento às 16:40 termina em 16:40', () => {
+    const s = { status: 'active', startedAt: sp('2026-10-01T08:00:00'), totalPausedMs: 0, updatedAt: sp('2026-10-01T16:40:00') };
+    expect(effectiveEndMs(s, now)).toBe(sp('2026-10-01T16:40:00').getTime());
+  });
+
+  it('com batimento cedo (10:00) não infla até 8h', () => {
+    const s = { status: 'active', startedAt: sp('2026-10-01T08:00:00'), totalPausedMs: 0, updatedAt: sp('2026-10-01T10:00:00') };
+    expect(sessionWorkedMs(s, now)).toBe(2 * H);
+  });
+
+  it('sem sinal, o fim é limitado ao fim do dia de SP em que começou', () => {
+    const s = { status: 'active', startedAt: sp('2026-10-01T20:00:00'), totalPausedMs: 0, updatedAt: sp('2026-10-01T20:00:00') };
+    expect(effectiveEndMs(s, now)).toBe(sp('2026-10-02T00:00:00').getTime());
+    expect(sessionWorkedMs(s, now)).toBe(4 * H);
+  });
+
+  it('sem sinal, meta diária maior que 8h estende o teto', () => {
+    const s = { status: 'active', startedAt: sp('2026-10-01T06:00:00'), totalPausedMs: 0, updatedAt: sp('2026-10-01T06:00:00'), dailyGoalHours: 10 };
+    expect(effectiveEndMs(s, now)).toBe(sp('2026-10-01T16:00:00').getTime());
+  });
+
+  it('sessão esquecida pausada termina na pausa e não soma pausa em curso', () => {
+    const s = { status: 'paused', startedAt: sp('2026-10-01T08:00:00'), pausedAt: sp('2026-10-01T12:00:00'), totalPausedMs: 0, updatedAt: sp('2026-10-01T12:00:00') };
+    expect(sessionWorkedMs(s, now)).toBe(4 * H);
+    expect(closeSessionValues(s, now).totalPausedMs).toBe(0);
   });
 
   it('sessão aberta de ontem com último sinal hoje conta só até esse sinal', () => {
@@ -61,5 +87,21 @@ describe('work hours', () => {
   it('sessão aberta de hoje corre até agora', () => {
     const s = { status: 'active', startedAt: sp('2026-10-06T07:00:00'), totalPausedMs: 0, updatedAt: sp('2026-10-06T07:00:00') };
     expect(workedMsInDay(s, now, sp('2026-10-06T00:00:00'), sp('2026-10-07T00:00:00'))).toBe(2 * H);
+  });
+});
+
+describe('isForgottenSession (REG-6)', () => {
+  it('aberta de ontem sem sinal recente é esquecida; encerrada ou de hoje, não', () => {
+    const ontem = { status: 'active', startedAt: sp('2026-10-05T08:00:00'), updatedAt: sp('2026-10-05T08:00:00') };
+    expect(isForgottenSession(ontem, now)).toBe(true);
+    expect(isForgottenSession({ ...ontem, status: 'paused' }, now)).toBe(true);
+    expect(isForgottenSession({ ...ontem, status: 'ended' }, now)).toBe(false);
+    expect(isForgottenSession({ ...ontem, endedAt: sp('2026-10-05T17:00:00') }, now)).toBe(false);
+    expect(isForgottenSession({ status: 'active', startedAt: sp('2026-10-06T07:00:00') }, now)).toBe(false);
+  });
+  it('virou a meia-noite trabalhando (batimento recente): não é esquecida e conta até agora', () => {
+    const s = { status: 'active', startedAt: sp('2026-10-05T22:00:00'), totalPausedMs: 0, updatedAt: sp('2026-10-06T08:55:00') };
+    expect(isForgottenSession(s, now)).toBe(false);
+    expect(effectiveEndMs(s, now)).toBe(now.getTime());
   });
 });

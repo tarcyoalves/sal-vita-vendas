@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { decideLabelStep, RESUME_MIN_AGE_MS } from '../lib/labelResume';
 import crypto from 'crypto';
 import { router, publicProcedure, protectedProcedure } from '../trpc';
 import { ordersDb as db } from '../db/ordersDb';
@@ -239,6 +240,20 @@ async function reserveLabel(orderId: number): Promise<boolean> {
         isNull(siteOrders.meOrderId),
         and(eq(siteOrders.meOrderId, 'pending'), sql`${siteOrders.updatedAt} < now() - interval '5 minutes'`),
       ),
+    ))
+    .returning({ id: siteOrders.id });
+  return rows.length > 0;
+}
+// Retomada (checkout já pago): toca updatedAt de forma condicional para que dois cliques
+// simultâneos não retomem juntos. Só um recebe a linha de volta.
+async function claimResume(orderId: number, meOrderId: string): Promise<boolean> {
+  const rows = await db.update(siteOrders)
+    .set({ updatedAt: new Date() })
+    .where(and(
+      eq(siteOrders.id, orderId),
+      eq(siteOrders.meOrderId, meOrderId),
+      isNull(siteOrders.meLabelUrl),
+      sql`${siteOrders.updatedAt} < now() - make_interval(secs => ${RESUME_MIN_AGE_MS / 1000})`,
     ))
     .returning({ id: siteOrders.id });
   return rows.length > 0;
@@ -854,43 +869,52 @@ Seja direto e use emojis para facilitar leitura.`;
         }],
       };
 
-      if (!(await reserveLabel(input.orderId))) {
+      // Retomada: checkout do ME já pago (me_order_id real) mas sem URL da etiqueta —
+      // não refaz cart/checkout (cobraria de novo), só generate + print.
+      const step = decideLabelStep(order, new Date());
+      if (step === 'done' || step === 'busy') throw new TRPCError({ code: 'CONFLICT', message: LABEL_BUSY_MSG });
+      const resume = step === 'resume';
+      if (!(resume ? await claimResume(input.orderId, order.meOrderId!) : await reserveLabel(input.orderId))) {
         throw new TRPCError({ code: 'CONFLICT', message: LABEL_BUSY_MSG });
       }
-      let purchased = false;
+      let purchased = resume;
       try {
-        const cartRes = await fetch(`${ME_BASE}/api/v2/me/cart`, { method: 'POST', headers, body: JSON.stringify(cartBody) });
-        if (!cartRes.ok) {
-          const txt = await cartRes.text();
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro cart ME: ${txt}` });
-        }
-        const cartData = await cartRes.json();
-        const meOrderId: string = cartData.id;
-
-        let checkRes: Response;
-        try {
-          checkRes = await fetch(`${ME_BASE}/api/v2/me/shipment/checkout`, {
-            method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }),
-          });
-          if (!checkRes.ok) {
-            const txt = await checkRes.text();
-            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro checkout ME: ${txt}` });
+        let meOrderId: string;
+        if (resume) {
+          meOrderId = order.meOrderId!;
+        } else {
+          const cartRes = await fetch(`${ME_BASE}/api/v2/me/cart`, { method: 'POST', headers, body: JSON.stringify(cartBody) });
+          if (!cartRes.ok) {
+            const txt = await cartRes.text();
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro cart ME: ${txt}` });
           }
-        } catch (err) {
-          // Attempt to cancel the dangling ME cart order (best-effort)
-          try {
-            await fetch(`${ME_BASE}/api/v2/me/cart/${meOrderId}`, {
-              method: 'DELETE',
-              headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'SalVita/1.0 (contato@salvitarn.com.br)' },
-            });
-          } catch {} // best-effort cancel
-          throw err; // re-throw original error
-        }
+          const cartData = await cartRes.json();
+          meOrderId = cartData.id;
 
-        purchased = true; // etiqueta paga: a reserva NÃO pode mais ser liberada, nem se o UPDATE abaixo falhar
-        // Persist meOrderId right after checkout succeeds (label is now paid) so it can be
-        // cancelled/reprinted later even if generate/print below fails.
-        await db.update(siteOrders).set({ meOrderId, updatedAt: new Date() }).where(eq(siteOrders.id, input.orderId));
+          let checkRes: Response;
+          try {
+            checkRes = await fetch(`${ME_BASE}/api/v2/me/shipment/checkout`, {
+              method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }),
+            });
+            if (!checkRes.ok) {
+              const txt = await checkRes.text();
+              throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro checkout ME: ${txt}` });
+            }
+          } catch (err) {
+            // Attempt to cancel the dangling ME cart order (best-effort)
+            try {
+              await fetch(`${ME_BASE}/api/v2/me/cart/${meOrderId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'SalVita/1.0 (contato@salvitarn.com.br)' },
+              });
+            } catch {} // best-effort cancel
+            throw err; // re-throw original error
+          }
+          purchased = true; // etiqueta paga: a reserva NÃO pode mais ser liberada, nem se o UPDATE abaixo falhar
+          // Persist meOrderId right after checkout succeeds (label is now paid) so it can be
+          // cancelled/reprinted later even if generate/print below fails.
+          await db.update(siteOrders).set({ meOrderId, updatedAt: new Date() }).where(eq(siteOrders.id, input.orderId));
+        }
 
         const genRes = await fetch(`${ME_BASE}/api/v2/me/shipment/generate`, {
           method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }),
@@ -1082,11 +1106,19 @@ Seja direto e use emojis para facilitar leitura.`;
             continue;
           }
 
-          if (!(await reserveLabel(orderId))) {
+          // Retomada: checkout do ME já pago e sem etiqueta → só generate + print (não cobra de novo).
+          const step = decideLabelStep(order, new Date());
+          if (step === 'busy' || step === 'done') {
             results.push({ orderId, success: false, error: LABEL_BUSY_MSG });
             continue;
           }
-          reserved = true;
+          const resume = step === 'resume';
+          if (!(resume ? await claimResume(orderId, order.meOrderId!) : await reserveLabel(orderId))) {
+            results.push({ orderId, success: false, error: LABEL_BUSY_MSG });
+            continue;
+          }
+          reserved = !resume;
+          purchased = resume;
 
           const labelProduct = resolveProduct(null, order.quantity);
           const labelPacks = Math.max(1, Math.round(order.quantity / CATALOG[labelProduct].kgPerUnit));
@@ -1138,29 +1170,34 @@ Seja direto e use emojis para facilitar leitura.`;
             }],
           };
 
-          const cartRes = await fetch(`${ME_BASE}/api/v2/me/cart`, { method: 'POST', headers, body: JSON.stringify(cartBody) });
-          if (!cartRes.ok) {
-            const txt = await cartRes.text();
-            await releaseLabel(orderId);
-            results.push({ orderId, success: false, error: `Cart ME: ${txt.slice(0, 80)}` });
-            continue;
-          }
-          const cartData = await cartRes.json();
-          const meOrderId: string = cartData.id;
+          let meOrderId: string;
+          if (resume) {
+            meOrderId = order.meOrderId!;
+          } else {
+            const cartRes = await fetch(`${ME_BASE}/api/v2/me/cart`, { method: 'POST', headers, body: JSON.stringify(cartBody) });
+            if (!cartRes.ok) {
+              const txt = await cartRes.text();
+              await releaseLabel(orderId);
+              results.push({ orderId, success: false, error: `Cart ME: ${txt.slice(0, 80)}` });
+              continue;
+            }
+            const cartData = await cartRes.json();
+            meOrderId = cartData.id;
 
-          const checkRes = await fetch(`${ME_BASE}/api/v2/me/shipment/checkout`, {
-            method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }),
-          });
-          if (!checkRes.ok) {
-            await fetch(`${ME_BASE}/api/v2/me/cart/${meOrderId}`, { method: 'DELETE', headers }).catch(() => {});
-            const txt = await checkRes.text();
-            await releaseLabel(orderId);
-            results.push({ orderId, success: false, error: `Checkout ME: ${txt.slice(0, 80)}` });
-            continue;
-          }
+            const checkRes = await fetch(`${ME_BASE}/api/v2/me/shipment/checkout`, {
+              method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }),
+            });
+            if (!checkRes.ok) {
+              await fetch(`${ME_BASE}/api/v2/me/cart/${meOrderId}`, { method: 'DELETE', headers }).catch(() => {});
+              const txt = await checkRes.text();
+              await releaseLabel(orderId);
+              results.push({ orderId, success: false, error: `Checkout ME: ${txt.slice(0, 80)}` });
+              continue;
+            }
 
-          purchased = true; // etiqueta paga: não libera mais a reserva
-          await db.update(siteOrders).set({ meOrderId, updatedAt: new Date() }).where(eq(siteOrders.id, orderId));
+            purchased = true; // etiqueta paga: não libera mais a reserva
+            await db.update(siteOrders).set({ meOrderId, updatedAt: new Date() }).where(eq(siteOrders.id, orderId));
+          }
 
           const genRes = await fetch(`${ME_BASE}/api/v2/me/shipment/generate`, {
             method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }),

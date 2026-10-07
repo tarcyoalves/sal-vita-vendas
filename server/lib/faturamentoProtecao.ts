@@ -55,6 +55,51 @@ export function mergeProtegidoPeloEspelho<T extends Campos>(
   };
 }
 
+const iguaisNum = (a: number | null | undefined, b: number | null | undefined) =>
+  a == null || b == null ? a == b : Math.abs(a - b) < 1e-6;
+
+type Itens = Campos['itens'] | null | undefined;
+/** Itens por conteúdo (ignora o id interno e ruído de ponto flutuante). */
+function itensIguais(a: Itens, b: Itens): boolean {
+  if (!a || !b) return !a && !b;
+  if (a.length !== b.length) return false;
+  return a.every((x, i) => {
+    const y = b[i];
+    return (x.produtoId ?? null) === (y.produtoId ?? null)
+      && (x.descricao ?? '') === (y.descricao ?? '')
+      && iguaisNum(x.quantidade, y.quantidade)
+      && iguaisNum(x.pesoKg, y.pesoKg)
+      && iguaisNum(x.valorUnitario, y.valorUnitario)
+      && iguaisNum(x.pesoBrutoKg ?? 0, y.pesoBrutoKg ?? 0)
+      && iguaisNum(x.comissaoFixaPct ?? null, y.comissaoFixaPct ?? null)
+      && !!x.isentoFrete === !!y.isentoFrete;
+  });
+}
+
+/**
+ * true quando mergeProtegidoPeloEspelho vai DESCARTAR alguma diferença real do payload
+ * (campo protegido que o cliente mandou diferente do gravado). Cache velho sem mudança real
+ * não conta. O servidor não distingue "cache velho" de "edição legítima", por isso não falha:
+ * mantém o descarte e avisa (`espelhoProtegido`) para a tela recarregar e mostrar o gravado.
+ */
+export function espelhoDescartouEdicao<T extends Campos>(
+  existing: Gravado | undefined,
+  input: T,
+  acao?: AcaoPedido,
+): boolean {
+  if (!existing || !pedidoEspelhadoPeloSmbi(existing)) return false;
+  const acaoValida =
+    (acao === 'faturar' && existing.status !== 'faturado') ||
+    (acao === 'desfazer' && existing.status === 'faturado');
+  if (!iguaisNum(input.comissaoPct, existing.comissaoPct) || !iguaisNum(input.valorFretePorUnidade, existing.valorFretePorUnidade)) return true;
+  if (acaoValida) return false;
+  return input.status !== existing.status
+    || (input.faturadoEm ?? null) !== (existing.faturadoEm ?? null)
+    || !itensIguais(input.itens, existing.itens)
+    || !itensIguais(input.itensEstimadoSnapshot, existing.itensEstimadoSnapshot)
+    || !iguaisNum(input.valorPago ?? 0, existing.valorPago ?? 0);
+}
+
 /** Atendente (não admin/gerente) não pode remover pedido faturado nem ligado ao SMBI. */
 export function atendentePodeRemover(p: Pick<FatOrder, 'status' | 'smbiMovsaiId'>): boolean {
   return p.status !== 'faturado' && !p.smbiMovsaiId;

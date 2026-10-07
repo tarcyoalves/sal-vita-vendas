@@ -9,7 +9,9 @@ import { renderSignature } from '../email/marketing';
 import { escapeHtml } from '../lib/emailSanitize';
 import { gerarPedidoPdf } from '../pdf/pedidoPdf';
 import { resolveRobotOwnedFields, roboSemSinal } from '../lib/smbi';
-import { mergeProtegidoPeloEspelho, atendentePodeRemover } from '../lib/faturamentoProtecao';
+import { camposPedidoNovoAtendente, catalogoPorId, reconstruirItensPedidoNovo, itensPedidoExistente } from '../lib/faturamentoNovoPedido';
+import { userTaskFilter } from './tasks';
+import { mergeProtegidoPeloEspelho, espelhoDescartouEdicao, atendentePodeRemover } from '../lib/faturamentoProtecao';
 import {
   parseNumerosMovsai, PATCH_DESVINCULAR, movsaisLigados, resolverFaturamento, faturamentoDoVinculo,
   totalAcordadoDoPedido, pesoLiquidoDoPedido,
@@ -112,6 +114,14 @@ async function comissaoDoVendedor(sellerId: number): Promise<number> {
   return row?.pct ?? 0;
 }
 
+// taskId informado por atendente tem que ser tarefa dele (senão lê e-mail de cliente alheio em enviarPedidoEmail).
+async function exigirTarefaDoAtendente(taskId: number | null | undefined, user: { id: number; name?: string | null }) {
+  if (taskId == null) return;
+  const filter = await userTaskFilter(user.id, user.name ?? '');
+  const [t] = await db.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.id, taskId), filter)).limit(1);
+  if (!t) throw new TRPCError({ code: 'FORBIDDEN', message: 'Tarefa de outro atendente' });
+}
+
 async function sellerIdForUser(userId: number): Promise<number | null> {
   const [row] = await db
     .select({ id: sellers.id })
@@ -203,13 +213,14 @@ export const faturamentoRouter = router({
         // nasce faturado pela tela.
         values.aprovadoEm = null;
         values.aprovadoPor = null;
+        if (!existing || existing.taskId !== input.taskId) await exigirTarefaDoAtendente(input.taskId, ctx.user);
+        const catalogo = catalogoPorId(await db.select().from(fatProducts));
         if (existing) {
           values.comissaoPct = existing.comissaoPct;
+          values.itens = itensPedidoExistente(input.itens, existing.itens.map(g => ({ ...g, comissaoFixaPct: g.comissaoFixaPct ?? null, pesoBrutoKg: g.pesoBrutoKg ?? 0, isentoFrete: !!g.isentoFrete })), catalogo);
         } else {
-          values.comissaoPct = await comissaoDoVendedor(mySellerId);
-          values.status = 'estimado';
-          values.faturadoEm = null;
-          values.valorPago = 0;
+          Object.assign(values, camposPedidoNovoAtendente(await comissaoDoVendedor(mySellerId)));
+          values.itens = reconstruirItensPedidoNovo(input.itens, catalogo);
         }
       }
 
@@ -219,6 +230,8 @@ export const faturamentoRouter = router({
       // Ver resolveRobotOwnedFields em server/lib/smbi.ts.
       Object.assign(values, resolveRobotOwnedFields(existing, input, isAdmin));
       // Espelho do SMBI: o save da tela não desfaz o que o robô já gravou.
+      // `input` (não `values`): compara o que o cliente mandou com o gravado, antes de o servidor ajustar.
+      const espelhoProtegido = espelhoDescartouEdicao(existing, input, acao);
       Object.assign(values, mergeProtegidoPeloEspelho(existing, values, acao));
 
       // Stamped only at creation; the update `set` below deliberately excludes
@@ -266,7 +279,9 @@ export const faturamentoRouter = router({
           },
         })
         .returning();
-      return row;
+      // espelhoProtegido: o servidor descartou uma edição de campo protegido (pedido espelhado do
+      // SMBI); a tela deve avisar e recarregar em vez de mostrar o valor otimista.
+      return { ...row, espelhoProtegido };
     }),
 
   removePedido: protectedProcedure
@@ -579,6 +594,9 @@ export const faturamentoRouter = router({
       if (!pedido.aprovadoEm) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'O pedido precisa ser aprovado antes de enviar ao cliente' });
       }
+      if (pedido.taskId && ctx.user.role !== 'admin' && ctx.user.role !== 'manager') {
+        await exigirTarefaDoAtendente(pedido.taskId, ctx.user);
+      }
       if (!pedido.taskId) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Pedido sem tarefa vinculada — não há e-mail de cliente para enviar' });
       }
@@ -697,6 +715,7 @@ ${assinatura ? `<div style="margin-top:24px;padding-top:16px;border-top:1px soli
       const mySellerId = isAdmin ? null : await sellerIdForUser(ctx.user.id);
       const pctDoVendedor = mySellerId != null ? await comissaoDoVendedor(mySellerId) : 0;
       let produtos = 0, pedidos = 0, comissoes = 0;
+      const catalogoImport = catalogoPorId(isAdmin || !input.pedidos?.length ? [] : await db.select().from(fatProducts));
 
       if (isAdmin && input.produtos?.length) {
         for (const p of input.produtos) {
@@ -722,9 +741,11 @@ ${assinatura ? `<div style="margin-top:24px;padding-top:16px;border-top:1px soli
             // Autoria e aprovação são do servidor; a % vem do cadastro, não do localStorage.
             p.createdByUserId = ctx.user.id;
             p.createdByRole = ctx.user.role;
-            p.aprovadoEm = null;
-            p.aprovadoPor = null;
-            p.comissaoPct = pctDoVendedor;
+            // Mesmas regras de pedido novo de upsertPedido: estimado, sem faturamento/pagamento
+            // e itens (preço/comissão fixa) reconstruídos do catálogo.
+            Object.assign(p, camposPedidoNovoAtendente(pctDoVendedor));
+            p.itens = reconstruirItensPedidoNovo(p.itens, catalogoImport);
+            try { await exigirTarefaDoAtendente(p.taskId, ctx.user); } catch { continue; }
           }
           try {
             await db.insert(fatOrders).values(p).onConflictDoNothing({ target: fatOrders.id });

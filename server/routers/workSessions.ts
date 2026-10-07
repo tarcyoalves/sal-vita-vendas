@@ -4,7 +4,7 @@ import { db } from '../db';
 import { workSessions, sellers, tasks } from '../db/schema';
 import { eq, and, desc, gte, or, isNotNull, isNull, lt, count, sql } from 'drizzle-orm';
 import { spMidnight } from '../lib/tz';
-import { closeSessionValues, sessionWorkedMs, todayWorkedMs } from '../lib/workHours';
+import { closeSessionValues, effectiveEndMs, isForgottenSession, sessionWorkedMs, todayWorkedMs } from '../lib/workHours';
 
 export const workSessionsRouter = router({
 
@@ -28,9 +28,12 @@ export const workSessionsRouter = router({
       ))
       .orderBy(desc(workSessions.startedAt));
 
-    const session = rows.find(r => r.status === 'active')
-      ?? rows.find(r => r.status === 'paused')
-      ?? rows.find(r => new Date(r.startedAt) >= todayStart || (r.endedAt && new Date(r.endedAt) >= todayStart));
+    // Sessão aberta de dia anterior sem sinal de vida é "esquecida": não é a sessão
+    // atual (senão o relógio contaria dias); o start() a encerra ao iniciar de novo.
+    const live = rows.filter(r => !isForgottenSession(r, now));
+    const session = live.find(r => r.status === 'active')
+      ?? live.find(r => r.status === 'paused')
+      ?? live.find(r => new Date(r.startedAt) >= todayStart || (r.endedAt && new Date(r.endedAt) >= todayStart));
     if (!session) return null;
     return {
       ...session,
@@ -97,6 +100,16 @@ export const workSessionsRouter = router({
         .limit(1);
       return session;
     }),
+
+  // Batimento: o cliente chama a cada 5 min com a aba visível e a sessão ativa. Só
+  // atualiza updatedAt (último sinal de vida) — é o que impede uma sessão esquecida
+  // aberta de virar 0 h ao ser encerrada (ver effectiveEndMs em lib/workHours.ts).
+  heartbeat: protectedProcedure.mutation(async ({ ctx }) => {
+    await db.update(workSessions)
+      .set({ updatedAt: new Date() })
+      .where(and(eq(workSessions.userId, ctx.user.id), eq(workSessions.status, 'active')));
+    return { ok: true as const };
+  }),
 
   // Pause — records when pause started
   pause: protectedProcedure.mutation(async ({ ctx }) => {
@@ -196,6 +209,10 @@ export const workSessionsRouter = router({
         startedAt: workSessions.startedAt,
         endedAt: workSessions.endedAt,
         status: workSessions.status,
+        pausedAt: workSessions.pausedAt,
+        totalPausedMs: workSessions.totalPausedMs,
+        updatedAt: workSessions.updatedAt,
+        dailyGoalHours: workSessions.dailyGoalHours,
       }).from(workSessions)
         .where(gte(workSessions.startedAt, new Date(Date.now() - 90 * 86400000)))
         .orderBy(desc(workSessions.startedAt))
@@ -221,8 +238,12 @@ export const workSessionsRouter = router({
       // Sessão aberta (ativa de preferência, senão pausada); o contrato `session` segue
       // sendo só a aberta. Quem já encerrou hoje aparece em todayWorkedMs/endedTodayAt.
       const userSessions = todaySessions.filter(s => s.userId === seller.userId);
-      const session = userSessions.find(s => s.status === 'active')
-        ?? userSessions.find(s => s.status === 'paused') ?? null;
+      // Sessão aberta de dia anterior sem sinal de vida é "esquecida": não aparece como
+      // ativa (antes ficava "online" para sempre); sinalizada em `forgotten`.
+      const liveSessions = userSessions.filter(s => !isForgottenSession(s, now));
+      const forgotten = userSessions.length > liveSessions.length;
+      const session = liveSessions.find(s => s.status === 'active')
+        ?? liveSessions.find(s => s.status === 'paused') ?? null;
       const todayMs = todayWorkedMs(userSessions, now);
       const endedToday = userSessions.filter(s => s.endedAt && new Date(s.endedAt) >= todayStart);
       const endedTodayAt = endedToday.length > 0
@@ -248,7 +269,7 @@ export const workSessionsRouter = router({
         ? allRecentSessions.find(s => s.userId === seller.userId) ?? null
         : null;
       const lastOnlineAt = lastOnlineSession
-        ? (lastOnlineSession.endedAt ?? lastOnlineSession.startedAt)
+        ? new Date(effectiveEndMs(lastOnlineSession, now))
         : null;
 
       // Worked time = total elapsed - pauses
@@ -295,6 +316,7 @@ export const workSessionsRouter = router({
           pausedAt: session.pausedAt ?? null,
           workedMs,
         } : null,
+        forgotten,
         todayWorkedMs: todayMs,
         endedTodayAt,
         contactsToday,

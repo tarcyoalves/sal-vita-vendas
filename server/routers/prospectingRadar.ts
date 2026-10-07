@@ -4,13 +4,14 @@
 // Pertence só ao CRM: usa `db` (DATABASE_URL). Nada aqui toca o banco do Premium.
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { and, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, not, or, sql, type SQL } from 'drizzle-orm';
 import { router, protectedProcedure, staffProcedure } from '../trpc';
 import { db } from '../db';
 import { spDateStr } from '../lib/tz';
 import type { RadarEstablishment } from '../db/schema';
 import { appSettings, radarEstablishments, radarEnrichment, radarLeadActions, radarLeadEvents, tasks, taskDeletionLogs, emailSuppressions, tags, fatOrders, clients, sellers } from '../db/schema';
 import { userTaskFilter } from './tasks';
+import { discardRefusal } from '../lib/radar/discardGuard';
 import { conditionalRadarTaskInsert } from '../lib/radar/convertInsert';
 import { cnpjsDeClientesAtivos } from '../lib/radar/clientesAtivos';
 import { phoneOfTask } from '../../shared/phone';
@@ -789,6 +790,16 @@ export const prospectingRadarRouter = router({
       if (input.reason === 'outro' && !input.note) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Descreva o motivo do descarte.' });
       }
+      const isStaff = ctx.user.role === 'admin' || ctx.user.role === 'manager';
+      let hasOtherSellersTask = false;
+      if (!isStaff) {
+        const mine = await userTaskFilter(ctx.user.id, ctx.user.name ?? '');
+        const [other] = await db.select({ id: tasks.id }).from(tasks)
+          .where(and(eq(tasks.cnpj, input.cnpj), mine ? not(mine) : undefined)).limit(1);
+        hasOtherSellersTask = !!other;
+      }
+      const refusal = discardRefusal({ reason: input.reason, isStaff, hasOtherSellersTask });
+      if (refusal) throw new TRPCError({ code: 'FORBIDDEN', message: refusal });
       const establishment = await requireEstablishment(input.cnpj);
       const now = new Date();
       const values = {

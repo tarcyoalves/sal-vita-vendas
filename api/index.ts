@@ -308,6 +308,8 @@ import { handleUnsubscribe } from '../server/routers/unsubscribe';
 import { safeEqual } from '../server/lib/safeEqual';
 import { handleResendWebhook, verifySvixSignature } from '../server/routers/resendWebhook';
 import { isForbiddenBatch, emailFromTrpcBody } from '../server/lib/trpcBatchGuard';
+import { csrfRejection } from '../server/lib/csrfGuard';
+import { decidirTransicaoPagamento } from '../server/lib/paymentTransition';
 
 app.get('/api/unsubscribe', handleUnsubscribe);
 // RFC 8058 one-click unsubscribe sends a POST request
@@ -457,7 +459,10 @@ app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/jso
 
     if (payment.status === 'approved') {
       // Idempotency: don't reprocess an already-confirmed order (avoids duplicate side effects)
-      if (order.paymentStatus === 'confirmed') { res.json({ ok: true, already: true }); return; }
+      const transicao = decidirTransicaoPagamento(order, payment.status);
+      if (transicao === 'ja_confirmado') { res.json({ ok: true, already: true }); return; }
+      // 'failed' cancelado: pagamento tardio não ressuscita o pedido (o UPDATE abaixo também barra).
+      if (transicao === 'ignorar') { res.json({ ok: true, ignored: true }); return; }
       // Validate payment amount before marking as paid
       if (payment.transaction_amount !== undefined) {
         const expectedTotal = parseFloat(order.totalPrice ?? '0');
@@ -964,6 +969,18 @@ const authLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 
+// Só por IP: o limiter acima (IP+e-mail) não pega "spray" de uma senha em vários e-mails.
+const authIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: { error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(req.ip ?? 'unknown'),
+  skipSuccessfulRequests: true,
+  validate: { xForwardedForHeader: false },
+});
+
 const storeLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
@@ -1014,8 +1031,23 @@ app.use('/api/trpc', (req, res, next) => {
   }
   next();
 });
-app.use('/api/trpc/auth.login', authLimiter);
-app.use('/api/trpc/auth.emergencyReset', authLimiter);
+// CSRF: POST/PUT/DELETE exigem JSON e não podem vir de outro site (multipart rodaria
+// procedures sem input). Origin ausente (servidor a servidor/same-origin antigo) passa.
+app.use('/api/trpc', (req, res, next) => {
+  const motivo = csrfRejection({
+    method: req.method,
+    contentType: req.headers['content-type'],
+    secFetchSite: req.headers['sec-fetch-site'] as string | undefined,
+    origin: req.headers.origin,
+  }, ALLOWED_ORIGINS);
+  if (motivo) {
+    res.status(403).json({ error: motivo });
+    return;
+  }
+  next();
+});
+app.use('/api/trpc/auth.login', authLimiter, authIpLimiter);
+app.use('/api/trpc/auth.emergencyReset', authLimiter, authIpLimiter);
 app.use('/api/trpc/shipping.calculate', storeLimiter);
 app.use('/api/trpc/shipping.trackOrder', storeLimiter);
 app.use('/api/trpc/shipping.createOrder', orderLimiter);

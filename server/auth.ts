@@ -1,5 +1,7 @@
 import { randomBytes, pbkdf2Sync, timingSafeEqual } from 'crypto';
 import jwt from 'jsonwebtoken';
+import { passwordVersion } from './lib/sessionToken';
+import { COOKIE_NAME } from '../shared/const';
 
 if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET env var is required');
@@ -47,18 +49,35 @@ export function verifyPassword(password: string, stored: string): boolean {
   }
 }
 
-export function signToken(payload: object): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+/** Emite o JWT já com `pv` (impressão digital da senha atual) — toda emissão passa por aqui. */
+export function signToken(payload: object, passwordHash: string): string {
+  return jwt.sign({ ...payload, pv: passwordVersion(JWT_SECRET, passwordHash) }, JWT_SECRET, { expiresIn: '7d', algorithm: 'HS256' });
+}
+
+export function currentPasswordVersion(passwordHash: string): string {
+  return passwordVersion(JWT_SECRET, passwordHash);
 }
 
 export function verifyToken(token: string): any {
-  return jwt.verify(token, JWT_SECRET);
+  return jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
+}
+
+/** Mesmo Set-Cookie para login e reemissão (troca de senha). */
+export function sessionCookieHeader(token: string): string {
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  return `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly${secure}; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax`;
 }
 
 export function getCookieFromRequest(cookieHeader: string | undefined, name: string): string | undefined {
   if (!cookieHeader) return undefined;
   const match = cookieHeader.split(';').find(c => c.trim().startsWith(name + '='));
-  return match ? decodeURIComponent(match.split('=').slice(1).join('=').trim()) : undefined;
+  if (!match) return undefined;
+  // %-malformado no cookie lançava URIError (500); trata como sem cookie.
+  try {
+    return decodeURIComponent(match.split('=').slice(1).join('=').trim());
+  } catch {
+    return undefined;
+  }
 }
 
 // Hash falso do login para igualar o tempo de resposta quando o e-mail não existe

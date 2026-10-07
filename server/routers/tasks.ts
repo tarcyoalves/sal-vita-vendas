@@ -123,7 +123,11 @@ export const tasksRouter = router({
       phone: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const assignedTo = input.assignedTo || (ctx.user.role !== 'admin' ? ctx.user.name : undefined);
+      // assignedTo livre plantava tarefa na lista de outro atendente: o nome informado
+      // tem que existir no cadastro (o padrão, o próprio usuário, não precisa).
+      const assignedTo = input.assignedTo?.trim()
+        ? await resolveAssignee(input.assignedTo)
+        : (ctx.user.role !== 'admin' ? ctx.user.name : undefined);
       const email = input.email ? input.email.toLowerCase().trim() : undefined;
       // E-mail digitado à mão pelo atendente já entra confirmado (importações não
       // passam o campo `email` — elas o preenchem depois via backfill, logo ficam
@@ -211,10 +215,18 @@ export const tasksRouter = router({
       const duplicadas = input.items.length - novos.length;
       if (novos.length === 0) return { created: [], length: 0, duplicadas };
 
+      // Mesmo critério do create: cada nome distinto informado é validado uma vez.
+      const resolvidos = new Map<string, string>();
+      for (const nome of new Set(novos.map(i => i.assignedTo?.trim()).filter((v): v is string => !!v))) {
+        resolvidos.set(nome, await resolveAssignee(nome));
+      }
+
       const baseLembrete = new Date(Date.now() + 5 * 60 * 1000);
       let semData = 0;
       const rows = novos.map(item => {
-        const assignedTo = item.assignedTo || (ctx.user.role !== 'admin' ? ctx.user.name : undefined);
+        const assignedTo = item.assignedTo?.trim()
+          ? resolvidos.get(item.assignedTo.trim())
+          : (ctx.user.role !== 'admin' ? ctx.user.name : undefined);
         const email = item.email ? item.email.toLowerCase().trim() : undefined;
         return {
           userId: ctx.user.id,

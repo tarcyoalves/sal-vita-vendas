@@ -43,6 +43,19 @@ export default function ActiveTimer() {
   const pauseMut  = trpc.workSessions.pause.useMutation();
   const resumeMut = trpc.workSessions.resume.useMutation();
   const endMut    = trpc.workSessions.end.useMutation();
+  const heartbeat = trpc.workSessions.heartbeat.useMutation();
+
+  // Batimento a cada 5 min (sessão ativa + aba visível): é o "último sinal de vida"
+  // que o servidor usa para fechar uma sessão esquecida sem zerar as horas.
+  const sessionStatus = session?.status;
+  useEffect(() => {
+    if (sessionStatus !== 'active') return;
+    const beat = () => {
+      if (document.visibilityState === 'visible') heartbeat.mutate(undefined, { onError: () => {} });
+    };
+    const id = setInterval(beat, 5 * 60_000);
+    return () => clearInterval(id);
+  }, [sessionStatus]);
 
   useEffect(() => {
     if (!session || session.status === 'ended') return;

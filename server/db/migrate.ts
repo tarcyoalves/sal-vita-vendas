@@ -244,7 +244,7 @@ async function ensureRecentSchema() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-10-06a';
+const SCHEMA_VERSION = '2026-10-07a';
 
 export async function ensureTablesExist() {
   // Antes de tudo (e antes do caminho rápido): garante o que foi criado por último.
@@ -267,7 +267,7 @@ export async function ensureTablesExist() {
       // per query with no connection reuse.
       await Promise.allSettled([
         sql`DELETE FROM chat_messages WHERE created_at < (((now() AT TIME ZONE 'America/Sao_Paulo')::date)::timestamp AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'UTC'`,
-        sql`DELETE FROM work_sessions WHERE status = 'ended' AND ended_at < NOW() - INTERVAL '90 days'`,
+        sql`DELETE FROM work_sessions WHERE status = 'ended' AND ended_at < NOW() - INTERVAL '400 days'`,
         sql`CREATE TABLE IF NOT EXISTS email_template_categories (id SERIAL PRIMARY KEY, name TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)`,
         sql`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS category_ids JSONB`,
       ]);
@@ -1097,6 +1097,6 @@ export async function ensureTablesExist() {
   // created_at é gravado em UTC, então a meia-noite de SP é convertida de volta para UTC.
   // Chat: keep only today's messages — each session starts fresh, old history wastes storage+transfer
   try { await sql`DELETE FROM chat_messages WHERE created_at < (((now() AT TIME ZONE 'America/Sao_Paulo')::date)::timestamp AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'UTC'`; } catch {}
-  // Work sessions: keep last 90 days of ended sessions (o valor real do status é 'ended', não 'completed')
-  try { await sql`DELETE FROM work_sessions WHERE status = 'ended' AND ended_at < NOW() - INTERVAL '90 days'`; } catch {}
+  // Work sessions: keep last 400 days of ended sessions (preserva relatórios do ano) (o valor real do status é 'ended', não 'completed')
+  try { await sql`DELETE FROM work_sessions WHERE status = 'ended' AND ended_at < NOW() - INTERVAL '400 days'`; } catch {}
 }
