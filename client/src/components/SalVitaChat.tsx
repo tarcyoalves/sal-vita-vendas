@@ -54,6 +54,14 @@ export default function SalVitaChat() {
     }
   }, [input, msgs, chatMut]);
 
+  // Escape closes the chat window.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   };
@@ -72,7 +80,8 @@ export default function SalVitaChat() {
       <button
         className="sv-chat-btn"
         onClick={() => setOpen(o => !o)}
-        aria-label="Abrir chat"
+        aria-label={open ? 'Fechar chat' : 'Abrir chat'}
+        aria-expanded={open}
         style={{
           position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
           width: 58, height: 58, borderRadius: '50%',
@@ -103,7 +112,7 @@ export default function SalVitaChat() {
 
       {/* Chat window */}
       {open && (
-        <div className="sv-chat-win" style={{
+        <div className="sv-chat-win" role="dialog" aria-label="Chat com a assistente virtual" style={{
           position: 'fixed', bottom: 94, right: 24, zIndex: 9998,
           width: 'min(370px, calc(100vw - 32px))',
           height: 'min(520px, calc(100dvh - 120px))',
@@ -144,10 +153,13 @@ export default function SalVitaChat() {
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ color: '#fff', fontWeight: 700, fontSize: '.95rem' }}>Sal Vita Premium</div>
-              <div style={{ color: 'rgba(255,255,255,.75)', fontSize: '.75rem', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ade80', display: 'inline-block' }}/>
-                Online agora
+              <div style={{ color: 'rgba(255,255,255,.85)', fontSize: '.75rem' }}>
+                Assistente virtual · respostas automáticas
               </div>
+              <a href="https://wa.me/558421408212" target="_blank" rel="noopener noreferrer"
+                style={{ color: '#fff', fontSize: '.75rem', fontWeight: 600, textDecoration: 'underline' }}>
+                Falar com uma pessoa no WhatsApp
+              </a>
             </div>
             <button onClick={() => setOpen(false)} aria-label="Fechar chat" style={{
               background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: '50%',
@@ -164,7 +176,7 @@ export default function SalVitaChat() {
           </div>
 
           {/* Messages */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div role="log" aria-live="polite" aria-label="Mensagens do chat" style={{ flex: 1, overflowY: 'auto', padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             {msgs.map((m, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
                 <div className={`chat-msg ${m.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai'}`}>
@@ -211,6 +223,7 @@ export default function SalVitaChat() {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKey}
+              aria-label="Digite sua dúvida"
               placeholder="Digite sua dúvida..."
               style={{
                 flex: 1, border: '1.5px solid #e2e8f0', borderRadius: 24,
@@ -222,6 +235,7 @@ export default function SalVitaChat() {
             />
             <button
               onClick={() => send()}
+              aria-label="Enviar mensagem"
               disabled={!input.trim() || chatMut.isPending}
               style={{
                 width: 38, height: 38, borderRadius: '50%', border: 'none',

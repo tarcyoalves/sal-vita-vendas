@@ -18,17 +18,72 @@ function getStepIndex(status: string) {
 // MP redirects with ?pedido=ID&status=pago after payment.
 // Links we send (return URLs, recovery e-mail/WhatsApp) carry ?t=<track token>,
 // an opaque per-order credential, so the customer lands straight on their order.
+// The token is moved to sessionStorage and removed from the address bar on load, so
+// it does not linger in history, screenshots, Referer headers or third-party pixels.
 // The old ?tel=XXXX form is gone — it put the ownership proof itself into a URL
 // that passes through Mercado Pago, browser history and Referer headers.
+const tokenKey = (pedido: string) => `sv-track-${pedido}`;
+
 function getUrlParams() {
   const p = new URLSearchParams(window.location.search);
-  return { pedido: p.get('pedido'), status: p.get('status'), token: p.get('t') };
+  const pedido = p.get('pedido');
+  let token = p.get('t');
+  if (!token && pedido) {
+    try { token = sessionStorage.getItem(tokenKey(pedido)); } catch {}
+  }
+  return { pedido, status: p.get('status'), token };
 }
+
+function stashTokenAndCleanUrl() {
+  const url = new URL(window.location.href);
+  const token = url.searchParams.get('t');
+  if (token === null) return;
+  const pedido = url.searchParams.get('pedido');
+  if (pedido && token) {
+    try { sessionStorage.setItem(tokenKey(pedido), token); } catch {}
+  }
+  url.searchParams.delete('t');
+  window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+}
+
+// The pixel is not loaded on /meu-pedido (see index.html) because the URL used to carry
+// the order token. Purchase is the one event we want from this page, so load the pixel
+// on demand — only after the token has been stripped from the URL — and send no PageView.
+function ensurePixel() {
+  const w = window as any;
+  if (w.fbq) return;
+  const n: any = (w.fbq = function (...args: unknown[]) {
+    n.callMethod ? n.callMethod.apply(n, args) : n.queue.push(args);
+  });
+  if (!w._fbq) w._fbq = n;
+  n.push = n; n.loaded = true; n.version = '2.0'; n.queue = [];
+  const t = document.createElement('script');
+  t.async = true;
+  t.src = 'https://connect.facebook.net/en_US/fbevents.js';
+  document.head.appendChild(t);
+  w.fbq('init', '2209017296169541');
+}
+
+function friendlyError(error: unknown, usedToken: boolean): string {
+  const code = (error as { data?: { code?: string } } | null)?.data?.code;
+  if (code === 'TOO_MANY_REQUESTS') return 'Muitas consultas seguidas. Aguarde alguns minutos e tente novamente.';
+  if (code === 'NOT_FOUND' || code === 'FORBIDDEN' || code === 'UNAUTHORIZED') {
+    return usedToken
+      ? 'Não conseguimos abrir o pedido por este link.'
+      : 'Pedido não encontrado.';
+  }
+  return 'Não foi possível consultar agora. Tente novamente em instantes.';
+}
+
+const CONFIRM_POLL_MS = 10_000;
+const CONFIRM_POLL_MAX_MS = 5 * 60_000;
 
 type TrackQuery = { orderId: number; phone?: string; token?: string };
 
 export default function TrackOrder() {
-  const urlParams = getUrlParams();
+  const [urlParams] = useState(getUrlParams);
+  const pollUntil = useRef(Date.now() + CONFIRM_POLL_MAX_MS);
+  useEffect(() => { stashTokenAndCleanUrl(); }, []);
   const [orderId, setOrderId] = useState(urlParams.pedido ?? '');
   const [phone, setPhone] = useState('');
   const [submitted, setSubmitted] = useState(false);
@@ -63,8 +118,18 @@ export default function TrackOrder() {
 
   const { data: order, isLoading, error } = trpc.shipping.trackOrder.useQuery(
     queryInput!,
-    { enabled: !!queryInput, retry: false }
+    {
+      enabled: !!queryInput,
+      retry: false,
+      // Back from Mercado Pago the webhook may land a few seconds after the redirect:
+      // poll every 10 s, for up to 5 min, until the server says the payment is confirmed.
+      refetchInterval: (q) =>
+        mpStatus === 'pago' && q.state.data?.paymentStatus === 'awaiting' && Date.now() < pollUntil.current
+          ? CONFIRM_POLL_MS
+          : false,
+    }
   );
+  const paymentConfirmed = order?.paymentStatus === 'confirmed';
 
   // With a token in the link the order opens straight away; otherwise focus the
   // phone field so the customer can identify themselves.
@@ -93,9 +158,10 @@ export default function TrackOrder() {
   // ad-campaign optimization tied to actual buyers.
   const purchaseFired = useRef(false);
   useEffect(() => {
-    if (order && !purchaseFired.current && (order.paymentStatus === 'confirmed' || mpStatus === 'pago')) {
+    if (order && !purchaseFired.current && order.paymentStatus === 'confirmed') {
       purchaseFired.current = true;
       try {
+        ensurePixel();
         (window as any).fbq?.('track', 'Purchase', {
           value: parseFloat(order.totalPrice ?? '0'),
           currency: 'BRL',
@@ -108,7 +174,7 @@ export default function TrackOrder() {
         }, { eventID: `purchase-${order.id}` });
       } catch {}
     }
-  }, [order, mpStatus]);
+  }, [order]);
 
   const stepIndex = order ? getStepIndex(order.status) : -1;
 
@@ -130,24 +196,37 @@ export default function TrackOrder() {
             <ellipse cx="250" cy="187" rx="228" ry="164" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="15"/>
           </svg>
         </a>
-        <h1 style={{ fontSize: '14px', color: 'rgba(255,255,255,0.6)', margin: 0 }}>Rastreamento de Pedido</h1>
+        <h1 style={{ fontSize: '14px', color: 'rgba(255,255,255,0.7)', margin: 0 }}>Rastreamento de Pedido</h1>
       </header>
 
       <div style={{ maxWidth: '560px', margin: '0 auto', padding: '40px 20px' }}>
+        <a href="/" style={{ display: 'inline-block', marginBottom: '20px', fontSize: '14px', color: '#8ec2ff', textDecoration: 'none' }}>
+          ← Voltar para a loja
+        </a>
         {/* MP payment result banner */}
-        {mpStatus === 'pago' && (
-          <div style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '16px', padding: '20px 24px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+        {mpStatus === 'pago' && paymentConfirmed && (
+          <div role="status" style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '16px', padding: '20px 24px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '14px' }}>
             <span style={{ fontSize: '28px' }}>🎉</span>
             <div>
               <p style={{ margin: 0, fontWeight: 700, color: '#4ade80', fontSize: '16px' }}>Pagamento aprovado!</p>
-              <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>Confirme seu pedido abaixo informando o número e telefone.</p>
+              <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>Seu pedido está sendo preparado. Acompanhe abaixo.</p>
             </div>
+          </div>
+        )}
+        {mpStatus === 'pago' && !paymentConfirmed && order?.paymentStatus !== 'failed' && (
+          <div role="status" style={{ background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.4)', borderRadius: '16px', padding: '20px 24px', marginBottom: '24px' }}>
+            <p style={{ margin: 0, fontWeight: 700, color: '#fde68a' }}>⏳ Estamos confirmando seu pagamento.</p>
+            <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>
+              {queryInput
+                ? 'Isso pode levar alguns minutos. Esta página atualiza sozinha.'
+                : 'Isso pode levar alguns minutos. Para acompanhar, informe o número do pedido e o telefone abaixo.'}
+            </p>
           </div>
         )}
         {mpStatus === 'falhou' && (
           <div style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '16px', padding: '20px 24px', marginBottom: '24px' }}>
             <p style={{ margin: 0, fontWeight: 700, color: '#fca5a5' }}>❌ Pagamento não aprovado.</p>
-            <p style={{ margin: '6px 0 14px', fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>Não se preocupe — seu pedido foi salvo. Clique abaixo para tentar novamente com outro método de pagamento.</p>
+            <p style={{ margin: '6px 0 14px', fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>Não se preocupe — seu pedido foi salvo. Clique abaixo para tentar novamente com outro método de pagamento.</p>
             {urlParams.pedido && (
               <button onClick={handlePay} disabled={payLoading}
                 style={{ background: payLoading ? '#475569' : '#009ee3', color: 'white', border: 'none', borderRadius: '10px', padding: '12px 24px', fontWeight: 700, fontSize: '14px', cursor: payLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -159,7 +238,7 @@ export default function TrackOrder() {
         {mpStatus === 'pendente' && (
           <div style={{ background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.4)', borderRadius: '16px', padding: '20px 24px', marginBottom: '24px' }}>
             <p style={{ margin: 0, fontWeight: 700, color: '#fde68a' }}>⏳ Pagamento pendente.</p>
-            <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>Se pagou via boleto, pode levar até 2 dias úteis para ser confirmado.</p>
+            <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>Se pagou via boleto, pode levar até 2 dias úteis para ser confirmado.</p>
           </div>
         )}
 
@@ -175,17 +254,21 @@ export default function TrackOrder() {
           <h2 style={{ fontSize: '22px', fontWeight: 700, marginBottom: '8px', color: 'white' }}>
             🔍 Rastrear meu pedido
           </h2>
-          <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.5)', marginBottom: '24px' }}>
+          <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.7)', marginBottom: '24px' }}>
             Informe o número do pedido e o telefone completo usado na compra.
           </p>
           <form onSubmit={handleSearch}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <label htmlFor="track-order-id" style={{ display: 'block', fontSize: '12px', color: 'rgba(255,255,255,0.7)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Número do Pedido
                 </label>
                 <input
-                  type="number"
+                  id="track-order-id"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoComplete="off"
                   value={orderId}
                   onChange={e => setOrderId(e.target.value)}
                   placeholder="Ex: 42"
@@ -200,13 +283,13 @@ export default function TrackOrder() {
                 />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <label htmlFor="track-phone" style={{ display: 'block', fontSize: '12px', color: 'rgba(255,255,255,0.7)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Telefone completo com DDD
                 </label>
                 <input
                   id="track-phone"
                   type="tel"
-                  inputMode="numeric"
+                  autoComplete="tel"
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
                   placeholder="Ex: (84) 98620-7841"
@@ -238,19 +321,19 @@ export default function TrackOrder() {
 
         {/* Results */}
         {submitted && isLoading && (
-          <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.5)' }}>
+          <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.7)' }}>
             Buscando seu pedido...
           </div>
         )}
 
         {submitted && error && (
-          <div style={{
+          <div role="alert" style={{
             background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
             borderRadius: '16px', padding: '24px', textAlign: 'center', color: '#fca5a5',
           }}>
             <p style={{ fontSize: '32px', margin: '0 0 8px' }}>😕</p>
-            <p style={{ fontWeight: 600, marginBottom: '4px' }}>{(error as any)?.message ?? 'Pedido não encontrado'}</p>
-            <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)' }}>Verifique o número do pedido e o telefone informados.</p>
+            <p style={{ fontWeight: 600, marginBottom: '4px' }}>{friendlyError(error, !!queryInput?.token)}</p>
+            <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.65)' }}>Verifique o número do pedido e o telefone informados, ou fale conosco pelo WhatsApp.</p>
           </div>
         )}
 
@@ -263,23 +346,23 @@ export default function TrackOrder() {
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                 <div>
-                  <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', margin: '0 0 4px' }}>PEDIDO</p>
+                  <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.65)', margin: '0 0 4px' }}>PEDIDO</p>
                   <p style={{ fontSize: '22px', fontWeight: 800, color: 'white', margin: 0 }}>#{order.id}</p>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', margin: '0 0 4px' }}>TOTAL</p>
+                  <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.65)', margin: '0 0 4px' }}>TOTAL</p>
                   <p style={{ fontSize: '20px', fontWeight: 700, color: '#4ade80', margin: 0 }}>
                     R$ {parseFloat(order.totalPrice ?? '0').toFixed(2).replace('.', ',')}
                   </p>
                 </div>
               </div>
               <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.6)', margin: '0 0 4px' }}>
-                🧂 {order.quantity}x Sal Marinho Integral 1kg
+                🧂 {order.quantity}x Sal Vita Premium 1kg
               </p>
-              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', margin: 0 }}>
+              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.65)', margin: 0 }}>
                 📍 {order.city}/{order.state} · {order.shippingServiceName ?? 'Correios'}
               </p>
-              <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', margin: '8px 0 0' }}>
+              <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', margin: '8px 0 0' }}>
                 Realizado em {new Date(order.createdAt).toLocaleDateString('pt-BR', { day:'2-digit',month:'long',year:'numeric' })}
               </p>
             </div>
@@ -319,10 +402,10 @@ export default function TrackOrder() {
                         </div>
                         {/* Text */}
                         <div style={{ paddingTop: '8px' }}>
-                          <p style={{ margin: '0 0 2px', fontSize: '15px', fontWeight: current ? 700 : 500, color: done ? 'white' : 'rgba(255,255,255,0.3)' }}>
+                          <p style={{ margin: '0 0 2px', fontSize: '15px', fontWeight: current ? 700 : 500, color: done ? 'white' : 'rgba(255,255,255,0.6)' }}>
                             {step.label}
                           </p>
-                          <p style={{ margin: 0, fontSize: '12px', color: done ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.2)' }}>
+                          <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>
                             {current ? step.desc : ''}
                           </p>
                         </div>
@@ -338,7 +421,7 @@ export default function TrackOrder() {
               }}>
                 <p style={{ fontSize: '28px', margin: '0 0 8px' }}>❌</p>
                 <p style={{ fontWeight: 700, color: '#fca5a5' }}>Pedido Cancelado</p>
-                <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', margin: '4px 0 0' }}>Entre em contato pelo WhatsApp se precisar de ajuda.</p>
+                <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.65)', margin: '4px 0 0' }}>Entre em contato pelo WhatsApp se precisar de ajuda.</p>
               </div>
             )}
 
@@ -348,7 +431,7 @@ export default function TrackOrder() {
                 background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
                 borderRadius: '20px', padding: '24px', backdropFilter: 'blur(10px)',
               }}>
-                <h3 style={{ fontSize: '14px', color: 'rgba(255,255,255,0.5)', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <h3 style={{ fontSize: '14px', color: 'rgba(255,255,255,0.7)', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Código de Rastreio
                 </h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>

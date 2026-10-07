@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { cloneElement, useId, useState } from 'react';
 
 // Sprint 1 — página pública /atacado (host premium). Prioridade máxima de
 // aquisição B2B: formulário de inbound que grava lead "quente" direto no CRM
@@ -37,11 +37,13 @@ const labelStyle: React.CSSProperties = {
   marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em',
 };
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+// Ties the label to its control: the child element receives the generated id.
+function Field({ label, children }: { label: string; children: React.ReactElement<{ id?: string }> }) {
+  const id = useId();
   return (
     <div>
-      <label style={labelStyle}>{label}</label>
-      {children}
+      <label htmlFor={id} style={labelStyle}>{label}</label>
+      {cloneElement(children, { id })}
     </div>
   );
 }
@@ -52,6 +54,7 @@ export default function Atacado() {
   const [form, setForm] = useState({
     companyName: '', contactName: '', email: '', whatsapp: '',
     city: '', state: '', segment: '', volumeInterest: '', message: '',
+    website: '', // honeypot: real people never see it, bots fill it
   });
   const [consent, setConsent] = useState(false);
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
@@ -130,7 +133,7 @@ export default function Atacado() {
             SAL VITA PREMIUM · ATACADO
           </span>
           <h2 style={{ fontSize: '30px', fontWeight: 800, color: 'white', margin: '0 0 14px', lineHeight: 1.25 }}>
-            Sal marinho premium de Mossoró/RN para revenda e food service
+            Sal Vita Premium — sal marinho não refinado de Mossoró/RN para revenda e food service
           </h2>
           <p style={{ fontSize: '15px', color: 'rgba(255,255,255,0.6)', lineHeight: 1.6, maxWidth: '560px', margin: '0 auto' }}>
             Produto nacional, não refinado, com embalagem zip-lock pronta para prateleira e origem
@@ -145,7 +148,7 @@ export default function Atacado() {
           marginBottom: '40px',
         }}>
           {[
-            { icon: '🛒', title: 'Empórios e lojas naturais', desc: 'Revenda com margem para prateleira, pedido mínimo baixo.' },
+            { icon: '🛒', title: 'Empórios e lojas naturais', desc: 'Peça a tabela de preços e as condições de pedido mínimo.' },
             { icon: '🥩', title: 'Parrillas e casas de carne', desc: 'Sal de finalização à mesa, visível para o cliente.' },
             { icon: '🍽️', title: 'Restaurantes e peixarias', desc: 'Coerência de posicionamento e finalização premium.' },
           ].map(card => (
@@ -211,11 +214,11 @@ export default function Atacado() {
                   </Field>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
                     <Field label="E-mail comercial *">
-                      <input style={inputStyle} type="email" required maxLength={200} value={form.email}
+                      <input style={inputStyle} type="email" autoComplete="email" required maxLength={200} value={form.email}
                         onChange={e => update('email', e.target.value)} placeholder="contato@empresa.com" />
                     </Field>
                     <Field label="WhatsApp comercial *">
-                      <input style={inputStyle} type="tel" required maxLength={30} value={form.whatsapp}
+                      <input style={inputStyle} type="tel" inputMode="tel" autoComplete="tel" required maxLength={30} value={form.whatsapp}
                         onChange={e => update('whatsapp', e.target.value)} placeholder="(11) 99999-9999" />
                     </Field>
                   </div>
@@ -249,6 +252,11 @@ export default function Atacado() {
                       value={form.message} onChange={e => update('message', e.target.value)}
                       placeholder="Conte um pouco mais sobre o seu negócio" />
                   </Field>
+
+                  <div aria-hidden="true" style={{ position: 'absolute', left: '-10000px', top: 'auto', width: '1px', height: '1px', overflow: 'hidden' }}>
+                    <input type="text" name="website" tabIndex={-1} autoComplete="off"
+                      value={form.website} onChange={e => update('website', e.target.value)} />
+                  </div>
 
                   <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', fontSize: '12px', color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, cursor: 'pointer' }}>
                     <input type="checkbox" required checked={consent}

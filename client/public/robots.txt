@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Allow: /atacado
+Disallow: /meu-pedido
+Disallow: /sal-vita-admin
+Disallow: /sal-vita-recovery
+Disallow: /sal-vita-b2b
+Disallow: /classic
+Disallow: /api/
+
+Sitemap: https://premium.salvitarn.com.br/sitemap.xml
