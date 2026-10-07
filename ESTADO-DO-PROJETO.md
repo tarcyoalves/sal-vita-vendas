@@ -323,7 +323,16 @@ saíram desta lista e estão no registro `coordenacao/registro/2026-10-07-claude
    Desde 07/10 o excesso não passa calado — o pedido ganha `[REVISAR]` nas notas — mas
    ainda é possível conceder além do limite. Reserva atômica no `createOrder` resolveria.
 7. **Migrações rodam no cold start** com `.catch()` que só loga.
-8. **CSP duplicada** em `vercel.json` e `api/index.ts`, ambas com `unsafe-inline`.
+8. **CSP nunca foi aplicada às páginas** *(achado em 07/10)*. O `vercel.json` usa o formato
+   antigo `routes`, e nesse modo a Vercel **ignora a chave `headers`**: CSP, X-Frame-Options e
+   HSTS com `includeSubDomains` declarados ali nunca chegaram ao navegador (só o HSTS padrão
+   da Vercel). Desde 07/10, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
+   `Permissions-Policy` e o cache imutável de `/assets` vão por rotas com `continue: true`.
+   **A CSP ficou de fora de propósito:** a que está escrita quebraria o checkout — o
+   `connect-src` não inclui `viacep.com.br` (a landing busca o CEP direto do navegador).
+   Para ligar: ajustar `connect-src`/`img-src`, testar o checkout inteiro em
+   `Content-Security-Policy-Report-Only` primeiro, e só então aplicar. O bloco `headers` do
+   `vercel.json` continua lá mas não tem efeito; a API recebe CSP pelo Helmet.
 9. **`client/index.html` é compartilhado.** O CRM recebe título e `noindex` por script e,
    desde 07/10, `robots.txt` próprio (`Disallow: /`) e nenhum pixel. Crawlers que não
    executam JS ainda veem o `<head>` da loja no host do CRM.
