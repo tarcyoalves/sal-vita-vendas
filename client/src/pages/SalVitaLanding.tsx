@@ -1297,7 +1297,7 @@ export default function SalVitaLanding() {
               {[
                 {t:'Entrega Rastreada',s:'rastreamento em todos os pedidos'},
                 {t:'Nota Fiscal',s:'emitida em todos os pedidos'},
-                {t:'Pagamento Seguro',s:'PIX ou cartão, via Mercado Pago'},
+                {t:'Pagamento Seguro',s:'PIX, cartão em até 3× ou boleto, via Mercado Pago'},
                 {t:'Direito de arrependimento',s:'até 7 dias após o recebimento (CDC, art. 49)'},
               ].map(({t,s})=>(
                 <div key={t} style={{display:'flex',alignItems:'center',gap:10,background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.1)',borderRadius:14,padding:'12px 16px',minWidth:180}}>
@@ -1481,7 +1481,7 @@ export default function SalVitaLanding() {
                 </button>
                 <button onClick={handleMpPay} disabled={mpLoading}
                   style={{width:'100%',background:'transparent',color:'var(--brand)',border:'1.5px solid var(--brand)',borderRadius:14,padding:'13px',fontSize:'.95rem',fontWeight:700,cursor:mpLoading?'not-allowed':'pointer',opacity:mpLoading?.6:1}}>
-                  {mpLoading ? 'Gerando link seguro…' : 'Cartão ou outros meios (Mercado Pago)'}
+                  {mpLoading ? 'Gerando link seguro…' : 'Cartão em até 3× ou boleto (Mercado Pago)'}
                 </button>
               </>
             )
@@ -1538,7 +1538,7 @@ export default function SalVitaLanding() {
             <>
               {payErr&&<p role="alert" className="err" style={{marginBottom:10}}>{payErr}</p>}
               <p style={{fontSize:'.8rem',color:'var(--muted)',margin:'0 0 4px',textAlign:'center'}}>Pagamento processado com segurança pelo Mercado Pago</p>
-              <p style={{fontSize:'.8rem',color:'var(--muted)',margin:0,textAlign:'center'}}>PIX · Cartão (Mercado Pago)</p>
+              <p style={{fontSize:'.8rem',color:'var(--muted)',margin:0,textAlign:'center'}}>PIX · Cartão em até 3× · Boleto (Mercado Pago)</p>
               <div style={{display:'flex',justifyContent:'center',gap:20,marginTop:14,paddingTop:14,borderTop:'1px solid #f1f5f9'}}>
                 {[
                   {svg:<svg width="20" height="20" viewBox="0 0 24 24" fill="#16a34a" aria-hidden="true"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>,l:'Compra Segura'},

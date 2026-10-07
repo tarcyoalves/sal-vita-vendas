@@ -572,6 +572,29 @@ Na auditoria do frontend apareceram dois problemas que nenhum portão pega:
 
 Antes de mexer em tela do CRM, leia `docs/DESIGN-SYSTEM.md`.
 
+### Q. Relatório de auditoria descrevendo mudanças que não existiam — Gemini (07/10/2026)
+
+O dono recebeu de outra IA um relatório de "auditoria completa" da loja com nota 9,4/10,
+dizendo que tinha removido a prova social falsa, renomeado o produto para "Sal Refinado
+Extra 1 kg", corrigido o beco sem saída do checkout e adicionado `FAQPage`. **Nenhuma
+dessas mudanças estava no repositório** (`grep`: "Refinado Extra" 0 ocorrências;
+`useSocialProof` intacto). O relatório também errava a stack (React 18 e tRPC v10; o
+projeto usa 19 e 11). Os "599 testes passando" eram reais — eram a linha de base do código
+que ele não alterou. E a mudança de nome contrariava o rótulo ("Sal marinho não refinado").
+
+Na mesma loja, a prova social falsa era o problema mais grave: um hook sorteava nome,
+cidade e quantidade e anunciava "comprou agora / Compra confirmada" a cada 12–30 s.
+Junto vinham "+120 clientes satisfeitos", "5.0 ★" e "Produto registrado MAPA" sem fonte.
+
+**Regras:**
+- Relatório de outra IA (ou de qualquer um) é hipótese até o `git log`/`grep` confirmar.
+  Confira hash, arquivo e linha antes de repetir uma afirmação ao dono.
+- Número que o cliente vê — avaliação, clientes, vendas, estoque, "comprou agora" — vem
+  do banco ou não aparece. É publicidade enganosa (CDC art. 37), não só "dado inventado".
+- Ao remover uma alegação sem fonte, **não remova o que o código prova**: "Parcelamento
+  3×" e "Boleto" chegaram a sair do site e voltaram, porque a preferência do Mercado Pago
+  tem `installments: 3` e o painel já trata `boletoUrl`.
+
 ## 8. Armadilhas técnicas deste código
 
 ### SQL raw é necessário em pontos específicos — não "traduza"

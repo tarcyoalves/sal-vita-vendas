@@ -269,6 +269,14 @@ Plano e decisões em `PLANO-RADAR-CARGAS.md`.
 ## 6. Pendências — em ordem de urgência
 
 ### 🔴 Só o dono resolve (fora do código)
+0. **Loja — dados e confirmações pedidos na auditoria de 07/10:** depoimentos reais com
+   autorização (a seção foi removida por não ter origem rastreável); situação do registro
+   sanitário do produto (a frase "registrado MAPA" foi removida); arte da embalagem — o
+   selo frontal "+80 MINERAIS NATURAIS" contradiz o verso ("dezenas de minerais traço")
+   e aparece na foto do produto no site; política escrita de troca/devolução e prazo real
+   de postagem; política de privacidade (LGPD: CPF, endereço, pixel); imagem 1200×630
+   para compartilhamento; confirmar a tabela de frete estimado usada quando o Melhor Envio
+   cai; confirmar se o cartão em até 3× tem juros para o cliente.
 1. **Rotacionar a API key do WhatsApp.** O HEAD já está limpo (`vps-wa-patch.sh` e
    `vps-wa-qr-patch.sh` hoje leem `$WA_API_KEY` do ambiente), **mas o literal continua
    no histórico e o repositório é público** — limpar o arquivo não revoga a chave.
@@ -298,33 +306,40 @@ Plano e decisões em `PLANO-RADAR-CARGAS.md`.
    Validar a lista de CNAEs em `shared/radar.ts` (o 4789-0/04 traz pet shop).
 
 ### 🟠 Código, ainda aberto
-0. **🔴 Webhook do Resend do CRM inalcançável desde 11/08/2026** *(achado em 24/09)*.
-   `api/index.ts` registra `POST /api/resend-webhook` duas vezes; o handler do Premium
-   (`3c678a4`) vem primeiro, sempre responde e nunca chama `next()`, então o do CRM
-   nunca executa. Aberturas e cliques do CRM não chegam ao banco do CRM: o 🔥 lead
-   quente não é marcado e as estatísticas param. Detalhes e correção sugerida em
-   `HANDOFF-HERMES.md`, seção 11, item 1. **Passou a ser a maior pendência de código.**
+*Reconferido no código em 07/10/2026 (auditoria da loja Premium). Itens resolvidos
+saíram desta lista e estão no registro `coordenacao/registro/2026-10-07-claude-auditoria-loja-premium.md`.*
+
 4. **Sem outbox para efeitos pós-pagamento.** O pedido vira `confirmed` antes de
-   `confirmOrderPaid()`. Se a notificação falhar, o retry do webhook é barrado pelo guard
-   idempotente e o cliente nunca recebe aviso. **É a maior pendência do Premium** —
-   as outras não fazem o cliente pagar e não receber nada.
-5. **Webhook do Mercado Pago é fail-open no HMAC** (sem secret, ou sem os headers, segue).
-6. **Cupom:** o contador é atômico, mas o desconto já foi aplicado no checkout antes da
-   checagem — pedidos simultâneos podem sair com desconto além do limite.
-7. **Migrações rodam no cold start** com `.catch()` que só loga; o app serve requisição
-   com schema incompleto.
+   `confirmOrderPaid()`. Os passos já têm try/catch individual (lote 2 de 06/10), mas se
+   a função serverless morrer no meio, o retry do webhook é barrado pelo guard
+   idempotente e o cliente pode ficar sem aviso. Correção: coluna
+   `confirmation_sent_at` + o cron reprocessar confirmados com ela nula (exige migração —
+   ver HANDOFF §7 casos M e N antes).
+5. **Webhook do Mercado Pago é fail-open no HMAC** quando falta o segredo ou os headers.
+   **Proposital**: fechar sem o dono confirmar que `MERCADO_PAGO_WEBHOOK_SECRET` está na
+   Vercel pode barrar pagamento real. O risco é baixo (status e valor vêm da API do MP,
+   não da notificação). Para fechar: confirmar a variável e então exigir assinatura.
+6. **Cupom:** o desconto é concedido no checkout e o contador só sobe no pagamento.
+   Desde 07/10 o excesso não passa calado — o pedido ganha `[REVISAR]` nas notas — mas
+   ainda é possível conceder além do limite. Reserva atômica no `createOrder` resolveria.
+7. **Migrações rodam no cold start** com `.catch()` que só loga.
 8. **CSP duplicada** em `vercel.json` e `api/index.ts`, ambas com `unsafe-inline`.
-9. **`client/index.html` é compartilhado** — por isso o CRM mostra título do Premium.
-10. **Cobertura de testes baixa.** *(Atualizado em 24/09: o Vitest existe e é portão
-    desde 04/09, com 22 testes.)* Cobre só competência do faturamento e parsing de datas.
-    Autenticação, permissões e e-mail marketing não têm teste.
-10a. **Importação de planilha marca e-mail como confirmado** *(achado em 26/09)*.
-    `tasks.bulkCreate` grava `emailConfirmed: !!email` e dispara `lead_created`, que
-    inscreve o e-mail importado nas sequências ativas — o comentário do schema diz que
-    e-mail importado começa NÃO confirmado. Pode ser intencional (listas do dono);
+9. **`client/index.html` é compartilhado.** O CRM recebe título e `noindex` por script e,
+   desde 07/10, `robots.txt` próprio (`Disallow: /`) e nenhum pixel. Crawlers que não
+   executam JS ainda veem o `<head>` da loja no host do CRM.
+10. **Cobertura de testes:** 639 testes (07/10). A loja tem testes de regras puras e
+    "guards" que leem o código-fonte; nenhum teste executa o handler do webhook nem o
+    `createOrder` contra um banco simulado.
+10a. **Importação de planilha marca e-mail como confirmado** *(achado em 26/09)* —
     confirmar com o dono antes de mudar.
-11. **Schema sem foreign keys declaradas** — as relações são inteiros por convenção, sem
-    `.references()`. Integridade depende só do código.
+11. **Schema sem foreign keys declaradas.**
+11a. **Loja — pendências da auditoria de 07/10** (detalhes no registro):
+    reconciliação de pagamento só roda 1×/dia junto com o cron de carrinho (pedido pago com
+    webhook perdido pode esperar até 24 h); `trackCart` público permite agendar mensagens
+    de recuperação para qualquer telefone (1 cadência por número a cada 30 dias); rastreio
+    aceita telefone completo como alternativa ao token; rate limit em memória (por
+    instância serverless); dinheiro em float/texto; carrinhos abandonados sem pedido nunca
+    são apagados (LGPD — apagar dado é decisão do dono).
 
 ### 🔵 Operacional
 12. Pedidos com PIX inline (sem `mpPreferenceId`) não aparecem em `listOrders`.

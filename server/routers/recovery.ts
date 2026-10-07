@@ -84,7 +84,7 @@ ${fatosDoProduto()}
 
 LOJA:
 - Enviamos para todo o Brasil via Melhor Envio (PAC/SEDEX)
-- Formas de pagamento: Cartão, PIX, Boleto (via Mercado Pago)
+- Formas de pagamento: PIX, cartão em até 3× ou boleto (via Mercado Pago). Não diga se há juros: isso é definido pelo Mercado Pago
 - Site: https://premium.salvitarn.com.br
 - Rastreio: https://premium.salvitarn.com.br/meu-pedido
 
