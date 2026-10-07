@@ -4,7 +4,6 @@ import { useLocation } from 'wouter';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { X } from 'lucide-react';
-import SalVitaLogo from '../components/SalVitaLogo';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -114,7 +113,7 @@ export default function Home() {
     <div className="min-h-dvh flex flex-col items-center justify-center bg-slate-50 p-4 overflow-y-auto">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <SalVitaLogo className="h-20 w-auto" />
+          <img src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp" alt="Sal Vita" style={{ height: "56px", width: "auto" }} className="rounded-lg object-contain" />
           <h1 className="mt-4 text-xl font-semibold tracking-tight text-slate-900">Entrar no CRM</h1>
           <p className="mt-1 text-sm text-slate-500">Use o e-mail e a senha da sua conta Sal Vita.</p>
         </div>

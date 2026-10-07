@@ -22,7 +22,6 @@ import {
   ChevronsUpDown,
   Loader2,
 } from "lucide-react";
-import SalVitaLogo from "./SalVitaLogo";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -366,24 +365,25 @@ export default function AppShell({ children }: AppShellProps) {
   // e a lista perderia a rolagem.
   const sidebarContent = (
     <div className="flex flex-col h-full">
-      {/* Marca */}
-      <div className="flex items-center px-3 h-14 flex-shrink-0" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+      {/* Marca — logotipo oficial, como sempre foi */}
+      <div className="min-h-[72px] flex items-center px-5 border-b border-white/10 flex-shrink-0" style={{ paddingTop: "env(safe-area-inset-top)" }}>
         <button
           type="button"
           onClick={() => { setLocation(homePath); setSidebarOpen(false); }}
-          className="flex items-center gap-2.5 rounded-md px-1.5 py-1 hover:bg-white/[0.06] transition-colors"
+          className="rounded-lg"
           aria-label="Sal Vita — ir para o início"
         >
-          <SalVitaLogo variant="dark" className="h-7 w-auto" />
-          <span className="text-left leading-tight">
-            <span className="block text-[13px] font-semibold text-white">Sal Vita</span>
-            <span className="block text-[11px] text-brand-200/80">Vendas e relacionamento</span>
-          </span>
+          <img
+            src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
+            alt="Sal Vita"
+            style={{ height: "42px", width: "auto" }}
+            className="rounded-lg object-contain"
+          />
         </button>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-2.5 pb-3" aria-label="Principal">
+      <nav className="flex-1 overflow-y-auto px-2.5 py-3" aria-label="Principal">
         <ul className="space-y-px">
           {visibleItems.map((item, idx) => {
             const hasChildren = item.children && item.children.length > 0;
@@ -503,7 +503,9 @@ export default function AppShell({ children }: AppShellProps) {
     </div>
   );
 
-  const brandMark = <SalVitaLogo className="mx-auto mb-5 h-12 w-auto" />;
+  const brandMark = (
+    <img src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp" alt="Sal Vita" style={{ height: "56px", width: "auto" }} className="mx-auto mb-5 rounded-lg object-contain" />
+  );
 
   return (
     <div className="flex h-dvh bg-background text-sm text-slate-800 overflow-hidden">
