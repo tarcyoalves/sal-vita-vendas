@@ -140,6 +140,15 @@ function fbq(...args: unknown[]) {
 const pixelName = (p: Product) => `${p.name} ${p.weight}`;
 
 const PIX_MAX_MS = 30 * 60 * 1000;
+// Poll do PIX: 5s nos 2 primeiros minutos (quando a maioria paga), depois 15s até o teto —
+// ~136 chamadas por pedido, abaixo do rate limit do servidor (pixStatusLimiter).
+const PIX_FAST_MS = 2 * 60 * 1000;
+const PIX_FAST_INTERVAL_MS = 5_000;
+const PIX_SLOW_INTERVAL_MS = 15_000;
+const pixPollDelay = (elapsedMs: number) => elapsedMs < PIX_FAST_MS ? PIX_FAST_INTERVAL_MS : PIX_SLOW_INTERVAL_MS;
+// Mensagens do servidor (shipping.ts) para pedido que não aceita mais pagamento.
+const pedidoEncerrado = (msg?: string) => /foi cancelado|já foi pago/i.test(msg ?? '');
+const pedidoJaPago = (msg?: string) => /já foi pago/i.test(msg ?? '');
 const trackUrl = (id:number, token?:string|null) => `/meu-pedido?pedido=${id}${token ? `&t=${token}` : ''}`;
 
 function Logo({size=40,white=false}:{size?:number;white?:boolean}) {
@@ -219,7 +228,11 @@ export default function SalVitaLanding() {
   const [pixPaid,setPixPaid]               = useState(false);
   const [pixPollErr,setPixPollErr]         = useState(false);
   const [pixExpired,setPixExpired]         = useState(false);
-  const pixPollRef = useRef<ReturnType<typeof setInterval>|null>(null);
+  const pixPollRef = useRef<ReturnType<typeof setTimeout>|null>(null);
+  const pixPollGen = useRef(0); // invalida respostas de polls já parados (fechou/trocou de pedido)
+  const createReqId = useRef(0); // invalida resposta tardia de createOrder (Voltar/fechar no meio)
+  const dlgOrderRef = useRef<number|null>(null); // pedido exibido no diálogo agora (null = fechado)
+  const addPaymentInfoSent = useRef<Set<number>>(new Set());
   const pixPurchaseFiredRef = useRef(false);
   const [checkoutForm,setCheckoutForm]     = useState<CheckoutForm>(BLANK_FORM);
   const [couponCode,setCouponCode]         = useState('');
@@ -240,7 +253,10 @@ export default function SalVitaLanding() {
   const cepInputRef = useRef<HTMLInputElement>(null);
 
   // Which checkout dialog is on screen (0 = none). Only one is ever mounted.
+  const checkoutLoadingRef = useRef(false);
+  checkoutLoadingRef.current = checkoutLoading;
   const step = !showModal ? 0 : (orderDone && showCheckout) ? 3 : (showCheckout && selProd && selShip) ? 2 : selProd ? 1 : 0;
+  dlgOrderRef.current = step === 3 && orderDone ? orderDone.id : null;
 
   useEffect(()=>{
     const h=()=>{ setScrolled(window.scrollY>50); };
@@ -349,7 +365,8 @@ export default function SalVitaLanding() {
   }, [checkoutForm.customerName, checkoutForm.customerPhone]);
 
   const stopPixPoll = useCallback(()=>{
-    if(pixPollRef.current){ clearInterval(pixPollRef.current); pixPollRef.current=null; }
+    pixPollGen.current += 1;
+    if(pixPollRef.current){ clearTimeout(pixPollRef.current); pixPollRef.current=null; }
   },[]);
 
   const resetPix = useCallback(()=>{
@@ -374,13 +391,20 @@ export default function SalVitaLanding() {
     setCepData(null); setShipping([]); setSelShip(null); setCepErr(''); setShippingSource(null);
     setShowCheckout(false); setOrderDone(null);
     setCheckoutForm({ ...BLANK_FORM, ...saved });
-    setCouponState(null); setCouponCode('');
+    // O cupom do link (?cupom=) volta ao campo e é validado pelo efeito de auto-aplicação.
+    setCouponState(null); setCouponCode(autoCouponRef.current);
+    createReqId.current += 1; setCheckoutLoading(false);
     setCpfError(''); setPhoneError(''); setOrderErr(''); setPayErr(''); setShipNotice('');
     cartTrackRef.current = false;
     resetPix();
   },[resetPix]);
 
+  // Volta do passo 2 para o 1. Invalida um createOrder em andamento (a resposta tardia seria
+  // ignorada); com o pedido sendo registrado o botão fica desabilitado.
+  const backToStep1=()=>{ if (checkoutLoading) return; createReqId.current += 1; setShowCheckout(false); };
+
   const closeBuy=useCallback(()=>{
+    createReqId.current += 1; setCheckoutLoading(false);
     setShowModal(false); setShowCheckout(false); setOrderDone(null);
     setOrderErr(''); setPayErr(''); setShipNotice('');
     resetPix();
@@ -413,7 +437,7 @@ export default function SalVitaLanding() {
   useEffect(()=>{
     if (step===0) return;
     const onKey=(e:KeyboardEvent)=>{
-      if (e.key==='Escape') { e.preventDefault(); if (step===2) setShowCheckout(false); else closeBuy(); return; }
+      if (e.key==='Escape') { e.preventDefault(); if (step===2) { if (!checkoutLoadingRef.current) { createReqId.current += 1; setShowCheckout(false); } } else closeBuy(); return; }
       if (e.key!=='Tab' || !dlgRef.current) return;
       const els = Array.from(dlgRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
       if (!els.length) return;
@@ -528,6 +552,7 @@ export default function SalVitaLanding() {
     if(!isValidCpf(checkoutForm.customerCpf)) { setCpfError('CPF inválido — confira os números.'); document.getElementById('co-cpf')?.focus(); return; }
     setCpfError('');
     setCheckoutLoading(true);
+    const reqId = ++createReqId.current;
     // Track step 3 (attempting payment)
     fetch('/api/trpc/recovery.trackCart', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -556,6 +581,18 @@ export default function SalVitaLanding() {
       });
       const data = await res.json();
       const orderId = data?.result?.data?.json?.id;
+      // Fechou ou voltou enquanto o pedido era registrado: o pedido existe no servidor, então fica
+      // salvo para "Continuar pagamento", mas o diálogo não avança sozinho para o pagamento.
+      if (reqId !== createReqId.current) {
+        const tk = data?.result?.data?.json?.trackToken ?? null;
+        const tot = data?.result?.data?.json?.total ?? (selProd.price+selShip.price);
+        if (orderId && tk) {
+          const late: PendingOrder = { id: orderId, total: tot, ts: Date.now(), trackToken: tk, productId: selProd.id, shipService: selShip.service, shipPrice: selShip.price };
+          try { localStorage.setItem('sv_pending_order', JSON.stringify(late)); } catch {}
+          setPendingOrder(late);
+        }
+        return;
+      }
       // A tRPC error comes back as a 200/4xx with an `error` envelope (not a
       // thrown fetch), so guard explicitly — otherwise we'd advance to a
       // "#undefined confirmado" dead-end the customer could never pay.
@@ -581,12 +618,16 @@ export default function SalVitaLanding() {
       const pend: PendingOrder = { id: orderId, total, ts: createdAt, trackToken, productId: selProd.id, shipService: selShip.service, shipPrice };
       try { localStorage.setItem('sv_pending_order', JSON.stringify(pend)); } catch {}
       setPendingOrder(pend);
-      fbq('track','AddPaymentInfo',{ value: total, currency: 'BRL', content_name: pixelName(selProd), content_ids: ['salvita-001'], content_type: 'product', num_items: qty });
+      if (!addPaymentInfoSent.current.has(orderId)) {
+        addPaymentInfoSent.current.add(orderId);
+        fbq('track','AddPaymentInfo',{ value: total, currency: 'BRL', content_name: pixelName(selProd), content_ids: ['salvita-001'], content_type: 'product', num_items: qty });
+      }
     } catch(err) {
+      if (reqId !== createReqId.current) return;
       console.error('createOrder error:', err);
       setOrderErr('Erro ao registrar pedido. Verifique sua conexão e tente novamente.');
     } finally {
-      setCheckoutLoading(false);
+      if (reqId === createReqId.current) setCheckoutLoading(false);
     }
   }
 
@@ -610,26 +651,38 @@ export default function SalVitaLanding() {
         // (TrackOrder, on status=pago / confirmed) and server-side via the webhook.
         window.location.href = initPoint;
       }
-      else { setPayErr('Erro ao gerar link de pagamento. Tente novamente.'); }
+      else {
+        const apiMsg: string|undefined = data?.error?.json?.message;
+        if (pedidoEncerrado(apiMsg)) clearPending();
+        setPayErr(apiMsg ? `Não foi possível gerar o link de pagamento: ${apiMsg}` : 'Erro ao gerar link de pagamento. Tente novamente.');
+      }
     } catch { setPayErr('Erro ao conectar com Mercado Pago. Tente novamente.'); }
     setMpLoading(false);
   }
 
-  // Polls the payment status every 5s (the webhook does the real confirmation;
-  // this just reflects it on screen). Gives up after 30 min, and says so after
-  // 3 failed checks in a row instead of failing silently.
+  // Polls the payment status (the webhook does the real confirmation; this just reflects it on
+  // screen): every 5s for 2 min, then every 15s. Gives up after 30 min, and says so after 3
+  // failed checks in a row instead of failing silently. HTTP 429 = "try again later", not a failure.
   function startPixPoll(order:{id:number;total:number;trackToken?:string|null}) {
     stopPixPoll();
+    const gen = pixPollGen.current;
     let fails = 0;
     const startedAt = Date.now();
-    pixPollRef.current = setInterval(async () => {
+    const schedule = (delay: number = pixPollDelay(Date.now() - startedAt)) => {
+      pixPollRef.current = setTimeout(tick, delay);
+    };
+    const tick = async () => {
+      if (gen !== pixPollGen.current) return;
       if (Date.now() - startedAt > PIX_MAX_MS) { stopPixPoll(); setPixExpired(true); return; }
       try {
         const r = await fetch('/api/trpc/shipping.pixStatus', {
           method:'POST', headers:{'Content-Type':'application/json'},
           body:JSON.stringify({json:{ orderId: order.id, token: order.trackToken ?? undefined }}),
         });
+        if (gen !== pixPollGen.current) return;
+        if (r.status === 429) { schedule(PIX_SLOW_INTERVAL_MS); return; }
         const d = await r.json();
+        if (gen !== pixPollGen.current) return;
         const j = d?.result?.data?.json;
         if (!j) throw new Error('pixStatus failed');
         fails = 0; setPixPollErr(false);
@@ -644,12 +697,16 @@ export default function SalVitaLanding() {
               content_ids: ['salvita-001'], content_type: 'product', ...(selProd ? { num_items: selProd.units } : {}),
             }, { eventID: `purchase-${order.id}` });
           }
+          return;
         }
       } catch {
+        if (gen !== pixPollGen.current) return;
         fails += 1;
         if (fails >= 3) setPixPollErr(true);
       }
-    }, 5000);
+      schedule();
+    };
+    schedule();
   }
 
   // Generates an inline PIX QR code/copy-paste so the customer pays without
@@ -666,12 +723,18 @@ export default function SalVitaLanding() {
       });
       const data = await res.json();
       const result = data?.result?.data?.json;
+      // O diálogo foi fechado (ou trocou de pedido) enquanto o PIX era gerado: não mostra nem faz poll.
+      if (dlgOrderRef.current !== orderDone.id) { setPixLoading(false); return; }
       if(result?.qrCode) {
         setPixData({ qrCode: result.qrCode, qrCodeBase64: result.qrCodeBase64 ?? '' });
-        fbq('track','AddPaymentInfo',{ value: orderDone.total, currency: 'BRL', content_name: selProd ? pixelName(selProd) : 'SAL VITA PREMIUM', content_ids: ['salvita-001'], content_type: 'product', ...(selProd ? { num_items: selProd.units } : {}) });
+        if (!addPaymentInfoSent.current.has(orderDone.id)) {
+          addPaymentInfoSent.current.add(orderDone.id);
+          fbq('track','AddPaymentInfo',{ value: orderDone.total, currency: 'BRL', content_name: selProd ? pixelName(selProd) : 'SAL VITA PREMIUM', content_ids: ['salvita-001'], content_type: 'product', ...(selProd ? { num_items: selProd.units } : {}) });
+        }
         startPixPoll(orderDone);
       } else {
-        const apiMsg = data?.error?.json?.message ?? data?.error?.message;
+        const apiMsg: string|undefined = data?.error?.json?.message ?? data?.error?.message;
+        if (pedidoEncerrado(apiMsg)) clearPending();
         setPayErr(apiMsg ? `Não foi possível gerar o PIX: ${apiMsg}` : 'Erro ao gerar PIX. Tente novamente.');
       }
     } catch { setPayErr('Erro ao conectar com Mercado Pago. Tente novamente.'); }
@@ -1536,7 +1599,7 @@ export default function SalVitaLanding() {
             </div>
           ) : (
             <>
-              {payErr&&<p role="alert" className="err" style={{marginBottom:10}}>{payErr}</p>}
+              {payErr&&<p role="alert" className="err" style={{marginBottom:10}}>{payErr}{pedidoJaPago(payErr)&&<> <a href={trackUrl(orderDone.id,orderDone.trackToken)} style={{color:'var(--brand)',fontWeight:700}}>Acompanhar pedido</a></>}</p>}
               <p style={{fontSize:'.8rem',color:'var(--muted)',margin:'0 0 4px',textAlign:'center'}}>Pagamento processado com segurança pelo Mercado Pago</p>
               <p style={{fontSize:'.8rem',color:'var(--muted)',margin:0,textAlign:'center'}}>PIX · Cartão em até 3× · Boleto (Mercado Pago)</p>
               <div style={{display:'flex',justifyContent:'center',gap:20,marginTop:14,paddingTop:14,borderTop:'1px solid #f1f5f9'}}>
@@ -1553,7 +1616,7 @@ export default function SalVitaLanding() {
               </div>
             </>
           )}
-          {!pixPaid&&pixData&&payErr&&<p role="alert" className="err" style={{textAlign:'center'}}>{payErr}</p>}
+          {!pixPaid&&pixData&&payErr&&<p role="alert" className="err" style={{textAlign:'center'}}>{payErr}{pedidoJaPago(payErr)&&<> <a href={trackUrl(orderDone.id,orderDone.trackToken)} style={{color:'var(--brand)',fontWeight:700}}>Acompanhar pedido</a></>}</p>}
           {!pixPaid&&(
             <p style={{textAlign:'center',fontSize:'.8rem',color:'var(--muted)',marginTop:12}}>
               Após pagar, rastreie em: <a href={trackUrl(orderDone.id,orderDone.trackToken)} style={{color:'var(--brand)',fontWeight:600}}>Pedido #{orderDone.id}</a>
@@ -1564,13 +1627,13 @@ export default function SalVitaLanding() {
 
       {/* ══════ CHECKOUT — ETAPA 2: DADOS ══════ */}
       {step===2&&selProd&&selShip&&(
-        <Sheet dlgRef={dlgRef} onBackdrop={()=>setShowCheckout(false)} maxWidth={480}
+        <Sheet dlgRef={dlgRef} onBackdrop={backToStep1} maxWidth={480}
           foot={
             <>
               {orderErr&&<p role="alert" className="err" style={{margin:'0 0 8px'}}>{orderErr}</p>}
               <div style={{display:'flex',gap:10}}>
-                <button type="button" onClick={()=>setShowCheckout(false)}
-                  style={{flex:'0 0 auto',minHeight:48,background:'var(--salt)',color:'var(--mid)',border:'none',borderRadius:12,padding:'0 18px',fontSize:'.9rem',fontWeight:600,cursor:'pointer'}}>
+                <button type="button" onClick={backToStep1} disabled={checkoutLoading}
+                  style={{flex:'0 0 auto',minHeight:48,background:'var(--salt)',color:'var(--mid)',border:'none',borderRadius:12,padding:'0 18px',fontSize:'.9rem',fontWeight:600,cursor:checkoutLoading?'not-allowed':'pointer',opacity:checkoutLoading?.5:1}}>
                   ← Voltar
                 </button>
                 <button type="submit" form="checkout-form" disabled={checkoutLoading}
@@ -1580,7 +1643,7 @@ export default function SalVitaLanding() {
               </div>
             </>
           }>
-          <SheetHead eyebrow="Dados para entrega" title="Finalizar Pedido" sub={`${packLabel(selProd)} · ${brl(selProd.price)}`} onClose={()=>setShowCheckout(false)}/>
+          <SheetHead eyebrow="Dados para entrega" title="Finalizar Pedido" sub={`${packLabel(selProd)} · ${brl(selProd.price)}`} onClose={backToStep1}/>
           <Steps cur={2}/>
           <form id="checkout-form" onSubmit={handleCheckout} style={{display:'flex',flexDirection:'column',gap:12}}>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
@@ -1613,7 +1676,7 @@ export default function SalVitaLanding() {
                 <label className="inp-lbl" htmlFor="co-cep">CEP (do frete)</label>
                 <div style={{position:'relative'}}>
                   <input id="co-cep" className="inp" readOnly autoComplete="postal-code" inputMode="numeric" value={maskCep(checkoutForm.postalCode)} style={{paddingRight:76}}/>
-                  <button type="button" className="lnk" onClick={()=>setShowCheckout(false)} style={{position:'absolute',right:2,top:2,bottom:2}}>alterar</button>
+                  <button type="button" className="lnk" onClick={backToStep1} style={{position:'absolute',right:2,top:2,bottom:2}}>alterar</button>
                 </div>
               </div>
               <div>

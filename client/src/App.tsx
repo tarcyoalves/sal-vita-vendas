@@ -39,12 +39,14 @@ const AppShell = lazy(() => import("./components/AppShell"));
 const StoreFallback = () => <div style={{ minHeight: '100vh', background: '#060f20' }} />;
 const CrmFallback = () => <div style={{ minHeight: '100vh', background: '#f8fafc' }} />;
 
-// Deploy novo apaga os chunks antigos: se o import() falhar, recarrega uma única vez.
+// Deploy novo apaga os chunks antigos: se o import() falhar, recarrega. Guarda o horário do último
+// reload (não uma flag eterna) para permitir outro depois de 60 s, sem entrar em loop de reload.
 if (typeof window !== 'undefined') {
   window.addEventListener('vite:preloadError', () => {
     try {
-      if (sessionStorage.getItem('chunk-reload')) return;
-      sessionStorage.setItem('chunk-reload', '1');
+      const last = Number(sessionStorage.getItem('chunk-reload') ?? 0);
+      if (Number.isFinite(last) && Date.now() - last < 60_000) return;
+      sessionStorage.setItem('chunk-reload', String(Date.now()));
     } catch { /* sem sessionStorage: recarrega mesmo assim (uma vez por carregamento) */ }
     window.location.reload();
   });

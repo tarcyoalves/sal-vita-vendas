@@ -49,7 +49,7 @@ describe('DB-1: estados que aceitam confirmação', () => {
   });
   it("mas pedido 'failed' CANCELADO não é confirmado por pagamento tardio", () => {
     const src = readFileSync('server/lib/orderConfirmation.ts', 'utf8');
-    expect(src).toMatch(/podeConfirmarPagamento = or\([\s\S]*'failed'\), ne\(siteOrders\.status, 'cancelled'\)/);
+    expect(src).toMatch(/podeConfirmarPagamento = and\(\s*ne\(siteOrders\.status, 'cancelled'\),\s*or\(eq\(siteOrders\.paymentStatus, 'awaiting'\), eq\(siteOrders\.paymentStatus, 'failed'\)\)/);
   });
   it('webhook e reconcile usam a lista; rejected só rebaixa awaiting; erro de banco responde 500', () => {
     const src = readFileSync('api/index.ts', 'utf8');

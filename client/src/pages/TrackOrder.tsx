@@ -94,11 +94,19 @@ export default function TrackOrder() {
   );
   const [mpStatus] = useState(urlParams.status);
   const [payLoading, setPayLoading] = useState(false);
+  const [payErr, setPayErr] = useState('');
+  // Depois do teto do poll (5 min) a página deixa de atualizar sozinha — o texto precisa dizer isso.
+  const [pollExpired, setPollExpired] = useState(false);
+  useEffect(() => {
+    if (mpStatus !== 'pago') return;
+    const t = setTimeout(() => setPollExpired(true), CONFIRM_POLL_MAX_MS);
+    return () => clearTimeout(t);
+  }, [mpStatus]);
 
   async function handlePay() {
     const id = queryInput?.orderId ?? parseInt(urlParams.pedido ?? '');
     if (!id) return;
-    setPayLoading(true);
+    setPayLoading(true); setPayErr('');
     try {
       const res = await fetch('/api/trpc/shipping.createPayment', {
         method: 'POST',
@@ -112,8 +120,12 @@ export default function TrackOrder() {
       const data = await res.json();
       const initPoint = data?.result?.data?.json?.initPoint;
       if (initPoint) { window.location.href = initPoint; }
-      else { alert('Erro ao gerar link. Tente novamente.'); setPayLoading(false); }
-    } catch { alert('Erro de conexão. Tente novamente.'); setPayLoading(false); }
+      else {
+        const apiMsg: string | undefined = data?.error?.json?.message ?? data?.error?.message;
+        setPayErr(apiMsg ?? 'Erro ao gerar link. Tente novamente.');
+        setPayLoading(false);
+      }
+    } catch { setPayErr('Erro de conexão. Tente novamente.'); setPayLoading(false); }
   }
 
   const { data: order, isLoading, error } = trpc.shipping.trackOrder.useQuery(
@@ -218,7 +230,9 @@ export default function TrackOrder() {
             <p style={{ margin: 0, fontWeight: 700, color: '#fde68a' }}>⏳ Estamos confirmando seu pagamento.</p>
             <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>
               {queryInput
-                ? 'Isso pode levar alguns minutos. Esta página atualiza sozinha.'
+                ? (pollExpired
+                    ? 'Isso pode levar alguns minutos. Esta página parou de atualizar — recarregue a página daqui a pouco para ver se o pagamento foi confirmado.'
+                    : 'Isso pode levar alguns minutos. Esta página atualiza sozinha.')
                 : 'Isso pode levar alguns minutos. Para acompanhar, informe o número do pedido e o telefone abaixo.'}
             </p>
           </div>
@@ -233,6 +247,7 @@ export default function TrackOrder() {
                 {payLoading ? '⟳ Gerando link...' : '💳 Tentar pagamento novamente'}
               </button>
             )}
+            {payErr && <p role="alert" style={{ margin: '10px 0 0', fontSize: '13px', fontWeight: 600, color: '#fca5a5' }}>{payErr}</p>}
           </div>
         )}
         {mpStatus === 'pendente' && (
@@ -496,6 +511,7 @@ export default function TrackOrder() {
                     📱 Enviar comprovante no WhatsApp
                   </a>
                 </div>
+                {payErr && <p role="alert" style={{ margin: '10px 0 0', fontSize: '13px', fontWeight: 600, color: '#fca5a5' }}>{payErr}</p>}
               </div>
             )}
           </div>

@@ -10,7 +10,7 @@ export interface EstadoPedidoPagamento {
 export type TransicaoPagamento =
   | 'confirmar'        // approved: confirma o pedido e dispara os efeitos (1x)
   | 'ja_confirmado'    // approved em pedido já confirmado: idempotente
-  | 'ignorar'          // approved em 'failed' CANCELADO (pagamento tardio não ressuscita)
+  | 'ignorar'          // approved em pedido CANCELADO ('awaiting' ou 'failed') (pagamento tardio não ressuscita)
   | 'rebaixar'         // rejected/cancelled em 'awaiting' → 'failed'
   | 'estornar'         // refunded/charged_back em 'confirmed' → cancela e devolve cupom
   | 'cancelar_aguardando' // refunded/charged_back em 'awaiting' → só registra
@@ -23,8 +23,8 @@ export function decidirTransicaoPagamento(estado: EstadoPedidoPagamento, statusM
   switch (statusMp) {
     case 'approved':
       if (pay === 'confirmed') return 'ja_confirmado';
-      if (pay === 'awaiting') return 'confirmar';
-      if (pay === 'failed' && !cancelado) return 'confirmar';
+      // Cancelado (mesmo ainda 'awaiting': o admin cancelou com um PIX em aberto) nunca confirma.
+      if ((pay === 'awaiting' || pay === 'failed') && !cancelado) return 'confirmar';
       return 'ignorar';
     case 'pending':
     case 'in_process':

@@ -476,7 +476,7 @@ app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/jso
         }
         res.json({ ok: true, already: true }); return;
       }
-      // 'failed' cancelado: pagamento tardio não ressuscita o pedido (o UPDATE abaixo também barra).
+      // Pedido cancelado ('awaiting' ou 'failed'): pagamento tardio não ressuscita o pedido (o UPDATE abaixo também barra).
       if (transicao === 'ignorar') {
         console.error(`[mp-webhook] order ${orderId}: approved payment ${mpId} on a cancelled order — refund manually`);
         await appendReviewNote(orderId, `pagamento aprovado em pedido cancelado — MP ${mpId} — estornar manualmente`);
@@ -1043,10 +1043,12 @@ const couponCheckLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 
-// PIX status is polled every 5s while the QR is shown — allow up to ~the 15-min poll cap.
+// PIX status poll do storefront: a cada 5s nos 2 primeiros minutos (24) e a cada 15s até o teto de
+// 30 min (112) ≈ 136 por pedido; numa janela de 15 min cabem no máximo ~24 + 52 = ~76 chamadas.
+// 300 dá folga para recarregar a página, retomar o pedido e IPs compartilhados (CGNAT de operadora móvel).
 const pixStatusLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 220,
+  max: 300,
   validate: { xForwardedForHeader: false },
 });
 
@@ -1285,6 +1287,13 @@ async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
           }
         }
         if (!approved) continue;
+
+        // Cancelado com PIX pago depois: não confirma (o UPDATE abaixo também barra); avisa a revisão.
+        if (o.status === 'cancelled') {
+          console.error(`[cron] reconcile: order ${o.id} cancelled but payment ${payId} approved — refund manually`);
+          await appendReviewNote(o.id, `pagamento aprovado em pedido cancelado — MP ${payId} — estornar manualmente`);
+          continue;
+        }
 
         // C2: replicate the webhook's amount validation here — without it, the
         // reconcile cron was the anti-fraud check's back door (a mismatched webhook

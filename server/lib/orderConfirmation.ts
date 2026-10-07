@@ -227,10 +227,11 @@ export const CONFIRMABLE_PAYMENT_STATUSES = ['awaiting', 'failed'] as const;
 
 /**
  * Condição SQL de "este pedido ainda pode ser confirmado por um pagamento aprovado":
- * 'awaiting' sempre; 'failed' só se o pedido NÃO foi cancelado (cancelar manualmente ou por
- * estorno também grava 'failed' — um pagamento tardio não pode ressuscitar pedido cancelado).
+ * 'awaiting' ou 'failed', e só se o pedido NÃO foi cancelado (o cancelamento manual deixa
+ * 'awaiting'; cancelar por estorno grava 'failed' — um PIX pago depois do cancelamento não
+ * pode ressuscitar o pedido).
  */
-export const podeConfirmarPagamento = or(
-  eq(siteOrders.paymentStatus, 'awaiting'),
-  and(eq(siteOrders.paymentStatus, 'failed'), ne(siteOrders.status, 'cancelled')),
+export const podeConfirmarPagamento = and(
+  ne(siteOrders.status, 'cancelled'),
+  or(eq(siteOrders.paymentStatus, 'awaiting'), eq(siteOrders.paymentStatus, 'failed')),
 );
