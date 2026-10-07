@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 interface SalVitaLogoProps {
   className?: string;
   /** "dark" = white logo (for dark/navy backgrounds), "light" = navy logo (for white backgrounds) */
@@ -6,6 +8,7 @@ interface SalVitaLogoProps {
 }
 
 export default function SalVitaLogo({ className = "", variant = "light", onClick }: SalVitaLogoProps) {
+  const clipId = `sv-clip-${useId().replace(/:/g, "")}`;
   const navy = "#0C3680";
   const fg = variant === "dark" ? "#ffffff" : navy;
   const bg = variant === "dark" ? "transparent" : "white";
@@ -19,7 +22,7 @@ export default function SalVitaLogo({ className = "", variant = "light", onClick
       onClick={onClick}
     >
       <defs>
-        <clipPath id="sv-clip">
+        <clipPath id={clipId}>
           <ellipse cx="200" cy="150" rx="188" ry="133" />
         </clipPath>
       </defs>
@@ -34,7 +37,7 @@ export default function SalVitaLogo({ className = "", variant = "light", onClick
       <path
         d="M12 215 Q70 158 135 192 Q170 212 200 182 Q230 152 268 180 Q312 210 388 198 L388 283 H12 Z"
         fill={fg}
-        clipPath="url(#sv-clip)"
+        clipPath={`url(#${clipId})`}
       />
 
       {/* "Sal Vita" text — Pacifico loaded via Google Fonts in index.html */}

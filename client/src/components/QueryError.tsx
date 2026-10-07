@@ -19,7 +19,7 @@ export function QueryError({
   return (
     <div
       role="alert"
-      className={`flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 ${className}`}
+      className={`flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800 ${className}`}
     >
       <span className="flex items-center gap-2 min-w-0">
         <AlertTriangle size={16} className="shrink-0 text-red-600" />
@@ -29,7 +29,7 @@ export function QueryError({
         type="button"
         onClick={onRetry}
         disabled={retrying}
-        className="shrink-0 min-h-10 px-3 rounded-lg border border-red-300 bg-white font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"
+        className="shrink-0 h-8 max-md:h-10 px-3 rounded-md border border-red-300 bg-white text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"
       >
         {retrying ? 'Tentando…' : 'Tentar de novo'}
       </button>

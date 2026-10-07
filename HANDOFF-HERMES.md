@@ -555,6 +555,23 @@ pedido que já existe lá (corrige 1115 → 1071).
 - Envie `POST /api/smbi/heartbeat` a cada ciclo e use `?simular=1` na simulação (nunca reserva).
 - Pedido com vínculo manual (`smbiVinculoEstado`) não vem na lista. Confira `GET /api/smbi/vinculos`.
 
+### P. Gráfico "de 30 dias" feito com `Math.random()` e classes que não geram CSS — Claude (07/10/2026)
+
+Na auditoria do frontend apareceram dois problemas que nenhum portão pega:
+
+1. **Dado inventado na tela.** O painel de resultados do e-mail marketing mostrava
+   "Envios (últimos 30 dias)", "Aberturas (últimos 30 dias)" e um "mapa de calor de
+   melhor horário" gerados com `Math.random()` — mudavam a cada render e pareciam
+   análise real. Foram removidos. **Regra:** número ou gráfico na tela vem de dado;
+   se o dado não existe, a área não existe (ou diz "sem dados").
+2. **Opacidade em cor de token não gera CSS no Tailwind 3.** `bg-primary/10`,
+   `hover:bg-primary/90`, `ring-ring/50`, `bg-muted/50` não produzem nada, porque o
+   token é `var(--x)`. O hover do botão principal e o anel de foco dos inputs
+   estavam mortos em todo o CRM. **Regra:** use a escala (`bg-brand-50`,
+   `ring-brand-500/20`, `bg-slate-50`). Detalhes em `docs/DESIGN-SYSTEM.md`.
+
+Antes de mexer em tela do CRM, leia `docs/DESIGN-SYSTEM.md`.
+
 ## 8. Armadilhas técnicas deste código
 
 ### SQL raw é necessário em pontos específicos — não "traduza"

@@ -13,8 +13,7 @@ export default function FloatingEmailMarketing() {
   return (
     <button
       onClick={() => setLocation('/admin/email-marketing')}
-      className="fixed right-4 md:bottom-6 z-50 w-13 h-13 rounded-full bg-[#0C3680] hover:bg-[#081F47] text-white shadow-xl border border-white/20 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
-      style={{ bottom: "calc(88px + env(safe-area-inset-bottom, 0px))" }}
+      className="fixed z-40 right-3 bottom-[calc(68px+env(safe-area-inset-bottom,0px))] md:right-6 md:bottom-4 size-12 rounded-full bg-brand-700 hover:bg-brand-800 text-white shadow-lg flex items-center justify-center transition-colors"
       title="Abrir E-mail Marketing"
       aria-label="E-mail Marketing"
     >

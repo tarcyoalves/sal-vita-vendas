@@ -117,19 +117,19 @@ export default function ActiveTimer() {
   const isPaused = session.status === 'paused';
 
   return (
-    <div ref={ref} className="fixed left-4 md:bottom-4 z-40" style={{ bottom: "calc(88px + env(safe-area-inset-bottom, 0px))" }}>
+    <div ref={ref} className="fixed z-40 left-3 bottom-[calc(68px+env(safe-area-inset-bottom,0px))] md:left-[248px] md:bottom-4">
 
       {/* Expanded detail card — floats above the pill */}
       {expanded && (
-        <div className={`absolute bottom-12 left-0 mb-1 bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl border
-          ${isActive ? 'border-green-200' : 'border-yellow-200'} p-4 w-44`}
+        <div className={`absolute bottom-12 left-0 mb-1 bg-white rounded-lg shadow-lg border
+          ${isActive ? 'border-green-200' : 'border-amber-200'} p-4 w-44`}
         >
           <div className="flex items-center gap-2 mb-3">
-            <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-green-500 animate-pulse' : 'bg-yellow-400'}`} />
-            <span className="text-xs font-medium text-gray-500">{isActive ? 'Trabalhando' : 'Pausado'}</span>
+            <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-green-500 animate-pulse' : 'bg-amber-500'}`} />
+            <span className="text-xs font-medium text-slate-500">{isActive ? 'Trabalhando' : 'Pausado'}</span>
           </div>
 
-          <p className="text-2xl font-mono font-bold text-slate-800 text-center tracking-wider mb-4">
+          <p className="text-xl font-semibold tabular-nums text-slate-900 text-center mb-4">
             {fmt(elapsed)}
           </p>
 
@@ -140,7 +140,7 @@ export default function ActiveTimer() {
                 disabled={busy}
                 title="Pausar"
                 aria-label="Pausar"
-                className="p-2.5 min-h-10 min-w-10 inline-flex items-center justify-center disabled:opacity-50 rounded-lg bg-yellow-50 hover:bg-yellow-100 text-yellow-600 border border-yellow-200 transition"
+                className="p-2.5 min-h-10 min-w-10 inline-flex items-center justify-center disabled:opacity-50 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-colors"
               >
                 <Pause size={15} />
               </button>
@@ -151,7 +151,7 @@ export default function ActiveTimer() {
                 disabled={busy}
                 title="Retomar"
                 aria-label="Retomar"
-                className="p-2.5 min-h-10 min-w-10 inline-flex items-center justify-center disabled:opacity-50 rounded-lg bg-green-50 hover:bg-green-100 text-green-600 border border-green-200 transition"
+                className="p-2.5 min-h-10 min-w-10 inline-flex items-center justify-center disabled:opacity-50 rounded-md bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 transition-colors"
               >
                 <Play size={15} />
               </button>
@@ -161,7 +161,7 @@ export default function ActiveTimer() {
               disabled={busy}
               title="Finalizar trabalho"
               aria-label="Finalizar trabalho"
-              className="p-2.5 min-h-10 min-w-10 inline-flex items-center justify-center disabled:opacity-50 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition"
+              className="p-2.5 min-h-10 min-w-10 inline-flex items-center justify-center disabled:opacity-50 rounded-md bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 transition-colors"
             >
               <Square size={15} />
             </button>
@@ -172,13 +172,13 @@ export default function ActiveTimer() {
       {/* Compact pill */}
       <button
         onClick={() => setExpanded(v => !v)}
-        className={`flex items-center gap-2 px-3 py-2 rounded-full shadow-lg text-sm font-mono font-medium transition-all active:scale-95
-          ${isActive ? 'bg-slate-800 hover:bg-slate-700 text-white' : 'bg-yellow-500 hover:bg-yellow-400 text-white'}`}
+        className={`flex items-center gap-2 px-3 py-2 rounded-full shadow-lg text-sm font-medium tabular-nums transition-colors
+          ${isActive ? 'bg-slate-800 hover:bg-slate-700 text-white' : 'bg-amber-600 hover:bg-amber-700 text-white'}`}
         title={isActive ? 'Trabalhando — clique para controles' : 'Pausado — clique para controles'}
       >
         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isActive ? 'bg-green-400 animate-pulse' : 'bg-white/80'}`} />
         <Clock size={13} className="flex-shrink-0" />
-        <span className="tracking-widest">{fmt(elapsed)}</span>
+        <span>{fmt(elapsed)}</span>
       </button>
 
       <ConfirmDialog

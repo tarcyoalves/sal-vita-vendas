@@ -19,7 +19,15 @@ import {
   FileText,
   Truck,
   UserSearch,
+  ChevronsUpDown,
+  Loader2,
 } from "lucide-react";
+import SalVitaLogo from "./SalVitaLogo";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { useAuth } from "../_core/hooks/useAuth";
 import { trpc } from "../lib/trpc";
 import ActiveTimer from "./ActiveTimer";
@@ -40,57 +48,57 @@ const NAV_ITEMS: NavItem[] = [
   {
     label: "Dashboard",
     path: "/admin/dashboard",
-    icon: <LayoutDashboard size={18} />,
+    icon: <LayoutDashboard size={16} />,
     roles: ["admin", "manager"],
     group: "Operação",
   },
   {
     label: "Tarefas",
     path: "/tasks",
-    icon: <CheckSquare size={18} />,
+    icon: <CheckSquare size={16} />,
     roles: ["admin", "manager"],
     group: "Operação",
   },
   {
     label: "Atendentes",
     path: "/attendants",
-    icon: <Users size={18} />,
+    icon: <Users size={16} />,
     roles: ["admin"],
     group: "Operação",
   },
   {
     label: "Buscador de Clientes",
     path: "/radar-cargas",
-    icon: <UserSearch size={18} />,
+    icon: <UserSearch size={16} />,
     roles: ["admin", "manager"],
     group: "Operação",
   },
   {
     label: "E-mail Marketing",
     path: "/admin/email-marketing",
-    icon: <Mail size={18} />,
+    icon: <Mail size={16} />,
     roles: ["admin", "manager"],
     group: "Receita",
   },
   {
     label: "Faturamento",
     path: "/admin/faturamento",
-    icon: <DollarSign size={18} />,
+    icon: <DollarSign size={16} />,
     roles: ["admin", "manager"],
     group: "Receita",
   },
   {
     label: "Documentos",
     path: "/documentos",
-    icon: <FileText size={18} />,
+    icon: <FileText size={16} />,
     roles: ["admin", "manager"],
     group: "Recursos",
   },
   {
-    label: "Inteligência IA",
-    icon: <Bot size={18} />,
+    label: "Assistente IA",
+    icon: <Bot size={16} />,
     roles: ["admin"],
-    group: "Inteligência",
+    group: "Recursos",
     children: [
       { label: "Chat IA", path: "/ai-chat", icon: <MessageSquare size={16} /> },
       { label: "Configurações", path: "/ai-settings", icon: <Settings size={16} /> },
@@ -100,35 +108,35 @@ const NAV_ITEMS: NavItem[] = [
   {
     label: "Minhas Tarefas",
     path: "/tasks",
-    icon: <CheckSquare size={18} />,
+    icon: <CheckSquare size={16} />,
     roles: ["user"],
     group: "Meu dia",
   },
   {
     label: "Buscador de Clientes",
     path: "/radar-cargas",
-    icon: <UserSearch size={18} />,
+    icon: <UserSearch size={16} />,
     roles: ["user"],
     group: "Meu dia",
   },
   {
     label: "Meu Progresso",
     path: "/meu-progresso",
-    icon: <TrendingUp size={18} />,
+    icon: <TrendingUp size={16} />,
     roles: ["user"],
     group: "Meu dia",
   },
   {
     label: "E-mail Marketing",
     path: "/admin/email-marketing",
-    icon: <Mail size={18} />,
+    icon: <Mail size={16} />,
     roles: ["user"],
     group: "Meu dia",
   },
   {
     label: "Documentos",
     path: "/documentos",
-    icon: <FileText size={18} />,
+    icon: <FileText size={16} />,
     roles: ["user"],
     group: "Meu dia",
   },
@@ -136,30 +144,34 @@ const NAV_ITEMS: NavItem[] = [
 
 // Flat items for the mobile bottom nav — último slot é sempre "Mais" (abre sidebar)
 const BOTTOM_NAV_ADMIN = [
-  { label: "Dashboard",     path: "/admin/dashboard",      icon: <LayoutDashboard size={22} /> },
-  { label: "Faturamento",   path: "/admin/faturamento",    icon: <DollarSign size={22} /> },
-  { label: "Tarefas",       path: "/tasks",                icon: <CheckSquare size={22} /> },
-  { label: "Atendentes",    path: "/attendants",           icon: <Users size={22} /> },
+  { label: "Dashboard",     path: "/admin/dashboard",      icon: <LayoutDashboard size={20} /> },
+  { label: "Faturamento",   path: "/admin/faturamento",    icon: <DollarSign size={20} /> },
+  { label: "Tarefas",       path: "/tasks",                icon: <CheckSquare size={20} /> },
+  { label: "Atendentes",    path: "/attendants",           icon: <Users size={20} /> },
 ];
 
 const BOTTOM_NAV_MANAGER = [
-  { label: "Dashboard", path: "/admin/dashboard",      icon: <LayoutDashboard size={22} /> },
-  { label: "Tarefas",   path: "/tasks",                icon: <CheckSquare size={22} /> },
-  { label: "E-mail",    path: "/admin/email-marketing", icon: <Mail size={22} /> },
-  { label: "Faturamento", path: "/admin/faturamento",  icon: <DollarSign size={22} /> },
+  { label: "Dashboard", path: "/admin/dashboard",      icon: <LayoutDashboard size={20} /> },
+  { label: "Tarefas",   path: "/tasks",                icon: <CheckSquare size={20} /> },
+  { label: "E-mail",    path: "/admin/email-marketing", icon: <Mail size={20} /> },
+  { label: "Faturamento", path: "/admin/faturamento",  icon: <DollarSign size={20} /> },
 ];
 
 const BOTTOM_NAV_USER = [
-  { label: "Tarefas",   path: "/tasks",                icon: <CheckSquare size={22} /> },
-  { label: "Buscador",  path: "/radar-cargas",          icon: <UserSearch size={22} /> },
-  { label: "Progresso", path: "/meu-progresso",         icon: <TrendingUp size={22} /> },
-  { label: "Documentos", path: "/documentos",          icon: <FileText size={22} /> },
+  { label: "Tarefas",   path: "/tasks",                icon: <CheckSquare size={20} /> },
+  { label: "Buscador",  path: "/radar-cargas",          icon: <UserSearch size={20} /> },
+  { label: "Progresso", path: "/meu-progresso",         icon: <TrendingUp size={20} /> },
+  { label: "Documentos", path: "/documentos",          icon: <FileText size={20} /> },
 ];
 
 const PAGE_TITLES: Record<string, string> = {
   "/admin/dashboard": "Dashboard",
   "/tasks": "Tarefas",
   "/attendants": "Atendentes",
+  "/atendentes": "Atendentes",
+  "/representatives": "Atendentes",
+  "/admin/clients": "Clientes",
+  "/admin/ai-analysis": "Análise IA",
   "/radar-cargas": "Buscador de Clientes",
   "/admin/email-marketing": "E-mail Marketing",
   "/admin/faturamento": "Faturamento",
@@ -333,25 +345,46 @@ export default function AppShell({ children }: AppShellProps) {
 
   const pageTitle = PAGE_TITLES[location] ?? "Sal Vita";
   const userInitial = user?.name?.charAt(0).toUpperCase() ?? "U";
+  const firstName = user?.name?.split(" ")[0] ?? "";
+
+  // O <title> do index.html é o da loja Premium (SEO); no CRM cada tela nomeia a aba.
+  useEffect(() => {
+    document.title = `${pageTitle} · Sal Vita CRM`;
+  }, [pageTitle]);
+  const homePath = role === "admin" || role === "manager" ? "/admin/dashboard" : "/tasks";
+
+  const navItemClass = (active: boolean) =>
+    `group w-full flex items-center gap-2.5 h-9 max-md:h-11 px-2.5 rounded-md text-[13px] font-medium transition-colors ${
+      active
+        ? "bg-white/[0.12] text-white"
+        : "text-brand-100/80 hover:bg-white/[0.06] hover:text-white"
+    }`;
+  const navIconClass = (active: boolean) =>
+    `flex-shrink-0 ${active ? "text-white" : "text-brand-300 group-hover:text-brand-100"}`;
 
   // Elemento (não componente): declarar um componente aqui dentro o remontaria a cada render
   // e a lista perderia a rolagem.
   const sidebarContent = (
     <div className="flex flex-col h-full">
-      {/* Logo */}
-      <div className="min-h-[72px] flex items-center px-5 border-b border-white/10 flex-shrink-0" style={{ paddingTop: "env(safe-area-inset-top)" }}>
-        <img
-          src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
-          alt="Sal Vita"
-          style={{ height: "42px" }}
-          className="cursor-pointer rounded-lg object-contain"
-          onClick={() => setLocation(role === "admin" || role === "manager" ? "/admin/dashboard" : "/tasks")}
-        />
+      {/* Marca */}
+      <div className="flex items-center px-3 h-14 flex-shrink-0" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+        <button
+          type="button"
+          onClick={() => { setLocation(homePath); setSidebarOpen(false); }}
+          className="flex items-center gap-2.5 rounded-md px-1.5 py-1 hover:bg-white/[0.06] transition-colors"
+          aria-label="Sal Vita — ir para o início"
+        >
+          <SalVitaLogo variant="dark" className="h-7 w-auto" />
+          <span className="text-left leading-tight">
+            <span className="block text-[13px] font-semibold text-white">Sal Vita</span>
+            <span className="block text-[11px] text-brand-200/80">Vendas e relacionamento</span>
+          </span>
+        </button>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 py-3 overflow-y-auto">
-        <ul className="space-y-0.5 px-3">
+      <nav className="flex-1 overflow-y-auto px-2.5 pb-3" aria-label="Principal">
+        <ul className="space-y-px">
           {visibleItems.map((item, idx) => {
             const hasChildren = item.children && item.children.length > 0;
             const active = isActive(item.path);
@@ -360,7 +393,7 @@ export default function AppShell({ children }: AppShellProps) {
             const showGroup = item.group && item.group !== visibleItems[idx - 1]?.group;
 
             const groupHeader = showGroup ? (
-              <div className="px-3 pt-5 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400/80 border-t border-white/5 first:border-0 select-none">
+              <div className={`px-2.5 pb-1 text-[11px] font-medium text-brand-300 select-none ${idx === 0 ? "pt-1" : "pt-4"}`}>
                 {item.group}
               </div>
             ) : null;
@@ -370,27 +403,23 @@ export default function AppShell({ children }: AppShellProps) {
                 <li key={item.label}>
                   {groupHeader}
                   <button
-                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-xs font-semibold transition-all ${
-                      childActive
-                        ? "bg-[#0C3680] text-white shadow-sm border-r-2 border-blue-400"
-                        : "text-slate-300 hover:bg-white/5 hover:text-white"
-                    }`}
+                    type="button"
+                    className={navItemClass(false)}
+                    aria-expanded={iaExpanded}
                     onClick={() => setIaExpanded(!iaExpanded)}
                   >
-                    <span className="flex-shrink-0 text-blue-300">{item.icon}</span>
+                    <span className={navIconClass(childActive)}>{item.icon}</span>
                     <span className="flex-1 text-left">{item.label}</span>
-                    {iaExpanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
+                    {iaExpanded ? <ChevronDown size={14} className="text-brand-300" /> : <ChevronRight size={14} className="text-brand-300" />}
                   </button>
                   {iaExpanded && (
-                    <ul className="mt-1 ml-3 space-y-0.5 pl-3 border-l border-white/10">
+                    <ul className="mt-px ml-[18px] space-y-px border-l border-white/10 pl-2">
                       {item.children!.map((child) => (
                         <li key={child.path}>
                           <button
-                            className={`w-full flex items-center gap-2.5 px-3 py-3 rounded-lg text-xs font-medium transition-all ${
-                              isActive(child.path)
-                                ? "bg-white/15 text-white font-semibold"
-                                : "text-slate-400 hover:bg-white/5 hover:text-white"
-                            }`}
+                            type="button"
+                            aria-current={isActive(child.path) ? "page" : undefined}
+                            className={navItemClass(isActive(child.path))}
                             onClick={() => {
                               if (child.external) {
                                 window.open(child.path, '_blank');
@@ -400,9 +429,9 @@ export default function AppShell({ children }: AppShellProps) {
                               }
                             }}
                           >
-                            <span className="flex-shrink-0 text-blue-300">{child.icon}</span>
+                            <span className={navIconClass(isActive(child.path))}>{child.icon}</span>
                             <span className="flex-1 text-left">{child.label}</span>
-                            {child.external && <span className="text-[10px] text-slate-400">↗</span>}
+                            {child.external && <span className="text-[11px] text-brand-300" aria-hidden>↗</span>}
                           </button>
                         </li>
                       ))}
@@ -416,20 +445,21 @@ export default function AppShell({ children }: AppShellProps) {
               <li key={item.label}>
                 {groupHeader}
                 <button
-                  className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-xs font-semibold transition-all ${
-                    active
-                      ? "bg-[#0C3680] text-white shadow-sm border-r-2 border-blue-400"
-                      : "text-slate-300 hover:bg-white/5 hover:text-white"
-                  }`}
+                  type="button"
+                  aria-current={active ? "page" : undefined}
+                  className={navItemClass(active)}
                   onClick={() => {
                     setLocation(item.path!);
                     setSidebarOpen(false);
                   }}
                 >
-                  <span className={`flex-shrink-0 ${active ? "text-white" : "text-blue-300"}`}>{item.icon}</span>
-                  <span className="flex-1 text-left">{item.label}</span>
+                  <span className={navIconClass(active)}>{item.icon}</span>
+                  <span className="flex-1 text-left truncate">{item.label}</span>
                   {item.path === "/admin/dashboard" && totalDashboardAlerts > 0 && (
-                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] font-bold">
+                    <span
+                      className="inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-sm bg-brand-500 text-white text-[11px] font-semibold tabular-nums"
+                      aria-label={`${totalDashboardAlerts} pendências`}
+                    >
                       {totalDashboardAlerts > 9 ? "9+" : totalDashboardAlerts}
                     </span>
                   )}
@@ -440,55 +470,64 @@ export default function AppShell({ children }: AppShellProps) {
         </ul>
       </nav>
 
-      {/* Footer */}
-      <div className="border-t border-white/10 p-4 flex-shrink-0 space-y-2">
-        <div className="flex items-center gap-3 bg-white/5 p-2.5 rounded-xl border border-white/5">
-          <div className="w-8 h-8 rounded-lg bg-[#0C3680] text-white flex items-center justify-center text-xs font-bold flex-shrink-0 shadow-xs">
-            {userInitial}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold text-white truncate">{user?.name ?? "Usuário"}</p>
-            <p className="text-[11px] text-slate-400 truncate">{user?.email ?? ""}</p>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-1 pt-1">
-          <button
-            onClick={() => setShowChangePwd(true)}
-            aria-label="Alterar senha"
-            className="flex items-center justify-center gap-1.5 min-h-10 px-2 py-1.5 text-[11px] font-medium text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
-          >
-            <KeyRound size={13} />
-            <span>Senha</span>
-          </button>
-          <button
-            onClick={handleLogout}
-            aria-label="Sair da conta"
-            className="flex items-center justify-center gap-1.5 min-h-10 px-2 py-1.5 text-[11px] font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition-colors"
-          >
-            <LogOut size={13} />
-            <span>Sair</span>
-          </button>
-        </div>
+      {/* Conta */}
+      <div className="border-t border-white/10 p-2.5 flex-shrink-0" style={{ paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))" }}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-white/[0.06] transition-colors"
+              aria-label="Conta: alterar senha ou sair"
+            >
+              <span className="size-7 rounded-md bg-brand-500 text-white flex items-center justify-center text-xs font-semibold flex-shrink-0" aria-hidden>
+                {userInitial}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium text-white truncate">{user?.name ?? "Usuário"}</span>
+                <span className="block text-[11px] text-brand-200/80 truncate">{user?.email ?? ""}</span>
+              </span>
+              <ChevronsUpDown size={14} className="text-brand-300 flex-shrink-0" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="start" className="min-w-52">
+            <DropdownMenuItem onSelect={() => setShowChangePwd(true)}>
+              <KeyRound /> Alterar senha
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onSelect={handleLogout}>
+              <LogOut /> Sair
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );
 
+  const brandMark = <SalVitaLogo className="mx-auto mb-5 h-12 w-auto" />;
+
   return (
-    <div className="flex h-dvh bg-slate-50/50 overflow-hidden">
+    <div className="flex h-dvh bg-background text-sm text-slate-800 overflow-hidden">
+      {/* PWA no iOS usa status bar "black-translucent" (texto branco sobre a página):
+          a faixa da safe-area fica azul-marinho para hora/bateria continuarem legíveis. */}
+      <div
+        aria-hidden
+        className="md:hidden fixed top-0 inset-x-0 z-[400] bg-brand-900 pointer-events-none"
+        style={{ height: "env(safe-area-inset-top)" }}
+      />
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-60 flex-col bg-[#081F47] flex-shrink-0 border-r border-slate-800">
+      <aside className="hidden md:flex w-[232px] flex-col bg-brand-900 flex-shrink-0">
         {sidebarContent}
       </aside>
 
       {/* Mobile Sidebar Overlay */}
-      <div className={`fixed inset-0 z-40 md:hidden transition-opacity duration-300 ${sidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}>
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onClick={() => setSidebarOpen(false)} />
+      <div className={`fixed inset-0 z-40 md:hidden transition-opacity duration-200 ${sidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}>
+        <div className="fixed inset-0 bg-slate-950/40" onClick={() => setSidebarOpen(false)} />
         <aside
           role={sidebarOpen ? "dialog" : undefined}
           aria-modal={sidebarOpen ? true : undefined}
           aria-label="Menu"
           aria-hidden={!sidebarOpen}
-          className={`relative z-50 flex flex-col w-64 h-full bg-[#081F47] transition-transform duration-300 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
+          className={`relative z-50 flex flex-col w-[280px] max-w-[85vw] h-full bg-brand-900 shadow-xl transition-transform duration-200 ease-out ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
         >
           {sidebarContent}
         </aside>
@@ -496,72 +535,59 @@ export default function AppShell({ children }: AppShellProps) {
 
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Topbar */}
-        <header className="bg-white/90 backdrop-blur-md border-b border-slate-200/80 flex items-center justify-between px-6 gap-4 flex-shrink-0 z-10" style={{ paddingTop: "env(safe-area-inset-top)", minHeight: "calc(60px + env(safe-area-inset-top))" }}>
-          <div className="flex items-center gap-3">
-            {/* Mobile menu trigger */}
-            <button
-              className="md:hidden inline-flex size-10 items-center justify-center rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200"
-              onClick={() => setSidebarOpen(true)}
-              aria-label="Abrir menu"
-            >
-              <Menu size={20} />
-            </button>
-            <div>
-              <h1 className="text-base font-bold text-slate-900 tracking-tight leading-none">{pageTitle}</h1>
-              <p className="text-[11px] text-slate-400 font-medium mt-0.5">CRM Sal Vita · Operação & Vendas</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200/70 text-emerald-700 text-xs font-semibold">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Sistema Operacional</span>
-            </div>
-          </div>
+        {/* Topo — só no celular. No desktop o título fica no cabeçalho da página. */}
+        <header
+          className="md:hidden bg-white border-b border-slate-200 flex items-center gap-1 px-1.5 flex-shrink-0 z-10"
+          style={{ paddingTop: "env(safe-area-inset-top)", minHeight: "calc(52px + env(safe-area-inset-top))" }}
+        >
+          <button
+            type="button"
+            className="inline-flex size-10 items-center justify-center rounded-md text-slate-700 hover:bg-slate-100"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Abrir menu"
+          >
+            <Menu size={20} />
+          </button>
+          <p className="text-[15px] font-semibold text-slate-900 truncate">{pageTitle}</p>
         </header>
 
         {/* Page content — bottom padding on mobile to avoid bottom nav overlap */}
         {/* Atendente tem dois botões flutuantes (timer e e-mail marketing) acima da barra
             inferior: o espaço extra deixa o fim das listas rolar para fora deles. */}
         <main className={`flex-1 overflow-y-auto md:pb-0 ${role === "user"
-          ? "pb-[calc(10.5rem_+_env(safe-area-inset-bottom))]"
-          : "pb-[calc(6rem_+_env(safe-area-inset-bottom))]"}`}>
+          ? "pb-[calc(9.5rem_+_env(safe-area-inset-bottom))]"
+          : "pb-[calc(5rem_+_env(safe-area-inset-bottom))]"}`}>
           {children}
         </main>
       </div>
 
       {/* ── Mobile Bottom Nav ── */}
       <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-200"
+        className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        aria-label="Navegação rápida"
       >
-        <div className="flex items-center justify-around px-2 pt-2 pb-1">
-          {/* Nav items */}
+        <div className="flex items-stretch">
           {bottomNavItems.map((item) => {
             const active = location === item.path;
             return (
               <button
                 key={item.path}
+                type="button"
                 onClick={() => setLocation(item.path)}
                 aria-current={active ? "page" : undefined}
-                className="flex flex-col items-center gap-0.5 flex-1 min-w-0 py-1 transition-all"
+                className={`relative flex flex-col items-center justify-center gap-0.5 flex-1 min-w-0 h-14 transition-colors ${active ? "text-brand-700" : "text-slate-500 active:text-slate-800"}`}
               >
+                {active && <span className="absolute top-0 inset-x-4 h-0.5 rounded-b-sm bg-brand-700" aria-hidden />}
                 <span className="relative">
-                  <span
-                    className={`flex items-center justify-center w-11 h-11 rounded-2xl transition-all ${
-                      active ? "bg-brand text-white shadow-md" : "text-slate-500"
-                    }`}
-                  >
-                    {item.icon}
-                  </span>
+                  {item.icon}
                   {item.path === "/admin/dashboard" && totalDashboardAlerts > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-600 text-white text-[9px] font-bold">
+                    <span className="absolute -top-1.5 -right-2.5 inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-sm bg-brand-700 text-white text-[10px] font-semibold tabular-nums">
                       {totalDashboardAlerts > 9 ? "9+" : totalDashboardAlerts}
                     </span>
                   )}
                 </span>
-                <span className={`text-[11px] font-medium leading-tight ${active ? "text-brand" : "text-slate-600"}`}>
+                <span className={`text-[11px] leading-tight truncate max-w-full px-1 ${active ? "font-semibold" : "font-medium"}`}>
                   {item.label}
                 </span>
               </button>
@@ -570,21 +596,14 @@ export default function AppShell({ children }: AppShellProps) {
 
           {/* "Mais" — abre o sidebar completo com todos os sub-menus */}
           <button
+            type="button"
             onClick={() => setSidebarOpen(true)}
             aria-expanded={sidebarOpen}
             aria-haspopup="dialog"
-            className="flex flex-col items-center gap-0.5 flex-1 min-w-0 py-1 transition-all"
+            className={`flex flex-col items-center justify-center gap-0.5 flex-1 min-w-0 h-14 transition-colors ${sidebarOpen ? "text-brand-700" : "text-slate-500"}`}
           >
-            <span
-              className={`flex items-center justify-center w-11 h-11 rounded-2xl transition-all ${
-                sidebarOpen ? "bg-brand text-white shadow-md" : "text-slate-500"
-              }`}
-            >
-              <Menu size={22} />
-            </span>
-            <span className={`text-[11px] font-medium leading-tight ${sidebarOpen ? "text-brand" : "text-slate-600"}`}>
-              Mais
-            </span>
+            <Menu size={20} />
+            <span className="text-[11px] font-medium leading-tight">Mais</span>
           </button>
         </div>
       </nav>
@@ -594,56 +613,44 @@ export default function AppShell({ children }: AppShellProps) {
 
       {/* ── Force password change modal (first access) — blocks everything ── */}
       {!!user && user.mustChangePassword && (
-        <div className="fixed inset-0 z-[300] bg-brand-deep flex items-start sm:items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm max-h-[90dvh] overflow-y-auto">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 378" style={{ height: "56px", width: "auto" }} className="mx-auto mb-5" aria-label="Sal Vita">
-              <defs><clipPath id="oval-m1"><ellipse cx="250" cy="187" rx="228" ry="164"/></clipPath></defs>
-              <ellipse cx="250" cy="187" rx="228" ry="164" fill="white"/>
-              <path d="M 22 252 Q 95 182 178 222 Q 214 242 250 210 Q 286 178 338 208 Q 398 240 478 222 L 478 352 H 22 Z" fill="#0C3680" clipPath="url(#oval-m1)"/>
-              <path d="M 210 240 Q 206 295 204 352" fill="none" stroke="white" strokeWidth="9" strokeLinecap="round" clipPath="url(#oval-m1)"/>
-              <path d="M 336 210 Q 340 270 342 352" fill="none" stroke="white" strokeWidth="9" strokeLinecap="round" clipPath="url(#oval-m1)"/>
-              <text x="250" y="196" textAnchor="middle" fontFamily="Pacifico, cursive" fontSize="90" fill="#0C3680">Sal Vita</text>
-              <ellipse cx="250" cy="187" rx="228" ry="164" fill="none" stroke="#0C3680" strokeWidth="15"/>
-            </svg>
-            <h2 className="text-xl font-bold text-gray-800 mb-1 text-center">
-              Bem-vindo, {user?.name?.split(" ")[0]}!
+        <div className="fixed inset-0 z-[300] bg-background flex items-start sm:items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg border border-slate-200 shadow-lg p-6 sm:p-8 w-full max-w-sm max-h-[90dvh] overflow-y-auto">
+            {brandMark}
+            <h2 className="text-lg font-semibold text-slate-900 mb-1 text-center">
+              Defina sua senha, {firstName}
             </h2>
-            <p className="text-gray-500 text-sm mb-6 text-center">
-              Este é seu primeiro acesso. Defina uma senha pessoal para continuar.
+            <p className="text-slate-500 text-sm mb-6 text-center">
+              Este é seu primeiro acesso. Escolha uma senha pessoal para continuar.
             </p>
             <form onSubmit={handleForceChangePwd} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nova senha</label>
-                <input
+              <div className="space-y-1.5">
+                <Label htmlFor="force-pwd-next">Nova senha</Label>
+                <Input
+                  id="force-pwd-next"
                   type="password"
+                  autoComplete="new-password"
                   value={forcePwdForm.next}
                   onChange={e => setForcePwdForm(f => ({ ...f, next: e.target.value }))}
-                  placeholder="Mínimo 6 caracteres"
                   required
                   minLength={6}
-                  className="w-full px-3 py-2 border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  aria-describedby="force-pwd-hint"
                 />
+                <p id="force-pwd-hint" className="text-xs text-slate-500">Mínimo de 6 caracteres.</p>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar senha</label>
-                <input
+              <div className="space-y-1.5">
+                <Label htmlFor="force-pwd-confirm">Confirmar senha</Label>
+                <Input
+                  id="force-pwd-confirm"
                   type="password"
+                  autoComplete="new-password"
                   value={forcePwdForm.confirm}
                   onChange={e => setForcePwdForm(f => ({ ...f, confirm: e.target.value }))}
-                  placeholder="Repita a senha"
                   required
-                  className="w-full px-3 py-2 border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              <button
-                type="submit"
-                disabled={forcePwdLoading}
-                className="w-full py-3 bg-brand hover:bg-brand-deep text-white font-bold rounded-xl transition disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
-              >
-                {forcePwdLoading ? (
-                  <><span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Salvando...</>
-                ) : "Definir minha senha"}
-              </button>
+              <Button type="submit" disabled={forcePwdLoading} className="w-full h-10">
+                {forcePwdLoading ? <><Loader2 className="animate-spin" /> Salvando…</> : "Definir minha senha"}
+              </Button>
             </form>
           </div>
         </div>
@@ -651,133 +658,102 @@ export default function AppShell({ children }: AppShellProps) {
 
       {/* ── Startup blocking modal (attendants) ── */}
       {needsStartup && !user?.mustChangePassword && (
-        <div className="fixed inset-0 z-[200] bg-brand-deep flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm text-center">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 378" style={{ height: "72px", width: "auto" }} className="mx-auto mb-5" aria-label="Sal Vita">
-              <defs><clipPath id="oval-m2"><ellipse cx="250" cy="187" rx="228" ry="164"/></clipPath></defs>
-              <ellipse cx="250" cy="187" rx="228" ry="164" fill="white"/>
-              <path d="M 22 252 Q 95 182 178 222 Q 214 242 250 210 Q 286 178 338 208 Q 398 240 478 222 L 478 352 H 22 Z" fill="#0C3680" clipPath="url(#oval-m2)"/>
-              <path d="M 210 240 Q 206 295 204 352" fill="none" stroke="white" strokeWidth="9" strokeLinecap="round" clipPath="url(#oval-m2)"/>
-              <path d="M 336 210 Q 340 270 342 352" fill="none" stroke="white" strokeWidth="9" strokeLinecap="round" clipPath="url(#oval-m2)"/>
-              <text x="250" y="196" textAnchor="middle" fontFamily="Pacifico, cursive" fontSize="90" fill="#0C3680">Sal Vita</text>
-              <ellipse cx="250" cy="187" rx="228" ry="164" fill="none" stroke="#0C3680" strokeWidth="15"/>
-            </svg>
+        <div className="fixed inset-0 z-[200] bg-background flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg border border-slate-200 shadow-lg p-6 sm:p-8 w-full max-w-sm text-center">
+            {brandMark}
             {showRetomar ? (
               <>
-                <h2 className="text-xl font-bold text-gray-800 mb-1">
-                  Bem-vindo de volta, {user?.name?.split(" ")[0]}!
+                <h2 className="text-lg font-semibold text-slate-900 mb-1">
+                  {greeting}, {firstName}
                 </h2>
-                <p className="text-gray-500 text-sm mb-8">
-                  Você tem trabalho em andamento hoje. Deseja retomar?
+                <p className="text-slate-500 text-sm mb-6">
+                  Você já registrou entrada hoje. Continue de onde parou ou abra uma sessão nova.
                 </p>
-                <button
-                  onClick={handleRetomar}
-                  className="w-full py-4 bg-green-600 hover:bg-green-700 text-white text-lg font-bold rounded-xl transition shadow-lg flex items-center justify-center gap-2 mb-3"
-                >
-                  Retomar trabalho
-                </button>
-                <button
-                  onClick={handleStartWork}
-                  disabled={startingWork}
-                  className="w-full py-3 border border-gray-300 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition disabled:opacity-50"
-                >
-                  {startingWork ? "Iniciando..." : "Iniciar sessão nova"}
-                </button>
+                <Button onClick={handleRetomar} className="w-full h-11 text-[15px] mb-2">
+                  Continuar sessão de hoje
+                </Button>
+                <Button variant="ghost" onClick={handleStartWork} disabled={startingWork} className="w-full">
+                  {startingWork ? "Iniciando…" : "Iniciar sessão nova"}
+                </Button>
               </>
             ) : (
               <>
-                <h2 className="text-xl font-bold text-gray-800 mb-1">
-                  {greeting}, {user?.name?.split(" ")[0]}!
+                <h2 className="text-lg font-semibold text-slate-900 mb-1">
+                  {greeting}, {firstName}
                 </h2>
-                <p className="text-gray-500 text-sm mb-8">
-                  Registre sua entrada para começar a usar o sistema.
+                <p className="text-slate-500 text-sm mb-6">
+                  Registre sua entrada para começar o expediente.
                 </p>
-                <button
-                  onClick={handleStartWork}
-                  disabled={startingWork}
-                  className="w-full py-4 bg-green-600 hover:bg-green-700 text-white text-lg font-bold rounded-xl transition disabled:opacity-50 shadow-lg flex items-center justify-center gap-2"
-                >
-                  {startingWork ? (
-                    <>
-                      <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
-                      Iniciando...
-                    </>
-                  ) : (
-                    "Iniciar trabalho"
-                  )}
-                </button>
+                <Button onClick={handleStartWork} disabled={startingWork} className="w-full h-11 text-[15px]">
+                  {startingWork ? <><Loader2 className="animate-spin" /> Iniciando…</> : "Registrar entrada"}
+                </Button>
               </>
             )}
           </div>
         </div>
       )}
 
-      {/* ── Change Password Modal ── */}
-      {showChangePwd && (
-        <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90dvh] overflow-y-auto">
-            <div className="p-6 border-b">
-              <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <KeyRound size={18} className="text-brand" />
-                Alterar Senha
-              </h2>
-              <p className="text-sm text-gray-500 mt-0.5">{user?.name} · {user?.email}</p>
+      {/* ── Alterar senha ── */}
+      <Dialog
+        open={showChangePwd}
+        onOpenChange={(open) => {
+          setShowChangePwd(open);
+          if (!open) setPwdForm({ current: "", next: "", confirm: "" });
+        }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Alterar senha</DialogTitle>
+            <DialogDescription>{user?.email}</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleChangePwd} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="pwd-current">Senha atual</Label>
+              <Input
+                id="pwd-current"
+                type="password"
+                autoComplete="current-password"
+                value={pwdForm.current}
+                onChange={e => setPwdForm(f => ({ ...f, current: e.target.value }))}
+                required
+              />
             </div>
-            <form onSubmit={handleChangePwd} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Senha atual</label>
-                <input
-                  type="password"
-                  value={pwdForm.current}
-                  onChange={e => setPwdForm(f => ({ ...f, current: e.target.value }))}
-                  placeholder="••••••••"
-                  required
-                  className="w-full px-3 py-2 border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nova senha</label>
-                <input
-                  type="password"
-                  value={pwdForm.next}
-                  onChange={e => setPwdForm(f => ({ ...f, next: e.target.value }))}
-                  placeholder="Mínimo 6 caracteres"
-                  required
-                  minLength={6}
-                  className="w-full px-3 py-2 border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar nova senha</label>
-                <input
-                  type="password"
-                  value={pwdForm.confirm}
-                  onChange={e => setPwdForm(f => ({ ...f, confirm: e.target.value }))}
-                  placeholder="••••••••"
-                  required
-                  className="w-full px-3 py-2 border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="submit"
-                  disabled={pwdLoading}
-                  className="flex-1 py-2.5 bg-brand hover:bg-brand-deep text-white text-sm font-semibold rounded-lg transition disabled:opacity-50"
-                >
-                  {pwdLoading ? "Salvando..." : "Salvar"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setShowChangePwd(false); setPwdForm({ current: "", next: "", confirm: "" }); }}
-                  className="flex-1 py-2.5 border text-sm rounded-lg text-gray-600 hover:bg-gray-50 transition"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            <div className="space-y-1.5">
+              <Label htmlFor="pwd-next">Nova senha</Label>
+              <Input
+                id="pwd-next"
+                type="password"
+                autoComplete="new-password"
+                value={pwdForm.next}
+                onChange={e => setPwdForm(f => ({ ...f, next: e.target.value }))}
+                required
+                minLength={6}
+                aria-describedby="pwd-next-hint"
+              />
+              <p id="pwd-next-hint" className="text-xs text-slate-500">Mínimo de 6 caracteres.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pwd-confirm">Confirmar nova senha</Label>
+              <Input
+                id="pwd-confirm"
+                type="password"
+                autoComplete="new-password"
+                value={pwdForm.confirm}
+                onChange={e => setPwdForm(f => ({ ...f, confirm: e.target.value }))}
+                required
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => { setShowChangePwd(false); setPwdForm({ current: "", next: "", confirm: "" }); }}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={pwdLoading}>
+                {pwdLoading ? "Salvando…" : "Salvar senha"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
