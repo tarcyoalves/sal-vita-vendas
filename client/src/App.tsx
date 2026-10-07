@@ -4,31 +4,51 @@ import NotFound from './pages/NotFound';
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import Home from "./pages/Home";
-import AdminDashboard from "./pages/AdminDashboard";
-import AiAnalysis from "./pages/AiAnalysis";
-import ClientsManagement from "./pages/ClientsManagement";
-import AiChat from "./pages/AiChat";
-import AiSettings from "./pages/AiSettings";
-import Tasks from "./pages/Tasks";
-import Attendants from "./pages/Attendants";
-import KnowledgeBase from "./pages/KnowledgeBase";
-import AttendantProgress from "./pages/AttendantProgress";
-import TvDashboard from "./pages/TvDashboard";
-import EmailMarketing from "./pages/EmailMarketing";
-import Faturamento from "./pages/Faturamento";
-import Documentos from "./pages/Documentos";
-import FloatingChat from "./components/FloatingChat";
-import AppShell from "./components/AppShell";
+import { lazy, Suspense } from "react";
 import { useAuth } from "./_core/hooks/useAuth";
 import { useReminderNotifications } from "./_core/hooks/useReminderNotifications";
+// Loja Premium: a home e o chat ficam estáticos (renderizam sem esperar outro chunk).
 import SalVitaLanding from "./pages/SalVitaLanding";
-import SalVitaLandingClassic from "./pages/SalVitaLandingClassic";
-import SalVitaAdmin from "./pages/SalVitaAdmin";
 import SalVitaChat from "./components/SalVitaChat";
-import TrackOrder from "./pages/TrackOrder";
-import Atacado from "./pages/Atacado";
-import RadarCargas from "./pages/RadarCargas";
+
+// Code-splitting por produto: o host da loja não baixa o CRM (recharts, E-mail Marketing...).
+// Os nomes de arquivo dos chunks são definidos em vite.config.ts (precache do service worker).
+// Loja Premium — páginas secundárias
+const SalVitaAdmin = lazy(() => import("./pages/SalVitaAdmin"));
+const TrackOrder = lazy(() => import("./pages/TrackOrder"));
+const Atacado = lazy(() => import("./pages/Atacado"));
+// CRM
+const Home = lazy(() => import("./pages/Home"));
+const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
+const AiAnalysis = lazy(() => import("./pages/AiAnalysis"));
+const ClientsManagement = lazy(() => import("./pages/ClientsManagement"));
+const AiChat = lazy(() => import("./pages/AiChat"));
+const AiSettings = lazy(() => import("./pages/AiSettings"));
+const Tasks = lazy(() => import("./pages/Tasks"));
+const Attendants = lazy(() => import("./pages/Attendants"));
+const KnowledgeBase = lazy(() => import("./pages/KnowledgeBase"));
+const AttendantProgress = lazy(() => import("./pages/AttendantProgress"));
+const EmailMarketing = lazy(() => import("./pages/EmailMarketing"));
+const Faturamento = lazy(() => import("./pages/Faturamento"));
+const Documentos = lazy(() => import("./pages/Documentos"));
+const RadarCargas = lazy(() => import("./pages/RadarCargas"));
+const FloatingChat = lazy(() => import("./components/FloatingChat"));
+const AppShell = lazy(() => import("./components/AppShell"));
+
+// Fallbacks sem salto de layout: fundo da loja (navy) e fundo neutro do CRM.
+const StoreFallback = () => <div style={{ minHeight: '100vh', background: '#060f20' }} />;
+const CrmFallback = () => <div style={{ minHeight: '100vh', background: '#f8fafc' }} />;
+
+// Deploy novo apaga os chunks antigos: se o import() falhar, recarrega uma única vez.
+if (typeof window !== 'undefined') {
+  window.addEventListener('vite:preloadError', () => {
+    try {
+      if (sessionStorage.getItem('chunk-reload')) return;
+      sessionStorage.setItem('chunk-reload', '1');
+    } catch { /* sem sessionStorage: recarrega mesmo assim (uma vez por carregamento) */ }
+    window.location.reload();
+  });
+}
 
 function Router() {
   return (
@@ -80,8 +100,7 @@ function Router() {
       <Route path="/admin/faturamento">
         <AppShell><Faturamento /></AppShell>
       </Route>
-      {/* TV dashboard desativado para economizar network transfer Neon */}
-      {/* <Route path="/tv" component={TvDashboard} /> */}
+      {/* TV dashboard desativado para economizar network transfer Neon (TvDashboard.tsx não é importado) */}
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
@@ -121,22 +140,17 @@ function App() {
     // a seção inicial (Pedidos / Recuperação / Leads B2B).
     if (path === '/sal-vita-admin' || path === '/sal-vita-recovery' || path === '/sal-vita-b2b') {
       return (
-        <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><SalVitaAdmin /></TooltipProvider></ThemeProvider></ErrorBoundary>
+        <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><Suspense fallback={<StoreFallback />}><SalVitaAdmin /></Suspense></TooltipProvider></ThemeProvider></ErrorBoundary>
       );
     }
     if (path === '/meu-pedido') {
       return (
-        <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><TrackOrder /></TooltipProvider></ThemeProvider></ErrorBoundary>
+        <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><Suspense fallback={<StoreFallback />}><TrackOrder /></Suspense></TooltipProvider></ThemeProvider></ErrorBoundary>
       );
     }
     if (path === '/atacado') {
       return (
-        <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><Atacado /></TooltipProvider></ThemeProvider></ErrorBoundary>
-      );
-    }
-    if (path === '/classic') {
-      return (
-        <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><SalVitaLandingClassic /><SalVitaChat /></TooltipProvider></ThemeProvider></ErrorBoundary>
+        <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><Suspense fallback={<StoreFallback />}><Atacado /></Suspense></TooltipProvider></ThemeProvider></ErrorBoundary>
       );
     }
     return (
@@ -153,8 +167,10 @@ function App() {
         <TooltipProvider>
           <Toaster />
           {!isPublic && <NotificationManager />}
-          <Router />
-          {!isPublic && <FloatingChat />}
+          <Suspense fallback={<CrmFallback />}>
+            <Router />
+          </Suspense>
+          {!isPublic && <Suspense fallback={null}><FloatingChat /></Suspense>}
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

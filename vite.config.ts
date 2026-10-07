@@ -39,12 +39,30 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
-        // O bundle único passou de 2 MiB (limite padrão do workbox) e o build da Vercel
-        // falhou em 29/09 (083ed60). Folga até 6 MiB; se estourar de novo, divida o
-        // bundle (import() por página) em vez de subir o limite outra vez.
-        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        // Code-splitting por produto (App.tsx): o bundle único de ~2 MB virou entry (~560 kB,
+        // loja + framework) + um chunk por página do CRM. Pré-cache SÓ do que a loja
+        // Premium usa (entry, CSS, HTML, ícones e as páginas secundárias da loja); senão
+        // todo visitante da loja baixaria o CRM inteiro em segundo plano pelo service worker.
+        // Os chunks do CRM entram no cache sob demanda (runtimeCaching abaixo): no PWA
+        // instalado, tela já aberta funciona offline; tela nunca aberta exige rede.
+        globPatterns: [
+          '**/*.{css,html,svg,png,ico,woff,woff2}',
+          'assets/index-*.js',
+          'assets/{SalVitaAdmin,TrackOrder,Atacado}-*.js',
+        ],
+        // Limite padrão do workbox (2 MiB) como trava: se um chunk pré-cacheado estourar,
+        // o build falha — divida com import() em vez de subir o limite (já falhou em 29/09).
         runtimeCaching: [
+          {
+            // Chunks com hash no nome são imutáveis: CacheFirst é seguro. O hash novo de
+            // um deploy gera outra URL; as antigas expiram pelo limite abaixo.
+            urlPattern: ({ url }: { url: URL }) => url.pathname.startsWith('/assets/') && url.pathname.endsWith('.js'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'app-chunks',
+              expiration: { maxEntries: 120, maxAgeSeconds: 30 * 24 * 60 * 60 },
+            },
+          },
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: 'CacheFirst',
