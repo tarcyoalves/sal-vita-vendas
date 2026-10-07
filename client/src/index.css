@@ -1,34 +1,160 @@
+@import './crm-theme.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Hide scrollbar but keep scroll functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 /*
- * Design system do CRM — tokens. Documentação: docs/DESIGN-SYSTEM.md.
- * Fundo neutro frio (puxado para o azul da marca), superfície branca, uma cor
- * de ação (azul Sal Vita) e quatro cores de estado. Nada de creme, gradiente
- * ou vidro: o CRM é ferramenta de trabalho o dia inteiro.
+ * :root = valores ORIGINAIS (loja Premium e páginas públicas usam estes).
+ * O CRM sobrescreve em html.crm-theme, mais abaixo — ver docs/DESIGN-SYSTEM.md.
  */
 :root {
-  /* Marca */
-  --brand: #0C3680;
-  --brand-deep: #081F47;
-  --brand-soft: #E2E9F7;
-  --sand: #A96A0F;           /* realce raro (lead quente) — mesmo tom do warning */
-  --sand-soft: #FDF7EC;
-  --ink: #161C28;            /* texto principal */
-  --salt: #F4F5F8;           /* mantido por compatibilidade: = fundo */
+  /* ── Identidade Sal Vita: azul-oceano da marca, branco-sal, areia ── */
+  --brand: #0C3680;          /* azul Sal Vita — ações e marca */
+  --brand-deep: #081F47;     /* marinho profundo — sidebar */
+  --brand-soft: #E8EEF9;     /* azul lavado — fundos de destaque */
+  --salt: #F7F6F2;           /* branco-sal — fundo de conteúdo */
+  --sand: #C89A3D;           /* areia — realce (item ativo, hot lead) */
+  --sand-soft: #FBF3E2;
+  --ink: #1B2A41;            /* texto principal, azul-tinta */
 
-  /* Superfícies */
-  --background: #F4F5F8;     /* área de conteúdo */
-  --surface: #FFFFFF;        /* painéis, tabelas */
-  --surface-sunken: #EFF1F5; /* sidebar, cabeçalho de tabela, faixas */
+  --primary: #0C3680;
+  --primary-foreground: #EFF3FB;
+  --sidebar-primary: #0C3680;
+  --sidebar-primary-foreground: #EFF3FB;
+  --chart-1: #9DB8E4;
+  --chart-2: #4A6FB0;
+  --chart-3: #0C3680;
+  --chart-4: #082550;
+  --chart-5: #C89A3D;
+  --radius: 0.65rem;
+  --background: #F7F6F2;
+  --foreground: #1B2A41;
+  --card: #ffffff;
+  --card-foreground: #374151;
+  --popover: #ffffff;
+  --popover-foreground: #374151;
+  --secondary: #f3f4f6;
+  --secondary-foreground: #4b5563;
+  --muted: #f9fafb;
+  --muted-foreground: #6b7280;
+  --accent: #f9fafb;
+  --accent-foreground: #111827;
+  --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
+  --border: #E4E1D8;
+  --input: #E4E1D8;
+  --ring: #0C3680;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #374151;
+  --sidebar-accent: #f9fafb;
+  --sidebar-accent-foreground: #111827;
+  --sidebar-border: #e5e7eb;
+  --sidebar-ring: #3b82f6;
+
+  /* Tokens novos do design system do CRM (só o CRM os usa). */
+  --surface: #ffffff;
+  --surface-sunken: #f3f4f6;
+  --success: #047857;
+  --success-soft: #ecfdf5;
+  --warning: #b45309;
+  --warning-soft: #fffbeb;
+  --danger: #b91c1c;
+  --danger-soft: #fef2f2;
+  --info: #1d4ed8;
+  --info-soft: #eff6ff;
+}
+
+.dark {
+  --primary: #1d4ed8;
+  --primary-foreground: #eff6ff;
+  --sidebar-primary: #3b82f6;
+  --sidebar-primary-foreground: #eff6ff;
+  --background: #111827;
+  --foreground: #e5e7eb;
+  --card: #1f2937;
+  --card-foreground: #e5e7eb;
+  --popover: #1f2937;
+  --popover-foreground: #e5e7eb;
+  --secondary: #1f2937;
+  --secondary-foreground: #9ca3af;
+  --muted: #374151;
+  --muted-foreground: #9ca3af;
+  --accent: #374151;
+  --accent-foreground: #f9fafb;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.15);
+  --ring: #3b82f6;
+  --chart-1: #93c5fd;
+  --chart-2: #3b82f6;
+  --chart-3: #2563eb;
+  --chart-4: #1d4ed8;
+  --chart-5: #1e40af;
+  --sidebar: #1f2937;
+  --sidebar-foreground: #e5e7eb;
+  --sidebar-accent: #374151;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-ring: #3b82f6;
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* Modern subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.3);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.5);
+}
+
+/* ═══════════════════════ CRM Lembretes (html.crm-theme) ═══════════════════════
+ * Fundo neutro frio, superfície branca, uma cor de ação (azul Sal Vita) e
+ * quatro cores de estado. Nada de creme, gradiente ou vidro.
+ */
+html.crm-theme {
+  --brand-soft: #E2E9F7;
+  --sand: #A96A0F;
+  --sand-soft: #FDF7EC;
+  --ink: #161C28;
+  --salt: #F4F5F8;
+
+  --background: #F4F5F8;
+  --surface: #FFFFFF;
+  --surface-sunken: #EFF1F5;
   --foreground: #161C28;
   --card: #FFFFFF;
   --card-foreground: #161C28;
   --popover: #FFFFFF;
   --popover-foreground: #161C28;
 
-  /* Ação */
   --primary: #0C3680;
   --primary-foreground: #FFFFFF;
   --secondary: #EFF1F5;
@@ -61,118 +187,64 @@
 
   --radius: 0.5rem;
 
-  --sidebar: #EFF1F5;
-  --sidebar-foreground: #384154;
-  --sidebar-primary: #0C3680;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #E2E6EC;
-  --sidebar-accent-foreground: #161C28;
-  --sidebar-border: #E2E6EC;
-  --sidebar-ring: #3F66B4;
-
-  /* Movimento: rápido e discreto */
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --dur-fast: 120ms;
-  --dur: 180ms;
+  -webkit-text-size-adjust: 100%;
 }
 
-/* O tema escuro não está ligado (ThemeProvider sem `switchable`); os valores
-   abaixo só mantêm componentes legíveis se alguém ligar. */
-.dark {
-  --background: #0D1119;
-  --surface: #161C28;
-  --surface-sunken: #111620;
-  --foreground: #E2E6EC;
-  --card: #161C28;
-  --card-foreground: #E2E6EC;
-  --popover: #161C28;
-  --popover-foreground: #E2E6EC;
-  --primary: #6B8BCB;
-  --primary-foreground: #0D1119;
-  --secondary: #252C3B;
-  --secondary-foreground: #CDD3DC;
-  --muted: #252C3B;
-  --muted-foreground: #9AA3B5;
-  --accent: #252C3B;
-  --accent-foreground: #F7F8FA;
-  --border: rgba(255, 255, 255, 0.1);
-  --input: rgba(255, 255, 255, 0.16);
-  --ring: #6B8BCB;
-  --destructive: #D86B61;
+html.crm-theme body {
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-@layer base {
-  * {
-    border-color: var(--border);
-  }
-
-  html {
-    -webkit-text-size-adjust: 100%;
-  }
-
-  body {
-    background-color: var(--background);
-    color: var(--foreground);
-    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    font-feature-settings: "cv11", "ss01";
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
-
-  h1, h2, h3 {
-    text-wrap: balance;
-    letter-spacing: -0.011em;
-  }
-
-  /* Números alinhados em toda tabela e indicador */
-  table, .tabular-nums, [data-numeric] {
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* Foco visível consistente para tudo que é clicável e não tem anel próprio */
-  :where(a, button, [role="button"], [role="tab"], [role="menuitem"], summary, select):focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: 2px;
-    border-radius: 4px;
-  }
-
-  ::selection {
-    background: #C6D3EE;
-    color: var(--ink);
-  }
+html.crm-theme :is(h1, h2, h3) {
+  text-wrap: balance;
+  letter-spacing: -0.011em;
 }
 
-/* Hide scrollbar but keep scroll functionality */
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+/* Números alinhados em toda tabela e indicador */
+html.crm-theme :is(table, .tabular-nums, [data-numeric]) {
+  font-variant-numeric: tabular-nums;
 }
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
+
+/* Foco visível consistente para tudo que é clicável e não tem anel próprio */
+html.crm-theme :where(a, button, [role="button"], [role="tab"], [role="menuitem"], summary, select):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+html.crm-theme ::selection {
+  background: #C6D3EE;
+  color: var(--ink);
 }
 
 /* Barra de rolagem discreta */
-::-webkit-scrollbar {
+html.crm-theme ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
+html.crm-theme ::-webkit-scrollbar-thumb {
   background: rgba(99, 109, 130, 0.28);
-  border-radius: 9999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover {
+html.crm-theme ::-webkit-scrollbar-thumb:hover {
   background: rgba(99, 109, 130, 0.45);
   background-clip: padding-box;
 }
 
+/* Movimento reduzido: sem animação decorativa nem transições longas */
+@media (prefers-reduced-motion: reduce) {
+  html.crm-theme *, html.crm-theme *::before, html.crm-theme *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /*
- * Classes legadas (.saas-*): ainda usadas em algumas telas. Redefinidas na
- * linguagem nova — painel com borda, sem sombra nem "levitar" no hover.
+ * Classes legadas (.saas-*): só o CRM as usou. Redefinidas na linguagem nova.
  * Código novo usa os componentes (Panel, StatusBadge) em vez delas.
  */
 .saas-card {
@@ -229,19 +301,10 @@
 }
 
 @keyframes pulse-highlight {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(31, 76, 158, 0.35); }
-  50%       { box-shadow: 0 0 0 6px rgba(31, 76, 158, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4); }
+  50%       { box-shadow: 0 0 0 6px rgba(37, 99, 235, 0); }
 }
 
-/* Movimento reduzido: sem animação decorativa nem transições longas */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-}
 
 /* iOS dá zoom automático ao focar campo com fonte < 16px (e não volta sozinho).
    No celular forçamos 16px; checkbox/radio/range/file/color/botões ficam como estão. */

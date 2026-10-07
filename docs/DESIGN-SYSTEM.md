@@ -8,6 +8,14 @@ notebook e celular, fazendo follow-up, ligação e pedido. O admin confere fatur
 e equipe, muitas vezes pelo celular. Daí as decisões: tema claro, denso, calmo, uma
 única cor de ação, nada que dispute atenção com o dado.
 
+**Isolamento (obrigatório).** O repositório é compartilhado com a loja Premium, que
+NÃO pode mudar. Tudo deste guia vale só dentro de `html.crm-theme`, classe que o
+`App.tsx` liga apenas no domínio do CRM (fora de `/sal-vita`). As escalas do Tailwind,
+o raio, a sombra e a fonte vêm de variáveis CSS: `:root` guarda os valores originais
+(loja) e `html.crm-theme` os do CRM. A paleta fica em `scripts/crm-palette.mjs`; depois
+de mudá-la, rode `node scripts/gen-crm-theme.mjs` para regenerar `client/src/crm-theme.css`.
+Nunca coloque regra do CRM no `:root` nem em seletor global.
+
 Fontes da verdade: `tailwind.config.js` (escalas), `client/src/index.css` (tokens),
 `client/src/components/ui/*` (primitivos), `client/src/components/layout/Page.tsx`
 (composição) e `client/src/components/StatusBadge.tsx` (status).
@@ -16,7 +24,7 @@ Fontes da verdade: `tailwind.config.js` (escalas), `client/src/index.css` (token
 
 ## 1. Cor
 
-As escalas do Tailwind foram **remapeadas** em `tailwind.config.js`:
+Dentro do CRM as escalas do Tailwind são **remapeadas** (via `crm-theme.css`):
 
 | Escrito no código | Vira | Uso |
 |---|---|---|

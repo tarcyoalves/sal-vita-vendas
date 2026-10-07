@@ -108,6 +108,13 @@ function App() {
   const isPremium = PREMIUM_HOSTS.includes(host);
   const isPublic = isPremium || PUBLIC_PATHS.some(p => path.startsWith(p));
 
+  // Design system do CRM (docs/DESIGN-SYSTEM.md) só no CRM: a loja Premium e as
+  // páginas públicas continuam com o visual original. Vai no <html> para valer
+  // também em diálogos e menus, que o Radix renderiza fora da árvore do app.
+  if (typeof document !== "undefined") {
+    document.documentElement.classList.toggle("crm-theme", !isPublic);
+  }
+
   if (isPremium) {
     // Painel administrativo unificado: um único componente (com login e
     // navegação internas) atende às 3 URLs históricas — a URL só escolhe
