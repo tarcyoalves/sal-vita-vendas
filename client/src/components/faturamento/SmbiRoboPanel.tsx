@@ -3,6 +3,7 @@ import { Bot, AlertTriangle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { trpc } from '../../lib/trpc';
 import { useAuth } from '../../_core/hooks/useAuth';
+import { useConfirm } from '../useConfirm';
 
 /** Tempo desde `iso`, sem o "há": "3 h", "25 min", "2 d". */
 function duracao(iso: string): string {
@@ -35,15 +36,18 @@ export default function SmbiRoboPanel() {
     onError: (e) => toast.error(e.message),
   });
 
+  const { confirm, confirmDialog } = useConfirm();
+
   if (!data) return null;
   const isAdmin = user?.role === 'admin';
 
-  const alternar = () => {
+  const alternar = async () => {
     const ligar = !data.roboAtivo;
-    const ok = window.confirm(
+    const ok = await confirm(
       ligar
-        ? 'LIGAR o robô do SMBI?\n\nDepois de ligado, ele cria no SMBI todo pedido em que você clicou em "Enviar pedido para SMBI".'
-        : 'Desligar o robô do SMBI?\n\nEle para de receber pedidos; nada novo é criado no SMBI.',
+        ? 'Depois de ligado, ele cria no SMBI todo pedido em que você clicou em "Enviar pedido para SMBI".'
+        : 'Ele para de receber pedidos; nada novo é criado no SMBI.',
+      { title: ligar ? 'LIGAR o robô do SMBI?' : 'Desligar o robô do SMBI?', confirmLabel: ligar ? 'Ligar' : 'Desligar' },
     );
     if (ok) setAtivo.mutate({ ativo: ligar });
   };
@@ -54,6 +58,7 @@ export default function SmbiRoboPanel() {
         data.semSinal && data.roboAtivo ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'
       }`}
     >
+      {confirmDialog}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="flex items-center gap-2 font-semibold text-slate-800">
           <Bot size={16} className="text-blue-900" /> Robô do SMBI
@@ -81,7 +86,7 @@ export default function SmbiRoboPanel() {
             variant="outline"
             className="ml-auto"
             disabled={setAtivo.isPending}
-            onClick={alternar}
+            onClick={() => void alternar()}
           >
             {data.roboAtivo ? 'Desligar robô' : 'Ligar robô'}
           </Button>

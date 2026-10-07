@@ -61,7 +61,7 @@ export function LinkTaskDialog({ open, onOpenChange, tasks, pedidoCnpj, onConfir
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
+      <DialogContent className="max-w-lg max-h-[85dvh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Vincular pedido a uma tarefa</DialogTitle>
           <DialogDescription>Busque e selecione a tarefa correspondente a este pedido.</DialogDescription>

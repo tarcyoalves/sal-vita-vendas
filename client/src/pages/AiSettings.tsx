@@ -104,7 +104,7 @@ export default function AiSettings() {
     }
   };
 
-  const handleSaveAndTest = async () => {
+  const handleTestConnection = async () => {
     setError("");
     if (!apiKey.trim()) {
       setError("Por favor, insira uma chave de API válida");
@@ -269,7 +269,7 @@ export default function AiSettings() {
 
             <div className="flex flex-wrap gap-2 pt-2">
               <Button
-                onClick={handleSaveAndTest}
+                onClick={handleTestConnection}
                 disabled={testing || !apiKey.trim()}
                 className="bg-[#0C3680] hover:bg-[#081F47] text-white text-xs font-semibold py-2 px-4 rounded-lg"
               >
@@ -338,9 +338,10 @@ export default function AiSettings() {
                     onClick={() => {
                       setTestStatus(prev => { const n = { ...prev }; delete n[config.provider]; return n; });
                     }}
-                    className="text-xs text-slate-400 hover:text-rose-600 transition-colors font-medium"
+                    title="Só limpa este resultado da tela; não altera nenhuma configuração"
+                    className="text-xs text-slate-500 hover:text-rose-600 transition-colors font-medium min-h-10 px-1"
                   >
-                    Remover
+                    Limpar resultado
                   </button>
                 </div>
               </div>

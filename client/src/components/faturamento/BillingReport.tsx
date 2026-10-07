@@ -88,6 +88,13 @@ export default function BillingReport() {
     setSelectedPedidoId(id);
     setDetailOpen(true);
   };
+  // Linhas/cartões clicáveis também respondem a Enter e Espaço.
+  const abrirComTeclado = (e: React.KeyboardEvent, id: string) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      openDetail(id);
+    }
+  };
 
   // Derived: distinct UFs from orders
   const distinctUFs = useMemo(
@@ -313,7 +320,50 @@ export default function BillingReport() {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
+            {/* Celular: cartões clicáveis (a tabela tem 12 colunas). */}
+            <div className="md:hidden divide-y divide-slate-200">
+              {filtered.map((p) => (
+                <div
+                  key={p.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openDetail(p.id)}
+                  onKeyDown={(e) => abrirComTeclado(e, p.id)}
+                  className="px-3 py-3 space-y-1.5 cursor-pointer active:bg-blue-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-medium text-gray-800 text-sm min-w-0 break-words">{p.razaoSocial || p.clienteNome || "--"}</p>
+                    <span
+                      className={`flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                        p.status === "faturado" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                      }`}
+                    >
+                      {p.status === "faturado" ? "Faturado" : "Estimado"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 text-xs text-gray-600">
+                    <span>{p.sellerName || "--"} · {formatKg(pesoEfetivoKg(p))}</span>
+                    <span>
+                      {p.status === "faturado"
+                        ? `Emb. ${formatDataBR(p.faturadoEm)}`
+                        : `Prev. ${formatDataBR(p.previsaoFaturamentoEm ?? p.criadoEm)}`}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <span className="text-gray-600">Estimado {formatBRL(estimatedTotal(p))}</span>
+                    {p.status === "faturado"
+                      ? <span className="font-semibold text-emerald-700">Faturado {formatBRL(totalPedido(p))}</span>
+                      : <span className="text-gray-500">Faturado --</span>}
+                  </div>
+                </div>
+              ))}
+              <div className="px-3 py-3 bg-slate-50 text-sm font-semibold text-gray-800 space-y-0.5">
+                <div>Total ({filtered.length} pedido{filtered.length !== 1 ? "s" : ""})</div>
+                <div className="flex justify-between"><span className="font-medium text-gray-600">Estimado</span><span>{formatBRL(totalEstimado)}</span></div>
+                <div className="flex justify-between"><span className="font-medium text-gray-600">Faturado</span><span className="text-emerald-700">{formatBRL(totalFaturado)}</span></div>
+              </div>
+            </div>
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
@@ -336,6 +386,9 @@ export default function BillingReport() {
                     <tr
                       key={p.id}
                       onClick={() => openDetail(p.id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => abrirComTeclado(e, p.id)}
                       className={`border-b-2 border-slate-300 hover:bg-blue-50/50 transition-colors align-top cursor-pointer ${
                         i % 2 === 1 ? 'bg-slate-50/60' : ''
                       }`}

@@ -230,7 +230,7 @@ export function OrderDialog({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto overflow-x-hidden">
+      <DialogContent className="max-w-4xl max-h-[92dvh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle>
             {existingPedidoId ? 'Editar pedido' : 'Novo pedido (estimativa)'}

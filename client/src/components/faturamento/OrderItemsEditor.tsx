@@ -129,9 +129,107 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
     });
   };
 
+  // Campos compartilhados pela tabela (md+) e pelos cartões (celular): mesmas handlers, só muda a classe.
+  const produtoField = (item: ItemPedido, triggerCls: string) =>
+    ativos.length > 0 ? (
+      <Select value={item.produtoId ?? ''} onValueChange={(v) => pickProduct(item.id, v)}>
+        <SelectTrigger className={triggerCls}>
+          <SelectValue placeholder="Selecionar produto" />
+        </SelectTrigger>
+        <SelectContent>
+          {ativos.map((p) => (
+            <SelectItem key={p.id} value={p.id}>
+              {p.nome}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    ) : (
+      <p className="text-xs text-amber-600 py-1">Nenhum produto cadastrado. Solicite ao admin.</p>
+    );
+
+  const quantidadeField = (item: ItemPedido, cls: string) => (
+    <Input
+      type="number"
+      min={0}
+      className={cls}
+      value={item.quantidade}
+      onChange={(e) =>
+        updateItem(item.id, { quantidade: Math.max(0, Number(e.target.value) || 0) })
+      }
+    />
+  );
+
+  const valorField = (item: ItemPedido, cls: string) => {
+    const valKey = `val-${item.id}`;
+    return (
+      <Input
+        className={cls}
+        inputMode="decimal"
+        value={valKey in editingValues ? editingValues[valKey] : formatBRL(item.valorUnitario)}
+        onFocus={() => handleCurrencyFocus(valKey, item.valorUnitario)}
+        onChange={(e) => setEditingValues((prev) => ({ ...prev, [valKey]: e.target.value }))}
+        onBlur={() => handleCurrencyBlur(valKey, item.id, 'valorUnitario')}
+      />
+    );
+  };
+
+  const removeButton = (item: ItemPedido, cls: string) => (
+    <button
+      type="button"
+      onClick={() => removeRow(item.id)}
+      aria-label="Remover item"
+      className={cls}
+    >
+      <Trash2 size={16} />
+    </button>
+  );
+
   return (
     <div className="space-y-3">
-      <div className="overflow-x-auto rounded-xl border border-slate-200">
+      {/* Celular: um cartão por item (a tabela de 760px obrigava a rolar de lado). */}
+      <div className="space-y-3 md:hidden">
+        {itens.map((item) => (
+          <div key={item.id} className="rounded-xl border border-slate-200 p-3 space-y-3">
+            <div>
+              <span className="block text-xs font-semibold text-slate-600 mb-1">Produto</span>
+              {produtoField(item, 'w-full text-sm h-10')}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="block text-xs font-semibold text-slate-600 mb-1">Qtd</span>
+                {quantidadeField(item, 'w-full h-10')}
+              </label>
+              <label className="block">
+                <span className="block text-xs font-semibold text-slate-600 mb-1">Valor unit.</span>
+                {valorField(item, 'w-full h-10')}
+              </label>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs text-slate-600">
+                Peso: {formatKg(item.pesoKg)}
+                <span className="block text-sm font-semibold text-slate-800">
+                  Total: {formatBRL(totalLinha(item))}
+                </span>
+              </div>
+              {removeButton(item, 'text-slate-500 hover:text-red-600 size-10 flex items-center justify-center rounded-lg border border-slate-200')}
+            </div>
+          </div>
+        ))}
+        {itens.length === 0 && (
+          <p className="rounded-xl border border-slate-200 px-3 py-6 text-center text-sm text-slate-500">
+            Nenhum item adicionado
+          </p>
+        )}
+        {itens.length > 0 && (
+          <div className="flex items-center justify-between rounded-xl bg-slate-50 border-2 border-slate-200 px-3 py-2 text-sm font-semibold">
+            <span className="text-slate-600">Totais · {formatKg(pesoTotalItens(itens))}</span>
+            <span className="text-blue-900 font-bold">{formatBRL(totalItens(itens))}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full text-sm min-w-[760px]">
           <thead>
             <tr className="bg-slate-50 text-left">
@@ -154,93 +252,28 @@ export function OrderItemsEditor({ itens, onChange }: OrderItemsEditorProps) {
             </tr>
           </thead>
           <tbody>
-            {itens.map((item) => {
-              const valKey = `val-${item.id}`;
-              return (
-                <tr key={item.id} className="border-t border-slate-100">
-                  {/* Product select or free text */}
-                  <td className="px-3 py-2">
-                    {ativos.length > 0 ? (
-                      <Select
-                        value={item.produtoId ?? ''}
-                        onValueChange={(v) => pickProduct(item.id, v)}
-                      >
-                        <SelectTrigger className="w-full text-xs h-8">
-                          <SelectValue placeholder="Selecionar produto" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ativos.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.nome}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <p className="text-xs text-amber-600 py-1">
-                        Nenhum produto cadastrado. Solicite ao admin.
-                      </p>
-                    )}
-                  </td>
-                  {/* Quantidade */}
-                  <td className="px-3 py-2">
-                    <Input
-                      type="number"
-                      min={0}
-                      className="text-xs h-8 w-20"
-                      value={item.quantidade}
-                      onChange={(e) =>
-                        updateItem(item.id, {
-                          quantidade: Math.max(0, Number(e.target.value) || 0),
-                        })
-                      }
-                    />
-                  </td>
-                  {/* Peso — travado no peso unitário do produto × quantidade, não editável */}
-                  <td className="px-3 py-2 text-xs text-slate-600 whitespace-nowrap">
-                    {formatKg(item.pesoKg)}
-                  </td>
-                  {/* Valor unitário */}
-                  <td className="px-3 py-2">
-                    <Input
-                      className="text-xs h-8 w-28"
-                      inputMode="decimal"
-                      value={
-                        valKey in editingValues
-                          ? editingValues[valKey]
-                          : formatBRL(item.valorUnitario)
-                      }
-                      onFocus={() =>
-                        handleCurrencyFocus(valKey, item.valorUnitario)
-                      }
-                      onChange={(e) =>
-                        setEditingValues((prev) => ({
-                          ...prev,
-                          [valKey]: e.target.value,
-                        }))
-                      }
-                      onBlur={() =>
-                        handleCurrencyBlur(valKey, item.id, 'valorUnitario')
-                      }
-                    />
-                  </td>
-                  {/* Total (read-only) */}
-                  <td className="px-3 py-2 text-right font-semibold text-slate-700 whitespace-nowrap">
-                    {formatBRL(totalLinha(item))}
-                  </td>
-                  {/* Remove */}
-                  <td className="px-3 py-2">
-                    <button
-                      type="button"
-                      onClick={() => removeRow(item.id)}
-                      className="text-slate-400 hover:text-red-600 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
+            {itens.map((item) => (
+              <tr key={item.id} className="border-t border-slate-100">
+                {/* Product select or free text */}
+                <td className="px-3 py-2">{produtoField(item, 'w-full text-xs h-8')}</td>
+                {/* Quantidade */}
+                <td className="px-3 py-2">{quantidadeField(item, 'text-xs h-8 w-20')}</td>
+                {/* Peso — travado no peso unitário do produto × quantidade, não editável */}
+                <td className="px-3 py-2 text-xs text-slate-600 whitespace-nowrap">
+                  {formatKg(item.pesoKg)}
+                </td>
+                {/* Valor unitário */}
+                <td className="px-3 py-2">{valorField(item, 'text-xs h-8 w-28')}</td>
+                {/* Total (read-only) */}
+                <td className="px-3 py-2 text-right font-semibold text-slate-700 whitespace-nowrap">
+                  {formatBRL(totalLinha(item))}
+                </td>
+                {/* Remove */}
+                <td className="px-3 py-2">
+                  {removeButton(item, 'text-slate-400 hover:text-red-600 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center')}
+                </td>
+              </tr>
+            ))}
             {itens.length === 0 && (
               <tr>
                 <td

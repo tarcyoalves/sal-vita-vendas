@@ -41,6 +41,8 @@ import { Textarea } from "../components/ui/textarea";
 import { toast } from "sonner";
 import { useAuth } from "../_core/hooks/useAuth";
 import { trpc } from "../lib/trpc";
+import { useConfirm } from "../components/useConfirm";
+import { QueryError } from "../components/QueryError";
 
 export interface AttachedDoc {
   id: string;
@@ -498,6 +500,7 @@ const INITIAL_COMPANY_CATEGORIES: CompanyCategory[] = [
 
 export default function Documentos() {
   const { user } = useAuth();
+  const { confirm, confirmDialog } = useConfirm();
   const isAdmin = user?.role === "admin" || user?.role === "manager";
 
   const [activeTab, setActiveTab] = useState<"produtos" | "empresa">("produtos");
@@ -515,7 +518,7 @@ export default function Documentos() {
   // próprios arquivos. Agora o catálogo é uma constante local (produtos/cards)
   // e os anexos + fotos vêm do banco, iguais para todo mundo.
   const utils = trpc.useUtils();
-  const { data: catalog, isLoading: catalogLoading } = trpc.catalog.list.useQuery();
+  const { data: catalog, isLoading: catalogLoading, isError: catalogError, isFetching: catalogFetching, refetch: refetchCatalog } = trpc.catalog.list.useQuery();
   const addDocMutation = trpc.catalog.addDocument.useMutation();
   const deleteDocMutation = trpc.catalog.deleteDocument.useMutation();
   const setImageMutation = trpc.catalog.setImage.useMutation();
@@ -908,7 +911,7 @@ export default function Documentos() {
   };
 
   const handleDeleteAttachedDoc = async (_cardId: string, docId: string, _isProduct: boolean) => {
-    if (!confirm("Remover este arquivo anexado do card? Ele sai para toda a equipe.")) return;
+    if (!(await confirm("Remover este arquivo anexado do card? Ele sai para toda a equipe.", { confirmLabel: "Remover" }))) return;
     try {
       await deleteDocMutation.mutateAsync({ id: Number(docId) });
       await utils.catalog.list.invalidate();
@@ -1050,6 +1053,7 @@ ${docsListText}
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
+      {confirmDialog}
       {/* Header Banner */}
       <div className="relative rounded-2xl overflow-hidden bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white p-6 md:p-8 shadow-xl border border-white/10">
         <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />
@@ -1130,6 +1134,9 @@ ${docsListText}
           <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-blue-700" />
           Carregando documentos do servidor...
         </p>
+      )}
+      {catalogError && !catalog && (
+        <QueryError message="Não foi possível carregar os anexos do servidor" onRetry={() => void refetchCatalog()} retrying={catalogFetching} />
       )}
 
       {/* Category Pills (Product Mode Only) */}
@@ -1297,7 +1304,8 @@ ${docsListText}
                                     type="button"
                                     onClick={() => handleDeleteAttachedDoc(product.id, doc.id, true)}
                                     title="Remover anexo"
-                                    className="text-slate-400 hover:text-red-600 p-1.5 rounded transition"
+                                    aria-label="Remover anexo"
+                                    className="text-slate-400 hover:text-red-600 min-h-10 min-w-10 inline-flex items-center justify-center rounded transition"
                                   >
                                     <Trash2 size={13} />
                                   </button>
@@ -1438,7 +1446,8 @@ ${docsListText}
                                     type="button"
                                     onClick={() => handleDeleteAttachedDoc(comp.id, doc.id, false)}
                                     title="Remover arquivo"
-                                    className="text-slate-400 hover:text-red-600 p-1.5 rounded transition"
+                                    aria-label="Remover arquivo"
+                                    className="text-slate-400 hover:text-red-600 min-h-10 min-w-10 inline-flex items-center justify-center rounded transition"
                                   >
                                     <Trash2 size={13} />
                                   </button>
@@ -1747,7 +1756,7 @@ ${docsListText}
         <Dialog open={!!selectedProduct} onOpenChange={(open) => {
           if (!open) setSelectedProduct(null);
         }}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
             <DialogHeader>
               <div className="flex items-center gap-2 mb-1">
                 <Badge className={`${selectedProduct.badgeColor}`}>
@@ -1818,7 +1827,7 @@ ${docsListText}
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-0.5 p-2.5 text-slate-800">
                     <span className="font-semibold text-slate-600">Armazenamento</span>
-                    <span className="col-span-2">{specValue(selectedProduct.specs.storage)}</span>
+                    <span className="sm:col-span-2">{specValue(selectedProduct.specs.storage)}</span>
                   </div>
                 </div>
               </div>

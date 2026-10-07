@@ -15,7 +15,7 @@ import superjson from 'superjson';
 import { toast } from 'sonner';
 import type { AppRouter } from '../../../../server/routers';
 import type { Produto, Pedido, ComissaoMap, ItemPedido } from './types';
-import { FAT_FOCUS_REFETCH_MS, isStale } from '../refetchPolicy';
+import { FAT_FOCUS_REFETCH_MS, FAT_MOUNT_REFETCH_MS, isStale } from '../refetchPolicy';
 
 const api = createTRPCClient<AppRouter>({
   links: [
@@ -165,12 +165,22 @@ function flushReload(): void {
   reload().catch(() => {});
 }
 
+// O servidor devolve espelhoProtegido:true quando descartou campos de um pedido espelhado do
+// SMBI. Leitura tolerante (o campo pode não existir em respostas de outras mutations): o
+// espelho local ficou otimista e diferente do que foi gravado, então recarrega.
+function avisarEspelhoProtegido(res: unknown): void {
+  if (!res || typeof res !== 'object') return;
+  if (!(res as { espelhoProtegido?: boolean }).espelhoProtegido) return;
+  toast.info('Este pedido está espelhado do SMBI: os valores do SMBI foram mantidos.');
+  needsReload = true;
+}
+
 /** Acompanha uma escrita em segundo plano. Resolve true/false (nunca rejeita). */
 function track(p: Promise<unknown>): Promise<boolean> {
   pendingWrites++;
   writeEpoch++;
   return p.then(
-    () => { pendingWrites--; flushReload(); return true; },
+    (res) => { pendingWrites--; avisarEspelhoProtegido(res); flushReload(); return true; },
     () => { pendingWrites--; onWriteError(); return false; },
   );
 }
@@ -454,10 +464,11 @@ function onFocus() {
 export function useFatStore() {
   const snap = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const m = useSyncExternalStore(subscribe, getMeta, getMeta);
-  // Ao montar qualquer tela de faturamento, busca de novo se os dados têm >10 s
-  // (as várias telas montando juntas compartilham a mesma busca em voo).
+  // Ao montar, busca de novo só se os dados têm >60 s: faturamento.getAll é pesado e
+  // vários componentes (até a Tasks, só para um selo) montam o hook a cada navegação.
+  // O foco da aba segue em 2 min (FAT_FOCUS_REFETCH_MS). Escritas já recarregam por conta própria.
   useEffect(() => {
-    refreshIfStale(10_000);
+    refreshIfStale(FAT_MOUNT_REFETCH_MS);
   }, []);
   return {
     produtos: snap.produtos,

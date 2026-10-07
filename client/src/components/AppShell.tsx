@@ -151,6 +151,7 @@ const BOTTOM_NAV_MANAGER = [
 
 const BOTTOM_NAV_USER = [
   { label: "Tarefas",   path: "/tasks",                icon: <CheckSquare size={22} /> },
+  { label: "Buscador",  path: "/radar-cargas",          icon: <UserSearch size={22} /> },
   { label: "Progresso", path: "/meu-progresso",         icon: <TrendingUp size={22} /> },
   { label: "Documentos", path: "/documentos",          icon: <FileText size={22} /> },
 ];
@@ -181,6 +182,14 @@ export default function AppShell({ children }: AppShellProps) {
     ["/ai-chat", "/ai-settings", "/knowledge-base"].includes(location)
   );
   const logoutMutation = trpc.auth.logout.useMutation();
+
+  // Esc fecha o menu "Mais" (teclado físico / leitores de tela)
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setSidebarOpen(false); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [sidebarOpen]);
 
   // Lock body scroll when mobile sidebar is open
   useEffect(() => {
@@ -325,7 +334,9 @@ export default function AppShell({ children }: AppShellProps) {
   const pageTitle = PAGE_TITLES[location] ?? "Sal Vita";
   const userInitial = user?.name?.charAt(0).toUpperCase() ?? "U";
 
-  const SidebarContent = () => (
+  // Elemento (não componente): declarar um componente aqui dentro o remontaria a cada render
+  // e a lista perderia a rolagem.
+  const sidebarContent = (
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="min-h-[72px] flex items-center px-5 border-b border-white/10 flex-shrink-0" style={{ paddingTop: "env(safe-area-inset-top)" }}>
@@ -359,7 +370,7 @@ export default function AppShell({ children }: AppShellProps) {
                 <li key={item.label}>
                   {groupHeader}
                   <button
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-xs font-semibold transition-all ${
                       childActive
                         ? "bg-[#0C3680] text-white shadow-sm border-r-2 border-blue-400"
                         : "text-slate-300 hover:bg-white/5 hover:text-white"
@@ -375,7 +386,7 @@ export default function AppShell({ children }: AppShellProps) {
                       {item.children!.map((child) => (
                         <li key={child.path}>
                           <button
-                            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                            className={`w-full flex items-center gap-2.5 px-3 py-3 rounded-lg text-xs font-medium transition-all ${
                               isActive(child.path)
                                 ? "bg-white/15 text-white font-semibold"
                                 : "text-slate-400 hover:bg-white/5 hover:text-white"
@@ -405,7 +416,7 @@ export default function AppShell({ children }: AppShellProps) {
               <li key={item.label}>
                 {groupHeader}
                 <button
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                  className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-xs font-semibold transition-all ${
                     active
                       ? "bg-[#0C3680] text-white shadow-sm border-r-2 border-blue-400"
                       : "text-slate-300 hover:bg-white/5 hover:text-white"
@@ -466,14 +477,20 @@ export default function AppShell({ children }: AppShellProps) {
     <div className="flex h-dvh bg-slate-50/50 overflow-hidden">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-60 flex-col bg-[#081F47] flex-shrink-0 border-r border-slate-800">
-        <SidebarContent />
+        {sidebarContent}
       </aside>
 
       {/* Mobile Sidebar Overlay */}
       <div className={`fixed inset-0 z-40 md:hidden transition-opacity duration-300 ${sidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}>
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onClick={() => setSidebarOpen(false)} />
-        <aside className={`relative z-50 flex flex-col w-64 h-full bg-[#081F47] transition-transform duration-300 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
-          <SidebarContent />
+        <aside
+          role={sidebarOpen ? "dialog" : undefined}
+          aria-modal={sidebarOpen ? true : undefined}
+          aria-label="Menu"
+          aria-hidden={!sidebarOpen}
+          className={`relative z-50 flex flex-col w-64 h-full bg-[#081F47] transition-transform duration-300 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
+        >
+          {sidebarContent}
         </aside>
       </div>
 
@@ -484,7 +501,7 @@ export default function AppShell({ children }: AppShellProps) {
           <div className="flex items-center gap-3">
             {/* Mobile menu trigger */}
             <button
-              className="md:hidden p-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200"
+              className="md:hidden inline-flex size-10 items-center justify-center rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200"
               onClick={() => setSidebarOpen(true)}
               aria-label="Abrir menu"
             >
@@ -527,12 +544,13 @@ export default function AppShell({ children }: AppShellProps) {
               <button
                 key={item.path}
                 onClick={() => setLocation(item.path)}
-                className="flex flex-col items-center gap-0.5 flex-1 py-1 transition-all"
+                aria-current={active ? "page" : undefined}
+                className="flex flex-col items-center gap-0.5 flex-1 min-w-0 py-1 transition-all"
               >
                 <span className="relative">
                   <span
-                    className={`flex items-center justify-center w-12 h-11 rounded-2xl transition-all ${
-                      active ? "bg-brand text-white shadow-md" : "text-gray-400"
+                    className={`flex items-center justify-center w-11 h-11 rounded-2xl transition-all ${
+                      active ? "bg-brand text-white shadow-md" : "text-slate-500"
                     }`}
                   >
                     {item.icon}
@@ -543,7 +561,7 @@ export default function AppShell({ children }: AppShellProps) {
                     </span>
                   )}
                 </span>
-                <span className={`text-[10px] font-medium leading-tight ${active ? "text-brand" : "text-gray-400"}`}>
+                <span className={`text-[11px] font-medium leading-tight ${active ? "text-brand" : "text-slate-600"}`}>
                   {item.label}
                 </span>
               </button>
@@ -553,16 +571,18 @@ export default function AppShell({ children }: AppShellProps) {
           {/* "Mais" — abre o sidebar completo com todos os sub-menus */}
           <button
             onClick={() => setSidebarOpen(true)}
-            className="flex flex-col items-center gap-0.5 flex-1 py-1 transition-all"
+            aria-expanded={sidebarOpen}
+            aria-haspopup="dialog"
+            className="flex flex-col items-center gap-0.5 flex-1 min-w-0 py-1 transition-all"
           >
             <span
-              className={`flex items-center justify-center w-12 h-11 rounded-2xl transition-all ${
-                sidebarOpen ? "bg-brand text-white shadow-md" : "text-gray-400"
+              className={`flex items-center justify-center w-11 h-11 rounded-2xl transition-all ${
+                sidebarOpen ? "bg-brand text-white shadow-md" : "text-slate-500"
               }`}
             >
               <Menu size={22} />
             </span>
-            <span className={`text-[10px] font-medium leading-tight ${sidebarOpen ? "text-brand" : "text-gray-400"}`}>
+            <span className={`text-[11px] font-medium leading-tight ${sidebarOpen ? "text-brand" : "text-slate-600"}`}>
               Mais
             </span>
           </button>

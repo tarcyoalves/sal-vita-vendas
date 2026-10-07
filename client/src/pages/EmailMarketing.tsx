@@ -10,6 +10,8 @@ import { Textarea } from "../components/ui/textarea";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { BlockEditor } from "../components/email/BlockEditor";
 import { SegmentBuilder } from "../components/email/SegmentBuilder";
+import { useConfirm } from "../components/useConfirm";
+import { QueryError } from "../components/QueryError";
 import { FrequencySettings } from "../components/email/FrequencySettings";
 import { EmailDashboard } from "../components/email/EmailDashboard";
 import { Label } from "../components/ui/label";
@@ -184,7 +186,7 @@ function TestEmailButton({ subject, htmlBody, className }: { subject: string; ht
       size="sm"
       onClick={handle}
       disabled={testMutation.isPending}
-      className={`text-blue-700 hover:bg-blue-50 ${className ?? ""}`}
+      className={`text-blue-700 hover:bg-blue-50 max-md:h-10 ${className ?? ""}`}
     >
       <Send size={14} className="mr-1.5" />
       {testMutation.isPending ? "Enviando teste..." : "Enviar teste para mim"}
@@ -451,13 +453,13 @@ function AiEmailComposer({ html, onApply }: {
               </SelectContent>
             </Select>
             <Button type="button" size="sm" onClick={() => run("full")} disabled={gen.isPending}
-              className="bg-violet-600 hover:bg-violet-700 text-white">
+              className="bg-violet-600 hover:bg-violet-700 text-white max-md:h-10">
               {gen.isPending ? "Gerando..." : "Gerar e-mail"}
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => run("subjects")} disabled={gen.isPending}>
+            <Button type="button" size="sm" className="max-md:h-10" variant="outline" onClick={() => run("subjects")} disabled={gen.isPending}>
               Só assuntos
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => run("rewrite")} disabled={gen.isPending}>
+            <Button type="button" size="sm" className="max-md:h-10" variant="outline" onClick={() => run("rewrite")} disabled={gen.isPending}>
               Reescrever atual
             </Button>
           </div>
@@ -483,9 +485,88 @@ function AiEmailComposer({ html, onApply }: {
 
 // ── Campanhas ──────────────────────────────────────────────────────────────
 
+// Skeleton simples para listas em carregamento (substitui o "Carregando..." em texto).
+function ListSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="space-y-2" role="status" aria-label="Carregando">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="h-14 rounded-xl bg-slate-100 animate-pulse" />
+      ))}
+    </div>
+  );
+}
+
+type CampaignRow = { id: number; subject: string; status: string; totalRecipients: number };
+
+// Ações da campanha, usadas tanto na tabela (md+) quanto nos cartões (celular).
+function CampaignActions({ c, sendingId, sendProgress, sendDisabled, cancelDisabled, deleteDisabled, onView, onSend, onCancelSchedule, onDelete }: {
+  c: CampaignRow;
+  sendingId: number | null;
+  sendProgress: { total: number; sentNow: number; failedNow: number; remaining: number } | null;
+  sendDisabled: boolean;
+  cancelDisabled: boolean;
+  deleteDisabled: boolean;
+  onView: (id: number) => void;
+  onSend: (target: { id: number; subject: string; count: number }) => void;
+  onCancelSchedule: (id: number) => void;
+  onDelete: (id: number) => void;
+}) {
+  return (
+    <>
+      <div className="flex gap-1 flex-wrap">
+        <Button size="sm" variant="outline" className="max-md:h-10" onClick={() => onView(c.id)}>
+          <Eye size={14} className="mr-1" /> Ver
+        </Button>
+        {c.status !== "sent" && (
+          <Button
+            size="sm"
+            className="bg-blue-900 hover:bg-blue-800 max-md:h-10"
+            onClick={() => onSend({ id: c.id, subject: c.subject, count: c.totalRecipients })}
+            disabled={sendDisabled}
+          >
+            <Send size={14} className="mr-1" />
+            {sendingId === c.id ? "Enviando..." : c.status === "scheduled" ? "Enviar agora" : "Enviar"}
+          </Button>
+        )}
+        {c.status === "scheduled" && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-violet-200 text-violet-700 hover:bg-violet-50 max-md:h-10"
+            onClick={() => onCancelSchedule(c.id)}
+            disabled={cancelDisabled}
+          >
+            <X size={14} className="mr-1" /> <span className="md:hidden">Cancelar</span><span className="hidden md:inline">Cancelar agendamento</span>
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="destructive"
+          className="max-md:h-10 max-md:min-w-10"
+          aria-label="Excluir campanha"
+          title="Excluir campanha"
+          onClick={() => onDelete(c.id)}
+          disabled={sendingId === c.id || deleteDisabled}
+        >
+          <Trash2 size={14} />
+        </Button>
+      </div>
+      {sendingId === c.id && sendProgress && (
+        <div className="mt-2 w-48">
+          <Progress value={sendProgress.total > 0 ? Math.round(((sendProgress.total - sendProgress.remaining) / sendProgress.total) * 100) : 0} />
+          <p className="text-xs text-gray-500 mt-1">
+            +{sendProgress.sentNow} enviados, {sendProgress.failedNow} falhas — restam {sendProgress.remaining}
+          </p>
+        </div>
+      )}
+    </>
+  );
+}
+
 function CampaignsTab() {
+  const { confirm, confirmDialog } = useConfirm();
   const utils = trpc.useUtils();
-  const { data: campaigns, isLoading } = trpc.emailMarketing.listCampaigns.useQuery();
+  const { data: campaigns, isLoading, isError, refetch, isFetching } = trpc.emailMarketing.listCampaigns.useQuery();
   const { data: templates } = trpc.emailMarketing.listTemplates.useQuery();
   const { data: sellers } = trpc.sellers.list.useQuery();
 
@@ -686,9 +767,10 @@ function CampaignsTab() {
       if (sendMode === "schedule" && scheduledAt) {
         toast.success(`Campanha agendada para ${formatDateTime(scheduledAt)}.`);
       } else {
-        // "Enviar agora": dispara o motor imediatamente (loop de lotes na aba).
-        toast.success("Campanha criada. Iniciando envio...");
-        await handleSend(created.id);
+        // "Enviar agora": não dispara direto — abre o mesmo diálogo "Confirmar envio"
+        // da tabela, para o envio nunca sair sem revisão (destinatários/assunto).
+        toast.success("Campanha criada. Revise e confirme o envio.");
+        setConfirmCampaign({ id: created.id, subject: created.subject, count: created.totalRecipients });
       }
     } catch (e: any) {
       toast.error(e?.message ?? "Erro ao criar campanha");
@@ -706,7 +788,7 @@ function CampaignsTab() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Excluir esta campanha e todos os destinatários?")) return;
+    if (!(await confirm("Excluir esta campanha e todos os destinatários?"))) return;
     try {
       await deleteMutation.mutateAsync({ id });
       toast.success("Campanha excluída");
@@ -747,6 +829,18 @@ function CampaignsTab() {
     }
   };
 
+  const actionProps = {
+    sendingId,
+    sendProgress,
+    sendDisabled: sendingId !== null || processBatchMutation.isPending,
+    cancelDisabled: cancelScheduleMutation.isPending,
+    deleteDisabled: deleteMutation.isPending,
+    onView: setDetailCampaignId,
+    onSend: setConfirmCampaign,
+    onCancelSchedule: handleCancelSchedule,
+    onDelete: handleDelete,
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap justify-end gap-2">
@@ -770,9 +864,46 @@ function CampaignsTab() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p className="text-sm text-slate-500">Carregando...</p>
+            <ListSkeleton />
+          ) : isError ? (
+            <QueryError onRetry={() => refetch()} retrying={isFetching} message="Falha ao carregar as campanhas" />
           ) : campaigns && campaigns.length > 0 ? (
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <>
+            {/* Celular: cartões com as ações sempre à vista (a tabela esconde Ações fora da tela) */}
+            <ul className="space-y-3 md:hidden">
+              {campaigns.map(c => (
+                <li key={c.id} className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-700 break-words">{c.name}</p>
+                      <p className="text-xs text-slate-600 break-words">{c.subject}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <Badge variant="outline" className={STATUS_BADGE_CLASS[c.status] ?? ""}>
+                        {STATUS_LABELS[c.status] ?? c.status}
+                      </Badge>
+                      {c.isBroadcast && (
+                        <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 gap-1">
+                          <Megaphone size={11} /> Disparo
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  {c.status === "scheduled" && (c as any).scheduledAt && (
+                    <p className="flex items-center gap-1 text-xs text-violet-600">
+                      <CalendarClock size={12} /> {formatDateTime((c as any).scheduledAt)}
+                    </p>
+                  )}
+                  <p className="text-xs text-slate-600">
+                    <span className="font-medium">{c.totalRecipients}</span> destinatários ·{" "}
+                    <span className="text-emerald-700 font-medium">{c.sentCount} enviados</span> ·{" "}
+                    <span className="text-red-600 font-medium">{c.failedCount} falhas</span>
+                  </p>
+                  <CampaignActions c={c} {...actionProps} />
+                </li>
+              ))}
+            </ul>
+            <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-sm min-w-[640px]">
                 <thead className={THEAD_CLASS}>
                   <tr>
@@ -811,50 +942,14 @@ function CampaignsTab() {
                       <td className="px-3 py-2.5 text-emerald-700 font-medium">{c.sentCount}</td>
                       <td className="px-3 py-2.5 text-red-600 font-medium">{c.failedCount}</td>
                       <td className="px-3 py-2.5">
-                        <div className="flex gap-1 flex-wrap">
-                          <Button size="sm" variant="outline" onClick={() => setDetailCampaignId(c.id)}>
-                            <Eye size={14} className="mr-1" /> Ver
-                          </Button>
-                          {c.status !== "sent" && (
-                            <Button
-                              size="sm"
-                              className="bg-blue-900 hover:bg-blue-800"
-                              onClick={() => setConfirmCampaign({ id: c.id, subject: c.subject, count: c.totalRecipients })}
-                              disabled={sendingId !== null || processBatchMutation.isPending}
-                            >
-                              <Send size={14} className="mr-1" />
-                              {sendingId === c.id ? "Enviando..." : c.status === "scheduled" ? "Enviar agora" : "Enviar"}
-                            </Button>
-                          )}
-                          {c.status === "scheduled" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-violet-200 text-violet-700 hover:bg-violet-50"
-                              onClick={() => handleCancelSchedule(c.id)}
-                              disabled={cancelScheduleMutation.isPending}
-                            >
-                              <X size={14} className="mr-1" /> Cancelar agendamento
-                            </Button>
-                          )}
-                          <Button size="sm" variant="destructive" onClick={() => handleDelete(c.id)} disabled={sendingId === c.id || deleteMutation.isPending}>
-                            <Trash2 size={14} />
-                          </Button>
-                        </div>
-                        {sendingId === c.id && sendProgress && (
-                          <div className="mt-2 w-48">
-                            <Progress value={sendProgress.total > 0 ? Math.round(((sendProgress.total - sendProgress.remaining) / sendProgress.total) * 100) : 0} />
-                            <p className="text-xs text-gray-500 mt-1">
-                              +{sendProgress.sentNow} enviados, {sendProgress.failedNow} falhas — restam {sendProgress.remaining}
-                            </p>
-                          </div>
-                        )}
+                        <CampaignActions c={c} {...actionProps} />
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            </>
           ) : (
             <EmptyState icon={Send} message="Nenhuma campanha criada ainda. Clique em “Nova Campanha” para enviar seu primeiro disparo." />
           )}
@@ -863,7 +958,7 @@ function CampaignsTab() {
 
       {/* Create campaign dialog */}
       <Dialog open={showCreate} onOpenChange={(open) => { setShowCreate(open); if (!open) resetForm(); }}>
-        <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl w-[95vw] max-h-[90dvh] overflow-y-auto max-sm:p-4">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Mail size={16} /></span>
@@ -915,7 +1010,7 @@ function CampaignsTab() {
                     onChange={e => setAbSubjectB(e.target.value)}
                     placeholder="Assunto alternativo para teste A/B"
                   />
-                  <p className="text-[10px] text-amber-600">Metade recebe o assunto A, metade o B. Compare a abertura de cada um nas Estatísticas da campanha.</p>
+                  <p className="text-xs text-amber-700">Metade recebe o assunto A, metade o B. Compare a abertura de cada um nas Estatísticas da campanha.</p>
                 </div>
               )}
             </div>
@@ -1034,7 +1129,7 @@ function CampaignsTab() {
               )}
             </div>
           </div>
-          <DialogFooter className="flex-col gap-2 pt-2 sm:flex-col">
+          <DialogFooter className="flex-col gap-2 pt-2 sm:flex-col max-sm:sticky max-sm:bottom-0 max-sm:z-10 max-sm:bg-background max-sm:border-t max-sm:-mx-4 max-sm:px-4 max-sm:py-3">
             <div className="flex justify-center">
               <TestEmailButton subject={form.subject} htmlBody={form.htmlBody} />
             </div>
@@ -1042,7 +1137,7 @@ function CampaignsTab() {
               <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleCreate} disabled={createMutation.isPending || sendingId !== null}>
                 {createMutation.isPending
                   ? (sendMode === "schedule" ? "Agendando..." : "Criando...")
-                  : (sendMode === "schedule" ? "Agendar Campanha" : "Criar e Enviar")}
+                  : (sendMode === "schedule" ? "Agendar Campanha" : "Criar e revisar envio")}
               </Button>
               <Button variant="outline" className="flex-1" onClick={() => { setShowCreate(false); resetForm(); }}>Cancelar</Button>
             </div>
@@ -1052,7 +1147,7 @@ function CampaignsTab() {
 
       {/* Disparo Rápido (Broadcast) dialog */}
       <Dialog open={showBroadcast} onOpenChange={(open) => { setShowBroadcast(open); if (!open) resetBroadcast(); }}>
-        <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl w-[95vw] max-h-[90dvh] overflow-y-auto max-sm:p-4">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-700"><Megaphone size={16} /></span>
@@ -1231,7 +1326,7 @@ function CampaignsTab() {
                     onChange={e => setAbSubjectBBcast(e.target.value)}
                     placeholder="Assunto alternativo para teste A/B"
                   />
-                  <p className="text-[10px] text-amber-600">Metade recebe o assunto A, metade o B. Compare a abertura de cada um nas Estatísticas.</p>
+                  <p className="text-xs text-amber-700">Metade recebe o assunto A, metade o B. Compare a abertura de cada um nas Estatísticas.</p>
                 </div>
               )}
             </div>
@@ -1287,9 +1382,9 @@ function CampaignsTab() {
                       <FileText size={14} className="flex-shrink-0 text-blue-700" />
                       <span className="flex-1 truncate text-slate-700">{f.filename}</span>
                       <span className="text-xs text-slate-400">{(f.size / 1024).toFixed(0)} KB</span>
-                      <button
+                      <button aria-label="Remover anexo"
                         type="button"
-                        className="text-slate-400 hover:text-red-600 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center"
+                        className="text-slate-400 hover:text-red-600 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center max-md:min-h-10 max-md:min-w-10"
                         onClick={() => setBcastFiles(files => files.filter((_, idx) => idx !== i))}
                       >
                         <X size={14} />
@@ -1303,7 +1398,7 @@ function CampaignsTab() {
               )}
             </div>
           </div>
-          <DialogFooter className="flex-col gap-2 pt-2 sm:flex-col">
+          <DialogFooter className="flex-col gap-2 pt-2 sm:flex-col max-sm:sticky max-sm:bottom-0 max-sm:z-10 max-sm:bg-background max-sm:border-t max-sm:-mx-4 max-sm:px-4 max-sm:py-3">
             <div className="flex justify-center">
               <TestEmailButton subject={bcast.subject} htmlBody={bcast.htmlBody} />
             </div>
@@ -1393,6 +1488,7 @@ function CampaignsTab() {
 
       {/* Campaign detail dialog */}
       <CampaignDetailDialog campaignId={detailCampaignId} onClose={() => setDetailCampaignId(null)} />
+      {confirmDialog}
     </div>
   );
 }
@@ -1405,7 +1501,7 @@ function CampaignDetailDialog({ campaignId, onClose }: { campaignId: number | nu
 
   return (
     <Dialog open={campaignId !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Send size={16} /></span>
@@ -1465,6 +1561,7 @@ function CampaignDetailDialog({ campaignId, onClose }: { campaignId: number | nu
 // ── Templates ──────────────────────────────────────────────────────────────
 
 function TemplatesTab() {
+  const { confirm, confirmDialog } = useConfirm();
   const utils = trpc.useUtils();
   const { data: templates, isLoading } = trpc.emailMarketing.listTemplates.useQuery();
   const { data: categories } = trpc.emailMarketing.listTemplateCategories.useQuery();
@@ -1537,7 +1634,7 @@ function TemplatesTab() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Excluir este template?")) return;
+    if (!(await confirm("Excluir este template?"))) return;
     try {
       await deleteMutation.mutateAsync({ id });
       toast.success("Template excluído");
@@ -1560,7 +1657,7 @@ function TemplatesTab() {
   };
 
   const handleDeleteCat = async (id: number, name: string) => {
-    if (!confirm(`Excluir a aba "${name}"? Os templates dela ficarão sem categoria.`)) return;
+    if (!(await confirm(`Excluir a aba "${name}"? Os templates dela ficarão sem categoria.`))) return;
     try {
       await deleteCatMutation.mutateAsync({ id });
       toast.success("Categoria excluída");
@@ -1609,10 +1706,10 @@ function TemplatesTab() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => setEditingCat({ name: "" })}>
+          <Button size="sm" className="max-md:h-10" variant="outline" onClick={() => setEditingCat({ name: "" })}>
             <Plus size={14} className="mr-1" /> Nova Aba
           </Button>
-          <Button size="sm" variant="ghost" onClick={handleSeedTemplates} disabled={seedMutation.isPending}>
+          <Button size="sm" className="max-md:h-10" variant="ghost" onClick={handleSeedTemplates} disabled={seedMutation.isPending}>
             <Sparkles size={14} className="mr-1" /> Adicionar modelos da marca
           </Button>
         </div>
@@ -1642,14 +1739,14 @@ function TemplatesTab() {
                     {cat.name} ({count})
                   </button>
                   <div className="absolute -top-1 -right-1 flex sm:hidden sm:group-hover:flex gap-0.5">
-                    <button
+                    <button aria-label="Renomear aba"
                       onClick={(e) => { e.stopPropagation(); setEditingCat({ id: cat.id, name: cat.name }); }}
                       className="flex h-7 w-7 items-center justify-center rounded-full bg-white border border-slate-300 shadow-sm text-slate-500 hover:text-blue-700 hover:border-blue-400"
                       title="Renomear"
                     >
                       <Pencil size={10} />
                     </button>
-                    <button
+                    <button aria-label="Excluir aba"
                       onClick={(e) => { e.stopPropagation(); handleDeleteCat(cat.id, cat.name); }}
                       disabled={deleteCatMutation.isPending}
                       className="flex h-7 w-7 items-center justify-center rounded-full bg-white border border-slate-300 shadow-sm text-slate-500 hover:text-red-600 hover:border-red-400 disabled:opacity-50"
@@ -1676,6 +1773,7 @@ function TemplatesTab() {
             <p className="text-sm text-slate-500">Carregando...</p>
           ) : filteredTemplates.length > 0 ? (
             <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <p className="text-xs text-slate-600 px-3 py-1.5 md:hidden sticky left-0">Role para o lado para ver todas as colunas →</p>
               <table className="w-full text-sm min-w-[480px]">
                 <thead className={THEAD_CLASS}>
                   <tr>
@@ -1684,7 +1782,7 @@ function TemplatesTab() {
                     <th className={TH_CLASS}>Assunto</th>
                     {activeTab === 'all' && <th className={TH_CLASS}>Categorias</th>}
                     <th className={TH_CLASS}>Status</th>
-                    <th className={TH_CLASS}>Ações</th>
+                    <th className={`${TH_CLASS} sticky right-0 bg-slate-50`}>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1701,7 +1799,7 @@ function TemplatesTab() {
                               <div className="flex flex-wrap gap-1">
                                 {ids.map(cid => {
                                   const cat = categories?.find(c => c.id === cid);
-                                  return cat ? <Badge key={cid} variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px]">{cat.name}</Badge> : null;
+                                  return cat ? <Badge key={cid} variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">{cat.name}</Badge> : null;
                                 })}
                               </div>
                             ) : <span className="text-slate-300">—</span>}
@@ -1712,12 +1810,12 @@ function TemplatesTab() {
                             {t.active ? "Ativo" : "Inativo"}
                           </Badge>
                         </td>
-                        <td className="px-3 py-2.5">
+                        <td className="px-3 py-2.5 sticky right-0 bg-white">
                           <div className="flex gap-1">
-                            <Button size="sm" variant="outline" onClick={() => setEditing({ id: t.id, categoryIds: ids, slug: t.slug, name: t.name, subject: t.subject, htmlBody: t.htmlBody, active: t.active, attachments: Array.isArray((t as any).attachments) ? (t as any).attachments.map((a: any) => ({ filename: a.filename, content: a.content, size: Math.ceil((a.content?.length ?? 0) * 0.75) })) : [] })}>
+                            <Button aria-label="Editar template" className="max-md:min-h-10 max-md:min-w-10" size="sm" variant="outline" onClick={() => setEditing({ id: t.id, categoryIds: ids, slug: t.slug, name: t.name, subject: t.subject, htmlBody: t.htmlBody, active: t.active, attachments: Array.isArray((t as any).attachments) ? (t as any).attachments.map((a: any) => ({ filename: a.filename, content: a.content, size: Math.ceil((a.content?.length ?? 0) * 0.75) })) : [] })}>
                               <Pencil size={14} />
                             </Button>
-                            <Button size="sm" variant="destructive" onClick={() => handleDelete(t.id)} disabled={deleteMutation.isPending}>
+                            <Button aria-label="Excluir template" className="max-md:min-h-10 max-md:min-w-10" size="sm" variant="destructive" onClick={() => handleDelete(t.id)} disabled={deleteMutation.isPending}>
                               <Trash2 size={14} />
                             </Button>
                           </div>
@@ -1736,7 +1834,7 @@ function TemplatesTab() {
 
       {/* Template edit dialog */}
       <Dialog open={editing !== null} onOpenChange={(open) => { if (!open) setEditing(null); }}>
-        <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl w-[95vw] max-h-[90dvh] overflow-y-auto max-sm:p-4">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><LayoutTemplate size={16} /></span>
@@ -1821,9 +1919,9 @@ function TemplatesTab() {
                         <FileText size={14} className="flex-shrink-0 text-blue-700" />
                         <span className="flex-1 truncate text-slate-700">{f.filename}</span>
                         <span className="text-xs text-slate-400">{(f.size / 1024).toFixed(0)} KB</span>
-                        <button
+                        <button aria-label="Remover anexo"
                           type="button"
-                          className="text-slate-400 hover:text-red-600 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center"
+                          className="text-slate-400 hover:text-red-600 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center max-md:min-h-10 max-md:min-w-10"
                           onClick={() => setEditing(e => e && ({ ...e, attachments: e.attachments?.filter((_, idx) => idx !== i) }))}
                         >
                           <X size={14} />
@@ -1838,7 +1936,7 @@ function TemplatesTab() {
               </div>
             </div>
           )}
-          <DialogFooter className="flex-col gap-2 pt-2 sm:flex-col">
+          <DialogFooter className="flex-col gap-2 pt-2 sm:flex-col max-sm:sticky max-sm:bottom-0 max-sm:z-10 max-sm:bg-background max-sm:border-t max-sm:-mx-4 max-sm:px-4 max-sm:py-3">
             {editing && (
               <div className="flex justify-center">
                 <TestEmailButton subject={editing.subject} htmlBody={editing.htmlBody} />
@@ -1878,6 +1976,7 @@ function TemplatesTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }
@@ -1885,8 +1984,9 @@ function TemplatesTab() {
 // ── Sequências ─────────────────────────────────────────────────────────────
 
 function SequencesTab() {
+  const { confirm, confirmDialog } = useConfirm();
   const utils = trpc.useUtils();
-  const { data: sequences, isLoading } = trpc.emailMarketing.listSequences.useQuery();
+  const { data: sequences, isLoading, isError, refetch, isFetching } = trpc.emailMarketing.listSequences.useQuery();
   const upsertMutation = trpc.emailMarketing.upsertSequence.useMutation();
   const deleteMutation = trpc.emailMarketing.deleteSequence.useMutation();
 
@@ -1963,7 +2063,7 @@ function SequencesTab() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Excluir esta sequência e todos os seus passos?")) return;
+    if (!(await confirm("Excluir esta sequência e todos os seus passos?"))) return;
     try {
       await deleteMutation.mutateAsync({ id });
       toast.success("Sequência excluída");
@@ -1989,9 +2089,12 @@ function SequencesTab() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p className="text-sm text-slate-500">Carregando...</p>
+            <ListSkeleton />
+          ) : isError ? (
+            <QueryError onRetry={() => refetch()} retrying={isFetching} message="Falha ao carregar as sequências" />
           ) : sequences && sequences.length > 0 ? (
             <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <p className="text-xs text-slate-600 px-3 py-1.5 md:hidden sticky left-0">Role para o lado para ver todas as colunas →</p>
               <table className="w-full text-sm min-w-[640px]">
                 <thead className={THEAD_CLASS}>
                   <tr>
@@ -1999,7 +2102,7 @@ function SequencesTab() {
                     <th className={TH_CLASS}>Status</th>
                     <th className={TH_CLASS}>Inscritos ativos</th>
                     <th className={TH_CLASS}>Passos</th>
-                    <th className={TH_CLASS}>Ações</th>
+                    <th className={`${TH_CLASS} sticky right-0 bg-slate-50`}>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2024,15 +2127,15 @@ function SequencesTab() {
                         <Badge variant="outline" className="bg-blue-50 text-blue-900 border-blue-200">{s.activeEnrollments}</Badge>
                       </td>
                       <td className="px-3 py-2.5">{s.stepCount}</td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-3 py-2.5 sticky right-0 bg-white">
                         <div className="flex gap-1 flex-wrap">
-                          <Button size="sm" variant="outline" onClick={() => setDetailSequenceId(s.id)}>
+                          <Button size="sm" className="max-md:h-10" variant="outline" onClick={() => setDetailSequenceId(s.id)}>
                             <Eye size={14} className="mr-1" /> Ver
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => handleEdit(s)}>
+                          <Button aria-label="Editar sequência" className="max-md:min-h-10 max-md:min-w-10" size="sm" variant="outline" onClick={() => handleEdit(s)}>
                             <Pencil size={14} />
                           </Button>
-                          <Button size="sm" variant="destructive" onClick={() => handleDelete(s.id)} disabled={deleteMutation.isPending}>
+                          <Button aria-label="Excluir sequência" className="max-md:min-h-10 max-md:min-w-10" size="sm" variant="destructive" onClick={() => handleDelete(s.id)} disabled={deleteMutation.isPending}>
                             <Trash2 size={14} />
                           </Button>
                         </div>
@@ -2136,11 +2239,13 @@ function SequencesTab() {
 
       {/* Sequence detail dialog */}
       <SequenceDetailDialog sequenceId={detailSequenceId} onClose={() => setDetailSequenceId(null)} />
+      {confirmDialog}
     </div>
   );
 }
 
 function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | null; onClose: () => void }) {
+  const { confirm, confirmDialog } = useConfirm();
   const utils = trpc.useUtils();
   const { data: sequences } = trpc.emailMarketing.listSequences.useQuery(undefined, { enabled: sequenceId !== null });
   const sequence = sequences?.find(s => s.id === sequenceId);
@@ -2220,7 +2325,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
   };
 
   const handleDeleteStep = async (id: number) => {
-    if (!confirm("Excluir este passo?")) return;
+    if (!(await confirm("Excluir este passo?"))) return;
     try {
       await deleteStepMutation.mutateAsync({ id });
       toast.success("Passo excluído");
@@ -2231,6 +2336,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
   };
 
   const handleEnrollmentAction = async (id: number, action: "pause" | "resume" | "cancel") => {
+    if (action === "cancel" && !(await confirm("Cancelar esta inscrição? O contato deixa de receber os próximos passos da sequência."))) return;
     try {
       if (action === "pause") await pauseMutation.mutateAsync({ id });
       else if (action === "resume") await resumeMutation.mutateAsync({ id });
@@ -2246,7 +2352,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
 
   return (
     <Dialog open={sequenceId !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-6xl w-[95vw] max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Workflow size={16} /></span>
@@ -2264,7 +2370,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
               </h3>
               <Button
                 size="sm"
-                className="bg-blue-900 hover:bg-blue-800"
+                className="bg-blue-900 hover:bg-blue-800 max-md:h-10"
                 onClick={() => setEditingStep({ stepOrder: (steps?.length ?? 0) + 1, delayDays: 0, subject: "", htmlBody: "", sendCondition: "always", retryIfNotOpened: false, retryDelayHours: 24, maxRetries: 1, retrySubject: "" })}
               >
                 <Plus size={14} className="mr-1" /> Adicionar passo
@@ -2311,14 +2417,14 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                             )}
                           </div>
                           <div className="flex gap-1 flex-shrink-0">
-                            <Button size="sm" variant="outline" onClick={() => {
+                            <Button aria-label="Editar passo" className="max-md:min-h-10 max-md:min-w-10" size="sm" variant="outline" onClick={() => {
                               const prevStep = steps?.filter(s => s.stepOrder < step.stepOrder).sort((a, b) => b.stepOrder - a.stepOrder)[0];
                               const relativeDelay = prevStep ? step.delayDays - prevStep.delayDays : step.delayDays;
                               setEditingStep({ id: step.id, stepOrder: step.stepOrder, delayDays: Math.max(0, relativeDelay), subject: step.subject, htmlBody: step.htmlBody, sendCondition: (step as any).sendCondition ?? 'always', retryIfNotOpened: (step as any).retryIfNotOpened ?? false, retryDelayHours: (step as any).retryDelayHours ?? 24, maxRetries: (step as any).maxRetries ?? 1, retrySubject: (step as any).retrySubject ?? '' });
                             }}>
                               <Pencil size={14} />
                             </Button>
-                            <Button size="sm" variant="destructive" onClick={() => handleDeleteStep(step.id)} disabled={deleteStepMutation.isPending}>
+                            <Button aria-label="Excluir passo" className="max-md:min-h-10 max-md:min-w-10" size="sm" variant="destructive" onClick={() => handleDeleteStep(step.id)} disabled={deleteStepMutation.isPending}>
                               <Trash2 size={14} />
                             </Button>
                           </div>
@@ -2350,13 +2456,14 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                     <SelectItem value="cancelled">Cancelada</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button size="sm" className="bg-blue-900 hover:bg-blue-800" onClick={() => setShowEnroll(true)}>
+                <Button size="sm" className="bg-blue-900 hover:bg-blue-800 max-md:h-10" onClick={() => setShowEnroll(true)}>
                   <Users size={14} className="mr-1" /> Inscrever leads
                 </Button>
               </div>
             </div>
             {enrollments && enrollments.rows.length > 0 ? (
               <div className="overflow-x-auto max-h-72 rounded-xl border border-slate-200">
+                <p className="text-xs text-slate-600 px-3 py-1.5 md:hidden sticky left-0">Role para o lado para ver todas as colunas →</p>
                 <table className="w-full text-sm min-w-[560px]">
                   <thead className={`${THEAD_CLASS} sticky top-0`}>
                     <tr>
@@ -2365,7 +2472,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                       <th className={TH_CLASS}>Passo</th>
                       <th className={TH_CLASS}>Próximo envio</th>
                       <th className={TH_CLASS}>Status</th>
-                      <th className={TH_CLASS}>Ações</th>
+                      <th className={`${TH_CLASS} sticky right-0 bg-slate-50`}>Ações</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2380,20 +2487,20 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                             {ENROLLMENT_STATUS_LABELS[e.status] ?? e.status}
                           </Badge>
                         </td>
-                        <td className="px-3 py-2.5">
+                        <td className="px-3 py-2.5 sticky right-0 bg-white">
                           <div className="flex gap-1">
                             {e.status === "active" && (
-                              <Button size="sm" variant="outline" onClick={() => handleEnrollmentAction(e.id, "pause")} title="Pausar">
+                              <Button aria-label="Pausar inscrição" className="max-md:min-h-10 max-md:min-w-10" size="sm" variant="outline" onClick={() => handleEnrollmentAction(e.id, "pause")} title="Pausar">
                                 <Pause size={14} />
                               </Button>
                             )}
                             {e.status === "paused" && (
-                              <Button size="sm" variant="outline" onClick={() => handleEnrollmentAction(e.id, "resume")} title="Retomar">
+                              <Button aria-label="Retomar inscrição" className="max-md:min-h-10 max-md:min-w-10" size="sm" variant="outline" onClick={() => handleEnrollmentAction(e.id, "resume")} title="Retomar">
                                 <Play size={14} />
                               </Button>
                             )}
                             {(e.status === "active" || e.status === "paused") && (
-                              <Button size="sm" variant="destructive" onClick={() => handleEnrollmentAction(e.id, "cancel")} title="Cancelar">
+                              <Button aria-label="Cancelar inscrição" className="max-md:min-h-10 max-md:min-w-10" size="sm" variant="destructive" onClick={() => handleEnrollmentAction(e.id, "cancel")} title="Cancelar">
                                 <X size={14} />
                               </Button>
                             )}
@@ -2405,9 +2512,9 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                 </table>
                 {enrollments.total > PAGE_SIZE && (
                   <div className="flex items-center justify-between px-3 py-2 text-xs text-gray-500 border-t border-slate-200 bg-slate-50">
-                    <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>Anterior</Button>
+                    <Button size="sm" className="max-md:h-10" variant="outline" disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>Anterior</Button>
                     <span>Página {page + 1} de {Math.ceil(enrollments.total / PAGE_SIZE)}</span>
-                    <Button size="sm" variant="outline" disabled={(page + 1) * PAGE_SIZE >= enrollments.total} onClick={() => setPage(p => p + 1)}>Próxima</Button>
+                    <Button size="sm" className="max-md:h-10" variant="outline" disabled={(page + 1) * PAGE_SIZE >= enrollments.total} onClick={() => setPage(p => p + 1)}>Próxima</Button>
                   </div>
                 )}
               </div>
@@ -2419,7 +2526,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
 
         {/* Step editor dialog */}
         <Dialog open={editingStep !== null} onOpenChange={(open) => { if (!open) setEditingStep(null); }}>
-          <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-6xl w-[95vw] max-h-[90dvh] overflow-y-auto max-sm:p-4">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900">{editingStep?.id ? <Pencil size={16} /> : <Plus size={16} />}</span>
@@ -2537,7 +2644,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
                 </div>
               </div>
             )}
-            <DialogFooter className="flex gap-2 pt-2">
+            <DialogFooter className="flex gap-2 pt-2 max-sm:sticky max-sm:bottom-0 max-sm:z-10 max-sm:bg-background max-sm:border-t max-sm:-mx-4 max-sm:px-4 max-sm:py-3">
               <Button className="flex-1 bg-blue-900 hover:bg-blue-800" onClick={handleSaveStep} disabled={upsertStepMutation.isPending}>
                 {upsertStepMutation.isPending ? "Salvando..." : "Salvar"}
               </Button>
@@ -2559,6 +2666,7 @@ function SequenceDetailDialog({ sequenceId, onClose }: { sequenceId: number | nu
           />
         )}
       </DialogContent>
+      {confirmDialog}
     </Dialog>
   );
 }
@@ -2608,7 +2716,7 @@ function EnrollLeadsDialog({ sequenceId, open, onClose, onEnrolled }: { sequence
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-lg max-h-[80dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900"><Users size={16} /></span>
@@ -2658,6 +2766,7 @@ function EnrollLeadsDialog({ sequenceId, open, onClose, onEnrolled }: { sequence
 // ── Automações ─────────────────────────────────────────────────────────────
 
 function AutomationsTab() {
+  const { confirm, confirmDialog } = useConfirm();
   const utils = trpc.useUtils();
   const { data: rules, isLoading } = trpc.emailMarketing.listAutomationRules.useQuery();
   const { data: sequences } = trpc.emailMarketing.listSequences.useQuery();
@@ -2767,7 +2876,7 @@ function AutomationsTab() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Excluir esta automação?")) return;
+    if (!(await confirm("Excluir esta automação?"))) return;
     try {
       await deleteMutation.mutateAsync({ id });
       toast.success("Automação excluída");
@@ -2818,6 +2927,7 @@ function AutomationsTab() {
             <p className="text-sm text-slate-500">Carregando...</p>
           ) : parsedRules.length > 0 ? (
             <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <p className="text-xs text-slate-600 px-3 py-1.5 md:hidden sticky left-0">Role para o lado para ver todas as colunas →</p>
               <table className="w-full text-sm min-w-[640px]">
                 <thead className={THEAD_CLASS}>
                   <tr>
@@ -2825,7 +2935,7 @@ function AutomationsTab() {
                     <th className={TH_CLASS}>Gatilho</th>
                     <th className={TH_CLASS}>Ação</th>
                     <th className={TH_CLASS}>Ativa</th>
-                    <th className={TH_CLASS}>Ações</th>
+                    <th className={`${TH_CLASS} sticky right-0 bg-slate-50`}>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2845,12 +2955,12 @@ function AutomationsTab() {
                       <td className="px-3 py-2.5">
                         <Switch checked={r.active} onCheckedChange={(checked) => handleToggleActive(r, checked)} />
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-3 py-2.5 sticky right-0 bg-white">
                         <div className="flex gap-1">
-                          <Button size="sm" variant="outline" onClick={() => openEdit(r)}>
+                          <Button aria-label="Editar automação" className="max-md:min-h-10 max-md:min-w-10" size="sm" variant="outline" onClick={() => openEdit(r)}>
                             <Pencil size={14} />
                           </Button>
-                          <Button size="sm" variant="destructive" onClick={() => handleDelete(r.id)} disabled={deleteMutation.isPending}>
+                          <Button aria-label="Excluir automação" className="max-md:min-h-10 max-md:min-w-10" size="sm" variant="destructive" onClick={() => handleDelete(r.id)} disabled={deleteMutation.isPending}>
                             <Trash2 size={14} />
                           </Button>
                         </div>
@@ -3015,6 +3125,7 @@ function AutomationsTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }
@@ -3027,6 +3138,7 @@ const TAG_COLOR_PRESETS = [
 ];
 
 function TagsTab() {
+  const { confirm, confirmDialog } = useConfirm();
   const utils = trpc.useUtils();
   const { data: tagList, isLoading } = trpc.tags.list.useQuery();
 
@@ -3119,7 +3231,7 @@ function TagsTab() {
                 />
               ))}
             </div>
-            <Button size="sm" className="bg-blue-900 hover:bg-blue-800 shadow-sm gap-1.5" onClick={handleCreate} disabled={!newName.trim() || createMutation.isPending}>
+            <Button size="sm" className="bg-blue-900 hover:bg-blue-800 shadow-sm gap-1.5 max-md:h-10" onClick={handleCreate} disabled={!newName.trim() || createMutation.isPending}>
               <Plus size={14} /> Adicionar
             </Button>
           </div>
@@ -3151,14 +3263,14 @@ function TagsTab() {
                         className="flex-1 h-8"
                         autoFocus
                       />
-                      <Button size="sm" className="bg-blue-900 hover:bg-blue-800 shadow-sm" onClick={saveEdit} disabled={!editName.trim() || updateMutation.isPending}>Salvar</Button>
-                      <Button size="sm" variant="outline" onClick={() => setEditingId(null)}>Cancelar</Button>
+                      <Button size="sm" className="bg-blue-900 hover:bg-blue-800 shadow-sm max-md:h-10" onClick={saveEdit} disabled={!editName.trim() || updateMutation.isPending}>Salvar</Button>
+                      <Button size="sm" className="max-md:h-10" variant="outline" onClick={() => setEditingId(null)}>Cancelar</Button>
                     </>
                   ) : (
                     <>
                       <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: tag.color }} />
                       <span className="flex-1 text-sm font-medium text-slate-700">{tag.name}</span>
-                      <button
+                      <button aria-label="Renomear tag"
                         type="button"
                         onClick={() => startEdit(tag)}
                         className="p-1.5 -m-2 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-md text-slate-400 hover:text-blue-700 hover:bg-blue-50 sm:opacity-0 sm:group-hover:opacity-100 transition"
@@ -3166,9 +3278,9 @@ function TagsTab() {
                       >
                         <Pencil size={14} />
                       </button>
-                      <button
+                      <button aria-label="Excluir tag"
                         type="button"
-                        onClick={() => { if (confirm(`Excluir a tag "${tag.name}"? Ela será removida de todas as tarefas.`)) deleteMutation.mutate({ id: tag.id }); }}
+                        onClick={async () => { if (await confirm(`Excluir a tag "${tag.name}"? Ela será removida de todas as tarefas.`)) deleteMutation.mutate({ id: tag.id }); }}
                         className="p-1.5 -m-2 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 sm:opacity-0 sm:group-hover:opacity-100 transition"
                         title="Excluir"
                       >
@@ -3184,6 +3296,7 @@ function TagsTab() {
           )}
         </CardContent>
       </Card>
+      {confirmDialog}
     </div>
   );
 }
@@ -3257,7 +3370,36 @@ function parseCSVContacts(text: string): { rows: { email: string; name?: string;
   return { rows, skipped };
 }
 
+// Ações de um contato de marketing: ícones na tabela (md+), ícone + texto nos cartões (celular).
+function ContactActions({ c, onEdit, onUnsub, onDelete, withLabels = false }: {
+  c: { id: number; email: string; status: string };
+  onEdit: (c: any) => void;
+  onUnsub: (c: { id: number; email: string }) => void;
+  onDelete: (c: { id: number; email: string }) => void;
+  withLabels?: boolean;
+}) {
+  const base = withLabels
+    ? "inline-flex items-center justify-center gap-1.5 min-h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium"
+    : "p-1.5 -m-1.5 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-md text-slate-400 transition";
+  return (
+    <div className={withLabels ? "flex gap-2 flex-wrap" : "flex gap-1"}>
+      <button type="button" onClick={() => onEdit(c)} aria-label="Editar contato" title="Editar" className={`${base} ${withLabels ? "text-blue-800" : "hover:text-blue-700 hover:bg-blue-50"}`}>
+        <Pencil size={14} />{withLabels && "Editar"}
+      </button>
+      {c.status === 'active' && (
+        <button type="button" onClick={() => onUnsub(c)} aria-label="Descadastrar contato" title="Descadastrar" className={`${base} ${withLabels ? "text-orange-700" : "hover:text-orange-600 hover:bg-orange-50"}`}>
+          <MailX size={14} />{withLabels && "Descadastrar"}
+        </button>
+      )}
+      <button type="button" onClick={() => onDelete(c)} aria-label="Excluir contato" title="Excluir" className={`${base} ${withLabels ? "text-red-700" : "hover:text-red-600 hover:bg-red-50"}`}>
+        <Trash2 size={14} />{withLabels && "Excluir"}
+      </button>
+    </div>
+  );
+}
+
 function MarketingContactsSection() {
+  const { confirm, confirmDialog } = useConfirm();
   const utils = trpc.useUtils();
   const { data: stats } = trpc.emailMarketing.marketingContactStats.useQuery();
   const { data: sequences } = trpc.emailMarketing.listSequences.useQuery();
@@ -3277,7 +3419,7 @@ function MarketingContactsSection() {
     setSearchTimer(setTimeout(() => { setDebouncedSearch(v); setPage(0); }, 350));
   };
 
-  const { data: contactsData, isLoading } = trpc.emailMarketing.listMarketingContacts.useQuery({
+  const { data: contactsData, isLoading, isError, refetch, isFetching } = trpc.emailMarketing.listMarketingContacts.useQuery({
     search: debouncedSearch || undefined,
     listId: activeListId !== "all" ? activeListId : undefined,
     status: statusFilter,
@@ -3402,9 +3544,27 @@ function MarketingContactsSection() {
     else setSelectedIds(new Set(contactsData.contacts.map(c => c.id)));
   };
 
+  const handleUnsubContact = async (c: { id: number; email: string }) => {
+    if (!(await confirm(`Descadastrar "${c.email}"?`))) return;
+    try {
+      await unsubMutation.mutateAsync({ id: c.id });
+      toast.success("Contato descadastrado");
+      invalidateAll();
+    } catch (e: any) { toast.error(e?.message ?? "Erro"); }
+  };
+
+  const handleDeleteContact = async (c: { id: number; email: string }) => {
+    if (!(await confirm(`Excluir "${c.email}"?`))) return;
+    try {
+      await deleteMutation.mutateAsync({ ids: [c.id] });
+      toast.success("Contato excluído");
+      invalidateAll();
+    } catch (e: any) { toast.error(e?.message ?? "Erro"); }
+  };
+
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
-    if (!confirm(`Excluir ${selectedIds.size} contato(s)?`)) return;
+    if (!(await confirm(`Excluir ${selectedIds.size} contato(s)?`))) return;
     try {
       await deleteMutation.mutateAsync({ ids: Array.from(selectedIds) });
       toast.success(`${selectedIds.size} contato(s) excluído(s)`);
@@ -3489,7 +3649,7 @@ function MarketingContactsSection() {
   };
 
   const handleDeleteList = async (listId: number) => {
-    if (!confirm("Excluir esta lista? Os contatos não serão excluídos, apenas desvinculados.")) return;
+    if (!(await confirm("Excluir esta lista? Os contatos não serão excluídos, apenas desvinculados."))) return;
     try {
       await deleteListMutation.mutateAsync({ id: listId });
       if (activeListId === listId) setActiveListId("all");
@@ -3557,7 +3717,7 @@ function MarketingContactsSection() {
                     <span className="truncate pr-1">{list.name}</span>
                     <span className={`text-xs flex-shrink-0 ${activeListId === list.id ? "text-blue-200" : "text-slate-400"}`}>{list.contactCount}</span>
                   </button>
-                  <button
+                  <button aria-label="Excluir lista"
                     type="button"
                     onClick={() => handleDeleteList(list.id)}
                     className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded text-slate-300 hover:text-red-500 hover:bg-red-50 sm:opacity-0 sm:group-hover:opacity-100 transition"
@@ -3593,7 +3753,7 @@ function MarketingContactsSection() {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="gap-1.5 text-xs"
+                      className="gap-1.5 text-xs max-md:h-10"
                       onClick={() => { setRenameListName(activeListObj?.name ?? ""); setShowRenameList(true); }}
                     >
                       <Pencil size={12} /> Renomear
@@ -3601,7 +3761,7 @@ function MarketingContactsSection() {
                   )}
                   <Button
                     size="sm"
-                    className="bg-blue-900 hover:bg-blue-800 shadow-sm gap-1.5"
+                    className="bg-blue-900 hover:bg-blue-800 shadow-sm gap-1.5 max-md:h-10"
                     onClick={() => setShowImport(true)}
                   >
                     <Upload size={14} /> Importar CSV
@@ -3637,23 +3797,23 @@ function MarketingContactsSection() {
               {selectedIds.size > 0 && (
                 <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 p-2.5 text-sm text-blue-900 flex-wrap">
                   <span className="font-medium">{selectedIds.size} selecionado(s)</span>
-                  <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={handleBulkDelete} disabled={deleteMutation.isPending}>
+                  <Button size="sm" variant="outline" className="gap-1 text-xs max-md:h-10" onClick={handleBulkDelete} disabled={deleteMutation.isPending}>
                     <Trash2 size={12} /> Excluir
                   </Button>
-                  <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => setShowBulkTag(true)}>
+                  <Button size="sm" variant="outline" className="gap-1 text-xs max-md:h-10" onClick={() => setShowBulkTag(true)}>
                     <Tag size={12} /> Add tag
                   </Button>
                   {lists && lists.length > 0 && (
-                    <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => setShowMoveList(true)}>
+                    <Button size="sm" variant="outline" className="gap-1 text-xs max-md:h-10" onClick={() => setShowMoveList(true)}>
                       <ArrowRightLeft size={12} /> Mover p/ lista
                     </Button>
                   )}
                   {activeSequences.length > 0 && (
-                    <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => setShowEnroll(true)}>
+                    <Button size="sm" variant="outline" className="gap-1 text-xs max-md:h-10" onClick={() => setShowEnroll(true)}>
                       <Workflow size={12} /> Inscrever em sequência
                     </Button>
                   )}
-                  <button type="button" onClick={() => setSelectedIds(new Set())} className="ml-auto p-1 text-slate-400 hover:text-slate-600">
+                  <button aria-label="Limpar seleção" type="button" onClick={() => setSelectedIds(new Set())} className="ml-auto p-1 text-slate-400 hover:text-slate-600 max-md:min-h-10 max-md:min-w-10">
                     <X size={14} />
                   </button>
                 </div>
@@ -3661,10 +3821,35 @@ function MarketingContactsSection() {
 
               {/* Table */}
               {isLoading ? (
-                <p className="text-sm text-slate-500">Carregando...</p>
+                <ListSkeleton />
+              ) : isError ? (
+                <QueryError onRetry={() => refetch()} retrying={isFetching} message="Falha ao carregar os contatos" />
               ) : contactsData && contactsData.contacts.length > 0 ? (
                 <>
-                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  {/* Celular: cartões com as ações à vista */}
+                  <ul className="space-y-3 md:hidden">
+                    {contactsData.contacts.map((c) => (
+                      <li key={c.id} className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            className="mt-1"
+                            aria-label={`Selecionar ${c.email}`}
+                            checked={selectedIds.has(c.id)}
+                            onCheckedChange={() => toggleId(c.id)}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-slate-700 break-all">{c.email}</p>
+                            <p className="text-xs text-slate-600 break-words">{[c.name, c.company].filter(Boolean).join(" · ") || "--"}</p>
+                          </div>
+                          <Badge variant="outline" className={c.status === 'active' ? "bg-emerald-50 text-emerald-700 border-emerald-200 shrink-0" : "bg-red-50 text-red-600 border-red-200 shrink-0"}>
+                            {c.status === 'active' ? 'Ativo' : 'Descadastrado'}
+                          </Badge>
+                        </div>
+                        <ContactActions c={c} onEdit={openEdit} onUnsub={handleUnsubContact} onDelete={handleDeleteContact} withLabels />
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200">
                     <table className="w-full text-sm min-w-[600px]">
                       <thead className={THEAD_CLASS}>
                         <tr>
@@ -3699,43 +3884,7 @@ function MarketingContactsSection() {
                               </Badge>
                             </td>
                             <td className="px-3 py-2.5">
-                              <div className="flex gap-1">
-                                <button type="button" onClick={() => openEdit(c)} className="p-1.5 -m-1.5 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-md text-slate-400 hover:text-blue-700 hover:bg-blue-50 transition" title="Editar">
-                                  <Pencil size={14} />
-                                </button>
-                                {c.status === 'active' && (
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      if (!confirm(`Descadastrar "${c.email}"?`)) return;
-                                      try {
-                                        await unsubMutation.mutateAsync({ id: c.id });
-                                        toast.success("Contato descadastrado");
-                                        invalidateAll();
-                                      } catch (e: any) { toast.error(e?.message ?? "Erro"); }
-                                    }}
-                                    className="p-1.5 -m-1.5 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-md text-slate-400 hover:text-orange-600 hover:bg-orange-50 transition"
-                                    title="Descadastrar"
-                                  >
-                                    <MailX size={14} />
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    if (!confirm(`Excluir "${c.email}"?`)) return;
-                                    try {
-                                      await deleteMutation.mutateAsync({ ids: [c.id] });
-                                      toast.success("Contato excluído");
-                                      invalidateAll();
-                                    } catch (e: any) { toast.error(e?.message ?? "Erro"); }
-                                  }}
-                                  className="p-1.5 -m-1.5 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
-                                  title="Excluir"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
+                              <ContactActions c={c} onEdit={openEdit} onUnsub={handleUnsubContact} onDelete={handleDeleteContact} />
                             </td>
                           </tr>
                         ))}
@@ -3745,13 +3894,13 @@ function MarketingContactsSection() {
 
                   {totalPages > 1 && (
                     <div className="flex items-center justify-between text-xs text-slate-500">
-                      <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>
+                      <Button size="sm" className="max-md:h-10" variant="outline" disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>
                         Anterior
                       </Button>
                       <span>
                         Página {page + 1} de {totalPages} ({contactsData.total} contato{contactsData.total === 1 ? "" : "s"})
                       </span>
-                      <Button size="sm" variant="outline" disabled={page + 1 >= totalPages} onClick={() => setPage(p => p + 1)}>
+                      <Button size="sm" className="max-md:h-10" variant="outline" disabled={page + 1 >= totalPages} onClick={() => setPage(p => p + 1)}>
                         Próxima
                       </Button>
                     </div>
@@ -3993,6 +4142,7 @@ function MarketingContactsSection() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }
@@ -4213,6 +4363,7 @@ function ContactsTab() {
 }
 
 function ConfirmedContactsSection() {
+  const { confirm, confirmDialog } = useConfirm();
   const utils = trpc.useUtils();
   const { data: stats } = trpc.emailMarketing.contactStats.useQuery();
   const { data: sellers } = trpc.sellers.list.useQuery();
@@ -4266,7 +4417,7 @@ function ConfirmedContactsSection() {
   });
 
   const handleRemoveSuppression = async (email: string) => {
-    if (!confirm(`Reativar o e-mail "${email}"? Ele voltará a receber disparos.`)) return;
+    if (!(await confirm(`Reativar o e-mail "${email}"? Ele voltará a receber disparos.`))) return;
     try {
       await removeSuppMutation.mutateAsync({ email });
       toast.success("E-mail reativado com sucesso");
@@ -4303,7 +4454,7 @@ function ConfirmedContactsSection() {
             <Button
               variant="outline"
               size="sm"
-              className="border-red-200 text-red-600 hover:bg-red-50 shadow-sm"
+              className="border-red-200 text-red-600 hover:bg-red-50 shadow-sm max-md:h-10"
               onClick={() => setShowAddSupp(true)}
             >
               <MailX size={14} className="mr-1" /> Descadastrar
@@ -4381,6 +4532,7 @@ function ConfirmedContactsSection() {
           ) : contactsData && contactsData.contacts.length > 0 ? (
             <>
               <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <p className="text-xs text-slate-600 px-3 py-1.5 md:hidden sticky left-0">Role para o lado para ver todas as colunas →</p>
                 <table className="w-full text-sm min-w-[600px]">
                   <thead className={THEAD_CLASS}>
                     <tr>
@@ -4389,7 +4541,7 @@ function ConfirmedContactsSection() {
                       <th className={TH_CLASS}>Origem</th>
                       <th className={TH_CLASS}>Status</th>
                       <th className={TH_CLASS}>Atendente</th>
-                      <th className={TH_CLASS}>Ações</th>
+                      <th className={`${TH_CLASS} sticky right-0 bg-slate-50`}>Ações</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -4414,12 +4566,12 @@ function ConfirmedContactsSection() {
                           )}
                         </td>
                         <td className="px-3 py-2.5 text-xs text-slate-500">{c.assignedTo ?? "--"}</td>
-                        <td className="px-3 py-2.5">
+                        <td className="px-3 py-2.5 sticky right-0 bg-white">
                           {c.suppressionReason && (
                             <Button
                               size="sm"
                               variant="outline"
-                              className="gap-1 text-xs"
+                              className="gap-1 text-xs max-md:h-10"
                               onClick={() => handleRemoveSuppression(c.email)}
                               disabled={removeSuppMutation.isPending}
                               title="Reativar contato"
@@ -4436,13 +4588,13 @@ function ConfirmedContactsSection() {
 
               {totalPages > 1 && (
                 <div className="flex items-center justify-between text-xs text-slate-500">
-                  <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>
+                  <Button size="sm" className="max-md:h-10" variant="outline" disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>
                     Anterior
                   </Button>
                   <span>
                     Página {page + 1} de {totalPages} ({contactsData.total} contato{contactsData.total === 1 ? "" : "s"})
                   </span>
-                  <Button size="sm" variant="outline" disabled={page + 1 >= totalPages} onClick={() => setPage(p => p + 1)}>
+                  <Button size="sm" className="max-md:h-10" variant="outline" disabled={page + 1 >= totalPages} onClick={() => setPage(p => p + 1)}>
                     Próxima
                   </Button>
                 </div>
@@ -4488,6 +4640,7 @@ function ConfirmedContactsSection() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }
@@ -4883,8 +5036,8 @@ function UsageTab() {
           <CardTitle className="flex items-center gap-2 text-blue-900 text-base">
             <AlertTriangle size={18} className={monthlyPct > 80 ? 'text-red-600' : monthlyPct > 60 ? 'text-amber-600' : 'text-blue-700'} />
             Limites dos planos gratuitos
-            {monthlyPct > 80 && <Badge className="bg-red-600 text-white border-0 text-[10px]">ATENÇÃO</Badge>}
-            {monthlyPct > 60 && monthlyPct <= 80 && <Badge className="bg-amber-500 text-white border-0 text-[10px]">CUIDADO</Badge>}
+            {monthlyPct > 80 && <Badge className="bg-red-600 text-white border-0 text-xs">ATENÇÃO</Badge>}
+            {monthlyPct > 60 && monthlyPct <= 80 && <Badge className="bg-amber-700 text-white border-0 text-xs">CUIDADO</Badge>}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -4904,8 +5057,8 @@ function UsageTab() {
                 <div className="rounded-xl bg-white border border-slate-200 p-4 space-y-3">
                   <div className="flex items-center gap-2">
                     <Badge className="bg-slate-900 text-white hover:bg-slate-800 border-0">Resend</Badge>
-                    <Badge variant="outline" className="text-[9px] py-0 px-1.5 text-blue-700 border-blue-300">FREE</Badge>
-                    <span className="text-[10px] text-slate-400 ml-auto">{resendAccounts.length} conta{resendAccounts.length > 1 ? 's' : ''}</span>
+                    <Badge variant="outline" className="text-xs py-0 px-1.5 text-blue-700 border-blue-300">FREE</Badge>
+                    <span className="text-xs text-slate-600 ml-auto">{resendAccounts.length} conta{resendAccounts.length > 1 ? 's' : ''}</span>
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-1">
@@ -4929,7 +5082,7 @@ function UsageTab() {
                       <div className={`h-full rounded-full transition-all ${barColor(resendMonthlyPct)}`} style={{ width: `${Math.min(100, resendMonthlyPct)}%` }} />
                     </div>
                   </div>
-                  <p className="text-[10px] text-slate-400">Limite free: {fmt(resendFreeLimits.daily)}/dia &middot; {fmt(resendFreeLimits.monthly)}/mês por conta</p>
+                  <p className="text-xs text-slate-600">Limite free: {fmt(resendFreeLimits.daily)}/dia &middot; {fmt(resendFreeLimits.monthly)}/mês por conta</p>
                 </div>
               );
             })()}
@@ -4943,8 +5096,8 @@ function UsageTab() {
                 <div className="rounded-xl bg-white border border-slate-200 p-4 space-y-3">
                   <div className="flex items-center gap-2">
                     <Badge className="bg-emerald-600 text-white hover:bg-emerald-700 border-0">Brevo</Badge>
-                    <Badge variant="outline" className="text-[9px] py-0 px-1.5 text-blue-700 border-blue-300">FREE</Badge>
-                    <span className="text-[10px] text-slate-400 ml-auto">{brevoAccounts.length} conta{brevoAccounts.length > 1 ? 's' : ''}</span>
+                    <Badge variant="outline" className="text-xs py-0 px-1.5 text-blue-700 border-blue-300">FREE</Badge>
+                    <span className="text-xs text-slate-600 ml-auto">{brevoAccounts.length} conta{brevoAccounts.length > 1 ? 's' : ''}</span>
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-1">
@@ -4968,7 +5121,7 @@ function UsageTab() {
                       <div className={`h-full rounded-full transition-all ${barColor(brevoTotalFreeMonthly > 0 ? (brevoMonthly / brevoTotalFreeMonthly) * 100 : 0)}`} style={{ width: `${Math.min(100, brevoTotalFreeMonthly > 0 ? (brevoMonthly / brevoTotalFreeMonthly) * 100 : 0)}%` }} />
                     </div>
                   </div>
-                  <p className="text-[10px] text-slate-400">Limite free: {fmt(brevoFreeLimits.daily)}/dia &middot; {fmt(brevoFreeLimits.monthly)}/mês por conta</p>
+                  <p className="text-xs text-slate-600">Limite free: {fmt(brevoFreeLimits.daily)}/dia &middot; {fmt(brevoFreeLimits.monthly)}/mês por conta</p>
                 </div>
               );
             })()}
@@ -4988,9 +5141,9 @@ function UsageTab() {
                 { label: 'Capacidade/dia', value: fmt(totals.dailyLimit), sub: `${fmt(totals.remainingToday)} restantes`, color: 'text-blue-900' },
               ].map((item) => (
                 <div key={item.label} className="rounded-lg bg-slate-50 px-2 py-2.5 border border-slate-100">
-                  <p className="text-[10px] text-slate-500 font-medium mb-0.5">{item.label}</p>
+                  <p className="text-xs text-slate-600 font-medium mb-0.5">{item.label}</p>
                   <p className={`text-sm font-bold ${item.color}`}>{item.value}</p>
-                  <p className="text-[10px] text-slate-400">{item.sub}</p>
+                  <p className="text-xs text-slate-600">{item.sub}</p>
                 </div>
               ))}
             </div>
@@ -5028,7 +5181,7 @@ function UsageTab() {
                   {(() => {
                     const mPctAccount = a.monthlyLimit > 0 ? (a.sentThisMonth / a.monthlyLimit) * 100 : 0;
                     return mPctAccount > 70 ? (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full ml-auto ${mPctAccount > 90 ? 'text-red-700 bg-red-50' : 'text-amber-700 bg-amber-50'}`}>
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full ml-auto ${mPctAccount > 90 ? 'text-red-700 bg-red-50' : 'text-amber-700 bg-amber-50'}`}>
                         {mPctAccount > 90 ? 'quase no limite!' : 'atenção ao limite'}
                       </span>
                     ) : null;
@@ -5120,7 +5273,7 @@ function DomainTrackingPanel() {
           <MousePointerClick size={18} className="text-blue-700" />
           Rastreamento de abertura e clique
           {!isLoading && trackable.length > 0 && (
-            <Badge className={clickOn ? "bg-emerald-600 text-white border-0 text-[10px]" : "bg-amber-500 text-white border-0 text-[10px]"}>
+            <Badge className={clickOn ? "bg-emerald-600 text-white border-0 text-xs" : "bg-amber-700 text-white border-0 text-xs"}>
               {clickOn ? "ATIVO" : "CLIQUE OFF"}
             </Badge>
           )}
@@ -5156,7 +5309,7 @@ function DomainTrackingPanel() {
                     <p className="text-sm font-medium text-slate-800 truncate">
                       {d.domainName ?? d.fromEmail}
                       {d.status && d.status !== 'verified' && (
-                        <span className="ml-1.5 text-[10px] text-amber-600 font-normal">({d.status})</span>
+                        <span className="ml-1.5 text-xs text-amber-700 font-normal">({d.status})</span>
                       )}
                     </p>
                     <div className="flex items-center gap-3 mt-0.5 text-[11px]">
@@ -5168,7 +5321,7 @@ function DomainTrackingPanel() {
                       </span>
                     </div>
                     {!d.clickTracking && (
-                      <p className="text-[10px] text-amber-600 mt-0.5">
+                      <p className="text-xs text-amber-700 mt-0.5">
                         {d.trackingSubdomain
                           ? <>subdomínio de rastreio <span className="font-mono">{d.trackingSubdomain}</span> ainda não verificado — clique não conta até verificar o CNAME no DNS</>
                           : <>sem subdomínio de rastreio — o 🔥 lead quente só funciona depois de criar um CNAME de tracking no Resend (Domains → tracking) e verificar no HostGator</>}
@@ -5203,7 +5356,7 @@ function DoubleOptInToggle() {
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-blue-900 text-base">
           <ShieldCheck size={18} /> Double Opt-In
-          <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200 text-[10px]">
+          <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200 text-xs">
             Em breve
           </Badge>
         </CardTitle>
@@ -5444,7 +5597,7 @@ function CampaignStatsRow({ campaignId, name, onRevenue }: { campaignId: number;
     <div className="rounded-xl border border-slate-200 p-3 hover:border-blue-200 transition-colors">
       <div className="flex items-center justify-between gap-2">
         <p className="font-medium text-sm text-slate-700">{name}</p>
-        <Button size="sm" variant="outline" onClick={() => setShow(!show)}>
+        <Button size="sm" className="max-md:h-10" variant="outline" onClick={() => setShow(!show)}>
           <BarChart3 size={14} className="mr-1" /> {show ? 'Fechar' : 'Ver stats'}
         </Button>
       </div>
@@ -5476,7 +5629,7 @@ function CampaignStatsRow({ campaignId, name, onRevenue }: { campaignId: number;
                   <div className="flex items-center gap-1.5">
                     <SplitSquareVertical size={13} className="text-amber-600" />
                     <span className="text-xs font-semibold text-amber-800">Teste A/B de assunto</span>
-                    {decided && <Badge className="bg-emerald-600 text-white border-0 text-[9px]">Vencedor: {winner}</Badge>}
+                    {decided && <Badge className="bg-emerald-600 text-white border-0 text-xs">Vencedor: {winner}</Badge>}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {(['A', 'B'] as const).map(v => {
@@ -5485,9 +5638,9 @@ function CampaignStatsRow({ campaignId, name, onRevenue }: { campaignId: number;
                       const isWinner = decided && winner === v;
                       return (
                         <div key={v} className={`rounded-md border px-2 py-1.5 ${isWinner ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
-                          <p className="text-[10px] font-semibold text-slate-500">Assunto {v}</p>
-                          <p className="text-sm font-bold text-slate-800">{(rate * 100).toFixed(1)}% <span className="text-[10px] font-normal text-slate-400">abertura</span></p>
-                          <p className="text-[10px] text-slate-400">{d.opened}/{d.sent} enviados</p>
+                          <p className="text-xs font-semibold text-slate-600">Assunto {v}</p>
+                          <p className="text-sm font-bold text-slate-800">{(rate * 100).toFixed(1)}% <span className="text-xs font-normal text-slate-600">abertura</span></p>
+                          <p className="text-xs text-slate-600">{d.opened}/{d.sent} enviados</p>
                         </div>
                       );
                     })}
@@ -5530,7 +5683,7 @@ function CampaignStatsRow({ campaignId, name, onRevenue }: { campaignId: number;
                 </button>
               ))}
               <div className="ml-auto">
-                <Button size="sm" variant="outline" onClick={exportCsv} disabled={!recipients || recipients.length === 0}>
+                <Button size="sm" className="max-md:h-10" variant="outline" onClick={exportCsv} disabled={!recipients || recipients.length === 0}>
                   <Download size={14} className="mr-1" /> CSV
                 </Button>
               </div>
@@ -5637,7 +5790,7 @@ function SequenceStatsRow({ sequenceId, name }: { sequenceId: number; name: stri
     <div className="rounded-xl border border-slate-200 p-3 hover:border-blue-200 transition-colors">
       <div className="flex items-center justify-between gap-2">
         <p className="font-medium text-sm text-slate-700">{name}</p>
-        <Button size="sm" variant="outline" onClick={() => setShow(!show)}>
+        <Button size="sm" className="max-md:h-10" variant="outline" onClick={() => setShow(!show)}>
           <BarChart3 size={14} className="mr-1" /> {show ? 'Fechar' : 'Ver stats'}
         </Button>
       </div>
@@ -5698,7 +5851,7 @@ function SequenceStatsRow({ sequenceId, name }: { sequenceId: number; name: stri
               </button>
             ))}
             <div className="ml-auto">
-              <Button size="sm" variant="outline" onClick={exportCsv} disabled={!recipients || recipients.length === 0}>
+              <Button size="sm" className="max-md:h-10" variant="outline" onClick={exportCsv} disabled={!recipients || recipients.length === 0}>
                 <Download size={14} className="mr-1" /> CSV
               </Button>
             </div>

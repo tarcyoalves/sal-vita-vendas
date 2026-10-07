@@ -8,7 +8,7 @@ import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
 import { getLoginUrl } from "./const";
-import { shouldNotify, shouldRefetchOnFocus } from "./lib/refetchPolicy";
+import { shouldNotify, shouldRefetchOnFocus, shouldToastQueryError } from "./lib/refetchPolicy";
 import "./index.css";
 
 // Sanitize stale aiConfigs in localStorage — small models (8b-instant) have
@@ -35,12 +35,21 @@ try {
 // de uma vez e não queremos empilhar toasts. UNAUTHED já redireciona para o login.
 let lastQueryErrorToastAt = 0;
 const queryCache = new QueryCache({
-  onError: (error) => {
+  onError: (error, query) => {
     if (error instanceof TRPCClientError && error.message === UNAUTHED_ERR_MSG) return;
+    const errorCode = error instanceof TRPCClientError
+      ? (error.data as { code?: string } | null | undefined)?.code
+      : undefined;
+    if (!shouldToastQueryError({
+      errorCode,
+      retry: query.options.retry,
+      pathname: window.location.pathname,
+      hostname: window.location.hostname,
+    })) return;
     const now = Date.now();
     if (!shouldNotify(lastQueryErrorToastAt, now)) return;
     lastQueryErrorToastAt = now;
-    toast.error('Não foi possível carregar. Tentando de novo…', { id: 'query-error' });
+    toast.error('Não foi possível carregar os dados.', { id: 'query-error' });
   },
 });
 

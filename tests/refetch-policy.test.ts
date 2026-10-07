@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isStale, shouldRefetchOnFocus, shouldNotify, trpcPathOf, FOCUS_REFETCH_MS } from '../client/src/lib/refetchPolicy';
+import { isStale, shouldRefetchOnFocus, shouldNotify, shouldToastQueryError, trpcPathOf, FOCUS_REFETCH_MS } from '../client/src/lib/refetchPolicy';
 
 describe('isStale', () => {
   it('sem busca anterior conta como velho', () => {
@@ -37,5 +37,26 @@ describe('shouldNotify (um toast por janela de 10 s)', () => {
     expect(shouldNotify(0, 5_000)).toBe(false);
     expect(shouldNotify(1_000, 11_000)).toBe(true);
     expect(shouldNotify(1_000, 10_999)).toBe(false);
+  });
+});
+
+describe('shouldToastQueryError', () => {
+  const base = { pathname: '/tasks', hostname: 'lembretes.salvitarn.com.br' };
+  it('avisa em falha comum com retry padrão', () => {
+    expect(shouldToastQueryError({ ...base })).toBe(true);
+    expect(shouldToastQueryError({ ...base, errorCode: 'INTERNAL_SERVER_ERROR', retry: 1 })).toBe(true);
+  });
+  it('erros esperados não avisam', () => {
+    for (const errorCode of ['NOT_FOUND', 'FORBIDDEN', 'BAD_REQUEST', 'UNAUTHORIZED']) {
+      expect(shouldToastQueryError({ ...base, errorCode })).toBe(false);
+    }
+  });
+  it('retry===false não avisa', () => {
+    expect(shouldToastQueryError({ ...base, retry: false })).toBe(false);
+  });
+  it('rotas públicas da loja não avisam', () => {
+    expect(shouldToastQueryError({ ...base, pathname: '/sal-vita' })).toBe(false);
+    expect(shouldToastQueryError({ ...base, pathname: '/track/abc' })).toBe(false);
+    expect(shouldToastQueryError({ pathname: '/', hostname: 'premium.salvitarn.com.br' })).toBe(false);
   });
 });

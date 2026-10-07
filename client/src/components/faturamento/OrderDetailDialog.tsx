@@ -6,6 +6,7 @@ import {
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { useFatStore } from '../../lib/faturamento/store';
+import { useConfirm } from '../useConfirm';
 import { useAuth } from '../../_core/hooks/useAuth';
 import { trpc } from '../../lib/trpc';
 import {
@@ -45,6 +46,7 @@ export function OrderDetailDialog({
   onApproved,
 }: OrderDetailDialogProps) {
   const { actions, reload, loading: fatLoading } = useFatStore();
+  const { confirm, confirmDialog } = useConfirm();
   const { user } = useAuth();
   const [aprovando, setAprovando] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
@@ -131,11 +133,11 @@ export function OrderDetailDialog({
   // Confirmação explícita: desfazer descarta as quantidades reais do embarque
   // (voltando ao estimado) e tira o pedido do faturamento do mês. Não é uma
   // ação que se queira disparar por engano num clique.
-  const handleDesfazer = () => {
-    const ok = window.confirm(
-      'Desfazer o faturamento deste pedido?\n\n' +
-        'Ele volta para "estimado" e sai do faturamento do mês. ' +
+  const handleDesfazer = async () => {
+    const ok = await confirm(
+      'Ele volta para "estimado" e sai do faturamento do mês. ' +
         'As quantidades reais digitadas no embarque serão substituídas pelos valores estimados.',
+      { title: 'Desfazer o faturamento deste pedido?', confirmLabel: 'Desfazer faturamento' },
     );
     if (!ok) return;
     actions.pedidos.desfazerFaturamento(pedido.id);
@@ -145,7 +147,8 @@ export function OrderDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto overflow-x-hidden">
+      <DialogContent className="max-w-2xl max-h-[92dvh] overflow-y-auto overflow-x-hidden">
+        {confirmDialog}
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 flex-wrap">
             {pedido.clienteNome || 'Sem cliente'}

@@ -20,7 +20,6 @@ import { Link } from 'wouter';
 import { useAuth } from '../../_core/hooks/useAuth';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
-import { Tooltip, TooltipTrigger, TooltipContent } from '../ui/tooltip';
 import { Textarea } from '../ui/textarea';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/select';
 import {
@@ -428,12 +427,15 @@ export function LeadCard({
                   <span key={p.digits} className="text-xs text-slate-700 inline-flex flex-wrap items-center gap-1">
                     {p.formatted}
                     {p.likelyMobile && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="text-[10px] font-semibold text-emerald-600 cursor-help">provável celular</span>
-                        </TooltipTrigger>
-                        <TooltipContent>não garante que tem WhatsApp</TooltipContent>
-                      </Tooltip>
+                      // Sem Tooltip: ele só abre com mouse. title + aria-label valem para leitor de tela e desktop;
+                      // no toque, o aviso curto fica visível.
+                      <span
+                        className="text-xs font-semibold text-emerald-700"
+                        title="não garante que tem WhatsApp"
+                        aria-label="provável celular, não garante que tem WhatsApp"
+                      >
+                        provável celular
+                      </span>
                     )}
                     {isTelefoneCompartilhado(p.compartilhadoPor) && (
                       <span className="text-[10px] font-semibold text-amber-700">

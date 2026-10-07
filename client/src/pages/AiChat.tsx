@@ -1,6 +1,7 @@
 import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { Button } from '../components/ui/button';
+import { useConfirm } from '../components/useConfirm';
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import { Loader2, Send } from "lucide-react";
@@ -19,6 +20,7 @@ const WELCOME: Message = {
 
 export default function AiChat() {
   const { user } = useAuth();
+  const { confirm, confirmDialog } = useConfirm();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -55,7 +57,7 @@ export default function AiChat() {
   }, [messages]);
 
   const handleClearHistory = async () => {
-    if (!confirm("Limpar todo o histórico do chat?")) return;
+    if (!(await confirm("Limpar todo o histórico do chat?", { confirmLabel: "Limpar" }))) return;
     try {
       await clearHistoryMutation.mutateAsync();
       setMessages([{ role: "assistant", content: "Histórico limpo. Como posso ajudar?", timestamp: new Date() }]);
@@ -90,6 +92,7 @@ export default function AiChat() {
 
   return (
     <div className="flex flex-col h-full bg-slate-50/50">
+      {confirmDialog}
       {/* Top Bar */}
       <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-slate-200/80 flex-shrink-0">
         <div className="flex items-center gap-2">

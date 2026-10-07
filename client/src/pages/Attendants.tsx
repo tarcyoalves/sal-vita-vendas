@@ -914,7 +914,7 @@ export default function Attendants() {
 
         {/* Minha assinatura de e-mail (admin/gerente logado) */}
         <Dialog open={showMySignature} onOpenChange={(open) => { if (!open) setShowMySignature(false); }}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Minha assinatura de e-mail</DialogTitle>
             </DialogHeader>
@@ -991,7 +991,7 @@ export default function Attendants() {
 
         {/* Email Signature Modal */}
         <Dialog open={!!signatureAttendant} onOpenChange={(open) => { if (!open) setSignatureAttendant(null); }}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Assinatura de e-mail — {signatureAttendant?.name}</DialogTitle>
             </DialogHeader>

@@ -3,6 +3,8 @@ import { X, AlertCircle, CheckCircle2, Calendar, Clock, TrendingUp, BarChart2, U
 import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { trpc } from '../lib/trpc';
+import { Dialog, DialogContent, DialogTitle } from './ui/dialog';
+import { useConfirm } from './useConfirm';
 
 interface Task {
   id: number;
@@ -47,6 +49,7 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
   const [rescheduleLoading, setRescheduleLoading] = useState(false);
   const [rescheduleResult, setRescheduleResult] = useState<string | null>(null);
   const bulkReschedule = trpc.ai.bulkReschedule.useMutation();
+  const { confirm, confirmDialog } = useConfirm();
 
   const m = useMemo(() => {
     const now = new Date();
@@ -187,6 +190,11 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
   }, [allTasks, allSellers, seller]);
 
   const handleReschedule = async () => {
+    const ok = await confirm(
+      `Reagendar até ${m.overdue.length} tarefas vencidas de ${seller.name}? As datas dos lembretes serão redistribuídas (até 50 por dia, a partir das 8h).`,
+      { title: 'Reagendar vencidos', confirmLabel: 'Reagendar' },
+    );
+    if (!ok) return;
     setRescheduleLoading(true);
     setRescheduleResult(null);
     try {
@@ -212,8 +220,14 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+    <>
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent
+        showCloseButton={false}
+        aria-describedby={undefined}
+        className="bg-white rounded-2xl shadow-2xl max-w-2xl flex flex-col gap-0 p-0 overflow-hidden"
+      >
+        <DialogTitle className="sr-only">Detalhes de {seller.name}</DialogTitle>
 
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b bg-slate-800 rounded-t-2xl gap-2">
@@ -237,14 +251,15 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
                 {rescheduleLoading
                   ? <span className="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full inline-block" />
                   : <RefreshCw size={13} />}
-                <span className="hidden sm:inline">
+                <span>
                   {rescheduleLoading ? 'Reagendando...' : 'Reagendar Vencidos'}
                 </span>
               </Button>
             )}
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 flex-shrink-0"
+              aria-label="Fechar"
+              className="p-2.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 flex-shrink-0"
             >
               <X size={18} />
             </button>
@@ -600,7 +615,9 @@ export default function AttendantDetailModal({ seller, allTasks, allSellers, onC
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
+    {confirmDialog}
+    </>
   );
 }

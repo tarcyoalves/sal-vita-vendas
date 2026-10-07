@@ -219,10 +219,10 @@ export function B2bLeadsPanel() {
       {/* Lead Detail Dialog Modal */}
       {selectedId !== null && (
         <div onClick={e => e.target === e.currentTarget && setSelectedId(null)} className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 md:p-8 max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100">
+          <div className="bg-white rounded-3xl p-6 md:p-8 max-w-lg w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-slate-100">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-lg text-slate-900">{detail?.company.name ?? 'Detalhes do Lead B2B'}</h3>
-              <button onClick={() => setSelectedId(null)} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400">
+              <button onClick={() => setSelectedId(null)} aria-label="Fechar" className="p-2.5 -m-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
                 <X className="w-5 h-5" />
               </button>
             </div>

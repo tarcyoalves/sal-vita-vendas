@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { useFatStore } from "../../lib/faturamento/store";
+import { useConfirm } from "../useConfirm";
 import { formatBRL, parseBRL, formatKg } from "../../lib/faturamento/calc";
 import { Card, CardContent } from "../ui/card";
 import { Button } from "../ui/button";
@@ -16,6 +17,7 @@ import type { Produto } from "../../lib/faturamento/types";
 
 export default function ProductManager() {
   const { produtos: produtosList, actions } = useFatStore();
+  const { confirm, confirmDialog } = useConfirm();
   const [nome, setNome] = useState("");
   const [peso, setPeso] = useState("");
   const [valor, setValor] = useState("");
@@ -115,14 +117,14 @@ export default function ProductManager() {
     toast.success(prod.ativo ? "Produto desativado" : "Produto ativado");
   };
 
-  const handleRemove = (prod: Produto) => {
-    if (!confirm(`Remover o produto "${prod.nome}"?`)) return;
+  const handleRemove = async (prod: Produto) => {
+    if (!(await confirm(`Remover o produto "${prod.nome}"?`, { confirmLabel: "Remover" }))) return;
     actions.produtos.remove(prod.id);
     toast.success("Produto removido");
   };
 
-  const handleClear = () => {
-    if (!confirm("Limpar todos os dados de faturamento (produtos e pedidos)? Esta ação não pode ser desfeita.")) return;
+  const handleClear = async () => {
+    if (!(await confirm("Limpar todos os dados de faturamento (produtos e pedidos)? Esta ação não pode ser desfeita.", { confirmLabel: "Limpar tudo" }))) return;
     produtosList.forEach((p) => actions.produtos.remove(p.id));
     actions.pedidos.list().forEach((p) => actions.pedidos.remove(p.id, "Limpeza em massa via botão administrativo"));
     toast.success("Dados de faturamento limpos");
@@ -130,6 +132,7 @@ export default function ProductManager() {
 
   return (
     <div className="space-y-4">
+      {confirmDialog}
       {/* Inline add form */}
       <Card>
         <CardContent className="pt-5">

@@ -70,24 +70,41 @@ export function FilterPanel({
           nunca ultrapassar a tela em telas pequenas.
           Sem overflow no corpo: os multi-selects internos abrem dropdowns
           próprios, que um contêiner de rolagem aqui recortaria. */}
+      {/* Abaixo de md: painel fixo com rolagem própria e fundo escurecido (no celular não há Esc;
+          "Concluir" e o toque no fundo são a saída). Em md+ segue ancorado como antes. */}
       {open && (
-        <div className="absolute right-0 z-50 mt-1.5 w-[calc(100vw-1.5rem)] max-w-[560px] rounded-2xl border border-slate-200 bg-white shadow-xl">
-          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
-            <span className="text-sm font-semibold text-slate-700">Filtrar tarefas</span>
-            {active && (
-              <button
-                type="button"
-                onClick={onClearAll}
-                className="text-xs font-medium text-slate-500 hover:text-red-600 transition"
-              >
-                Limpar tudo
-              </button>
-            )}
+        <>
+          <div className="fixed inset-0 z-40 bg-black/30 md:hidden" onClick={() => setOpen(false)} aria-hidden="true" />
+          <div className="fixed inset-x-3 top-20 z-50 max-h-[75dvh] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-xl md:absolute md:inset-x-auto md:right-0 md:top-auto md:mt-1.5 md:max-h-none md:w-[calc(100vw-1.5rem)] md:max-w-[560px] md:overflow-visible">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-t-2xl border-b border-slate-100 bg-white px-4 py-2.5">
+              <span className="text-sm font-semibold text-slate-700">
+                Filtrar tarefas
+                {active && <span className="ml-2 text-xs font-medium text-slate-500 md:hidden">{activeCount} {activeCount === 1 ? 'filtro' : 'filtros'}</span>}
+              </span>
+              <div className="flex items-center gap-3">
+                {active && (
+                  <button
+                    type="button"
+                    onClick={onClearAll}
+                    className="text-xs font-medium text-slate-500 hover:text-red-600 transition"
+                  >
+                    Limpar tudo
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="min-h-10 rounded-lg bg-blue-900 px-4 text-sm font-medium text-white md:hidden"
+                >
+                  Concluir
+                </button>
+              </div>
+            </div>
+            <div className="space-y-4 p-4">
+              {children}
+            </div>
           </div>
-          <div className="space-y-4 p-4">
-            {children}
-          </div>
-        </div>
+        </>
       )}
     </div>
   );
@@ -97,7 +114,7 @@ export function FilterPanel({
 export function FilterSection({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="space-y-2">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{label}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</p>
       <div className="flex flex-wrap items-center gap-2">{children}</div>
     </div>
   );

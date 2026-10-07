@@ -145,7 +145,7 @@ export function MultiSelectFilter({
                 className="w-full text-sm outline-none placeholder:text-slate-400"
               />
               {query && (
-                <button type="button" onClick={() => setQuery('')} className="text-slate-400 hover:text-slate-600">
+                <button type="button" onClick={() => setQuery('')} aria-label="Limpar busca" className="text-slate-400 hover:text-slate-600">
                   <X size={13} />
                 </button>
               )}

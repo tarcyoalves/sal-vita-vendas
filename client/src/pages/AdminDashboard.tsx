@@ -1088,15 +1088,15 @@ export default function AdminDashboard() {
                     <div className="grid grid-cols-3 gap-1.5 text-center">
                       <div className="bg-slate-50 rounded-lg py-1.5 px-1">
                         <p className="text-sm font-bold text-slate-700 tabular-nums">{sellerTasks.length}</p>
-                        <p className="text-[10px] text-gray-400 flex items-center justify-center gap-0.5"><Users size={9} /> total</p>
+                        <p className="text-xs text-gray-600 flex items-center justify-center gap-0.5"><Users size={9} /> total</p>
                       </div>
                       <div className="bg-blue-50 rounded-lg py-1.5 px-1">
                         <p className="text-sm font-bold text-blue-700 tabular-nums">{sellerContactsToday}</p>
-                        <p className="text-[10px] text-gray-400 flex items-center justify-center gap-0.5"><Phone size={9} /> hoje</p>
+                        <p className="text-xs text-gray-600 flex items-center justify-center gap-0.5"><Phone size={9} /> hoje</p>
                       </div>
                       <div className={`rounded-lg py-1.5 px-1 ${sellerOverdue > 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
                         <p className={`text-sm font-bold tabular-nums ${sellerOverdue > 0 ? 'text-red-600' : 'text-gray-400'}`}>{sellerOverdue}</p>
-                        <p className={`text-[10px] flex items-center justify-center gap-0.5 ${sellerOverdue > 0 ? 'text-red-400' : 'text-gray-400'}`}>
+                        <p className={`text-xs flex items-center justify-center gap-0.5 ${sellerOverdue > 0 ? 'text-red-700' : 'text-gray-600'}`}>
                           <AlertTriangle size={9} /> atrasado{sellerOverdue !== 1 ? 's' : ''}
                         </p>
                       </div>

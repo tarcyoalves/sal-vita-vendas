@@ -30,6 +30,7 @@ import { LeadCard } from '../components/radar/LeadCard';
 import { MessageTemplateDialog } from '../components/radar/MessageTemplateDialog';
 import { BaseStatusCard } from '../components/radar/BaseStatusCard';
 import { CarteiraList } from '../components/radar/CarteiraList';
+import { QueryError } from '../components/QueryError';
 import { enrichmentNeedsPolling } from '../components/radar/EnrichmentSection';
 import {
   LEAD_SORT_OPTIONS,
@@ -672,12 +673,11 @@ export default function RadarCargas() {
         </div>
       )}
       {mode === 'carteira' && !carteiraQuery.isFetching && carteiraQuery.error && (
-        <Empty>
-          <EmptyHeader>
-            <EmptyTitle>Não foi possível buscar</EmptyTitle>
-            <EmptyDescription>{carteiraQuery.error.message}</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
+        <QueryError
+          message={`Não foi possível buscar na carteira: ${carteiraQuery.error.message}`}
+          onRetry={() => void carteiraQuery.refetch()}
+          retrying={carteiraQuery.isFetching}
+        />
       )}
       {mode === 'carteira' && !carteiraQuery.isFetching && carteiraQuery.data && (
         carteiraQuery.data.itens.length === 0 ? (

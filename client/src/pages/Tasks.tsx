@@ -8,7 +8,7 @@ import { useState, useMemo, useCallback, useEffect, useRef, useDeferredValue } f
 import { toast } from "sonner";
 import {
   Search, X, Bell, Phone, Timer, CheckCircle2, XCircle, Clock, Flag, PartyPopper, Flame, Mail,
-  AlertTriangle, Trash2, ClipboardList, Package, Boxes, Tag, MailCheck, RefreshCw,
+  AlertTriangle, Trash2, ClipboardList, MessageCircle, Package, Boxes, Tag, MailCheck, RefreshCw,
 } from "lucide-react";
 import {
   Dialog,
@@ -24,6 +24,7 @@ import { OrderDialog } from '../components/faturamento/OrderDialog';
 import { InvoiceDialog } from '../components/faturamento/InvoiceDialog';
 import { DeleteOrderDialog } from '../components/faturamento/DeleteOrderDialog';
 import { useFatStore } from '../lib/faturamento/store';
+import { useConfirm } from '../components/useConfirm';
 import { totalPedido, formatBRL } from '../lib/faturamento/calc';
 import type { Pedido } from '../lib/faturamento/types';
 import { MultiSelectFilter } from '../components/tasks/MultiSelectFilter';
@@ -106,6 +107,10 @@ function extractEmail(text: string): string | null {
 function waLink(digits: string): string {
   const withCountry = digits.length <= 11 ? `55${digits}` : digits;
   return `https://wa.me/${withCountry}`;
+}
+
+function telLink(digits: string): string {
+  return `tel:+${digits.length <= 11 ? `55${digits}` : digits}`;
 }
 
 // Normaliza telefone para casar com o backend (somente dígitos, sem DDI 55) —
@@ -251,11 +256,12 @@ export default function Tasks() {
   const { pedidos: allPedidos, comissoes: fatComissoes, actions: fatActions } = useFatStore();
   // Desfaz o faturamento com confirmação: descarta as quantidades reais do
   // embarque e tira o pedido do faturamento do mês.
-  const undoInvoice = (pedidoId: string) => {
-    const ok = window.confirm(
-      'Desfazer o faturamento deste pedido?\n\n' +
-        'Ele volta para "estimado" e sai do faturamento do mês. ' +
+  const { confirm, confirmDialog } = useConfirm();
+  const undoInvoice = async (pedidoId: string) => {
+    const ok = await confirm(
+      'Ele volta para "estimado" e sai do faturamento do mês. ' +
         'As quantidades reais digitadas no embarque serão substituídas pelos valores estimados.',
+      { title: 'Desfazer o faturamento deste pedido?', confirmLabel: 'Desfazer faturamento' },
     );
     if (!ok) return;
     fatActions.pedidos.desfazerFaturamento(pedidoId);
@@ -885,7 +891,7 @@ export default function Tasks() {
   const removeCampaignRecipientMutation = trpc.emailMarketing.removeCampaignRecipient.useMutation();
 
   const handleCancelEnrollment = useCallback(async (enrollmentId: number) => {
-    if (!confirm("Remover este lead da sequência?")) return;
+    if (!(await confirm("Remover este lead da sequência?", { confirmLabel: 'Remover' }))) return;
     try {
       await cancelEnrollmentMutation.mutateAsync({ id: enrollmentId });
       await utils.emailMarketing.enrollmentsByTaskIds.invalidate();
@@ -893,10 +899,10 @@ export default function Tasks() {
     } catch (err: any) {
       toast.error(err?.message ?? "Erro ao cancelar inscrição");
     }
-  }, [cancelEnrollmentMutation]);
+  }, [cancelEnrollmentMutation, confirm]);
 
   const handleRemoveCampaignRecipient = useCallback(async (recipientId: number) => {
-    if (!confirm("Remover este lead da campanha?")) return;
+    if (!(await confirm("Remover este lead da campanha?", { confirmLabel: 'Remover' }))) return;
     try {
       await removeCampaignRecipientMutation.mutateAsync({ id: recipientId });
       await utils.emailMarketing.enrollmentsByTaskIds.invalidate();
@@ -904,7 +910,7 @@ export default function Tasks() {
     } catch (err: any) {
       toast.error(err?.message ?? "Erro ao remover da campanha");
     }
-  }, [removeCampaignRecipientMutation]);
+  }, [removeCampaignRecipientMutation, confirm]);
 
   // Confirma manualmente o e-mail de um lead importado — só após isso ele pode
   // ser usado em campanhas/sequências/automações. Um único popup: confirmar +
@@ -1153,14 +1159,13 @@ export default function Tasks() {
     if (!selectedRepresentative) { toast.error("Selecione um atendente"); return; }
     setImportLoading(true);
     try {
-      const importReminderDate = new Date(Date.now() + 5 * 60 * 1000); // hoje + 5 min
       const created = await bulkCreateMutation.mutateAsync({
         items: importedTasks.map(t => ({
           clientId: 0,
           title: t.title,
           description: t.description,
           notes: t.notes,
-          reminderDate: importReminderDate,
+          // Sem reminderDate de propósito: o servidor escalona os lembretes (1 a cada 2 min).
           reminderEnabled: true,
           priority: "medium" as const,
           assignedTo: selectedRepresentative,
@@ -1214,13 +1219,14 @@ export default function Tasks() {
 
   return (
     <div className="p-3 md:p-6 space-y-3 md:space-y-4">
+      {confirmDialog}
       {!isAdmin && showMonitorBanner && (
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 text-sm text-amber-900">
           <Search size={18} className="flex-shrink-0 mt-0.5" />
           <div className="flex-1">
             <strong>Trabalho monitorado</strong> — anotações, qualidade e velocidade dos contatos são acompanhados diariamente pela gestão.
           </div>
-          <button onClick={() => { setShowMonitorBanner(false); sessionStorage.setItem('monitorBannerDismissed', '1'); }} className="text-amber-600 hover:text-amber-900 flex-shrink-0 mt-0.5" title="Fechar"><X size={16} /></button>
+          <button onClick={() => { setShowMonitorBanner(false); sessionStorage.setItem('monitorBannerDismissed', '1'); }} className="text-amber-700 hover:text-amber-900 flex-shrink-0 mt-0.5" title="Fechar" aria-label="Fechar aviso"><X size={16} /></button>
         </div>
       )}
       {!isAdmin && notifPerm === 'default' && (
@@ -1458,6 +1464,7 @@ export default function Tasks() {
                   <option value="">Selecionar atendente...</option>
                   {assignOptions.map((name) => <option key={name} value={name}>{name}</option>)}
                 </select>
+                <p className="text-xs text-gray-600">Os lembretes serão distribuídos automaticamente.</p>
                 <Button onClick={handleImportTasks} className="w-full" disabled={importLoading}>
                   {importLoading ? `Importando...` : `Importar ${importedTasks.length} tarefas`}
                 </Button>
@@ -1469,7 +1476,7 @@ export default function Tasks() {
 
       {/* Task Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-2xl w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto mx-4 md:mx-auto">
+        <DialogContent className="max-w-2xl w-[calc(100vw-2rem)] max-h-[90dvh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-base">{editingTask ? "Editar Tarefa" : "Nova Tarefa"}</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
@@ -1515,6 +1522,7 @@ export default function Tasks() {
                           type="button"
                           onClick={() => removeTag(tag)}
                           title="Remover tag"
+                          aria-label={`Remover tag ${tag}`}
                           className="flex items-center justify-center w-4 h-4 rounded-full bg-white/15 hover:bg-white/30 text-white leading-none transition-colors"
                         >
                           <X size={10} />
@@ -1716,7 +1724,6 @@ export default function Tasks() {
                   <p className="font-medium text-sm leading-snug line-clamp-2 md:truncate">{task.title}</p>
                   <div className="flex gap-2 items-center flex-wrap mt-0.5">
                     {isAdmin && task.assignedTo && <p className="text-xs text-gray-500">{task.assignedTo}</p>}
-                    {phoneOfTask(task) !== null && <Phone size={12} className="text-green-600" />}
                     {hasEmail(`${task.title} ${task.notes ?? ''}`) && <Mail size={12} className="text-blue-600" />}
                     {task.convertedAt && <span className="text-xs text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-1"><PartyPopper size={11} /> Cliente ativo</span>}
                     {task.hotLead && <span className="text-xs text-red-700 bg-red-100 px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-1"><Flame size={11} /> Lead quente</span>}
@@ -1783,7 +1790,7 @@ export default function Tasks() {
                               {isAdmin && (seq.status === 'active' || seq.status === 'paused') && (
                                 <button
                                   type="button"
-                                  title="Remover da sequência"
+                                  title="Remover da sequência" aria-label="Remover da sequência"
                                   className="hover:text-red-600"
                                   onClick={(e) => { e.stopPropagation(); handleCancelEnrollment(seq.enrollmentId); }}
                                 ><X size={10} /></button>
@@ -1796,7 +1803,7 @@ export default function Tasks() {
                               {isAdmin && (
                                 <button
                                   type="button"
-                                  title="Remover da campanha"
+                                  title="Remover da campanha" aria-label="Remover da campanha"
                                   className="hover:text-red-600"
                                   onClick={(e) => { e.stopPropagation(); handleRemoveCampaignRecipient(camp.recipientId); }}
                                 ><X size={10} /></button>
@@ -1808,6 +1815,23 @@ export default function Tasks() {
                     })()}
                   </div>
                 </div>
+                {(() => {
+                  // Atalhos na linha recolhida. Sem contexto de carga aqui, o WhatsApp abre só com o
+                  // número (sem mensagem pronta): a mensagem padrão exige região e sacos.
+                  const rowPhone = phoneOfTask(task);
+                  if (rowPhone === null) return null;
+                  const iconBtn = 'inline-flex size-10 items-center justify-center rounded-lg border hover:bg-gray-100 transition-colors';
+                  return (
+                    <div className="flex flex-shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
+                      <a href={waLink(rowPhone)} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${task.title} no WhatsApp`} className={`${iconBtn} border-green-300 text-green-700`}>
+                        <MessageCircle size={18} />
+                      </a>
+                      <a href={telLink(rowPhone)} aria-label={`Ligar para ${task.title}`} className={`${iconBtn} border-gray-300 text-gray-700`}>
+                        <Phone size={18} />
+                      </a>
+                    </div>
+                  );
+                })()}
                 {task.reminderDate && task.reminderEnabled && (() => {
                   try {
                     const rd = new Date(task.reminderDate);
@@ -1854,7 +1878,7 @@ export default function Tasks() {
                           <span className="text-xs font-semibold text-blue-800">Pedidos ({taskPedidos.length})</span>
                           <Button
                             size="sm"
-                            className="gap-1 text-xs h-6 px-2"
+                            className="gap-1 text-xs h-10 md:h-8 px-3"
                             onClick={(e) => {
                               e.stopPropagation();
                               setEditingPedidoId(null);
@@ -1875,17 +1899,17 @@ export default function Tasks() {
                               <div key={ped.id} className="bg-slate-50 rounded-lg px-2.5 py-2 space-y-1">
                                 <div className="flex items-center justify-between">
                                   <div className="flex flex-wrap gap-x-2 items-center">
-                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isFat ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${isFat ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
                                       {isFat ? 'Faturado' : 'Estimado'}
                                     </span>
                                     <span className="text-sm font-bold text-slate-800">{formatBRL(total)}</span>
-                                    {ped.cnpj && <span className="text-[11px] text-slate-500">{ped.cnpj}</span>}
+                                    {ped.cnpj && <span className="text-xs text-slate-600">{ped.cnpj}</span>}
                                   </div>
                                 </div>
                                 {ped.itens.length > 0 && (
                                   <div className="space-y-0.5">
                                     {ped.itens.map((it) => (
-                                      <div key={it.id} className="flex justify-between text-[11px] text-slate-600">
+                                      <div key={it.id} className="flex justify-between text-xs text-slate-600">
                                         <span className="truncate mr-2">{it.descricao}</span>
                                         <span className="whitespace-nowrap">{it.quantidade}un x {formatBRL(it.valorUnitario)}</span>
                                       </div>
@@ -1893,17 +1917,17 @@ export default function Tasks() {
                                   </div>
                                 )}
                                 {(ped.prazoPagamentoSal || ped.prazoPagamentoFrete || ped.valorFretePorUnidade || ped.observacoes) && (
-                                  <div className="text-[10px] text-amber-700 bg-amber-50 rounded px-2 py-1 space-y-0.5">
+                                  <div className="text-xs text-amber-800 bg-amber-50 rounded px-2 py-1 space-y-0.5">
                                     {ped.prazoPagamentoSal && <div><strong>Prazo sal:</strong> {ped.prazoPagamentoSal}</div>}
                                     {ped.prazoPagamentoFrete && <div><strong>Prazo frete:</strong> {ped.prazoPagamentoFrete}</div>}
                                     {!!ped.valorFretePorUnidade && <div><strong>Frete/ton:</strong> {formatBRL(ped.valorFretePorUnidade)}</div>}
                                     {ped.observacoes && <div><strong>Obs:</strong> {ped.observacoes}</div>}
                                   </div>
                                 )}
-                                <div className="flex gap-1.5 pt-0.5">
+                                <div className="flex flex-wrap gap-1.5 pt-0.5">
                                   <Button
                                     variant="outline" size="sm"
-                                    className="gap-1 text-[11px] h-6 px-2"
+                                    className="gap-1 text-xs h-10 md:h-8 px-3"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setEditingPedidoId(ped.id);
@@ -1916,7 +1940,7 @@ export default function Tasks() {
                                   {!isFat && (
                                     <Button
                                       size="sm"
-                                      className="gap-1 text-[11px] h-6 px-2 bg-emerald-600 hover:bg-emerald-700"
+                                      className="gap-1 text-xs h-10 md:h-8 px-3 bg-emerald-600 hover:bg-emerald-700 basis-full md:basis-auto"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setInvoicePedidoId(ped.id);
@@ -1929,7 +1953,7 @@ export default function Tasks() {
                                   {isFat && (
                                     <Button
                                       variant="outline" size="sm"
-                                      className="gap-1 text-[11px] h-6 px-2 text-amber-700 border-amber-300 hover:bg-amber-50"
+                                      className="gap-1 text-xs h-10 md:h-8 px-3 text-amber-700 border-amber-300 hover:bg-amber-50"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         undoInvoice(ped.id);
@@ -1940,7 +1964,7 @@ export default function Tasks() {
                                   )}
                                   <Button
                                     variant="outline" size="sm"
-                                    className="gap-1 text-[11px] h-6 px-2 text-red-600 border-red-200 hover:bg-red-50"
+                                    className="gap-1 text-xs h-10 md:h-8 px-3 text-red-600 border-red-200 hover:bg-red-50"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setDeleteOrderPedidoId(ped.id);
@@ -1971,7 +1995,7 @@ export default function Tasks() {
                           )}
                           {phone && (
                             <Button asChild size="sm" variant="outline" onClick={(e) => e.stopPropagation()}>
-                              <a href={`tel:+${phone.length <= 11 ? `55${phone}` : phone}`}>Ligar</a>
+                              <a href={telLink(phone)}>Ligar</a>
                             </Button>
                           )}
                           {email && (
@@ -2091,7 +2115,7 @@ export default function Tasks() {
       {/* Notes warning modal */}
       {showNotesWarning && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-y-auto max-h-[92vh]">
+          <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-y-auto max-h-[92dvh]">
             {/* Drag handle (mobile) */}
             <div className="flex justify-center pt-3 pb-1 sm:hidden">
               <div className="w-10 h-1 bg-gray-300 rounded-full" />

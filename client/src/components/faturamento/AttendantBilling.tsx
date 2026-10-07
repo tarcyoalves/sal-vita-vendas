@@ -3,6 +3,7 @@ import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
 import { trpc } from '../../lib/trpc';
 import { useFatStore } from '../../lib/faturamento/store';
+import { useConfirm } from '../useConfirm';
 import { QueryError } from '../QueryError';
 import {
   resumoAtendente, mesAtual, pedidoNoMes, totalPedido, comissaoPedido, notaPesoFaturado,
@@ -148,6 +149,8 @@ export default function AttendantBilling() {
     setOrderOpen(true);
   };
 
+  const { confirm, confirmDialog } = useConfirm();
+
   const openInvoice = (pedidoId: string) => {
     setInvoicePedidoId(pedidoId);
     setInvoiceOpen(true);
@@ -155,11 +158,11 @@ export default function AttendantBilling() {
 
   // Desfaz o faturamento com confirmação: a ação descarta as quantidades reais
   // do embarque e tira o pedido do faturamento do mês.
-  const undoInvoice = (pedidoId: string) => {
-    const ok = window.confirm(
-      'Desfazer o faturamento deste pedido?\n\n' +
-        'Ele volta para "estimado" e sai do faturamento do mês. ' +
+  const undoInvoice = async (pedidoId: string) => {
+    const ok = await confirm(
+      'Ele volta para "estimado" e sai do faturamento do mês. ' +
         'As quantidades reais digitadas no embarque serão substituídas pelos valores estimados.',
+      { title: 'Desfazer o faturamento deste pedido?', confirmLabel: 'Desfazer faturamento' },
     );
     if (!ok) return;
     actions.pedidos.desfazerFaturamento(pedidoId);
@@ -194,12 +197,14 @@ export default function AttendantBilling() {
 
   return (
     <div className="space-y-4">
+      {confirmDialog}
       <AvisoMesSemPedidos pedidos={allPedidos.filter((p) => !seller || p.sellerId === seller.id)} filtro={filtro} onIr={setFiltro} />
       {/* Month selector */}
       <div className="flex items-center justify-between">
         <button
           onClick={prevMonth}
-          className="p-1.5 rounded-lg hover:bg-slate-100 transition"
+          aria-label="Mês anterior"
+          className="p-2.5 rounded-lg hover:bg-slate-100 transition"
         >
           <ChevronLeft size={18} className="text-slate-500" />
         </button>
@@ -208,7 +213,8 @@ export default function AttendantBilling() {
         </p>
         <button
           onClick={nextMonth}
-          className="p-1.5 rounded-lg hover:bg-slate-100 transition"
+          aria-label="Próximo mês"
+          className="p-2.5 rounded-lg hover:bg-slate-100 transition"
         >
           <ChevronRight size={18} className="text-slate-500" />
         </button>

@@ -155,7 +155,7 @@ export default function Home() {
       {/* Reset password via token (from email link) */}
       {resetToken && !resetSuccess && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center pt-[10vh] overflow-y-auto p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm max-h-[85vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm max-h-[85dvh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <KeyRound size={18} className="text-blue-600" />
@@ -206,7 +206,7 @@ export default function Home() {
       {/* Success after reset */}
       {resetSuccess && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center pt-[10vh] overflow-y-auto p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm max-h-[85vh] overflow-y-auto text-center space-y-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm max-h-[85dvh] overflow-y-auto text-center space-y-4">
             <h2 className="font-bold text-lg text-green-700">Senha redefinida!</h2>
             <p className="text-sm text-gray-600">Sua nova senha está pronta. Faça login abaixo.</p>
             <button onClick={() => setResetSuccess(false)} className="w-full py-3 bg-brand hover:bg-brand-deep text-white rounded-lg text-sm font-semibold">
@@ -219,7 +219,7 @@ export default function Home() {
       {/* Recovery modal (email + emergency secret) */}
       {showRecovery && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center pt-[10vh] overflow-y-auto p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm max-h-[85vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm max-h-[85dvh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <KeyRound size={18} className="text-blue-600" />

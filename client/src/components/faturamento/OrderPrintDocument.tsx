@@ -216,7 +216,7 @@ export function OrderPrintDocument({ open, onOpenChange, pedido }: OrderPrintDoc
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[92dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Cópia do pedido</DialogTitle>
           <DialogDescription>

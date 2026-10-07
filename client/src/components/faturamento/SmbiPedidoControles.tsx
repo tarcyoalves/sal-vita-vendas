@@ -5,6 +5,8 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { useFatStore } from '../../lib/faturamento/store';
 import { useAuth } from '../../_core/hooks/useAuth';
+import { useConfirm } from '../useConfirm';
+import { PromptDialog } from '../PromptDialog';
 import { trpc } from '../../lib/trpc';
 import { formatBRL } from '../../lib/faturamento/calc';
 import type { Pedido } from '../../lib/faturamento/types';
@@ -29,6 +31,9 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
   const isFaturado = pedido.status === 'faturado';
   const [ocupado, setOcupado] = useState(false);
   const [historico, setHistorico] = useState(false);
+  const { confirm, confirmDialog } = useConfirm();
+  // Janela de texto (vincular / motivo do desvínculo), no lugar do window.prompt.
+  const [textoPara, setTextoPara] = useState<'vincular' | 'desvincular' | null>(null);
 
   const roboProcessando = !!pedido.smbiReservadoAte && pedido.smbiReservadoAte > new Date().toISOString();
   const solicitado = !!pedido.smbiSolicitadoEm;
@@ -52,10 +57,11 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
     }
   };
 
-  const enviar = () => {
-    const confirmou = window.confirm(
-      `Criar este pedido NOVO no SMBI?\n\n${pedido.clienteNome}\n\n` +
+  const enviar = async () => {
+    const confirmou = await confirm(
+      `${pedido.clienteNome}\n\n` +
         'Se ele já existe no SMBI (por exemplo, já foi embarcado), cancele e use "Vincular a pedido do SMBI".',
+      { title: 'Criar este pedido NOVO no SMBI?', confirmLabel: 'Criar no SMBI' },
     );
     if (confirmou) {
       void executar(
@@ -65,27 +71,16 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
     }
   };
 
-  const vincular = () => {
-    const atual = pedido.smbiVinculoMovsais?.join(', ') ?? pedido.smbiMovsaiId ?? '';
-    const n = window.prompt(
-      temVinculo
-        ? `Este pedido está ligado ao pedido ${atual} do SMBI.\nInforme o(s) número(s) CORRETO(s) no SMBI (vários: separe por vírgula):`
-        : 'Informe o número do pedido que JÁ existe no SMBI (vários: separe por vírgula). O robô não vai criar outro:',
-      atual,
-    );
-    if (!n?.trim()) return;
-    void executar(() => actions.pedidos.vincularSmbi(pedido.id, n.trim()), 'Pedido vinculado. O robô vai conferir no SMBI.');
+  const atualVinculo = pedido.smbiVinculoMovsais?.join(', ') ?? pedido.smbiMovsaiId ?? '';
+
+  const vincular = (n: string) => {
+    setTextoPara(null);
+    void executar(() => actions.pedidos.vincularSmbi(pedido.id, n), 'Pedido vinculado. O robô vai conferir no SMBI.');
   };
 
-  const desvincular = () => {
-    const motivo = window.prompt(
-      'Desfazer o vínculo com o SMBI?\n\nO pedido só volta ao robô se você clicar em "Enviar pedido para SMBI" de novo.\n\nMotivo (obrigatório):',
-    );
-    if (!motivo || motivo.trim().length < 5) {
-      if (motivo !== null) toast.error('Informe o motivo (pelo menos 5 letras).');
-      return;
-    }
-    void executar(() => actions.pedidos.desvincularSmbi(pedido.id, motivo.trim()), 'Vínculo desfeito.');
+  const desvincular = (motivo: string) => {
+    setTextoPara(null);
+    void executar(() => actions.pedidos.desvincularSmbi(pedido.id, motivo), 'Vínculo desfeito.');
   };
 
   const espelho = pedido.smbiEspelhoFiscal;
@@ -93,6 +88,31 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
 
   return (
     <>
+      {confirmDialog}
+      <PromptDialog
+        open={textoPara === 'vincular'}
+        onOpenChange={(o) => { if (!o) setTextoPara(null); }}
+        title={temVinculo ? 'Trocar vínculo do SMBI' : 'Vincular a pedido do SMBI'}
+        description={
+          temVinculo
+            ? `Este pedido está ligado ao pedido ${atualVinculo} do SMBI. Informe o(s) número(s) CORRETO(s) no SMBI (vários: separe por vírgula).`
+            : 'Informe o número do pedido que JÁ existe no SMBI (vários: separe por vírgula). O robô não vai criar outro.'
+        }
+        label="Número(s) do pedido no SMBI"
+        initialValue={atualVinculo}
+        confirmLabel="Vincular"
+        onSubmit={vincular}
+      />
+      <PromptDialog
+        open={textoPara === 'desvincular'}
+        onOpenChange={(o) => { if (!o) setTextoPara(null); }}
+        title="Desfazer o vínculo com o SMBI?"
+        description='O pedido só volta ao robô se você clicar em "Enviar pedido para SMBI" de novo.'
+        label="Motivo (obrigatório)"
+        minLength={5}
+        confirmLabel="Desvincular"
+        onSubmit={desvincular}
+      />
       {/* ENVIAR: só pedido aprovado, não faturado, sem vínculo. Pedido faturado nunca é enviado. */}
       {canApprove && pedido.aprovadoEm && !pedido.smbiMovsaiId && !isFaturado && !vinculo && (
         <Button
@@ -104,7 +124,7 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
               ? 'border-indigo-300 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 gap-1.5'
               : 'border-blue-400 text-blue-700 bg-blue-50 hover:bg-blue-100 gap-1.5'
           }
-          onClick={enviar}
+          onClick={() => void enviar()}
         >
           <Send size={14} />
           {solicitado ? 'Reenviar ao SMBI' : 'Enviar pedido para SMBI'}
@@ -116,12 +136,12 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
         </Button>
       )}
       {isAdmin && (
-        <Button size="sm" variant="outline" disabled={ocupado} onClick={vincular}>
+        <Button size="sm" variant="outline" disabled={ocupado} onClick={() => setTextoPara('vincular')}>
           {temVinculo ? 'Trocar vínculo do SMBI' : 'Vincular a pedido do SMBI'}
         </Button>
       )}
       {isAdmin && temVinculo && (
-        <Button size="sm" variant="outline" disabled={ocupado} className="text-red-700 border-red-300 hover:bg-red-50" onClick={desvincular}>
+        <Button size="sm" variant="outline" disabled={ocupado} className="text-red-700 border-red-300 hover:bg-red-50" onClick={() => setTextoPara('desvincular')}>
           Desvincular
         </Button>
       )}
@@ -210,8 +230,8 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
               size="sm"
               className="mt-2"
               disabled={ocupado}
-              onClick={() => {
-                if (window.confirm('Confirmar este vínculo mesmo com a divergência?')) {
+              onClick={async () => {
+                if (await confirm('Confirmar este vínculo mesmo com a divergência?', { title: 'Confirmar vínculo', confirmLabel: 'Confirmar vínculo' })) {
                   void executar(() => actions.pedidos.confirmarVinculoSmbi(pedido.id), 'Vínculo confirmado.');
                 }
               }}
