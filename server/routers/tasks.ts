@@ -147,7 +147,9 @@ export const tasksRouter = router({
         assignedTo,
         status: 'pending',
         cnpj: normalizeCnpj(input.cnpj),
-        phone: normalizePhone(input.phone),
+        // Telefone só no título/anotações também vale: sem isto os botões de WhatsApp/Ligar
+        // da lista só apareciam depois da primeira edição.
+        phone: normalizePhone(input.phone) ?? phoneOfTask({ title: input.title, notes: input.notes ?? null }),
         emailConfirmed: !!email,
         emailConfirmedAt: email ? new Date() : null,
         emailConfirmedBy: email ? emailConfirmer : null,

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  sessionWorkedMs, todayWorkedMs, closeSessionValues, workedMsInDay, effectiveEndMs, isForgottenSession,
+  sessionWorkedMs, todayWorkedMs, closeSessionValues, workedMsInDay, effectiveEndMs, isForgottenSession, heartbeatAccepted,
 } from '../server/lib/workHours';
 
 const H = 3600000;
@@ -103,5 +103,30 @@ describe('isForgottenSession (REG-6)', () => {
     const s = { status: 'active', startedAt: sp('2026-10-05T22:00:00'), totalPausedMs: 0, updatedAt: sp('2026-10-06T08:55:00') };
     expect(isForgottenSession(s, now)).toBe(false);
     expect(effectiveEndMs(s, now)).toBe(now.getTime());
+  });
+});
+
+describe('heartbeatAccepted (R4-1): batimento não ressuscita sessão esquecida', () => {
+  const ontem = { status: 'active', startedAt: sp('2026-10-05T08:00:00') };
+  it('notebook que acordou no dia seguinte (último sinal de ontem): recusa', () => {
+    expect(heartbeatAccepted({ ...ontem, updatedAt: sp('2026-10-05T17:30:00') }, now)).toBe(false);
+    expect(heartbeatAccepted({ ...ontem, updatedAt: null }, now)).toBe(false);
+  });
+  it('sessão de hoje: aceita mesmo sem batimento anterior', () => {
+    expect(heartbeatAccepted({ status: 'active', startedAt: sp('2026-10-06T07:00:00'), updatedAt: sp('2026-10-06T07:00:00') }, now)).toBe(true);
+  });
+  it('virou a meia-noite com a aba aberta (sinal < 15 min): aceita; passou de 15 min: recusa', () => {
+    expect(heartbeatAccepted({ ...ontem, updatedAt: sp('2026-10-06T08:50:00') }, now)).toBe(true);
+    expect(heartbeatAccepted({ ...ontem, updatedAt: sp('2026-10-06T08:44:00') }, now)).toBe(false);
+  });
+  it('concorda com isForgottenSession para qualquer sessão aberta', () => {
+    const casos = [
+      { ...ontem, updatedAt: sp('2026-10-05T17:30:00') },
+      { ...ontem, updatedAt: sp('2026-10-06T08:50:00') },
+      { ...ontem, updatedAt: sp('2026-10-06T08:30:00') },
+      { status: 'active', startedAt: sp('2026-10-06T00:00:00'), updatedAt: sp('2026-10-06T00:00:00') },
+      { status: 'active', startedAt: sp('2026-10-05T23:59:59'), updatedAt: sp('2026-10-05T23:59:59') },
+    ];
+    for (const c of casos) expect(heartbeatAccepted(c, now)).toBe(!isForgottenSession(c, now));
   });
 });

@@ -170,9 +170,16 @@ function flushReload(): void {
 // espelho local ficou otimista e diferente do que foi gravado, então recarrega.
 function avisarEspelhoProtegido(res: unknown): void {
   if (!res || typeof res !== 'object') return;
-  if (!(res as { espelhoProtegido?: boolean }).espelhoProtegido) return;
-  toast.info('Este pedido está espelhado do SMBI: os valores do SMBI foram mantidos.');
-  needsReload = true;
+  const r = res as { espelhoProtegido?: boolean; itensAjustados?: boolean };
+  if (r.espelhoProtegido) {
+    toast.info('Este pedido está espelhado do SMBI: os valores do SMBI foram mantidos.');
+    needsReload = true;
+  }
+  // itensAjustados: o servidor sobrescreveu comissão fixa/isenção de frete de algum item.
+  if (r.itensAjustados) {
+    toast.info('A comissão de algum item foi ajustada pela tabela da empresa.');
+    needsReload = true;
+  }
 }
 
 /** Acompanha uma escrita em segundo plano. Resolve true/false (nunca rejeita). */

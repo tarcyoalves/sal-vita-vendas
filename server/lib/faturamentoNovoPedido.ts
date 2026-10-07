@@ -1,6 +1,7 @@
 // Regras de pedido do ATENDENTE (não admin/gerente) no faturamento — puras, sem banco.
-// Usadas por upsertPedido e importLocal: o cliente não escolhe status, preço de catálogo
-// nem comissão fixa por item (o payload da tela é só uma sugestão).
+// Usadas por upsertPedido e importLocal: o cliente não escolhe status nem comissão fixa /
+// isenção de frete por item (o payload da tela é só uma sugestão). Preço e quantidade são
+// do vendedor (o SMBI é a verdade; o ajuste de preço é legítimo).
 /** Forma mínima do item (o tipo do zod e o do banco diferem só em opcionais). */
 export interface ItemBase {
   id: string;
@@ -35,33 +36,49 @@ export function camposPedidoNovoAtendente(pctDoVendedor: number) {
   };
 }
 
-/**
- * Pedido NOVO de atendente: preço, isenção de frete e comissão fixa vêm do catálogo pelo
- * produtoId. Produto inexistente (ou item livre, sem produtoId): mantém o valor do cliente,
- * mas sem comissão fixa.
- */
-export function reconstruirItensPedidoNovo<T extends ItemBase>(itens: readonly T[], catalogo: Catalogo): T[] {
-  return itens.map(it => {
-    const prod = it.produtoId ? catalogo.get(it.produtoId) : undefined;
-    if (!prod) return { ...it, comissaoFixaPct: null };
-    return { ...it, valorUnitario: prod.valorUnitario, isentoFrete: prod.isentoFrete, comissaoFixaPct: prod.comissaoFixaPct };
-  });
-}
-
 const mesmoPct = (a: number | null | undefined, b: number | null | undefined) =>
   a == null || b == null ? a == b : Math.abs(a - b) < 1e-9;
 
 /**
- * Pedido EXISTENTE de atendente: a comissão fixa de cada item tem que bater com a gravada
- * (item já existente, por id ou produtoId) ou, em item novo, com a do catálogo. Se algum item
- * diverge, vale a lista de itens do banco (comissão é congelada na criação).
+ * Valores de REFERÊNCIA (comissão fixa e isenção de frete) de um item de atendente:
+ *  1. item já gravado no pedido (mesmo id e mesmo produto, ou mesmo produtoId): vale o gravado —
+ *     a comissão é congelada na criação, mesmo que o catálogo mude depois;
+ *  2. item novo ou com produto trocado: vale o catálogo pelo produtoId;
+ *  3. item livre / produto inexistente: sem comissão fixa e SEM isenção de frete. Isenção é
+ *     propriedade do produto do catálogo (preço final fixo, frete nunca soma); o item livre da
+ *     tela nasce com `isentoFrete: false` (OrderItemsEditor) e o atendente não pode se auto-isentar.
  */
-export function itensPedidoExistente<T extends ItemBase>(entrada: readonly T[], gravados: readonly T[], catalogo: Catalogo): T[] {
-  const ok = entrada.every(it => {
-    const antigo = gravados.find(g => g.id === it.id) ?? (it.produtoId ? gravados.find(g => g.produtoId === it.produtoId) : undefined);
-    if (antigo) return mesmoPct(it.comissaoFixaPct, antigo.comissaoFixaPct);
-    const prod = it.produtoId ? catalogo.get(it.produtoId) : undefined;
-    return mesmoPct(it.comissaoFixaPct, prod ? prod.comissaoFixaPct : null);
+function referenciaDoItem(it: ItemBase, gravados: readonly ItemBase[], catalogo: Catalogo): { comissaoFixaPct: number | null; isentoFrete: boolean } {
+  const antigo = gravados.find(g => g.id === it.id && g.produtoId === it.produtoId)
+    ?? (it.produtoId ? gravados.find(g => g.produtoId === it.produtoId) : undefined);
+  if (antigo) return { comissaoFixaPct: antigo.comissaoFixaPct ?? null, isentoFrete: !!antigo.isentoFrete };
+  const prod = it.produtoId ? catalogo.get(it.produtoId) : undefined;
+  return { comissaoFixaPct: prod ? prod.comissaoFixaPct : null, isentoFrete: prod ? prod.isentoFrete : false };
+}
+
+/**
+ * Regra única para pedido NOVO e EXISTENTE de atendente: o vendedor ajusta preço, quantidade e
+ * descrição livremente (ex.: baixa o valor do sal e migra para o frete para atingir o piso de
+ * frete); do servidor vêm só `comissaoFixaPct` e `isentoFrete`, item a item. `ajustados` avisa
+ * que algum item veio da tela com valor diferente do de referência (cache velho ou adulteração).
+ */
+function aplicarReferencia<T extends ItemBase>(entrada: readonly T[], gravados: readonly ItemBase[], catalogo: Catalogo): { itens: T[]; ajustados: boolean } {
+  let ajustados = false;
+  const itens = entrada.map(it => {
+    const ref = referenciaDoItem(it, gravados, catalogo);
+    if (mesmoPct(it.comissaoFixaPct, ref.comissaoFixaPct) && !!it.isentoFrete === ref.isentoFrete) return it;
+    ajustados = true;
+    return { ...it, comissaoFixaPct: ref.comissaoFixaPct, isentoFrete: ref.isentoFrete };
   });
-  return ok ? [...entrada] : [...gravados];
+  return { itens, ajustados };
+}
+
+/** Pedido NOVO de atendente: referência = catálogo (não há itens gravados). */
+export function reconstruirItensPedidoNovo<T extends ItemBase>(itens: readonly T[], catalogo: Catalogo) {
+  return aplicarReferencia(itens, [], catalogo);
+}
+
+/** Pedido EXISTENTE de atendente: referência = itens gravados (por id) e, para itens novos, o catálogo. */
+export function itensPedidoExistente<T extends ItemBase>(entrada: readonly T[], gravados: readonly ItemBase[], catalogo: Catalogo) {
+  return aplicarReferencia(entrada, gravados, catalogo);
 }

@@ -1,9 +1,14 @@
 // Entrada pública de recovery.trackCart (sem login): validação e saneamento puros.
 
-/** Nome de pessoa: letras (com acento), espaço, apóstrofo, ponto e hífen; 2–60 caracteres após o trim. */
+/**
+ * Nome de pessoa ou empresa ("Padaria 3 Irmãos", "Ind & Com"): começa com letra ou dígito e traz
+ * letras (com acento), dígitos, espaço, apóstrofo, ponto, hífen, '&', '/', ',', '(' e ')'; ao menos
+ * uma letra; 2–60 caracteres após o trim. Sem quebras de linha/controles, '<', '>', '{' ou '}'
+ * (o nome vai para prompt de IA e WhatsApp: ver nomeComoDadoNoPrompt).
+ */
 export function nomeClienteValido(raw: string): boolean {
   const s = raw.trim();
-  return s.length >= 2 && s.length <= 60 && /^\p{L}[\p{L} '’.-]*$/u.test(s);
+  return s.length >= 2 && s.length <= 60 && /^[\p{L}\p{N}][\p{L}\p{N} '’.,&/()-]*$/u.test(s) && /\p{L}/u.test(s);
 }
 
 /** Normaliza espaços do nome já validado. */

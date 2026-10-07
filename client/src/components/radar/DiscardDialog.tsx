@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { trpc } from '../../lib/trpc';
+import { useAuth } from '../../_core/hooks/useAuth';
 import {
   Dialog,
   DialogContent,
@@ -14,7 +15,7 @@ import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import {
-  RADAR_DISCARD_REASONS,
+  discardReasonsFor,
   formatCnpj,
   type RadarDiscardReason,
   type RadarLead,
@@ -37,6 +38,9 @@ export function DiscardDialog({
   lead: RadarLead;
   onDiscarded: (activity: RadarLeadActivity) => void;
 }) {
+  const { user } = useAuth();
+  // "Pediu para não ser contatado" mexe na lista de e-mail marketing: o servidor só aceita de staff.
+  const isStaff = user?.role === 'admin' || user?.role === 'manager';
   const [reason, setReason] = useState<RadarDiscardReason>('nao_compra');
   const [note, setNote] = useState('');
 
@@ -85,7 +89,7 @@ export function DiscardDialog({
           <div>
             <p className="text-xs font-semibold text-slate-500 mb-1.5">Motivo</p>
             <RadioGroup value={reason} onValueChange={(v) => setReason(v as RadarDiscardReason)}>
-              {RADAR_DISCARD_REASONS.map((r) => (
+              {discardReasonsFor(isStaff).map((r) => (
                 <div key={r.key} className="flex items-center gap-2">
                   <RadioGroupItem value={r.key} id={`discard-${r.key}`} />
                   <Label htmlFor={`discard-${r.key}`} className="text-sm font-normal cursor-pointer">
@@ -94,9 +98,14 @@ export function DiscardDialog({
                 </div>
               ))}
             </RadioGroup>
+            {!isStaff && (
+              <p className="text-[11px] text-slate-500 mt-2">
+                Se o cliente pediu para não ser contatado, avise o administrador.
+              </p>
+            )}
           </div>
 
-          {reason === 'nao_contatar' && (
+          {isStaff && reason === 'nao_contatar' && (
             <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
               O e-mail desta empresa também sai de todo e-mail marketing.
             </p>

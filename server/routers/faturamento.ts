@@ -193,6 +193,8 @@ export const faturamentoRouter = router({
     .mutation(async ({ ctx, input: { acao, ...input } }) => {
       const values = { ...input };
       const isAdmin = ctx.user.role === 'admin';
+      // Algum item veio da tela com comissão fixa/isenção de frete diferente da de referência
+      let itensAjustados = false;
 
       const [existing] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.id));
 
@@ -217,10 +219,17 @@ export const faturamentoRouter = router({
         const catalogo = catalogoPorId(await db.select().from(fatProducts));
         if (existing) {
           values.comissaoPct = existing.comissaoPct;
-          values.itens = itensPedidoExistente(input.itens, existing.itens.map(g => ({ ...g, comissaoFixaPct: g.comissaoFixaPct ?? null, pesoBrutoKg: g.pesoBrutoKg ?? 0, isentoFrete: !!g.isentoFrete })), catalogo);
+          const r = itensPedidoExistente(input.itens, existing.itens, catalogo);
+          values.itens = r.itens;
+          itensAjustados = r.ajustados;
         } else {
           Object.assign(values, camposPedidoNovoAtendente(await comissaoDoVendedor(mySellerId)));
-          values.itens = reconstruirItensPedidoNovo(input.itens, catalogo);
+          const r = reconstruirItensPedidoNovo(input.itens, catalogo);
+          values.itens = r.itens;
+          itensAjustados = r.ajustados;
+          // Pedido novo nasce estimado: o snapshot "de antes de faturar" só existe depois do
+          // faturamento (store/robô) e alimenta relatório e "Desfazer"; a tela não o semeia.
+          values.itensEstimadoSnapshot = null;
         }
       }
 
@@ -281,7 +290,7 @@ export const faturamentoRouter = router({
         .returning();
       // espelhoProtegido: o servidor descartou uma edição de campo protegido (pedido espelhado do
       // SMBI); a tela deve avisar e recarregar em vez de mostrar o valor otimista.
-      return { ...row, espelhoProtegido };
+      return { ...row, espelhoProtegido, itensAjustados };
     }),
 
   removePedido: protectedProcedure
@@ -744,7 +753,8 @@ ${assinatura ? `<div style="margin-top:24px;padding-top:16px;border-top:1px soli
             // Mesmas regras de pedido novo de upsertPedido: estimado, sem faturamento/pagamento
             // e itens (preço/comissão fixa) reconstruídos do catálogo.
             Object.assign(p, camposPedidoNovoAtendente(pctDoVendedor));
-            p.itens = reconstruirItensPedidoNovo(p.itens, catalogoImport);
+            p.itens = reconstruirItensPedidoNovo(p.itens, catalogoImport).itens;
+            p.itensEstimadoSnapshot = null;
             try { await exigirTarefaDoAtendente(p.taskId, ctx.user); } catch { continue; }
           }
           try {

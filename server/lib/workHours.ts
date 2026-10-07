@@ -6,7 +6,7 @@ import { spMidnight } from './tz';
 /** Folga para o relógio do banco vs. o do servidor: updatedAt <= início + isto não é sinal de vida. */
 const SIGNAL_EPSILON_MS = 60_000;
 /** Sem batimento (a cada 5 min) por este tempo, a sessão de dia anterior é tida como esquecida. */
-const STALE_SIGNAL_MS = 15 * 60_000;
+export const STALE_SIGNAL_MS = 15 * 60_000;
 
 type D = Date | string | number;
 
@@ -39,6 +39,23 @@ export function isForgottenSession(
   if (start >= spMidnight(now).getTime()) return false;
   const last = s.updatedAt ? Math.max(start, ms(s.updatedAt)) : start;
   return now.getTime() - last > STALE_SIGNAL_MS;
+}
+
+/**
+ * Limites usados pelo UPDATE condicional do batimento (heartbeat): a sessão só recebe sinal
+ * de vida se começou hoje (SP) OU o último sinal é mais novo que `staleBefore`. É a negação
+ * de isForgottenSession, escrita como predicado de SQL para não haver corrida entre ler e gravar.
+ */
+export function heartbeatCutoffs(now: Date): { midnight: Date; staleBefore: Date } {
+  return { midnight: spMidnight(now), staleBefore: new Date(now.getTime() - STALE_SIGNAL_MS) };
+}
+
+/** Decisão pura do batimento (espelho do predicado SQL acima): false = sessão esquecida, não ressuscitar. */
+export function heartbeatAccepted(
+  s: Pick<WorkSessionLike, 'startedAt' | 'updatedAt'>, now: Date,
+): boolean {
+  const { midnight, staleBefore } = heartbeatCutoffs(now);
+  return ms(s.startedAt) >= midnight.getTime() || (s.updatedAt != null && ms(s.updatedAt) > staleBefore.getTime());
 }
 
 /**

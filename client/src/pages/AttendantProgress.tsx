@@ -9,6 +9,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { QueryError } from '../components/QueryError';
 import { safePercent } from '../lib/numbers';
+// Módulos puros do servidor (sem banco): mesma conta de horas do servidor, sem duplicar a regra.
+import { spMidnight } from '../../../server/lib/tz';
+import { workedMsInDay } from '../../../server/lib/workHours';
 import AttendantBilling from '../components/faturamento/AttendantBilling';
 import { useFatStore } from '../lib/faturamento/store';
 import { resumoAtendente, isoNoMes, formatBRL, parseDataLocal } from '../lib/faturamento/calc';
@@ -85,12 +88,10 @@ export default function AttendantProgress() {
 
     let workedMs = 0;
     if (session) {
-      const start = new Date(session.startedAt).getTime();
-      const end   = session.endedAt ? new Date(session.endedAt).getTime() : now.getTime();
-      const paused = session.totalPausedMs ?? 0;
-      const extraPause = (session.status === 'paused' && session.pausedAt)
-        ? now.getTime() - new Date(session.pausedAt).getTime() : 0;
-      workedMs = Math.max(0, end - start - paused - extraPause);
+      // Só a parte desta sessão que cai em HOJE (SP), como o servidor (workedMsInDay): uma
+      // sessão que atravessou a meia-noite não pode trazer as horas de ontem para o dia.
+      const dayStart = spMidnight(now);
+      workedMs = workedMsInDay(session, now, dayStart, new Date(dayStart.getTime() + 86400000));
       // Horas de hoje = esta sessão (relógio ao vivo) + as outras sessões de hoje já
       // encerradas (encerrar e reiniciar não pode zerar as horas da manhã)
       workedMs += session.todayOtherMs ?? 0;

@@ -20,3 +20,11 @@
   criar tarefa valida responsável; descarte 'não contatar' só staff; seed/update-admin recusam produção.
 - docs/MIGRACAO-INDICES-UNICOS.md + scripts/db/indices-unicos/*.sql: NADA executado (decisão do dono).
 - Testes: 590. Gates: check, vitest, build:client, build:api.
+
+## Lote 5 (revisão final das regressões do Lote 4)
+- Heartbeat só vale para sessão do dia ou com sinal < 15 min (não ressuscita sessão esquecida).
+- Pedido de atendente: preço/quantidade do vendedor mantidos (regra do dono: ajuste de sal x frete);
+  do catálogo/gravado vêm só comissaoFixaPct e isentoFrete, por item; resposta `itensAjustados` avisa a tela.
+- IA e 'Meu progresso' usam a mesma conta de horas do servidor; descarte 'não contatar' oculto para atendente;
+  carrinho público aceita nomes de empresa com números/&; tarefa criada com telefone nas anotações já ganha `phone`.
+- Testes: 599.

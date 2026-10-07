@@ -2,9 +2,9 @@ import { z } from 'zod';
 import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { workSessions, sellers, tasks } from '../db/schema';
-import { eq, and, desc, gte, or, isNotNull, isNull, lt, count, sql } from 'drizzle-orm';
+import { eq, and, desc, gte, gt, or, isNotNull, isNull, lt, count, sql } from 'drizzle-orm';
 import { spMidnight } from '../lib/tz';
-import { closeSessionValues, effectiveEndMs, isForgottenSession, sessionWorkedMs, todayWorkedMs } from '../lib/workHours';
+import { closeSessionValues, effectiveEndMs, heartbeatCutoffs, isForgottenSession, sessionWorkedMs, todayWorkedMs } from '../lib/workHours';
 
 export const workSessionsRouter = router({
 
@@ -104,11 +104,22 @@ export const workSessionsRouter = router({
   // Batimento: o cliente chama a cada 5 min com a aba visível e a sessão ativa. Só
   // atualiza updatedAt (último sinal de vida) — é o que impede uma sessão esquecida
   // aberta de virar 0 h ao ser encerrada (ver effectiveEndMs em lib/workHours.ts).
+  // Sessão esquecida (de dia anterior, sem sinal há mais de 15 min) NÃO é atualizada:
+  // o notebook que acorda no dia seguinte dispara o setInterval atrasado e, sem esta
+  // condição, "ressuscitaria" a sessão e contaria a noite como trabalho. `updated: 0`
+  // avisa o cliente para recarregar a sessão atual.
   heartbeat: protectedProcedure.mutation(async ({ ctx }) => {
-    await db.update(workSessions)
-      .set({ updatedAt: new Date() })
-      .where(and(eq(workSessions.userId, ctx.user.id), eq(workSessions.status, 'active')));
-    return { ok: true as const };
+    const now = new Date();
+    const { midnight, staleBefore } = heartbeatCutoffs(now);
+    const rows = await db.update(workSessions)
+      .set({ updatedAt: now })
+      .where(and(
+        eq(workSessions.userId, ctx.user.id),
+        eq(workSessions.status, 'active'),
+        or(gte(workSessions.startedAt, midnight), gt(workSessions.updatedAt, staleBefore)),
+      ))
+      .returning({ id: workSessions.id });
+    return { ok: true as const, updated: rows.length };
   }),
 
   // Pause — records when pause started

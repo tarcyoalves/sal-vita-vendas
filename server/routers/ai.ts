@@ -6,6 +6,7 @@ import { chatMessages, tasks, clients, sellers, workSessions, knowledgeDocuments
 import { eq, desc, or, gte, and, ilike, sql } from 'drizzle-orm';
 import { spMidnight, spEndOfDay, spDateStr, spNextBusinessDay, spHHmm, spDDMM } from '../lib/tz';
 import { isToolAllowed } from '../lib/aiToolGuard';
+import { effectiveEndMs, isForgottenSession, sessionWorkedMs, todayWorkedMs, totalPausedMsOf } from '../lib/workHours';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -711,18 +712,20 @@ async function executeTool(name: string, args: any, callerUserId?: number): Prom
       const mine = recentSessions.filter(s => s.userId === seller.userId);
       const sessionDetails = mine.slice(0, 7).map(s => {
         const start = new Date(s.startedAt);
-        const end = s.endedAt ? new Date(s.endedAt) : (s.status !== 'ended' ? now : null);
-        const elapsed = end ? end.getTime() - start.getTime() : 0;
-        let pausedMs = s.totalPausedMs ?? 0;
-        if (s.status === 'paused' && s.pausedAt) pausedMs += now.getTime() - new Date(s.pausedAt).getTime();
-        const workedMs = Math.max(0, elapsed - pausedMs);
+        // Mesmas regras do cronômetro: sessão esquecida aberta não conta até agora nem é "ativo agora".
+        const forgotten = isForgottenSession(s, now);
+        const pausedMs = totalPausedMsOf(s, now);
+        const workedMs = sessionWorkedMs(s, now);
+        const end = s.endedAt ? new Date(s.endedAt) : null;
         return {
           data: fmtDate(start),
           entrada: fmtTime(start),
-          saida: end && s.status === 'ended' ? fmtTime(end) : s.status === 'paused' ? 'pausado' : 'ativo agora',
+          saida: end && s.status === 'ended' ? fmtTime(end)
+            : forgotten ? `não encerrada (esquecida aberta; fim estimado ${fmtTime(new Date(effectiveEndMs(s, now)))})`
+            : s.status === 'paused' ? 'pausado' : 'ativo agora',
           tempo_trabalhado: fmtMs(workedMs),
           pausas: fmtMs(pausedMs),
-          status: s.status,
+          status: forgotten ? 'esquecida' : s.status,
         };
       });
       const todaySess = mine.find(s => new Date(s.startedAt) >= todayStart);
@@ -870,14 +873,10 @@ ${overdue.slice(0, 5).map(t => `- "${t.title.slice(0, 60)}" (${t.assignedTo ?? '
 
       let sessionInfo = 'não acessou hoje';
       if (sess) {
-        const start = new Date(sess.startedAt);
-        const end = sess.endedAt ? new Date(sess.endedAt) : now;
-        const elapsed = end.getTime() - start.getTime();
-        let pausedMs = sess.totalPausedMs ?? 0;
-        if (sess.status === 'paused' && sess.pausedAt) pausedMs += now.getTime() - new Date(sess.pausedAt).getTime();
-        const workedMs = Math.max(0, elapsed - pausedMs);
-        const entrada = spHHmm(start);
-        sessionInfo = `entrada=${entrada}, trabalhado=${fmtMs(workedMs)}, pausas=${fmtMs(pausedMs)}, status=${sess.status}`;
+        const mineToday = todaySessions.filter(ws => ws.userId === s.userId);
+        const pausedMs = mineToday.reduce((acc, ws) => acc + totalPausedMsOf(ws, now), 0);
+        const status = isForgottenSession(sess, now) ? 'esquecida (aberta sem sinal de vida)' : sess.status;
+        sessionInfo = `entrada=${spHHmm(new Date(sess.startedAt))}, trabalhado=${fmtMs(todayWorkedMs(mineToday, now))}, pausas=${fmtMs(pausedMs)}, status=${status}`;
       }
 
       context += `- ${s.name}: ${st.length} clientes, ${late} vencidos, contatos_hoje=${contatos}, ghost_30d=${ghosts} | sessão: ${sessionInfo}\n`;
@@ -1103,23 +1102,13 @@ ${userContext}`;
       const mine = recentSessions.filter(s => s.userId === sellerId);
       const todaySess = mine.find(s => new Date(s.startedAt) >= todayStart);
       const daysActive7 = new Set(mine.map(s => new Date(s.startedAt).toDateString())).size;
-      const totalWorkedMs7 = mine.reduce((acc, s) => {
-        const end = s.endedAt ? new Date(s.endedAt) : (s.status !== 'ended' ? now : new Date(s.startedAt));
-        const elapsed = end.getTime() - new Date(s.startedAt).getTime();
-        const paused = (s.totalPausedMs ?? 0) + (s.status === 'paused' && s.pausedAt ? now.getTime() - new Date(s.pausedAt).getTime() : 0);
-        return acc + Math.max(0, elapsed - paused);
-      }, 0);
+      const totalWorkedMs7 = mine.reduce((acc, s) => acc + sessionWorkedMs(s, now), 0);
       const lastAccess = mine[0] ? new Date(mine[0].startedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'nunca';
 
       let todayInfo = 'não acessou hoje';
       if (todaySess) {
-        const start = new Date(todaySess.startedAt);
-        const end = todaySess.endedAt ? new Date(todaySess.endedAt) : now;
-        const elapsed = end.getTime() - start.getTime();
-        let pausedMs = todaySess.totalPausedMs ?? 0;
-        if (todaySess.status === 'paused' && todaySess.pausedAt) pausedMs += now.getTime() - new Date(todaySess.pausedAt).getTime();
-        const workedMs = Math.max(0, elapsed - pausedMs);
-        todayInfo = `entrada=${spHHmm(start)}, trabalhado=${fmtMs(workedMs)}, status=${todaySess.status}`;
+        const status = isForgottenSession(todaySess, now) ? 'esquecida (aberta sem sinal de vida)' : todaySess.status;
+        todayInfo = `entrada=${spHHmm(new Date(todaySess.startedAt))}, trabalhado=${fmtMs(todayWorkedMs(mine, now))}, status=${status}`;
       }
 
       return { todayInfo, daysActive7, totalWorkedMs7Fmt: fmtMs(totalWorkedMs7), lastAccess };

@@ -210,6 +210,14 @@ export const RADAR_DISCARD_REASONS = [
 export type RadarDiscardReason = (typeof RADAR_DISCARD_REASONS)[number]['key'];
 export const RADAR_DISCARD_REASON_KEYS = RADAR_DISCARD_REASONS.map((r) => r.key) as [RadarDiscardReason, ...RadarDiscardReason[]];
 
+/** Motivos que só admin/gerente podem usar (o servidor recusa os demais: ver discardRefusal). */
+export const RADAR_DISCARD_STAFF_ONLY: readonly RadarDiscardReason[] = ['nao_contatar'];
+
+/** Motivos oferecidos na tela de descarte: o atendente não vê os exclusivos de staff. */
+export function discardReasonsFor(isStaff: boolean) {
+  return RADAR_DISCARD_REASONS.filter((r) => isStaff || !RADAR_DISCARD_STAFF_ONLY.includes(r.key));
+}
+
 export function discardReasonLabel(key: string): string {
   return RADAR_DISCARD_REASONS.find((r) => r.key === key)?.label ?? key;
 }

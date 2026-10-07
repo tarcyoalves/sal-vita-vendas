@@ -46,15 +46,31 @@ export default function ActiveTimer() {
   const heartbeat = trpc.workSessions.heartbeat.useMutation();
 
   // Batimento a cada 5 min (sessão ativa + aba visível): é o "último sinal de vida"
-  // que o servidor usa para fechar uma sessão esquecida sem zerar as horas.
+  // que o servidor usa para fechar uma sessão esquecida sem zerar as horas. O servidor só
+  // atualiza sessão não esquecida; se não atualizou nada (`updated: 0`), a sessão atual
+  // mudou (esquecida/encerrada) e recarregamos para o relógio sumir em vez de contar a noite.
   const sessionStatus = session?.status;
   useEffect(() => {
     if (sessionStatus !== 'active') return;
     const beat = () => {
-      if (document.visibilityState === 'visible') heartbeat.mutate(undefined, { onError: () => {} });
+      if (document.visibilityState !== 'visible') return;
+      heartbeat.mutate(undefined, {
+        onSuccess: r => { if (!r.updated) refetch(); },
+        onError: () => {},
+      });
+    };
+    // Ao voltar a aba (ex.: notebook que acordou) não bate às cegas: recarrega a sessão
+    // atual e só bate se ela ainda estiver ativa (o servidor já descarta a esquecida).
+    const onVisible = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const { data } = await refetch();
+        if (data?.status === 'active') beat();
+      } catch { /* sem rede: o próximo ciclo tenta de novo */ }
     };
     const id = setInterval(beat, 5 * 60_000);
-    return () => clearInterval(id);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVisible); };
   }, [sessionStatus]);
 
   useEffect(() => {
