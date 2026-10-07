@@ -1,30 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-/* ─── Social proof data ──────────────────────────────────── */
-const SP_NAMES = ['Ana','Maria','João','Carlos','Pedro','Fernanda','Juliana','Roberto','Marcos','Patrícia','Rafael','Camila','Lucas','Beatriz','Thiago','Larissa','Diego','Natália','Bruno','Isabela'];
-const SP_CITIES = ['Mossoró/RN','Natal/RN','Fortaleza/CE','Recife/PE','João Pessoa/PB','Campina Grande/PB','Maceió/AL','Aracaju/SE','Salvador/BA','Teresina/PI','São Luís/MA','Caicó/RN','Pau dos Ferros/RN','Parnamirim/RN','Caucaia/CE'];
-const SP_QTYS = ['1 embalagem de 1kg','2 embalagens de 1kg','1 embalagem de 10kg','3 embalagens de 1kg'];
-function randEl<T>(arr: T[]): T { return arr[Math.floor(Math.random()*arr.length)]; }
-
-function useSocialProof() {
-  const [toast, setToast] = useState<{name:string;city:string;qty:string;visible:boolean}|null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout>|null>(null);
-  useEffect(() => {
-    function show() {
-      setToast({ name:randEl(SP_NAMES), city:randEl(SP_CITIES), qty:randEl(SP_QTYS), visible:true });
-      timerRef.current = setTimeout(()=>setToast(t=>t?{...t,visible:false}:null), 4500);
-      timerRef.current = setTimeout(()=>{ setToast(null); schedule(); }, 5200);
-    }
-    function schedule() {
-      const delay = 12000 + Math.random()*18000; // 12–30s
-      timerRef.current = setTimeout(show, delay);
-    }
-    const initial = setTimeout(show, 5000); // first one after 5s
-    return () => { clearTimeout(initial); if(timerRef.current) clearTimeout(timerRef.current); };
-  }, []);
-  return toast;
-}
-
 /* ─── Image assets ───────────────────────────────────────── */
 const IMG = {
   produto:       'https://salvitarn.com.br/wp-content/uploads/2026/05/WhatsApp-Image-2026-05-04-at-09.02.12.jpeg',
@@ -51,58 +26,43 @@ const REGIONS: Record<string, { pac:[number,string]; sedex:[number,string] }> = 
   TO:{pac:[24,'9–13 dias'],sedex:[46,'3–6 dias']},
 };
 
-function calcShipping(uf:string, kg:number) {
+function calcShipping(uf:string, kg:number): ShipOpt[] {
   const r = REGIONS[uf] ?? {pac:[28,'10–15 dias'],sedex:[52,'4–7 dias']};
   const f = kg >= 10 ? 2.4 : 1;
   return [
-    {service:'PAC',   price:+(r.pac[0]  *f).toFixed(2), days:r.pac[1],  icon:'📦', description:'Econômico'},
-    {service:'SEDEX', price:+(r.sedex[0]*f).toFixed(2), days:r.sedex[1],icon:'⚡', description:'Expresso'},
+    {service:'PAC',   price:+(r.pac[0]  *f).toFixed(2), days:r.pac[1],  description:'Econômico'},
+    {service:'SEDEX', price:+(r.sedex[0]*f).toFixed(2), days:r.sedex[1], description:'Expresso'},
   ];
 }
 
-/* ─── WhatsApp ───────────────────────────────────────────── */
+const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+
+/* ─── WhatsApp / formatting ──────────────────────────────── */
 const WA = '558421408212';
-
-function waLink(name:string, weight:string, price:number, ship?:{service:string;price:number;days:string}) {
-  const msg = ship
-    ? `Olá! Quero comprar ${name} ${weight} — R$ ${price.toFixed(2)}. Frete ${ship.service}: R$ ${ship.price.toFixed(2)} (${ship.days}). Total: R$ ${(price+ship.price).toFixed(2)}.`
-    : `Olá! Quero comprar ${name} ${weight} — R$ ${price.toFixed(2)}.`;
-  return `https://wa.me/${WA}?text=${encodeURIComponent(msg)}`;
-}
-
-/* ─── Particles (salt crystals) ─────────────────────────── */
-const PARTICLES = Array.from({length:20},(_,i)=>({
-  id:i, left:`${((i*43+9)%97)+1}%`,
-  size: 3+(i%3), dur:`${9+(i%8)}s`, delay:`${-((i*2.1)%12)}s`,
-  opacity: 0.18+(i%4)*0.07,
-}));
+const WA_LINK = `https://wa.me/${WA}`;
+const brl = (n:number) => `R$ ${Number(n).toFixed(2).replace('.',',')}`;
 
 /* ─── FAQ ────────────────────────────────────────────────── */
 const FAQS = [
-  {q:'O que é sal marinho não refinado?',a:'Passa apenas pelos processos essenciais de colheita, secagem e moagem — sem o refino industrial que remove os minerais traço. Preserva o complexo natural de minerais presentes na água do mar, como magnésio, cálcio e potássio, que conferem sabor mais rico e complexo comparado ao sal refinado comum. Como todo sal para consumo humano no Brasil, é enriquecido com iodo conforme a legislação.'},
-  {q:'Por que "mais sabor em menos pitadas"?',a:'A presença dos minerais naturais amplifica a percepção de sabor nos alimentos. Com o sal refinado você perde toda essa riqueza. Com o SAL VITA PREMIUM Não Refinado, uma pitada menor já entrega mais sabor — consumo mais consciente e econômico.'},
-  {q:'O zip lock realmente funciona?',a:'Sim. Fechamento duplo de alta espessura com junta dupla de vedação. Abre e fecha centenas de vezes sem perder a vedação. A janela circular transparente permite ver o sal a qualquer momento sem abrir a embalagem.'},
-{q:'Por que o sal de Mossoró é diferente?',a:'Mossoró (RN) produz mais de 95% do sal marinho brasileiro. Sol intenso, ventos constantes e baixíssima umidade criam um sal de altíssima pureza, colhido diretamente do oceano Atlântico.'},
-  {q:'Como funciona o frete?',a:'Enviamos por Correios via Melhor Envio com rastreamento. Nordeste: 1–5 dias úteis. Sudeste/Sul: 2–7 dias. Norte: até 18 dias úteis. O frete é calculado por CEP na finalização do pedido.'},
+  {q:'O que é sal marinho não refinado?',a:'Passa apenas pelos processos essenciais de colheita, secagem e moagem — sem o refino industrial que remove os minerais traço. Preserva os minerais traço naturais presentes na água do mar, que dão ao sal um sabor característico. Como todo sal para consumo humano no Brasil, é iodado conforme a legislação.'},
+  {q:'O que significa "Muito mais sabor, em cada pitada"?',a:'É o slogan da embalagem. Os minerais traço dão ao sal um sabor característico.'},
+  {q:'Como é a embalagem?',a:'Embalagem zip lock com janela circular transparente: abre e fecha sempre que precisar, e você vê o sal sem abrir a embalagem.'},
+  {q:'Por que o sal de Mossoró é diferente?',a:'Mossoró (RN) produz mais de 95% do sal marinho brasileiro. Sol intenso, ventos constantes e baixíssima umidade criam condições favoráveis à produção de sal por evaporação solar.'},
+  {q:'Como funciona o frete?',a:'Enviamos por Correios via Melhor Envio, com rastreamento. O valor e o prazo do frete são calculados pelo seu CEP antes de você pagar.'},
 ];
 
-/* ─── Testimonials ───────────────────────────────────────── */
-const TESTIMONIALS = [
-  {name:'Ana Paula S.',city:'Natal, RN',stars:5,text:'Nunca mais voltei para o sal comum. O sabor dos meus pratos mudou completamente — uso menos e fica mais gostoso. A embalagem com zip lock é prática demais.'},
-  {name:'Ricardo M.',city:'São Paulo, SP',stars:5,text:'Comprei a caixa de 10kg e não me arrependo. Preço ótimo, sal de qualidade real. Dá para sentir a diferença no tempero, especialmente em peixes e carnes.'},
-  {name:'Fernanda C.',city:'Recife, PE',stars:5,text:'Produto incrível! Minha família toda adotou. A janela transparente na embalagem é um detalhe que mostra cuidado com o produto. Recomendo muito.'},
-  {name:'Carlos R.',city:'Belo Horizonte, MG',stars:5,text:'Já testei outros sais "premium" mas este é diferente. Visivelmente mais úmido e com granulação perfeita. O iodo natural faz toda diferença no sabor.'},
-  {name:'Juliana T.',city:'Fortaleza, CE',stars:5,text:'Recebi rápido e bem embalado. O sal tem uma cor ligeiramente acinzentada que mostra que é de verdade — não é aquele branco artificial. Muito bom!'},
-];
+/* ─── Depoimentos ────────────────────────────────────────── */
+// Removidos de propósito: os textos antigos não eram de clientes identificáveis.
+// Avaliações reais, com autorização de quem escreveu, podem ser reinseridas aqui.
 
 /* ─── Food uses ──────────────────────────────────────────── */
 const USES = [
-  {e:'🥩',t:'Carnes e Aves',d:'Realça o sabor natural sem mascarar'},
-  {e:'🐟',t:'Peixes e Frutos do Mar',d:'Toque perfeito que valoriza o mar'},
-  {e:'🥗',t:'Saladas e Legumes',d:'Tempero leve que exalta o frescor'},
-  {e:'🍝',t:'Massas e Risotos',d:'Na água ou finalização do prato'},
-  {e:'🍲',t:'Sopas e Caldos',d:'Profundidade de sabor com menos sal'},
-  {e:'🍞',t:'Pães e Panificação',d:'Ativa o glúten, melhora a crosta'},
+  {t:'Carnes e Aves',d:'Tempero para o preparo e a finalização'},
+  {t:'Peixes e Frutos do Mar',d:'Um toque de sal marinho para o prato'},
+  {t:'Saladas e Legumes',d:'Tempero leve para o dia a dia'},
+  {t:'Massas e Risotos',d:'Na água ou na finalização do prato'},
+  {t:'Sopas e Caldos',d:'Para temperar durante o preparo'},
+  {t:'Pães e Panificação',d:'Para massas e receitas de padaria'},
 ];
 
 function maskPhone(v: string): string {
@@ -120,6 +80,11 @@ function maskCpf(v: string): string {
   return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`;
 }
 
+function maskCep(v: string): string {
+  const d = v.replace(/\D/g,'').slice(0,8);
+  return d.length > 5 ? `${d.slice(0,5)}-${d.slice(5)}` : d;
+}
+
 function isValidCpf(cpf: string): boolean {
   const d = cpf.replace(/\D/g,'');
   if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
@@ -133,21 +98,98 @@ function isValidCpf(cpf: string): boolean {
   return r === parseInt(d[10]);
 }
 
-interface Product {id:string;name:string;subtitle:string;weight:string;weightKg:number;units:number;price:number;pricePerKg:number;tag:string;highlight:boolean;savings?:string}
+interface Product {id:string;name:string;subtitle:string;weight:string;weightKg:number;units:number;price:number;pricePerKg:number;tag:string;highlight:boolean}
 
 // Narrows a catalog id to the union the API accepts, so quoting and ordering
 // always describe the same product.
 type CatalogId = '1kg' | '3kg' | 'caixa';
 const catalogId = (id: string): CatalogId =>
   (['1kg','3kg','caixa'] as const).includes(id as CatalogId) ? (id as CatalogId) : '1kg';
-interface ShipOpt  {serviceId?:string;service:string;price:number;days:string;icon:string;description:string}
+interface ShipOpt  {serviceId?:string;service:string;price:number;days:string;description:string}
 interface CepData  {localidade:string;uf:string;bairro:string}
+interface ApiShipOpt {serviceId?:string;name?:string;company?:string;price:number;days:string}
+interface PendingOrder {id:number;total:number;ts:number;trackToken?:string|null;productId?:string;shipService?:string;shipPrice?:number}
+
+const PRODUCTS:Product[]=[
+  {id:'1kg',  name:'SAL VITA PREMIUM',      subtitle:'Embalagem zip lock com janela',      weight:'1kg',          weightKg:1.2, units:1,  price:29.90, pricePerKg:29.90, tag:'Para experimentar',      highlight:false},
+  {id:'3kg',  name:'TRIO SAL VITA',         subtitle:'3 embalagens zip lock de 1kg cada',  weight:'3kg (3×1kg)',  weightKg:3.6, units:3,  price:74.90, pricePerKg:24.97, tag:'Ideal para a Família', highlight:false},
+  {id:'caixa',name:'CAIXA SAL VITA PREMIUM',subtitle:'10 embalagens zip lock de 1kg cada', weight:'10kg (10×1kg)',weightKg:12,  units:10, price:149.90,pricePerKg:14.99, tag:'Melhor Custo-Benefício', highlight:true},
+];
+
+const BLANK_FORM = {
+  customerName:'',customerPhone:'',customerEmail:'',customerCpf:'',postalCode:'',address:'',
+  number:'',complement:'',neighborhood:'',city:'',state:'',
+};
+type CheckoutForm = typeof BLANK_FORM;
+
+// Customer data typed on THIS device earlier (never stored in the database).
+function loadSavedCustomer(): Partial<CheckoutForm> {
+  try {
+    const d = JSON.parse(localStorage.getItem('sv_customer_data') ?? 'null');
+    if (!d || typeof d !== 'object') return {};
+    const out: Partial<CheckoutForm> = {};
+    (Object.keys(BLANK_FORM) as (keyof CheckoutForm)[]).forEach(k => { if (typeof d[k] === 'string') out[k] = d[k]; });
+    return out;
+  } catch { return {}; }
+}
+
+type FbqFn = (...args: unknown[]) => void;
+function fbq(...args: unknown[]) {
+  try { (window as unknown as {fbq?:FbqFn}).fbq?.(...args); } catch {}
+}
+const pixelName = (p: Product) => `${p.name} ${p.weight}`;
+
+const PIX_MAX_MS = 30 * 60 * 1000;
+const trackUrl = (id:number, token?:string|null) => `/meu-pedido?pedido=${id}${token ? `&t=${token}` : ''}`;
+
+function Logo({size=40,white=false}:{size?:number;white?:boolean}) {
+  return (
+    <img
+      src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
+      alt="Sal Vita Premium"
+      width={Math.round(size*282/189)} height={size}
+      style={{height:size,width:'auto',objectFit:'contain',filter:white?'brightness(0) invert(1)':'none'}}
+    />
+  );
+}
+
+function WaIcon() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>;
+}
+
+/* ── Casca dos modais do checkout: um único diálogo por vez ── */
+function Sheet({dlgRef,onBackdrop,maxWidth,foot,children}:{dlgRef:React.RefObject<HTMLDivElement>;onBackdrop:()=>void;maxWidth?:number;foot?:React.ReactNode;children:React.ReactNode}) {
+  return (
+    <div className="mo" onClick={e=>e.target===e.currentTarget&&onBackdrop()}>
+      <div className="mb" ref={dlgRef} role="dialog" aria-modal="true" aria-labelledby="co-title" tabIndex={-1} style={maxWidth?{maxWidth}:undefined}>
+        <div className="mb-drag"/>
+        <div className="mb-body">{children}</div>
+        {foot&&<div className="mb-foot">{foot}</div>}
+      </div>
+    </div>
+  );
+}
+
+function SheetHead({eyebrow,title,sub,onClose}:{eyebrow:string;title:string;sub?:string;onClose:()=>void}) {
+  return (
+    <div className="mb-head">
+      <div style={{minWidth:0}}>
+        <p style={{fontSize:'.8rem',fontWeight:700,letterSpacing:'.16em',color:'var(--golddk)',textTransform:'uppercase',marginBottom:2}}>{eyebrow}</p>
+        <h3 id="co-title" style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.5rem',fontWeight:700,color:'var(--text)',lineHeight:1.15,margin:0}}>{title}</h3>
+        {sub&&<p style={{color:'var(--muted)',fontSize:'.9rem',marginTop:2}}>{sub}</p>}
+      </div>
+      <button type="button" className="mb-x" onClick={onClose} aria-label="Fechar">×</button>
+    </div>
+  );
+}
+
+const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 /* ══════════════════════════════════════════════════════════ */
 export default function SalVitaLanding() {
   useEffect(() => {
     const prev = document.title;
-    document.title = 'SAL VITA PREMIUM — Sal Marinho Não Refinado de Mossoró · Minerais Traço Naturais';
+    document.title = 'Sal Vita Premium — Sal Marinho Não Refinado de Mossoró/RN';
     return () => { document.title = prev; };
   }, []);
 
@@ -171,27 +213,34 @@ export default function SalVitaLanding() {
   // the old "last 4 phone digits" scheme.
   const [orderDone,setOrderDone]           = useState<{id:number;total:number;createdAt:number;trackToken?:string|null}|null>(null);
   const [mpLoading,setMpLoading]           = useState(false);
-  const [payTimer,setPayTimer]             = useState(900); // 15 min countdown
-  const payTimerRef = useRef<ReturnType<typeof setInterval>|null>(null);
   const [pixLoading,setPixLoading]         = useState(false);
   const [pixData,setPixData]               = useState<{qrCode:string;qrCodeBase64:string}|null>(null);
   const [pixCopied,setPixCopied]           = useState(false);
   const [pixPaid,setPixPaid]               = useState(false);
+  const [pixPollErr,setPixPollErr]         = useState(false);
+  const [pixExpired,setPixExpired]         = useState(false);
   const pixPollRef = useRef<ReturnType<typeof setInterval>|null>(null);
   const pixPurchaseFiredRef = useRef(false);
-  const [checkoutForm,setCheckoutForm]     = useState({
-    customerName:'',customerPhone:'',customerEmail:'',customerCpf:'',postalCode:'',address:'',
-    number:'',complement:'',neighborhood:'',city:'',state:'',
-  });
+  const [checkoutForm,setCheckoutForm]     = useState<CheckoutForm>(BLANK_FORM);
   const [couponCode,setCouponCode]         = useState('');
   const [couponState,setCouponState]       = useState<{valid:boolean;message:string;discountValue?:number;discountType?:string}|null>(null);
   const [couponLoading,setCouponLoading]   = useState(false);
   const [cpfError,setCpfError]             = useState('');
-  const [pendingOrder,setPendingOrder]     = useState<{id:number;total:number}|null>(null);
+  const [phoneError,setPhoneError]         = useState('');
+  const [orderErr,setOrderErr]             = useState('');
+  const [payErr,setPayErr]                 = useState('');
+  const [shipNotice,setShipNotice]         = useState('');
+  const [pendingOrder,setPendingOrder]     = useState<PendingOrder|null>(null);
   const autoCouponRef = useRef<string>('');
   const attributionRef = useRef<Record<string,string>>({});
   const obs = useRef<IntersectionObserver|null>(null);
-  const spToast = useSocialProof();
+  const dlgRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLElement|null>(null);
+  const prevStepRef = useRef(0);
+  const cepInputRef = useRef<HTMLInputElement>(null);
+
+  // Which checkout dialog is on screen (0 = none). Only one is ever mounted.
+  const step = !showModal ? 0 : (orderDone && showCheckout) ? 3 : (showCheckout && selProd && selShip) ? 2 : selProd ? 1 : 0;
 
   useEffect(()=>{
     const h=()=>{ setScrolled(window.scrollY>50); };
@@ -200,9 +249,9 @@ export default function SalVitaLanding() {
   },[]);
 
   useEffect(()=>{
-    document.body.style.overflow = mobileMenu ? 'hidden' : '';
+    document.body.style.overflow = (mobileMenu || step>0) ? 'hidden' : '';
     return ()=>{ document.body.style.overflow=''; };
-  },[mobileMenu]);
+  },[mobileMenu,step]);
 
   useEffect(()=>{
     obs.current=new IntersectionObserver(
@@ -238,16 +287,11 @@ export default function SalVitaLanding() {
     } catch {}
     // Restore previously typed customer data (saved on THIS device only — no
     // database storage) so returning shoppers don't retype everything.
-    try {
-      const saved = localStorage.getItem('sv_customer_data');
-      if (saved) {
-        const d = JSON.parse(saved);
-        if (d && typeof d === 'object') {
-          setCheckoutForm(f => ({ ...f, ...d }));
-          if (d.postalCode) setCep(d.postalCode);
-        }
-      }
-    } catch {}
+    const saved = loadSavedCustomer();
+    if (Object.keys(saved).length) {
+      setCheckoutForm(f => ({ ...f, ...saved }));
+      if (saved.postalCode) setCep(saved.postalCode.replace(/\D/g,'').slice(0,8));
+    }
   }, []);
 
   // Persist customer data locally whenever it changes (device-only, no DB cost)
@@ -263,20 +307,31 @@ export default function SalVitaLanding() {
     if (showCheckout && selProd && couponCode.trim() && couponCode === autoCouponRef.current && !couponState && !couponLoading) {
       validateCoupon(couponCode, selProd.price);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showCheckout, selProd, couponCode]);
 
-  // Check for pending order in localStorage on mount
+  const clearPending = useCallback(()=>{
+    try { localStorage.removeItem('sv_pending_order'); } catch {}
+    setPendingOrder(null);
+  },[]);
+
+  // Unpaid order saved on this device in the last 2h -> offer to resume payment.
+  // A single status check (needs the order token) drops it if it was already paid
+  // on Mercado Pago's page, since nothing on the return trip clears this key.
   useEffect(() => {
+    let p: PendingOrder | null = null;
     try {
-      const stored = localStorage.getItem('sv_pending_order');
-      if (stored) {
-        const p = JSON.parse(stored);
-        if (Date.now() - p.ts < 2 * 60 * 60 * 1000) {
-          setPendingOrder(p);
-        }
-      }
+      const raw = JSON.parse(localStorage.getItem('sv_pending_order') ?? 'null');
+      if (raw && Number.isFinite(raw.id) && Number.isFinite(raw.ts) && Date.now() - raw.ts < 2 * 60 * 60 * 1000) p = raw as PendingOrder;
     } catch {}
-  }, []);
+    if (!p) return;
+    setPendingOrder(p);
+    if (!p.trackToken) return;
+    fetch('/api/trpc/shipping.pixStatus', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({json:{ orderId: p.id, token: p.trackToken }}),
+    }).then(r=>r.json()).then(d=>{ if (d?.result?.data?.json?.paid) clearPending(); }).catch(()=>{});
+  }, [clearPending]);
 
   // Track cart abandonment at step 1 (form started: name + phone present)
   const cartTrackRef = useRef(false);
@@ -293,44 +348,85 @@ export default function SalVitaLanding() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkoutForm.customerName, checkoutForm.customerPhone]);
 
-  const openBuy=useCallback((p:Product)=>{
-    setSelProd(p); setShowModal(true); setMobileMenu(false);
-    try { (window as any).fbq?.('track','ViewContent',{ content_name: 'SAL VITA PREMIUM 1kg', content_category: 'Alimentos Naturais', content_ids: ['salvita-001'], content_type: 'product', value: p.price, currency: 'BRL' }); } catch {}
-    try { (window as any).fbq?.('track','AddToCart',{ content_name: 'SAL VITA PREMIUM 1kg', content_ids: ['salvita-001'], content_type: 'product', value: p.price, currency: 'BRL' }); } catch {}
-    setCep(''); setCepData(null); setShipping([]); setSelShip(null); setCepErr(''); setShippingSource(null);
-    setShowCheckout(false); setOrderDone(null);
-    setCheckoutForm({customerName:'',customerPhone:'',customerEmail:'',customerCpf:'',postalCode:'',address:'',number:'',complement:'',neighborhood:'',city:'',state:''});
-    setCouponState(null); setCouponCode('');
-    cartTrackRef.current = false;
-    localStorage.removeItem('sv_pending_order');
-    setPendingOrder(null);
-    setPixData(null); setPixPaid(false); setPixCopied(false);
-    pixPurchaseFiredRef.current = false;
-    if(pixPollRef.current) clearInterval(pixPollRef.current);
-    document.body.style.overflow='hidden';
-  },[]);
-  const closeBuy=useCallback(()=>{
-    setShowModal(false); setShowCheckout(false); setOrderDone(null); document.body.style.overflow='';
-    if(payTimerRef.current) clearInterval(payTimerRef.current);
-    if(pixPollRef.current) clearInterval(pixPollRef.current);
+  const stopPixPoll = useCallback(()=>{
+    if(pixPollRef.current){ clearInterval(pixPollRef.current); pixPollRef.current=null; }
   },[]);
 
-  // Countdown is derived from the real order-creation timestamp (not reset on
-  // every render), so it reflects actual elapsed time even if the tab is
-  // backgrounded/throttled or the page is briefly hidden.
+  const resetPix = useCallback(()=>{
+    stopPixPoll();
+    setPixData(null); setPixPaid(false); setPixCopied(false); setPixPollErr(false); setPixExpired(false);
+    pixPurchaseFiredRef.current = false;
+  },[stopPixPoll]);
+
+  // Called only from buy buttons (pack cards, nav, hero, sticky bar), so the
+  // AddToCart pixel fires on the click that chooses a pack — not when the
+  // resume-payment banner reopens an existing order.
+  const openBuy=useCallback((p:Product)=>{
+    triggerRef.current = document.activeElement as HTMLElement | null;
+    setSelProd(p); setShowModal(true); setMobileMenu(false);
+    fbq('track','ViewContent',{ content_name: pixelName(p), content_category: 'Alimentos Naturais', content_ids: ['salvita-001'], content_type: 'product', value: p.price, currency: 'BRL' });
+    fbq('track','AddToCart',{ content_name: pixelName(p), content_ids: ['salvita-001'], content_type: 'product', value: p.price, currency: 'BRL', num_items: p.units });
+    // New purchase: reset the flow, but keep the data this device already knows
+    // so returning buyers see the form prefilled. The saved unpaid order is NOT
+    // cleared here any more — the page now offers to resume it (or discard it).
+    const saved = loadSavedCustomer();
+    setCep((saved.postalCode ?? '').replace(/\D/g,'').slice(0,8));
+    setCepData(null); setShipping([]); setSelShip(null); setCepErr(''); setShippingSource(null);
+    setShowCheckout(false); setOrderDone(null);
+    setCheckoutForm({ ...BLANK_FORM, ...saved });
+    setCouponState(null); setCouponCode('');
+    setCpfError(''); setPhoneError(''); setOrderErr(''); setPayErr(''); setShipNotice('');
+    cartTrackRef.current = false;
+    resetPix();
+  },[resetPix]);
+
+  const closeBuy=useCallback(()=>{
+    setShowModal(false); setShowCheckout(false); setOrderDone(null);
+    setOrderErr(''); setPayErr(''); setShipNotice('');
+    resetPix();
+  },[resetPix]);
+
+  // Reopen the payment step for the unpaid order saved on this device.
+  const resumePending = () => {
+    if (!pendingOrder?.trackToken) return;
+    triggerRef.current = document.activeElement as HTMLElement | null;
+    resetPix();
+    setPayErr(''); setShipNotice('');
+    setSelProd(PRODUCTS.find(p=>p.id===pendingOrder.productId) ?? null);
+    setSelShip(pendingOrder.shipService && typeof pendingOrder.shipPrice==='number'
+      ? { service: pendingOrder.shipService, price: pendingOrder.shipPrice, days:'', description:'' } : null);
+    setOrderDone({ id: pendingOrder.id, total: pendingOrder.total, createdAt: pendingOrder.ts, trackToken: pendingOrder.trackToken });
+    setShowCheckout(true); setShowModal(true);
+  };
+
+  // Dialog behaviour: focus moves in on open and back to the trigger on close;
+  // Escape closes; Tab stays inside.
   useEffect(()=>{
-    if(orderDone){
-      const tick=()=>{
-        const elapsed=Math.floor((Date.now()-orderDone.createdAt)/1000);
-        setPayTimer(Math.max(0,900-elapsed));
-      };
-      tick();
-      payTimerRef.current = setInterval(tick,1000);
-    } else {
-      if(payTimerRef.current) clearInterval(payTimerRef.current);
+    if (step>0) dlgRef.current?.focus();
+    else if (prevStepRef.current>0) {
+      const t = triggerRef.current;
+      if (t && document.contains(t)) t.focus();
     }
-    return ()=>{ if(payTimerRef.current) clearInterval(payTimerRef.current); };
-  },[orderDone]);
+    prevStepRef.current = step;
+  },[step]);
+
+  useEffect(()=>{
+    if (step===0) return;
+    const onKey=(e:KeyboardEvent)=>{
+      if (e.key==='Escape') { e.preventDefault(); if (step===2) setShowCheckout(false); else closeBuy(); return; }
+      if (e.key!=='Tab' || !dlgRef.current) return;
+      const els = Array.from(dlgRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
+      if (!els.length) return;
+      const first = els[0], last = els[els.length-1], act = document.activeElement;
+      if (!dlgRef.current.contains(act)) { e.preventDefault(); first.focus(); }
+      else if (e.shiftKey && (act===first || act===dlgRef.current)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && act===last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown',onKey);
+    return ()=>document.removeEventListener('keydown',onKey);
+  },[step,closeBuy]);
+
+  useEffect(()=>()=>stopPixPoll(),[stopPixPoll]);
 
   const lookupCep=async()=>{
     const c=cep.replace(/\D/g,'');
@@ -366,16 +462,6 @@ export default function SalVitaLanding() {
         const options = data?.result?.data?.json?.options;
         if (Array.isArray(options) && options.length > 0) {
           setShippingSource(source === 'api' ? 'api' : 'static');
-          const carrierIcon = (name: string, company: string): string => {
-            const n = name.toUpperCase();
-            const c = (company ?? '').toUpperCase();
-            if (n.includes('JADLOG')) return '📦';
-            if (n.includes('AZUL') || c.includes('AZUL')) return '✈️';
-            if (n.includes('LOGGI') || c.includes('LOGGI')) return '🏍️';
-            if (n.includes('TOTAL') || c.includes('TOTAL EXPRESS')) return '🚚';
-            // Correios services
-            return '📬';
-          };
           const carrierDesc = (name: string, company: string): string => {
             const n = name.toUpperCase();
             if (n === 'PAC') return 'Econômico';
@@ -383,12 +469,11 @@ export default function SalVitaLanding() {
             if (n.includes('MINI ENVIOS') || n.includes('MINI ENVIO')) return 'Mini envio';
             return company || 'Transportadora';
           };
-          opts = options.map((o: any) => ({
+          opts = (options as ApiShipOpt[]).map((o) => ({
             serviceId: o.serviceId,
-            service: o.name,
+            service: o.name ?? '',
             price: o.price,
             days: o.days,
-            icon: carrierIcon(o.name ?? '', o.company ?? ''),
             description: carrierDesc(o.name ?? '', o.company ?? ''),
           }));
         }
@@ -401,11 +486,16 @@ export default function SalVitaLanding() {
     setLoadingCep(false);
   };
 
-  const products:Product[]=[
-    {id:'1kg',  name:'SAL VITA PREMIUM',      subtitle:'Embalagem zip lock com janela',      weight:'1kg',          weightKg:1.2, units:1,  price:29.90, pricePerKg:29.90, tag:'Mais Vendido',          highlight:false},
-    {id:'3kg',  name:'TRIO SAL VITA',         subtitle:'3 embalagens zip lock de 1kg cada',  weight:'3kg (3×1kg)',  weightKg:3.6, units:3,  price:74.90, pricePerKg:24.97, tag:'Ideal para a Família', highlight:false},
-    {id:'caixa',name:'CAIXA SAL VITA PREMIUM',subtitle:'10 embalagens zip lock de 1kg cada', weight:'10kg (10×1kg)',weightKg:12,  units:10, price:149.90,pricePerKg:14.99, tag:'Melhor Custo-Benefício', highlight:true, savings:'Economize R$ 149,10'},
-  ];
+  // Step 1 CTA: without a quoted freight there is nothing to advance to.
+  const goStep2 = () => {
+    if (!selShip || !selProd) {
+      setCepErr('Informe seu CEP e calcule o frete para continuar.');
+      cepInputRef.current?.focus();
+      return;
+    }
+    fbq('track','InitiateCheckout',{ content_name: pixelName(selProd), content_ids: ['salvita-001'], value: selProd.price, currency: 'BRL', num_items: selProd.units });
+    setShowCheckout(true);
+  };
 
   async function validateCoupon(code: string, orderVal: number) {
     if (!code.trim()) return;
@@ -418,7 +508,10 @@ export default function SalVitaLanding() {
       const data = await res.json();
       const result = data?.result?.data?.json;
       if (result) setCouponState(result);
-    } catch {}
+      else setCouponState({ valid:false, message: data?.error?.json?.message ?? data?.error?.message ?? 'Não foi possível validar o cupom agora.' });
+    } catch {
+      setCouponState({ valid:false, message:'Não foi possível validar o cupom agora.' });
+    }
     setCouponLoading(false);
   }
 
@@ -426,16 +519,19 @@ export default function SalVitaLanding() {
     e.preventDefault();
     if(!selProd||!selShip) return;
     if(checkoutLoading) return; // guard against double-submit (mobile double-tap)
+    setOrderErr('');
+    const p3 = checkoutForm.customerPhone.replace(/\D/g,'');
+    if (p3.length < 10) { setPhoneError('Informe DDD + número.'); document.getElementById('co-phone')?.focus(); return; }
+    setPhoneError('');
     // Validate CPF before creating the order — a bad CPF only fails later at
     // Mercado Pago / Melhor Envio, after the sale, which loses the customer.
-    if(!isValidCpf(checkoutForm.customerCpf)) { setCpfError('CPF inválido — confira os números.'); return; }
+    if(!isValidCpf(checkoutForm.customerCpf)) { setCpfError('CPF inválido — confira os números.'); document.getElementById('co-cpf')?.focus(); return; }
     setCpfError('');
     setCheckoutLoading(true);
     // Track step 3 (attempting payment)
-    const p3 = checkoutForm.customerPhone.replace(/\D/g,'');
     fetch('/api/trpc/recovery.trackCart', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({json:{ customerName:checkoutForm.customerName, customerPhone:p3, customerEmail:checkoutForm.customerEmail||undefined, postalCode:checkoutForm.postalCode, quantity:selProd.weightKg>=10?10:1, stepReached:3 }}),
+      body:JSON.stringify({json:{ customerName:checkoutForm.customerName, customerPhone:p3, customerEmail:checkoutForm.customerEmail||undefined, postalCode:checkoutForm.postalCode, quantity:selProd.units, stepReached:3 }}),
     }).catch(()=>{});
     try {
       const qty = selProd.units;
@@ -465,7 +561,7 @@ export default function SalVitaLanding() {
       // "#undefined confirmado" dead-end the customer could never pay.
       if (!orderId) {
         const apiMsg = data?.error?.json?.message ?? data?.error?.message;
-        alert(apiMsg ? `Não foi possível registrar o pedido: ${apiMsg}` : 'Erro ao registrar o pedido. Confira os dados e tente novamente.');
+        setOrderErr(apiMsg ? `Não foi possível registrar o pedido: ${apiMsg}` : 'Erro ao registrar o pedido. Confira os dados e tente novamente.');
         return;
       }
       const total   = data?.result?.data?.json?.total ?? (selProd.price+selShip.price);
@@ -473,16 +569,22 @@ export default function SalVitaLanding() {
       // The server re-quotes shipping and may correct it; show what will actually
       // be charged rather than the price this page quoted earlier.
       const serverShipping = data?.result?.data?.json?.shipping;
+      let shipPrice = selShip.price;
       if (typeof serverShipping === 'number' && Math.abs(serverShipping - selShip.price) > 0.01) {
+        shipPrice = serverShipping;
         setSelShip({ ...selShip, price: serverShipping });
-      }
+        setShipNotice(`Frete atualizado para ${brl(serverShipping)}`);
+      } else setShipNotice('');
       const createdAt = Date.now();
+      setPayErr('');
       setOrderDone({ id: orderId, total, createdAt, trackToken });
-      localStorage.setItem('sv_pending_order', JSON.stringify({ id: orderId, total, ts: createdAt, trackToken }));
-      try { (window as any).fbq?.('track','AddPaymentInfo',{ value: total, currency: 'BRL', content_name: 'SAL VITA PREMIUM 1kg', content_ids: ['salvita-001'], content_type: 'product', num_items: qty }); } catch {}
+      const pend: PendingOrder = { id: orderId, total, ts: createdAt, trackToken, productId: selProd.id, shipService: selShip.service, shipPrice };
+      try { localStorage.setItem('sv_pending_order', JSON.stringify(pend)); } catch {}
+      setPendingOrder(pend);
+      fbq('track','AddPaymentInfo',{ value: total, currency: 'BRL', content_name: pixelName(selProd), content_ids: ['salvita-001'], content_type: 'product', num_items: qty });
     } catch(err) {
       console.error('createOrder error:', err);
-      alert('Erro ao registrar pedido. Verifique sua conexão e tente novamente.');
+      setOrderErr('Erro ao registrar pedido. Verifique sua conexão e tente novamente.');
     } finally {
       setCheckoutLoading(false);
     }
@@ -491,7 +593,7 @@ export default function SalVitaLanding() {
   async function handleMpPay() {
     if(!orderDone) return;
     if(mpLoading) return; // guard against double-tap creating two MP charges
-    setMpLoading(true);
+    setMpLoading(true); setPayErr('');
     try {
       const res = await fetch('/api/trpc/shipping.createPayment', {
         method:'POST',
@@ -508,9 +610,46 @@ export default function SalVitaLanding() {
         // (TrackOrder, on status=pago / confirmed) and server-side via the webhook.
         window.location.href = initPoint;
       }
-      else { alert('Erro ao gerar link de pagamento. Tente novamente.'); }
-    } catch { alert('Erro ao conectar com Mercado Pago. Tente novamente.'); }
+      else { setPayErr('Erro ao gerar link de pagamento. Tente novamente.'); }
+    } catch { setPayErr('Erro ao conectar com Mercado Pago. Tente novamente.'); }
     setMpLoading(false);
+  }
+
+  // Polls the payment status every 5s (the webhook does the real confirmation;
+  // this just reflects it on screen). Gives up after 30 min, and says so after
+  // 3 failed checks in a row instead of failing silently.
+  function startPixPoll(order:{id:number;total:number;trackToken?:string|null}) {
+    stopPixPoll();
+    let fails = 0;
+    const startedAt = Date.now();
+    pixPollRef.current = setInterval(async () => {
+      if (Date.now() - startedAt > PIX_MAX_MS) { stopPixPoll(); setPixExpired(true); return; }
+      try {
+        const r = await fetch('/api/trpc/shipping.pixStatus', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({json:{ orderId: order.id, token: order.trackToken ?? undefined }}),
+        });
+        const d = await r.json();
+        const j = d?.result?.data?.json;
+        if (!j) throw new Error('pixStatus failed');
+        fails = 0; setPixPollErr(false);
+        if (j.paid) {
+          setPixPaid(true);
+          stopPixPoll();
+          clearPending();
+          if(!pixPurchaseFiredRef.current) {
+            pixPurchaseFiredRef.current = true;
+            fbq('track','Purchase',{
+              value: order.total, currency: 'BRL', content_name: selProd ? pixelName(selProd) : 'SAL VITA PREMIUM',
+              content_ids: ['salvita-001'], content_type: 'product', ...(selProd ? { num_items: selProd.units } : {}),
+            }, { eventID: `purchase-${order.id}` });
+          }
+        }
+      } catch {
+        fails += 1;
+        if (fails >= 3) setPixPollErr(true);
+      }
+    }, 5000);
   }
 
   // Generates an inline PIX QR code/copy-paste so the customer pays without
@@ -518,7 +657,7 @@ export default function SalVitaLanding() {
   async function handlePixPay() {
     if(!orderDone) return;
     if(pixLoading || pixData) return;
-    setPixLoading(true);
+    setPixLoading(true); setPayErr(''); setPixExpired(false); setPixPollErr(false);
     try {
       const res = await fetch('/api/trpc/shipping.createPixPayment', {
         method:'POST',
@@ -529,36 +668,13 @@ export default function SalVitaLanding() {
       const result = data?.result?.data?.json;
       if(result?.qrCode) {
         setPixData({ qrCode: result.qrCode, qrCodeBase64: result.qrCodeBase64 ?? '' });
-        try { (window as any).fbq?.('track','AddPaymentInfo',{ value: orderDone.total, currency: 'BRL', content_name: 'SAL VITA PREMIUM 1kg', content_ids: ['salvita-001'], content_type: 'product' }); } catch {}
-        // Poll payment status every 5s — webhook does the actual confirmation;
-        // this just lets us reflect it on-screen without a reload.
-        pixPollRef.current = setInterval(async () => {
-          try {
-            const r = await fetch('/api/trpc/shipping.pixStatus', {
-              method:'POST', headers:{'Content-Type':'application/json'},
-              body:JSON.stringify({json:{ orderId: orderDone.id, token: orderDone.trackToken ?? undefined }}),
-            });
-            const d = await r.json();
-            if(d?.result?.data?.json?.paid) {
-              setPixPaid(true);
-              if(pixPollRef.current) clearInterval(pixPollRef.current);
-              if(!pixPurchaseFiredRef.current) {
-                pixPurchaseFiredRef.current = true;
-                try {
-                  (window as any).fbq?.('track','Purchase',{
-                    value: orderDone.total, currency: 'BRL', content_name: 'SAL VITA PREMIUM',
-                    content_ids: ['salvita-001'], content_type: 'product',
-                  }, { eventID: `purchase-${orderDone.id}` });
-                } catch {}
-              }
-            }
-          } catch {}
-        }, 5000);
+        fbq('track','AddPaymentInfo',{ value: orderDone.total, currency: 'BRL', content_name: selProd ? pixelName(selProd) : 'SAL VITA PREMIUM', content_ids: ['salvita-001'], content_type: 'product', ...(selProd ? { num_items: selProd.units } : {}) });
+        startPixPoll(orderDone);
       } else {
         const apiMsg = data?.error?.json?.message ?? data?.error?.message;
-        alert(apiMsg ? `Não foi possível gerar o PIX: ${apiMsg}` : 'Erro ao gerar PIX. Tente novamente.');
+        setPayErr(apiMsg ? `Não foi possível gerar o PIX: ${apiMsg}` : 'Erro ao gerar PIX. Tente novamente.');
       }
-    } catch { alert('Erro ao conectar com Mercado Pago. Tente novamente.'); }
+    } catch { setPayErr('Erro ao conectar com Mercado Pago. Tente novamente.'); }
     setPixLoading(false);
   }
 
@@ -571,42 +687,18 @@ export default function SalVitaLanding() {
     } catch {}
   }
 
-  /* ── Logo real ── */
-  const Logo=({size=40,white=false}:{size?:number;white?:boolean})=>(
-    <img
-      src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
-      alt="Sal Vita Premium"
-      style={{height:size,width:'auto',objectFit:'contain',filter:white?'brightness(0) invert(1)':'none'}}
-    />
-  );
-
+  // Money lines of the checkout (coupon only applies to the product).
+  const discount = selProd && couponState?.valid && couponState.discountValue
+    ? (couponState.discountType==='percent' ? selProd.price*couponState.discountValue/100 : couponState.discountValue)
+    : 0;
+  const subtotal = selProd ? Math.max(0, selProd.price - discount) : 0;
+  const packLabel = (p:Product) => `${p.name} · ${p.units} × 1 kg`;
+  const navLinks = [{l:'Produto',h:'#produto'},{l:'Benefícios',h:'#beneficios'},{l:'Como Usar',h:'#como-usar'},{l:'Preço',h:'#preco'},{l:'Rastrear pedido',h:'/meu-pedido'}];
 
   return (
     <>
-      {/* ── Social proof toast — dark glass ── */}
-      {spToast && (
-        <div style={{
-          position:'fixed',bottom:84,left:16,zIndex:99999,
-          background:'rgba(7,19,38,.92)',backdropFilter:'blur(14px)',borderRadius:16,padding:'12px 16px',
-          boxShadow:'0 12px 40px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.08)',
-          display:'flex',alignItems:'center',gap:12,maxWidth:310,
-          transition:'all .45s cubic-bezier(.34,1.56,.64,1)',
-          transform:spToast.visible?'translateY(0) scale(1)':'translateY(24px) scale(.94)',
-          opacity:spToast.visible?1:0,
-          border:'1px solid rgba(201,162,39,.28)',
-        }}>
-          <div style={{width:42,height:42,borderRadius:12,background:'linear-gradient(135deg,rgba(201,162,39,.25),rgba(201,162,39,.08))',border:'1px solid rgba(201,162,39,.35)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:'1.2rem'}}>🧂</div>
-          <div>
-            <p style={{margin:0,fontWeight:700,fontSize:'.82rem',color:'#fff'}}>{spToast.name} de {spToast.city}</p>
-            <p style={{margin:'2px 0 0',fontSize:'.76rem',color:'rgba(255,255,255,.55)'}}>comprou {spToast.qty} agora</p>
-            <p style={{margin:'2px 0 0',fontSize:'.68rem',color:'var(--gold)'}}>✓ Compra confirmada · há poucos minutos</p>
-          </div>
-        </div>
-      )}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Great+Vibes&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,600;1,700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
-
-        /* ══ Design tokens — Pureza · navy profundo + sal branco + ouro ══ */
+        /* ══ Design tokens — navy profundo + sal branco + ouro ══ */
         :root {
           --brand:   #0b1d3a;
           --brand2:  #162f5e;
@@ -616,17 +708,20 @@ export default function SalVitaLanding() {
           --saltmd:  #f2f0ea;
           --gold:    #c9a227;
           --goldlt:  #e8c547;
-          --golddk:  #a07a10;
+          --golddk:  #8a6a0c;
           --white:   #ffffff;
           --text:    #0a1020;
           --mid:     #2a3a55;
-          --muted:   #6a7a90;
+          --muted:   #5f6f86;
         }
         html{scroll-behavior:smooth;}
         /* nav e fixa: sem isso a ancora aterrissa por baixo da barra */
         #produto,#beneficios,#como-usar,#preco{scroll-margin-top:96px;}
         .lp { font-family:'Outfit',sans-serif; color:var(--text); background:var(--white); overflow-x:hidden; }
         .lp ::selection{background:rgba(201,162,39,.35);}
+        .lp :focus-visible{outline:3px solid var(--goldlt);outline-offset:2px;}
+        .mb :focus-visible{outline-color:var(--brand);}
+        .mb:focus{outline:none;}
 
         /* ══ Salt grain — textura sutil de cristais nas seções escuras ══ */
         .grain::before{
@@ -638,34 +733,16 @@ export default function SalVitaLanding() {
           background-position:0 0, 17px 31px;
         }
 
-        /* ══ Crystal shimmer — cintilar de cristais de sal ══ */
-        @keyframes twinkle { 0%,100%{opacity:.1;transform:scale(.7)} 50%{opacity:.9;transform:scale(1.15)} }
-        .cristal{position:absolute;border-radius:1.5px;background:linear-gradient(135deg,#fff,rgba(232,197,71,.85));animation:twinkle ease-in-out infinite;pointer-events:none;box-shadow:0 0 6px rgba(255,255,255,.5);}
-
-        /* ══ Hero word reveal ══ */
+        /* ══ Hero reveal (uma vez, ao carregar) ══ */
         @keyframes wordUp { from{opacity:0;transform:translateY(42px) rotate(2deg)} to{opacity:1;transform:translateY(0) rotate(0)} }
         .w-rev{display:inline-block;opacity:0;animation:wordUp .9s cubic-bezier(.22,1,.36,1) forwards;}
         @keyframes fadeUp { from{opacity:0;transform:translateY(26px)} to{opacity:1;transform:translateY(0)} }
         .h-rev{opacity:0;animation:fadeUp .85s cubic-bezier(.22,1,.36,1) forwards;}
-        @keyframes ringSpin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
-        @keyframes prodFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-14px)} }
-        .prod-orbit{animation:ringSpin 26s linear infinite;}
-        .prod-float{animation:prodFloat 7s ease-in-out infinite;}
-        @keyframes glowPulse { 0%,100%{opacity:.55} 50%{opacity:1} }
-        .prod-glow{animation:glowPulse 5s ease-in-out infinite;}
 
-        /* ══ marquee / shimmer / pulse ══ */
-        @keyframes mq {from{transform:translateX(0)} to{transform:translateX(-50%)}}
         @keyframes spin {from{transform:rotate(0deg)} to{transform:rotate(360deg)}}
-        .mq-inner{animation:mq 30s linear infinite;display:flex;width:max-content;}
-        .mq-inner:hover{animation-play-state:paused;}
-        @keyframes shimGold {from{background-position:-200% 0} to{background-position:200% 0}}
-        .shim-blue{background:linear-gradient(90deg,#c9a227 0%,#f5e28a 30%,#c9a227 50%,#e8c547 70%,#c9a227 100%);background-size:200% auto;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:shimGold 4.5s linear infinite;}
-        @keyframes pulseGold {0%,100%{box-shadow:0 0 0 0 rgba(201,162,39,.55);}50%{box-shadow:0 0 0 18px rgba(201,162,39,0);}}
-        .pulse{animation:pulseGold 2.6s ease-in-out infinite;}
-        @keyframes ctaShine {0%,86%{transform:translateX(-130%) skewX(-18deg)}100%{transform:translateX(230%) skewX(-18deg)}}
+        .spin{animation:spin 1.2s linear infinite;}
+        .shim-blue{background:linear-gradient(90deg,#c9a227 0%,#f5e28a 50%,#c9a227 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
         .cta-gold{position:relative;overflow:hidden;}
-        .cta-gold::after{content:'';position:absolute;top:0;bottom:0;width:44%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);animation:ctaShine 4.2s ease-in-out infinite;}
         .cta-gold:active{transform:scale(.97)!important;}
 
         /* ══ reveal directions ══ */
@@ -680,108 +757,113 @@ export default function SalVitaLanding() {
         .tl-wrap{display:grid;grid-template-columns:repeat(4,1fr);gap:0;position:relative;}
         .tl-wrap::before{content:'';position:absolute;top:34px;left:12%;right:12%;height:1.5px;background:linear-gradient(90deg,rgba(201,162,39,.15),rgba(201,162,39,.6),rgba(201,162,39,.15));}
         .tl-step{text-align:center;padding:0 14px;position:relative;}
-        .tl-dot{width:68px;height:68px;border-radius:50%;margin:0 auto 22px;background:radial-gradient(circle at 32% 28%,#14294e,#081428);border:1.5px solid rgba(201,162,39,.5);display:flex;align-items:center;justify-content:center;font-size:1.6rem;position:relative;z-index:1;box-shadow:0 8px 28px rgba(0,0,0,.4);transition:transform .35s,border-color .35s,box-shadow .35s;}
-        .tl-step:hover .tl-dot{transform:translateY(-6px) scale(1.06);border-color:var(--goldlt);box-shadow:0 14px 36px rgba(201,162,39,.25);}
-        .tl-num{position:absolute;top:-9px;right:-6px;width:24px;height:24px;border-radius:50%;background:var(--gold);color:var(--navy);font-size:.72rem;font-weight:800;display:flex;align-items:center;justify-content:center;font-family:'Outfit',sans-serif;}
+        .tl-dot{width:68px;height:68px;border-radius:50%;margin:0 auto 22px;background:radial-gradient(circle at 32% 28%,#14294e,#081428);border:1.5px solid rgba(201,162,39,.5);display:flex;align-items:center;justify-content:center;font-family:'Cormorant Garamond',serif;font-size:1.9rem;font-weight:700;color:var(--goldlt);position:relative;z-index:1;box-shadow:0 8px 28px rgba(0,0,0,.4);}
 
         /* ══ cards / prices ══ */
-        .pc{border-radius:26px;position:relative;overflow:hidden;transition:transform .4s cubic-bezier(.22,1,.36,1),box-shadow .4s;will-change:transform;}
-        .pc:hover{transform:translateY(-10px);}
-        .pc-hi{background:linear-gradient(165deg,#10254c 0%,#060f20 100%);border:1.5px solid rgba(201,162,39,.6);box-shadow:0 24px 70px rgba(0,0,0,.5),0 0 40px rgba(201,162,39,.12);}
-        .pc-hi:hover{box-shadow:0 34px 90px rgba(0,0,0,.55),0 0 60px rgba(201,162,39,.22);}
+        .pc{border-radius:26px;position:relative;overflow:hidden;transition:transform .4s cubic-bezier(.22,1,.36,1),box-shadow .4s;}
+        .pc:hover{transform:translateY(-6px);}
+        .pc-hi{background:linear-gradient(165deg,#10254c 0%,#060f20 100%);border:1.5px solid rgba(201,162,39,.6);box-shadow:0 24px 70px rgba(0,0,0,.5);}
         .pc-lo{background:var(--white);border:1.5px solid rgba(11,29,58,.1);box-shadow:0 10px 40px rgba(11,29,58,.08);}
         .pc-lo:hover{box-shadow:0 22px 60px rgba(11,29,58,.14);border-color:rgba(201,162,39,.45);}
 
-        /* ══ ship option ══ */
+        /* ══ ship option (radio) ══ */
         .sopt{border:2px solid rgba(11,29,58,.1);border-radius:14px;padding:14px 16px;cursor:pointer;transition:border-color .25s,background .25s,transform .15s;font-size:1rem;}
         .sopt:hover{border-color:rgba(11,29,58,.3);}
         .sopt:active{transform:scale(.985);}
         .sopt.sel{border-color:var(--gold);background:rgba(201,162,39,.07);box-shadow:0 4px 18px rgba(201,162,39,.15);}
 
-        /* ══ modal — bottom sheet mobile ══ */
+        /* ══ modal — bottom sheet mobile; fica acima do botão do chat (z 9999) ══ */
         @keyframes sheetUp {from{transform:translateY(60px);opacity:0} to{transform:translateY(0);opacity:1}}
-        .mo{position:fixed;inset:0;z-index:9999;background:rgba(4,10,22,.78);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:16px;}
-        .mb{background:var(--white);border-radius:24px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;padding:32px;box-shadow:0 40px 120px rgba(0,0,0,.45);animation:sheetUp .4s cubic-bezier(.22,1,.36,1);}
-        .mb-drag{display:none;width:44px;height:5px;background:rgba(11,29,58,.16);border-radius:3px;margin:0 auto 16px;}
+        .mo{position:fixed;inset:0;z-index:10050;background:rgba(4,10,22,.78);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:16px;}
+        .mb{background:var(--white);border-radius:24px;width:100%;max-width:520px;max-height:90vh;max-height:90dvh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 40px 120px rgba(0,0,0,.45);animation:sheetUp .4s cubic-bezier(.22,1,.36,1);}
+        .mb-drag{display:none;flex:0 0 auto;width:44px;height:5px;background:rgba(11,29,58,.16);border-radius:3px;margin:10px auto 0;}
+        .mb-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:0 32px 24px;}
+        .mb-head{position:sticky;top:0;z-index:3;background:var(--white);display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:26px 0 12px;}
+        .mb-x{flex-shrink:0;width:44px;height:44px;border:none;border-radius:12px;background:var(--salt);color:var(--mid);font-size:1.5rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+        .mb-foot{flex:0 0 auto;padding:14px 32px calc(18px + env(safe-area-inset-bottom));border-top:1px solid rgba(11,29,58,.1);background:var(--white);box-shadow:0 -10px 24px rgba(11,29,58,.06);}
+        .lnk{background:none;border:none;color:var(--brand);font:inherit;font-size:.87rem;font-weight:600;text-decoration:underline;cursor:pointer;min-height:44px;padding:0 6px;}
+        .err{color:#b91c1c;font-size:.84rem;font-weight:600;margin:6px 0 0;line-height:1.4;}
+        .pix-qr{width:190px;height:190px;display:block;}
 
         /* ══ checkout steps ══ */
-        .steps{display:flex;align-items:center;justify-content:center;gap:0;margin-bottom:20px;}
+        .steps{display:flex;align-items:center;justify-content:center;gap:0;margin:4px 0 18px;}
         .step-dot{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:800;flex-shrink:0;transition:all .3s;}
         .step-on{background:var(--gold);color:var(--navy);box-shadow:0 0 0 4px rgba(201,162,39,.2);}
         .step-done{background:var(--brand);color:#fff;}
         .step-off{background:var(--saltmd);color:var(--muted);}
         .step-line{width:44px;height:2px;background:var(--saltmd);}
         .step-line.done{background:var(--brand);}
-        .step-lbl{font-size:.64rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:5px;text-align:center;}
+        .step-lbl{font-size:.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:5px;text-align:center;}
 
         /* ══ inputs ══ */
-        .inp{width:100%;box-sizing:border-box;background:var(--salt);border:2px solid transparent;border-radius:12px;padding:13px 15px;font-size:16px;outline:none;transition:border-color .2s,box-shadow .2s;font-family:'Outfit',sans-serif;}
+        .inp{width:100%;box-sizing:border-box;background:var(--salt);border:2px solid transparent;border-radius:12px;padding:13px 15px;font-size:16px;outline:none;transition:border-color .2s,box-shadow .2s;font-family:'Outfit',sans-serif;color:var(--text);}
         .inp:focus{border-color:var(--gold);box-shadow:0 0 0 4px rgba(201,162,39,.12);}
+        .inp[readonly]{background:var(--saltmd);color:var(--mid);}
+        .inp[aria-invalid="true"]{border-color:#ef4444;}
         .inp-lbl{display:block;font-size:.76rem;font-weight:700;color:var(--mid);margin-bottom:6px;text-transform:uppercase;letter-spacing:.09em;}
 
         /* ══ faq ══ */
         .faq-border{border-bottom:1px solid rgba(11,29,58,.09);}
-        .faq-ans{overflow:hidden;transition:max-height .45s cubic-bezier(.22,1,.36,1),opacity .35s ease;}
-        .faq-ans.open{max-height:340px;opacity:1;}.faq-ans.closed{max-height:0;opacity:0;}
+        .faq-ans{display:grid;transition:grid-template-rows .45s cubic-bezier(.22,1,.36,1),opacity .35s ease,visibility 0s linear .45s;}
+        .faq-ans>div{overflow:hidden;min-height:0;}
+        .faq-ans.open{grid-template-rows:1fr;opacity:1;visibility:visible;transition-delay:0s;}
+        .faq-ans.closed{grid-template-rows:0fr;opacity:0;visibility:hidden;}
         .faq-ans p{font-size:1rem;line-height:1.8;}
 
         /* ══ benefits dark grid ══ */
         .ben-table-grid{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid rgba(201,162,39,.2);border-radius:22px;overflow:hidden;}
         .ben-cell{padding:48px 40px;background:rgba(255,255,255,.02);transition:background .35s;position:relative;}
         .ben-cell:hover{background:rgba(201,162,39,.07);}
-        .ben-cell:hover .ben-icon-wrap{transform:translateY(-4px) scale(1.08);border-color:var(--goldlt);}
+        .ben-cell:hover .ben-icon-wrap{border-color:var(--goldlt);}
         .ben-cell-border-r{border-right:1px solid rgba(201,162,39,.2);}
         .ben-cell-border-b{border-bottom:1px solid rgba(201,162,39,.2);}
-        .ben-icon-wrap{width:54px;height:54px;border-radius:50%;border:1px solid rgba(201,162,39,.5);background:rgba(201,162,39,.1);display:flex;align-items:center;justify-content:center;margin-bottom:26px;transition:transform .35s,border-color .35s;}
+        .ben-icon-wrap{width:54px;height:54px;border-radius:50%;border:1px solid rgba(201,162,39,.5);background:rgba(201,162,39,.1);display:flex;align-items:center;justify-content:center;margin-bottom:26px;transition:border-color .35s;}
         .ben-num{position:absolute;top:20px;right:24px;font-family:'Cormorant Garamond',serif;font-size:3.6rem;font-weight:700;color:rgba(201,162,39,.09);line-height:1;pointer-events:none;user-select:none;}
         .ben-cell h3{font-size:1.45rem;}
-        .ben-cell p{font-size:1rem;color:rgba(255,255,255,.6);line-height:1.75;}
+        .ben-cell p{font-size:1rem;color:rgba(255,255,255,.7);line-height:1.75;}
 
         /* ══ como usar ══ */
         .use-2col{display:grid;grid-template-columns:1fr 1fr;gap:0 64px;}
         .use-row{display:flex;align-items:flex-start;gap:22px;padding:30px 0;border-bottom:1px solid rgba(11,29,58,.08);}
         .use-row:last-child{border-bottom:none;}
-        .use-row:hover .use-icon-box{transform:rotate(-6deg) scale(1.08);}
-        .use-big-num{font-family:'Cormorant Garamond',serif;font-size:4.4rem;font-weight:700;color:rgba(201,162,39,.2);line-height:1;min-width:70px;text-align:right;flex-shrink:0;padding-top:4px;}
-        .use-icon-box{width:56px;height:56px;border-radius:16px;background:var(--brand);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1.7rem;box-shadow:0 8px 22px rgba(11,29,58,.28);transition:transform .3s;}
+        .use-big-num{font-family:'Cormorant Garamond',serif;font-size:4.4rem;font-weight:700;color:rgba(201,162,39,.35);line-height:1;min-width:70px;text-align:right;flex-shrink:0;padding-top:4px;}
         .use-row h3{font-size:1.3rem;}
         .use-row p{font-size:1rem;}
 
-        /* ══ testimonials ══ */
-        .testi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;}
-        .testi-card{background:white;border:1px solid rgba(11,29,58,.07);border-radius:20px;padding:30px 28px;box-shadow:0 6px 24px rgba(11,29,58,.05);transition:transform .35s,box-shadow .35s,border-color .35s;display:flex;flex-direction:column;gap:16px;}
-        .testi-card:hover{transform:translateY(-6px);box-shadow:0 18px 50px rgba(11,29,58,.12);border-color:rgba(201,162,39,.35);}
-        .testi-stars{color:var(--gold);font-size:1rem;letter-spacing:2.5px;}
-        .testi-quote{font-family:'Cormorant Garamond',serif;font-size:1.1rem;font-style:italic;color:var(--mid);line-height:1.7;flex:1;}
-        .testi-author{display:flex;align-items:center;gap:12px;padding-top:14px;border-top:1px solid rgba(11,29,58,.06);}
-        .testi-avatar{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,var(--brand),var(--brand2));display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:.95rem;flex-shrink:0;border:1.5px solid rgba(201,162,39,.4);}
+        /* ══ diferenciais ══ */
+        .fact-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+        .fact{background:white;border:1px solid rgba(201,162,39,.25);border-radius:18px;padding:26px 24px;box-shadow:0 8px 30px rgba(11,29,58,.07);}
 
         /* ══ misc ══ */
-        .eyebrow{font-size:.85rem;font-weight:700;letter-spacing:.28em;text-transform:uppercase;margin-bottom:12px;}
+        .eyebrow{font-size:.85rem;font-weight:700;letter-spacing:.28em;text-transform:uppercase;margin-bottom:12px;color:var(--golddk);}
         .gold-line{width:56px;height:2px;background:linear-gradient(90deg,var(--gold),var(--goldlt));margin:0 auto 20px;}
         .prod-img{mix-blend-mode:multiply;background:transparent;display:block;}
         .s-brand{background:linear-gradient(170deg,#060f20 0%,#0b1d3a 55%,#081428 100%);}
-        .ham{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:8px;border-radius:8px;}
+        .ham{display:none;flex-direction:column;align-items:center;justify-content:center;gap:5px;cursor:pointer;background:none;border:none;min-width:44px;min-height:44px;padding:8px;border-radius:8px;}
         .ham span{display:block;width:24px;height:2px;background:white;border-radius:2px;transition:transform .3s,opacity .3s;}
         .mob-drawer{display:none;position:fixed;inset:0;z-index:200;background:rgba(4,10,22,.85);backdrop-filter:blur(14px);}
         .mob-drawer-inner{position:absolute;top:0;right:0;bottom:0;width:min(80vw,300px);background:var(--navy);padding:24px;display:flex;flex-direction:column;gap:4px;box-shadow:-20px 0 60px rgba(0,0,0,.5);}
         .sticky-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:500;background:rgba(6,15,32,.96);backdrop-filter:blur(16px);border-top:1px solid rgba(201,162,39,.25);padding:10px 14px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -8px 40px rgba(0,0,0,.4);}
-        .comp-wrap{font-size:.95rem;}
-        .comp-wrap th{font-size:.82rem;}
-        .mq-inner span{font-size:.88rem;}
         .footer-grid p,.footer-grid li,.footer-grid a{font-size:.95rem;}
+        .foot-link{display:inline-flex;align-items:center;min-height:44px;min-width:44px;color:rgba(255,255,255,.72);text-decoration:none;transition:color .2s;}
+        .foot-link:hover{color:var(--goldlt);}
+        .trust-strip{max-width:1000px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+
+        /* ══ nav compacta (menu em gaveta) ══ */
+        @media(max-width:940px){
+          .nav-menu{display:none!important;}
+          .ham{display:flex!important;}
+          .mob-drawer{display:block;}
+        }
 
         /* ══ mobile ══ */
         @media(max-width:768px){
-          .nav-menu{display:none!important;}
-          .ham{display:flex!important;}
           .hero-grid{grid-template-columns:1fr!important;padding:88px 20px 120px!important;gap:16px!important;}
           .hero-copy{text-align:center;}
           .hero-badges{justify-content:center!important;}
           .hero-btns{justify-content:center!important;}
           .hero-img-wrap{order:-1;}
           .prod-shell{width:min(76vw,330px)!important;height:min(76vw,330px)!important;}
-          .prod-ring{width:min(82vw,356px)!important;height:min(82vw,356px)!important;}
           .s-pad{padding:64px 20px!important;}
           .story-grid{grid-template-columns:1fr!important;gap:32px!important;}
           .panorama{min-height:440px!important;}
@@ -791,55 +873,70 @@ export default function SalVitaLanding() {
           .use-2col{grid-template-columns:1fr!important;gap:0!important;}
           .use-big-num{font-size:3rem!important;min-width:46px!important;}
           .price-grid{grid-template-columns:1fr!important;}
-          .footer-grid{grid-template-columns:1fr!important;gap:28px!important;}
-          .comp-wrap{font-size:.85rem!important;}
-          .comp-wrap th,.comp-wrap td{padding:10px 8px!important;}
+          .footer-grid{grid-template-columns:1fr!important;gap:20px!important;}
+          .fact-grid{grid-template-columns:1fr!important;}
           .mo{align-items:flex-end!important;padding:0!important;}
-          .mb{border-radius:26px 26px 0 0!important;max-height:90vh!important;padding:18px 20px calc(30px + env(safe-area-inset-bottom))!important;animation:sheetUp .38s cubic-bezier(.22,1,.36,1)!important;}
+          .mb{border-radius:26px 26px 0 0!important;max-height:92vh!important;max-height:92dvh!important;animation:sheetUp .38s cubic-bezier(.22,1,.36,1)!important;}
           .mb-drag{display:block!important;}
-          .mob-drawer{display:block;}
+          .mb-body{padding:0 20px 16px!important;}
+          .mb-head{padding:10px 0 8px!important;}
+          .mb-foot{padding:10px 20px calc(12px + env(safe-area-inset-bottom))!important;}
+          .pix-qr{width:150px;height:150px;}
           .sticky-bar{display:flex!important;}
           .faq-border button{padding:18px 0!important;}
           .pc{padding:28px 22px!important;}
-          .mq-inner span{font-size:.8rem!important;letter-spacing:.1em!important;}
-          .trust-inner{display:grid!important;grid-template-columns:repeat(3,1fr)!important;gap:6px!important;}
+          .trust-strip{grid-template-columns:1fr 1fr!important;}
           .story-stats{gap:18px!important;}
           .cred-wrap{display:grid!important;grid-template-columns:1fr 1fr!important;gap:10px!important;}
-          .counters-strip{gap:6px!important;}
         }
-        @media(max-width:900px){.ben-table-grid{grid-template-columns:repeat(2,1fr)!important;}.testi-grid{grid-template-columns:repeat(2,1fr)!important;}}
+        @media(max-width:900px){.ben-table-grid{grid-template-columns:repeat(2,1fr)!important;}}
         @media(max-width:600px){
           .ben-table-grid{grid-template-columns:1fr!important;}
           .ben-cell{padding:32px 24px!important;}
           .ben-cell-border-r{border-right:none!important;border-bottom:1px solid rgba(201,162,39,.2)!important;}
-          .testi-grid{grid-template-columns:1fr!important;}
         }
 
         /* ══ acessibilidade — reduz movimento ══ */
         @media(prefers-reduced-motion:reduce){
           .w-rev,.h-rev{animation-duration:.01s!important;}
-          .prod-float,.prod-orbit,.prod-glow,.pulse,.cta-gold::after,.cristal,.mq-inner{animation:none!important;}
+          .spin{animation:none!important;}
           .rev,.rev-l,.rev-r,.rev-s{transition-duration:.01s!important;}
+          html{scroll-behavior:auto;}
         }
       `}</style>
 
       <div className="lp">
 
+        {/* ══════ PEDIDO PENDENTE ══════ */}
+        {pendingOrder&&!showModal&&(
+          <div role="region" aria-label="Pedido aguardando pagamento" style={{background:'#060f20',borderBottom:'1px solid rgba(201,162,39,.35)',padding:'84px 20px 14px'}}>
+            <div style={{maxWidth:1000,margin:'0 auto',display:'flex',flexWrap:'wrap',alignItems:'center',justifyContent:'center',gap:'6px 18px',color:'white',fontSize:'.95rem'}}>
+              <span>Você tem o pedido <strong>#{pendingOrder.id}</strong> aguardando pagamento.</span>
+              <span style={{display:'inline-flex',alignItems:'center',gap:6}}>
+                {pendingOrder.trackToken
+                  ? <button type="button" className="lnk" onClick={resumePending} style={{color:'var(--goldlt)'}}>Continuar pagamento</button>
+                  : <a className="lnk" href={`/meu-pedido?pedido=${pendingOrder.id}`} style={{color:'var(--goldlt)',display:'inline-flex',alignItems:'center'}}>Continuar pagamento</a>}
+                <button type="button" className="lnk" onClick={clearPending} style={{color:'rgba(255,255,255,.75)'}}>Descartar</button>
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* ══════ NAV ══════ */}
-        <nav style={{position:'fixed',top:0,left:0,right:0,zIndex:100,transition:'background .4s,box-shadow .4s,padding .3s',background:scrolled||mobileMenu?'rgba(6,15,32,.96)':'transparent',boxShadow:scrolled?'0 2px 32px rgba(0,0,0,.45)':'none',padding:scrolled?'10px 0':'20px 0',backdropFilter:scrolled?'blur(18px)':'none',borderBottom:scrolled?'1px solid rgba(201,162,39,.15)':'1px solid transparent'}}>
+        <nav aria-label="Principal" style={{position:'fixed',top:0,left:0,right:0,zIndex:100,transition:'background .4s,box-shadow .4s,padding .3s',background:scrolled||mobileMenu?'rgba(6,15,32,.96)':'transparent',boxShadow:scrolled?'0 2px 32px rgba(0,0,0,.45)':'none',padding:scrolled?'10px 0':'20px 0',backdropFilter:scrolled?'blur(18px)':'none',borderBottom:scrolled?'1px solid rgba(201,162,39,.15)':'1px solid transparent'}}>
           <div style={{maxWidth:1200,margin:'0 auto',padding:'0 20px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
             <Logo size={44}/>
-            <div className="nav-menu" style={{display:'flex',gap:28,alignItems:'center'}}>
-              {[{l:'Produto',h:'#produto'},{l:'Benefícios',h:'#beneficios'},{l:'Como Usar',h:'#como-usar'},{l:'Preço',h:'#preco'}].map(({l,h})=>(
-                <a key={l} href={h} style={{color:'rgba(255,255,255,.72)',fontSize:'.88rem',fontWeight:500,letterSpacing:'.14em',textDecoration:'none',textTransform:'uppercase',transition:'color .2s'}}
+            <div className="nav-menu" style={{display:'flex',gap:26,alignItems:'center'}}>
+              {navLinks.map(({l,h})=>(
+                <a key={l} href={h} style={{color:'rgba(255,255,255,.78)',fontSize:'.86rem',fontWeight:500,letterSpacing:'.12em',textDecoration:'none',textTransform:'uppercase',transition:'color .2s'}}
                   onMouseEnter={e=>e.currentTarget.style.color='var(--goldlt)'}
-                  onMouseLeave={e=>e.currentTarget.style.color='rgba(255,255,255,.72)'}>{l}</a>
+                  onMouseLeave={e=>e.currentTarget.style.color='rgba(255,255,255,.78)'}>{l}</a>
               ))}
-              <button className="cta-gold" onClick={()=>openBuy(products[0])} style={{background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:10,padding:'11px 24px',fontSize:'.86rem',fontWeight:800,letterSpacing:'.08em',textTransform:'uppercase',cursor:'pointer',transition:'background .2s,transform .15s'}}
+              <button className="cta-gold" onClick={()=>openBuy(PRODUCTS[0])} style={{background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:10,padding:'11px 24px',fontSize:'.86rem',fontWeight:800,letterSpacing:'.08em',textTransform:'uppercase',cursor:'pointer',transition:'background .2s,transform .15s'}}
                 onMouseEnter={e=>{e.currentTarget.style.background='var(--goldlt)';}}
                 onMouseLeave={e=>{e.currentTarget.style.background='var(--gold)';}}>Comprar</button>
             </div>
-            <button className="ham" onClick={()=>setMobileMenu(o=>!o)} aria-label="Menu">
+            <button className="ham" onClick={()=>setMobileMenu(o=>!o)} aria-label="Menu" aria-expanded={mobileMenu}>
               <span style={{transform:mobileMenu?'translateY(7px) rotate(45deg)':'none'}}/>
               <span style={{opacity:mobileMenu?0:1}}/>
               <span style={{transform:mobileMenu?'translateY(-7px) rotate(-45deg)':'none'}}/>
@@ -848,11 +945,11 @@ export default function SalVitaLanding() {
         </nav>
 
         {/* ══════ MOBILE DRAWER ══════ */}
-        <div className="mob-drawer" style={{opacity:mobileMenu?1:0,pointerEvents:mobileMenu?'auto':'none',transition:'opacity .3s'}} onClick={e=>{if(e.target===e.currentTarget)setMobileMenu(false)}}>
+        <div className="mob-drawer" aria-hidden={!mobileMenu} style={{opacity:mobileMenu?1:0,pointerEvents:mobileMenu?'auto':'none',visibility:mobileMenu?'visible':'hidden',transition:'opacity .3s'}} onClick={e=>{if(e.target===e.currentTarget)setMobileMenu(false)}}>
           <div className="mob-drawer-inner" style={{transform:mobileMenu?'translateX(0)':'translateX(100%)',transition:'transform .34s cubic-bezier(.22,1,.36,1)'}}>
             <div style={{marginBottom:24,paddingBottom:20,borderBottom:'1px solid rgba(201,162,39,.2)'}}><Logo size={40}/></div>
-            {[{l:'Produto',h:'#produto'},{l:'Benefícios',h:'#beneficios'},{l:'Como Usar',h:'#como-usar'},{l:'Preços',h:'#preco'}].map(({l,h})=>(
-              <a key={l} href={h} onClick={()=>setMobileMenu(false)} style={{display:'block',padding:'15px 0',color:'rgba(255,255,255,.82)',fontSize:'1.15rem',fontFamily:"'Cormorant Garamond',serif",fontWeight:600,textDecoration:'none',borderBottom:'1px solid rgba(255,255,255,.07)',letterSpacing:'.04em'}}>{l}</a>
+            {navLinks.map(({l,h})=>(
+              <a key={l} href={h} onClick={()=>setMobileMenu(false)} style={{display:'block',padding:'15px 0',color:'rgba(255,255,255,.85)',fontSize:'1.15rem',fontFamily:"'Cormorant Garamond',serif",fontWeight:600,textDecoration:'none',borderBottom:'1px solid rgba(255,255,255,.07)',letterSpacing:'.04em'}}>{l}</a>
             ))}
             <button className="cta-gold" onClick={()=>{ setMobileMenu(false); setTimeout(()=>document.getElementById('preco')?.scrollIntoView({behavior:'smooth'}),100); }} style={{marginTop:24,width:'100%',background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:14,padding:'16px',fontSize:'1rem',fontWeight:800,letterSpacing:'.06em',textTransform:'uppercase',cursor:'pointer'}}>
               Comprar Agora
@@ -860,21 +957,16 @@ export default function SalVitaLanding() {
           </div>
         </div>
 
-        {/* ══════ HERO — cinematográfico, pureza do sal ══════ */}
+        {/* ══════ HERO ══════ */}
         <section className="grain" style={{minHeight:'100vh',display:'flex',alignItems:'center',paddingTop:80,position:'relative',overflow:'hidden',background:'radial-gradient(ellipse 120% 90% at 70% 12%,#12264c 0%,#0b1d3a 42%,#060f20 100%)'}}>
-          {/* aurora dourada suave */}
           <div style={{position:'absolute',top:'-18%',right:'-8%',width:640,height:640,borderRadius:'50%',background:'radial-gradient(circle,rgba(201,162,39,.14) 0%,transparent 62%)',pointerEvents:'none',filter:'blur(10px)'}}/>
           <div style={{position:'absolute',bottom:'-12%',left:'-6%',width:480,height:480,borderRadius:'50%',background:'radial-gradient(circle,rgba(22,47,94,.5) 0%,transparent 65%)',pointerEvents:'none'}}/>
-          {/* campo de cristais cintilando — pureza, não ondas */}
-          {PARTICLES.map(p=>(
-            <span key={p.id} className="cristal" style={{left:p.left,top:`${8+((p.id*37)%78)}%`,width:p.size,height:p.size,opacity:p.opacity,animationDuration:`${2.6+(p.id%5)*.9}s`,animationDelay:p.delay}}/>
-          ))}
 
           <div className="hero-grid" style={{maxWidth:1200,margin:'0 auto',padding:'80px 24px 110px',width:'100%',display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))',gap:56,alignItems:'center',position:'relative',zIndex:2}}>
             {/* Copy */}
             <div className="hero-copy">
               <div className="h-rev" style={{animationDelay:'.15s',display:'inline-flex',alignItems:'center',gap:10,marginBottom:26,background:'rgba(201,162,39,.1)',border:'1px solid rgba(201,162,39,.35)',borderRadius:999,padding:'8px 18px'}}>
-                <span style={{width:6,height:6,borderRadius:'50%',background:'var(--goldlt)',flexShrink:0,boxShadow:'0 0 10px var(--goldlt)'}}/>
+                <span style={{width:6,height:6,borderRadius:'50%',background:'var(--goldlt)',flexShrink:0}}/>
                 <span style={{fontSize:'.8rem',fontWeight:700,letterSpacing:'.2em',color:'var(--goldlt)',textTransform:'uppercase'}}>Salinas de Mossoró · RN · Brasil</span>
               </div>
 
@@ -882,50 +974,44 @@ export default function SalVitaLanding() {
                 <span className="w-rev" style={{animationDelay:'.28s'}}>SAL</span>{' '}
                 <span className="w-rev" style={{animationDelay:'.44s'}}>VITA</span>
               </h1>
-              <div className="h-rev" style={{animationDelay:'.62s',fontFamily:"'Great Vibes',cursive",fontSize:'clamp(2.5rem,6.5vw,5rem)',lineHeight:1,marginTop:-6}}>
+              <div className="h-rev" style={{animationDelay:'.62s',fontFamily:"'Cormorant Garamond',Georgia,serif",fontStyle:'italic',fontWeight:600,fontSize:'clamp(2.5rem,6.5vw,5rem)',lineHeight:1.1,marginTop:-6}}>
                 <span className="shim-blue">Premium</span>
               </div>
               <div className="h-rev" style={{animationDelay:'.76s',width:72,height:1.5,background:'linear-gradient(90deg,var(--gold),var(--goldlt),transparent)',margin:'14px 0 26px'}}/>
               <p className="h-rev" style={{animationDelay:'.84s',fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:'clamp(1.35rem,3vw,2.1rem)',fontWeight:400,fontStyle:'italic',color:'rgba(255,255,255,.78)',lineHeight:1.45,marginBottom:16}}>
                 "Muito mais sabor,<br/>em cada pitada."
               </p>
-              <p className="h-rev" style={{animationDelay:'.92s',fontSize:'.92rem',letterSpacing:'.22em',textTransform:'uppercase',color:'rgba(255,255,255,.45)',fontWeight:600,marginBottom:38}}>
-                100% integral · zero refino · direto das salinas
+              <p className="h-rev" style={{animationDelay:'.92s',fontSize:'.92rem',letterSpacing:'.18em',textTransform:'uppercase',color:'rgba(255,255,255,.62)',fontWeight:600,marginBottom:38}}>
+                Sal integral · sem refino industrial · Mossoró/RN
               </p>
 
               <div className="hero-badges h-rev" style={{animationDelay:'1s',display:'flex',flexWrap:'wrap',gap:8,marginBottom:42}}>
-                {[{t:'Minerais Traço'},{t:'Não Refinado'},{t:'Seco ao Sol'},{t:'Zip Lock Premium'}].map(b=>(
-                  <span key={b.t} style={{background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.16)',borderRadius:999,padding:'8px 16px',fontSize:'.88rem',fontWeight:500,color:'rgba(255,255,255,.82)',display:'flex',alignItems:'center',gap:8,letterSpacing:'.04em',backdropFilter:'blur(6px)'}}>
-                    <span style={{color:'var(--goldlt)',fontSize:'.6rem'}}>✦</span> {b.t}
+                {[{t:'Minerais Traço'},{t:'Não Refinado'},{t:'Seco ao Sol'},{t:'Zip Lock com Janela'}].map(b=>(
+                  <span key={b.t} style={{background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.16)',borderRadius:999,padding:'8px 16px',fontSize:'.88rem',fontWeight:500,color:'rgba(255,255,255,.85)',display:'flex',alignItems:'center',gap:8,letterSpacing:'.04em'}}>
+                    <span aria-hidden="true" style={{color:'var(--goldlt)',fontSize:'.75rem'}}>✦</span> {b.t}
                   </span>
                 ))}
               </div>
 
               <div className="hero-btns h-rev" style={{animationDelay:'1.1s',display:'flex',flexWrap:'wrap',gap:14}}>
-                <button className="pulse cta-gold" onClick={()=>openBuy(products[0])} style={{background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:16,padding:'19px 46px',fontSize:'1.02rem',fontWeight:800,letterSpacing:'.08em',textTransform:'uppercase',cursor:'pointer',transition:'background .2s,transform .2s'}}
-                  onMouseEnter={e=>{e.currentTarget.style.background='var(--goldlt)';e.currentTarget.style.transform='scale(1.04)';}}
-                  onMouseLeave={e=>{e.currentTarget.style.background='var(--gold)';e.currentTarget.style.transform='scale(1)';}}>
+                <button className="cta-gold" onClick={()=>openBuy(PRODUCTS[0])} style={{background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:16,padding:'19px 46px',fontSize:'1.02rem',fontWeight:800,letterSpacing:'.08em',textTransform:'uppercase',cursor:'pointer',transition:'background .2s,transform .2s'}}
+                  onMouseEnter={e=>{e.currentTarget.style.background='var(--goldlt)';}}
+                  onMouseLeave={e=>{e.currentTarget.style.background='var(--gold)';}}>
                   Quero Provar
                 </button>
-                <a href="#preco" style={{background:'transparent',color:'rgba(255,255,255,.85)',border:'1.5px solid rgba(255,255,255,.28)',borderRadius:16,padding:'19px 38px',fontSize:'1.02rem',fontWeight:500,letterSpacing:'.06em',textTransform:'uppercase',cursor:'pointer',textDecoration:'none',display:'inline-flex',alignItems:'center',transition:'border-color .2s,color .2s,background .2s'}}
+                <a href="#preco" style={{background:'transparent',color:'rgba(255,255,255,.88)',border:'1.5px solid rgba(255,255,255,.28)',borderRadius:16,padding:'19px 38px',fontSize:'1.02rem',fontWeight:500,letterSpacing:'.06em',textTransform:'uppercase',cursor:'pointer',textDecoration:'none',display:'inline-flex',alignItems:'center',transition:'border-color .2s,color .2s,background .2s'}}
                   onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--goldlt)';e.currentTarget.style.color='var(--goldlt)';e.currentTarget.style.background='rgba(201,162,39,.07)';}}
-                  onMouseLeave={e=>{e.currentTarget.style.borderColor='rgba(255,255,255,.28)';e.currentTarget.style.color='rgba(255,255,255,.85)';e.currentTarget.style.background='transparent';}}>
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor='rgba(255,255,255,.28)';e.currentTarget.style.color='rgba(255,255,255,.88)';e.currentTarget.style.background='transparent';}}>
                   Ver Preços ↓
                 </a>
               </div>
             </div>
 
-            {/* Produto — flutuação + anel orbital dourado */}
+            {/* Produto — fundo calmo, sombra suave de contato */}
             <div className="hero-img-wrap h-rev" style={{animationDelay:'.5s',display:'flex',justifyContent:'center',alignItems:'center',position:'relative'}}>
-              <div className="prod-glow" style={{position:'absolute',width:580,height:580,borderRadius:'50%',background:'radial-gradient(circle,rgba(201,162,39,.22) 0%,transparent 66%)',filter:'blur(32px)',pointerEvents:'none'}}/>
-              {/* anel orbital girando com pontos-cristal */}
-              <div className="prod-orbit prod-ring" style={{position:'absolute',width:540,height:540,borderRadius:'50%',border:'1px dashed rgba(201,162,39,.35)',pointerEvents:'none',zIndex:3}}>
-                {[0,90,180,270].map(deg=>(
-                  <span key={deg} style={{position:'absolute',top:'50%',left:'50%',width:7,height:7,borderRadius:'50%',background:'var(--goldlt)',boxShadow:'0 0 12px var(--goldlt)',transform:`rotate(${deg}deg) translateX(270px) translate(-50%,-50%)`}}/>
-                ))}
-              </div>
-              <div className="prod-float prod-shell" style={{position:'relative',zIndex:2,width:480,height:480,borderRadius:'50%',background:'#ffffff',overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 60px 140px rgba(0,0,0,.7), 0 0 0 12px rgba(201,162,39,.12), 0 0 0 1.5px rgba(201,162,39,.5)'}}>
-                <img src={IMG.produto} alt="SAL VITA PREMIUM — Sal Integral de Mossoró 1kg" className="prod-img"
+              <div className="prod-shell" style={{position:'relative',zIndex:2,width:480,height:480,borderRadius:'50%',background:'#ffffff',overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 40px 90px rgba(0,0,0,.55), 0 0 0 10px rgba(201,162,39,.12), 0 0 0 1.5px rgba(201,162,39,.5)'}}>
+                <img src={IMG.produto} alt="Embalagem SAL VITA PREMIUM — Sal Marinho Não Refinado, Sal Integral de Mossoró (1kg)" className="prod-img"
+                  width={896} height={1195} loading="eager" fetchPriority="high" decoding="async"
                   style={{width:'92%',height:'92%',objectFit:'contain'}}
                   onError={e=>{
                     e.currentTarget.style.display='none';
@@ -935,16 +1021,15 @@ export default function SalVitaLanding() {
                 <div style={{display:'none',width:'100%',height:'100%',background:'linear-gradient(160deg,#0b1d3a,#060f20)',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,padding:28}}>
                   <Logo size={56}/>
                   <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.5rem',fontWeight:700,color:'white',marginTop:12,textAlign:'center'}}>SAL VITA PREMIUM</div>
-                  <div style={{fontSize:'.75rem',color:'rgba(255,255,255,.5)'}}>Sal Integral · 1kg · Mossoró RN</div>
-                  <div style={{marginTop:16,background:'rgba(201,162,39,.15)',border:'1px solid rgba(201,162,39,.4)',borderRadius:8,padding:'6px 14px',fontSize:'.75rem',color:'var(--gold)',fontWeight:700}}>Minerais Traço Naturais</div>
+                  <div style={{fontSize:'.8rem',color:'rgba(255,255,255,.7)',textAlign:'center'}}>Sal Marinho Não Refinado · 1kg · Mossoró/RN</div>
                 </div>
               </div>
-              <div style={{position:'absolute',bottom:-34,left:'50%',transform:'translateX(-50%)',width:300,height:38,background:'rgba(0,0,0,.5)',borderRadius:'50%',filter:'blur(30px)'}}/>
+              <div aria-hidden="true" style={{position:'absolute',bottom:-34,left:'50%',transform:'translateX(-50%)',width:300,height:38,background:'rgba(0,0,0,.5)',borderRadius:'50%',filter:'blur(30px)'}}/>
             </div>
           </div>
 
           {/* transição em cristal — clip diagonal sutil */}
-          <div style={{position:'absolute',bottom:-1,left:0,right:0,lineHeight:0}}>
+          <div aria-hidden="true" style={{position:'absolute',bottom:-1,left:0,right:0,lineHeight:0}}>
             <svg viewBox="0 0 1440 88" preserveAspectRatio="none" style={{width:'100%',height:88,display:'block'}}>
               <path d="M0,52 L180,66 L390,38 L620,70 L860,42 L1100,64 L1290,46 L1440,60 L1440,88 L0,88 Z" fill="#fbfaf7"/>
               <path d="M0,52 L180,66 L390,38 L620,70 L860,42 L1100,64 L1290,46 L1440,60" fill="none" stroke="rgba(201,162,39,.4)" strokeWidth="1.5"/>
@@ -952,59 +1037,31 @@ export default function SalVitaLanding() {
           </div>
         </section>
 
-        {/* ══════ FAIXA DE CONTADORES — prova social viva ══════ */}
-        <div style={{background:'#fbfaf7',borderBottom:'1px solid rgba(11,29,58,.07)',padding:'26px 20px'}}>
-          <div className="counters-strip trust-inner" style={{maxWidth:1000,margin:'0 auto',display:'flex',flexWrap:'wrap',gap:12,alignItems:'stretch',justifyContent:'center'}}>
+        {/* ══════ FAIXA DE FATOS VERIFICÁVEIS ══════ */}
+        <div style={{background:'#fbfaf7',borderBottom:'1px solid rgba(11,29,58,.07)',padding:'22px 20px'}}>
+          <div className="trust-strip">
             {[
-              {end:120,pre:'+',suf:'',label:'clientes satisfeitos'},
-              {end:5,pre:'',suf:'.0 ★',label:'avaliação média'},
-              {end:80,pre:'+',suf:'',label:'minerais naturais'},
-              {end:95,pre:'',suf:'%',label:'do sal BR vem do RN'},
-              {end:7,pre:'',suf:' dias',label:'garantia total'},
-              {end:100,pre:'',suf:'%',label:'pagamento seguro'},
-            ].map(c=>(
-              <div key={c.label} style={{textAlign:'center',padding:'10px 20px',minWidth:120,flex:'0 1 auto'}}>
-                <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'2rem',fontWeight:700,color:'var(--brand)',lineHeight:1}}>
-                  <CountUp end={c.end} prefix={c.pre} suffix={c.suf}/>
-                </div>
-                <div style={{fontSize:'.76rem',color:'var(--muted)',letterSpacing:'.04em',marginTop:5}}>{c.label}</div>
+              ['Mossoró/RN','Origem'],
+              ['Iodado — 25\u00a0mg/kg','Conforme a legislação'],
+              ['Mercado Pago','Pagamento via'],
+              ['51.422.900/0001-68','CNPJ'],
+            ].map(([a,b])=>(
+              <div key={a} style={{textAlign:'center',padding:'6px 8px'}}>
+                <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(1rem,4.4vw,1.25rem)',fontWeight:700,color:'var(--brand)',lineHeight:1.2,whiteSpace:a.startsWith('51.')?'nowrap':undefined}}>{a}</div>
+                <div style={{fontSize:'.8rem',color:'var(--muted)',letterSpacing:'.04em',marginTop:3}}>{b}</div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* ══════ GARANTIA ══════ */}
+        {/* ══════ DIREITO DE ARREPENDIMENTO ══════ */}
         <div style={{background:'#f0fdf4',borderBottom:'1px solid #bbf7d0',padding:'16px 24px'}}>
-          <div style={{maxWidth:900,margin:'0 auto',display:'flex',flexWrap:'wrap',gap:16,alignItems:'center',justifyContent:'center'}}>
-            <div style={{display:'flex',alignItems:'center',gap:12}}>
-              <div style={{width:50,height:50,borderRadius:'50%',background:'linear-gradient(135deg,#16a34a,#15803d)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
-              </div>
-              <div>
-                <p style={{margin:0,fontWeight:800,fontSize:'1rem',color:'#15803d'}}>Garantia de Satisfação — 7 dias</p>
-                <p style={{margin:'2px 0 0',fontSize:'.84rem',color:'#166534'}}>Não gostou? Devolvemos 100% do seu dinheiro sem perguntas.</p>
-              </div>
+          <div style={{maxWidth:900,margin:'0 auto',display:'flex',flexWrap:'wrap',gap:'8px 24px',alignItems:'center',justifyContent:'center',textAlign:'center'}}>
+            <div>
+              <p style={{margin:0,fontWeight:800,fontSize:'1rem',color:'#15803d'}}>Direito de arrependimento</p>
+              <p style={{margin:'2px 0 0',fontSize:'.88rem',color:'#166534'}}>Em até 7 dias após o recebimento (CDC, art. 49).</p>
             </div>
-            <div style={{display:'flex',gap:18,flexWrap:'wrap',justifyContent:'center'}}>
-              {[['🔒','Pagamento seguro'],['📦','Envio rastreado'],['🧾','Nota fiscal'],['📱','Suporte WhatsApp']].map(([icon,text])=>(
-                <div key={text} style={{display:'flex',alignItems:'center',gap:6,fontSize:'.82rem',color:'#166534',fontWeight:500}}>
-                  <span>{icon}</span><span>{text}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* ══════ MARQUEE ══════ */}
-        <div style={{background:'linear-gradient(90deg,#060f20,#0b1d3a,#060f20)',overflow:'hidden',padding:'15px 0',borderTop:'1px solid rgba(201,162,39,.22)',borderBottom:'1px solid rgba(201,162,39,.22)'}}>
-          <div className="mq-inner">
-            {[...Array(2)].map((_,r)=>(
-              <div key={r} style={{display:'flex',gap:52,paddingRight:52}}>
-                {['✦ 100% Salinas de Mossoró','✦ Minerais Traço Naturais','✦ Não Refinado','✦ Zip Lock Premium','✦ Janela Transparente','✦ Iodado Conforme a Lei','✦ 100% Brasileiro','✦ Premium Quality'].map(i=>(
-                  <span key={i} style={{whiteSpace:'nowrap',fontWeight:600,letterSpacing:'.2em',textTransform:'uppercase',color:'var(--gold)'}}>{i}</span>
-                ))}
-              </div>
-            ))}
+            <p style={{margin:0,fontSize:'.88rem',color:'#166534',fontWeight:500}}>Pagamento seguro · Envio rastreado · Nota fiscal · Suporte pelo WhatsApp</p>
           </div>
         </div>
 
@@ -1029,13 +1086,13 @@ export default function SalVitaLanding() {
         <section id="produto" className="s-pad" style={{padding:'104px 24px',background:'white'}}>
           <div className="story-grid" style={{maxWidth:1200,margin:'0 auto',display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:64,alignItems:'center'}}>
             <div id="story-left" data-reveal className={`rev-l${v('story-left')?' on':''}`}>
-              <p className="eyebrow" style={{color:'var(--gold)'}}>Nossa Origem</p>
+              <p className="eyebrow">Nossa Origem</p>
               <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(2.3rem,5vw,4rem)',fontWeight:700,lineHeight:1.12,color:'var(--text)',marginBottom:22}}>
                 Das salinas ao<br/>
                 <em style={{color:'var(--brand)',fontStyle:'italic'}}>seu prato.</em>
               </h2>
               <p style={{color:'var(--mid)',lineHeight:1.8,fontSize:'1.06rem',marginBottom:18}}>
-                Mossoró produz <strong style={{color:'var(--brand)'}}>mais de 95% do sal marinho brasileiro</strong>. O sol nordestino, os ventos constantes e a baixíssima umidade criam condições únicas para um sal de pureza excepcional.
+                Mossoró produz <strong style={{color:'var(--brand)'}}>mais de 95% do sal marinho brasileiro</strong>. O sol nordestino, os ventos constantes e a baixíssima umidade criam condições favoráveis à produção de sal por evaporação solar.
               </p>
               <p style={{color:'var(--mid)',lineHeight:1.8,fontSize:'1.06rem',marginBottom:38}}>
                 O SAL VITA PREMIUM é <strong style={{color:'var(--brand)'}}>Não Refinado</strong> — preserva os minerais traço naturais do mar, entregando muito mais sabor em cada pitada.
@@ -1051,43 +1108,38 @@ export default function SalVitaLanding() {
             </div>
             <div id="story-right" data-reveal className={`rev-r d2${v('story-right')?' on':''}`} style={{display:'flex',justifyContent:'center'}}>
               <div style={{position:'relative',maxWidth:400,width:'100%',borderRadius:24,overflow:'hidden',boxShadow:'0 30px 80px rgba(11,29,58,.22)',border:'1px solid rgba(201,162,39,.25)'}}>
-                <img src={IMG.salina} alt="Salinas de Mossoró" style={{width:'100%',height:400,objectFit:'cover',objectPosition:'center',display:'block'}} loading="lazy"/>
+                <img src={IMG.salina} alt="Salinas de Mossoró" width={1200} height={800} style={{width:'100%',height:400,objectFit:'cover',objectPosition:'center',display:'block'}} loading="lazy" decoding="async"/>
                 <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(6,15,32,.9) 0%,rgba(6,15,32,.25) 45%,transparent 100%)'}}/>
                 <div style={{position:'absolute',bottom:0,left:0,right:0,padding:'24px 28px 28px'}}>
                   <div className="shim-blue" style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'3.5rem',fontWeight:700,lineHeight:1}}>Dezenas</div>
-                  <p style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.14em',color:'rgba(255,255,255,.68)',textTransform:'uppercase',marginBottom:12}}>Minerais Naturais Preservados</p>
-                  <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
-                    {['Magnésio','Cálcio','Potássio','Ferro','Iodo','Zinco','Manganês','+ outros'].map(m=>(
-                      <span key={m} style={{background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.25)',borderRadius:999,padding:'3px 10px',fontSize:'.82rem',color:'rgba(255,255,255,.88)'}}>{m}</span>
-                    ))}
-                  </div>
+                  <p style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.14em',color:'rgba(255,255,255,.85)',textTransform:'uppercase',margin:0}}>de minerais traço naturais</p>
                 </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* ══════ DA SALINA AO POTE — timeline de pureza ══════ */}
+        {/* ══════ DA SALINA AO POTE ══════ */}
         <section className="grain" style={{padding:'104px 24px',background:'linear-gradient(170deg,#081428 0%,#0b1d3a 60%,#060f20 100%)',position:'relative',overflow:'hidden'}}>
           <div style={{maxWidth:1100,margin:'0 auto',position:'relative',zIndex:1}}>
             <div id="tl-h" data-reveal className={`rev${v('tl-h')?' on':''}`} style={{textAlign:'center',marginBottom:76}}>
-              <span style={{display:'inline-block',fontSize:'.84rem',fontWeight:700,letterSpacing:'.26em',color:'var(--gold)',textTransform:'uppercase',marginBottom:16}}>O caminho da pureza</span>
+              <span style={{display:'inline-block',fontSize:'.84rem',fontWeight:700,letterSpacing:'.26em',color:'var(--gold)',textTransform:'uppercase',marginBottom:16}}>O caminho do sal</span>
               <div style={{width:40,height:1,background:'rgba(201,162,39,.5)',margin:'0 auto 24px'}}/>
               <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(2.1rem,5vw,3.8rem)',fontWeight:700,color:'white',lineHeight:1.12}}>
-                Da salina ao pote,<br/>nada além do sal.
+                Da salina ao pote,<br/>sem refino industrial.
               </h2>
             </div>
             <div id="tl-g" data-reveal className={`tl-wrap${v('tl-g')?' on':''}`}>
               {[
-                {e:'🌊',t:'Colheita artesanal',d:'Água do Atlântico cristaliza nos tanques sob o sol de Mossoró.'},
-                {e:'☀️',t:'Secagem ao sol',d:'Evaporação solar — sem fornos, sem calor industrial, sem pressa.'},
-                {e:'🔍',t:'Seleção rigorosa',d:'Colheita, secagem e moagem — sem refino industrial. Nenhum mineral traço é retirado.'},
-                {e:'🧂',t:'Embalado na origem',d:'Zip lock premium com janela — do cristal à sua cozinha, intacto.'},
+                {t:'Colheita',d:'A água do mar cristaliza nos tanques sob o sol de Mossoró.'},
+                {t:'Secagem ao sol',d:'Evaporação solar — sem fornos, sem calor industrial, sem pressa.'},
+                {t:'Moagem',d:'Apenas os processos essenciais: colheita, secagem e moagem. Sem refino industrial.'},
+                {t:'Embalagem',d:'Zip lock com janela transparente, pronta para a sua cozinha.'},
               ].map((s,i)=>(
                 <div key={s.t} className={`tl-step rev d${i+1}${v('tl-g')?' on':''}`}>
-                  <div className="tl-dot">{s.e}<span className="tl-num">{i+1}</span></div>
+                  <div className="tl-dot" aria-hidden="true">{i+1}</div>
                   <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.35rem',fontWeight:700,color:'white',marginBottom:8,lineHeight:1.2}}>{s.t}</h3>
-                  <p style={{color:'rgba(255,255,255,.55)',lineHeight:1.7,fontSize:'.92rem'}}>{s.d}</p>
+                  <p style={{color:'rgba(255,255,255,.7)',lineHeight:1.7,fontSize:'.92rem'}}>{s.d}</p>
                 </div>
               ))}
             </div>
@@ -1096,7 +1148,6 @@ export default function SalVitaLanding() {
 
         {/* ══════ BENEFITS ══════ */}
         <section id="beneficios" className="grain" style={{padding:'110px 24px',background:'linear-gradient(170deg,#050e1d 0%,#0b1d3a 50%,#071628 100%)',position:'relative',overflow:'hidden'}}>
-          <div style={{position:'absolute',top:'50%',left:'50%',width:700,height:700,transform:'translate(-50%,-50%)',background:'radial-gradient(ellipse,rgba(201,162,39,.08) 0%,transparent 65%)',pointerEvents:'none'}}/>
           <div style={{maxWidth:1200,margin:'0 auto',position:'relative',zIndex:1}}>
             <div id="ben-h" data-reveal className={`rev${v('ben-h')?' on':''}`} style={{textAlign:'center',marginBottom:72}}>
               <span style={{display:'inline-block',fontSize:'.84rem',fontWeight:700,letterSpacing:'.26em',color:'var(--gold)',textTransform:'uppercase',marginBottom:16}}>Por que escolher</span>
@@ -1107,15 +1158,15 @@ export default function SalVitaLanding() {
             </div>
             <div id="ben-g" data-reveal className={`rev ben-table-grid${v('ben-g')?' on':''}`}>
               {[
-                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,t:'Minerais Traço Naturais',d:'Magnésio, cálcio e potássio entre os minerais traço naturalmente presentes na água do mar, preservados por não haver refino.'},
+                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,t:'Minerais Traço Naturais',d:'Dezenas de minerais traço naturais, presentes na água do mar e preservados por não haver refino industrial.'},
                 {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,t:'Sal Não Refinado',d:'Processamento mínimo — colheita, secagem ao sol e moagem. Nenhum mineral traço é retirado no processo.'},
-                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>,t:'Zip Lock Premium',d:'Fechamento duplo de alta espessura. Abre e fecha centenas de vezes sem perder a vedação. Chega de sal empedrado.'},
+                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>,t:'Embalagem Zip Lock',d:'Embalagem zip lock com janela transparente: abre e fecha sempre que precisar.'},
                 {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>,t:'Janela Transparente',d:'Circular na frente da embalagem. Você vê o sal a qualquer momento, sem precisar abrir.'},
                 {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>,t:'Seco ao Sol',d:'Secagem por evaporação solar sob o sol do Nordeste. Sem calor industrial e sem refino que remova os minerais traço.'},
-                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><path d="M2 12c1.5-3 4-4.5 6-4.5s4.5 3 6 3 4.5-1.5 6-4.5"/><path d="M2 18c1.5-3 4-4.5 6-4.5s4.5 3 6 3 4.5-1.5 6-4.5"/></svg>,t:'100% Mossoró RN',d:'Das salinas que produzem 95% do sal marinho brasileiro. Apoio direto à economia do Nordeste.'},
+                {svg:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round"><path d="M2 12c1.5-3 4-4.5 6-4.5s4.5 3 6 3 4.5-1.5 6-4.5"/><path d="M2 18c1.5-3 4-4.5 6-4.5s4.5 3 6 3 4.5-1.5 6-4.5"/></svg>,t:'Mossoró/RN',d:'Das salinas da região que produz mais de 95% do sal marinho brasileiro.'},
               ].map((b,i)=>(
                 <div key={b.t} className={`ben-cell${i%3!==2?' ben-cell-border-r':''}${i<3?' ben-cell-border-b':''}`} style={{transitionDelay:`${i*.08}s`}}>
-                  <span className="ben-num">{String(i+1).padStart(2,'0')}</span>
+                  <span className="ben-num" aria-hidden="true">{String(i+1).padStart(2,'0')}</span>
                   <div className="ben-icon-wrap">{b.svg}</div>
                   <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontWeight:700,color:'white',marginBottom:12,lineHeight:1.2}}>{b.t}</h3>
                   <p>{b.d}</p>
@@ -1127,7 +1178,7 @@ export default function SalVitaLanding() {
 
         {/* ══════ CRISTALIZADOR — full bleed ══════ */}
         <section className="crista-section" style={{position:'relative',height:500,overflow:'hidden'}}>
-          <img src={IMG.cristalizador} alt="Processo de cristalização do sal nas salinas de Mossoró" style={{width:'100%',height:'100%',objectFit:'cover',objectPosition:'center 40%',display:'block'}} loading="lazy"/>
+          <img src={IMG.cristalizador} alt="Processo de cristalização do sal nas salinas de Mossoró" width={1280} height={960} style={{width:'100%',height:'100%',objectFit:'cover',objectPosition:'center 40%',display:'block'}} loading="lazy" decoding="async"/>
           <div style={{position:'absolute',inset:0,background:'linear-gradient(to bottom,#071628 0%,rgba(7,22,40,0) 14%,rgba(7,22,40,.35) 65%,#faf5ef 100%)'}}/>
           <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 24px'}}>
             <div id="crista-q" data-reveal className={`rev-s${v('crista-q')?' on':''}`} style={{textAlign:'center',maxWidth:700}}>
@@ -1136,7 +1187,7 @@ export default function SalVitaLanding() {
               </p>
               <div style={{display:'inline-flex',alignItems:'center',gap:12}}>
                 <span style={{width:40,height:1,background:'rgba(201,162,39,.7)'}}/>
-                <span style={{fontSize:'.84rem',fontWeight:700,letterSpacing:'.18em',color:'var(--gold)',textTransform:'uppercase'}}>Processo de Cristalização Natural</span>
+                <span style={{fontSize:'.84rem',fontWeight:700,letterSpacing:'.18em',color:'var(--goldlt)',textTransform:'uppercase'}}>Processo de Cristalização Natural</span>
                 <span style={{width:40,height:1,background:'rgba(201,162,39,.7)'}}/>
               </div>
             </div>
@@ -1147,20 +1198,19 @@ export default function SalVitaLanding() {
         <section id="como-usar" style={{padding:'108px 24px',background:'#faf5ef'}}>
           <div style={{maxWidth:1100,margin:'0 auto'}}>
             <div id="use-h" data-reveal className={`rev${v('use-h')?' on':''}`} style={{textAlign:'center',marginBottom:78}}>
-              <span style={{display:'inline-block',fontSize:'.84rem',fontWeight:700,letterSpacing:'.26em',color:'var(--gold)',textTransform:'uppercase',marginBottom:16}}>Use sem moderação</span>
+              <span style={{display:'inline-block',fontSize:'.84rem',fontWeight:700,letterSpacing:'.26em',color:'var(--golddk)',textTransform:'uppercase',marginBottom:16}}>Na cozinha</span>
               <div className="gold-line"/>
               <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(2rem,5vw,3.8rem)',fontWeight:700,color:'var(--text)',marginBottom:18,lineHeight:1.1}}>
                 O sal que combina com tudo
               </h2>
               <p style={{color:'var(--muted)',fontSize:'1rem',maxWidth:460,margin:'0 auto',lineHeight:1.7}}>
-                Com os minerais traço do mar preservados, cada pitada entrega sabor mais rico — do preparo à finalização.
+                Sal marinho não refinado para o preparo e a finalização dos seus pratos.
               </p>
             </div>
             <div id="use-g" data-reveal className={`rev use-2col${v('use-g')?' on':''}`}>
               {USES.map((u,i)=>(
                 <div key={u.t} className="use-row" style={{transitionDelay:`${i*.09}s`}}>
-                  <span className="use-big-num">{String(i+1).padStart(2,'0')}</span>
-                  <div className="use-icon-box">{u.e}</div>
+                  <span className="use-big-num" aria-hidden="true">{String(i+1).padStart(2,'0')}</span>
                   <div style={{paddingTop:6}}>
                     <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontWeight:700,color:'var(--brand)',marginBottom:5,lineHeight:1.2}}>{u.t}</h3>
                     <p style={{color:'var(--muted)',lineHeight:1.65}}>{u.d}</p>
@@ -1171,82 +1221,25 @@ export default function SalVitaLanding() {
           </div>
         </section>
 
-        {/* ══════ COMPARATIVO ══════ */}
+        {/* ══════ DIFERENCIAIS ══════ */}
         <section style={{padding:'84px 24px',background:'#fbfaf7'}}>
           <div style={{maxWidth:900,margin:'0 auto'}}>
-            <div id="comp-h" data-reveal className={`rev${v('comp-h')?' on':''}`} style={{textAlign:'center',marginBottom:48}}>
-              <p className="eyebrow" style={{color:'var(--gold)'}}>Sal Integral vs Refinado</p>
+            <div id="comp-h" data-reveal className={`rev${v('comp-h')?' on':''}`} style={{textAlign:'center',marginBottom:40}}>
+              <p className="eyebrow">Sal integral vs refinado</p>
               <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(1.9rem,4vw,3.1rem)',fontWeight:700,color:'var(--text)'}}>O que o refinamento retira do seu sal?</h2>
               <p style={{color:'var(--muted)',marginTop:12,fontSize:'.95rem',maxWidth:560,margin:'12px auto 0'}}>O refino industrial remove os minerais traço naturalmente presentes na água do mar, deixando essencialmente cloreto de sódio.</p>
             </div>
-            <div id="comp-t" data-reveal className={`rev-s comp-wrap${v('comp-t')?' on':''}`} style={{overflowX:'auto',borderRadius:18,boxShadow:'0 10px 44px rgba(11,29,58,.1)',background:'white',border:'1px solid rgba(201,162,39,.2)'}}>
-              <table style={{width:'100%',borderCollapse:'collapse'}}>
-                <thead style={{background:'linear-gradient(90deg,#0b1d3a,#122a54)'}}>
-                  <tr>
-                    <th style={{padding:'15px 18px',textAlign:'left',color:'rgba(255,255,255,.7)',fontWeight:500,letterSpacing:'.12em',textTransform:'uppercase'}}>Característica</th>
-                    {['SAL VITA PREMIUM','Sal Marinho Comum','Sal Refinado Industrial'].map((b,bi)=>(
-                      <th key={b} style={{padding:'15px 18px',textAlign:'center',fontFamily:bi===0?"'Cormorant Garamond',serif":'inherit',fontWeight:bi===0?700:500,fontSize:bi===0?'1.05rem':'.82rem',color:bi===0?'var(--goldlt)':'rgba(255,255,255,.55)'}}>{b}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    ['Minerais traço preservados',    '✓','parcial','✗ removidos'],
-                    ['Secagem solar natural',         '✓','parcial','✗'],
-                    ['Sabor rico e natural',          '✓ intenso','médio','✗ neutro'],
-                    ['Não refinado / integral',       '✓','parcial','✗'],
-                    ['Umidade característica do processo','✓','médio','✗'],
-                    ['Embalagem com zip lock',        '✓ dupla vedação','✗','✗'],
-                    ['Origem rastreável',             '✓ Mossoró RN','variada','variada'],
-                  ].map(([f,a,b,c],ri)=>(
-                    <tr key={f} style={{background:ri%2===0?'#fbfaf7':'white'}}>
-                      <td style={{padding:'13px 18px',color:'var(--mid)',borderBottom:'1px solid rgba(11,29,58,.05)',fontWeight:500}}>{f}</td>
-                      {[a,b,c].map((val,ci)=>(
-                        <td key={ci} style={{padding:'13px 18px',textAlign:'center',borderBottom:'1px solid rgba(11,29,58,.05)',
-                          color:val.startsWith('✓')?'#16a34a':val.startsWith('✗')?'#dc2626':'var(--mid)',
-                          fontWeight:ci===0?600:400,fontSize:'.88rem',
-                          background:ci===0?'rgba(201,162,39,.05)':'transparent'
-                        }}>{val}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        {/* ══════ DEPOIMENTOS ══════ */}
-        <section className="s-pad" style={{padding:'92px 24px',background:'white'}}>
-          <div style={{maxWidth:1100,margin:'0 auto'}}>
-            <div id="testi-h" data-reveal className={`rev${v('testi-h')?' on':''}`} style={{textAlign:'center',marginBottom:56}}>
-              <p className="eyebrow" style={{color:'var(--gold)'}}>Quem já provou</p>
-              <div className="gold-line"/>
-              <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(1.9rem,4vw,3.1rem)',fontWeight:700,color:'var(--text)',lineHeight:1.15}}>
-                O que nossos clientes dizem
-              </h2>
-            </div>
-            <div id="testi-g" data-reveal className={`rev testi-grid${v('testi-g')?' on':''}`}>
-              {TESTIMONIALS.map((t,i)=>(
-                <div key={i} className="testi-card" style={{transitionDelay:`${i*.07}s`}}>
-                  <div className="testi-stars">{'★'.repeat(t.stars)}</div>
-                  <p className="testi-quote">"{t.text}"</p>
-                  <div className="testi-author">
-                    <div className="testi-avatar">{t.name.charAt(0)}</div>
-                    <div>
-                      <p style={{fontWeight:700,color:'var(--text)',fontSize:'.95rem',lineHeight:1.2}}>{t.name}</p>
-                      <p style={{fontSize:'.84rem',color:'var(--muted)'}}>{t.city}</p>
-                    </div>
-                  </div>
+            <div id="comp-t" data-reveal className={`rev fact-grid${v('comp-t')?' on':''}`}>
+              {[
+                ['Sem refino industrial','Sem refino industrial que remova os minerais traço.'],
+                ['Origem: Mossoró/RN','Das salinas da região que produz mais de 95% do sal marinho brasileiro.'],
+                ['Embalagem zip lock','Embalagem zip lock com janela transparente.'],
+              ].map(([t,d])=>(
+                <div key={t} className="fact">
+                  <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.3rem',fontWeight:700,color:'var(--brand)',marginBottom:8,lineHeight:1.2}}>{t}</h3>
+                  <p style={{color:'var(--mid)',fontSize:'.95rem',lineHeight:1.65}}>{d}</p>
                 </div>
               ))}
-            </div>
-            <div id="testi-r" data-reveal className={`rev${v('testi-r')?' on':''}`} style={{textAlign:'center',marginTop:48,display:'flex',alignItems:'center',justifyContent:'center',gap:16,flexWrap:'wrap'}}>
-              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'3.2rem',fontWeight:700,color:'var(--brand)',lineHeight:1}}>5.0</div>
-              <div>
-                <div style={{color:'var(--gold)',fontSize:'1.2rem',letterSpacing:3}}>★★★★★</div>
-                <p style={{fontSize:'.9rem',color:'var(--muted)',marginTop:4}}>Avaliação média · +120 clientes satisfeitos</p>
-              </div>
             </div>
           </div>
         </section>
@@ -1259,43 +1252,38 @@ export default function SalVitaLanding() {
               <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(2rem,5vw,3.6rem)',fontWeight:700,color:'white',marginBottom:10}}>
                 Preço justo. Qualidade real.
               </h2>
-              <p style={{color:'rgba(255,255,255,.55)',fontSize:'1.05rem'}}>Frete calculado por CEP via Melhor Envio · Enviamos para todo o Brasil</p>
+              <p style={{color:'rgba(255,255,255,.7)',fontSize:'1.05rem'}}>Frete calculado por CEP via Melhor Envio · Enviamos para todo o Brasil</p>
             </div>
 
             <div id="price-c" data-reveal className={`rev price-grid${v('price-c')?' on':''}`} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:24,maxWidth:1040,margin:'0 auto'}}>
-              {products.map(p=>(
+              {PRODUCTS.map(p=>(
                 <div key={p.id} className={`pc ${p.highlight?'pc-hi':'pc-lo'}`} style={{padding:'38px 32px'}}>
                   <div style={{position:'absolute',top:0,right:0,background:'linear-gradient(90deg,var(--gold),var(--goldlt))',color:'var(--navy)',padding:'7px 18px',borderRadius:'0 26px 0 14px',fontSize:'.76rem',fontWeight:800,letterSpacing:'.08em',textTransform:'uppercase'}}>{p.tag}</div>
 
                   <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.75rem',fontWeight:700,color:p.highlight?'white':'var(--text)',marginBottom:4,marginTop:8}}>{p.name}</h3>
-                  <p style={{fontSize:'.9rem',color:p.highlight?'rgba(255,255,255,.5)':'var(--muted)',marginBottom:20}}>{p.weight}</p>
+                  <p style={{fontSize:'.9rem',color:p.highlight?'rgba(255,255,255,.7)':'var(--muted)',marginBottom:20}}>{p.weight}</p>
 
                   {p.highlight&&(
-                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6,flexWrap:'wrap'}}>
-                      <span style={{fontSize:'1.15rem',textDecoration:'line-through',color:'rgba(255,255,255,.45)'}}>R$ 299,00</span>
-                      <span style={{background:'#16a34a',color:'white',fontSize:'.72rem',fontWeight:800,padding:'3px 9px',borderRadius:999,letterSpacing:'.03em'}}>−50% · ECONOMIZE R$ 149,10</span>
-                    </div>
+                    <p style={{fontSize:'.85rem',color:'rgba(255,255,255,.7)',marginBottom:6,lineHeight:1.4}}>10 × R$ 29,90 = R$ 299,00 avulsas · na caixa R$ 149,90</p>
                   )}
                   <div style={{marginBottom:4}}>
-                    <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'3.6rem',fontWeight:700,color:p.highlight?'var(--goldlt)':'var(--brand)',lineHeight:1}}>R$ {p.price.toFixed(2).replace('.',',')}</span>
+                    <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'3.6rem',fontWeight:700,color:p.highlight?'var(--goldlt)':'var(--brand)',lineHeight:1}}>{brl(p.price)}</span>
                   </div>
-                  <p style={{fontSize:'.9rem',color:p.highlight?'rgba(255,255,255,.45)':'var(--muted)',marginBottom:24}}>R$ {p.pricePerKg.toFixed(2).replace('.',',')}/kg{p.highlight?' · metade do preço por kg':''}</p>
+                  <p style={{fontSize:'.9rem',color:p.highlight?'rgba(255,255,255,.7)':'var(--muted)',marginBottom:24}}>{brl(p.pricePerKg)}/kg</p>
 
                   <ul style={{listStyle:'none',padding:0,marginBottom:28}}>
                     {(p.highlight
                       ? ['10 embalagens zip lock de 1kg','Minerais traço naturais preservados','Sal marinho não refinado de Mossoró','Ideal para casa, churrasco e cozinha']
-                      : ['Sal Marinho Não Refinado','Minerais Traço Naturais','Zip lock com janela de visualização','100% Mossoró RN']
+                      : ['Sal Marinho Não Refinado','Minerais Traço Naturais','Zip lock com janela de visualização','Mossoró/RN']
                     ).map(f=>(
                       <li key={f} style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
-                        <span style={{color:'var(--gold)',fontSize:'.85rem',flexShrink:0}}>✦</span>
-                        <span style={{fontSize:'.95rem',color:p.highlight?'rgba(255,255,255,.82)':'var(--mid)'}}>{f}</span>
+                        <span aria-hidden="true" style={{color:'var(--gold)',fontSize:'.85rem',flexShrink:0}}>✦</span>
+                        <span style={{fontSize:'.95rem',color:p.highlight?'rgba(255,255,255,.86)':'var(--mid)'}}>{f}</span>
                       </li>
                     ))}
                   </ul>
 
-                  {p.highlight&&<p style={{fontSize:'.82rem',color:'rgba(255,255,255,.5)',marginBottom:16,display:'flex',alignItems:'center',gap:6}}>🔥 Estoque limitado por lote</p>}
-
-                  <button className="pulse cta-gold" onClick={()=>openBuy(p)} style={{width:'100%',background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:14,padding:'17px',fontSize:'1rem',fontWeight:800,letterSpacing:'.06em',textTransform:'uppercase',cursor:'pointer',transition:'background .2s,transform .15s'}}
+                  <button className="cta-gold" onClick={()=>openBuy(p)} style={{width:'100%',background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:14,padding:'17px',fontSize:'1rem',fontWeight:800,letterSpacing:'.06em',textTransform:'uppercase',cursor:'pointer',transition:'background .2s,transform .15s'}}
                     onMouseEnter={e=>{e.currentTarget.style.background='var(--goldlt)';}}
                     onMouseLeave={e=>{e.currentTarget.style.background='var(--gold)';}}>
                     {p.id==='1kg'?'Comprar 1kg':p.id==='3kg'?'Comprar Trio 3kg':'Comprar Caixa 10kg'}
@@ -1307,55 +1295,59 @@ export default function SalVitaLanding() {
             {/* Credibilidade */}
             <div className="cred-wrap" style={{marginTop:40,display:'flex',flexWrap:'wrap',justifyContent:'center',gap:12}}>
               {[
-                {icon:'🚚',t:'Entrega Rastreada',s:'rastreamento em todos os pedidos'},
-                {icon:'📄',t:'Nota Fiscal',s:'emitida em todos os pedidos'},
-                {icon:'🔒',t:'Pagamento Seguro',s:'PIX, cartão ou boleto'},
-                {icon:'📦',t:'Envio em até 2 dias úteis',s:'com rastreamento'},
-                {icon:'↩️',t:'Troca garantida',s:'em caso de avaria'},
-              ].map(({icon,t,s})=>(
+                {t:'Entrega Rastreada',s:'rastreamento em todos os pedidos'},
+                {t:'Nota Fiscal',s:'emitida em todos os pedidos'},
+                {t:'Pagamento Seguro',s:'PIX ou cartão, via Mercado Pago'},
+                {t:'Direito de arrependimento',s:'até 7 dias após o recebimento (CDC, art. 49)'},
+              ].map(({t,s})=>(
                 <div key={t} style={{display:'flex',alignItems:'center',gap:10,background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.1)',borderRadius:14,padding:'12px 16px',minWidth:180}}>
-                  <span style={{fontSize:'1.4rem',flexShrink:0}}>{icon}</span>
+                  <span aria-hidden="true" style={{color:'var(--gold)',fontSize:'1rem',flexShrink:0}}>✓</span>
                   <div>
                     <p style={{color:'white',fontWeight:700,fontSize:'.9rem',lineHeight:1.2}}>{t}</p>
-                    <p style={{color:'rgba(255,255,255,.45)',fontSize:'.8rem',marginTop:2}}>{s}</p>
+                    <p style={{color:'rgba(255,255,255,.7)',fontSize:'.8rem',marginTop:2}}>{s}</p>
                   </div>
                 </div>
               ))}
             </div>
+            <p style={{textAlign:'center',color:'rgba(255,255,255,.75)',fontSize:'.9rem',marginTop:18}}>
+              Dúvidas sobre entrega ou troca: <a href={WA_LINK} target="_blank" rel="noopener noreferrer" style={{color:'var(--goldlt)',fontWeight:600}}>fale conosco no WhatsApp</a>
+            </p>
 
             {/* Atacado */}
             <div style={{maxWidth:820,margin:'36px auto 0',background:'linear-gradient(135deg,rgba(201,162,39,.13) 0%,rgba(201,162,39,.05) 100%)',border:'1px solid rgba(201,162,39,.4)',borderRadius:20,padding:'28px 32px',display:'flex',flexWrap:'wrap',alignItems:'center',gap:24,justifyContent:'space-between'}}>
               <div style={{flex:'1 1 280px'}}>
-                <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
-                  <span style={{fontSize:'1.5rem'}}>🏭</span>
-                  <p style={{fontSize:'.78rem',fontWeight:700,letterSpacing:'.18em',color:'var(--gold)',textTransform:'uppercase'}}>Atacado & Distribuição</p>
-                </div>
+                <p style={{fontSize:'.78rem',fontWeight:700,letterSpacing:'.18em',color:'var(--gold)',textTransform:'uppercase',marginBottom:8}}>Atacado & Distribuição</p>
                 <p style={{color:'white',fontWeight:700,fontSize:'1.1rem',lineHeight:1.3,marginBottom:6}}>Compra em grande volume?</p>
-                <p style={{color:'rgba(255,255,255,.6)',fontSize:'.9rem',lineHeight:1.6}}>Condições especiais para distribuidores, restaurantes, mercados e compras acima de 50kg. Preço e frete negociados diretamente pelo WhatsApp.</p>
+                <p style={{color:'rgba(255,255,255,.75)',fontSize:'.9rem',lineHeight:1.6}}>Distribuidores, restaurantes, mercados e compras acima de 50kg: peça uma cotação. Preço e frete combinados com a nossa equipe.</p>
               </div>
-              <a href={`https://wa.me/${WA}?text=${encodeURIComponent('Olá! Tenho interesse em compra de grande volume / distribuição do SAL VITA PREMIUM. Podemos conversar sobre condições especiais?')}`} target="_blank" rel="noopener noreferrer"
-                style={{display:'inline-flex',alignItems:'center',gap:10,background:'#25D366',color:'white',padding:'14px 24px',borderRadius:14,fontSize:'.95rem',fontWeight:700,textDecoration:'none',whiteSpace:'nowrap',flexShrink:0,transition:'background .2s,transform .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#128C7E';e.currentTarget.style.transform='scale(1.04)';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#25D366';e.currentTarget.style.transform='scale(1)';}}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                Consultar pelo WhatsApp
-              </a>
+              <div style={{display:'flex',flexDirection:'column',gap:10,alignItems:'stretch',flexShrink:0}}>
+                <a href="/atacado"
+                  style={{display:'inline-flex',alignItems:'center',justifyContent:'center',background:'var(--gold)',color:'var(--navy)',padding:'14px 24px',borderRadius:14,fontSize:'.95rem',fontWeight:800,textDecoration:'none',whiteSpace:'nowrap',transition:'background .2s'}}
+                  onMouseEnter={e=>{e.currentTarget.style.background='var(--goldlt)';}}
+                  onMouseLeave={e=>{e.currentTarget.style.background='var(--gold)';}}>
+                  Solicitar cotação de atacado
+                </a>
+                <a href={`${WA_LINK}?text=${encodeURIComponent('Olá! Tenho interesse em compra de grande volume / distribuição do SAL VITA PREMIUM. Podemos conversar sobre condições especiais?')}`} target="_blank" rel="noopener noreferrer"
+                  style={{display:'inline-flex',alignItems:'center',justifyContent:'center',gap:8,minHeight:44,color:'white',border:'1.5px solid rgba(255,255,255,.35)',padding:'10px 20px',borderRadius:14,fontSize:'.9rem',fontWeight:600,textDecoration:'none',whiteSpace:'nowrap'}}>
+                  <WaIcon/> Ou fale pelo WhatsApp
+                </a>
+              </div>
             </div>
 
-            {/* Mini objections */}
+            {/* Informações do produto */}
             <div style={{background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.1)',borderRadius:18,padding:'24px 28px',maxWidth:680,margin:'32px auto 0'}}>
-              <p style={{fontSize:'.82rem',fontWeight:700,letterSpacing:'.18em',color:'rgba(255,255,255,.4)',textTransform:'uppercase',marginBottom:16}}>Dúvidas rápidas</p>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px 32px'}}>
+              <h3 style={{fontSize:'.82rem',fontWeight:700,letterSpacing:'.18em',color:'rgba(255,255,255,.7)',textTransform:'uppercase',marginBottom:12}}>Informações do produto</h3>
+              <p style={{color:'white',fontSize:'.95rem',lineHeight:1.65,marginBottom:16,paddingBottom:14,borderBottom:'1px solid rgba(255,255,255,.12)'}}>
+                <strong>Ingredientes:</strong> cloreto de sódio, iodato de potássio e antiumectante INS-535 (ferrocianeto de sódio). Iodado com 25 mg/kg (RDC 604/2022).
+              </p>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:'10px 32px'}}>
                 {[
                   ['É iodado?','Sim — 25 mg/kg, conforme a legislação brasileira'],
-                  ['Empedra?','Não — cristais naturais não endurecem'],
-                  ['Granulometria?','Média/grossa, ideal para todo uso'],
-                  ['Quanto dura 1kg?','1–2 meses para família de 4 pessoas'],
-                  ['Serve para churrasco?','Perfeito — realça o sabor da carne'],
+                  ['Contém antiumectante?','Sim — INS-535 (ferrocianeto de sódio), conforme o rótulo'],
                   ['Tem nota fiscal?','Sim, emitida em todos os pedidos'],
                 ].map(([q,a])=>(
                   <div key={q} style={{paddingBottom:8,borderBottom:'1px solid rgba(255,255,255,.07)'}}>
-                    <p style={{color:'rgba(255,255,255,.6)',fontSize:'.82rem',marginBottom:2}}>{q}</p>
+                    <p style={{color:'rgba(255,255,255,.7)',fontSize:'.82rem',marginBottom:2}}>{q}</p>
                     <p style={{color:'white',fontSize:'.9rem',fontWeight:500}}>{a}</p>
                   </div>
                 ))}
@@ -1368,18 +1360,20 @@ export default function SalVitaLanding() {
         <section style={{padding:'100px 24px',background:'white'}}>
           <div style={{maxWidth:760,margin:'0 auto'}}>
             <div id="faq-h" data-reveal className={`rev${v('faq-h')?' on':''}`} style={{textAlign:'center',marginBottom:52}}>
-              <p className="eyebrow" style={{color:'var(--gold)'}}>Tire suas dúvidas</p>
+              <p className="eyebrow">Tire suas dúvidas</p>
               <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'clamp(2rem,5vw,3.1rem)',fontWeight:700,color:'var(--text)'}}>Perguntas Frequentes</h2>
             </div>
             <div id="faq-l" data-reveal className={`rev${v('faq-l')?' on':''}`}>
               {FAQS.map((faq,i)=>(
                 <div key={i} className="faq-border">
-                  <button onClick={()=>setOpenFaq(openFaq===i?null:i)} style={{width:'100%',background:'none',border:'none',padding:'22px 0',display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',gap:16}}>
-                    <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.25rem',fontWeight:700,color:openFaq===i?'var(--brand)':'var(--text)',textAlign:'left',transition:'color .25s'}}>{faq.q}</span>
-                    <span style={{color:'var(--gold)',fontSize:'1.4rem',flexShrink:0,transform:openFaq===i?'rotate(45deg)':'rotate(0)',transition:'transform .35s cubic-bezier(.22,1,.36,1)',display:'inline-block'}}>+</span>
-                  </button>
-                  <div className={`faq-ans${openFaq===i?' open':' closed'}`}>
-                    <p style={{padding:'0 0 24px',color:'var(--mid)'}}>{faq.a}</p>
+                  <h3 style={{margin:0}}>
+                    <button id={`faq-btn-${i}`} aria-expanded={openFaq===i} aria-controls={`faq-panel-${i}`} onClick={()=>setOpenFaq(openFaq===i?null:i)} style={{width:'100%',background:'none',border:'none',padding:'22px 0',display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',gap:16}}>
+                      <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.25rem',fontWeight:700,color:openFaq===i?'var(--brand)':'var(--text)',textAlign:'left',transition:'color .25s'}}>{faq.q}</span>
+                      <span aria-hidden="true" style={{color:'var(--golddk)',fontSize:'1.4rem',flexShrink:0,transform:openFaq===i?'rotate(45deg)':'rotate(0)',transition:'transform .35s cubic-bezier(.22,1,.36,1)',display:'inline-block'}}>+</span>
+                    </button>
+                  </h3>
+                  <div id={`faq-panel-${i}`} role="region" aria-labelledby={`faq-btn-${i}`} className={`faq-ans${openFaq===i?' open':' closed'}`}>
+                    <div><p style={{padding:'0 0 24px',color:'var(--mid)'}}>{faq.a}</p></div>
                   </div>
                 </div>
               ))}
@@ -1393,8 +1387,9 @@ export default function SalVitaLanding() {
             <div className="footer-grid" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:40,marginBottom:48}}>
               <div>
                 <div style={{marginBottom:16}}><Logo size={48} white/></div>
-                <p style={{color:'rgba(255,255,255,.38)',lineHeight:1.7}}>Sal Marinho Integral Não Refinado. Das salinas de Mossoró, Rio Grande do Norte, para a sua mesa.</p>
-                <p style={{color:'rgba(255,255,255,.28)',fontSize:'.78rem',lineHeight:1.75,marginTop:12}}>
+                <p style={{color:'rgba(255,255,255,.7)',lineHeight:1.7}}>Sal Marinho Não Refinado — Sal Integral de Mossoró. Das salinas de Mossoró, Rio Grande do Norte, para a sua mesa.</p>
+                <p style={{color:'rgba(255,255,255,.7)',fontSize:'.85rem',lineHeight:1.75,marginTop:12}}>
+                  A S Comércio e Moagem de Sal Ltda<br/>
                   Av. Industrial Dehuel Vieira Diniz, 505<br/>
                   Monsenhor Américo · Mossoró / RN<br/>
                   CEP 59.613-690<br/>
@@ -1405,46 +1400,36 @@ export default function SalVitaLanding() {
                 <h4 style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.16em',color:'var(--gold)',textTransform:'uppercase',marginBottom:16}}>Produto</h4>
                 <ul style={{listStyle:'none',padding:0}}>
                   {['1kg — R$ 29,90','Trio 3kg — R$ 74,90','Caixa 10kg — R$ 149,90','Frete calculado por CEP','Minerais Traço Naturais'].map(i=>(
-                    <li key={i} style={{color:'rgba(255,255,255,.38)',marginBottom:8}}>{i}</li>
+                    <li key={i} style={{color:'rgba(255,255,255,.7)',marginBottom:8}}>{i}</li>
                   ))}
                 </ul>
               </div>
               <div>
-                <h4 style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.16em',color:'var(--gold)',textTransform:'uppercase',marginBottom:16}}>Canais de Venda</h4>
+                <h4 style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.16em',color:'var(--gold)',textTransform:'uppercase',marginBottom:8}}>Compra e atendimento</h4>
                 <ul style={{listStyle:'none',padding:0}}>
-                  {[{l:'💬 WhatsApp',h:`https://wa.me/${WA}`},{l:'📧 E-mail',h:'mailto:contato@salvitarn.com.br'}].map(lk=>(
-                    <li key={lk.l} style={{marginBottom:8}}>
-                      <a href={lk.h} target="_blank" rel="noopener noreferrer" style={{color:'rgba(255,255,255,.38)',textDecoration:'none',transition:'color .2s'}}
-                        onMouseEnter={e=>e.currentTarget.style.color='var(--goldlt)'}
-                        onMouseLeave={e=>e.currentTarget.style.color='rgba(255,255,255,.38)'}>{lk.l}</a>
-                    </li>
-                  ))}
+                  <li><a className="foot-link" href="/meu-pedido">Rastrear pedido</a></li>
+                  <li><a className="foot-link" href="/atacado">Atacado</a></li>
+                  <li><a className="foot-link" href={WA_LINK} target="_blank" rel="noopener noreferrer">WhatsApp</a></li>
+                  <li><a className="foot-link" href="mailto:contato@salvitarn.com.br">E-mail</a></li>
                 </ul>
               </div>
               <div>
-                <h4 style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.16em',color:'var(--gold)',textTransform:'uppercase',marginBottom:16}}>Fale Conosco</h4>
+                <h4 style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.16em',color:'var(--gold)',textTransform:'uppercase',marginBottom:8}}>Fale Conosco</h4>
                 <ul style={{listStyle:'none',padding:0,marginBottom:16}}>
-                  <li style={{marginBottom:8}}>
-                    <a href={`https://wa.me/${WA}`} target="_blank" rel="noopener noreferrer" style={{color:'rgba(255,255,255,.55)',textDecoration:'none'}}>📞 (84) 2140-8212</a>
-                  </li>
-                  <li style={{marginBottom:8}}>
-                    <a href="mailto:contato@salvitarn.com.br" style={{color:'rgba(255,255,255,.55)',textDecoration:'none'}}>✉️ contato@salvitarn.com.br</a>
-                  </li>
-                  <li style={{marginBottom:16}}>
-                    <a href="https://instagram.com/salvitarn" target="_blank" rel="noopener noreferrer" style={{color:'rgba(255,255,255,.55)',textDecoration:'none'}}>📷 @salvitarn</a>
-                  </li>
+                  <li><a className="foot-link" href={WA_LINK} target="_blank" rel="noopener noreferrer">(84) 2140-8212</a></li>
+                  <li><a className="foot-link" href="mailto:contato@salvitarn.com.br">contato@salvitarn.com.br</a></li>
+                  <li><a className="foot-link" href="https://instagram.com/salvitarn" target="_blank" rel="noopener noreferrer">@salvitarn</a></li>
                 </ul>
-                <a href={`https://wa.me/${WA}`} target="_blank" rel="noopener noreferrer" style={{display:'inline-flex',alignItems:'center',gap:10,background:'#128C7E',color:'white',padding:'12px 20px',borderRadius:12,fontSize:'.83rem',fontWeight:600,textDecoration:'none',transition:'background .2s,transform .2s'}}
-                  onMouseEnter={e=>{e.currentTarget.style.background='#25D366';e.currentTarget.style.transform='scale(1.04)';}}
-                  onMouseLeave={e=>{e.currentTarget.style.background='#128C7E';e.currentTarget.style.transform='scale(1)';}}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                <a href={WA_LINK} target="_blank" rel="noopener noreferrer" style={{display:'inline-flex',alignItems:'center',gap:10,minHeight:44,background:'#128C7E',color:'white',padding:'12px 20px',borderRadius:12,fontSize:'.88rem',fontWeight:600,textDecoration:'none',transition:'background .2s'}}
+                  onMouseEnter={e=>{e.currentTarget.style.background='#25D366';}}
+                  onMouseLeave={e=>{e.currentTarget.style.background='#128C7E';}}>
+                  <WaIcon/>
                   Falar no WhatsApp
                 </a>
               </div>
             </div>
-            <div style={{borderTop:'1px solid rgba(255,255,255,.07)',paddingTop:24,display:'flex',flexWrap:'wrap',justifyContent:'space-between',gap:10}}>
-              <p style={{color:'rgba(255,255,255,.22)',fontSize:'.85rem'}}>© 2026 SAL VITA · Mossoró, Rio Grande do Norte · CNPJ: 51.422.900/0001-68</p>
-              <p style={{color:'rgba(255,255,255,.22)',fontSize:'.85rem'}}>Produto registrado MAPA · Aditivos aprovados ANVISA</p>
+            <div style={{borderTop:'1px solid rgba(255,255,255,.12)',paddingTop:24}}>
+              <p style={{color:'rgba(255,255,255,.7)',fontSize:'.85rem'}}>© 2026 SAL VITA · Mossoró, Rio Grande do Norte · CNPJ: 51.422.900/0001-68</p>
             </div>
           </div>
         </footer>
@@ -1453,362 +1438,362 @@ export default function SalVitaLanding() {
       {/* ══════ STICKY BOTTOM CTA (mobile) ══════ */}
       <div className="sticky-bar" style={{gap:12,alignItems:'center'}}>
         <div style={{flexShrink:0}}>
-          <p style={{margin:0,fontSize:'.68rem',color:'rgba(255,255,255,.55)',letterSpacing:'.04em'}}>SAL VITA 1kg</p>
-          <p style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:'1.25rem',fontWeight:700,color:'var(--goldlt)',lineHeight:1}}>R$ 29,90</p>
+          <p style={{margin:0,fontSize:'.75rem',color:'rgba(255,255,255,.75)',letterSpacing:'.04em'}}>SAL VITA 1kg</p>
+          <p style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:'1.25rem',fontWeight:700,color:'var(--goldlt)',lineHeight:1}}>{brl(PRODUCTS[0].price)}</p>
         </div>
-        <button onClick={()=>openBuy(products[0])} className="pulse cta-gold" style={{flex:1,background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:14,padding:'15px 0',fontSize:'.94rem',fontWeight:800,letterSpacing:'.06em',textTransform:'uppercase',cursor:'pointer'}}>
+        <button onClick={()=>openBuy(PRODUCTS[0])} className="cta-gold" style={{flex:1,background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:14,padding:'15px 0',fontSize:'.94rem',fontWeight:800,letterSpacing:'.06em',textTransform:'uppercase',cursor:'pointer'}}>
           Comprar Agora
         </button>
       </div>
 
       {/* ══════ CHECKOUT — ETAPA 3: PAGAMENTO ══════ */}
-      {showCheckout&&showModal&&selProd&&selShip&&orderDone&&(()=>{
-        const mm=String(Math.floor(payTimer/60)).padStart(2,'0');
-        const ss=String(payTimer%60).padStart(2,'0');
-        return(
-        <div className="mo" style={{zIndex:10000}} onClick={e=>e.target===e.currentTarget&&closeBuy()}>
-          <div className="mb" style={{maxWidth:460,padding:0,overflow:'hidden'}}>
-            <div className="mb-drag" style={{margin:'10px auto 0'}}/>
+      {step===3&&orderDone&&(
+        <Sheet dlgRef={dlgRef} onBackdrop={closeBuy} maxWidth={460}
+          foot={
+            pixPaid ? (
+              <a href={trackUrl(orderDone.id,orderDone.trackToken)} className="cta-gold" style={{display:'flex',alignItems:'center',justifyContent:'center',background:'var(--brand)',color:'white',borderRadius:14,padding:'16px',fontSize:'1rem',fontWeight:800,textDecoration:'none'}}>
+                Acompanhar pedido
+              </a>
+            ) : pixData && !pixExpired ? (
+              <>
+                <button onClick={copyPixCode}
+                  style={{width:'100%',background:pixCopied?'#16a34a':'#009ee3',color:'white',border:'none',borderRadius:14,padding:'15px',fontSize:'1.02rem',fontWeight:800,cursor:'pointer',transition:'background .25s'}}>
+                  {pixCopied ? 'Código copiado' : 'Copiar código PIX'}
+                </button>
+                <p role="status" style={{fontSize:'.8rem',color:pixPollErr?'#b45309':'var(--muted)',margin:'8px 0 0',textAlign:'center',lineHeight:1.4}}>
+                  {pixPollErr
+                    ? <>Não conseguimos verificar o pagamento automaticamente — confira em <a href={trackUrl(orderDone.id,orderDone.trackToken)} style={{color:'var(--brand)',fontWeight:700}}>Acompanhar pedido</a>.</>
+                    : 'Aguardando confirmação do pagamento…'}
+                </p>
+              </>
+            ) : pixData && pixExpired ? (
+              <>
+                <button onClick={()=>{ resetPix(); }}
+                  style={{width:'100%',background:'#009ee3',color:'white',border:'none',borderRadius:14,padding:'15px',fontSize:'1.02rem',fontWeight:800,cursor:'pointer'}}>
+                  Gerar novo PIX
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={handlePixPay} disabled={pixLoading}
+                  style={{width:'100%',background:pixLoading?'#9bb3d0':'#009ee3',color:'white',border:'none',borderRadius:14,padding:'15px',fontSize:'1.05rem',fontWeight:800,cursor:pixLoading?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:10,marginBottom:10}}>
+                  {pixLoading ? 'Gerando QR Code…' : 'Pagar com PIX'}
+                </button>
+                <button onClick={handleMpPay} disabled={mpLoading}
+                  style={{width:'100%',background:'transparent',color:'var(--brand)',border:'1.5px solid var(--brand)',borderRadius:14,padding:'13px',fontSize:'.95rem',fontWeight:700,cursor:mpLoading?'not-allowed':'pointer',opacity:mpLoading?.6:1}}>
+                  {mpLoading ? 'Gerando link seguro…' : 'Cartão ou outros meios (Mercado Pago)'}
+                </button>
+              </>
+            )
+          }>
+          <SheetHead eyebrow={`Pedido #${orderDone.id} registrado`} title="Finalize seu pagamento" onClose={closeBuy}/>
+          <Steps cur={3}/>
 
-            <div style={{background:payTimer===0?'var(--brand)':payTimer<120?'#dc2626':'#b8860b',padding:'9px 20px',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/></svg>
-              {payTimer>0
-                ? <span style={{color:'white',fontWeight:700,fontSize:'.82rem'}}>⏳ Finalize em <strong>{mm}:{ss}</strong> para garantir o processamento mais rápido</span>
-                : <span style={{color:'white',fontWeight:700,fontSize:'.82rem'}}>✅ Pedido #{orderDone.id} continua disponível — finalize quando quiser</span>}
-            </div>
+          {shipNotice&&<p role="status" style={{background:'#fffbeb',border:'1px solid #fde68a',color:'#92400e',borderRadius:10,padding:'9px 12px',fontSize:'.88rem',fontWeight:600,margin:'0 0 12px'}}>{shipNotice}</p>}
 
-            <div style={{padding:'18px 24px 26px'}}>
-              <Steps cur={3}/>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16}}>
-                <div>
-                  <p style={{fontSize:'.78rem',fontWeight:700,letterSpacing:'.14em',color:'#16a34a',textTransform:'uppercase',marginBottom:2}}>✅ Pedido #{orderDone.id} registrado!</p>
-                  <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.5rem',fontWeight:700,color:'var(--text)',margin:0}}>Finalize seu pagamento</h3>
+          <div style={{background:'var(--salt)',borderRadius:12,padding:'12px 14px',marginBottom:14,border:'1px solid rgba(11,29,58,.08)'}}>
+            {!pixData&&selProd&&selShip&&(
+              <>
+                <div style={{display:'flex',justifyContent:'space-between',gap:12,fontSize:'.88rem',color:'var(--muted)',marginBottom:4}}>
+                  <span>{packLabel(selProd)}</span>
+                  <span style={{whiteSpace:'nowrap'}}>{brl(orderDone.total - selShip.price)}</span>
                 </div>
-                <button onClick={closeBuy} style={{background:'var(--salt)',border:'none',borderRadius:10,width:34,height:34,color:'var(--mid)',fontSize:'1.2rem',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>×</button>
-              </div>
-
-              <div style={{background:'var(--salt)',borderRadius:12,padding:'12px 14px',marginBottom:16,border:'1px solid rgba(11,29,58,.08)'}}>
-                <div style={{display:'flex',justifyContent:'space-between',fontSize:'.83rem',color:'var(--muted)',marginBottom:4}}>
-                  <span>{selProd.name}</span>
-                  <span>R$ {(orderDone.total - (selShip.price)).toFixed(2)}</span>
-                </div>
-                <div style={{display:'flex',justifyContent:'space-between',fontSize:'.83rem',color:'var(--muted)',marginBottom:8}}>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:'.88rem',color:'var(--muted)',marginBottom:8}}>
                   <span>Frete ({selShip.service})</span>
-                  <span>R$ {selShip.price.toFixed(2)}</span>
+                  <span>{brl(selShip.price)}</span>
                 </div>
-                <div style={{display:'flex',justifyContent:'space-between',fontWeight:700,fontSize:'1rem',borderTop:'1px solid rgba(11,29,58,.1)',paddingTop:8}}>
-                  <span>Total</span>
-                  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.25rem',color:'var(--brand)'}}>R$ {orderDone.total.toFixed(2)}</span>
-                </div>
-              </div>
+              </>
+            )}
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',fontWeight:700,fontSize:'1rem',...(!pixData&&selProd&&selShip?{borderTop:'1px solid rgba(11,29,58,.1)',paddingTop:8}:{})}}>
+              <span>Total</span>
+              <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.25rem',color:'var(--brand)'}}>{brl(orderDone.total)}</span>
+            </div>
+          </div>
 
-              {pixPaid ? (
-                <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:14,padding:'22px',textAlign:'center'}}>
-                  <div style={{width:56,height:56,borderRadius:'50%',background:'#16a34a',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 12px'}}>
-                    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                  </div>
-                  <p style={{fontSize:'1.1rem',fontWeight:800,color:'#16a34a',margin:'0 0 4px'}}>Pagamento confirmado!</p>
-                  <p style={{fontSize:'.85rem',color:'var(--muted)',margin:0}}>Recebemos seu PIX. Já estamos preparando seu pedido 🚚</p>
+          {pixPaid ? (
+            <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:14,padding:'22px',textAlign:'center'}} role="status">
+              <div style={{width:56,height:56,borderRadius:'50%',background:'#16a34a',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 12px'}}>
+                <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              <p style={{fontSize:'1.1rem',fontWeight:800,color:'#15803d',margin:'0 0 4px'}}>Pagamento confirmado</p>
+              <p style={{fontSize:'.88rem',color:'var(--muted)',margin:0}}>Recebemos seu PIX. Acompanhe o andamento do pedido pelo botão abaixo.</p>
+            </div>
+          ) : pixData && pixExpired ? (
+            <div role="alert" style={{background:'#fffbeb',border:'1px solid #fde68a',borderRadius:14,padding:'16px',textAlign:'center'}}>
+              <p style={{fontSize:'.92rem',color:'#92400e',fontWeight:600,margin:0,lineHeight:1.5}}>Paramos de verificar este PIX após 30 minutos. Se você já pagou, confira em <a href={trackUrl(orderDone.id,orderDone.trackToken)} style={{color:'var(--brand)',fontWeight:700}}>Acompanhar pedido</a>; se não, gere um novo PIX.</p>
+            </div>
+          ) : pixData ? (
+            <div style={{textAlign:'center'}}>
+              {pixData.qrCodeBase64 && (
+                <div style={{display:'inline-block',padding:8,background:'white',borderRadius:16,border:'1.5px solid rgba(201,162,39,.45)',boxShadow:'0 8px 30px rgba(11,29,58,.1)',marginBottom:10}}>
+                  <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="QR Code PIX" width={190} height={190} className="pix-qr"/>
                 </div>
-              ) : pixData ? (
-                <div style={{textAlign:'center'}}>
-                  {pixData.qrCodeBase64 && (
-                    <div style={{display:'inline-block',padding:10,background:'white',borderRadius:16,border:'1.5px solid rgba(201,162,39,.45)',boxShadow:'0 8px 30px rgba(11,29,58,.1)',marginBottom:12}}>
-                      <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="QR Code PIX" style={{width:190,height:190,display:'block'}}/>
-                    </div>
-                  )}
-                  <p style={{fontSize:'.84rem',color:'var(--muted)',margin:'0 0 10px'}}>Escaneie o QR Code ou copie o código PIX:</p>
-                  <div style={{background:'var(--salt)',border:'1px solid rgba(11,29,58,.1)',borderRadius:10,padding:'10px 12px',fontSize:'.68rem',wordBreak:'break-all',color:'var(--muted)',marginBottom:12,maxHeight:64,overflow:'hidden',fontFamily:'monospace'}}>
-                    {pixData.qrCode}
-                  </div>
-                  <button onClick={copyPixCode} className={pixCopied?'':'cta-gold'}
-                    style={{width:'100%',background:pixCopied?'#16a34a':'#009ee3',color:'white',border:'none',borderRadius:14,padding:'17px',fontSize:'1.02rem',fontWeight:800,cursor:'pointer',marginBottom:12,transition:'background .25s',boxShadow:pixCopied?'none':'0 6px 20px rgba(0,158,227,.35)'}}>
-                    {pixCopied ? '✅ Código copiado!' : '📋 Copiar código PIX'}
-                  </button>
-                  <p style={{fontSize:'.78rem',color:'#94a3b8',margin:0,display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{animation:'spin 1.4s linear infinite'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                    Aguardando confirmação do pagamento...
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <button onClick={handlePixPay} disabled={pixLoading} className={pixLoading?'':'cta-gold'}
-                    style={{width:'100%',background:pixLoading?'#9bb3d0':'#009ee3',color:'white',border:'none',borderRadius:14,padding:'17px',fontSize:'1.05rem',fontWeight:800,cursor:pixLoading?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:10,transition:'all .2s',boxShadow:pixLoading?'none':'0 6px 20px rgba(0,158,227,.4)',letterSpacing:'.01em',marginBottom:10}}>
-                    {pixLoading
-                      ? <><svg width="18" height="18" viewBox="0 0 24 24" fill="white" style={{animation:'spin 1s linear infinite'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Gerando QR Code...</>
-                      : <>🔑 Pagar com PIX (instantâneo)</>}
-                  </button>
-                  <button onClick={handleMpPay} disabled={mpLoading}
-                    style={{width:'100%',background:'transparent',color:'var(--brand)',border:'1.5px solid var(--brand)',borderRadius:14,padding:'15px',fontSize:'.95rem',fontWeight:700,cursor:mpLoading?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:10,opacity:mpLoading?.6:1,transition:'background .2s'}}>
-                    {mpLoading
-                      ? <><svg width="18" height="18" viewBox="0 0 24 24" fill="var(--brand)" style={{animation:'spin 1s linear infinite'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Gerando link seguro...</>
-                      : <>💳 Cartão, boleto ou outros (Mercado Pago)</>}
-                  </button>
-                </>
               )}
-
-              <div style={{textAlign:'center',marginTop:12}}>
-                <p style={{fontSize:'.75rem',color:'#94a3b8',margin:'0 0 4px'}}>Pagamento processado com segurança pelo Mercado Pago</p>
-                <p style={{fontSize:'.75rem',color:'#64748b',margin:0}}>💳 Cartão de crédito/débito · PIX · Boleto · Parcelamento 3×</p>
+              <p style={{fontSize:'.86rem',color:'var(--muted)',margin:'0 0 8px'}}>Escaneie o QR Code ou copie o código PIX:</p>
+              <div style={{background:'var(--salt)',border:'1px solid rgba(11,29,58,.1)',borderRadius:10,padding:'8px 12px',fontSize:'.75rem',wordBreak:'break-all',color:'var(--muted)',maxHeight:56,overflow:'hidden',fontFamily:'monospace'}}>
+                {pixData.qrCode}
               </div>
-
+            </div>
+          ) : (
+            <>
+              {payErr&&<p role="alert" className="err" style={{marginBottom:10}}>{payErr}</p>}
+              <p style={{fontSize:'.8rem',color:'var(--muted)',margin:'0 0 4px',textAlign:'center'}}>Pagamento processado com segurança pelo Mercado Pago</p>
+              <p style={{fontSize:'.8rem',color:'var(--muted)',margin:0,textAlign:'center'}}>PIX · Cartão (Mercado Pago)</p>
               <div style={{display:'flex',justifyContent:'center',gap:20,marginTop:14,paddingTop:14,borderTop:'1px solid #f1f5f9'}}>
                 {[
-                  {svg:<svg width="20" height="20" viewBox="0 0 24 24" fill="#16a34a"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>,l:'Compra Segura'},
-                  {svg:<svg width="20" height="20" viewBox="0 0 24 24" fill="#16a34a"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM12 17c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/></svg>,l:'Criptografia SSL'},
-                  {svg:<svg width="20" height="20" viewBox="0 0 24 24" fill="#009ee3"><path d="M20 4H4c-1.11 0-2 .89-2 2v12c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>,l:'Mercado Pago'},
+                  {svg:<svg width="20" height="20" viewBox="0 0 24 24" fill="#16a34a" aria-hidden="true"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>,l:'Compra Segura'},
+                  {svg:<svg width="20" height="20" viewBox="0 0 24 24" fill="#16a34a" aria-hidden="true"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM12 17c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/></svg>,l:'Criptografia SSL'},
+                  {svg:<svg width="20" height="20" viewBox="0 0 24 24" fill="#009ee3" aria-hidden="true"><path d="M20 4H4c-1.11 0-2 .89-2 2v12c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>,l:'Mercado Pago'},
                 ].map(b=>(
                   <div key={b.l} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
                     {b.svg}
-                    <span style={{fontSize:'.65rem',color:'#475569',fontWeight:600,textAlign:'center'}}>{b.l}</span>
+                    <span style={{fontSize:'.75rem',color:'#475569',fontWeight:600,textAlign:'center'}}>{b.l}</span>
                   </div>
                 ))}
               </div>
-
-              <p style={{textAlign:'center',fontSize:'.75rem',color:'var(--muted)',marginTop:12}}>
-                Após pagar, rastreie em: <a href={`/meu-pedido?pedido=${orderDone.id}${orderDone.trackToken ? `&t=${orderDone.trackToken}` : ''}`} style={{color:'var(--brand)',fontWeight:600}}>Pedido #{orderDone.id}</a>
-              </p>
-            </div>
-          </div>
-        </div>
-        );
-      })()}
+            </>
+          )}
+          {!pixPaid&&pixData&&payErr&&<p role="alert" className="err" style={{textAlign:'center'}}>{payErr}</p>}
+          {!pixPaid&&(
+            <p style={{textAlign:'center',fontSize:'.8rem',color:'var(--muted)',marginTop:12}}>
+              Após pagar, rastreie em: <a href={trackUrl(orderDone.id,orderDone.trackToken)} style={{color:'var(--brand)',fontWeight:600}}>Pedido #{orderDone.id}</a>
+            </p>
+          )}
+        </Sheet>
+      )}
 
       {/* ══════ CHECKOUT — ETAPA 2: DADOS ══════ */}
-      {showCheckout&&showModal&&selProd&&selShip&&!orderDone&&(
-        <div className="mo" style={{zIndex:10000}} onClick={e=>e.target===e.currentTarget&&setShowCheckout(false)}>
-          <div className="mb" style={{maxWidth:480}}>
-            <div className="mb-drag"/>
-            <Steps cur={2}/>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:18}}>
-              <div>
-                <p style={{fontSize:'.8rem',fontWeight:700,letterSpacing:'.16em',color:'var(--gold)',textTransform:'uppercase',marginBottom:4}}>Dados para entrega</p>
-                <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.45rem',fontWeight:700,color:'var(--text)'}}>Finalizar Pedido</h3>
-                <p style={{color:'var(--muted)',fontSize:'.9rem',marginTop:2}}>{selProd.name} · Frete {selShip.service}: R$ {selShip.price.toFixed(2)}</p>
-              </div>
-              <button onClick={()=>setShowCheckout(false)} style={{background:'var(--salt)',border:'none',borderRadius:10,width:36,height:36,color:'var(--mid)',fontSize:'1.3rem',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>×</button>
-            </div>
-            <form onSubmit={handleCheckout} style={{display:'flex',flexDirection:'column',gap:12}}>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                <div style={{gridColumn:'1/-1'}}>
-                  <label className="inp-lbl">Nome completo *</label>
-                  <input className="inp" required autoComplete="name" value={checkoutForm.customerName} onChange={e=>setCheckoutForm(f=>({...f,customerName:e.target.value}))} placeholder="Seu nome completo"/>
-                </div>
-                <div>
-                  <label className="inp-lbl">Telefone/WhatsApp *</label>
-                  <input className="inp" required type="tel" inputMode="numeric" autoComplete="tel" value={checkoutForm.customerPhone} onChange={e=>setCheckoutForm(f=>({...f,customerPhone:maskPhone(e.target.value)}))} placeholder="(84) 99999-9999" minLength={14}/>
-                </div>
-                <div>
-                  <label className="inp-lbl">CPF *</label>
-                  <input className="inp" required type="text" inputMode="numeric" autoComplete="off" value={checkoutForm.customerCpf}
-                    onChange={e=>{ const m=maskCpf(e.target.value); setCheckoutForm(f=>({...f,customerCpf:m})); setCpfError(m.replace(/\D/g,'').length===11 && !isValidCpf(m) ? 'CPF inválido' : ''); }}
-                    placeholder="000.000.000-00" maxLength={14}
-                    style={{borderColor:cpfError?'#ef4444':undefined}}/>
-                  {cpfError && <p style={{fontSize:'.78rem',color:'#ef4444',margin:'4px 0 0',fontWeight:600}}>{cpfError}</p>}
-                </div>
-                <div style={{gridColumn:'1/-1'}}>
-                  <label className="inp-lbl">E-mail *</label>
-                  <input className="inp" required type="email" autoComplete="email" value={checkoutForm.customerEmail} onChange={e=>setCheckoutForm(f=>({...f,customerEmail:e.target.value}))} placeholder="seuemail@exemplo.com"/>
-                </div>
-                <div>
-                  <label className="inp-lbl">CEP *</label>
-                  <input className="inp" required inputMode="numeric" autoComplete="postal-code" value={checkoutForm.postalCode} onChange={e=>setCheckoutForm(f=>({...f,postalCode:e.target.value.replace(/\D/g,'').slice(0,8)}))} placeholder="00000000" minLength={8} maxLength={8}/>
-                </div>
-                <div>
-                  <label className="inp-lbl">Número *</label>
-                  <input className="inp" required value={checkoutForm.number} onChange={e=>setCheckoutForm(f=>({...f,number:e.target.value}))} placeholder="123"/>
-                </div>
-                <div style={{gridColumn:'1/-1'}}>
-                  <label className="inp-lbl">Endereço (rua/av.) *</label>
-                  <input className="inp" required autoComplete="street-address" value={checkoutForm.address} onChange={e=>setCheckoutForm(f=>({...f,address:e.target.value}))} placeholder="Rua / Avenida"/>
-                </div>
-                <div>
-                  <label className="inp-lbl">Complemento</label>
-                  <input className="inp" value={checkoutForm.complement} onChange={e=>setCheckoutForm(f=>({...f,complement:e.target.value}))} placeholder="Apto, bloco..."/>
-                </div>
-                <div>
-                  <label className="inp-lbl">Bairro *</label>
-                  <input className="inp" required value={checkoutForm.neighborhood} onChange={e=>setCheckoutForm(f=>({...f,neighborhood:e.target.value}))} placeholder="Bairro"/>
-                </div>
-                <div>
-                  <label className="inp-lbl">Cidade *</label>
-                  <input className="inp" required value={checkoutForm.city} onChange={e=>setCheckoutForm(f=>({...f,city:e.target.value}))} placeholder="Cidade"/>
-                </div>
-                <div>
-                  <label className="inp-lbl">Estado *</label>
-                  <input className="inp" required value={checkoutForm.state} onChange={e=>setCheckoutForm(f=>({...f,state:e.target.value.toUpperCase().slice(0,2)}))} placeholder="UF" maxLength={2}/>
-                </div>
-              </div>
-              {/* Cupom */}
-              <div style={{marginTop:4}}>
-                <label className="inp-lbl">🎁 Cupom de desconto</label>
-                <div style={{display:'flex',gap:8}}>
-                  <input className="inp" type="text" value={couponCode}
-                    onChange={e=>{ setCouponCode(e.target.value.toUpperCase()); setCouponState(null); }}
-                    placeholder="Ex: VOLTA10"
-                    style={{flex:1,fontFamily:'monospace',letterSpacing:'.1em',borderColor:couponState?.valid?'#16a34a':couponState?.valid===false?'#ef4444':undefined}}/>
-                  <button type="button"
-                    onClick={()=>validateCoupon(couponCode, selProd.price)}
-                    disabled={!couponCode.trim() || couponLoading}
-                    style={{padding:'0 18px',background:'var(--brand)',color:'white',border:'none',borderRadius:12,fontSize:'.85rem',fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
-                    {couponLoading?'...':'Aplicar'}
-                  </button>
-                </div>
-                {couponState && (
-                  <p style={{fontSize:'.82rem',margin:'6px 0 0',fontWeight:600,color:couponState.valid?'#16a34a':'#ef4444'}}>
-                    {couponState.message}
-                  </p>
-                )}
-              </div>
-              {/* Resumo */}
-              <div style={{background:'var(--salt)',borderRadius:12,padding:'13px 16px',marginTop:4,border:'1px solid rgba(201,162,39,.25)'}}>
-                <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                  <span style={{fontSize:'.9rem',color:'var(--muted)'}}>Produto</span>
-                  <span style={{fontSize:'.9rem',color:'var(--mid)'}}>R$ {(selProd.price).toFixed(2)}</span>
-                </div>
-                {couponState?.valid && couponState.discountValue && (
-                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                    <span style={{fontSize:'.9rem',color:'#16a34a',fontWeight:600}}>🎁 Desconto {couponCode}</span>
-                    <span style={{fontSize:'.9rem',color:'#16a34a',fontWeight:700}}>
-                      -{couponState.discountType==='percent'
-                        ? `R$ ${((selProd.price)*couponState.discountValue/100).toFixed(2)}`
-                        : `R$ ${couponState.discountValue.toFixed(2)}`}
-                    </span>
-                  </div>
-                )}
-                <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                  <span style={{fontSize:'.9rem',color:'var(--muted)'}}>Frete {selShip.service}</span>
-                  <span style={{fontSize:'.9rem',color:'var(--mid)'}}>R$ {selShip.price.toFixed(2)}</span>
-                </div>
-                <div style={{display:'flex',justifyContent:'space-between',paddingTop:8,borderTop:'1px solid rgba(11,29,58,.1)'}}>
-                  <span style={{fontWeight:700,color:'var(--text)'}}>Total</span>
-                  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.35rem',fontWeight:700,color:'var(--brand)'}}>
-                    {(() => {
-                      let subtotal = selProd.price;
-                      if (couponState?.valid && couponState.discountValue) {
-                        const disc = couponState.discountType==='percent'
-                          ? subtotal*couponState.discountValue/100
-                          : couponState.discountValue;
-                        subtotal = Math.max(0, subtotal - disc);
-                      }
-                      return `R$ ${(subtotal+selShip.price).toFixed(2).replace('.',',')}`;
-                    })()}
-                  </span>
-                </div>
-              </div>
-              <div style={{display:'flex',alignItems:'center',gap:8,background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:12,padding:'10px 12px'}}>
-                <span style={{fontSize:'1.1rem'}}>🛡️</span>
-                <span style={{fontSize:'.82rem',color:'#15803d',fontWeight:600,lineHeight:1.4}}>Garantia de 7 dias — não gostou, devolvemos 100%. Pague em segundos no PIX.</span>
-              </div>
+      {step===2&&selProd&&selShip&&(
+        <Sheet dlgRef={dlgRef} onBackdrop={()=>setShowCheckout(false)} maxWidth={480}
+          foot={
+            <>
+              {orderErr&&<p role="alert" className="err" style={{margin:'0 0 8px'}}>{orderErr}</p>}
               <div style={{display:'flex',gap:10}}>
                 <button type="button" onClick={()=>setShowCheckout(false)}
-                  style={{flex:'0 0 auto',background:'var(--salt)',color:'var(--mid)',border:'none',borderRadius:12,padding:'15px 20px',fontSize:'.9rem',fontWeight:600,cursor:'pointer'}}>
+                  style={{flex:'0 0 auto',minHeight:48,background:'var(--salt)',color:'var(--mid)',border:'none',borderRadius:12,padding:'0 18px',fontSize:'.9rem',fontWeight:600,cursor:'pointer'}}>
                   ← Voltar
                 </button>
-                <button type="submit" disabled={checkoutLoading} className={checkoutLoading?'':'cta-gold'}
-                  style={{flex:1,background:checkoutLoading?'#9bb3d0':'var(--brand)',color:'white',border:'none',borderRadius:12,padding:'15px',fontSize:'.95rem',fontWeight:700,cursor:checkoutLoading?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,transition:'background .2s'}}>
-                  {checkoutLoading ? 'Registrando pedido...' : 'Ir para o Pagamento →'}
+                <button type="submit" form="checkout-form" disabled={checkoutLoading}
+                  style={{flex:1,minHeight:48,background:checkoutLoading?'#9bb3d0':'var(--brand)',color:'white',border:'none',borderRadius:12,padding:'0 12px',fontSize:'.95rem',fontWeight:700,cursor:checkoutLoading?'not-allowed':'pointer',whiteSpace:'nowrap'}}>
+                  {checkoutLoading ? 'Registrando pedido…' : 'Ir para pagamento'}
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
+            </>
+          }>
+          <SheetHead eyebrow="Dados para entrega" title="Finalizar Pedido" sub={`${packLabel(selProd)} · ${brl(selProd.price)}`} onClose={()=>setShowCheckout(false)}/>
+          <Steps cur={2}/>
+          <form id="checkout-form" onSubmit={handleCheckout} style={{display:'flex',flexDirection:'column',gap:12}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+              <div style={{gridColumn:'1/-1'}}>
+                <label className="inp-lbl" htmlFor="co-name">Nome completo *</label>
+                <input id="co-name" className="inp" required autoComplete="name" value={checkoutForm.customerName} onChange={e=>setCheckoutForm(f=>({...f,customerName:e.target.value}))} placeholder="Seu nome completo"/>
+              </div>
+              <div>
+                <label className="inp-lbl" htmlFor="co-phone">Telefone/WhatsApp *</label>
+                <input id="co-phone" className="inp" required type="tel" inputMode="numeric" autoComplete="tel" value={checkoutForm.customerPhone}
+                  onChange={e=>{ const m=maskPhone(e.target.value); setCheckoutForm(f=>({...f,customerPhone:m})); if(m.replace(/\D/g,'').length>=10) setPhoneError(''); }}
+                  onBlur={()=>{ const n=checkoutForm.customerPhone.replace(/\D/g,'').length; setPhoneError(n>0&&n<10?'Informe DDD + número.':''); }}
+                  placeholder="(84) 99999-9999"
+                  aria-invalid={phoneError?true:undefined} aria-describedby={phoneError?'co-phone-err':undefined}/>
+                {phoneError && <p id="co-phone-err" role="alert" className="err">{phoneError}</p>}
+              </div>
+              <div>
+                <label className="inp-lbl" htmlFor="co-cpf">CPF *</label>
+                <input id="co-cpf" className="inp" required type="text" inputMode="numeric" autoComplete="off" value={checkoutForm.customerCpf}
+                  onChange={e=>{ const m=maskCpf(e.target.value); setCheckoutForm(f=>({...f,customerCpf:m})); setCpfError(m.replace(/\D/g,'').length===11 && !isValidCpf(m) ? 'CPF inválido — confira os números.' : ''); }}
+                  placeholder="000.000.000-00" maxLength={14}
+                  aria-invalid={cpfError?true:undefined} aria-describedby={cpfError?'co-cpf-err':undefined}/>
+                {cpfError && <p id="co-cpf-err" role="alert" className="err">{cpfError}</p>}
+              </div>
+              <div style={{gridColumn:'1/-1'}}>
+                <label className="inp-lbl" htmlFor="co-email">E-mail *</label>
+                <input id="co-email" className="inp" required type="email" autoComplete="email" value={checkoutForm.customerEmail} onChange={e=>setCheckoutForm(f=>({...f,customerEmail:e.target.value}))} placeholder="seuemail@exemplo.com"/>
+              </div>
+              <div>
+                <label className="inp-lbl" htmlFor="co-cep">CEP (do frete)</label>
+                <div style={{position:'relative'}}>
+                  <input id="co-cep" className="inp" readOnly autoComplete="postal-code" inputMode="numeric" value={maskCep(checkoutForm.postalCode)} style={{paddingRight:76}}/>
+                  <button type="button" className="lnk" onClick={()=>setShowCheckout(false)} style={{position:'absolute',right:2,top:2,bottom:2}}>alterar</button>
+                </div>
+              </div>
+              <div>
+                <label className="inp-lbl" htmlFor="co-number">Número *</label>
+                <input id="co-number" className="inp" required inputMode="numeric" autoComplete="off" value={checkoutForm.number} onChange={e=>setCheckoutForm(f=>({...f,number:e.target.value}))} placeholder="123"/>
+              </div>
+              <div style={{gridColumn:'1/-1'}}>
+                <label className="inp-lbl" htmlFor="co-address">Endereço (rua/av.) *</label>
+                <input id="co-address" className="inp" required autoComplete="address-line1" value={checkoutForm.address} onChange={e=>setCheckoutForm(f=>({...f,address:e.target.value}))} placeholder="Rua / Avenida"/>
+              </div>
+              <div>
+                <label className="inp-lbl" htmlFor="co-complement">Complemento</label>
+                <input id="co-complement" className="inp" autoComplete="address-line2" value={checkoutForm.complement} onChange={e=>setCheckoutForm(f=>({...f,complement:e.target.value}))} placeholder="Apto, bloco..."/>
+              </div>
+              <div>
+                <label className="inp-lbl" htmlFor="co-neighborhood">Bairro *</label>
+                <input id="co-neighborhood" className="inp" required autoComplete="address-level3" value={checkoutForm.neighborhood} onChange={e=>setCheckoutForm(f=>({...f,neighborhood:e.target.value}))} placeholder="Bairro"/>
+              </div>
+              <div>
+                <label className="inp-lbl" htmlFor="co-city">Cidade *</label>
+                <input id="co-city" className="inp" required autoComplete="address-level2" value={checkoutForm.city} onChange={e=>setCheckoutForm(f=>({...f,city:e.target.value}))} placeholder="Cidade"/>
+              </div>
+              <div>
+                <label className="inp-lbl" htmlFor="co-state">Estado *</label>
+                <select id="co-state" className="inp" required autoComplete="address-level1" value={checkoutForm.state} onChange={e=>setCheckoutForm(f=>({...f,state:e.target.value}))}>
+                  <option value="">UF</option>
+                  {UFS.map(u=><option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
+            </div>
+            {/* Cupom */}
+            <div style={{marginTop:4}}>
+              <label className="inp-lbl" htmlFor="co-coupon">Cupom de desconto</label>
+              <div style={{display:'flex',gap:8}}>
+                <input id="co-coupon" className="inp" type="text" autoComplete="off" value={couponCode}
+                  onChange={e=>{ setCouponCode(e.target.value.toUpperCase()); setCouponState(null); }}
+                  placeholder="Ex: VOLTA10"
+                  aria-describedby={couponState?'co-coupon-msg':undefined}
+                  style={{flex:1,fontFamily:'monospace',letterSpacing:'.1em',borderColor:couponState?.valid?'#16a34a':couponState?.valid===false?'#ef4444':undefined}}/>
+                <button type="button"
+                  onClick={()=>validateCoupon(couponCode, selProd.price)}
+                  disabled={!couponCode.trim() || couponLoading}
+                  style={{minHeight:44,padding:'0 18px',background:'var(--brand)',color:'white',border:'none',borderRadius:12,fontSize:'.85rem',fontWeight:700,cursor:'pointer',whiteSpace:'nowrap',opacity:(!couponCode.trim()||couponLoading)?.6:1}}>
+                  {couponLoading?'…':'Aplicar'}
+                </button>
+              </div>
+              {couponState && (
+                <p id="co-coupon-msg" role={couponState.valid?'status':'alert'} style={{fontSize:'.84rem',margin:'6px 0 0',fontWeight:600,color:couponState.valid?'#15803d':'#b91c1c'}}>
+                  {couponState.message}
+                </p>
+              )}
+            </div>
+            {/* Resumo */}
+            <div style={{background:'var(--salt)',borderRadius:12,padding:'13px 16px',marginTop:4,border:'1px solid rgba(201,162,39,.25)'}}>
+              <div style={{display:'flex',justifyContent:'space-between',gap:12,marginBottom:6}}>
+                <span style={{fontSize:'.9rem',color:'var(--muted)'}}>{packLabel(selProd)}</span>
+                <span style={{fontSize:'.9rem',color:'var(--mid)',whiteSpace:'nowrap'}}>{brl(selProd.price)}</span>
+              </div>
+              {discount>0 && (
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                  <span style={{fontSize:'.9rem',color:'#15803d',fontWeight:600}}>Desconto {couponCode}</span>
+                  <span style={{fontSize:'.9rem',color:'#15803d',fontWeight:700}}>-{brl(discount)}</span>
+                </div>
+              )}
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                <span style={{fontSize:'.9rem',color:'var(--muted)'}}>Frete {selShip.service}</span>
+                <span style={{fontSize:'.9rem',color:'var(--mid)'}}>{brl(selShip.price)}</span>
+              </div>
+              <div style={{display:'flex',justifyContent:'space-between',paddingTop:8,borderTop:'1px solid rgba(11,29,58,.1)'}}>
+                <span style={{fontWeight:700,color:'var(--text)'}}>Total</span>
+                <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.35rem',fontWeight:700,color:'var(--brand)'}}>{brl(subtotal+selShip.price)}</span>
+              </div>
+            </div>
+            <p style={{fontSize:'.85rem',color:'#166534',background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:12,padding:'10px 12px',lineHeight:1.5,margin:0}}>
+              Direito de arrependimento em até 7 dias após o recebimento (CDC, art. 49). Dúvidas sobre entrega ou troca: <a href={WA_LINK} target="_blank" rel="noopener noreferrer" style={{color:'#166534',fontWeight:700}}>fale conosco no WhatsApp</a>.
+            </p>
+          </form>
+        </Sheet>
       )}
 
       {/* ══════ CHECKOUT — ETAPA 1: FRETE ══════ */}
-      {showModal&&selProd&&(
-        <div className="mo" onClick={e=>e.target===e.currentTarget&&closeBuy()}>
-          <div className="mb">
-            <div className="mb-drag"/>
-            <Steps cur={1}/>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20}}>
-              <div>
-                <p style={{fontSize:'.8rem',fontWeight:700,letterSpacing:'.16em',color:'var(--gold)',textTransform:'uppercase',marginBottom:4}}>Calcule o Frete</p>
-                <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.55rem',fontWeight:700,color:'var(--text)'}}>{selProd.name}</h3>
-                <p style={{color:'var(--muted)',fontSize:'.95rem'}}>{selProd.weight}</p>
-              </div>
-              <button onClick={closeBuy} style={{background:'var(--salt)',border:'none',borderRadius:10,width:36,height:36,color:'var(--mid)',fontSize:'1.3rem',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>×</button>
-            </div>
-            <div style={{background:'var(--salt)',borderRadius:14,padding:'16px 20px',marginBottom:20,display:'flex',justifyContent:'space-between',alignItems:'center',border:'1px solid rgba(201,162,39,.25)'}}>
-              <div>
-                <p style={{fontSize:'.9rem',color:'var(--muted)',marginBottom:2}}>Subtotal</p>
-                <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.9rem',fontWeight:700,color:'var(--brand)'}}>R$ {selProd.price.toFixed(2).replace('.',',')}</p>
-              </div>
-              <div style={{textAlign:'right'}}>
-                <p style={{fontSize:'.87rem',color:'var(--muted)'}}>Peso aprox.</p>
-                <p style={{fontSize:'.93rem',color:'var(--mid)',fontWeight:500}}>{selProd.weightKg}kg</p>
-              </div>
-            </div>
-            <div style={{marginBottom:18}}>
-              <label className="inp-lbl" style={{fontSize:'.85rem'}}>Seu CEP de entrega</label>
-              <div style={{display:'flex',gap:10}}>
-                <input className="inp" type="text" inputMode="numeric" value={cep} onChange={e=>{setCep(e.target.value.replace(/\D/g,'').slice(0,8));setCepErr('');}} onKeyDown={e=>e.key==='Enter'&&lookupCep()} placeholder="00000-000" maxLength={8}
-                  style={{flex:1,letterSpacing:'.1em',borderColor:cepErr?'#ef4444':undefined}}/>
-                <button onClick={lookupCep} disabled={loadingCep} style={{background:'var(--brand)',color:'white',border:'none',borderRadius:12,padding:'13px 22px',fontSize:'.85rem',fontWeight:700,cursor:loadingCep?'not-allowed':'pointer',opacity:loadingCep?.7:1,whiteSpace:'nowrap',transition:'background .2s'}}
-                  onMouseEnter={e=>e.currentTarget.style.background='var(--brand2)'}
-                  onMouseLeave={e=>e.currentTarget.style.background='var(--brand)'}>{loadingCep?'⟳':'Calcular'}</button>
-              </div>
-              {cepErr&&<p style={{color:'#ef4444',fontSize:'.78rem',marginTop:6}}>{cepErr}</p>}
-              <a href="https://buscacepinter.correios.com.br/" target="_blank" rel="noopener noreferrer" style={{fontSize:'.87rem',color:'var(--muted)',textDecoration:'none',display:'inline-block',marginTop:6}}>Não sei meu CEP →</a>
-            </div>
-
-            {cepData&&(
-              <div>
-                <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14,padding:'9px 14px',background:'#f0fdf4',borderRadius:10,border:'1px solid #bbf7d0'}}>
-                  <span style={{color:'#16a34a'}}>✓</span>
-                  <p style={{fontSize:'.84rem',color:'#166534'}}>{cepData.localidade} — {cepData.uf}{cepData.bairro?` · ${cepData.bairro}`:''}</p>
-                </div>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
-                  <p style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',margin:0}}>Opções de frete:</p>
-                  {shippingSource==='api'
-                    ? <span style={{fontSize:'.75rem',background:'#dcfce7',color:'#15803d',padding:'2px 8px',borderRadius:99,fontWeight:600}}>✓ Via Melhor Envio</span>
-                    : <span style={{fontSize:'.75rem',background:'#fef9c3',color:'#854d0e',padding:'2px 8px',borderRadius:99,fontWeight:600}}>Estimativa</span>
-                  }
-                </div>
-                <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:18}}>
-                  {shipping.map(opt=>(
-                    <div key={opt.service} className={`sopt${selShip?.service===opt.service?' sel':''}`} onClick={()=>setSelShip(opt)}>
-                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                        <div style={{display:'flex',alignItems:'center',gap:12}}>
-                          <span style={{fontSize:'1.4rem'}}>{opt.icon}</span>
-                          <div>
-                            <p style={{fontWeight:700,color:'var(--text)',fontSize:'.93rem'}}>{opt.service}</p>
-                            <p style={{fontSize:'.88rem',color:'var(--muted)'}}>{opt.description} · {opt.days}</p>
-                          </div>
-                        </div>
-                        <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.3rem',fontWeight:700,color:'var(--brand)'}}>R$ {opt.price.toFixed(2).replace('.',',')}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {selShip&&(
-                  <div style={{background:'var(--salt)',borderRadius:14,padding:'15px 18px',marginBottom:18,borderTop:'3px solid var(--gold)'}}>
-                    {[['Produto',selProd.price],[`Frete (${selShip.service})`,selShip.price]].map(([l,val])=>(
-                      <div key={String(l)} style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
-                        <span style={{fontSize:'.95rem',color:'var(--muted)'}}>{l}</span>
-                        <span style={{fontSize:'.95rem',color:'var(--mid)'}}>R$ {Number(val).toFixed(2).replace('.',',')}</span>
-                      </div>
-                    ))}
-                    <div style={{display:'flex',justifyContent:'space-between',paddingTop:10,borderTop:'1px solid rgba(11,29,58,.1)',marginTop:4}}>
-                      <span style={{fontWeight:700,color:'var(--text)'}}>Total estimado</span>
-                      <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.4rem',fontWeight:700,color:'var(--brand)'}}>R$ {(selProd.price+selShip.price).toFixed(2).replace('.',',')}</span>
-                    </div>
+      {step===1&&selProd&&(
+        <Sheet dlgRef={dlgRef} onBackdrop={closeBuy}
+          foot={
+            <>
+              {selShip&&(
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:10,gap:12}}>
+                  <div>
+                    <p style={{fontWeight:700,color:'var(--text)',fontSize:'.95rem',margin:0}}>Total estimado</p>
+                    <p style={{fontSize:'.8rem',color:'var(--muted)',margin:0}}>{brl(selProd.price)} + frete {brl(selShip.price)}</p>
                   </div>
-                )}
-              </div>
-            )}
-
-            <div style={{display:'flex',flexDirection:'column',gap:10}}>
-              <button className="cta-gold" onClick={()=>{ setShowCheckout(true); try { (window as any).fbq?.('track','InitiateCheckout',{ content_name: 'SAL VITA PREMIUM 1kg', content_ids: ['salvita-001'], value: selProd?.price, currency: 'BRL', num_items: 1 }); } catch {} }}
-                style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:14,padding:'17px',fontSize:'.96rem',fontWeight:800,cursor:'pointer',letterSpacing:'.05em',textTransform:'uppercase',transition:'background .2s,transform .2s'}}
+                  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.6rem',fontWeight:700,color:'var(--brand)'}}>{brl(selProd.price+selShip.price)}</span>
+                </div>
+              )}
+              <button className="cta-gold" onClick={goStep2}
+                style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',gap:10,minHeight:52,background:'var(--gold)',color:'var(--navy)',border:'none',borderRadius:14,padding:'0 16px',fontSize:'.96rem',fontWeight:800,cursor:'pointer',letterSpacing:'.05em',textTransform:'uppercase',transition:'background .2s,transform .2s'}}
                 onMouseEnter={e=>{e.currentTarget.style.background='var(--goldlt)';}}
                 onMouseLeave={e=>{e.currentTarget.style.background='var(--gold)';}}>
-                🛒 Comprar Agora
+                {selShip ? 'Comprar Agora' : 'Calcular frete para continuar'}
               </button>
+            </>
+          }>
+          <SheetHead eyebrow="Calcule o Frete" title={selProd.name} sub={selProd.weight} onClose={closeBuy}/>
+          <Steps cur={1}/>
+          <div style={{background:'var(--salt)',borderRadius:14,padding:'14px 18px',marginBottom:18,display:'flex',justifyContent:'space-between',alignItems:'center',border:'1px solid rgba(201,162,39,.25)'}}>
+            <div>
+              <p style={{fontSize:'.9rem',color:'var(--muted)',marginBottom:2}}>{packLabel(selProd)}</p>
+              <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.9rem',fontWeight:700,color:'var(--brand)'}}>{brl(selProd.price)}</p>
             </div>
-            <p style={{marginTop:14,fontSize:'.84rem',color:'var(--muted)',textAlign:'center',lineHeight:1.5}}>Frete calculado via Melhor Envio · Enviamos para todo o Brasil</p>
+            <div style={{textAlign:'right'}}>
+              <p style={{fontSize:'.87rem',color:'var(--muted)'}}>Peso aprox.</p>
+              <p style={{fontSize:'.93rem',color:'var(--mid)',fontWeight:500}}>{String(selProd.weightKg).replace('.',',')} kg</p>
+            </div>
           </div>
-        </div>
+          <div style={{marginBottom:18}}>
+            <label className="inp-lbl" htmlFor="sv-cep" style={{fontSize:'.85rem'}}>Seu CEP de entrega</label>
+            <div style={{display:'flex',gap:10}}>
+              <input id="sv-cep" ref={cepInputRef} className="inp" type="text" inputMode="numeric" autoComplete="postal-code" maxLength={9}
+                value={maskCep(cep)}
+                onChange={e=>{
+                  const d=e.target.value.replace(/\D/g,'').slice(0,8);
+                  setCep(d); setCepErr('');
+                  // A new CEP invalidates any quote made for the previous one.
+                  if (d!==cep) { setCepData(null); setShipping([]); setSelShip(null); }
+                }}
+                onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); lookupCep(); } }}
+                placeholder="00000-000"
+                aria-invalid={cepErr?true:undefined} aria-describedby={cepErr?'sv-cep-err':undefined}
+                style={{flex:1,letterSpacing:'.1em'}}/>
+              <button onClick={lookupCep} disabled={loadingCep} style={{minHeight:48,background:'var(--brand)',color:'white',border:'none',borderRadius:12,padding:'0 22px',fontSize:'.85rem',fontWeight:700,cursor:loadingCep?'not-allowed':'pointer',opacity:loadingCep?.7:1,whiteSpace:'nowrap',transition:'background .2s'}}
+                onMouseEnter={e=>e.currentTarget.style.background='var(--brand2)'}
+                onMouseLeave={e=>e.currentTarget.style.background='var(--brand)'}>{loadingCep?'Calculando…':'Calcular'}</button>
+            </div>
+            {cepErr&&<p id="sv-cep-err" role="alert" className="err">{cepErr}</p>}
+            <a href="https://buscacepinter.correios.com.br/" target="_blank" rel="noopener noreferrer" style={{fontSize:'.87rem',color:'var(--muted)',textDecoration:'none',display:'inline-flex',alignItems:'center',minHeight:44}}>Não sei meu CEP →</a>
+          </div>
+
+          {cepData&&(
+            <div>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14,padding:'9px 14px',background:'#f0fdf4',borderRadius:10,border:'1px solid #bbf7d0'}}>
+                <span aria-hidden="true" style={{color:'#16a34a'}}>✓</span>
+                <p style={{fontSize:'.84rem',color:'#166534'}}>{cepData.localidade} — {cepData.uf}{cepData.bairro?` · ${cepData.bairro}`:''}</p>
+              </div>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+                <p id="ship-lbl" style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',margin:0}}>Opções de frete</p>
+                {shippingSource==='api'
+                  ? <span style={{fontSize:'.75rem',background:'#dcfce7',color:'#15803d',padding:'2px 8px',borderRadius:99,fontWeight:600}}>Via Melhor Envio</span>
+                  : <span style={{fontSize:'.75rem',background:'#fef9c3',color:'#854d0e',padding:'2px 8px',borderRadius:99,fontWeight:600}}>Estimativa</span>
+                }
+              </div>
+              <div role="radiogroup" aria-labelledby="ship-lbl" style={{display:'flex',flexDirection:'column',gap:10,marginBottom:6}}>
+                {shipping.map((opt,idx)=>{
+                  const on = selShip?.service===opt.service;
+                  return (
+                    <div key={opt.service} role="radio" aria-checked={on} tabIndex={on||(!selShip&&idx===0)?0:-1} className={`sopt${on?' sel':''}`}
+                      onClick={()=>setSelShip(opt)}
+                      onKeyDown={e=>{
+                        if(e.key==='Enter'||e.key===' '){ e.preventDefault(); setSelShip(opt); return; }
+                        const dir = (e.key==='ArrowDown'||e.key==='ArrowRight') ? 1 : (e.key==='ArrowUp'||e.key==='ArrowLeft') ? -1 : 0;
+                        if(!dir) return;
+                        e.preventDefault();
+                        const n = shipping[(idx+dir+shipping.length)%shipping.length];
+                        setSelShip(n);
+                        (e.currentTarget.parentElement?.children[(idx+dir+shipping.length)%shipping.length] as HTMLElement|undefined)?.focus();
+                      }}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
+                        <div>
+                          <p style={{fontWeight:700,color:'var(--text)',fontSize:'.93rem'}}>{opt.service}</p>
+                          <p style={{fontSize:'.88rem',color:'var(--muted)'}}>{opt.description}{opt.days?` · ${opt.days}`:''}</p>
+                        </div>
+                        <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.3rem',fontWeight:700,color:'var(--brand)',whiteSpace:'nowrap'}}>{brl(opt.price)}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          <p style={{marginTop:10,fontSize:'.84rem',color:'var(--muted)',textAlign:'center',lineHeight:1.5}}>Frete calculado via Melhor Envio · Enviamos para todo o Brasil</p>
+        </Sheet>
       )}
     </>
   );
@@ -1818,11 +1803,11 @@ export default function SalVitaLanding() {
 function Steps({cur}:{cur:1|2|3}) {
   const items = [{n:1,l:'Frete'},{n:2,l:'Dados'},{n:3,l:'Pagamento'}];
   return (
-    <div className="steps" aria-label={`Etapa ${cur} de 3`}>
+    <div className="steps" role="group" aria-label={`Etapa ${cur} de 3`}>
       {items.map((s,i)=>(
         <div key={s.n} style={{display:'flex',alignItems:'flex-start'}}>
           <div style={{display:'flex',flexDirection:'column',alignItems:'center'}}>
-            <div className={`step-dot ${s.n===cur?'step-on':s.n<cur?'step-done':'step-off'}`}>{s.n<cur?'✓':s.n}</div>
+            <div className={`step-dot ${s.n===cur?'step-on':s.n<cur?'step-done':'step-off'}`} aria-current={s.n===cur?'step':undefined}>{s.n<cur?'✓':s.n}</div>
             <span className="step-lbl" style={{color:s.n===cur?'var(--golddk)':undefined}}>{s.l}</span>
           </div>
           {i<items.length-1 && <div className={`step-line${s.n<cur?' done':''}`} style={{marginTop:14}}/>}
@@ -1830,33 +1815,4 @@ function Steps({cur}:{cur:1|2|3}) {
       ))}
     </div>
   );
-}
-
-/* ── Contador animado — conta ao entrar na tela ── */
-function CountUp({end,prefix='',suffix='',duration=1600}:{end:number;prefix?:string;suffix?:string;duration?:number}) {
-  const [val,setVal] = useState(0);
-  const ref = useRef<HTMLSpanElement|null>(null);
-  const started = useRef(false);
-  useEffect(()=>{
-    const el = ref.current; if(!el) return;
-    const io = new IntersectionObserver((es)=>{
-      es.forEach(e=>{
-        if(e.isIntersecting && !started.current){
-          started.current = true;
-          const t0 = performance.now();
-          const tick = (t:number)=>{
-            const p = Math.min(1,(t-t0)/duration);
-            const ease = 1-Math.pow(1-p,3);
-            setVal(Math.round(end*ease));
-            if(p<1) requestAnimationFrame(tick);
-          };
-          requestAnimationFrame(tick);
-          io.disconnect();
-        }
-      });
-    },{threshold:.4});
-    io.observe(el);
-    return ()=>io.disconnect();
-  },[end,duration]);
-  return <span ref={ref}>{prefix}{val}{suffix}</span>;
 }
