@@ -1,5 +1,6 @@
 import { pgTable, serial, text, integer, boolean, timestamp, numeric, jsonb, doublePrecision } from 'drizzle-orm/pg-core';
 import type { SmbiEspelhoFiscal, SmbiVinculoResultado } from '../../shared/smbiEstados';
+import type { CadastroContatos, CadastroDivergencia, CadastroSnapshotV1 } from '../../shared/smbiCadastro';
 
 // Generic key/value store for small global toggles (e.g. TV panel on/off).
 export const appSettings = pgTable('app_settings', {
@@ -756,8 +757,41 @@ export const smbiRobotState = pgTable('smbi_robot_state', {
   criados: integer('criados'),
   atualizadoPor: text('atualizado_por'),
   atualizadoEm: text('atualizado_em'),
+  // Gate do cadastro assistido (Fase 2). Nasce FALSE e é independente de `roboAtivo`.
+  cadastroAtivo: boolean('cadastro_ativo').notNull().default(false),
+  cadastroAtualizadoPor: text('cadastro_atualizado_por'),
+  cadastroAtualizadoEm: text('cadastro_atualizado_em'),
 });
 export type SmbiRobotState = typeof smbiRobotState.$inferSelect;
+
+// Cadastro assistido de cliente no SMBI (docs/SMBI-CADASTRO-ASSISTIDO.md). Um registro por CNPJ.
+// Datas como timestamp (UTC). Estados/transições: shared/smbiCadastro.ts.
+export const smbiClientRegistrations = pgTable('smbi_client_registrations', {
+  id: text('id').primaryKey(), // UUID gerado no servidor
+  cnpj: text('cnpj').notNull().unique(), // 14 dígitos
+  pedidoId: text('pedido_id').notNull(), // pedido originador (o único que a continuidade libera)
+  estado: text('estado').notNull().default('PREPARANDO'),
+  revisao: integer('revisao').notNull().default(1),
+  snapshot: jsonb('snapshot').$type<CadastroSnapshotV1 | null>(),
+  snapshotHash: text('snapshot_hash'),
+  pedidoHash: text('pedido_hash'),
+  // Contatos confirmados pelo CRM; o servidor os mescla por cima do snapshot do worker.
+  contatos: jsonb('contatos').$type<CadastroContatos | null>(),
+  aprovadoPorId: integer('aprovado_por_id'),
+  aprovadoPorNome: text('aprovado_por_nome'),
+  aprovadoEm: timestamp('aprovado_em'),
+  aprovacaoExpiraEm: timestamp('aprovacao_expira_em'),
+  reservaToken: text('reserva_token'),
+  reservadoAte: timestamp('reservado_ate'),
+  tentativaIniciadaEm: timestamp('tentativa_iniciada_em'),
+  erpClienteId: text('erp_cliente_id'),
+  conferidoEm: timestamp('conferido_em'),
+  motivoCodigo: text('motivo_codigo'),
+  divergencias: jsonb('divergencias').$type<Record<string, unknown> | CadastroDivergencia[] | null>(),
+  criadoEm: timestamp('criado_em').defaultNow().notNull(),
+  atualizadoEm: timestamp('atualizado_em').defaultNow().notNull(),
+});
+export type SmbiClientRegistration = typeof smbiClientRegistrations.$inferSelect;
 
 export const fatCommissions = pgTable('fat_commissions', {
   sellerId: integer('seller_id').primaryKey(),

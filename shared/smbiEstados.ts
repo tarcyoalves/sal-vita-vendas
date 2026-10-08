@@ -66,6 +66,15 @@ export const SMBI_EVENTO_ROTULO: Record<string, string> = {
   DESVINCULADO: 'Vínculo desfeito',
   VINCULO_CONFERIDO: 'Robô conferiu o vínculo: tudo bate',
   VINCULO_DIVERGENTE: 'Robô conferiu o vínculo: há divergência',
+  CADASTRO_PREVIA_SOLICITADA: 'Prévia do cadastro do cliente solicitada',
+  CADASTRO_PREVIA: 'Prévia do cadastro registrada',
+  CADASTRO_CONTATOS_REVISADOS: 'Contatos do cadastro revisados (aprovação invalidada)',
+  CADASTRO_APROVADO: 'Cadastro do cliente aprovado pelo administrador',
+  CADASTRO_INICIADO: 'Cadastro do cliente iniciado no SMBI',
+  CADASTRO_CONFERIDO: 'Cadastro do cliente conferido no SMBI',
+  CADASTRO_INCERTO: 'Cadastro do cliente incerto: conferir o SMBI manualmente',
+  CADASTRO_DIVERGENTE: 'Cadastro do cliente diverge do esperado',
+  CADASTRO_PEDIDO_LIBERADO: 'Pedido liberado após o cadastro do cliente',
 };
 
 /** Conferência do vínculo manual (rotas 4/5/6 do contrato). */

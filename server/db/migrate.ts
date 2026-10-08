@@ -142,7 +142,7 @@ async function ensureRadarTables() {
 }
 
 async function ensureRecentSchema() {
-  const [cols, reg] = await Promise.all([
+  const [cols, reg, robotCols] = await Promise.all([
     sql`SELECT column_name FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'fat_orders'`,
     sql`SELECT
@@ -152,7 +152,10 @@ async function ensureRecentSchema() {
           AND to_regclass('public.radar_lead_events') IS NOT NULL AS radar_ok,
           to_regclass('public.smbi_order_events') IS NOT NULL
           AND to_regclass('public.smbi_robot_state') IS NOT NULL AS smbi_ok,
-          to_regclass('public.blocked_contacts') IS NOT NULL AS bloq_ok`,
+          to_regclass('public.blocked_contacts') IS NOT NULL AS bloq_ok,
+          to_regclass('public.smbi_client_registrations') IS NOT NULL AS cadastro_ok`,
+    sql`SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'smbi_robot_state'`,
   ]);
 
   // fat_orders só é criada pela migração longa; se ainda não existe, não há o que corrigir aqui.
@@ -212,9 +215,51 @@ async function ensureRecentSchema() {
         pulados              INTEGER,
         criados              INTEGER,
         atualizado_por       TEXT,
-        atualizado_em        TEXT
+        atualizado_em        TEXT,
+        cadastro_ativo       BOOLEAN NOT NULL DEFAULT FALSE,
+        cadastro_atualizado_por TEXT,
+        cadastro_atualizado_em  TEXT
       )
     `;
+  }
+
+  // Cadastro assistido (Fase 2): gate (nasce FALSE) + tabela. Só adiciona; nada é ligado aqui.
+  const robotHave = new Set((robotCols as unknown as Array<{ column_name: string }>).map((c) => c.column_name));
+  if (robotHave.size > 0) {
+    if (!robotHave.has('cadastro_ativo')) await sql`ALTER TABLE smbi_robot_state ADD COLUMN IF NOT EXISTS cadastro_ativo BOOLEAN NOT NULL DEFAULT FALSE`;
+    if (!robotHave.has('cadastro_atualizado_por')) await sql`ALTER TABLE smbi_robot_state ADD COLUMN IF NOT EXISTS cadastro_atualizado_por TEXT`;
+    if (!robotHave.has('cadastro_atualizado_em')) await sql`ALTER TABLE smbi_robot_state ADD COLUMN IF NOT EXISTS cadastro_atualizado_em TEXT`;
+  }
+  const cadastroOk = (reg as unknown as Array<{ cadastro_ok: boolean }>)[0]?.cadastro_ok === true;
+  if (!cadastroOk) {
+    await sql`
+      CREATE TABLE IF NOT EXISTS smbi_client_registrations (
+        id                      TEXT PRIMARY KEY,
+        cnpj                    TEXT NOT NULL UNIQUE CHECK (cnpj ~ '^[0-9]{14}$'),
+        pedido_id               TEXT NOT NULL,
+        estado                  TEXT NOT NULL DEFAULT 'PREPARANDO',
+        revisao                 INTEGER NOT NULL DEFAULT 1,
+        snapshot                JSONB,
+        snapshot_hash           TEXT,
+        pedido_hash             TEXT,
+        contatos                JSONB,
+        aprovado_por_id         INTEGER,
+        aprovado_por_nome       TEXT,
+        aprovado_em             TIMESTAMP,
+        aprovacao_expira_em     TIMESTAMP,
+        reserva_token           TEXT,
+        reservado_ate           TIMESTAMP,
+        tentativa_iniciada_em   TIMESTAMP,
+        erp_cliente_id          TEXT,
+        conferido_em            TIMESTAMP,
+        motivo_codigo           TEXT,
+        divergencias            JSONB,
+        criado_em               TIMESTAMP NOT NULL DEFAULT now(),
+        atualizado_em           TIMESTAMP NOT NULL DEFAULT now()
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS smbi_client_reg_estado_idx ON smbi_client_registrations(estado, criado_em)`;
+    await sql`CREATE INDEX IF NOT EXISTS smbi_client_reg_pedido_idx ON smbi_client_registrations(pedido_id)`;
   }
 
   // Arquivo dos contatos removidos por e-mail de domínio bloqueado (a limpeza do build grava aqui antes de excluir).
@@ -244,7 +289,7 @@ async function ensureRecentSchema() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-10-07a';
+const SCHEMA_VERSION = '2026-10-08a';
 
 export async function ensureTablesExist() {
   // Antes de tudo (e antes do caminho rápido): garante o que foi criado por último.
@@ -978,9 +1023,43 @@ export async function ensureTablesExist() {
       pulados              INTEGER,
       criados              INTEGER,
       atualizado_por       TEXT,
-      atualizado_em        TEXT
+      atualizado_em        TEXT,
+      cadastro_ativo       BOOLEAN NOT NULL DEFAULT FALSE,
+      cadastro_atualizado_por TEXT,
+      cadastro_atualizado_em  TEXT
     )
   `;
+  await sql`ALTER TABLE smbi_robot_state ADD COLUMN IF NOT EXISTS cadastro_ativo BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql`ALTER TABLE smbi_robot_state ADD COLUMN IF NOT EXISTS cadastro_atualizado_por TEXT`;
+  await sql`ALTER TABLE smbi_robot_state ADD COLUMN IF NOT EXISTS cadastro_atualizado_em TEXT`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS smbi_client_registrations (
+      id                      TEXT PRIMARY KEY,
+      cnpj                    TEXT NOT NULL UNIQUE CHECK (cnpj ~ '^[0-9]{14}$'),
+      pedido_id               TEXT NOT NULL,
+      estado                  TEXT NOT NULL DEFAULT 'PREPARANDO',
+      revisao                 INTEGER NOT NULL DEFAULT 1,
+      snapshot                JSONB,
+      snapshot_hash           TEXT,
+      pedido_hash             TEXT,
+      contatos                JSONB,
+      aprovado_por_id         INTEGER,
+      aprovado_por_nome       TEXT,
+      aprovado_em             TIMESTAMP,
+      aprovacao_expira_em     TIMESTAMP,
+      reserva_token           TEXT,
+      reservado_ate           TIMESTAMP,
+      tentativa_iniciada_em   TIMESTAMP,
+      erp_cliente_id          TEXT,
+      conferido_em            TIMESTAMP,
+      motivo_codigo           TEXT,
+      divergencias            JSONB,
+      criado_em               TIMESTAMP NOT NULL DEFAULT now(),
+      atualizado_em           TIMESTAMP NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS smbi_client_reg_estado_idx ON smbi_client_registrations(estado, criado_em)`;
+  await sql`CREATE INDEX IF NOT EXISTS smbi_client_reg_pedido_idx ON smbi_client_registrations(pedido_id)`;
 
   // ── Competência da comissão ────────────────────────────────────────────────
   // Pedido fechado num mês e embarcado no seguinte é comissão do mês em que

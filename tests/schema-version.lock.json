@@ -1,7 +1,7 @@
 {
   "server/db/migrate.ts": {
-    "version": "2026-10-07a",
-    "hash": "8fc6d136e569f86c59873953271c096bce690391279b9d341b68b4d2568c6016"
+    "version": "2026-10-08a",
+    "hash": "ba321a31501cac3ed141f934b087425989a7e5563042c150cc54eac5d2c08259"
   },
   "server/db/ordersMigrate.ts": {
     "version": "orders-2026-10-06a",

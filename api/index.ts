@@ -33,6 +33,7 @@ import {
 import { proximoPedidoIndividual, reservaAte, reservaConfere } from '../server/lib/smbiFaturamento';
 import { SMBI_ESTADOS_QUE_PARAM } from '../shared/smbiEstados';
 import { registerSmbiExtraRoutes } from '../server/smbiRoutes';
+import { registerSmbiCadastroRoutes } from '../server/smbiCadastroRoutes';
 
 function isBusinessHours(): boolean {
   const brHour = (new Date().getUTCHours() - 3 + 24) % 24;
@@ -1878,6 +1879,8 @@ app.post('/api/smbi/heartbeat', smbiApiLimiter, express.json({ limit: '4kb' }), 
 
 // Contrato robô ⇄ CRM, etapas 2 e 3: faturamento espelhado, linha do tempo e vínculo manual.
 registerSmbiExtraRoutes(app, smbiApiLimiter);
+// Cadastro assistido CRM → SMBI (gate `cadastro_ativo` nasce desligado).
+registerSmbiCadastroRoutes(app, smbiApiLimiter);
 
 // Migration endpoints removed — one-time migration completed.
 

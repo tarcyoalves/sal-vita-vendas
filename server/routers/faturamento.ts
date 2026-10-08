@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure, staffProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
-import { fatProducts, fatOrders, fatCommissions, fatOrderDeletionLogs, sellers, tasks, smbiRobotState, smbiOrderEvents } from '../db/schema';
-import { eq, and, or, isNull, isNotNull, lte, desc } from 'drizzle-orm';
+import { fatProducts, fatOrders, fatCommissions, fatOrderDeletionLogs, sellers, tasks, smbiRobotState, smbiOrderEvents, smbiClientRegistrations as cadastros } from '../db/schema';
+import { eq, and, or, isNull, isNotNull, lte, ne, sql, desc } from 'drizzle-orm';
 import { sendEmail } from '../email/resend';
 import { renderSignature } from '../email/marketing';
 import { escapeHtml } from '../lib/emailSanitize';
@@ -17,11 +17,27 @@ import {
   totalAcordadoDoPedido, pesoLiquidoDoPedido,
 } from '../lib/smbiFaturamento';
 import { SMBI_ROBO_SEM_SINAL_MIN } from '../../shared/smbiEstados';
+import { hashPedido, motivoAprovacaoInvalida, normalizarCnpj, avaliarSnapshot } from '../lib/smbiCadastro';
+import {
+  aprovarInputSchema, decidirAprovacao, decidirRevisaoContatos, decidirSolicitacao, podeLiberarPedido, podeSolicitarPrevia,
+  reenvioBloqueadoPorCadastro, revisarContatosInputSchema, validarRevisaoContatos, type Recusa,
+} from '../lib/smbiCadastroDecisoes';
 import type { Pedido } from '../../client/src/lib/faturamento/types';
 
 /** Ação humana na linha do tempo do pedido no SMBI (auditoria: quem, o quê, quando). */
 async function registrarEventoSmbi(pedidoId: string, evento: string, porNome: string, dados: Record<string, unknown>) {
   await db.insert(smbiOrderEvents).values({ pedidoId, evento, dados, origem: 'tela', porNome });
+}
+
+/** Converte a recusa de uma decisão pura em erro tRPC (o código fica na mensagem para a tela). */
+function recusaTrpc(r: Recusa): never {
+  const code = r.status === 400 ? 'BAD_REQUEST' : r.status === 403 ? 'FORBIDDEN' : r.status === 404 ? 'NOT_FOUND' : 'CONFLICT';
+  throw new TRPCError({ code, message: `${r.erro} [${r.codigo}]` });
+}
+
+async function lerGates() {
+  const [s] = await db.select({ cadastroAtivo: smbiRobotState.cadastroAtivo, roboAtivo: smbiRobotState.roboAtivo }).from(smbiRobotState).where(eq(smbiRobotState.id, 1));
+  return { cadastroAtivo: s?.cadastroAtivo === true, roboAtivo: s?.roboAtivo === true };
 }
 
 // Anti clique-duplo do "Enviar pedido por e-mail": a tabela não tem coluna de "enviado em",
@@ -361,6 +377,22 @@ export const faturamentoRouter = router({
       if (pedido.smbiVinculoEstado) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Este pedido está vinculado a um pedido do SMBI. Desvincule antes de enviar.' });
       }
+      // Cadastro de cliente em andamento/incerto/divergente: reenviar o pedido não resolve nem reinicia nada.
+      const cnpjDoPedido = normalizarCnpj(pedido.cnpj);
+      if (cnpjDoPedido) {
+        // Falha segura: se a tabela de cadastros ainda não existe (banco não migrado) ou a consulta falha,
+        // o envio do pedido segue como sempre — esta guarda nunca pode derrubar o botão que já funciona.
+        let estadoCadastro: string | undefined;
+        try {
+          const [cad] = await db.select({ estado: cadastros.estado }).from(cadastros).where(eq(cadastros.cnpj, cnpjDoPedido));
+          estadoCadastro = cad?.estado;
+        } catch (e) {
+          console.error('[smbi] guarda de cadastro indisponível, seguindo sem ela:', e);
+        }
+        if (reenvioBloqueadoPorCadastro(estadoCadastro)) {
+          throw new TRPCError({ code: 'CONFLICT', message: `O cadastro do cliente no SMBI está ${estadoCadastro}. Resolva o cadastro antes de reenviar o pedido.` });
+        }
+      }
 
       // UPDATE condicional: só grava se ninguém (robô) reservou o pedido nesse instante, senão o
       // novo clique zeraria a reserva no meio da criação e o robô pegaria o pedido de novo.
@@ -462,6 +494,182 @@ export const faturamentoRouter = router({
         .onConflictDoUpdate({ target: smbiRobotState.id, set: dados });
       console.log(`[smbi] setRoboAtivo ativo=${input.ativo} por=${ctx.user.name} (id ${ctx.user.id})`);
       return { ok: true, roboAtivo: input.ativo };
+    }),
+
+  // ── Cadastro assistido de cliente no SMBI (Fase 2, lado do CRM) ───────────────────────────
+  // Nada aqui executa cadastro: só prepara, registra aprovação humana e libera o pedido originador.
+  // O gate `cadastro_ativo` nasce desligado (setCadastroAtivo).
+
+  // Pede a PRÉVIA (leitura) do cadastro do cliente do pedido. Cria ou reativa o registro em PREPARANDO.
+  solicitarPreviaCadastroSmbi: staffProcedure
+    .input(z.object({ pedidoId: z.string().min(1).max(60) }).strict())
+    .mutation(async ({ ctx, input }) => {
+      const [pedido] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.pedidoId));
+      if (!pedido) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' });
+      const apto = podeSolicitarPrevia(pedido);
+      if (!apto.ok) recusaTrpc(apto);
+      const [existente] = await db.select().from(cadastros).where(eq(cadastros.cnpj, apto.cnpj));
+      const decisao = decidirSolicitacao(existente ?? null, pedido.id);
+      if ('ok' in decisao) recusaTrpc(decisao);
+      const agora = new Date();
+      let id = existente?.id ?? '';
+      let estado = existente?.estado ?? 'PREPARANDO';
+      let revisao = existente?.revisao ?? 1;
+      if (decisao.acao === 'CRIAR') {
+        const [novo] = await db.insert(cadastros)
+          .values({ id: globalThis.crypto.randomUUID(), cnpj: apto.cnpj, pedidoId: pedido.id, estado: 'PREPARANDO', revisao: 1, pedidoHash: hashPedido(pedido) })
+          .onConflictDoNothing().returning();
+        if (!novo) throw new TRPCError({ code: 'CONFLICT', message: 'Outro cadastro deste CNPJ foi criado agora. Recarregue. [CONCORRENCIA]' });
+        ({ id, estado, revisao } = novo);
+      } else if (decisao.acao === 'REATIVAR' && existente) {
+        const [re] = await db.update(cadastros)
+          .set({
+            estado: 'PREPARANDO', pedidoId: pedido.id, revisao: existente.revisao + 1, pedidoHash: hashPedido(pedido),
+            snapshot: null, snapshotHash: null, contatos: null, divergencias: null, motivoCodigo: null, erpClienteId: null,
+            aprovadoPorId: null, aprovadoPorNome: null, aprovadoEm: null, aprovacaoExpiraEm: null,
+            reservaToken: null, reservadoAte: null, atualizadoEm: agora,
+          })
+          .where(and(eq(cadastros.id, existente.id), eq(cadastros.estado, 'INVALIDADO'), isNull(cadastros.tentativaIniciadaEm)))
+          .returning();
+        if (!re) throw new TRPCError({ code: 'CONFLICT', message: 'O cadastro mudou. Recarregue. [CONCORRENCIA]' });
+        ({ id, estado, revisao } = re);
+      }
+      if (decisao.acao !== 'MANTER') {
+        await registrarEventoSmbi(pedido.id, 'CADASTRO_PREVIA_SOLICITADA', ctx.user.name, { cadastroId: id, revisao });
+      }
+      console.log(`[smbi-cadastro] solicitarPrevia pedido=${pedido.id} ${decisao.acao} por=${ctx.user.name} (id ${ctx.user.id})`);
+      return { cadastroId: id, estado, revisao, acao: decisao.acao };
+    }),
+
+  // Situação do cadastro do cliente do pedido (sem token de reserva).
+  cadastroSmbiStatus: staffProcedure
+    .input(z.object({ pedidoId: z.string().min(1).max(60) }).strict())
+    .query(async ({ input }) => {
+      const [pedido] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.pedidoId));
+      if (!pedido) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' });
+      const cnpj = normalizarCnpj(pedido.cnpj);
+      const [c] = cnpj ? await db.select().from(cadastros).where(eq(cadastros.cnpj, cnpj)) : [];
+      const gates = await lerGates();
+      if (!c) return { cadastro: null, gates };
+      const hashAtual = hashPedido(pedido);
+      const av = c.snapshot ? avaliarSnapshot(c.snapshot) : null;
+      const liberar = podeLiberarPedido(c, { ...pedido, hashAtual }, gates);
+      return {
+        gates,
+        cadastro: {
+          id: c.id, cnpj: c.cnpj, pedidoId: c.pedidoId, estado: c.estado, revisao: c.revisao,
+          snapshot: c.snapshot, snapshotHash: c.snapshotHash, pedidoHash: c.pedidoHash, contatos: c.contatos,
+          pedidoHashAtual: hashAtual, pedidoAlterado: c.pedidoHash != null && c.pedidoHash !== hashAtual,
+          camposFaltantes: av?.camposFaltantes ?? [], bloqueios: av?.bloqueios ?? [],
+          aprovadoPorNome: c.aprovadoPorNome, aprovadoEm: c.aprovadoEm, aprovacaoExpiraEm: c.aprovacaoExpiraEm,
+          aprovacaoValida: motivoAprovacaoInvalida(c, new Date()) === null,
+          erpClienteId: c.erpClienteId, conferidoEm: c.conferidoEm, motivoCodigo: c.motivoCodigo, divergencias: c.divergencias,
+          podeLiberar: liberar.ok ? { ok: true as const } : { ok: false as const, codigo: liberar.codigo, erro: liberar.erro },
+        },
+      };
+    }),
+
+  // Revisão de contatos: só campos permitidos, com origem confirmada. Incrementa a revisão e INVALIDA a aprovação.
+  revisarContatosCadastroSmbi: staffProcedure
+    .input(revisarContatosInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const [c] = await db.select().from(cadastros).where(eq(cadastros.id, input.cadastroId));
+      if (!c) throw new TRPCError({ code: 'NOT_FOUND', message: 'Cadastro não encontrado' });
+      const [pedido] = await db.select({ taskId: fatOrders.taskId }).from(fatOrders).where(eq(fatOrders.id, c.pedidoId));
+      // Relação determinística: tarefa do pedido (taskId). Nunca busca por nome parecido.
+      const [tarefa] = pedido?.taskId
+        ? await db.select({ cnpj: tasks.cnpj, phone: tasks.phone, email: tasks.email, emailConfirmed: tasks.emailConfirmed }).from(tasks).where(eq(tasks.id, pedido.taskId))
+        : [];
+      const v = validarRevisaoContatos(input.contatos, ctx.user, c.cnpj, tarefa ?? null);
+      if (!v.ok) recusaTrpc(v);
+      const agora = new Date();
+      const d = decidirRevisaoContatos(c, input.revisao, v.contatos, agora);
+      if (!d.ok) recusaTrpc(d);
+      const r = await db.update(cadastros).set(d.patch)
+        .where(and(eq(cadastros.id, c.id), eq(cadastros.estado, c.estado), eq(cadastros.revisao, c.revisao)))
+        .returning({ id: cadastros.id });
+      if (r.length !== 1) throw new TRPCError({ code: 'CONFLICT', message: 'O cadastro mudou. Recarregue. [CONCORRENCIA]' });
+      // Só os NOMES dos campos e as origens vão para a linha do tempo (sem telefone/e-mail).
+      await registrarEventoSmbi(c.pedidoId, 'CADASTRO_CONTATOS_REVISADOS', ctx.user.name, {
+        cadastroId: c.id, revisao: c.revisao + 1, campos: Object.fromEntries(Object.entries(v.contatos).map(([k, x]) => [k, x?.origem])),
+      });
+      return { ok: true, revisao: c.revisao + 1, estado: 'PREPARANDO' as const };
+    }),
+
+  // Aprovação humana (SÓ admin; o ator vem do ctx, nunca do payload). Vale 24 h e só para esta revisão/hashes.
+  // NÃO executa navegador e NÃO mexe no pedido: a continuidade é o passo separado liberarPedidoAposCadastroSmbi.
+  aprovarCadastroEContinuarSmbi: adminProcedure
+    .input(aprovarInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const [c] = await db.select().from(cadastros).where(eq(cadastros.id, input.cadastroId));
+      if (!c) throw new TRPCError({ code: 'NOT_FOUND', message: 'Cadastro não encontrado' });
+      const [pedido] = await db.select().from(fatOrders).where(eq(fatOrders.id, c.pedidoId));
+      if (!pedido) throw new TRPCError({ code: 'CONFLICT', message: 'Pedido originador não existe mais [PEDIDO_INEXISTENTE]' });
+      const agora = new Date();
+      const d = decidirAprovacao(c, input, hashPedido(pedido), ctx.user, agora);
+      if (!d.ok) recusaTrpc(d);
+      if (d.idempotente) return { ok: true, estado: 'APROVADO' as const, aprovacaoExpiraEm: c.aprovacaoExpiraEm, idempotente: true };
+      const r = await db.update(cadastros).set(d.patch)
+        .where(and(
+          eq(cadastros.id, c.id), eq(cadastros.estado, c.estado), eq(cadastros.revisao, input.revisao),
+          eq(cadastros.snapshotHash, input.snapshotHash), eq(cadastros.pedidoHash, input.pedidoHash),
+        ))
+        .returning({ id: cadastros.id });
+      if (r.length !== 1) throw new TRPCError({ code: 'CONFLICT', message: 'O cadastro mudou durante a aprovação. Recarregue. [CONCORRENCIA]' });
+      await registrarEventoSmbi(c.pedidoId, 'CADASTRO_APROVADO', ctx.user.name, { cadastroId: c.id, revisao: c.revisao, snapshotHash: c.snapshotHash });
+      console.log(`[smbi-cadastro] aprovado id=${c.id} rev=${c.revisao} por=${ctx.user.name} (id ${ctx.user.id})`);
+      return { ok: true, estado: 'APROVADO' as const, aprovacaoExpiraEm: d.patch.aprovacaoExpiraEm ?? null, idempotente: false };
+    }),
+
+  // Gate do cadastro assistido (independente de `roboAtivo`). Só admin; nasce FALSE; auditado em colunas próprias.
+  setCadastroAtivo: adminProcedure
+    .input(z.object({ ativo: z.boolean() }).strict())
+    .mutation(async ({ ctx, input }) => {
+      const dados = { cadastroAtivo: input.ativo, cadastroAtualizadoPor: ctx.user.name, cadastroAtualizadoEm: new Date().toISOString() };
+      await db.insert(smbiRobotState).values({ id: 1, ...dados }).onConflictDoUpdate({ target: smbiRobotState.id, set: dados });
+      console.log(`[smbi-cadastro] setCadastroAtivo ativo=${input.ativo} por=${ctx.user.name} (id ${ctx.user.id})`);
+      return { ok: true, cadastroAtivo: input.ativo };
+    }),
+
+  // Continuidade: com o cadastro CONFERIDO (e tudo válido), limpa SÓ a pendência de cliente do pedido ORIGINADOR e o
+  // devolve à fila do robô com este clique do admin. Histórico preservado na linha do tempo. Pedido alterado depois
+  // do cadastro mantém o cliente conferido e bloqueia a continuidade.
+  liberarPedidoAposCadastroSmbi: adminProcedure
+    .input(z.object({ cadastroId: z.string().uuid(), pedidoHash: z.string().length(64) }).strict())
+    .mutation(async ({ ctx, input }) => {
+      const [c] = await db.select().from(cadastros).where(eq(cadastros.id, input.cadastroId));
+      if (!c) throw new TRPCError({ code: 'NOT_FOUND', message: 'Cadastro não encontrado' });
+      const [pedido] = await db.select().from(fatOrders).where(eq(fatOrders.id, c.pedidoId));
+      if (!pedido) throw new TRPCError({ code: 'CONFLICT', message: 'Pedido originador não existe mais [PEDIDO_INEXISTENTE]' });
+      const hashAtual = hashPedido(pedido);
+      if (input.pedidoHash !== hashAtual) throw new TRPCError({ code: 'CONFLICT', message: 'O pedido mudou desde que você o viu. Recarregue. [PEDIDO_ALTERADO]' });
+      const pode = podeLiberarPedido(c, { ...pedido, hashAtual }, await lerGates());
+      if (!pode.ok) {
+        if (pode.codigo === 'SEM_PENDENCIA') return { ok: true, liberado: false, jaLiberado: true };
+        recusaTrpc(pode);
+      }
+      const agoraIso = new Date().toISOString();
+      const [row] = await db.update(fatOrders)
+        .set({
+          smbiEstado: null, smbiMotivoCodigo: null, smbiMotivoTexto: null, smbiTentativa: null, smbiAtualizadoEm: null, smbiConferidoEm: null,
+          smbiReservaToken: null, smbiReservadoAte: null,
+          smbiSolicitadoEm: agoraIso, smbiSolicitadoPor: ctx.user.name,
+        })
+        .where(and(
+          eq(fatOrders.id, pedido.id), isNull(fatOrders.smbiMovsaiId), isNull(fatOrders.smbiVinculoEstado),
+          ne(fatOrders.status, 'faturado'), isNull(fatOrders.faturadoEm),
+          eq(fatOrders.smbiEstado, 'PENDENTE'), eq(fatOrders.smbiMotivoCodigo, 'CLIENTE_NAO_CADASTRADO'),
+          or(isNull(fatOrders.smbiReservadoAte), lte(fatOrders.smbiReservadoAte, agoraIso)),
+          // Pedido editado entre a leitura e a escrita não é liberado.
+          pedido.atualizadoEm == null ? isNull(fatOrders.atualizadoEm) : sql`${fatOrders.atualizadoEm} = ${pedido.atualizadoEm}`,
+        ))
+        .returning({ id: fatOrders.id });
+      if (!row) throw new TRPCError({ code: 'CONFLICT', message: 'O pedido mudou ou está em processamento. Recarregue. [CONCORRENCIA]' });
+      await registrarEventoSmbi(pedido.id, 'CADASTRO_PEDIDO_LIBERADO', ctx.user.name, {
+        cadastroId: c.id, erpClienteId: c.erpClienteId, estadoAnterior: pedido.smbiEstado, motivoAnterior: pedido.smbiMotivoCodigo,
+      });
+      console.log(`[smbi-cadastro] liberarPedido pedido=${pedido.id} cadastro=${c.id} por=${ctx.user.name} (id ${ctx.user.id})`);
+      return { ok: true, liberado: true, jaLiberado: false };
     }),
 
   // Vincula o pedido a um movsai que JÁ EXISTE no SMBI (ex.: pedido aprovado tarde, que já
