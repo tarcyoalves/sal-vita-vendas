@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Send, ClipboardCopy } from 'lucide-react';
+import { Send, ClipboardCopy, UserPlus } from 'lucide-react';
 import { Button } from '../ui/button';
 import { StatusBadge } from '../StatusBadge';
 import { useFatStore } from '../../lib/faturamento/store';
 import { useAuth } from '../../_core/hooks/useAuth';
 import { useConfirm } from '../useConfirm';
 import { PromptDialog } from '../PromptDialog';
+import SmbiCadastroClienteDialog from './SmbiCadastroClienteDialog';
 import { trpc } from '../../lib/trpc';
 import { formatBRL } from '../../lib/faturamento/calc';
 import { clienteNaoCadastrado, textoPedidoCadastroHermes } from '../../lib/faturamento/smbiPendencia';
@@ -56,6 +57,7 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
   const [historico, setHistorico] = useState(false);
   const { confirm, confirmDialog } = useConfirm();
   // Janela de texto (vincular / motivo do desvínculo), no lugar do window.prompt.
+  const [cadastroAberto, setCadastroAberto] = useState(false);
   const [textoPara, setTextoPara] = useState<'vincular' | 'desvincular' | null>(null);
 
   const roboProcessando = !!pedido.smbiReservadoAte && pedido.smbiReservadoAte > new Date().toISOString();
@@ -220,9 +222,15 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
           <p className="mt-1.5 opacity-80">
             O cadastro é assistido: o Hermes mostra a prévia e só grava depois do seu "cadastra". Nada é gravado automaticamente, e o pedido só segue pelo seu clique em Enviar para o SMBI.
           </p>
-          <Button size="sm" variant="outline" className="mt-2 h-10 gap-1.5 bg-white" onClick={() => void copiarParaHermes()}>
-            <ClipboardCopy size={14} /> Copiar pedido de cadastro para o Hermes
-          </Button>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" className="h-10 gap-1.5 bg-white" onClick={() => void copiarParaHermes()}>
+              <ClipboardCopy size={14} /> Copiar pedido de cadastro para o Hermes
+            </Button>
+            <Button size="sm" variant="outline" className="h-10 gap-1.5 bg-white" onClick={() => setCadastroAberto(true)}>
+              <UserPlus size={14} /> Abrir cadastro assistido
+            </Button>
+          </div>
+          <SmbiCadastroClienteDialog pedido={pedido} open={cadastroAberto} onOpenChange={setCadastroAberto} />
         </div>
       )}
       {solicitado && !pedido.smbiMovsaiId && !pedido.smbiEstado && (
