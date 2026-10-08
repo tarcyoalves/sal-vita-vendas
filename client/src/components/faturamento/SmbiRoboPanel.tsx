@@ -5,6 +5,9 @@ import { StatusBadge } from '../StatusBadge';
 import { trpc } from '../../lib/trpc';
 import { useAuth } from '../../_core/hooks/useAuth';
 import { useConfirm } from '../useConfirm';
+import { useFatStore } from '../../lib/faturamento/store';
+import { contarPendenciasPorMotivo, SMBI_MOTIVO_CURTO } from '../../lib/faturamento/smbiPendencia';
+import { SMBI_MOTIVO_CODIGOS } from '../../../../shared/smbiEstados.js';
 
 /** Tempo desde `iso`, sem o "há": "3 h", "25 min", "2 d". */
 function duracao(iso: string): string {
@@ -38,8 +41,11 @@ export default function SmbiRoboPanel() {
   });
 
   const { confirm, confirmDialog } = useConfirm();
+  const { pedidos } = useFatStore();
 
   if (!data) return null;
+  const pendencias = contarPendenciasPorMotivo(pedidos);
+  const motivosComPedido = SMBI_MOTIVO_CODIGOS.filter((c) => (pendencias[c] ?? 0) > 0);
   const isAdmin = user?.role === 'admin';
 
   const alternar = async () => {
@@ -74,7 +80,7 @@ export default function SmbiRoboPanel() {
         </span>
         {data.criados != null && (
           <span className="text-xs text-slate-500">
-            Último ciclo: {data.criados} criado(s), {data.pulados ?? 0} pulado(s), {data.pendentes ?? 0} pendente(s)
+            Último ciclo do robô: {data.criados} criado(s), {data.pulados ?? 0} pulado(s), {data.pendentes ?? 0} pendente(s)
           </span>
         )}
         {isAdmin && (
@@ -87,6 +93,20 @@ export default function SmbiRoboPanel() {
           >
             {data.roboAtivo ? 'Desligar robô' : 'Ligar robô'}
           </Button>
+        )}
+      </div>
+      <div className="mt-2 text-xs text-slate-600">
+        <span className="font-semibold text-slate-700">Pendências armazenadas (pedidos parados): </span>
+        {motivosComPedido.length === 0 ? (
+          'nenhuma.'
+        ) : (
+          <span className="inline-flex flex-wrap gap-1.5 align-middle">
+            {motivosComPedido.map((c) => (
+              <StatusBadge key={c} tone={c === 'CLIENTE_NAO_CADASTRADO' ? 'warning' : 'neutral'}>
+                {SMBI_MOTIVO_CURTO[c]}: {pendencias[c]}
+              </StatusBadge>
+            ))}
+          </span>
         )}
       </div>
       {data.semSinal && (

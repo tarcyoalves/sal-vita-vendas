@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Send } from 'lucide-react';
+import { Send, ClipboardCopy } from 'lucide-react';
 import { Button } from '../ui/button';
 import { StatusBadge } from '../StatusBadge';
 import { useFatStore } from '../../lib/faturamento/store';
@@ -9,11 +9,34 @@ import { useConfirm } from '../useConfirm';
 import { PromptDialog } from '../PromptDialog';
 import { trpc } from '../../lib/trpc';
 import { formatBRL } from '../../lib/faturamento/calc';
+import { clienteNaoCadastrado, textoPedidoCadastroHermes } from '../../lib/faturamento/smbiPendencia';
+import { formatCnpj } from '../../../../shared/radar.js';
 import type { Pedido } from '../../lib/faturamento/types';
 import {
   SMBI_ESTADO_ROTULO, SMBI_MOTIVO_ROTULO, SMBI_VINCULO_ROTULO, SMBI_EVENTO_ROTULO,
   type SmbiEstado, type SmbiMotivoCodigo, type SmbiVinculoEstado,
 } from '../../../../shared/smbiEstados.js';
+
+async function copiarTexto(texto: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(texto);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = texto;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
 
 const quando = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
@@ -81,6 +104,13 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
   const desvincular = (motivo: string) => {
     setTextoPara(null);
     void executar(() => actions.pedidos.desvincularSmbi(pedido.id, motivo), 'Vínculo desfeito.');
+  };
+
+  const semCadastro = clienteNaoCadastrado(pedido) && !temVinculo;
+  const copiarParaHermes = async () => {
+    const ok = await copiarTexto(textoPedidoCadastroHermes(pedido));
+    if (ok) toast.success('Pedido de cadastro copiado. Cole no Hermes; nada foi gravado no SMBI.');
+    else toast.error('Não foi possível copiar. Selecione e copie os dados do quadro manualmente.');
   };
 
   const espelho = pedido.smbiEspelhoFiscal;
@@ -170,6 +200,29 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
               {pedido.smbiTentativa ? ` · tentativa ${pedido.smbiTentativa}` : ''} · o robô só tenta de novo se você reenviar.
             </p>
           )}
+        </div>
+      )}
+      {semCadastro && !canApprove && (
+        <div className="basis-full rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <p className="font-semibold">Cliente não cadastrado no SMBI</p>
+          <p className="mt-0.5">Fale com o administrador para cadastrar o cliente no SMBI.</p>
+        </div>
+      )}
+      {semCadastro && canApprove && (
+        <div className="basis-full rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <p className="font-semibold">Cadastrar cliente no SMBI</p>
+          <dl className="mt-1 grid gap-x-3 gap-y-0.5 sm:grid-cols-2">
+            <div className="break-words"><dt className="inline opacity-70">CNPJ: </dt><dd className="inline">{pedido.cnpj ? formatCnpj(pedido.cnpj) : '—'}</dd></div>
+            <div className="break-words"><dt className="inline opacity-70">Cliente: </dt><dd className="inline">{pedido.razaoSocial || pedido.clienteNome || '—'}</dd></div>
+            <div><dt className="inline opacity-70">Cidade/UF: </dt><dd className="inline">{[pedido.cidade, pedido.uf].filter(Boolean).join('/') || '—'}</dd></div>
+            <div><dt className="inline opacity-70">Atendente / representante esperado: </dt><dd className="inline">{pedido.sellerName || '—'}</dd></div>
+          </dl>
+          <p className="mt-1.5 opacity-80">
+            O cadastro é assistido: o Hermes mostra a prévia e só grava depois do seu "cadastra". Nada é gravado automaticamente, e o pedido só segue pelo seu clique em Enviar para o SMBI.
+          </p>
+          <Button size="sm" variant="outline" className="mt-2 h-10 gap-1.5 bg-white" onClick={() => void copiarParaHermes()}>
+            <ClipboardCopy size={14} /> Copiar pedido de cadastro para o Hermes
+          </Button>
         </div>
       )}
       {solicitado && !pedido.smbiMovsaiId && !pedido.smbiEstado && (

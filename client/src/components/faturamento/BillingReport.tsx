@@ -1,5 +1,6 @@
 import { AvisoMesSemPedidos } from "./AvisoMesSemPedidos";
 import { useState, useMemo } from "react";
+import { seloPendenciaSmbi } from "../../lib/faturamento/smbiPendencia";
 import { useFatStore } from "../../lib/faturamento/store";
 import { QueryError } from '../QueryError';
 import {
@@ -349,6 +350,9 @@ export default function BillingReport() {
                         : `Prev. ${formatDataBR(p.previsaoFaturamentoEm ?? p.criadoEm)}`}
                     </span>
                   </div>
+                  {seloPendenciaSmbi(p) && !vinculadoSmbi(p) && (
+                    <div><StatusBadge tone={seloPendenciaSmbi(p)!.tom}>{seloPendenciaSmbi(p)!.rotulo}</StatusBadge></div>
+                  )}
                   <div className="flex items-center justify-between gap-2 text-sm">
                     <span className="tabular-nums text-slate-700">Estimado {formatBRL(estimatedTotal(p))}</span>
                     {p.status === "faturado"
@@ -420,8 +424,8 @@ export default function BillingReport() {
                           <StatusBadge tone={p.aprovadoEm ? "info" : "neutral"}>
                             {p.aprovadoEm ? "Autorizado" : "Aguardando revisão"}
                           </StatusBadge>
-                          <StatusBadge tone={vinculadoSmbi(p) ? "success" : "neutral"}>
-                            {vinculadoSmbi(p) ? `SMBI ${p.smbiMovsaiId ?? p.smbiVinculoMovsais?.[0] ?? ""}` : "Sem SMBI"}
+                          <StatusBadge tone={vinculadoSmbi(p) ? "success" : (seloPendenciaSmbi(p)?.tom ?? "neutral")}>
+                            {vinculadoSmbi(p) ? `SMBI ${p.smbiMovsaiId ?? p.smbiVinculoMovsais?.[0] ?? ""}` : (seloPendenciaSmbi(p)?.rotulo ?? "Sem SMBI")}
                           </StatusBadge>
                         </div>
                       </td>
