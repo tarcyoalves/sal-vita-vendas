@@ -146,6 +146,14 @@ minerais. Até lá, não.
 
 ## 5. O que está feito
 
+**Produto SMBI 55 (08/10/2026 — CRM Lembretes)** — De-para autorizado pelo Tarcyo:
+`SAL CHURRASCO COM IODO VITA 25 KG` → `55`, saco de 25 kg. Incluído no catálogo
+CRM e no arquivo de catálogo instalado do robô na VPS. Typecheck, 652 testes
+Vitest, build do cliente, teste puro do de-para real do robô e 15 testes do robô
+passaram. Nenhum pedido criado e nenhum banco alterado. O processo do robô
+ativo desde 05/10 ainda precisa de reinício expressamente autorizado para carregar
+o catálogo novo; a inclusão em arquivo não prova reconhecimento pelo processo vivo.
+
 **Migração no build (28/09/2026)** — `scripts/migrate-build.ts` roda `ensureTablesExist`,
 `ensureOrdersTablesExist` e `ensureB2bTablesExist` no build de produção da Vercel, sem limite
 de tempo; falha só é impressa (`[migrate:build] FALHOU`), não derruba o deploy. Caso N.

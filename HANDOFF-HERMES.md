@@ -12,6 +12,21 @@
 
 ---
 
+## Produto 55 — CRM Lembretes (08/10/2026)
+
+Tarcyo solicitou de-para `SAL CHURRASCO COM IODO VITA 25 KG` → SMBI `55`.
+Inclusão mínima em `client/src/lib/faturamento/smbiCatalog.ts` e no catálogo local
+`/home/ubuntu/.openclaw/workspace/smbi-robo/smbi_sync_crm_pedidos.mjs` (backup com timestamp).
+`tests/smbi-produto55.test.ts` e `test_produto55_robo.mjs` falharam antes e passaram
+após inclusão; o teste local exercita o mapeamento real e a função pura real de certeza
+sem iniciar daemon/rede. Typecheck, suíte de 652 testes e build do cliente passaram;
+15 testes existentes do robô também passaram. Sem mudança de schema, banco ou pedidos.
+**Pendência operacional:** serviço `smbi-crm-sync.service` encontrado `active/enabled`,
+PID 867384 iniciado em 05/10/2026 11:55:23 -03, importa catálogo uma vez no início.
+Não foi reiniciado: exige autorização expressa do Tarcyo. Não confundir catálogo no disco
+com catálogo do processo vivo. O catálogo CRM é declarativo; a API exporta nome do item,
+e o de-para operacional ocorre no robô local.
+
 ## 0. Como usar este arquivo
 
 > **Antes de qualquer alteração, leia `CHECKLIST-ALTERACOES.md`** — a lista curta do

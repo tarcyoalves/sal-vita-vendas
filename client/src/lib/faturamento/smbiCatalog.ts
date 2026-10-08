@@ -22,6 +22,7 @@ export const SMBI_PRODUTOS_CATALOGO: SmbiProdutoRef[] = [
   { smbiId: '52', nome: 'SAL REFINADO SEM IODO VITA 25 KG', pesoUnitarioKg: 25, tipoEmbalagem: 'saco' },
   { smbiId: '53', nome: 'SAL GRANULADO COM IODO VITA 25 KG', pesoUnitarioKg: 25, tipoEmbalagem: 'saco' },
   { smbiId: '54', nome: 'SAL GRANULADO SEM IODO VITA 25 KG', pesoUnitarioKg: 25, tipoEmbalagem: 'saco' },
+  { smbiId: '55', nome: 'SAL CHURRASCO COM IODO VITA 25 KG', pesoUnitarioKg: 25, tipoEmbalagem: 'saco' },
   { smbiId: '43', nome: 'SAL REFINADO SAL VITA 30X1 KG', pesoUnitarioKg: 30, tipoEmbalagem: 'fardo' },
   { smbiId: '44', nome: 'SAL REFINADO SAL VITA 10X1 KG', pesoUnitarioKg: 10, tipoEmbalagem: 'fardo' },
   { smbiId: '65', nome: 'SAL MOIDO MARINHO INTEGRAL VITA PREMIUM 10X1 KG', pesoUnitarioKg: 10, tipoEmbalagem: 'fardo' },

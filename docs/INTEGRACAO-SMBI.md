@@ -296,6 +296,21 @@ necessário, o próximo passo é o dono confirmar o de-para exato entre os
 nomes usados no CRM (`fat_products.nome`) e `SMBI_PRODUTOS_CATALOGO`, e algum
 agente adicionar um campo de vínculo no catálogo de produtos do CRM.
 
+## De-para confirmado: Sal Churrasco com Iodo Vita 25 kg (08/10/2026)
+
+Por solicitação do Tarcyo, `SAL CHURRASCO COM IODO VITA 25 KG` corresponde ao
+**código SMBI `55`**, **25 kg por saco**. O nome foi incluído no catálogo do
+cliente (`client/src/lib/faturamento/smbiCatalog.ts`) e no catálogo instalado
+do robô (`smbi_sync_crm_pedidos.mjs`). A exportação REST preserva `itens.descricao`;
+o robô resolve o código por nome exato normalizado, sem ampliar correspondência
+para Churrasco Salinas, Nota 10, sem iodo ou outra apresentação.
+
+Testes: `tests/smbi-produto55.test.ts` (CRM) e `test_produto55_robo.mjs` (VPS,
+exercita `mapearProduto` e o trecho puro real de `produtoComCerteza`, sem rede).
+O daemon carrega o catálogo no início do processo: um processo que já estava
+ativo precisa de reinício autorizado pelo Tarcyo para reconhecer a inclusão.
+Nenhum pedido deve ser criado apenas para testar este de-para.
+
 ## Configuração necessária
 
 `SMBI_SYNC_SECRET` — string aleatória longa — precisa estar configurada em
