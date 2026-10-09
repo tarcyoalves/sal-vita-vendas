@@ -39,11 +39,11 @@ async function pedidoHashAtual(pedidoId: string): Promise<string | null> {
 }
 
 /** Linha do tempo do pedido (best effort: falhar o evento não desfaz a transição já gravada). */
-async function evento(c: Pick<Cadastro, 'id' | 'pedidoId' | 'revisao'>, nome: string, dados: Record<string, unknown>): Promise<void> {
+async function evento(c: Pick<Cadastro, 'id' | 'pedidoId' | 'revisao' | 'empresaCnpj'>, nome: string, dados: Record<string, unknown>): Promise<void> {
   try {
     await db.insert(smbiOrderEvents).values({
       pedidoId: c.pedidoId, evento: nome, origem: 'robo', em: new Date().toISOString(),
-      dados: { cadastroId: c.id, revisao: c.revisao, ...dados },
+      dados: { cadastroId: c.id, empresaCnpj: c.empresaCnpj, revisao: c.revisao, ...dados },
     }).onConflictDoNothing();
   } catch (err) {
     console.warn(`[smbi-cadastro] evento ${nome} não gravado:`, err instanceof Error ? err.message : err);
@@ -193,7 +193,7 @@ export function registerSmbiCadastroRoutes(app: Express, limiter: RequestHandler
       }
       // Gate rechecado NO próprio UPDATE: desligar a chave entre a leitura e a escrita ainda impede o início.
       const gateLigado = sql`exists (select 1 from smbi_robot_state where id = 1 and cadastro_ativo = true)`;
-      const ok = await gravar(row, d.patch, [...comReserva(reserva(req), agora), gt(T.aprovacaoExpiraEm, agora), eq(T.snapshotHash, body.data.snapshotHash), eq(T.pedidoHash, hashPedidoAtual), gateLigado]);
+      const ok = await gravar(row, d.patch, [...comReserva(reserva(req), agora), eq(T.empresaCnpj, body.data.empresaCnpj), gt(T.aprovacaoExpiraEm, agora), eq(T.snapshotHash, body.data.snapshotHash), eq(T.pedidoHash, hashPedidoAtual), gateLigado]);
       if (!ok) {
         const fresh = await carregar(row.id);
         const d2 = fresh ? decidirIniciar(fresh, body.data, reserva(req), hashPedidoAtual, ativo, new Date()) : null;

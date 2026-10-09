@@ -7,18 +7,20 @@ import { isAuthorized } from '../server/lib/smbi';
 import { aprovacaoValida, avaliarSnapshot, hashSnapshot } from '../server/lib/smbiCadastro';
 import {
   aprovarInputSchema, decidirAprovacao, decidirIniciar, decidirPrevia, decidirResultado, decidirRevisaoContatos, decidirSolicitacao,
-  elegivelParaLease, leaseValido, montarTrabalho, podeLiberarPedido, podeSolicitarPrevia, reenvioBloqueadoPorCadastro,
+  elegivelParaLease, empresaDoCadastro, leaseValido, montarTrabalho, podeLiberarPedido, podeSolicitarPrevia, reenvioBloqueadoPorCadastro,
   respostaSemTrabalho, resultadoBodySchema, validarRevisaoContatos, type Cadastro, type PedidoParaLiberar,
 } from '../server/lib/smbiCadastroDecisoes';
 import type { CadastroSnapshotV1 } from '../shared/smbiCadastro';
 
 const CNPJ = '11222333000181';
+const AS = '51422900000168' as const;
+const CALVES = '49748258000160' as const;
 const T0 = new Date('2026-10-08T12:00:00.000Z');
 const em = (ms: number) => new Date(T0.getTime() + ms);
 const H = (c: string) => c.repeat(64);
 
 const snap = (over: Partial<CadastroSnapshotV1> = {}): CadastroSnapshotV1 => ({
-  versao: 1, cnpj: CNPJ, razaoSocial: 'EMPRESA TESTE LTDA', fantasia: 'TESTE', ie: '123456789', situacaoCadastral: 'ATIVA', ieAtiva: true,
+  versao: 1, empresaCnpj: AS, cnpj: CNPJ, razaoSocial: 'EMPRESA TESTE LTDA', fantasia: 'TESTE', ie: '123456789', situacaoCadastral: 'ATIVA', ieAtiva: true,
   endereco: { logradouro: 'RUA A', numero: '10', complemento: '', bairro: 'CENTRO', municipio: 'MOSSORO', uf: 'RN', cep: '59600000', municipioIbge: '2408003' },
   tipoTributacao: 'tipo_2', contato: 'Maria', telefone: '84999990000', celular: null, email: 'a@b.com', emailFinanceiro: null,
   representanteDoc: '52998224725', comissaoClientePct: null,
@@ -27,7 +29,7 @@ const snap = (over: Partial<CadastroSnapshotV1> = {}): CadastroSnapshotV1 => ({
 });
 
 const linha = (over: Partial<Cadastro> = {}): Cadastro => ({
-  id: '11111111-1111-4111-8111-111111111111', cnpj: CNPJ, pedidoId: 'ped1', estado: 'PREPARANDO', revisao: 1,
+  id: '11111111-1111-4111-8111-111111111111', empresaCnpj: AS, cnpj: CNPJ, pedidoId: 'ped1', estado: 'PREPARANDO', revisao: 1,
   snapshot: null, snapshotHash: null, pedidoHash: H('a'), contatos: null,
   aprovadoPorId: null, aprovadoPorNome: null, aprovadoEm: null, aprovacaoExpiraEm: null,
   reservaToken: 'tok-1', reservadoAte: em(10 * 60_000), tentativaIniciadaEm: null, erpClienteId: null, conferidoEm: null,
@@ -52,7 +54,7 @@ describe('autenticação e gate', () => {
   });
   it('gate desligado → 200 com trabalho null; iniciar recusa', () => {
     expect(respostaSemTrabalho(false)).toEqual({ ok: true, cadastroAtivo: false, trabalho: null });
-    const d = decidirIniciar(aprovadaLinha(), { revisao: 2, snapshotHash: aprovadaLinha().snapshotHash!, pedidoHash: H('a') }, 'tok-1', H('a'), false, T0);
+    const d = decidirIniciar(aprovadaLinha(), { empresaCnpj: AS, revisao: 2, snapshotHash: aprovadaLinha().snapshotHash!, pedidoHash: H('a') }, 'tok-1', H('a'), false, T0);
     expect(d).toMatchObject({ ok: false, codigo: 'GATE_DESLIGADO' });
   });
 });
@@ -130,7 +132,7 @@ describe('POST previa', () => {
 
 describe('POST iniciar', () => {
   const l = () => aprovadaLinha();
-  const corpo = () => ({ revisao: 2, snapshotHash: l().snapshotHash!, pedidoHash: H('a') });
+  const corpo = () => ({ empresaCnpj: AS, revisao: 2, snapshotHash: l().snapshotHash!, pedidoHash: H('a') });
   it('APROVADO → CADASTRANDO com lease, aprovação, gate e pedido inalterado', () => {
     const d = decidirIniciar(l(), corpo(), 'tok-1', H('a'), true, T0);
     expect(d).toMatchObject({ ok: true, idempotente: false });
@@ -157,7 +159,7 @@ describe('POST iniciar', () => {
 
 describe('POST resultado', () => {
   const emCurso = () => linha({ ...aprovadaLinha(), estado: 'CADASTRANDO', tentativaIniciadaEm: T0 });
-  const corpo = (o: Record<string, unknown> = {}) => resultadoBodySchema.parse({ revisao: 2, snapshotHash: aprovadaLinha().snapshotHash, estado: 'CONFERIDO', erpClienteId: '9001', ...o });
+  const corpo = (o: Record<string, unknown> = {}) => resultadoBodySchema.parse({ empresaCnpj: AS, revisao: 2, snapshotHash: aprovadaLinha().snapshotHash, estado: 'CONFERIDO', erpClienteId: '9001', ...o });
   it('CONFERIDO grava cliente, libera o lease e a repetição idêntica é idempotente (sem nova escrita)', () => {
     const d = decidirResultado(emCurso(), corpo(), 'tok-1', T0);
     expect(d).toMatchObject({ ok: true, idempotente: false });
@@ -334,5 +336,63 @@ describe('procedures: continuidade só do originador', () => {
     }
     expect(podeLiberarPedido(conferido(), ped({ smbiMotivoCodigo: 'PRAZO_SEM_CODIGO' }), gates)).toMatchObject({ codigo: 'OUTRA_PENDENCIA' });
     expect(podeLiberarPedido(conferido(), ped({ smbiEstado: null, smbiMotivoCodigo: null }), gates)).toMatchObject({ codigo: 'SEM_PENDENCIA' });
+  });
+});
+
+describe('cadastro por empresa: a aprovação de uma empresa não vale para a outra', () => {
+  const conferidoAS = () => linha({ ...aprovadaLinha(), estado: 'CONFERIDO', erpClienteId: '9001', conferidoEm: T0, reservaToken: null, reservadoAte: null });
+  const ped = (o: Partial<PedidoParaLiberar> = {}): PedidoParaLiberar => ({
+    id: 'ped1', cnpj: CNPJ, status: 'estimado', aprovadoEm: '2026-10-01', faturadoEm: null, smbiMovsaiId: null, smbiVinculoEstado: null,
+    smbiEstado: 'PENDENTE', smbiMotivoCodigo: 'CLIENTE_NAO_CADASTRADO', hashAtual: H('a'), ...o,
+  });
+  const gates = { cadastroAtivo: true, roboAtivo: true };
+
+  it('cadastro conferido na A S não libera pedido da C Alves (e vice-versa)', () => {
+    expect(podeLiberarPedido(conferidoAS(), ped({ smbiEmpresaCnpj: AS }), gates)).toEqual({ ok: true });
+    expect(podeLiberarPedido(conferidoAS(), ped({ smbiEmpresaCnpj: CALVES }), gates)).toMatchObject({ codigo: 'EMPRESA_DIFERENTE' });
+    const c = linha({ ...aprovadaLinha(), empresaCnpj: CALVES, snapshot: snap({ empresaCnpj: CALVES }) });
+    expect(podeLiberarPedido({ ...c, estado: 'CONFERIDO', erpClienteId: '9' }, ped({ smbiEmpresaCnpj: AS }), gates)).toMatchObject({ codigo: 'EMPRESA_DIFERENTE' });
+  });
+  it('pedido legado (sem empresa) só é liberado por cadastro da empresa legada', () => {
+    expect(podeLiberarPedido(conferidoAS(), ped({ smbiEmpresaCnpj: null }), gates)).toEqual({ ok: true });
+    const calves = linha({ ...aprovadaLinha(), empresaCnpj: CALVES, estado: 'CONFERIDO', erpClienteId: '9' });
+    expect(podeLiberarPedido(calves, ped({ smbiEmpresaCnpj: null }), gates)).toMatchObject({ codigo: 'EMPRESA_DIFERENTE' });
+  });
+  it('prévia, iniciar e resultado de outra empresa são recusados', () => {
+    const preparando = linha();
+    expect(decidirPrevia(preparando, { revisao: 1, snapshot: snap({ empresaCnpj: CALVES }) }, 'tok-1', H('b'), T0)).toMatchObject({ ok: false, codigo: 'EMPRESA_DIFERENTE' });
+    const corpo = { empresaCnpj: CALVES, revisao: 2, snapshotHash: aprovadaLinha().snapshotHash!, pedidoHash: H('a') };
+    expect(decidirIniciar(aprovadaLinha(), corpo, 'tok-1', H('a'), true, T0)).toMatchObject({ ok: false, codigo: 'EMPRESA_DIFERENTE' });
+    const emCurso = linha({ ...aprovadaLinha(), estado: 'CADASTRANDO', tentativaIniciadaEm: T0 });
+    const res = resultadoBodySchema.parse({ empresaCnpj: CALVES, revisao: 2, snapshotHash: aprovadaLinha().snapshotHash, estado: 'CONFERIDO', erpClienteId: '9001' });
+    expect(decidirResultado(emCurso, res, 'tok-1', T0)).toMatchObject({ ok: false, codigo: 'EMPRESA_DIFERENTE' });
+    // nem como repetição idempotente de cadastro já conferido
+    expect(decidirResultado({ ...emCurso, estado: 'CONFERIDO', erpClienteId: '9001' }, res, undefined, T0)).toMatchObject({ ok: false, codigo: 'EMPRESA_DIFERENTE' });
+  });
+  it('corpo do worker sem empresa ou com empresa fora do catálogo não passa no zod', () => {
+    expect(resultadoBodySchema.safeParse({ revisao: 2, estado: 'CONFERIDO', erpClienteId: '1' }).success).toBe(false);
+    expect(resultadoBodySchema.safeParse({ empresaCnpj: CNPJ, revisao: 2, estado: 'CONFERIDO', erpClienteId: '1' }).success).toBe(false);
+  });
+  it('o trabalho entregue ao worker carrega a empresa', () => {
+    expect(montarTrabalho(linha({ empresaCnpj: CALVES }), false).empresaCnpj).toBe(CALVES);
+  });
+
+  describe('empresaDoCadastro (de onde nasce o cadastro)', () => {
+    it('pedido com empresa escolhida: vale a do pedido; entrada divergente é recusada', () => {
+      expect(empresaDoCadastro(true, CALVES, undefined)).toEqual({ ok: true, empresaCnpj: CALVES });
+      expect(empresaDoCadastro(true, CALVES, CALVES)).toEqual({ ok: true, empresaCnpj: CALVES });
+      expect(empresaDoCadastro(true, AS, CALVES)).toMatchObject({ ok: false, codigo: 'EMPRESA_DIFERENTE' });
+    });
+    it('pedido sem empresa: a prévia exige empresaCnpj (multiempresa ligada)', () => {
+      expect(empresaDoCadastro(true, null, undefined)).toMatchObject({ ok: false, codigo: 'EMPRESA_OBRIGATORIA' });
+      expect(empresaDoCadastro(true, null, CALVES)).toEqual({ ok: true, empresaCnpj: CALVES });
+      expect(empresaDoCadastro(true, null, CNPJ)).toMatchObject({ ok: false, codigo: 'EMPRESA_INVALIDA' });
+      expect(empresaDoCadastro(true, null, '51.422.900/0001-68')).toMatchObject({ ok: false, codigo: 'EMPRESA_INVALIDA' });
+    });
+    it('multiempresa desligada: comportamento anterior (empresa legada); outra empresa é recusada', () => {
+      expect(empresaDoCadastro(false, null, undefined)).toEqual({ ok: true, empresaCnpj: AS });
+      expect(empresaDoCadastro(false, null, AS)).toEqual({ ok: true, empresaCnpj: AS });
+      expect(empresaDoCadastro(false, null, CALVES)).toMatchObject({ ok: false, codigo: 'MULTIEMPRESA_DESLIGADA' });
+    });
   });
 });

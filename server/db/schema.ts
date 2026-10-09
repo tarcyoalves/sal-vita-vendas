@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, boolean, timestamp, numeric, jsonb, doublePrecision } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, boolean, timestamp, numeric, jsonb, doublePrecision, uniqueIndex } from 'drizzle-orm/pg-core';
 import type { SmbiEspelhoFiscal, SmbiVinculoResultado } from '../../shared/smbiEstados';
 import type { CadastroContatos, CadastroDivergencia, CadastroSnapshotV1 } from '../../shared/smbiCadastro';
 
@@ -726,6 +726,16 @@ export const fatOrders = pgTable('fat_orders', {
   smbiVinculoPor: text('smbi_vinculo_por'),
   smbiVinculoEm: text('smbi_vinculo_em'),
   smbiVinculoResultado: jsonb('smbi_vinculo_resultado').$type<SmbiVinculoResultado | null>(),
+  // Envio com escolha de empresa (docs/SMBI-MULTIEMPRESA.md). Todas NULL em pedido legado: sem default empresarial,
+  // sem backfill. Só dispararSmbi / vincularSmbi / rotas do robô gravam; upsertPedido e importLocal nunca tocam.
+  smbiEmpresaCnpj: text('smbi_empresa_cnpj'), // CNPJ de SMBI_EMPRESAS escolhido no clique
+  smbiSolicitacaoId: text('smbi_solicitacao_id'), // UUID gerado no servidor a cada solicitação válida
+  smbiSolicitacaoHash: text('smbi_solicitacao_hash'), // sha256 canônico do pedido + empresa no momento do clique
+  // ISO (como as demais datas SMBI desta tabela). Fixado UMA vez na primeira reserva; nunca apagado, nem ao vencer a reserva.
+  smbiEmpresaTravadaEm: text('smbi_empresa_travada_em'),
+  // Marcador do servidor gravado em POST /iniciar ANTES da primeira escrita física no SMBI (risco de escrita).
+  smbiEscritaIniciadaEm: text('smbi_escrita_iniciada_em'),
+  smbiEmpresaOrigem: text('smbi_empresa_origem'), // ESCOLHA_ENVIO | VINCULO_MANUAL | LEGADO_CONFERIDO
   createdByUserId: integer('created_by_user_id'),
   createdByRole: text('created_by_role'),
 });
@@ -761,14 +771,22 @@ export const smbiRobotState = pgTable('smbi_robot_state', {
   cadastroAtivo: boolean('cadastro_ativo').notNull().default(false),
   cadastroAtualizadoPor: text('cadastro_atualizado_por'),
   cadastroAtualizadoEm: text('cadastro_atualizado_em'),
+  // Gate do envio com escolha de empresa. Nasce FALSE: desligado, o fluxo atual segue idêntico.
+  multiempresaAtivo: boolean('multiempresa_ativo').notNull().default(false),
+  multiempresaAtualizadoPor: text('multiempresa_atualizado_por'),
+  multiempresaAtualizadoEm: text('multiempresa_atualizado_em'),
 });
 export type SmbiRobotState = typeof smbiRobotState.$inferSelect;
 
-// Cadastro assistido de cliente no SMBI (docs/SMBI-CADASTRO-ASSISTIDO.md). Um registro por CNPJ.
+// Cadastro assistido de cliente no SMBI (docs/SMBI-CADASTRO-ASSISTIDO.md). Um registro por (empresa, CNPJ):
+// cada empresa do SMBI tem a sua base de clientes, e a aprovação de uma não vale para a outra.
 // Datas como timestamp (UTC). Estados/transições: shared/smbiCadastro.ts.
 export const smbiClientRegistrations = pgTable('smbi_client_registrations', {
   id: text('id').primaryKey(), // UUID gerado no servidor
-  cnpj: text('cnpj').notNull().unique(), // 14 dígitos
+  // Empresa do SMBI onde o cliente será cadastrado. DEFAULT = A S Comércio só para o ALTER não quebrar linhas
+  // existentes (a tabela está vazia em produção); o código sempre informa a empresa explicitamente.
+  empresaCnpj: text('empresa_cnpj').notNull().default('51422900000168'),
+  cnpj: text('cnpj').notNull(), // 14 dígitos do CLIENTE
   pedidoId: text('pedido_id').notNull(), // pedido originador (o único que a continuidade libera)
   estado: text('estado').notNull().default('PREPARANDO'),
   revisao: integer('revisao').notNull().default(1),
@@ -790,7 +808,7 @@ export const smbiClientRegistrations = pgTable('smbi_client_registrations', {
   divergencias: jsonb('divergencias').$type<Record<string, unknown> | CadastroDivergencia[] | null>(),
   criadoEm: timestamp('criado_em').defaultNow().notNull(),
   atualizadoEm: timestamp('atualizado_em').defaultNow().notNull(),
-});
+}, (t) => ({ empresaCnpjUq: uniqueIndex('smbi_client_reg_empresa_cnpj_uq').on(t.empresaCnpj, t.cnpj) }));
 export type SmbiClientRegistration = typeof smbiClientRegistrations.$inferSelect;
 
 export const fatCommissions = pgTable('fat_commissions', {

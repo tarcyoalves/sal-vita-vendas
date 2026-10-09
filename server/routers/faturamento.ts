@@ -8,7 +8,9 @@ import { sendEmail } from '../email/resend';
 import { renderSignature } from '../email/marketing';
 import { escapeHtml } from '../lib/emailSanitize';
 import { gerarPedidoPdf } from '../pdf/pedidoPdf';
-import { resolveRobotOwnedFields, roboSemSinal } from '../lib/smbi';
+import { resolveRobotOwnedFields, roboSemSinal, descartarCamposEmpresa } from '../lib/smbi';
+import { decidirEnvio, decidirVinculoEmpresa, hashSolicitacao, patchDesvincularEmpresa, PATCH_CANCELAR_ENVIO } from '../lib/smbiMultiempresa';
+import { SMBI_EMPRESA_PADRAO_LEGADO } from '../../shared/smbiEmpresas';
 import { camposPedidoNovoAtendente, catalogoPorId, reconstruirItensPedidoNovo, itensPedidoExistente } from '../lib/faturamentoNovoPedido';
 import { userTaskFilter } from './tasks';
 import { mergeProtegidoPeloEspelho, espelhoDescartouEdicao, atendentePodeRemover } from '../lib/faturamentoProtecao';
@@ -20,7 +22,7 @@ import { SMBI_ROBO_SEM_SINAL_MIN } from '../../shared/smbiEstados';
 import { hashPedido, motivoAprovacaoInvalida, normalizarCnpj, avaliarSnapshot } from '../lib/smbiCadastro';
 import {
   aprovarInputSchema, decidirAprovacao, decidirRevisaoContatos, decidirSolicitacao, podeLiberarPedido, podeSolicitarPrevia,
-  reenvioBloqueadoPorCadastro, revisarContatosInputSchema, validarRevisaoContatos, type Recusa,
+  empresaDoCadastro, reenvioBloqueadoPorCadastro, revisarContatosInputSchema, validarRevisaoContatos, type Recusa,
 } from '../lib/smbiCadastroDecisoes';
 import type { Pedido } from '../../client/src/lib/faturamento/types';
 
@@ -36,8 +38,10 @@ function recusaTrpc(r: Recusa): never {
 }
 
 async function lerGates() {
-  const [s] = await db.select({ cadastroAtivo: smbiRobotState.cadastroAtivo, roboAtivo: smbiRobotState.roboAtivo }).from(smbiRobotState).where(eq(smbiRobotState.id, 1));
-  return { cadastroAtivo: s?.cadastroAtivo === true, roboAtivo: s?.roboAtivo === true };
+  const [s] = await db
+    .select({ cadastroAtivo: smbiRobotState.cadastroAtivo, roboAtivo: smbiRobotState.roboAtivo, multiempresaAtivo: smbiRobotState.multiempresaAtivo })
+    .from(smbiRobotState).where(eq(smbiRobotState.id, 1));
+  return { cadastroAtivo: s?.cadastroAtivo === true, roboAtivo: s?.roboAtivo === true, multiempresaAtivo: s?.multiempresaAtivo === true };
 }
 
 // Anti clique-duplo do "Enviar pedido por e-mail": a tabela não tem coluna de "enviado em",
@@ -271,7 +275,8 @@ export const faturamentoRouter = router({
 
       const [row] = await db
         .insert(fatOrders)
-        .values({ ...values, atualizadoEm })
+        // Campos empresariais nunca vêm da tela: a segunda barreira além do zod (e o `set` abaixo não os lista).
+        .values({ ...descartarCamposEmpresa(values), atualizadoEm })
         .onConflictDoUpdate({
           target: fatOrders.id,
           set: {
@@ -356,8 +361,9 @@ export const faturamentoRouter = router({
     }),
 
   // Envia a solicitação do pedido para criação no SMBI (ação manual do admin/manager)
+  // `empresaCnpj`: com a multiempresa ligada é obrigatória (escolha no clique); desligada, é ignorada.
   dispararSmbi: staffProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({ id: z.string(), empresaCnpj: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       const [pedido] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.id));
       if (!pedido) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' });
@@ -377,14 +383,22 @@ export const faturamentoRouter = router({
       if (pedido.smbiVinculoEstado) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Este pedido está vinculado a um pedido do SMBI. Desvincule antes de enviar.' });
       }
+      const agora = new Date();
+      const agoraIso = agora.toISOString();
+      const { multiempresaAtivo } = await lerGates();
+      const envio = decidirEnvio({ multiempresaAtivo, empresaCnpj: input.empresaCnpj, pedido, agora });
+      if (!envio.ok) recusaTrpc(envio);
+      const multi = envio.modo === 'MULTIEMPRESA' ? envio : null;
       // Cadastro de cliente em andamento/incerto/divergente: reenviar o pedido não resolve nem reinicia nada.
+      // O cadastro é por empresa: só vale o da empresa escolhida (legado: a única que existia).
       const cnpjDoPedido = normalizarCnpj(pedido.cnpj);
       if (cnpjDoPedido) {
         // Falha segura: se a tabela de cadastros ainda não existe (banco não migrado) ou a consulta falha,
         // o envio do pedido segue como sempre — esta guarda nunca pode derrubar o botão que já funciona.
         let estadoCadastro: string | undefined;
         try {
-          const [cad] = await db.select({ estado: cadastros.estado }).from(cadastros).where(eq(cadastros.cnpj, cnpjDoPedido));
+          const [cad] = await db.select({ estado: cadastros.estado }).from(cadastros)
+            .where(and(eq(cadastros.empresaCnpj, multi?.empresa.cnpj ?? SMBI_EMPRESA_PADRAO_LEGADO), eq(cadastros.cnpj, cnpjDoPedido)));
           estadoCadastro = cad?.estado;
         } catch (e) {
           console.error('[smbi] guarda de cadastro indisponível, seguindo sem ela:', e);
@@ -396,7 +410,7 @@ export const faturamentoRouter = router({
 
       // UPDATE condicional: só grava se ninguém (robô) reservou o pedido nesse instante, senão o
       // novo clique zeraria a reserva no meio da criação e o robô pegaria o pedido de novo.
-      const agoraIso = new Date().toISOString();
+      const solicitacaoId = multi ? globalThis.crypto.randomUUID() : null;
       const [row] = await db
         .update(fatOrders)
         .set({
@@ -411,19 +425,43 @@ export const faturamentoRouter = router({
           smbiConferidoEm: null,
           smbiReservaToken: null,
           smbiReservadoAte: null,
+          // Nunca toca smbiEmpresaTravadaEm nem smbiEscritaIniciadaEm: só a reserva e o /iniciar os gravam.
+          ...(multi
+            ? { smbiEmpresaCnpj: multi.empresa.cnpj, smbiSolicitacaoId: solicitacaoId, smbiSolicitacaoHash: multi.solicitacaoHash, smbiEmpresaOrigem: 'ESCOLHA_ENVIO' }
+            : {}),
         })
         .where(and(
           eq(fatOrders.id, input.id),
           isNull(fatOrders.smbiMovsaiId),
           or(isNull(fatOrders.smbiReservadoAte), lte(fatOrders.smbiReservadoAte, agoraIso)),
+          ...(multi
+            ? [
+                isNull(fatOrders.smbiVinculoEstado),
+                ne(fatOrders.status, 'faturado'),
+                isNull(fatOrders.smbiEscritaIniciadaEm),
+                // Troca de empresa atômica: só enquanto nenhuma reserva travou a empresa (ou se é a mesma empresa).
+                or(isNull(fatOrders.smbiEmpresaTravadaEm), eq(fatOrders.smbiEmpresaCnpj, multi.empresa.cnpj)),
+                // O hash foi calculado sobre esta leitura: pedido editado no meio não é enviado.
+                pedido.atualizadoEm == null ? isNull(fatOrders.atualizadoEm) : eq(fatOrders.atualizadoEm, pedido.atualizadoEm),
+                sql`exists (select 1 from smbi_robot_state where id = 1 and multiempresa_ativo = true)`,
+              ]
+            : []),
         ))
         .returning();
       if (!row) {
-        throw new TRPCError({ code: 'CONFLICT', message: 'O robô está processando este pedido agora. Aguarde a resposta dele antes de enviar de novo.' });
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: multi
+            ? 'O pedido mudou, o robô está processando-o ou a empresa já foi travada. Recarregue e confira antes de enviar de novo.'
+            : 'O robô está processando este pedido agora. Aguarde a resposta dele antes de enviar de novo.',
+        });
       }
-      await registrarEventoSmbi(input.id, 'ENVIO_SOLICITADO', ctx.user.name, { tentativaAnterior: pedido.smbiEstado ?? null });
+      await registrarEventoSmbi(input.id, 'ENVIO_SOLICITADO', ctx.user.name, {
+        tentativaAnterior: pedido.smbiEstado ?? null,
+        ...(multi ? { empresaCnpj: multi.empresa.cnpj, solicitacaoId, empresaAnterior: pedido.smbiEmpresaCnpj ?? null } : {}),
+      });
       // Prova nos logs de quem pediu e quando (o CRM não guardava isto: caso 1115).
-      console.log(`[smbi] dispararSmbi pedido=${input.id} por=${ctx.user.name} (id ${ctx.user.id})`);
+      console.log(`[smbi] dispararSmbi pedido=${input.id}${multi ? ` empresa=${multi.empresa.curto} solicitacao=${solicitacaoId}` : ''} por=${ctx.user.name} (id ${ctx.user.id})`);
       return row;
     }),
 
@@ -435,16 +473,8 @@ export const faturamentoRouter = router({
       const agoraIso = new Date().toISOString();
       const [row] = await db
         .update(fatOrders)
-        .set({
-          smbiSolicitadoEm: null,
-          smbiSolicitadoPor: null,
-          smbiEstado: null,
-          smbiMotivoCodigo: null,
-          smbiMotivoTexto: null,
-          smbiTentativa: null,
-          smbiAtualizadoEm: null,
-          smbiConferidoEm: null,
-        })
+        // Zera só o clique e o estado; empresa, travamento e marcador de risco ficam (PATCH_CANCELAR_ENVIO).
+        .set(PATCH_CANCELAR_ENVIO)
         .where(and(
           eq(fatOrders.id, input.id),
           isNull(fatOrders.smbiMovsaiId),
@@ -469,6 +499,9 @@ export const faturamentoRouter = router({
     const semSinal = roboSemSinal(s?.ultimoHeartbeatEm);
     return {
       roboAtivo: s?.roboAtivo === true,
+      multiempresaAtivo: s?.multiempresaAtivo === true,
+      multiempresaAtualizadoPor: s?.multiempresaAtualizadoPor ?? null,
+      multiempresaAtualizadoEm: s?.multiempresaAtualizadoEm ?? null,
       ultimoHeartbeatEm: s?.ultimoHeartbeatEm ?? null,
       versao: s?.versao ?? null,
       ciclo: s?.ciclo ?? null,
@@ -496,19 +529,33 @@ export const faturamentoRouter = router({
       return { ok: true, roboAtivo: input.ativo };
     }),
 
+  // Gate do envio com escolha de empresa. Só admin; nasce FALSE (fluxo atual intacto); auditado em colunas próprias.
+  setMultiempresaAtivo: adminProcedure
+    .input(z.object({ ativo: z.boolean() }).strict())
+    .mutation(async ({ ctx, input }) => {
+      const dados = { multiempresaAtivo: input.ativo, multiempresaAtualizadoPor: ctx.user.name, multiempresaAtualizadoEm: new Date().toISOString() };
+      await db.insert(smbiRobotState).values({ id: 1, ...dados }).onConflictDoUpdate({ target: smbiRobotState.id, set: dados });
+      console.log(`[smbi] setMultiempresaAtivo ativo=${input.ativo} por=${ctx.user.name} (id ${ctx.user.id})`);
+      return { ok: true, multiempresaAtivo: input.ativo };
+    }),
+
   // ── Cadastro assistido de cliente no SMBI (Fase 2, lado do CRM) ───────────────────────────
   // Nada aqui executa cadastro: só prepara, registra aprovação humana e libera o pedido originador.
   // O gate `cadastro_ativo` nasce desligado (setCadastroAtivo).
 
   // Pede a PRÉVIA (leitura) do cadastro do cliente do pedido. Cria ou reativa o registro em PREPARANDO.
   solicitarPreviaCadastroSmbi: staffProcedure
-    .input(z.object({ pedidoId: z.string().min(1).max(60) }).strict())
+    // `empresaCnpj`: obrigatória só quando o pedido ainda não tem empresa escolhida e a multiempresa está ligada.
+    .input(z.object({ pedidoId: z.string().min(1).max(60), empresaCnpj: z.string().optional() }).strict())
     .mutation(async ({ ctx, input }) => {
       const [pedido] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.pedidoId));
       if (!pedido) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' });
       const apto = podeSolicitarPrevia(pedido);
       if (!apto.ok) recusaTrpc(apto);
-      const [existente] = await db.select().from(cadastros).where(eq(cadastros.cnpj, apto.cnpj));
+      const emp = empresaDoCadastro((await lerGates()).multiempresaAtivo, pedido.smbiEmpresaCnpj, input.empresaCnpj);
+      if (!emp.ok) recusaTrpc(emp);
+      const empresaCnpj = emp.empresaCnpj;
+      const [existente] = await db.select().from(cadastros).where(and(eq(cadastros.empresaCnpj, empresaCnpj), eq(cadastros.cnpj, apto.cnpj)));
       const decisao = decidirSolicitacao(existente ?? null, pedido.id);
       if ('ok' in decisao) recusaTrpc(decisao);
       const agora = new Date();
@@ -517,9 +564,9 @@ export const faturamentoRouter = router({
       let revisao = existente?.revisao ?? 1;
       if (decisao.acao === 'CRIAR') {
         const [novo] = await db.insert(cadastros)
-          .values({ id: globalThis.crypto.randomUUID(), cnpj: apto.cnpj, pedidoId: pedido.id, estado: 'PREPARANDO', revisao: 1, pedidoHash: hashPedido(pedido) })
+          .values({ id: globalThis.crypto.randomUUID(), empresaCnpj, cnpj: apto.cnpj, pedidoId: pedido.id, estado: 'PREPARANDO', revisao: 1, pedidoHash: hashPedido(pedido) })
           .onConflictDoNothing().returning();
-        if (!novo) throw new TRPCError({ code: 'CONFLICT', message: 'Outro cadastro deste CNPJ foi criado agora. Recarregue. [CONCORRENCIA]' });
+        if (!novo) throw new TRPCError({ code: 'CONFLICT', message: 'Outro cadastro deste CNPJ nesta empresa foi criado agora. Recarregue. [CONCORRENCIA]' });
         ({ id, estado, revisao } = novo);
       } else if (decisao.acao === 'REATIVAR' && existente) {
         const [re] = await db.update(cadastros)
@@ -535,7 +582,7 @@ export const faturamentoRouter = router({
         ({ id, estado, revisao } = re);
       }
       if (decisao.acao !== 'MANTER') {
-        await registrarEventoSmbi(pedido.id, 'CADASTRO_PREVIA_SOLICITADA', ctx.user.name, { cadastroId: id, revisao });
+        await registrarEventoSmbi(pedido.id, 'CADASTRO_PREVIA_SOLICITADA', ctx.user.name, { cadastroId: id, empresaCnpj, revisao });
       }
       console.log(`[smbi-cadastro] solicitarPrevia pedido=${pedido.id} ${decisao.acao} por=${ctx.user.name} (id ${ctx.user.id})`);
       return { cadastroId: id, estado, revisao, acao: decisao.acao };
@@ -543,21 +590,26 @@ export const faturamentoRouter = router({
 
   // Situação do cadastro do cliente do pedido (sem token de reserva).
   cadastroSmbiStatus: staffProcedure
-    .input(z.object({ pedidoId: z.string().min(1).max(60) }).strict())
+    .input(z.object({ pedidoId: z.string().min(1).max(60), empresaCnpj: z.string().optional() }).strict())
     .query(async ({ input }) => {
       const [pedido] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.pedidoId));
       if (!pedido) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' });
       const cnpj = normalizarCnpj(pedido.cnpj);
-      const [c] = cnpj ? await db.select().from(cadastros).where(eq(cadastros.cnpj, cnpj)) : [];
       const gates = await lerGates();
-      if (!c) return { cadastro: null, gates };
+      const emp = empresaDoCadastro(gates.multiempresaAtivo, pedido.smbiEmpresaCnpj, input.empresaCnpj);
+      // Sem empresa escolhida ainda não há cadastro a mostrar (a tela pede a empresa antes).
+      if (!emp.ok && emp.codigo === 'EMPRESA_OBRIGATORIA') return { cadastro: null, gates, empresaCnpj: null };
+      if (!emp.ok) recusaTrpc(emp);
+      const [c] = cnpj ? await db.select().from(cadastros).where(and(eq(cadastros.empresaCnpj, emp.empresaCnpj), eq(cadastros.cnpj, cnpj))) : [];
+      if (!c) return { cadastro: null, gates, empresaCnpj: emp.empresaCnpj };
       const hashAtual = hashPedido(pedido);
       const av = c.snapshot ? avaliarSnapshot(c.snapshot) : null;
       const liberar = podeLiberarPedido(c, { ...pedido, hashAtual }, gates);
       return {
         gates,
+        empresaCnpj: emp.empresaCnpj,
         cadastro: {
-          id: c.id, cnpj: c.cnpj, pedidoId: c.pedidoId, estado: c.estado, revisao: c.revisao,
+          id: c.id, empresaCnpj: c.empresaCnpj, cnpj: c.cnpj, pedidoId: c.pedidoId, estado: c.estado, revisao: c.revisao,
           snapshot: c.snapshot, snapshotHash: c.snapshotHash, pedidoHash: c.pedidoHash, contatos: c.contatos,
           pedidoHashAtual: hashAtual, pedidoAlterado: c.pedidoHash != null && c.pedidoHash !== hashAtual,
           camposFaltantes: av?.camposFaltantes ?? [], bloqueios: av?.bloqueios ?? [],
@@ -591,7 +643,7 @@ export const faturamentoRouter = router({
       if (r.length !== 1) throw new TRPCError({ code: 'CONFLICT', message: 'O cadastro mudou. Recarregue. [CONCORRENCIA]' });
       // Só os NOMES dos campos e as origens vão para a linha do tempo (sem telefone/e-mail).
       await registrarEventoSmbi(c.pedidoId, 'CADASTRO_CONTATOS_REVISADOS', ctx.user.name, {
-        cadastroId: c.id, revisao: c.revisao + 1, campos: Object.fromEntries(Object.entries(v.contatos).map(([k, x]) => [k, x?.origem])),
+        cadastroId: c.id, empresaCnpj: c.empresaCnpj, revisao: c.revisao + 1, campos: Object.fromEntries(Object.entries(v.contatos).map(([k, x]) => [k, x?.origem])),
       });
       return { ok: true, revisao: c.revisao + 1, estado: 'PREPARANDO' as const };
     }),
@@ -616,7 +668,7 @@ export const faturamentoRouter = router({
         ))
         .returning({ id: cadastros.id });
       if (r.length !== 1) throw new TRPCError({ code: 'CONFLICT', message: 'O cadastro mudou durante a aprovação. Recarregue. [CONCORRENCIA]' });
-      await registrarEventoSmbi(c.pedidoId, 'CADASTRO_APROVADO', ctx.user.name, { cadastroId: c.id, revisao: c.revisao, snapshotHash: c.snapshotHash });
+      await registrarEventoSmbi(c.pedidoId, 'CADASTRO_APROVADO', ctx.user.name, { cadastroId: c.id, empresaCnpj: c.empresaCnpj, revisao: c.revisao, snapshotHash: c.snapshotHash });
       console.log(`[smbi-cadastro] aprovado id=${c.id} rev=${c.revisao} por=${ctx.user.name} (id ${ctx.user.id})`);
       return { ok: true, estado: 'APROVADO' as const, aprovacaoExpiraEm: d.patch.aprovacaoExpiraEm ?? null, idempotente: false };
     }),
@@ -654,9 +706,13 @@ export const faturamentoRouter = router({
           smbiEstado: null, smbiMotivoCodigo: null, smbiMotivoTexto: null, smbiTentativa: null, smbiAtualizadoEm: null, smbiConferidoEm: null,
           smbiReservaToken: null, smbiReservadoAte: null,
           smbiSolicitadoEm: agoraIso, smbiSolicitadoPor: ctx.user.name,
+          // Pedido com empresa escolhida: novo clique = nova solicitação (a anterior, se ainda houver retorno tardio, é rejeitada).
+          ...(pedido.smbiEmpresaCnpj
+            ? { smbiSolicitacaoId: globalThis.crypto.randomUUID(), smbiSolicitacaoHash: hashSolicitacao(pedido, pedido.smbiEmpresaCnpj) }
+            : {}),
         })
         .where(and(
-          eq(fatOrders.id, pedido.id), isNull(fatOrders.smbiMovsaiId), isNull(fatOrders.smbiVinculoEstado),
+          eq(fatOrders.id, pedido.id), isNull(fatOrders.smbiMovsaiId), isNull(fatOrders.smbiVinculoEstado), isNull(fatOrders.smbiEscritaIniciadaEm),
           ne(fatOrders.status, 'faturado'), isNull(fatOrders.faturadoEm),
           eq(fatOrders.smbiEstado, 'PENDENTE'), eq(fatOrders.smbiMotivoCodigo, 'CLIENTE_NAO_CADASTRADO'),
           or(isNull(fatOrders.smbiReservadoAte), lte(fatOrders.smbiReservadoAte, agoraIso)),
@@ -666,7 +722,7 @@ export const faturamentoRouter = router({
         .returning({ id: fatOrders.id });
       if (!row) throw new TRPCError({ code: 'CONFLICT', message: 'O pedido mudou ou está em processamento. Recarregue. [CONCORRENCIA]' });
       await registrarEventoSmbi(pedido.id, 'CADASTRO_PEDIDO_LIBERADO', ctx.user.name, {
-        cadastroId: c.id, erpClienteId: c.erpClienteId, estadoAnterior: pedido.smbiEstado, motivoAnterior: pedido.smbiMotivoCodigo,
+        cadastroId: c.id, empresaCnpj: c.empresaCnpj, erpClienteId: c.erpClienteId, estadoAnterior: pedido.smbiEstado, motivoAnterior: pedido.smbiMotivoCodigo,
       });
       console.log(`[smbi-cadastro] liberarPedido pedido=${pedido.id} cadastro=${c.id} por=${ctx.user.name} (id ${ctx.user.id})`);
       return { ok: true, liberado: true, jaLiberado: false };
@@ -679,7 +735,8 @@ export const faturamentoRouter = router({
   // hora (o robô nunca mais cria esse pedido) e o robô confere no SMBI depois (cliente, produto e
   // quantidade); divergência fica aguardando confirmação do administrador.
   vincularSmbi: adminProcedure
-    .input(z.object({ id: z.string(), movsais: z.string().trim().min(1).max(200) }))
+    // `empresaCnpj`: com a multiempresa ligada, a empresa onde o pedido existe no SMBI (omita se o pedido já tem empresa).
+    .input(z.object({ id: z.string(), movsais: z.string().trim().min(1).max(200), empresaCnpj: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       const numeros = parseNumerosMovsai(input.movsais);
       if (!numeros) {
@@ -687,10 +744,22 @@ export const faturamentoRouter = router({
       }
       const [antes] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.id));
       if (!antes) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' });
-      const agoraIso = new Date().toISOString();
+      const agora = new Date();
+      const agoraIso = agora.toISOString();
+      // Nunca vincula com reserva vigente (o robô pode estar criando o pedido agora) e, com a multiempresa
+      // ligada, exige a empresa. O vínculo trava a empresa: ele é um fato físico no SMBI.
+      const { multiempresaAtivo } = await lerGates();
+      const vinculoEmpresa = decidirVinculoEmpresa({ multiempresaAtivo, empresaCnpj: input.empresaCnpj, pedido: antes, agora });
+      if (!vinculoEmpresa.ok) recusaTrpc(vinculoEmpresa);
       const [row] = await db
         .update(fatOrders)
         .set({
+          ...(vinculoEmpresa.gravarEmpresa && vinculoEmpresa.empresa
+            ? { smbiEmpresaCnpj: vinculoEmpresa.empresa.cnpj, smbiEmpresaOrigem: 'VINCULO_MANUAL' }
+            : {}),
+          ...(vinculoEmpresa.empresa
+            ? { smbiEmpresaTravadaEm: sql`coalesce(${fatOrders.smbiEmpresaTravadaEm}, ${agoraIso})` }
+            : {}),
           smbiMovsaiId: numeros[0],
           smbiVinculoMovsais: numeros,
           smbiVinculoEstado: 'PENDENTE_CONFERENCIA',
@@ -701,9 +770,18 @@ export const faturamentoRouter = router({
           smbiAtualizadoEm: null, smbiConferidoEm: null,
           smbiReservaToken: null, smbiReservadoAte: null,
         })
-        .where(eq(fatOrders.id, input.id))
+        .where(and(
+          eq(fatOrders.id, input.id),
+          or(isNull(fatOrders.smbiReservadoAte), lte(fatOrders.smbiReservadoAte, agoraIso)),
+          // Empresa do pedido não muda entre a leitura e a escrita.
+          antes.smbiEmpresaCnpj == null ? isNull(fatOrders.smbiEmpresaCnpj) : eq(fatOrders.smbiEmpresaCnpj, antes.smbiEmpresaCnpj),
+        ))
         .returning();
+      if (!row) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'O pedido mudou ou o robô está processando-o agora. Recarregue e tente de novo.' });
+      }
       await registrarEventoSmbi(input.id, 'VINCULADO', ctx.user.name, {
+        ...(vinculoEmpresa.empresa ? { empresaCnpj: vinculoEmpresa.empresa.cnpj } : {}),
         movsais: numeros,
         anterior: antes.smbiVinculoMovsais ?? (antes.smbiMovsaiId ? [antes.smbiMovsaiId] : []),
       });
@@ -723,7 +801,7 @@ export const faturamentoRouter = router({
       if (!antes.smbiMovsaiId && !antes.smbiVinculoEstado) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Este pedido não está vinculado ao SMBI.' });
       }
-      const [row] = await db.update(fatOrders).set(PATCH_DESVINCULAR).where(eq(fatOrders.id, input.id)).returning();
+      const [row] = await db.update(fatOrders).set({ ...PATCH_DESVINCULAR, ...patchDesvincularEmpresa(antes) }).where(eq(fatOrders.id, input.id)).returning();
       await registrarEventoSmbi(input.id, 'DESVINCULADO', ctx.user.name, {
         motivo: input.motivo,
         anterior: movsaisLigados(antes),

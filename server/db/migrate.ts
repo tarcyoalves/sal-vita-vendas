@@ -153,7 +153,8 @@ async function ensureRecentSchema() {
           to_regclass('public.smbi_order_events') IS NOT NULL
           AND to_regclass('public.smbi_robot_state') IS NOT NULL AS smbi_ok,
           to_regclass('public.blocked_contacts') IS NOT NULL AS bloq_ok,
-          to_regclass('public.smbi_client_registrations') IS NOT NULL AS cadastro_ok`,
+          to_regclass('public.smbi_client_registrations') IS NOT NULL AS cadastro_ok,
+          to_regclass('public.smbi_client_reg_empresa_cnpj_uq') IS NOT NULL AS cadastro_empresa_ok`,
     sql`SELECT column_name FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'smbi_robot_state'`,
   ]);
@@ -185,6 +186,13 @@ async function ensureRecentSchema() {
     if (!have.has('smbi_vinculo_por')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_vinculo_por TEXT`;
     if (!have.has('smbi_vinculo_em')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_vinculo_em TEXT`;
     if (!have.has('smbi_vinculo_resultado')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_vinculo_resultado JSONB`;
+    // Envio com escolha de empresa: todas NULL, sem default empresarial e sem backfill de pedido legado.
+    if (!have.has('smbi_empresa_cnpj')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_empresa_cnpj TEXT`;
+    if (!have.has('smbi_solicitacao_id')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitacao_id TEXT`;
+    if (!have.has('smbi_solicitacao_hash')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitacao_hash TEXT`;
+    if (!have.has('smbi_empresa_travada_em')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_empresa_travada_em TEXT`;
+    if (!have.has('smbi_escrita_iniciada_em')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_escrita_iniciada_em TEXT`;
+    if (!have.has('smbi_empresa_origem')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_empresa_origem TEXT`;
   }
   // Linha do tempo e chave/batimento do robô do SMBI: sem estas tabelas a rota do robô e o painel
   // do faturamento falham. Só cria se faltar (senão seriam 4 idas ao Neon a cada cold start).
@@ -218,7 +226,10 @@ async function ensureRecentSchema() {
         atualizado_em        TEXT,
         cadastro_ativo       BOOLEAN NOT NULL DEFAULT FALSE,
         cadastro_atualizado_por TEXT,
-        cadastro_atualizado_em  TEXT
+        cadastro_atualizado_em  TEXT,
+        multiempresa_ativo      BOOLEAN NOT NULL DEFAULT FALSE,
+        multiempresa_atualizado_por TEXT,
+        multiempresa_atualizado_em  TEXT
       )
     `;
   }
@@ -229,13 +240,18 @@ async function ensureRecentSchema() {
     if (!robotHave.has('cadastro_ativo')) await sql`ALTER TABLE smbi_robot_state ADD COLUMN IF NOT EXISTS cadastro_ativo BOOLEAN NOT NULL DEFAULT FALSE`;
     if (!robotHave.has('cadastro_atualizado_por')) await sql`ALTER TABLE smbi_robot_state ADD COLUMN IF NOT EXISTS cadastro_atualizado_por TEXT`;
     if (!robotHave.has('cadastro_atualizado_em')) await sql`ALTER TABLE smbi_robot_state ADD COLUMN IF NOT EXISTS cadastro_atualizado_em TEXT`;
+    // Gate do envio com escolha de empresa (nasce FALSE; nada é ligado aqui).
+    if (!robotHave.has('multiempresa_ativo')) await sql`ALTER TABLE smbi_robot_state ADD COLUMN IF NOT EXISTS multiempresa_ativo BOOLEAN NOT NULL DEFAULT FALSE`;
+    if (!robotHave.has('multiempresa_atualizado_por')) await sql`ALTER TABLE smbi_robot_state ADD COLUMN IF NOT EXISTS multiempresa_atualizado_por TEXT`;
+    if (!robotHave.has('multiempresa_atualizado_em')) await sql`ALTER TABLE smbi_robot_state ADD COLUMN IF NOT EXISTS multiempresa_atualizado_em TEXT`;
   }
   const cadastroOk = (reg as unknown as Array<{ cadastro_ok: boolean }>)[0]?.cadastro_ok === true;
   if (!cadastroOk) {
     await sql`
       CREATE TABLE IF NOT EXISTS smbi_client_registrations (
         id                      TEXT PRIMARY KEY,
-        cnpj                    TEXT NOT NULL UNIQUE CHECK (cnpj ~ '^[0-9]{14}$'),
+        empresa_cnpj            TEXT NOT NULL DEFAULT '51422900000168',
+        cnpj                    TEXT NOT NULL CHECK (cnpj ~ '^[0-9]{14}$'),
         pedido_id               TEXT NOT NULL,
         estado                  TEXT NOT NULL DEFAULT 'PREPARANDO',
         revisao                 INTEGER NOT NULL DEFAULT 1,
@@ -260,6 +276,14 @@ async function ensureRecentSchema() {
     `;
     await sql`CREATE INDEX IF NOT EXISTS smbi_client_reg_estado_idx ON smbi_client_registrations(estado, criado_em)`;
     await sql`CREATE INDEX IF NOT EXISTS smbi_client_reg_pedido_idx ON smbi_client_registrations(pedido_id)`;
+  }
+  // Cadastro POR EMPRESA: a unicidade passa de (cnpj) para (empresa_cnpj, cnpj). O DEFAULT da coluna só protege
+  // linhas existentes (a tabela está vazia em produção). Ordem: coluna → índice novo → só então solta a restrição antiga.
+  const cadastroEmpresaOk = (reg as unknown as Array<{ cadastro_empresa_ok: boolean }>)[0]?.cadastro_empresa_ok === true;
+  if (!cadastroEmpresaOk) {
+    await sql`ALTER TABLE smbi_client_registrations ADD COLUMN IF NOT EXISTS empresa_cnpj TEXT NOT NULL DEFAULT '51422900000168'`;
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS smbi_client_reg_empresa_cnpj_uq ON smbi_client_registrations(empresa_cnpj, cnpj)`;
+    await sql`ALTER TABLE smbi_client_registrations DROP CONSTRAINT IF EXISTS smbi_client_registrations_cnpj_key`;
   }
 
   // Arquivo dos contatos removidos por e-mail de domínio bloqueado (a limpeza do build grava aqui antes de excluir).
@@ -289,7 +313,7 @@ async function ensureRecentSchema() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-10-08a';
+const SCHEMA_VERSION = '2026-10-09a';
 
 export async function ensureTablesExist() {
   // Antes de tudo (e antes do caminho rápido): garante o que foi criado por último.
@@ -982,6 +1006,12 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_vinculo_por TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_vinculo_em TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_vinculo_resultado JSONB`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_empresa_cnpj TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitacao_id TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitacao_hash TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_empresa_travada_em TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_escrita_iniciada_em TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_empresa_origem TEXT`;
   await sql`
     CREATE TABLE IF NOT EXISTS smbi_order_events (
       id         SERIAL PRIMARY KEY,
@@ -1026,16 +1056,23 @@ export async function ensureTablesExist() {
       atualizado_em        TEXT,
       cadastro_ativo       BOOLEAN NOT NULL DEFAULT FALSE,
       cadastro_atualizado_por TEXT,
-      cadastro_atualizado_em  TEXT
+      cadastro_atualizado_em  TEXT,
+      multiempresa_ativo      BOOLEAN NOT NULL DEFAULT FALSE,
+      multiempresa_atualizado_por TEXT,
+      multiempresa_atualizado_em  TEXT
     )
   `;
   await sql`ALTER TABLE smbi_robot_state ADD COLUMN IF NOT EXISTS cadastro_ativo BOOLEAN NOT NULL DEFAULT FALSE`;
   await sql`ALTER TABLE smbi_robot_state ADD COLUMN IF NOT EXISTS cadastro_atualizado_por TEXT`;
   await sql`ALTER TABLE smbi_robot_state ADD COLUMN IF NOT EXISTS cadastro_atualizado_em TEXT`;
+  await sql`ALTER TABLE smbi_robot_state ADD COLUMN IF NOT EXISTS multiempresa_ativo BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql`ALTER TABLE smbi_robot_state ADD COLUMN IF NOT EXISTS multiempresa_atualizado_por TEXT`;
+  await sql`ALTER TABLE smbi_robot_state ADD COLUMN IF NOT EXISTS multiempresa_atualizado_em TEXT`;
   await sql`
     CREATE TABLE IF NOT EXISTS smbi_client_registrations (
       id                      TEXT PRIMARY KEY,
-      cnpj                    TEXT NOT NULL UNIQUE CHECK (cnpj ~ '^[0-9]{14}$'),
+      empresa_cnpj            TEXT NOT NULL DEFAULT '51422900000168',
+      cnpj                    TEXT NOT NULL CHECK (cnpj ~ '^[0-9]{14}$'),
       pedido_id               TEXT NOT NULL,
       estado                  TEXT NOT NULL DEFAULT 'PREPARANDO',
       revisao                 INTEGER NOT NULL DEFAULT 1,
@@ -1060,6 +1097,9 @@ export async function ensureTablesExist() {
   `;
   await sql`CREATE INDEX IF NOT EXISTS smbi_client_reg_estado_idx ON smbi_client_registrations(estado, criado_em)`;
   await sql`CREATE INDEX IF NOT EXISTS smbi_client_reg_pedido_idx ON smbi_client_registrations(pedido_id)`;
+  await sql`ALTER TABLE smbi_client_registrations ADD COLUMN IF NOT EXISTS empresa_cnpj TEXT NOT NULL DEFAULT '51422900000168'`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS smbi_client_reg_empresa_cnpj_uq ON smbi_client_registrations(empresa_cnpj, cnpj)`;
+  await sql`ALTER TABLE smbi_client_registrations DROP CONSTRAINT IF EXISTS smbi_client_registrations_cnpj_key`;
 
   // ── Competência da comissão ────────────────────────────────────────────────
   // Pedido fechado num mês e embarcado no seguinte é comissão do mês em que

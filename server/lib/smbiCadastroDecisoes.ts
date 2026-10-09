@@ -8,6 +8,7 @@ import {
   type CadastroContatos, type CadastroDivergencia, type CadastroEstado, type CadastroResultado, type CadastroSnapshotV1,
 } from '../../shared/smbiCadastro';
 import { SMBI_RESERVA_MIN } from '../../shared/smbiEstados';
+import { SMBI_EMPRESA_CNPJS, SMBI_EMPRESA_PADRAO_LEGADO, empresaPorCnpj, type SmbiEmpresaCnpj } from '../../shared/smbiEmpresas';
 import { safeEqual } from './safeEqual';
 import {
   APROVACAO_VALIDADE_MS, avaliarSnapshot, canonico, cnpjValido, hashSnapshot, motivoAprovacaoInvalida,
@@ -15,7 +16,7 @@ import {
 } from './smbiCadastro';
 
 export type Cadastro = SmbiClientRegistration;
-export type PatchCadastro = Partial<Omit<Cadastro, 'id' | 'cnpj' | 'criadoEm'>>;
+export type PatchCadastro = Partial<Omit<Cadastro, 'id' | 'empresaCnpj' | 'cnpj' | 'criadoEm'>>;
 
 export interface Recusa { ok: false; status: 400 | 403 | 404 | 409; codigo: string; erro: string }
 const recusa = (status: Recusa['status'], codigo: string, erro: string): Recusa => ({ ok: false, status, codigo, erro });
@@ -40,6 +41,7 @@ export function elegivelParaLease(row: Cadastro, agora: Date): boolean {
 export function montarTrabalho(row: Cadastro, incluirReserva: boolean) {
   return {
     id: row.id,
+    empresaCnpj: row.empresaCnpj,
     cnpj: row.cnpj,
     pedidoId: row.pedidoId,
     fase: row.estado === 'APROVADO' || row.estado === 'CADASTRANDO' ? 'CADASTRO' : 'PREVIA',
@@ -63,6 +65,7 @@ export const respostaSemTrabalho = (gateAtivo: boolean) => ({ ok: true as const,
 
 export const previaBodySchema = z.object({ revisao: z.number().int().min(1), snapshot: z.unknown() }).strict();
 export const iniciarBodySchema = z.object({
+  empresaCnpj: z.enum(SMBI_EMPRESA_CNPJS),
   revisao: z.number().int().min(1), snapshotHash: z.string().length(64), pedidoHash: z.string().length(64),
 }).strict();
 
@@ -95,6 +98,7 @@ export function decidirPrevia(
   const v = validarSnapshot(entrada.snapshot);
   if (!v.ok) return recusa(400, 'SNAPSHOT_INVALIDO', v.erro);
   if (v.snapshot.cnpj !== row.cnpj) return recusa(409, 'CNPJ_DIFERENTE', 'snapshot de outro CNPJ');
+  if (v.snapshot.empresaCnpj !== row.empresaCnpj) return recusa(409, 'EMPRESA_DIFERENTE', 'snapshot de outra empresa do SMBI');
   const merged = validarSnapshot(mesclarContatos(v.snapshot, row.contatos));
   if (!merged.ok) return recusa(400, 'SNAPSHOT_INVALIDO', merged.erro);
   const snapshot = merged.snapshot;
@@ -126,12 +130,13 @@ export type DecisaoIniciar = Recusa | { ok: true; idempotente: boolean; patch: P
 
 export function decidirIniciar(
   row: Cadastro,
-  entrada: { revisao: number; snapshotHash: string; pedidoHash: string },
+  entrada: { empresaCnpj: string; revisao: number; snapshotHash: string; pedidoHash: string },
   token: string | undefined,
   pedidoHashAtual: string,
   gateAtivo: boolean,
   agora: Date,
 ): DecisaoIniciar {
+  if (entrada.empresaCnpj !== row.empresaCnpj) return recusa(409, 'EMPRESA_DIFERENTE', 'o worker está operando em outra empresa do SMBI');
   const mesmaTentativa = row.estado === 'CADASTRANDO' && row.tentativaIniciadaEm != null
     && entrada.revisao === row.revisao && entrada.snapshotHash === row.snapshotHash;
   // Repetição do mesmo pedido pelo mesmo worker: nada é regravado. O worker NÃO pode submeter de novo
@@ -143,7 +148,7 @@ export function decidirIniciar(
     return recusa(409, 'ESTADO_INVALIDO', `estado ${row.estado} não pode iniciar cadastro`);
   }
   const motivo = motivoAprovacaoInvalida(row, agora, {
-    cnpj: row.cnpj, revisao: entrada.revisao, snapshotHash: entrada.snapshotHash, pedidoHash: entrada.pedidoHash,
+    empresaCnpj: row.empresaCnpj, cnpj: row.cnpj, revisao: entrada.revisao, snapshotHash: entrada.snapshotHash, pedidoHash: entrada.pedidoHash,
   });
   if (motivo) return recusa(409, 'APROVACAO_INVALIDA', `aprovação não vale: ${motivo}`);
   if (pedidoHashAtual !== row.pedidoHash) return recusa(409, 'PEDIDO_ALTERADO', 'o pedido mudou depois da aprovação');
@@ -162,6 +167,7 @@ const divergenciaSchema = z.object({
 }).strict();
 
 export const resultadoBodySchema = z.object({
+  empresaCnpj: z.enum(SMBI_EMPRESA_CNPJS),
   revisao: z.number().int().min(1),
   snapshotHash: z.string().length(64).nullish(),
   estado: z.enum(CADASTRO_RESULTADOS),
@@ -180,6 +186,8 @@ export function decidirResultado(row: Cadastro, e: ResultadoBody, token: string 
   const erp = e.erpClienteId ?? null;
   const diverg: CadastroDivergencia[] = e.divergencias;
 
+  // Resultado de outra empresa nunca encerra este cadastro (nem como repetição idempotente).
+  if (e.empresaCnpj !== row.empresaCnpj) return recusa(409, 'EMPRESA_DIFERENTE', 'resultado de outra empresa do SMBI');
   if (alvo === 'CONFERIDO' && (!erp || diverg.length > 0)) return recusa(400, 'RESULTADO_INCONSISTENTE', 'CONFERIDO exige erpClienteId e nenhuma divergência');
   if (alvo === 'DIVERGENTE' && diverg.length === 0) return recusa(400, 'RESULTADO_INCONSISTENTE', 'DIVERGENTE exige ao menos uma divergência');
 
@@ -219,7 +227,7 @@ export function decidirResultado(row: Cadastro, e: ResultadoBody, token: string 
 // ── Procedures: solicitar prévia ─────────────────────────────────────────────
 
 export interface PedidoParaCadastro {
-  id: string; cnpj: string; status: string; aprovadoEm: string | null; faturadoEm: string | null;
+  id: string; cnpj: string; smbiEmpresaCnpj?: string | null; status: string; aprovadoEm: string | null; faturadoEm: string | null;
   smbiMovsaiId: string | null; smbiVinculoEstado: string | null; smbiEstado: string | null; smbiMotivoCodigo: string | null;
 }
 
@@ -235,6 +243,27 @@ export function podeSolicitarPrevia(p: PedidoParaCadastro): Recusa | { ok: true;
     return recusa(409, 'SEM_PENDENCIA_DE_CLIENTE', 'o pedido não está pendente por cliente não cadastrado');
   }
   return { ok: true, cnpj };
+}
+
+/**
+ * Empresa de um cadastro novo: a do pedido, se já escolhida; senão a informada na tela. Com a multiempresa
+ * DESLIGADA só existe a empresa legada (comportamento anterior); ligada, sem escolha não há palpite.
+ */
+export function empresaDoCadastro(
+  multiempresaAtivo: boolean,
+  pedidoEmpresa: string | null | undefined,
+  entrada: unknown,
+): Recusa | { ok: true; empresaCnpj: SmbiEmpresaCnpj } {
+  if (entrada !== undefined && !empresaPorCnpj(entrada)) return recusa(400, 'EMPRESA_INVALIDA', 'empresa inválida');
+  const pedido = pedidoEmpresa == null ? null : empresaPorCnpj(pedidoEmpresa);
+  if (pedidoEmpresa != null && !pedido) return recusa(409, 'EMPRESA_INVALIDA', 'o pedido tem uma empresa fora do catálogo');
+  if (pedido && entrada !== undefined && entrada !== pedido.cnpj) return recusa(409, 'EMPRESA_DIFERENTE', 'o pedido já tem outra empresa escolhida');
+  const cnpj = pedido?.cnpj ?? (entrada !== undefined ? (entrada as SmbiEmpresaCnpj) : null);
+  if (!cnpj) {
+    return multiempresaAtivo ? recusa(400, 'EMPRESA_OBRIGATORIA', 'escolha a empresa do SMBI') : { ok: true, empresaCnpj: SMBI_EMPRESA_PADRAO_LEGADO };
+  }
+  if (!multiempresaAtivo && cnpj !== SMBI_EMPRESA_PADRAO_LEGADO) return recusa(409, 'MULTIEMPRESA_DESLIGADA', 'o envio com escolha de empresa está desligado');
+  return { ok: true, empresaCnpj: cnpj };
 }
 
 export type AcaoSolicitacao = { acao: 'CRIAR' | 'REATIVAR' | 'MANTER' } | Recusa;
@@ -405,6 +434,8 @@ export function podeLiberarPedido(
   if (c.estado !== 'CONFERIDO') return recusa(409, 'CADASTRO_NAO_CONFERIDO', `cadastro está ${c.estado}`);
   if (!c.erpClienteId) return recusa(409, 'SEM_CLIENTE_ERP', 'cadastro conferido sem código do cliente no ERP');
   if (p.id !== c.pedidoId) return recusa(409, 'NAO_E_ORIGINADOR', 'só o pedido que originou o cadastro é liberado');
+  // O cliente conferido numa empresa não libera pedido da outra. Pedido legado (sem empresa) é da A S Comércio.
+  if ((p.smbiEmpresaCnpj ?? SMBI_EMPRESA_PADRAO_LEGADO) !== c.empresaCnpj) return recusa(409, 'EMPRESA_DIFERENTE', 'o cadastro conferido é de outra empresa do SMBI');
   if (normalizarCnpj(p.cnpj) !== c.cnpj) return recusa(409, 'CNPJ_DIFERENTE', 'CNPJ do pedido não é o do cadastro');
   if (p.smbiMovsaiId || p.smbiVinculoEstado || p.status === 'faturado' || p.faturadoEm || p.smbiEstado === 'CRIADO') {
     return recusa(409, 'PEDIDO_JA_PROCESSADO', 'pedido já criado, vinculado ou faturado');

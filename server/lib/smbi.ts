@@ -77,13 +77,17 @@ export interface SmbiPedidoPayload {
   /** Reserva deste ciclo: a re-checagem `GET /api/smbi/pedidos?id=…&token=…` só vale com este token. */
   reservaToken: string | null;
   reservadoAte: string | null;
+  /** Contrato v2 (só com a multiempresa ligada): empresa escolhida no clique e a solicitação vigente. */
+  empresaCnpj?: string | null;
+  solicitacaoId?: string | null;
+  solicitacaoHash?: string | null;
 }
 
 /** Converte uma linha de `fat_orders` no payload que o robô consome. Nunca
  * inclui `smbiMovsaiId`/`numeroNfe`/`numeroCte`: o robô só LÊ pedidos
  * pendentes (que ainda não têm esses valores) e os DEVOLVE via POST/retorno —
  * não faz sentido ecoar de volta o que ele mesmo vai preencher. */
-export function mapOrderToSmbiPayload(row: FatOrder): SmbiPedidoPayload {
+export function mapOrderToSmbiPayload(row: FatOrder, opcoes: { multiempresa?: boolean } = {}): SmbiPedidoPayload {
   return {
     id: row.id,
     sellerName: row.sellerName,
@@ -110,6 +114,10 @@ export function mapOrderToSmbiPayload(row: FatOrder): SmbiPedidoPayload {
     atualizadoEm: row.atualizadoEm ?? row.criadoEm,
     reservaToken: row.smbiReservaToken ?? null,
     reservadoAte: row.smbiReservadoAte ?? null,
+    // Com a multiempresa desligada o payload é exatamente o de sempre (nenhum campo novo).
+    ...(opcoes.multiempresa
+      ? { empresaCnpj: row.smbiEmpresaCnpj ?? null, solicitacaoId: row.smbiSolicitacaoId ?? null, solicitacaoHash: row.smbiSolicitacaoHash ?? null }
+      : {}),
   };
 }
 
@@ -128,6 +136,9 @@ export const retornoBodySchema = z
     motivoTexto: z.string().trim().min(1).max(300).optional(),
     tentativa: z.number().int().min(0).max(50).optional(),
     conferidoEm: z.string().datetime({ offset: true }).optional(),
+    // Contrato v2: obrigatórios para pedido COM empresa (decidirRetorno em smbiMultiempresa.ts).
+    empresaCnpj: z.string().max(20).optional(),
+    solicitacaoId: z.string().max(64).optional(),
   })
   .refine(
     (v) =>
@@ -269,6 +280,18 @@ export function roboSemSinal(ultimoHeartbeatEm: string | null | undefined, agora
  */
 export function pedidosParaRobo<T>(roboAtivo: boolean, simular: boolean, elegiveis: T[]): T[] {
   return roboAtivo || simular ? elegiveis : [];
+}
+
+// ── Campos empresariais: a tela e a importação nunca os escrevem nem os limpam ──
+// Só dispararSmbi / vincularSmbi / rotas do robô gravam. O `set` de upsertPedido não os lista e o zod do pedido
+// os descarta; este helper é a segunda barreira (importLocal e o insert do upsert).
+export const SMBI_CAMPOS_EMPRESA = [
+  'smbiEmpresaCnpj', 'smbiSolicitacaoId', 'smbiSolicitacaoHash', 'smbiEmpresaTravadaEm', 'smbiEscritaIniciadaEm', 'smbiEmpresaOrigem',
+] as const;
+
+export function descartarCamposEmpresa<T extends object>(valores: T): T {
+  const protegidos: readonly string[] = SMBI_CAMPOS_EMPRESA;
+  return Object.fromEntries(Object.entries(valores).filter(([k]) => !protegidos.includes(k))) as T;
 }
 
 // ── upsertPedido: campos que a TELA nunca escreve ────────────────────────────

@@ -144,3 +144,13 @@ Linha do tempo do pedido (`smbi_order_events`): `CADASTRO_PREVIA_SOLICITADA`, `C
 - Não instalou nem ligou nada; não habilitou o gate; não rodou DDL contra banco real (a migração roda no build/startup do CRM).
 - Não alterou `robo_ativo`, o Premium (`ORDERS_DATABASE_URL`) nem emite fiscal.
 - CNPJ alfanumérico (novo formato da Receita) **não** é aceito: o CRM inteiro guarda CNPJ como 14 dígitos.
+
+## Cadastro por empresa (multiempresa)
+
+O cadastro é por **(empresa, CNPJ do cliente)**: `smbi_client_registrations.empresa_cnpj` + índice único
+`(empresa_cnpj, cnpj)` (substitui a unicidade só por `cnpj`). A aprovação e a conferência numa empresa **não valem** na outra.
+O snapshot carrega `empresaCnpj` (entra no hash); `previa`/`iniciar`/`resultado` do worker informam a empresa e divergência é
+recusada (`EMPRESA_DIFERENTE`). O trabalho entregue ao worker leva `empresaCnpj`. A coluna tem `DEFAULT '51422900000168'` só
+para o ALTER não quebrar linhas existentes (a tabela está vazia em produção); o código sempre informa a empresa. O cadastro
+nasce da empresa escolhida no pedido; sem empresa escolhida, `solicitarPreviaCadastroSmbi` exige `empresaCnpj` (com a
+multiempresa desligada vale a empresa legada, como antes). Ver `docs/SMBI-MULTIEMPRESA.md`.

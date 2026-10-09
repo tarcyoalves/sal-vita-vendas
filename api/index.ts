@@ -31,6 +31,7 @@ import {
   validarEstadoRetorno, heartbeatBodySchema, pedidosParaRobo,
 } from '../server/lib/smbi';
 import { proximoPedidoIndividual, reservaAte, reservaConfere } from '../server/lib/smbiFaturamento';
+import { decidirRetorno, filaBloqueadaPorProtocolo, motivoForaDaFila, protocoloDoRobo, reservaVigente } from '../server/lib/smbiMultiempresa';
 import { SMBI_ESTADOS_QUE_PARAM } from '../shared/smbiEstados';
 import { registerSmbiExtraRoutes } from '../server/smbiRoutes';
 import { registerSmbiCadastroRoutes } from '../server/smbiCadastroRoutes';
@@ -1701,8 +1702,21 @@ app.get('/api/smbi/pedidos', smbiApiLimiter, async (req, res) => {
   const simular = req.query.simular === '1';
   try {
     // Chave de parada (CONTRATO-ROBO-CRM.md, rota 9): sem linha = desligado (fail closed).
-    const [estadoRobo] = await db.select({ roboAtivo: smbiRobotState.roboAtivo }).from(smbiRobotState).where(eq(smbiRobotState.id, 1));
+    const [estadoRobo] = await db
+      .select({ roboAtivo: smbiRobotState.roboAtivo, multiempresaAtivo: smbiRobotState.multiempresaAtivo })
+      .from(smbiRobotState).where(eq(smbiRobotState.id, 1));
     const roboAtivo = estadoRobo?.roboAtivo === true;
+    // Contrato v2 (docs/SMBI-MULTIEMPRESA.md): com a multiempresa ligada, só worker de protocolo 2 recebe pedido.
+    // Worker antigo (sem X-SMBI-Protocolo: 2) leva fila vazia + aviso e NADA é reservado.
+    const multiempresa = estadoRobo?.multiempresaAtivo === true;
+    if (filaBloqueadaPorProtocolo(multiempresa, protocoloDoRobo(req.headers['x-smbi-protocolo']))) {
+      console.warn('[smbi] GET /api/smbi/pedidos → multiempresa ligada e worker sem X-SMBI-Protocolo: 2 (fila vazia, nada reservado)');
+      res.json({
+        ok: true, roboAtivo, simulacao: false, multiempresaAtivo: true, pedidos: [],
+        aviso: 'Envio multiempresa ligado: atualize o worker e envie o header X-SMBI-Protocolo: 2. Nenhum pedido foi reservado.',
+      });
+      return;
+    }
     // Só pedidos enviados pelo botão "Enviar pedido para SMBI" (smbiSolicitadoEm + autor).
     // O filtro vale também para ?id= — é a re-checagem do robô antes de criar. Pedido que o
     // robô já devolveu como PENDENTE/ERRO só volta com NOVO clique; pedido com vínculo manual
@@ -1714,6 +1728,11 @@ app.get('/api/smbi/pedidos', smbiApiLimiter, async (req, res) => {
       isNull(fatOrders.smbiMovsaiId),
       isNull(fatOrders.smbiVinculoEstado),
       or(isNull(fatOrders.smbiEstado), notInArray(fatOrders.smbiEstado, [...SMBI_ESTADOS_QUE_PARAM])),
+      // Ligada: só pedido com empresa, solicitação gravada e sem risco de escrita. Desligada: pedido com empresa
+      // fica fora (desligar a chave é o freio do fluxo novo) e o legado segue exatamente como era.
+      ...(multiempresa
+        ? [isNotNull(fatOrders.smbiEmpresaCnpj), isNotNull(fatOrders.smbiSolicitacaoId), isNotNull(fatOrders.smbiSolicitacaoHash), isNull(fatOrders.smbiEscritaIniciadaEm)]
+        : [isNull(fatOrders.smbiEmpresaCnpj)]),
     );
     const agora = new Date();
     const agoraIso = agora.toISOString();
@@ -1726,18 +1745,23 @@ app.get('/api/smbi/pedidos', smbiApiLimiter, async (req, res) => {
         // atrasado, não confirma o mesmo pedido).
         const token = typeof req.query.token === 'string' ? req.query.token : undefined;
         const [row] = await db.select().from(fatOrders).where(and(eq(fatOrders.id, id), elegivel)).limit(1);
-        if (row && reservaConfere(row, token, agora)) rows = [row];
+        if (row && multiempresa && motivoForaDaFila(row) !== null) console.warn(`[smbi] GET ?id=${id} → fora da fila (${motivoForaDaFila(row)})`);
+        else if (row && reservaConfere(row, token, agora)) rows = [row];
         else if (row) console.warn(`[smbi] GET ?id=${id} → reserva ausente/vencida/token inválido`);
       } else {
         // PEDIDO INDIVIDUAL, nunca lote: entrega no máximo UM pedido por consulta (o clique mais
         // antigo) e só entrega outro depois que o robô responder o anterior (o retorno libera a
         // reserva) ou a reserva vencer.
-        const fila = await db
-          .select({ id: fatOrders.id, smbiSolicitadoEm: fatOrders.smbiSolicitadoEm, smbiReservadoAte: fatOrders.smbiReservadoAte, smbiMovsaiId: fatOrders.smbiMovsaiId })
-          .from(fatOrders)
-          .where(elegivel)
-          .orderBy(asc(fatOrders.smbiSolicitadoEm))
-          .limit(50);
+        const filaCompleta = await db.select().from(fatOrders).where(elegivel).orderBy(asc(fatOrders.smbiSolicitadoEm)).limit(50);
+        // Multiempresa: solicitação obsoleta (pedido editado/reenviado), empresa não homologada ou risco não saem.
+        // Pedido com reserva viva continua contando como "em andamento" mesmo que tenha ficado obsoleto.
+        const fila = multiempresa
+          ? filaCompleta.filter((r) => motivoForaDaFila(r) === null || reservaVigente(r, agora))
+          : filaCompleta;
+        if (multiempresa) {
+          const fora = filaCompleta.filter((r) => !fila.includes(r)).map((r) => `${r.id}:${motivoForaDaFila(r)}`);
+          if (fora.length > 0) console.warn(`[smbi] GET /api/smbi/pedidos → fora da fila: ${fora.join(', ')}`);
+        }
         const proximo = proximoPedidoIndividual(fila, agora);
         if (!proximo && fila.some((f) => !f.smbiMovsaiId && f.smbiReservadoAte && f.smbiReservadoAte > agoraIso)) {
           console.log('[smbi] GET /api/smbi/pedidos → aguardando o robô responder o pedido já entregue (um por vez)');
@@ -1746,10 +1770,20 @@ app.get('/api/smbi/pedidos', smbiApiLimiter, async (req, res) => {
           // Reserva ATÔMICA: o UPDATE só devolve o pedido se ESTE chamador ganhou, e só se nenhum
           // outro pedido estiver reservado e sem resposta no mesmo instante.
           const emAndamento = db.select({ um: sql`1` }).from(fatOrders).where(and(isNull(fatOrders.smbiMovsaiId), isNotNull(fatOrders.smbiReservadoAte), gte(fatOrders.smbiReservadoAte, agoraIso)));
+          const alvo = multiempresa ? filaCompleta.find((r) => r.id === proximo) : undefined;
           rows = await db
             .update(fatOrders)
-            .set({ smbiReservaToken: globalThis.crypto.randomUUID(), smbiReservadoAte: reservaAte(agora) })
-            .where(and(eq(fatOrders.id, proximo), elegivel, semReservaVigente, notExists(emAndamento)))
+            .set({
+              smbiReservaToken: globalThis.crypto.randomUUID(),
+              smbiReservadoAte: reservaAte(agora),
+              // A empresa trava UMA vez, na primeira reserva, e nunca mais se apaga (nem quando a reserva vence).
+              ...(multiempresa ? { smbiEmpresaTravadaEm: sql`coalesce(${fatOrders.smbiEmpresaTravadaEm}, ${agoraIso})` } : {}),
+            })
+            .where(and(
+              eq(fatOrders.id, proximo), elegivel, semReservaVigente, notExists(emAndamento),
+              // O clique que gerou a solicitação lida não pode ter sido substituído entre a leitura e a reserva.
+              ...(alvo?.smbiSolicitacaoId ? [eq(fatOrders.smbiSolicitacaoId, alvo.smbiSolicitacaoId)] : []),
+            ))
             .returning();
         }
       }
@@ -1761,11 +1795,14 @@ app.get('/api/smbi/pedidos', smbiApiLimiter, async (req, res) => {
     }
     // Defesa em profundidade: mesmo que a query mude, nada fora da regra sai daqui.
     // Robô desligado: lista vazia (trava do servidor). `simular=1` mostra o que sairia.
-    const pedidos = pedidosParaRobo(roboAtivo, simular, rows.filter(isElegivelParaSmbi).map(mapOrderToSmbiPayload));
+    const pedidos = pedidosParaRobo(
+      roboAtivo, simular,
+      rows.filter(isElegivelParaSmbi).filter((r) => !multiempresa || motivoForaDaFila(r) === null).map((r) => mapOrderToSmbiPayload(r, { multiempresa })),
+    );
     console.log(
       `[smbi] GET /api/smbi/pedidos ${id ? `id=${id}` : 'status=pendentes'} roboAtivo=${roboAtivo}${simular ? ' simular' : ''} → ${pedidos.length} pedido(s)`,
     );
-    res.json({ ok: true, roboAtivo, simulacao: simular && !roboAtivo, pedidos });
+    res.json({ ok: true, roboAtivo, simulacao: simular && !roboAtivo, multiempresaAtivo: multiempresa, pedidos });
   } catch (err) {
     console.error('[smbi] GET /api/smbi/pedidos error:', err);
     res.status(500).json({ error: 'Internal error' });
@@ -1791,15 +1828,29 @@ app.post('/api/smbi/pedidos/:id/retorno', smbiApiLimiter, express.json({ limit: 
   try {
     const [existing] = await db
       .select({
+        id: fatOrders.id,
         smbiMovsaiId: fatOrders.smbiMovsaiId,
         numeroNfe: fatOrders.numeroNfe,
         numeroCte: fatOrders.numeroCte,
+        smbiEmpresaCnpj: fatOrders.smbiEmpresaCnpj,
+        smbiSolicitacaoId: fatOrders.smbiSolicitacaoId,
+        smbiReservaToken: fatOrders.smbiReservaToken,
+        smbiEstado: fatOrders.smbiEstado,
       })
       .from(fatOrders)
       .where(eq(fatOrders.id, id));
     if (!existing) {
       console.warn(`[smbi] POST retorno pedido=${id} → 404`);
       res.status(404).json({ error: 'Pedido não encontrado' });
+      return;
+    }
+    // Contrato v2: pedido COM empresa exige protocolo 2 + empresa + solicitação (+ token da reserva quando encerra a
+    // tentativa). Retorno tardio ou de empresa errada é recusado aqui, ANTES do UPDATE: o token atual não é limpo.
+    const reservaHeader = req.headers['x-smbi-reserva'];
+    const v2 = decidirRetorno(existing, parsed.data, typeof reservaHeader === 'string' ? reservaHeader : undefined, protocoloDoRobo(req.headers['x-smbi-protocolo']));
+    if (!v2.ok) {
+      console.warn(`[smbi] POST retorno pedido=${id} → ${v2.status} ${v2.codigo}`);
+      res.status(v2.status).json({ error: v2.erro, codigo: v2.codigo });
       return;
     }
 
@@ -1819,9 +1870,16 @@ app.post('/api/smbi/pedidos/:id/retorno', smbiApiLimiter, express.json({ limit: 
     if (Object.keys(patch).length > 0) {
       // Condição no próprio UPDATE: dois retornos simultâneos com movsai diferentes
       // passariam ambos pela checagem acima; aqui só um grava o vínculo com o ERP.
-      const where = patch.smbiMovsaiId
-        ? and(eq(fatOrders.id, id), or(isNull(fatOrders.smbiMovsaiId), eq(fatOrders.smbiMovsaiId, patch.smbiMovsaiId)))
-        : eq(fatOrders.id, id);
+      const condicoes = [
+        eq(fatOrders.id, id),
+        ...(patch.smbiMovsaiId ? [or(isNull(fatOrders.smbiMovsaiId), eq(fatOrders.smbiMovsaiId, patch.smbiMovsaiId))] : []),
+        // Pedido com empresa: o próprio UPDATE confere empresa, solicitação e token (retorno concorrente não passa).
+        ...(!v2.legado && existing.smbiEmpresaCnpj && existing.smbiSolicitacaoId
+          ? [eq(fatOrders.smbiEmpresaCnpj, existing.smbiEmpresaCnpj), eq(fatOrders.smbiSolicitacaoId, existing.smbiSolicitacaoId)]
+          : []),
+        ...(v2.exigirToken && typeof reservaHeader === 'string' ? [eq(fatOrders.smbiReservaToken, reservaHeader)] : []),
+      ];
+      const where = and(...condicoes);
       // Resposta do robô (movsai ou estado) encerra a tentativa: libera a reserva.
       const encerra = patch.smbiMovsaiId !== undefined || patch.smbiEstado !== undefined;
       const set = encerra ? { ...patch, smbiReservaToken: null, smbiReservadoAte: null } : patch;

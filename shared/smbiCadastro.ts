@@ -1,6 +1,8 @@
 // Cadastro assistido CRM → SMBI (Fase 2, lado do CRM). Ver docs/SMBI-CADASTRO-ASSISTIDO.md.
 // Tipos e máquina de estados compartilhados entre servidor, testes e (no futuro) a tela.
 // O gate `cadastro_ativo` nasce DESLIGADO: nada aqui executa cadastro real.
+// O cadastro é POR EMPRESA do SMBI: a chave é (empresaCnpj, cnpj) e a aprovação numa empresa não vale na outra.
+import type { SmbiEmpresaCnpj } from './smbiEmpresas';
 
 export const CADASTRO_ESTADOS = [
   'PREPARANDO', 'BLOQUEADO', 'AGUARDANDO_APROVACAO', 'APROVADO',
@@ -54,6 +56,8 @@ export interface CadastroEndereco {
 
 export interface CadastroSnapshotV1 {
   versao: 1;
+  /** Empresa do SMBI onde o cliente é cadastrado. Entra no hash: o mesmo cliente em outra empresa é outro snapshot. */
+  empresaCnpj: SmbiEmpresaCnpj;
   cnpj: string;
   razaoSocial: string;
   fantasia: string;
@@ -92,6 +96,7 @@ export const CADASTRO_FASES = ['PREVIA', 'CADASTRO', 'RESULTADO'] as const;
 export interface CadastroEnvelopeV1 {
   versao: 1;
   ok: boolean;
+  empresaCnpj: SmbiEmpresaCnpj;
   fase: (typeof CADASTRO_FASES)[number];
   estado: CadastroEstado | CadastroResultado | null;
   cnpj: string;

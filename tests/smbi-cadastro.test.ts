@@ -7,9 +7,11 @@ import { CADASTRO_ESTADOS, type CadastroSnapshotV1 } from '../shared/smbiCadastr
 
 const CNPJ_A = '11222333000181';
 const CNPJ_B = '11444777000161';
+const EMPRESA_AS = '51422900000168' as const;
+const EMPRESA_CALVES = '49748258000160' as const;
 
 export const snapshotBase = (over: Partial<CadastroSnapshotV1> = {}): CadastroSnapshotV1 => ({
-  versao: 1, cnpj: CNPJ_A, razaoSocial: 'EMPRESA TESTE LTDA', fantasia: 'TESTE', ie: '123456789', situacaoCadastral: 'ATIVA', ieAtiva: true,
+  versao: 1, empresaCnpj: EMPRESA_AS, cnpj: CNPJ_A, razaoSocial: 'EMPRESA TESTE LTDA', fantasia: 'TESTE', ie: '123456789', situacaoCadastral: 'ATIVA', ieAtiva: true,
   endereco: { logradouro: 'RUA A', numero: '10', complemento: '', bairro: 'CENTRO', municipio: 'MOSSORO', uf: 'RN', cep: '59600000', municipioIbge: '2408003' },
   tipoTributacao: 'tipo_2', contato: 'Maria', telefone: '84999990000', celular: null, email: 'a@b.com', emailFinanceiro: null,
   representanteDoc: '52998224725', comissaoClientePct: null,
@@ -21,7 +23,7 @@ const T0 = new Date('2026-10-08T12:00:00.000Z');
 const aprovado = (over: Partial<CadastroAprovavel> = {}): CadastroAprovavel => {
   const snapshot = snapshotBase();
   return {
-    cnpj: CNPJ_A, estado: 'APROVADO', revisao: 3, snapshot, snapshotHash: hashSnapshot(snapshot), pedidoHash: 'p'.repeat(64),
+    empresaCnpj: EMPRESA_AS, cnpj: CNPJ_A, estado: 'APROVADO', revisao: 3, snapshot, snapshotHash: hashSnapshot(snapshot), pedidoHash: 'p'.repeat(64),
     aprovadoPorId: 1, aprovadoEm: T0, aprovacaoExpiraEm: new Date(T0.getTime() + APROVACAO_VALIDADE_MS), ...over,
   };
 };
@@ -82,6 +84,26 @@ describe('máquina de estados', () => {
     expect(origens).toEqual(['APROVADO']);
     expect(CADASTRO_ESTADOS.some((e) => podeTransitar('CONFERIDO', e))).toBe(false);
     expect(podeTransitar('PREPARANDO', 'APROVADO')).toBe(false);
+  });
+});
+
+describe('cadastro por empresa', () => {
+  it('o snapshot e o hash incluem a empresa: o mesmo cliente em outra empresa é outro snapshot', () => {
+    expect(hashSnapshot(snapshotBase({ empresaCnpj: EMPRESA_CALVES }))).not.toBe(hashSnapshot(snapshotBase()));
+    expect(validarSnapshot(snapshotBase({ empresaCnpj: EMPRESA_CALVES })).ok).toBe(true);
+  });
+  it('snapshot sem empresa ou com empresa fora do catálogo (inclusive o CNPJ do cliente) é rejeitado', () => {
+    const { empresaCnpj: _omitida, ...semEmpresa } = snapshotBase();
+    expect(validarSnapshot(semEmpresa).ok).toBe(false);
+    expect(validarSnapshot({ ...snapshotBase(), empresaCnpj: CNPJ_A }).ok).toBe(false);
+    expect(validarSnapshot({ ...snapshotBase(), empresaCnpj: '51.422.900/0001-68' }).ok).toBe(false);
+  });
+  it('a aprovação não vale para outra empresa', () => {
+    const c = aprovado();
+    expect(motivoAprovacaoInvalida(c, depois(1000), { empresaCnpj: EMPRESA_CALVES })).toBe('EMPRESA_DIFERENTE');
+    expect(motivoAprovacaoInvalida(c, depois(1000), { empresaCnpj: EMPRESA_AS })).toBeNull();
+    // linha de uma empresa com snapshot aprovado de outra
+    expect(motivoAprovacaoInvalida({ ...c, empresaCnpj: EMPRESA_CALVES }, depois(1000))).toBe('EMPRESA_DIFERENTE');
   });
 });
 

@@ -40,6 +40,8 @@ const movsaiFiscalSchema = z.object({
 
 export const faturamentoBodySchema = z.object({
   movsais: z.array(movsaiFiscalSchema).min(1).max(20),
+  /** Contrato v2: empresa onde os movsais foram lidos. Obrigatória para pedido COM empresa; o CRM rejeita divergência. */
+  empresaCnpj: z.string().max(20).optional(),
   faturadoEm: dataTexto,
   snapshotHash: z.string().trim().max(128).optional(),
   /** % de comissão do representante no SMBI. Só mande quando houver ajuste (ex.: sal baixado e frete subido). */
@@ -126,7 +128,7 @@ export function numerosFiscais(movsais: SmbiMovsaiFiscal[]): { numeroNfe: string
 }
 
 type PedidoParaFaturar = Pick<FatOrder, 'smbiMovsaiId' | 'smbiVinculoMovsais' | 'status' | 'faturadoEm'>
-  & Partial<Pick<FatOrder, 'itens' | 'itensEstimadoSnapshot' | 'valorFretePorUnidade' | 'comissaoPct'>>;
+  & Partial<Pick<FatOrder, 'itens' | 'itensEstimadoSnapshot' | 'valorFretePorUnidade' | 'comissaoPct' | 'smbiEmpresaCnpj'>>;
 
 /** Números de movsai ligados ao pedido (o principal + os do vínculo manual). */
 export function movsaisLigados(p: Pick<FatOrder, 'smbiMovsaiId' | 'smbiVinculoMovsais'>): string[] {
@@ -189,6 +191,16 @@ export function resolverFaturamento(
   if (!body.movsais.some((m) => ligados.includes(m.id))) {
     return { erro: 'nenhum dos movsais informados está ligado a este pedido', patch: {} };
   }
+  // A referência ERP é (empresa, movsai): o mesmo número em outra empresa é outro pedido. Para pedido COM empresa
+  // o corpo precisa vir da mesma empresa e só pode trazer movsais do vínculo (número extra = leitura errada).
+  const empresaPedido = pedido.smbiEmpresaCnpj ?? null;
+  if (empresaPedido) {
+    if (body.empresaCnpj !== empresaPedido) return { erro: 'empresa divergente: o faturamento não é da empresa deste pedido', patch: {} };
+    const extras = body.movsais.filter((m) => !ligados.includes(m.id)).map((m) => m.id);
+    if (extras.length > 0) return { erro: `movsais fora do vínculo deste pedido: ${extras.join(', ')}`, patch: {} };
+  } else if (body.empresaCnpj !== undefined) {
+    return { erro: 'pedido sem empresa definida: o corpo não deveria trazer empresaCnpj', patch: {} };
+  }
   // Pedido com VÁRIOS movsais ligados: enquanto algum não vier faturado, o espelho é parcial.
   // Parcial nunca marca o pedido como faturado, nem liga alerta de desconto, nem mexe no peso/comissão.
   const informados = new Set(body.movsais.map((m) => m.id));
@@ -239,6 +251,7 @@ export function resolverFaturamento(
 
 export const statusBodySchema = z.object({
   evento: z.enum(SMBI_EVENTOS_ROBO),
+  empresaCnpj: z.string().max(20).optional(),
   dados: z.record(z.unknown()).optional(),
   em: dataTexto,
 });
@@ -286,6 +299,7 @@ const itemVinculoSchema = z.object({
   valorUnit: z.number().finite().min(0).max(100_000_000).optional(),
 });
 export const vinculoResultadoSchema = z.object({
+  empresaCnpj: z.string().max(20).optional(),
   movsais: z.array(z.object({
     id,
     cnpj: z.string().trim().max(20).optional(),
@@ -318,6 +332,7 @@ export function montarResultadoVinculo(body: VinculoResultadoBody, agora: Date =
   return {
     recebidoEm: agora.toISOString(),
     confere: body.confere,
+    ...(body.empresaCnpj !== undefined ? { empresaCnpj: body.empresaCnpj } : {}),
     ...(body.comissaoPct !== undefined ? { comissaoPct: body.comissaoPct } : {}),
     movsais: body.movsais.map((m) => ({
       id: m.id, cnpj: m.cnpj, cliente: m.cliente, faturado: m.faturado, status: m.status, itens: m.itens,
@@ -328,7 +343,7 @@ export function montarResultadoVinculo(body: VinculoResultadoBody, agora: Date =
 
 /** Movsais faturados que o robô leu, no formato do corpo da rota 3 (para reaproveitar `resolverFaturamento`). */
 export function faturamentoDoVinculo(
-  body: { comissaoPct?: number; movsais: Array<{ id: string; faturado?: boolean; nfe?: SmbiNfe | null; cte?: SmbiCte | null; pesoKg?: number | null }> },
+  body: { empresaCnpj?: string; comissaoPct?: number; movsais: Array<{ id: string; faturado?: boolean; nfe?: SmbiNfe | null; cte?: SmbiCte | null; pesoKg?: number | null }> },
   agora: Date = new Date(),
 ): FaturamentoBody | null {
   const faturados = body.movsais.filter((m) => m.faturado);
@@ -337,6 +352,7 @@ export function faturamentoDoVinculo(
   return {
     movsais: faturados.map((m) => ({ id: m.id, pesoKg: m.pesoKg ?? null, nfe: m.nfe ?? null, cte: m.cte ?? null })),
     faturadoEm: data ?? agora.toISOString(),
+    ...(body.empresaCnpj !== undefined ? { empresaCnpj: body.empresaCnpj } : {}),
     ...(body.comissaoPct !== undefined ? { comissaoPct: body.comissaoPct } : {}),
   };
 }

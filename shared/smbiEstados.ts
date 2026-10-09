@@ -59,6 +59,7 @@ export const SMBI_EVENTO_ROTULO: Record<string, string> = {
   MDFE: 'MDF-e emitido',
   CANCELADO_SMBI: 'Cancelado no SMBI',
   EXCLUIDO_SMBI: 'Excluído no SMBI (vínculo desfeito)',
+  ESCRITA_INICIADA: 'Robô iniciou a criação no SMBI',
   ENVIO_SOLICITADO: 'Envio ao SMBI solicitado',
   ENVIO_CANCELADO: 'Envio ao SMBI cancelado',
   VINCULADO: 'Vinculado a pedido do SMBI',
@@ -110,6 +111,8 @@ export interface SmbiEspelhoFiscal {
 
 /** Comparação lado a lado para o admin decidir um vínculo com divergência. */
 export interface SmbiVinculoResultado {
+  /** Contrato v2: empresa onde o robô leu os movsais. */
+  empresaCnpj?: string;
   comissaoPct?: number;
   recebidoEm: string;
   confere: { cliente: boolean; produto: boolean; quantidade: boolean };

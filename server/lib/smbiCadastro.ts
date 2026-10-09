@@ -8,6 +8,7 @@ import {
   CADASTRO_ESTADOS, CADASTRO_ORIGENS, CADASTRO_TRANSICOES,
   type CadastroEstado, type CadastroSnapshotV1,
 } from '../../shared/smbiCadastro';
+import { SMBI_EMPRESA_CNPJS } from '../../shared/smbiEmpresas';
 
 export const APROVACAO_VALIDADE_MS = 24 * 60 * 60 * 1000;
 
@@ -44,6 +45,7 @@ const textoOuNulo = (max: number) => z.string().trim().max(max).nullable();
 export const snapshotSchema = z
   .object({
     versao: z.literal(1),
+    empresaCnpj: z.enum(SMBI_EMPRESA_CNPJS),
     cnpj: z.string().refine((v) => /^\d{14}$/.test(v) && cnpjValido(v), 'CNPJ inválido'),
     razaoSocial: texto(120).min(1),
     fantasia: texto(120),
@@ -194,6 +196,7 @@ export function podeTransitar(de: CadastroEstado, para: CadastroEstado): boolean
 }
 
 export interface CadastroAprovavel {
+  empresaCnpj: string;
   cnpj: string;
   estado: string;
   revisao: number;
@@ -206,6 +209,7 @@ export interface CadastroAprovavel {
 }
 
 export interface AprovacaoEsperada {
+  empresaCnpj?: string;
   cnpj?: string;
   revisao?: number;
   snapshotHash?: string;
@@ -214,7 +218,7 @@ export interface AprovacaoEsperada {
 
 /**
  * Motivo pelo qual a aprovação NÃO vale (ou null se vale). Vale só se: estado APROVADO, ator humano gravado,
- * dentro de 24 h, snapshot do MESMO CNPJ, hash gravado == hash recalculado do snapshot (adulteração ou edição
+ * dentro de 24 h, snapshot do MESMO CNPJ e da MESMA empresa, hash gravado == hash recalculado do snapshot (adulteração ou edição
  * invalida) e, se informado, revisão/hashes/CNPJ esperados batem (aprovação de outra revisão ou de outro CNPJ não vale).
  */
 export function motivoAprovacaoInvalida(c: CadastroAprovavel, agora: Date, esperado: AprovacaoEsperada = {}): string | null {
@@ -224,7 +228,10 @@ export function motivoAprovacaoInvalida(c: CadastroAprovavel, agora: Date, esper
   if (c.aprovacaoExpiraEm.getTime() <= agora.getTime()) return 'APROVACAO_EXPIRADA';
   if (!c.snapshot || !c.snapshotHash || !c.pedidoHash) return 'SEM_SNAPSHOT';
   if (c.snapshot.cnpj !== c.cnpj) return 'CNPJ_DIFERENTE';
+  // A aprovação é por empresa: snapshot de outra empresa (ou esperada outra) nunca vale.
+  if (c.snapshot.empresaCnpj !== c.empresaCnpj) return 'EMPRESA_DIFERENTE';
   if (hashSnapshot(c.snapshot) !== c.snapshotHash) return 'SNAPSHOT_ALTERADO';
+  if (esperado.empresaCnpj !== undefined && esperado.empresaCnpj !== c.empresaCnpj) return 'EMPRESA_DIFERENTE';
   if (esperado.cnpj !== undefined && esperado.cnpj !== c.cnpj) return 'CNPJ_DIFERENTE';
   if (esperado.revisao !== undefined && esperado.revisao !== c.revisao) return 'REVISAO_DIFERENTE';
   if (esperado.snapshotHash !== undefined && esperado.snapshotHash !== c.snapshotHash) return 'SNAPSHOT_HASH_DIFERENTE';
