@@ -35,6 +35,7 @@ import type { Pedido } from '../lib/faturamento/types';
 import { MultiSelectFilter } from '../components/tasks/MultiSelectFilter';
 import { QueryError } from '../components/QueryError';
 import { FILTER_ALL, FILTER_ME, FILTER_NONE, applyAssigneeFilter, assignableNames, buildMyIdentity, otherAttendantNames } from '../lib/myTasks';
+import { foldText, searchTerms } from '../../../shared/searchText';
 import { FilterPanel, FilterSection } from '../components/tasks/FilterPanel';
 import { extractLocation, type TaskLocation } from '../lib/tasks/location';
 import { phoneOfTask } from '../../../shared/phone';
@@ -734,6 +735,18 @@ export default function Tasks() {
     if (kept.length !== filterCities.length) setFilterCities(kept);
   }, [cityOptions, filterCities]);
 
+  // Observações: o servidor procura (sem acento) e devolve os ids por termo; a lista local não tem `notes`.
+  const searchTermsList = useMemo(() => searchTerms(deferredSearch).filter(t => t.length >= 2), [deferredSearch]);
+  const { data: notesSearch } = trpc.tasks.searchNotes.useQuery(
+    { terms: searchTermsList },
+    { enabled: searchTermsList.length > 0, staleTime: 60_000, placeholderData: (prev) => prev },
+  );
+  const notesHits = useMemo(() => {
+    const m: Record<string, Set<number>> = {};
+    for (const [term, ids] of Object.entries(notesSearch ?? {})) m[term] = new Set(ids);
+    return m;
+  }, [notesSearch]);
+
   const filteredTasks = useMemo(() => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -800,19 +813,20 @@ export default function Tasks() {
       result = result.filter(t => t.hotLead);
     }
     if (deferredSearch.trim()) {
-      // Busca por todos os termos (E): "laticinios chapada" acha a linha que
-      // tem as duas palavras, em qualquer ordem e em qualquer um dos campos.
-      // Também varre CNPJ/telefone/e-mail, que antes ficavam de fora.
-      const terms = deferredSearch.toLowerCase().split(/\s+/).filter(Boolean);
+      // Busca por todos os termos (E): "laticinios chapada" acha a linha que tem as duas palavras, em qualquer
+      // ordem e em qualquer campo. Sem acento e sem diferença de maiúsculas ("Laticínio" = "laticinio").
+      // Também varre CNPJ/telefone/e-mail. As observações vêm do servidor (a lista não as traz).
+      const terms = searchTerms(deferredSearch);
       result = result.filter(t => {
         const loc = locationByTaskId.get(t.id);
-        const haystack = [
+        const haystack = foldText([
           t.title, t.notes, t.assignedTo, t.email, t.cnpj, t.phone,
           t.description, loc?.city, loc?.state, ...(t.tags ?? []),
-        ].filter(Boolean).join(' ').toLowerCase();
+        ].filter(Boolean).join(' '));
         const digits = haystack.replace(/\D/g, '');
         return terms.every(term => {
           if (haystack.includes(term)) return true;
+          if (notesHits[term]?.has(t.id)) return true;
           // Termo só de dígitos casa com CNPJ/telefone mesmo formatado
           const termDigits = term.replace(/\D/g, '');
           return termDigits.length >= 3 && digits.includes(termDigits);
@@ -838,7 +852,7 @@ export default function Tasks() {
       if (aOverdue && bOverdue) return bDate! - aDate!;
       return 0;
     });
-  }, [tasks, me, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTags, tagMatchMode, filterStates, filterCities, locationByTaskId, filterHot, reminderTab, isAdmin, deferredSearch]);
+  }, [tasks, me, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTags, tagMatchMode, filterStates, filterCities, locationByTaskId, filterHot, reminderTab, isAdmin, deferredSearch, notesHits]);
 
   const clearAllFilters = useCallback(() => {
     setFilterStatus("all");

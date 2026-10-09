@@ -6,6 +6,7 @@ import { db } from '../db';
 import { tasks, sellers, users, taskDeletionLogs } from '../db/schema';
 import { runTriggerNow, cancelAllEnrollments } from '../email/automations';
 import { normalizeBrPhone, phoneOfTask } from '../../shared/phone';
+import { searchTerms, SQL_ACENTOS, SQL_SEM_ACENTOS } from '../../shared/searchText';
 import { isNewContact } from '../lib/taskNotes';
 import { matchAssignee, ehDuplicada, lembreteEscalonado, executarComOrcamento } from '../lib/taskImport';
 
@@ -86,6 +87,25 @@ const listColumns = {
 };
 
 export const tasksRouter = router({
+  // Busca nas observações (a lista não traz `notes`: até 5.000 caracteres por tarefa). Sem acento e sem
+  // diferença de maiúsculas; devolve, para cada termo, os ids das tarefas DO USUÁRIO cujas observações o contêm.
+  searchNotes: protectedProcedure
+    .input(z.object({ terms: z.array(z.string().min(1).max(60)).min(1).max(6) }))
+    .query(async ({ ctx, input }) => {
+      const terms = searchTerms(input.terms.join(' '), 6).filter((t) => t.length >= 2);
+      if (terms.length === 0) return {} as Record<string, number[]>;
+      const owner = ctx.user.role === 'admin' ? undefined : await userTaskFilter(ctx.user.id, ctx.user.name ?? '');
+      const out: Record<string, number[]> = {};
+      await Promise.all(terms.map(async (term) => {
+        const folded = sql`lower(translate(coalesce(${tasks.notes}, ''), ${SQL_ACENTOS}, ${SQL_SEM_ACENTOS}))`;
+        const match = sql`position(${term} in ${folded}) > 0`;
+        const rows = await db.select({ id: tasks.id }).from(tasks)
+          .where(owner ? and(owner, match) : match).limit(3000);
+        out[term] = rows.map((r) => r.id);
+      }));
+      return out;
+    }),
+
   list: protectedProcedure.query(async ({ ctx }) => {
     if (ctx.user.role === 'admin') {
       return db.select(listColumns).from(tasks).orderBy(tasks.createdAt);

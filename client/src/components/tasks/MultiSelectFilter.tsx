@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Check, ChevronDown, X, Search } from 'lucide-react';
 import { Button } from '../ui/button';
+import { foldText } from '../../../../shared/searchText';
 
 export interface MultiSelectOption {
   value: string;
@@ -66,8 +67,8 @@ export function MultiSelectFilter({
 
   const visible = useMemo(() => {
     if (!query.trim()) return options;
-    const q = query.toLowerCase();
-    return options.filter((o) => o.label.toLowerCase().includes(q));
+    const q = foldText(query);
+    return options.filter((o) => foldText(o.label).includes(q));
   }, [options, query]);
 
   const toggle = (value: string) => {
