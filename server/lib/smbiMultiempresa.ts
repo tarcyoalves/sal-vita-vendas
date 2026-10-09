@@ -7,7 +7,7 @@
 // rejeitado ANTES de qualquer escrita, sem limpar o token atual.
 import crypto from 'crypto';
 import type { FatOrder } from '../db/schema';
-import { condicaoPorTexto } from '../../shared/smbiCondicoes';
+import { codigoCondicaoDaEmpresa } from '../../shared/smbiCondicoes';
 import { empresaPorCnpj, type SmbiEmpresa } from '../../shared/smbiEmpresas';
 import { canonico } from './smbiCadastro';
 import { safeEqual } from './safeEqual';
@@ -44,7 +44,7 @@ export function hashSolicitacao(p: PedidoParaSolicitacao, empresaCnpj: string): 
       valorUnitario: i.valorUnitario, isentoFrete: i.isentoFrete ?? false,
     }))
     .sort((a, b) => (canonico(a) < canonico(b) ? -1 : canonico(a) > canonico(b) ? 1 : 0));
-  const prazo = (texto: string, cod: string | null) => ({ texto, cod: cod ?? condicaoPorTexto(texto)?.cod ?? null });
+  const prazo = (texto: string, cod: string | null) => ({ texto, cod: codigoCondicaoDaEmpresa(cod, texto, empresaCnpj) });
   return crypto.createHash('sha256').update(canonico({
     v: 2,
     empresaCnpj,

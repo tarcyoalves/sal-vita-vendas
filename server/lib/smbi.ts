@@ -10,7 +10,7 @@
 import crypto from 'crypto';
 import { z } from 'zod';
 import type { FatOrder } from '../db/schema';
-import { condicaoPorTexto } from '../../shared/smbiCondicoes';
+import { codigoCondicaoDaEmpresa } from '../../shared/smbiCondicoes';
 import { SMBI_ESTADOS, SMBI_ESTADOS_QUE_PARAM, SMBI_MOTIVO_CODIGOS, SMBI_ROBO_SEM_SINAL_MIN } from '../../shared/smbiEstados';
 
 // ── Autenticação (Bearer SMBI_SYNC_SECRET) ───────────────────────────────────
@@ -102,8 +102,8 @@ export function mapOrderToSmbiPayload(row: FatOrder, opcoes: { multiempresa?: bo
     prazoPagamentoFrete: row.prazoPagamentoFrete,
     // Pedido antigo (prazo digitado à mão) tem a coluna vazia: deriva do texto quando ele
     // corresponde com certeza a uma condição do catálogo; senão continua null e o robô pula.
-    smbiCondpagSalCod: row.smbiCondpagSalCod ?? condicaoPorTexto(row.prazoPagamentoSal)?.cod ?? null,
-    smbiCondpagFreteCod: row.smbiCondpagFreteCod ?? condicaoPorTexto(row.prazoPagamentoFrete)?.cod ?? null,
+    smbiCondpagSalCod: codigoCondicaoDaEmpresa(row.smbiCondpagSalCod, row.prazoPagamentoSal, opcoes.multiempresa ? row.smbiEmpresaCnpj : null),
+    smbiCondpagFreteCod: codigoCondicaoDaEmpresa(row.smbiCondpagFreteCod, row.prazoPagamentoFrete, opcoes.multiempresa ? row.smbiEmpresaCnpj : null),
     valorFretePorUnidade: row.valorFretePorUnidade,
     observacoes: row.observacoes,
     previsaoFaturamentoEm: row.previsaoFaturamentoEm,

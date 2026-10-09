@@ -58,3 +58,25 @@ export function condicaoPorTexto(texto: string | null | undefined): SmbiCondicao
   if (!alvo) return null;
   return SMBI_CONDICOES_PAGAMENTO.find((c) => normalizarPrazo(c.descricao) === alvo) ?? null;
 }
+
+// ── Códigos por empresa ──────────────────────────────────────────────────────
+// O catálogo acima usa os códigos da A S Comércio. A C Alves tem outra tabela de prazos (mapa do Hermes,
+// 09/10/2026, só leitura). Aqui entram SÓ os prazos limpos confirmados; "FT x%" (com fator) NÃO entra.
+// Prazo sem código na empresa fica null: o robô devolve pendência e nada é digitado.
+// "À vista", 15, 20, 30/60/90, 40/60 e 15/25 dias só existem com fator na C Alves: criar o prazo limpo no SMBI
+// e informar o código antes de acrescentar aqui.
+const CNPJ_C_ALVES = '49748258000160';
+const CONDICOES_C_ALVES: Record<string, string> = {
+  '30': '187', '30/45': '202', '30/60': '185', '30/45/60': '203', '45': '186', '60': '254', '20/40/60': '249',
+};
+
+/**
+ * Código do prazo na empresa. `cod` e `texto` são os do pedido (códigos da A S). Sem empresa ou na A S devolve
+ * o código de sempre; na C Alves traduz pelo prazo (nunca reaproveita o número da A S).
+ */
+export function codigoCondicaoDaEmpresa(cod: string | null | undefined, texto: string | null | undefined, empresaCnpj: string | null | undefined): string | null {
+  const daAS = cod ?? condicaoPorTexto(texto)?.cod ?? null;
+  if (empresaCnpj !== CNPJ_C_ALVES) return daAS;
+  const prazo = daAS ? normalizarPrazo(SMBI_CONDICOES_PAGAMENTO.find((c) => c.cod === daAS)?.descricao) : normalizarPrazo(texto);
+  return CONDICOES_C_ALVES[prazo] ?? null;
+}

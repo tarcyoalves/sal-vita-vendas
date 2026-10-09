@@ -104,3 +104,21 @@ describe('payload do robô: prova do clique', () => {
     expect(p.smbiSolicitadoPor).toBe('Tarcyo');
   });
 });
+
+import { codigoCondicaoDaEmpresa } from '../shared/smbiCondicoes';
+describe('códigos por empresa', () => {
+  const AS = '51422900000168', CA = '49748258000160';
+  it('A S e sem empresa mantêm o código de sempre', () => {
+    expect(codigoCondicaoDaEmpresa('2', '30 DIAS', AS)).toBe('2');
+    expect(codigoCondicaoDaEmpresa(null, '30/60', null)).toBe('3');
+  });
+  it('C Alves traduz pelo prazo, não pelo número', () => {
+    expect(codigoCondicaoDaEmpresa('2', '30 DIAS', CA)).toBe('187');
+    expect(codigoCondicaoDaEmpresa(null, '30/45/60 dias', CA)).toBe('203');
+    expect(codigoCondicaoDaEmpresa('100', '', CA)).toBe('249');
+  });
+  it('prazo sem código limpo na C Alves vira null', () => {
+    expect(codigoCondicaoDaEmpresa('1', 'A VISTA', CA)).toBeNull();
+    expect(codigoCondicaoDaEmpresa('46', '30/60/90', CA)).toBeNull();
+  });
+});
