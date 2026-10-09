@@ -19,6 +19,10 @@ export const SMBI_MOTIVO_CODIGOS = [
   'PRECO_INVALIDO',
   'CRIACAO_FALHOU',
   'DIVERGENTE_APOS_CRIAR',
+  // Contrato v2 (multiempresa).
+  'EMPRESA_NAO_HOMOLOGADA',
+  'EMPRESA_DIVERGENTE',
+  'SOLICITACAO_OBSOLETA',
 ] as const;
 export type SmbiMotivoCodigo = (typeof SMBI_MOTIVO_CODIGOS)[number];
 
@@ -31,6 +35,9 @@ export const SMBI_MOTIVO_ROTULO: Record<SmbiMotivoCodigo, string> = {
   PRECO_INVALIDO: 'Preço, quantidade ou frete inválido — confira os valores do pedido.',
   CRIACAO_FALHOU: 'O SMBI recusou ou falhou ao criar — o robô tentará de novo se você enviar outra vez.',
   DIVERGENTE_APOS_CRIAR: 'O pedido foi criado no SMBI, mas não confere com o CRM — confira os dois antes de seguir.',
+  EMPRESA_NAO_HOMOLOGADA: 'A empresa escolhida ainda não está habilitada no robô — aguarde a homologação ou use a outra empresa (se a empresa ainda não estiver travada).',
+  EMPRESA_DIVERGENTE: 'A empresa lida no SMBI não é a escolhida neste pedido — nada foi criado; confira o SMBI antes de reenviar.',
+  SOLICITACAO_OBSOLETA: 'O pedido foi editado ou reenviado depois deste envio — o resultado antigo foi descartado; envie de novo se ainda for o caso.',
 };
 
 /** Sem batimento do robô por mais que isto, a tela avisa (contrato, rota 8). */

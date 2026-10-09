@@ -1,6 +1,7 @@
 import { toast } from 'sonner';
 import { Bot, AlertTriangle } from 'lucide-react';
 import { Button } from '../ui/button';
+import { Switch } from '../ui/switch';
 import { StatusBadge } from '../StatusBadge';
 import { trpc } from '../../lib/trpc';
 import { useAuth } from '../../_core/hooks/useAuth';
@@ -40,6 +41,14 @@ export default function SmbiRoboPanel() {
     onError: (e) => toast.error(e.message),
   });
 
+  const setMulti = trpc.faturamento.setMultiempresaAtivo.useMutation({
+    onSuccess: (r) => {
+      toast.success(r.multiempresaAtivo ? 'Envio com escolha de empresa LIGADO.' : 'Envio com escolha de empresa desligado.');
+      void utils.faturamento.smbiRoboStatus.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const { confirm, confirmDialog } = useConfirm();
   const { pedidos } = useFatStore();
 
@@ -57,6 +66,17 @@ export default function SmbiRoboPanel() {
       { title: ligar ? 'LIGAR o robô do SMBI?' : 'Desligar o robô do SMBI?', confirmLabel: ligar ? 'Ligar' : 'Desligar' },
     );
     if (ok) setAtivo.mutate({ ativo: ligar });
+  };
+
+  // Nunca liga sozinho: sempre pede confirmação e só o admin vê o switch. Desligar volta ao fluxo antigo.
+  const alternarMulti = async (ligar: boolean) => {
+    const ok = await confirm(
+      ligar
+        ? 'Ligar o envio com escolha de empresa? O robô precisa estar com o protocolo v2 instalado; do contrário os pedidos ficam aguardando.'
+        : 'Desligar o envio com escolha de empresa? O botão volta ao fluxo antigo (sem escolher empresa). Pedidos que já têm empresa deixam de sair na fila do robô.',
+      { title: ligar ? 'Ligar o envio com escolha de empresa?' : 'Desligar o envio com escolha de empresa?', confirmLabel: ligar ? 'Ligar' : 'Desligar' },
+    );
+    if (ok) setMulti.mutate({ ativo: ligar });
   };
 
   return (
@@ -94,6 +114,24 @@ export default function SmbiRoboPanel() {
             {data.roboAtivo ? 'Desligar robô' : 'Ligar robô'}
           </Button>
         )}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
+        <span className="font-semibold text-slate-700">Envio com escolha de empresa:</span>
+        <StatusBadge tone={data.multiempresaAtivo ? 'success' : 'neutral'} dot>
+          {data.multiempresaAtivo ? 'Ligado' : 'Desligado'}
+        </StatusBadge>
+        {isAdmin && (
+          <label className="ml-auto flex min-h-10 cursor-pointer items-center gap-2">
+            <Switch
+              checked={data.multiempresaAtivo}
+              disabled={setMulti.isPending}
+              onCheckedChange={(v) => void alternarMulti(v)}
+              aria-label="Envio com escolha de empresa"
+            />
+            <span>{data.multiempresaAtivo ? 'Desligar' : 'Ligar'}</span>
+          </label>
+        )}
+        {!data.multiempresaAtivo && <p className="basis-full text-slate-500">Desligado: o botão "Enviar pedido para SMBI" funciona como sempre, sem escolher a empresa.</p>}
       </div>
       <div className="mt-2 text-xs text-slate-600">
         <span className="font-semibold text-slate-700">Pendências armazenadas (pedidos parados): </span>

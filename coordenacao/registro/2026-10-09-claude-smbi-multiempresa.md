@@ -7,3 +7,6 @@
 - **Frontend (depois):** components/faturamento/{SmbiEmpresaEnvioDialog (novo),SmbiPedidoControles,BillingReport,SmbiCadastroClienteDialog}.tsx, lib/faturamento/{store,types}.ts
 - Interruptor `multiempresa_ativo` DESLIGADO por padrão (fluxo atual intacto). C Alves só habilita após o mapa de códigos aprovado.
 - Nada na VPS é editado aqui.
+
+## Concluído
+Backend 0c9650e; tela publicada em seguida (diálogo de empresa, interruptor, selo, vínculo e cadastro por empresa). Interruptor desligado por padrão. Não testado em navegador.

@@ -91,6 +91,13 @@ export interface Pedido {
   smbiVinculoPor?: string | null;
   smbiVinculoEm?: string | null;
   smbiVinculoResultado?: SmbiVinculoResultado | null;
+  // Envio com escolha de empresa (multiempresa) — SOMENTE LEITURA: vêm do servidor e o upsert do
+  // formulário nunca os envia (ver semCamposEmpresa em smbiEmpresaUi.ts). Pedido legado: tudo null.
+  smbiEmpresaCnpj?: string | null;
+  smbiSolicitacaoId?: string | null;
+  smbiEmpresaTravadaEm?: string | null;
+  smbiEscritaIniciadaEm?: string | null;
+  smbiEmpresaOrigem?: string | null;
   createdByUserId?: number | null;
   createdByRole: string | null;
 }

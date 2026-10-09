@@ -11,6 +11,11 @@ import { useAuth } from '../../_core/hooks/useAuth';
 import { trpc } from '../../lib/trpc';
 import { formatCnpj } from '../../../../shared/radar.js';
 import type { Pedido } from '../../lib/faturamento/types';
+import {
+  AVISO_CADASTRO_POR_EMPRESA, cadastroExigeEscolha, empresaDoPedido, opcoesEmpresa, tituloCadastroEmpresa,
+} from '../../lib/faturamento/smbiEmpresaUi';
+import { empresaPorCnpj } from '../../../../shared/smbiEmpresas.js';
+import { EmpresaOpcoes } from './SmbiEmpresaEnvioDialog';
 import type { CadastroOrigem } from '../../../../shared/smbiCadastro.js';
 import {
   CAMPOS_CONTATO_FORM, ORIGEM_ROTULO, TEXTO_APROVACAO, estadoUi, formatarFaltantes, linhasPrevia, listarDivergencias,
@@ -39,8 +44,14 @@ export default function SmbiCadastroClienteDialog({
   const utils = trpc.useUtils();
   const { confirm, confirmDialog } = useConfirm();
 
+  // Empresa do cadastro: a do pedido (definida) ou, com o envio por empresa ligado e pedido sem empresa, a escolhida aqui.
+  const [empresaEscolhida, setEmpresaEscolhida] = useState<string | null>(null);
+  useEffect(() => { if (open) setEmpresaEscolhida(null); }, [open, pedido.id]);
+  const empresaCnpj = empresaDoPedido(pedido)?.cnpj ?? empresaEscolhida ?? undefined;
+  const empresa = empresaPorCnpj(empresaCnpj);
+
   const status = trpc.faturamento.cadastroSmbiStatus.useQuery(
-    { pedidoId: pedido.id },
+    { pedidoId: pedido.id, ...(empresaCnpj ? { empresaCnpj } : {}) },
     { enabled: open, refetchInterval: open ? 15_000 : false },
   );
   const cadastro = status.data?.cadastro ?? null;
@@ -94,7 +105,11 @@ export default function SmbiCadastroClienteDialog({
     return (typeof s === 'string' && s) || (typeof k === 'string' && k) || '';
   };
 
-  const preparar = () => solicitar.mutate({ pedidoId: pedido.id });
+  const exigeEscolha = cadastroExigeEscolha(pedido, gates?.multiempresaAtivo) && !empresaCnpj;
+  const preparar = () => {
+    if (exigeEscolha) { toast.error('Escolha a empresa do cadastro primeiro.'); return; }
+    solicitar.mutate({ pedidoId: pedido.id, ...(empresaCnpj ? { empresaCnpj } : {}) });
+  };
 
   const salvarContatos = async () => {
     if (!cadastro) return;
@@ -163,7 +178,7 @@ export default function SmbiCadastroClienteDialog({
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         {confirmDialog}
         <DialogHeader>
-          <DialogTitle>Cadastro assistido no SMBI</DialogTitle>
+          <DialogTitle>Cadastro assistido no SMBI{tituloCadastroEmpresa(empresaCnpj) ? ` — ${tituloCadastroEmpresa(empresaCnpj)}` : ''}</DialogTitle>
           <DialogDescription>
             {pedido.razaoSocial || pedido.clienteNome} · CNPJ {pedido.cnpj ? formatCnpj(pedido.cnpj) : '—'}. Esta tela não grava nada no SMBI: quem grava é o robô, depois da aprovação do administrador.
           </DialogDescription>
@@ -193,11 +208,23 @@ export default function SmbiCadastroClienteDialog({
           </div>
         )}
 
+        {(empresa || gates?.multiempresaAtivo) && (
+          <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+            {AVISO_CADASTRO_POR_EMPRESA}
+          </p>
+        )}
+
         {status.data && !cadastro && (
           <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            <p className="font-semibold">Ainda não há cadastro preparado para este CNPJ.</p>
+            <p className="font-semibold">Ainda não há cadastro preparado para este CNPJ{empresa ? ` na ${empresa.curto}` : ''}.</p>
             <p className="mt-0.5 text-xs">Preparar pede ao robô uma prévia somente de leitura. Nada é cadastrado.</p>
-            <Button size="sm" className="mt-2 h-10" disabled={ocupado} onClick={preparar}>Preparar cadastro</Button>
+            {exigeEscolha && (
+              <div className="mt-2 text-slate-900">
+                <p className="mb-1 text-xs font-semibold">Em qual empresa o cliente será cadastrado?</p>
+                <EmpresaOpcoes opcoes={opcoesEmpresa(pedido, { exigeHomologada: false })} valor={empresaEscolhida} onChange={setEmpresaEscolhida} disabled={ocupado} />
+              </div>
+            )}
+            <Button size="sm" className="mt-2 h-10" disabled={ocupado || exigeEscolha} onClick={preparar}>Preparar cadastro</Button>
           </div>
         )}
 

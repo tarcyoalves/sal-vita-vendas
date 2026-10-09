@@ -10,6 +10,9 @@ export const SMBI_MOTIVO_CURTO: Record<SmbiMotivoCodigo, string> = {
   PRECO_INVALIDO: 'Preço inválido',
   CRIACAO_FALHOU: 'Criação falhou',
   DIVERGENTE_APOS_CRIAR: 'Divergente após criar',
+  EMPRESA_NAO_HOMOLOGADA: 'Empresa não habilitada',
+  EMPRESA_DIVERGENTE: 'Empresa divergente',
+  SOLICITACAO_OBSOLETA: 'Envio desatualizado',
 };
 
 export interface SeloPendencia { rotulo: string; tom: 'warning' | 'danger'; codigo: SmbiMotivoCodigo }

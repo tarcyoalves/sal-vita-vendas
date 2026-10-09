@@ -8,10 +8,15 @@ import { useAuth } from '../../_core/hooks/useAuth';
 import { useConfirm } from '../useConfirm';
 import { PromptDialog } from '../PromptDialog';
 import SmbiCadastroClienteDialog from './SmbiCadastroClienteDialog';
+import SmbiEmpresaEnvioDialog, { EmpresaOpcoes } from './SmbiEmpresaEnvioDialog';
 import { trpc } from '../../lib/trpc';
 import { formatBRL } from '../../lib/faturamento/calc';
 import { clienteNaoCadastrado, textoPedidoCadastroHermes } from '../../lib/faturamento/smbiPendencia';
 import { formatCnpj } from '../../../../shared/radar.js';
+import {
+  abreDialogoDeEmpresa, andamentoEmpresa, bloqueioDeEnvio, empresaDoPedido, empresaTravada,
+  escritaIniciadaSemMovsai, opcoesEmpresa, rotuloEmpresa, textoBotaoEnvio, vinculoExigeEscolha,
+} from '../../lib/faturamento/smbiEmpresaUi';
 import type { Pedido } from '../../lib/faturamento/types';
 import {
   SMBI_ESTADO_ROTULO, SMBI_MOTIVO_ROTULO, SMBI_VINCULO_ROTULO, SMBI_EVENTO_ROTULO,
@@ -58,12 +63,22 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
   const { confirm, confirmDialog } = useConfirm();
   // Janela de texto (vincular / motivo do desvínculo), no lugar do window.prompt.
   const [cadastroAberto, setCadastroAberto] = useState(false);
+  const [empresaEnvioAberto, setEmpresaEnvioAberto] = useState(false);
+  const [empresaVinculo, setEmpresaVinculo] = useState<string | null>(null);
   const [textoPara, setTextoPara] = useState<'vincular' | 'desvincular' | null>(null);
 
   const roboProcessando = !!pedido.smbiReservadoAte && pedido.smbiReservadoAte > new Date().toISOString();
   const solicitado = !!pedido.smbiSolicitadoEm;
   const temVinculo = !!pedido.smbiMovsaiId || !!pedido.smbiVinculoEstado;
   const vinculo = pedido.smbiVinculoEstado as SmbiVinculoEstado | null | undefined;
+
+  // Interruptor "Envio com escolha de empresa" (só equipe; o servidor é quem decide de verdade).
+  const roboStatus = trpc.faturamento.smbiRoboStatus.useQuery(undefined, { enabled: canApprove, staleTime: 30_000 });
+  const multiempresaAtivo = roboStatus.data?.multiempresaAtivo;
+  const empresa = empresaDoPedido(pedido);
+  const andamento = andamentoEmpresa(pedido);
+  const bloqueioEnvio = bloqueioDeEnvio(pedido, multiempresaAtivo);
+  const riscoEscrita = escritaIniciadaSemMovsai(pedido);
 
   const { data: eventos = [] } = trpc.faturamento.smbiEventos.useQuery(
     { pedidoId: pedido.id },
@@ -83,6 +98,11 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
   };
 
   const enviar = async () => {
+    // Interruptor ligado: a empresa é escolhida no diálogo, que chama o servidor com { id, empresaCnpj }.
+    if (abreDialogoDeEmpresa(multiempresaAtivo)) {
+      setEmpresaEnvioAberto(true);
+      return;
+    }
     const confirmou = await confirm(
       `${pedido.clienteNome}\n\n` +
         'Se ele já existe no SMBI (por exemplo, já foi embarcado), cancele e use "Vincular a pedido do SMBI".',
@@ -98,9 +118,14 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
 
   const atualVinculo = pedido.smbiVinculoMovsais?.join(', ') ?? pedido.smbiMovsaiId ?? '';
 
+  const exigeEmpresaNoVinculo = vinculoExigeEscolha(pedido, multiempresaAtivo);
   const vincular = (n: string) => {
+    if (exigeEmpresaNoVinculo && !empresaVinculo) { toast.error('Escolha a empresa onde o pedido existe no SMBI.'); return; }
     setTextoPara(null);
-    void executar(() => actions.pedidos.vincularSmbi(pedido.id, n), 'Pedido vinculado. O robô vai conferir no SMBI.');
+    void executar(
+      () => actions.pedidos.vincularSmbi(pedido.id, n, exigeEmpresaNoVinculo ? (empresaVinculo ?? undefined) : undefined),
+      'Pedido vinculado. O robô vai conferir no SMBI.',
+    );
   };
 
   const desvincular = (motivo: string) => {
@@ -124,6 +149,21 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
       <PromptDialog
         open={textoPara === 'vincular'}
         onOpenChange={(o) => { if (!o) setTextoPara(null); }}
+        extra={
+          empresa ? (
+            <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+              <span className="font-semibold">Empresa do pedido: {empresa.nome}</span>
+              {empresaTravada(pedido) ? ' — travada.' : '.'} Esta empresa não muda com o vínculo.
+            </p>
+          ) : exigeEmpresaNoVinculo ? (
+            <div>
+              <p className="mb-1 text-sm font-medium text-slate-700">Em qual empresa este pedido existe no SMBI?</p>
+              <EmpresaOpcoes opcoes={opcoesEmpresa(pedido, { exigeHomologada: false })} valor={empresaVinculo} onChange={setEmpresaVinculo} />
+              <p className="mt-1 text-xs text-amber-800">Atenção: vincular trava a empresa deste pedido. Depois não dá para trocar.</p>
+            </div>
+          ) : null
+        }
+        submitDisabled={exigeEmpresaNoVinculo && !empresaVinculo}
         title={temVinculo ? 'Trocar vínculo do SMBI' : 'Vincular a pedido do SMBI'}
         description={
           temVinculo
@@ -145,17 +185,20 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
         confirmLabel="Desvincular"
         onSubmit={desvincular}
       />
+      {canApprove && (
+        <SmbiEmpresaEnvioDialog pedido={pedido} open={empresaEnvioAberto} onOpenChange={setEmpresaEnvioAberto} />
+      )}
       {/* ENVIAR: só pedido aprovado, não faturado, sem vínculo. Pedido faturado nunca é enviado. */}
-      {canApprove && pedido.aprovadoEm && !pedido.smbiMovsaiId && !isFaturado && !vinculo && (
+      {canApprove && pedido.aprovadoEm && !pedido.smbiMovsaiId && !isFaturado && !vinculo && !bloqueioEnvio && (
         <Button
           size="sm"
           variant="outline"
-          disabled={ocupado || roboProcessando}
+          disabled={ocupado || roboProcessando || roboStatus.isLoading}
           className="gap-1.5"
           onClick={() => void enviar()}
         >
           <Send size={14} />
-          {solicitado ? 'Reenviar ao SMBI' : 'Enviar pedido para SMBI'}
+          {textoBotaoEnvio(pedido)}
         </Button>
       )}
       {canApprove && solicitado && !pedido.smbiMovsaiId && !roboProcessando && (
@@ -163,8 +206,13 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
           Cancelar envio
         </Button>
       )}
+      {canApprove && !pedido.smbiMovsaiId && !isFaturado && !vinculo && bloqueioEnvio && (
+        <div role={riscoEscrita ? 'alert' : undefined} className={`basis-full rounded-md border px-3 py-2 text-xs ${riscoEscrita ? 'border-red-300 bg-red-50 font-medium text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+          {bloqueioEnvio}
+        </div>
+      )}
       {isAdmin && (
-        <Button size="sm" variant="outline" disabled={ocupado} onClick={() => setTextoPara('vincular')}>
+        <Button size="sm" variant="outline" disabled={ocupado} onClick={() => { setEmpresaVinculo(null); setTextoPara('vincular'); }}>
           {temVinculo ? 'Trocar vínculo do SMBI' : 'Vincular a pedido do SMBI'}
         </Button>
       )}
@@ -238,6 +286,16 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
           {roboProcessando ? 'O robô está criando este pedido agora…' : `Solicitado em ${quando(pedido.smbiSolicitadoEm)}${pedido.smbiSolicitadoPor ? ` por ${pedido.smbiSolicitadoPor}` : ''} — aguardando o robô criar no SMBI`}
         </span>
       )}
+
+      {pedido.smbiEmpresaCnpj && (
+        <StatusBadge tone="info">
+          Empresa: {rotuloEmpresa(pedido)}{empresaTravada(pedido) ? ' · Empresa travada' : ''}
+        </StatusBadge>
+      )}
+      {!pedido.smbiEmpresaCnpj && (solicitado || !!pedido.smbiMovsaiId) && multiempresaAtivo && (
+        <span className="text-xs text-slate-500">{rotuloEmpresa(pedido)}</span>
+      )}
+      {andamento && <span className="text-xs text-slate-600">{andamento}</span>}
 
       {pedido.smbiMovsaiId && (
         <StatusBadge tone="success">

@@ -1,6 +1,7 @@
 import { AvisoMesSemPedidos } from "./AvisoMesSemPedidos";
 import { useState, useMemo } from "react";
 import { seloPendenciaSmbi } from "../../lib/faturamento/smbiPendencia";
+import { andamentoEmpresa, empresaParaCsv, rotuloEmpresa } from "../../lib/faturamento/smbiEmpresaUi";
 import { useFatStore } from "../../lib/faturamento/store";
 import { QueryError } from '../QueryError';
 import {
@@ -173,7 +174,7 @@ export default function BillingReport() {
 
   // CSV
   const handleExport = () => {
-    const headers = ["Tarefa", "CNPJ", "Razao Social", "Cidade", "UF", "Atendente", "Status", "Produtos", "Previsao Faturamento", "Faturado Em", "Valor Estimado", "Valor Faturado", "Pedido SMBI"];
+    const headers = ["Tarefa", "CNPJ", "Razao Social", "Cidade", "UF", "Atendente", "Status", "Produtos", "Previsao Faturamento", "Faturado Em", "Valor Estimado", "Valor Faturado", "Pedido SMBI", "Empresa SMBI"];
     const csvRows = filtered.map((p) => [
       p.taskId ? `#${p.taskId}` : "",
       p.cnpj,
@@ -188,6 +189,7 @@ export default function BillingReport() {
       estimatedTotal(p).toFixed(2).replace(".", ","),
       p.status === "faturado" ? totalPedido(p).toFixed(2).replace(".", ",") : "",
       vinculadoSmbi(p) ? (p.smbiVinculoMovsais?.join(" / ") ?? p.smbiMovsaiId ?? "") : "",
+      empresaParaCsv(p),
     ]);
     const dateStr = new Date().toISOString().slice(0, 10);
     exportCsv(`relatorio-faturamento-${dateStr}.csv`, headers, csvRows);
@@ -353,6 +355,12 @@ export default function BillingReport() {
                   {seloPendenciaSmbi(p) && !vinculadoSmbi(p) && (
                     <div><StatusBadge tone={seloPendenciaSmbi(p)!.tom}>{seloPendenciaSmbi(p)!.rotulo}</StatusBadge></div>
                   )}
+                  {p.smbiEmpresaCnpj && (
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
+                      <StatusBadge tone="info">{rotuloEmpresa(p)}</StatusBadge>
+                      <span className="min-w-0 break-words">{andamentoEmpresa(p)}</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between gap-2 text-sm">
                     <span className="tabular-nums text-slate-700">Estimado {formatBRL(estimatedTotal(p))}</span>
                     {p.status === "faturado"
@@ -427,6 +435,12 @@ export default function BillingReport() {
                           <StatusBadge tone={vinculadoSmbi(p) ? "success" : (seloPendenciaSmbi(p)?.tom ?? "neutral")}>
                             {vinculadoSmbi(p) ? `SMBI ${p.smbiMovsaiId ?? p.smbiVinculoMovsais?.[0] ?? ""}` : (seloPendenciaSmbi(p)?.rotulo ?? "Sem SMBI")}
                           </StatusBadge>
+                          {p.smbiEmpresaCnpj && (
+                            <>
+                              <StatusBadge tone="info">{rotuloEmpresa(p)}</StatusBadge>
+                              <span className="max-w-[160px] break-words text-[11px] leading-tight text-slate-600">{andamentoEmpresa(p)}</span>
+                            </>
+                          )}
                         </div>
                       </td>
                       <td className="px-3 py-3 text-right text-slate-700">{formatBRL(estimatedTotal(p))}</td>

@@ -15,6 +15,7 @@ import superjson from 'superjson';
 import { toast } from 'sonner';
 import type { AppRouter } from '../../../../server/routers';
 import type { Produto, Pedido, ComissaoMap, ItemPedido } from './types';
+import { semCamposEmpresa } from './smbiEmpresaUi';
 import { FAT_FOCUS_REFETCH_MS, FAT_MOUNT_REFETCH_MS, isStale } from '../refetchPolicy';
 
 const api = createTRPCClient<AppRouter>({
@@ -284,7 +285,9 @@ export const pedidos = {
   get(id: string): Pedido | null {
     return mirror.pedidos.find((p) => p.id === id) ?? null;
   },
-  upsert(input: Partial<Pedido> & { id?: string }): Pedido {
+  upsert(entrada: Partial<Pedido> & { id?: string }): Pedido {
+    // Campos de empresa/solicitação são só leitura: o espelho local mantém os do servidor e o payload não os leva.
+    const input = semCamposEmpresa(entrada);
     const existing = input.id ? mirror.pedidos.find((p) => p.id === input.id) : undefined;
     const result: Pedido = existing
       ? { ...existing, ...input, id: existing.id }
@@ -293,7 +296,7 @@ export const pedidos = {
       ? { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === result.id ? result : p)) }
       : { ...mirror, pedidos: [result, ...mirror.pedidos] };
     emit();
-    void track(api.faturamento.upsertPedido.mutate(result));
+    void track(api.faturamento.upsertPedido.mutate(semCamposEmpresa(result)));
     return result;
   },
   // Marca como faturado: congela o estimado atual e grava os itens reais.
@@ -314,7 +317,7 @@ export const pedidos = {
     };
     mirror = { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === id ? faturado : p)) };
     emit();
-    void track(api.faturamento.upsertPedido.mutate({ ...faturado, acao: 'faturar' }));
+    void track(api.faturamento.upsertPedido.mutate({ ...semCamposEmpresa(faturado), acao: 'faturar' }));
     return faturado;
   },
   // Desfaz o faturamento: volta o pedido para o pipeline como estimado.
@@ -341,7 +344,7 @@ export const pedidos = {
     };
     mirror = { ...mirror, pedidos: mirror.pedidos.map((p) => (p.id === id ? estimado : p)) };
     emit();
-    void track(api.faturamento.upsertPedido.mutate({ ...estimado, acao: 'desfazer' }));
+    void track(api.faturamento.upsertPedido.mutate({ ...semCamposEmpresa(estimado), acao: 'desfazer' }));
     return estimado;
   },
   remove(id: string, reason: string): void {
@@ -383,8 +386,9 @@ export const pedidos = {
   // Sem atualização otimista: o servidor valida (pedido faturado, robô processando agora, vínculo…)
   // e a tela só muda depois da resposta. Erro = a promessa rejeita; quem chama mostra a mensagem.
   // Solicitação manual de envio para o ERP SMBI (cria pedido NOVO lá).
-  async dispararSmbi(id: string): Promise<Pedido | null> {
-    return aplicarLinhaServidor(await api.faturamento.dispararSmbi.mutate({ id }));
+  // `empresaCnpj` só com o envio com escolha de empresa ligado; sem ele o corpo é exatamente { id } (fluxo antigo).
+  async dispararSmbi(id: string, empresaCnpj?: string): Promise<Pedido | null> {
+    return aplicarLinhaServidor(await api.faturamento.dispararSmbi.mutate(empresaCnpj ? { id, empresaCnpj } : { id }));
   },
   // Desfaz um clique por engano, antes de o robô pegar o pedido.
   async cancelarSmbi(id: string): Promise<Pedido | null> {
@@ -392,8 +396,9 @@ export const pedidos = {
   },
   // Admin: liga o pedido a movsai(s) que já existem no SMBI, ex. "1071" ou "1071, 1072" (o robô
   // nunca cria esse pedido e depois confere no SMBI).
-  async vincularSmbi(id: string, movsais: string): Promise<Pedido | null> {
-    return aplicarLinhaServidor(await api.faturamento.vincularSmbi.mutate({ id, movsais }));
+  // `empresaCnpj`: só quando o pedido ainda não tem empresa e o envio com escolha de empresa está ligado.
+  async vincularSmbi(id: string, movsais: string, empresaCnpj?: string): Promise<Pedido | null> {
+    return aplicarLinhaServidor(await api.faturamento.vincularSmbi.mutate(empresaCnpj ? { id, movsais, empresaCnpj } : { id, movsais }));
   },
   // Admin: desfaz um vínculo (auditado). O pedido só volta ao robô com novo clique.
   async desvincularSmbi(id: string, motivo: string): Promise<Pedido | null> {

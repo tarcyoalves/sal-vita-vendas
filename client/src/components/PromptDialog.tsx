@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -14,15 +15,18 @@ interface PromptDialogProps {
   /** Mínimo de caracteres (sem espaços nas pontas) para liberar o botão. */
   minLength?: number;
   onSubmit: (value: string) => void;
+  /** Conteúdo extra abaixo do campo (ex.: escolha de empresa) e trava do botão enquanto ele estiver incompleto. */
+  extra?: ReactNode;
+  submitDisabled?: boolean;
 }
 
 // Substitui window.prompt (bloqueado/feio em PWA no iOS) quando a ação exige um texto, como o motivo.
 export function PromptDialog({
-  open, onOpenChange, title, description, label, initialValue = '', confirmLabel = 'Confirmar', minLength = 1, onSubmit,
+  open, onOpenChange, title, description, label, initialValue = '', confirmLabel = 'Confirmar', minLength = 1, onSubmit, extra, submitDisabled = false,
 }: PromptDialogProps) {
   const [value, setValue] = useState(initialValue);
   useEffect(() => { if (open) setValue(initialValue); }, [open, initialValue]);
-  const ok = value.trim().length >= minLength;
+  const ok = value.trim().length >= minLength && !submitDisabled;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -46,6 +50,7 @@ export function PromptDialog({
               <span className="text-xs font-normal text-slate-500">Mínimo de {minLength} caracteres.</span>
             )}
           </label>
+          {extra}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
             <Button type="submit" disabled={!ok}>{confirmLabel}</Button>
