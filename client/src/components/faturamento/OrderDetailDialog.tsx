@@ -30,7 +30,7 @@ interface OrderDetailDialogProps {
 
 // Delegado ao calc: uma data pura ('2026-09-01') lida com `new Date` viraria
 // 31/08 em fuso negativo, mostrando o mês errado justamente nos campos que
-// definem a competência da comissão.
+// definem a competência do prêmio.
 const fmtDate = formatDataBR;
 
 // Popup de gerenciamento do pedido — visão completa (admin), com atalhos para
@@ -312,7 +312,7 @@ export function OrderDetailDialog({
           {/* Totais */}
           <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-3">
             <span className="text-sm text-slate-700">
-              Comissão {pedido.comissaoPct}%: <strong className="font-semibold tabular-nums text-slate-900">{formatBRL(comissao)}</strong>
+              Prêmio {pedido.comissaoPct}%: <strong className="font-semibold tabular-nums text-slate-900">{formatBRL(comissao)}</strong>
               {notaPesoFaturado(pedido) && <span className="block text-xs font-normal text-slate-500">{notaPesoFaturado(pedido)}</span>}
             </span>
             <span className="text-base font-semibold tabular-nums text-slate-900">Total {formatBRL(total)}</span>

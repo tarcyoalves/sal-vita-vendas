@@ -176,8 +176,8 @@ export default function AttendantBilling() {
         <StatStrip>
           <Stat label="Total vendido" value={formatBRL(resumo.totalVendido)} />
           <Stat label="Total embarcado" value={formatBRL(resumo.totalEmbarcado)} />
-          <Stat label="Comissão prevista" value={formatBRL(resumo.comissaoPrevista)} />
-          <Stat label="Comissão embarcada" value={formatBRL(resumo.comissaoEmbarcada)} />
+          <Stat label="Prêmio previsto" value={formatBRL(resumo.comissaoPrevista)} />
+          <Stat label="Prêmio embarcado" value={formatBRL(resumo.comissaoEmbarcada)} />
         </StatStrip>
       )}
 
@@ -365,7 +365,7 @@ function PedidoCard({
           </p>
           {pedido.comissaoPct > 0 && (
             <p className="text-xs text-slate-500 tabular-nums">
-              Comissão {pedido.comissaoPct}%: {formatBRL(comissao)}
+              Prêmio {pedido.comissaoPct}%: {formatBRL(comissao)}
               {notaPesoFaturado(pedido) ? ` (${notaPesoFaturado(pedido)})` : ''}
             </p>
           )}

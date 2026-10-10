@@ -1,6 +1,6 @@
-// ── Faturamento & Comissão — cálculos puros ──────────────────────────────────
+// ── Faturamento & Prêmio — cálculos puros ──────────────────────────────────
 // Funções sem efeito colateral. TOTAL da linha = quantidade × valorUnitario.
-// PESO é informativo e não entra no preço. Comissão sempre sobre o total do pedido.
+// PESO é informativo e não entra no preço. Prêmio sempre sobre o total do pedido.
 
 import type { Pedido, ItemPedido, ResumoAtendente, ComissaoMap, FiltroMes } from './types';
 
@@ -28,7 +28,7 @@ export function pesoBrutoTotalItens(itens: ItemPedido[]): number {
 }
 
 // ── Quantidade faturada diferente da pedida ──────────────────────────────────
-// O vendedor fecha de um jeito e a carga sai com mais ou menos peso. Comissão, valor e peso
+// O vendedor fecha de um jeito e a carga sai com mais ou menos peso. Prêmio, valor e peso
 // "efetivos" de um pedido FATURADO seguem o peso realmente faturado (espelho fiscal do SMBI,
 // somado dos movsais), proporcionalmente ao pedido. Não altera o pedido nem a nota: é só a
 // conta. Se o pedido for editado para a quantidade faturada, o fator volta a 1 (sem dupla correção).
@@ -58,7 +58,7 @@ export function pesoEfetivoKg(pedido: Pedido): number {
   return faturado > 0 ? faturado : pesoTotalItens(pedido.itens);
 }
 
-/** Texto para a tela quando a comissão foi ajustada ao peso faturado; null se não houve ajuste. */
+/** Texto para a tela quando o prêmio foi ajustada ao peso faturado; null se não houve ajuste. */
 export function notaPesoFaturado(pedido: Pedido): string | null {
   const f = fatorPesoFaturado(pedido);
   if (f === 1) return null;
@@ -67,7 +67,7 @@ export function notaPesoFaturado(pedido: Pedido): string | null {
   return `ajustada ao peso faturado: ${t(pesoEfetivoKg(pedido))} t de ${t(pesoTotalItens(pedido.itens))} t do pedido`;
 }
 
-// Comissão por item: usa a % fixa do produto (snapshot em item.comissaoFixaPct)
+// Prêmio por item: usa a % fixa do produto (snapshot em item.comissaoFixaPct)
 // quando existir, senão cai na % do atendente congelada em pedido.comissaoPct.
 // Itens antigos (sem comissaoFixaPct) mantêm exatamente o comportamento anterior.
 export function comissaoPedido(pedido: PedidoParaPeso & Pick<Pedido, 'comissaoPct'>): number {
@@ -196,21 +196,21 @@ export function pedidoNoMes(pedido: Pedido, filtro: FiltroMes): boolean {
 }
 
 // ── Resumo de um atendente no mês ─────────────────────────────────────────────
-// Vendido/comissão prevista: pedidos cuja COMPETÊNCIA cai no mês (pipeline) —
+// Vendido/prêmio previsto: pedidos cuja COMPETÊNCIA cai no mês (pipeline) —
 // para estimados, o mês previsto de faturamento; nunca o mês da digitação.
-// Embarcado/comissão embarcada: pedidos faturados no mês (realizado).
+// Embarcado/prêmio embarcado: pedidos faturados no mês (realizado).
 //
 // Um pedido estimado com previsão em setembro sai do pipeline de agosto: ele
 // entra uma única vez, no mês em que vai faturar. Ao ser faturado, passa a
 // valer a data real do embarque, então ele nunca é contado em dois meses.
 //
-// IMPORTANTE: a comissão em R$ é sempre a SOMA de comissaoPedido() de cada
+// IMPORTANTE: o prêmio em R$ é sempre a SOMA de comissaoPedido() de cada
 // pedido — ou seja, usa a % que ficou congelada em pedido.comissaoPct no
 // momento da criação, nunca a % atual do atendente. Isso mantém o valor
 // idêntico ao que aparece no card/detalhe de cada pedido individualmente.
 // `comissaoPctAtual` só é usado para exibir a % vigente do atendente (rótulo);
 // não entra no cálculo monetário — trocar a % de alguém não pode alterar
-// retroativamente a comissão de pedidos já criados com a % antiga.
+// retroativamente o prêmio de pedidos já criados com a % antiga.
 export function resumoAtendente(
   todosPedidos: Pedido[],
   sellerId: number,

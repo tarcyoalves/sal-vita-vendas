@@ -84,8 +84,8 @@ export default function AdminBillingPanorama() {
           hint={`${(totals.pesoTotalKg / 1000).toFixed(1)} t no pipeline`}
         />
         <Stat label="Peso embarcado" value={formatTons(totals.pesoEmbarcadoKg)} hint="toneladas faturadas" />
-        <Stat label="Comissão prevista" value={formatBRL(totals.comissaoPrevista)} hint="sobre pipeline" />
-        <Stat label="Comissão a pagar" value={formatBRL(totals.comissaoEmbarcada)} hint="sobre embarcado" />
+        <Stat label="Prêmio previsto" value={formatBRL(totals.comissaoPrevista)} hint="sobre pipeline" />
+        <Stat label="Prêmio a pagar" value={formatBRL(totals.comissaoEmbarcada)} hint="sobre embarcado" />
       </StatStrip>
 
       {!hasData && fatError && !fatLoaded ? (

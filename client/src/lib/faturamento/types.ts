@@ -1,4 +1,4 @@
-// ── Faturamento & Comissão — tipos (fase visual) ─────────────────────────────
+// ── Faturamento & Prêmio — tipos (fase visual) ─────────────────────────────
 // Estes tipos espelham o que virará tabela no banco em 02/07. Mantê-los estáveis
 // permite trocar o store de localStorage por tRPC sem mexer nas telas.
 
@@ -11,7 +11,7 @@ export interface Produto {
   valorUnitario: number;   // R$ por unidade/saco, ex: 6.00
   ativo: boolean;
   criadoEm: string;        // ISO
-  // null/undefined = usa a comissão normal do atendente. Setado = sempre essa %
+  // null/undefined = usa o prêmio normal do atendente. Setado = sempre essa %
   // neste produto (ex: SAL MARINHO MOIDO INTEGRAL VITA PREMIUM 10X1 KG = sempre 10%).
   comissaoFixaPct?: number | null;
   isentoFrete?: boolean;   // true = frete nunca soma no preço deste produto
@@ -54,8 +54,8 @@ export interface Pedido {
   valorFretePorUnidade: number; // R$ por TONELADA — o valor por saco/fardo é calculado a partir do peso de cada item
   observacoes: string;
   criadoEm: string;         // ISO
-  // Mês em que o pedido DEVE entrar na comissão enquanto está estimado. Um
-  // pedido fechado no fim de agosto e embarcado em setembro é comissão de
+  // Mês em que o pedido DEVE entrar no prêmio enquanto está estimado. Um
+  // pedido fechado no fim de agosto e embarcado em setembro é prêmio de
   // setembro: sem este campo o pipeline caía no mês de criação e misturava a
   // previsão de dois meses. Legado (importado antes deste campo) fica null e
   // cai no criadoEm — ver dataCompetenciaPedido em calc.ts.
@@ -102,7 +102,7 @@ export interface Pedido {
   createdByRole: string | null;
 }
 
-// sellerId -> percentual de comissão (ex: 5 = 5%)
+// sellerId -> percentual de prêmio (ex: 5 = 5%)
 export type ComissaoMap = Record<number, number>;
 
 // Linha agregada por atendente no panorama do admin.

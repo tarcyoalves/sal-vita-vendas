@@ -521,7 +521,7 @@ export default function Attendants() {
     <Page>
       <PageHeader
         title="Atendentes"
-        description="Equipe, metas diárias, expediente, comissão e permissões de acesso."
+        description="Equipe, metas diárias, expediente, prêmio e permissões de acesso."
         actions={
           <>
             <Button variant="outline" onClick={handleMySignatureOpen}>
@@ -692,7 +692,7 @@ export default function Attendants() {
                     <TableHead className="hidden lg:table-cell">Contato</TableHead>
                     <TableHead className="text-right">Meta/dia</TableHead>
                     <TableHead className="text-right">Expediente</TableHead>
-                    <TableHead className="text-right">Comissão</TableHead>
+                    <TableHead className="text-right">Prêmio</TableHead>
                     <TableHead>Permissão</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right"><span className="sr-only">Ações</span></TableHead>
@@ -756,7 +756,7 @@ export default function Attendants() {
                     </div>
                     {alert && <p className="text-xs text-red-700">{alert.message}</p>}
                     <p className="text-xs text-slate-500">
-                      {roleLabel(attendant.userRole)} · meta {effectiveDailyGoal(attendant.dailyGoal)}/dia · {attendant.workHoursGoal ?? 8}h · comissão {fatActions.comissoes.get(attendant.id)}%
+                      {roleLabel(attendant.userRole)} · meta {effectiveDailyGoal(attendant.dailyGoal)}/dia · {attendant.workHoursGoal ?? 8}h · prêmio {fatActions.comissoes.get(attendant.id)}%
                       {attendant.phone ? ` · ${attendant.phone}` : ''}
                       {attendant.department ? ` · ${attendant.department}` : ''}
                     </p>
@@ -806,7 +806,7 @@ export default function Attendants() {
                 </select>
               </Field>
             </div>
-            <Field id="ed-comm" label="Comissão (%)" hint="Percentual de comissão sobre vendas faturadas (salvo localmente).">
+            <Field id="ed-comm" label="Prêmio (%)" hint="Percentual de prêmio sobre vendas faturadas (salvo localmente).">
               <Input
                 id="ed-comm"
                 type="number"

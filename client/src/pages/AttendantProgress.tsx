@@ -57,7 +57,7 @@ export default function AttendantProgress() {
   const { data: session } = trpc.workSessions.current.useQuery(undefined, { staleTime: 60_000 });
   const { data: sellerProfile } = trpc.sellers.myProfile.useQuery(undefined, { staleTime: 300_000 });
   // Mesma store já usada na aba Faturamento — reaproveitada aqui (sem query
-  // nova) para cruzar contatos (esforço) com comissão (resultado) no tempo.
+  // nova) para cruzar contatos (esforço) com prêmio (resultado) no tempo.
   const { pedidos: allPedidos, comissoes } = useFatStore();
 
   // Local clock tick — updates display every minute without any server call
@@ -149,9 +149,9 @@ export default function AttendantProgress() {
     };
   }, [tasks, session, sellerProfile, tick]);
 
-  // Evolução: contatos (esforço) x comissão prevista (resultado), mês a mês.
+  // Evolução: contatos (esforço) x prêmio previsto (resultado), mês a mês.
   // O objetivo é tornar visível, com números do próprio atendente, que fazer
-  // mais tarefas/contatos se traduz em mais vendas e mais comissão no fim do
+  // mais tarefas/contatos se traduz em mais vendas e mais prêmio no fim do
   // mês — sem depender de dados de outros atendentes (só o que já é seu).
   const evolucao = useMemo(() => {
     if (!sellerProfile) return null;
@@ -318,8 +318,8 @@ export default function AttendantProgress() {
             {evolucao?.temDados && (
               <Panel>
                 <PanelHeader
-                  title="Seu impacto: contatos e comissão"
-                  description="Contatos feitos (barras) e comissão prevista (linha) nos últimos 6 meses"
+                  title="Seu impacto: contatos e prêmio"
+                  description="Contatos feitos (barras) e prêmio previsto (linha) nos últimos 6 meses"
                 />
                 <div className="p-4">
                   <div className="-ml-2 h-44">
@@ -331,18 +331,18 @@ export default function AttendantProgress() {
                         <YAxis yAxisId="comissao" orientation="right" hide domain={[0, (max: number) => max * 1.15 || 1]} />
                         <Tooltip
                           formatter={(value: number, name: string) =>
-                            name === 'Comissão prevista' ? [formatBRL(value), name] : [value, name]
+                            name === 'Prêmio previsto' ? [formatBRL(value), name] : [value, name]
                           }
                           contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}
                         />
                         <Bar yAxisId="contatos" dataKey="contatos" name="Contatos" fill="#94a3b8" radius={[4, 4, 0, 0]} barSize={20} />
-                        <Line yAxisId="comissao" dataKey="comissao" name="Comissão prevista" stroke="#0C3680" strokeWidth={2.5} dot={{ r: 3, fill: '#0C3680' }} />
+                        <Line yAxisId="comissao" dataKey="comissao" name="Prêmio previsto" stroke="#0C3680" strokeWidth={2.5} dot={{ r: 3, fill: '#0C3680' }} />
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
                 <StatStrip className="rounded-none border-0 border-t">
-                  <Stat label="Comissão por contato feito" value={formatBRL(evolucao.valorPorContato)} />
+                  <Stat label="Prêmio por contato feito" value={formatBRL(evolucao.valorPorContato)} />
                   <Stat label={`Melhor mês (${evolucao.melhorMes?.label ?? '--'})`} value={formatBRL(evolucao.melhorMes?.comissao ?? 0)} />
                 </StatStrip>
               </Panel>

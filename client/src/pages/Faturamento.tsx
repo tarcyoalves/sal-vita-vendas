@@ -34,7 +34,7 @@ export default function Faturamento() {
     <Page>
       <PageHeader
         title="Faturamento"
-        description="Panorama de vendas, pedidos e comissões, e catálogo de produtos."
+        description="Panorama de vendas, pedidos e prêmios, e catálogo de produtos."
       />
 
       <SmbiRoboPanel />

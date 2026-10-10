@@ -1,4 +1,4 @@
-// ── Faturamento & Comissão — store (Neon via tRPC) ───────────────────────────
+// ── Faturamento & Prêmio — store (Neon via tRPC) ───────────────────────────
 // Migrado do localStorage → banco em 02/07. A API pública (assinaturas de
 // produtos/pedidos/comissoes + useFatStore) é a MESMA de antes, de forma que
 // NENHUMA tela precisou mudar. Estratégia:
@@ -176,9 +176,9 @@ function avisarEspelhoProtegido(res: unknown): void {
     toast.info('Este pedido está espelhado do SMBI: os valores do SMBI foram mantidos.');
     needsReload = true;
   }
-  // itensAjustados: o servidor sobrescreveu comissão fixa/isenção de frete de algum item.
+  // itensAjustados: o servidor sobrescreveu prêmio fixo/isenção de frete de algum item.
   if (r.itensAjustados) {
-    toast.info('A comissão de algum item foi ajustada pela tabela da empresa.');
+    toast.info('O prêmio de algum item foi ajustada pela tabela da empresa.');
     needsReload = true;
   }
 }
@@ -302,7 +302,7 @@ export const pedidos = {
   // Marca como faturado: congela o estimado atual e grava os itens reais.
   //
   // `faturadoEmISO` é a data REAL do embarque, escolhida por quem fatura. Ela
-  // define o mês da comissão a pagar, então não pode ser assumida como "hoje":
+  // define o mês do prêmio a pagar, então não pode ser assumida como "hoje":
   // um embarque de setembro lançado em outubro cairia no mês errado. Sem valor
   // informado, cai em agora — comportamento anterior.
   faturar(id: string, itensReais: ItemPedido[], faturadoEmISO?: string | null): Pedido | null {
@@ -419,7 +419,7 @@ function aplicarLinhaServidor(row: unknown): Pedido | null {
   return p;
 }
 
-// ── Comissões (por atendente) ─────────────────────────────────────────────────
+// ── Prêmios (por atendente) ─────────────────────────────────────────────────
 export const comissoes = {
   all(): ComissaoMap {
     return mirror.comissoes;

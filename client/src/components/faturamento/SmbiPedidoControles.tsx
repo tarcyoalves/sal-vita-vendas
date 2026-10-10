@@ -363,18 +363,18 @@ export default function SmbiPedidoControles({ pedido }: { pedido: Pedido }) {
           <p className="font-semibold">Faturado no SMBI abaixo do valor esperado</p>
           <p className="mt-0.5">
             Fiscal (sal + frete): {formatBRL(espelho.totalFiscal)} · esperado para o peso faturado: {formatBRL(espelho.totalEsperado ?? espelho.totalAcordado)}
-            {espelho.totalEsperado !== undefined && espelho.totalEsperado !== espelho.totalAcordado ? ` (acordado no CRM: ${formatBRL(espelho.totalAcordado)})` : ''}. A comissão
+            {espelho.totalEsperado !== undefined && espelho.totalEsperado !== espelho.totalAcordado ? ` (acordado no CRM: ${formatBRL(espelho.totalAcordado)})` : ''}. O prêmio
             não foi alterada; confira com o cliente.
           </p>
         </div>
       )}
-      {/* Quantidade diferente do pedido: não é desconto, mas a comissão do representante segue o pedido. */}
+      {/* Quantidade diferente do pedido: não é desconto, mas o prêmio do representante segue o pedido. */}
       {espelho?.pesoPedidoKg && espelho.pesoFaturadoKg && Math.abs(espelho.pesoFaturadoKg - espelho.pesoPedidoKg) > 1 && (
         <div className="basis-full rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           <p className="font-semibold">Peso faturado diferente do pedido</p>
           <p className="mt-0.5">
             Faturado: {(espelho.pesoFaturadoKg / 1000).toLocaleString('pt-BR')} t · pedido: {(espelho.pesoPedidoKg / 1000).toLocaleString('pt-BR')} t.
-            Isso não é desconto. O pedido tem mais de um item (ou o faturamento ainda é parcial), então não foi reescrito; a comissão já segue o peso do SMBI.
+            Isso não é desconto. O pedido tem mais de um item (ou o faturamento ainda é parcial), então não foi reescrito; o prêmio já segue o peso do SMBI.
           </p>
         </div>
       )}

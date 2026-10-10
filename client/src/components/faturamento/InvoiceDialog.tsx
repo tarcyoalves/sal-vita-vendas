@@ -38,7 +38,7 @@ export function InvoiceDialog({
     // Clone current items as the "real" starting point (attendant can edit)
     setItensReais(pedido.itens.map((it) => ({ ...it })));
     // Refaturar mantém a data já registrada; a primeira vez sugere hoje. Quem
-    // lança um embarque com atraso corrige aqui, senão a comissão cairia no mês
+    // lança um embarque com atraso corrige aqui, senão o prêmio cairia no mês
     // do lançamento em vez do mês em que a mercadoria saiu.
     setFaturadoEmData(dataInputLocal(pedido.faturadoEm) || hojeInputLocal());
     // Snapshot for comparison: use existing snapshot if already set (re-opening), else current
@@ -98,7 +98,7 @@ export function InvoiceDialog({
               required
             />
             <p className="text-xs text-slate-500">
-              Define o mês da comissão a pagar. Use a data real do embarque, mesmo que
+              Define o mês do prêmio a pagar. Use a data real do embarque, mesmo que
               o lançamento esteja sendo feito depois.
             </p>
           </div>

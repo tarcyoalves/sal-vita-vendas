@@ -62,7 +62,7 @@ export function textoPedidoCadastroHermes(p: DadosPedidoCadastro): string {
   return (
     `Cadastre este cliente no SMBI (cadastro assistido, com minha aprovação): CNPJ ${cnpj}, ${nome}, ${local}, ` +
     `atendente ${p.sellerName || 'não informado'}. Pedido CRM ${p.id}. ` +
-    'Primeiro mostre a prévia (dry-run) com os dados fiscais, o representante e a comissão que o SMBI vai aplicar, ' +
+    'Primeiro mostre a prévia (dry-run) com os dados fiscais, o representante e o prêmio que o SMBI vai aplicar, ' +
     'e só grave depois do meu "cadastra". Não crie o pedido; o pedido segue pelo meu clique em Enviar para o SMBI depois do cadastro.'
   );
 }

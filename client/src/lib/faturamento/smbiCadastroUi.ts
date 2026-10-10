@@ -110,7 +110,7 @@ const CAMPO_ROTULO: Record<string, string> = {
   'endereco.bairro': 'Endereço: bairro', 'endereco.municipio': 'Endereço: município', 'endereco.uf': 'Endereço: UF',
   'endereco.cep': 'Endereço: CEP', 'endereco.municipioIbge': 'Endereço: código IBGE do município',
   tipoTributacao: 'Regime tributário', contato: 'Contato', telefone: 'Telefone (ou celular)', celular: 'Celular', email: 'E-mail',
-  emailFinanceiro: 'E-mail financeiro', representanteDoc: 'Representante (CPF/CNPJ)', comissaoClientePct: 'Comissão do cliente',
+  emailFinanceiro: 'E-mail financeiro', representanteDoc: 'Representante (CPF/CNPJ)', comissaoClientePct: 'Prêmio do cliente',
 };
 
 export function rotuloCampo(campo: string): string {
@@ -151,7 +151,7 @@ export function linhasPrevia(s: CadastroSnapshotV1, faltantes: readonly string[]
     ['contato', 'Contato', txt(s.contato)], ['telefone', 'Telefone', txt(s.telefone)], ['celular', 'Celular', txt(s.celular)],
     ['email', 'E-mail', txt(s.email)], ['emailFinanceiro', 'E-mail financeiro', txt(s.emailFinanceiro)],
     ['representanteDoc', 'Representante (CPF/CNPJ)', txt(s.representanteDoc)],
-    ['comissaoClientePct', 'Comissão do cliente (%)', txt(s.comissaoClientePct)],
+    ['comissaoClientePct', 'Prêmio do cliente (%)', txt(s.comissaoClientePct)],
   ];
   return def.map(([chave, rotulo, valor]) => {
     // Endereço agrega vários campos: a origem/falta vale se qualquer parte tiver.

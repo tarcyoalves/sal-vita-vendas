@@ -339,7 +339,7 @@ export function validarRevisaoContatos(
     if (origem === 'FISCAL_SMBI') return recusa(400, 'ORIGEM_PROIBIDA', 'origem FISCAL_SMBI é só do worker');
     let norm: string | number;
     if (c === 'comissaoClientePct') {
-      if (typeof valor !== 'number') return recusa(400, 'VALOR_INVALIDO', 'comissão deve ser número');
+      if (typeof valor !== 'number') return recusa(400, 'VALOR_INVALIDO', 'prêmio deve ser número');
       norm = valor;
     } else {
       const s = String(valor).trim();

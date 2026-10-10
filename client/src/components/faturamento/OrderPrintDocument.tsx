@@ -171,7 +171,7 @@ function PedidoPrintContent({ pedido }: { pedido: Pedido }) {
 }
 
 // Cópia do pedido, gerada pelo atendente para enviar ao cliente, disponível
-// depois que o admin aprova. Documento 100% voltado ao cliente: sem comissão,
+// depois que o admin aprova. Documento 100% voltado ao cliente: sem prêmio,
 // sem dado administrativo — só o que o cliente precisa para conferir e pagar
 // o pedido, em uma única página.
 //

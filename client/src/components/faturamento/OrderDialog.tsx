@@ -214,7 +214,7 @@ export function OrderDialog({
       observacoes: observacoes.trim(),
       previsaoFaturamentoEm: previsaoFaturamento,
       // Não regride um pedido já faturado: editar dados cadastrais não pode
-      // desfazer o embarque nem descartar a data real que define a comissão.
+      // desfazer o embarque nem descartar a data real que define o prêmio.
       status: existing?.status ?? 'estimado',
     });
     onSaved?.(pedido);
@@ -374,7 +374,7 @@ export function OrderDialog({
                   required
                 />
                 <p className="text-xs text-slate-500">
-                  Define o mês da comissão estimada. Pedido fechado agora para embarcar
+                  Define o mês do prêmio estimado. Pedido fechado agora para embarcar
                   no mês seguinte conta no mês do embarque.
                 </p>
               </div>
@@ -404,7 +404,7 @@ export function OrderDialog({
           {seller && (
             <div className="flex items-center justify-between border-t border-slate-200 pt-3">
               <span className="text-sm text-slate-700">
-                Comissão: <strong className="font-semibold">{comissaoPct}%</strong>
+                Prêmio: <strong className="font-semibold">{comissaoPct}%</strong>
               </span>
               <span className="text-sm font-semibold tabular-nums text-slate-900">
                 {formatBRL(comissaoValor)}

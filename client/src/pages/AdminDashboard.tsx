@@ -417,11 +417,11 @@ function FaturamentoQuickCard({ setLocation }: { setLocation: (to: string) => vo
       >
         <DollarSign aria-hidden="true" size={18} className="shrink-0 text-slate-500" />
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold text-slate-900">Faturamento e comissão</span>
+          <span className="block text-sm font-semibold text-slate-900">Faturamento e prêmio</span>
           <span className="block text-xs text-slate-500">
             {totals.totalEmbarcado > 0
               ? `Embarcado este mês: ${formatBRL(totals.totalEmbarcado)}`
-              : "Acompanhe vendas, comissões e relatórios"}
+              : "Acompanhe vendas, prêmios e relatórios"}
           </span>
         </span>
         <ChevronRight aria-hidden="true" size={16} className="shrink-0 text-slate-400" />
@@ -1232,7 +1232,7 @@ export default function AdminDashboard() {
           )}
         </Panel>
 
-        {/* Faturamento e comissão — atalho */}
+        {/* Faturamento e prêmio — atalho */}
         <div className="self-start">
           <FaturamentoQuickCard setLocation={setLocation} />
         </div>

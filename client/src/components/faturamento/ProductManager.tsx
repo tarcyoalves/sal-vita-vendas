@@ -147,7 +147,7 @@ export default function ProductManager() {
 
   const regras = (prod: Produto) => (
     <div className="flex flex-wrap gap-1">
-      {prod.comissaoFixaPct != null && <StatusBadge tone="info">Comissão {prod.comissaoFixaPct}%</StatusBadge>}
+      {prod.comissaoFixaPct != null && <StatusBadge tone="info">Prêmio {prod.comissaoFixaPct}%</StatusBadge>}
       {prod.isentoFrete && <StatusBadge tone="warning">Preço final (sem frete)</StatusBadge>}
       {prod.comissaoFixaPct == null && !prod.isentoFrete && <span className="text-xs text-slate-500">--</span>}
     </div>
@@ -208,7 +208,7 @@ export default function ProductManager() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
             <div className="space-y-1.5">
-              <Label htmlFor="pm-comissao">Comissão fixa (%)</Label>
+              <Label htmlFor="pm-comissao">Prêmio fixo (%)</Label>
               <Input
                 id="pm-comissao"
                 type="text"
@@ -343,14 +343,14 @@ export default function ProductManager() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="pm-edit-comissao">Comissão fixa (%)</Label>
+              <Label htmlFor="pm-edit-comissao">Prêmio fixo (%)</Label>
               <Input
                 id="pm-edit-comissao"
                 type="text"
                 inputMode="decimal"
                 value={editComissaoFixa}
                 onChange={(e) => setEditComissaoFixa(e.target.value)}
-                placeholder="Em branco usa a comissão padrão do atendente"
+                placeholder="Em branco usa o prêmio padrão do atendente"
               />
             </div>
             <div className="flex items-center gap-2">
