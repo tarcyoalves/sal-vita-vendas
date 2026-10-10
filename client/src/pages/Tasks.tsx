@@ -36,6 +36,7 @@ import { MultiSelectFilter } from '../components/tasks/MultiSelectFilter';
 import { QueryError } from '../components/QueryError';
 import { FILTER_ALL, FILTER_ME, FILTER_NONE, applyAssigneeFilter, assignableNames, buildMyIdentity, otherAttendantNames } from '../lib/myTasks';
 import { foldText, searchTerms } from '../../../shared/searchText';
+import { ordenarTarefas, pontosCliente, ROTULO_ORDEM, type OrdemTarefas } from '../lib/taskOrder';
 import { FilterPanel, FilterSection } from '../components/tasks/FilterPanel';
 import { extractLocation, type TaskLocation } from '../lib/tasks/location';
 import { phoneOfTask } from '../../../shared/phone';
@@ -395,6 +396,9 @@ export default function Tasks() {
   // 'all' = tem todas ao mesmo tempo (interseção — ex: "ativo" E "compra muito")
   const [filterTags, setFilterTags] = useState<string[]>([]);
   const [tagMatchMode, setTagMatchMode] = useState<"any" | "all">("any");
+  // Ordem da lista: padrão = mais atrasadas primeiro; melhores clientes (compra muito / ativo) em destaque no topo.
+  const [ordem, setOrdem] = useState<OrdemTarefas>("atrasadas");
+  const [melhoresPrimeiro, setMelhoresPrimeiro] = useState(true);
 
   const [progressTick, setProgressTick] = useState(0);
   useEffect(() => {
@@ -834,25 +838,8 @@ export default function Tasks() {
       });
     }
 
-    // Sort: hot leads first, then upcoming reminders (soonest), then overdue (most recent), then no reminder
-    return [...result].sort((a, b) => {
-      if (!!a.hotLead !== !!b.hotLead) return a.hotLead ? -1 : 1;
-      const nowMs = now.getTime();
-      const aDate = a.reminderDate && a.reminderEnabled !== false ? new Date(a.reminderDate).getTime() : null;
-      const bDate = b.reminderDate && b.reminderEnabled !== false ? new Date(b.reminderDate).getTime() : null;
-      const aUpcoming = aDate !== null && aDate >= nowMs;
-      const bUpcoming = bDate !== null && bDate >= nowMs;
-      const aOverdue = aDate !== null && aDate < nowMs;
-      const bOverdue = bDate !== null && bDate < nowMs;
-      if (aUpcoming && !bUpcoming) return -1;
-      if (!aUpcoming && bUpcoming) return 1;
-      if (aUpcoming && bUpcoming) return aDate! - bDate!;
-      if (aOverdue && !bOverdue) return -1;
-      if (!aOverdue && bOverdue) return 1;
-      if (aOverdue && bOverdue) return bDate! - aDate!;
-      return 0;
-    });
-  }, [tasks, me, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTags, tagMatchMode, filterStates, filterCities, locationByTaskId, filterHot, reminderTab, isAdmin, deferredSearch, notesHits]);
+    return ordenarTarefas(result, ordem, now.getTime(), melhoresPrimeiro);
+  }, [tasks, me, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTags, tagMatchMode, filterStates, filterCities, locationByTaskId, filterHot, reminderTab, isAdmin, deferredSearch, notesHits, ordem, melhoresPrimeiro]);
 
   const clearAllFilters = useCallback(() => {
     setFilterStatus("all");
@@ -864,6 +851,8 @@ export default function Tasks() {
     setFilterStates([]);
     setFilterCities([]);
     setFilterHot(false);
+    setOrdem("atrasadas");
+    setMelhoresPrimeiro(true);
     setReminderTab("all");
     setSearchQuery("");
   }, []);
@@ -877,11 +866,13 @@ export default function Tasks() {
     if (filterContact !== "all") n++;
     if (filterReminder !== "all") n++;
     if (filterConverted !== "all") n++;
+    if (ordem !== "atrasadas") n++;
+    if (!melhoresPrimeiro) n++;
     if (filterTags.length > 0) n++;
     if (filterStates.length > 0) n++;
     if (filterCities.length > 0) n++;
     return n;
-  }, [filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTags, filterStates, filterCities, isAdmin]);
+  }, [filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTags, filterStates, filterCities, isAdmin, ordem, melhoresPrimeiro]);
 
   // Um chip por filtro ativo. Cada chip sabe se limpar sozinho.
   const activeFilterChips = useMemo(() => {
@@ -1414,6 +1405,26 @@ export default function Tasks() {
             </FilterSection>
           )}
 
+          <FilterSection label="Ordenar por">
+            <select
+              value={ordem}
+              onChange={(e) => setOrdem(e.target.value as OrdemTarefas)}
+              aria-label="Ordem da lista"
+              className={`${selectCls} ${ordem !== "atrasadas" ? selectActiveCls : ""}`}
+            >
+              {(Object.keys(ROTULO_ORDEM) as OrdemTarefas[]).map((o) => <option key={o} value={o}>{ROTULO_ORDEM[o]}</option>)}
+            </select>
+            <Button
+              type="button"
+              variant="outline"
+              aria-pressed={melhoresPrimeiro}
+              className={melhoresPrimeiro ? selectActiveCls : ""}
+              onClick={() => setMelhoresPrimeiro((v) => !v)}
+            >
+              Melhores clientes em destaque
+            </Button>
+          </FilterSection>
+
           <FilterSection label="Situação">
             <select
               value={filterConverted}
@@ -1868,9 +1879,10 @@ export default function Tasks() {
             const expanded = expandedTaskId === task.id;
             const selected = selectedTasks.has(task.id);
             const prio = task.priority ?? 'medium';
+            const pontos = pontosCliente(task);
             return (
             <li key={task.id}
-              className={`${highlightTaskId === task.id ? 'relative z-10 ring-2 ring-inset ring-brand-500' : ''}`}
+              className={`${pontos === 2 ? 'border-l-4 border-amber-400 bg-amber-50/40' : pontos === 1 ? 'border-l-4 border-emerald-400' : ''} ${highlightTaskId === task.id ? 'relative z-10 ring-2 ring-inset ring-brand-500' : ''}`}
               style={highlightTaskId === task.id ? { animation: 'pulse-highlight 1s ease-in-out 3' } : {}}>
               <div
                 className={`flex cursor-pointer items-start gap-2 px-3 py-2.5 transition-colors md:items-center md:gap-3 md:px-4 ${selected ? 'bg-brand-50' : expanded ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
@@ -1882,7 +1894,7 @@ export default function Tasks() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start gap-2">
                     <button type="button" aria-expanded={expanded} className="min-w-0 flex-1 text-left outline-none focus-visible:underline">
-                      <span className="block text-sm font-medium leading-snug text-slate-900 line-clamp-2 md:truncate">{task.title}</span>
+                      <span className="block text-sm font-medium leading-snug text-slate-900 line-clamp-2 md:truncate">{pontos === 2 && <span title="Cliente compra muito" aria-label="Cliente compra muito" className="mr-1 text-amber-500">★</span>}{task.title}</span>
                     </button>
                     {prio !== 'medium' && (
                       <StatusBadge status={prio} className="hidden md:inline-flex">{prio === 'high' ? 'Prioridade alta' : 'Prioridade baixa'}</StatusBadge>
