@@ -115,10 +115,12 @@ describe('códigos por empresa', () => {
   it('C Alves traduz pelo prazo, não pelo número', () => {
     expect(codigoCondicaoDaEmpresa('2', '30 DIAS', CA)).toBe('187');
     expect(codigoCondicaoDaEmpresa(null, '30/45/60 dias', CA)).toBe('203');
-    expect(codigoCondicaoDaEmpresa('100', '', CA)).toBe('249');
+    expect(codigoCondicaoDaEmpresa('1', 'A VISTA', CA)).toBe('182');
+    expect(codigoCondicaoDaEmpresa('11', '15 DIAS', CA)).toBe('191');
   });
   it('prazo sem código limpo na C Alves vira null', () => {
-    expect(codigoCondicaoDaEmpresa('1', 'A VISTA', CA)).toBeNull();
+    expect(codigoCondicaoDaEmpresa('100', '20/40/60', CA)).toBeNull();
+    expect(codigoCondicaoDaEmpresa('150', '40/60', CA)).toBeNull();
     expect(codigoCondicaoDaEmpresa('46', '30/60/90', CA)).toBeNull();
   });
 });

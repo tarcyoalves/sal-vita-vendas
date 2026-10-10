@@ -60,14 +60,15 @@ export function condicaoPorTexto(texto: string | null | undefined): SmbiCondicao
 }
 
 // ── Códigos por empresa ──────────────────────────────────────────────────────
-// O catálogo acima usa os códigos da A S Comércio. A C Alves tem outra tabela de prazos (mapa do Hermes,
-// 09/10/2026, só leitura). Aqui entram SÓ os prazos limpos confirmados; "FT x%" (com fator) NÃO entra.
+// O catálogo acima usa os códigos da A S Comércio. A C Alves tem outra tabela de prazos (relatório do SMBI
+// de 10/10/2026). O "FT x%" no nome é ignorado por decisão do dono (erro de cadastro que ele corrige).
 // Prazo sem código na empresa fica null: o robô devolve pendência e nada é digitado.
-// "À vista", 15, 20, 30/60/90, 40/60 e 15/25 dias só existem com fator na C Alves: criar o prazo limpo no SMBI
-// e informar o código antes de acrescentar aqui.
+// NÃO mapeados de propósito: 20/40/60 (id 249 tem só 2 parcelas, ou seja, é 20/40) e 30/60/90 (id 183 se chama
+// "30/45/60", mas tem carência 30 e intervalo 30). 40/60 não existe. Só entram depois de o dono corrigir.
 const CNPJ_C_ALVES = '49748258000160';
 const CONDICOES_C_ALVES: Record<string, string> = {
-  '30': '187', '30/45': '202', '30/60': '185', '30/45/60': '203', '45': '186', '60': '254', '20/40/60': '249',
+  AVISTA: '182', '15': '191', '20': '220', '15/25': '196',
+  '30': '187', '30/45': '202', '30/60': '185', '30/45/60': '203', '45': '186', '60': '254',
 };
 
 /**
