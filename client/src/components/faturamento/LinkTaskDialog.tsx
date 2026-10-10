@@ -32,12 +32,14 @@ interface LinkTaskDialogProps {
   /** CNPJ do pedido sendo vinculado — usado só para destacar/priorizar candidatas, não filtra. */
   pedidoCnpj?: string | null;
   onConfirm: (taskId: number) => void;
+  /** Lista de tarefas ainda carregando: mostra "Carregando" em vez de "nenhuma encontrada". */
+  carregando?: boolean;
 }
 
 // Painel de busca para vincular um pedido a uma tarefa — busca por título em
 // vez de um dropdown simples (que fica inutilizável quando o atendente/admin
 // tem muitas tarefas).
-export function LinkTaskDialog({ open, onOpenChange, tasks, pedidoCnpj, onConfirm }: LinkTaskDialogProps) {
+export function LinkTaskDialog({ open, onOpenChange, tasks, pedidoCnpj, onConfirm, carregando }: LinkTaskDialogProps) {
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
@@ -99,11 +101,13 @@ export function LinkTaskDialog({ open, onOpenChange, tasks, pedidoCnpj, onConfir
               className="pl-8"
             />
           </div>
-          <p className="text-xs text-slate-500 text-right">{filtered.length} tarefa(s)</p>
+          <p className="text-xs text-slate-500 text-right">{carregando ? 'Carregando tarefas…' : `${filtered.length} tarefa(s)`}</p>
         </div>
 
         <div className="flex-1 overflow-y-auto min-h-0 rounded-md border border-slate-200 divide-y divide-slate-200">
-          {filtered.length === 0 ? (
+          {carregando ? (
+            <p className="text-sm text-slate-500 text-center py-8">Carregando tarefas…</p>
+          ) : filtered.length === 0 ? (
             <p className="text-sm text-slate-500 text-center py-8">Nenhuma tarefa encontrada.</p>
           ) : (
             filtered.map((t) => {

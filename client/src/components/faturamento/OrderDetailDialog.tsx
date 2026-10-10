@@ -59,7 +59,7 @@ export function OrderDetailDialog({
   // como reconstruir esse vínculo com certeza, oferece um painel de busca
   // (LinkTaskDialog — mesmo usado na visão do atendente) para o admin escolher
   // à mão em vez de tentar adivinhar automaticamente.
-  const { data: allTasks = [] } = trpc.tasks.list.useQuery(undefined, {
+  const { data: allTasks = [], isLoading: carregandoTarefas } = trpc.tasks.list.useQuery(undefined, {
     enabled: !!pedido && (canApprove || !!pedido.taskId),
   });
   const tarefaVinculada = pedido?.taskId ? allTasks.find((t) => t.id === pedido.taskId) : undefined;
@@ -376,6 +376,7 @@ export function OrderDetailDialog({
         open={linkDialogOpen}
         onOpenChange={setLinkDialogOpen}
         tasks={allTasks}
+        carregando={carregandoTarefas}
         pedidoCnpj={pedido.cnpj}
         onConfirm={handleLinkTask}
       />

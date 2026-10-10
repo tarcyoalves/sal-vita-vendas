@@ -55,7 +55,7 @@ export default function AttendantBilling() {
   // Tarefas do próprio atendente — já vem escopado pelo servidor (tasks.list
   // retorna só as tarefas do usuário logado quando role !== 'admin'), então é
   // seguro usar direto como candidatas para vincular um pedido órfão.
-  const { data: myTasks = [] } = trpc.tasks.list.useQuery();
+  const { data: myTasks = [], isLoading: carregandoTarefas } = trpc.tasks.list.useQuery();
   const [linkingPedidoId, setLinkingPedidoId] = useState<string | null>(null);
 
   const seller = sellerProfile
@@ -248,6 +248,7 @@ export default function AttendantBilling() {
         open={!!linkingPedidoId}
         onOpenChange={(o) => { if (!o) setLinkingPedidoId(null); }}
         tasks={myTasks}
+        carregando={carregandoTarefas}
         pedidoCnpj={linkingPedido?.cnpj}
         onConfirm={handleLinkTask}
       />
