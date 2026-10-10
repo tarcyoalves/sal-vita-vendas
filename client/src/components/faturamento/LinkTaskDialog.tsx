@@ -5,6 +5,7 @@ import {
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Search, Link2 } from 'lucide-react';
+import { foldText, searchTerms } from '../../../../shared/searchText';
 
 const onlyDigits = (v?: string | null) => (v ?? '').replace(/\D/g, '');
 
@@ -12,7 +13,17 @@ export interface LinkTaskOption {
   id: number;
   title: string;
   cnpj?: string | null;
+  phone?: string | null;
+  status?: string | null;
+  assignedTo?: string | null;
+  createdAt?: Date | string | null;
 }
+
+const fmtData = (d?: Date | string | null) => {
+  if (!d) return '';
+  const dt = d instanceof Date ? d : new Date(d);
+  return Number.isNaN(dt.getTime()) ? '' : dt.toLocaleDateString('pt-BR');
+};
 
 interface LinkTaskDialogProps {
   open: boolean;
@@ -41,8 +52,15 @@ export function LinkTaskDialog({ open, onOpenChange, tasks, pedidoCnpj, onConfir
 
   const filtered = useMemo(() => {
     let list = tasks;
-    const q = query.trim().toLowerCase();
-    if (q) list = list.filter((t) => t.title.toLowerCase().includes(q));
+    // Sem acento e sem diferença de maiúsculas; todos os termos precisam aparecer (título, CNPJ, telefone,
+    // atendente, status ou número).
+    const termos = searchTerms(query);
+    if (termos.length) {
+      list = list.filter((t) => {
+        const alvo = foldText([t.title, t.cnpj, onlyDigits(t.cnpj), t.phone, t.assignedTo, t.status, `#${t.id}`].filter(Boolean).join(' '));
+        return termos.every((x) => alvo.includes(x));
+      });
+    }
     // Prioriza tarefas com o mesmo CNPJ do pedido, sem esconder as demais.
     if (targetCnpj) {
       return [...list].sort((a, b) => {
@@ -62,7 +80,7 @@ export function LinkTaskDialog({ open, onOpenChange, tasks, pedidoCnpj, onConfir
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[85dvh] flex flex-col">
+      <DialogContent className="sm:max-w-2xl max-h-[85dvh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-base">Vincular pedido a uma tarefa</DialogTitle>
           <DialogDescription>Busque e selecione a tarefa correspondente a este pedido.</DialogDescription>
@@ -75,7 +93,7 @@ export function LinkTaskDialog({ open, onOpenChange, tasks, pedidoCnpj, onConfir
               autoFocus
               type="text"
               aria-label="Buscar tarefa"
-              placeholder="Buscar por nome do cliente ou título"
+              placeholder="Buscar por cliente, cidade, CNPJ, telefone ou atendente"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="pl-8"
@@ -100,7 +118,10 @@ export function LinkTaskDialog({ open, onOpenChange, tasks, pedidoCnpj, onConfir
                   }`}
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-900 truncate">{t.title}</p>
+                    <p className="text-sm font-medium text-slate-900 break-words">{t.title}</p>
+                    <p className="text-xs text-slate-600 break-words">
+                      {[t.assignedTo && `Atendente: ${t.assignedTo}`, t.status && `Status: ${t.status}`, fmtData(t.createdAt) && `Criada em ${fmtData(t.createdAt)}`, t.phone].filter(Boolean).join(' · ')}
+                    </p>
                     {(t.cnpj || isCnpjMatch) && (
                       <p className="text-xs text-slate-500 flex items-center gap-1">
                         {t.cnpj}

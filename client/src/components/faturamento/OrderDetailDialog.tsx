@@ -60,8 +60,9 @@ export function OrderDetailDialog({
   // (LinkTaskDialog — mesmo usado na visão do atendente) para o admin escolher
   // à mão em vez de tentar adivinhar automaticamente.
   const { data: allTasks = [] } = trpc.tasks.list.useQuery(undefined, {
-    enabled: canApprove && !!pedido && !pedido.taskId,
+    enabled: !!pedido && (canApprove || !!pedido.taskId),
   });
+  const tarefaVinculada = pedido?.taskId ? allTasks.find((t) => t.id === pedido.taskId) : undefined;
 
   // Pedido recém-criado por outro atendente ainda não está no espelho local: busca de novo
   // em vez de abrir um diálogo vazio. `tentouRecarregar` evita laço se ele realmente não existe.
@@ -147,7 +148,7 @@ export function OrderDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[92dvh] overflow-y-auto overflow-x-hidden">
+      <DialogContent className="sm:max-w-5xl w-[96vw] max-h-[92dvh] overflow-y-auto overflow-x-hidden">
         {confirmDialog}
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 flex-wrap text-base">
@@ -169,7 +170,7 @@ export function OrderDetailDialog({
 
         <div className="space-y-4 min-w-0">
           {/* Client info */}
-          <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3 text-sm border-b border-slate-200 pb-4">
+          <dl className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-3 text-sm border-b border-slate-200 pb-4">
             <div>
               <dt className="text-xs text-slate-500">CNPJ</dt>
               <dd className="text-slate-900">{pedido.cnpj || '--'}</dd>
@@ -188,6 +189,16 @@ export function OrderDetailDialog({
               <dt className="text-xs text-slate-500">Atendente</dt>
               <dd className="text-slate-900">{pedido.sellerName || '--'}</dd>
             </div>
+            {pedido.taskId && (
+              <div className="col-span-2 sm:col-span-3 lg:col-span-4 rounded-md bg-slate-50 border border-slate-200 p-2.5">
+                <dt className="text-xs text-slate-500">Tarefa vinculada #{pedido.taskId}</dt>
+                <dd className="text-slate-900 break-words">
+                  {tarefaVinculada
+                    ? [tarefaVinculada.title, tarefaVinculada.assignedTo && `Atendente: ${tarefaVinculada.assignedTo}`, tarefaVinculada.status && `Status: ${tarefaVinculada.status}`, tarefaVinculada.phone].filter(Boolean).join(' · ')
+                    : 'Carregando… (ou tarefa de outro atendente)'}
+                </dd>
+              </div>
+            )}
             <div>
               <dt className="text-xs text-slate-500">Criado em</dt>
               <dd className="text-slate-900">{fmtDate(pedido.criadoEm)}</dd>
