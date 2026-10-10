@@ -1,3 +1,4 @@
+import { rotuloNumeroCrm } from "../../lib/faturamento/numeroCrm";
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
@@ -153,6 +154,7 @@ export function OrderDetailDialog({
         {confirmDialog}
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 flex-wrap text-base">
+            <span className="text-brand-700 font-semibold">{rotuloNumeroCrm(pedido.numeroCrm)}</span>
             {pedido.clienteNome || 'Sem cliente'}
             <StatusBadge tone={isFaturado ? 'success' : 'warning'}>
               {isFaturado ? 'Faturado' : 'Estimado'}

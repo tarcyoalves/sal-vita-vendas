@@ -1,3 +1,5 @@
+import { rotuloNumeroCrm, casaNumeroCrm } from "../../lib/faturamento/numeroCrm";
+import { foldText } from "../../../../shared/searchText";
 import { AvisoMesSemPedidos } from "./AvisoMesSemPedidos";
 import { useState, useMemo } from "react";
 import { seloPendenciaSmbi } from "../../lib/faturamento/smbiPendencia";
@@ -151,14 +153,15 @@ export default function BillingReport() {
     }
 
     if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
+      // Sem acento nem diferença de maiúsculas; também acha pelo número interno (PED-123 / 123).
+      const q = foldText(searchQuery.trim());
       const qDigits = q.replace(/\D/g, "");
       result = result.filter((p) => {
         const matchCnpj = qDigits && p.cnpj.replace(/\D/g, "").includes(qDigits);
-        const matchRazaoSocial = p.razaoSocial.toLowerCase().includes(q);
-        const matchCidade = p.cidade.toLowerCase().includes(q);
-        const matchProdutos = p.itens.some((it) => it.descricao.toLowerCase().includes(q));
-        return matchCnpj || matchRazaoSocial || matchCidade || matchProdutos;
+        const matchRazaoSocial = foldText(p.razaoSocial).includes(q) || foldText(p.clienteNome).includes(q);
+        const matchCidade = foldText(p.cidade).includes(q);
+        const matchProdutos = p.itens.some((it) => foldText(it.descricao).includes(q));
+        return matchCnpj || matchRazaoSocial || matchCidade || matchProdutos || casaNumeroCrm(p.numeroCrm, searchQuery);
       });
     }
 
@@ -174,8 +177,9 @@ export default function BillingReport() {
 
   // CSV
   const handleExport = () => {
-    const headers = ["Tarefa", "CNPJ", "Razao Social", "Cidade", "UF", "Atendente", "Status", "Produtos", "Previsao Faturamento", "Faturado Em", "Valor Estimado", "Valor Faturado", "Pedido SMBI", "Empresa SMBI"];
+    const headers = ["Pedido CRM", "Tarefa", "CNPJ", "Razao Social", "Cidade", "UF", "Atendente", "Status", "Produtos", "Previsao Faturamento", "Faturado Em", "Valor Estimado", "Valor Faturado", "Pedido SMBI", "Empresa SMBI"];
     const csvRows = filtered.map((p) => [
+      rotuloNumeroCrm(p.numeroCrm),
       p.taskId ? `#${p.taskId}` : "",
       p.cnpj,
       p.razaoSocial,
@@ -206,7 +210,7 @@ export default function BillingReport() {
           <Input
             type="search"
             aria-label="Buscar pedidos"
-            placeholder="Buscar por CNPJ, razão social, cidade ou produto"
+            placeholder="Buscar por nº do pedido, CNPJ, razão social, cidade ou produto"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -339,7 +343,10 @@ export default function BillingReport() {
                   className="px-4 py-3 space-y-1.5 cursor-pointer active:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <p className="font-medium text-slate-900 text-sm min-w-0 break-words">{p.razaoSocial || p.clienteNome || "--"}</p>
+                    <p className="font-medium text-slate-900 text-sm min-w-0 break-words">
+                      <span className="text-xs font-semibold text-brand-700 mr-1.5">{rotuloNumeroCrm(p.numeroCrm)}</span>
+                      {p.razaoSocial || p.clienteNome || "--"}
+                    </p>
                     <StatusBadge tone={p.status === "faturado" ? "success" : "warning"} className="flex-shrink-0">
                       {p.status === "faturado" ? "Faturado" : "Estimado"}
                     </StatusBadge>
@@ -379,6 +386,7 @@ export default function BillingReport() {
               <table className="w-full text-sm tabular-nums">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-slate-500">Pedido</th>
                     <th className="px-3 py-2.5 text-left text-xs font-medium text-slate-500">Tarefa</th>
                     <th className="px-3 py-2.5 text-left text-xs font-medium text-slate-500">CNPJ</th>
                     <th className="px-3 py-2.5 text-left text-xs font-medium text-slate-500">Razão social</th>
@@ -403,6 +411,7 @@ export default function BillingReport() {
                       onKeyDown={(e) => abrirComTeclado(e, p.id)}
                       className="border-b border-slate-200 hover:bg-slate-50 transition-colors align-top cursor-pointer focus-visible:outline-none focus-visible:bg-brand-50"
                     >
+                      <td className="px-3 py-3 text-slate-900 text-xs font-semibold whitespace-nowrap">{rotuloNumeroCrm(p.numeroCrm)}</td>
                       <td className="px-3 py-3 text-brand-700 text-xs font-medium">{p.taskId ? `#${p.taskId}` : "--"}</td>
                       <td className="px-3 py-3 text-slate-700 text-xs">{p.cnpj || "--"}</td>
                       <td className="px-3 py-3 font-medium text-slate-900 max-w-[180px] truncate">{p.razaoSocial || p.clienteNome || "--"}</td>
@@ -456,7 +465,7 @@ export default function BillingReport() {
                 </tbody>
                 <tfoot className="bg-slate-50 border-t border-slate-300">
                   <tr className="font-semibold text-slate-900">
-                    <td className="px-3 py-3" colSpan={10}>
+                    <td className="px-3 py-3" colSpan={11}>
                       Total ({filtered.length} pedido{filtered.length !== 1 ? "s" : ""})
                     </td>
                     <td className="px-3 py-3 text-right">{formatBRL(totalEstimado)}</td>

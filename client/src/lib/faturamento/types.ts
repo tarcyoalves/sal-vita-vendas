@@ -98,6 +98,8 @@ export interface Pedido {
   smbiEmpresaTravadaEm?: string | null;
   smbiEscritaIniciadaEm?: string | null;
   smbiEmpresaOrigem?: string | null;
+  /** Número interno sequencial do pedido no CRM (só leitura; vem do servidor). */
+  numeroCrm?: number | null;
   createdByUserId?: number | null;
   createdByRole: string | null;
 }

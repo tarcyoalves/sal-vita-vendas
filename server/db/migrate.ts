@@ -141,6 +141,21 @@ async function ensureRadarTables() {
             ON radar_enrichment(status, priority DESC, requested_at)`;
 }
 
+// Número interno do pedido (PED-n): coluna + sequência do banco. Backfill uma única vez, na ordem de criação.
+// Sem índice único (regra das tabelas do CRM com legado). Idempotente: só roda se a coluna ainda não existe.
+async function ensureNumeroCrm() {
+  const [r] = (await sql`SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+    AND table_name = 'fat_orders' AND column_name = 'numero_crm') AS ok`) as unknown as Array<{ ok: boolean }>;
+  if (r?.ok) return;
+  await sql`CREATE SEQUENCE IF NOT EXISTS fat_orders_numero_crm_seq`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS numero_crm INTEGER`;
+  await sql`UPDATE fat_orders o SET numero_crm = s.n
+    FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY criado_em, id) AS n FROM fat_orders WHERE numero_crm IS NULL) s
+    WHERE o.id = s.id`;
+  await sql`SELECT setval('fat_orders_numero_crm_seq', COALESCE((SELECT MAX(numero_crm) FROM fat_orders), 0) + 1, false)`;
+  await sql`ALTER TABLE fat_orders ALTER COLUMN numero_crm SET DEFAULT nextval('fat_orders_numero_crm_seq')`;
+}
+
 async function ensureRecentSchema() {
   const [cols, reg, robotCols] = await Promise.all([
     sql`SELECT column_name FROM information_schema.columns
@@ -193,6 +208,7 @@ async function ensureRecentSchema() {
     if (!have.has('smbi_empresa_travada_em')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_empresa_travada_em TEXT`;
     if (!have.has('smbi_escrita_iniciada_em')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_escrita_iniciada_em TEXT`;
     if (!have.has('smbi_empresa_origem')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_empresa_origem TEXT`;
+    if (!have.has('numero_crm')) await ensureNumeroCrm();
   }
   // Linha do tempo e chave/batimento do robô do SMBI: sem estas tabelas a rota do robô e o painel
   // do faturamento falham. Só cria se faltar (senão seriam 4 idas ao Neon a cada cold start).
@@ -313,7 +329,7 @@ async function ensureRecentSchema() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-10-09a';
+const SCHEMA_VERSION = '2026-10-10a';
 
 export async function ensureTablesExist() {
   // Antes de tudo (e antes do caminho rápido): garante o que foi criado por último.
@@ -1012,6 +1028,7 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_empresa_travada_em TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_escrita_iniciada_em TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_empresa_origem TEXT`;
+  await ensureNumeroCrm();
   await sql`
     CREATE TABLE IF NOT EXISTS smbi_order_events (
       id         SERIAL PRIMARY KEY,

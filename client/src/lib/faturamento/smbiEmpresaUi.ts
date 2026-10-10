@@ -23,7 +23,7 @@ export const AVISO_CADASTRO_POR_EMPRESA = 'O cadastro vale só para esta empresa
 
 /** Campos de empresa que só o servidor escreve. O upsert do formulário nunca os envia nem os apaga. */
 export const CAMPOS_EMPRESA_SOMENTE_LEITURA = [
-  'smbiEmpresaCnpj', 'smbiSolicitacaoId', 'smbiEmpresaTravadaEm', 'smbiEscritaIniciadaEm', 'smbiEmpresaOrigem',
+  'smbiEmpresaCnpj', 'smbiSolicitacaoId', 'smbiEmpresaTravadaEm', 'smbiEscritaIniciadaEm', 'smbiEmpresaOrigem', 'numeroCrm',
 ] as const;
 
 export function semCamposEmpresa<T extends object>(p: T): T {

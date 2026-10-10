@@ -736,6 +736,8 @@ export const fatOrders = pgTable('fat_orders', {
   // Marcador do servidor gravado em POST /iniciar ANTES da primeira escrita física no SMBI (risco de escrita).
   smbiEscritaIniciadaEm: text('smbi_escrita_iniciada_em'),
   smbiEmpresaOrigem: text('smbi_empresa_origem'), // ESCOLHA_ENVIO | VINCULO_MANUAL | LEGADO_CONFERIDO
+  // Número interno sequencial do pedido no CRM (sequência do banco; NUNCA vem da tela nem é reaproveitado).
+  numeroCrm: integer('numero_crm'),
   createdByUserId: integer('created_by_user_id'),
   createdByRole: text('created_by_role'),
 });
