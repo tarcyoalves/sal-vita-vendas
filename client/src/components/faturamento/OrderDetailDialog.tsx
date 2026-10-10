@@ -106,8 +106,9 @@ export function OrderDetailDialog({
   }
 
   const handleLinkTask = (taskId: number) => {
+    const trocou = !!pedido.taskId && pedido.taskId !== taskId;
     actions.pedidos.upsert({ id: pedido.id, taskId });
-    toast.success('Pedido vinculado à tarefa!');
+    toast.success(trocou ? `Vínculo trocado para a tarefa #${taskId}` : 'Pedido vinculado à tarefa!');
   };
 
   const total = totalPedido(pedido);
@@ -191,7 +192,15 @@ export function OrderDetailDialog({
             </div>
             {pedido.taskId && (
               <div className="col-span-2 sm:col-span-3 lg:col-span-4 rounded-md bg-slate-50 border border-slate-200 p-2.5">
-                <dt className="text-xs text-slate-500">Tarefa vinculada #{pedido.taskId}</dt>
+                <dt className="text-xs text-slate-500 flex items-center justify-between gap-2">
+                  <span>Tarefa vinculada #{pedido.taskId}</span>
+                  {canApprove && (
+                    <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => setLinkDialogOpen(true)}>
+                      <Link2 size={13} />
+                      Trocar tarefa
+                    </Button>
+                  )}
+                </dt>
                 <dd className="text-slate-900 break-words">
                   {tarefaVinculada
                     ? [tarefaVinculada.title, tarefaVinculada.assignedTo && `Atendente: ${tarefaVinculada.assignedTo}`, tarefaVinculada.status && `Status: ${tarefaVinculada.status}`, tarefaVinculada.phone].filter(Boolean).join(' · ')
