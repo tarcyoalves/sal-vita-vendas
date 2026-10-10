@@ -217,6 +217,8 @@ export const faturamentoRouter = router({
       let itensAjustados = false;
 
       const [existing] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.id));
+      // Editar pedido nunca desfaz o vínculo com a tarefa: tela sem a tarefa carregada manda taskId null.
+      if (existing?.taskId != null && input.taskId == null) values.taskId = existing.taskId;
 
       if (ctx.user.role !== 'admin' && ctx.user.role !== 'manager') {
         const mySellerId = await sellerIdForUser(ctx.user.id);

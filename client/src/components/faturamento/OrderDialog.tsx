@@ -198,7 +198,7 @@ export function OrderDialog({
       id: effectiveId ?? undefined,
       sellerId: seller.id,
       sellerName: seller.name,
-      taskId: task?.id ?? null,
+      taskId: task?.id ?? existing?.taskId ?? null,
       clienteNome: clienteNome.trim(),
       cnpj: cnpj.trim(),
       razaoSocial: razaoSocial.trim(),
