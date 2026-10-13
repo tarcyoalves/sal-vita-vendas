@@ -1,4 +1,5 @@
 import { rotuloNumeroCrm, casaNumeroCrm } from "../../lib/faturamento/numeroCrm";
+import { corLinhaPedido, LEGENDA_CORES_PEDIDO } from "../../lib/faturamento/corPedido";
 import { foldText } from "../../../../shared/searchText";
 import { AvisoMesSemPedidos } from "./AvisoMesSemPedidos";
 import { useEffect, useState, useMemo } from "react";
@@ -360,6 +361,13 @@ export default function BillingReport() {
       ) : (
         <Panel>
           <div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-200 px-4 py-2 text-xs text-slate-600">
+              {LEGENDA_CORES_PEDIDO.map((l) => (
+                <span key={l.rotulo} className="inline-flex items-center gap-1.5">
+                  <span className={`inline-block size-3 rounded-sm border border-slate-300 ${l.cls}`} aria-hidden />{l.rotulo}
+                </span>
+              ))}
+            </div>
             {/* Celular: cartões clicáveis (a tabela tem 12 colunas). */}
             <div className="md:hidden divide-y divide-slate-200">
               {filtered.map((p) => (
@@ -369,7 +377,7 @@ export default function BillingReport() {
                   tabIndex={0}
                   onClick={() => openDetail(p.id)}
                   onKeyDown={(e) => abrirComTeclado(e, p.id)}
-                  className="px-4 py-3 space-y-1.5 cursor-pointer active:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                  className={`px-4 py-3 space-y-1.5 cursor-pointer ${corLinhaPedido(p)} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-medium text-slate-900 text-sm min-w-0 break-words">
@@ -450,7 +458,7 @@ export default function BillingReport() {
                       role="button"
                       tabIndex={0}
                       onKeyDown={(e) => abrirComTeclado(e, p.id)}
-                      className="border-b border-slate-200 hover:bg-slate-50 transition-colors align-top cursor-pointer focus-visible:outline-none focus-visible:bg-brand-50"
+                      className={`border-b border-slate-200 ${corLinhaPedido(p)} transition-colors align-top cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500`}
                     >
                       <td className="px-3 py-3 text-slate-900 text-xs font-semibold whitespace-nowrap">{rotuloNumeroCrm(p.numeroCrm)}</td>
                       <td className="px-3 py-3 text-brand-700 text-xs font-medium">{p.taskId ? `#${p.taskId}` : "--"}</td>
