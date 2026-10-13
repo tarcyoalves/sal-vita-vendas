@@ -1,7 +1,7 @@
 import { rotuloNumeroCrm, casaNumeroCrm } from "../../lib/faturamento/numeroCrm";
 import { foldText } from "../../../../shared/searchText";
 import { AvisoMesSemPedidos } from "./AvisoMesSemPedidos";
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { seloPendenciaSmbi } from "../../lib/faturamento/smbiPendencia";
 import { andamentoEmpresa, empresaParaCsv, rotuloEmpresa } from "../../lib/faturamento/smbiEmpresaUi";
 import { useFatStore } from "../../lib/faturamento/store";
@@ -66,6 +66,10 @@ function estimatedTotal(pedido: Pedido): number {
 export default function BillingReport() {
   const { pedidos: allPedidos, error: fatError, loaded: fatLoaded, loading: fatLoading, reload: fatReload } = useFatStore();
   const { data: sellers = [] } = trpc.sellers.list.useQuery();
+  // Registro dos pedidos excluídos: continuam visíveis (escuros e riscados), fora de totais e filtros de mês.
+  const [mostrarExcluidos, setMostrarExcluidos] = useState(true);
+  const { data: excluidosAll = [], refetch: recarregarExcluidos } = trpc.faturamento.listarExcluidos.useQuery(undefined, { refetchOnWindowFocus: true });
+
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<"todos" | "pendente" | "estimado" | "faturado">("todos");
@@ -78,6 +82,8 @@ export default function BillingReport() {
   // Busca livre: CNPJ, Razão Social, Cidade e Produtos num único campo — mesmo
   // padrão de busca já usado em Tarefas e no picker de vínculo de pedidos.
   const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => { void recarregarExcluidos(); }, [allPedidos.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Manage popup (view all + edit/faturar/excluir shortcuts)
   const [selectedPedidoId, setSelectedPedidoId] = useState<string | null>(null);
@@ -169,6 +175,20 @@ export default function BillingReport() {
   }, [allPedidos, statusFilter, sellerFilter, mesFilter, showAllMonths, ufFilter, smbiFilter, searchQuery]);
 
   // Totals
+  const excluidos = useMemo(() => {
+    if (!mostrarExcluidos) return [];
+    const q = foldText(searchQuery.trim());
+    const qDigits = q.replace(/\D/g, "");
+    return excluidosAll.filter((e) => {
+      if (sellerFilter !== "todos" && e.sellerName !== sellerFilter) return false;
+      if (!q) return true;
+      return foldText(`${e.clienteNome} ${e.sellerName} ${e.reason}`).includes(q)
+        || (!!qDigits && e.cnpj.replace(/\D/g, "").includes(qDigits))
+        || casaNumeroCrm(e.numeroCrm, searchQuery);
+    });
+  }, [excluidosAll, mostrarExcluidos, sellerFilter, searchQuery]);
+  const fmtExcl = (d: Date | string) => new Date(d).toLocaleDateString("pt-BR");
+
   const totalEstimado = useMemo(() => filtered.reduce((s, p) => s + estimatedTotal(p), 0), [filtered]);
   const totalFaturado = useMemo(
     () => filtered.filter((p) => p.status === "faturado").reduce((s, p) => s + totalPedido(p), 0),
@@ -303,7 +323,16 @@ export default function BillingReport() {
                 <option value="nao_vinculados">Não vinculados ao SMBI</option>
               </select>
             </div>
-            <div className="flex items-end">
+            <div className="flex items-end gap-2">
+              <Button
+                variant={mostrarExcluidos ? "default" : "outline"}
+                className="gap-1 shrink-0"
+                aria-pressed={mostrarExcluidos}
+                onClick={() => setMostrarExcluidos((v) => !v)}
+                title="Mostrar o registro dos pedidos excluídos"
+              >
+                Excluídos{excluidosAll.length ? ` (${excluidosAll.length})` : ""}
+              </Button>
               <Button
                 variant="outline"
                 className="w-full gap-1"
@@ -381,6 +410,18 @@ export default function BillingReport() {
                 <div className="flex justify-between"><span className="font-medium text-slate-500">Estimado</span><span>{formatBRL(totalEstimado)}</span></div>
                 <div className="flex justify-between"><span className="font-medium text-slate-500">Faturado</span><span>{formatBRL(totalFaturado)}</span></div>
               </div>
+              {excluidos.map((e) => (
+                <div key={`excl-${e.id}`} className="px-4 py-3 space-y-1 bg-slate-200 text-slate-500">
+                  <p className="text-sm font-medium line-through break-words">
+                    <span className="text-xs font-semibold mr-1.5">{rotuloNumeroCrm(e.numeroCrm)}</span>{e.clienteNome || "--"}
+                  </p>
+                  <p className="text-xs">
+                    <span className="inline-flex items-center rounded-sm bg-slate-600 px-1.5 py-0.5 text-[11px] font-semibold text-white">EXCLUÍDO</span>{" "}
+                    por {e.deletedByName} em {fmtExcl(e.createdAt)} — <span className="italic">{e.reason}</span>
+                  </p>
+                  <p className="text-xs line-through">{e.sellerName} · {formatBRL(e.valorTotal)}</p>
+                </div>
+              ))}
             </div>
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm tabular-nums">
@@ -460,6 +501,27 @@ export default function BillingReport() {
                           <span className="font-normal text-slate-500">--</span>
                         )}
                       </td>
+                    </tr>
+                  ))}
+                  {excluidos.length > 0 && (
+                    <tr className="bg-slate-300 text-slate-700">
+                      <td colSpan={12} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide">Pedidos excluídos (registro) — {excluidos.length}</td>
+                    </tr>
+                  )}
+                  {excluidos.map((e) => (
+                    <tr key={`excl-${e.id}`} className="border-b border-slate-300 bg-slate-200 text-slate-500 align-top">
+                      <td className="px-3 py-3 text-xs font-semibold whitespace-nowrap line-through">{rotuloNumeroCrm(e.numeroCrm)}</td>
+                      <td className="px-3 py-3 text-xs line-through">--</td>
+                      <td className="px-3 py-3 text-xs line-through">{e.cnpj || "--"}</td>
+                      <td className="px-3 py-3 max-w-[180px] truncate line-through">{e.clienteNome || "--"}</td>
+                      <td className="px-3 py-3 text-xs line-through">--</td>
+                      <td className="px-3 py-3 text-xs line-through">{e.sellerName || "--"}</td>
+                      <td className="px-3 py-3 text-xs" colSpan={5}>
+                        <span className="inline-flex items-center rounded-sm bg-slate-600 px-1.5 py-0.5 text-[11px] font-semibold text-white">EXCLUÍDO</span>{" "}
+                        por {e.deletedByName} em {fmtExcl(e.createdAt)} — <span className="italic">{e.reason}</span>
+                      </td>
+                      <td className="px-3 py-3 text-right text-xs line-through">{formatBRL(e.valorTotal)}</td>
+                      <td className="px-3 py-3" />
                     </tr>
                   ))}
                 </tbody>

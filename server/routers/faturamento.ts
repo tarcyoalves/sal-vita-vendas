@@ -316,6 +316,15 @@ export const faturamentoRouter = router({
       return { ...row, espelhoProtegido, itensAjustados };
     }),
 
+  // Registro dos pedidos excluídos (somem da lista de pedidos, mas ficam aqui). Atendente vê só os próprios.
+  listarExcluidos: protectedProcedure.query(async ({ ctx }) => {
+    const full = ctx.user.role === 'admin' || ctx.user.role === 'manager';
+    if (full) return db.select().from(fatOrderDeletionLogs).orderBy(desc(fatOrderDeletionLogs.createdAt)).limit(500);
+    const mySellerId = await sellerIdForUser(ctx.user.id);
+    if (mySellerId == null) return [];
+    return db.select().from(fatOrderDeletionLogs).where(eq(fatOrderDeletionLogs.sellerId, mySellerId)).orderBy(desc(fatOrderDeletionLogs.createdAt)).limit(500);
+  }),
+
   removePedido: protectedProcedure
     .input(z.object({
       id: z.string(),
@@ -356,6 +365,13 @@ export const faturamentoRouter = router({
         deletedByUserId: ctx.user.id,
         deletedByName: ctx.user.name,
         reason: input.reason.trim(),
+        numeroCrm: existing.numeroCrm ?? null,
+        pedidoSnapshot: {
+          uf: existing.uf, cidade: existing.cidade, razaoSocial: existing.razaoSocial, status: existing.status,
+          criadoEm: existing.criadoEm, previsaoFaturamentoEm: existing.previsaoFaturamentoEm, faturadoEm: existing.faturadoEm,
+          taskId: existing.taskId, smbiMovsaiId: existing.smbiMovsaiId,
+          itens: existing.itens.map((i) => ({ descricao: i.descricao, quantidade: i.quantidade, valorUnitario: i.valorUnitario })),
+        },
       });
 
       await db.delete(fatOrders).where(eq(fatOrders.id, input.id));

@@ -832,6 +832,9 @@ export const fatOrderDeletionLogs = pgTable('fat_order_deletion_logs', {
   deletedByName: text('deleted_by_name').notNull(),
   reason: text('reason').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  // Registro do pedido excluído (a linha em fat_orders é apagada de verdade): número interno e resumo p/ a tela.
+  numeroCrm: integer('numero_crm'),
+  pedidoSnapshot: jsonb('pedido_snapshot').$type<Record<string, unknown>>(),
 });
 
 export type FatProduct = typeof fatProducts.$inferSelect;

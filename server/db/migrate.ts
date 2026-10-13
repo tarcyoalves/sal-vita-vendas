@@ -156,6 +156,16 @@ async function ensureNumeroCrm() {
   await sql`ALTER TABLE fat_orders ALTER COLUMN numero_crm SET DEFAULT nextval('fat_orders_numero_crm_seq')`;
 }
 
+// Registro de pedido excluído: número interno + resumo do pedido (colunas nulas; linhas antigas ficam sem).
+async function ensureDeletionLogSnapshot() {
+  const [r] = (await sql`SELECT to_regclass('public.fat_order_deletion_logs') IS NOT NULL AS tabela,
+    EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+      AND table_name = 'fat_order_deletion_logs' AND column_name = 'pedido_snapshot') AS coluna`) as unknown as Array<{ tabela: boolean; coluna: boolean }>;
+  if (!r?.tabela || r.coluna) return;
+  await sql`ALTER TABLE fat_order_deletion_logs ADD COLUMN IF NOT EXISTS numero_crm INTEGER`;
+  await sql`ALTER TABLE fat_order_deletion_logs ADD COLUMN IF NOT EXISTS pedido_snapshot JSONB`;
+}
+
 async function ensureRecentSchema() {
   const [cols, reg, robotCols] = await Promise.all([
     sql`SELECT column_name FROM information_schema.columns
@@ -210,6 +220,7 @@ async function ensureRecentSchema() {
     if (!have.has('smbi_empresa_origem')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_empresa_origem TEXT`;
     if (!have.has('numero_crm')) await ensureNumeroCrm();
   }
+  await ensureDeletionLogSnapshot();
   // Linha do tempo e chave/batimento do robô do SMBI: sem estas tabelas a rota do robô e o painel
   // do faturamento falham. Só cria se faltar (senão seriam 4 idas ao Neon a cada cold start).
   const smbiOk = (reg as unknown as Array<{ smbi_ok: boolean }>)[0]?.smbi_ok === true;
@@ -329,7 +340,7 @@ async function ensureRecentSchema() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-10-10a';
+const SCHEMA_VERSION = '2026-10-13a';
 
 export async function ensureTablesExist() {
   // Antes de tudo (e antes do caminho rápido): garante o que foi criado por último.
@@ -987,6 +998,7 @@ export async function ensureTablesExist() {
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS fat_order_deletion_logs_seller_idx ON fat_order_deletion_logs(seller_id)`;
+  await ensureDeletionLogSnapshot();
 
   // ── Pedidos: aprovação do admin, valor pago, comissão/frete por produto ────
   await sql`ALTER TABLE fat_products ADD COLUMN IF NOT EXISTS comissao_fixa_pct DOUBLE PRECISION`;
