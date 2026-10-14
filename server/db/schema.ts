@@ -195,6 +195,11 @@ export const siteOrders = pgTable('site_orders', {
   utmContent: text('utm_content'),
   utmTerm: text('utm_term'),
   fbclid: text('fbclid'),
+  // Meta CAPI match quality: client signals captured at order creation.
+  clientIp: text('client_ip'),
+  clientUa: text('client_ua'),
+  fbp: text('fbp'),
+  fbc: text('fbc'),
   // Reorder reminder (retention): set when the ~45-day "buy again" nudge is sent.
   reorderRemindedAt: timestamp('reorder_reminded_at'),
   // Opaque per-order secret used to authorize tracking/payment without exposing

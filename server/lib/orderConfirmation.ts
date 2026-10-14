@@ -4,6 +4,7 @@ import { ordersDb } from '../db/ordersDb';
 import { siteOrders, abandonedCarts, automationRuns, msgTemplates, coupons } from '../db/schema';
 import { sendEmail, orderConfirmedHtml } from '../email/resend';
 import { linhaRevisar } from './paymentTransition';
+import { STORE_URL } from './storeUrl';
 
 type SiteOrder = typeof siteOrders.$inferSelect;
 
@@ -31,7 +32,7 @@ export function orderTrackLink(
   order: { id: number; trackToken?: string | null },
   extraQuery?: string,
 ): string {
-  const base = `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}`;
+  const base = `${STORE_URL}/meu-pedido?pedido=${order.id}`;
   const withToken = order.trackToken ? `${base}&t=${order.trackToken}` : base;
   return extraQuery ? `${withToken}&${extraQuery}` : withToken;
 }
@@ -84,43 +85,66 @@ export async function bumpCouponUsage(code: string | null | undefined, delta: 1 
 
 // Server-side Meta Conversions API (CAPI) Purchase — iOS/adblock-proof, fired on
 // CONFIRMED payment with the same event_id as the browser pixel (dedup). No-ops
-// unless FB_CAPI_TOKEN is configured. PII is SHA-256 hashed per Meta's spec.
+// (with one log line) unless FB_CAPI_TOKEN is configured. PII is SHA-256 hashed per
+// Meta's spec; client_ip_address, client_user_agent, fbp and fbc go RAW (never hashed).
+const sha = (v: string) => crypto.createHash('sha256').update(v.trim().toLowerCase()).digest('hex');
+const semAcento = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+export function buildCapiPurchasePayload(order: SiteOrder, eventTimeMs: number = Date.now()) {
+  const user_data: Record<string, unknown> = {};
+  const phoneDigits = order.customerPhone.replace(/\D/g, '');
+  if (phoneDigits) {
+    const withDdi = phoneDigits.startsWith('55') ? phoneDigits : `55${phoneDigits}`;
+    user_data.ph = [sha(withDdi)];
+    user_data.external_id = [sha(phoneDigits)];
+  }
+  if (order.customerEmail && order.customerEmail.includes('@')) user_data.em = [sha(order.customerEmail)];
+  if (order.customerName) {
+    const parts = order.customerName.trim().split(/\s+/);
+    user_data.fn = [sha(parts[0])];
+    if (parts.length > 1) user_data.ln = [sha(parts[parts.length - 1])];
+  }
+  const uf = (order.state ?? '').trim().toLowerCase();
+  if (/^[a-z]{2}$/.test(uf)) user_data.st = [sha(uf)];
+  const ct = semAcento(order.city ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (ct) user_data.ct = [sha(ct)];
+  const cep = (order.postalCode ?? '').replace(/\D/g, '');
+  if (cep) user_data.zp = [sha(cep)];
+  user_data.country = [sha('br')];
+  if (order.clientIp) user_data.client_ip_address = order.clientIp;
+  if (order.clientUa) user_data.client_user_agent = order.clientUa;
+  if (order.fbp) user_data.fbp = order.fbp;
+  if (order.fbc) user_data.fbc = order.fbc;
+  else if (order.fbclid) {
+    // Sintetizado a partir do fbclid: o instante é o do clique/pedido, não o de agora.
+    user_data.fbc = `fb.1.${new Date(order.createdAt).getTime()}.${order.fbclid}`;
+  }
+  return {
+    event_name: 'Purchase',
+    event_time: Math.floor(eventTimeMs / 1000),
+    event_id: `purchase-${order.id}`,
+    action_source: 'website',
+    event_source_url: STORE_URL,
+    user_data,
+    custom_data: {
+      currency: 'BRL',
+      value: parseFloat(order.totalPrice ?? '0'),
+      content_ids: ['salvita-001'],
+      content_type: 'product',
+      order_id: String(order.id),
+    },
+  };
+}
+
 export async function sendCapiPurchase(order: SiteOrder): Promise<void> {
   const token = process.env.FB_CAPI_TOKEN;
   const pixelId = process.env.FB_PIXEL_ID || '2209017296169541';
-  if (!token) return; // CAPI not configured — skip silently
+  if (!token) { console.warn(`[capi] FB_CAPI_TOKEN not configured — Purchase for order ${order.id} not sent`); return; }
   try {
-    const sha = (v: string) => crypto.createHash('sha256').update(v.trim().toLowerCase()).digest('hex');
-    const user_data: Record<string, unknown> = {};
-    const phoneDigits = order.customerPhone.replace(/\D/g, '');
-    if (phoneDigits) user_data.ph = [sha(phoneDigits.startsWith('55') ? phoneDigits : `55${phoneDigits}`)];
-    if (order.customerEmail && order.customerEmail.includes('@')) user_data.em = [sha(order.customerEmail)];
-    if (order.customerName) {
-      const parts = order.customerName.trim().split(/\s+/);
-      user_data.fn = [sha(parts[0])];
-      if (parts.length > 1) user_data.ln = [sha(parts[parts.length - 1])];
-    }
-    if (order.state) user_data.st = [sha(order.state)];
-    if (order.city) user_data.ct = [sha(order.city.replace(/\s+/g, ''))];
-    if (order.fbclid) user_data.fbc = `fb.1.${Date.now()}.${order.fbclid}`;
-    const event = {
-      event_name: 'Purchase',
-      event_time: Math.floor(Date.now() / 1000),
-      event_id: `purchase-${order.id}`,
-      action_source: 'website',
-      event_source_url: 'https://premium.salvitarn.com.br',
-      user_data,
-      custom_data: {
-        currency: 'BRL',
-        value: parseFloat(order.totalPrice ?? '0'),
-        content_ids: ['salvita-001'],
-        content_type: 'product',
-        order_id: String(order.id),
-      },
-    };
+    const event = buildCapiPurchasePayload(order);
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), 6000);
-    const r = await fetch(`https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${token}`, {
+    const r = await fetch(`https://graph.facebook.com/v21.0/${pixelId}/events?access_token=${token}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ data: [event] }),

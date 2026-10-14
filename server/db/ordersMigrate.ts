@@ -3,7 +3,7 @@ import { neon } from '@neondatabase/serverless';
 type Step = { name: string; ok: boolean; error?: string };
 
 // Bump whenever the DDL below changes, to force exactly one full re-run.
-const ORDERS_SCHEMA_VERSION = 'orders-2026-10-06a';
+const ORDERS_SCHEMA_VERSION = 'orders-2026-10-14a';
 
 /**
  * Ensures all e-commerce/recovery tables exist in the ORDERS database.
@@ -105,6 +105,10 @@ export async function ensureOrdersTablesExist(force = false): Promise<Step[]> {
   await run('site_orders.utm_content', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS utm_content TEXT`);
   await run('site_orders.utm_term', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS utm_term TEXT`);
   await run('site_orders.fbclid', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS fbclid TEXT`);
+  await run('site_orders.client_ip', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS client_ip TEXT`);
+  await run('site_orders.client_ua', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS client_ua TEXT`);
+  await run('site_orders.fbp', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS fbp TEXT`);
+  await run('site_orders.fbc', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS fbc TEXT`);
   await run('site_orders.reorder_reminded_at', () => sql`ALTER TABLE site_orders ADD COLUMN IF NOT EXISTS reorder_reminded_at TIMESTAMP`);
   // Opaque per-order token: replaces "last 4 phone digits" as the ownership proof
   // for /meu-pedido and for payment retries. Nullable so pre-existing orders keep

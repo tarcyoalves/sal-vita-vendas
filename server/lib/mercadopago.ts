@@ -1,6 +1,7 @@
 import { ordersDb as db } from '../db/ordersDb';
 import { siteOrders } from '../db/schema';
 import { eq } from 'drizzle-orm';
+import { STORE_URL } from './storeUrl';
 
 type SiteOrder = typeof siteOrders.$inferSelect;
 
@@ -27,7 +28,7 @@ export async function createPixPaymentForOrder(order: SiteOrder): Promise<{ paym
       last_name: order.customerName.split(' ').slice(1).join(' ') || '-',
     },
     external_reference: String(order.id),
-    notification_url: 'https://premium.salvitarn.com.br/api/mp-webhook',
+    notification_url: `${STORE_URL}/api/mp-webhook`,
   };
   if (order.customerCpf) body.payer.identification = { type: 'CPF', number: order.customerCpf.replace(/\D/g, '') };
 

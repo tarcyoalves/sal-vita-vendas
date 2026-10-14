@@ -311,6 +311,7 @@ import { safeEqual } from '../server/lib/safeEqual';
 import { handleResendWebhook, verifySvixSignature } from '../server/routers/resendWebhook';
 import { isForbiddenBatch, emailFromTrpcBody } from '../server/lib/trpcBatchGuard';
 import { csrfRejection } from '../server/lib/csrfGuard';
+import { STORE_URL } from '../server/lib/storeUrl';
 import { decidirTransicaoPagamento, idPagamentoMpValido, pagamentoAprovadoDuplicado, estornoPertenceAoPedido, motivoValorDivergente } from '../server/lib/paymentTransition';
 
 app.get('/api/unsubscribe', handleUnsubscribe);
@@ -772,7 +773,7 @@ async function notifyB2bLead(lead: {
 }): Promise<void> {
   const to = process.env.B2B_NOTIFY_EMAIL;
   if (!to) { console.warn('[b2b] B2B_NOTIFY_EMAIL not configured — skipping internal notification'); return; }
-  const adminLink = `https://premium.salvitarn.com.br/sal-vita-b2b?empresa=${lead.companyId}`;
+  const adminLink = `${STORE_URL}/sal-vita-b2b?empresa=${lead.companyId}`;
   const row = (label: string, value: string) => value
     ? `<tr><td style="padding:6px 0;font-size:13px;color:#888;width:140px;vertical-align:top;">${label}</td><td style="padding:6px 0;font-size:14px;color:#222;">${escapeHtmlB2b(value)}</td></tr>`
     : '';
@@ -887,7 +888,7 @@ app.post('/api/b2b/inbound', b2bInboundLimiter, express.json({ limit: '256kb' })
         state: stateUpper,
         country: 'BR',
         sourceType: 'inbound_form',
-        sourceUrl: 'https://premium.salvitarn.com.br/atacado',
+        sourceUrl: `${STORE_URL}/atacado`,
         pipelineType: 'inbound',
         // Inbound leads never enter a cold cadence — they go straight to a
         // human SLA (PLANO-FINAL Seção 10.1).
@@ -927,7 +928,7 @@ app.post('/api/b2b/inbound', b2bInboundLimiter, express.json({ limit: '256kb' })
         whatsapp: phoneDigits,
         channelType: 'form',
         isPublicBusinessContact: true,
-        sourceUrl: 'https://premium.salvitarn.com.br/atacado',
+        sourceUrl: `${STORE_URL}/atacado`,
       }).returning();
       contactId = createdContact.id;
     }
@@ -936,7 +937,7 @@ app.post('/api/b2b/inbound', b2bInboundLimiter, express.json({ limit: '256kb' })
     await ordersDb.insert(publicSources).values({
       companyId,
       sourceType: 'inbound_form',
-      sourceUrl: 'https://premium.salvitarn.com.br/atacado',
+      sourceUrl: `${STORE_URL}/atacado`,
       rawExcerpt: JSON.stringify({ volumeInterest: data.volumeInterest, message: data.message }).slice(0, 2000),
       confidence: 100,
     });
@@ -1025,9 +1026,11 @@ const storeLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// 30 por 15 min por IP: compradores atrás de CGNAT móvel dividem o mesmo IP em campanha paga.
+// O createOrder já tem dedup idempotente de 15 min, então reenvios não geram pedidos duplicados.
 const orderLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 30,
   message: { error: 'Muitas tentativas de pedido. Tente novamente em 15 minutos.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -1062,9 +1065,10 @@ const chatLimiter = rateLimit({
 });
 
 // Pagamento tem limiter próprio: retentar PIX/cartão não pode gastar a cota de criar pedido.
+// 40 por 15 min: IP compartilhado (CGNAT de operadora móvel) + retentativas de PIX/cartão em tráfego de anúncios.
 const paymentLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 15,
+  max: 40,
   message: { error: 'Muitas tentativas de pagamento. Tente novamente em 15 minutos.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -1361,7 +1365,7 @@ async function processReorderReminders(): Promise<{ sent: number }> {
         .from(abandonedCarts).where(eq(abandonedCarts.customerPhone, phoneDigits)).limit(1);
       if (cartRecord?.optedOut) continue;
 
-      const link = activeCoupon ? `https://premium.salvitarn.com.br?cupom=${activeCoupon}` : 'https://premium.salvitarn.com.br';
+      const link = activeCoupon ? `${STORE_URL}?cupom=${activeCoupon}` : STORE_URL;
       const cupomTexto = activeCoupon ? `Use o cupom *${activeCoupon}* e ganhe desconto especial!\n\n` : '';
       const vars = { nome: o.customerName, pedido: String(o.id), link, cupom_texto: cupomTexto };
       const msg = tpl
@@ -1491,7 +1495,7 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
       const name = cart.customerName;
       const ruleCfg = RULE_MAP[run.ruleName] ?? { slug: 'abandoned_simples', coupon: '' };
       // Append ?cupom= so the storefront pre-fills and auto-applies the code.
-      const link = ruleCfg.coupon ? `https://premium.salvitarn.com.br?cupom=${ruleCfg.coupon}` : 'https://premium.salvitarn.com.br';
+      const link = ruleCfg.coupon ? `${STORE_URL}?cupom=${ruleCfg.coupon}` : STORE_URL;
       const tpl = tplBySlug[ruleCfg.slug] ?? fallbackTpl;
       let msg: string;
       if (run.aiBody) {
@@ -1512,7 +1516,7 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
           sent++;
           // Email only on 3rd touch (cupom) to save Resend daily quota for confirmations
           if (cart.customerEmail && ruleCfg.coupon) {
-            const emailHtml = abandonedCartHtml(cart.customerName, 'https://premium.salvitarn.com.br', ruleCfg.coupon);
+            const emailHtml = abandonedCartHtml(cart.customerName, STORE_URL, ruleCfg.coupon);
             try { await sendEmail(cart.customerEmail, `Seu cupom ${ruleCfg.coupon} — finalize seu pedido Sal Vita`, emailHtml); }
             catch (e) { console.error(`[cron] abandoned-cart: e-mail do carrinho ${cart.id} falhou:`, e); }
           }

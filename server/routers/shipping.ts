@@ -6,6 +6,8 @@ import { ordersDb as db } from '../db/ordersDb';
 import { siteOrders, coupons, msgTemplates } from '../db/schema';
 import { desc, eq, and, or, ne, gte, isNull, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
+import { STORE_URL } from '../lib/storeUrl';
+import { filterAllowedCarriersSorted } from '../lib/shippingFilter';
 import { confirmOrderPaid, appendReviewNote } from '../lib/orderConfirmation';
 import { quantidadeValida, cupomAtendeMinimo, acharPedidoDuplicado, mesmosDadosDoPedido, IDEMPOTENCIA_PEDIDO_MS } from '../lib/paymentTransition';
 
@@ -159,13 +161,16 @@ async function meCalculate(destCep: string, qty: number, productId?: string | nu
     if (!Array.isArray(data)) return null;
     const valid = data.filter((s: any) => s && !s.error && s.price);
     if (valid.length === 0) return null;
-    return valid.map((s: any) => ({
+    // Só transportadoras permitidas (ALLOWED_CARRIERS), da mais barata à mais cara. Nenhuma → null
+    // → quoteShipping cai na tabela estática PAC/SEDEX.
+    const correios = filterAllowedCarriersSorted(valid.map((s: any) => ({
       serviceId: String(s.id),
-      name:      s.name,
-      company:   s.company?.name ?? 'Correios',
+      name:      String(s.name ?? ''),
+      company:   String(s.company?.name ?? ''),
       price:     parseFloat(s.custom_price ?? s.price),
       days:      s.delivery_range ? `${s.delivery_range.min}–${s.delivery_range.max} dias úteis` : '?',
-    }));
+    })));
+    return correios.length > 0 ? correios : null;
   } catch {
     return null;
   }
@@ -203,6 +208,20 @@ function assertOrderAccess(
 /** Mesmo erro para pedido inexistente e acesso negado: não permite enumerar pedidos. */
 function orderNotFound(): TRPCError {
   return new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' });
+}
+
+const hdr = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? '';
+
+/** IP/UA do comprador e cookies Meta, para a Conversions API. Nada disso vai para log. */
+function clientSignals(headers: Record<string, string | string[] | undefined>, fbp?: string, fbc?: string) {
+  const ip = hdr(headers['x-forwarded-for']).split(',')[0].trim() || hdr(headers['x-real-ip']).trim();
+  const ua = hdr(headers['user-agent']).trim();
+  return {
+    clientIp: ip ? ip.slice(0, 500) : null,
+    clientUa: ua ? ua.slice(0, 500) : null,
+    fbp: fbp?.trim() || null,
+    fbc: fbc?.trim() || null,
+  };
 }
 
 type ShipOption = { serviceId: string; name: string; company: string; price: number; days: string };
@@ -311,8 +330,11 @@ export const shippingRouter = router({
       utmContent: z.string().max(180).optional(),
       utmTerm: z.string().max(180).optional(),
       fbclid: z.string().max(400).optional(),
+      // Cookies _fbp/_fbc do browser (Meta CAPI match quality).
+      fbp: z.string().max(255).optional(),
+      fbc: z.string().max(255).optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       // Server-authoritative price catalog. `quantity` is the number of 1kg units
       // (kg units): 1kg product = 1 unit each, box = 10 units each.
       const productId = resolveProduct(input.productId, input.quantity);
@@ -381,6 +403,10 @@ export const shippingRouter = router({
       } else {
         shipping = cheapest;
       }
+      // Serviço gravado = o que o servidor cotou. Id fora da lista permitida (ou que não
+      // bate com nenhuma opção) nunca é gravado: cai na opção mais barata permitida.
+      const cheapestOpt = quote.options.length ? quote.options.reduce((a, b) => (b.price < a.price ? b : a)) : null;
+      const chosen = match ?? (shipping === cheapest ? cheapestOpt : null);
       if (Math.abs(shipping - claimed) > 0.01) {
         console.warn(`[createOrder] shipping corrected: client sent ${claimed}, server charged ${shipping} (service ${input.shippingServiceId ?? '—'}, source ${quote.source})`);
       }
@@ -434,8 +460,8 @@ export const shippingRouter = router({
         product: prod.name,
         unitPrice: String(prod.price),
         trackToken: crypto.randomBytes(16).toString('hex'),
-        shippingServiceId: input.shippingServiceId ?? null,
-        shippingServiceName: input.shippingServiceName ?? null,
+        shippingServiceId: chosen ? chosen.serviceId : (cheapestOpt?.serviceId ?? null),
+        shippingServiceName: chosen ? chosen.name : (cheapestOpt?.name ?? null),
         shippingPrice: shipping > 0 ? String(shipping) : null,
         totalPrice: String(total),
         couponCode: appliedCoupon,
@@ -446,6 +472,7 @@ export const shippingRouter = router({
         utmContent: input.utmContent ?? null,
         utmTerm: input.utmTerm ?? null,
         fbclid: input.fbclid ?? null,
+        ...clientSignals(ctx.req.headers, input.fbp, input.fbc),
       }).returning();
       if (!order?.id) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Erro ao criar pedido. Tente novamente.' });
       // `shipping` is returned so the storefront can show the corrected freight if
@@ -674,7 +701,7 @@ Seja direto e use emojis para facilitar leitura.`;
       // Return URLs carry the opaque token, never the phone digits — this link is
       // handed to Mercado Pago and ends up in history/Referer.
       const back = (status: string) =>
-        `https://premium.salvitarn.com.br/meu-pedido?pedido=${order.id}`
+        `${STORE_URL}/meu-pedido?pedido=${order.id}`
         + (order.trackToken ? `&t=${order.trackToken}` : '')
         + `&status=${status}`;
 
@@ -698,7 +725,7 @@ Seja direto e use emojis para facilitar leitura.`;
           pending: back('pendente'),
         },
         auto_return: 'approved',
-        notification_url: `https://premium.salvitarn.com.br/api/mp-webhook`,
+        notification_url: `${STORE_URL}/api/mp-webhook`,
         external_reference: String(order.id),
         statement_descriptor: 'SAL VITA',
         payment_methods: { installments: 3 },
@@ -780,7 +807,7 @@ Seja direto e use emojis para facilitar leitura.`;
           last_name: order.customerName.split(' ').slice(1).join(' ') || '-',
         },
         external_reference: String(order.id),
-        notification_url: 'https://premium.salvitarn.com.br/api/mp-webhook',
+        notification_url: `${STORE_URL}/api/mp-webhook`,
       };
       if (order.customerCpf) body.payer.identification = { type: 'CPF', number: order.customerCpf.replace(/\D/g, '') };
 
@@ -1114,7 +1141,7 @@ Seja direto e use emojis para facilitar leitura.`;
       };
       const msg = tpl
         ? renderTpl(tpl.body, vars)
-        : `🧂 *Sal Vita — Pedido #${order.id}*\n\nOlá *${order.customerName}*! Seu pedido foi enviado! 🚚\n\n📦 Código de rastreio: *${order.trackingCode}*\n\n🔗 Rastreie: ${correiosLink(order.trackingCode)}\n\nOu acesse: https://premium.salvitarn.com.br/meu-pedido\n\nObrigado! 🙏`;
+        : `🧂 *Sal Vita — Pedido #${order.id}*\n\nOlá *${order.customerName}*! Seu pedido foi enviado! 🚚\n\n📦 Código de rastreio: *${order.trackingCode}*\n\n🔗 Rastreie: ${correiosLink(order.trackingCode)}\n\nOu acesse: ${STORE_URL}/meu-pedido\n\nObrigado! 🙏`;
 
       const sent = await sendWhatsAppMsg(order.customerPhone, msg);
       if (!sent) {

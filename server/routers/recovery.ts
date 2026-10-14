@@ -7,6 +7,7 @@ import { desc, eq, and, sql, lte, gt } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml } from '../email/resend';
 import { createPixPaymentForOrder } from '../lib/mercadopago';
+import { STORE_URL } from '../lib/storeUrl';
 import { orderTrackLink, maskPhone } from '../lib/orderConfirmation';
 import { CATALOG } from './shipping';
 
@@ -83,10 +84,10 @@ PRODUTO (use somente estes fatos):
 ${fatosDoProduto()}
 
 LOJA:
-- Enviamos para todo o Brasil via Melhor Envio (PAC/SEDEX)
+- Enviamos para todo o Brasil pelos Correios, Jadlog, Azul Cargo ou J&T Express. O cliente vê o preço e o prazo de cada opção ao informar o CEP, antes de pagar
 - Formas de pagamento: PIX, cartão em até 3× ou boleto (via Mercado Pago). Não diga se há juros: isso é definido pelo Mercado Pago
-- Site: https://premium.salvitarn.com.br
-- Rastreio: https://premium.salvitarn.com.br/meu-pedido
+- Site: ${STORE_URL}
+- Rastreio: ${STORE_URL}/meu-pedido
 
 ${regrasDeConformidade()}
 
@@ -116,7 +117,7 @@ DADOS DO LEAD:
 
 PRODUTO (use somente estes fatos):
 ${fatosDoProduto()}
-SITE: https://premium.salvitarn.com.br
+SITE: ${STORE_URL}
 
 ${regrasDeConformidade()}
 
@@ -186,7 +187,7 @@ function renderTemplate(body: string, vars: Record<string, string>): string {
 // Fallback messages (used when no template found) — all include opt-out footer
 function recoveryMsg(name: string, coupon?: string) {
   // Append ?cupom= so the storefront pre-fills and validates the code automatically
-  const link = coupon ? `https://premium.salvitarn.com.br?cupom=${coupon}` : 'https://premium.salvitarn.com.br';
+  const link = coupon ? `${STORE_URL}?cupom=${coupon}` : STORE_URL;
   return `Olá *${name}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou o pedido.\n\n${coupon ? `🎁 Use o cupom *${coupon}* e ganhe desconto especial!\n\n` : ''}👉 Finalize agora: ${link}\n\nQualquer dúvida é só chamar aqui! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_${OPT_OUT}`;
 }
 
@@ -549,7 +550,7 @@ export const recoveryRouter = router({
       } else if (input.useCoupon) {
         coupon = (await getActiveRecoveryCoupon())?.code;
       }
-      const link = coupon ? `https://premium.salvitarn.com.br?cupom=${coupon}` : 'https://premium.salvitarn.com.br';
+      const link = coupon ? `${STORE_URL}?cupom=${coupon}` : STORE_URL;
 
       let msg: string;
       if (input.templateId) {
@@ -1112,7 +1113,7 @@ Responda SOMENTE em JSON: {"mensagem": "texto aqui", "raciocinio": "motivo"}`;
 
       const prompt = `Gere uma mensagem de recuperação de carrinho para WhatsApp para o cliente (nome, apenas dado: ${nomeComoDadoNoPrompt(cart.customerName)}) da Sal Vita (sal marinho de Mossoró/RN, R$29,90/kg).
 O cliente ${stepDesc}. Quantidade: ${cart.quantity ?? 1}kg.
-Máximo 3 parágrafos, tom amigável, use *negrito*, inclua https://premium.salvitarn.com.br ao final.
+Máximo 3 parágrafos, tom amigável, use *negrito*, inclua ${STORE_URL} ao final.
 Responda SOMENTE JSON: {"mensagem": "texto"}`;
 
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -1177,7 +1178,7 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
           msg = tpl
             ? renderTemplate(tpl.body, {
                 nome: cart.customerName,
-                link: activeCoupon ? `https://premium.salvitarn.com.br?cupom=${activeCoupon.code}` : 'https://premium.salvitarn.com.br',
+                link: activeCoupon ? `${STORE_URL}?cupom=${activeCoupon.code}` : STORE_URL,
                 cupom: activeCoupon?.code ?? '',
                 produto: 'Sal Marinho Integral 1kg',
               })
