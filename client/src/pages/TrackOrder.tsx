@@ -3,16 +3,45 @@ import { trpc } from '../lib/trpc';
 import ConsentBanner from '../components/premium/ConsentBanner';
 import { CONSENT_CHANGE_EVENT, loadMetaPixel, trackPixel } from '../components/premium/pixelConsent';
 import { claimPurchase } from '../components/premium/purchaseLock';
+import { BrandLogo } from '../components/premium/BrandLogo';
+
+// Mesma identidade da loja: marinho e dourado (tokens em index.html, html.sv-premium),
+// Cormorant nos títulos, Outfit no resto. Os fallbacks cobrem o caso sem a classe.
+const NAVY = 'var(--sv-navy, #0b1d3a)';
+const GOLD = 'var(--sv-gold, #c9a227)';
+const GOLD_LIGHT = 'var(--sv-gold-light, #e8c547)';
+const SERIF = "'Cormorant Garamond', Georgia, serif";
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', boxSizing: 'border-box',
+  minHeight: '48px', padding: '12px 14px', borderRadius: '8px',
+  border: '1px solid rgba(255,255,255,0.4)',
+  background: 'rgba(255,255,255,0.06)',
+  color: 'white', fontSize: '16px', fontFamily: 'inherit',
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'block', fontSize: '14px', fontWeight: 500, color: 'rgba(255,255,255,0.85)', marginBottom: '6px',
+};
+
+const PAGE_CSS = `
+  .tk-in::placeholder { color: rgba(255,255,255,0.62); }
+  .tk-in:focus-visible, .tk-btn:focus-visible, .tk-page a:focus-visible, .tk-page button:focus-visible { outline: 3px solid ${GOLD_LIGHT}; outline-offset: 2px; }
+  .tk-in:focus-visible { border-color: ${GOLD_LIGHT}; }
+  .tk-btn:hover:not(:disabled) { filter: brightness(1.08); }
+  .tk-box { border: 1px solid rgba(201,162,39,0.35); border-radius: 10px; padding: 22px; }
+  @media (max-width: 480px) { .tk-box { padding: 18px; } }
+`;
 
 const STATUS_STEPS = [
-  { key: 'pending',   label: 'Pedido Recebido',       icon: '📦', desc: 'Aguardando confirmação de pagamento' },
-  { key: 'confirmed', label: 'Pagamento Confirmado',   icon: '✅', desc: 'Seu pedido está sendo preparado' },
-  { key: 'shipped',   label: 'Enviado',                icon: '🚚', desc: 'A caminho de você' },
-  { key: 'delivered', label: 'Entregue',               icon: '🎉', desc: 'Pedido entregue com sucesso!' },
+  { key: 'pending',   label: 'Pedido recebido',       desc: 'Aguardando confirmação de pagamento' },
+  { key: 'confirmed', label: 'Pagamento confirmado',   desc: 'Seu pedido está sendo preparado' },
+  { key: 'shipped',   label: 'Enviado',                desc: 'A caminho de você' },
+  { key: 'delivered', label: 'Entregue',               desc: 'Pedido entregue' },
 ];
 
 // Shown in place of "Enviado" while the order only has a generated label (not posted yet).
-const LABEL_ONLY_STEP = { key: 'shipped', label: 'Etiqueta gerada', icon: '🏷️', desc: 'Etiqueta gerada — aguardando postagem' };
+const LABEL_ONLY_STEP = { key: 'shipped', label: 'Etiqueta gerada', desc: 'Etiqueta gerada, aguardando postagem' };
 
 const STATUS_ORDER = ['pending', 'confirmed', 'label_generated', 'shipped', 'delivered'];
 
@@ -194,95 +223,86 @@ export default function TrackOrder() {
   const stepIndex = order ? getStepIndex(order.status) : -1;
 
   return (
-    <div style={{
+    <div className="tk-page" style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #0a1628 0%, #0d2347 50%, #0a1628 100%)',
+      background: NAVY,
       fontFamily: "'Outfit', 'Inter', sans-serif",
       color: '#e2e8f0',
     }}>
+      <style>{PAGE_CSS}</style>
+
       {/* Header */}
-      <header style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <a href="/" style={{ textDecoration: 'none' }}>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 378" style={{ height: '40px', width: 'auto' }}>
-            <defs><clipPath id="oval-t"><ellipse cx="250" cy="187" rx="228" ry="164"/></clipPath></defs>
-            <ellipse cx="250" cy="187" rx="228" ry="164" fill="rgba(255,255,255,0.08)"/>
-            <path d="M 22 252 Q 95 182 178 222 Q 214 242 250 210 Q 286 178 338 208 Q 398 240 478 222 L 478 352 H 22 Z" fill="#4a9eff" clipPath="url(#oval-t)"/>
-            <text x="250" y="196" textAnchor="middle" fontFamily="Pacifico, cursive" fontSize="90" fill="white">Sal Vita</text>
-            <ellipse cx="250" cy="187" rx="228" ry="164" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="15"/>
-          </svg>
+      <header style={{ padding: '16px 24px', borderBottom: '1px solid rgba(201,162,39,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+        <a href="/" aria-label="Sal Vita Premium, página inicial" style={{ display: 'inline-flex', minHeight: 44, alignItems: 'center' }}>
+          <BrandLogo size={40} white />
         </a>
-        <h1 style={{ fontSize: '14px', color: 'rgba(255,255,255,0.7)', margin: 0 }}>Rastreamento de Pedido</h1>
+        <p style={{ fontSize: '15px', color: 'rgba(255,255,255,0.85)', margin: 0 }}>Rastreamento de pedido</p>
       </header>
 
-      <div style={{ maxWidth: '560px', margin: '0 auto', padding: '40px 20px' }}>
-        <a href="/" style={{ display: 'inline-block', marginBottom: '20px', fontSize: '14px', color: '#8ec2ff', textDecoration: 'none' }}>
-          ← Voltar para a loja
+      <main style={{ maxWidth: '560px', margin: '0 auto', padding: '32px 20px 48px' }}>
+        <a href="/" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, marginBottom: '12px', fontSize: '15px', color: GOLD_LIGHT, textDecoration: 'underline', textUnderlineOffset: 3 }}>
+          Voltar para a loja
         </a>
+        <h1 style={{ fontFamily: SERIF, fontSize: 'clamp(1.9rem, 6vw, 2.4rem)', fontWeight: 700, color: 'white', margin: '0 0 20px', lineHeight: 1.1 }}>
+          Rastrear meu pedido
+        </h1>
+
         {/* MP payment result banner */}
         {mpStatus === 'pago' && paymentConfirmed && (
-          <div role="status" style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '16px', padding: '20px 24px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <span style={{ fontSize: '28px' }}>🎉</span>
-            <div>
-              <p style={{ margin: 0, fontWeight: 700, color: '#4ade80', fontSize: '16px' }}>Pagamento aprovado!</p>
-              <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>Seu pedido está sendo preparado. Acompanhe abaixo.</p>
-            </div>
+          <div role="status" className="tk-box" style={{ borderColor: 'rgba(232,197,71,0.6)', marginBottom: '20px' }}>
+            <p style={{ margin: 0, fontWeight: 600, color: GOLD_LIGHT, fontSize: '17px' }}>Pagamento recebido.</p>
+            <p style={{ margin: '4px 0 0', fontSize: '15px', color: 'rgba(255,255,255,0.85)' }}>Estamos separando o seu pedido. Acompanhe abaixo.</p>
           </div>
         )}
         {mpStatus === 'pago' && !paymentConfirmed && order?.paymentStatus !== 'failed' && (
-          <div role="status" style={{ background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.4)', borderRadius: '16px', padding: '20px 24px', marginBottom: '24px' }}>
-            <p style={{ margin: 0, fontWeight: 700, color: '#fde68a' }}>⏳ Estamos confirmando seu pagamento.</p>
-            <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>
+          <div role="status" className="tk-box" style={{ borderColor: 'rgba(232,197,71,0.6)', marginBottom: '20px' }}>
+            <p style={{ margin: 0, fontWeight: 600, color: GOLD_LIGHT, fontSize: '17px' }}>Estamos confirmando seu pagamento.</p>
+            <p style={{ margin: '4px 0 0', fontSize: '15px', color: 'rgba(255,255,255,0.85)' }}>
               {queryInput
                 ? (pollExpired
-                    ? 'Isso pode levar alguns minutos. Esta página parou de atualizar — recarregue a página daqui a pouco para ver se o pagamento foi confirmado.'
+                    ? 'Isso pode levar alguns minutos. Esta página parou de atualizar. Recarregue a página daqui a pouco para ver se o pagamento foi confirmado.'
                     : 'Isso pode levar alguns minutos. Esta página atualiza sozinha.')
                 : 'Isso pode levar alguns minutos. Para acompanhar, informe o número do pedido e o telefone abaixo.'}
             </p>
           </div>
         )}
         {mpStatus === 'falhou' && (
-          <div style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '16px', padding: '20px 24px', marginBottom: '24px' }}>
-            <p style={{ margin: 0, fontWeight: 700, color: '#fca5a5' }}>❌ Pagamento não aprovado.</p>
-            <p style={{ margin: '6px 0 14px', fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>Não se preocupe — seu pedido foi salvo. Clique abaixo para tentar novamente com outro método de pagamento.</p>
+          <div className="tk-box" style={{ borderColor: 'rgba(252,165,165,0.6)', marginBottom: '20px' }}>
+            <p style={{ margin: 0, fontWeight: 600, color: '#fca5a5', fontSize: '17px' }}>Pagamento não aprovado.</p>
+            <p style={{ margin: '6px 0 14px', fontSize: '15px', color: 'rgba(255,255,255,0.85)' }}>Seu pedido foi salvo. Toque no botão para tentar de novo com outro método de pagamento.</p>
             {urlParams.pedido && (
-              <button onClick={handlePay} disabled={payLoading}
-                style={{ background: payLoading ? '#475569' : '#009ee3', color: 'white', border: 'none', borderRadius: '10px', padding: '12px 24px', fontWeight: 700, fontSize: '14px', cursor: payLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-                {payLoading ? '⟳ Gerando link...' : '💳 Tentar pagamento novamente'}
+              <button onClick={handlePay} disabled={payLoading} className="tk-btn"
+                style={{ background: GOLD, opacity: payLoading ? 0.6 : 1, color: NAVY, border: 'none', borderRadius: '8px', minHeight: 48, padding: '0 24px', fontWeight: 700, fontSize: '16px', cursor: payLoading ? 'not-allowed' : 'pointer' }}>
+                {payLoading ? 'Gerando link...' : 'Tentar pagamento novamente'}
               </button>
             )}
-            {payErr && <p role="alert" style={{ margin: '10px 0 0', fontSize: '13px', fontWeight: 600, color: '#fca5a5' }}>{payErr}</p>}
+            {payErr && <p role="alert" style={{ margin: '10px 0 0', fontSize: '14px', fontWeight: 600, color: '#fca5a5' }}>{payErr}</p>}
           </div>
         )}
         {mpStatus === 'pendente' && (
-          <div style={{ background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.4)', borderRadius: '16px', padding: '20px 24px', marginBottom: '24px' }}>
-            <p style={{ margin: 0, fontWeight: 700, color: '#fde68a' }}>⏳ Pagamento pendente.</p>
-            <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>Se pagou via boleto, pode levar até 2 dias úteis para ser confirmado.</p>
+          <div className="tk-box" style={{ borderColor: 'rgba(232,197,71,0.6)', marginBottom: '20px' }}>
+            <p style={{ margin: 0, fontWeight: 600, color: GOLD_LIGHT, fontSize: '17px' }}>Pagamento pendente.</p>
+            <p style={{ margin: '4px 0 0', fontSize: '15px', color: 'rgba(255,255,255,0.85)' }}>Se pagou via boleto, pode levar até 2 dias úteis para ser confirmado.</p>
           </div>
         )}
 
         {/* Search form */}
-        <div style={{
-          background: 'rgba(255,255,255,0.05)',
-          border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: '20px',
-          padding: '32px',
-          marginBottom: '24px',
-          backdropFilter: 'blur(10px)',
-        }}>
-          <h2 style={{ fontSize: '22px', fontWeight: 700, marginBottom: '8px', color: 'white' }}>
-            🔍 Rastrear meu pedido
+        <div className="tk-box" style={{ padding: '28px', marginBottom: '20px' }}>
+          <h2 style={{ fontFamily: SERIF, fontSize: '1.6rem', fontWeight: 700, margin: '0 0 6px', color: 'white' }}>
+            Consultar pedido
           </h2>
-          <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.7)', marginBottom: '24px' }}>
+          <p style={{ fontSize: '15px', color: 'rgba(255,255,255,0.85)', margin: '0 0 22px', lineHeight: 1.5 }}>
             Informe o número do pedido e o telefone completo usado na compra.
           </p>
           <form onSubmit={handleSearch}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label htmlFor="track-order-id" style={{ display: 'block', fontSize: '12px', color: 'rgba(255,255,255,0.7)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Número do Pedido
+                <label htmlFor="track-order-id" style={labelStyle}>
+                  Número do pedido
                 </label>
                 <input
                   id="track-order-id"
+                  className="tk-in"
                   type="text"
                   inputMode="numeric"
                   pattern="[0-9]*"
@@ -291,21 +311,16 @@ export default function TrackOrder() {
                   onChange={e => setOrderId(e.target.value)}
                   placeholder="Ex: 42"
                   required
-                  style={{
-                    width: '100%', boxSizing: 'border-box',
-                    padding: '12px 16px', borderRadius: '10px',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    background: 'rgba(255,255,255,0.07)',
-                    color: 'white', fontSize: '16px', outline: 'none',
-                  }}
+                  style={inputStyle}
                 />
               </div>
               <div>
-                <label htmlFor="track-phone" style={{ display: 'block', fontSize: '12px', color: 'rgba(255,255,255,0.7)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <label htmlFor="track-phone" style={labelStyle}>
                   Telefone completo com DDD
                 </label>
                 <input
                   id="track-phone"
+                  className="tk-in"
                   type="tel"
                   autoComplete="tel"
                   value={phone}
@@ -313,25 +328,19 @@ export default function TrackOrder() {
                   placeholder="Ex: (84) 98620-7841"
                   maxLength={20}
                   required
-                  style={{
-                    width: '100%', boxSizing: 'border-box',
-                    padding: '12px 16px', borderRadius: '10px',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    background: 'rgba(255,255,255,0.07)',
-                    color: 'white', fontSize: '16px', outline: 'none',
-                  }}
+                  style={inputStyle}
                 />
               </div>
               <button
                 type="submit"
+                className="tk-btn"
                 style={{
-                  padding: '14px', borderRadius: '12px',
-                  background: 'linear-gradient(135deg, #1a56db, #0d3fa6)',
-                  color: 'white', fontWeight: 700, fontSize: '15px',
+                  minHeight: '52px', padding: '0 20px', borderRadius: '8px',
+                  background: GOLD, color: NAVY, fontWeight: 700, fontSize: '16px',
                   border: 'none', cursor: 'pointer', marginTop: '4px',
                 }}
               >
-                Consultar Pedido
+                Consultar pedido
               </button>
             </div>
           </form>
@@ -339,126 +348,105 @@ export default function TrackOrder() {
 
         {/* Results */}
         {submitted && isLoading && (
-          <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.7)' }}>
+          <div role="status" style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.85)' }}>
             Buscando seu pedido...
           </div>
         )}
 
         {submitted && error && (
-          <div role="alert" style={{
-            background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
-            borderRadius: '16px', padding: '24px', textAlign: 'center', color: '#fca5a5',
-          }}>
-            <p style={{ fontSize: '32px', margin: '0 0 8px' }}>😕</p>
-            <p style={{ fontWeight: 600, marginBottom: '4px' }}>{friendlyError(error, !!queryInput?.token)}</p>
-            <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.65)' }}>Verifique o número do pedido e o telefone informados, ou fale conosco pelo WhatsApp.</p>
+          <div role="alert" className="tk-box" style={{ borderColor: 'rgba(252,165,165,0.6)', color: '#fca5a5' }}>
+            <p style={{ fontWeight: 600, margin: '0 0 4px', fontSize: '17px' }}>{friendlyError(error, !!queryInput?.token)}</p>
+            <p style={{ fontSize: '15px', color: 'rgba(255,255,255,0.85)', margin: 0 }}>Verifique o número do pedido e o telefone informados, ou fale conosco pelo WhatsApp.</p>
           </div>
         )}
 
         {order && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {/* Order summary */}
-            <div style={{
-              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '20px', padding: '24px', backdropFilter: 'blur(10px)',
-            }}>
+            <div className="tk-box">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                 <div>
-                  <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.65)', margin: '0 0 4px' }}>PEDIDO</p>
-                  <p style={{ fontSize: '22px', fontWeight: 800, color: 'white', margin: 0 }}>#{order.id}</p>
+                  <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)', margin: '0 0 2px' }}>Pedido</p>
+                  <p style={{ fontFamily: SERIF, fontSize: '2rem', fontWeight: 700, color: 'white', margin: 0, lineHeight: 1.1 }}>#{order.id}</p>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.65)', margin: '0 0 4px' }}>TOTAL</p>
-                  <p style={{ fontSize: '20px', fontWeight: 700, color: '#4ade80', margin: 0 }}>
+                  <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)', margin: '0 0 2px' }}>Total</p>
+                  <p style={{ fontFamily: SERIF, fontSize: '2rem', fontWeight: 700, color: GOLD_LIGHT, margin: 0, lineHeight: 1.1 }}>
                     R$ {parseFloat(order.totalPrice ?? '0').toFixed(2).replace('.', ',')}
                   </p>
                 </div>
               </div>
-              <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.6)', margin: '0 0 4px' }}>
-                🧂 {order.quantity}x Sal Vita Premium 1kg
+              <p style={{ fontSize: '16px', color: 'rgba(255,255,255,0.9)', margin: '0 0 4px' }}>
+                {order.quantity}x Sal Vita Premium 1kg
               </p>
-              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.65)', margin: 0 }}>
-                📍 {order.city}/{order.state} · {order.shippingServiceName ?? 'Correios'}
+              <p style={{ fontSize: '15px', color: 'rgba(255,255,255,0.85)', margin: 0 }}>
+                {order.city}/{order.state} · {order.shippingServiceName ?? 'Correios'}
               </p>
-              <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', margin: '8px 0 0' }}>
+              <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)', margin: '8px 0 0' }}>
                 Realizado em {new Date(order.createdAt).toLocaleDateString('pt-BR', { day:'2-digit',month:'long',year:'numeric' })}
               </p>
             </div>
 
             {/* Status timeline */}
             {order.status !== 'cancelled' ? (
-              <div style={{
-                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '20px', padding: '24px', backdropFilter: 'blur(10px)',
-              }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'rgba(255,255,255,0.6)', margin: '0 0 20px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <div className="tk-box">
+                <h3 style={{ fontFamily: SERIF, fontSize: '1.4rem', fontWeight: 700, color: 'white', margin: '0 0 18px' }}>
                   Acompanhe seu pedido
                 </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                <ol style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                   {STATUS_STEPS.map((baseStep, idx) => {
                     const done = idx <= stepIndex;
                     const current = idx === stepIndex;
                     // A shipping label alone is not a shipment: say so until the carrier has the package.
                     const step = baseStep.key === 'shipped' && order.status === 'label_generated' ? LABEL_ONLY_STEP : baseStep;
+                    const last = idx === STATUS_STEPS.length - 1;
                     return (
-                      <div key={step.key} style={{ display: 'flex', gap: '16px', paddingBottom: idx < STATUS_STEPS.length - 1 ? '20px' : '0', position: 'relative' }}>
-                        {/* Line */}
-                        {idx < STATUS_STEPS.length - 1 && (
-                          <div style={{
-                            position: 'absolute', left: '19px', top: '40px', bottom: '0', width: '2px',
-                            background: done ? 'linear-gradient(#4ade80, #22d3ee)' : 'rgba(255,255,255,0.1)',
+                      <li key={step.key} aria-current={current ? 'step' : undefined} style={{ display: 'flex', gap: '16px', paddingBottom: last ? 0 : '22px', position: 'relative' }}>
+                        {/* Linha */}
+                        {!last && (
+                          <div aria-hidden="true" style={{
+                            position: 'absolute', left: '9px', top: '22px', bottom: '0', width: '2px',
+                            background: idx < stepIndex ? GOLD : 'rgba(255,255,255,0.25)',
                           }} />
                         )}
-                        {/* Icon */}
-                        <div style={{
-                          width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: '18px', zIndex: 1,
-                          background: done ? 'linear-gradient(135deg, #22c55e, #16a34a)' : 'rgba(255,255,255,0.08)',
-                          border: current ? '2px solid #4ade80' : '2px solid transparent',
-                          boxShadow: current ? '0 0 16px rgba(74,222,128,0.4)' : 'none',
-                        }}>
-                          {done ? step.icon : '○'}
-                        </div>
-                        {/* Text */}
-                        <div style={{ paddingTop: '8px' }}>
-                          <p style={{ margin: '0 0 2px', fontSize: '15px', fontWeight: current ? 700 : 500, color: done ? 'white' : 'rgba(255,255,255,0.6)' }}>
+                        {/* Ponto */}
+                        <div aria-hidden="true" style={{
+                          width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0, boxSizing: 'border-box',
+                          marginTop: '2px', zIndex: 1,
+                          background: done ? GOLD : NAVY,
+                          border: done ? `2px solid ${GOLD}` : '2px solid rgba(255,255,255,0.4)',
+                          outline: current ? `2px solid ${GOLD_LIGHT}` : 'none', outlineOffset: '2px',
+                        }} />
+                        {/* Texto */}
+                        <div>
+                          <p style={{ margin: '0 0 2px', fontSize: '17px', fontWeight: current ? 700 : 500, color: done ? 'white' : 'rgba(255,255,255,0.75)' }}>
                             {step.label}
                           </p>
-                          <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>
-                            {current ? step.desc : ''}
-                          </p>
+                          {current && <p style={{ margin: 0, fontSize: '15px', color: 'rgba(255,255,255,0.85)' }}>{step.desc}</p>}
                         </div>
-                      </div>
+                      </li>
                     );
                   })}
-                </div>
+                </ol>
               </div>
             ) : (
-              <div style={{
-                background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
-                borderRadius: '16px', padding: '24px', textAlign: 'center',
-              }}>
-                <p style={{ fontSize: '28px', margin: '0 0 8px' }}>❌</p>
-                <p style={{ fontWeight: 700, color: '#fca5a5' }}>Pedido Cancelado</p>
-                <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.65)', margin: '4px 0 0' }}>Entre em contato pelo WhatsApp se precisar de ajuda.</p>
+              <div className="tk-box" style={{ borderColor: 'rgba(252,165,165,0.6)' }}>
+                <p style={{ fontWeight: 600, color: '#fca5a5', fontSize: '17px', margin: 0 }}>Pedido cancelado</p>
+                <p style={{ fontSize: '15px', color: 'rgba(255,255,255,0.85)', margin: '4px 0 0' }}>Entre em contato pelo WhatsApp se precisar de ajuda.</p>
               </div>
             )}
 
             {/* Tracking code */}
             {order.trackingCode && (
-              <div style={{
-                background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
-                borderRadius: '20px', padding: '24px', backdropFilter: 'blur(10px)',
-              }}>
-                <h3 style={{ fontSize: '14px', color: 'rgba(255,255,255,0.7)', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Código de Rastreio
+              <div className="tk-box">
+                <h3 style={{ fontFamily: SERIF, fontSize: '1.4rem', fontWeight: 700, color: 'white', margin: '0 0 10px' }}>
+                  Código de rastreio
                 </h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                   <code style={{
-                    fontSize: '20px', fontWeight: 700, color: '#4ade80',
-                    background: 'rgba(74,222,128,0.1)', padding: '8px 16px', borderRadius: '8px',
-                    letterSpacing: '0.1em',
+                    fontSize: '20px', fontWeight: 700, color: GOLD_LIGHT,
+                    border: '1px solid rgba(201,162,39,0.5)', padding: '8px 14px', borderRadius: '8px',
+                    letterSpacing: '0.08em', overflowWrap: 'anywhere',
                   }}>
                     {order.trackingCode}
                   </code>
@@ -467,13 +455,12 @@ export default function TrackOrder() {
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{
-                      padding: '10px 20px', borderRadius: '10px',
-                      background: 'linear-gradient(135deg, #16a34a, #15803d)',
-                      color: 'white', fontWeight: 600, fontSize: '14px',
+                      display: 'inline-flex', alignItems: 'center', minHeight: 48, padding: '0 20px', borderRadius: '8px',
+                      background: GOLD, color: NAVY, fontWeight: 700, fontSize: '16px',
                       textDecoration: 'none',
                     }}
                   >
-                    Rastrear nos Correios →
+                    Rastrear nos Correios
                   </a>
                 </div>
               </div>
@@ -481,47 +468,43 @@ export default function TrackOrder() {
 
             {/* Payment status */}
             {(order.paymentStatus === 'awaiting' || order.paymentStatus === 'failed') && (
-              <div style={{
-                background: order.paymentStatus === 'failed' ? 'rgba(239,68,68,0.1)' : 'rgba(234,179,8,0.1)',
-                border: order.paymentStatus === 'failed' ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(234,179,8,0.3)',
-                borderRadius: '16px', padding: '20px',
-              }}>
-                <p style={{ margin: 0, fontSize: '14px', color: order.paymentStatus === 'failed' ? '#fca5a5' : '#fde68a' }}>
+              <div className="tk-box" style={{ borderColor: order.paymentStatus === 'failed' ? 'rgba(252,165,165,0.6)' : 'rgba(232,197,71,0.6)' }}>
+                <p style={{ margin: 0, fontSize: '16px', lineHeight: 1.5, color: order.paymentStatus === 'failed' ? '#fca5a5' : GOLD_LIGHT }}>
                   {order.paymentStatus === 'failed'
-                    ? <><strong>❌ Pagamento não aprovado.</strong> Tente novamente com outro método de pagamento.</>
-                    : <>⏳ <strong>Aguardando confirmação de pagamento.</strong> Conclua o pagamento abaixo para garantir seu pedido.</>
+                    ? <><strong>Pagamento não aprovado.</strong> Tente novamente com outro método de pagamento.</>
+                    : <><strong>Aguardando confirmação de pagamento.</strong> Conclua o pagamento abaixo para garantir seu pedido.</>
                   }
                 </p>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '12px' }}>
-                  <button onClick={handlePay} disabled={payLoading}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '14px' }}>
+                  <button onClick={handlePay} disabled={payLoading} className="tk-btn"
                     style={{
-                      padding: '10px 20px', borderRadius: '10px',
-                      background: payLoading ? '#475569' : '#009ee3', color: 'white',
-                      fontWeight: 700, fontSize: '14px', border: 'none',
+                      minHeight: 48, padding: '0 20px', borderRadius: '8px',
+                      background: GOLD, opacity: payLoading ? 0.6 : 1, color: NAVY,
+                      fontWeight: 700, fontSize: '16px', border: 'none',
                       cursor: payLoading ? 'not-allowed' : 'pointer',
                     }}
                   >
-                    {payLoading ? '⟳ Gerando link...' : '💳 Pagar agora (Cartão, PIX ou Boleto)'}
+                    {payLoading ? 'Gerando link...' : 'Pagar agora (cartão, PIX ou boleto)'}
                   </button>
                   <a
                     href="https://wa.me/558421408212"
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{
-                      display: 'inline-block', padding: '10px 20px',
-                      borderRadius: '10px', background: '#16a34a', color: 'white',
-                      fontWeight: 600, fontSize: '14px', textDecoration: 'none',
+                      display: 'inline-flex', alignItems: 'center', minHeight: 48, padding: '0 20px',
+                      borderRadius: '8px', border: '1.5px solid rgba(255,255,255,0.45)', color: 'white',
+                      fontWeight: 600, fontSize: '16px', textDecoration: 'none',
                     }}
                   >
-                    📱 Enviar comprovante no WhatsApp
+                    Enviar comprovante no WhatsApp
                   </a>
                 </div>
-                {payErr && <p role="alert" style={{ margin: '10px 0 0', fontSize: '13px', fontWeight: 600, color: '#fca5a5' }}>{payErr}</p>}
+                {payErr && <p role="alert" style={{ margin: '10px 0 0', fontSize: '14px', fontWeight: 600, color: '#fca5a5' }}>{payErr}</p>}
               </div>
             )}
           </div>
         )}
-      </div>
+      </main>
       <ConsentBanner pageView={false} />
     </div>
   );

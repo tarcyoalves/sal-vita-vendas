@@ -4,7 +4,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5, viewport-fit=cover" />
-    <meta name="theme-color" content="#0C3680" />
+    <meta name="theme-color" content="#0b1d3a" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -92,12 +92,24 @@
           var el = document.querySelector(sel);
           if (el) el.setAttribute(attr, value);
         };
+        var addFonts = function (families) {
+          var l = document.createElement('link');
+          l.rel = 'stylesheet';
+          l.href = 'https://fonts.googleapis.com/css2?' + families + '&display=swap';
+          document.head.appendChild(l);
+        };
         if (/(^|\.)lembretes\./.test(location.hostname)) {
+          // CRM: so as fontes do CRM.
+          addFonts('family=Pacifico&family=Inter:wght@400;500;600;700&family=Barlow+Condensed:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700');
+          set('meta[name="theme-color"]', 'content', '#0C3680');
           document.title = 'Sal Vita — Lembretes';
           set('meta[name="description"]', 'content', 'Sistema interno de gestão de vendas e lembretes da Sal Vita.');
           set('meta[name="robots"]', 'content', 'noindex, nofollow');
           return;
         }
+        // Loja: tokens (html.sv-premium, abaixo) e so as fontes da loja.
+        document.documentElement.classList.add('sv-premium');
+        addFonts('family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Outfit:wght@400;500;600;700');
         var path = location.pathname;
         if (/^\/(meu-pedido|sal-vita-admin|sal-vita-recovery|sal-vita-b2b|classic)(\/|$)/.test(path)) {
           set('meta[name="robots"]', 'content', 'noindex,nofollow');
@@ -108,9 +120,26 @@
         }
       })();
     </script>
+    <style>
+      /* Tokens da loja Premium. Escopados em html.sv-premium (classe posta pelo script acima so no
+         host da loja): nao tocam o :root do CRM. Um marinho, um dourado (em tres funcoes de contraste). */
+      html.sv-premium {
+        --sv-navy: #0b1d3a;
+        --sv-gold: #c9a227;        /* preenchimento e fios */
+        --sv-gold-light: #e8c547;  /* texto e foco sobre marinho */
+        --sv-gold-dark: #8a6a0c;   /* texto sobre claro (5,0:1 no branco) */
+        --sv-salt: #fbfaf7;
+        --sv-salt-deep: #f2f0ea;
+        --sv-ink: #0a1020;
+        --sv-mid: #2a3a55;
+        --sv-muted: #5f6f86;
+        --sv-r-sm: 8px;
+        --sv-r-md: 14px;
+      }
+      html.sv-premium :focus-visible { outline: 3px solid var(--sv-gold-light); outline-offset: 2px; }
+    </style>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Pacifico&family=Inter:wght@400;500;600;700&family=Barlow+Condensed:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <!-- Meta Pixel (so com consentimento) -->
     <script>
     // O Pixel NAO carrega por padrao. So carrega aqui se o visitante ja clicou "Aceitar" em uma

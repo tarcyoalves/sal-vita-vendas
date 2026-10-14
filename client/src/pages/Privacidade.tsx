@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import ConsentBanner from '../components/premium/ConsentBanner';
+import { BrandLogo } from '../components/premium/BrandLogo';
 import { openConsentPreferences } from '../components/premium/pixelConsent';
 
 // Política de privacidade da loja Premium (host premium). O texto descreve o que o código
@@ -11,7 +12,7 @@ const MAIL = 'contato@salvitarn.com.br';
 
 const wrap: React.CSSProperties = {
   minHeight: '100vh',
-  background: 'linear-gradient(135deg, #060f20 0%, #0a1830 50%, #060f20 100%)',
+  background: '#0b1d3a',
   fontFamily: "'Outfit', 'Inter', sans-serif",
   color: 'rgba(255,255,255,0.82)',
 };
@@ -30,13 +31,7 @@ export function LegalPage({ title, intro, children, other }: {
       `}</style>
       <header style={{ padding: '20px 24px', borderBottom: '1px solid rgba(201,162,39,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <a href="/" style={{ textDecoration: 'none' }} aria-label="Sal Vita Premium, página inicial">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 378" style={{ height: 40, width: 'auto' }} aria-hidden="true">
-            <defs><clipPath id="oval-legal"><ellipse cx="250" cy="187" rx="228" ry="164"/></clipPath></defs>
-            <ellipse cx="250" cy="187" rx="228" ry="164" fill="rgba(255,255,255,0.08)"/>
-            <path d="M 22 252 Q 95 182 178 222 Q 214 242 250 210 Q 286 178 338 208 Q 398 240 478 222 L 478 352 H 22 Z" fill="#4a9eff" clipPath="url(#oval-legal)"/>
-            <text x="250" y="196" textAnchor="middle" fontFamily="Pacifico, cursive" fontSize="90" fill="white">Sal Vita</text>
-            <ellipse cx="250" cy="187" rx="228" ry="164" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="15"/>
-          </svg>
+          <BrandLogo size={40} />
         </a>
         <a href="/" style={{ ...linkStyle, fontSize: 14 }}>← Voltar à loja</a>
       </header>
