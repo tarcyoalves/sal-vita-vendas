@@ -281,11 +281,18 @@ Plano e decisões em `PLANO-RADAR-CARGAS.md`.
    - ✅ **Domínio sem www adicionado na Vercel pelo dono em 14/10/2026** — certificado emitido
      e verificado (200, `/meu-pedido`, `/privacidade` e o webhook do MP respondem). O aviso
      "DNS Change Recommended" é opcional: o CNAME genérico `cname.vercel-dns.com` funciona.
-   - Confirmar que **`FB_CAPI_TOKEN`** está na Vercel (Production). Sem ela a compra não vai
-     para a Meta pelo servidor — agora isso gera um aviso no log, antes era silencioso.
-   - Fazer **uma compra real de teste com PIX e outra com cartão**, conferindo: a tela confirma
-     sozinha, o cartão volta para `www…/meu-pedido`, chegam WhatsApp e e-mail, e a compra aparece
-     no Gerenciador de Eventos da Meta (com "Servidor" e "Navegador" deduplicados).
+   - **`FB_CAPI_TOKEN` NÃO está configurado** — confirmado no log de produção em 14/10
+     (`[capi] FB_CAPI_TOKEN not configured — Purchase for order 10004 not sent`). Sem ele a Meta
+     não recebe compras pelo servidor. Gerar no Gerenciador de Eventos (API de Conversões →
+     Gerar token) e adicionar na Vercel (Production), depois redeploy.
+   - ✅ **Webhook do Mercado Pago corrigido em 14/10 (`115b8e7`)**: a assinatura era calculada
+     errada e TODO aviso de pagamento era recusado (401). Primeiro pedido real (#10004, PIX
+     R$ 63,45) confirmado após a correção, com WhatsApp entregue. Se aparecer
+     `HMAC signature mismatch` no log, o `MERCADO_PAGO_WEBHOOK_SECRET` da Vercel não é o do
+     painel do MP (não bloqueia mais, só avisa).
+   - Fazer **uma compra real de teste com cartão** (PIX já validado), conferindo: o cartão volta
+     para `www…/meu-pedido`, chegam WhatsApp e e-mail, e a compra aparece no Gerenciador de
+     Eventos da Meta ("Servidor" e "Navegador" deduplicados).
    - Confirmar que alguém lê e registra os pedidos de "PARAR" no WhatsApp: a página
      `/privacidade` diz que a equipe registra (não há tratamento automático no código).
    - Criativos: não usar a foto com o selo "+80 MINERAIS" nem alegações de saúde/minerais.
