@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import ConsentBanner from '../components/premium/ConsentBanner';
+import { openConsentPreferences } from '../components/premium/pixelConsent';
 
 // Política de privacidade da loja Premium (host premium). O texto descreve o que o código
 // faz hoje (SalVitaLanding, TrackOrder, Atacado, shipping, recovery, orderConfirmation).
@@ -55,6 +57,7 @@ export function LegalPage({ title, intro, children, other }: {
 
 export default function Privacidade() {
   return (
+    <>
     <LegalPage
       title="Política de privacidade"
       intro="Explicamos aqui quais dados pessoais a loja Sal Vita Premium (premium.salvitarn.com.br) coleta, por quê, com quem os compartilha e como você exerce seus direitos pela Lei Geral de Proteção de Dados (LGPD, Lei 13.709/2018)."
@@ -98,11 +101,21 @@ export default function Privacidade() {
 
       <h2>4. Meta (Facebook/Instagram): Pixel e API de Conversões</h2>
       <p>
-        A loja usa o Pixel da Meta no seu navegador para medir visitas e etapas da compra (visualização de produto, adição ao carrinho, início do checkout,
-        pagamento e compra) e para avaliar nossos anúncios. Quando um pagamento é confirmado, o servidor da loja também envia o evento de compra
+        <strong>O Pixel da Meta só é carregado se você clicar em "Aceitar"</strong> no aviso de cookies. Se você recusar ou não responder, ele não é
+        carregado e ele não envia nada à Meta. A base legal do Pixel no navegador é o seu <strong>consentimento</strong>, que você pode mudar a qualquer momento
+        (veja o item 5).
+      </p>
+      <p>
+        Quando aceito, o Pixel mede visitas e etapas da compra (visualização de produto, adição ao carrinho, início do checkout,
+        pagamento e compra) e ajuda a avaliar nossos anúncios.
+        As páginas de acompanhamento de pedido e as de administração não carregam o Pixel com o código do pedido na URL.
+      </p>
+      <p>
+        Separadamente do Pixel, quando um pagamento é confirmado o servidor da loja pode enviar o evento de compra
         diretamente à Meta (API de Conversões), com o valor do pedido e dados de contato <strong>criptografados por hash</strong> (como e-mail, telefone,
         nome, cidade, estado e CEP), mais IP, navegador e os identificadores de cookie do Meta (_fbp e _fbc) quando existem.
-        As páginas de acompanhamento de pedido e as de administração não carregam o Pixel com o código do pedido na URL.
+        Esses identificadores só existem no seu navegador se você aceitou o Pixel. A escolha do aviso de cookies vale para o Pixel no navegador; esse envio do servidor,
+        feito apenas depois de um pagamento confirmado, tem base no legítimo interesse (item 7).
       </p>
 
       <h2>5. Dados guardados no seu navegador</h2>
@@ -110,9 +123,15 @@ export default function Privacidade() {
         <li><strong>Dados do formulário</strong> (nome, telefone, e-mail e endereço; <strong>não</strong> o CPF) ficam salvos no seu aparelho por até 30 dias para preencher o pedido
           de novo; depois disso são apagados.</li>
         <li>Parâmetros de campanha (UTM e fbclid) e o pedido pendente de pagamento ficam salvos no aparelho para você poder retomar a compra e para a medição dos anúncios.</li>
-        <li>Cookies do Meta Pixel (_fbp e _fbc).</li>
+        <li>Cookies do Meta Pixel (_fbp e _fbc), <strong>somente se você aceitou o Pixel</strong>.</li>
+        <li>A sua escolha no aviso de cookies (aceitar ou recusar), para não perguntar de novo a cada visita.</li>
       </ul>
       <p>Você pode apagar esses dados a qualquer momento limpando os dados do site no navegador.</p>
+      <p>
+        <strong>Como mudar a sua escolha sobre cookies:</strong> clique em{' '}
+        <button type="button" onClick={openConsentPreferences} style={{ ...linkStyle, background: 'none', border: 0, padding: 0, font: 'inherit', cursor: 'pointer' }}>Preferências de cookies</button>
+        {' '}para abrir o aviso de novo e escolher Aceitar ou Recusar. Ao recusar depois de ter aceitado, o Pixel é desligado e os cookies do Meta são apagados.
+      </p>
 
       <h2>6. Com quem compartilhamos</h2>
       <p>Compartilhamos dados apenas na medida necessária para operar a loja, com:</p>
@@ -131,8 +150,8 @@ export default function Privacidade() {
       <ul>
         <li><strong>Execução de contrato</strong> (LGPD, art. 7º, V): dados do pedido, entrega, pagamento e mensagens sobre o pedido.</li>
         <li><strong>Obrigação legal</strong> (art. 7º, II): CPF e dados para nota fiscal.</li>
-        <li><strong>Legítimo interesse</strong> (art. 7º, IX): lembretes de carrinho ou pagamento pendente, medição de anúncios e prevenção a abusos.</li>
-        <li><strong>Consentimento</strong> (art. 7º, I): formulário de atacado e contato comercial; você pode retirá-lo quando quiser.</li>
+        <li><strong>Legítimo interesse</strong> (art. 7º, IX): lembretes de carrinho ou pagamento pendente, o envio da compra confirmada à Meta pelo servidor (item 4) e prevenção a abusos.</li>
+        <li><strong>Consentimento</strong> (art. 7º, I): Pixel da Meta no navegador (aviso de cookies), formulário de atacado e contato comercial; você pode retirá-lo quando quiser.</li>
       </ul>
 
       <h2>8. Seus direitos (LGPD, art. 18)</h2>
@@ -142,5 +161,7 @@ export default function Privacidade() {
       <h2>9. Alterações</h2>
       <p>Se o funcionamento da loja mudar, esta política será atualizada e a data acima, alterada.</p>
     </LegalPage>
+      <ConsentBanner />
+    </>
   );
 }

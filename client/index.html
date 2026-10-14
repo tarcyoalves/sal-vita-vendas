@@ -111,32 +111,35 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Pacifico&family=Inter:wght@400;500;600;700&family=Barlow+Condensed:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-    <!-- Meta Pixel Code -->
+    <!-- Meta Pixel (so com consentimento) -->
     <script>
-    // No pixel on the CRM host nor on private paths: /meu-pedido carries the order
-    // token in its URL (LGPD), and the admin/recovery/B2B pages are internal.
-    if (!/(^|\.)lembretes\./.test(location.hostname) &&
-        !/^\/(meu-pedido|sal-vita-admin|sal-vita-recovery|sal-vita-b2b)(\/|$)/.test(location.pathname)) {
-    !function(f,b,e,v,n,t,s)
-    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-    n.queue=[];t=b.createElement(e);t.async=!0;
-    t.src=v;s=b.getElementsByTagName(e)[0];
-    s.parentNode.insertBefore(t,s)}(window, document,'script',
-    'https://connect.facebook.net/en_US/fbevents.js');
-    fbq('init', '2209017296169541');
-    fbq('track', 'PageView');
-    }
+    // O Pixel NAO carrega por padrao. So carrega aqui se o visitante ja clicou "Aceitar" em uma
+    // visita anterior (sv_pixel_consent = accepted). Na primeira visita, quem carrega e o banner
+    // (components/premium/ConsentBanner.tsx), depois do clique. Nunca no CRM nem em caminhos
+    // privados: /meu-pedido leva o token do pedido na URL (LGPD); admin/recovery/B2B sao internos.
+    (function () {
+      var ok = false;
+      try { ok = localStorage.getItem('sv_pixel_consent') === 'accepted'; } catch (e) {}
+      if (!ok) return;
+      if (/(^|\.)lembretes\./.test(location.hostname) ||
+          /^\/(meu-pedido|sal-vita-admin|sal-vita-recovery|sal-vita-b2b)(\/|$)/.test(location.pathname)) return;
+      !function(f,b,e,v,n,t,s)
+      {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+      n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+      if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+      n.queue=[];t=b.createElement(e);t.async=!0;
+      t.src=v;s=b.getElementsByTagName(e)[0];
+      s.parentNode.insertBefore(t,s)}(window, document,'script',
+      'https://connect.facebook.net/en_US/fbevents.js');
+      fbq('init', '2209017296169541');
+      fbq('track', 'PageView');
+    })();
     </script>
-    <!-- End Meta Pixel Code -->
+    <!-- End Meta Pixel -->
   </head>
 
   <body>
-    <!-- Meta Pixel noscript fallback -->
-    <noscript><img height="1" width="1" style="display:none"
-    src="https://www.facebook.com/tr?id=2209017296169541&ev=PageView&noscript=1"
-    /></noscript>
+    <!-- Sem fallback noscript do Pixel: sem consentimento o Pixel nao pode carregar. -->
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script

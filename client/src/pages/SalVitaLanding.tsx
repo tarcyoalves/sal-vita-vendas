@@ -1,4 +1,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import ConsentBanner from '../components/premium/ConsentBanner';
+import { trackPixel } from '../components/premium/pixelConsent';
+import { claimPurchase } from '../components/premium/purchaseLock';
+import { parseApiError } from '../components/premium/apiError';
+import {
+  CARRIERS_TEXT, cleanAddressNumber, isSavedCustomerFresh, shouldTrackCart, validateCheckoutFields,
+} from '../components/premium/checkoutLogic';
 
 /* ─── Image assets ───────────────────────────────────────── */
 const IMG = {
@@ -48,7 +55,7 @@ const FAQS = [
   {q:'O que significa "Muito mais sabor, em cada pitada"?',a:'É o slogan da embalagem. Os minerais traço dão ao sal um sabor característico.'},
   {q:'Como é a embalagem?',a:'Embalagem zip lock com janela circular transparente: abre e fecha sempre que precisar, e você vê o sal sem abrir a embalagem.'},
   {q:'Por que o sal de Mossoró é diferente?',a:'Mossoró (RN) produz mais de 95% do sal marinho brasileiro. Sol intenso, ventos constantes e baixíssima umidade criam condições favoráveis à produção de sal por evaporação solar.'},
-  {q:'Como funciona o frete?',a:'Enviamos por Correios via Melhor Envio, com rastreamento. O valor e o prazo do frete são calculados pelo seu CEP antes de você pagar.'},
+  {q:'Como funciona o frete?',a:`Enviamos por transportadora (${CARRIERS_TEXT}) via Melhor Envio, com rastreamento. O valor e o prazo do frete aparecem pelo seu CEP antes de você pagar.`},
 ];
 
 /* ─── Depoimentos ────────────────────────────────────────── */
@@ -108,6 +115,7 @@ const catalogId = (id: string): CatalogId =>
 interface ShipOpt  {serviceId?:string;service:string;price:number;days:string;description:string}
 interface CepData  {localidade:string;uf:string;bairro:string}
 interface ApiShipOpt {serviceId?:string;name?:string;company?:string;price:number;days:string}
+interface CouponResult {valid:boolean;message:string;discountValue?:number;discountType?:string}
 interface PendingOrder {id:number;total:number;ts:number;trackToken?:string|null;productId?:string;shipService?:string;shipPrice?:number}
 
 const PRODUCTS:Product[]=[
@@ -124,15 +132,14 @@ type CheckoutForm = typeof BLANK_FORM;
 
 // Customer data typed on THIS device earlier (never stored in the database).
 // The CPF is never kept here, and the entry expires after 30 days (older entries,
-// including ones saved before `savedAt` existed, are ignored and deleted).
+// including ones saved before `savedAt` existed, are ignored and deleted). `savedAt` is only
+// renewed when the customer edits a field on this visit (never by merely restoring the data).
 const SAVED_CUSTOMER_KEY = 'sv_customer_data';
-const SAVED_CUSTOMER_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 function loadSavedCustomer(): Partial<CheckoutForm> {
   try {
     const d = JSON.parse(localStorage.getItem(SAVED_CUSTOMER_KEY) ?? 'null');
     if (!d || typeof d !== 'object') return {};
-    const age = typeof d.savedAt === 'number' ? Date.now() - d.savedAt : Infinity;
-    if (!(age >= 0 && age <= SAVED_CUSTOMER_TTL_MS)) { localStorage.removeItem(SAVED_CUSTOMER_KEY); return {}; }
+    if (!isSavedCustomerFresh(d.savedAt)) { localStorage.removeItem(SAVED_CUSTOMER_KEY); return {}; }
     const out: Partial<CheckoutForm> = {};
     (Object.keys(BLANK_FORM) as (keyof CheckoutForm)[]).forEach(k => { if (k !== 'customerCpf' && typeof d[k] === 'string') out[k] = d[k]; });
     return out;
@@ -145,10 +152,8 @@ function saveCustomer(form: CheckoutForm) {
   } catch {}
 }
 
-type FbqFn = (...args: unknown[]) => void;
-function fbq(...args: unknown[]) {
-  try { (window as unknown as {fbq?:FbqFn}).fbq?.(...args); } catch {}
-}
+// No-op safe: does nothing unless the visitor accepted the Pixel (see ConsentBanner).
+const fbq = trackPixel;
 const pixelName = (p: Product) => `${p.name} ${p.weight}`;
 // Distinct catalog id per pack for browsing/cart events. Purchase keeps 'salvita-001'
 // because the server-side CAPI Purchase (server/lib/orderConfirmation.ts) sends that id.
@@ -188,6 +193,31 @@ const pedidoEncerrado = (msg?: string) => /foi cancelado|já foi pago/i.test(msg
 const pedidoJaPago = (msg?: string) => /já foi pago/i.test(msg ?? '');
 const trackUrl = (id:number, token?:string|null) => `/meu-pedido?pedido=${id}${token ? `&t=${token}` : ''}`;
 
+/* ── Rede: todo fetch tem prazo; erros viram mensagem humana ── */
+const FETCH_TIMEOUT_MS = 8000;      // consultas (CEP, frete, cupom, status)
+const FETCH_WRITE_TIMEOUT_MS = 30000; // criar pedido/pagamento: o servidor fala com Mercado Pago e Melhor Envio
+function fetchT(url: string, init: RequestInit = {}, ms: number = FETCH_TIMEOUT_MS, outer?: AbortSignal): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  const onOuter = () => ctrl.abort();
+  if (outer) { if (outer.aborted) ctrl.abort(); else outer.addEventListener('abort', onOuter, { once: true }); }
+  return fetch(url, { ...init, signal: ctrl.signal }).finally(() => { clearTimeout(timer); outer?.removeEventListener('abort', onOuter); });
+}
+async function postJson(url: string, json: unknown, ms: number = FETCH_TIMEOUT_MS, outer?: AbortSignal) {
+  const res = await fetchT(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ json }) }, ms, outer);
+  let data: any = null;
+  try { data = await res.json(); } catch {}
+  return { status: res.status, data };
+}
+const isAbort = (e: unknown) => (e as { name?: string } | null)?.name === 'AbortError';
+const SLOW_MSG = 'A conexão demorou demais. Tente novamente em instantes.';
+
+// Server field -> input id, to move focus to the first field with a problem.
+const FIELD_INPUT_ID: Record<string,string> = {
+  customerName:'co-name', customerPhone:'co-phone', customerCpf:'co-cpf', customerEmail:'co-email',
+  number:'co-number', address:'co-address', complement:'co-complement', neighborhood:'co-neighborhood', city:'co-city', state:'co-state',
+};
+
 function Logo({size=40,white=false}:{size?:number;white?:boolean}) {
   return (
     <img
@@ -205,8 +235,12 @@ function WaIcon() {
 
 /* ── Casca dos modais do checkout: um único diálogo por vez ── */
 function Sheet({dlgRef,onBackdrop,maxWidth,foot,children}:{dlgRef:React.RefObject<HTMLDivElement>;onBackdrop:()=>void;maxWidth?:number;foot?:React.ReactNode;children:React.ReactNode}) {
+  // Selecting text inside the dialog and releasing outside must not count as a click on the backdrop.
+  const downOnBackdrop = useRef(false);
   return (
-    <div className="mo" onClick={e=>e.target===e.currentTarget&&onBackdrop()}>
+    <div className="mo"
+      onMouseDown={e=>{ downOnBackdrop.current = e.target===e.currentTarget; }}
+      onClick={e=>{ if (e.target===e.currentTarget && downOnBackdrop.current) onBackdrop(); downOnBackdrop.current = false; }}>
       <div className="mb" ref={dlgRef} role="dialog" aria-modal="true" aria-labelledby="co-title" tabIndex={-1} style={maxWidth?{maxWidth}:undefined}>
         <div className="mb-drag"/>
         <div className="mb-body">{children}</div>
@@ -273,13 +307,26 @@ export default function SalVitaLanding() {
   const pixPurchaseFiredRef = useRef(false);
   const [checkoutForm,setCheckoutForm]     = useState<CheckoutForm>(BLANK_FORM);
   const [couponCode,setCouponCode]         = useState('');
-  const [couponState,setCouponState]       = useState<{valid:boolean;message:string;discountValue?:number;discountType?:string}|null>(null);
+  const [couponState,setCouponState]       = useState<CouponResult|null>(null);
   const [couponLoading,setCouponLoading]   = useState(false);
   const [cpfError,setCpfError]             = useState('');
   const [phoneError,setPhoneError]         = useState('');
   const [orderErr,setOrderErr]             = useState('');
   const [payErr,setPayErr]                 = useState('');
   const [shipNotice,setShipNotice]         = useState('');
+  const [fieldErrs,setFieldErrs]           = useState<Record<string,string>>({});
+  const [cepManual,setCepManual]           = useState(false);   // ViaCEP failed: customer types the address
+  const [pixCopyFail,setPixCopyFail]       = useState(false);
+  const [confirmLeave,setConfirmLeave]     = useState(false);
+  // True once the customer edits a form field on THIS visit (restored data does not count).
+  const touchedRef = useRef(false);
+  const cepSeq = useRef(0);                                      // invalidates answers for an older CEP
+  const cepAbort = useRef<AbortController|null>(null);
+  const couponSeq = useRef(0);
+  const couponPending = useRef<Promise<CouponResult>|null>(null);
+  const pixCodeRef = useRef<HTMLTextAreaElement>(null);
+  const confirmLeaveRef = useRef(false);
+  confirmLeaveRef.current = confirmLeave;
   const [pendingOrder,setPendingOrder]     = useState<PendingOrder|null>(null);
   const autoCouponRef = useRef<string>('');
   const attributionRef = useRef<Record<string,string>>({});
@@ -294,6 +341,13 @@ export default function SalVitaLanding() {
   checkoutLoadingRef.current = checkoutLoading;
   const step = !showModal ? 0 : (orderDone && showCheckout) ? 3 : (showCheckout && selProd && selShip) ? 2 : selProd ? 1 : 0;
   dlgOrderRef.current = step === 3 && orderDone ? orderDone.id : null;
+
+  const onField = (k: keyof CheckoutForm, val: string) => {
+    touchedRef.current = true;
+    setCheckoutForm(f => ({ ...f, [k]: val }));
+    setFieldErrs(e => { if (!e[k]) return e; const n = { ...e }; delete n[k]; return n; });
+  };
+  const FE = (k: string) => fieldErrs[k] ? <p id={`err-${k}`} role="alert" className="err">{fieldErrs[k]}</p> : null;
 
   useEffect(()=>{
     const h=()=>{ setScrolled(window.scrollY>50); };
@@ -361,6 +415,7 @@ export default function SalVitaLanding() {
 
   // Persist customer data locally whenever it changes (device-only, no DB cost)
   useEffect(() => {
+    if (!touchedRef.current) return; // restoring saved data must not renew its 30-day clock
     if (!checkoutForm.customerName && !checkoutForm.customerPhone && !checkoutForm.postalCode) return;
     saveCustomer(checkoutForm);
   }, [checkoutForm]);
@@ -392,26 +447,30 @@ export default function SalVitaLanding() {
     if (!p) return;
     setPendingOrder(p);
     if (!p.trackToken) return;
-    fetch('/api/trpc/shipping.pixStatus', {
+    fetchT('/api/trpc/shipping.pixStatus', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({json:{ orderId: p.id, token: p.trackToken }}),
     }).then(r=>r.json()).then(d=>{ if (d?.result?.data?.json?.paid) clearPending(); }).catch(()=>{});
   }, [clearPending]);
 
-  // Track cart abandonment at step 1 (form started: name + phone present)
+  // Cart abandonment: only after the customer opened the data step AND edited the form on this
+  // visit. Data restored from this device never triggers it (a returning visitor who just looks
+  // around must not get a "forgotten cart" WhatsApp).
   const cartTrackRef = useRef(false);
   useEffect(() => {
     const { customerName, customerPhone } = checkoutForm;
-    const phoneDigits = customerPhone.replace(/\D/g,'');
-    if (!cartTrackRef.current && customerName.length >= 3 && phoneDigits.length >= 11) {
-      cartTrackRef.current = true;
-      fetch('/api/trpc/recovery.trackCart', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({json:{ customerName, customerPhone: phoneDigits, customerEmail: checkoutForm.customerEmail||undefined, quantity:selProd?.units ?? 1, stepReached:1 }}),
-      }).catch(()=>{});
-    }
+    if (!shouldTrackCart({
+      alreadyTracked: cartTrackRef.current, checkoutOpen: showCheckout && !!selProd,
+      touchedThisVisit: touchedRef.current, customerName, customerPhone,
+    })) return;
+    cartTrackRef.current = true;
+    const cepDigits = checkoutForm.postalCode.replace(/\D/g,'');
+    fetchT('/api/trpc/recovery.trackCart', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({json:{ customerName: customerName.trim(), customerPhone: customerPhone.replace(/\D/g,''), customerEmail: checkoutForm.customerEmail.trim()||undefined, postalCode: cepDigits.length===8 ? cepDigits : undefined, quantity:selProd?.units ?? 1, stepReached:2 }}),
+    }).catch(()=>{});
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkoutForm.customerName, checkoutForm.customerPhone]);
+  }, [checkoutForm, showCheckout]);
 
   const stopPixPoll = useCallback(()=>{
     pixPollGen.current += 1;
@@ -421,6 +480,7 @@ export default function SalVitaLanding() {
   const resetPix = useCallback(()=>{
     stopPixPoll();
     setPixData(null); setPixPaid(false); setPixCopied(false); setPixPollErr(false); setPixExpired(false);
+    setPixCopyFail(false); setConfirmLeave(false);
     pixPurchaseFiredRef.current = false;
   },[stopPixPoll]);
 
@@ -462,7 +522,10 @@ export default function SalVitaLanding() {
     setCouponState(null); setCouponCode(autoCouponRef.current);
     createReqId.current += 1; setCheckoutLoading(false);
     setCpfError(''); setPhoneError(''); setOrderErr(''); setPayErr(''); setShipNotice('');
-    cartTrackRef.current = false;
+    cartTrackRef.current = false; touchedRef.current = false;
+    setFieldErrs({}); setCepManual(false);
+    cepSeq.current += 1; cepAbort.current?.abort(); setLoadingCep(false);
+    couponSeq.current += 1; couponPending.current = null; setCouponLoading(false);
     resetPix();
   },[resetPix,trackViewContent]);
 
@@ -472,10 +535,16 @@ export default function SalVitaLanding() {
 
   const closeBuy=useCallback(()=>{
     createReqId.current += 1; setCheckoutLoading(false);
+    cepSeq.current += 1; cepAbort.current?.abort(); setLoadingCep(false);
     setShowModal(false); setShowCheckout(false); setOrderDone(null);
     setOrderErr(''); setPayErr(''); setShipNotice('');
     resetPix();
   },[resetPix]);
+
+  // With a live PIX on screen, leaving (Esc, backdrop, X) first asks for confirmation: closing kills
+  // the QR code and the automatic payment check.
+  const pixLive = step===3 && !!pixData && !pixPaid && !pixExpired;
+  const requestClose = useCallback(()=>{ if (pixLive) setConfirmLeave(true); else closeBuy(); },[pixLive,closeBuy]);
 
   // Reopen the payment step for the unpaid order saved on this device.
   const resumePending = () => {
@@ -504,7 +573,12 @@ export default function SalVitaLanding() {
   useEffect(()=>{
     if (step===0) return;
     const onKey=(e:KeyboardEvent)=>{
-      if (e.key==='Escape') { e.preventDefault(); if (step===2) { if (!checkoutLoadingRef.current) { createReqId.current += 1; setShowCheckout(false); } } else closeBuy(); return; }
+      if (e.key==='Escape') {
+        e.preventDefault();
+        if (confirmLeaveRef.current) { setConfirmLeave(false); return; }
+        if (step===2) { if (!checkoutLoadingRef.current) { createReqId.current += 1; setShowCheckout(false); } } else requestClose();
+        return;
+      }
       if (e.key!=='Tab' || !dlgRef.current) return;
       const els = Array.from(dlgRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
       if (!els.length) return;
@@ -515,40 +589,50 @@ export default function SalVitaLanding() {
     };
     document.addEventListener('keydown',onKey);
     return ()=>document.removeEventListener('keydown',onKey);
-  },[step,closeBuy]);
+  },[step,requestClose]);
 
   useEffect(()=>()=>stopPixPoll(),[stopPixPoll]);
 
   const lookupCep=async()=>{
     const c=cep.replace(/\D/g,'');
     if(c.length!==8){setCepErr('Digite um CEP válido com 8 dígitos.');return;}
-    setLoadingCep(true); setCepErr(''); setCepData(null); setShipping([]); setSelShip(null);
+    if(!selProd) return;
+    const prod = selProd;
+    // Each lookup supersedes the previous one: a late answer for an older CEP is discarded.
+    cepAbort.current?.abort();
+    const ctrl = new AbortController(); cepAbort.current = ctrl;
+    const seq = ++cepSeq.current;
+    const stale = () => seq !== cepSeq.current;
+    setLoadingCep(true); setCepErr(''); setCepData(null); setShipping([]); setSelShip(null); setCepManual(false);
     try {
-      const d=await(await fetch(`https://viacep.com.br/ws/${c}/json/`)).json();
-      if(d.erro){setCepErr('CEP não encontrado.');setLoadingCep(false);return;}
-      setCepData(d);
-      setCheckoutForm(f=>({...f, postalCode:c, city:d.localidade??'', state:d.uf??'', neighborhood:d.bairro??'', address:d.logradouro??f.address}));
-      // Track cart abandonment at step 2 (shipping selection)
-      if (checkoutForm.customerName && checkoutForm.customerPhone) {
-        const p2 = checkoutForm.customerPhone.replace(/\D/g,'');
-        fetch('/api/trpc/recovery.trackCart', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({json:{ customerName:checkoutForm.customerName, customerPhone:p2, customerEmail:checkoutForm.customerEmail||undefined, postalCode:c, quantity:selProd?.units ?? 1, stepReached:2 }}),
-        }).catch(()=>{});
-      }
+      // 1) Address by CEP. If ViaCEP is down or slow, the customer types the address by hand in step 2.
+      let d: {localidade?:string;uf?:string;bairro?:string;logradouro?:string;erro?:boolean}|null = null;
+      try {
+        const r = await fetchT(`https://viacep.com.br/ws/${c}/json/`, {}, FETCH_TIMEOUT_MS, ctrl.signal);
+        if (!r.ok) throw new Error('viacep');
+        d = await r.json();
+      } catch { d = null; }
+      if (stale()) return;
+      if (d?.erro) { setCepErr('CEP não encontrado. Confira os números.'); setLoadingCep(false); return; }
+      const manual = !d;
+      setCepManual(manual);
+      setCepData({ localidade: d?.localidade ?? '', uf: d?.uf ?? '', bairro: d?.bairro ?? '' });
+      setCheckoutForm(f => d
+        ? ({...f, postalCode:c, city:d.localidade??'', state:d.uf??'', neighborhood:d.bairro??'', address:d.logradouro??f.address})
+        : ({...f, postalCode:c}));
 
-      // Call backend — tries Melhor Envio API first, falls back to static table
+      // 2) Quote: Melhor Envio through our server first, static table only if the server is unreachable.
       let opts: ShipOpt[] = [];
       try {
-        const qty = selProd!.units;
-        const r = await fetch('/api/trpc/shipping.calculate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          // Send the product so the server quotes the real packed weight and box
-          // size instead of inferring both from the kg count.
-          body: JSON.stringify({ json: { cep: c, quantity: qty, productId: catalogId(selProd!.id) } }),
-        });
-        const data = await r.json();
+        // Send the product so the server quotes the real packed weight and box size.
+        const { status, data } = await postJson('/api/trpc/shipping.calculate', { cep: c, quantity: prod.units, productId: catalogId(prod.id) }, FETCH_TIMEOUT_MS, ctrl.signal);
+        if (stale()) return;
+        const pe = parseApiError(status, data);
+        if (pe.kind === 'rate_limit') {
+          // Too many requests is not "no quote": say so instead of silently showing an estimate.
+          setCepData(null); setCepManual(false); setCepErr(pe.message); setLoadingCep(false);
+          return;
+        }
         const source = data?.result?.data?.json?.source;
         const options = data?.result?.data?.json?.options;
         if (Array.isArray(options) && options.length > 0) {
@@ -568,16 +652,17 @@ export default function SalVitaLanding() {
             description: carrierDesc(o.name ?? '', o.company ?? ''),
           }));
         }
-      } catch {}
+      } catch { if (stale()) return; }
+      if (stale()) return;
 
-      // Fallback to local static table if API unavailable
-      if (opts.length === 0) { opts = calcShipping(d.uf, selProd!.weightKg); setShippingSource('static'); }
+      // Fallback to local static table if API unavailable (the badge says "Estimativa")
+      if (opts.length === 0) { opts = calcShipping(d?.uf ?? '', prod.weightKg); setShippingSource('static'); }
       // Cheapest first, and preselected — independent of the order the server returned.
       const byPrice = [...opts].sort((a,b)=>a.price-b.price);
       const cheapest = byPrice.reduce((m,o)=>o.price<m.price?o:m, byPrice[0]);
       setShipping(byPrice); setSelShip(cheapest);
-    } catch {setCepErr('Erro de conexão. Tente novamente.');}
-    setLoadingCep(false);
+    } catch { if (!stale()) setCepErr('Erro de conexão. Tente novamente.'); }
+    if (!stale()) setLoadingCep(false);
   };
 
   // Step 1 CTA: without a quoted freight there is nothing to advance to.
@@ -591,22 +676,26 @@ export default function SalVitaLanding() {
     setShowCheckout(true);
   };
 
-  async function validateCoupon(code: string, orderVal: number) {
-    if (!code.trim()) return;
+  // Resolves with the result; an answer for a code the customer has since edited is not applied.
+  function validateCoupon(code: string, orderVal: number): Promise<CouponResult> {
+    const seq = ++couponSeq.current;
     setCouponLoading(true);
-    try {
-      const res = await fetch('/api/trpc/recovery.validateCoupon', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({json:{ code: code.toUpperCase().trim(), orderValue: orderVal }}),
-      });
-      const data = await res.json();
-      const result = data?.result?.data?.json;
-      if (result) setCouponState(result);
-      else setCouponState({ valid:false, message: data?.error?.json?.message ?? data?.error?.message ?? 'Não foi possível validar o cupom agora.' });
-    } catch {
-      setCouponState({ valid:false, message:'Não foi possível validar o cupom agora.' });
-    }
-    setCouponLoading(false);
+    const run = (async (): Promise<CouponResult> => {
+      try {
+        const { status, data } = await postJson('/api/trpc/recovery.validateCoupon', { code: code.toUpperCase().trim(), orderValue: orderVal });
+        const result = data?.result?.data?.json;
+        if (result) return result as CouponResult;
+        const pe = parseApiError(status, data);
+        return { valid:false, message: pe.kind === 'rate_limit' || pe.kind === 'message' ? pe.message : 'Não foi possível validar o cupom agora.' };
+      } catch {
+        return { valid:false, message:'Não foi possível validar o cupom agora.' };
+      }
+    })();
+    couponPending.current = run;
+    return run.then(result => {
+      if (seq === couponSeq.current) { couponPending.current = null; setCouponState(result); setCouponLoading(false); }
+      return result;
+    });
   }
 
   async function handleCheckout(e:React.FormEvent) {
@@ -621,26 +710,41 @@ export default function SalVitaLanding() {
     // Mercado Pago / Melhor Envio, after the sale, which loses the customer.
     if(!isValidCpf(checkoutForm.customerCpf)) { setCpfError('CPF inválido — confira os números.'); document.getElementById('co-cpf')?.focus(); return; }
     setCpfError('');
+    // Same rules as the server, so a bad value never reaches it as raw validation JSON.
+    const fe = validateCheckoutFields(checkoutForm);
+    setFieldErrs(fe);
+    const feKeys = Object.keys(fe);
+    if (feKeys.length) { setOrderErr('Confira os campos destacados.'); document.getElementById(FIELD_INPUT_ID[feKeys[0]])?.focus(); return; }
     setCheckoutLoading(true);
     const reqId = ++createReqId.current;
     // Track step 3 (attempting payment)
-    fetch('/api/trpc/recovery.trackCart', {
+    fetchT('/api/trpc/recovery.trackCart', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({json:{ customerName:checkoutForm.customerName, customerPhone:p3, customerEmail:checkoutForm.customerEmail||undefined, postalCode:checkoutForm.postalCode, quantity:selProd.units, stepReached:3 }}),
     }).catch(()=>{});
     try {
       const qty = selProd.units;
-      const res = await fetch('/api/trpc/shipping.createOrder', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({json:{
+      // The coupon link validates asynchronously and a typed code may not have been applied yet:
+      // wait for / run the validation so the order never silently loses the discount.
+      let cs: CouponResult|null = couponState;
+      if (couponPending.current) cs = await couponPending.current;
+      else if (couponCode.trim() && !cs) cs = await validateCoupon(couponCode, selProd.price);
+      if (reqId !== createReqId.current) return;
+      if (couponCode.trim() && cs && !cs.valid) {
+        setOrderErr('O cupom não pôde ser aplicado. Corrija o código ou apague o campo para continuar sem desconto.');
+        document.getElementById('co-coupon')?.focus();
+        return;
+      }
+      const { status, data } = await postJson('/api/trpc/shipping.createOrder', {
           ...checkoutForm,
+          customerName: checkoutForm.customerName.trim(),
+          customerEmail: checkoutForm.customerEmail.trim(),
           quantity:qty,
           productId: catalogId(selProd.id),
           shippingServiceId:selShip.serviceId ?? (selShip.service==='PAC'?'1':'2'),
           shippingServiceName:selShip.service,
           shippingPrice:selShip.price,
-          couponCode: couponCode && couponState?.valid ? couponCode.toUpperCase().trim() : undefined,
+          couponCode: couponCode && cs?.valid ? couponCode.toUpperCase().trim() : undefined,
           utmSource: attributionRef.current.utm_source,
           utmMedium: attributionRef.current.utm_medium,
           utmCampaign: attributionRef.current.utm_campaign,
@@ -649,9 +753,7 @@ export default function SalVitaLanding() {
           fbclid: attributionRef.current.fbclid,
           fbp: readCookie('_fbp'),
           fbc: readCookie('_fbc'),
-        }}),
-      });
-      const data = await res.json();
+        }, FETCH_WRITE_TIMEOUT_MS);
       const orderId = data?.result?.data?.json?.id;
       // Fechou ou voltou enquanto o pedido era registrado: o pedido existe no servidor, então fica
       // salvo para "Continuar pagamento", mas o diálogo não avança sozinho para o pagamento.
@@ -669,8 +771,14 @@ export default function SalVitaLanding() {
       // thrown fetch), so guard explicitly — otherwise we'd advance to a
       // "#undefined confirmado" dead-end the customer could never pay.
       if (!orderId) {
-        const apiMsg = data?.error?.json?.message ?? data?.error?.message;
-        setOrderErr(apiMsg ? `Não foi possível registrar o pedido: ${apiMsg}` : 'Erro ao registrar o pedido. Confira os dados e tente novamente.');
+        const pe = parseApiError(status, data);
+        const keys = Object.keys(pe.fields);
+        setFieldErrs(pe.fields);
+        if (pe.firstField) document.getElementById(FIELD_INPUT_ID[pe.firstField] ?? '')?.focus();
+        setOrderErr(
+          pe.kind === 'validation' ? (keys.length > 1 ? 'Confira os campos destacados.' : pe.message)
+          : pe.kind === 'unknown' ? 'Não foi possível registrar o pedido agora. Confira os dados e tente novamente.'
+          : pe.message);
         return;
       }
       const total   = data?.result?.data?.json?.total ?? (selProd.price+selShip.price);
@@ -697,7 +805,7 @@ export default function SalVitaLanding() {
     } catch(err) {
       if (reqId !== createReqId.current) return;
       console.error('createOrder error:', err);
-      setOrderErr('Erro ao registrar pedido. Verifique sua conexão e tente novamente.');
+      setOrderErr(isAbort(err) ? SLOW_MSG : 'Erro ao registrar pedido. Verifique sua conexão e tente novamente.');
     } finally {
       if (reqId === createReqId.current) setCheckoutLoading(false);
     }
@@ -708,12 +816,7 @@ export default function SalVitaLanding() {
     if(mpLoading) return; // guard against double-tap creating two MP charges
     setMpLoading(true); setPayErr('');
     try {
-      const res = await fetch('/api/trpc/shipping.createPayment', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({json:{ orderId: orderDone.id, token: orderDone.trackToken ?? undefined }}),
-      });
-      const data = await res.json();
+      const { status, data } = await postJson('/api/trpc/shipping.createPayment', { orderId: orderDone.id, token: orderDone.trackToken ?? undefined }, FETCH_WRITE_TIMEOUT_MS);
       const initPoint = data?.result?.data?.json?.initPoint;
       if(initPoint) {
         // Do NOT fire the Purchase pixel here — the customer is only being SENT to
@@ -724,11 +827,12 @@ export default function SalVitaLanding() {
         window.location.href = initPoint;
       }
       else {
-        const apiMsg: string|undefined = data?.error?.json?.message;
+        const pe = parseApiError(status, data);
+        const apiMsg = pe.kind === 'message' ? pe.message : undefined;
         if (pedidoEncerrado(apiMsg)) clearPending();
-        setPayErr(apiMsg ? `Não foi possível gerar o link de pagamento: ${apiMsg}` : 'Erro ao gerar link de pagamento. Tente novamente.');
+        setPayErr(pe.kind === 'rate_limit' ? pe.message : apiMsg ? `Não foi possível gerar o link de pagamento: ${apiMsg}` : 'Erro ao gerar link de pagamento. Tente novamente.');
       }
-    } catch { setPayErr('Erro ao conectar com Mercado Pago. Tente novamente.'); }
+    } catch (e) { setPayErr(isAbort(e) ? SLOW_MSG : 'Erro ao conectar com Mercado Pago. Tente novamente.'); }
     setMpLoading(false);
   }
 
@@ -747,7 +851,7 @@ export default function SalVitaLanding() {
       if (gen !== pixPollGen.current) return;
       if (Date.now() - startedAt > PIX_MAX_MS) { stopPixPoll(); setPixExpired(true); return; }
       try {
-        const r = await fetch('/api/trpc/shipping.pixStatus', {
+        const r = await fetchT('/api/trpc/shipping.pixStatus', {
           method:'POST', headers:{'Content-Type':'application/json'},
           body:JSON.stringify({json:{ orderId: order.id, token: order.trackToken ?? undefined }}),
         });
@@ -764,7 +868,7 @@ export default function SalVitaLanding() {
           clearPending();
           if(!pixPurchaseFiredRef.current) {
             pixPurchaseFiredRef.current = true;
-            fbq('track','Purchase',{
+            if (claimPurchase(order.id)) fbq('track','Purchase',{
               value: order.total, currency: 'BRL', content_name: selProd ? pixelName(selProd) : 'SAL VITA PREMIUM',
               content_ids: ['salvita-001'], content_type: 'product', ...(selProd ? { num_items: selProd.units } : {}),
             }, { eventID: `purchase-${order.id}` });
@@ -788,12 +892,7 @@ export default function SalVitaLanding() {
     if(pixLoading || pixData) return;
     setPixLoading(true); setPayErr(''); setPixExpired(false); setPixPollErr(false);
     try {
-      const res = await fetch('/api/trpc/shipping.createPixPayment', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({json:{ orderId: orderDone.id, token: orderDone.trackToken ?? undefined }}),
-      });
-      const data = await res.json();
+      const { status, data } = await postJson('/api/trpc/shipping.createPixPayment', { orderId: orderDone.id, token: orderDone.trackToken ?? undefined }, FETCH_WRITE_TIMEOUT_MS);
       const result = data?.result?.data?.json;
       // O diálogo foi fechado (ou trocou de pedido) enquanto o PIX era gerado: não mostra nem faz poll.
       if (dlgOrderRef.current !== orderDone.id) { setPixLoading(false); return; }
@@ -805,21 +904,25 @@ export default function SalVitaLanding() {
         }
         startPixPoll(orderDone);
       } else {
-        const apiMsg: string|undefined = data?.error?.json?.message ?? data?.error?.message;
+        const pe = parseApiError(status, data);
+        const apiMsg = pe.kind === 'message' ? pe.message : undefined;
         if (pedidoEncerrado(apiMsg)) clearPending();
-        setPayErr(apiMsg ? `Não foi possível gerar o PIX: ${apiMsg}` : 'Erro ao gerar PIX. Tente novamente.');
+        setPayErr(pe.kind === 'rate_limit' ? pe.message : apiMsg ? `Não foi possível gerar o PIX: ${apiMsg}` : 'Erro ao gerar PIX. Tente novamente.');
       }
-    } catch { setPayErr('Erro ao conectar com Mercado Pago. Tente novamente.'); }
+    } catch (e) { setPayErr(isAbort(e) ? SLOW_MSG : 'Erro ao conectar com Mercado Pago. Tente novamente.'); }
     setPixLoading(false);
   }
 
   async function copyPixCode() {
     if(!pixData) return;
-    try {
-      await navigator.clipboard.writeText(pixData.qrCode);
-      setPixCopied(true);
-      setTimeout(()=>setPixCopied(false), 3000);
-    } catch {}
+    let ok = false;
+    try { await navigator.clipboard.writeText(pixData.qrCode); ok = true; } catch {}
+    const ta = pixCodeRef.current;
+    if (!ok && ta) { // WebViews (Instagram/Facebook) and old browsers: select the text and try the legacy copy
+      try { ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length); ok = document.execCommand('copy'); } catch {}
+    }
+    if (ok) { setPixCopyFail(false); setPixCopied(true); setTimeout(()=>setPixCopied(false), 3000); }
+    else { try { ta?.focus(); ta?.select(); } catch {} setPixCopyFail(true); }
   }
 
   // Money lines of the checkout (coupon only applies to the product).
@@ -1585,7 +1688,7 @@ export default function SalVitaLanding() {
 
       {/* ══════ CHECKOUT — ETAPA 3: PAGAMENTO ══════ */}
       {step===3&&orderDone&&(
-        <Sheet dlgRef={dlgRef} onBackdrop={closeBuy} maxWidth={460}
+        <Sheet dlgRef={dlgRef} onBackdrop={requestClose} maxWidth={460}
           foot={
             pixPaid ? (
               <a href={trackUrl(orderDone.id,orderDone.trackToken)} className="cta-gold" style={{display:'flex',alignItems:'center',justifyContent:'center',background:'var(--brand)',color:'white',borderRadius:14,padding:'16px',fontSize:'1rem',fontWeight:800,textDecoration:'none'}}>
@@ -1623,7 +1726,7 @@ export default function SalVitaLanding() {
               </>
             )
           }>
-          <SheetHead eyebrow={`Pedido #${orderDone.id} registrado`} title="Finalize seu pagamento" onClose={closeBuy}/>
+          <SheetHead eyebrow={`Pedido #${orderDone.id} registrado`} title="Finalize seu pagamento" onClose={requestClose}/>
           <Steps cur={3}/>
 
           {shipNotice&&<p role="status" style={{background:'#fffbeb',border:'1px solid #fde68a',color:'#92400e',borderRadius:10,padding:'9px 12px',fontSize:'.88rem',fontWeight:600,margin:'0 0 12px'}}>{shipNotice}</p>}
@@ -1661,15 +1764,25 @@ export default function SalVitaLanding() {
             </div>
           ) : pixData ? (
             <div style={{textAlign:'center'}}>
+              {confirmLeave&&(
+                <div role="alertdialog" aria-label="Sair do pagamento" style={{background:'#fffbeb',border:'1px solid #fde68a',borderRadius:14,padding:'14px',marginBottom:12,textAlign:'left'}}>
+                  <p style={{fontSize:'.9rem',color:'#92400e',fontWeight:600,margin:'0 0 10px',lineHeight:1.5}}>Quer sair desta tela? O QR Code fecha e a página deixa de conferir o pagamento sozinha. Para voltar, use o botão Continuar pagamento.</p>
+                  <div style={{display:'flex',gap:10}}>
+                    <button type="button" onClick={()=>setConfirmLeave(false)} style={{flex:1,minHeight:44,background:'var(--brand)',color:'white',border:'none',borderRadius:10,fontWeight:700,cursor:'pointer'}}>Continuar aqui</button>
+                    <button type="button" onClick={closeBuy} style={{flex:1,minHeight:44,background:'var(--salt)',color:'var(--mid)',border:'none',borderRadius:10,fontWeight:600,cursor:'pointer'}}>Sair</button>
+                  </div>
+                </div>
+              )}
               {pixData.qrCodeBase64 && (
                 <div style={{display:'inline-block',padding:8,background:'white',borderRadius:16,border:'1.5px solid rgba(201,162,39,.45)',boxShadow:'0 8px 30px rgba(11,29,58,.1)',marginBottom:10}}>
                   <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="QR Code PIX" width={190} height={190} className="pix-qr"/>
                 </div>
               )}
               <p style={{fontSize:'.86rem',color:'var(--muted)',margin:'0 0 8px'}}>Escaneie o QR Code ou copie o código PIX:</p>
-              <div style={{background:'var(--salt)',border:'1px solid rgba(11,29,58,.1)',borderRadius:10,padding:'8px 12px',fontSize:'.75rem',wordBreak:'break-all',color:'var(--muted)',maxHeight:56,overflow:'hidden',fontFamily:'monospace'}}>
-                {pixData.qrCode}
-              </div>
+              <textarea ref={pixCodeRef} readOnly rows={5} value={pixData.qrCode} aria-label="Código PIX copia e cola"
+                onFocus={e=>e.currentTarget.select()}
+                style={{display:'block',width:'100%',boxSizing:'border-box',background:'var(--salt)',border:'1px solid rgba(11,29,58,.1)',borderRadius:10,padding:'8px 12px',fontSize:'.75rem',wordBreak:'break-all',color:'var(--muted)',fontFamily:'monospace',resize:'none',userSelect:'all'}}/>
+              {pixCopyFail&&<p role="status" style={{fontSize:'.84rem',color:'#b45309',fontWeight:600,margin:'8px 0 0',lineHeight:1.45}}>Não foi possível copiar sozinho. Toque no código acima, segure e escolha Copiar.</p>}
             </div>
           ) : (
             <>
@@ -1726,12 +1839,13 @@ export default function SalVitaLanding() {
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
               <div style={{gridColumn:'1/-1'}}>
                 <label className="inp-lbl" htmlFor="co-name">Nome completo *</label>
-                <input id="co-name" className="inp" required autoComplete="name" value={checkoutForm.customerName} onChange={e=>setCheckoutForm(f=>({...f,customerName:e.target.value}))} placeholder="Seu nome completo"/>
+                <input id="co-name" className="inp" required autoComplete="name" value={checkoutForm.customerName} onChange={e=>onField('customerName',e.target.value)} placeholder="Seu nome completo" maxLength={100} aria-invalid={fieldErrs.customerName?true:undefined} aria-describedby={fieldErrs.customerName?'err-customerName':undefined}/>
+                {FE('customerName')}
               </div>
               <div>
                 <label className="inp-lbl" htmlFor="co-phone">Telefone/WhatsApp *</label>
                 <input id="co-phone" className="inp" required type="tel" inputMode="numeric" autoComplete="tel" value={checkoutForm.customerPhone}
-                  onChange={e=>{ const m=maskPhone(e.target.value); setCheckoutForm(f=>({...f,customerPhone:m})); if(m.replace(/\D/g,'').length>=10) setPhoneError(''); }}
+                  onChange={e=>{ const m=maskPhone(e.target.value); onField('customerPhone',m); if(m.replace(/\D/g,'').length>=10) setPhoneError(''); }}
                   onBlur={()=>{ const n=checkoutForm.customerPhone.replace(/\D/g,'').length; setPhoneError(n>0&&n<10?'Informe DDD + número.':''); }}
                   placeholder="(84) 99999-9999"
                   aria-invalid={phoneError?true:undefined} aria-describedby={phoneError?'co-phone-err':undefined}/>
@@ -1740,14 +1854,15 @@ export default function SalVitaLanding() {
               <div>
                 <label className="inp-lbl" htmlFor="co-cpf">CPF *</label>
                 <input id="co-cpf" className="inp" required type="text" inputMode="numeric" autoComplete="off" value={checkoutForm.customerCpf}
-                  onChange={e=>{ const m=maskCpf(e.target.value); setCheckoutForm(f=>({...f,customerCpf:m})); setCpfError(m.replace(/\D/g,'').length===11 && !isValidCpf(m) ? 'CPF inválido — confira os números.' : ''); }}
+                  onChange={e=>{ const m=maskCpf(e.target.value); onField('customerCpf',m); setCpfError(m.replace(/\D/g,'').length===11 && !isValidCpf(m) ? 'CPF inválido — confira os números.' : ''); }}
                   placeholder="000.000.000-00" maxLength={14}
                   aria-invalid={cpfError?true:undefined} aria-describedby={cpfError?'co-cpf-err':undefined}/>
                 {cpfError && <p id="co-cpf-err" role="alert" className="err">{cpfError}</p>}
               </div>
               <div style={{gridColumn:'1/-1'}}>
                 <label className="inp-lbl" htmlFor="co-email">E-mail *</label>
-                <input id="co-email" className="inp" required type="email" autoComplete="email" value={checkoutForm.customerEmail} onChange={e=>setCheckoutForm(f=>({...f,customerEmail:e.target.value}))} placeholder="seuemail@exemplo.com"/>
+                <input id="co-email" className="inp" required type="email" autoComplete="email" value={checkoutForm.customerEmail} onChange={e=>onField('customerEmail',e.target.value)} placeholder="seuemail@exemplo.com" maxLength={254} aria-invalid={fieldErrs.customerEmail?true:undefined} aria-describedby={fieldErrs.customerEmail?'err-customerEmail':undefined}/>
+                {FE('customerEmail')}
               </div>
               <div>
                 <label className="inp-lbl" htmlFor="co-cep">CEP (do frete)</label>
@@ -1758,30 +1873,35 @@ export default function SalVitaLanding() {
               </div>
               <div>
                 <label className="inp-lbl" htmlFor="co-number">Número *</label>
-                <input id="co-number" className="inp" required inputMode="numeric" autoComplete="off" value={checkoutForm.number} onChange={e=>setCheckoutForm(f=>({...f,number:e.target.value}))} placeholder="123"/>
+                <input id="co-number" className="inp" required inputMode="text" enterKeyHint="next" autoCapitalize="characters" maxLength={20} autoComplete="off" value={checkoutForm.number} onChange={e=>onField('number',cleanAddressNumber(e.target.value))} placeholder="123 ou S/N" aria-invalid={fieldErrs.number?true:undefined} aria-describedby={fieldErrs.number?'err-number':undefined}/>
+                {FE('number')}
               </div>
               <div style={{gridColumn:'1/-1'}}>
                 <label className="inp-lbl" htmlFor="co-address">Endereço (rua/av.) *</label>
-                <input id="co-address" className="inp" required autoComplete="address-line1" value={checkoutForm.address} onChange={e=>setCheckoutForm(f=>({...f,address:e.target.value}))} placeholder="Rua / Avenida"/>
+                <input id="co-address" className="inp" required autoComplete="address-line1" value={checkoutForm.address} onChange={e=>onField('address',e.target.value)} placeholder="Rua / Avenida" maxLength={100} aria-invalid={fieldErrs.address?true:undefined} aria-describedby={fieldErrs.address?'err-address':undefined}/>
+                {FE('address')}
               </div>
               <div>
                 <label className="inp-lbl" htmlFor="co-complement">Complemento</label>
-                <input id="co-complement" className="inp" autoComplete="address-line2" value={checkoutForm.complement} onChange={e=>setCheckoutForm(f=>({...f,complement:e.target.value}))} placeholder="Apto, bloco..."/>
+                <input id="co-complement" className="inp" autoComplete="address-line2" value={checkoutForm.complement} onChange={e=>onField('complement',e.target.value)} placeholder="Apto, bloco..."/>
               </div>
               <div>
                 <label className="inp-lbl" htmlFor="co-neighborhood">Bairro *</label>
-                <input id="co-neighborhood" className="inp" required autoComplete="address-level3" value={checkoutForm.neighborhood} onChange={e=>setCheckoutForm(f=>({...f,neighborhood:e.target.value}))} placeholder="Bairro"/>
+                <input id="co-neighborhood" className="inp" required autoComplete="address-level3" value={checkoutForm.neighborhood} onChange={e=>onField('neighborhood',e.target.value)} placeholder="Bairro" maxLength={100} aria-invalid={fieldErrs.neighborhood?true:undefined} aria-describedby={fieldErrs.neighborhood?'err-neighborhood':undefined}/>
+                {FE('neighborhood')}
               </div>
               <div>
                 <label className="inp-lbl" htmlFor="co-city">Cidade *</label>
-                <input id="co-city" className="inp" required autoComplete="address-level2" value={checkoutForm.city} onChange={e=>setCheckoutForm(f=>({...f,city:e.target.value}))} placeholder="Cidade"/>
+                <input id="co-city" className="inp" required autoComplete="address-level2" value={checkoutForm.city} onChange={e=>onField('city',e.target.value)} placeholder="Cidade" maxLength={100} aria-invalid={fieldErrs.city?true:undefined} aria-describedby={fieldErrs.city?'err-city':undefined}/>
+                {FE('city')}
               </div>
               <div>
                 <label className="inp-lbl" htmlFor="co-state">Estado *</label>
-                <select id="co-state" className="inp" required autoComplete="address-level1" value={checkoutForm.state} onChange={e=>setCheckoutForm(f=>({...f,state:e.target.value}))}>
+                <select id="co-state" className="inp" required autoComplete="address-level1" value={checkoutForm.state} onChange={e=>onField('state',e.target.value)}>
                   <option value="">UF</option>
                   {UFS.map(u=><option key={u} value={u}>{u}</option>)}
                 </select>
+                {FE('state')}
               </div>
             </div>
             {/* Cupom */}
@@ -1789,7 +1909,8 @@ export default function SalVitaLanding() {
               <label className="inp-lbl" htmlFor="co-coupon">Cupom de desconto</label>
               <div style={{display:'flex',gap:8}}>
                 <input id="co-coupon" className="inp" type="text" autoComplete="off" value={couponCode}
-                  onChange={e=>{ setCouponCode(e.target.value.toUpperCase()); setCouponState(null); }}
+                  onChange={e=>{ couponSeq.current += 1; couponPending.current = null; setCouponLoading(false); setCouponCode(e.target.value.toUpperCase()); setCouponState(null); }}
+                  onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); if(couponCode.trim() && !couponLoading) validateCoupon(couponCode, selProd.price); } }}
                   placeholder="Ex: VOLTA10"
                   aria-describedby={couponState?'co-coupon-msg':undefined}
                   style={{flex:1,fontFamily:'monospace',letterSpacing:'.1em',borderColor:couponState?.valid?'#16a34a':couponState?.valid===false?'#ef4444':undefined}}/>
@@ -1877,9 +1998,9 @@ export default function SalVitaLanding() {
                   const d=e.target.value.replace(/\D/g,'').slice(0,8);
                   setCep(d); setCepErr('');
                   // A new CEP invalidates any quote made for the previous one.
-                  if (d!==cep) { setCepData(null); setShipping([]); setSelShip(null); }
+                  if (d!==cep) { cepSeq.current += 1; cepAbort.current?.abort(); setLoadingCep(false); setCepManual(false); setCepData(null); setShipping([]); setSelShip(null); }
                 }}
-                onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); lookupCep(); } }}
+                onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); if(!loadingCep) lookupCep(); } }}
                 placeholder="00000-000"
                 aria-invalid={cepErr?true:undefined} aria-describedby={cepErr?'sv-cep-err':undefined}
                 style={{flex:1,letterSpacing:'.1em'}}/>
@@ -1895,7 +2016,7 @@ export default function SalVitaLanding() {
             <div>
               <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14,padding:'9px 14px',background:'#f0fdf4',borderRadius:10,border:'1px solid #bbf7d0'}}>
                 <span aria-hidden="true" style={{color:'#16a34a'}}>✓</span>
-                <p style={{fontSize:'.84rem',color:'#166534'}}>{cepData.localidade} — {cepData.uf}{cepData.bairro?` · ${cepData.bairro}`:''}</p>
+                <p style={{fontSize:'.84rem',color:'#166534'}}>{cepManual ? 'Não conseguimos buscar o endereço pelo CEP agora. Você preenche o endereço no próximo passo.' : `${cepData.localidade} — ${cepData.uf}${cepData.bairro?` · ${cepData.bairro}`:''}`}</p>
               </div>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
                 <p id="ship-lbl" style={{fontSize:'.85rem',fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',margin:0}}>Opções de frete</p>
@@ -1936,9 +2057,10 @@ export default function SalVitaLanding() {
               </div>
             </div>
           )}
-          <p style={{marginTop:10,fontSize:'.84rem',color:'var(--muted)',textAlign:'center',lineHeight:1.5}}>Frete calculado via Melhor Envio · Enviamos para todo o Brasil</p>
+          <p style={{marginTop:10,fontSize:'.84rem',color:'var(--muted)',textAlign:'center',lineHeight:1.5}}>{shippingSource==='static' && shipping.length>0 ? 'Valor estimado. O valor final do frete é confirmado no próximo passo. Enviamos para todo o Brasil.' : 'Frete calculado por CEP, transportadoras via Melhor Envio · Enviamos para todo o Brasil'}</p>
         </Sheet>
       )}
+      <ConsentBanner />
     </>
   );
 }

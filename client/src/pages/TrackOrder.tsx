@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { trpc } from '../lib/trpc';
+import ConsentBanner from '../components/premium/ConsentBanner';
+import { CONSENT_CHANGE_EVENT, loadMetaPixel, trackPixel } from '../components/premium/pixelConsent';
+import { claimPurchase } from '../components/premium/purchaseLock';
 
 const STATUS_STEPS = [
   { key: 'pending',   label: 'Pedido Recebido',       icon: '📦', desc: 'Aguardando confirmação de pagamento' },
@@ -7,6 +10,9 @@ const STATUS_STEPS = [
   { key: 'shipped',   label: 'Enviado',                icon: '🚚', desc: 'A caminho de você' },
   { key: 'delivered', label: 'Entregue',               icon: '🎉', desc: 'Pedido entregue com sucesso!' },
 ];
+
+// Shown in place of "Enviado" while the order only has a generated label (not posted yet).
+const LABEL_ONLY_STEP = { key: 'shipped', label: 'Etiqueta gerada', icon: '🏷️', desc: 'Etiqueta gerada — aguardando postagem' };
 
 const STATUS_ORDER = ['pending', 'confirmed', 'label_generated', 'shipped', 'delivered'];
 
@@ -46,23 +52,10 @@ function stashTokenAndCleanUrl() {
   window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
 }
 
-// The pixel is not loaded on /meu-pedido (see index.html) because the URL used to carry
-// the order token. Purchase is the one event we want from this page, so load the pixel
-// on demand — only after the token has been stripped from the URL — and send no PageView.
-function ensurePixel() {
-  const w = window as any;
-  if (w.fbq) return;
-  const n: any = (w.fbq = function (...args: unknown[]) {
-    n.callMethod ? n.callMethod.apply(n, args) : n.queue.push(args);
-  });
-  if (!w._fbq) w._fbq = n;
-  n.push = n; n.loaded = true; n.version = '2.0'; n.queue = [];
-  const t = document.createElement('script');
-  t.async = true;
-  t.src = 'https://connect.facebook.net/en_US/fbevents.js';
-  document.head.appendChild(t);
-  w.fbq('init', '2209017296169541');
-}
+// The pixel is not loaded on /meu-pedido by index.html (the URL used to carry the order token).
+// Purchase is the one event we want from this page, so the pixel is loaded on demand — only if the
+// visitor accepted it (see ConsentBanner), only after the token was stripped from the URL, and with
+// no PageView.
 
 function friendlyError(error: unknown, usedToken: boolean): string {
   const code = (error as { data?: { code?: string } } | null)?.data?.code;
@@ -168,13 +161,23 @@ export default function TrackOrder() {
   // Fire the Facebook Pixel Purchase event only when a real, confirmed payment is
   // observed here (post-redirect / confirmed order) — not at checkout click. This keeps
   // ad-campaign optimization tied to actual buyers.
+  // Once per order, ever: the lock lives in localStorage (shared with the PIX screen of the store),
+  // so reloading or reopening this page does not count the sale again. No consent, no Pixel, no
+  // event, and the lock is not spent — if the visitor accepts later on this page it still fires.
   const purchaseFired = useRef(false);
+  const [consentTick, setConsentTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setConsentTick(t => t + 1);
+    window.addEventListener(CONSENT_CHANGE_EVENT, bump);
+    return () => window.removeEventListener(CONSENT_CHANGE_EVENT, bump);
+  }, []);
   useEffect(() => {
     if (order && !purchaseFired.current && order.paymentStatus === 'confirmed') {
-      purchaseFired.current = true;
       try {
-        ensurePixel();
-        (window as any).fbq?.('track', 'Purchase', {
+        if (!loadMetaPixel({ pageView: false })) return;
+        purchaseFired.current = true;
+        if (!claimPurchase(order.id)) return;
+        trackPixel('track', 'Purchase', {
           value: parseFloat(order.totalPrice ?? '0'),
           currency: 'BRL',
           content_name: 'SAL VITA PREMIUM',
@@ -186,7 +189,7 @@ export default function TrackOrder() {
         }, { eventID: `purchase-${order.id}` });
       } catch {}
     }
-  }, [order]);
+  }, [order, consentTick]);
 
   const stepIndex = order ? getStepIndex(order.status) : -1;
 
@@ -392,9 +395,11 @@ export default function TrackOrder() {
                   Acompanhe seu pedido
                 </h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-                  {STATUS_STEPS.map((step, idx) => {
+                  {STATUS_STEPS.map((baseStep, idx) => {
                     const done = idx <= stepIndex;
                     const current = idx === stepIndex;
+                    // A shipping label alone is not a shipment: say so until the carrier has the package.
+                    const step = baseStep.key === 'shipped' && order.status === 'label_generated' ? LABEL_ONLY_STEP : baseStep;
                     return (
                       <div key={step.key} style={{ display: 'flex', gap: '16px', paddingBottom: idx < STATUS_STEPS.length - 1 ? '20px' : '0', position: 'relative' }}>
                         {/* Line */}
@@ -517,6 +522,7 @@ export default function TrackOrder() {
           </div>
         )}
       </div>
+      <ConsentBanner pageView={false} />
     </div>
   );
 }
