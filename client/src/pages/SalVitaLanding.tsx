@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 /* ─── Image assets ───────────────────────────────────────── */
 const IMG = {
@@ -123,14 +123,26 @@ const BLANK_FORM = {
 type CheckoutForm = typeof BLANK_FORM;
 
 // Customer data typed on THIS device earlier (never stored in the database).
+// The CPF is never kept here, and the entry expires after 30 days (older entries,
+// including ones saved before `savedAt` existed, are ignored and deleted).
+const SAVED_CUSTOMER_KEY = 'sv_customer_data';
+const SAVED_CUSTOMER_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 function loadSavedCustomer(): Partial<CheckoutForm> {
   try {
-    const d = JSON.parse(localStorage.getItem('sv_customer_data') ?? 'null');
+    const d = JSON.parse(localStorage.getItem(SAVED_CUSTOMER_KEY) ?? 'null');
     if (!d || typeof d !== 'object') return {};
+    const age = typeof d.savedAt === 'number' ? Date.now() - d.savedAt : Infinity;
+    if (!(age >= 0 && age <= SAVED_CUSTOMER_TTL_MS)) { localStorage.removeItem(SAVED_CUSTOMER_KEY); return {}; }
     const out: Partial<CheckoutForm> = {};
-    (Object.keys(BLANK_FORM) as (keyof CheckoutForm)[]).forEach(k => { if (typeof d[k] === 'string') out[k] = d[k]; });
+    (Object.keys(BLANK_FORM) as (keyof CheckoutForm)[]).forEach(k => { if (k !== 'customerCpf' && typeof d[k] === 'string') out[k] = d[k]; });
     return out;
   } catch { return {}; }
+}
+function saveCustomer(form: CheckoutForm) {
+  try {
+    const { customerCpf: _cpf, ...rest } = form;
+    localStorage.setItem(SAVED_CUSTOMER_KEY, JSON.stringify({ ...rest, savedAt: Date.now() }));
+  } catch {}
 }
 
 type FbqFn = (...args: unknown[]) => void;
@@ -138,6 +150,31 @@ function fbq(...args: unknown[]) {
   try { (window as unknown as {fbq?:FbqFn}).fbq?.(...args); } catch {}
 }
 const pixelName = (p: Product) => `${p.name} ${p.weight}`;
+// Distinct catalog id per pack for browsing/cart events. Purchase keeps 'salvita-001'
+// because the server-side CAPI Purchase (server/lib/orderConfirmation.ts) sends that id.
+const PIXEL_IDS: Record<string,string> = { '1kg': 'salvita-1kg', '3kg': 'salvita-3kg', caixa: 'salvita-10kg' };
+const pixelId = (p: Product) => PIXEL_IDS[p.id] ?? 'salvita-001';
+
+// Meta browser/click ids (cookies set by the Pixel), forwarded to createOrder for CAPI matching.
+function readCookie(name: string): string | undefined {
+  try {
+    const m = document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith(name + '='));
+    const v = m ? m.slice(name.length + 1).trim() : '';
+    return v && v.length <= 255 ? v : undefined;
+  } catch { return undefined; }
+}
+
+// AddPaymentInfo once per order id — also across page loads (resuming a pending order).
+const APINFO_KEY = 'sv_apinfo_sent';
+function firstAddPaymentInfo(orderId: number): boolean {
+  try {
+    const raw = JSON.parse(localStorage.getItem(APINFO_KEY) ?? '[]');
+    const ids: number[] = Array.isArray(raw) ? raw : [];
+    if (ids.includes(orderId)) return false;
+    localStorage.setItem(APINFO_KEY, JSON.stringify([...ids, orderId].slice(-20)));
+  } catch {}
+  return true;
+}
 
 const PIX_MAX_MS = 30 * 60 * 1000;
 // Poll do PIX: 5s nos 2 primeiros minutos (quando a maioria paga), depois 15s até o teto —
@@ -280,6 +317,18 @@ export default function SalVitaLanding() {
 
   const v=(id:string)=>visible.has(id);
 
+  // "Mais barato" / "Mais rápido" labels, derived from the quoted options (shipping is price-sorted).
+  const shipBadges = useMemo(()=>{
+    const m = new Map<string,string>();
+    if (shipping.length < 2) return m;
+    m.set(shipping[0].service, 'Mais barato');
+    const first = (o:ShipOpt)=>{ const n = /\d+/.exec(o.days ?? ''); return n ? parseInt(n[0],10) : null; };
+    let fastest: ShipOpt|null = null; let best = Infinity;
+    for (const o of shipping) { const d = first(o); if (d !== null && d < best) { best = d; fastest = o; } }
+    if (fastest && fastest.service !== shipping[0].service) m.set(fastest.service, 'Mais rápido');
+    return m;
+  },[shipping]);
+
   // Read ?cupom= URL param and restore saved customer data on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -313,7 +362,7 @@ export default function SalVitaLanding() {
   // Persist customer data locally whenever it changes (device-only, no DB cost)
   useEffect(() => {
     if (!checkoutForm.customerName && !checkoutForm.customerPhone && !checkoutForm.postalCode) return;
-    try { localStorage.setItem('sv_customer_data', JSON.stringify(checkoutForm)); } catch {}
+    saveCustomer(checkoutForm);
   }, [checkoutForm]);
 
   // Auto-validate/apply the coupon that came from a recovery link as soon as the
@@ -375,14 +424,32 @@ export default function SalVitaLanding() {
     pixPurchaseFiredRef.current = false;
   },[stopPixPoll]);
 
+  // ViewContent: once per page load — when the pricing section scrolls into view, or on
+  // the first pack-modal open if that happens first.
+  const viewContentSent = useRef(false);
+  const trackViewContent = useCallback((p: Product) => {
+    if (viewContentSent.current) return;
+    viewContentSent.current = true;
+    fbq('track','ViewContent',{ content_name: pixelName(p), content_category: 'Alimentos Naturais', content_ids: [pixelId(p)], content_type: 'product', value: p.price, currency: 'BRL' });
+  }, []);
+  useEffect(() => {
+    const el = document.getElementById('preco');
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver((es) => {
+      if (es.some(e => e.isIntersecting)) { trackViewContent(PRODUCTS[0]); io.disconnect(); }
+    }, { threshold: 0.1 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [trackViewContent]);
+
   // Called only from buy buttons (pack cards, nav, hero, sticky bar), so the
   // AddToCart pixel fires on the click that chooses a pack — not when the
   // resume-payment banner reopens an existing order.
   const openBuy=useCallback((p:Product)=>{
     triggerRef.current = document.activeElement as HTMLElement | null;
     setSelProd(p); setShowModal(true); setMobileMenu(false);
-    fbq('track','ViewContent',{ content_name: pixelName(p), content_category: 'Alimentos Naturais', content_ids: ['salvita-001'], content_type: 'product', value: p.price, currency: 'BRL' });
-    fbq('track','AddToCart',{ content_name: pixelName(p), content_ids: ['salvita-001'], content_type: 'product', value: p.price, currency: 'BRL', num_items: p.units });
+    trackViewContent(p);
+    fbq('track','AddToCart',{ content_name: pixelName(p), content_ids: [pixelId(p)], content_type: 'product', value: p.price, currency: 'BRL', num_items: p.units });
     // New purchase: reset the flow, but keep the data this device already knows
     // so returning buyers see the form prefilled. The saved unpaid order is NOT
     // cleared here any more — the page now offers to resume it (or discard it).
@@ -397,7 +464,7 @@ export default function SalVitaLanding() {
     setCpfError(''); setPhoneError(''); setOrderErr(''); setPayErr(''); setShipNotice('');
     cartTrackRef.current = false;
     resetPix();
-  },[resetPix]);
+  },[resetPix,trackViewContent]);
 
   // Volta do passo 2 para o 1. Invalida um createOrder em andamento (a resposta tardia seria
   // ignorada); com o pedido sendo registrado o botão fica desabilitado.
@@ -505,7 +572,10 @@ export default function SalVitaLanding() {
 
       // Fallback to local static table if API unavailable
       if (opts.length === 0) { opts = calcShipping(d.uf, selProd!.weightKg); setShippingSource('static'); }
-      setShipping(opts); setSelShip(opts[0]);
+      // Cheapest first, and preselected — independent of the order the server returned.
+      const byPrice = [...opts].sort((a,b)=>a.price-b.price);
+      const cheapest = byPrice.reduce((m,o)=>o.price<m.price?o:m, byPrice[0]);
+      setShipping(byPrice); setSelShip(cheapest);
     } catch {setCepErr('Erro de conexão. Tente novamente.');}
     setLoadingCep(false);
   };
@@ -517,7 +587,7 @@ export default function SalVitaLanding() {
       cepInputRef.current?.focus();
       return;
     }
-    fbq('track','InitiateCheckout',{ content_name: pixelName(selProd), content_ids: ['salvita-001'], value: selProd.price, currency: 'BRL', num_items: selProd.units });
+    fbq('track','InitiateCheckout',{ content_name: pixelName(selProd), content_ids: [pixelId(selProd)], content_type: 'product', value: selProd.price, currency: 'BRL', num_items: selProd.units });
     setShowCheckout(true);
   };
 
@@ -577,6 +647,8 @@ export default function SalVitaLanding() {
           utmContent: attributionRef.current.utm_content,
           utmTerm: attributionRef.current.utm_term,
           fbclid: attributionRef.current.fbclid,
+          fbp: readCookie('_fbp'),
+          fbc: readCookie('_fbc'),
         }}),
       });
       const data = await res.json();
@@ -618,9 +690,9 @@ export default function SalVitaLanding() {
       const pend: PendingOrder = { id: orderId, total, ts: createdAt, trackToken, productId: selProd.id, shipService: selShip.service, shipPrice };
       try { localStorage.setItem('sv_pending_order', JSON.stringify(pend)); } catch {}
       setPendingOrder(pend);
-      if (!addPaymentInfoSent.current.has(orderId)) {
+      if (!addPaymentInfoSent.current.has(orderId) && firstAddPaymentInfo(orderId)) {
         addPaymentInfoSent.current.add(orderId);
-        fbq('track','AddPaymentInfo',{ value: total, currency: 'BRL', content_name: pixelName(selProd), content_ids: ['salvita-001'], content_type: 'product', num_items: qty });
+        fbq('track','AddPaymentInfo',{ value: total, currency: 'BRL', content_name: pixelName(selProd), content_ids: [pixelId(selProd)], content_type: 'product', num_items: qty });
       }
     } catch(err) {
       if (reqId !== createReqId.current) return;
@@ -727,9 +799,9 @@ export default function SalVitaLanding() {
       if (dlgOrderRef.current !== orderDone.id) { setPixLoading(false); return; }
       if(result?.qrCode) {
         setPixData({ qrCode: result.qrCode, qrCodeBase64: result.qrCodeBase64 ?? '' });
-        if (!addPaymentInfoSent.current.has(orderDone.id)) {
+        if (!addPaymentInfoSent.current.has(orderDone.id) && firstAddPaymentInfo(orderDone.id)) {
           addPaymentInfoSent.current.add(orderDone.id);
-          fbq('track','AddPaymentInfo',{ value: orderDone.total, currency: 'BRL', content_name: selProd ? pixelName(selProd) : 'SAL VITA PREMIUM', content_ids: ['salvita-001'], content_type: 'product', ...(selProd ? { num_items: selProd.units } : {}) });
+          fbq('track','AddPaymentInfo',{ value: orderDone.total, currency: 'BRL', content_name: selProd ? pixelName(selProd) : 'SAL VITA PREMIUM', content_ids: [selProd ? pixelId(selProd) : 'salvita-001'], content_type: 'product', ...(selProd ? { num_items: selProd.units } : {}) });
         }
         startPixPoll(orderDone);
       } else {
@@ -1472,6 +1544,8 @@ export default function SalVitaLanding() {
                 <ul style={{listStyle:'none',padding:0}}>
                   <li><a className="foot-link" href="/meu-pedido">Rastrear pedido</a></li>
                   <li><a className="foot-link" href="/atacado">Atacado</a></li>
+                  <li><a className="foot-link" href="/privacidade">Política de privacidade</a></li>
+                  <li><a className="foot-link" href="/termos">Termos e trocas</a></li>
                   <li><a className="foot-link" href={WA_LINK} target="_blank" rel="noopener noreferrer">WhatsApp</a></li>
                   <li><a className="foot-link" href="mailto:contato@salvitarn.com.br">E-mail</a></li>
                 </ul>
@@ -1631,6 +1705,9 @@ export default function SalVitaLanding() {
           foot={
             <>
               {orderErr&&<p role="alert" className="err" style={{margin:'0 0 8px'}}>{orderErr}</p>}
+              <p style={{margin:'0 0 8px',fontSize:'.78rem',lineHeight:1.45,color:'var(--muted)',textAlign:'center'}}>
+                Ao continuar, você concorda com os <a href="/termos" target="_blank" rel="noopener noreferrer" style={{color:'var(--brand)',textDecoration:'underline'}}>Termos</a> e a <a href="/privacidade" target="_blank" rel="noopener noreferrer" style={{color:'var(--brand)',textDecoration:'underline'}}>Política de privacidade</a>.
+              </p>
               <div style={{display:'flex',gap:10}}>
                 <button type="button" onClick={backToStep1} disabled={checkoutLoading}
                   style={{flex:'0 0 auto',minHeight:48,background:'var(--salt)',color:'var(--mid)',border:'none',borderRadius:12,padding:'0 18px',fontSize:'.9rem',fontWeight:600,cursor:checkoutLoading?'not-allowed':'pointer',opacity:checkoutLoading?.5:1}}>
@@ -1830,6 +1907,7 @@ export default function SalVitaLanding() {
               <div role="radiogroup" aria-labelledby="ship-lbl" style={{display:'flex',flexDirection:'column',gap:10,marginBottom:6}}>
                 {shipping.map((opt,idx)=>{
                   const on = selShip?.service===opt.service;
+                  const badge = shipBadges.get(opt.service);
                   return (
                     <div key={opt.service} role="radio" aria-checked={on} tabIndex={on||(!selShip&&idx===0)?0:-1} className={`sopt${on?' sel':''}`}
                       onClick={()=>setSelShip(opt)}
@@ -1844,7 +1922,10 @@ export default function SalVitaLanding() {
                       }}>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
                         <div>
-                          <p style={{fontWeight:700,color:'var(--text)',fontSize:'.93rem'}}>{opt.service}</p>
+                          <p style={{fontWeight:700,color:'var(--text)',fontSize:'.93rem',display:'flex',alignItems:'center',flexWrap:'wrap',gap:6}}>
+                            {opt.service}
+                            {badge&&<span style={{fontSize:'.68rem',fontWeight:700,letterSpacing:'.04em',textTransform:'uppercase',background:badge==='Mais barato'?'#dcfce7':'rgba(201,162,39,.18)',color:badge==='Mais barato'?'#15803d':'var(--golddk)',padding:'2px 8px',borderRadius:99}}>{badge}</span>}
+                          </p>
                           <p style={{fontSize:'.88rem',color:'var(--muted)'}}>{opt.description}{opt.days?` · ${opt.days}`:''}</p>
                         </div>
                         <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.3rem',fontWeight:700,color:'var(--brand)',whiteSpace:'nowrap'}}>{brl(opt.price)}</p>

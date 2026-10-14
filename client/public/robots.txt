@@ -8,4 +8,4 @@ Disallow: /sal-vita-b2b
 Disallow: /classic
 Disallow: /api/
 
-Sitemap: https://premium.salvitarn.com.br/sitemap.xml
+Sitemap: https://www.premium.salvitarn.com.br/sitemap.xml

@@ -17,6 +17,8 @@ import SalVitaChat from "./components/SalVitaChat";
 const SalVitaAdmin = lazy(() => import("./pages/SalVitaAdmin"));
 const TrackOrder = lazy(() => import("./pages/TrackOrder"));
 const Atacado = lazy(() => import("./pages/Atacado"));
+const Privacidade = lazy(() => import("./pages/Privacidade"));
+const Termos = lazy(() => import("./pages/Termos"));
 // CRM
 const Home = lazy(() => import("./pages/Home"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
@@ -153,6 +155,16 @@ function App() {
     if (path === '/atacado') {
       return (
         <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><Suspense fallback={<StoreFallback />}><Atacado /></Suspense></TooltipProvider></ThemeProvider></ErrorBoundary>
+      );
+    }
+    if (path === '/privacidade') {
+      return (
+        <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><Suspense fallback={<StoreFallback />}><Privacidade /></Suspense></TooltipProvider></ThemeProvider></ErrorBoundary>
+      );
+    }
+    if (path === '/termos') {
+      return (
+        <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><Suspense fallback={<StoreFallback />}><Termos /></Suspense></TooltipProvider></ThemeProvider></ErrorBoundary>
       );
     }
     return (

@@ -28,11 +28,11 @@
     <title>Sal Vita Premium — Sal Marinho Não Refinado de Mossoró/RN</title>
     <meta name="description" content="Sal Integral de Mossoró, sal marinho não refinado, seco por evaporação solar, sem refino que remova os minerais traço. Iodado conforme a legislação. Zip lock de 1kg, trio 3kg e caixa 10kg, com frete calculado por CEP." />
     <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="https://premium.salvitarn.com.br/" />
+    <link rel="canonical" href="https://www.premium.salvitarn.com.br/" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Sal Vita" />
     <meta property="og:locale" content="pt_BR" />
-    <meta property="og:url" content="https://premium.salvitarn.com.br/" />
+    <meta property="og:url" content="https://www.premium.salvitarn.com.br/" />
     <meta property="og:title" content="Sal Vita Premium — Sal Marinho Não Refinado de Mossoró/RN" />
     <meta property="og:description" content="Sal Integral de Mossoró, sal marinho não refinado, seco por evaporação solar, sem refino que remova os minerais traço. Iodado conforme a legislação." />
     <meta property="og:image" content="https://salvitarn.com.br/wp-content/uploads/2026/05/WhatsApp-Image-2026-05-04-at-09.02.12.jpeg" />
@@ -59,7 +59,7 @@
             "highPrice": "149.90",
             "offerCount": "3",
             "availability": "https://schema.org/InStock",
-            "url": "https://premium.salvitarn.com.br/"
+            "url": "https://www.premium.salvitarn.com.br/"
           }
         },
         {
@@ -67,8 +67,8 @@
           "name": "Sal Vita",
           "legalName": "A S Comércio e Moagem de Sal Ltda",
           "taxID": "51.422.900/0001-68",
-          "url": "https://premium.salvitarn.com.br/",
-          "logo": "https://premium.salvitarn.com.br/icon-512.png",
+          "url": "https://www.premium.salvitarn.com.br/",
+          "logo": "https://www.premium.salvitarn.com.br/icon-512.png",
           "telephone": "+558421408212",
           "email": "contato@salvitarn.com.br",
           "address": {
@@ -101,10 +101,10 @@
         var path = location.pathname;
         if (/^\/(meu-pedido|sal-vita-admin|sal-vita-recovery|sal-vita-b2b|classic)(\/|$)/.test(path)) {
           set('meta[name="robots"]', 'content', 'noindex,nofollow');
-        } else if (/^\/atacado\/?$/.test(path)) {
+        } else if (/^\/(atacado|privacidade|termos)\/?$/.test(path)) {
           // Indexable page of its own: do not canonicalize it to the home page.
-          set('link[rel="canonical"]', 'href', 'https://premium.salvitarn.com.br/atacado');
-          set('meta[property="og:url"]', 'content', 'https://premium.salvitarn.com.br/atacado');
+          set('link[rel="canonical"]', 'href', 'https://www.premium.salvitarn.com.br/' + path.replace(/\/+$/, '').slice(1));
+          set('meta[property="og:url"]', 'content', 'https://www.premium.salvitarn.com.br/' + path.replace(/\/+$/, '').slice(1));
         }
       })();
     </script>
