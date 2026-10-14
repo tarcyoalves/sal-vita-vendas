@@ -75,8 +75,12 @@ export default function ConsentBanner({ pageView = true }: { pageView?: boolean 
         .svc-btn:hover{background:rgba(201,162,39,.18)}
         .svc-btn:focus-visible{outline:3px solid #e0bf54;outline-offset:2px}
         html.sv-consent-open body{padding-bottom:var(--sv-consent-h,0)}
+        html.sv-consent-open .sv-chat-btn{bottom:calc(var(--sv-consent-h,0px) + 24px)!important}
+        html.sv-consent-open .sv-chat-win{bottom:calc(var(--sv-consent-h,0px) + 94px)!important}
         @media (max-width:760px){
           html.sv-consent-open .sticky-bar{bottom:var(--sv-consent-h,0)!important;padding-bottom:10px!important}
+          html.sv-consent-open .sv-chat-btn{bottom:calc(var(--sv-consent-h,0px) + 82px)!important}
+          html.sv-consent-open .sv-chat-win{bottom:calc(var(--sv-consent-h,0px) + 152px)!important}
           .svc-wrap{padding:12px 14px calc(12px + env(safe-area-inset-bottom))}
           .svc-txt{font-size:.84rem;line-height:1.45}
           .svc-btns{width:100%}
