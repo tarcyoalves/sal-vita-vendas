@@ -19,7 +19,15 @@ async function mpErrorTag(res: Response): Promise<string> {
 }
 
 const ME_BASE = 'https://melhorenvio.com.br';
-const ORIGIN_CEP = process.env.MELHOR_ENVIO_ORIGIN_CEP ?? '59600000';
+const ORIGIN_CEP = process.env.MELHOR_ENVIO_ORIGIN_CEP ?? '59615200';
+// Remetente impresso nas etiquetas do Melhor Envio (pedido do dono em 14/10/2026).
+// Sem `district` a etiqueta saía com "null" no bairro.
+export const SENDER_ADDRESS = {
+  address: 'Rua Francisco Moura Filho',
+  number: '705',
+  district: 'Santa Delmira',
+  postalCode: '59615200',
+} as const;
 // Dimensions in cm — 1kg TBD by owner, 10kg box confirmed
 const PKG_1KG  = { height: 7,  width: 15, length: 24 };
 const PKG_3KG  = { height: 14, width: 18, length: 26 };
@@ -917,9 +925,10 @@ Seja direto e use emojis para facilitar leitura.`;
           name: 'Sal Vita',
           phone: '84214082120',
           email: 'contato@salvitarn.com.br',
-          postal_code: ORIGIN_CEP,
-          address: 'Av. Presidente Dutra',
-          number: '1',
+          postal_code: SENDER_ADDRESS.postalCode,
+          address: SENDER_ADDRESS.address,
+          number: SENDER_ADDRESS.number,
+          district: SENDER_ADDRESS.district,
           city: 'Mossoró',
           state_abbr: 'RN',
           country_id: 'BR',
@@ -1226,9 +1235,10 @@ Seja direto e use emojis para facilitar leitura.`;
               name: 'Sal Vita',
               phone: '84214082120',
               email: 'contato@salvitarn.com.br',
-              postal_code: ORIGIN_CEP,
-              address: 'Av. Presidente Dutra',
-              number: '1',
+              postal_code: SENDER_ADDRESS.postalCode,
+              address: SENDER_ADDRESS.address,
+              number: SENDER_ADDRESS.number,
+              district: SENDER_ADDRESS.district,
               city: 'Mossoró',
               state_abbr: 'RN',
               country_id: 'BR',
