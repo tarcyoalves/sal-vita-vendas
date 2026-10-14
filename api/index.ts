@@ -22,6 +22,7 @@ import {
 import { eq, ne, and, or, sql, lte, gte, isNull, isNotNull, inArray, notInArray, notExists, desc, asc, lt } from 'drizzle-orm';
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
 import { createPixPaymentForOrder } from '../server/lib/mercadopago';
+import { mpSignatureManifest, parseMpSignatureHeader } from '../server/lib/mpSignature';
 import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid, orderTrackLink, podeConfirmarPagamento, appendReviewNote } from '../server/lib/orderConfirmation';
 import { verifyResendWebhook } from '../server/email/marketing';
 import { evaluateInactiveDaysRules, flagEngagementByMessageId, processSequenceEnrollments, cancelAllEnrollments } from '../server/email/automations';
@@ -421,15 +422,20 @@ app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/jso
       // When notification_url is used in preferences, MP may not send x-signature yet —
       // in that case we skip validation and rely on the payment lookup to confirm legitimacy.
       if (xSig && xReqId) {
-        const parts = Object.fromEntries(xSig.split(',').map(p => { const [k,...v]=p.split('='); return [k,v.join('=')]; }));
-        const { ts, v1 } = parts;
+        const { ts, v1 } = parseMpSignatureHeader(xSig);
         if (ts && v1) {
-          const manifest = `id:${body?.data?.id ?? ''};request-id:${xReqId};ts:${ts}`;
+          // data.id comes from the notification URL query string; body is only a fallback.
+          const qId = req.query['data.id'];
+          const dataId = typeof qId === 'string' ? qId : (body?.data?.id != null ? String(body.data.id) : '');
+          const manifest = mpSignatureManifest(dataId, xReqId, ts);
           const expected = crypto.createHmac('sha256', webhookSecret).update(manifest).digest('hex');
-          if (expected.length !== v1.length || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1))) {
-            console.warn('[mp-webhook] Invalid HMAC signature — ignoring notification');
-            res.status(401).json({ error: 'Invalid signature' }); return;
-          }
+          const ok = expected.length === v1.length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+          // NON-BLOCKING on purpose: this webhook never trusts the notification body. It fetches the
+          // payment from the Mercado Pago API with our access token and validates the amount before
+          // confirming, and confirmation is idempotent. Rejecting on a signature mismatch (wrong secret
+          // configured, template drift) silently loses real payments — which already happened once.
+          if (ok) console.log('[mp-webhook] HMAC signature valid');
+          else console.warn('[mp-webhook] HMAC signature mismatch — continuing (payment is verified via MP API)');
           // Sem janela de validade para o `ts`: o replay é inofensivo (status e valor vêm da API
           // do MP e a confirmação é idempotente), e recusar um reenvio legítimo do MP atrasaria
           // a confirmação até o cron diário.

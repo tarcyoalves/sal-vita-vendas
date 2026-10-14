@@ -492,11 +492,12 @@ export const shippingRouter = router({
     .input(z.object({ status: z.string().optional() }).optional())
     .query(async ({ ctx }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
-      // Exclude orders where client never initiated payment (no mpPreferenceId and still awaiting)
-      // Those go to the recovery panel instead
+      // Hide only orders with no payment attempt at all (no preference AND no payment id).
+      // On-page PIX orders have mpPaymentId but never an mpPreferenceId, so they must show.
+      // Never-attempted ones go to the recovery panel instead
       return db.select().from(siteOrders)
         .where(
-          sql`NOT (${siteOrders.paymentStatus} = 'awaiting' AND ${siteOrders.mpPreferenceId} IS NULL)`
+          sql`NOT (${siteOrders.paymentStatus} = 'awaiting' AND ${siteOrders.mpPreferenceId} IS NULL AND ${siteOrders.mpPaymentId} IS NULL)`
         )
         .orderBy(desc(siteOrders.createdAt));
     }),
