@@ -277,6 +277,20 @@ Plano e decisões em `PLANO-RADAR-CARGAS.md`.
 ## 6. Pendências — em ordem de urgência
 
 ### 🔴 Só o dono resolve (fora do código)
+00. **Antes de ligar anúncios (auditoria de 14/10/2026):**
+   - **Adicionar `premium.salvitarn.com.br` (sem www) ao projeto na Vercel** (Settings → Domains,
+     SEM redirecionamento). O DNS já aponta para a Vercel, mas o domínio não está no projeto, então
+     não há certificado: links antigos enviados a clientes (rastreio, recuperação, cupom) e
+     quem digitar sem www caem em erro de segurança. O código passou a usar `www` em tudo
+     (`server/lib/storeUrl.ts`); a IA não tem permissão para adicionar domínio (403).
+   - Confirmar que **`FB_CAPI_TOKEN`** está na Vercel (Production). Sem ela a compra não vai
+     para a Meta pelo servidor — agora isso gera um aviso no log, antes era silencioso.
+   - Fazer **uma compra real de teste com PIX e outra com cartão**, conferindo: a tela confirma
+     sozinha, o cartão volta para `www…/meu-pedido`, chegam WhatsApp e e-mail, e a compra aparece
+     no Gerenciador de Eventos da Meta (com "Servidor" e "Navegador" deduplicados).
+   - Confirmar que alguém lê e registra os pedidos de "PARAR" no WhatsApp: a página
+     `/privacidade` diz que a equipe registra (não há tratamento automático no código).
+   - Criativos: não usar a foto com o selo "+80 MINERAIS" nem alegações de saúde/minerais.
 0. **Loja — dados e confirmações pedidos na auditoria de 07/10:** depoimentos reais com
    autorização (a seção foi removida por não ter origem rastreável); situação do registro
    sanitário do produto (a frase "registrado MAPA" foi removida); arte da embalagem — o
