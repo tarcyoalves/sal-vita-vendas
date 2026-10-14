@@ -87,6 +87,16 @@
       "dest": "/index.html"
     },
     {
+      "src": "/sal-vita-email-marketing",
+      "has": [{ "type": "host", "value": "premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/index.html"
+    },
+    {
+      "src": "/sal-vita-email-marketing",
+      "has": [{ "type": "host", "value": "www\\.premium\\.salvitarn\\.com\\.br" }],
+      "dest": "/index.html"
+    },
+    {
       "src": "/meu-pedido",
       "has": [{ "type": "host", "value": "premium\\.salvitarn\\.com\\.br" }],
       "dest": "/index.html"

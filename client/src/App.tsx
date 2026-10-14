@@ -10,6 +10,7 @@ import { useReminderNotifications } from "./_core/hooks/useReminderNotifications
 // Loja Premium: a home e o chat ficam estáticos (renderizam sem esperar outro chunk).
 import SalVitaLanding from "./pages/SalVitaLanding";
 import SalVitaChat from "./components/SalVitaChat";
+import { isAdminPath } from "./components/premium/admin/adminLogic";
 
 // Code-splitting por produto: o host da loja não baixa o CRM (recharts, E-mail Marketing...).
 // Os nomes de arquivo dos chunks são definidos em vite.config.ts (precache do service worker).
@@ -140,9 +141,9 @@ function App() {
 
   if (isPremium) {
     // Painel administrativo unificado: um único componente (com login e
-    // navegação internas) atende às 3 URLs históricas — a URL só escolhe
-    // a seção inicial (Pedidos / Recuperação / Leads B2B).
-    if (path === '/sal-vita-admin' || path === '/sal-vita-recovery' || path === '/sal-vita-b2b') {
+    // navegação internas) atende às URLs do admin (ADMIN_PATHS) — a URL só
+    // escolhe a seção inicial (Pedidos / Recuperação / Leads B2B / E-mail).
+    if (isAdminPath(path)) {
       return (
         <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><Suspense fallback={<StoreFallback />}><SalVitaAdmin /></Suspense></TooltipProvider></ThemeProvider></ErrorBoundary>
       );
