@@ -278,11 +278,9 @@ Plano e decisões em `PLANO-RADAR-CARGAS.md`.
 
 ### 🔴 Só o dono resolve (fora do código)
 00. **Antes de ligar anúncios (auditoria de 14/10/2026):**
-   - **Adicionar `premium.salvitarn.com.br` (sem www) ao projeto na Vercel** (Settings → Domains,
-     SEM redirecionamento). O DNS já aponta para a Vercel, mas o domínio não está no projeto, então
-     não há certificado: links antigos enviados a clientes (rastreio, recuperação, cupom) e
-     quem digitar sem www caem em erro de segurança. O código passou a usar `www` em tudo
-     (`server/lib/storeUrl.ts`); a IA não tem permissão para adicionar domínio (403).
+   - ✅ **Domínio sem www adicionado na Vercel pelo dono em 14/10/2026** — certificado emitido
+     e verificado (200, `/meu-pedido`, `/privacidade` e o webhook do MP respondem). O aviso
+     "DNS Change Recommended" é opcional: o CNAME genérico `cname.vercel-dns.com` funciona.
    - Confirmar que **`FB_CAPI_TOKEN`** está na Vercel (Production). Sem ela a compra não vai
      para a Meta pelo servidor — agora isso gera um aviso no log, antes era silencioso.
    - Fazer **uma compra real de teste com PIX e outra com cartão**, conferindo: a tela confirma
