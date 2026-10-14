@@ -235,7 +235,7 @@ export default function BillingReport() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end [&>*]:min-w-0">
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-700">Status</label>
               <select
@@ -324,7 +324,7 @@ export default function BillingReport() {
                 <option value="nao_vinculados">Não vinculados ao SMBI</option>
               </select>
             </div>
-            <div className="flex items-end gap-2">
+            <div className="col-span-full flex flex-wrap items-center justify-end gap-2">
               <Button
                 variant={mostrarExcluidos ? "default" : "outline"}
                 className="gap-1 shrink-0"
@@ -336,7 +336,7 @@ export default function BillingReport() {
               </Button>
               <Button
                 variant="outline"
-                className="w-full gap-1"
+                className="gap-1"
                 onClick={handleExport}
                 disabled={filtered.length === 0}
               >
