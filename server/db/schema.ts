@@ -1,5 +1,6 @@
 import { pgTable, serial, text, integer, boolean, timestamp, numeric, jsonb, doublePrecision, uniqueIndex } from 'drizzle-orm/pg-core';
 import type { SmbiEspelhoFiscal, SmbiVinculoResultado } from '../../shared/smbiEstados';
+import type { RelatorioCredito } from '../../shared/credito';
 import type { CadastroContatos, CadastroDivergencia, CadastroSnapshotV1 } from '../../shared/smbiCadastro';
 
 // Generic key/value store for small global toggles (e.g. TV panel on/off).
@@ -708,6 +709,10 @@ export const fatOrders = pgTable('fat_orders', {
   smbiCondpagFreteCod: text('smbi_condpag_frete_cod'),
   comissaoComercialProtegida: doublePrecision('comissao_comercial_protegida'),
   smbiSolicitadoEm: text('smbi_solicitado_em'),
+  // Liberação manual (admin) de pedido a prazo para cliente com crédito reprovado — por pedido, auditada.
+  creditoLiberadoPor: text('credito_liberado_por'),
+  creditoLiberadoEm: text('credito_liberado_em'),
+  creditoLiberadoMotivo: text('credito_liberado_motivo'),
   // Quem clicou em "Enviar pedido para SMBI". Só a ação do clique grava; o robô ignora pedido sem isto.
   smbiSolicitadoPor: text('smbi_solicitado_por'),
   // Resposta do robô (CONTRATO-ROBO-CRM.md, rota 2): só o POST /api/smbi/pedidos/:id/retorno grava.
@@ -987,4 +992,62 @@ export const radarLeadEvents = pgTable('radar_lead_events', {
   userId: integer('user_id').notNull(),
   userName: text('user_name').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// ── Análise de crédito (CRM Lembretes) — ver docs/ANALISE-CREDITO.md ─────────
+// Relatórios normalizados (contrato shared/credito.ts). `payloadBruto` só no servidor, nunca em log nem em resposta.
+export const creditReports = pgTable('credit_reports', {
+  id: serial('id').primaryKey(),
+  documento: text('documento').notNull(), // só dígitos
+  tipo: text('tipo').notNull(), // CNPJ | CPF
+  taskId: integer('task_id'), // lead/tarefa de origem (opcional)
+  // Desnormalizados para busca no arquivo de análises (preenchidos do relatório ou, se faltar, da tarefa/pedido).
+  razaoSocial: text('razao_social'),
+  municipio: text('municipio'),
+  uf: text('uf'),
+  provedor: text('provedor').notNull(),
+  produto: text('produto').notNull(),
+  consultadoEm: timestamp('consultado_em').defaultNow().notNull(),
+  relatorio: jsonb('relatorio').$type<RelatorioCredito>().notNull(),
+  payloadBruto: jsonb('payload_bruto'),
+  veredito: text('veredito').notNull(), // Veredito
+  motivos: jsonb('motivos').$type<string[]>().notNull(),
+  score: integer('score'),
+  custoReais: doublePrecision('custo_reais'),
+  consultadoPorUserId: integer('consultado_por_user_id').notNull(),
+  motivo: text('motivo').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Razão de chamadas (pagas e tentativas) + trava contra clique duplo.
+export const creditQueries = pgTable('credit_queries', {
+  id: serial('id').primaryKey(),
+  documento: text('documento').notNull(),
+  userId: integer('user_id').notNull(),
+  status: text('status').notNull(), // EM_ANDAMENTO | OK | ERRO | REAPROVEITADO
+  reportId: integer('report_id'),
+  custoReais: doublePrecision('custo_reais'),
+  erro: text('erro'),
+  iniciadoEm: timestamp('iniciado_em').defaultNow().notNull(),
+  finalizadoEm: timestamp('finalizado_em'),
+});
+
+// Linha única (id = 1): interruptor do bloqueio no SMBI e teto mensal de consultas pagas.
+export const creditSettings = pgTable('credit_settings', {
+  id: integer('id').primaryKey().default(1),
+  bloqueioAtivo: boolean('bloqueio_ativo').notNull().default(false),
+  limiteMensal: integer('limite_mensal').notNull().default(50),
+  atualizadoPorUserId: integer('atualizado_por_user_id'),
+  atualizadoPorNome: text('atualizado_por_nome'),
+  atualizadoEm: timestamp('atualizado_em').defaultNow().notNull(),
+});
+
+// Vínculo relatório ↔ pedido. Sem índice único (legado não pode falhar): a dedupe é INSERT ... WHERE NOT EXISTS.
+export const creditReportLinks = pgTable('credit_report_links', {
+  id: serial('id').primaryKey(),
+  reportId: integer('report_id').notNull(),
+  pedidoId: text('pedido_id').notNull(),
+  vinculadoEm: timestamp('vinculado_em').defaultNow().notNull(),
+  vinculadoPorUserId: integer('vinculado_por_user_id'),
+  origem: text('origem').notNull(), // CONSULTA_NO_PEDIDO | ENVIO_SMBI | MANUAL
 });

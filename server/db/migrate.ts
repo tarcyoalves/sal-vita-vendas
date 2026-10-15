@@ -166,6 +166,71 @@ async function ensureDeletionLogSnapshot() {
   await sql`ALTER TABLE fat_order_deletion_logs ADD COLUMN IF NOT EXISTS pedido_snapshot JSONB`;
 }
 
+/** Análise de crédito: tabelas aditivas (sem índice único). Chamada pela rede de segurança e pela migração longa. */
+async function ensureCreditTables() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS credit_reports (
+      id                     SERIAL PRIMARY KEY,
+      documento              TEXT NOT NULL,
+      tipo                   TEXT NOT NULL,
+      task_id                INTEGER,
+      razao_social           TEXT,
+      municipio              TEXT,
+      uf                     TEXT,
+      provedor               TEXT NOT NULL,
+      produto                TEXT NOT NULL,
+      consultado_em          TIMESTAMP NOT NULL DEFAULT now(),
+      relatorio              JSONB NOT NULL,
+      payload_bruto          JSONB,
+      veredito               TEXT NOT NULL,
+      motivos                JSONB NOT NULL DEFAULT '[]'::jsonb,
+      score                  INTEGER,
+      custo_reais            DOUBLE PRECISION,
+      consultado_por_user_id INTEGER NOT NULL,
+      motivo                 TEXT NOT NULL,
+      created_at             TIMESTAMP NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS credit_report_links (
+      id                      SERIAL PRIMARY KEY,
+      report_id               INTEGER NOT NULL,
+      pedido_id               TEXT NOT NULL,
+      vinculado_em            TIMESTAMP NOT NULL DEFAULT now(),
+      vinculado_por_user_id   INTEGER,
+      origem                  TEXT NOT NULL
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS credit_report_links_pedido_idx ON credit_report_links(pedido_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS credit_report_links_report_idx ON credit_report_links(report_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS credit_reports_doc_idx ON credit_reports(documento, consultado_em DESC)`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS credit_queries (
+      id            SERIAL PRIMARY KEY,
+      documento     TEXT NOT NULL,
+      user_id       INTEGER NOT NULL,
+      status        TEXT NOT NULL,
+      report_id     INTEGER,
+      custo_reais   DOUBLE PRECISION,
+      erro          TEXT,
+      iniciado_em   TIMESTAMP NOT NULL DEFAULT now(),
+      finalizado_em TIMESTAMP
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS credit_queries_doc_idx ON credit_queries(documento, iniciado_em DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS credit_queries_status_idx ON credit_queries(status, iniciado_em)`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS credit_settings (
+      id                     INTEGER PRIMARY KEY DEFAULT 1,
+      bloqueio_ativo         BOOLEAN NOT NULL DEFAULT FALSE,
+      limite_mensal          INTEGER NOT NULL DEFAULT 50,
+      atualizado_por_user_id INTEGER,
+      atualizado_por_nome    TEXT,
+      atualizado_em          TIMESTAMP NOT NULL DEFAULT now()
+    )
+  `;
+}
+
 async function ensureRecentSchema() {
   const [cols, reg, robotCols] = await Promise.all([
     sql`SELECT column_name FROM information_schema.columns
@@ -179,7 +244,11 @@ async function ensureRecentSchema() {
           AND to_regclass('public.smbi_robot_state') IS NOT NULL AS smbi_ok,
           to_regclass('public.blocked_contacts') IS NOT NULL AS bloq_ok,
           to_regclass('public.smbi_client_registrations') IS NOT NULL AS cadastro_ok,
-          to_regclass('public.smbi_client_reg_empresa_cnpj_uq') IS NOT NULL AS cadastro_empresa_ok`,
+          to_regclass('public.smbi_client_reg_empresa_cnpj_uq') IS NOT NULL AS cadastro_empresa_ok,
+          to_regclass('public.credit_reports') IS NOT NULL
+          AND to_regclass('public.credit_queries') IS NOT NULL
+          AND to_regclass('public.credit_settings') IS NOT NULL
+          AND to_regclass('public.credit_report_links') IS NOT NULL AS credito_ok`,
     sql`SELECT column_name FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'smbi_robot_state'`,
   ]);
@@ -219,7 +288,12 @@ async function ensureRecentSchema() {
     if (!have.has('smbi_escrita_iniciada_em')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_escrita_iniciada_em TEXT`;
     if (!have.has('smbi_empresa_origem')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_empresa_origem TEXT`;
     if (!have.has('numero_crm')) await ensureNumeroCrm();
+    if (!have.has('credito_liberado_por')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS credito_liberado_por TEXT`;
+    if (!have.has('credito_liberado_em')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS credito_liberado_em TEXT`;
+    if (!have.has('credito_liberado_motivo')) await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS credito_liberado_motivo TEXT`;
   }
+  const creditoOk = (reg as unknown as Array<{ credito_ok: boolean }>)[0]?.credito_ok === true;
+  if (!creditoOk) await ensureCreditTables();
   await ensureDeletionLogSnapshot();
   // Linha do tempo e chave/batimento do robô do SMBI: sem estas tabelas a rota do robô e o painel
   // do faturamento falham. Só cria se faltar (senão seriam 4 idas ao Neon a cada cold start).
@@ -340,7 +414,7 @@ async function ensureRecentSchema() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-10-13a';
+const SCHEMA_VERSION = '2026-10-15a';
 
 export async function ensureTablesExist() {
   // Antes de tudo (e antes do caminho rápido): garante o que foi criado por último.
@@ -1016,6 +1090,10 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_condpag_sal_cod TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_condpag_frete_cod TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS comissao_comercial_protegida DOUBLE PRECISION`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS credito_liberado_por TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS credito_liberado_em TEXT`;
+  await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS credito_liberado_motivo TEXT`;
+  await ensureCreditTables();
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitado_em TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitado_por TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_estado TEXT`;
