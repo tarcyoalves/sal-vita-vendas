@@ -5491,8 +5491,8 @@ var require_raw_body = __commonJS({
 var require_ee_first = __commonJS({
   "node_modules/ee-first/index.js"(exports2, module2) {
     "use strict";
-    module2.exports = first2;
-    function first2(stuff, done) {
+    module2.exports = first3;
+    function first3(stuff, done) {
       if (!Array.isArray(stuff))
         throw new TypeError("arg must be an array of [ee, events...] arrays");
       var cleanups = [];
@@ -5550,7 +5550,7 @@ var require_on_finished = __commonJS({
     module2.exports = onFinished;
     module2.exports.isFinished = isFinished;
     var asyncHooks = tryRequireAsyncHooks();
-    var first2 = require_ee_first();
+    var first3 = require_ee_first();
     var defer = typeof setImmediate === "function" ? setImmediate : function(fn) {
       process.nextTick(fn.bind.apply(fn, arguments));
     };
@@ -5582,12 +5582,12 @@ var require_on_finished = __commonJS({
         finished = true;
         callback(error);
       }
-      eeMsg = eeSocket = first2([[msg, "end", "finish"]], onFinish);
+      eeMsg = eeSocket = first3([[msg, "end", "finish"]], onFinish);
       function onSocket(socket) {
         msg.removeListener("socket", onSocket);
         if (finished) return;
         if (eeMsg !== eeSocket) return;
-        eeSocket = first2([[socket, "error", "close"]], onFinish);
+        eeSocket = first3([[socket, "error", "close"]], onFinish);
       }
       if (msg.socket) {
         onSocket(msg.socket);
@@ -14659,10 +14659,10 @@ var require_json = __commonJS({
           return {};
         }
         if (strict) {
-          var first2 = firstchar(body);
-          if (first2 !== "{" && first2 !== "[") {
+          var first3 = firstchar(body);
+          if (first3 !== "{" && first3 !== "[") {
             debug("strict violation");
-            throw createStrictSyntaxError(body, first2);
+            throw createStrictSyntaxError(body, first3);
           }
         }
         try {
@@ -16221,11 +16221,11 @@ var require_get_intrinsic = __commonJS({
     var rePropName = /[^%.[\]]+|\[(?:(-?\d+(?:\.\d+)?)|(["'])((?:(?!\2)[^\\]|\\.)*?)\2)\]|(?=(?:\.|\[\])(?:\.|\[\]|%$))/g;
     var reEscapeChar = /\\(\\)?/g;
     var stringToPath = function stringToPath2(string) {
-      var first2 = $strSlice(string, 0, 1);
+      var first3 = $strSlice(string, 0, 1);
       var last3 = $strSlice(string, -1);
-      if (first2 === "%" && last3 !== "%") {
+      if (first3 === "%" && last3 !== "%") {
         throw new $SyntaxError("invalid intrinsic syntax, expected closing `%`");
-      } else if (last3 === "%" && first2 !== "%") {
+      } else if (last3 === "%" && first3 !== "%") {
         throw new $SyntaxError("invalid intrinsic syntax, expected opening `%`");
       }
       var result = [];
@@ -16280,9 +16280,9 @@ var require_get_intrinsic = __commonJS({
       }
       for (var i4 = 1, isOwn = true; i4 < parts.length; i4 += 1) {
         var part = parts[i4];
-        var first2 = $strSlice(part, 0, 1);
+        var first3 = $strSlice(part, 0, 1);
         var last3 = $strSlice(part, -1);
-        if ((first2 === '"' || first2 === "'" || first2 === "`" || (last3 === '"' || last3 === "'" || last3 === "`")) && first2 !== last3) {
+        if ((first3 === '"' || first3 === "'" || first3 === "`" || (last3 === '"' || last3 === "'" || last3 === "`")) && first3 !== last3) {
           throw new $SyntaxError("property names with quotes must have matching quotes");
         }
         if (part === "constructor" || !isOwn) {
@@ -16627,8 +16627,8 @@ var require_utils = __commonJS({
       }
       return max2;
     };
-    var limitedPair = function limitedPair2(first2, second, options) {
-      var pair = [first2, second];
+    var limitedPair = function limitedPair2(first3, second, options) {
+      var pair = [first3, second];
       if (options && typeof options.arrayLimit === "number" && pair.length > options.arrayLimit) {
         if (options.throwOnLimitExceeded) {
           throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
@@ -17509,8 +17509,8 @@ var require_parse = __commonJS({
         return [key];
       }
       var segments = [];
-      var first2 = key.indexOf("[");
-      var parent = first2 >= 0 ? key.slice(0, first2) : key;
+      var first3 = key.indexOf("[");
+      var parent = first3 >= 0 ? key.slice(0, first3) : key;
       if (parent) {
         if (!options.plainObjects && has.call(Object.prototype, parent)) {
           if (!options.allowPrototypes) {
@@ -17520,7 +17520,7 @@ var require_parse = __commonJS({
         segments[segments.length] = parent;
       }
       var n5 = key.length;
-      var open = first2;
+      var open = first3;
       var collected = 0;
       while (open >= 0 && collected < options.depth) {
         var level = 1;
@@ -21623,9 +21623,9 @@ var require_ipaddr = __commonJS({
       } else {
         root["ipaddr"] = ipaddr;
       }
-      matchCIDR = function(first2, second, partSize, cidrBits) {
+      matchCIDR = function(first3, second, partSize, cidrBits) {
         var part, shift;
-        if (first2.length !== second.length) {
+        if (first3.length !== second.length) {
           throw new Error("ipaddr: cannot match CIDR for objects with different lengths");
         }
         part = 0;
@@ -21634,7 +21634,7 @@ var require_ipaddr = __commonJS({
           if (shift < 0) {
             shift = 0;
           }
-          if (first2[part] >> shift !== second[part] >> shift) {
+          if (first3[part] >> shift !== second[part] >> shift) {
             return false;
           }
           cidrBits -= partSize;
@@ -23348,8 +23348,8 @@ var require_accepts = __commonJS({
       }
       var mimes = types.map(extToMime);
       var accepts = this.negotiator.mediaTypes(mimes.filter(validMime));
-      var first2 = accepts[0];
-      return first2 ? types[mimes.indexOf(first2)] : false;
+      var first3 = accepts[0];
+      return first3 ? types[mimes.indexOf(first3)] : false;
     };
     Accepts.prototype.encoding = Accepts.prototype.encodings = function(encodings_) {
       var encodings = encodings_;
@@ -26441,22 +26441,22 @@ var require_ipv6 = __commonJS({
         let groups = [];
         const halves = address.split("::");
         if (halves.length === 2) {
-          let first2 = halves[0].split(":");
+          let first3 = halves[0].split(":");
           let last3 = halves[1].split(":");
-          if (first2.length === 1 && first2[0] === "") {
-            first2 = [];
+          if (first3.length === 1 && first3[0] === "") {
+            first3 = [];
           }
           if (last3.length === 1 && last3[0] === "") {
             last3 = [];
           }
-          const remaining = this.groups - (first2.length + last3.length);
+          const remaining = this.groups - (first3.length + last3.length);
           if (!remaining) {
             throw new address_error_1.AddressError("Error parsing groups");
           }
           this.elidedGroups = remaining;
-          this.elisionBegin = first2.length;
-          this.elisionEnd = first2.length + this.elidedGroups;
-          groups = groups.concat(first2);
+          this.elisionBegin = first3.length;
+          this.elisionEnd = first3.length + this.elidedGroups;
+          groups = groups.concat(first3);
           for (let i4 = 0; i4 < remaining; i4++) {
             groups.push("0");
           }
@@ -29526,10 +29526,10 @@ var require_range2 = __commonJS({
           throw new TypeError(`Invalid SemVer Range: ${this.raw}`);
         }
         if (this.set.length > 1) {
-          const first2 = this.set[0];
+          const first3 = this.set[0];
           this.set = this.set.filter((c4) => !isNullSet(c4[0]));
           if (this.set.length === 0) {
-            this.set = [first2];
+            this.set = [first3];
           } else if (this.set.length > 1) {
             for (const c4 of this.set) {
               if (c4.length === 1 && isAny(c4[0])) {
@@ -30257,26 +30257,26 @@ var require_simplify = __commonJS({
     var compare = require_compare();
     module2.exports = (versions, range2, options) => {
       const set = [];
-      let first2 = null;
+      let first3 = null;
       let prev = null;
       const v4 = versions.sort((a5, b3) => compare(a5, b3, options));
       for (const version3 of v4) {
         const included = satisfies(version3, range2, options);
         if (included) {
           prev = version3;
-          if (!first2) {
-            first2 = version3;
+          if (!first3) {
+            first3 = version3;
           }
         } else {
           if (prev) {
-            set.push([first2, prev]);
+            set.push([first3, prev]);
           }
           prev = null;
-          first2 = null;
+          first3 = null;
         }
       }
-      if (first2) {
-        set.push([first2, null]);
+      if (first3) {
+        set.push([first3, null]);
       }
       const ranges = [];
       for (const [min2, max2] of set) {
@@ -62397,11 +62397,11 @@ var require_tiny_inflate = __commonJS({
     ]);
     var code_tree = new Tree();
     var lengths = new Uint8Array(288 + 32);
-    function tinf_build_bits_base(bits, base, delta, first2) {
+    function tinf_build_bits_base(bits, base, delta, first3) {
       var i4, sum;
       for (i4 = 0; i4 < delta; ++i4) bits[i4] = 0;
       for (i4 = 0; i4 < 30 - delta; ++i4) bits[i4 + delta] = i4 / delta | 0;
-      for (sum = first2, i4 = 0; i4 < 30; ++i4) {
+      for (sum = first3, i4 = 0; i4 < 30; ++i4) {
         base[i4] = sum;
         sum += 1 << bits[i4];
       }
@@ -197279,8 +197279,8 @@ var require_scheduler_production = __commonJS({
     }
     function pop(heap) {
       if (0 === heap.length) return null;
-      var first2 = heap[0], last3 = heap.pop();
-      if (last3 !== first2) {
+      var first3 = heap[0], last3 = heap.pop();
+      if (last3 !== first3) {
         heap[0] = last3;
         a: for (var index2 = 0, length2 = heap.length, halfLength = length2 >>> 1; index2 < halfLength; ) {
           var leftIndex = 2 * (index2 + 1) - 1, left = heap[leftIndex], rightIndex = leftIndex + 1, right = heap[rightIndex];
@@ -197291,7 +197291,7 @@ var require_scheduler_production = __commonJS({
           else break a;
         }
       }
-      return first2;
+      return first3;
     }
     function compare(a5, b3) {
       var diff = a5.sortIndex - b3.sortIndex;
@@ -197616,8 +197616,8 @@ var require_scheduler_development = __commonJS({
       }
       function pop(heap) {
         if (0 === heap.length) return null;
-        var first2 = heap[0], last3 = heap.pop();
-        if (last3 !== first2) {
+        var first3 = heap[0], last3 = heap.pop();
+        if (last3 !== first3) {
           heap[0] = last3;
           a: for (var index2 = 0, length2 = heap.length, halfLength = length2 >>> 1; index2 < halfLength; ) {
             var leftIndex = 2 * (index2 + 1) - 1, left = heap[leftIndex], rightIndex = leftIndex + 1, right = heap[rightIndex];
@@ -197628,7 +197628,7 @@ var require_scheduler_development = __commonJS({
             else break a;
           }
         }
-        return first2;
+        return first3;
       }
       function compare(a5, b3) {
         var diff = a5.sortIndex - b3.sortIndex;
@@ -198137,6 +198137,49 @@ module.exports = __toCommonJS(index_exports);
     )
   );
 })();
+
+// server/lib/logSafe.ts
+function maskEmail(email) {
+  const s4 = String(email ?? "").trim();
+  const at = s4.lastIndexOf("@");
+  if (at < 1) return "***";
+  return `${s4[0]}***${s4.slice(at)}`;
+}
+function maskPhone(phone) {
+  const digits = String(phone ?? "").replace(/\D/g, "");
+  return digits ? `***${digits.slice(-4)}` : "***";
+}
+var EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+var CNPJ_RE = /\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b/g;
+var CPF_RE = /\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/g;
+var PHONE_RE = /(?:\+\d{1,3}[\s.-]?)?(?:\(\d{2}\)\s?|\b\d{2}[\s.-])?\b\d{4,5}-\d{4}\b/g;
+var BEARER_RE = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi;
+var JWT_RE = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*/g;
+var SECRET_PAIR_RE = /\b(secret|token|key|api[_-]?key|apikey|password|senha|authorization|cookie|signature|sig)(["']?\s*[=:]\s*["']?)[^\s&"',;]+/gi;
+var PROVIDER_KEY_RE = /\b(?:sk|re|xkeysib|gsk|csk|nvapi|pk|APP_USR|TEST)[-_][A-Za-z0-9_-]{16,}/g;
+function redact(text2, maxLen = 300) {
+  let s4 = typeof text2 === "string" ? text2 : text2 == null ? "" : String(text2);
+  s4 = s4.replace(JWT_RE, "[jwt]").replace(BEARER_RE, "$1 [redacted]").replace(PROVIDER_KEY_RE, "[key]").replace(SECRET_PAIR_RE, "$1$2[redacted]").replace(EMAIL_RE, (m4) => maskEmail(m4)).replace(CNPJ_RE, "**.***.***/****-**").replace(CPF_RE, "***.***.***-**").replace(PHONE_RE, (m4) => maskPhone(m4));
+  return s4.length > maxLen ? `${s4.slice(0, maxLen)}\u2026` : s4;
+}
+var SEM_PARAMS = /\s*params:[\s\S]*$/i;
+function safeErr(err) {
+  if (err == null) return "erro desconhecido";
+  if (typeof err !== "object") return redact(err);
+  const e4 = err;
+  const parts = [];
+  if (typeof e4.name === "string" && e4.name !== "Error") parts.push(e4.name);
+  if (e4.code != null) parts.push(`code=${redact(e4.code, 40)}`);
+  if (e4.status != null) parts.push(`status=${redact(e4.status, 10)}`);
+  const msg = typeof e4.message === "string" ? e4.message.replace(SEM_PARAMS, "") : "";
+  if (msg) parts.push(redact(msg));
+  const cause = e4.cause;
+  if (cause && typeof cause === "object") {
+    if (cause.code != null) parts.push(`causa.code=${redact(cause.code, 40)}`);
+    if (typeof cause.message === "string") parts.push(`causa=${redact(cause.message.replace(SEM_PARAMS, ""), 160)}`);
+  }
+  return parts.join(" ") || "erro desconhecido";
+}
 
 // api/index.ts
 var import_crypto17 = __toESM(require("crypto"));
@@ -199866,9 +199909,9 @@ var util;
 })(util || (util = {}));
 var objectUtil;
 (function(objectUtil2) {
-  objectUtil2.mergeShapes = (first2, second) => {
+  objectUtil2.mergeShapes = (first3, second) => {
     return {
-      ...first2,
+      ...first3,
       ...second
       // second overwrites first
     };
@@ -202790,10 +202833,10 @@ var ZodRecord = class _ZodRecord extends ZodType {
   get element() {
     return this._def.valueType;
   }
-  static create(first2, second, third) {
+  static create(first3, second, third) {
     if (second instanceof ZodType) {
       return new _ZodRecord({
-        keyType: first2,
+        keyType: first3,
         valueType: second,
         typeName: ZodFirstPartyTypeKind.ZodRecord,
         ...processCreateParams(third)
@@ -202801,7 +202844,7 @@ var ZodRecord = class _ZodRecord extends ZodType {
     }
     return new _ZodRecord({
       keyType: ZodString.create(),
-      valueType: first2,
+      valueType: first3,
       typeName: ZodFirstPartyTypeKind.ZodRecord,
       ...processCreateParams(second)
     });
@@ -207436,6 +207479,10 @@ function sessionCookieHeader(token) {
   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
   return `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly${secure}; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax`;
 }
+function clearSessionCookieHeader() {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${COOKIE_NAME}=; HttpOnly${secure}; Path=/; Max-Age=0; SameSite=Lax`;
+}
 function getCookieFromRequest(cookieHeader, name) {
   if (!cookieHeader) return void 0;
   const match = cookieHeader.split(";").find((c4) => c4.trim().startsWith(name + "="));
@@ -207888,7 +207935,9 @@ async function createContext({ req, res }) {
   let user = null;
   if (token) {
     try {
-      const decoded = verifyToken(token);
+      const payload = verifyToken(token);
+      if (!payload || typeof payload !== "object" || typeof payload.id !== "number") throw new Error("token sem id");
+      const decoded = payload;
       const loadUser = async () => {
         const [row] = await db.select({
           id: users.id,
@@ -208148,7 +208197,7 @@ async function sendBatch(account, messages) {
           results.push({ ok: true, messageId: data2.id });
         } else {
           const errText = await res.text();
-          console.warn(`[email-mkt] Resend error (${res.status}): ${errText}`);
+          console.warn(`[email-mkt] Resend error (${res.status}): ${redact(errText)}`);
           results.push({ ok: false, error: `HTTP ${res.status}: ${errText.slice(0, 100)}` });
         }
       } else if (account.provider === "brevo") {
@@ -208173,12 +208222,12 @@ async function sendBatch(account, messages) {
           results.push({ ok: true, messageId: data2.messageId ?? data2.id });
         } else {
           const errText = await res.text();
-          console.warn(`[email-mkt] Brevo error (${res.status}): ${errText}`);
+          console.warn(`[email-mkt] Brevo error (${res.status}): ${redact(errText)}`);
           results.push({ ok: false, error: `HTTP ${res.status}: ${errText.slice(0, 100)}` });
         }
       }
     } catch (err) {
-      console.warn(`[email-mkt] Network/send error to ${msg.to}: ${err.message}`);
+      console.warn(`[email-mkt] Network/send error to ${maskEmail(msg.to)}: ${redact(err.message)}`);
       results.push({ ok: false, error: "network_error" });
     }
   }
@@ -208195,7 +208244,7 @@ async function sendEmail(to2, subject, html, attachments) {
   if (!apiKey) return { ok: false, reason: "no_api_key" };
   const reserved = await reserveDailyQuota("resend_1", 1, DAILY_SOFT_LIMIT);
   if (reserved <= 0) {
-    console.warn(`[email] daily soft limit (${DAILY_SOFT_LIMIT}) reached \u2014 skipping "${subject}" \u2192 ${to2}`);
+    console.warn(`[email] daily soft limit (${DAILY_SOFT_LIMIT}) reached \u2014 skipping \u2192 ${maskEmail(to2)}`);
     return { ok: false, reason: "daily_limit" };
   }
   try {
@@ -208219,16 +208268,16 @@ async function sendEmail(to2, subject, html, attachments) {
     clearTimeout(timer);
     if (!res.ok) {
       const err = await res.text().catch(() => res.statusText);
-      console.error(`[email] Resend error ${res.status}:`, err);
+      console.error(`[email] Resend error ${res.status}:`, safeErr(err));
       if (res.status >= 400 && res.status < 500) {
         await refundDailyQuota("resend_1", 1);
       }
       return { ok: false, reason: `resend_${res.status}` };
     }
-    console.log(`[email] sent successfully "${subject}" \u2192 ${to2}`);
+    console.log(`[email] sent successfully \u2192 ${maskEmail(to2)}`);
     return { ok: true };
   } catch (err) {
-    console.error("[email] sendEmail failed:", err);
+    console.error("[email] sendEmail failed:", safeErr(err));
     return { ok: false, reason: "network_error" };
   }
 }
@@ -208574,7 +208623,7 @@ var authRouter = router({
     return { id: user.id, name: user.name, email: user.email, role: user.role };
   }),
   logout: publicProcedure.mutation(({ ctx }) => {
-    ctx.res.setHeader("Set-Cookie", `${COOKIE_NAME}=; HttpOnly; Path=/; Max-Age=0`);
+    ctx.res.setHeader("Set-Cookie", clearSessionCookieHeader());
     return { ok: true };
   }),
   // Any authenticated user can change their own password
@@ -209070,7 +209119,7 @@ async function setDomainTracking(account, domainId, flags) {
     });
     if (!res.ok) {
       const err = await res.text().catch(() => res.statusText);
-      console.error(`[email-marketing] Resend domain update error ${res.status}:`, err);
+      console.error(`[email-marketing] Resend domain update error ${res.status}:`, safeErr(err));
       let reason = err.slice(0, 200);
       try {
         reason = JSON.parse(err)?.message ?? reason;
@@ -209216,7 +209265,7 @@ async function sendSingleResend(account, m4, unsubBase) {
     clearTimeout(timer);
     if (!res.ok) {
       const err = await res.text().catch(() => res.statusText);
-      console.error(`[email-marketing] Resend single error ${res.status}:`, err);
+      console.error(`[email-marketing] Resend single error ${res.status}:`, safeErr(err));
       return { to: m4.to, ok: false, error: `resend_${res.status}` };
     }
     const body = await res.json();
@@ -209264,7 +209313,7 @@ async function sendBatchResend(account, messages) {
     clearTimeout(timer);
     if (!res.ok) {
       const err = await res.text().catch(() => res.statusText);
-      console.error(`[email-marketing] Resend batch error ${res.status}:`, err);
+      console.error(`[email-marketing] Resend batch error ${res.status}:`, safeErr(err));
       return messages.map((m4) => ({ to: m4.to, ok: false, error: `resend_${res.status}` }));
     }
     const body = await res.json();
@@ -209275,7 +209324,7 @@ async function sendBatchResend(account, messages) {
     }));
     return results;
   } catch (err) {
-    console.error("[email-marketing] sendBatch failed:", err);
+    console.error("[email-marketing] sendBatch failed:", safeErr(err));
     return messages.map((m4) => ({ to: m4.to, ok: false, error: "network_error" }));
   }
 }
@@ -209327,7 +209376,7 @@ async function sendBatchBrevo(account, messages) {
     clearTimeout(timer);
     if (!res.ok) {
       const err = await res.text().catch(() => res.statusText);
-      console.error(`[email-marketing] Brevo batch error ${res.status}:`, err);
+      console.error(`[email-marketing] Brevo batch error ${res.status}:`, safeErr(err));
       return messages.map((m4) => ({ to: m4.to, ok: false, error: `brevo_${res.status}` }));
     }
     const body = await res.json();
@@ -209340,7 +209389,7 @@ async function sendBatchBrevo(account, messages) {
     }));
     return results;
   } catch (err) {
-    console.error("[email-marketing] Brevo sendBatch failed:", err);
+    console.error("[email-marketing] Brevo sendBatch failed:", safeErr(err));
     return messages.map((m4) => ({ to: m4.to, ok: false, error: "network_error" }));
   }
 }
@@ -209551,16 +209600,16 @@ async function enrollInSequence(sequenceId, opts2) {
     if (!email) return { enrolled: false, reason: "empty_email" };
     const [suppressed] = await db.select({ email: emailSuppressions.email }).from(emailSuppressions).where(eq(emailSuppressions.email, email)).limit(1);
     if (suppressed) {
-      console.log(`[enrollInSequence] SKIPPED ${email}: suppressed`);
+      console.log(`[enrollInSequence] SKIPPED ${maskEmail(email)}: suppressed`);
       return { enrolled: false, reason: "suppressed" };
     }
     if (await isEmailOverCapped(email)) {
-      console.log(`[enrollInSequence] SKIPPED ${email}: frequency cap`);
+      console.log(`[enrollInSequence] SKIPPED ${maskEmail(email)}: frequency cap`);
       return { enrolled: false, reason: "frequency_cap" };
     }
     const steps = await db.select({ delayDays: emailSequenceSteps.delayDays }).from(emailSequenceSteps).where(eq(emailSequenceSteps.sequenceId, sequenceId)).orderBy(emailSequenceSteps.stepOrder);
     if (steps.length === 0) {
-      console.log(`[enrollInSequence] SKIPPED ${email}: sequence ${sequenceId} has 0 steps`);
+      console.log(`[enrollInSequence] SKIPPED ${maskEmail(email)}: sequence ${sequenceId} has 0 steps`);
       return { enrolled: false, reason: "no_steps" };
     }
     const dupConditions = [
@@ -209573,7 +209622,7 @@ async function enrollInSequence(sequenceId, opts2) {
     }
     const [existing] = await db.select({ id: emailSequenceEnrollments.id }).from(emailSequenceEnrollments).where(and(...dupConditions)).limit(1);
     if (existing) {
-      console.log(`[enrollInSequence] SKIPPED ${email}: duplicate (already active in sequence ${sequenceId} for task ${opts2.taskId})`);
+      console.log(`[enrollInSequence] SKIPPED ${maskEmail(email)}: duplicate (already active in sequence ${sequenceId} for task ${opts2.taskId})`);
       return { enrolled: false, reason: "duplicate" };
     }
     const enrolledAt = /* @__PURE__ */ new Date();
@@ -209594,10 +209643,10 @@ async function enrollInSequence(sequenceId, opts2) {
     if (nextSendAt && nextSendAt <= /* @__PURE__ */ new Date()) {
       await processSequenceEnrollments({ enrollmentIds: [inserted.id] });
     }
-    console.log(`[enrollInSequence] OK ${email}: enrolled in sequence ${sequenceId}`);
+    console.log(`[enrollInSequence] OK ${maskEmail(email)}: enrolled in sequence ${sequenceId}`);
     return { enrolled: true };
   } catch (err) {
-    console.error("[automations] enrollInSequence failed:", err);
+    console.error("[automations] enrollInSequence failed:", safeErr(err));
     return { enrolled: false, reason: "error" };
   }
 }
@@ -209612,7 +209661,7 @@ async function addTagToTask(taskId, tag) {
       updatedAt: /* @__PURE__ */ new Date()
     }).where(eq(tasks.id, taskId));
   } catch (err) {
-    console.error("[automations] addTagToTask failed:", err);
+    console.error("[automations] addTagToTask failed:", safeErr(err));
   }
 }
 async function runTriggerNow(triggerType, task, extra) {
@@ -209647,11 +209696,11 @@ async function runTriggerNow(triggerType, task, extra) {
           await addTagToTask(task.id, actionConfig.tag);
         }
       } catch (err) {
-        console.error(`[automations] rule ${rule.id} (${rule.name}) failed:`, err);
+        console.error(`[automations] rule ${rule.id} (${rule.name}) failed:`, safeErr(err));
       }
     }
   } catch (err) {
-    console.error("[automations] runTriggerNow failed:", err);
+    console.error("[automations] runTriggerNow failed:", safeErr(err));
   }
 }
 function matchesTagFilters(taskTags, requiredTags, excludedTags) {
@@ -209670,7 +209719,7 @@ async function cancelAllEnrollments(email) {
       eq(emailSequenceEnrollments.status, "active")
     ));
   } catch (err) {
-    console.error("[automations] cancelAllEnrollments failed:", err);
+    console.error("[automations] cancelAllEnrollments failed:", safeErr(err));
   }
 }
 async function cancelActiveEnrollments(email, exceptSequenceId) {
@@ -209681,7 +209730,7 @@ async function cancelActiveEnrollments(email, exceptSequenceId) {
       ne(emailSequenceEnrollments.sequenceId, exceptSequenceId)
     ));
   } catch (err) {
-    console.error("[automations] cancelActiveEnrollments failed:", err);
+    console.error("[automations] cancelActiveEnrollments failed:", safeErr(err));
   }
 }
 async function evaluateInactiveDaysRules() {
@@ -209724,11 +209773,11 @@ async function evaluateInactiveDaysRules() {
           if (result.enrolled) enrolled++;
         }
       } catch (err) {
-        console.error(`[automations] inactive_days rule ${rule.id} (${rule.name}) failed:`, err);
+        console.error(`[automations] inactive_days rule ${rule.id} (${rule.name}) failed:`, safeErr(err));
       }
     }
   } catch (err) {
-    console.error("[automations] evaluateInactiveDaysRules failed:", err);
+    console.error("[automations] evaluateInactiveDaysRules failed:", safeErr(err));
   }
   return { rulesEvaluated, enrolled };
 }
@@ -209754,7 +209803,7 @@ async function createHotLeadReminder(taskId, now) {
       or2(isNull2(tasks.hotLeadReminderAt), lt(tasks.hotLeadReminderAt, dedupeCutoff))
     ));
   } catch (err) {
-    console.error("[automations] createHotLeadReminder failed:", err);
+    console.error("[automations] createHotLeadReminder failed:", safeErr(err));
   }
 }
 async function flagEngagementByMessageId(messageId, eventType) {
@@ -209782,7 +209831,7 @@ async function flagEngagementByMessageId(messageId, eventType) {
       await db.update(tasks).set({ lastEngagementAt: now, updatedAt: now }).where(eq(tasks.id, taskId));
     }
   } catch (err) {
-    console.error("[automations] flagEngagementByMessageId failed:", err);
+    console.error("[automations] flagEngagementByMessageId failed:", safeErr(err));
   }
 }
 async function processSequenceEnrollments(opts2) {
@@ -209884,7 +209933,7 @@ async function processSequenceEnrollments(opts2) {
               await runTriggerNow("sequence_completed", taskData, { completedSequenceId: enrollment.sequenceId });
             }
           } catch (err) {
-            console.error("[automations] sequence_completed trigger failed:", err);
+            console.error("[automations] sequence_completed trigger failed:", safeErr(err));
           }
         }
         break;
@@ -210260,7 +210309,7 @@ var tasksRouter = router({
           assignedTo: created.assignedTo
         });
       } catch (err) {
-        console.error("[tasks.create] runTriggerNow(lead_created) failed:", err);
+        console.error("[tasks.create] runTriggerNow(lead_created) failed:", safeErr(err));
       }
     }
     return created;
@@ -210345,7 +210394,7 @@ var tasksRouter = router({
           assignedTo: row.assignedTo
         });
       } catch (err) {
-        console.error("[tasks.bulkCreate] runTriggerNow(lead_created) failed:", err);
+        console.error("[tasks.bulkCreate] runTriggerNow(lead_created) failed:", safeErr(err));
       }
     }, { sequenciais: 200, concorrencia: 10, orcamentoMs: 4e4 });
     if (r5.naoExecutados.length > 0) {
@@ -210446,7 +210495,7 @@ var tasksRouter = router({
       try {
         await cancelAllEnrollments(oldEmail);
       } catch (err) {
-        console.error("[tasks.update] cancelAllEnrollments for old email failed:", err);
+        console.error("[tasks.update] cancelAllEnrollments for old email failed:", safeErr(err));
       }
     }
     if (confirmedNow && updated.email) {
@@ -210459,7 +210508,7 @@ var tasksRouter = router({
           assignedTo: updated.assignedTo
         });
       } catch (err) {
-        console.error("[tasks.update] runTriggerNow(lead_created) failed:", err);
+        console.error("[tasks.update] runTriggerNow(lead_created) failed:", safeErr(err));
       }
     }
     if (data2.tags && updated.email) {
@@ -210475,7 +210524,7 @@ var tasksRouter = router({
             assignedTo: updated.assignedTo
           }, { addedTag: tag });
         } catch (err) {
-          console.error(`[tasks.update] runTriggerNow(tag_added, ${tag}) failed:`, err);
+          console.error(`[tasks.update] runTriggerNow(tag_added, ${tag}) failed:`, safeErr(err));
         }
       }
     }
@@ -210507,7 +210556,7 @@ var tasksRouter = router({
       try {
         await cancelAllEnrollments(task.email);
       } catch (err) {
-        console.error("[tasks.confirmEmail] cancelAllEnrollments failed:", err);
+        console.error("[tasks.confirmEmail] cancelAllEnrollments failed:", safeErr(err));
       }
     }
     if (input.confirmed && updated?.email) {
@@ -210515,12 +210564,12 @@ var tasksRouter = router({
       try {
         await runTriggerNow("lead_created", taskPayload);
       } catch (err) {
-        console.error("[tasks.confirmEmail] runTriggerNow(lead_created) failed:", err);
+        console.error("[tasks.confirmEmail] runTriggerNow(lead_created) failed:", safeErr(err));
       }
       try {
         await runTriggerNow("email_confirmed", taskPayload);
       } catch (err) {
-        console.error("[tasks.confirmEmail] runTriggerNow(email_confirmed) failed:", err);
+        console.error("[tasks.confirmEmail] runTriggerNow(email_confirmed) failed:", safeErr(err));
       }
     }
     return updated;
@@ -210569,7 +210618,7 @@ var tasksRouter = router({
           assignedTo: updated.assignedTo
         });
       } catch (err) {
-        console.error("[tasks.toggleConverted] runTriggerNow(lead_converted) failed:", err);
+        console.error("[tasks.toggleConverted] runTriggerNow(lead_converted) failed:", safeErr(err));
       }
     }
     return updated;
@@ -210596,7 +210645,7 @@ var tasksRouter = router({
       try {
         await cancelAllEnrollments(task.email);
       } catch (err) {
-        console.error("[tasks.delete] cancelAllEnrollments failed:", err);
+        console.error("[tasks.delete] cancelAllEnrollments failed:", safeErr(err));
       }
     }
     await db.delete(tasks).where(eq(tasks.id, task.id));
@@ -210625,7 +210674,7 @@ var tasksRouter = router({
       try {
         await cancelAllEnrollments(email);
       } catch (err) {
-        console.error("[tasks.deleteMany] cancelAllEnrollments failed:", err);
+        console.error("[tasks.deleteMany] cancelAllEnrollments failed:", safeErr(err));
       }
     }
     await db.delete(tasks).where(inArray(tasks.id, found.map((t5) => t5.id)));
@@ -212857,10 +212906,10 @@ async function appendReviewNote(orderId, motivo) {
       updatedAt: /* @__PURE__ */ new Date()
     }).where(and(eq(siteOrders.id, orderId), sql`strpos(coalesce(${siteOrders.notes}, ''), ${motivo}::text) = 0`));
   } catch (e4) {
-    console.error(`[review-note] pedido ${orderId}: falhou:`, e4);
+    console.error(`[review-note] pedido ${orderId}: falhou:`, safeErr(e4));
   }
 }
-var maskPhone = (p4) => `***${(p4 ?? "").replace(/\D/g, "").slice(-4)}`;
+var maskPhone2 = (p4) => `***${(p4 ?? "").replace(/\D/g, "").slice(-4)}`;
 async function bumpCouponUsage(code, delta, orderId) {
   if (!code) return;
   try {
@@ -212877,7 +212926,7 @@ async function bumpCouponUsage(code, delta, orderId) {
       await ordersDb.update(coupons).set({ usedCount: sql`GREATEST(used_count - 1, 0)` }).where(eq(coupons.code, code));
     }
   } catch (e4) {
-    console.error("[coupon] usage bump failed:", e4);
+    console.error("[coupon] usage bump failed:", safeErr(e4));
   }
 }
 var sha = (v4) => import_crypto9.default.createHash("sha256").update(v4.trim().toLowerCase()).digest("hex");
@@ -212949,7 +212998,7 @@ async function sendCapiPurchase(order) {
       console.error("[capi] Purchase failed", r5.status, j?.error?.code ?? "", j?.error?.type ?? "");
     } else console.log(`[capi] Purchase sent for order ${order.id}`);
   } catch (e4) {
-    console.error("[capi] error:", e4);
+    console.error("[capi] error:", safeErr(e4));
   }
 }
 async function sendWhatsApp(phone, message) {
@@ -212975,7 +213024,7 @@ async function sendWhatsApp(phone, message) {
       });
       clearTimeout(timer);
       if (!r5.ok) {
-        console.warn(`[wa] send to ${maskPhone(phoneNum)} failed: HTTP ${r5.status}`);
+        console.warn(`[wa] send to ${maskPhone2(phoneNum)} failed: HTTP ${r5.status}`);
         return false;
       }
       let body = {};
@@ -212984,14 +213033,14 @@ async function sendWhatsApp(phone, message) {
       } catch {
       }
       if (body.success === false) {
-        console.warn(`[wa] send to ${maskPhone(phoneNum)} failed: success=false`);
+        console.warn(`[wa] send to ${maskPhone2(phoneNum)} failed: success=false`);
         return false;
       }
-      console.log(`[wa] dispatched to ${maskPhone(phoneNum)}`);
+      console.log(`[wa] dispatched to ${maskPhone2(phoneNum)}`);
       return true;
     } catch {
       clearTimeout(timer);
-      console.warn(`[wa] send to ${maskPhone(phoneNum)} failed: network/timeout`);
+      console.warn(`[wa] send to ${maskPhone2(phoneNum)} failed: network/timeout`);
       return false;
     }
   }));
@@ -213001,23 +213050,23 @@ async function confirmOrderPaid(order) {
   try {
     await bumpCouponUsage(order.couponCode, 1, order.id);
   } catch (e4) {
-    console.error(`[order-confirmation] pedido ${order.id}: cupom falhou:`, e4);
+    console.error(`[order-confirmation] pedido ${order.id}: cupom falhou:`, safeErr(e4));
   }
   try {
     await sendCapiPurchase(order);
   } catch (e4) {
-    console.error(`[order-confirmation] pedido ${order.id}: CAPI falhou:`, e4);
+    console.error(`[order-confirmation] pedido ${order.id}: CAPI falhou:`, safeErr(e4));
   }
   const phone = order.customerPhone.replace(/\D/g, "");
   try {
     await ordersDb.update(automationRuns).set({ status: "cancelled", cancelledAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(and(eq(automationRuns.customerPhone, phone), eq(automationRuns.status, "scheduled")));
   } catch (e4) {
-    console.error(`[order-confirmation] pedido ${order.id}: cancelar automa\xE7\xF5es falhou:`, e4);
+    console.error(`[order-confirmation] pedido ${order.id}: cancelar automa\xE7\xF5es falhou:`, safeErr(e4));
   }
   try {
     await ordersDb.update(abandonedCarts).set({ status: "converted", recovered: true, convertedAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.customerPhone, phone));
   } catch (e4) {
-    console.error(`[order-confirmation] pedido ${order.id}: converter carrinho falhou:`, e4);
+    console.error(`[order-confirmation] pedido ${order.id}: converter carrinho falhou:`, safeErr(e4));
   }
   let msg = null;
   try {
@@ -213034,13 +213083,13 @@ J\xE1 estamos preparando seu envio. Voc\xEA receber\xE1 o c\xF3digo de rastreio 
 Obrigado por escolher a Sal Vita! \u{1F30A}
 _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
   } catch (e4) {
-    console.error(`[order-confirmation] pedido ${order.id}: template falhou:`, e4);
+    console.error(`[order-confirmation] pedido ${order.id}: template falhou:`, safeErr(e4));
   }
   if (msg) {
     try {
       await sendWhatsApp(order.customerPhone, msg);
     } catch (e4) {
-      console.error(`[order-confirmation] pedido ${order.id}: WhatsApp falhou:`, e4);
+      console.error(`[order-confirmation] pedido ${order.id}: WhatsApp falhou:`, safeErr(e4));
     }
   }
   if (order.customerEmail) {
@@ -213048,7 +213097,7 @@ _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
       const emailHtml = orderConfirmedHtml(order.customerName, order.id, brl(order.totalPrice));
       await sendEmail(order.customerEmail, `Pedido #${order.id} confirmado \u2014 obrigado, ${order.customerName}!`, emailHtml);
     } catch (e4) {
-      console.error(`[order-confirmation] pedido ${order.id}: e-mail falhou:`, e4);
+      console.error(`[order-confirmation] pedido ${order.id}: e-mail falhou:`, safeErr(e4));
     }
   }
 }
@@ -213200,7 +213249,7 @@ async function applyMeTracking(order, info) {
   try {
     channel = await notifyShippingEvent(current, d3.event);
   } catch (e4) {
-    console.error(`[shipping-event] aviso ${d3.event} do pedido ${order.id} falhou:`, e4);
+    console.error(`[shipping-event] aviso ${d3.event} do pedido ${order.id} falhou:`, safeErr(e4));
   }
   if (!channel) {
     await releaseShippingEvent(order.id, d3.event);
@@ -213405,7 +213454,7 @@ async function releaseLabel(orderId) {
   try {
     await ordersDb.update(siteOrders).set({ meOrderId: null, updatedAt: /* @__PURE__ */ new Date() }).where(and(eq(siteOrders.id, orderId), eq(siteOrders.meOrderId, "pending")));
   } catch (e4) {
-    console.error(`[label] liberar reserva do pedido ${orderId} falhou:`, e4);
+    console.error(`[label] liberar reserva do pedido ${orderId} falhou:`, safeErr(e4));
   }
 }
 var shippingRouter = router({
@@ -213719,7 +213768,7 @@ Seja direto e use emojis para facilitar leitura.`;
           else await releaseShippingEvent(updated.id, "posted");
         }
       } catch (e4) {
-        console.error("[updateTracking] aviso de envio falhou:", e4);
+        console.error("[updateTracking] aviso de envio falhou:", safeErr(e4));
       }
     }
     return updated;
@@ -214392,7 +214441,7 @@ async function waSendRaw(phone, message) {
     });
     clearTimeout(timer);
     if (!res.ok) {
-      console.warn(`[wa] send to ${maskPhone(phone)} failed: HTTP ${res.status}`);
+      console.warn(`[wa] send to ${maskPhone2(phone)} failed: HTTP ${res.status}`);
       return false;
     }
     let body = {};
@@ -214401,14 +214450,14 @@ async function waSendRaw(phone, message) {
     } catch {
     }
     if (body.success === false) {
-      console.warn(`[wa] send to ${maskPhone(phone)} failed: success=false`);
+      console.warn(`[wa] send to ${maskPhone2(phone)} failed: success=false`);
       return false;
     }
-    console.log(`[wa] dispatched to ${maskPhone(phone)}`);
+    console.log(`[wa] dispatched to ${maskPhone2(phone)}`);
     return true;
   } catch (err) {
     clearTimeout(timer);
-    console.warn(`[wa] send to ${maskPhone(phone)} error: ${err.message}`);
+    console.warn(`[wa] send to ${maskPhone2(phone)} error: ${err.message}`);
     return false;
   }
 }
@@ -214971,7 +215020,7 @@ var recoveryRouter = router({
       try {
         await ordersDb.update(abandonedCarts).set({ recoverySentAt: c4.prev ? new Date(c4.prev) : null }).where(eq(abandonedCarts.id, c4.id));
       } catch (e4) {
-        console.error(`[recovery] restaurar carrinho ${c4.id} falhou:`, e4);
+        console.error(`[recovery] restaurar carrinho ${c4.id} falhou:`, safeErr(e4));
       }
     };
     let sent = 0;
@@ -214985,7 +215034,7 @@ var recoveryRouter = router({
       try {
         ({ ok } = await sendViaWhatsApp(cart.customerPhone, recoveryMsg(cart.customerName)));
       } catch (e4) {
-        console.error(`[recovery] envio ao carrinho ${cart.id} falhou:`, e4);
+        console.error(`[recovery] envio ao carrinho ${cart.id} falhou:`, safeErr(e4));
       }
       if (ok) sent++;
       else await restore(cart);
@@ -215627,7 +215676,7 @@ async function processDueCampaigns(deadline) {
     )).returning({ id: emailCampaigns.id });
     result.promoted = promoted.length;
   } catch (err) {
-    console.error("[processDueCampaigns] promote error:", err);
+    console.error("[processDueCampaigns] promote error:", safeErr(err));
   }
   let dueCampaigns = [];
   try {
@@ -215639,7 +215688,7 @@ async function processDueCampaigns(deadline) {
       )
     ));
   } catch (err) {
-    console.error("[processDueCampaigns] list error:", err);
+    console.error("[processDueCampaigns] list error:", safeErr(err));
     return result;
   }
   for (const c4 of dueCampaigns) {
@@ -215657,7 +215706,7 @@ async function processDueCampaigns(deadline) {
       try {
         res = await processCampaignBatch(c4.id);
       } catch (err) {
-        console.error(`[processDueCampaigns] campaign ${c4.id} batch error:`, err);
+        console.error(`[processDueCampaigns] campaign ${c4.id} batch error:`, safeErr(err));
         break;
       }
       result.sent += res.sentNow;
@@ -216500,7 +216549,7 @@ var emailMarketingRouter = router({
         skipReasons.push(`${t5.email}: ${result.reason ?? "duplicado/suprimido"}`);
       }
     }
-    console.log(`[enrollTasksInSequence] seq=${input.sequenceId}: enrolled=${enrolled}, skipped=${skippedNoEmail + skippedUnconfirmed + skippedDuplicateOrSuppressed}`, skipReasons.length > 0 ? skipReasons : "");
+    console.log(`[enrollTasksInSequence] seq=${input.sequenceId}: enrolled=${enrolled}, skipped=${skippedNoEmail + skippedUnconfirmed + skippedDuplicateOrSuppressed}`);
     return { enrolled, skippedNoEmail, skippedUnconfirmed, skippedDuplicateOrSuppressed, skipReasons };
   }),
   // ── Inscrições ────────────────────────────────────────────────────────────
@@ -217806,7 +217855,7 @@ async function buildAudience2() {
       }
     }
   } catch (err) {
-    console.error("[buildAudience] Error fetching site_orders:", err);
+    console.error("[buildAudience] Error fetching site_orders:", safeErr(err));
   }
   try {
     const cartsRes = await ordersDb.execute(sql`
@@ -217821,7 +217870,7 @@ async function buildAudience2() {
       }
     }
   } catch (err) {
-    console.error("[buildAudience] Error fetching abandoned_carts:", err);
+    console.error("[buildAudience] Error fetching abandoned_carts:", safeErr(err));
   }
   try {
     const b2bRes = await db.execute(sql`
@@ -217836,7 +217885,7 @@ async function buildAudience2() {
       }
     }
   } catch (err) {
-    console.error("[buildAudience] Error fetching B2B contacts:", err);
+    console.error("[buildAudience] Error fetching B2B contacts:", safeErr(err));
   }
   try {
     const mktRes = await ordersDb.execute(sql`
@@ -217851,7 +217900,7 @@ async function buildAudience2() {
       }
     }
   } catch (err) {
-    console.error("[buildAudience] Error fetching marketing_contacts:", err);
+    console.error("[buildAudience] Error fetching marketing_contacts:", safeErr(err));
   }
   const suppressedEmails = /* @__PURE__ */ new Set();
   try {
@@ -218210,7 +218259,7 @@ async function suppressEmailGlobal(email, reason = "unsubscribe") {
     } catch (err) {
       failures.push(step.name);
       if (step.primary) primaryFailed = true;
-      console.error(`[suppressGlobal] ${step.primary ? "PRINCIPAL " : ""}falha em ${step.name}:`, err);
+      console.error(`[suppressGlobal] ${step.primary ? "PRINCIPAL " : ""}falha em ${step.name}:`, safeErr(err));
     }
   }
   return { failures, primaryFailed };
@@ -234816,8 +234865,8 @@ var PDFTree = class {
     const sortedKeys = Object.keys(this._items).sort((a5, b3) => this._compareKeys(a5, b3));
     const out = ["<<"];
     if (this.limits && sortedKeys.length > 1) {
-      const first2 = sortedKeys[0], last3 = sortedKeys[sortedKeys.length - 1];
-      out.push(`  /Limits ${PDFObject.convert([this._dataForKey(first2), this._dataForKey(last3)])}`);
+      const first3 = sortedKeys[0], last3 = sortedKeys[sortedKeys.length - 1];
+      out.push(`  /Limits ${PDFObject.convert([this._dataForKey(first3), this._dataForKey(last3)])}`);
     }
     out.push(`  /${this._keysName()} [`);
     for (let key of sortedKeys) {
@@ -273567,8 +273616,8 @@ var PDFOutline = class _PDFOutline {
       if (this.options.expanded) {
         this.outlineData.Count = this.children.length;
       }
-      const first2 = this.children[0], last3 = this.children[this.children.length - 1];
-      this.outlineData.First = first2.dictionary;
+      const first3 = this.children[0], last3 = this.children[this.children.length - 1];
+      this.outlineData.First = first3.dictionary;
       this.outlineData.Last = last3.dictionary;
       for (let i4 = 0, len = this.children.length; i4 < len; i4++) {
         const child = this.children[i4];
@@ -279209,20 +279258,20 @@ var expandBoxModel = ({ expandsTo, maxValues = 1, autoSupported = false } = {}) 
     logError(model, value2);
     return {};
   }
-  const first2 = transformUnit(container, parts[0]);
+  const first3 = transformUnit(container, parts[0]);
   if (expandsTo) {
     const second = transformUnit(container, parts[1] || parts[0]);
     const third = transformUnit(container, parts[2] || parts[0]);
     const fourth = transformUnit(container, parts[3] || parts[1] || parts[0]);
-    return expandsTo({ first: first2, second, third, fourth });
+    return expandsTo({ first: first3, second, third, fourth });
   }
   return {
-    [model]: first2
+    [model]: first3
   };
 };
 var processMargin = expandBoxModel({
-  expandsTo: ({ first: first2, second, third, fourth }) => ({
-    marginTop: first2,
+  expandsTo: ({ first: first3, second, third, fourth }) => ({
+    marginTop: first3,
     marginRight: second,
     marginBottom: third,
     marginLeft: fourth
@@ -279231,16 +279280,16 @@ var processMargin = expandBoxModel({
   autoSupported: true
 });
 var processMarginVertical = expandBoxModel({
-  expandsTo: ({ first: first2, second }) => ({
-    marginTop: first2,
+  expandsTo: ({ first: first3, second }) => ({
+    marginTop: first3,
     marginBottom: second
   }),
   maxValues: 2,
   autoSupported: true
 });
 var processMarginHorizontal = expandBoxModel({
-  expandsTo: ({ first: first2, second }) => ({
-    marginRight: first2,
+  expandsTo: ({ first: first3, second }) => ({
+    marginRight: first3,
     marginLeft: second
   }),
   maxValues: 2,
@@ -279259,8 +279308,8 @@ var handlers$5 = {
   marginVertical: processMarginVertical
 };
 var processPadding = expandBoxModel({
-  expandsTo: ({ first: first2, second, third, fourth }) => ({
-    paddingTop: first2,
+  expandsTo: ({ first: first3, second, third, fourth }) => ({
+    paddingTop: first3,
     paddingRight: second,
     paddingBottom: third,
     paddingLeft: fourth
@@ -279268,15 +279317,15 @@ var processPadding = expandBoxModel({
   maxValues: 4
 });
 var processPaddingVertical = expandBoxModel({
-  expandsTo: ({ first: first2, second }) => ({
-    paddingTop: first2,
+  expandsTo: ({ first: first3, second }) => ({
+    paddingTop: first3,
     paddingBottom: second
   }),
   maxValues: 2
 });
 var processPaddingHorizontal = expandBoxModel({
-  expandsTo: ({ first: first2, second }) => ({
-    paddingRight: first2,
+  expandsTo: ({ first: first3, second }) => ({
+    paddingRight: first3,
     paddingLeft: second
   }),
   maxValues: 2
@@ -307498,7 +307547,7 @@ var faturamentoRouter = router({
       tentativaAnterior: pedido.smbiEstado ?? null,
       ...multi ? { empresaCnpj: multi.empresa.cnpj, solicitacaoId, empresaAnterior: pedido.smbiEmpresaCnpj ?? null } : {}
     });
-    console.log(`[smbi] dispararSmbi pedido=${input.id}${multi ? ` empresa=${multi.empresa.curto} solicitacao=${solicitacaoId}` : ""} por=${ctx.user.name} (id ${ctx.user.id})`);
+    console.log(`[smbi] dispararSmbi pedido=${input.id}${multi ? ` empresa=${multi.empresa.curto} solicitacao=${solicitacaoId}` : ""} por=user#${ctx.user.id}`);
     return row;
   }),
   // Desfaz um clique por engano ANTES de o robô pegar o pedido. Sem efeito depois que o robô
@@ -307518,7 +307567,7 @@ var faturamentoRouter = router({
       });
     }
     await registrarEventoSmbi(input.id, "ENVIO_CANCELADO", ctx.user.name, {});
-    console.log(`[smbi] cancelarSmbi pedido=${input.id} por=${ctx.user.name} (id ${ctx.user.id})`);
+    console.log(`[smbi] cancelarSmbi pedido=${input.id} por=user#${ctx.user.id}`);
     return row;
   }),
   // Painel do robô do SMBI (só admin/gerente): chave de parada + último batimento.
@@ -307547,14 +307596,14 @@ var faturamentoRouter = router({
   setRoboAtivo: adminProcedure.input(external_exports.object({ ativo: external_exports.boolean() })).mutation(async ({ ctx, input }) => {
     const dados = { roboAtivo: input.ativo, atualizadoPor: ctx.user.name, atualizadoEm: (/* @__PURE__ */ new Date()).toISOString() };
     await db.insert(smbiRobotState).values({ id: 1, ...dados }).onConflictDoUpdate({ target: smbiRobotState.id, set: dados });
-    console.log(`[smbi] setRoboAtivo ativo=${input.ativo} por=${ctx.user.name} (id ${ctx.user.id})`);
+    console.log(`[smbi] setRoboAtivo ativo=${input.ativo} por=user#${ctx.user.id}`);
     return { ok: true, roboAtivo: input.ativo };
   }),
   // Gate do envio com escolha de empresa. Só admin; nasce FALSE (fluxo atual intacto); auditado em colunas próprias.
   setMultiempresaAtivo: adminProcedure.input(external_exports.object({ ativo: external_exports.boolean() }).strict()).mutation(async ({ ctx, input }) => {
     const dados = { multiempresaAtivo: input.ativo, multiempresaAtualizadoPor: ctx.user.name, multiempresaAtualizadoEm: (/* @__PURE__ */ new Date()).toISOString() };
     await db.insert(smbiRobotState).values({ id: 1, ...dados }).onConflictDoUpdate({ target: smbiRobotState.id, set: dados });
-    console.log(`[smbi] setMultiempresaAtivo ativo=${input.ativo} por=${ctx.user.name} (id ${ctx.user.id})`);
+    console.log(`[smbi] setMultiempresaAtivo ativo=${input.ativo} por=user#${ctx.user.id}`);
     return { ok: true, multiempresaAtivo: input.ativo };
   }),
   // ── Cadastro assistido de cliente no SMBI (Fase 2, lado do CRM) ───────────────────────────
@@ -307606,7 +307655,7 @@ var faturamentoRouter = router({
     if (decisao.acao !== "MANTER") {
       await registrarEventoSmbi(pedido.id, "CADASTRO_PREVIA_SOLICITADA", ctx.user.name, { cadastroId: id2, empresaCnpj, revisao });
     }
-    console.log(`[smbi-cadastro] solicitarPrevia pedido=${pedido.id} ${decisao.acao} por=${ctx.user.name} (id ${ctx.user.id})`);
+    console.log(`[smbi-cadastro] solicitarPrevia pedido=${pedido.id} ${decisao.acao} por=user#${ctx.user.id}`);
     return { cadastroId: id2, estado, revisao, acao: decisao.acao };
   }),
   // Situação do cadastro do cliente do pedido (sem token de reserva).
@@ -307694,14 +307743,14 @@ var faturamentoRouter = router({
     )).returning({ id: smbiClientRegistrations.id });
     if (r5.length !== 1) throw new TRPCError({ code: "CONFLICT", message: "O cadastro mudou durante a aprova\xE7\xE3o. Recarregue. [CONCORRENCIA]" });
     await registrarEventoSmbi(c4.pedidoId, "CADASTRO_APROVADO", ctx.user.name, { cadastroId: c4.id, empresaCnpj: c4.empresaCnpj, revisao: c4.revisao, snapshotHash: c4.snapshotHash });
-    console.log(`[smbi-cadastro] aprovado id=${c4.id} rev=${c4.revisao} por=${ctx.user.name} (id ${ctx.user.id})`);
+    console.log(`[smbi-cadastro] aprovado id=${c4.id} rev=${c4.revisao} por=user#${ctx.user.id}`);
     return { ok: true, estado: "APROVADO", aprovacaoExpiraEm: d3.patch.aprovacaoExpiraEm ?? null, idempotente: false };
   }),
   // Gate do cadastro assistido (independente de `roboAtivo`). Só admin; nasce FALSE; auditado em colunas próprias.
   setCadastroAtivo: adminProcedure.input(external_exports.object({ ativo: external_exports.boolean() }).strict()).mutation(async ({ ctx, input }) => {
     const dados = { cadastroAtivo: input.ativo, cadastroAtualizadoPor: ctx.user.name, cadastroAtualizadoEm: (/* @__PURE__ */ new Date()).toISOString() };
     await db.insert(smbiRobotState).values({ id: 1, ...dados }).onConflictDoUpdate({ target: smbiRobotState.id, set: dados });
-    console.log(`[smbi-cadastro] setCadastroAtivo ativo=${input.ativo} por=${ctx.user.name} (id ${ctx.user.id})`);
+    console.log(`[smbi-cadastro] setCadastroAtivo ativo=${input.ativo} por=user#${ctx.user.id}`);
     return { ok: true, cadastroAtivo: input.ativo };
   }),
   // Continuidade: com o cadastro CONFERIDO (e tudo válido), limpa SÓ a pendência de cliente do pedido ORIGINADOR e o
@@ -307754,7 +307803,7 @@ var faturamentoRouter = router({
       estadoAnterior: pedido.smbiEstado,
       motivoAnterior: pedido.smbiMotivoCodigo
     });
-    console.log(`[smbi-cadastro] liberarPedido pedido=${pedido.id} cadastro=${c4.id} por=${ctx.user.name} (id ${ctx.user.id})`);
+    console.log(`[smbi-cadastro] liberarPedido pedido=${pedido.id} cadastro=${c4.id} por=user#${ctx.user.id}`);
     return { ok: true, liberado: true, jaLiberado: false };
   }),
   // Vincula o pedido a um movsai que JÁ EXISTE no SMBI (ex.: pedido aprovado tarde, que já
@@ -307807,7 +307856,7 @@ var faturamentoRouter = router({
       anterior: antes.smbiVinculoMovsais ?? (antes.smbiMovsaiId ? [antes.smbiMovsaiId] : [])
     });
     console.log(
-      `[smbi] vincularSmbi pedido=${input.id} movsais ${antes.smbiMovsaiId ?? "(vazio)"} -> ${numeros.join(",")} por=${ctx.user.name} (id ${ctx.user.id})`
+      `[smbi] vincularSmbi pedido=${input.id} movsais ${antes.smbiMovsaiId ?? "(vazio)"} -> ${numeros.join(",")} por=user#${ctx.user.id}`
     );
     return row;
   }),
@@ -307824,7 +307873,7 @@ var faturamentoRouter = router({
       motivo: input.motivo,
       anterior: movsaisLigados(antes)
     });
-    console.log(`[smbi] desvincularSmbi pedido=${input.id} (era ${movsaisLigados(antes).join(",") || "-"}) por=${ctx.user.name} (id ${ctx.user.id})`);
+    console.log(`[smbi] desvincularSmbi pedido=${input.id} (era ${movsaisLigados(antes).join(",") || "-"}) por=user#${ctx.user.id}`);
     return row;
   }),
   // O administrador aceita um vínculo que o robô marcou com divergência (ex.: quantidade diferente
@@ -307843,7 +307892,7 @@ var faturamentoRouter = router({
     }
     const [row] = await db.update(fatOrders).set(patch).where(eq(fatOrders.id, input.id)).returning();
     await registrarEventoSmbi(input.id, "VINCULO_CONFIRMADO", ctx.user.name, { movsais: movsaisLigados(antes) });
-    console.log(`[smbi] confirmarVinculoSmbi pedido=${input.id} por=${ctx.user.name} (id ${ctx.user.id})`);
+    console.log(`[smbi] confirmarVinculoSmbi pedido=${input.id} por=user#${ctx.user.id}`);
     return row;
   }),
   // Linha do tempo do pedido no SMBI (robô + ações da tela). Só admin/gerente.
@@ -309694,7 +309743,7 @@ var prospectingRadarRouter = router({
     try {
       return await draftRadarMessage(draftInput);
     } catch (err) {
-      console.error("[prospectingRadar.draftMessage] draftRadarMessage failed:", err);
+      console.error("[prospectingRadar.draftMessage] draftRadarMessage failed:", safeErr(err));
       throw new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
         message: "N\xE3o foi poss\xEDvel gerar o rascunho da mensagem agora. Tente novamente em instantes."
@@ -312144,6 +312193,28 @@ function registerSmbiCadastroRoutes(app2, limiter) {
   });
 }
 
+// server/lib/webhookSecret.ts
+function first2(v4) {
+  return Array.isArray(v4) ? v4[0] : v4;
+}
+function checkWebhookSecret(expected, headers, query, env = process.env) {
+  if (!expected) return { ok: false, via: null };
+  const bearer = /^Bearer\s+(.+)$/i.exec((first2(headers["authorization"]) ?? "").trim())?.[1];
+  const custom2 = first2(headers["x-webhook-secret"]);
+  for (const candidate of [bearer, custom2]) {
+    if (typeof candidate === "string" && candidate !== "" && safeEqual(candidate, expected)) {
+      return { ok: true, via: "header" };
+    }
+  }
+  if (env.WEBHOOK_ALLOW_QUERY_SECRET !== "0") {
+    const q = query["secret"];
+    if (typeof q === "string" && q !== "" && safeEqual(q, expected)) {
+      return { ok: true, via: "query" };
+    }
+  }
+  return { ok: false, via: null };
+}
+
 // server/lib/safeError.ts
 var GENERIC_ERROR = "Erro interno no servidor";
 function safeErrorMessage(err, env = process.env.NODE_ENV) {
@@ -312211,14 +312282,14 @@ async function handleResendWebhook(req, res) {
         VALUES (${messageId}, ${recipientEmail}, ${type})
       `);
     } catch (err) {
-      console.error("[resend-webhook] Error inserting event:", err);
+      console.error("[resend-webhook] Error inserting event:", safeErr(err));
     }
   }
   if (type === "email.bounced" || type === "email.complained") {
     if (recipientEmail) {
       const reason = type === "email.bounced" ? "bounce" : "complaint";
       await suppressEmailGlobal(recipientEmail, reason);
-      console.log(`[resend-webhook] Suppressed ${recipientEmail} due to ${reason}`);
+      console.log(`[resend-webhook] Suppressed ${maskEmail(recipientEmail)} due to ${reason}`);
     }
   }
   return res.status(200).json({ received: true });
@@ -312341,7 +312412,7 @@ async function runIsolated(label, fn, fallback) {
   try {
     return await fn();
   } catch (err) {
-    console.error(`[cron] ${label} failed (other routines continue):`, err);
+    console.error(`[cron] ${label} failed (other routines continue):`, safeErr(err));
     return fallback;
   }
 }
@@ -312528,7 +312599,7 @@ app.post("/api/me-webhook", webhookLimiter, import_express3.default.raw({ type: 
     console.log(`[me-webhook] ${payload.event ?? "?"}: ${result}`);
     res.json({ ok: true });
   } catch (err) {
-    console.error("[me-webhook] falhou:", err);
+    console.error("[me-webhook] falhou:", safeErr(err));
     res.status(500).json({ error: "retry" });
   }
 });
@@ -312649,7 +312720,7 @@ app.post("/api/mp-webhook", webhookLimiter, import_express3.default.raw({ type: 
     }
     res.json({ ok: true });
   } catch (err) {
-    console.error("MP webhook error:", err);
+    console.error("MP webhook error:", safeErr(err));
     res.status(500).json({ error: "temporary failure" });
   }
 });
@@ -312682,7 +312753,7 @@ app.post("/api/resend-webhook", resendWebhookLimiter, import_express3.default.ra
     const messageId = String(payload.data?.email_id ?? "");
     const toField = payload.data?.to;
     const recipientEmail = (Array.isArray(toField) ? String(toField[0] ?? "") : String(toField ?? "")).toLowerCase().trim();
-    console.log(`[resend-webhook] type=${eventType} msgId=${messageId} to=${recipientEmail}`);
+    console.log(`[resend-webhook] type=${eventType} msgId=${messageId} to=${maskEmail(recipientEmail)}`);
     if (!recipientEmail) {
       res.status(200).json({ ok: true });
       return;
@@ -312708,7 +312779,7 @@ app.post("/api/resend-webhook", resendWebhookLimiter, import_express3.default.ra
         if (shortType === "opened" || shortType === "clicked") {
           await flagEngagementByMessageId(messageId, shortType);
         }
-        console.log(`[resend-webhook] stored ${shortType} for ${recipientEmail}`);
+        console.log(`[resend-webhook] stored ${shortType} for ${maskEmail(recipientEmail)}`);
         break;
       }
       default:
@@ -312716,7 +312787,7 @@ app.post("/api/resend-webhook", resendWebhookLimiter, import_express3.default.ra
     }
     res.status(200).json({ ok: true });
   } catch (err) {
-    console.error("[resend-webhook] error:", err);
+    console.error("[resend-webhook] error:", safeErr(err));
     if (!res.headersSent) res.status(200).json({ ok: true });
   }
 });
@@ -312725,6 +312796,7 @@ var brevoWebhookLimiter = rate_limit_default({
   max: 120,
   validate: { xForwardedForHeader: false }
 });
+var brevoQuerySecretWarned = false;
 app.post("/api/brevo-webhook", brevoWebhookLimiter, import_express3.default.json({ limit: "256kb" }), async (req, res) => {
   try {
     const secret = process.env.BREVO_WEBHOOK_SECRET;
@@ -312734,11 +312806,15 @@ app.post("/api/brevo-webhook", brevoWebhookLimiter, import_express3.default.json
       return;
     }
     if (secret) {
-      const provided = req.query.secret || req.headers["x-webhook-secret"];
-      if (typeof provided !== "string" || !safeEqual(provided, secret)) {
+      const check = checkWebhookSecret(secret, req.headers, req.query);
+      if (!check.ok) {
         console.warn("[brevo-webhook] Invalid secret");
         res.status(401).json({ error: "Invalid secret" });
         return;
+      }
+      if (check.via === "query" && !brevoQuerySecretWarned) {
+        brevoQuerySecretWarned = true;
+        console.warn("[brevo-webhook] segredo recebido pela URL (?secret=) \u2014 obsoleto; configure o cabe\xE7alho Authorization: Bearer no painel do Brevo");
       }
     }
     const payload = req.body;
@@ -312746,7 +312822,7 @@ app.post("/api/brevo-webhook", brevoWebhookLimiter, import_express3.default.json
     const recipientEmail = (payload.email ?? "").toLowerCase().trim();
     const rawMsgId = payload["message-id"] ?? "";
     const messageId = rawMsgId.replace(/^<|>$/g, "");
-    console.log(`[brevo-webhook] event=${event} msgId=${messageId} to=${recipientEmail}`);
+    console.log(`[brevo-webhook] event=${event} msgId=${messageId} to=${maskEmail(recipientEmail)}`);
     if (!recipientEmail) {
       res.status(200).json({ ok: true });
       return;
@@ -312784,7 +312860,7 @@ app.post("/api/brevo-webhook", brevoWebhookLimiter, import_express3.default.json
         if (shortType === "opened" || shortType === "clicked") {
           await flagEngagementByMessageId(messageId, shortType);
         }
-        console.log(`[brevo-webhook] stored ${shortType} for ${recipientEmail}`);
+        console.log(`[brevo-webhook] stored ${shortType} for ${maskEmail(recipientEmail)}`);
         break;
       }
       default:
@@ -312792,7 +312868,7 @@ app.post("/api/brevo-webhook", brevoWebhookLimiter, import_express3.default.json
     }
     res.status(200).json({ ok: true });
   } catch (err) {
-    console.error("[brevo-webhook] error:", err);
+    console.error("[brevo-webhook] error:", safeErr(err));
     if (!res.headersSent) res.status(200).json({ ok: true });
   }
 });
@@ -313021,11 +313097,11 @@ app.post("/api/b2b/inbound", b2bInboundLimiter, import_express3.default.json({ l
         message: data2.message
       });
     } catch (err) {
-      console.error("[b2b] notification error:", err);
+      console.error("[b2b] notification error:", safeErr(err));
     }
     res.json({ ok: true });
   } catch (err) {
-    console.error("[b2b-inbound] error:", err);
+    console.error("[b2b-inbound] error:", safeErr(err));
     res.status(500).json({ ok: false, error: "Erro ao enviar. Tente novamente em instantes." });
   }
 });
@@ -313140,7 +313216,7 @@ app.use(
     createContext,
     onError({ path: path2, error }) {
       if (error.code === "INTERNAL_SERVER_ERROR") {
-        console.error(`[trpc] ${path2 ?? "?"} failed:`, error.cause ?? error);
+        console.error(`[trpc] ${path2 ?? "?"} failed:`, safeErr(error.cause ?? error));
       }
     }
   })
@@ -313232,13 +313308,13 @@ async function processUnpaidFollowups() {
         try {
           await sendEmail(o4.customerEmail, emailSubject, emailHtml);
         } catch (e4) {
-          console.error(`[cron] unpaid-followup: e-mail do pedido ${o4.id} falhou:`, e4);
+          console.error(`[cron] unpaid-followup: e-mail do pedido ${o4.id} falhou:`, safeErr(e4));
         }
       }
       await new Promise((r5) => setTimeout(r5, 1e3));
     }
   } catch (e4) {
-    console.error("[cron] unpaid-followup error:", e4);
+    console.error("[cron] unpaid-followup error:", safeErr(e4));
   }
   return { sent };
 }
@@ -313298,11 +313374,11 @@ async function reconcileAwaitingOrders() {
           confirmed++;
         }
       } catch (e4) {
-        console.error(`[cron] reconcile: pedido ${o4.id} falhou:`, e4);
+        console.error(`[cron] reconcile: pedido ${o4.id} falhou:`, safeErr(e4));
       }
     }
   } catch (e4) {
-    console.error("[cron] reconcile error:", e4);
+    console.error("[cron] reconcile error:", safeErr(e4));
   }
   return { confirmed };
 }
@@ -313343,7 +313419,7 @@ _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
       await new Promise((r5) => setTimeout(r5, 1e3));
     }
   } catch (e4) {
-    console.error("[cron] reorder-reminder error:", e4);
+    console.error("[cron] reorder-reminder error:", safeErr(e4));
   }
   return { sent };
 }
@@ -313417,7 +313493,7 @@ app.all("/api/cron/abandoned-cart", import_express3.default.json(), async (req, 
       try {
         await ordersDb.update(runs).set({ status: "scheduled", updatedAt: /* @__PURE__ */ new Date() }).where(and(inArray(runs.id, ids), eq(runs.status, "sending")));
       } catch (e4) {
-        console.error("[cron] release claimed runs failed:", e4);
+        console.error("[cron] release claimed runs failed:", safeErr(e4));
       }
     };
     const pendingIds = new Set(due.map((r5) => r5.id));
@@ -313464,7 +313540,7 @@ _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
             try {
               await sendEmail(cart.customerEmail, `Seu cupom ${ruleCfg.coupon} \u2014 finalize seu pedido Sal Vita`, emailHtml);
             } catch (e4) {
-              console.error(`[cron] abandoned-cart: e-mail do carrinho ${cart.id} falhou:`, e4);
+              console.error(`[cron] abandoned-cart: e-mail do carrinho ${cart.id} falhou:`, safeErr(e4));
             }
           }
         } else {
@@ -313478,7 +313554,7 @@ _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
     }
     res.json({ ok: true, processed: due.length, sent, cancelled, failed, unpaid, reconciled, reorder, tracking });
   } catch (err) {
-    console.error("[cron] abandoned-cart error:", err);
+    console.error("[cron] abandoned-cart error:", safeErr(err));
     res.status(500).json({ error: safeErrorMessage(err) });
   }
 });
@@ -313517,7 +313593,7 @@ app.get("/api/cron/email-daily", async (req, res) => {
       summary.inactiveDaysRules = result.rulesEvaluated;
       summary.inactiveDaysEnrolled = result.enrolled;
     } catch (err) {
-      console.error("[cron/email-daily] evaluateInactiveDaysRules error:", err);
+      console.error("[cron/email-daily] evaluateInactiveDaysRules error:", safeErr(err));
     }
     const seqResult = await processSequenceEnrollments();
     summary.enrollmentsDue = seqResult.enrollmentsDue;
@@ -313535,14 +313611,14 @@ app.get("/api/cron/email-daily", async (req, res) => {
       summary.campaignTimeBudgetHit = campResult.timeBudgetHit;
       if (campResult.quotaExhausted) summary.quotaExhausted = true;
     } catch (err) {
-      console.error("[cron/email-daily] processDueCampaigns error:", err);
+      console.error("[cron/email-daily] processDueCampaigns error:", safeErr(err));
     }
     try {
       const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1e3);
       const deleted = await db.delete(emailEvents).where(lt(emailEvents.createdAt, ninetyDaysAgo)).returning({ id: emailEvents.id });
       summary.eventsDeleted = deleted.length;
     } catch (err) {
-      console.error("[cron/email-daily] cleanup error:", err);
+      console.error("[cron/email-daily] cleanup error:", safeErr(err));
     }
     try {
       await db.delete(emailCampaignRecipients).where(sql`created_at < NOW() - INTERVAL '90 days' AND status != 'pending'`);
@@ -313559,7 +313635,7 @@ app.get("/api/cron/email-daily", async (req, res) => {
     console.log("[cron/email-daily] summary:", summary);
     res.json({ ok: true, ...summary });
   } catch (err) {
-    console.error("[cron/email-daily] error:", err);
+    console.error("[cron/email-daily] error:", safeErr(err));
     res.status(500).json({ error: safeErrorMessage(err), ...summary });
   }
 });
@@ -313683,7 +313759,7 @@ app.get("/api/smbi/pedidos", smbiApiLimiter, async (req, res) => {
     );
     res.json({ ok: true, roboAtivo, simulacao: simular && !roboAtivo, multiempresaAtivo: multiempresa, pedidos });
   } catch (err) {
-    console.error("[smbi] GET /api/smbi/pedidos error:", err);
+    console.error("[smbi] GET /api/smbi/pedidos error:", safeErr(err));
     res.status(500).json({ error: "Internal error" });
   }
 });
@@ -313756,7 +313832,7 @@ app.post("/api/smbi/pedidos/:id/retorno", smbiApiLimiter, import_express3.defaul
     console.log(`[smbi] POST retorno pedido=${id2} \u2192 ok (${Object.keys(patch).join(",") || "sem altera\xE7\xE3o, idempotente"})`);
     res.json({ ok: true });
   } catch (err) {
-    console.error(`[smbi] POST retorno pedido=${id2} error:`, err);
+    console.error(`[smbi] POST retorno pedido=${id2} error:`, safeErr(err));
     res.status(500).json({ error: "Internal error" });
   }
 });
@@ -313784,7 +313860,7 @@ app.post("/api/smbi/heartbeat", smbiApiLimiter, import_express3.default.json({ l
     const [row] = await db.insert(smbiRobotState).values({ id: 1, ...hb }).onConflictDoUpdate({ target: smbiRobotState.id, set: hb }).returning({ roboAtivo: smbiRobotState.roboAtivo });
     res.json({ ok: true, roboAtivo: row?.roboAtivo === true });
   } catch (err) {
-    console.error("[smbi] POST /api/smbi/heartbeat error:", err);
+    console.error("[smbi] POST /api/smbi/heartbeat error:", safeErr(err));
     res.status(500).json({ error: "Internal error" });
   }
 });
