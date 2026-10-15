@@ -1,10 +1,10 @@
 import { neon } from '@neondatabase/serverless';
-import { FOLLOWUP_SEQUENCES } from '../email/followupSequences';
+import { FOLLOWUP_SEQUENCES, LEGACY_SEED_HTML_PREFIX } from '../email/followupSequences';
 
 type Step = { name: string; ok: boolean; error?: string };
 
 // Bump whenever the DDL below changes, to force exactly one full re-run.
-const ORDERS_SCHEMA_VERSION = 'orders-2026-10-15b';
+const ORDERS_SCHEMA_VERSION = 'orders-2026-10-15c';
 
 /**
  * Ensures all e-commerce/recovery tables exist in the ORDERS database.
@@ -437,6 +437,15 @@ export async function ensureOrdersTablesExist(force = false): Promise<Step[]> {
           INSERT INTO email_sequence_steps (sequence_id, step_order, delay_days, subject, html_body, send_condition)
           SELECT ${seqId}, ${st.stepOrder}, ${st.delayDays}, ${st.subject}, ${st.htmlBody}, ${st.sendCondition}
           WHERE NOT EXISTS (SELECT 1 FROM email_sequence_steps WHERE sequence_id = ${seqId} AND step_order = ${st.stepOrder})
+        `;
+        // 15/10: a 1ª versão gravou os textos em HTML; o dono pediu texto simples no editor.
+        // Troca só o passo que ainda está com o HTML gerado (começa com o estilo do gerador e
+        // mantém o assunto original) — texto já editado pelo dono não é tocado.
+        await sql`
+          UPDATE email_sequence_steps SET html_body = ${st.htmlBody}
+          WHERE sequence_id = ${seqId} AND step_order = ${st.stepOrder}
+            AND subject = ${st.subject}
+            AND html_body LIKE ${LEGACY_SEED_HTML_PREFIX + '%'}
         `;
       }
     });

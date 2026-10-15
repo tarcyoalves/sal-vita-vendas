@@ -24,6 +24,21 @@ import {
   Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { looksLikeHtml, plainTextToEmailHtml } from '../../../shared/emailText';
+/* Prévia do passo da sequência: mesma conversão do servidor (shared/emailText.ts). */
+const PREVIEW_VARS: Record<string, string> = {
+  nome: 'Maria',
+  link_loja: 'https://www.premium.salvitarn.com.br/',
+  unsubscribe: 'https://www.premium.salvitarn.com.br/api/unsubscribe',
+};
+function fillPreviewVars(s: string): string {
+  return s.replace(/\{(\w+)\}/g, (m, k: string) => PREVIEW_VARS[k] ?? m);
+}
+function stepPreviewHtml(body: string): string {
+  const filled = fillPreviewVars(body);
+  const inner = looksLikeHtml(filled) ? filled : plainTextToEmailHtml(filled);
+  return `<!doctype html><html><body style="margin:0;padding:24px;background:#f8fafc;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;"><div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:24px 28px;border:1px solid #e2e8f0;">${inner}<p style="margin:24px 0 0;font-size:12px;color:#94a3b8;">Rodapé padrão: link para sair da lista.</p></div></body></html>`;
+}
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -616,8 +631,9 @@ export function SalVitaEmailMarketing() {
       {/* EDIT SEQUENCE STEP DIALOG */}
       {editingStep && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 space-y-4 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-5xl w-full p-6 space-y-4 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
             <h3 className="font-bold text-xl text-slate-900">Editar passo da sequência</h3>
+            <div className="grid gap-6 lg:grid-cols-2">
             <div className="space-y-4 text-sm">
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Assunto</label>
@@ -640,17 +656,33 @@ export function SalVitaEmailMarketing() {
                 />
               </div>
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Texto (HTML simples)</label>
+                <label htmlFor="step-body" className="block font-semibold text-slate-700 mb-1">Texto do e-mail</label>
                 <textarea
+                  id="step-body"
                   value={editingStep.htmlBody}
                   onChange={(e) => setEditingStep({ ...editingStep, htmlBody: e.target.value })}
-                  rows={14}
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-mono text-xs"
+                  rows={16}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm leading-relaxed"
                 />
-                <p className="text-xs text-slate-500 mt-1">
-                  Variáveis: <code>{'{nome}'}</code>, <code>{'{link_loja}'}</code> (loja com rastreio) e <code>{'{unsubscribe}'}</code> (link para sair). Mantenha o link de sair em todo e-mail. Não use alegações de saúde, minerais ou pureza.
-                </p>
+                <ul className="text-xs text-slate-600 mt-2 space-y-1 list-disc pl-4">
+                  <li>Escreva normalmente. Deixe uma <strong>linha em branco</strong> entre os parágrafos.</li>
+                  <li>Lista: comece a linha com <code>- </code> (traço e espaço).</li>
+                  <li>Link: <code>[texto do botão]({'{link_loja}'})</code> leva para a loja. <code>**assim**</code> fica em negrito.</li>
+                  <li><code>{'{nome}'}</code> vira o nome do cliente. O link para sair da lista já vai no rodapé de todo e-mail.</li>
+                  <li>Não use alegações de saúde, minerais ou pureza.</li>
+                </ul>
               </div>
+            </div>
+            <div>
+              <p className="block font-semibold text-slate-700 mb-1 text-sm">Prévia (como o cliente vê, com nome de exemplo)</p>
+              <p className="text-xs text-slate-600 mb-2"><strong>Assunto:</strong> {fillPreviewVars(editingStep.subject)}</p>
+              <iframe
+                title="Prévia do e-mail"
+                sandbox=""
+                srcDoc={stepPreviewHtml(editingStep.htmlBody)}
+                className="w-full h-[460px] border border-slate-200 rounded-xl bg-white"
+              />
+            </div>
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={() => setEditingStep(null)} className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50">

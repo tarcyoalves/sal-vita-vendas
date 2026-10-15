@@ -203,8 +203,8 @@ describe('sequências criadas desligadas, na migração', () => {
     expect(mig).not.toMatch(/followup[^\n]*TRUE/i);
   });
   it('versão do schema foi subida (e o lock acompanha)', () => {
-    expect(mig).toMatch(/ORDERS_SCHEMA_VERSION = 'orders-2026-10-15b'/);
-    expect(read('tests/schema-version.lock.json')).toContain('orders-2026-10-15b');
+    expect(mig).toMatch(/ORDERS_SCHEMA_VERSION = 'orders-2026-10-15c'/);
+    expect(read('tests/schema-version.lock.json')).toContain('orders-2026-10-15c');
   });
   it('Pós-compra: 4 passos, dias 0/+12/+10/+7, quarto só se não abriu; sem repetição', () => {
     expect(POS_COMPRA.steps.map((s) => s.delayDays)).toEqual([0, 12, 10, 7]);
@@ -218,7 +218,7 @@ describe('sequências criadas desligadas, na migração', () => {
     expect(RELACIONAMENTO.repeat).toBe(true);
     expect(RELACIONAMENTO.repeatIntervalDays).toBe(30);
     expect(RELACIONAMENTO.steps[5].subject).toMatch(/quer continuar recebendo/);
-    expect(RELACIONAMENTO.steps[5].htmlBody).toMatch(/<strong><a href="\{unsubscribe\}"/);
+    expect(RELACIONAMENTO.steps[5].htmlBody).toContain('**[Quero sair da lista]({unsubscribe})**');
   });
   it('Pós-compra conclui e inscreve em Relacionamento mensal', () => {
     const e = read('server/email/sequenceEngine.ts');
@@ -241,10 +241,12 @@ describe('textos dos e-mails', () => {
     /aditivo|qu[íi]mico/i,
   ];
 
-  it('são 10 e-mails, todos com {unsubscribe} e no máximo um link principal {link_loja}', () => {
+  it('são 10 e-mails em texto simples, saída garantida pelo rodapé e no máximo um link {link_loja}', () => {
     expect(all).toHaveLength(10);
+    // o layout padrão de todo e-mail de marketing leva o link de sair (RFC 8058)
+    expect(read('server/email/marketingEngine.ts')).toMatch(/href="\$\{unsubUrl\}"/);
     for (const s of all) {
-      expect(s.htmlBody).toContain('{unsubscribe}');
+      expect(s.htmlBody).not.toMatch(/<[a-z][^>]*>/i);
       expect((s.htmlBody.match(/\{link_loja\}/g) ?? []).length).toBeLessThanOrEqual(1);
     }
   });

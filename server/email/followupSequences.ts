@@ -69,19 +69,20 @@ export interface FollowupSequenceDef {
   steps: FollowupStepDef[];
 }
 
-const P = 'style="margin:0 0 16px;line-height:1.6;color:#334155;"';
-const para = (t: string) => `<p ${P}>${t}</p>`;
-const loja = (t: string) =>
-  `<p ${P}><a href="{link_loja}" style="color:#0C3680;font-weight:600;">${t}</a></p>`;
-const assinatura = para('Um abraço,<br/>Equipe Sal Vita, Mossoró/RN');
-const sair = `<p style="margin:16px 0 0;font-size:13px;color:#64748b;">Não quer mais receber nossos e-mails? <a href="{unsubscribe}" style="color:#0C3680;">Clique aqui para sair da lista</a>.</p>`;
-const corpo = (...blocos: string[]) => [...blocos, assinatura, sair].join('\n');
+/*
+ * Textos em TEXTO SIMPLES (decisão do dono, 15/10: nada de HTML no editor). O motor converte
+ * com shared/emailText.ts: linha em branco = parágrafo, "- " = lista, [texto](link) = link,
+ * **negrito**. O rodapé padrão de todo e-mail (marketingEngine.layout) já traz o link de sair.
+ */
+const ASSINATURA = 'Um abraço,\nEquipe Sal Vita, Mossoró/RN';
+const corpo = (...blocos: string[]) => [...blocos, ASSINATURA].join('\n\n');
+const loja = (t: string) => `[${t}]({link_loja})`;
 
-const PRECOS = `<ul style="margin:0 0 16px;padding-left:20px;line-height:1.7;color:#334155;">
-<li>Pacote de 1 kg: R$ 29,90</li>
-<li>Trio de 3 kg: R$ 74,90, ou R$ 24,97 o quilo</li>
-<li>Caixa de 10 kg: R$ 149,90, ou R$ 14,99 o quilo</li>
-</ul>`;
+const PRECOS = [
+  '- Pacote de 1 kg: R$ 29,90',
+  '- Trio de 3 kg: R$ 74,90, ou R$ 24,97 o quilo',
+  '- Caixa de 10 kg: R$ 149,90, ou R$ 14,99 o quilo',
+].join('\n');
 
 /**
  * "Pós-compra": 4 e-mails por pedido.
@@ -109,16 +110,10 @@ export const POS_COMPRA: FollowupSequenceDef = {
       sendCondition: 'always',
       subject: 'Chegou bem, {nome}?',
       htmlBody: corpo(
-        para('Olá, {nome}!'),
-        para(
-          'Aqui é da Sal Vita, lá de Mossoró. Seu pedido já deve ter chegado e queremos saber se veio tudo certo.'
-        ),
-        para(
-          'Uma dica simples de guarda: depois de usar, feche bem o zip lock e deixe o pacote em local seco e longe do fogão.'
-        ),
-        para(
-          'Se algo veio diferente do esperado, é só responder este e-mail. Aqui quem responde é gente de verdade, e a gente resolve.'
-        )
+        'Olá, {nome}!',
+        'Aqui é da Sal Vita, lá de Mossoró. Seu pedido já deve ter chegado e queremos saber se veio tudo certo.',
+        'Uma dica simples de guarda: depois de usar, feche bem o zip lock e deixe o pacote em local seco e longe do fogão.',
+        'Se algo veio diferente do esperado, é só responder este e-mail. Aqui quem responde é gente de verdade, e a gente resolve.',
       ),
     },
     {
@@ -127,15 +122,14 @@ export const POS_COMPRA: FollowupSequenceDef = {
       sendCondition: 'always',
       subject: 'Três jeitos de usar o Sal Vita na cozinha',
       htmlBody: corpo(
-        para('Olá, {nome}!'),
-        para('Três ideias de quem usa sal todo dia:'),
-        '<ol style="margin:0 0 16px;padding-left:20px;line-height:1.7;color:#334155;">' +
-          '<li><strong>No preparo:</strong> sal na água do arroz e do feijão, e no refogado, do jeito que você já faz.</li>' +
-          '<li><strong>Na carne:</strong> temperar um pouco antes de ir para a brasa ou para a frigideira.</li>' +
-          '<li><strong>Na finalização:</strong> uma pitada na mesa, no ponto, em vez de salgar tudo na panela.</li>' +
-          '</ol>',
-        para('Se quiser ver os pacotes de novo, a loja está aqui:'),
-        loja('Ver a loja Sal Vita')
+        'Olá, {nome}!',
+        'Três ideias de quem usa sal todo dia:',
+        [
+          '- **No preparo:** sal na água do arroz e do feijão, e no refogado, do jeito que você já faz.',
+          '- **Na carne:** temperar um pouco antes de ir para a brasa ou para a frigideira.',
+          '- **Na finalização:** uma pitada na mesa, no ponto, em vez de salgar tudo na panela.',
+        ].join('\n'),
+        `Se quiser ver os pacotes de novo: ${loja('Ver a loja Sal Vita')}`,
       ),
     },
     {
@@ -144,12 +138,10 @@ export const POS_COMPRA: FollowupSequenceDef = {
       sendCondition: 'always',
       subject: 'Hora de repor o sal, {nome}?',
       htmlBody: corpo(
-        para('Olá, {nome}!'),
-        para(
-          'Já faz cerca de um mês desde o seu pedido. Se o pacote está chegando ao fim, o novo pedido leva poucos minutos.'
-        ),
+        'Olá, {nome}!',
+        'Já faz cerca de um mês desde o seu pedido. Se o pacote está chegando ao fim, o novo pedido leva poucos minutos.',
         loja('Fazer um novo pedido'),
-        para('Obrigado por ter escolhido o sal de Mossoró.')
+        'Obrigado por ter escolhido o sal de Mossoró.',
       ),
     },
     {
@@ -158,11 +150,11 @@ export const POS_COMPRA: FollowupSequenceDef = {
       sendCondition: 'if_not_opened',
       subject: 'A caixa de 10 kg sai a R$ 14,99 o quilo',
       htmlBody: corpo(
-        para('Olá, {nome}!'),
-        para('Caso o e-mail anterior tenha passado batido, aqui vai o preço por quilo de cada pacote da loja:'),
+        'Olá, {nome}!',
+        'Caso o e-mail anterior tenha passado batido, aqui vai o preço por quilo de cada pacote da loja:',
         PRECOS,
-        para('Quem usa bastante costuma ficar com a caixa de 10 kg, que sai mais barata por quilo.'),
-        loja('Ver os pacotes')
+        'Quem usa bastante costuma ficar com a caixa de 10 kg, que sai mais barata por quilo.',
+        loja('Ver os pacotes'),
       ),
     },
   ],
@@ -186,14 +178,10 @@ export const RELACIONAMENTO: FollowupSequenceDef = {
       sendCondition: 'always',
       subject: 'Da salina de Mossoró à sua mesa',
       htmlBody: corpo(
-        para('Olá, {nome}!'),
-        para(
-          'O sal que você compra aqui nasce em Mossoró, no Rio Grande do Norte, onde fica boa parte das salinas do Brasil. A água do mar entra nos tanques e o sol faz o resto, por evaporação solar.'
-        ),
-        para(
-          'Depois o sal passa por seleção, moagem, iodação e embalagem em pacote com zip lock e janela, para você ver o que está levando.'
-        ),
-        loja('Conhecer a loja')
+        'Olá, {nome}!',
+        'O sal que você compra aqui nasce em Mossoró, no Rio Grande do Norte, onde fica boa parte das salinas do Brasil. A água do mar entra nos tanques e o sol faz o resto, por evaporação solar.',
+        'Depois o sal passa por seleção, moagem, iodação e embalagem em pacote com zip lock e janela, para você ver o que está levando.',
+        loja('Conhecer a loja'),
       ),
     },
     {
@@ -202,10 +190,10 @@ export const RELACIONAMENTO: FollowupSequenceDef = {
       sendCondition: 'always',
       subject: 'O sal acabando? Veja o preço por quilo',
       htmlBody: corpo(
-        para('Olá, {nome}!'),
-        para('Se está na hora de repor, estes são os preços atuais:'),
+        'Olá, {nome}!',
+        'Se está na hora de repor, estes são os preços atuais:',
         PRECOS,
-        loja('Fazer um novo pedido')
+        loja('Fazer um novo pedido'),
       ),
     },
     {
@@ -214,16 +202,14 @@ export const RELACIONAMENTO: FollowupSequenceDef = {
       sendCondition: 'always',
       subject: 'Ideias para o churrasco de fim de ano',
       htmlBody: corpo(
-        para('Olá, {nome}!'),
-        para(
-          'Fim de ano é época de reunir a família e acender a brasa. Algumas ideias para a mesa:'
-        ),
-        '<ul style="margin:0 0 16px;padding-left:20px;line-height:1.7;color:#334155;">' +
-          '<li>Tempere a carne com um pouco de antecedência e acerte o ponto na hora de servir.</li>' +
-          '<li>Deixe um pote de sal na mesa para cada um ajustar o seu prato.</li>' +
-          '<li>Na ceia, salgue aos poucos e prove no caminho.</li>' +
-          '</ul>',
-        loja('Ver a loja Sal Vita')
+        'Olá, {nome}!',
+        'Fim de ano é época de reunir a família e acender a brasa. Algumas ideias para a mesa:',
+        [
+          '- Tempere a carne com um pouco de antecedência e acerte o ponto na hora de servir.',
+          '- Deixe um pote de sal na mesa para cada um ajustar o seu prato.',
+          '- Na ceia, salgue aos poucos e prove no caminho.',
+        ].join('\n'),
+        loja('Ver a loja Sal Vita'),
       ),
     },
     {
@@ -232,12 +218,10 @@ export const RELACIONAMENTO: FollowupSequenceDef = {
       sendCondition: 'always',
       subject: 'Indique o Sal Vita para alguém',
       htmlBody: corpo(
-        para('Olá, {nome}!'),
-        para(
-          'Conhece alguém que gosta de cozinhar e ainda não conhece o sal de Mossoró da Sal Vita? É só encaminhar este e-mail ou mandar o link da loja:'
-        ),
+        'Olá, {nome}!',
+        'Conhece alguém que gosta de cozinhar e ainda não conhece o sal de Mossoró da Sal Vita? É só encaminhar este e-mail ou mandar o link da loja:',
         loja('Link da loja Sal Vita'),
-        para('Não tem prêmio nem regra: é só uma indicação de quem já provou.')
+        'Não tem prêmio nem regra: é só uma indicação de quem já provou.',
       ),
     },
     {
@@ -246,11 +230,9 @@ export const RELACIONAMENTO: FollowupSequenceDef = {
       sendCondition: 'always',
       subject: 'Caixa de 10 kg para quem cozinha muito',
       htmlBody: corpo(
-        para('Olá, {nome}!'),
-        para(
-          'Para quem usa sal no dia a dia, a caixa de 10 kg é a opção que sai mais barata por quilo: R$ 149,90 a caixa, ou R$ 14,99 o quilo. O pacote de 1 kg custa R$ 29,90.'
-        ),
-        loja('Ver a caixa de 10 kg')
+        'Olá, {nome}!',
+        'Para quem usa sal no dia a dia, a caixa de 10 kg é a opção que sai mais barata por quilo: R$ 149,90 a caixa, ou R$ 14,99 o quilo. O pacote de 1 kg custa R$ 29,90.',
+        loja('Ver a caixa de 10 kg'),
       ),
     },
     {
@@ -258,22 +240,18 @@ export const RELACIONAMENTO: FollowupSequenceDef = {
       delayDays: 30,
       sendCondition: 'always',
       subject: '{nome}, quer continuar recebendo nossos e-mails?',
-      htmlBody: [
-        para('Olá, {nome}!'),
-        para(
-          'Faz um tempo que escrevemos para você uma vez por mês. Queremos só mandar o que você gosta de receber.'
-        ),
-        para(
-          '<strong>Se quiser continuar, não precisa fazer nada.</strong> Se preferir parar, é só clicar abaixo e você sai da lista na hora:'
-        ),
-        `<p style="margin:0 0 20px;font-size:17px;"><strong><a href="{unsubscribe}" style="color:#0C3680;">Quero sair da lista</a></strong></p>`,
-        para('Quando precisar de sal, a loja continua aqui:'),
-        loja('Ver a loja Sal Vita'),
-        assinatura,
-        sair,
-      ].join('\n'),
+      htmlBody: corpo(
+        'Olá, {nome}!',
+        'Faz um tempo que escrevemos para você uma vez por mês. Queremos só mandar o que você gosta de receber.',
+        '**Se quiser continuar, não precisa fazer nada.** Se preferir parar, é só clicar abaixo e você sai da lista na hora:',
+        '**[Quero sair da lista]({unsubscribe})**',
+        `Quando precisar de sal, a loja continua aqui: ${loja('Ver a loja Sal Vita')}`,
+      ),
     },
   ],
 };
+
+/** Assinatura dos textos que a 1ª versão gravou em HTML (15/10); a migração troca só esses. */
+export const LEGACY_SEED_HTML_PREFIX = '<p style="margin:0 0 16px;line-height:1.6;color:#334155;">';
 
 export const FOLLOWUP_SEQUENCES: FollowupSequenceDef[] = [POS_COMPRA, RELACIONAMENTO];

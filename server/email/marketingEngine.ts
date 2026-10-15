@@ -18,6 +18,7 @@ import {
 } from './marketingQuota';
 import { randomUUID } from 'crypto';
 import { isBlockedEmail } from '../../shared/blockedEmailDomains';
+import { looksLikeHtml, plainTextToEmailHtml } from '../../shared/emailText';
 
 export interface AudienceMember {
   email: string;
@@ -43,10 +44,19 @@ export function sanitizeCampaignHtml(rawHtml: string): string {
   });
 }
 
-/** Converts formatted text to HTML paragraphs. */
+/**
+ * Corpo do e-mail → HTML.
+ * - HTML com blocos (<p>, <div>, <table>, listas, títulos): só sanitiza.
+ * - Texto simples (sem tag nenhuma): parágrafos, listas "- ", [links](url) e **negrito**
+ *   (shared/emailText.ts — a mesma função da prévia do painel).
+ * - Texto com só tags de linha (<strong>, <a>...): comportamento antigo, parágrafo por bloco.
+ */
 export function bodyToHtml(body: string): string {
-  if (body.includes('<p>') || body.includes('<div>') || body.includes('<table')) {
+  if (/<(p|div|table|ul|ol|h[1-6])\b/i.test(body)) {
     return sanitizeCampaignHtml(body);
+  }
+  if (!looksLikeHtml(body)) {
+    return sanitizeCampaignHtml(plainTextToEmailHtml(body));
   }
   const formatted = body
     .split(/\n\s*\n/)
