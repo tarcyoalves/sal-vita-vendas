@@ -335247,23 +335247,105 @@ init_schema2();
 var LIMITES_CREDITO = { scoreReprova: 400, scoreRestricao: 600, pendenciaReprovaReais: 5e3 };
 var CACHE_DIAS_CREDITO = 30;
 var temAlgo = (g3) => g3.consultado && g3.quantidade > 0;
-function calcularVeredito(r5) {
+var LIMITES_SINAIS = {
+  empresaNovaAlertaMeses: 12,
+  empresaNovaAtencaoMeses: 36,
+  empresaConsolidadaAnos: 10,
+  consultasJanelaDias: 30,
+  consultasAtencao: 3,
+  consultasAlerta: 5,
+  socioRecenteAlertaMeses: 6,
+  socioRecenteAtencaoMeses: 12,
+  semComprasAtencaoDias: 180,
+  comprasRecentesDias: 90,
+  restricaoPequenaReais: 1e3,
+  restricaoAntigaMeses: 24
+};
+var ORGAOS_PUBLICOS = /\b(antt|dnit|detran|ibama|receita|fazenda|pgfn|procuradoria|prefeitura|municipio|estado d[eo]|uniao|inss|crea|crq|crmv|conselho regional|anvisa|inmetro|agencia nacional)\b/;
+var sem = (t5) => t5.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+var mesesEntre = (de, agora) => {
+  if (!de) return null;
+  const d3 = new Date(de);
+  if (!Number.isFinite(d3.getTime())) return null;
+  return (agora.getTime() - d3.getTime()) / (30.44 * 864e5);
+};
+function atenuacaoDoItem(item, agora = /* @__PURE__ */ new Date()) {
+  const texto2 = sem(`${item.credor ?? ""} ${item.descricao} ${item.local ?? ""}`);
+  if (ORGAOS_PUBLICOS.test(texto2)) return "\xF3rg\xE3o p\xFAblico";
+  const idade = mesesEntre(item.data, agora);
+  if (idade !== null && idade >= LIMITES_SINAIS.restricaoAntigaMeses) return `antiga (${Math.floor(idade / 12)} ano(s))`;
+  if (item.valor !== null && item.valor <= LIMITES_SINAIS.restricaoPequenaReais) return "valor pequeno";
+  return null;
+}
+function grupoTodoAtenuado(g3, agora) {
+  return g3.itens.length > 0 && g3.itens.length >= g3.quantidade && g3.itens.every((i4) => atenuacaoDoItem(i4, agora) !== null);
+}
+function analisarSinais(r5, agora = /* @__PURE__ */ new Date()) {
+  const L = LIMITES_SINAIS;
+  const out = [];
+  const idade = mesesEntre(r5.cadastro?.fundacao, agora);
+  if (idade !== null) {
+    const anos = Math.floor(idade / 12);
+    if (idade < L.empresaNovaAlertaMeses) out.push({ codigo: "EMPRESA_NOVA", nivel: "ALERTA", titulo: "Empresa com menos de 1 ano", detalhe: `Fundada h\xE1 ${Math.max(0, Math.floor(idade))} m\xEAs(es).` });
+    else if (idade < L.empresaNovaAtencaoMeses) out.push({ codigo: "EMPRESA_JOVEM", nivel: "ATENCAO", titulo: "Empresa com menos de 3 anos", detalhe: `Fundada h\xE1 ${anos} ano(s).` });
+    else if (anos >= L.empresaConsolidadaAnos) out.push({ codigo: "EMPRESA_CONSOLIDADA", nivel: "POSITIVO", titulo: "Empresa consolidada", detalhe: `${anos} anos de exist\xEAncia.` });
+  }
+  if (r5.consultasRecentes) {
+    const n5 = r5.consultasRecentes.filter((c5) => {
+      const m4 = mesesEntre(c5.data, agora);
+      return m4 !== null && m4 * 30.44 <= L.consultasJanelaDias;
+    }).reduce((s4, c5) => s4 + (c5.quantidade || 1), 0);
+    if (n5 >= L.consultasAlerta) out.push({ codigo: "MUITAS_CONSULTAS", nivel: "ALERTA", titulo: "Muitas consultas recentes", detalhe: `${n5} consulta(s) nos \xFAltimos ${L.consultasJanelaDias} dias \u2014 pode estar buscando cr\xE9dito acima do normal.` });
+    else if (n5 >= L.consultasAtencao) out.push({ codigo: "CONSULTAS_ACIMA", nivel: "ATENCAO", titulo: "Consultas recentes acima do comum", detalhe: `${n5} consulta(s) nos \xFAltimos ${L.consultasJanelaDias} dias.` });
+  }
+  if (r5.socios?.length) {
+    const recentes = r5.socios.map((s4) => ({ s: s4, m: mesesEntre(s4.entrada, agora) })).filter((x2) => x2.m !== null && x2.m < L.socioRecenteAtencaoMeses);
+    if (recentes.length) {
+      const pior = Math.min(...recentes.map((x2) => x2.m));
+      const nomes = recentes.map((x2) => x2.s.nome).join(", ");
+      out.push({ codigo: "SOCIO_RECENTE", nivel: pior < L.socioRecenteAlertaMeses ? "ALERTA" : "ATENCAO", titulo: "Entrada ou troca recente de s\xF3cio/administrador", detalhe: `${nomes} \u2014 h\xE1 menos de ${pior < L.socioRecenteAlertaMeses ? 6 : 12} meses.` });
+    }
+  }
+  const c4 = r5.comportamento;
+  if (c4) {
+    const dias = (() => {
+      const m4 = mesesEntre(c4.ultimaCompraEm, agora);
+      return m4 === null ? null : m4 * 30.44;
+    })();
+    if (dias === null) out.push({ codigo: "SEM_MOVIMENTACAO_INFORMADA", nivel: "ATENCAO", titulo: "Sem movimenta\xE7\xE3o de compras informada", detalhe: "A fonte n\xE3o registrou compras no mercado." });
+    else if (dias > L.semComprasAtencaoDias) out.push({ codigo: "SEM_COMPRAS_RECENTES", nivel: "ATENCAO", titulo: "Sem compras recentes no mercado", detalhe: `\xDAltima compra h\xE1 ${Math.floor(dias)} dias.` });
+    else if (dias <= L.comprasRecentesDias) out.push({ codigo: "COMPRANDO_NORMALMENTE", nivel: "POSITIVO", titulo: "Comprando normalmente no mercado", detalhe: `\xDAltima compra h\xE1 ${Math.floor(dias)} dias${c4.pagamentoPontualPct !== null ? `; ${c4.pagamentoPontualPct}% dos pagamentos em dia` : ""}.` });
+  }
+  for (const [nome, g3] of [["Protestos", r5.anotacoes.protestos], ["Pend\xEAncias financeiras", r5.anotacoes.pendenciasFinanceiras]]) {
+    if (!temAlgo(g3)) continue;
+    const at = g3.itens.map((i4) => atenuacaoDoItem(i4, agora)).filter((x2) => !!x2);
+    if (at.length) out.push({ codigo: "RESTRICAO_ATENUADA", nivel: "ATENCAO", titulo: `${nome}: estudar com calma`, detalhe: `${at.length} de ${g3.quantidade} ocorr\xEAncia(s) s\xE3o ${[...new Set(at)].join(", ")} \u2014 pode ser problema antigo com o cliente operando normalmente.` });
+  }
+  return out;
+}
+function calcularVeredito(r5, agora = /* @__PURE__ */ new Date()) {
   const a5 = r5.anotacoes;
   const s4 = r5.score.valor;
   const motivos = [];
+  const atencao = [];
   if (s4 !== null && s4 < LIMITES_CREDITO.scoreReprova) motivos.push(`Score ${s4} abaixo de ${LIMITES_CREDITO.scoreReprova}`);
-  if (temAlgo(a5.protestos)) motivos.push(`${a5.protestos.quantidade} protesto(s)`);
+  if (temAlgo(a5.protestos)) {
+    if (grupoTodoAtenuado(a5.protestos, agora)) atencao.push(`${a5.protestos.quantidade} protesto(s) pequeno(s)/antigo(s)/de \xF3rg\xE3o p\xFAblico \u2014 estudar com calma`);
+    else motivos.push(`${a5.protestos.quantidade} protesto(s)`);
+  }
   if (temAlgo(a5.chequesSemFundo)) motivos.push(`${a5.chequesSemFundo.quantidade} cheque(s) sem fundo`);
   if (temAlgo(a5.falenciaRecuperacao)) motivos.push("Fal\xEAncia ou recupera\xE7\xE3o judicial");
   const pend = a5.pendenciasFinanceiras;
-  if (temAlgo(pend) && pend.valorTotal !== null && pend.valorTotal > LIMITES_CREDITO.pendenciaReprovaReais) {
+  if (temAlgo(pend) && pend.valorTotal !== null && pend.valorTotal > LIMITES_CREDITO.pendenciaReprovaReais && !grupoTodoAtenuado(pend, agora)) {
     motivos.push(`Pend\xEAncias financeiras somam R$ ${pend.valorTotal.toFixed(2).replace(".", ",")} (acima de R$ ${LIMITES_CREDITO.pendenciaReprovaReais})`);
   }
   if (motivos.length) return { veredito: "REPROVADO_A_PRAZO", motivos };
+  motivos.push(...atencao);
   if (s4 === null) motivos.push("Score n\xE3o informado pela fonte");
   else if (s4 < LIMITES_CREDITO.scoreRestricao) motivos.push(`Score ${s4} abaixo de ${LIMITES_CREDITO.scoreRestricao}`);
-  if (temAlgo(a5.pendenciasFinanceiras)) motivos.push(`${a5.pendenciasFinanceiras.quantidade} pend\xEAncia(s) financeira(s)`);
+  if (temAlgo(pend)) motivos.push(`${pend.quantidade} pend\xEAncia(s) financeira(s)${grupoTodoAtenuado(pend, agora) ? " \u2014 pequenas/antigas/de \xF3rg\xE3o p\xFAblico" : ""}`);
   if (temAlgo(a5.acoesJudiciais)) motivos.push(`${a5.acoesJudiciais.quantidade} a\xE7\xE3o(\xF5es) judicial(is)`);
+  for (const sinal of analisarSinais(r5, agora)) if (sinal.nivel === "ALERTA") motivos.push(`${sinal.titulo} \u2014 an\xE1lise manual`);
   return motivos.length ? { veredito: "COM_RESTRICAO", motivos } : { veredito: "APROVADO", motivos: [] };
 }
 var SEMAFORO = { APROVADO: "VERDE", COM_RESTRICAO: "AMARELO", REPROVADO_A_PRAZO: "VERMELHO" };
@@ -335974,12 +336056,12 @@ var faturamentoRouter = router({
     if (!numeros) {
       throw new TRPCError({ code: "BAD_REQUEST", message: "Informe s\xF3 n\xFAmeros do SMBI, separados por v\xEDrgula (at\xE9 20)." });
     }
-    const [antes] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.id));
-    if (!antes) throw new TRPCError({ code: "NOT_FOUND", message: "Pedido n\xE3o encontrado" });
+    const [antes2] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.id));
+    if (!antes2) throw new TRPCError({ code: "NOT_FOUND", message: "Pedido n\xE3o encontrado" });
     const agora = /* @__PURE__ */ new Date();
     const agoraIso = agora.toISOString();
     const { multiempresaAtivo } = await lerGates();
-    const vinculoEmpresa = decidirVinculoEmpresa({ multiempresaAtivo, empresaCnpj: input.empresaCnpj, pedido: antes, agora });
+    const vinculoEmpresa = decidirVinculoEmpresa({ multiempresaAtivo, empresaCnpj: input.empresaCnpj, pedido: antes2, agora });
     if (!vinculoEmpresa.ok) recusaTrpc(vinculoEmpresa);
     const [row] = await db.update(fatOrders).set({
       ...vinculoEmpresa.gravarEmpresa && vinculoEmpresa.empresa ? { smbiEmpresaCnpj: vinculoEmpresa.empresa.cnpj, smbiEmpresaOrigem: "VINCULO_MANUAL" } : {},
@@ -336002,7 +336084,7 @@ var faturamentoRouter = router({
       eq(fatOrders.id, input.id),
       or2(isNull2(fatOrders.smbiReservadoAte), lte(fatOrders.smbiReservadoAte, agoraIso)),
       // Empresa do pedido não muda entre a leitura e a escrita.
-      antes.smbiEmpresaCnpj == null ? isNull2(fatOrders.smbiEmpresaCnpj) : eq(fatOrders.smbiEmpresaCnpj, antes.smbiEmpresaCnpj)
+      antes2.smbiEmpresaCnpj == null ? isNull2(fatOrders.smbiEmpresaCnpj) : eq(fatOrders.smbiEmpresaCnpj, antes2.smbiEmpresaCnpj)
     )).returning();
     if (!row) {
       throw new TRPCError({ code: "CONFLICT", message: "O pedido mudou ou o rob\xF4 est\xE1 processando-o agora. Recarregue e tente de novo." });
@@ -336010,45 +336092,45 @@ var faturamentoRouter = router({
     await registrarEventoSmbi(input.id, "VINCULADO", ctx.user.name, {
       ...vinculoEmpresa.empresa ? { empresaCnpj: vinculoEmpresa.empresa.cnpj } : {},
       movsais: numeros,
-      anterior: antes.smbiVinculoMovsais ?? (antes.smbiMovsaiId ? [antes.smbiMovsaiId] : [])
+      anterior: antes2.smbiVinculoMovsais ?? (antes2.smbiMovsaiId ? [antes2.smbiMovsaiId] : [])
     });
     console.log(
-      `[smbi] vincularSmbi pedido=${input.id} movsais ${antes.smbiMovsaiId ?? "(vazio)"} -> ${numeros.join(",")} por=user#${ctx.user.id}`
+      `[smbi] vincularSmbi pedido=${input.id} movsais ${antes2.smbiMovsaiId ?? "(vazio)"} -> ${numeros.join(",")} por=user#${ctx.user.id}`
     );
     return row;
   }),
   // Desfaz o vínculo com o SMBI (vínculo errado, como o do 1115 apagado). Auditado. O pedido só
   // volta ao robô com um NOVO clique em "Enviar pedido para SMBI".
   desvincularSmbi: adminProcedure.input(external_exports.object({ id: external_exports.string(), motivo: external_exports.string().trim().min(5).max(300) })).mutation(async ({ ctx, input }) => {
-    const [antes] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.id));
-    if (!antes) throw new TRPCError({ code: "NOT_FOUND", message: "Pedido n\xE3o encontrado" });
-    if (!antes.smbiMovsaiId && !antes.smbiVinculoEstado) {
+    const [antes2] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.id));
+    if (!antes2) throw new TRPCError({ code: "NOT_FOUND", message: "Pedido n\xE3o encontrado" });
+    if (!antes2.smbiMovsaiId && !antes2.smbiVinculoEstado) {
       throw new TRPCError({ code: "BAD_REQUEST", message: "Este pedido n\xE3o est\xE1 vinculado ao SMBI." });
     }
-    const [row] = await db.update(fatOrders).set({ ...PATCH_DESVINCULAR, ...patchDesvincularEmpresa(antes) }).where(eq(fatOrders.id, input.id)).returning();
+    const [row] = await db.update(fatOrders).set({ ...PATCH_DESVINCULAR, ...patchDesvincularEmpresa(antes2) }).where(eq(fatOrders.id, input.id)).returning();
     await registrarEventoSmbi(input.id, "DESVINCULADO", ctx.user.name, {
       motivo: input.motivo,
-      anterior: movsaisLigados(antes)
+      anterior: movsaisLigados(antes2)
     });
-    console.log(`[smbi] desvincularSmbi pedido=${input.id} (era ${movsaisLigados(antes).join(",") || "-"}) por=user#${ctx.user.id}`);
+    console.log(`[smbi] desvincularSmbi pedido=${input.id} (era ${movsaisLigados(antes2).join(",") || "-"}) por=user#${ctx.user.id}`);
     return row;
   }),
   // O administrador aceita um vínculo que o robô marcou com divergência (ex.: quantidade diferente
   // por corte de carga). Se o SMBI já faturou, espelha o faturamento agora.
   confirmarVinculoSmbi: adminProcedure.input(external_exports.object({ id: external_exports.string() })).mutation(async ({ ctx, input }) => {
-    const [antes] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.id));
-    if (!antes) throw new TRPCError({ code: "NOT_FOUND", message: "Pedido n\xE3o encontrado" });
-    if (antes.smbiVinculoEstado !== "VINCULO_COM_DIVERGENCIA") {
+    const [antes2] = await db.select().from(fatOrders).where(eq(fatOrders.id, input.id));
+    if (!antes2) throw new TRPCError({ code: "NOT_FOUND", message: "Pedido n\xE3o encontrado" });
+    if (antes2.smbiVinculoEstado !== "VINCULO_COM_DIVERGENCIA") {
       throw new TRPCError({ code: "BAD_REQUEST", message: "N\xE3o h\xE1 diverg\xEAncia de v\xEDnculo para confirmar neste pedido." });
     }
     const patch = { smbiVinculoEstado: "CONFERIDO" };
-    const fat = antes.smbiVinculoResultado ? faturamentoDoVinculo(antes.smbiVinculoResultado) : null;
+    const fat = antes2.smbiVinculoResultado ? faturamentoDoVinculo(antes2.smbiVinculoResultado) : null;
     if (fat) {
-      const r5 = resolverFaturamento(antes, fat, totalAcordadoDoPedido(antes), /* @__PURE__ */ new Date(), pesoLiquidoDoPedido(antes));
+      const r5 = resolverFaturamento(antes2, fat, totalAcordadoDoPedido(antes2), /* @__PURE__ */ new Date(), pesoLiquidoDoPedido(antes2));
       if (!r5.erro) Object.assign(patch, r5.patch);
     }
     const [row] = await db.update(fatOrders).set(patch).where(eq(fatOrders.id, input.id)).returning();
-    await registrarEventoSmbi(input.id, "VINCULO_CONFIRMADO", ctx.user.name, { movsais: movsaisLigados(antes) });
+    await registrarEventoSmbi(input.id, "VINCULO_CONFIRMADO", ctx.user.name, { movsais: movsaisLigados(antes2) });
     console.log(`[smbi] confirmarVinculoSmbi pedido=${input.id} por=user#${ctx.user.id}`);
     return row;
   }),
@@ -338118,6 +338200,13 @@ init_trpc();
 init_db2();
 init_schema2();
 
+// shared/creditoSinais.ts
+var ORDEM_NIVEL_SINAL = { ALERTA: 0, ATENCAO: 1, POSITIVO: 2 };
+var ROTULO_NIVEL_SINAL = { ALERTA: "Alerta", ATENCAO: "Aten\xE7\xE3o", POSITIVO: "Positivo" };
+function ordenarSinais(sinais) {
+  return sinais.map((s4, i4) => ({ s: s4, i: i4 })).sort((a5, b3) => ORDEM_NIVEL_SINAL[a5.s.nivel] - ORDEM_NIVEL_SINAL[b3.s.nivel] || a5.i - b3.i).map((x2) => x2.s);
+}
+
 // server/lib/credito/documento.ts
 function validarDocumento(bruto, tipoEsperado) {
   const documento = (bruto ?? "").replace(/\D/g, "");
@@ -338151,7 +338240,38 @@ function montarFiltrosListagem(e4) {
   };
 }
 
+// server/lib/credito/semaforos.ts
+var SEMAFOROS_MAX_DOCUMENTOS = 200;
+function normalizarDocumentosSemaforo(brutos) {
+  const vistos = /* @__PURE__ */ new Set();
+  for (const b3 of brutos) {
+    const d3 = (b3 ?? "").replace(/\D/g, "");
+    if (d3.length !== 11 && d3.length !== 14) continue;
+    vistos.add(d3);
+    if (vistos.size >= SEMAFOROS_MAX_DOCUMENTOS) break;
+  }
+  return [...vistos];
+}
+function documentosVisiveis(documentos, quem) {
+  return quem.staff ? [...documentos] : documentos.filter((d3) => quem.daCarteira.has(d3));
+}
+function montarSemaforos(linhas, agora = /* @__PURE__ */ new Date()) {
+  const out = {};
+  for (const l4 of linhas) {
+    if (out[l4.documento]) continue;
+    out[l4.documento] = {
+      veredito: l4.veredito,
+      semaforo: SEMAFORO[l4.veredito],
+      valido: relatorioValido(l4.consultadoEm, agora),
+      simulado: l4.provedor === "simulado"
+    };
+  }
+  return out;
+}
+
 // server/lib/credito/provedores/simulado.ts
+var DIA = 864e5;
+var antes = (base, dias) => new Date(base.getTime() - dias * DIA).toISOString().slice(0, 10);
 var grupo = (itens = [], valorTotal = 0) => ({
   consultado: true,
   quantidade: itens.length,
@@ -338162,6 +338282,10 @@ function relatorioSimulado(documento, tipo, consultadoEm) {
   const d3 = documento.replace(/\D/g, "");
   const ultimo = Number(d3.slice(-1));
   const valorScore = 250 + Number(d3.slice(-3)) * 37 % 700;
+  const penultimo = Number(d3.slice(-2, -1));
+  const base = new Date(consultadoEm);
+  const fundadaHaDias = penultimo === 0 ? 180 : penultimo === 3 ? 730 : 15 * 365;
+  const compra = penultimo === 3 ? 400 : 20;
   const item = (descricao, valor2) => ({ data: "2026-01-15", descricao, valor: valor2, local: "SIMULADO" });
   return {
     documento: d3,
@@ -338179,7 +338303,7 @@ function relatorioSimulado(documento, tipo, consultadoEm) {
       nomeFantasia: null,
       situacao: "ATIVA",
       situacaoEm: null,
-      fundacao: null,
+      fundacao: antes(base, fundadaHaDias),
       naturezaJuridica: null,
       capitalSocial: null,
       cnaePrincipal: null,
@@ -338192,8 +338316,20 @@ function relatorioSimulado(documento, tipo, consultadoEm) {
       telefone: null,
       numeroFiliais: null
     },
-    socios: [],
-    consultasRecentes: [],
+    socios: [
+      { documento: null, nome: "S\xD3CIO SIMULADO UM", entrada: antes(base, Math.min(fundadaHaDias, 3650)), participacao: 60, cargo: "S\xF3cio-administrador" },
+      { documento: null, nome: "S\xD3CIO SIMULADO DOIS", entrada: antes(base, penultimo === 2 ? 90 : Math.min(fundadaHaDias, 2e3)), participacao: 40, cargo: "S\xF3cio" }
+    ],
+    consultasRecentes: penultimo === 1 ? [
+      { data: antes(base, 3), consultante: "CONSULTANTE SIMULADO A", quantidade: 3 },
+      { data: antes(base, 12), consultante: "CONSULTANTE SIMULADO B", quantidade: 3 }
+    ] : [{ data: antes(base, 15), consultante: "CONSULTANTE SIMULADO A", quantidade: 1 }],
+    comportamento: {
+      ultimaCompraEm: antes(base, compra),
+      relacionamentoMaisAntigoEm: antes(base, Math.min(fundadaHaDias, 3e3)),
+      fontesConsultadas: 8,
+      pagamentoPontualPct: 90
+    },
     anotacoes: {
       protestos: ultimo === 0 ? grupo([item("Protesto simulado", 3200)], 3200) : grupo(),
       pendenciasFinanceiras: ultimo === 2 ? grupo([item("Pend\xEAncia simulada", 7500)], 7500) : ultimo === 3 ? grupo([item("Pend\xEAncia simulada", 1200)], 1200) : grupo(),
@@ -338412,6 +338548,7 @@ var TOPO = 72;
 var BASE = 56;
 var LARG = W - MX * 2;
 var LIMITE_Y = H - BASE;
+var FAIXA_SIMULACAO = "SIMULA\xC7\xC3O \u2014 DADOS FICT\xCDCIOS, N\xC3O USAR PARA DECIS\xC3O";
 var FUSO = "America/Sao_Paulo";
 function limparTexto(s4) {
   if (s4 === null || s4 === void 0) return "";
@@ -338567,8 +338704,8 @@ var Pagina = class {
 };
 function secaoResumo(p4, r5, meta) {
   const { doc } = p4;
-  const sem = SEMAFORO[meta.veredito];
-  const cor = COR_SEMAFORO[sem];
+  const sem2 = SEMAFORO[meta.veredito];
+  const cor = COR_SEMAFORO[sem2];
   doc.font("Helvetica-Bold").fontSize(15).fillColor(TEXTO).text(txt(r5.cadastro.razaoSocial ?? r5.cadastro.nomeFantasia), MX, p4.y, { width: LARG });
   p4.y = doc.y + 2;
   doc.font("Helvetica").fontSize(10).fillColor(CINZA).text(`${r5.tipo}: ${formatarDocumento(r5.documento, r5.tipo)}   |   Consulta em ${dataHoraBR(r5.consultadoEm)}`, MX, p4.y, { width: LARG });
@@ -338580,7 +338717,7 @@ function secaoResumo(p4, r5, meta) {
   const alturaPainel = Math.max(86, 44 + alturaMotivos + 12);
   p4.garantir(alturaPainel + 10);
   const y0 = p4.y;
-  doc.roundedRect(MX, y0, LARG, alturaPainel, 6).fill(FUNDO_SEMAFORO[sem]);
+  doc.roundedRect(MX, y0, LARG, alturaPainel, 6).fill(FUNDO_SEMAFORO[sem2]);
   doc.roundedRect(MX, y0, 5, alturaPainel, 2).fill(cor);
   const cx2 = MX + 38;
   const luzes = [["VERMELHO", 0], ["AMARELO", 1], ["VERDE", 2]];
@@ -338588,7 +338725,7 @@ function secaoResumo(p4, r5, meta) {
   const topoCaixa = y0 + (alturaPainel - alturaCaixa) / 2;
   doc.roundedRect(cx2 - 14, topoCaixa, 28, alturaCaixa, 8).fill("#374151");
   for (const [nome, i4] of luzes) {
-    doc.circle(cx2, topoCaixa + 12 + i4 * 21, 8).fill(nome === sem ? COR_SEMAFORO[nome] : "#6B7280");
+    doc.circle(cx2, topoCaixa + 12 + i4 * 21, 8).fill(nome === sem2 ? COR_SEMAFORO[nome] : "#6B7280");
   }
   const tx = MX + 76;
   doc.font("Helvetica").fontSize(8).fillColor(CINZA).text("VEREDITO DE CR\xC9DITO", tx, y0 + 12, { width: larguraTexto, lineBreak: false });
@@ -338650,7 +338787,7 @@ function situacao(g3) {
   if (g3.quantidade > 0) return { texto: "Consta", cor: COR_SEMAFORO.VERMELHO, negrito: true };
   return { texto: "Nada consta", cor: COR_SEMAFORO.VERDE, negrito: true };
 }
-function secaoAnotacoes(p4, r5) {
+function secaoAnotacoes(p4, r5, agora) {
   p4.titulo("Anota\xE7\xF5es negativas");
   p4.tabela(
     [
@@ -338675,22 +338812,58 @@ function secaoAnotacoes(p4, r5) {
     for (const [k3, nome] of comItens) {
       const g3 = r5.anotacoes[k3];
       p4.subtitulo(`${nome} - ${g3.quantidade} ocorr\xEAncia(s)${g3.valorTotal !== null ? ", total " + brl2(g3.valorTotal) : ""}`);
+      const comCredor = g3.itens.some((it) => !!it.credor);
+      const obs = g3.itens.map((it) => atenuacaoDoItem(it, agora));
+      const comObs = obs.some((o4) => !!o4);
+      const colunas = [{ titulo: "Data", largura: 58 }, { titulo: "Descri\xE7\xE3o", largura: comCredor || comObs ? 150 : 223 }];
+      if (comCredor) colunas.push({ titulo: "Credor", largura: 100 });
+      colunas.push({ titulo: "Local", largura: comCredor || comObs ? 100 : 130 });
+      if (comObs) colunas.push({ titulo: "Observa\xE7\xE3o", largura: 80 });
+      colunas.push({ titulo: "Valor", largura: 80, alinhar: "right" });
       p4.tabela(
-        [
-          { titulo: "Data", largura: 62 },
-          { titulo: "Descri\xE7\xE3o", largura: 223 },
-          { titulo: "Local", largura: 130 },
-          { titulo: "Valor", largura: 100, alinhar: "right" }
-        ],
-        g3.itens.map((it) => [
-          { texto: dataBR(it.data) },
-          { texto: txt(it.descricao) },
-          { texto: txt(it.local) },
-          { texto: brl2(it.valor) }
-        ])
+        colunas,
+        g3.itens.map((it, i4) => {
+          const linha = [{ texto: dataBR(it.data) }, { texto: txt(it.descricao) }];
+          if (comCredor) linha.push({ texto: txt(it.credor) });
+          linha.push({ texto: txt(it.local) });
+          if (comObs) linha.push({ texto: obs[i4] ? `Estudar com calma: ${obs[i4]}` : "\u2014", cor: obs[i4] ? COR_SEMAFORO.AMARELO : CINZA });
+          linha.push({ texto: brl2(it.valor) });
+          return linha;
+        })
       );
     }
   }
+}
+var COR_NIVEL = { ALERTA: COR_SEMAFORO.VERMELHO, ATENCAO: "#B45309", POSITIVO: COR_SEMAFORO.VERDE };
+function secaoPontosDeAtencao(p4, r5, agora) {
+  const sinais = ordenarSinais(analisarSinais(r5, agora));
+  p4.titulo("Pontos de aten\xE7\xE3o");
+  if (!sinais.length) {
+    p4.paragrafo("Nenhum ponto de aten\xE7\xE3o identificado pelas regras da Sal Vita.", { cor: CINZA });
+    return;
+  }
+  p4.tabela(
+    [{ titulo: "N\xEDvel", largura: 60 }, { titulo: "Ponto", largura: 190 }, { titulo: "Detalhe", largura: 265 }],
+    sinais.map((s4) => [
+      { texto: ROTULO_NIVEL_SINAL[s4.nivel].toUpperCase(), cor: COR_NIVEL[s4.nivel], negrito: true },
+      { texto: s4.titulo, negrito: true },
+      { texto: s4.detalhe }
+    ])
+  );
+}
+function secaoMovimentacao(p4, r5) {
+  const c4 = r5.comportamento;
+  if (!c4) return;
+  p4.titulo("Movimenta\xE7\xE3o comercial");
+  p4.tabela(
+    [{ titulo: "Campo", largura: 200 }, { titulo: "Informa\xE7\xE3o", largura: 315 }],
+    [
+      ["\xDAltima compra no mercado", dataBR(c4.ultimaCompraEm)],
+      ["Relacionamento comercial mais antigo", dataBR(c4.relacionamentoMaisAntigoEm)],
+      ["Fornecedores que informaram", c4.fontesConsultadas === null ? "\u2014" : String(c4.fontesConsultadas)],
+      ["Pagamentos em dia", pct(c4.pagamentoPontualPct)]
+    ].map(([k3, v4]) => [{ texto: k3, negrito: true, cor: CINZA }, { texto: v4 }])
+  );
 }
 function secaoCadastro(p4, r5) {
   const c4 = r5.cadastro;
@@ -338777,6 +338950,10 @@ function cabecalhoRodape(doc, r5, i4, total) {
   doc.font("Helvetica").fontSize(8).fillColor("#DCE6F7").text(`Fonte dos dados: ${limparTexto(r5.fonte.provedor)}/${limparTexto(r5.fonte.produto)}`, MX, 29, { width: 360, lineBreak: false });
   doc.font("Helvetica").fontSize(8).fillColor("#FFFFFF").text(`Consulta: ${dataHoraBR(r5.consultadoEm)}`, W - MX - 170, 14, { width: 170, align: "right", lineBreak: false });
   doc.text(`${r5.tipo} ${formatarDocumento(r5.documento, r5.tipo)}`, W - MX - 170, 28, { width: 170, align: "right", lineBreak: false });
+  if (r5.fonte.provedor === "simulado") {
+    doc.rect(0, 44, W, 22).fill(COR_SEMAFORO.VERMELHO);
+    doc.font("Helvetica-Bold").fontSize(10).fillColor("#FFFFFF").text(FAIXA_SIMULACAO, MX, 51, { width: LARG, align: "center", lineBreak: false });
+  }
   const fy = H - 38;
   doc.moveTo(MX, fy).lineTo(W - MX, fy).lineWidth(0.5).strokeColor(LINHA).stroke();
   doc.font("Helvetica").fontSize(7.5).fillColor(CINZA).text("Confidencial \u2014 uso interno da Sal Vita para decis\xE3o de cr\xE9dito", MX, fy + 6, { width: 380, lineBreak: false });
@@ -338806,9 +338983,13 @@ async function gerarPdfCredito(relatorio, meta) {
   });
   try {
     const p4 = new Pagina(doc);
+    const dataConsulta = new Date(relatorio.consultadoEm);
+    const agora = Number.isFinite(dataConsulta.getTime()) ? dataConsulta : /* @__PURE__ */ new Date();
     secaoResumo(p4, relatorio, meta);
-    secaoAnotacoes(p4, relatorio);
+    secaoPontosDeAtencao(p4, relatorio, agora);
+    secaoAnotacoes(p4, relatorio, agora);
     secaoCadastro(p4, relatorio);
+    secaoMovimentacao(p4, relatorio);
     secaoSocios(p4, relatorio);
     secaoConsultas(p4, relatorio);
     secaoFinal(p4, meta.consultadoPor);
@@ -338866,8 +339047,28 @@ function cartaoDoRelatorio(row) {
     probabilidadeInadimplencia: row.relatorio.score.probabilidadeInadimplencia,
     resumo: resumoAnotacoes(row.relatorio),
     valido: relatorioValido(row.consultadoEm),
-    razaoSocial: row.relatorio.cadastro.razaoSocial ?? row.razaoSocial
+    razaoSocial: row.relatorio.cadastro.razaoSocial ?? row.razaoSocial,
+    provedor: row.provedor,
+    simulado: row.provedor === "simulado",
+    // Pontos de atenção na data da consulta (mesma referência do veredito e do PDF).
+    sinais: ordenarSinais(analisarSinais(row.relatorio, row.consultadoEm))
   };
+}
+async function documentosDaCarteira(user, documentos) {
+  const out = /* @__PURE__ */ new Set();
+  if (documentos.length === 0) return out;
+  const filtro = await userTaskFilter(user.id, user.name ?? "");
+  const deTarefas = await db.select({ cnpj: tasks.cnpj }).from(tasks).where(and(inArray(tasks.cnpj, documentos), filtro));
+  for (const t5 of deTarefas) if (t5.cnpj) out.add(t5.cnpj);
+  const sid = await sellerIdDoUsuario(user.id);
+  if (sid !== null) {
+    const lista = sql.join(documentos.map((d3) => sql`${d3}::text`), sql`, `);
+    const r5 = await db.execute(sql`
+      SELECT DISTINCT regexp_replace(cnpj, '\\D', '', 'g') AS doc FROM fat_orders
+      WHERE seller_id = ${sid}::integer AND regexp_replace(cnpj, '\\D', '', 'g') IN (${lista})`);
+    for (const row of r5.rows) out.add(row.doc);
+  }
+  return out;
 }
 var documentoInput = external_exports.string().min(1).max(30);
 function erroDocumento(documento, tipo) {
@@ -338894,6 +339095,25 @@ var creditoRouter = router({
     }
     const row = await ultimoRelatorioDoDocumento(documento);
     return row ? cartaoDoRelatorio(row) : null;
+  }),
+  /** Semáforo do relatório mais recente de cada CNPJ da lista (uma consulta só). Sem relatório ou fora da carteira: não aparece. */
+  semaforos: protectedProcedure.input(external_exports.object({ documentos: external_exports.array(external_exports.string().max(30)).max(SEMAFOROS_MAX_DOCUMENTOS) })).query(async ({ ctx, input }) => {
+    const staff = ehStaff(ctx.user.role);
+    const pedidos = normalizarDocumentosSemaforo(input.documentos);
+    const carteira = staff || pedidos.length === 0 ? /* @__PURE__ */ new Set() : await documentosDaCarteira(ctx.user, pedidos);
+    const docs = documentosVisiveis(pedidos, { staff, daCarteira: carteira });
+    if (docs.length === 0) return {};
+    const lista = sql.join(docs.map((d3) => sql`${d3}::text`), sql`, `);
+    const r5 = await db.execute(sql`
+        SELECT DISTINCT ON (documento) documento, veredito, consultado_em, provedor
+        FROM credit_reports WHERE documento IN (${lista})
+        ORDER BY documento, consultado_em DESC, id DESC`);
+    return montarSemaforos(r5.rows.map((l4) => ({
+      documento: l4.documento,
+      veredito: comoVeredito(l4.veredito),
+      consultadoEm: l4.consultado_em,
+      provedor: l4.provedor
+    })));
   }),
   relatorio: staffProcedure.input(external_exports.object({ id: external_exports.number().int() })).query(async ({ input }) => {
     const [row] = await db.select().from(creditReports).where(eq(creditReports.id, input.id));
