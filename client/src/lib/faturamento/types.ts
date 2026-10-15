@@ -98,6 +98,10 @@ export interface Pedido {
   smbiEmpresaTravadaEm?: string | null;
   smbiEscritaIniciadaEm?: string | null;
   smbiEmpresaOrigem?: string | null;
+  // Liberação de crédito pelo admin (credito.liberarPedido) — SOMENTE LEITURA, o upsert nunca os envia.
+  creditoLiberadoPor?: string | null;
+  creditoLiberadoEm?: string | null;
+  creditoLiberadoMotivo?: string | null;
   /** Número interno sequencial do pedido no CRM (só leitura; vem do servidor). */
   numeroCrm?: number | null;
   createdByUserId?: number | null;
