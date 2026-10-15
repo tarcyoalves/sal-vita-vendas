@@ -8,6 +8,7 @@
  * e-mail.
  */
 
+import { safeErr, maskEmail, redact } from '../lib/logSafe';
 import crypto from 'crypto';
 import { and, eq, isNull, isNotNull, ne, or, sql, lte, lt, asc, inArray } from 'drizzle-orm';
 import { db } from '../db';
@@ -53,13 +54,13 @@ export async function enrollInSequence(
     const [suppressed] = await db.select({ email: emailSuppressions.email })
       .from(emailSuppressions).where(eq(emailSuppressions.email, email)).limit(1);
     if (suppressed) {
-      console.log(`[enrollInSequence] SKIPPED ${email}: suppressed`);
+      console.log(`[enrollInSequence] SKIPPED ${maskEmail(email)}: suppressed`);
       return { enrolled: false, reason: 'suppressed' };
     }
 
     // Controle de frequência: não inscreve quem já atingiu o teto na janela.
     if (await isEmailOverCapped(email)) {
-      console.log(`[enrollInSequence] SKIPPED ${email}: frequency cap`);
+      console.log(`[enrollInSequence] SKIPPED ${maskEmail(email)}: frequency cap`);
       return { enrolled: false, reason: 'frequency_cap' };
     }
 
@@ -68,7 +69,7 @@ export async function enrollInSequence(
       .where(eq(emailSequenceSteps.sequenceId, sequenceId))
       .orderBy(emailSequenceSteps.stepOrder);
     if (steps.length === 0) {
-      console.log(`[enrollInSequence] SKIPPED ${email}: sequence ${sequenceId} has 0 steps`);
+      console.log(`[enrollInSequence] SKIPPED ${maskEmail(email)}: sequence ${sequenceId} has 0 steps`);
       return { enrolled: false, reason: 'no_steps' };
     }
 
@@ -86,7 +87,7 @@ export async function enrollInSequence(
       .where(and(...dupConditions))
       .limit(1);
     if (existing) {
-      console.log(`[enrollInSequence] SKIPPED ${email}: duplicate (already active in sequence ${sequenceId} for task ${opts.taskId})`);
+      console.log(`[enrollInSequence] SKIPPED ${maskEmail(email)}: duplicate (already active in sequence ${sequenceId} for task ${opts.taskId})`);
       return { enrolled: false, reason: 'duplicate' };
     }
 
@@ -111,10 +112,10 @@ export async function enrollInSequence(
       await processSequenceEnrollments({ enrollmentIds: [inserted.id] });
     }
 
-    console.log(`[enrollInSequence] OK ${email}: enrolled in sequence ${sequenceId}`);
+    console.log(`[enrollInSequence] OK ${maskEmail(email)}: enrolled in sequence ${sequenceId}`);
     return { enrolled: true };
   } catch (err) {
-    console.error('[automations] enrollInSequence failed:', err);
+    console.error('[automations] enrollInSequence failed:', safeErr(err));
     return { enrolled: false, reason: 'error' };
   }
 }
@@ -133,7 +134,7 @@ export async function addTagToTask(taskId: number, tag: string): Promise<void> {
       })
       .where(eq(tasks.id, taskId));
   } catch (err) {
-    console.error('[automations] addTagToTask failed:', err);
+    console.error('[automations] addTagToTask failed:', safeErr(err));
   }
 }
 
@@ -183,11 +184,11 @@ export async function runTriggerNow(
           await addTagToTask(task.id, actionConfig.tag);
         }
       } catch (err) {
-        console.error(`[automations] rule ${rule.id} (${rule.name}) failed:`, err);
+        console.error(`[automations] rule ${rule.id} (${rule.name}) failed:`, safeErr(err));
       }
     }
   } catch (err) {
-    console.error('[automations] runTriggerNow failed:', err);
+    console.error('[automations] runTriggerNow failed:', safeErr(err));
   }
 }
 
@@ -210,7 +211,7 @@ export async function cancelAllEnrollments(email: string): Promise<void> {
         eq(emailSequenceEnrollments.status, 'active'),
       ));
   } catch (err) {
-    console.error('[automations] cancelAllEnrollments failed:', err);
+    console.error('[automations] cancelAllEnrollments failed:', safeErr(err));
   }
 }
 
@@ -224,7 +225,7 @@ async function cancelActiveEnrollments(email: string, exceptSequenceId: number):
         ne(emailSequenceEnrollments.sequenceId, exceptSequenceId),
       ));
   } catch (err) {
-    console.error('[automations] cancelActiveEnrollments failed:', err);
+    console.error('[automations] cancelActiveEnrollments failed:', safeErr(err));
   }
 }
 
@@ -276,11 +277,11 @@ export async function evaluateInactiveDaysRules(): Promise<{ rulesEvaluated: num
           if (result.enrolled) enrolled++;
         }
       } catch (err) {
-        console.error(`[automations] inactive_days rule ${rule.id} (${rule.name}) failed:`, err);
+        console.error(`[automations] inactive_days rule ${rule.id} (${rule.name}) failed:`, safeErr(err));
       }
     }
   } catch (err) {
-    console.error('[automations] evaluateInactiveDaysRules failed:', err);
+    console.error('[automations] evaluateInactiveDaysRules failed:', safeErr(err));
   }
   return { rulesEvaluated, enrolled };
 }
@@ -337,7 +338,7 @@ async function createHotLeadReminder(taskId: number, now: Date): Promise<void> {
         or(isNull(tasks.hotLeadReminderAt), lt(tasks.hotLeadReminderAt, dedupeCutoff)),
       ));
   } catch (err) {
-    console.error('[automations] createHotLeadReminder failed:', err);
+    console.error('[automations] createHotLeadReminder failed:', safeErr(err));
   }
 }
 
@@ -387,7 +388,7 @@ export async function flagEngagementByMessageId(
         .where(eq(tasks.id, taskId));
     }
   } catch (err) {
-    console.error('[automations] flagEngagementByMessageId failed:', err);
+    console.error('[automations] flagEngagementByMessageId failed:', safeErr(err));
   }
 }
 
@@ -554,7 +555,7 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
               await runTriggerNow('sequence_completed', taskData, { completedSequenceId: enrollment.sequenceId });
             }
           } catch (err) {
-            console.error('[automations] sequence_completed trigger failed:', err);
+            console.error('[automations] sequence_completed trigger failed:', safeErr(err));
           }
         }
         break;

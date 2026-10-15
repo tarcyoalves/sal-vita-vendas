@@ -6,6 +6,7 @@
  * a mesma implementação (claim atômico + reserva de cota), sem duplicar.
  */
 
+import { safeErr, maskEmail, redact } from '../lib/logSafe';
 import { and, eq, count, inArray, lt, lte, or, isNotNull, sql as dsql } from 'drizzle-orm';
 import { isRetryableProviderError, retryMarker, jaTentouDeNovo } from '../lib/emailRetry';
 import { db } from '../db';
@@ -259,7 +260,7 @@ export async function processDueCampaigns(deadline: number): Promise<CronCampaig
       .returning({ id: emailCampaigns.id });
     result.promoted = promoted.length;
   } catch (err) {
-    console.error('[processDueCampaigns] promote error:', err);
+    console.error('[processDueCampaigns] promote error:', safeErr(err));
   }
 
   // 2. Campaigns in flight ('sending') that still have pending/in-flight
@@ -280,7 +281,7 @@ export async function processDueCampaigns(deadline: number): Promise<CronCampaig
         ),
       ));
   } catch (err) {
-    console.error('[processDueCampaigns] list error:', err);
+    console.error('[processDueCampaigns] list error:', safeErr(err));
     return result;
   }
 
@@ -293,7 +294,7 @@ export async function processDueCampaigns(deadline: number): Promise<CronCampaig
       try {
         res = await processCampaignBatch(c.id);
       } catch (err) {
-        console.error(`[processDueCampaigns] campaign ${c.id} batch error:`, err);
+        console.error(`[processDueCampaigns] campaign ${c.id} batch error:`, safeErr(err));
         break;
       }
       result.sent += res.sentNow;

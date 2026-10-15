@@ -1062,7 +1062,7 @@ export const emailMarketingRouter = router({
         else { skippedDuplicateOrSuppressed++; skipReasons.push(`${t.email}: ${result.reason ?? 'duplicado/suprimido'}`); }
       }
 
-      console.log(`[enrollTasksInSequence] seq=${input.sequenceId}: enrolled=${enrolled}, skipped=${skippedNoEmail + skippedUnconfirmed + skippedDuplicateOrSuppressed}`, skipReasons.length > 0 ? skipReasons : '');
+      console.log(`[enrollTasksInSequence] seq=${input.sequenceId}: enrolled=${enrolled}, skipped=${skippedNoEmail + skippedUnconfirmed + skippedDuplicateOrSuppressed}`);
       return { enrolled, skippedNoEmail, skippedUnconfirmed, skippedDuplicateOrSuppressed, skipReasons };
     }),
 

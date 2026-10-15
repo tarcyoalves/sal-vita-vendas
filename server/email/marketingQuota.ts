@@ -1,3 +1,4 @@
+import { safeErr, maskEmail, redact } from '../lib/logSafe';
 import { ordersDb as db } from '../db/ordersDb';
 import { sql } from 'drizzle-orm';
 import { emailSendCounters } from '../db/schema';
@@ -194,7 +195,7 @@ export async function sendBatch(
           results.push({ ok: true, messageId: data.id });
         } else {
           const errText = await res.text();
-          console.warn(`[email-mkt] Resend error (${res.status}): ${errText}`);
+          console.warn(`[email-mkt] Resend error (${res.status}): ${redact(errText)}`);
           results.push({ ok: false, error: `HTTP ${res.status}: ${errText.slice(0, 100)}` });
         }
       } else if (account.provider === 'brevo') {
@@ -221,12 +222,12 @@ export async function sendBatch(
           results.push({ ok: true, messageId: data.messageId ?? data.id });
         } else {
           const errText = await res.text();
-          console.warn(`[email-mkt] Brevo error (${res.status}): ${errText}`);
+          console.warn(`[email-mkt] Brevo error (${res.status}): ${redact(errText)}`);
           results.push({ ok: false, error: `HTTP ${res.status}: ${errText.slice(0, 100)}` });
         }
       }
     } catch (err: any) {
-      console.warn(`[email-mkt] Network/send error to ${msg.to}: ${err.message}`);
+      console.warn(`[email-mkt] Network/send error to ${maskEmail(msg.to)}: ${redact(err.message)}`);
       results.push({ ok: false, error: 'network_error' });
     }
   }

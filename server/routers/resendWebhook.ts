@@ -1,3 +1,5 @@
+import { maskEmail } from '../lib/logSafe';
+import { safeErr } from '../lib/logSafe';
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { ordersDb as db } from '../db/ordersDb';
@@ -83,7 +85,7 @@ export async function handleResendWebhook(req: Request, res: Response) {
         VALUES (${messageId}, ${recipientEmail}, ${type})
       `);
     } catch (err) {
-      console.error('[resend-webhook] Error inserting event:', err);
+      console.error('[resend-webhook] Error inserting event:', safeErr(err));
     }
   }
 
@@ -92,7 +94,7 @@ export async function handleResendWebhook(req: Request, res: Response) {
     if (recipientEmail) {
       const reason = type === 'email.bounced' ? 'bounce' : 'complaint';
       await suppressEmailGlobal(recipientEmail, reason);
-      console.log(`[resend-webhook] Suppressed ${recipientEmail} due to ${reason}`);
+      console.log(`[resend-webhook] Suppressed ${maskEmail(recipientEmail)} due to ${reason}`);
     }
   }
 

@@ -1,3 +1,4 @@
+import { safeErr } from '../lib/logSafe';
 import { Request, Response } from 'express';
 import { ordersDb as db } from '../db/ordersDb';
 import { db as mainDb } from '../db';
@@ -76,7 +77,7 @@ export async function suppressEmailGlobal(email: string, reason = 'unsubscribe')
     } catch (err) {
       failures.push(step.name);
       if (step.primary) primaryFailed = true;
-      console.error(`[suppressGlobal] ${step.primary ? 'PRINCIPAL ' : ''}falha em ${step.name}:`, err);
+      console.error(`[suppressGlobal] ${step.primary ? 'PRINCIPAL ' : ''}falha em ${step.name}:`, safeErr(err));
     }
   }
   return { failures, primaryFailed };

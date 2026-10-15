@@ -10,6 +10,7 @@
  * Each account has its own daily counter persisted in email_send_counters.
  */
 
+import { safeErr, maskEmail, redact } from '../lib/logSafe';
 import crypto from 'crypto';
 import sanitizeHtml from 'sanitize-html';
 import { sql } from '../db';
@@ -318,7 +319,7 @@ export async function setDomainTracking(
     });
     if (!res.ok) {
       const err = await res.text().catch(() => res.statusText);
-      console.error(`[email-marketing] Resend domain update error ${res.status}:`, err);
+      console.error(`[email-marketing] Resend domain update error ${res.status}:`, safeErr(err));
       // Devolve o motivo real (não só o código) — a UI mostra isso inline para o
       // admin diagnosticar (ex.: 422 domínio não verificado, 401 chave sem acesso
       // total, 404 domínio de outra conta). Sem isso vira adivinhação.
@@ -365,7 +366,8 @@ export async function listResendWebhooks(account: MarketingAccount): Promise<Web
       return [];
     }
     const raw = await res.json();
-    console.log(`[tracking] webhooks response:`, JSON.stringify(raw).slice(0, 500));
+    // Não logar o corpo: a resposta da Resend traz as URLs dos webhooks (podem ter segredo na query).
+    console.log(`[tracking] webhooks listados: ${Array.isArray(raw) ? raw.length : (raw as { data?: unknown[] })?.data?.length ?? 0}`);
     const items = Array.isArray(raw) ? raw : (raw as any)?.data ?? [];
     return items.map((w: any) => ({
       id: String(w.id ?? ''),
@@ -374,7 +376,7 @@ export async function listResendWebhooks(account: MarketingAccount): Promise<Web
       active: w.active,
     }));
   } catch (err) {
-    console.warn('[tracking] listWebhooks error:', err);
+    console.warn('[tracking] listWebhooks error:', safeErr(err));
     return [];
   }
 }
@@ -386,7 +388,7 @@ export async function ensureWebhookEvents(account: MarketingAccount, _webhookUrl
 
   const match = webhooks.find(w => w.endpointUrl && w.endpointUrl.includes('resend-webhook'));
   if (!match) {
-    console.warn(`[tracking] no webhook matching 'resend-webhook'. Found: ${webhooks.map(w => w.endpointUrl).join(', ')}`);
+    console.warn(`[tracking] no webhook matching 'resend-webhook'. Found ${webhooks.length} webhook(s) (URLs omitidas do log)`);
     return { fixed: false, error: `no_match. endpoints: ${webhooks.map(w => w.endpointUrl).join(', ')}` };
   }
 
@@ -624,7 +626,7 @@ async function sendSingleResend(
     clearTimeout(timer);
     if (!res.ok) {
       const err = await res.text().catch(() => res.statusText);
-      console.error(`[email-marketing] Resend single error ${res.status}:`, err);
+      console.error(`[email-marketing] Resend single error ${res.status}:`, safeErr(err));
       return { to: m.to, ok: false, error: `resend_${res.status}` };
     }
     const body = await res.json() as { id?: string };
@@ -679,7 +681,7 @@ async function sendBatchResend(account: MarketingAccount, messages: BatchMessage
 
     if (!res.ok) {
       const err = await res.text().catch(() => res.statusText);
-      console.error(`[email-marketing] Resend batch error ${res.status}:`, err);
+      console.error(`[email-marketing] Resend batch error ${res.status}:`, safeErr(err));
       return messages.map(m => ({ to: m.to, ok: false, error: `resend_${res.status}` }));
     }
 
@@ -692,7 +694,7 @@ async function sendBatchResend(account: MarketingAccount, messages: BatchMessage
     // Counting handled by the caller's quota reservation (reserveSendQuota).
     return results;
   } catch (err) {
-    console.error('[email-marketing] sendBatch failed:', err);
+    console.error('[email-marketing] sendBatch failed:', safeErr(err));
     return messages.map(m => ({ to: m.to, ok: false, error: 'network_error' }));
   }
 }
@@ -757,7 +759,7 @@ async function sendBatchBrevo(account: MarketingAccount, messages: BatchMessage[
 
     if (!res.ok) {
       const err = await res.text().catch(() => res.statusText);
-      console.error(`[email-marketing] Brevo batch error ${res.status}:`, err);
+      console.error(`[email-marketing] Brevo batch error ${res.status}:`, safeErr(err));
       return messages.map(m => ({ to: m.to, ok: false, error: `brevo_${res.status}` }));
     }
 
@@ -772,7 +774,7 @@ async function sendBatchBrevo(account: MarketingAccount, messages: BatchMessage[
     // Counting handled by the caller's quota reservation (reserveSendQuota).
     return results;
   } catch (err) {
-    console.error('[email-marketing] Brevo sendBatch failed:', err);
+    console.error('[email-marketing] Brevo sendBatch failed:', safeErr(err));
     return messages.map(m => ({ to: m.to, ok: false, error: 'network_error' }));
   }
 }

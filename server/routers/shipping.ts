@@ -1,3 +1,4 @@
+import { safeErr } from '../lib/logSafe';
 import { z } from 'zod';
 import { decideLabelStep, RESUME_MIN_AGE_MS } from '../lib/labelResume';
 import crypto from 'crypto';
@@ -211,7 +212,7 @@ export async function applyMeTracking(
   }
   let channel: 'email' | null = null;
   try { channel = await notifyShippingEvent(current, d.event); }
-  catch (e) { console.error(`[shipping-event] aviso ${d.event} do pedido ${order.id} falhou:`, e); }
+  catch (e) { console.error(`[shipping-event] aviso ${d.event} do pedido ${order.id} falhou:`, safeErr(e)); }
   if (!channel) {
     // Nada saiu (sem e-mail, cota do dia, falha de rede): libera a trava para tentar de novo.
     await releaseShippingEvent(order.id, d.event);
@@ -466,7 +467,7 @@ async function releaseLabel(orderId: number): Promise<void> {
   try {
     await db.update(siteOrders).set({ meOrderId: null, updatedAt: new Date() })
       .where(and(eq(siteOrders.id, orderId), eq(siteOrders.meOrderId, 'pending')));
-  } catch (e) { console.error(`[label] liberar reserva do pedido ${orderId} falhou:`, e); }
+  } catch (e) { console.error(`[label] liberar reserva do pedido ${orderId} falhou:`, safeErr(e)); }
 }
 
 export const shippingRouter = router({
@@ -847,7 +848,7 @@ Seja direto e use emojis para facilitar leitura.`;
             if (channel) await markShippingEvent(updated.id, 'posted', channel);
             else await releaseShippingEvent(updated.id, 'posted');
           }
-        } catch (e) { console.error('[updateTracking] aviso de envio falhou:', e); }
+        } catch (e) { console.error('[updateTracking] aviso de envio falhou:', safeErr(e)); }
       }
       return updated;
     }),

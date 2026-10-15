@@ -1,3 +1,4 @@
+import { safeErr } from '../lib/logSafe';
 import { z } from 'zod';
 import { router, publicProcedure, protectedProcedure } from '../trpc';
 import { ordersDb as db } from '../db/ordersDb';
@@ -747,7 +748,7 @@ export const recoveryRouter = router({
           await db.update(abandonedCarts)
             .set({ recoverySentAt: c.prev ? new Date(c.prev) : null })
             .where(eq(abandonedCarts.id, c.id));
-        } catch (e) { console.error(`[recovery] restaurar carrinho ${c.id} falhou:`, e); }
+        } catch (e) { console.error(`[recovery] restaurar carrinho ${c.id} falhou:`, safeErr(e)); }
       };
       let sent = 0;
       for (let i = 0; i < pending.length; i++) {
@@ -758,7 +759,7 @@ export const recoveryRouter = router({
         }
         let ok = false;
         try { ({ ok } = await sendViaWhatsApp(cart.customerPhone, recoveryMsg(cart.customerName))); }
-        catch (e) { console.error(`[recovery] envio ao carrinho ${cart.id} falhou:`, e); }
+        catch (e) { console.error(`[recovery] envio ao carrinho ${cart.id} falhou:`, safeErr(e)); }
         if (ok) sent++;
         else await restore(cart); // falhou: o carrinho volta a ser elegível
         await new Promise(r => setTimeout(r, 1500));

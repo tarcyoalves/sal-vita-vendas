@@ -1,3 +1,4 @@
+import { safeErr, maskEmail, redact } from '../lib/logSafe';
 import { ordersDb as db } from '../db/ordersDb';
 import { db as mainDb } from '../db';
 import { sql } from 'drizzle-orm';
@@ -101,7 +102,7 @@ export async function enrollInSequence(
     try {
       await processSingleEnrollment(enrollmentId);
     } catch (err) {
-      console.error(`[enrollInSequence] Instant dispatch error for enrollment ${enrollmentId}:`, err);
+      console.error(`[enrollInSequence] Instant dispatch error for enrollment ${enrollmentId}:`, safeErr(err));
     }
   }
 

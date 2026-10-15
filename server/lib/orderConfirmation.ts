@@ -1,3 +1,4 @@
+import { safeErr } from './logSafe';
 import crypto from 'crypto';
 import { eq, and, or, ne, sql } from 'drizzle-orm';
 import { ordersDb } from '../db/ordersDb';
@@ -50,7 +51,7 @@ export async function appendReviewNote(orderId: number, motivo: string): Promise
         updatedAt: new Date(),
       })
       .where(and(eq(siteOrders.id, orderId), sql`strpos(coalesce(${siteOrders.notes}, ''), ${motivo}::text) = 0`));
-  } catch (e) { console.error(`[review-note] pedido ${orderId}: falhou:`, e); }
+  } catch (e) { console.error(`[review-note] pedido ${orderId}: falhou:`, safeErr(e)); }
 }
 
 /** Telefone para log: só os 4 últimos dígitos. */
@@ -80,7 +81,7 @@ export async function bumpCouponUsage(code: string | null | undefined, delta: 1 
         .set({ usedCount: sql`GREATEST(used_count - 1, 0)` })
         .where(eq(coupons.code, code));
     }
-  } catch (e) { console.error('[coupon] usage bump failed:', e); }
+  } catch (e) { console.error('[coupon] usage bump failed:', safeErr(e)); }
 }
 
 // Server-side Meta Conversions API (CAPI) Purchase — iOS/adblock-proof, fired on
@@ -157,7 +158,7 @@ export async function sendCapiPurchase(order: SiteOrder): Promise<void> {
       console.error('[capi] Purchase failed', r.status, j?.error?.code ?? '', j?.error?.type ?? '');
     }
     else console.log(`[capi] Purchase sent for order ${order.id}`);
-  } catch (e) { console.error('[capi] error:', e); }
+  } catch (e) { console.error('[capi] error:', safeErr(e)); }
 }
 
 // Sends to BOTH 9th-digit variants IN PARALLEL — wa-server blindly returns
@@ -206,21 +207,21 @@ export async function confirmOrderPaid(order: SiteOrder): Promise<void> {
   // aqui, então ninguém refaz esta função — um passo que falha não pode impedir
   // os seguintes.
   try { await bumpCouponUsage(order.couponCode, 1, order.id); }
-  catch (e) { console.error(`[order-confirmation] pedido ${order.id}: cupom falhou:`, e); }
+  catch (e) { console.error(`[order-confirmation] pedido ${order.id}: cupom falhou:`, safeErr(e)); }
   try { await sendCapiPurchase(order); }
-  catch (e) { console.error(`[order-confirmation] pedido ${order.id}: CAPI falhou:`, e); }
+  catch (e) { console.error(`[order-confirmation] pedido ${order.id}: CAPI falhou:`, safeErr(e)); }
 
   const phone = order.customerPhone.replace(/\D/g, '');
   try {
     await ordersDb.update(automationRuns)
       .set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
       .where(and(eq(automationRuns.customerPhone, phone), eq(automationRuns.status, 'scheduled')));
-  } catch (e) { console.error(`[order-confirmation] pedido ${order.id}: cancelar automações falhou:`, e); }
+  } catch (e) { console.error(`[order-confirmation] pedido ${order.id}: cancelar automações falhou:`, safeErr(e)); }
   try {
     await ordersDb.update(abandonedCarts)
       .set({ status: 'converted', recovered: true, convertedAt: new Date(), updatedAt: new Date() })
       .where(eq(abandonedCarts.customerPhone, phone));
-  } catch (e) { console.error(`[order-confirmation] pedido ${order.id}: converter carrinho falhou:`, e); }
+  } catch (e) { console.error(`[order-confirmation] pedido ${order.id}: converter carrinho falhou:`, safeErr(e)); }
 
   let msg: string | null = null;
   try {
@@ -230,18 +231,18 @@ export async function confirmOrderPaid(order: SiteOrder): Promise<void> {
     msg = tpl
       ? renderTemplate(tpl.body, vars)
       : `Olá *${order.customerName}*! 🎉\n\nSeu pagamento foi *confirmado*! ✅\n\n📦 Pedido *#${order.id}* — R$ ${brl(order.totalPrice)}\n\nJá estamos preparando seu envio. Você receberá o código de rastreio assim que postarmos. 🚚\n\nObrigado por escolher a Sal Vita! 🌊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
-  } catch (e) { console.error(`[order-confirmation] pedido ${order.id}: template falhou:`, e); }
+  } catch (e) { console.error(`[order-confirmation] pedido ${order.id}: template falhou:`, safeErr(e)); }
 
   // await: a função serverless pode ser congelada logo após o res.json()
   if (msg) {
     try { await sendWhatsApp(order.customerPhone, msg); }
-    catch (e) { console.error(`[order-confirmation] pedido ${order.id}: WhatsApp falhou:`, e); }
+    catch (e) { console.error(`[order-confirmation] pedido ${order.id}: WhatsApp falhou:`, safeErr(e)); }
   }
   if (order.customerEmail) {
     try {
       const emailHtml = orderConfirmedHtml(order.customerName, order.id, brl(order.totalPrice));
       await sendEmail(order.customerEmail, `Pedido #${order.id} confirmado — obrigado, ${order.customerName}!`, emailHtml);
-    } catch (e) { console.error(`[order-confirmation] pedido ${order.id}: e-mail falhou:`, e); }
+    } catch (e) { console.error(`[order-confirmation] pedido ${order.id}: e-mail falhou:`, safeErr(e)); }
   }
 }
 

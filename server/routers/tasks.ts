@@ -1,3 +1,4 @@
+import { safeErr } from '../lib/logSafe';
 import { z } from 'zod';
 import { eq, inArray, or, isNotNull, isNull, and, gte, count, sql, SQL, asc, desc } from 'drizzle-orm';
 import { router, protectedProcedure, adminProcedure } from '../trpc';
@@ -185,7 +186,7 @@ export const tasksRouter = router({
             assignedTo: created.assignedTo,
           });
         } catch (err) {
-          console.error('[tasks.create] runTriggerNow(lead_created) failed:', err);
+          console.error('[tasks.create] runTriggerNow(lead_created) failed:', safeErr(err));
         }
       }
 
@@ -287,7 +288,7 @@ export const tasksRouter = router({
             assignedTo: row.assignedTo,
           });
         } catch (err) {
-          console.error('[tasks.bulkCreate] runTriggerNow(lead_created) failed:', err);
+          console.error('[tasks.bulkCreate] runTriggerNow(lead_created) failed:', safeErr(err));
         }
       }, { sequenciais: 200, concorrencia: 10, orcamentoMs: 40_000 });
       if (r.naoExecutados.length > 0) {
@@ -423,7 +424,7 @@ export const tasksRouter = router({
         try {
           await cancelAllEnrollments(oldEmail);
         } catch (err) {
-          console.error('[tasks.update] cancelAllEnrollments for old email failed:', err);
+          console.error('[tasks.update] cancelAllEnrollments for old email failed:', safeErr(err));
         }
       }
 
@@ -433,7 +434,7 @@ export const tasksRouter = router({
             id: updated.id, email: updated.email, title: updated.title, tags: updated.tags, assignedTo: updated.assignedTo,
           });
         } catch (err) {
-          console.error('[tasks.update] runTriggerNow(lead_created) failed:', err);
+          console.error('[tasks.update] runTriggerNow(lead_created) failed:', safeErr(err));
         }
       }
 
@@ -446,7 +447,7 @@ export const tasksRouter = router({
               id: updated.id, email: updated.email, title: updated.title, tags: updated.tags, assignedTo: updated.assignedTo,
             }, { addedTag: tag });
           } catch (err) {
-            console.error(`[tasks.update] runTriggerNow(tag_added, ${tag}) failed:`, err);
+            console.error(`[tasks.update] runTriggerNow(tag_added, ${tag}) failed:`, safeErr(err));
           }
         }
       }
@@ -500,7 +501,7 @@ export const tasksRouter = router({
         try {
           await cancelAllEnrollments(task.email);
         } catch (err) {
-          console.error('[tasks.confirmEmail] cancelAllEnrollments failed:', err);
+          console.error('[tasks.confirmEmail] cancelAllEnrollments failed:', safeErr(err));
         }
       }
 
@@ -509,10 +510,10 @@ export const tasksRouter = router({
       if (input.confirmed && updated?.email) {
         const taskPayload = { id: updated.id, email: updated.email, title: updated.title, tags: updated.tags, assignedTo: updated.assignedTo };
         try { await runTriggerNow('lead_created', taskPayload); } catch (err) {
-          console.error('[tasks.confirmEmail] runTriggerNow(lead_created) failed:', err);
+          console.error('[tasks.confirmEmail] runTriggerNow(lead_created) failed:', safeErr(err));
         }
         try { await runTriggerNow('email_confirmed', taskPayload); } catch (err) {
-          console.error('[tasks.confirmEmail] runTriggerNow(email_confirmed) failed:', err);
+          console.error('[tasks.confirmEmail] runTriggerNow(email_confirmed) failed:', safeErr(err));
         }
       }
 
@@ -581,7 +582,7 @@ export const tasksRouter = router({
             assignedTo: updated.assignedTo,
           });
         } catch (err) {
-          console.error('[tasks.toggleConverted] runTriggerNow(lead_converted) failed:', err);
+          console.error('[tasks.toggleConverted] runTriggerNow(lead_converted) failed:', safeErr(err));
         }
       }
 
@@ -619,7 +620,7 @@ export const tasksRouter = router({
         try {
           await cancelAllEnrollments(task.email);
         } catch (err) {
-          console.error('[tasks.delete] cancelAllEnrollments failed:', err);
+          console.error('[tasks.delete] cancelAllEnrollments failed:', safeErr(err));
         }
       }
 
@@ -658,7 +659,7 @@ export const tasksRouter = router({
         try {
           await cancelAllEnrollments(email);
         } catch (err) {
-          console.error('[tasks.deleteMany] cancelAllEnrollments failed:', err);
+          console.error('[tasks.deleteMany] cancelAllEnrollments failed:', safeErr(err));
         }
       }
 

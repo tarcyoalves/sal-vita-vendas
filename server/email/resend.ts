@@ -8,6 +8,7 @@
  * guard, not a hard guarantee against Resend's own daily cap.
  */
 
+import { safeErr, maskEmail, redact } from '../lib/logSafe';
 import { reserveDailyQuota, refundDailyQuota } from './marketingQuota';
 import { isBlockedEmail } from '../../shared/blockedEmailDomains';
 
@@ -32,7 +33,7 @@ export async function sendEmail(
   // Reserve 1 slot atomically from email_send_counters
   const reserved = await reserveDailyQuota('resend_1', 1, DAILY_SOFT_LIMIT);
   if (reserved <= 0) {
-    console.warn(`[email] daily soft limit (${DAILY_SOFT_LIMIT}) reached — skipping "${subject}" → ${to}`);
+    console.warn(`[email] daily soft limit (${DAILY_SOFT_LIMIT}) reached — skipping → ${maskEmail(to)}`);
     return { ok: false, reason: 'daily_limit' };
   }
 
@@ -54,17 +55,17 @@ export async function sendEmail(
     clearTimeout(timer);
     if (!res.ok) {
       const err = await res.text().catch(() => res.statusText);
-      console.error(`[email] Resend error ${res.status}:`, err);
+      console.error(`[email] Resend error ${res.status}:`, safeErr(err));
       // Refund quota only on definitive HTTP errors (not network/timeout)
       if (res.status >= 400 && res.status < 500) {
         await refundDailyQuota('resend_1', 1);
       }
       return { ok: false, reason: `resend_${res.status}` };
     }
-    console.log(`[email] sent successfully "${subject}" → ${to}`);
+    console.log(`[email] sent successfully → ${maskEmail(to)}`);
     return { ok: true };
   } catch (err) {
-    console.error('[email] sendEmail failed:', err);
+    console.error('[email] sendEmail failed:', safeErr(err));
     return { ok: false, reason: 'network_error' };
   }
 }

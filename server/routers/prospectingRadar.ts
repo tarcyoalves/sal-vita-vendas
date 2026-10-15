@@ -2,6 +2,7 @@
 // Visão geral e decisões: PLANO-RADAR-CARGAS.md. Contrato de tipos: shared/radar.ts.
 //
 // Pertence só ao CRM: usa `db` (DATABASE_URL). Nada aqui toca o banco do Premium.
+import { safeErr } from '../lib/logSafe';
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { and, desc, eq, inArray, not, or, sql, type SQL } from 'drizzle-orm';
@@ -735,7 +736,7 @@ export const prospectingRadarRouter = router({
       try {
         return await draftRadarMessage(draftInput);
       } catch (err) {
-        console.error('[prospectingRadar.draftMessage] draftRadarMessage failed:', err);
+        console.error('[prospectingRadar.draftMessage] draftRadarMessage failed:', safeErr(err));
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'Não foi possível gerar o rascunho da mensagem agora. Tente novamente em instantes.',

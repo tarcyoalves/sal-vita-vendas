@@ -1,3 +1,4 @@
+import { safeErr, maskEmail, redact } from '../lib/logSafe';
 import sanitizeHtml from 'sanitize-html';
 import { ordersDb as db } from '../db/ordersDb';
 import { db as mainDb } from '../db';
@@ -141,7 +142,7 @@ export async function buildAudience(): Promise<AudienceMember[]> {
       }
     }
   } catch (err) {
-    console.error('[buildAudience] Error fetching site_orders:', err);
+    console.error('[buildAudience] Error fetching site_orders:', safeErr(err));
   }
 
   // 2. Abandoned carts
@@ -158,7 +159,7 @@ export async function buildAudience(): Promise<AudienceMember[]> {
       }
     }
   } catch (err) {
-    console.error('[buildAudience] Error fetching abandoned_carts:', err);
+    console.error('[buildAudience] Error fetching abandoned_carts:', safeErr(err));
   }
 
   // 3. B2B Contacts (from mainDb)
@@ -175,7 +176,7 @@ export async function buildAudience(): Promise<AudienceMember[]> {
       }
     }
   } catch (err) {
-    console.error('[buildAudience] Error fetching B2B contacts:', err);
+    console.error('[buildAudience] Error fetching B2B contacts:', safeErr(err));
   }
 
   // 4. Marketing Contacts table in ordersDb
@@ -192,7 +193,7 @@ export async function buildAudience(): Promise<AudienceMember[]> {
       }
     }
   } catch (err) {
-    console.error('[buildAudience] Error fetching marketing_contacts:', err);
+    console.error('[buildAudience] Error fetching marketing_contacts:', safeErr(err));
   }
 
   // Fetch all suppressions across all databases (Premium, CRM, B2B)

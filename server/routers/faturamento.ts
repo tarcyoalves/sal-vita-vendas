@@ -479,7 +479,7 @@ export const faturamentoRouter = router({
         ...(multi ? { empresaCnpj: multi.empresa.cnpj, solicitacaoId, empresaAnterior: pedido.smbiEmpresaCnpj ?? null } : {}),
       });
       // Prova nos logs de quem pediu e quando (o CRM não guardava isto: caso 1115).
-      console.log(`[smbi] dispararSmbi pedido=${input.id}${multi ? ` empresa=${multi.empresa.curto} solicitacao=${solicitacaoId}` : ''} por=${ctx.user.name} (id ${ctx.user.id})`);
+      console.log(`[smbi] dispararSmbi pedido=${input.id}${multi ? ` empresa=${multi.empresa.curto} solicitacao=${solicitacaoId}` : ''} por=user#${ctx.user.id}`);
       return row;
     }),
 
@@ -507,7 +507,7 @@ export const faturamentoRouter = router({
         });
       }
       await registrarEventoSmbi(input.id, 'ENVIO_CANCELADO', ctx.user.name, {});
-      console.log(`[smbi] cancelarSmbi pedido=${input.id} por=${ctx.user.name} (id ${ctx.user.id})`);
+      console.log(`[smbi] cancelarSmbi pedido=${input.id} por=user#${ctx.user.id}`);
       return row;
     }),
 
@@ -543,7 +543,7 @@ export const faturamentoRouter = router({
         .insert(smbiRobotState)
         .values({ id: 1, ...dados })
         .onConflictDoUpdate({ target: smbiRobotState.id, set: dados });
-      console.log(`[smbi] setRoboAtivo ativo=${input.ativo} por=${ctx.user.name} (id ${ctx.user.id})`);
+      console.log(`[smbi] setRoboAtivo ativo=${input.ativo} por=user#${ctx.user.id}`);
       return { ok: true, roboAtivo: input.ativo };
     }),
 
@@ -553,7 +553,7 @@ export const faturamentoRouter = router({
     .mutation(async ({ ctx, input }) => {
       const dados = { multiempresaAtivo: input.ativo, multiempresaAtualizadoPor: ctx.user.name, multiempresaAtualizadoEm: new Date().toISOString() };
       await db.insert(smbiRobotState).values({ id: 1, ...dados }).onConflictDoUpdate({ target: smbiRobotState.id, set: dados });
-      console.log(`[smbi] setMultiempresaAtivo ativo=${input.ativo} por=${ctx.user.name} (id ${ctx.user.id})`);
+      console.log(`[smbi] setMultiempresaAtivo ativo=${input.ativo} por=user#${ctx.user.id}`);
       return { ok: true, multiempresaAtivo: input.ativo };
     }),
 
@@ -602,7 +602,7 @@ export const faturamentoRouter = router({
       if (decisao.acao !== 'MANTER') {
         await registrarEventoSmbi(pedido.id, 'CADASTRO_PREVIA_SOLICITADA', ctx.user.name, { cadastroId: id, empresaCnpj, revisao });
       }
-      console.log(`[smbi-cadastro] solicitarPrevia pedido=${pedido.id} ${decisao.acao} por=${ctx.user.name} (id ${ctx.user.id})`);
+      console.log(`[smbi-cadastro] solicitarPrevia pedido=${pedido.id} ${decisao.acao} por=user#${ctx.user.id}`);
       return { cadastroId: id, estado, revisao, acao: decisao.acao };
     }),
 
@@ -687,7 +687,7 @@ export const faturamentoRouter = router({
         .returning({ id: cadastros.id });
       if (r.length !== 1) throw new TRPCError({ code: 'CONFLICT', message: 'O cadastro mudou durante a aprovação. Recarregue. [CONCORRENCIA]' });
       await registrarEventoSmbi(c.pedidoId, 'CADASTRO_APROVADO', ctx.user.name, { cadastroId: c.id, empresaCnpj: c.empresaCnpj, revisao: c.revisao, snapshotHash: c.snapshotHash });
-      console.log(`[smbi-cadastro] aprovado id=${c.id} rev=${c.revisao} por=${ctx.user.name} (id ${ctx.user.id})`);
+      console.log(`[smbi-cadastro] aprovado id=${c.id} rev=${c.revisao} por=user#${ctx.user.id}`);
       return { ok: true, estado: 'APROVADO' as const, aprovacaoExpiraEm: d.patch.aprovacaoExpiraEm ?? null, idempotente: false };
     }),
 
@@ -697,7 +697,7 @@ export const faturamentoRouter = router({
     .mutation(async ({ ctx, input }) => {
       const dados = { cadastroAtivo: input.ativo, cadastroAtualizadoPor: ctx.user.name, cadastroAtualizadoEm: new Date().toISOString() };
       await db.insert(smbiRobotState).values({ id: 1, ...dados }).onConflictDoUpdate({ target: smbiRobotState.id, set: dados });
-      console.log(`[smbi-cadastro] setCadastroAtivo ativo=${input.ativo} por=${ctx.user.name} (id ${ctx.user.id})`);
+      console.log(`[smbi-cadastro] setCadastroAtivo ativo=${input.ativo} por=user#${ctx.user.id}`);
       return { ok: true, cadastroAtivo: input.ativo };
     }),
 
@@ -742,7 +742,7 @@ export const faturamentoRouter = router({
       await registrarEventoSmbi(pedido.id, 'CADASTRO_PEDIDO_LIBERADO', ctx.user.name, {
         cadastroId: c.id, empresaCnpj: c.empresaCnpj, erpClienteId: c.erpClienteId, estadoAnterior: pedido.smbiEstado, motivoAnterior: pedido.smbiMotivoCodigo,
       });
-      console.log(`[smbi-cadastro] liberarPedido pedido=${pedido.id} cadastro=${c.id} por=${ctx.user.name} (id ${ctx.user.id})`);
+      console.log(`[smbi-cadastro] liberarPedido pedido=${pedido.id} cadastro=${c.id} por=user#${ctx.user.id}`);
       return { ok: true, liberado: true, jaLiberado: false };
     }),
 
@@ -804,7 +804,7 @@ export const faturamentoRouter = router({
         anterior: antes.smbiVinculoMovsais ?? (antes.smbiMovsaiId ? [antes.smbiMovsaiId] : []),
       });
       console.log(
-        `[smbi] vincularSmbi pedido=${input.id} movsais ${antes.smbiMovsaiId ?? '(vazio)'} -> ${numeros.join(',')} por=${ctx.user.name} (id ${ctx.user.id})`,
+        `[smbi] vincularSmbi pedido=${input.id} movsais ${antes.smbiMovsaiId ?? '(vazio)'} -> ${numeros.join(',')} por=user#${ctx.user.id}`,
       );
       return row;
     }),
@@ -824,7 +824,7 @@ export const faturamentoRouter = router({
         motivo: input.motivo,
         anterior: movsaisLigados(antes),
       });
-      console.log(`[smbi] desvincularSmbi pedido=${input.id} (era ${movsaisLigados(antes).join(',') || '-'}) por=${ctx.user.name} (id ${ctx.user.id})`);
+      console.log(`[smbi] desvincularSmbi pedido=${input.id} (era ${movsaisLigados(antes).join(',') || '-'}) por=user#${ctx.user.id}`);
       return row;
     }),
 
@@ -846,7 +846,7 @@ export const faturamentoRouter = router({
       }
       const [row] = await db.update(fatOrders).set(patch).where(eq(fatOrders.id, input.id)).returning();
       await registrarEventoSmbi(input.id, 'VINCULO_CONFIRMADO', ctx.user.name, { movsais: movsaisLigados(antes) });
-      console.log(`[smbi] confirmarVinculoSmbi pedido=${input.id} por=${ctx.user.name} (id ${ctx.user.id})`);
+      console.log(`[smbi] confirmarVinculoSmbi pedido=${input.id} por=user#${ctx.user.id}`);
       return row;
     }),
 

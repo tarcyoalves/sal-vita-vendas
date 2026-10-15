@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { safeErr, maskEmail } from '../server/lib/logSafe';
 import crypto from 'crypto';
 
 import express from 'express';
@@ -153,7 +154,7 @@ async function runIsolated<T>(label: string, fn: () => Promise<T>, fallback: T):
   try {
     return await fn();
   } catch (err) {
-    console.error(`[cron] ${label} failed (other routines continue):`, err);
+    console.error(`[cron] ${label} failed (other routines continue):`, safeErr(err));
     return fallback;
   }
 }
@@ -432,7 +433,7 @@ app.post('/api/me-webhook', webhookLimiter, express.raw({ type: '*/*' }), async 
     console.log(`[me-webhook] ${payload.event ?? '?'}: ${result}`);
     res.json({ ok: true });
   } catch (err) {
-    console.error('[me-webhook] falhou:', err);
+    console.error('[me-webhook] falhou:', safeErr(err));
     res.status(500).json({ error: 'retry' }); // o Melhor Envio tenta de novo em 15 min
   }
 });
@@ -590,7 +591,7 @@ app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/jso
   } catch (err) {
     // Erro de banco/rede: 500 para o MP reenviar. Eventos já tratados ou ignorados
     // respondem 200 acima, e os UPDATEs condicionais mantêm o reenvio idempotente.
-    console.error('MP webhook error:', err);
+    console.error('MP webhook error:', safeErr(err));
     res.status(500).json({ error: 'temporary failure' });
   }
 });
@@ -629,7 +630,7 @@ app.post('/api/resend-webhook', resendWebhookLimiter, express.raw({ type: 'appli
       Array.isArray(toField) ? String(toField[0] ?? '') : String(toField ?? '')
     ).toLowerCase().trim();
 
-    console.log(`[resend-webhook] type=${eventType} msgId=${messageId} to=${recipientEmail}`);
+    console.log(`[resend-webhook] type=${eventType} msgId=${messageId} to=${maskEmail(recipientEmail)}`);
 
     if (!recipientEmail) {
       res.status(200).json({ ok: true });
@@ -657,7 +658,7 @@ app.post('/api/resend-webhook', resendWebhookLimiter, express.raw({ type: 'appli
         if (shortType === 'opened' || shortType === 'clicked') {
           await flagEngagementByMessageId(messageId, shortType as 'opened' | 'clicked');
         }
-        console.log(`[resend-webhook] stored ${shortType} for ${recipientEmail}`);
+        console.log(`[resend-webhook] stored ${shortType} for ${maskEmail(recipientEmail)}`);
         break;
       }
       default:
@@ -666,7 +667,7 @@ app.post('/api/resend-webhook', resendWebhookLimiter, express.raw({ type: 'appli
 
     res.status(200).json({ ok: true });
   } catch (err) {
-    console.error('[resend-webhook] error:', err);
+    console.error('[resend-webhook] error:', safeErr(err));
     if (!res.headersSent) res.status(200).json({ ok: true });
   }
 });
@@ -707,7 +708,7 @@ app.post('/api/brevo-webhook', brevoWebhookLimiter, express.json({ limit: '256kb
     const rawMsgId = payload['message-id'] ?? '';
     const messageId = rawMsgId.replace(/^<|>$/g, '');
 
-    console.log(`[brevo-webhook] event=${event} msgId=${messageId} to=${recipientEmail}`);
+    console.log(`[brevo-webhook] event=${event} msgId=${messageId} to=${maskEmail(recipientEmail)}`);
 
     if (!recipientEmail) {
       res.status(200).json({ ok: true });
@@ -752,7 +753,7 @@ app.post('/api/brevo-webhook', brevoWebhookLimiter, express.json({ limit: '256kb
         if (shortType === 'opened' || shortType === 'clicked') {
           await flagEngagementByMessageId(messageId, shortType as 'opened' | 'clicked');
         }
-        console.log(`[brevo-webhook] stored ${shortType} for ${recipientEmail}`);
+        console.log(`[brevo-webhook] stored ${shortType} for ${maskEmail(recipientEmail)}`);
         break;
       }
       default:
@@ -761,7 +762,7 @@ app.post('/api/brevo-webhook', brevoWebhookLimiter, express.json({ limit: '256kb
 
     res.status(200).json({ ok: true });
   } catch (err) {
-    console.error('[brevo-webhook] error:', err);
+    console.error('[brevo-webhook] error:', safeErr(err));
     if (!res.headersSent) res.status(200).json({ ok: true });
   }
 });
@@ -1010,11 +1011,11 @@ app.post('/api/b2b/inbound', b2bInboundLimiter, express.json({ limit: '256kb' })
         whatsapp: data.whatsapp, segment: data.segment, city: data.city, state: stateUpper,
         volumeInterest: data.volumeInterest, message: data.message,
       });
-    } catch (err) { console.error('[b2b] notification error:', err); }
+    } catch (err) { console.error('[b2b] notification error:', safeErr(err)); }
 
     res.json({ ok: true });
   } catch (err) {
-    console.error('[b2b-inbound] error:', err);
+    console.error('[b2b-inbound] error:', safeErr(err));
     res.status(500).json({ ok: false, error: 'Erro ao enviar. Tente novamente em instantes.' });
   }
 });
@@ -1166,7 +1167,7 @@ app.use(
       // unexpected (non-4xx) errors server-side; validation/auth errors from
       // Zod/TRPCError business logic are noisy and expected, so skip those.
       if (error.code === 'INTERNAL_SERVER_ERROR') {
-        console.error(`[trpc] ${path ?? '?'} failed:`, error.cause ?? error);
+        console.error(`[trpc] ${path ?? '?'} failed:`, safeErr(error.cause ?? error));
       }
     },
   }),
@@ -1280,11 +1281,11 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
           ? `Problema no pagamento do pedido #${o.id} — tente novamente`
           : `Pedido #${o.id} aguardando pagamento — R$ ${brl(o.totalPrice)}`;
         try { await sendEmail(o.customerEmail, emailSubject, emailHtml); }
-        catch (e) { console.error(`[cron] unpaid-followup: e-mail do pedido ${o.id} falhou:`, e); }
+        catch (e) { console.error(`[cron] unpaid-followup: e-mail do pedido ${o.id} falhou:`, safeErr(e)); }
       }
       await new Promise(r => setTimeout(r, 1000));
     }
-  } catch (e) { console.error('[cron] unpaid-followup error:', e); }
+  } catch (e) { console.error('[cron] unpaid-followup error:', safeErr(e)); }
   return { sent };
 }
 
@@ -1362,9 +1363,9 @@ async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
           await confirmOrderPaid(updated[0]);
           confirmed++;
         }
-      } catch (e) { console.error(`[cron] reconcile: pedido ${o.id} falhou:`, e); }
+      } catch (e) { console.error(`[cron] reconcile: pedido ${o.id} falhou:`, safeErr(e)); }
     }
-  } catch (e) { console.error('[cron] reconcile error:', e); }
+  } catch (e) { console.error('[cron] reconcile error:', safeErr(e)); }
   return { confirmed };
 }
 
@@ -1410,7 +1411,7 @@ async function processReorderReminders(): Promise<{ sent: number }> {
       if (ok) sent++;
       await new Promise(r => setTimeout(r, 1000));
     }
-  } catch (e) { console.error('[cron] reorder-reminder error:', e); }
+  } catch (e) { console.error('[cron] reorder-reminder error:', safeErr(e)); }
   return { sent };
 }
 
@@ -1511,7 +1512,7 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
       try {
         await ordersDb.update(runs).set({ status: 'scheduled', updatedAt: new Date() })
           .where(and(inArray(runs.id, ids), eq(runs.status, 'sending')));
-      } catch (e) { console.error('[cron] release claimed runs failed:', e); }
+      } catch (e) { console.error('[cron] release claimed runs failed:', safeErr(e)); }
     };
     const pendingIds = new Set(due.map(r => r.id));
 
@@ -1555,7 +1556,7 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
           if (cart.customerEmail && ruleCfg.coupon) {
             const emailHtml = abandonedCartHtml(cart.customerName, STORE_URL, ruleCfg.coupon);
             try { await sendEmail(cart.customerEmail, `Seu cupom ${ruleCfg.coupon} — finalize seu pedido Sal Vita`, emailHtml); }
-            catch (e) { console.error(`[cron] abandoned-cart: e-mail do carrinho ${cart.id} falhou:`, e); }
+            catch (e) { console.error(`[cron] abandoned-cart: e-mail do carrinho ${cart.id} falhou:`, safeErr(e)); }
           }
         } else {
           await requeueOrFail(runs, run);
@@ -1569,7 +1570,7 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
 
     res.json({ ok: true, processed: due.length, sent, cancelled, failed, unpaid, reconciled, reorder, tracking });
   } catch (err) {
-    console.error('[cron] abandoned-cart error:', err);
+    console.error('[cron] abandoned-cart error:', safeErr(err));
     res.status(500).json({ error: safeErrorMessage(err) });
   }
 });
@@ -1622,7 +1623,7 @@ app.get('/api/cron/email-daily', async (req, res) => {
       summary.inactiveDaysRules = result.rulesEvaluated;
       summary.inactiveDaysEnrolled = result.enrolled;
     } catch (err) {
-      console.error('[cron/email-daily] evaluateInactiveDaysRules error:', err);
+      console.error('[cron/email-daily] evaluateInactiveDaysRules error:', safeErr(err));
     }
 
     // 2. Processa enrollments ativos com next_send_at <= now() (skip-loop +
@@ -1650,7 +1651,7 @@ app.get('/api/cron/email-daily', async (req, res) => {
       summary.campaignTimeBudgetHit = campResult.timeBudgetHit;
       if (campResult.quotaExhausted) summary.quotaExhausted = true;
     } catch (err) {
-      console.error('[cron/email-daily] processDueCampaigns error:', err);
+      console.error('[cron/email-daily] processDueCampaigns error:', safeErr(err));
     }
 
     // 6. Limpeza: remove email_events com mais de 90 dias.
@@ -1659,7 +1660,7 @@ app.get('/api/cron/email-daily', async (req, res) => {
       const deleted = await db.delete(emailEvents).where(lt(emailEvents.createdAt, ninetyDaysAgo)).returning({ id: emailEvents.id });
       summary.eventsDeleted = deleted.length;
     } catch (err) {
-      console.error('[cron/email-daily] cleanup error:', err);
+      console.error('[cron/email-daily] cleanup error:', safeErr(err));
     }
 
     // Purge old marketing data to stay within Neon free-tier 512 MB
@@ -1672,7 +1673,7 @@ app.get('/api/cron/email-daily', async (req, res) => {
     console.log('[cron/email-daily] summary:', summary);
     res.json({ ok: true, ...summary });
   } catch (err) {
-    console.error('[cron/email-daily] error:', err);
+    console.error('[cron/email-daily] error:', safeErr(err));
     res.status(500).json({ error: safeErrorMessage(err), ...summary });
   }
 });
@@ -1845,7 +1846,7 @@ app.get('/api/smbi/pedidos', smbiApiLimiter, async (req, res) => {
     );
     res.json({ ok: true, roboAtivo, simulacao: simular && !roboAtivo, multiempresaAtivo: multiempresa, pedidos });
   } catch (err) {
-    console.error('[smbi] GET /api/smbi/pedidos error:', err);
+    console.error('[smbi] GET /api/smbi/pedidos error:', safeErr(err));
     res.status(500).json({ error: 'Internal error' });
   }
 });
@@ -1934,7 +1935,7 @@ app.post('/api/smbi/pedidos/:id/retorno', smbiApiLimiter, express.json({ limit: 
     console.log(`[smbi] POST retorno pedido=${id} → ok (${Object.keys(patch).join(',') || 'sem alteração, idempotente'})`);
     res.json({ ok: true });
   } catch (err) {
-    console.error(`[smbi] POST retorno pedido=${id} error:`, err);
+    console.error(`[smbi] POST retorno pedido=${id} error:`, safeErr(err));
     res.status(500).json({ error: 'Internal error' });
   }
 });
@@ -1971,7 +1972,7 @@ app.post('/api/smbi/heartbeat', smbiApiLimiter, express.json({ limit: '4kb' }), 
       .returning({ roboAtivo: smbiRobotState.roboAtivo });
     res.json({ ok: true, roboAtivo: row?.roboAtivo === true });
   } catch (err) {
-    console.error('[smbi] POST /api/smbi/heartbeat error:', err);
+    console.error('[smbi] POST /api/smbi/heartbeat error:', safeErr(err));
     res.status(500).json({ error: 'Internal error' });
   }
 });
