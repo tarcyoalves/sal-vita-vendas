@@ -311,6 +311,8 @@ import { handleUnsubscribe } from '../server/routers/unsubscribe';
 import { syncMeTracking, handleMeWebhookEvent } from '../server/routers/shipping';
 import { verifyMeSignature, type MeTrackingInfo } from '../server/lib/meTracking';
 import { safeEqual } from '../server/lib/safeEqual';
+import { getClientIp } from '../server/lib/clientIp';
+import { safeErrorMessage } from '../server/lib/safeError';
 import { handleResendWebhook, verifySvixSignature } from '../server/routers/resendWebhook';
 import { isForbiddenBatch, emailFromTrpcBody } from '../server/lib/trpcBatchGuard';
 import { csrfRejection } from '../server/lib/csrfGuard';
@@ -346,7 +348,7 @@ const adminApiLimiter = rateLimit({
   // `keyGenerator` recebe o request, não o IP: passar `ipKeyGenerator` direto
   // não bate com a assinatura. Ele normaliza IPv6 (agrupa por /64), então
   // aplicamos sobre `req.ip`, igual ao limiter de login mais abaixo.
-  keyGenerator: (req) => ipKeyGenerator(req.ip ?? 'unknown'),
+  keyGenerator: (req) => ipKeyGenerator(getClientIp(req)),
   message: { error: 'Too many requests' },
 });
 
@@ -397,7 +399,7 @@ app.get('/api/db-stats', adminApiLimiter, async (req, res) => {
       },
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: safeErrorMessage(err) });
   }
 });
 
@@ -977,8 +979,7 @@ app.post('/api/b2b/inbound', b2bInboundLimiter, express.json({ limit: '256kb' })
     });
 
     // Consent — inbound submission IS the consent basis. Never store the raw IP.
-    const ipRaw = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim()
-      || req.ip || req.socket.remoteAddress || '';
+    const ipRaw = getClientIp(req);
     const ipHash = ipRaw ? crypto.createHash('sha256').update(ipRaw).digest('hex') : null;
     await ordersDb.insert(consentRecords).values({
       companyId,
@@ -1033,7 +1034,7 @@ const authLimiter = rateLimit({
     // Corpo tRPC: {json:{email}}; o formato antigo {email} continua valendo.
     const email = emailFromTrpcBody(req.body);
     // IP + e-mail: só o e-mail deixava qualquer pessoa trancar o login de uma conta (negação de serviço).
-    return `${ipKeyGenerator(req.ip ?? 'unknown')}|${email}`;
+    return `${ipKeyGenerator(getClientIp(req))}|${email}`;
   },
   // Login certo não gasta tentativa: o limite é contra erro de senha, não contra uso normal.
   skipSuccessfulRequests: true,
@@ -1047,7 +1048,7 @@ const authIpLimiter = rateLimit({
   message: { error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => ipKeyGenerator(req.ip ?? 'unknown'),
+  keyGenerator: (req) => ipKeyGenerator(getClientIp(req)),
   skipSuccessfulRequests: true,
   validate: { xForwardedForHeader: false },
 });
@@ -1569,7 +1570,7 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
     res.json({ ok: true, processed: due.length, sent, cancelled, failed, unpaid, reconciled, reorder, tracking });
   } catch (err) {
     console.error('[cron] abandoned-cart error:', err);
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: safeErrorMessage(err) });
   }
 });
 
@@ -1672,7 +1673,7 @@ app.get('/api/cron/email-daily', async (req, res) => {
     res.json({ ok: true, ...summary });
   } catch (err) {
     console.error('[cron/email-daily] error:', err);
-    res.status(500).json({ error: String(err), ...summary });
+    res.status(500).json({ error: safeErrorMessage(err), ...summary });
   }
 });
 
@@ -1710,7 +1711,7 @@ app.get('/api/orders-health', async (req, res) => {
       steps,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err?.message ?? String(err) });
+    res.status(500).json({ error: safeErrorMessage(err) });
   }
 });
 
@@ -1723,7 +1724,7 @@ app.get('/api/orders-health', async (req, res) => {
 const smbiApiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
-  keyGenerator: (req) => ipKeyGenerator(req.ip ?? 'unknown'),
+  keyGenerator: (req) => ipKeyGenerator(getClientIp(req)),
   message: { error: 'Too many requests' },
 });
 

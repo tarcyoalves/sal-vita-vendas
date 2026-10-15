@@ -8,6 +8,7 @@ import { db } from './db';
 import { users, sellers } from './db/schema';
 import { eq } from 'drizzle-orm';
 import { cached, cacheInvalidate } from './lib/cache';
+import { getClientIp } from './lib/clientIp';
 import { canProceed, isSellerBlocked } from './lib/authGate';
 
 export function invalidateUserCache(userId: number) {
@@ -18,10 +19,6 @@ function normalizeIp(raw: string): string {
   const s = raw.trim();
   if (s.startsWith('::ffff:')) return s.slice(7);
   return s;
-}
-
-function getClientIp(req: CreateExpressContextOptions['req']): string {
-  return normalizeIp(req.ip ?? req.socket.remoteAddress ?? '');
 }
 
 function ipMatchesEntry(ip: string, entry: string): boolean {

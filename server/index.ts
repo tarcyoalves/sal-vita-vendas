@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import { createExpressMiddleware } from '@trpc/server/adapters/express';
 import { appRouter } from './routers';
 import { createContext } from './trpc';
+import { getClientIp } from './lib/clientIp';
 import { ensureTablesExist } from './db/migrate';
 
 const app = express();
@@ -42,7 +43,7 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => {
     const body = req.body as Record<string, unknown>;
-    return (typeof body?.email === 'string' ? body.email : '') || req.ip || 'unknown';
+    return (typeof body?.email === 'string' ? body.email : '') || getClientIp(req);
   },
 });
 

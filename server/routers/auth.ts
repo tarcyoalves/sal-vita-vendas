@@ -12,6 +12,8 @@ import { isSellerBlocked } from '../lib/authGate';
 import { cached, cacheInvalidate } from '../lib/cache';
 import { safeEqual } from '../lib/safeEqual';
 import { emailEquals } from '../lib/userEmail';
+import { getClientIp } from '../lib/clientIp';
+import { createEmergencyThrottle } from '../lib/emergencyThrottle';
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -22,7 +24,7 @@ function generatePassword(length = 12): string {
   return Array.from({ length }, () => chars[randomInt(chars.length)]).join('');
 }
 
-const emergencyAttempts = new Map<string, { count: number; blockedUntil: number }>();
+const emergencyThrottle = createEmergencyThrottle();
 
 export const authRouter = router({
   me: publicProcedure.query(async ({ ctx }) => {
@@ -133,9 +135,8 @@ export const authRouter = router({
   emergencyReset: publicProcedure
     .input(z.object({ email: z.string().email(), secret: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
-      const ip = ctx.req.ip ?? ctx.req.socket.remoteAddress ?? 'unknown';
-      const attempt = emergencyAttempts.get(ip);
-      if (attempt && Date.now() < attempt.blockedUntil) {
+      const ip = getClientIp(ctx.req);
+      if (emergencyThrottle.isBlocked(ip, input.email)) {
         throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Muitas tentativas. Tente novamente em alguns minutos.' });
       }
 
@@ -143,10 +144,7 @@ export const authRouter = router({
       const genericError = 'Credenciais de recuperação inválidas';
 
       if (!envSecret || !safeEqual(input.secret, envSecret)) {
-        const prev = emergencyAttempts.get(ip) ?? { count: 0, blockedUntil: 0 };
-        prev.count++;
-        prev.blockedUntil = Date.now() + Math.min(prev.count * 30_000, 300_000);
-        emergencyAttempts.set(ip, prev);
+        emergencyThrottle.fail(ip, input.email);
         throw new TRPCError({ code: 'UNAUTHORIZED', message: genericError });
       }
 
@@ -155,7 +153,7 @@ export const authRouter = router({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: genericError });
       }
 
-      emergencyAttempts.delete(ip);
+      emergencyThrottle.succeed(ip, input.email);
       const generated = generatePassword();
       await db.update(users)
         .set({ passwordHash: hashPassword(generated), mustChangePassword: true })
