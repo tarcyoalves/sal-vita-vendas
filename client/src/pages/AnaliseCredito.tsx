@@ -12,6 +12,7 @@ import { QueryError } from '../components/QueryError';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { CreditoCard } from '../components/credito/CreditoCard';
 import { CreditoSemaforo } from '../components/credito/CreditoSemaforo';
+import { useLiberarScrollTravado } from '../lib/credito/scrollTravado';
 import { ConsultarCreditoDialog } from '../components/credito/ConsultarCreditoDialog';
 import { RelatorioCreditoDialog } from '../components/credito/RelatorioCreditoDialog';
 import { useBaixarPdfCredito } from '../components/credito/useBaixarPdfCredito';
@@ -92,6 +93,7 @@ function ConsultaAvulsa({ podeConsultar }: { podeConsultar: boolean }) {
   const [texto, setTexto] = useState('');
   const [aberto, setAberto] = useState(false);
   const [relatorioId, setRelatorioId] = useState<number | null>(null);
+  useLiberarScrollTravado(aberto || relatorioId !== null);
   const digitos = soDigitos(texto);
   const v = validarDocumentoLocal(texto);
   const erro = digitos.length >= 11 && !v.ok ? v.erro : null;
@@ -121,7 +123,7 @@ function ConsultaAvulsa({ podeConsultar }: { podeConsultar: boolean }) {
         {documento && <CreditoCard documento={documento} semConsultar />}
       </div>
       {podeConsultar && documento && (
-        <ConsultarCreditoDialog open={aberto} onOpenChange={setAberto} documento={documento} onConcluido={(id) => setRelatorioId(id)} />
+        <ConsultarCreditoDialog open={aberto} onOpenChange={setAberto} documento={documento} onConcluido={(id) => { window.setTimeout(() => setRelatorioId(id), 350); }} />
       )}
       <RelatorioCreditoDialog reportId={relatorioId} open={relatorioId !== null} onOpenChange={(o) => { if (!o) setRelatorioId(null); }} />
     </Panel>
@@ -133,6 +135,7 @@ function Arquivo() {
   const [buscaDigitada, setBuscaDigitada] = useState('');
   const [pagina, setPagina] = useState(1);
   const [relatorioId, setRelatorioId] = useState<number | null>(null);
+  useLiberarScrollTravado(relatorioId !== null);
   const { baixar, baixandoId } = useBaixarPdfCredito();
 
   // Busca com atraso curto: não consulta o servidor a cada tecla.
