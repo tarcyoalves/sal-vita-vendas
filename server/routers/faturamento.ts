@@ -24,6 +24,7 @@ import {
   aprovarInputSchema, decidirAprovacao, decidirRevisaoContatos, decidirSolicitacao, podeLiberarPedido, podeSolicitarPrevia,
   empresaDoCadastro, reenvioBloqueadoPorCadastro, revisarContatosInputSchema, validarRevisaoContatos, type Recusa,
 } from '../lib/smbiCadastroDecisoes';
+import { decidirBloqueioDoPedido, vincularUltimoRelatorioNoEnvio } from '../lib/credito/repo';
 import type { Pedido } from '../../client/src/lib/faturamento/types';
 
 /** Ação humana na linha do tempo do pedido no SMBI (auditoria: quem, o quê, quando). */
@@ -426,6 +427,13 @@ export const faturamentoRouter = router({
         }
       }
 
+      // Crédito reprovado a prazo (interruptor desligado por padrão): recusa ANTES de qualquer gravação.
+      // Fail-open: se a leitura do crédito falhar, o envio segue (ver decidirBloqueioDoPedido).
+      const credito = await decidirBloqueioDoPedido(pedido);
+      if (credito.bloquear) {
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: credito.motivo ?? 'Crédito reprovado a prazo — peça liberação ao admin' });
+      }
+
       // UPDATE condicional: só grava se ninguém (robô) reservou o pedido nesse instante, senão o
       // novo clique zeraria a reserva no meio da criação e o robô pegaria o pedido de novo.
       const solicitacaoId = multi ? globalThis.crypto.randomUUID() : null;
@@ -474,6 +482,8 @@ export const faturamentoRouter = router({
             : 'O robô está processando este pedido agora. Aguarde a resposta dele antes de enviar de novo.',
         });
       }
+      // Envio aceito: guarda qual análise de crédito valia para este pedido (fail-open, nunca impede o envio).
+      await vincularUltimoRelatorioNoEnvio(input.id, pedido.cnpj, ctx.user.id);
       await registrarEventoSmbi(input.id, 'ENVIO_SOLICITADO', ctx.user.name, {
         tentativaAnterior: pedido.smbiEstado ?? null,
         ...(multi ? { empresaCnpj: multi.empresa.cnpj, solicitacaoId, empresaAnterior: pedido.smbiEmpresaCnpj ?? null } : {}),
