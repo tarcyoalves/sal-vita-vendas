@@ -127,3 +127,33 @@ export async function fetchMeTracking(
   const data = await res.json().catch(() => ({}));
   return (data && typeof data === 'object') ? data as Record<string, MeTrackingInfo> : {};
 }
+/** Saldo da carteira do Melhor Envio em reais, ou null se não deu para consultar (nunca lança). */
+export async function fetchMeBalance(token: string, fetchImpl: typeof fetch = fetch): Promise<number | null> {
+  try {
+    const res = await fetchImpl(`${ME_BASE}/api/v2/me/balance`, {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json', 'User-Agent': ME_USER_AGENT },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null) as { balance?: unknown } | null;
+    const n = Number(data?.balance);
+    return Number.isFinite(n) ? n : null;
+  } catch { return null; }
+}
+
+/** Erro do Melhor Envio que significa falta de saldo (texto varia; cobre as formas conhecidas). */
+export function isBalanceError(message: string): boolean {
+  return /saldo|insufficient|balance|sem fundos|funds/i.test(message);
+}
+
+/** Pedido pago, não cancelado, sem etiqueta, com serviço de frete e recente: pode ganhar etiqueta automática. */
+export function eligibleForAutoLabel(o: {
+  paymentStatus: string | null; status: string | null; meOrderId: string | null;
+  shippingServiceId: string | null; createdAt: Date | string | null;
+}, now = Date.now()): boolean {
+  if (o.paymentStatus !== 'confirmed' || o.status !== 'confirmed') return false;
+  if (o.meOrderId) return false;
+  if (!o.shippingServiceId || Number.isNaN(parseInt(o.shippingServiceId, 10))) return false;
+  const created = o.createdAt ? new Date(o.createdAt).getTime() : NaN;
+  return Number.isFinite(created) && now - created <= 14 * 24 * 60 * 60 * 1000;
+}

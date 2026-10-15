@@ -243,6 +243,14 @@ export async function confirmOrderPaid(order: SiteOrder): Promise<void> {
       await sendEmail(order.customerEmail, `Pedido #${order.id} confirmado — obrigado, ${order.customerName}!`, emailHtml);
     } catch (e) { console.error(`[order-confirmation] pedido ${order.id}: e-mail falhou:`, e); }
   }
+
+
+  // Etiqueta automática (último passo: nada acima depende dela). Limite de 20 s para nunca
+  // segurar a resposta ao Mercado Pago; o que não terminar a rodada diária do meio-dia refaz.
+  try {
+    const { autoGenerateLabels } = await import('../routers/shipping');
+    await Promise.race([autoGenerateLabels({ orderId: order.id }), new Promise(r => setTimeout(r, 20_000))]);
+  } catch (e) { console.error(`[order-confirmation] pedido ${order.id}: etiqueta automática falhou:`, e); }
 }
 
 // Estados de pagamento em que um pagamento aprovado confirma o pedido. 'failed'

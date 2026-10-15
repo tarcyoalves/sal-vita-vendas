@@ -308,7 +308,7 @@ function unsubscribePage(message: string): string {
 }
 
 import { handleUnsubscribe } from '../server/routers/unsubscribe';
-import { syncMeTracking, handleMeWebhookEvent } from '../server/routers/shipping';
+import { syncMeTracking, handleMeWebhookEvent, autoGenerateLabels } from '../server/routers/shipping';
 import { verifyMeSignature, type MeTrackingInfo } from '../server/lib/meTracking';
 import { safeEqual } from '../server/lib/safeEqual';
 import { getClientIp } from '../server/lib/clientIp';
@@ -1468,12 +1468,13 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
     const unpaid = await runIsolated('unpaid-followup', processUnpaidFollowups, { sent: 0 });
     const reorder = await runIsolated('reorder-reminder', processReorderReminders, { sent: 0 });
     // Rastreio do Melhor Envio: postado -> 'shipped' + um WhatsApp; entregue -> 'delivered'.
+    const labels = await runIsolated('auto-labels', () => autoGenerateLabels(), { considered: 0, generated: 0, failed: 0, lowBalance: false });
     const tracking = await runIsolated('me-tracking', syncMeTracking, { checked: 0, shipped: 0, delivered: 0, notified: 0 });
 
     // ── Abandoned cart automation: only during business hours ─────────────────
     let sent = 0, cancelled = 0, failed = 0;
     if (!isBusinessHours()) {
-      res.json({ ok: true, processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: 'outside business hours', unpaid, reconciled, reorder, tracking });
+      res.json({ ok: true, processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: 'outside business hours', unpaid, reconciled, reorder, tracking, labels });
       return;
     }
     // Claim atômico (mesmo padrão de campaigns.ts): GET+POST/retry simultâneos nunca
@@ -1567,7 +1568,7 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
       }
     }
 
-    res.json({ ok: true, processed: due.length, sent, cancelled, failed, unpaid, reconciled, reorder, tracking });
+    res.json({ ok: true, processed: due.length, sent, cancelled, failed, unpaid, reconciled, reorder, tracking, labels });
   } catch (err) {
     console.error('[cron] abandoned-cart error:', err);
     res.status(500).json({ error: safeErrorMessage(err) });
