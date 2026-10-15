@@ -11,6 +11,7 @@ import { STORE_URL } from '../lib/storeUrl';
 import { filterAllowedCarriersSorted } from '../lib/shippingFilter';
 import {
   trackingLink, fetchMeTracking, pickTrackingCode, decideTrackingUpdate, isRecentEvent, OCCURRENCE_EVENTS,
+  fetchMeBalance, isBalanceError, eligibleForAutoLabel,
   type MeTrackingInfo, type ShippingEvent,
 } from '../lib/meTracking';
 import { sendEmail, shippingUpdateEmail } from '../email/resend';
@@ -275,6 +276,284 @@ export async function handleMeWebhookEvent(payload: { event?: string; data?: MeT
   const status = data.status ?? payload.event ?? null;
   const r = await applyMeTracking(order, { ...data, status });
   return `pedido ${order.id}: status=${r.status ?? '-'} evento=${r.event ?? '-'} aviso=${r.notified ?? '-'}`;
+}
+
+/**
+ * Compra e gera a etiqueta do Melhor Envio para um pedido pago. Usada pelo botão do painel
+ * e pela geração automática após o pagamento. Lança TRPCError em qualquer recusa.
+ */
+async function generateLabelForOrder(orderId: number) {
+      const token = process.env.MELHOR_ENVIO_TOKEN;
+      if (!token) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Configure MELHOR_ENVIO_TOKEN no painel Vercel' });
+
+      const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, orderId));
+      const order = orders[0];
+      if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+      // Never spend a paid shipping label on an order that hasn't been paid for
+      // (or was refunded/cancelled). Avoids shipping cost on unpaid/charged-back orders.
+      if (order.paymentStatus !== 'confirmed') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Pagamento não confirmado — não é possível gerar etiqueta para este pedido.' });
+      }
+
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'SalVita/1.0 (contato@salvitarn.com.br)',
+        'Accept': 'application/json',
+      };
+
+      const serviceIdNum = order.shippingServiceId ? parseInt(order.shippingServiceId, 10) : NaN;
+      if (isNaN(serviceIdNum)) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: `ID de serviço de frete inválido: "${order.shippingServiceId}". Edite o pedido e selecione um serviço válido.` });
+      }
+      const serviceId = serviceIdNum;
+      // Derive weight/dimensions/declared value from the catalog entry actually
+      // sold. The old `quantity * 1.05` shipped a 12kg box declared at 10.5kg and
+      // a 3.6kg trio declared at 3.15kg, in a 1kg-sized carton.
+      const labelProduct = resolveProduct(null, order.quantity);
+      const labelPacks = Math.max(1, Math.round(order.quantity / CATALOG[labelProduct].kgPerUnit));
+      const labelPkg = CATALOG[labelProduct].pkg;
+      const weight = shipWeight(labelProduct, labelPacks);
+      const declaredUnitPrice = parseFloat(order.unitPrice ?? String(CATALOG[labelProduct].price));
+      const declaredValue = parseFloat(order.totalPrice ?? String(declaredUnitPrice * labelPacks));
+
+      const cartBody = {
+        service: serviceId,
+        from: {
+          name: 'Sal Vita',
+          phone: '84214082120',
+          email: 'contato@salvitarn.com.br',
+          postal_code: SENDER_ADDRESS.postalCode,
+          address: SENDER_ADDRESS.address,
+          number: SENDER_ADDRESS.number,
+          district: SENDER_ADDRESS.district,
+          city: 'Mossoró',
+          state_abbr: 'RN',
+          country_id: 'BR',
+        },
+        to: {
+          name: order.customerName,
+          phone: order.customerPhone.replace(/\D/g,''),
+          email: order.customerEmail ?? 'cliente@salvitarn.com.br',
+          document: order.customerCpf ? order.customerCpf.replace(/\D/g,'') : undefined,
+          postal_code: order.postalCode,
+          address: order.address,
+          number: order.number,
+          complement: order.complement ?? '',
+          district: order.neighborhood,
+          city: order.city,
+          state_abbr: order.state,
+          country_id: 'BR',
+        },
+        volumes: [{ ...labelPkg, weight }],
+        options: {
+          insurance_value: declaredValue,
+          receipt: false,
+          own_hand: false,
+          non_commercial: false,
+        },
+        products: [{
+          name: order.product ?? CATALOG[labelProduct].name,
+          quantity: labelPacks,
+          unitary_value: declaredUnitPrice,
+        }],
+      };
+
+      // Retomada: checkout do ME já pago (me_order_id real) mas sem URL da etiqueta —
+      // não refaz cart/checkout (cobraria de novo), só generate + print.
+      const step = decideLabelStep(order, new Date());
+      if (step === 'done' || step === 'busy') throw new TRPCError({ code: 'CONFLICT', message: LABEL_BUSY_MSG });
+      const resume = step === 'resume';
+      if (!(resume ? await claimResume(orderId, order.meOrderId!) : await reserveLabel(orderId))) {
+        throw new TRPCError({ code: 'CONFLICT', message: LABEL_BUSY_MSG });
+      }
+      let purchased = resume;
+      try {
+        let meOrderId: string;
+        if (resume) {
+          meOrderId = order.meOrderId!;
+        } else {
+          const cartRes = await fetch(`${ME_BASE}/api/v2/me/cart`, { method: 'POST', headers, body: JSON.stringify(cartBody), signal: AbortSignal.timeout(8000) });
+          if (!cartRes.ok) {
+            const txt = await cartRes.text();
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro cart ME: ${txt}` });
+          }
+          const cartData = await cartRes.json();
+          meOrderId = cartData.id;
+
+          let checkRes: Response;
+          try {
+            checkRes = await fetch(`${ME_BASE}/api/v2/me/shipment/checkout`, {
+              method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }),
+            });
+            if (!checkRes.ok) {
+              const txt = await checkRes.text();
+              throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro checkout ME: ${txt}` });
+            }
+          } catch (err) {
+            // Attempt to cancel the dangling ME cart order (best-effort)
+            try {
+              await fetch(`${ME_BASE}/api/v2/me/cart/${meOrderId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'SalVita/1.0 (contato@salvitarn.com.br)' },
+                signal: AbortSignal.timeout(8000),
+              });
+            } catch {} // best-effort cancel
+            throw err; // re-throw original error
+          }
+          purchased = true; // etiqueta paga: a reserva NÃO pode mais ser liberada, nem se o UPDATE abaixo falhar
+          // Persist meOrderId right after checkout succeeds (label is now paid) so it can be
+          // cancelled/reprinted later even if generate/print below fails.
+          await db.update(siteOrders).set({ meOrderId, updatedAt: new Date() }).where(eq(siteOrders.id, orderId));
+        }
+
+        const genRes = await fetch(`${ME_BASE}/api/v2/me/shipment/generate`, {
+          method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }), signal: AbortSignal.timeout(8000),
+        });
+        if (!genRes.ok) {
+          const txt = await genRes.text();
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro gerar etiqueta ME: ${txt}` });
+        }
+
+        const printRes = await fetch(`${ME_BASE}/api/v2/me/shipment/print`, {
+          method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId], mode: 'private' }), signal: AbortSignal.timeout(8000),
+        });
+        if (!printRes.ok) {
+          const txt = await printRes.text();
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro imprimir etiqueta ME: ${txt}` });
+        }
+        const printData = await printRes.json();
+        const labelUrl: string = printData.url;
+
+        // Label generated but NOT yet physically posted — use 'label_generated' so the
+        // "Pendentes Envio" admin tab works and we don't tell the customer it shipped early.
+        const [updated] = await db.update(siteOrders)
+          .set({ meOrderId, meLabelUrl: labelUrl, status: 'label_generated', updatedAt: new Date() })
+          .where(eq(siteOrders.id, orderId))
+          .returning();
+        const code = await fillTrackingCodeAfterLabel(orderId, meOrderId, token);
+        if (code && updated && !updated.trackingCode) updated.trackingCode = code;
+
+      return { labelUrl, meOrderId, order: updated };
+      } catch (err) {
+        // Falha antes do checkout (nada foi cobrado): libera a reserva para nova tentativa.
+        if (!purchased) await releaseLabel(orderId);
+        throw err;
+      }
+}
+
+const ALERT_EMAIL = () => process.env.ALERT_EMAIL || 'contato@salvitarn.com.br';
+const brlFmt = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** Um aviso por dia por assunto (tabela shipping_events, order_id 0). */
+async function claimDailyAlert(topic: string): Promise<boolean> {
+  const key = `${topic}-${new Date().toISOString().slice(0, 10)}`;
+  try {
+    const rows = await db.execute(sql`INSERT INTO shipping_events (order_id, event) VALUES (0, ${key}) ON CONFLICT DO NOTHING RETURNING order_id`);
+    const list = (rows as unknown as { rows?: unknown[] }).rows ?? (rows as unknown as unknown[]);
+    return Array.isArray(list) && list.length > 0;
+  } catch { return false; }
+}
+
+async function alertOwner(subject: string, lines: string[]): Promise<void> {
+  const html = `<p style="font-family:system-ui,Arial,sans-serif;font-size:15px;line-height:1.6">${lines.map(l => l.replace(/</g, '&lt;')).join('<br/>')}</p>`;
+  const r = await sendEmail(ALERT_EMAIL(), subject, html);
+  if (!r.ok) console.warn(`[auto-label] alerta "${subject}" não saiu (${r.reason})`);
+}
+
+/**
+ * Gera sozinha a etiqueta dos pedidos pagos (rodada diária e logo após cada pagamento).
+ * Travas: só pago e não cancelado, sem etiqueta, com frete válido, de até 14 dias; confere o
+ * saldo do Melhor Envio antes de comprar; no máximo 10 por rodada. Falha vira aviso por e-mail
+ * (uma vez por dia por assunto) e linha [REVISAR] no pedido — nunca derruba o resto.
+ */
+export async function autoGenerateLabels(opts: { orderId?: number } = {}): Promise<{ considered: number; generated: number; failed: number; lowBalance: boolean }> {
+  const out = { considered: 0, generated: 0, failed: 0, lowBalance: false };
+  const token = process.env.MELHOR_ENVIO_TOKEN;
+  if (!token) { console.warn('[auto-label] MELHOR_ENVIO_TOKEN ausente'); return out; }
+
+  const base = and(
+    eq(siteOrders.paymentStatus, 'confirmed'), eq(siteOrders.status, 'confirmed'),
+    isNull(siteOrders.meOrderId), sql`${siteOrders.shippingServiceId} IS NOT NULL`,
+  );
+  const rows = await db.select().from(siteOrders)
+    .where(opts.orderId ? and(base, eq(siteOrders.id, opts.orderId)) : base)
+    .orderBy(siteOrders.id).limit(10);
+  const orders = rows.filter(o => eligibleForAutoLabel(o));
+  if (!orders.length) return out;
+
+  let balance = await fetchMeBalance(token);
+  for (const order of orders) {
+    out.considered++;
+    const price = parseFloat(order.shippingPrice ?? '0') || 0;
+    if (balance !== null && balance < price) {
+      out.lowBalance = true;
+      out.failed++;
+      if (await claimDailyAlert('saldo')) {
+        await alertOwner('Saldo do Melhor Envio insuficiente para gerar etiquetas', [
+          `Há pedidos pagos esperando etiqueta, mas o saldo do Melhor Envio é R$ ${brlFmt(balance)} e a próxima etiqueta custa cerca de R$ ${brlFmt(price)} (pedido #${order.id}).`,
+          'Recarregue o saldo em melhorenvio.com.br. As etiquetas saem sozinhas na próxima rodada (meio-dia) ou ao tocar em "Imprimir Etiqueta" no painel.',
+        ]);
+      }
+      break; // sem saldo para este, os próximos pedidos esperam a recarga
+    }
+    try {
+      await generateLabelForOrder(order.id);
+      out.generated++;
+      if (balance !== null) balance -= price;
+      await db.execute(sql`INSERT INTO shipping_events (order_id, event, notified) VALUES (${order.id}, 'label-auto', 'ok') ON CONFLICT DO NOTHING`).catch(() => {});
+    } catch (e) {
+      out.failed++;
+      const msg = String((e as { message?: string })?.message ?? e).slice(0, 160);
+      console.error(`[auto-label] pedido ${order.id} falhou:`, msg);
+      if (isBalanceError(msg)) {
+        out.lowBalance = true;
+        if (await claimDailyAlert('saldo')) {
+          await alertOwner('Saldo do Melhor Envio acabou: etiquetas pendentes', [
+            `O Melhor Envio recusou a compra da etiqueta do pedido #${order.id} por falta de saldo.`,
+            'Recarregue o saldo em melhorenvio.com.br; as etiquetas saem sozinhas na próxima rodada.',
+          ]);
+        }
+        break;
+      }
+      await appendReviewNote(order.id, `Etiqueta automática falhou: ${msg}`);
+      if (await claimDailyAlert(`falha-${order.id}`)) {
+        await alertOwner(`Etiqueta automática do pedido #${order.id} falhou`, [
+          `Motivo: ${msg}`,
+          'Abra o pedido no painel e use "Imprimir Etiqueta" depois de corrigir o que for preciso (endereço, serviço de frete).',
+        ]);
+      }
+    }
+  }
+  return out;
+}
+
+/** O que a geração automática fez nos últimos 7 dias, para o painel. Nunca lança. */
+export async function autoLabelReport() {
+  try {
+    const done = await db.execute(sql`
+      SELECT e.order_id AS id, e.created_at AS at, o.customer_name AS name, o.tracking_code AS code, o.me_label_url AS url
+      FROM shipping_events e JOIN site_orders o ON o.id = e.order_id
+      WHERE e.event = 'label-auto' AND e.created_at > NOW() - INTERVAL '7 days'
+      ORDER BY e.created_at DESC LIMIT 20`);
+    const pending = await db.execute(sql`
+      SELECT id, customer_name AS name, notes FROM site_orders
+      WHERE payment_status = 'confirmed' AND status = 'confirmed' AND me_order_id IS NULL
+        AND created_at > NOW() - INTERVAL '14 days'
+      ORDER BY id LIMIT 20`);
+    const rows = (r: unknown) => ((r as { rows?: unknown[] }).rows ?? r) as Array<Record<string, unknown>>;
+    return {
+      generated: rows(done).map(r => ({ id: Number(r.id), at: String(r.at), name: String(r.name), code: r.code ? String(r.code) : null, url: r.url ? String(r.url) : null })),
+      waiting: rows(pending).map(r => {
+        const notes = String(r.notes ?? '');
+        const m = notes.split(/\r?\n/).reverse().find(l => l.includes('Etiqueta automática falhou'));
+        return { id: Number(r.id), name: String(r.name), problem: m ? m.replace(/^.*Etiqueta automática falhou:\s*/, '') : null };
+      }),
+    };
+  } catch (e) {
+    console.error('[auto-label] relatório falhou:', (e as Error)?.message);
+    return { generated: [], waiting: [] };
+  }
 }
 
 const STATIC_REGIONS: Record<string, { pac:[number,string]; sedex:[number,string] }> = {
@@ -1046,167 +1325,16 @@ Seja direto e use emojis para facilitar leitura.`;
       }
     }),
 
+  autoLabelReport: protectedProcedure.query(async ({ ctx }) => {
+    if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+    return autoLabelReport();
+  }),
+
   generateLabel: protectedProcedure
     .input(z.object({ orderId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
-      const token = process.env.MELHOR_ENVIO_TOKEN;
-      if (!token) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Configure MELHOR_ENVIO_TOKEN no painel Vercel' });
-
-      const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
-      const order = orders[0];
-      if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
-      // Never spend a paid shipping label on an order that hasn't been paid for
-      // (or was refunded/cancelled). Avoids shipping cost on unpaid/charged-back orders.
-      if (order.paymentStatus !== 'confirmed') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Pagamento não confirmado — não é possível gerar etiqueta para este pedido.' });
-      }
-
-      const headers = {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'User-Agent': 'SalVita/1.0 (contato@salvitarn.com.br)',
-        'Accept': 'application/json',
-      };
-
-      const serviceIdNum = order.shippingServiceId ? parseInt(order.shippingServiceId, 10) : NaN;
-      if (isNaN(serviceIdNum)) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: `ID de serviço de frete inválido: "${order.shippingServiceId}". Edite o pedido e selecione um serviço válido.` });
-      }
-      const serviceId = serviceIdNum;
-      // Derive weight/dimensions/declared value from the catalog entry actually
-      // sold. The old `quantity * 1.05` shipped a 12kg box declared at 10.5kg and
-      // a 3.6kg trio declared at 3.15kg, in a 1kg-sized carton.
-      const labelProduct = resolveProduct(null, order.quantity);
-      const labelPacks = Math.max(1, Math.round(order.quantity / CATALOG[labelProduct].kgPerUnit));
-      const labelPkg = CATALOG[labelProduct].pkg;
-      const weight = shipWeight(labelProduct, labelPacks);
-      const declaredUnitPrice = parseFloat(order.unitPrice ?? String(CATALOG[labelProduct].price));
-      const declaredValue = parseFloat(order.totalPrice ?? String(declaredUnitPrice * labelPacks));
-
-      const cartBody = {
-        service: serviceId,
-        from: {
-          name: 'Sal Vita',
-          phone: '84214082120',
-          email: 'contato@salvitarn.com.br',
-          postal_code: SENDER_ADDRESS.postalCode,
-          address: SENDER_ADDRESS.address,
-          number: SENDER_ADDRESS.number,
-          district: SENDER_ADDRESS.district,
-          city: 'Mossoró',
-          state_abbr: 'RN',
-          country_id: 'BR',
-        },
-        to: {
-          name: order.customerName,
-          phone: order.customerPhone.replace(/\D/g,''),
-          email: order.customerEmail ?? 'cliente@salvitarn.com.br',
-          document: order.customerCpf ? order.customerCpf.replace(/\D/g,'') : undefined,
-          postal_code: order.postalCode,
-          address: order.address,
-          number: order.number,
-          complement: order.complement ?? '',
-          district: order.neighborhood,
-          city: order.city,
-          state_abbr: order.state,
-          country_id: 'BR',
-        },
-        volumes: [{ ...labelPkg, weight }],
-        options: {
-          insurance_value: declaredValue,
-          receipt: false,
-          own_hand: false,
-          non_commercial: false,
-        },
-        products: [{
-          name: order.product ?? CATALOG[labelProduct].name,
-          quantity: labelPacks,
-          unitary_value: declaredUnitPrice,
-        }],
-      };
-
-      // Retomada: checkout do ME já pago (me_order_id real) mas sem URL da etiqueta —
-      // não refaz cart/checkout (cobraria de novo), só generate + print.
-      const step = decideLabelStep(order, new Date());
-      if (step === 'done' || step === 'busy') throw new TRPCError({ code: 'CONFLICT', message: LABEL_BUSY_MSG });
-      const resume = step === 'resume';
-      if (!(resume ? await claimResume(input.orderId, order.meOrderId!) : await reserveLabel(input.orderId))) {
-        throw new TRPCError({ code: 'CONFLICT', message: LABEL_BUSY_MSG });
-      }
-      let purchased = resume;
-      try {
-        let meOrderId: string;
-        if (resume) {
-          meOrderId = order.meOrderId!;
-        } else {
-          const cartRes = await fetch(`${ME_BASE}/api/v2/me/cart`, { method: 'POST', headers, body: JSON.stringify(cartBody), signal: AbortSignal.timeout(8000) });
-          if (!cartRes.ok) {
-            const txt = await cartRes.text();
-            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro cart ME: ${txt}` });
-          }
-          const cartData = await cartRes.json();
-          meOrderId = cartData.id;
-
-          let checkRes: Response;
-          try {
-            checkRes = await fetch(`${ME_BASE}/api/v2/me/shipment/checkout`, {
-              method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }),
-            });
-            if (!checkRes.ok) {
-              const txt = await checkRes.text();
-              throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro checkout ME: ${txt}` });
-            }
-          } catch (err) {
-            // Attempt to cancel the dangling ME cart order (best-effort)
-            try {
-              await fetch(`${ME_BASE}/api/v2/me/cart/${meOrderId}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'SalVita/1.0 (contato@salvitarn.com.br)' },
-                signal: AbortSignal.timeout(8000),
-              });
-            } catch {} // best-effort cancel
-            throw err; // re-throw original error
-          }
-          purchased = true; // etiqueta paga: a reserva NÃO pode mais ser liberada, nem se o UPDATE abaixo falhar
-          // Persist meOrderId right after checkout succeeds (label is now paid) so it can be
-          // cancelled/reprinted later even if generate/print below fails.
-          await db.update(siteOrders).set({ meOrderId, updatedAt: new Date() }).where(eq(siteOrders.id, input.orderId));
-        }
-
-        const genRes = await fetch(`${ME_BASE}/api/v2/me/shipment/generate`, {
-          method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId] }), signal: AbortSignal.timeout(8000),
-        });
-        if (!genRes.ok) {
-          const txt = await genRes.text();
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro gerar etiqueta ME: ${txt}` });
-        }
-
-        const printRes = await fetch(`${ME_BASE}/api/v2/me/shipment/print`, {
-          method: 'POST', headers, body: JSON.stringify({ orders: [meOrderId], mode: 'private' }), signal: AbortSignal.timeout(8000),
-        });
-        if (!printRes.ok) {
-          const txt = await printRes.text();
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Erro imprimir etiqueta ME: ${txt}` });
-        }
-        const printData = await printRes.json();
-        const labelUrl: string = printData.url;
-
-        // Label generated but NOT yet physically posted — use 'label_generated' so the
-        // "Pendentes Envio" admin tab works and we don't tell the customer it shipped early.
-        const [updated] = await db.update(siteOrders)
-          .set({ meOrderId, meLabelUrl: labelUrl, status: 'label_generated', updatedAt: new Date() })
-          .where(eq(siteOrders.id, input.orderId))
-          .returning();
-        const code = await fillTrackingCodeAfterLabel(input.orderId, meOrderId, token);
-        if (code && updated && !updated.trackingCode) updated.trackingCode = code;
-
-      return { labelUrl, meOrderId, order: updated };
-      } catch (err) {
-        // Falha antes do checkout (nada foi cobrado): libera a reserva para nova tentativa.
-        if (!purchased) await releaseLabel(input.orderId);
-        throw err;
-      }
+      return generateLabelForOrder(input.orderId);
     }),
 
   cancelOrder: protectedProcedure

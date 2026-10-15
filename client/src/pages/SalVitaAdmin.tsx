@@ -317,6 +317,44 @@ function EditModal({ order, onClose, onSaved }: { order: any; onClose: () => voi
   );
 }
 
+/* ── Etiquetas automáticas: o que o sistema gerou sozinho e o que está esperando ─────── */
+function AutoLabelPanel() {
+  const { data } = trpc.shipping.autoLabelReport.useQuery(undefined, { refetchInterval: 5 * 60_000 });
+  const retry = trpc.shipping.generateLabel.useMutation({
+    onSuccess: () => { toast.success('Etiqueta gerada.'); utils.shipping.autoLabelReport.invalidate(); },
+    onError: (e) => toast.error(`Etiqueta não gerada: ${e.message}`),
+  });
+  const utils = trpc.useUtils();
+  if (!data || (data.generated.length === 0 && data.waiting.length === 0)) return null;
+  const when = (iso: string) => new Date(iso.includes('T') || iso.includes('Z') ? iso : iso.replace(' ', 'T') + 'Z')
+    .toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Fortaleza' });
+  return (
+    <section aria-label="Etiquetas automáticas" className="bg-white rounded-xl border border-slate-200 px-4 py-3 text-xs text-slate-800 space-y-2">
+      <p className="font-bold text-slate-900 text-sm">Etiquetas automáticas</p>
+      {data.waiting.length > 0 && (
+        <ul className="space-y-1.5">
+          {data.waiting.map(w => (
+            <li key={w.id} className="flex items-center justify-between gap-3 flex-wrap">
+              <span><strong>#{w.id}</strong> {w.name}: {w.problem ? <span className="text-rose-800">falhou ({w.problem})</span> : 'esperando a próxima rodada (meio-dia) ou o pagamento ser processado'}</span>
+              <button onClick={() => retry.mutate({ orderId: w.id })} disabled={retry.isPending} className={btn.secondary}>Gerar agora</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {data.generated.length > 0 && (
+        <ul className="space-y-1 text-slate-700">
+          {data.generated.map(g => (
+            <li key={`${g.id}-${g.at}`}>
+              <strong>#{g.id}</strong> {g.name}: etiqueta gerada sozinha em {when(g.at)}
+              {g.code ? <> · rastreio <span className="font-mono">{g.code}</span></> : null}
+              {g.url ? <> · <a href={g.url} target="_blank" rel="noopener noreferrer" className="underline text-[#0b1d3a]">imprimir</a></> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
 /* ── Order Card ───────────────────────────────────────────── */
 type CardConfirm = 'pay' | 'cancel' | 'delete' | 'wa' | 'mail' | null;
 
@@ -926,6 +964,8 @@ export function OrdersPanel() {
           </label>
         )}
       </div>
+
+      <AutoLabelPanel />
 
       {isLoading ? (
         <div className="text-center py-16 text-slate-600" role="status">
