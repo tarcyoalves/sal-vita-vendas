@@ -2,8 +2,8 @@
 
 - **Agente:** claude
 - **Início:** 2026-10-15
-- **Fim:** <preencha ao concluir>
-- **Status:** em andamento
+- **Fim:** 2026-10-15
+- **Status:** parcial (somente na branch claude/magical-fermi-wrdxjy; sem push)
 - **Branch:** `claude/magical-fermi-wrdxjy`
 
 ## Objetivo
@@ -19,4 +19,6 @@ emergencyReset resistente a rotação de IP, e npm audit fix sem --force.
 
 ## Progresso
 
-- [ ] ver registro final
+- [x] helper de IP, 500 genéricos, throttle do emergencyReset, npm audit fix
+- Pendente: vulnerabilidades que exigem --force (vitest, vite, drizzle-orm, drizzle-kit, sharp, tailwindcss, react-router-dom)
+- Armadilha: api/bundle.js não foi regenerado (a Vercel roda build:api).
