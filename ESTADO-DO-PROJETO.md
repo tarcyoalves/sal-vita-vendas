@@ -277,6 +277,23 @@ Plano e decisões em `PLANO-RADAR-CARGAS.md`.
 ## 6. Pendências — em ordem de urgência
 
 ### 🔴 Só o dono resolve (fora do código)
+000. **Segurança (hardening de 15/10/2026, commits até `9b234f7`):**
+   - **Brevo:** no painel (Transactional → Webhooks) tirar `?secret=` da URL e mandar o segredo
+     por `Authorization: Bearer` ou `X-Webhook-Secret`. Quando o log
+     `[brevo-webhook] segredo recebido pela URL` parar de aparecer, definir
+     `WEBHOOK_ALLOW_QUERY_SECRET=0` na Vercel e trocar o valor de `BREVO_WEBHOOK_SECRET`.
+     Se o painel do Brevo não aceitar cabeçalho, a URL continua funcionando.
+   - **CSP:** a política completa está em `Content-Security-Policy-Report-Only` (não bloqueia).
+     Abrir lembretes e premium com o console do navegador aberto; sem violações, trocar para
+     `Content-Security-Policy` e então avaliar tirar `'unsafe-inline'`.
+   - **Primeiro deploy após drizzle-orm 0.45 / neon 0.10:** conferir `[migrate:build] ok` e que
+     login, Tarefas e Faturamento carregam. Conferir que `lastLoginIp` grava o IP real (não
+     "desconhecido") — premissa de que `x-vercel-forwarded-for` chega à função.
+   - Pendências de código (baixo risco, não feitas): allowlist de MIME em
+     `server/routers/catalog.ts` (`assertDataUrl`/`fileType`); `/api/db-stats` usa
+     `ADMIN_RESET_SECRET` (dar segredo próprio); teto diário no `recovery.chat` público;
+     e-mail do admin inicial no log de `server/db/migrate.ts:51` (mascarar na próxima migração);
+     dev: tailwind 3 e drizzle-kit ainda trazem 11 vulnerabilidades só de desenvolvimento.
 00. **Antes de ligar anúncios (auditoria de 14/10/2026):**
    - ✅ **Domínio sem www adicionado na Vercel pelo dono em 14/10/2026** — certificado emitido
      e verificado (200, `/meu-pedido`, `/privacidade` e o webhook do MP respondem). O aviso
