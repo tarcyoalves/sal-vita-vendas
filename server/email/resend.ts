@@ -301,6 +301,89 @@ export function orderConfirmedHtml(name: string, orderId: number, total: string)
   return layout(`Pedido #${orderId} confirmado — R$ ${total}. Obrigado pela compra!`, body);
 }
 
+/** Eventos de envio que viram e-mail (ver server/lib/meTracking.ts). */
+export type ShippingEmailEvent = 'posted' | 'delivered' | 'undelivered' | 'paused' | 'suspended';
+
+const SHIPPING_COPY: Record<ShippingEmailEvent, { subject: (id: number, code: string) => string; title: string; lead: string; note: string; cta: string }> = {
+  posted: {
+    subject: (id, code) => `Pedido #${id} postado — rastreio ${code}`,
+    title: 'Seu pedido foi postado',
+    lead: 'Seu Sal Vita j&aacute; est&aacute; com a transportadora e a caminho.',
+    note: 'A movimenta&ccedil;&atilde;o pode levar algumas horas para aparecer no rastreio depois da postagem.',
+    cta: 'Acompanhar a entrega',
+  },
+  delivered: {
+    subject: (id) => `Pedido #${id} entregue`,
+    title: 'Seu pedido foi entregue',
+    lead: 'A transportadora registrou a entrega do seu Sal Vita. Obrigado pela compra!',
+    note: 'Se o pacote n&atilde;o chegou at&eacute; voc&ecirc;, fale com a gente pelo WhatsApp que resolvemos.',
+    cta: 'Ver o rastreio',
+  },
+  undelivered: {
+    subject: (id) => `Pedido #${id}: a transportadora não conseguiu entregar`,
+    title: 'A entrega n&atilde;o foi conclu&iacute;da',
+    lead: 'A transportadora informou que n&atilde;o conseguiu entregar o seu pedido.',
+    note: 'Confira no rastreio o motivo e os pr&oacute;ximos passos. J&aacute; estamos acompanhando; se precisar, chame no WhatsApp.',
+    cta: 'Ver o que aconteceu',
+  },
+  paused: {
+    subject: (id) => `Pedido #${id}: a entrega precisa de você`,
+    title: 'A entrega precisa de uma a&ccedil;&atilde;o sua',
+    lead: 'A transportadora interrompeu a entrega e aguarda uma a&ccedil;&atilde;o do destinat&aacute;rio (por exemplo, retirar na unidade ou confirmar o endere&ccedil;o).',
+    note: 'Veja no rastreio o que &eacute; preciso fazer. Se tiver d&uacute;vida, chame no WhatsApp.',
+    cta: 'Ver o que fazer',
+  },
+  suspended: {
+    subject: (id) => `Pedido #${id}: entrega suspensa`,
+    title: 'A entrega foi suspensa',
+    lead: 'A transportadora suspendeu a entrega do seu pedido.',
+    note: 'J&aacute; estamos verificando com a transportadora e falamos com voc&ecirc;. Se preferir, chame no WhatsApp.',
+    cta: 'Ver o rastreio',
+  },
+};
+
+/**
+ * E-mail de cada etapa do envio. Vai por e-mail para poupar o WhatsApp (número não
+ * oficial, risco de banimento) — decisão do dono em 14-15/10/2026.
+ */
+export function shippingUpdateEmail(
+  event: ShippingEmailEvent, name: string, orderId: number, code: string | null, link: string | null, orderPageUrl: string,
+): { subject: string; html: string } {
+  const c = SHIPPING_COPY[event];
+  const codeRow = code ? `
+        <table width="100%" cellpadding="8" cellspacing="0" border="0"
+               style="border:1px solid #e0e0e0;border-radius:6px;font-size:14px;color:#444;">
+          <tr>
+            <td>C&oacute;digo de rastreio</td>
+            <td style="text-align:right;font-family:monospace;font-size:15px;"><strong>${escapeHtml(code)}</strong></td>
+          </tr>
+        </table>` : '';
+  const body = `<table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td>
+        <p style="margin:0 0 4px;font-size:13px;color:#888;">Pedido #${orderId}</p>
+        <h2 style="margin:0 0 8px;font-size:22px;color:#222;">${c.title}</h2>
+        <p style="margin:0 0 20px;font-size:15px;color:#444;line-height:1.6;">
+          Ol&aacute;, <strong>${escapeHtml(name)}</strong>. ${c.lead}
+        </p>${codeRow}
+      </td>
+    </tr>
+    <tr><td>${ctaButton(c.cta, link ?? orderPageUrl)}</td></tr>
+    <tr>
+      <td>
+        <p style="margin:0;font-size:14px;color:#555;line-height:1.6;">
+          ${c.note}
+          Voc&ecirc; tamb&eacute;m acompanha o pedido em <a href="${orderPageUrl}" style="color:${BRAND};">${escapeHtml(orderPageUrl.replace(/^https?:\/\//, ''))}</a>.
+          WhatsApp: (84) 2140-8212.
+        </p>
+      </td>
+    </tr>
+  </table>`;
+
+  const subject = c.subject(orderId, code ?? '');
+  return { subject, html: layout(subject, body) };
+}
+
 // ── Utility ───────────────────────────────────────────────────────────────────
 
 function escapeHtml(str: string): string {

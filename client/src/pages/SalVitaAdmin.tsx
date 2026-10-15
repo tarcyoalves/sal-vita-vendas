@@ -18,6 +18,7 @@ import {
   matchesSearch,
   splitBatchSelection,
 } from '../components/premium/admin/adminLogic';
+import { trackingLink } from '../lib/trackingLink';
 import {
   Package,
   Clock,
@@ -558,7 +559,7 @@ function OrderCard({
                 </button>
 
                 <a
-                  href={`https://wa.me/${(order.customerPhone || '').replace(/\D/g, '')}?text=${encodeURIComponent(`🧂 *Sal Vita — Pedido #${order.id}*\n\nOlá ${order.customerName}! Seu pedido foi enviado! 🚚\n\n📦 Código de rastreio: *${order.trackingCode}*\n\n🔗 Rastreie: https://rastreamento.correios.com.br/app/index.php?objetos=${order.trackingCode}\n\nOu acesse: https://www.premium.salvitarn.com.br/meu-pedido\n\nObrigado! 🙏`)}`}
+                  href={`https://wa.me/${(order.customerPhone || '').replace(/\D/g, '')}?text=${encodeURIComponent(`🧂 *Sal Vita — Pedido #${order.id}*\n\nOlá ${order.customerName}! Seu pedido foi enviado! 🚚\n\n📦 Código de rastreio: *${order.trackingCode}*\n\n🔗 Rastreie: ${trackingLink(order.trackingCode)}\n\nOu acesse: https://www.premium.salvitarn.com.br/meu-pedido\n\nObrigado! 🙏`)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className={btn.secondary}
@@ -618,8 +619,8 @@ function OrderCard({
             <input
               value={trackInput}
               onChange={e => setTrackInput(e.target.value)}
-              aria-label="Código de rastreio dos Correios"
-              placeholder="Código de rastreio dos Correios (ex: AA123456789BR)"
+              aria-label="Código de rastreio"
+              placeholder="Código de rastreio (ex: AA123456789BR ou AZL-...)"
               className={`${INPUT} flex-1`}
             />
             <button onClick={saveTracking} disabled={!trackInput.trim() || trackMut.isPending || updateMut.isPending} className={btn.success}>

@@ -308,6 +308,8 @@ function unsubscribePage(message: string): string {
 }
 
 import { handleUnsubscribe } from '../server/routers/unsubscribe';
+import { syncMeTracking, handleMeWebhookEvent } from '../server/routers/shipping';
+import { verifyMeSignature, type MeTrackingInfo } from '../server/lib/meTracking';
 import { safeEqual } from '../server/lib/safeEqual';
 import { handleResendWebhook, verifySvixSignature } from '../server/routers/resendWebhook';
 import { isForbiddenBatch, emailFromTrpcBody } from '../server/lib/trpcBatchGuard';
@@ -405,6 +407,29 @@ const webhookLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 60,
   validate: { xForwardedForHeader: false },
+});
+
+// Webhook do Melhor Envio (postado, entregue, ocorrências) → status do pedido + e-mail ao
+// cliente, uma vez por evento. Assinado com X-ME-Signature (HMAC-SHA256 do corpo com o
+// segredo do app). Sem MELHOR_ENVIO_WEBHOOK_SECRET recusa tudo — o cron diário cobre.
+app.post('/api/me-webhook', webhookLimiter, express.raw({ type: '*/*' }), async (req, res) => {
+  const secret = process.env.MELHOR_ENVIO_WEBHOOK_SECRET;
+  const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(String(req.body ?? ''));
+  const sig = req.headers['x-me-signature'];
+  if (!secret || !verifyMeSignature(raw, typeof sig === 'string' ? sig : undefined, secret)) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  let payload: { event?: string; data?: MeTrackingInfo };
+  try { payload = JSON.parse(raw.toString('utf8')); } catch { res.status(400).json({ error: 'Invalid JSON' }); return; }
+  try {
+    const result = await handleMeWebhookEvent(payload);
+    console.log(`[me-webhook] ${payload.event ?? '?'}: ${result}`);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[me-webhook] falhou:', err);
+    res.status(500).json({ error: 'retry' }); // o Melhor Envio tenta de novo em 15 min
+  }
 });
 
 // Raw body must be captured before express.json() for HMAC verification
@@ -1438,11 +1463,13 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
     // because on the current schedule the next attempt is a day away.
     const unpaid = await runIsolated('unpaid-followup', processUnpaidFollowups, { sent: 0 });
     const reorder = await runIsolated('reorder-reminder', processReorderReminders, { sent: 0 });
+    // Rastreio do Melhor Envio: postado -> 'shipped' + um WhatsApp; entregue -> 'delivered'.
+    const tracking = await runIsolated('me-tracking', syncMeTracking, { checked: 0, shipped: 0, delivered: 0, notified: 0 });
 
     // ── Abandoned cart automation: only during business hours ─────────────────
     let sent = 0, cancelled = 0, failed = 0;
     if (!isBusinessHours()) {
-      res.json({ ok: true, processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: 'outside business hours', unpaid, reconciled, reorder });
+      res.json({ ok: true, processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: 'outside business hours', unpaid, reconciled, reorder, tracking });
       return;
     }
     // Claim atômico (mesmo padrão de campaigns.ts): GET+POST/retry simultâneos nunca
@@ -1536,7 +1563,7 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
       }
     }
 
-    res.json({ ok: true, processed: due.length, sent, cancelled, failed, unpaid, reconciled, reorder });
+    res.json({ ok: true, processed: due.length, sent, cancelled, failed, unpaid, reconciled, reorder, tracking });
   } catch (err) {
     console.error('[cron] abandoned-cart error:', err);
     res.status(500).json({ error: String(err) });

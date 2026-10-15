@@ -3,7 +3,7 @@ import { neon } from '@neondatabase/serverless';
 type Step = { name: string; ok: boolean; error?: string };
 
 // Bump whenever the DDL below changes, to force exactly one full re-run.
-const ORDERS_SCHEMA_VERSION = 'orders-2026-10-14a';
+const ORDERS_SCHEMA_VERSION = 'orders-2026-10-15a';
 
 /**
  * Ensures all e-commerce/recovery tables exist in the ORDERS database.
@@ -118,6 +118,25 @@ export async function ensureOrdersTablesExist(force = false): Promise<Step[]> {
   await run('site_orders_status_idx', () => sql`CREATE INDEX IF NOT EXISTS site_orders_status_idx ON site_orders(status)`);
   await run('site_orders_phone_idx', () => sql`CREATE INDEX IF NOT EXISTS site_orders_phone_idx ON site_orders(customer_phone)`);
   await run('site_orders_payment_created_idx', () => sql`CREATE INDEX IF NOT EXISTS site_orders_payment_created_idx ON site_orders(payment_status, created_at)`);
+  // Eventos de envio do Melhor Envio já tratados (postado, entregue, ocorrência...). A chave
+  // (order_id, event) é a trava: cada aviso ao cliente sai uma única vez por pedido e evento.
+  // Tabela separada de propósito: coluna nova em site_orders derruba todo SELECT se faltar.
+  await run('shipping_events', () => sql`
+    CREATE TABLE IF NOT EXISTS shipping_events (
+      order_id    INTEGER NOT NULL,
+      event       TEXT NOT NULL,
+      occurred_at TIMESTAMP,
+      notified    TEXT,
+      created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (order_id, event)
+    )
+  `);
+  // Pedidos que já estavam enviados antes desta automação: o cliente já foi avisado à mão.
+  await run('shipping_events_backfill', () => sql`
+    INSERT INTO shipping_events (order_id, event, notified)
+    SELECT id, 'posted', 'backfill' FROM site_orders WHERE status IN ('shipped', 'delivered')
+    ON CONFLICT DO NOTHING
+  `);
 
   await run('abandoned_carts', () => sql`
     CREATE TABLE IF NOT EXISTS abandoned_carts (

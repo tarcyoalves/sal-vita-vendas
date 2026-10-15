@@ -8,6 +8,11 @@ import { desc, eq, and, or, ne, gte, isNull, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 import { STORE_URL } from '../lib/storeUrl';
 import { filterAllowedCarriersSorted } from '../lib/shippingFilter';
+import {
+  trackingLink, fetchMeTracking, pickTrackingCode, decideTrackingUpdate, isRecentEvent, OCCURRENCE_EVENTS,
+  type MeTrackingInfo, type ShippingEvent,
+} from '../lib/meTracking';
+import { sendEmail, shippingUpdateEmail } from '../email/resend';
 import { confirmOrderPaid, appendReviewNote } from '../lib/orderConfirmation';
 import { quantidadeValida, cupomAtendeMinimo, acharPedidoDuplicado, mesmosDadosDoPedido, IDEMPOTENCIA_PEDIDO_MS } from '../lib/paymentTransition';
 
@@ -105,8 +110,188 @@ async function sendWhatsAppMsg(phone: string | null | undefined, message: string
   } catch { return false; }
 }
 
-const correiosLink = (code: string) =>
-  `https://rastreamento.correios.com.br/app/index.php?objeto=${encodeURIComponent(code)}`;
+const ORDER_PAGE_URL = () => `${STORE_URL}/meu-pedido`;
+
+type NotifiableOrder = { id: number; customerName: string; customerPhone: string | null; customerEmail?: string | null; trackingCode?: string | null };
+
+/**
+ * Avisa o cliente de um evento de envio. E-mail primeiro, para poupar o WhatsApp não
+ * oficial do risco de banimento (decisão do dono em 14-15/10/2026). WhatsApp só no
+ * "postado" e só para quem não tem e-mail (ou se o e-mail falhar), para ninguém ficar
+ * sem o código. Devolve o canal usado, ou null se nada saiu.
+ */
+export async function notifyShippingEvent(order: NotifiableOrder, event: ShippingEvent): Promise<'email' | 'whatsapp' | null> {
+  const code = order.trackingCode ?? null;
+  const link = code ? trackingLink(code) : null;
+  if (order.customerEmail) {
+    const { subject, html } = shippingUpdateEmail(event, order.customerName, order.id, code, link, ORDER_PAGE_URL());
+    const r = await sendEmail(order.customerEmail, subject, html);
+    if (r.ok) return 'email';
+    console.warn(`[shipping-event] e-mail "${event}" do pedido ${order.id} não saiu (${r.reason})`);
+  }
+  if (event === 'posted' && code) {
+    return (await notifyShippedWhatsApp(order, code)) ? 'whatsapp' : null;
+  }
+  return null;
+}
+
+async function notifyShippedWhatsApp(
+  order: { id: number; customerName: string; customerPhone: string | null },
+  code: string,
+): Promise<boolean> {
+  const [tpl] = await db.select().from(msgTemplates)
+    .where(and(eq(msgTemplates.type, 'shipped'), eq(msgTemplates.isDefault, true))).limit(1);
+  const vars = {
+    nome: order.customerName,
+    pedido: String(order.id),
+    rastreio: code,
+    link: trackingLink(code),
+  };
+  const msg = tpl
+    ? renderTpl(tpl.body, vars)
+    : `Olá *${order.customerName}*! 📦\n\nSeu pedido *#${order.id}* foi *enviado*! 🚚\n\n🔎 Rastreio: *${code}*\n👉 ${trackingLink(code)}\n\n_Sal Vita — Mossoró/RN_`;
+  return sendWhatsAppMsg(order.customerPhone, msg);
+}
+
+/**
+ * Trava de "um aviso por pedido e evento": só quem insere a linha avisa. Se a tabela
+ * ainda não existir (migração não rodou), devolve false — melhor não avisar do que avisar
+ * em dobro.
+ */
+async function claimShippingEvent(orderId: number, event: ShippingEvent, occurredAt: string | null): Promise<boolean> {
+  try {
+    const rows = await db.execute(sql`
+      INSERT INTO shipping_events (order_id, event, occurred_at)
+      VALUES (${orderId}, ${event}, ${occurredAt ? occurredAt : null}::timestamp)
+      ON CONFLICT DO NOTHING
+      RETURNING order_id
+    `);
+    const list = (rows as unknown as { rows?: unknown[] }).rows ?? (rows as unknown as unknown[]);
+    return Array.isArray(list) && list.length > 0;
+  } catch (e) {
+    console.error(`[shipping-event] trava do pedido ${orderId}/${event} indisponível:`, (e as Error)?.message);
+    return false;
+  }
+}
+
+async function markShippingEvent(orderId: number, event: ShippingEvent, notified: string): Promise<void> {
+  try { await db.execute(sql`UPDATE shipping_events SET notified = ${notified} WHERE order_id = ${orderId} AND event = ${event}`); }
+  catch { /* só registro */ }
+}
+
+async function releaseShippingEvent(orderId: number, event: ShippingEvent): Promise<void> {
+  try { await db.execute(sql`DELETE FROM shipping_events WHERE order_id = ${orderId} AND event = ${event}`); }
+  catch { /* a próxima consulta não reenvia; fica registrado no log */ }
+}
+
+/** Último evento de ocorrência do pedido (para o /meu-pedido). Nunca lança. */
+export async function latestShippingOccurrence(orderId: number): Promise<ShippingEvent | null> {
+  try {
+    const rows = await db.execute(sql`
+      SELECT event FROM shipping_events
+      WHERE order_id = ${orderId} AND event IN ('undelivered', 'paused', 'suspended')
+      ORDER BY created_at DESC LIMIT 1
+    `);
+    const list = ((rows as unknown as { rows?: Array<{ event: string }> }).rows ?? (rows as unknown as Array<{ event: string }>));
+    return (Array.isArray(list) && list[0]?.event as ShippingEvent) || null;
+  } catch { return null; }
+}
+
+/** Aplica um rastreio do Melhor Envio a um pedido: código, status e o aviso do evento (uma vez). */
+export async function applyMeTracking(
+  order: typeof siteOrders.$inferSelect,
+  info: MeTrackingInfo,
+): Promise<{ status: string | null; event: ShippingEvent | null; notified: string | null }> {
+  const d = decideTrackingUpdate(order, info);
+  let current = order;
+  if (d.status || d.trackingCode) {
+    const set: Partial<typeof siteOrders.$inferInsert> = { updatedAt: new Date() };
+    if (d.trackingCode) set.trackingCode = d.trackingCode;
+    if (d.status) set.status = d.status;
+    const [updated] = await db.update(siteOrders).set(set)
+      .where(and(eq(siteOrders.id, order.id), eq(siteOrders.status, order.status!)))
+      .returning();
+    if (!updated) return { status: null, event: null, notified: null }; // outro processo mexeu no pedido
+    current = updated;
+  }
+  if (!d.event) return { status: d.status, event: null, notified: null };
+
+  const occurredAt = d.event === 'delivered' ? info.delivered_at ?? null : d.event === 'posted' ? info.posted_at ?? null : null;
+  if (!(await claimShippingEvent(order.id, d.event, occurredAt))) return { status: d.status, event: d.event, notified: null };
+
+  if (OCCURRENCE_EVENTS.includes(d.event)) {
+    await appendReviewNote(order.id, `Entrega com ocorrência no Melhor Envio: ${d.event}`);
+  }
+  if (!isRecentEvent(info, d.event)) {
+    await markShippingEvent(order.id, d.event, 'antigo');
+    return { status: d.status, event: d.event, notified: 'antigo' };
+  }
+  let channel: 'email' | 'whatsapp' | null = null;
+  try { channel = await notifyShippingEvent(current, d.event); }
+  catch (e) { console.error(`[shipping-event] aviso ${d.event} do pedido ${order.id} falhou:`, e); }
+  if (!channel) {
+    // Nada saiu (sem e-mail, cota do dia, falha de rede): libera a trava para tentar de novo.
+    await releaseShippingEvent(order.id, d.event);
+    return { status: d.status, event: d.event, notified: null };
+  }
+  await markShippingEvent(order.id, d.event, channel);
+  return { status: d.status, event: d.event, notified: channel };
+}
+
+/** Grava o código de rastreio logo após gerar a etiqueta, se o Melhor Envio já o tiver. Nunca lança. */
+async function fillTrackingCodeAfterLabel(orderId: number, meOrderId: string, token: string): Promise<string | null> {
+  try {
+    const map = await fetchMeTracking([meOrderId], token);
+    const code = map[meOrderId] ? pickTrackingCode(map[meOrderId]) : null;
+    if (code) {
+      await db.update(siteOrders).set({ trackingCode: code, updatedAt: new Date() })
+        .where(and(eq(siteOrders.id, orderId), isNull(siteOrders.trackingCode)));
+    }
+    return code;
+  } catch (e) {
+    console.warn(`[me-tracking] código do pedido ${orderId} ainda indisponível:`, (e as Error)?.message);
+    return null;
+  }
+}
+
+/**
+ * Cron diário (rede de segurança do webhook): consulta o rastreio de todos os pedidos
+ * com etiqueta ainda não entregues e aplica cada um com applyMeTracking.
+ */
+export async function syncMeTracking(): Promise<{ checked: number; shipped: number; delivered: number; notified: number }> {
+  const result = { checked: 0, shipped: 0, delivered: 0, notified: 0 };
+  const token = process.env.MELHOR_ENVIO_TOKEN;
+  if (!token) { console.warn('[me-tracking] MELHOR_ENVIO_TOKEN ausente — rastreio não sincronizado'); return result; }
+
+  const orders = await db.select().from(siteOrders).where(and(
+    or(eq(siteOrders.status, 'label_generated'), eq(siteOrders.status, 'shipped')),
+    sql`${siteOrders.meOrderId} IS NOT NULL`,
+  )).orderBy(desc(siteOrders.updatedAt)).limit(100);
+  if (!orders.length) return result;
+
+  const map = await fetchMeTracking(orders.map(o => o.meOrderId!), token);
+  for (const order of orders) {
+    const info = map[order.meOrderId!];
+    if (!info) continue;
+    result.checked++;
+    const r = await applyMeTracking(order, info);
+    if (r.status === 'shipped') result.shipped++;
+    if (r.status === 'delivered') result.delivered++;
+    if (r.notified && r.notified !== 'antigo') result.notified++;
+  }
+  return result;
+}
+
+/** Webhook do Melhor Envio: um evento de uma etiqueta. Devolve o que foi feito (para log). */
+export async function handleMeWebhookEvent(payload: { event?: string; data?: MeTrackingInfo }): Promise<string> {
+  const data = payload?.data;
+  if (!data?.id) return 'sem id';
+  const [order] = await db.select().from(siteOrders).where(eq(siteOrders.meOrderId, data.id)).limit(1);
+  if (!order) return 'etiqueta sem pedido da loja';
+  const status = data.status ?? payload.event ?? null;
+  const r = await applyMeTracking(order, { ...data, status });
+  return `pedido ${order.id}: status=${r.status ?? '-'} evento=${r.event ?? '-'} aviso=${r.notified ?? '-'}`;
+}
 
 const STATIC_REGIONS: Record<string, { pac:[number,string]; sedex:[number,string] }> = {
   RN:{pac:[14,'3–5'],sedex:[27,'1–2']}, CE:{pac:[15,'3–5'],sedex:[28,'1–2']},
@@ -653,6 +838,8 @@ Seja direto e use emojis para facilitar leitura.`;
         trackingCode: order.trackingCode,
         shippedAt: order.status === 'shipped' || order.status === 'delivered' ? order.updatedAt : null,
         createdAt: order.createdAt,
+        // Ocorrência de entrega informada pelo Melhor Envio (não entregue, interrompida, suspensa).
+        deliveryIssue: order.status === 'shipped' ? await latestShippingOccurrence(order.id) : null,
       };
     }),
 
@@ -668,22 +855,16 @@ Seja direto e use emojis para facilitar leitura.`;
         .where(eq(siteOrders.id, input.id))
         .returning();
 
-      // Auto-notify the customer of the tracking code via WhatsApp (best effort)
+      // Avisa o cliente uma única vez (e-mail; WhatsApp só sem e-mail). Se o rastreio
+      // automático já avisou o 'postado', salvar de novo no painel não reenvia.
       if (updated) {
         try {
-          const [tpl] = await db.select().from(msgTemplates)
-            .where(and(eq(msgTemplates.type, 'shipped'), eq(msgTemplates.isDefault, true))).limit(1);
-          const vars = {
-            nome: updated.customerName,
-            pedido: String(updated.id),
-            rastreio: input.trackingCode,
-            link: correiosLink(input.trackingCode),
-          };
-          const msg = tpl
-            ? renderTpl(tpl.body, vars)
-            : `Olá *${updated.customerName}*! 📦\n\nSeu pedido *#${updated.id}* foi *enviado*! 🚚\n\n🔎 Rastreio: *${input.trackingCode}*\n👉 ${correiosLink(input.trackingCode)}\n\n_Sal Vita — Mossoró/RN_`;
-          await sendWhatsAppMsg(updated.customerPhone, msg);
-        } catch (e) { console.error('[updateTracking] WA notify failed:', e); }
+          if (await claimShippingEvent(updated.id, 'posted', null)) {
+            const channel = await notifyShippingEvent(updated, 'posted');
+            if (channel) await markShippingEvent(updated.id, 'posted', channel);
+            else await releaseShippingEvent(updated.id, 'posted');
+          }
+        } catch (e) { console.error('[updateTracking] aviso de envio falhou:', e); }
       }
       return updated;
     }),
@@ -1033,6 +1214,8 @@ Seja direto e use emojis para facilitar leitura.`;
           .set({ meOrderId, meLabelUrl: labelUrl, status: 'label_generated', updatedAt: new Date() })
           .where(eq(siteOrders.id, input.orderId))
           .returning();
+        const code = await fillTrackingCodeAfterLabel(input.orderId, meOrderId, token);
+        if (code && updated && !updated.trackingCode) updated.trackingCode = code;
 
       return { labelUrl, meOrderId, order: updated };
       } catch (err) {
@@ -1147,11 +1330,11 @@ Seja direto e use emojis para facilitar leitura.`;
         nome: order.customerName,
         pedido: String(order.id),
         rastreio: order.trackingCode,
-        link: correiosLink(order.trackingCode),
+        link: trackingLink(order.trackingCode),
       };
       const msg = tpl
         ? renderTpl(tpl.body, vars)
-        : `🧂 *Sal Vita — Pedido #${order.id}*\n\nOlá *${order.customerName}*! Seu pedido foi enviado! 🚚\n\n📦 Código de rastreio: *${order.trackingCode}*\n\n🔗 Rastreie: ${correiosLink(order.trackingCode)}\n\nOu acesse: ${STORE_URL}/meu-pedido\n\nObrigado! 🙏`;
+        : `🧂 *Sal Vita — Pedido #${order.id}*\n\nOlá *${order.customerName}*! Seu pedido foi enviado! 🚚\n\n📦 Código de rastreio: *${order.trackingCode}*\n\n🔗 Rastreie: ${trackingLink(order.trackingCode)}\n\nOu acesse: ${STORE_URL}/meu-pedido\n\nObrigado! 🙏`;
 
       const sent = await sendWhatsAppMsg(order.customerPhone, msg);
       if (!sent) {
@@ -1316,6 +1499,7 @@ Seja direto e use emojis para facilitar leitura.`;
           await db.update(siteOrders)
             .set({ meOrderId, meLabelUrl: labelUrl, status: 'label_generated', updatedAt: new Date() })
             .where(eq(siteOrders.id, orderId));
+          await fillTrackingCodeAfterLabel(orderId, meOrderId, token);
 
           results.push({ orderId, success: true, labelUrl });
         } catch (e: any) {

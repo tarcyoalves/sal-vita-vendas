@@ -4,6 +4,13 @@ import ConsentBanner from '../components/premium/ConsentBanner';
 import { CONSENT_CHANGE_EVENT, loadMetaPixel, trackPixel } from '../components/premium/pixelConsent';
 import { claimPurchase } from '../components/premium/purchaseLock';
 import { BrandLogo } from '../components/premium/BrandLogo';
+import { trackingLink } from '../lib/trackingLink';
+
+const DELIVERY_ISSUE_TEXT: Record<string, { title: string; body: string }> = {
+  undelivered: { title: 'A entrega não foi concluída', body: 'A transportadora informou que não conseguiu entregar o pedido.' },
+  paused: { title: 'A entrega precisa de você', body: 'A transportadora interrompeu a entrega e aguarda uma ação do destinatário, como retirar na unidade ou confirmar o endereço.' },
+  suspended: { title: 'Entrega suspensa', body: 'A transportadora suspendeu a entrega. Já estamos verificando.' },
+};
 
 // Mesma identidade da loja: marinho e dourado (tokens em index.html, html.sv-premium),
 // Cormorant nos títulos, Outfit no resto. Os fallbacks cobrem o caso sem a classe.
@@ -436,6 +443,18 @@ export default function TrackOrder() {
               </div>
             )}
 
+            {/* Ocorrência informada pela transportadora (via Melhor Envio) */}
+            {order.deliveryIssue && DELIVERY_ISSUE_TEXT[order.deliveryIssue] && (
+              <div className="tk-box" role="status" style={{ borderColor: 'rgba(224,191,84,0.6)' }}>
+                <h3 style={{ fontFamily: SERIF, fontSize: '1.4rem', fontWeight: 700, color: 'white', margin: '0 0 8px' }}>
+                  {DELIVERY_ISSUE_TEXT[order.deliveryIssue].title}
+                </h3>
+                <p style={{ fontSize: '15px', color: 'rgba(255,255,255,0.85)', margin: 0, lineHeight: 1.6 }}>
+                  {DELIVERY_ISSUE_TEXT[order.deliveryIssue].body} Confira os detalhes no rastreio abaixo ou fale com a gente pelo WhatsApp.
+                </p>
+              </div>
+            )}
+
             {/* Tracking code */}
             {order.trackingCode && (
               <div className="tk-box">
@@ -451,7 +470,7 @@ export default function TrackOrder() {
                     {order.trackingCode}
                   </code>
                   <a
-                    href={`https://rastreamento.correios.com.br/app/index.php?objetos=${order.trackingCode}`}
+                    href={trackingLink(order.trackingCode)}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{
@@ -460,9 +479,14 @@ export default function TrackOrder() {
                       textDecoration: 'none',
                     }}
                   >
-                    Rastrear nos Correios
+                    Acompanhar a entrega
                   </a>
                 </div>
+                {order.status === 'label_generated' && (
+                  <p style={{ margin: '10px 0 0', fontSize: '14px', color: 'rgba(255,255,255,0.7)' }}>
+                    A movimentação aparece no rastreio depois que o pacote é postado.
+                  </p>
+                )}
               </div>
             )}
 
