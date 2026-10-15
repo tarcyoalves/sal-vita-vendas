@@ -32,6 +32,8 @@ const BASE = 56; // reserva do rodapé
 const LARG = W - MX * 2;
 const LIMITE_Y = H - BASE;
 
+export const FAIXA_SIMULACAO = 'SIMULAÇÃO — DADOS FICTÍCIOS, NÃO USAR PARA DECISÃO';
+
 // ---------- formatação pt-BR ----------
 const FUSO = 'America/Sao_Paulo';
 
@@ -452,6 +454,13 @@ function cabecalhoRodape(doc: Doc, r: RelatorioCredito, i: number, total: number
   doc.font('Helvetica').fontSize(8).fillColor('#FFFFFF')
     .text(`Consulta: ${dataHoraBR(r.consultadoEm)}`, W - MX - 170, 14, { width: 170, align: 'right', lineBreak: false });
   doc.text(`${r.tipo} ${formatarDocumento(r.documento, r.tipo)}`, W - MX - 170, 28, { width: 170, align: 'right', lineBreak: false });
+
+  if (r.fonte.provedor === 'simulado') {
+    // Faixa em TODAS as páginas, logo abaixo do cabeçalho azul (a área útil começa em TOPO=72).
+    doc.rect(0, 44, W, 22).fill(COR_SEMAFORO.VERMELHO);
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#FFFFFF')
+      .text(FAIXA_SIMULACAO, MX, 51, { width: LARG, align: 'center', lineBreak: false });
+  }
 
   const fy = H - 38;
   doc.moveTo(MX, fy).lineTo(W - MX, fy).lineWidth(0.5).strokeColor(LINHA).stroke();

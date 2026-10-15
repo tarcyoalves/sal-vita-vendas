@@ -2,7 +2,7 @@
 // Só admin dispara consulta paga. Payload bruto e sócios nunca saem deste arquivo para atendente.
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { router, protectedProcedure, staffProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { creditQueries, creditReports, creditSettings, fatOrders, sellers, tasks, users } from '../db/schema';
@@ -14,6 +14,7 @@ import { SQL_ACENTOS, SQL_SEM_ACENTOS } from '../../shared/searchText';
 import { validarDocumento } from '../lib/credito/documento';
 import { decidirCache, LIMITE_MENSAL_PADRAO, limiteMensalValido } from '../lib/credito/politica';
 import { montarFiltrosListagem, POR_PAGINA_MAX } from '../lib/credito/listagem';
+import { documentosVisiveis, montarSemaforos, normalizarDocumentosSemaforo, SEMAFOROS_MAX_DOCUMENTOS } from '../lib/credito/semaforos';
 import {
   desvincularRelatorioDoPedido, lerConfigCredito, ultimoRelatorioDoDocumento, usadasNoMes, vincularRelatorioAoPedido,
 } from '../lib/credito/repo';
@@ -64,7 +65,27 @@ function cartaoDoRelatorio(row: typeof creditReports.$inferSelect) {
     resumo: resumoAnotacoes(row.relatorio),
     valido: relatorioValido(row.consultadoEm),
     razaoSocial: row.relatorio.cadastro.razaoSocial ?? row.razaoSocial,
+    provedor: row.provedor,
+    simulado: row.provedor === 'simulado',
   };
+}
+
+/** Dos documentos pedidos, os que o atendente enxerga: de tarefa dele (tasks.cnpj) ou de pedido dele (fat_orders). */
+async function documentosDaCarteira(user: { id: number; name: string }, documentos: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (documentos.length === 0) return out;
+  const filtro = await userTaskFilter(user.id, user.name ?? '');
+  const deTarefas = await db.select({ cnpj: tasks.cnpj }).from(tasks).where(and(inArray(tasks.cnpj, documentos), filtro));
+  for (const t of deTarefas) if (t.cnpj) out.add(t.cnpj);
+  const sid = await sellerIdDoUsuario(user.id);
+  if (sid !== null) {
+    const lista = sql.join(documentos.map((d) => sql`${d}::text`), sql`, `);
+    const r = await db.execute(sql`
+      SELECT DISTINCT regexp_replace(cnpj, '\\D', '', 'g') AS doc FROM fat_orders
+      WHERE seller_id = ${sid}::integer AND regexp_replace(cnpj, '\\D', '', 'g') IN (${lista})`);
+    for (const row of r.rows as Array<{ doc: string }>) out.add(row.doc);
+  }
+  return out;
 }
 
 const documentoInput = z.string().min(1).max(30);
@@ -94,6 +115,26 @@ export const creditoRouter = router({
       }
       const row = await ultimoRelatorioDoDocumento(documento);
       return row ? cartaoDoRelatorio(row) : null;
+    }),
+
+  /** Semáforo do relatório mais recente de cada CNPJ da lista (uma consulta só). Sem relatório ou fora da carteira: não aparece. */
+  semaforos: protectedProcedure
+    .input(z.object({ documentos: z.array(z.string().max(30)).max(SEMAFOROS_MAX_DOCUMENTOS) }))
+    .query(async ({ ctx, input }) => {
+      const staff = ehStaff(ctx.user.role);
+      const pedidos = normalizarDocumentosSemaforo(input.documentos);
+      const carteira = staff || pedidos.length === 0 ? new Set<string>() : await documentosDaCarteira(ctx.user, pedidos);
+      const docs = documentosVisiveis(pedidos, { staff, daCarteira: carteira });
+      if (docs.length === 0) return {};
+      const lista = sql.join(docs.map((d) => sql`${d}::text`), sql`, `);
+      const r = await db.execute(sql`
+        SELECT DISTINCT ON (documento) documento, veredito, consultado_em, provedor
+        FROM credit_reports WHERE documento IN (${lista})
+        ORDER BY documento, consultado_em DESC, id DESC`);
+      type L = { documento: string; veredito: string; consultado_em: Date | string; provedor: string };
+      return montarSemaforos((r.rows as unknown as L[]).map((l) => ({
+        documento: l.documento, veredito: comoVeredito(l.veredito), consultadoEm: l.consultado_em, provedor: l.provedor,
+      })));
     }),
 
   relatorio: staffProcedure
