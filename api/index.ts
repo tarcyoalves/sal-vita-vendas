@@ -312,6 +312,7 @@ import { handleUnsubscribe } from '../server/routers/unsubscribe';
 import { syncMeTracking, handleMeWebhookEvent } from '../server/routers/shipping';
 import { verifyMeSignature, type MeTrackingInfo } from '../server/lib/meTracking';
 import { safeEqual } from '../server/lib/safeEqual';
+import { checkWebhookSecret } from '../server/lib/webhookSecret';
 import { getClientIp } from '../server/lib/clientIp';
 import { safeErrorMessage } from '../server/lib/safeError';
 import { handleResendWebhook, verifySvixSignature } from '../server/routers/resendWebhook';
@@ -679,6 +680,7 @@ const brevoWebhookLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 
+let brevoQuerySecretWarned = false;
 app.post('/api/brevo-webhook', brevoWebhookLimiter, express.json({ limit: '256kb' }), async (req, res) => {
   try {
     const secret = process.env.BREVO_WEBHOOK_SECRET;
@@ -688,11 +690,17 @@ app.post('/api/brevo-webhook', brevoWebhookLimiter, express.json({ limit: '256kb
       return;
     }
     if (secret) {
-      const provided = (req.query.secret as string) || req.headers['x-webhook-secret'];
-      if (typeof provided !== 'string' || !safeEqual(provided, secret)) {
+      // Cabeçalho (Authorization: Bearer / X-Webhook-Secret) é o caminho certo; ?secret= na URL
+      // é fallback TEMPORÁRIO (ver server/lib/webhookSecret.ts) e vaza no log de acesso.
+      const check = checkWebhookSecret(secret, req.headers, req.query);
+      if (!check.ok) {
         console.warn('[brevo-webhook] Invalid secret');
         res.status(401).json({ error: 'Invalid secret' });
         return;
+      }
+      if (check.via === 'query' && !brevoQuerySecretWarned) {
+        brevoQuerySecretWarned = true; // uma vez por instância, para não inundar o log
+        console.warn('[brevo-webhook] segredo recebido pela URL (?secret=) — obsoleto; configure o cabeçalho Authorization: Bearer no painel do Brevo');
       }
     }
 
