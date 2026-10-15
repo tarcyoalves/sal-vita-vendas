@@ -17,6 +17,7 @@ import { faturamentoRouter } from './faturamento';
 import { b2bRouter } from './b2b';
 import { catalogRouter } from './catalog';
 import { prospectingRadarRouter } from './prospectingRadar';
+import { creditoRouter } from './credito';
 export const appRouter = router({
   auth: authRouter,
   reminders: remindersRouter,
@@ -38,6 +39,7 @@ export const appRouter = router({
   b2b: b2bRouter,
   catalog: catalogRouter,
   prospectingRadar: prospectingRadarRouter,
+  credito: creditoRouter,
 });
 
 export type AppRouter = typeof appRouter;

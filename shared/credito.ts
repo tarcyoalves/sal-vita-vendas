@@ -44,14 +44,15 @@ export interface RelatorioCredito {
   };
 }
 
-export const LIMITES_CREDITO = { scoreReprova: 400, scoreRestricao: 600 } as const;
+export const LIMITES_CREDITO = { scoreReprova: 400, scoreRestricao: 600, pendenciaReprovaReais: 5000 } as const;
 export const CACHE_DIAS_CREDITO = 30;
 
 const temAlgo = (g: GrupoAnotacao) => g.consultado && g.quantidade > 0;
 
 /**
  * Veredito determinístico (não é a "opinião" do provedor):
- * - REPROVADO_A_PRAZO: score < 400, protesto, cheque sem fundo ou falência/recuperação → só à vista.
+ * - REPROVADO_A_PRAZO: score < 400, protesto, cheque sem fundo, falência/recuperação ou pendências financeiras
+ *   somando mais de R$ 5.000 → só à vista.
  * - COM_RESTRICAO: score < 600, pendência financeira, ação judicial, ou score ausente.
  * - APROVADO: o resto.
  */
@@ -61,6 +62,10 @@ export function calcularVeredito(r: Pick<RelatorioCredito, 'score' | 'anotacoes'
   if (temAlgo(a.protestos)) motivos.push(`${a.protestos.quantidade} protesto(s)`);
   if (temAlgo(a.chequesSemFundo)) motivos.push(`${a.chequesSemFundo.quantidade} cheque(s) sem fundo`);
   if (temAlgo(a.falenciaRecuperacao)) motivos.push('Falência ou recuperação judicial');
+  const pend = a.pendenciasFinanceiras;
+  if (temAlgo(pend) && pend.valorTotal !== null && pend.valorTotal > LIMITES_CREDITO.pendenciaReprovaReais) {
+    motivos.push(`Pendências financeiras somam R$ ${pend.valorTotal.toFixed(2).replace('.', ',')} (acima de R$ ${LIMITES_CREDITO.pendenciaReprovaReais})`);
+  }
   if (motivos.length) return { veredito: 'REPROVADO_A_PRAZO', motivos };
   if (s === null) motivos.push('Score não informado pela fonte');
   else if (s < LIMITES_CREDITO.scoreRestricao) motivos.push(`Score ${s} abaixo de ${LIMITES_CREDITO.scoreRestricao}`);

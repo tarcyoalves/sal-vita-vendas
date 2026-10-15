@@ -21,6 +21,13 @@ describe('veredito de crédito', () => {
     expect(calcularVeredito(base(620)).veredito).toBe('APROVADO');
     expect(calcularVeredito(base(620, { protestos: g(3, false) })).veredito).toBe('APROVADO');
   });
+  it('pendências acima de R$ 5.000 reprovam a prazo; até R$ 5.000 ou sem valor só restringem', () => {
+    const pend = (q: number, valorTotal: number | null): GrupoAnotacao => ({ consultado: true, quantidade: q, valorTotal, itens: [] });
+    expect(calcularVeredito(base(900, { pendenciasFinanceiras: pend(1, 5000.01) })).veredito).toBe('REPROVADO_A_PRAZO');
+    expect(calcularVeredito(base(900, { pendenciasFinanceiras: pend(1, 5000) })).veredito).toBe('COM_RESTRICAO');
+    expect(calcularVeredito(base(900, { pendenciasFinanceiras: pend(2, null) })).veredito).toBe('COM_RESTRICAO');
+    expect(calcularVeredito(base(900, { pendenciasFinanceiras: { consultado: false, quantidade: 3, valorTotal: 9999, itens: [] } })).veredito).toBe('APROVADO');
+  });
   it('cache de 30 dias', () => {
     const agora = new Date('2026-10-15T12:00:00Z');
     expect(relatorioValido('2026-09-20T12:00:00Z', agora)).toBe(true);
