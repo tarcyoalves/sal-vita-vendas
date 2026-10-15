@@ -93,6 +93,12 @@ export default function Privacidade() {
         <a style={linkStyle} href={`mailto:${MAIL}`}>{MAIL}</a> ou pelo WhatsApp (84) 2140-8212, e a equipe registra que você não quer mais receber lembretes automáticos.
         Nos e-mails de marketing há também um link de descadastro.
       </p>
+      <p>
+        <strong>E-mails depois da compra:</strong> quem já comprou na loja pode receber, no e-mail informado no pedido, mensagens sobre o pedido entregue,
+        ideias de uso e lembretes de reposição dos nossos produtos, com base no <strong>legítimo interesse</strong> da loja em manter o contato com
+        seus clientes. Quem nunca comprou não entra nessa lista. Todo e-mail traz um <strong>link para sair</strong>, que vale na hora e para todas as
+        mensagens de marketing; você também pode pedir por <a style={linkStyle} href={`mailto:${MAIL}`}>{MAIL}</a>.
+      </p>
 
       <h2>4. Meta (Facebook/Instagram): Pixel e API de Conversões</h2>
       <p>

@@ -73,8 +73,30 @@ export const premiumEmailMarketingRouter = router({
     const contactsRes = await db.execute(sql`SELECT COUNT(*) as cnt FROM marketing_contacts WHERE status = 'active'`);
     const totalContacts = Number((contactsRes.rows[0] as any)?.cnt ?? 0);
 
+    // Vendas atribuídas ao follow-up: pedidos pagos que chegaram por link de e-mail pós-venda
+    // (utm_medium=posvenda, ver buildStoreLink). Nunca derruba o painel se a consulta falhar.
+    const posvenda = { orders30: 0, revenue30: 0, orders90: 0, revenue90: 0 };
+    try {
+      const pvRes = await db.execute(sql`
+        SELECT
+          COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days')::int AS orders30,
+          COALESCE(SUM(NULLIF(total_price, '')::numeric) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days'), 0)::float AS revenue30,
+          COUNT(*)::int AS orders90,
+          COALESCE(SUM(NULLIF(total_price, '')::numeric), 0)::float AS revenue90
+        FROM site_orders
+        WHERE utm_medium = 'posvenda' AND payment_status = 'confirmed' AND status <> 'cancelled'
+          AND created_at >= NOW() - INTERVAL '90 days'
+      `);
+      const r = pvRes.rows[0] as any;
+      posvenda.orders30 = Number(r?.orders30 ?? 0);
+      posvenda.revenue30 = Number(r?.revenue30 ?? 0);
+      posvenda.orders90 = Number(r?.orders90 ?? 0);
+      posvenda.revenue90 = Number(r?.revenue90 ?? 0);
+    } catch { /* métrica opcional */ }
+
     return {
       accounts: accountStats,
+      posvenda,
       totalCampaigns,
       totalSentCampaignEmails,
       activeEnrollments,
@@ -235,6 +257,26 @@ export const premiumEmailMarketingRouter = router({
       await db.execute(sql`
         UPDATE email_sequences SET active = ${input.active}, updated_at = NOW() WHERE id = ${input.sequenceId}
       `);
+      return { ok: true };
+    }),
+
+  // Edição de texto/atraso de um passo (o dono ajusta o follow-up sem programador). {nome},
+  // {link_loja} e {unsubscribe} funcionam no assunto/corpo; o corpo é sanitizado no envio.
+  updateSequenceStep: staffProcedure
+    .input(z.object({
+      stepId: z.number().int().positive(),
+      subject: z.string().trim().min(1).max(200),
+      htmlBody: z.string().trim().min(1).max(20000),
+      delayDays: z.number().int().min(0).max(365),
+    }))
+    .mutation(async ({ input }) => {
+      const res = await db.execute(sql`
+        UPDATE email_sequence_steps
+        SET subject = ${input.subject}, html_body = ${input.htmlBody}, delay_days = ${input.delayDays}
+        WHERE id = ${input.stepId}
+        RETURNING id
+      `);
+      if (res.rows.length === 0) throw new TRPCError({ code: 'NOT_FOUND', message: 'Passo não encontrado.' });
       return { ok: true };
     }),
 

@@ -4,8 +4,8 @@
     "hash": "bb63cca21a403cc522d1f53ddd471f01ba60110bceb9db64b6760402e0399b7f"
   },
   "server/db/ordersMigrate.ts": {
-    "version": "orders-2026-10-15a",
-    "hash": "29dc589576a8658c042add686340e5608fd2adfa7cde713a9e3a3fc26eea7121"
+    "version": "orders-2026-10-15b",
+    "hash": "9d362767453c7146bcf350c59de31f0139be0e38b3fb8d686d8ff036c62f057f"
   },
   "server/db/b2bMigrate.ts": {
     "version": "b2b-2026-07-03a",

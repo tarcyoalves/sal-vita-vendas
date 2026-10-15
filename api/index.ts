@@ -28,6 +28,8 @@ import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, c
 import { verifyResendWebhook } from '../server/email/marketing';
 import { evaluateInactiveDaysRules, flagEngagementByMessageId, processSequenceEnrollments, cancelAllEnrollments } from '../server/email/automations';
 import { processDueCampaigns } from '../server/email/campaigns';
+import { runPostPurchaseFollowup } from '../server/email/postPurchaseFollowup';
+import { reorderWhatsappEnabled } from '../server/email/followupSequences';
 import {
   isAuthorized, isElegivelParaSmbi, mapOrderToSmbiPayload, resolveRetornoUpdate, retornoBodySchema,
   validarEstadoRetorno, heartbeatBodySchema, pedidosParaRobo,
@@ -1459,6 +1461,11 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
     // most expensive thing to leave sitting.
     const reconciled = await runIsolated('reconcile', reconcileAwaitingOrders, { confirmed: 0 });
 
+    // Follow-up pós-compra por E-MAIL (sequências do Premium): não depende do WhatsApp nem do
+    // horário comercial, então roda antes dos retornos antecipados abaixo. Orçamento de 15s
+    // para sobrar tempo ao resto do cron; o teto diário (FOLLOWUP_DAILY_CAP) fica no motor.
+    const followup = await runIsolated('post-purchase-followup', () => runPostPurchaseFollowup(15_000), null);
+
     // Everything below sends WhatsApp. If the session is down, do nothing at all
     // rather than consuming these one-shot opportunities against a dead socket.
     const waUp = await isWhatsAppConnected();
@@ -1467,7 +1474,7 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
       res.json({
         ok: true, processed: 0, sent: 0, cancelled: 0, failed: 0,
         skipped: 'whatsapp disconnected', waConnected: false,
-        unpaid: { sent: 0 }, reconciled, reorder: { sent: 0 },
+        unpaid: { sent: 0 }, reconciled, reorder: { sent: 0 }, followup,
       });
       return;
     }
@@ -1475,7 +1482,11 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
     // Each is isolated: a failure in one must not cost the others their run,
     // because on the current schedule the next attempt is a day away.
     const unpaid = await runIsolated('unpaid-followup', processUnpaidFollowups, { sent: 0 });
-    const reorder = await runIsolated('reorder-reminder', processReorderReminders, { sent: 0 });
+    // Lembrete de recompra por WhatsApp DESLIGADO por padrão (decisão do dono, 15/10/2026): a
+    // recompra agora é por e-mail. Só volta com REORDER_WHATSAPP=on.
+    const reorder = reorderWhatsappEnabled()
+      ? await runIsolated('reorder-reminder', processReorderReminders, { sent: 0 })
+      : { sent: 0 };
     // Rastreio do Melhor Envio: postado -> 'shipped' + um WhatsApp; entregue -> 'delivered'.
     const labels = await runIsolated('auto-labels', () => autoGenerateLabels(), { considered: 0, generated: 0, failed: 0, lowBalance: false });
     const tracking = await runIsolated('me-tracking', syncMeTracking, { checked: 0, shipped: 0, delivered: 0, notified: 0 });
@@ -1483,7 +1494,7 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
     // ── Abandoned cart automation: only during business hours ─────────────────
     let sent = 0, cancelled = 0, failed = 0;
     if (!isBusinessHours()) {
-      res.json({ ok: true, processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: 'outside business hours', unpaid, reconciled, reorder, tracking, labels });
+      res.json({ ok: true, processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: 'outside business hours', unpaid, reconciled, reorder, tracking, labels, followup });
       return;
     }
     // Claim atômico (mesmo padrão de campaigns.ts): GET+POST/retry simultâneos nunca
@@ -1577,7 +1588,7 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
       }
     }
 
-    res.json({ ok: true, processed: due.length, sent, cancelled, failed, unpaid, reconciled, reorder, tracking, labels });
+    res.json({ ok: true, processed: due.length, sent, cancelled, failed, unpaid, reconciled, reorder, tracking, labels, followup });
   } catch (err) {
     console.error('[cron] abandoned-cart error:', safeErr(err));
     res.status(500).json({ error: safeErrorMessage(err) });

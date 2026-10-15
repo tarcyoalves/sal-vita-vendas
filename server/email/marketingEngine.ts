@@ -79,7 +79,7 @@ export function layout(preheader: string, bodyContent: string, unsubToken?: stri
           <tr>
             <td style="background:#0C3680;padding:28px;text-align:center;">
               <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:0.5px;">SAL VITA PREMIUM</h1>
-              <p style="margin:4px 0 0;color:#93c5fd;font-size:13px;">Sal Marinho 100% Natural de Mossoró/RN</p>
+              <p style="margin:4px 0 0;color:#93c5fd;font-size:13px;">Sal Marinho de Mossoró/RN</p>
             </td>
           </tr>
           <!-- Body -->

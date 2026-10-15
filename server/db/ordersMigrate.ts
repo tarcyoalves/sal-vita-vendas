@@ -1,9 +1,10 @@
 import { neon } from '@neondatabase/serverless';
+import { FOLLOWUP_SEQUENCES } from '../email/followupSequences';
 
 type Step = { name: string; ok: boolean; error?: string };
 
 // Bump whenever the DDL below changes, to force exactly one full re-run.
-const ORDERS_SCHEMA_VERSION = 'orders-2026-10-15a';
+const ORDERS_SCHEMA_VERSION = 'orders-2026-10-15b';
 
 /**
  * Ensures all e-commerce/recovery tables exist in the ORDERS database.
@@ -417,6 +418,29 @@ export async function ensureOrdersTablesExist(force = false): Promise<Step[]> {
     CREATE UNIQUE INDEX IF NOT EXISTS email_seq_sends_unique_idx
     ON email_sequence_sends(enrollment_id, step_id, retry_number, cycle_started_at)
   `);
+
+  // Sequências do follow-up pós-compra, criadas DESLIGADAS (active = FALSE): o dono revisa o texto
+  // e liga no painel. Idempotente: acha pelo NOME; só insere o que falta e nunca mexe no que o dono
+  // já editou ou ligou. Os textos ficam em server/email/followupSequences.ts.
+  for (const def of FOLLOWUP_SEQUENCES) {
+    await run(`followup_seq_${def.name}`, async () => {
+      await sql`
+        INSERT INTO email_sequences (name, description, active, repeat, repeat_interval_days)
+        SELECT ${def.name}, ${def.description}, FALSE, ${def.repeat}, ${def.repeatIntervalDays}
+        WHERE NOT EXISTS (SELECT 1 FROM email_sequences WHERE name = ${def.name})
+      `;
+      const found = (await sql`SELECT id FROM email_sequences WHERE name = ${def.name} ORDER BY id ASC LIMIT 1`) as unknown as Array<{ id: number }>;
+      const seqId = found[0]?.id;
+      if (!seqId) return;
+      for (const st of def.steps) {
+        await sql`
+          INSERT INTO email_sequence_steps (sequence_id, step_order, delay_days, subject, html_body, send_condition)
+          SELECT ${seqId}, ${st.stepOrder}, ${st.delayDays}, ${st.subject}, ${st.htmlBody}, ${st.sendCondition}
+          WHERE NOT EXISTS (SELECT 1 FROM email_sequence_steps WHERE sequence_id = ${seqId} AND step_order = ${st.stepOrder})
+        `;
+      }
+    });
+  }
 
   await run('automation_rules', () => sql`
     CREATE TABLE IF NOT EXISTS automation_rules (

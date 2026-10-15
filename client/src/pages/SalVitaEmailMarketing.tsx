@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
 export function SalVitaEmailMarketing() {
   const [activeTab, setActiveTab] = useState<'enviar' | 'automatizar' | 'audiencia' | 'resultados'>('enviar');
   // useUtils é um hook: precisa ser chamado no corpo do componente. Estava
@@ -80,6 +82,23 @@ export function SalVitaEmailMarketing() {
     },
   });
 
+  const toggleSequenceMut = trpc.premiumEmailMarketing.toggleSequence.useMutation({
+    onSuccess: (_d, vars) => {
+      toast.success(vars.active ? 'Sequência ligada: começa a enviar no próximo ciclo diário.' : 'Sequência desligada: nada mais é enviado por ela.');
+      sequencesQuery.refetch();
+    },
+    onError: (err) => toast.error(`Erro ao alterar a sequência: ${err.message}`),
+  });
+
+  const updateStepMut = trpc.premiumEmailMarketing.updateSequenceStep.useMutation({
+    onSuccess: () => {
+      toast.success('Passo salvo.');
+      sequencesQuery.refetch();
+      setEditingStep(null);
+    },
+    onError: (err) => toast.error(`Erro ao salvar o passo: ${err.message}`),
+  });
+
   const removeSuppressionMut = trpc.premiumEmailMarketing.removeSuppression.useMutation({
     onSuccess: () => {
       toast.success('E-mail removido da supressão.');
@@ -98,6 +117,7 @@ export function SalVitaEmailMarketing() {
 
   const [newSuppressionEmail, setNewSuppressionEmail] = useState('');
   const [contactSearch, setContactSearch] = useState('');
+  const [editingStep, setEditingStep] = useState<{ id: number; subject: string; htmlBody: string; delayDays: number } | null>(null);
 
   const metrics = metricsQuery.data;
   const audience = previewAudienceQuery.data;
@@ -334,20 +354,45 @@ export function SalVitaEmailMarketing() {
               ) : (
                 sequencesQuery.data?.map((seq) => (
                   <div key={seq.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
                       <h4 className="font-bold text-slate-900">{seq.name}</h4>
-                      <span className="text-xs bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full font-semibold">
-                        {seq.activeEnrollments} inscritos ativos
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${seq.active ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                          {seq.active ? 'Ligada' : 'Desligada'}
+                        </span>
+                        <span className="text-xs bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full font-semibold">
+                          {seq.activeEnrollments} inscritos ativos
+                        </span>
+                      </div>
                     </div>
+                    {!seq.active && (
+                      <div className="text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-2.5">
+                        Esta sequência está <strong>desligada</strong>: ninguém é inscrito e nada é enviado. Revise o texto de cada passo (botão Editar) e ligue quando estiver pronta.
+                      </div>
+                    )}
+                    <button
+                      onClick={() => toggleSequenceMut.mutate({ sequenceId: seq.id, active: !seq.active })}
+                      disabled={toggleSequenceMut.isPending}
+                      className={`px-3 py-2 rounded-lg text-xs font-bold disabled:opacity-50 ${seq.active ? 'border border-slate-200 text-slate-700 hover:bg-slate-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
+                    >
+                      {seq.active ? 'Desligar sequência' : 'Ligar sequência'}
+                    </button>
                     <div className="text-xs text-slate-500">
                       {seq.steps.length} passos cadastrados {seq.repeat && '• Repetição em Loop ativa'}
                     </div>
                     <div className="space-y-1">
                       {seq.steps.map((st: any) => (
-                        <div key={st.id} className="text-xs bg-white p-2 rounded-lg border border-slate-200 flex justify-between">
-                          <span>Dia {st.delay_days}: <strong>{st.subject}</strong></span>
-                          <span className="text-slate-400">{st.send_condition}</span>
+                        <div key={st.id} className="text-xs bg-white p-2 rounded-lg border border-slate-200 flex justify-between items-center gap-2">
+                          <span>
+                            {st.step_order}. +{st.delay_days} dia(s): <strong>{st.subject}</strong>
+                            {st.send_condition !== 'always' && <span className="text-slate-400"> ({st.send_condition})</span>}
+                          </span>
+                          <button
+                            onClick={() => setEditingStep({ id: st.id, subject: st.subject, htmlBody: st.html_body, delayDays: st.delay_days })}
+                            className="shrink-0 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-100"
+                          >
+                            Editar
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -501,6 +546,26 @@ export function SalVitaEmailMarketing() {
         <div className="space-y-6">
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
             <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-emerald-600" /> Vendas do follow-up pós-compra
+            </h3>
+            <p className="text-sm text-slate-500">Pedidos pagos que vieram de links dos e-mails de pós-venda (utm_medium=posvenda).</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { label: 'Pedidos (30 dias)', value: String(metrics?.posvenda.orders30 ?? 0) },
+                { label: 'Receita (30 dias)', value: brl(metrics?.posvenda.revenue30 ?? 0) },
+                { label: 'Pedidos (90 dias)', value: String(metrics?.posvenda.orders90 ?? 0) },
+                { label: 'Receita (90 dias)', value: brl(metrics?.posvenda.revenue90 ?? 0) },
+              ].map((m) => (
+                <div key={m.label} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50">
+                  <p className="text-xs font-semibold text-slate-500">{m.label}</p>
+                  <p className="text-xl font-bold text-slate-900 mt-1">{m.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
               <Server className="w-5 h-5 text-blue-600" /> Consumo de Cotas por Conta / Provedor
             </h3>
             <p className="text-sm text-slate-500">Monitoramento em tempo real do sistema de transbordo multi-conta (Resend 1..5 + Brevo 1..5).</p>
@@ -543,6 +608,61 @@ export function SalVitaEmailMarketing() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT SEQUENCE STEP DIALOG */}
+      {editingStep && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 space-y-4 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
+            <h3 className="font-bold text-xl text-slate-900">Editar passo da sequência</h3>
+            <div className="space-y-4 text-sm">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Assunto</label>
+                <input
+                  type="text"
+                  value={editingStep.subject}
+                  onChange={(e) => setEditingStep({ ...editingStep, subject: e.target.value })}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Dias depois do e-mail anterior</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={365}
+                  value={editingStep.delayDays}
+                  onChange={(e) => setEditingStep({ ...editingStep, delayDays: Math.max(0, Math.min(365, Number(e.target.value) || 0)) })}
+                  className="w-32 px-4 py-2.5 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Texto (HTML simples)</label>
+                <textarea
+                  value={editingStep.htmlBody}
+                  onChange={(e) => setEditingStep({ ...editingStep, htmlBody: e.target.value })}
+                  rows={14}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-mono text-xs"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Variáveis: <code>{'{nome}'}</code>, <code>{'{link_loja}'}</code> (loja com rastreio) e <code>{'{unsubscribe}'}</code> (link para sair). Mantenha o link de sair em todo e-mail. Não use alegações de saúde, minerais ou pureza.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button onClick={() => setEditingStep(null)} className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50">
+                Cancelar
+              </button>
+              <button
+                onClick={() => updateStepMut.mutate({ stepId: editingStep.id, subject: editingStep.subject, htmlBody: editingStep.htmlBody, delayDays: editingStep.delayDays })}
+                disabled={updateStepMut.isPending || !editingStep.subject.trim() || !editingStep.htmlBody.trim()}
+                className="px-4 py-2.5 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 disabled:opacity-50"
+              >
+                {updateStepMut.isPending ? 'Salvando...' : 'Salvar passo'}
+              </button>
             </div>
           </div>
         </div>

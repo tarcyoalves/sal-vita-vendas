@@ -10,6 +10,7 @@ import {
 } from './marketingQuota';
 import { bodyToHtml, layout, renderTemplate } from './marketingEngine';
 import { randomUUID } from 'crypto';
+import { POS_COMPRA_NAME, RELACIONAMENTO_NAME, buildStoreLink, followupDailyCap } from './followupSequences';
 
 export function computeNextSendAt(delayDays: number, fromDate = new Date()): Date {
   const next = new Date(fromDate.getTime());
@@ -109,10 +110,68 @@ export async function enrollInSequence(
   return { ok: true, enrollmentId };
 }
 
+/** Quantos e-mails de SEQUÊNCIA saíram hoje (dia de Brasília). Só sequências: campanhas e transacionais não entram. */
+export async function sequenceSendsToday(): Promise<number> {
+  const r = await db.execute(sql`
+    SELECT COUNT(*)::int AS n FROM email_sequence_sends
+    WHERE status IN ('sent', 'sending')
+      AND (sent_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+  `);
+  return Number((r.rows[0] as any)?.n ?? 0);
+}
+
+/** Depois de um passo enviado (ou pulado): agenda o próximo, reinicia o ciclo (repeat) ou conclui. */
+async function advanceEnrollment(enr: any, doneStepOrder: number): Promise<void> {
+  const futureStepRes = await db.execute(sql`
+    SELECT delay_days FROM email_sequence_steps
+    WHERE sequence_id = ${enr.sequence_id} AND step_order = ${doneStepOrder + 1}
+    LIMIT 1
+  `);
+  const futureStep = futureStepRes.rows[0] as any;
+
+  if (futureStep) {
+    const nextSendAt = computeNextSendAt(futureStep.delay_days);
+    await db.execute(sql`
+      UPDATE email_sequence_enrollments
+      SET current_step = ${doneStepOrder}, next_send_at = ${nextSendAt}, updated_at = NOW()
+      WHERE id = ${enr.id}
+    `);
+  } else if (enr.repeat) {
+    const nextSendAt = computeNextSendAt(enr.repeat_interval_days || 30);
+    await db.execute(sql`
+      UPDATE email_sequence_enrollments
+      SET current_step = 0, cycle_started_at = NOW(), next_send_at = ${nextSendAt}, updated_at = NOW()
+      WHERE id = ${enr.id}
+    `);
+  } else {
+    await db.execute(sql`
+      UPDATE email_sequence_enrollments
+      SET current_step = ${doneStepOrder}, status = 'completed', updated_at = NOW()
+      WHERE id = ${enr.id}
+    `);
+    await onSequenceCompleted(enr);
+  }
+}
+
+/** "Pós-compra" concluída -> segue para "Relacionamento mensal" (a menos que esteja desligada ou a pessoa tenha saído). */
+async function onSequenceCompleted(enr: any): Promise<void> {
+  if (enr.sequence_name !== POS_COMPRA_NAME) return;
+  try {
+    const r = await db.execute(sql`
+      SELECT id FROM email_sequences WHERE name = ${RELACIONAMENTO_NAME} ORDER BY id ASC LIMIT 1
+    `);
+    const nextId = Number((r.rows[0] as any)?.id);
+    if (!nextId) return;
+    await enrollInSequence(enr.email, nextId, enr.name ?? undefined, enr.reply_to ?? undefined);
+  } catch (err) {
+    console.error(`[sequence] could not chain ${POS_COMPRA_NAME} -> ${RELACIONAMENTO_NAME}:`, safeErr(err));
+  }
+}
+
 /** Processes a single sequence enrollment step. */
 async function processSingleEnrollment(enrollmentId: number): Promise<boolean> {
   const enrRes = await db.execute(sql`
-    SELECT e.id, e.sequence_id, e.email, e.name, e.reply_to, e.current_step, e.unsub_token, e.cycle_started_at, s.repeat, s.repeat_interval_days
+    SELECT e.id, e.sequence_id, e.email, e.name, e.reply_to, e.current_step, e.unsub_token, e.cycle_started_at, s.repeat, s.repeat_interval_days, s.name AS sequence_name
     FROM email_sequence_enrollments e
     JOIN email_sequences s ON s.id = e.sequence_id
     WHERE e.id = ${enrollmentId} AND e.status = 'active'
@@ -167,12 +226,23 @@ async function processSingleEnrollment(enrollmentId: number): Promise<boolean> {
       `);
       const events = new Set((evRes.rows as any[]).map(r => r.event_type));
 
+      // if_opened / if_clicked: ainda não aconteceu, o passo espera (comportamento antigo).
       if (step.send_condition === 'if_opened' && !events.has('opened')) return false;
-      if (step.send_condition === 'if_not_opened' && events.has('opened')) return false;
       if (step.send_condition === 'if_clicked' && !events.has('clicked')) return false;
-      if (step.send_condition === 'if_not_clicked' && events.has('clicked')) return false;
+      // if_not_*: se a pessoa abriu/clicou o passo é DISPENSÁVEL. Antes ele ficava vencido
+      // para sempre (nunca enviava, nunca concluía, entupia a fila); agora é pulado.
+      if (
+        (step.send_condition === 'if_not_opened' && events.has('opened')) ||
+        (step.send_condition === 'if_not_clicked' && events.has('clicked'))
+      ) {
+        await advanceEnrollment(enr, nextStepOrder);
+        return false;
+      }
     }
   }
+
+  // Teto diário só das sequências (FOLLOWUP_DAILY_CAP): deixa cota do provedor para os transacionais.
+  if ((await sequenceSendsToday()) >= followupDailyCap()) return false;
 
   // Reserve quota
   const quota = await reserveSendQuota(1);
@@ -187,9 +257,19 @@ async function processSingleEnrollment(enrollmentId: number): Promise<boolean> {
       VALUES (${enrollmentId}, ${step.id}, 'sending', ${account.key}, ${enr.cycle_started_at})
     `);
   } catch (err: any) {
-    // Unique constraint hit (already sent) ➔ refund quota and return
-    await refundDailyQuota(account.key, 1);
-    return false;
+    // Unique constraint hit: já enviado (ou em envio) ➔ devolve a cota. Só uma tentativa que
+    // FALHOU é refeita; antes ela ficava presa e o passo nunca mais saía.
+    const retried = await db.execute(sql`
+      UPDATE email_sequence_sends
+      SET status = 'sending', account_key = ${account.key}, error = NULL
+      WHERE enrollment_id = ${enrollmentId} AND step_id = ${step.id} AND status = 'failed'
+        AND retry_number = 0 AND cycle_started_at = ${enr.cycle_started_at}
+      RETURNING id
+    `).catch(() => null);
+    if (!retried || retried.rows.length === 0) {
+      await refundDailyQuota(account.key, 1);
+      return false;
+    }
   }
 
   // Render & dispatch
@@ -197,6 +277,7 @@ async function processSingleEnrollment(enrollmentId: number): Promise<boolean> {
   const htmlBody = bodyToHtml(renderTemplate(step.html_body, {
     nome: enr.name || 'Cliente',
     email: enr.email,
+    link_loja: buildStoreLink(enr.sequence_name || 'sequencia', nextStepOrder),
     unsubscribe: `${process.env.PUBLIC_APP_URL || 'https://www.premium.salvitarn.com.br'}/api/unsubscribe?t=${enr.unsub_token}`,
   }));
 
@@ -219,38 +300,7 @@ async function processSingleEnrollment(enrollmentId: number): Promise<boolean> {
       WHERE enrollment_id = ${enrollmentId} AND step_id = ${step.id} AND status = 'sending'
     `);
 
-    // Fetch next step to schedule next_send_at
-    const futureStepRes = await db.execute(sql`
-      SELECT delay_days FROM email_sequence_steps
-      WHERE sequence_id = ${enr.sequence_id} AND step_order = ${nextStepOrder + 1}
-      LIMIT 1
-    `);
-    const futureStep = futureStepRes.rows[0] as any;
-
-    if (futureStep) {
-      const nextSendAt = computeNextSendAt(futureStep.delay_days);
-      await db.execute(sql`
-        UPDATE email_sequence_enrollments
-        SET current_step = ${nextStepOrder}, next_send_at = ${nextSendAt}, updated_at = NOW()
-        WHERE id = ${enrollmentId}
-      `);
-    } else {
-      // Completed sequence or repeat loop
-      if (enr.repeat) {
-        const nextSendAt = computeNextSendAt(enr.repeat_interval_days || 30);
-        await db.execute(sql`
-          UPDATE email_sequence_enrollments
-          SET current_step = 0, cycle_started_at = NOW(), next_send_at = ${nextSendAt}, updated_at = NOW()
-          WHERE id = ${enrollmentId}
-        `);
-      } else {
-        await db.execute(sql`
-          UPDATE email_sequence_enrollments
-          SET current_step = ${nextStepOrder}, status = 'completed', updated_at = NOW()
-          WHERE id = ${enrollmentId}
-        `);
-      }
-    }
+    await advanceEnrollment(enr, nextStepOrder);
     return true;
   } else {
     // Update send record failure
@@ -265,16 +315,23 @@ async function processSingleEnrollment(enrollmentId: number): Promise<boolean> {
 }
 
 /** Processes all due sequence enrollments for the cron loop. */
-export async function processSequenceEnrollments(limit = 100): Promise<{ processed: number; sent: number }> {
+export async function processSequenceEnrollments(
+  limit = 100,
+  deadlineMs?: number
+): Promise<{ processed: number; sent: number }> {
   const dueRes = await db.execute(sql`
-    SELECT id FROM email_sequence_enrollments
-    WHERE status = 'active' AND (next_send_at <= NOW() OR next_send_at IS NULL)
-    ORDER BY next_send_at ASC NULLS FIRST
+    SELECT e.id FROM email_sequence_enrollments e
+    JOIN email_sequences sq ON sq.id = e.sequence_id AND sq.active = TRUE
+    WHERE e.status = 'active' AND (e.next_send_at <= NOW() OR e.next_send_at IS NULL)
+    ORDER BY e.next_send_at ASC NULLS FIRST
     LIMIT ${limit}
   `);
 
   let sent = 0;
+  const cap = followupDailyCap();
   for (const r of dueRes.rows as any[]) {
+    if (deadlineMs && Date.now() > deadlineMs) break;
+    if ((await sequenceSendsToday()) >= cap) break;
     const ok = await processSingleEnrollment(Number(r.id));
     if (ok) sent++;
   }
