@@ -52,7 +52,10 @@ export async function createContext({ req, res }: CreateExpressContextOptions) {
 
   if (token) {
     try {
-      const decoded = verifyToken(token) as any;
+      const payload = verifyToken(token);
+      // Token assinado mas sem id numérico não identifica ninguém (cai no catch: user = null).
+      if (!payload || typeof payload !== 'object' || typeof payload.id !== 'number') throw new Error('token sem id');
+      const decoded: { id: number; pv?: unknown; iat?: unknown } = payload;
       const loadUser = async () => {
         const [row] = await db
           .select({

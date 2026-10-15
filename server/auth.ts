@@ -68,6 +68,12 @@ export function sessionCookieHeader(token: string): string {
   return `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly${secure}; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax`;
 }
 
+/** Set-Cookie que apaga a sessão, com os mesmos atributos de segurança do cookie emitido. */
+export function clearSessionCookieHeader(): string {
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  return `${COOKIE_NAME}=; HttpOnly${secure}; Path=/; Max-Age=0; SameSite=Lax`;
+}
+
 export function getCookieFromRequest(cookieHeader: string | undefined, name: string): string | undefined {
   if (!cookieHeader) return undefined;
   const match = cookieHeader.split(';').find(c => c.trim().startsWith(name + '='));

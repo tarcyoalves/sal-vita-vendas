@@ -5,7 +5,7 @@ import { randomBytes, randomInt } from 'crypto';
 import { router, publicProcedure, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { users, sellers, passwordResetTokens } from '../db/schema';
-import { hashPassword, verifyPassword, signToken, getDummyHash, sessionCookieHeader } from '../auth';
+import { hashPassword, verifyPassword, signToken, getDummyHash, sessionCookieHeader, clearSessionCookieHeader } from '../auth';
 import { sendEmail } from '../email/resend';
 import { COOKIE_NAME } from '../../shared/const';
 import { isSellerBlocked } from '../lib/authGate';
@@ -72,7 +72,7 @@ export const authRouter = router({
     }),
 
   logout: publicProcedure.mutation(({ ctx }) => {
-    ctx.res.setHeader('Set-Cookie', `${COOKIE_NAME}=; HttpOnly; Path=/; Max-Age=0`);
+    ctx.res.setHeader('Set-Cookie', clearSessionCookieHeader());
     return { ok: true };
   }),
 
