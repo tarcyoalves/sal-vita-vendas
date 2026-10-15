@@ -1,14 +1,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { trpc } from '../lib/trpc';
-import { BrandLogo } from './premium/BrandLogo';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
 
 const SUGGESTIONS = [
-  'Como faço o pedido?',
-  'Quanto tempo leva a entrega?',
-  'Aceita PIX?',
-  'O sal é iodado?',
+  'Como faço um pedido?',
+  'Qual o prazo de entrega?',
+  'Vocês aceitam PIX?',
+  'Qual a diferença do sal refinado?',
 ];
 
 export default function SalVitaChat() {
@@ -29,7 +28,7 @@ export default function SalVitaChat() {
         setGreeted(true);
         setMsgs([{
           role: 'assistant',
-          content: 'Oi! Aqui é o atendimento automático da Sal Vita. Posso ajudar com produto, frete, pagamento ou pedido. Se preferir falar com uma pessoa, é só tocar no link do WhatsApp aqui em cima.',
+          content: 'Olá! Sou a assistente virtual do Sal Vita Premium. ✨\n\nPosso te ajudar com dúvidas sobre o produto, frete, pagamento ou seu pedido.\n\nComo posso te ajudar?',
         }]);
       }
       setTimeout(() => inputRef.current?.focus(), 100);
@@ -51,7 +50,7 @@ export default function SalVitaChat() {
       const res = await chatMut.mutateAsync({ messages: newMsgs.slice(-12) });
       setMsgs(prev => [...prev, { role: 'assistant', content: res.reply }]);
     } catch {
-      setMsgs(prev => [...prev, { role: 'assistant', content: 'Não consegui responder agora. Tente de novo ou chame a gente no WhatsApp: (84) 2140-8212.' }]);
+      setMsgs(prev => [...prev, { role: 'assistant', content: 'Desculpe, houve um erro. Tente novamente em instantes.' }]);
     }
   }, [input, msgs, chatMut]);
 
@@ -67,31 +66,10 @@ export default function SalVitaChat() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   };
 
-  const canSend = !!input.trim() && !chatMut.isPending;
-
   return (
     <>
       <style>{`
-        /* Paleta da loja (tokens em index.html, html.sv-premium); os fallbacks cobrem o caso sem a classe. */
-        .sv-chat-btn, .sv-chat-win {
-          --c-navy: var(--sv-navy, #0b1d3a);
-          --c-gold: var(--sv-gold, #c9a227);
-          --c-gold-light: var(--sv-gold-light, #e8c547);
-          --c-salt: var(--sv-salt-deep, #f2f0ea);
-          font-family: 'Outfit', sans-serif;
-        }
-        .sv-chat-btn:focus-visible, .sv-chat-win button:focus-visible, .sv-chat-win a:focus-visible { outline: 3px solid var(--c-gold-light); outline-offset: 2px; }
-        .sv-chat-body button:focus-visible, .sv-chat-foot button:focus-visible, .sv-chat-foot input:focus-visible { outline-color: var(--c-navy); }
-        .sv-chat-bubble-user { background: var(--c-navy); color: #fff; border-radius: 14px 14px 4px 14px; }
-        .sv-chat-bubble-ai   { background: var(--c-salt); color: #0a1020; border-radius: 14px 14px 14px 4px; }
-        .sv-chat-msg { max-width: 84%; padding: 10px 14px; font-size: .9375rem; line-height: 1.5; word-break: break-word; }
-        .sv-chat-chip { background: #fbfaf7; color: var(--c-navy); border: 1px solid rgba(201,162,39,.7); border-radius: 999px; padding: 0 16px; min-height: 44px; font-size: .875rem; font-family: inherit; cursor: pointer; transition: background .15s; }
-        .sv-chat-chip:hover { background: var(--c-salt); }
-        @keyframes chatIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:none; } }
-        @keyframes chatDot { 0%,60%,100%{opacity:.35} 30%{opacity:1} }
-        .sv-chat-win { animation: chatIn .2s ease-out; }
-        @media (prefers-reduced-motion: reduce) { .sv-chat-win { animation: none; } .sv-chat-dot { animation: none !important; opacity: .7; } }
-        /* On mobile the sticky "Comprar" bar is ~68px tall: push chat above it */
+        /* On mobile the sticky "Comprar Agora" bar is ~68px tall — push chat above it */
         @media (max-width: 640px) {
           .sv-chat-btn  { bottom: 82px !important; }
           .sv-chat-win  { bottom: 152px !important; height: min(460px, calc(100dvh - 180px)) !important; }
@@ -106,73 +84,102 @@ export default function SalVitaChat() {
         aria-expanded={open}
         style={{
           position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
-          width: 56, height: 56, borderRadius: '50%',
-          background: 'var(--c-navy)',
-          border: '1px solid rgba(201,162,39,.6)', cursor: 'pointer',
-          boxShadow: '0 2px 12px rgba(11,29,58,.25)',
+          width: 58, height: 58, borderRadius: '50%',
+          background: 'linear-gradient(135deg, #0C3680 0%, #1a56c4 100%)',
+          border: 'none', cursor: 'pointer', boxShadow: '0 4px 20px rgba(12,54,128,.45)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'transform .2s, box-shadow .2s',
         }}
+        onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.1)'; }}
+        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
       >
         {open ? (
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e8c547" strokeWidth="2.25" strokeLinecap="round" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
         ) : (
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#e8c547" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
           </svg>
         )}
         {unread && !open && (
           <span style={{
-            position: 'absolute', top: 2, right: 2, width: 12, height: 12,
-            background: '#c9a227', borderRadius: '50%', border: '2px solid #0b1d3a',
+            position: 'absolute', top: 2, right: 2, width: 14, height: 14,
+            background: '#ef4444', borderRadius: '50%', border: '2px solid white',
           }}/>
         )}
       </button>
 
       {/* Chat window */}
       {open && (
-        <div className="sv-chat-win" role="dialog" aria-label="Atendimento automático da Sal Vita" style={{
+        <div className="sv-chat-win" role="dialog" aria-label="Chat com a assistente virtual" style={{
           position: 'fixed', bottom: 94, right: 24, zIndex: 9998,
           width: 'min(370px, calc(100vw - 32px))',
           height: 'min(520px, calc(100dvh - 120px))',
-          background: '#fff', borderRadius: 14,
-          border: '1px solid rgba(11,29,58,.14)',
-          boxShadow: '0 12px 40px rgba(11,29,58,.18)',
+          background: '#fff', borderRadius: 20,
+          boxShadow: '0 8px 48px rgba(0,0,0,.18)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          animation: 'chatIn .2s ease',
         }}>
+          <style>{`
+            @keyframes chatIn { from { opacity:0; transform:translateY(16px) scale(.97); } to { opacity:1; transform:none; } }
+            .chat-bubble-user { background: #0C3680; color: #fff; border-radius: 16px 16px 4px 16px; }
+            .chat-bubble-ai   { background: #f1f5f9; color: #1e293b; border-radius: 16px 16px 16px 4px; }
+            .chat-msg { max-width: 82%; padding: 10px 14px; font-size: .88rem; line-height: 1.5; word-break: break-word; }
+            .chat-suggestion { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 20px; padding: 6px 14px; font-size: .8rem; cursor: pointer; white-space: nowrap; transition: background .15s; }
+            .chat-suggestion:hover { background: #dbeafe; }
+          `}</style>
+
           {/* Header */}
           <div style={{
-            background: 'var(--c-navy)',
-            padding: '12px 8px 12px 18px', display: 'flex', alignItems: 'center', gap: 12,
-            borderBottom: '1px solid rgba(201,162,39,.5)',
+            background: 'linear-gradient(135deg, #0C3680 0%, #1a56c4 100%)',
+            padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12,
           }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <BrandLogo size={26} white />
-              <div style={{ color: 'rgba(255,255,255,.85)', fontSize: '.8125rem', marginTop: 4 }}>
-                Atendimento automático
+            <div style={{
+              width: 38, height: 38, borderRadius: '50%',
+              background: 'white', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            }}>
+              <img
+                src="https://salvitarn.com.br/wp-content/uploads/2025/09/logotipo2.webp"
+                alt="Sal Vita"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={e => {
+                  const el = e.currentTarget;
+                  el.style.display = 'none';
+                  el.parentElement!.style.background = '#0C3680';
+                  el.parentElement!.innerHTML = '<span style="color:white;font-weight:800;font-size:.8rem">SV</span>';
+                }}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: '#fff', fontWeight: 700, fontSize: '.95rem' }}>Sal Vita Premium</div>
+              <div style={{ color: 'rgba(255,255,255,.85)', fontSize: '.75rem' }}>
+                Assistente virtual · respostas automáticas
               </div>
               <a href="https://wa.me/558421408212" target="_blank" rel="noopener noreferrer"
-                style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, color: '#e8c547', fontSize: '.875rem', fontWeight: 600, textDecoration: 'underline' }}>
+                style={{ color: '#fff', fontSize: '.75rem', fontWeight: 600, textDecoration: 'underline' }}>
                 Falar com uma pessoa no WhatsApp
               </a>
             </div>
             <button onClick={() => setOpen(false)} aria-label="Fechar chat" style={{
-              background: 'transparent', border: '1px solid rgba(255,255,255,.3)', borderRadius: 8,
-              width: 44, height: 44, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0, alignSelf: 'flex-start',
-            }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.25" strokeLinecap="round" aria-hidden="true">
+              background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: '50%',
+              width: 32, height: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'white', transition: 'background .2s', flexShrink: 0,
+            }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,.28)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,.15)'; }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
               </svg>
             </button>
           </div>
 
           {/* Messages */}
-          <div className="sv-chat-body" role="log" aria-live="polite" aria-label="Mensagens do chat" style={{ flex: 1, overflowY: 'auto', padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div role="log" aria-live="polite" aria-label="Mensagens do chat" style={{ flex: 1, overflowY: 'auto', padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             {msgs.map((m, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                <div className={`sv-chat-msg ${m.role === 'user' ? 'sv-chat-bubble-user' : 'sv-chat-bubble-ai'}`}>
+                <div className={`chat-msg ${m.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai'}`}>
                   {m.content.split('\n').map((line, j, arr) => (
                     <span key={j}>{line}{j < arr.length - 1 && <br />}</span>
                   ))}
@@ -182,11 +189,11 @@ export default function SalVitaChat() {
 
             {chatMut.isPending && (
               <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                <div className="sv-chat-msg sv-chat-bubble-ai" role="status" aria-label="Digitando" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                <div className="chat-msg chat-bubble-ai" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                   {[0, 1, 2].map(i => (
-                    <span key={i} className="sv-chat-dot" style={{
-                      width: 7, height: 7, borderRadius: '50%', background: '#5f6f86',
-                      animation: `chatDot 1s ${i * .15}s infinite`,
+                    <span key={i} style={{
+                      width: 7, height: 7, borderRadius: '50%', background: '#94a3b8',
+                      animation: `bounce .9s ${i * .15}s infinite`,
                       display: 'inline-block',
                     }}/>
                   ))}
@@ -196,9 +203,9 @@ export default function SalVitaChat() {
 
             {/* Suggestions (only if 1 or fewer messages) */}
             {msgs.length <= 1 && !chatMut.isPending && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
                 {SUGGESTIONS.map(s => (
-                  <button key={s} className="sv-chat-chip" onClick={() => send(s)}>{s}</button>
+                  <button key={s} className="chat-suggestion" onClick={() => send(s)}>{s}</button>
                 ))}
               </div>
             )}
@@ -207,8 +214,8 @@ export default function SalVitaChat() {
           </div>
 
           {/* Input */}
-          <div className="sv-chat-foot" style={{
-            padding: '10px 12px', borderTop: '1px solid rgba(11,29,58,.12)',
+          <div style={{
+            padding: '10px 12px', borderTop: '1px solid #e2e8f0',
             display: 'flex', gap: 8, alignItems: 'center', background: '#fff',
           }}>
             <input
@@ -217,29 +224,33 @@ export default function SalVitaChat() {
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKey}
               aria-label="Digite sua dúvida"
-              placeholder="Digite sua dúvida"
+              placeholder="Digite sua dúvida..."
               style={{
-                flex: 1, minWidth: 0, minHeight: 44, border: '1.5px solid rgba(11,29,58,.3)', borderRadius: 8,
-                padding: '0 14px', fontSize: 16, fontFamily: 'inherit', color: '#0a1020',
+                flex: 1, border: '1.5px solid #e2e8f0', borderRadius: 24,
+                padding: '9px 16px', fontSize: '.88rem', outline: 'none',
+                transition: 'border-color .2s',
               }}
+              onFocus={e => { e.currentTarget.style.borderColor = '#0C3680'; }}
+              onBlur={e => { e.currentTarget.style.borderColor = '#e2e8f0'; }}
             />
             <button
               onClick={() => send()}
               aria-label="Enviar mensagem"
-              disabled={!canSend}
+              disabled={!input.trim() || chatMut.isPending}
               style={{
-                width: 44, height: 44, borderRadius: 8, border: 'none',
-                background: canSend ? 'var(--c-navy)' : '#e5e3dc',
-                cursor: canSend ? 'pointer' : 'default',
+                width: 38, height: 38, borderRadius: '50%', border: 'none',
+                background: input.trim() && !chatMut.isPending ? '#0C3680' : '#e2e8f0',
+                cursor: input.trim() && !chatMut.isPending ? 'pointer' : 'default',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0,
+                transition: 'background .2s', flexShrink: 0,
               }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={canSend ? '#e8c547' : '#5f6f86'} strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
               </svg>
             </button>
           </div>
+          <style>{`@keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }`}</style>
         </div>
       )}
     </>

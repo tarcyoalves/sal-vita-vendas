@@ -12,7 +12,7 @@ const MAIL = 'contato@salvitarn.com.br';
 
 const wrap: React.CSSProperties = {
   minHeight: '100vh',
-  background: '#0b1d3a',
+  background: 'linear-gradient(135deg, #060f20 0%, #0a1830 50%, #060f20 100%)',
   fontFamily: "'Outfit', 'Inter', sans-serif",
   color: 'rgba(255,255,255,0.82)',
 };

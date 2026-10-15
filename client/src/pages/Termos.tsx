@@ -5,7 +5,7 @@ import { LegalPage } from './Privacidade';
 // Não acrescente prazo de postagem, frete grátis ou garantia extra sem confirmação do dono.
 
 const MAIL = 'contato@salvitarn.com.br';
-const linkStyle: React.CSSProperties = { color: '#e8c547', textDecoration: 'underline', textUnderlineOffset: 3 };
+const linkStyle: React.CSSProperties = { color: '#e0bf54', textDecoration: 'underline', textUnderlineOffset: 3 };
 
 export default function Termos() {
   return (
