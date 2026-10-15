@@ -1313,6 +1313,26 @@ Seja direto e use emojis para facilitar leitura.`;
       return { ok: true };
     }),
 
+  // Admin: e-mail de "pedido postado" com o rastreio, enviado à mão (reenvio ou pedido
+  // que ficou sem o aviso automático). Registra o evento para o automático não repetir.
+  sendTrackingEmail: protectedProcedure
+    .input(z.object({ orderId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+      const [order] = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
+      if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+      if (!order.customerEmail) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Pedido sem e-mail do cliente.' });
+      if (!order.trackingCode) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Pedido sem código de rastreio.' });
+      const { subject, html } = shippingUpdateEmail(
+        'posted', order.customerName, order.id, order.trackingCode, trackingLink(order.trackingCode), ORDER_PAGE_URL(),
+      );
+      const r = await sendEmail(order.customerEmail, subject, html);
+      if (!r.ok) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `E-mail não enviado (${r.reason}).` });
+      await claimShippingEvent(order.id, 'posted', null);
+      await markShippingEvent(order.id, 'posted', 'email-manual');
+      return { success: true, email: order.customerEmail };
+    }),
+
   // Admin: send direct WhatsApp tracking notification via server API
   sendTrackingWhatsApp: protectedProcedure
     .input(z.object({ orderId: z.number() }))

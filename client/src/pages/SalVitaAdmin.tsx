@@ -318,7 +318,7 @@ function EditModal({ order, onClose, onSaved }: { order: any; onClose: () => voi
 }
 
 /* ── Order Card ───────────────────────────────────────────── */
-type CardConfirm = 'pay' | 'cancel' | 'delete' | 'wa' | null;
+type CardConfirm = 'pay' | 'cancel' | 'delete' | 'wa' | 'mail' | null;
 
 function OrderCard({
   order,
@@ -358,6 +358,10 @@ function OrderCard({
   const deleteMut = trpc.shipping.deleteOrder.useMutation({
     onSuccess: () => { toast.success('Pedido excluído.'); onRefetch(); },
     onError: (e) => toast.error(e.message),
+  });
+  const sendMailMut = trpc.shipping.sendTrackingEmail.useMutation({
+    onSuccess: (d) => toast.success(`Rastreio enviado por e-mail para ${d.email}.`),
+    onError: (e) => toast.error(`E-mail não enviado: ${e.message}`),
   });
   const sendWaDirectMut = trpc.shipping.sendTrackingWhatsApp.useMutation({
     onSuccess: () => toast.success('Rastreio enviado pelo WhatsApp do servidor.'),
@@ -417,6 +421,20 @@ function OrderCard({
           destructive: true,
           requireText: String(order.id) as string | undefined,
           run: () => deleteMut.mutate({ id: order.id }),
+        };
+      case 'mail':
+        return {
+          title: 'Enviar rastreio por e-mail?',
+          description: (
+            <>
+              <p>Será enviado <strong>1 e-mail</strong> para <strong>{order.customerName}</strong> ({order.customerEmail}) com o código <span className="font-mono">{order.trackingCode}</span> e o link de rastreio.</p>
+              <p>Se já enviou antes, o cliente recebe de novo.</p>
+            </>
+          ),
+          confirmLabel: 'Enviar e-mail',
+          destructive: false,
+          requireText: undefined as string | undefined,
+          run: () => sendMailMut.mutate({ orderId: order.id }),
         };
       case 'wa':
         return {
@@ -553,6 +571,13 @@ function OrderCard({
 
             {order.trackingCode && (
               <>
+                {order.customerEmail && (
+                  <button onClick={() => setConfirm('mail')} disabled={sendMailMut.isPending} className={btn.success}>
+                    <Mail className="w-3.5 h-3.5" aria-hidden="true" />
+                    {sendMailMut.isPending ? 'Enviando...' : 'Enviar rastreio (e-mail)'}
+                  </button>
+                )}
+
                 <button onClick={() => setConfirm('wa')} disabled={sendWaDirectMut.isPending} className={btn.success}>
                   <Send className="w-3.5 h-3.5" aria-hidden="true" />
                   {sendWaDirectMut.isPending ? 'Enviando...' : 'Enviar rastreio (WhatsApp)'}
