@@ -1,0 +1,512 @@
+// PDF do relatório de crédito ("Relatório de Análise de Crédito — Sal Vita").
+// Layout PRÓPRIO da Sal Vita (azul #0C3680). Não usa nome, logo, cores-assinatura nem leiaute de bureau algum:
+// o provedor aparece apenas no campo "Fonte dos dados".
+//
+// Biblioteca: pdfkit (JS puro, sem binário nativo nem Chromium). Importamos o build "browser" do pdfkit POR CAMINHO,
+// de propósito: o build "node" carrega as métricas das fontes padrão (Helvetica) em tempo de execução com
+// createRequire('#standard-fonts/...'), o que QUEBRA depois que o esbuild empacota api/bundle.js. O build "browser"
+// traz as fontes embutidas no próprio arquivo e funciona igual em Node, no teste e no bundle serverless.
+import type PDFDocumentCtor from 'pdfkit';
+import type { GrupoAnotacao, RelatorioCredito, Veredito } from '../../../shared/credito';
+import { ROTULO_VEREDITO, SEMAFORO } from '../../../shared/credito';
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const PDFDocument: typeof PDFDocumentCtor = require('../../../node_modules/pdfkit/js/pdfkit.browser.js');
+
+type Doc = InstanceType<typeof PDFDocumentCtor>;
+
+const AZUL = '#0C3680';
+const AZUL_CLARO = '#E8EEF8';
+const TEXTO = '#1F2937';
+const CINZA = '#6B7280';
+const LINHA = '#D1D5DB';
+const ZEBRA = '#F7F9FC';
+const COR_SEMAFORO = { VERDE: '#1E8E3E', AMARELO: '#E0A100', VERMELHO: '#C62828' } as const;
+const FUNDO_SEMAFORO = { VERDE: '#E6F4EA', AMARELO: '#FFF6DB', VERMELHO: '#FDE8E8' } as const;
+
+const W = 595.28;
+const H = 841.89;
+const MX = 40;
+const TOPO = 72; // abaixo do cabeçalho
+const BASE = 56; // reserva do rodapé
+const LARG = W - MX * 2;
+const LIMITE_Y = H - BASE;
+
+// ---------- formatação pt-BR ----------
+const FUSO = 'America/Sao_Paulo';
+
+/** Mantém só o que a Helvetica (WinAnsi) desenha; o resto vira "?" para nunca sair lixo no PDF. */
+export function limparTexto(s: string | null | undefined): string {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .normalize('NFC')
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/–/g, '-')
+    .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, ' ')
+    .replace(/[^\u0009\u000A -ÿ—•€]/g, '?');
+}
+
+const brl = (n: number | null): string =>
+  n === null || n === undefined || !Number.isFinite(n)
+    ? '—'
+    : 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const pct = (n: number | null): string =>
+  n === null || n === undefined || !Number.isFinite(n)
+    ? '—'
+    : n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + '%';
+
+function partesData(d: Date) {
+  const p = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: FUSO, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(d);
+  const g = (t: string) => p.find((x) => x.type === t)?.value ?? '';
+  return { dia: g('day'), mes: g('month'), ano: g('year'), hora: g('hour'), min: g('minute') };
+}
+
+/** ISO (data ou data/hora) -> dd/mm/aaaa. Texto que não seja ISO é devolvido como veio. */
+function dataBR(v: string | null | undefined): string {
+  if (!v) return '—';
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:$|T|\s)/.exec(v);
+  if (m) {
+    // data pura (sem hora): não passa por fuso para não "voltar um dia"
+    if (v.length === 10) return `${m[3]}/${m[2]}/${m[1]}`;
+    const d = new Date(v);
+    if (Number.isFinite(d.getTime())) {
+      const p = partesData(d);
+      return `${p.dia}/${p.mes}/${p.ano}`;
+    }
+    return `${m[3]}/${m[2]}/${m[1]}`;
+  }
+  return limparTexto(v);
+}
+
+function dataHoraBR(v: string): string {
+  const d = new Date(v);
+  if (!Number.isFinite(d.getTime())) return limparTexto(v);
+  const p = partesData(d);
+  return `${p.dia}/${p.mes}/${p.ano} ${p.hora}:${p.min}`;
+}
+
+export function formatarDocumento(doc: string, tipo: 'CNPJ' | 'CPF'): string {
+  const d = (doc || '').replace(/\D/g, '');
+  if (tipo === 'CNPJ' && d.length === 14) return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+  if (tipo === 'CPF' && d.length === 11) return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+  return doc || '—';
+}
+
+/** CPF 11 dígitos -> ***.468.126-** (LGPD). CNPJ de sócio PJ aparece formatado inteiro. */
+export function mascararDocumento(doc: string | null): string {
+  if (!doc) return '—';
+  const d = doc.replace(/\D/g, '');
+  if (d.length === 11) return `***.${d.slice(3, 6)}.${d.slice(6, 9)}-**`;
+  if (d.length === 14) return formatarDocumento(d, 'CNPJ');
+  return '***';
+}
+
+const txt = (s: string | null | undefined): string => {
+  const v = limparTexto(s).trim();
+  return v ? v : '—';
+};
+
+// ---------- tabela ----------
+interface Celula { texto: string; cor?: string; negrito?: boolean }
+interface Coluna { titulo: string; largura: number; alinhar?: 'left' | 'right' | 'center' }
+
+/** Quebra palavras maiores que a largura da coluna (CNPJ colado, URL...) para nada vazar da margem. */
+function quebrarLongas(doc: Doc, texto: string, largura: number): string {
+  return texto
+    .split(/(\s+)/)
+    .map((tok) => {
+      if (/^\s+$/.test(tok) || doc.widthOfString(tok) <= largura) return tok;
+      let out = '';
+      let atual = '';
+      for (const ch of tok) {
+        if (doc.widthOfString(atual + ch) > largura) { out += atual + '\n'; atual = ch; } else atual += ch;
+      }
+      return out + atual;
+    })
+    .join('');
+}
+
+class Pagina {
+  y = TOPO;
+  constructor(readonly doc: Doc) {}
+
+  nova() { this.doc.addPage(); this.y = TOPO; }
+  garantir(h: number) { if (this.y + h > LIMITE_Y) this.nova(); }
+
+  titulo(t: string) {
+    this.garantir(110); // título + cabeçalho + algumas linhas: nunca um título/tabela órfã no fim da página
+    const { doc } = this;
+    this.y += 8;
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(AZUL).text(limparTexto(t).toUpperCase(), MX, this.y, { width: LARG, lineBreak: false });
+    this.y += 16;
+    doc.moveTo(MX, this.y).lineTo(MX + LARG, this.y).lineWidth(1.2).strokeColor(AZUL).stroke();
+    this.y += 8;
+  }
+
+  subtitulo(t: string) {
+    this.garantir(50);
+    this.doc.font('Helvetica-Bold').fontSize(9.5).fillColor(TEXTO).text(limparTexto(t), MX, this.y, { width: LARG, lineBreak: false });
+    this.y += 15;
+  }
+
+  paragrafo(t: string, opts: { cor?: string; tam?: number; negrito?: boolean } = {}) {
+    const { doc } = this;
+    const tam = opts.tam ?? 9;
+    doc.font(opts.negrito ? 'Helvetica-Bold' : 'Helvetica').fontSize(tam);
+    const s = quebrarLongas(doc, limparTexto(t), LARG);
+    const h = doc.heightOfString(s, { width: LARG });
+    this.garantir(h + 4);
+    doc.fillColor(opts.cor ?? TEXTO).text(s, MX, this.y, { width: LARG });
+    this.y += h + 6;
+  }
+
+  tabela(colunas: Coluna[], linhas: Celula[][]) {
+    const { doc } = this;
+    const PAD = 4;
+    const tam = 8.5;
+    const total = colunas.reduce((a, c) => a + c.largura, 0);
+    const escala = LARG / total;
+    const cols = colunas.map((c) => ({ ...c, largura: c.largura * escala }));
+
+    const cabecalho = () => {
+      const h = 18;
+      this.garantir(h + 22);
+      doc.rect(MX, this.y, LARG, h).fill(AZUL);
+      let x = MX;
+      doc.font('Helvetica-Bold').fontSize(8).fillColor('#FFFFFF');
+      for (const c of cols) {
+        doc.text(limparTexto(c.titulo), x + PAD, this.y + 5, { width: c.largura - PAD * 2, align: c.alinhar ?? 'left', lineBreak: false });
+        x += c.largura;
+      }
+      this.y += h;
+    };
+
+    cabecalho();
+    linhas.forEach((linha, i) => {
+      // mede cada célula já com as palavras longas quebradas
+      const prep = linha.map((cel, j) => {
+        const c = cols[j];
+        doc.font(cel.negrito ? 'Helvetica-Bold' : 'Helvetica').fontSize(tam);
+        let s = quebrarLongas(doc, limparTexto(cel.texto) || '—', c.largura - PAD * 2);
+        if (s.length > 900) s = s.slice(0, 897) + '...';
+        const h = doc.heightOfString(s, { width: c.largura - PAD * 2 });
+        return { s, h, cel, c };
+      });
+      const alturaLinha = Math.max(...prep.map((p) => p.h)) + PAD * 2;
+      if (this.y + alturaLinha > LIMITE_Y) { this.nova(); cabecalho(); }
+      if (i % 2 === 1) doc.rect(MX, this.y, LARG, alturaLinha).fill(ZEBRA);
+      let x = MX;
+      for (const p of prep) {
+        doc.font(p.cel.negrito ? 'Helvetica-Bold' : 'Helvetica').fontSize(tam).fillColor(p.cel.cor ?? TEXTO)
+          .text(p.s, x + PAD, this.y + PAD, { width: p.c.largura - PAD * 2, align: p.c.alinhar ?? 'left' });
+        x += p.c.largura;
+      }
+      doc.moveTo(MX, this.y + alturaLinha).lineTo(MX + LARG, this.y + alturaLinha).lineWidth(0.5).strokeColor(LINHA).stroke();
+      this.y += alturaLinha;
+    });
+    this.y += 10;
+  }
+}
+
+// ---------- seções ----------
+function secaoResumo(p: Pagina, r: RelatorioCredito, meta: { veredito: Veredito; motivos: string[] }) {
+  const { doc } = p;
+  const sem = SEMAFORO[meta.veredito];
+  const cor = COR_SEMAFORO[sem];
+
+  // identificação
+  doc.font('Helvetica-Bold').fontSize(15).fillColor(TEXTO)
+    .text(txt(r.cadastro.razaoSocial ?? r.cadastro.nomeFantasia), MX, p.y, { width: LARG });
+  p.y = doc.y + 2;
+  doc.font('Helvetica').fontSize(10).fillColor(CINZA)
+    .text(`${r.tipo}: ${formatarDocumento(r.documento, r.tipo)}   |   Consulta em ${dataHoraBR(r.consultadoEm)}`, MX, p.y, { width: LARG });
+  p.y = doc.y + 10;
+
+  // painel do veredito
+  const motivos = meta.motivos.length ? meta.motivos : ['Nenhum fator de restrição encontrado nas regras da Sal Vita.'];
+  doc.font('Helvetica').fontSize(9);
+  const larguraTexto = LARG - 100;
+  const alturaMotivos = motivos.reduce((a, m) => a + doc.heightOfString('•  ' + limparTexto(m), { width: larguraTexto }) + 2, 0);
+  const alturaPainel = Math.max(86, 44 + alturaMotivos + 12);
+  p.garantir(alturaPainel + 10);
+  const y0 = p.y;
+  doc.roundedRect(MX, y0, LARG, alturaPainel, 6).fill(FUNDO_SEMAFORO[sem]);
+  doc.roundedRect(MX, y0, 5, alturaPainel, 2).fill(cor);
+
+  // semáforo (3 luzes, só a do veredito acesa)
+  const cx = MX + 38;
+  const luzes: Array<['VERMELHO' | 'AMARELO' | 'VERDE', number]> = [['VERMELHO', 0], ['AMARELO', 1], ['VERDE', 2]];
+  const alturaCaixa = 66;
+  const topoCaixa = y0 + (alturaPainel - alturaCaixa) / 2;
+  doc.roundedRect(cx - 14, topoCaixa, 28, alturaCaixa, 8).fill('#374151');
+  for (const [nome, i] of luzes) {
+    doc.circle(cx, topoCaixa + 12 + i * 21, 8).fill(nome === sem ? COR_SEMAFORO[nome] : '#6B7280');
+  }
+
+  const tx = MX + 76;
+  doc.font('Helvetica').fontSize(8).fillColor(CINZA).text('VEREDITO DE CRÉDITO', tx, y0 + 12, { width: larguraTexto, lineBreak: false });
+  doc.font('Helvetica-Bold').fontSize(20).fillColor(cor).text(limparTexto(ROTULO_VEREDITO[meta.veredito]), tx, y0 + 23, { width: larguraTexto, lineBreak: false });
+  let ym = y0 + 52;
+  doc.font('Helvetica').fontSize(9).fillColor(TEXTO);
+  for (const m of motivos) {
+    const t = '•  ' + limparTexto(m);
+    doc.text(t, tx, ym, { width: larguraTexto });
+    ym += doc.heightOfString(t, { width: larguraTexto }) + 2;
+  }
+  p.y = y0 + alturaPainel + 14;
+
+  // score + régua 0-1000
+  p.garantir(120);
+  const sy = p.y;
+  const v = r.score.valor;
+  doc.roundedRect(MX, sy, 150, 84, 6).fill(AZUL_CLARO);
+  doc.font('Helvetica').fontSize(8).fillColor(CINZA).text('SCORE (0 A 1000)', MX + 10, sy + 9, { width: 130, lineBreak: false });
+  doc.font('Helvetica-Bold').fontSize(v === null ? 14 : 38).fillColor(AZUL)
+    .text(v === null ? 'Não informado' : String(v), MX + 10, sy + (v === null ? 30 : 22), { width: 130, lineBreak: false });
+  if (r.score.faixa) {
+    doc.font('Helvetica').fontSize(8.5).fillColor(TEXTO).text(`Faixa: ${txt(r.score.faixa)}`, MX + 10, sy + 66, { width: 130, lineBreak: false });
+  }
+
+  const rx = MX + 170;
+  const rw = LARG - 170;
+  doc.font('Helvetica-Bold').fontSize(8.5).fillColor(TEXTO).text('Probabilidade de inadimplência', rx, sy + 4, { width: rw, lineBreak: false });
+  doc.font('Helvetica-Bold').fontSize(14).fillColor(AZUL).text(pct(r.score.probabilidadeInadimplencia), rx, sy + 17, { width: rw, lineBreak: false });
+  const by = sy + 52;
+  const bh = 12;
+  const x = (n: number) => rx + (n / 1000) * rw;
+  doc.rect(x(0), by, x(400) - x(0), bh).fill(COR_SEMAFORO.VERMELHO);
+  doc.rect(x(400), by, x(600) - x(400), bh).fill(COR_SEMAFORO.AMARELO);
+  doc.rect(x(600), by, x(1000) - x(600), bh).fill(COR_SEMAFORO.VERDE);
+  doc.font('Helvetica').fontSize(7).fillColor(CINZA);
+  for (const t of [0, 400, 600, 1000]) {
+    const lx = Math.min(Math.max(x(t) - 10, rx - 4), rx + rw - 16);
+    doc.text(String(t), lx, by + bh + 3, { width: 20, align: 'center', lineBreak: false });
+  }
+  doc.text('Alto risco', x(0) + 2, by - 10, { width: x(400) - x(0), lineBreak: false });
+  doc.text('Atenção', x(400) + 2, by - 10, { width: x(600) - x(400), lineBreak: false });
+  doc.text('Baixo risco', x(600) + 2, by - 10, { width: x(1000) - x(600), lineBreak: false });
+  if (v !== null) {
+    const mx = x(Math.min(1000, Math.max(0, v)));
+    doc.moveTo(mx, by - 2).lineTo(mx, by + bh + 2).lineWidth(2).strokeColor('#111827').stroke();
+    doc.polygon([mx - 5, by - 7], [mx + 5, by - 7], [mx, by - 1]).fill('#111827');
+  }
+  p.y = sy + 96;
+
+  if (r.score.textoInterpretacao) {
+    p.paragrafo('Interpretação da fonte: ' + r.score.textoInterpretacao, { cor: CINZA, tam: 8.5 });
+  }
+}
+
+const GRUPOS: Array<[keyof RelatorioCredito['anotacoes'], string]> = [
+  ['protestos', 'Protestos'],
+  ['pendenciasFinanceiras', 'Pendências financeiras (PEFIN/REFIN)'],
+  ['chequesSemFundo', 'Cheques sem fundo'],
+  ['acoesJudiciais', 'Ações judiciais'],
+  ['falenciaRecuperacao', 'Falência / Recuperação judicial'],
+];
+
+function situacao(g: GrupoAnotacao): Celula {
+  if (!g.consultado) return { texto: 'Não informado pela fonte', cor: CINZA };
+  if (g.quantidade > 0) return { texto: 'Consta', cor: COR_SEMAFORO.VERMELHO, negrito: true };
+  return { texto: 'Nada consta', cor: COR_SEMAFORO.VERDE, negrito: true };
+}
+
+function secaoAnotacoes(p: Pagina, r: RelatorioCredito) {
+  p.titulo('Anotações negativas');
+  p.tabela(
+    [
+      { titulo: 'Item', largura: 200 },
+      { titulo: 'Quantidade', largura: 70, alinhar: 'right' },
+      { titulo: 'Valor total', largura: 100, alinhar: 'right' },
+      { titulo: 'Situação', largura: 145 },
+    ],
+    GRUPOS.map(([k, nome]) => {
+      const g = r.anotacoes[k];
+      return [
+        { texto: nome, negrito: true },
+        { texto: g.consultado ? String(g.quantidade) : '—' },
+        { texto: g.consultado && g.quantidade > 0 ? brl(g.valorTotal) : '—' },
+        situacao(g),
+      ];
+    }),
+  );
+
+  const comItens = GRUPOS.filter(([k]) => r.anotacoes[k].consultado && r.anotacoes[k].itens.length > 0);
+  if (comItens.length) {
+    p.titulo('Detalhamento das anotações');
+    for (const [k, nome] of comItens) {
+      const g = r.anotacoes[k];
+      p.subtitulo(`${nome} - ${g.quantidade} ocorrência(s)${g.valorTotal !== null ? ', total ' + brl(g.valorTotal) : ''}`);
+      p.tabela(
+        [
+          { titulo: 'Data', largura: 62 },
+          { titulo: 'Descrição', largura: 223 },
+          { titulo: 'Local', largura: 130 },
+          { titulo: 'Valor', largura: 100, alinhar: 'right' },
+        ],
+        g.itens.map((it) => [
+          { texto: dataBR(it.data) },
+          { texto: txt(it.descricao) },
+          { texto: txt(it.local) },
+          { texto: brl(it.valor) },
+        ]),
+      );
+    }
+  }
+}
+
+function secaoCadastro(p: Pagina, r: RelatorioCredito) {
+  const c = r.cadastro;
+  p.titulo('Dados cadastrais');
+  const pares: Array<[string, string]> = [
+    ['Razão social', txt(c.razaoSocial)],
+    ['Nome fantasia', txt(c.nomeFantasia)],
+    [r.tipo, formatarDocumento(r.documento, r.tipo)],
+    ['Situação cadastral', txt(c.situacao)],
+    ['Situação em', dataBR(c.situacaoEm)],
+    ['Fundação', dataBR(c.fundacao)],
+    ['Natureza jurídica', txt(c.naturezaJuridica)],
+    ['Capital social', c.capitalSocial === null ? '—' : brl(c.capitalSocial)],
+    ['CNAE principal', txt(c.cnaePrincipal)],
+    ['Atividade', txt(c.atividade)],
+    ['Opção tributária', txt(c.opcaoTributaria)],
+    ['Inscrição estadual', txt(c.inscricaoEstadual)],
+    ['Endereço', txt(c.endereco)],
+    ['Município', txt(c.municipio)],
+    ['UF', txt(c.uf)],
+    ['Telefone', txt(c.telefone)],
+    ['Número de filiais', c.numeroFiliais === null ? '—' : String(c.numeroFiliais)],
+  ];
+  p.tabela(
+    [{ titulo: 'Campo', largura: 150 }, { titulo: 'Informação', largura: 365 }],
+    pares.map(([k, v]) => [{ texto: k, negrito: true, cor: CINZA }, { texto: v }]),
+  );
+}
+
+function secaoSocios(p: Pagina, r: RelatorioCredito) {
+  p.titulo('Quadro societário e administradores');
+  if (!r.socios.length) { p.paragrafo('Nenhum sócio ou administrador informado pela fonte.', { cor: CINZA }); return; }
+  p.tabela(
+    [
+      { titulo: 'Nome', largura: 170 },
+      { titulo: 'CPF/CNPJ', largura: 95 },
+      { titulo: 'Cargo', largura: 105 },
+      { titulo: 'Entrada', largura: 65 },
+      { titulo: 'Particip.', largura: 55, alinhar: 'right' },
+    ],
+    r.socios.map((s) => [
+      { texto: txt(s.nome) },
+      { texto: mascararDocumento(s.documento) },
+      { texto: txt(s.cargo) },
+      { texto: dataBR(s.entrada) },
+      { texto: pct(s.participacao), },
+    ]),
+  );
+}
+
+function secaoConsultas(p: Pagina, r: RelatorioCredito) {
+  p.titulo('Consultas recentes ao documento');
+  if (!r.consultasRecentes.length) { p.paragrafo('Nenhuma consulta recente informada pela fonte.', { cor: CINZA }); return; }
+  p.tabela(
+    [
+      { titulo: 'Data', largura: 80 },
+      { titulo: 'Consultante', largura: 345 },
+      { titulo: 'Quantidade', largura: 90, alinhar: 'right' },
+    ],
+    r.consultasRecentes.map((c) => [{ texto: dataBR(c.data) }, { texto: txt(c.consultante) }, { texto: String(c.quantidade) }]),
+  );
+}
+
+function secaoFinal(p: Pagina, consultadoPor: string | null) {
+  const { doc } = p;
+  const texto =
+    'Documento confidencial, de uso interno da Sal Vita, destinado exclusivamente à análise de concessão de crédito. ' +
+    'As informações têm origem na fonte indicada neste relatório e refletem a situação na data e hora da consulta; ' +
+    'não constituem garantia de pagamento. A decisão de conceder ou negar crédito é da Sal Vita, que pode considerar ' +
+    'também outros elementos. Proibida a divulgação ou o repasse a terceiros (LGPD - Lei 13.709/2018).';
+  doc.font('Helvetica').fontSize(8.5);
+  const h = doc.heightOfString(texto, { width: LARG - 20 }) + 46;
+  p.garantir(h + 10);
+  const y0 = p.y + 6;
+  doc.roundedRect(MX, y0, LARG, h, 5).fill(AZUL_CLARO);
+  doc.font('Helvetica').fontSize(8.5).fillColor(TEXTO).text(texto, MX + 10, y0 + 10, { width: LARG - 20 });
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(AZUL)
+    .text(`Consultado por ${limparTexto(consultadoPor) || 'usuário não identificado'}`, MX + 10, y0 + h - 22, { width: LARG - 20, lineBreak: false });
+  p.y = y0 + h + 6;
+}
+
+function cabecalhoRodape(doc: Doc, r: RelatorioCredito, i: number, total: number) {
+  // escreve dentro da margem inferior sem disparar quebra automática de página
+  const margens = doc.page.margins;
+  doc.page.margins = { top: 0, bottom: 0, left: 0, right: 0 };
+
+  doc.rect(0, 0, W, 44).fill(AZUL);
+  doc.font('Helvetica-Bold').fontSize(13).fillColor('#FFFFFF')
+    .text('Relatório de Análise de Crédito — Sal Vita', MX, 12, { width: 360, lineBreak: false });
+  doc.font('Helvetica').fontSize(8).fillColor('#DCE6F7')
+    .text(`Fonte dos dados: ${limparTexto(r.fonte.provedor)}/${limparTexto(r.fonte.produto)}`, MX, 29, { width: 360, lineBreak: false });
+  doc.font('Helvetica').fontSize(8).fillColor('#FFFFFF')
+    .text(`Consulta: ${dataHoraBR(r.consultadoEm)}`, W - MX - 170, 14, { width: 170, align: 'right', lineBreak: false });
+  doc.text(`${r.tipo} ${formatarDocumento(r.documento, r.tipo)}`, W - MX - 170, 28, { width: 170, align: 'right', lineBreak: false });
+
+  const fy = H - 38;
+  doc.moveTo(MX, fy).lineTo(W - MX, fy).lineWidth(0.5).strokeColor(LINHA).stroke();
+  doc.font('Helvetica').fontSize(7.5).fillColor(CINZA)
+    .text('Confidencial — uso interno da Sal Vita para decisão de crédito', MX, fy + 6, { width: 380, lineBreak: false });
+  doc.text(`Página ${i + 1} de ${total}`, W - MX - 100, fy + 6, { width: 100, align: 'right', lineBreak: false });
+  doc.text(`Consulta em ${dataHoraBR(r.consultadoEm)}`, MX, fy + 17, { width: 380, lineBreak: false });
+
+  doc.page.margins = margens;
+}
+
+export async function gerarPdfCredito(
+  relatorio: RelatorioCredito,
+  meta: { veredito: Veredito; motivos: string[]; consultadoPor: string | null },
+): Promise<Buffer> {
+  const doc = new PDFDocument({
+    size: 'A4',
+    margins: { top: TOPO, bottom: BASE, left: MX, right: MX },
+    bufferPages: true,
+    // Só os testes desligam a compressão, para conferir o texto do PDF sem decodificar.
+    compress: process.env.CREDITO_PDF_SEM_COMPRESSAO !== '1',
+    info: {
+      Title: 'Relatório de Análise de Crédito — Sal Vita',
+      Author: 'Sal Vita',
+      Subject: `Análise de crédito ${formatarDocumento(relatorio.documento, relatorio.tipo)}`,
+      Keywords: 'confidencial',
+    },
+  });
+
+  const partes: Buffer[] = [];
+  const pronto = new Promise<Buffer>((resolve, reject) => {
+    doc.on('data', (c: Buffer) => partes.push(c));
+    doc.on('end', () => resolve(Buffer.concat(partes)));
+    doc.on('error', reject);
+  });
+
+  try {
+    const p = new Pagina(doc);
+    secaoResumo(p, relatorio, meta);
+    secaoAnotacoes(p, relatorio);
+    secaoCadastro(p, relatorio);
+    secaoSocios(p, relatorio);
+    secaoConsultas(p, relatorio);
+    secaoFinal(p, meta.consultadoPor);
+
+    const { start, count } = doc.bufferedPageRange();
+    for (let i = 0; i < count; i++) {
+      doc.switchToPage(start + i);
+      cabecalhoRodape(doc, relatorio, i, count);
+    }
+    doc.end();
+  } catch (e) {
+    doc.end();
+    await pronto.catch(() => undefined);
+    throw e;
+  }
+  return pronto;
+}
