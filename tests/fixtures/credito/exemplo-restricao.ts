@@ -32,21 +32,23 @@ export const exemploRestricao: RelatorioCredito = {
     numeroFiliais: null,
   },
   socios: [
-    { documento: '33321987694', nome: 'Carlos Imaginário de Souza Albuquerque Filho', entrada: '2018-01-22', participacao: 100, cargo: 'Sócio-administrador' },
+    { documento: '33321987694', nome: 'Carlos Imaginário de Souza Albuquerque Filho', entrada: '2018-01-22', participacao: 60, cargo: 'Sócio-administrador' },
+    { documento: '55544433321', nome: 'Rafael Novato Exemplo', entrada: '2026-07-10', participacao: 40, cargo: 'Administrador' },
   ],
   consultasRecentes: [
     { data: '2026-10-02', consultante: 'Fornecedora Modelo Ltda', quantidade: 3 },
-    { data: '2026-09-19', consultante: 'Financeira Exemplo S.A.', quantidade: 1 },
+    { data: '2026-09-19', consultante: 'Financeira Exemplo S.A.', quantidade: 3 },
     { data: '2026-09-05', consultante: 'Atacadista Fictício e Cia', quantidade: 1 },
   ],
   anotacoes: {
     protestos: {
       consultado: true,
-      quantidade: 2,
+      quantidade: 3,
       valorTotal: 7850.4,
       itens: [
         { data: '2026-08-12', descricao: 'Protesto de duplicata mercantil', valor: 4200.4, local: '1º Cartório de Protestos - Cidade Exemplo/RN' },
         { data: '2026-07-03', descricao: 'Protesto de duplicata de prestação de serviços', valor: 3650, local: '2º Cartório de Protestos - Cidade Exemplo/RN' },
+        { data: '2021-03-10', descricao: 'Protesto de multa de trânsito', valor: null, local: 'Cartório de Protestos - Brasília/DF', credor: 'ANTT - Agência Nacional de Transportes Terrestres' },
       ],
     },
     pendenciasFinanceiras: {

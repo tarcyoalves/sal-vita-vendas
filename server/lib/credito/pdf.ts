@@ -8,7 +8,8 @@
 // traz as fontes embutidas no próprio arquivo e funciona igual em Node, no teste e no bundle serverless.
 import type PDFDocumentCtor from 'pdfkit';
 import type { GrupoAnotacao, RelatorioCredito, Veredito } from '../../../shared/credito';
-import { ROTULO_VEREDITO, SEMAFORO } from '../../../shared/credito';
+import { ROTULO_VEREDITO, SEMAFORO, analisarSinais, atenuacaoDoItem, type NivelSinal } from '../../../shared/credito';
+import { ROTULO_NIVEL_SINAL, ordenarSinais } from '../../../shared/creditoSinais';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const PDFDocument: typeof PDFDocumentCtor = require('../../../node_modules/pdfkit/js/pdfkit.browser.js');
@@ -317,7 +318,7 @@ function situacao(g: GrupoAnotacao): Celula {
   return { texto: 'Nada consta', cor: COR_SEMAFORO.VERDE, negrito: true };
 }
 
-function secaoAnotacoes(p: Pagina, r: RelatorioCredito) {
+function secaoAnotacoes(p: Pagina, r: RelatorioCredito, agora: Date) {
   p.titulo('Anotações negativas');
   p.tabela(
     [
@@ -343,22 +344,58 @@ function secaoAnotacoes(p: Pagina, r: RelatorioCredito) {
     for (const [k, nome] of comItens) {
       const g = r.anotacoes[k];
       p.subtitulo(`${nome} - ${g.quantidade} ocorrência(s)${g.valorTotal !== null ? ', total ' + brl(g.valorTotal) : ''}`);
+      const comCredor = g.itens.some((it) => !!it.credor);
+      const obs = g.itens.map((it) => atenuacaoDoItem(it, agora));
+      const comObs = obs.some((o) => !!o);
+      const colunas: Coluna[] = [{ titulo: 'Data', largura: 58 }, { titulo: 'Descrição', largura: comCredor || comObs ? 150 : 223 }];
+      if (comCredor) colunas.push({ titulo: 'Credor', largura: 100 });
+      colunas.push({ titulo: 'Local', largura: comCredor || comObs ? 100 : 130 });
+      if (comObs) colunas.push({ titulo: 'Observação', largura: 80 });
+      colunas.push({ titulo: 'Valor', largura: 80, alinhar: 'right' });
       p.tabela(
-        [
-          { titulo: 'Data', largura: 62 },
-          { titulo: 'Descrição', largura: 223 },
-          { titulo: 'Local', largura: 130 },
-          { titulo: 'Valor', largura: 100, alinhar: 'right' },
-        ],
-        g.itens.map((it) => [
-          { texto: dataBR(it.data) },
-          { texto: txt(it.descricao) },
-          { texto: txt(it.local) },
-          { texto: brl(it.valor) },
-        ]),
+        colunas,
+        g.itens.map((it, i) => {
+          const linha: Celula[] = [{ texto: dataBR(it.data) }, { texto: txt(it.descricao) }];
+          if (comCredor) linha.push({ texto: txt(it.credor) });
+          linha.push({ texto: txt(it.local) });
+          if (comObs) linha.push({ texto: obs[i] ? `Estudar com calma: ${obs[i]}` : '—', cor: obs[i] ? COR_SEMAFORO.AMARELO : CINZA });
+          linha.push({ texto: brl(it.valor) });
+          return linha;
+        }),
       );
     }
   }
+}
+
+const COR_NIVEL: Record<NivelSinal, string> = { ALERTA: COR_SEMAFORO.VERMELHO, ATENCAO: '#B45309', POSITIVO: COR_SEMAFORO.VERDE };
+
+function secaoPontosDeAtencao(p: Pagina, r: RelatorioCredito, agora: Date) {
+  const sinais = ordenarSinais(analisarSinais(r, agora));
+  p.titulo('Pontos de atenção');
+  if (!sinais.length) { p.paragrafo('Nenhum ponto de atenção identificado pelas regras da Sal Vita.', { cor: CINZA }); return; }
+  p.tabela(
+    [{ titulo: 'Nível', largura: 60 }, { titulo: 'Ponto', largura: 190 }, { titulo: 'Detalhe', largura: 265 }],
+    sinais.map((s) => [
+      { texto: ROTULO_NIVEL_SINAL[s.nivel].toUpperCase(), cor: COR_NIVEL[s.nivel], negrito: true },
+      { texto: s.titulo, negrito: true },
+      { texto: s.detalhe },
+    ]),
+  );
+}
+
+function secaoMovimentacao(p: Pagina, r: RelatorioCredito) {
+  const c = r.comportamento;
+  if (!c) return;
+  p.titulo('Movimentação comercial');
+  p.tabela(
+    [{ titulo: 'Campo', largura: 200 }, { titulo: 'Informação', largura: 315 }],
+    ([
+      ['Última compra no mercado', dataBR(c.ultimaCompraEm)],
+      ['Relacionamento comercial mais antigo', dataBR(c.relacionamentoMaisAntigoEm)],
+      ['Fornecedores que informaram', c.fontesConsultadas === null ? '—' : String(c.fontesConsultadas)],
+      ['Pagamentos em dia', pct(c.pagamentoPontualPct)],
+    ] as Array<[string, string]>).map(([k, v]) => [{ texto: k, negrito: true, cor: CINZA }, { texto: v }]),
+  );
 }
 
 function secaoCadastro(p: Pagina, r: RelatorioCredito) {
@@ -499,9 +536,13 @@ export async function gerarPdfCredito(
 
   try {
     const p = new Pagina(doc);
+    const dataConsulta = new Date(relatorio.consultadoEm);
+    const agora = Number.isFinite(dataConsulta.getTime()) ? dataConsulta : new Date();
     secaoResumo(p, relatorio, meta);
-    secaoAnotacoes(p, relatorio);
+    secaoPontosDeAtencao(p, relatorio, agora);
+    secaoAnotacoes(p, relatorio, agora);
     secaoCadastro(p, relatorio);
+    secaoMovimentacao(p, relatorio);
     secaoSocios(p, relatorio);
     secaoConsultas(p, relatorio);
     secaoFinal(p, meta.consultadoPor);

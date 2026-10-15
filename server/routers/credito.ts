@@ -8,8 +8,9 @@ import { db } from '../db';
 import { creditQueries, creditReports, creditSettings, fatOrders, sellers, tasks, users } from '../db/schema';
 import { userTaskFilter } from './tasks';
 import {
-  SEMAFORO, calcularVeredito, relatorioValido, type GrupoAnotacao, type RelatorioCredito, type Veredito,
+  SEMAFORO, analisarSinais, calcularVeredito, relatorioValido, type GrupoAnotacao, type RelatorioCredito, type Veredito,
 } from '../../shared/credito';
+import { ordenarSinais } from '../../shared/creditoSinais';
 import { SQL_ACENTOS, SQL_SEM_ACENTOS } from '../../shared/searchText';
 import { validarDocumento } from '../lib/credito/documento';
 import { decidirCache, LIMITE_MENSAL_PADRAO, limiteMensalValido } from '../lib/credito/politica';
@@ -67,6 +68,8 @@ function cartaoDoRelatorio(row: typeof creditReports.$inferSelect) {
     razaoSocial: row.relatorio.cadastro.razaoSocial ?? row.razaoSocial,
     provedor: row.provedor,
     simulado: row.provedor === 'simulado',
+    // Pontos de atenção na data da consulta (mesma referência do veredito e do PDF).
+    sinais: ordenarSinais(analisarSinais(row.relatorio, row.consultadoEm)),
   };
 }
 

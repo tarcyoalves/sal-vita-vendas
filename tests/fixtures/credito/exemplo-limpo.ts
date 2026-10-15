@@ -19,8 +19,8 @@ export const exemploLimpo: RelatorioCredito = {
     razaoSocial: 'Comercial Exemplo Ltda',
     nomeFantasia: 'Exemplo Atacado',
     situacao: 'Ativa',
-    situacaoEm: '2005-03-10',
-    fundacao: '2005-03-10',
+    situacaoEm: '1994-03-10',
+    fundacao: '1994-03-10',
     naturezaJuridica: '206-2 - Sociedade Empresária Limitada',
     capitalSocial: 250000,
     cnaePrincipal: '4637-1/99 - Comércio atacadista especializado em outros produtos alimentícios',
@@ -34,13 +34,19 @@ export const exemploLimpo: RelatorioCredito = {
     numeroFiliais: 2,
   },
   socios: [
-    { documento: '11146812612', nome: 'Maria Exemplo da Silva', entrada: '2005-03-10', participacao: 60, cargo: 'Sócia-administradora' },
+    { documento: '11146812612', nome: 'Maria Exemplo da Silva', entrada: '1994-03-10', participacao: 60, cargo: 'Sócia-administradora' },
     { documento: '22235791409', nome: 'João Fictício Pereira', entrada: '2011-06-01', participacao: 40, cargo: 'Sócio' },
   ],
   consultasRecentes: [
     { data: '2026-09-28', consultante: 'Distribuidora Modelo S.A.', quantidade: 1 },
     { data: '2026-08-14', consultante: 'Banco Exemplo de Fomento', quantidade: 2 },
   ],
+  comportamento: {
+    ultimaCompraEm: '2026-09-28',
+    relacionamentoMaisAntigoEm: '2003-05-12',
+    fontesConsultadas: 14,
+    pagamentoPontualPct: 96.5,
+  },
   anotacoes: {
     protestos: nada(),
     pendenciasFinanceiras: nada(),
