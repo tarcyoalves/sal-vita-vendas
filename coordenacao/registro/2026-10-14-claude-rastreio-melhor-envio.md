@@ -26,8 +26,8 @@ funcione para Correios, Jadlog, Azul Cargo e J&T (antes ia sempre para os Correi
   apagada para tentar de novo. Pedidos já `shipped`/`delivered` antes da automação foram marcados
   como `posted` (`notified='backfill'`) e não recebem aviso de postado. Evento com data de mais de
   4 dias é registrado sem aviso (`notified='antigo'`).
-- **Canal:** e-mail (Resend) em todos; WhatsApp só no "postado" e só para quem não tem e-mail ou
-  se o e-mail falhar (decisão do dono em 15/10). Ocorrências também viram `[REVISAR]` nas notas.
+- **Canal:** só e-mail (Resend). Em 15/10 o dono pediu para tirar o WhatsApp de todos os avisos de envio;
+  cliente sem e-mail fica registrado como `sem-email` e acompanha pelo /meu-pedido. Ocorrências viram `[REVISAR]`.
 - **Status do pedido:** postado → `shipped`; entregue → `delivered`; ocorrência não muda o status e
   aparece no `/meu-pedido` (`deliveryIssue`).
 - O código de rastreio é gravado logo após gerar a etiqueta, se o Melhor Envio já o tiver.

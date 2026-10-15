@@ -115,42 +115,20 @@ const ORDER_PAGE_URL = () => `${STORE_URL}/meu-pedido`;
 type NotifiableOrder = { id: number; customerName: string; customerPhone: string | null; customerEmail?: string | null; trackingCode?: string | null };
 
 /**
- * Avisa o cliente de um evento de envio. E-mail primeiro, para poupar o WhatsApp não
- * oficial do risco de banimento (decisão do dono em 14-15/10/2026). WhatsApp só no
- * "postado" e só para quem não tem e-mail (ou se o e-mail falhar), para ninguém ficar
- * sem o código. Devolve o canal usado, ou null se nada saiu.
+ * Avisa o cliente de um evento de envio, SÓ por e-mail: o dono não quer avisos de envio
+ * pelo WhatsApp (número não oficial, risco de banimento — decisão de 15/10/2026).
+ * Cliente sem e-mail não recebe aviso automático; acompanha pelo /meu-pedido.
+ * Devolve 'email', ou null se nada saiu.
  */
-export async function notifyShippingEvent(order: NotifiableOrder, event: ShippingEvent): Promise<'email' | 'whatsapp' | null> {
+export async function notifyShippingEvent(order: NotifiableOrder, event: ShippingEvent): Promise<'email' | null> {
+  if (!order.customerEmail) return null;
   const code = order.trackingCode ?? null;
   const link = code ? trackingLink(code) : null;
-  if (order.customerEmail) {
-    const { subject, html } = shippingUpdateEmail(event, order.customerName, order.id, code, link, ORDER_PAGE_URL());
-    const r = await sendEmail(order.customerEmail, subject, html);
-    if (r.ok) return 'email';
-    console.warn(`[shipping-event] e-mail "${event}" do pedido ${order.id} não saiu (${r.reason})`);
-  }
-  if (event === 'posted' && code) {
-    return (await notifyShippedWhatsApp(order, code)) ? 'whatsapp' : null;
-  }
+  const { subject, html } = shippingUpdateEmail(event, order.customerName, order.id, code, link, ORDER_PAGE_URL());
+  const r = await sendEmail(order.customerEmail, subject, html);
+  if (r.ok) return 'email';
+  console.warn(`[shipping-event] e-mail "${event}" do pedido ${order.id} não saiu (${r.reason})`);
   return null;
-}
-
-async function notifyShippedWhatsApp(
-  order: { id: number; customerName: string; customerPhone: string | null },
-  code: string,
-): Promise<boolean> {
-  const [tpl] = await db.select().from(msgTemplates)
-    .where(and(eq(msgTemplates.type, 'shipped'), eq(msgTemplates.isDefault, true))).limit(1);
-  const vars = {
-    nome: order.customerName,
-    pedido: String(order.id),
-    rastreio: code,
-    link: trackingLink(code),
-  };
-  const msg = tpl
-    ? renderTpl(tpl.body, vars)
-    : `Olá *${order.customerName}*! 📦\n\nSeu pedido *#${order.id}* foi *enviado*! 🚚\n\n🔎 Rastreio: *${code}*\n👉 ${trackingLink(code)}\n\n_Sal Vita — Mossoró/RN_`;
-  return sendWhatsAppMsg(order.customerPhone, msg);
 }
 
 /**
@@ -226,7 +204,12 @@ export async function applyMeTracking(
     await markShippingEvent(order.id, d.event, 'antigo');
     return { status: d.status, event: d.event, notified: 'antigo' };
   }
-  let channel: 'email' | 'whatsapp' | null = null;
+  if (!current.customerEmail) {
+    // Sem e-mail não há aviso (WhatsApp desligado para envio): registra para não tentar todo dia.
+    await markShippingEvent(order.id, d.event, 'sem-email');
+    return { status: d.status, event: d.event, notified: 'sem-email' };
+  }
+  let channel: 'email' | null = null;
   try { channel = await notifyShippingEvent(current, d.event); }
   catch (e) { console.error(`[shipping-event] aviso ${d.event} do pedido ${order.id} falhou:`, e); }
   if (!channel) {
@@ -277,7 +260,7 @@ export async function syncMeTracking(): Promise<{ checked: number; shipped: numb
     const r = await applyMeTracking(order, info);
     if (r.status === 'shipped') result.shipped++;
     if (r.status === 'delivered') result.delivered++;
-    if (r.notified && r.notified !== 'antigo') result.notified++;
+    if (r.notified === 'email') result.notified++;
   }
   return result;
 }

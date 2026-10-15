@@ -163,11 +163,15 @@ describe('ligação no servidor', () => {
   it('pedidos já enviados antes da automação não recebem aviso de postado', () => {
     expect(migrate).toMatch(/SELECT id, 'posted', 'backfill' FROM site_orders WHERE status IN \('shipped', 'delivered'\)/);
   });
-  it('aviso tenta e-mail antes do WhatsApp, e WhatsApp só no postado', () => {
-    const fn = shippingSrc.slice(shippingSrc.indexOf('export async function notifyShippingEvent'));
-    expect(fn.indexOf('sendEmail(')).toBeGreaterThan(0);
-    expect(fn.indexOf('sendEmail(')).toBeLessThan(fn.indexOf('notifyShippedWhatsApp(order, code)'));
-    expect(fn).toMatch(/if \(event === 'posted' && code\)/);
+  it('avisos de envio só por e-mail, nunca WhatsApp (decisão do dono em 15/10)', () => {
+    // Corpo da função: do cabeçalho até o primeiro "}" sozinho na linha (LF ou CRLF).
+    const body = (name: string) => {
+      const rest = shippingSrc.slice(shippingSrc.indexOf(`export async function ${name}`));
+      return rest.slice(0, rest.search(/\r?\n\}\r?\n/));
+    };
+    expect(body('notifyShippingEvent')).toMatch(/sendEmail\(/);
+    expect(body('notifyShippingEvent')).not.toMatch(/WhatsApp|sendWhatsAppMsg/);
+    expect(body('applyMeTracking')).not.toMatch(/sendWhatsAppMsg/);
   });
   it('as duas rotas de etiqueta tentam gravar o código logo após gerar', () => {
     expect(shippingSrc.match(/await fillTrackingCodeAfterLabel\((input\.)?orderId, meOrderId, token\)/g)?.length).toBe(2);
