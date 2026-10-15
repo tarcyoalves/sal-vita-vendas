@@ -277,6 +277,10 @@ Plano e decisões em `PLANO-RADAR-CARGAS.md`.
 ## 6. Pendências — em ordem de urgência
 
 ### 🔴 Só o dono resolve (fora do código)
+0000. **Crédito, multiempresa e demais mudanças de 08–15/10/2026:** ver `docs/HERMES-CRM-LEMBRETES-OUT-2026.md`
+   (resumo para a IA) e `docs/ANALISE-CREDITO.md`. Dono: aprovar o visual no modo simulado, depois ligar
+   `CREDITO_PROVEDOR=boavista_apifull` + `APIFULL_API_TOKEN` e fazer 1 consulta real; Hermes: mapear a resposta
+   real e construir o executor da VPS para a multiempresa.
 000. **Segurança (hardening de 15/10/2026, commits até `9b234f7`):**
    - **Brevo:** no painel (Transactional → Webhooks) tirar `?secret=` da URL e mandar o segredo
      por `Authorization: Bearer` ou `X-Webhook-Secret`. Quando o log

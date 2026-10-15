@@ -30,3 +30,13 @@ Só CRM Lembretes (banco `DATABASE_URL`). A loja Premium não é tocada.
 - **LGPD:**
   - O payload bruto fica só no banco, sem log.
   - Consulta de CPF exige motivo (concessão de crédito) registrado.
+
+## Estado de implementação (15/10/2026) — ver também `docs/HERMES-CRM-LEMBRETES-OUT-2026.md`
+- Contrato `shared/credito.ts`; veredito + `analisarSinais`; provedores `simulado` e `boavista_apifull`; router `credito`
+  (status, ultimo, semaforos, relatorio, consultar, historico, listar, porPedido, vincular, desvincular, setBloqueioAtivo,
+  setLimiteMensal, liberarPedido, saldo, pdf); PDF `server/lib/credito/pdf.ts`; telas em `client/src/components/credito/` e
+  `client/src/pages/AnaliseCredito.tsx`.
+- API Full (OpenAPI oficial): base `https://api.apifull.com.br`; `POST /api/scpc-boavista` com `{link, document}`;
+  `GET /api/get-balance`; Bearer; erro pode vir com HTTP 200 (ler `status`). `dados` sem schema: suposições S1 (status de
+  sucesso) e S2 (score em `dados.score|pontuacao`) a validar na 1ª resposta real.
+- A spec do Hermes de 15/10 (coordenacao/ativo) está superada por este documento.

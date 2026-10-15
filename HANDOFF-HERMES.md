@@ -12,6 +12,8 @@
 
 ---
 
+## ⚠️ Leia também `docs/HERMES-CRM-LEMBRETES-OUT-2026.md` (crédito, multiempresa SMBI, PED-n, prêmio, segurança — 08–15/10/2026)
+
 ## Produto 55 — CRM Lembretes (08/10/2026)
 
 Tarcyo solicitou de-para `SAL CHURRASCO COM IODO VITA 25 KG` → SMBI `55`.
