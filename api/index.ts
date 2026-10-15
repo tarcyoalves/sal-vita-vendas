@@ -411,13 +411,16 @@ const webhookLimiter = rateLimit({
 
 // Webhook do Melhor Envio (postado, entregue, ocorrências) → status do pedido + e-mail ao
 // cliente, uma vez por evento. Assinado com X-ME-Signature (HMAC-SHA256 do corpo com o
-// segredo do app). Sem MELHOR_ENVIO_WEBHOOK_SECRET recusa tudo — o cron diário cobre.
+// segredo do app). Chamada sem assinatura válida (inclusive o teste de cadastro do Melhor
+// Envio, que exige 2xx, e qualquer chamada antes de MELHOR_ENVIO_WEBHOOK_SECRET existir)
+// recebe 200 e é IGNORADA — não toca em pedido nem manda aviso. O cron diário cobre.
 app.post('/api/me-webhook', webhookLimiter, express.raw({ type: '*/*' }), async (req, res) => {
   const secret = process.env.MELHOR_ENVIO_WEBHOOK_SECRET;
   const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(String(req.body ?? ''));
   const sig = req.headers['x-me-signature'];
   if (!secret || !verifyMeSignature(raw, typeof sig === 'string' ? sig : undefined, secret)) {
-    res.status(401).json({ error: 'Unauthorized' });
+    console.warn(`[me-webhook] ignorado: ${secret ? 'assinatura inválida ou ausente' : 'MELHOR_ENVIO_WEBHOOK_SECRET não configurado'}`);
+    res.json({ ok: true, ignored: true });
     return;
   }
   let payload: { event?: string; data?: MeTrackingInfo };
