@@ -33,6 +33,7 @@ const KnowledgeBase = lazy(() => import("./pages/KnowledgeBase"));
 const AttendantProgress = lazy(() => import("./pages/AttendantProgress"));
 const EmailMarketing = lazy(() => import("./pages/EmailMarketing"));
 const Faturamento = lazy(() => import("./pages/Faturamento"));
+const AnaliseCredito = lazy(() => import("./pages/AnaliseCredito"));
 const Documentos = lazy(() => import("./pages/Documentos"));
 const RadarCargas = lazy(() => import("./pages/RadarCargas"));
 const FloatingChat = lazy(() => import("./components/FloatingChat"));
@@ -104,6 +105,9 @@ function Router() {
       </Route>
       <Route path="/admin/faturamento">
         <AppShell><Faturamento /></AppShell>
+      </Route>
+      <Route path="/admin/analise-credito">
+        <AppShell><AnaliseCredito /></AppShell>
       </Route>
       {/* TV dashboard desativado para economizar network transfer Neon (TvDashboard.tsx não é importado) */}
       <Route path={"/404"} component={NotFound} />

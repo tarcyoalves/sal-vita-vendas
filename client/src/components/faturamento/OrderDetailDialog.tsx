@@ -18,6 +18,7 @@ import { OrderPrintDocument } from './OrderPrintDocument';
 import { LinkTaskDialog } from './LinkTaskDialog';
 import { Pencil, Truck, Trash2, CheckCircle2, Printer, Link2, Undo2, Loader2 } from 'lucide-react';
 import SmbiPedidoControles from './SmbiPedidoControles';
+import { PedidoCreditoSecao } from '../credito/PedidoCreditoSecao';
 
 interface OrderDetailDialogProps {
   open: boolean;
@@ -319,6 +320,9 @@ export function OrderDetailDialog({
             </span>
             <span className="text-base font-semibold tabular-nums text-slate-900">Total {formatBRL(total)}</span>
           </div>
+
+          {/* Crédito do CNPJ, aviso de reprovação a prazo e relatórios arquivados neste pedido */}
+          <PedidoCreditoSecao pedido={pedido} onLiberado={() => void reload()} />
         </div>
 
         <DialogFooter className="gap-2 pt-2 flex-wrap">

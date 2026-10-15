@@ -18,6 +18,8 @@ import { StatusBadge } from "../StatusBadge";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { Download, FileText, ChevronLeft, ChevronRight } from "lucide-react";
+import { SemaforoPedido } from "../credito/SemaforoPedido";
+import { documentosParaSemaforos } from "../../lib/credito/documento";
 import { OrderDetailDialog } from "./OrderDetailDialog";
 import { OrderDialog } from "./OrderDialog";
 import { InvoiceDialog } from "./InvoiceDialog";
@@ -191,6 +193,12 @@ export default function BillingReport() {
   const fmtExcl = (d: Date | string) => new Date(d).toLocaleDateString("pt-BR");
 
   const totalEstimado = useMemo(() => filtered.reduce((s, p) => s + estimatedTotal(p), 0), [filtered]);
+  // Semáforo de crédito: UMA query para todos os CNPJs da lista (não uma por linha).
+  const docsSemaforo = useMemo(() => documentosParaSemaforos(filtered.map((p) => p.cnpj)), [filtered]);
+  const { data: semaforos } = trpc.credito.semaforos.useQuery(
+    { documentos: docsSemaforo },
+    { enabled: docsSemaforo.length > 0, staleTime: 60_000, retry: false, placeholderData: (prev) => prev },
+  );
   const totalFaturado = useMemo(
     () => filtered.filter((p) => p.status === "faturado").reduce((s, p) => s + totalPedido(p), 0),
     [filtered],
@@ -382,6 +390,7 @@ export default function BillingReport() {
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-medium text-slate-900 text-sm min-w-0 break-words">
                       <span className="text-xs font-semibold text-brand-700 mr-1.5">{rotuloNumeroCrm(p.numeroCrm)}</span>
+                      <SemaforoPedido semaforos={semaforos} cnpj={p.cnpj} />
                       {p.razaoSocial || p.clienteNome || "--"}
                     </p>
                     <StatusBadge tone={p.status === "faturado" ? "success" : "warning"} className="flex-shrink-0">
@@ -463,7 +472,7 @@ export default function BillingReport() {
                       <td className="px-3 py-3 text-slate-900 text-xs font-semibold whitespace-nowrap">{rotuloNumeroCrm(p.numeroCrm)}</td>
                       <td className="px-3 py-3 text-brand-700 text-xs font-medium">{p.taskId ? `#${p.taskId}` : "--"}</td>
                       <td className="px-3 py-3 text-slate-700 text-xs">{p.cnpj || "--"}</td>
-                      <td className="px-3 py-3 font-medium text-slate-900 max-w-[180px] truncate">{p.razaoSocial || p.clienteNome || "--"}</td>
+                      <td className="px-3 py-3 font-medium text-slate-900 max-w-[180px] truncate"><SemaforoPedido semaforos={semaforos} cnpj={p.cnpj} />{p.razaoSocial || p.clienteNome || "--"}</td>
                       <td className="px-3 py-3 text-slate-700 text-xs whitespace-nowrap">{[p.cidade, p.uf].filter(Boolean).join("/") || "--"}</td>
                       <td className="px-3 py-3 text-slate-700 text-xs">{p.sellerName || "--"}</td>
                       <td className="px-3 py-3 text-xs text-slate-700 max-w-[200px]">

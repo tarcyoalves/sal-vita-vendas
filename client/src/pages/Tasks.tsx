@@ -7,6 +7,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Skeleton } from '../components/ui/skeleton';
 import { Page, PageHeader, Panel, PanelHeader, EmptyState } from '../components/layout/Page';
 import { StatusBadge } from '../components/StatusBadge';
+import { CreditoCard } from '../components/credito/CreditoCard';
 
 import { useState, useMemo, useCallback, useEffect, useRef, useDeferredValue } from "react";
 import { toast } from "sonner";
@@ -2059,6 +2060,8 @@ export default function Tasks() {
                       <p className="mt-1 text-slate-800">{aiSuggestion.text}</p>
                     </div>
                   )}
+                  {/* ── Crédito do CNPJ da tarefa (compacto; atendente só lê) ── */}
+                  {task.cnpj && <CreditoCard documento={task.cnpj} taskId={task.id} razaoSocial={task.title} compacto />}
                   {/* ── Pedidos vinculados a esta tarefa ──────────────────── */}
                   {!isAdmin && (() => {
                     const taskPedidos = allPedidos.filter(p => p.taskId === task.id);

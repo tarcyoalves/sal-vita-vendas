@@ -1,7 +1,7 @@
 # Telas da análise de crédito (CRM Lembretes)
 
 - **Agente:** claude
-- **Status:** em andamento
+- **Status:** concluído (nada visto em navegador; sem push)
 - **Branch:** `worktree-agent-a5db237f45482ab34` (sem push)
 
 ## Objetivo

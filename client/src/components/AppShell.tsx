@@ -21,6 +21,7 @@ import {
   UserSearch,
   ChevronsUpDown,
   Loader2,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -83,6 +84,13 @@ const NAV_ITEMS: NavItem[] = [
     label: "Faturamento",
     path: "/admin/faturamento",
     icon: <DollarSign size={16} />,
+    roles: ["admin", "manager"],
+    group: "Receita",
+  },
+  {
+    label: "Análise de crédito",
+    path: "/admin/analise-credito",
+    icon: <ShieldCheck size={16} />,
     roles: ["admin", "manager"],
     group: "Receita",
   },
@@ -174,6 +182,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/radar-cargas": "Buscador de Clientes",
   "/admin/email-marketing": "E-mail Marketing",
   "/admin/faturamento": "Faturamento",
+  "/admin/analise-credito": "Análise de crédito",
   "/documentos": "Documentos & Fichas Técnicas",
   "/ai-chat": "Chat IA",
   "/ai-settings": "Configurações IA",
