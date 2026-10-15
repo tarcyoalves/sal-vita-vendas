@@ -148,6 +148,12 @@ describe('ligação no servidor', () => {
     expect(api).toMatch(/runIsolated\('me-tracking', syncMeTracking/);
     expect(api).toMatch(/app\.post\('\/api\/me-webhook'/);
     expect(api).toMatch(/!secret \|\| !verifyMeSignature\(/);
+    // Sem assinatura válida: 200 (o cadastro do Melhor Envio exige 2xx no teste) e nada é processado.
+    const handler = api.slice(api.indexOf("app.post('/api/me-webhook'"), api.indexOf("app.post('/api/mp-webhook'"));
+    const guard = handler.slice(handler.indexOf('!verifyMeSignature('), handler.indexOf('JSON.parse('));
+    expect(guard).toMatch(/ignored: true/);
+    expect(guard).toMatch(/return;/);
+    expect(guard).not.toMatch(/handleMeWebhookEvent/);
   });
   it('um aviso por pedido e evento: trava em shipping_events com chave (order_id, event)', () => {
     expect(migrate).toMatch(/CREATE TABLE IF NOT EXISTS shipping_events/);
