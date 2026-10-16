@@ -167,8 +167,10 @@ export function extrairSaldo(json: unknown): SaldoApiFull {
   }
   const fontes = ehObjeto(json) ? [json, ...(ehObjeto(json.dados) ? [json.dados] : [])] : [];
   for (const fonte of fontes) {
+    // A API devolve {"dados":{"Saldo":25.44}} (chave com maiúscula): comparar sem diferença de caixa.
     for (const k of CHAVES_SALDO) {
-      const v = fonte[k];
+      const chave = Object.keys(fonte).find((x) => x.toLowerCase() === k);
+      const v = chave === undefined ? undefined : fonte[chave];
       const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v.replace(',', '.')) : NaN;
       if (Number.isFinite(n)) return { saldo: n, bruto };
     }

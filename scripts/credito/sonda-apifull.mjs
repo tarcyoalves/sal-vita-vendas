@@ -25,7 +25,9 @@ const H = { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Conte
 async function saldo() {
   const r = await fetch(`${BASE}/api/get-balance`, { headers: H, signal: AbortSignal.timeout(10000) });
   const j = await r.json().catch(() => null);
-  const n = j && typeof j === 'object' ? Object.values(j).find((v) => typeof v === 'number') : null;
+  // Formato real: {"dados":{"Saldo":25.44}} — procura em profundidade o 1º número cuja chave lembre saldo.
+  const achar = (o) => { if (!o || typeof o !== 'object') return null; for (const [k, v] of Object.entries(o)) { if (typeof v === 'number' && /saldo|balance|credit/i.test(k)) return v; const r = achar(v); if (r !== null) return r; } return null; };
+  const n = achar(j);
   return { http: r.status, valor: typeof n === 'number' ? n : null, bruto: j && typeof j === 'object' ? Object.fromEntries(Object.entries(j).filter(([, v]) => typeof v !== 'object')) : null };
 }
 
@@ -64,4 +66,13 @@ for (const ep of endpoints) {
   quadro.push({ endpoint: ep, http, status, custoReais: custo, campos: corpo ? contarCampos(corpo) : 0, chaves: corpo && typeof corpo === 'object' ? Object.keys(corpo).join(',') : '', dados: corpo && typeof corpo.dados === 'object' && corpo.dados ? Object.keys(corpo.dados).slice(0, 25).join(',') : '', erro });
 }
 console.table(quadro);
+// Extrato oficial (custo exato de cada consulta), últimos 2 dias, sem dados pessoais.
+try {
+  const hoje = new Date(); const ini = new Date(hoje.getTime() - 2 * 86400000);
+  const f = (d) => d.toISOString().slice(0, 10);
+  const r = await fetch(`${BASE}/api/credits/statement?start_date=${f(ini)}&end_date=${f(hoje)}&per_page=30`, { headers: H, signal: AbortSignal.timeout(15000) });
+  const j = await r.json().catch(() => null);
+  writeFileSync(`${pasta}/_extrato.json`, JSON.stringify(sanitizar(j), null, 2));
+  console.log(`Extrato oficial gravado em ./${pasta}/_extrato.json (HTTP ${r.status}) — traz o custo exato por consulta.`);
+} catch (e) { console.log('Extrato indisponível:', e instanceof Error ? e.message : e); }
 console.log(`Respostas sanitizadas em ./${pasta}/ — revise antes de compartilhar.`);

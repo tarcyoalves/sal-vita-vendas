@@ -83,3 +83,10 @@ describe('saldo', () => {
     expect(extrairSaldo(null).saldo).toBeNull();
   });
 });
+
+import { extrairSaldo } from '../server/lib/credito/provedores/boavistaApifull';
+describe('saldo real da API Full', () => {
+  it('lê {"dados":{"Saldo":25.44}} (chave com maiúscula)', () => {
+    expect(extrairSaldo({ status: 'sucesso', dados: { Saldo: 25.44 } }).saldo).toBe(25.44);
+  });
+});
