@@ -334296,26 +334296,26 @@ var ehConfirmado = (o4) => o4 === "CRM_CONFIRMADO" || o4 === "TARCYO_CONFIRMADO"
 function avaliarSnapshot(s4) {
   const faltantes = [];
   const bloqueios = [];
-  const vazio = (v4) => v4 == null || v4.trim() === "";
-  if (vazio(s4.razaoSocial)) faltantes.push("razaoSocial");
-  if (vazio(s4.ie)) faltantes.push("ie");
+  const vazio2 = (v4) => v4 == null || v4.trim() === "";
+  if (vazio2(s4.razaoSocial)) faltantes.push("razaoSocial");
+  if (vazio2(s4.ie)) faltantes.push("ie");
   const e4 = s4.endereco;
-  if (vazio(e4.logradouro)) faltantes.push("endereco.logradouro");
-  if (vazio(e4.numero)) faltantes.push("endereco.numero");
+  if (vazio2(e4.logradouro)) faltantes.push("endereco.logradouro");
+  if (vazio2(e4.numero)) faltantes.push("endereco.numero");
   else if (/^s\s*\/?\s*n$/i.test(e4.numero.trim()) && !ehConfirmado(s4.origens["endereco.numero"])) faltantes.push("endereco.numero");
-  if (vazio(e4.bairro)) faltantes.push("endereco.bairro");
-  if (vazio(e4.municipio)) faltantes.push("endereco.municipio");
+  if (vazio2(e4.bairro)) faltantes.push("endereco.bairro");
+  if (vazio2(e4.municipio)) faltantes.push("endereco.municipio");
   if (!/^[A-Z]{2}$/.test(e4.uf)) faltantes.push("endereco.uf");
   if (!/^\d{8}$/.test(e4.cep)) faltantes.push("endereco.cep");
   if (!/^\d{7}$/.test(e4.municipioIbge)) faltantes.push("endereco.municipioIbge");
-  if (vazio(s4.telefone) && vazio(s4.celular)) faltantes.push("telefone");
-  if (vazio(s4.email)) faltantes.push("email");
-  if (vazio(s4.representanteDoc)) faltantes.push("representanteDoc");
+  if (vazio2(s4.telefone) && vazio2(s4.celular)) faltantes.push("telefone");
+  if (vazio2(s4.email)) faltantes.push("email");
+  if (vazio2(s4.representanteDoc)) faltantes.push("representanteDoc");
   for (const campo2 of CAMPOS_COM_ORIGEM_OBRIGATORIA) {
     const v4 = s4[campo2];
     if (v4 != null && v4 !== "" && !s4.origens[campo2]) faltantes.push(`origens.${campo2}`);
   }
-  if (vazio(s4.tipoTributacao) || !s4.origens["tipoTributacao"]) bloqueios.push("REGIME_SEM_FONTE");
+  if (vazio2(s4.tipoTributacao) || !s4.origens["tipoTributacao"]) bloqueios.push("REGIME_SEM_FONTE");
   if (s4.situacaoCadastral.trim().toUpperCase() !== "ATIVA") bloqueios.push("SITUACAO_CADASTRAL_NAO_ATIVA");
   if (s4.ieAtiva === false) bloqueios.push("IE_INATIVA");
   return { camposFaltantes: [...new Set(faltantes)], bloqueios };
@@ -338672,6 +338672,7 @@ var ACENTOS = {
   juridica: "jur\xEDdica",
   juridico: "jur\xEDdico",
   cartorio: "cart\xF3rio",
+  concluida: "conclu\xEDda",
   especie: "esp\xE9cie",
   pontuacao: "pontua\xE7\xE3o",
   classificacao: "classifica\xE7\xE3o",
@@ -339214,7 +339215,9 @@ function getProvedorCredito() {
 // server/lib/credito/pdfAnexo.ts
 var ehObj = (v4) => typeof v4 === "object" && v4 !== null && !Array.isArray(v4);
 var ehEscalar = (v4) => typeof v4 === "string" || typeof v4 === "number" || typeof v4 === "boolean";
-var MAX_COLUNAS_POR_TABELA = 7;
+var MAX_COLUNAS_TABELA = 6;
+var TEXTO_LONGO = 60;
+var MAX_MESES_POR_MATRIZ = 12;
 var MAX_PROFUNDIDADE = 6;
 var MAX_CELULA = 600;
 var ehPessoaFisicaMarcada = (o4) => {
@@ -339224,10 +339227,21 @@ var ehPessoaFisicaMarcada = (o4) => {
   }
   return false;
 };
+function moedaBR(s4) {
+  const t5 = s4.trim();
+  let n5;
+  if (/^\d{1,3}(\.\d{3})*,\d{1,2}$/.test(t5)) n5 = Number(t5.replace(/\./g, "").replace(",", "."));
+  else if (/^\d+,\d{1,2}$/.test(t5)) n5 = Number(t5.replace(",", "."));
+  else if (/^\d+(\.\d{1,2})?$/.test(t5)) n5 = Number(t5);
+  else return s4;
+  if (!Number.isFinite(n5)) return s4;
+  return "R$ " + n5.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 function textoEscalar(chave, v4, ctx) {
   if (!ehEscalar(v4)) return "";
-  const s4 = valorSeguro(chave, String(v4), ctx.pf);
+  let s4 = valorSeguro(chave, String(v4), ctx.pf);
   if (!s4) return "";
+  if (/^valor(_total)?$/i.test(semPrefixo(chave))) s4 = moedaBR(s4);
   return s4.length > MAX_CELULA ? s4.slice(0, MAX_CELULA - 3) + "..." : s4;
 }
 function textoCelula(chave, v4, ctx, prof = 0) {
@@ -339235,7 +339249,7 @@ function textoCelula(chave, v4, ctx, prof = 0) {
   if (prof > 3) return "";
   if (Array.isArray(v4)) return v4.map((x2) => textoCelula(chave, x2, ctx, prof + 1)).filter(Boolean).join(", ");
   if (ehObj(v4)) {
-    const sub = { pf: ctx.pf || ehPessoaFisicaMarcada(v4) };
+    const sub = { ...ctx, pf: ctx.pf || ehPessoaFisicaMarcada(v4) };
     return Object.entries(v4).map(([k3, x2]) => {
       const t5 = textoCelula(k3, x2, sub, prof + 1);
       return t5 ? `${humanizarChave(k3)}: ${t5}` : "";
@@ -339243,11 +339257,149 @@ function textoCelula(chave, v4, ctx, prof = 0) {
   }
   return "";
 }
-var rotuloCampo = (k3) => {
+var BLOCOS_CONSULTAS = /* @__PURE__ */ new Set(["HIST_CONSULTAS", "PASSAGENS_COMERCIAIS"]);
+var ehNumeroCurto = (v4) => /^\d{1,3}$/.test(v4.trim());
+var rotuloCampo = (k3, ctx, valores = []) => {
   const b3 = semPrefixo(k3).toUpperCase();
   if (b3 === "STATUS_RETORNO") return "Status";
+  if (b3 === "CPFCNPJ") return "CPF/CNPJ consultado";
+  if (b3 === "CNPJ" && ctx?.bloco && BLOCOS_CONSULTAS.has(ctx.bloco)) return "CNPJ do consultante";
+  if (b3 === "CARTORIO") {
+    const v4 = valores.filter(Boolean);
+    if (v4.length && v4.every(ehNumeroCurto)) return "N\xBA do cart\xF3rio";
+  }
+  if (b3 === "QUANTIDADE_OCORRENCIA" || b3 === "QUANTIDADE_OCORRENCIAS") return "Quantidade de ocorr\xEAncias";
   return humanizarChave(k3);
 };
+var MESES3 = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
+var MESES_COMPLETOS = ["JANEIRO", "FEVEREIRO", "MARCO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
+var semAcento2 = (s4) => s4.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+var abrev = (i4) => MESES3[i4].charAt(0) + MESES3[i4].slice(1).toLowerCase();
+function indiceMes(nome) {
+  const n5 = semAcento2(nome).trim();
+  const i4 = MESES_COMPLETOS.indexOf(n5);
+  return i4 >= 0 ? i4 : MESES3.indexOf(n5);
+}
+var temMeses = (o4) => ehObj(o4) && Object.keys(o4).filter((k3) => indiceMes(k3) >= 0).length >= 3;
+var COLUNAS_MESES = ["Ano", ...MESES3.map((_2, i4) => abrev(i4))];
+function linhasPorMes(q) {
+  const linhas = [];
+  for (const o4 of q) {
+    const porMes = new Array(12).fill("");
+    let ano = "";
+    for (const [k3, v4] of Object.entries(o4)) {
+      if (!ehEscalar(v4)) continue;
+      if (semAcento2(k3).trim() === "ANO") {
+        ano = String(v4).trim();
+        continue;
+      }
+      const i4 = indiceMes(k3);
+      if (i4 >= 0) porMes[i4] = String(v4).trim();
+    }
+    if (ano || porMes.some(Boolean)) linhas.push([ano || "\u2014", ...porMes.map((m4) => m4 || "-")]);
+  }
+  const num = (l4) => /^\d{4}$/.test(l4[0]) ? Number(l4[0]) : -1;
+  return linhas.sort((a5, b3) => num(b3) - num(a5));
+}
+function tabelaMeses(q) {
+  const linhas = linhasPorMes(q);
+  if (!linhas.length) return [];
+  return [{ t: "tabela", colunas: COLUNAS_MESES, pesos: COLUNAS_MESES.map((_2, i4) => i4 === 0 ? 40 : 38), linhas, continuacao: false }];
+}
+function periodo(s4) {
+  const t5 = s4.trim();
+  let mes = -1;
+  let ano = 0;
+  let m4 = /^([A-Za-zÀ-ú]{3})[/\-. ]?(\d{2}|\d{4})$/.exec(t5);
+  if (m4) {
+    mes = indiceMes(m4[1]);
+    ano = Number(m4[2]);
+  } else if (m4 = /^(\d{1,2})[/\-.](\d{4})$/.exec(t5)) {
+    mes = Number(m4[1]) - 1;
+    ano = Number(m4[2]);
+  } else if (m4 = /^(\d{4})[/\-.](\d{1,2})$/.exec(t5)) {
+    mes = Number(m4[2]) - 1;
+    ano = Number(m4[1]);
+  }
+  if (mes < 0 || mes > 11) return null;
+  if (ano < 100) ano += 2e3;
+  return { ord: ano * 12 + mes, rot: `${abrev(mes)}/${String(ano).slice(2)}` };
+}
+var CHAVES_PERIODO = /* @__PURE__ */ new Set(["PERIODO", "MES_ANO", "MES_REFERENCIA", "COMPETENCIA"]);
+var CHAVES_PONTOS = /* @__PURE__ */ new Set(["PONTUACAO_MENSAL", "PONTUACAO_MES"]);
+function serieDe(arr) {
+  if (!Array.isArray(arr) || !arr.length || !arr.every(ehObj)) return null;
+  const serie = { pontos: /* @__PURE__ */ new Map(), rotulos: /* @__PURE__ */ new Map() };
+  for (const o4 of arr) {
+    let per = null;
+    let val = null;
+    for (const [k3, v4] of Object.entries(o4)) {
+      const b3 = semPrefixo(k3).toUpperCase();
+      if (CHAVES_PERIODO.has(b3) && ehEscalar(v4)) per = periodo(String(v4));
+      else if (CHAVES_PONTOS.has(b3) && (ehEscalar(v4) || v4 == null)) val = v4 == null ? "" : String(v4).trim();
+    }
+    if (!per || val === null) return null;
+    serie.pontos.set(per.ord, val || "-");
+    serie.rotulos.set(per.ord, per.rot);
+  }
+  return serie;
+}
+var vazio = (v4) => v4 == null || v4 === "" || Array.isArray(v4) && !v4.length || ehObj(v4) && !Object.keys(v4).length;
+var ehChavePontuacao = (k3) => semPrefixo(k3).toUpperCase() === "PONTUACAO";
+function matrizDe(titulosFixos, pesosFixos, linhas) {
+  const rot = /* @__PURE__ */ new Map();
+  for (const l4 of linhas) for (const [o4, r5] of l4.serie.rotulos) rot.set(o4, r5);
+  const ords = [...rot.keys()].sort((a5, b3) => a5 - b3);
+  const partes = [];
+  for (let ini = 0, n5 = 0; ini < ords.length; ini += MAX_MESES_POR_MATRIZ, n5++) {
+    const fatia = ords.slice(ini, ini + MAX_MESES_POR_MATRIZ);
+    partes.push({
+      t: "tabela",
+      continuacao: n5 > 0,
+      compacta: true,
+      colunas: [...titulosFixos, ...fatia.map((o4) => rot.get(o4) ?? "")],
+      pesos: [...pesosFixos, ...fatia.map(() => 33)],
+      linhas: linhas.map((l4) => [...l4.fixos, ...fatia.map((o4) => l4.serie.pontos.get(o4) ?? "-")])
+    });
+  }
+  return partes;
+}
+function matrizDeObjetos(objs, ctx) {
+  const linhas = [];
+  let tituloLinha = "";
+  let temPont = false;
+  for (const o4 of objs) {
+    const c4 = { ...ctx, pf: ctx.pf || ehPessoaFisicaMarcada(o4) };
+    const rotulos = [];
+    let pont = "";
+    const series = [];
+    for (const [k3, v4] of Object.entries(o4)) {
+      if (ehEscalar(v4)) {
+        const t5 = textoEscalar(k3, v4, c4);
+        if (!t5) continue;
+        if (ehChavePontuacao(k3)) {
+          pont = t5;
+          temPont = true;
+        } else {
+          rotulos.push(t5);
+          if (!tituloLinha) tituloLinha = rotuloCampo(k3, c4, [t5]);
+        }
+      } else if (!vazio(v4)) {
+        const s4 = serieDe(v4);
+        if (!s4) return null;
+        series.push([k3, s4]);
+      }
+    }
+    if (!series.length) return null;
+    for (const [k3, serie] of series) {
+      linhas.push({ rotulo: [...rotulos, ...series.length > 1 ? [humanizarChave(k3)] : []].join(" \u2014 ") || "-", pont, serie });
+    }
+  }
+  if (!linhas.length) return null;
+  const titulos = [tituloLinha || "Item", ...temPont ? ["Pontua\xE7\xE3o"] : []];
+  return matrizDe(titulos, temPont ? [90, 48] : [110], linhas.map((l4) => ({ fixos: temPont ? [l4.rotulo, l4.pont || "-"] : [l4.rotulo], serie: l4.serie })));
+}
+var GENERICOS = /* @__PURE__ */ new Set(["TEXTO", "DESCRICAO", "DETALHE", "OBSERVACAO", "OBS"]);
 function pesoColuna(titulo, valores) {
   const maior = valores.reduce((a5, v4) => Math.max(a5, Math.min(v4.length, 60)), 0);
   const maiorPalavra = titulo.split(" ").reduce((a5, w2) => Math.max(a5, w2.length), 0);
@@ -339257,53 +339409,67 @@ function tabelaDe(linhasBrutas, ctx) {
   const chaves = [];
   for (const o4 of linhasBrutas) for (const k3 of Object.keys(o4)) if (!chaves.includes(k3)) chaves.push(k3);
   const celulas = linhasBrutas.map((o4) => {
-    const c4 = { pf: ctx.pf || ehPessoaFisicaMarcada(o4) };
+    const c4 = { ...ctx, pf: ctx.pf || ehPessoaFisicaMarcada(o4) };
     return chaves.map((k3) => textoCelula(k3, o4[k3], c4));
   });
-  const usadas = chaves.map((_2, j) => j).filter((j) => celulas.some((l4) => l4[j] !== ""));
-  if (!usadas.length) return [];
-  const linhas = celulas.map((l4) => usadas.map((j) => l4[j]));
-  const titulos = usadas.map((j) => rotuloCampo(chaves[j]));
-  const pesos = usadas.map((_2, i4) => pesoColuna(titulos[i4], linhas.map((l4) => l4[i4])));
-  if (usadas.length <= MAX_COLUNAS_POR_TABELA) return [{ t: "tabela", colunas: titulos, pesos, linhas, continuacao: false }];
-  const porFatia = MAX_COLUNAS_POR_TABELA - 1;
-  const partes = [];
-  for (let ini = 1, n5 = 0; ini < usadas.length; ini += porFatia, n5++) {
-    const idx = [0, ...Array.from({ length: Math.min(porFatia, usadas.length - ini) }, (_2, i4) => ini + i4)];
-    partes.push({
-      t: "tabela",
-      continuacao: n5 > 0,
-      colunas: idx.map((i4) => titulos[i4]),
-      pesos: idx.map((i4) => pesos[i4]),
-      linhas: linhas.map((l4) => idx.map((i4) => l4[i4]))
-    });
+  const colunaDe = (j) => celulas.map((l4) => l4[j]);
+  const tituloDe = (j) => rotuloCampo(chaves[j], ctx, colunaDe(j));
+  const mesmoConteudo = (a5, b3) => celulas.every((l4) => l4[a5] === l4[b3]);
+  const maisDescritiva = (novo, atual) => {
+    const g3 = (j) => GENERICOS.has(semAcento2(semPrefixo(chaves[j])));
+    if (g3(atual) !== g3(novo)) return g3(atual);
+    return tituloDe(novo).length > tituloDe(atual).length;
+  };
+  let usadas = [];
+  for (let j = 0; j < chaves.length; j++) {
+    if (!celulas.some((l4) => l4[j] !== "")) continue;
+    const dup = usadas.findIndex((u4) => mesmoConteudo(u4, j));
+    if (dup < 0) usadas.push(j);
+    else if (maisDescritiva(j, usadas[dup])) usadas = usadas.map((u4, i4) => i4 === dup ? j : u4);
   }
-  return partes;
+  if (!usadas.length) return [];
+  const titulos = usadas.map(tituloDe);
+  const longo = usadas.some((j) => celulas.some((l4) => l4[j].length > TEXTO_LONGO));
+  if (longo || usadas.length > MAX_COLUNAS_TABELA) {
+    const registros = celulas.map((l4) => usadas.map((j, i4) => [titulos[i4], l4[j]]).filter(([, v4]) => v4 !== "")).filter((r5) => r5.length);
+    return registros.length ? [{ t: "ficha", registros }] : [];
+  }
+  const linhas = celulas.map((l4) => usadas.map((j) => l4[j]));
+  const pesos = usadas.map((_2, i4) => pesoColuna(titulos[i4], linhas.map((l4) => l4[i4])));
+  return [{ t: "tabela", colunas: titulos, pesos, linhas, continuacao: false }];
 }
 function emPartes(valor2, caminho, ctx, saida, prof = 0, chave = "") {
   if (prof > MAX_PROFUNDIDADE) return;
   if (ehEscalar(valor2)) {
     const t5 = textoEscalar(chave, valor2, ctx);
-    if (t5) saida.push({ t: "campos", pares: [[chave ? rotuloCampo(chave) : "Valor", t5]] });
+    if (t5) saida.push({ t: "campos", pares: [[chave ? rotuloCampo(chave, ctx, [t5]) : "Valor", t5]] });
     return;
   }
   if (Array.isArray(valor2)) {
+    const serie = serieDe(valor2);
+    if (serie) {
+      saida.push(...matrizDe([chave ? rotuloCampo(chave, ctx) : "Indicador"], [110], [{ fixos: ["Pontua\xE7\xE3o mensal"], serie }]));
+      return;
+    }
     const objs = valor2.filter(ehObj);
     const escalares = valor2.filter(ehEscalar);
-    if (objs.length) saida.push(...tabelaDe(objs, ctx));
+    if (objs.length) {
+      if (objs.every(temMeses)) saida.push(...tabelaMeses(objs));
+      else saida.push(...matrizDeObjetos(objs, ctx) ?? tabelaDe(objs, ctx));
+    }
     const itens = escalares.map((x2) => textoEscalar(chave, x2, ctx)).filter(Boolean);
     if (itens.length) saida.push({ t: "lista", itens });
     for (const sub of valor2) if (Array.isArray(sub)) emPartes(sub, caminho, ctx, saida, prof + 1, chave);
     return;
   }
   if (!ehObj(valor2)) return;
-  const c4 = { pf: ctx.pf || ehPessoaFisicaMarcada(valor2) };
+  const c4 = { ...ctx, pf: ctx.pf || ehPessoaFisicaMarcada(valor2) };
   const pares = [];
   const filhos = [];
   for (const [k3, v4] of Object.entries(valor2)) {
     if (ehEscalar(v4)) {
       const t5 = textoEscalar(k3, v4, c4);
-      if (t5) pares.push([rotuloCampo(k3), t5]);
+      if (t5) pares.push([rotuloCampo(k3, c4, [t5]), t5]);
     } else if (v4 !== null && v4 !== void 0) filhos.push([k3, v4]);
   }
   if (pares.length) saida.push({ t: "campos", pares });
@@ -339328,11 +339494,54 @@ function entreguesDe(header) {
   andar(header.DADOS_RETORNADOS, "", 0);
   return [...new Set(nomes)];
 }
-function blocoSeguro(titulo, fazer) {
+var ehChaveStatus = (k3) => semPrefixo(k3).toUpperCase() === "STATUS_RETORNO";
+function separarStatus(valor2) {
+  if (!ehObj(valor2)) return { resto: valor2 };
+  const chave = Object.keys(valor2).find(ehChaveStatus);
+  if (!chave) return { resto: valor2 };
+  const resto = {};
+  for (const [k3, v4] of Object.entries(valor2)) if (k3 !== chave) resto[k3] = v4;
+  const s4 = valor2[chave];
+  let codigo = "";
+  let desc2 = "";
+  if (ehEscalar(s4)) desc2 = String(s4);
+  else if (ehObj(s4)) {
+    for (const [k3, v4] of Object.entries(s4)) {
+      if (!ehEscalar(v4)) continue;
+      const b3 = semAcento2(semPrefixo(k3));
+      if (b3.startsWith("COD")) codigo = String(v4).trim();
+      else if (b3.startsWith("DESC") || b3 === "MENSAGEM" || b3 === "TEXTO") desc2 = String(v4);
+    }
+  }
+  desc2 = desc2.trim() ? humanizarChave(desc2.trim().replace(/\s+/g, "_")).replace(/^./, (x2) => x2.toLowerCase()) : "";
+  if (!desc2 && !codigo) return { resto };
+  const destaque = codigo !== "" && codigo !== "1";
+  const texto2 = destaque ? `status ${codigo}${desc2 ? " \u2014 " + desc2 : ""}` : desc2 || `status ${codigo}`;
+  return { resto, status: { texto: texto2, destaque } };
+}
+function comoIndicador(resto) {
+  if (!ehObj(resto)) return null;
+  let pont = "";
+  let serie = null;
+  for (const [k3, v4] of Object.entries(resto)) {
+    if (vazio(v4)) continue;
+    if (ehEscalar(v4)) {
+      if (!ehChavePontuacao(k3)) return null;
+      pont = String(v4).trim();
+      continue;
+    }
+    const s4 = serieDe(v4);
+    if (!s4 || serie) return null;
+    serie = s4;
+  }
+  return serie ? { pont: pont || "-", serie } : null;
+}
+function blocoSeguro(titulo, fazer, status) {
+  const base = status ? { titulo, status } : { titulo };
   try {
-    return { titulo, partes: fazer() };
+    return { ...base, partes: fazer() };
   } catch {
-    return { titulo, partes: [{ t: "aviso", texto: "bloco n\xE3o renderizado" }] };
+    return { ...base, partes: [{ t: "aviso", texto: "bloco n\xE3o renderizado" }] };
   }
 }
 function montarAnexo(bruto, opts2) {
@@ -339344,6 +339553,36 @@ function montarAnexo(bruto, opts2) {
   const ctx = { pf: opts2.pessoaFisica };
   const anexo = { entregues: [], parametros: [], blocos: [], linkOriginal: link };
   if (!dados) return anexo;
+  const indicadores = [];
+  const ind = { bloco: null };
+  const adicionar = (chave, valor2) => {
+    const titulo = rotuloBloco(chave);
+    const cb = { pf: ctx.pf, bloco: semPrefixo(chave).toUpperCase() };
+    let sep = { resto: valor2 };
+    try {
+      sep = separarStatus(valor2);
+    } catch {
+    }
+    try {
+      const info = comoIndicador(sep.resto);
+      if (info) {
+        indicadores.push({ rotulo: titulo, ...info });
+        if (!ind.bloco) {
+          ind.bloco = { titulo: "Indicadores de comportamento (12 meses)", partes: [] };
+          anexo.blocos.push(ind.bloco);
+        }
+        const b3 = ind.bloco;
+        if (sep.status && (!b3.status || sep.status.destaque && !b3.status.destaque)) b3.status = sep.status;
+        return;
+      }
+    } catch {
+    }
+    anexo.blocos.push(blocoSeguro(titulo, () => {
+      const partes = [];
+      emPartes(sep.resto, [], cb, partes, 0, chave);
+      return partes;
+    }, sep.status));
+  };
   for (const [chave, valor2] of Object.entries(dados)) {
     if (chave === "HEADER" && ehObj(valor2)) {
       try {
@@ -339351,7 +339590,7 @@ function montarAnexo(bruto, opts2) {
         if (ehObj(valor2.PARAMETROS)) {
           for (const [k3, v4] of Object.entries(valor2.PARAMETROS)) {
             const t5 = textoCelula(k3, v4, ctx);
-            if (t5) anexo.parametros.push([rotuloCampo(k3), t5]);
+            if (t5) anexo.parametros.push([rotuloCampo(k3, ctx, [t5]), t5]);
           }
         }
         const resto = {};
@@ -339365,20 +339604,18 @@ function montarAnexo(bruto, opts2) {
       continue;
     }
     if (ehObj(valor2) && chave.toUpperCase() === "CREDCADASTRAL") {
-      for (const [k3, v4] of Object.entries(valor2)) {
-        anexo.blocos.push(blocoSeguro(rotuloBloco(k3), () => {
-          const partes = [];
-          emPartes(v4, [], { pf: ctx.pf }, partes, 0, k3);
-          return partes;
-        }));
-      }
+      for (const [k3, v4] of Object.entries(valor2)) adicionar(k3, v4);
       continue;
     }
-    anexo.blocos.push(blocoSeguro(rotuloBloco(chave), () => {
-      const partes = [];
-      emPartes(valor2, [], ctx, partes, 0, chave);
-      return partes;
-    }));
+    adicionar(chave, valor2);
+  }
+  if (ind.bloco && indicadores.length) {
+    const alvo = ind.bloco;
+    try {
+      alvo.partes = matrizDe(["Indicador", "Pontua\xE7\xE3o"], [90, 48], indicadores.map((i4) => ({ fixos: [i4.rotulo, i4.pont], serie: i4.serie })));
+    } catch {
+      alvo.partes = [{ t: "aviso", texto: "bloco n\xE3o renderizado" }];
+    }
   }
   return anexo;
 }
@@ -339386,6 +339623,8 @@ function registrosDaParte(p4) {
   switch (p4.t) {
     case "tabela":
       return p4.continuacao ? 0 : p4.linhas.length;
+    case "ficha":
+      return p4.registros.length;
     case "campos":
       return p4.pares.length;
     case "lista":
@@ -339394,32 +339633,15 @@ function registrosDaParte(p4) {
       return 0;
   }
 }
-var MESES3 = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
-var semAcento2 = (s4) => s4.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
 function consultasPorMes(bruto) {
   if (!ehObj(bruto) || !ehObj(bruto.dados)) return null;
   const cred = ehObj(bruto.dados.CREDCADASTRAL) ? bruto.dados.CREDCADASTRAL : null;
   const hist = cred && ehObj(cred.HIST_CONSULTAS) ? cred.HIST_CONSULTAS : null;
   const q = hist?.QUANTIDADES;
   if (!Array.isArray(q)) return null;
-  const linhas = [];
-  for (const o4 of q.filter(ehObj)) {
-    const porMes = new Array(12).fill("");
-    let ano = "";
-    for (const [k3, v4] of Object.entries(o4)) {
-      if (!ehEscalar(v4)) continue;
-      const nome = semAcento2(k3).trim();
-      if (nome === "ANO") {
-        ano = String(v4).trim();
-        continue;
-      }
-      const i4 = MESES3.indexOf(nome.slice(0, 3));
-      if (i4 >= 0) porMes[i4] = String(v4).trim();
-    }
-    if (ano || porMes.some(Boolean)) linhas.push([ano || "\u2014", ...porMes.map((m4) => m4 || "-")]);
-  }
+  const linhas = linhasPorMes(q.filter(ehObj));
   if (!linhas.length) return null;
-  return { colunas: ["Ano", ...MESES3.map((m4) => m4.charAt(0) + m4.slice(1).toLowerCase())], linhas };
+  return { colunas: COLUNAS_MESES, linhas };
 }
 
 // server/lib/credito/pdf.ts
@@ -339549,11 +339771,16 @@ var Pagina = class {
     this.y += h3 + 6;
   }
   /** Título de bloco do anexo (mantém a capitalização portuguesa, ao contrário de `titulo`). */
-  bloco(t5) {
+  bloco(t5, status) {
     this.garantir(80);
     const { doc } = this;
     this.y += 6;
-    doc.font("Helvetica-Bold").fontSize(10).fillColor(AZUL).text(limparTexto(t5), MX, this.y, { width: LARG, lineBreak: false });
+    const titulo = limparTexto(t5);
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(AZUL).text(titulo, MX, this.y, { width: LARG, lineBreak: false });
+    if (status) {
+      const x2 = MX + doc.widthOfString(titulo) + 6;
+      doc.font(status.destaque ? "Helvetica-Bold" : "Helvetica").fontSize(8).fillColor(status.destaque ? COR_SEMAFORO.VERMELHO : CINZA).text("\u2014 " + limparTexto(status.texto), x2, this.y + 2, { width: Math.max(60, MX + LARG - x2), lineBreak: false });
+    }
     this.y += 14;
     doc.moveTo(MX, this.y).lineTo(MX + LARG, this.y).lineWidth(0.6).strokeColor(AZUL).stroke();
     this.y += 6;
@@ -339568,27 +339795,28 @@ var Pagina = class {
    */
   tabela(colunas, linhas, opts2 = {}) {
     const { doc } = this;
-    const PAD = 4;
-    const tam = 8.5;
+    const PAD = opts2.compacta ? 2 : 4;
+    const tam = opts2.compacta ? 8 : 8.5;
+    const tamCab = opts2.compacta ? 7 : 8;
     const total = colunas.reduce((a5, c4) => a5 + c4.largura, 0);
     const escala = LARG / total;
     const cols = colunas.map((c4) => ({ ...c4, largura: c4.largura * escala }));
     const cabecalho = () => {
-      doc.font("Helvetica-Bold").fontSize(8);
+      doc.font("Helvetica-Bold").fontSize(tamCab);
       const titulos = cols.map((c4) => quebrarLongas(doc, limparTexto(c4.titulo), c4.largura - PAD * 2));
       const hTexto = Math.max(...titulos.map((t5, j) => doc.heightOfString(t5, { width: cols[j].largura - PAD * 2 })));
       const h3 = Math.max(18, hTexto + 9);
       this.garantir(h3 + 22);
       doc.rect(MX, this.y, LARG, h3).fill(AZUL);
       let x2 = MX;
-      doc.font("Helvetica-Bold").fontSize(8).fillColor("#FFFFFF");
+      doc.font("Helvetica-Bold").fontSize(tamCab).fillColor("#FFFFFF");
       cols.forEach((c4, j) => {
         doc.text(titulos[j], x2 + PAD, this.y + 5, { width: c4.largura - PAD * 2, align: c4.alinhar ?? "left" });
         x2 += c4.largura;
       });
       this.y += h3;
     };
-    cabecalho();
+    if (!opts2.semCabecalho) cabecalho();
     for (let i4 = 0; i4 < linhas.length; i4++) {
       const linha = linhas[i4];
       const prep = linha.map((cel, j) => {
@@ -339610,7 +339838,7 @@ var Pagina = class {
       if (this.y + alturaLinha > LIMITE_Y) {
         if (opts2.limitar && this.estourou()) return linhas.length - i4;
         this.nova();
-        cabecalho();
+        if (!opts2.semCabecalho) cabecalho();
       }
       if (i4 % 2 === 1) doc.rect(MX, this.y, LARG, alturaLinha).fill(ZEBRA);
       let x2 = MX;
@@ -339907,7 +340135,7 @@ function secaoAnexo(p4, anexo) {
       continue;
     }
     try {
-      p4.bloco(bloco.titulo);
+      p4.bloco(bloco.titulo, bloco.status);
       if (!bloco.partes.length) {
         p4.paragrafo("Bloco sem informa\xE7\xF5es preenchidas.", { cor: CINZA, tam: 8.5 });
         continue;
@@ -339936,11 +340164,26 @@ function secaoAnexo(p4, anexo) {
             const falt = p4.tabela(
               parte.colunas.map((titulo, i4) => ({ titulo, largura: parte.pesos[i4] })),
               parte.linhas.map((l4) => l4.map((texto2, i4) => ({ texto: texto2, negrito: i4 === 0 && parte.colunas.length > 2 }))),
-              { limitar: true }
+              { limitar: true, compacta: parte.compacta }
             );
             if (!parte.continuacao) omitidos += falt;
             break;
           }
+          case "ficha":
+            for (let i4 = 0; i4 < parte.registros.length; i4++) {
+              if (p4.estourou()) {
+                omitidos += parte.registros.length - i4;
+                break;
+              }
+              p4.garantir(60);
+              if (parte.registros.length > 1) p4.paragrafo(`Registro ${i4 + 1} de ${parte.registros.length}`, { cor: CINZA, tam: 8, negrito: true });
+              p4.tabela(
+                [{ titulo: "Campo", largura: 150 }, { titulo: "Valor", largura: 365 }],
+                parte.registros[i4].map(([k3, v4]) => [{ texto: k3, negrito: true, cor: CINZA }, { texto: v4 }]),
+                { semCabecalho: true }
+              );
+            }
+            break;
           case "lista":
             for (let i4 = 0; i4 < parte.itens.length; i4++) {
               if (p4.estourou()) {
