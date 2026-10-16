@@ -422,6 +422,10 @@ function secaoResumo(p: Pagina, r: RelatorioCredito, meta: { veredito: Veredito;
   p.y = sy + 84;
 
   const leitura = resumirTexto(frasePelaFonte(r.score.textoInterpretacao));
+  p.paragrafo('Score e probabilidade informados pela fonte; não são calculados pela Sal Vita.', { cor: CINZA, tam: 8 });
+  if (meta.veredito === 'REPROVADO_A_PRAZO' && (r.score.valor ?? 0) >= 600) {
+    p.paragrafo('Atenção: o score da fonte é alto, mas o relatório registra restrições. Para decidir, prevalecem as restrições, não o score.', { cor: '#B45309', tam: 8.5 });
+  }
   if (leitura) p.paragrafo(leitura, { cor: CINZA, tam: 8 });
 }
 

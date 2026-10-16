@@ -340255,6 +340255,10 @@ function secaoResumo(p4, r5, meta) {
   }
   p4.y = sy2 + 84;
   const leitura = resumirTexto(frasePelaFonte(r5.score.textoInterpretacao));
+  p4.paragrafo("Score e probabilidade informados pela fonte; n\xE3o s\xE3o calculados pela Sal Vita.", { cor: CINZA, tam: 8 });
+  if (meta.veredito === "REPROVADO_A_PRAZO" && (r5.score.valor ?? 0) >= 600) {
+    p4.paragrafo("Aten\xE7\xE3o: o score da fonte \xE9 alto, mas o relat\xF3rio registra restri\xE7\xF5es. Para decidir, prevalecem as restri\xE7\xF5es, n\xE3o o score.", { cor: "#B45309", tam: 8.5 });
+  }
   if (leitura) p4.paragrafo(leitura, { cor: CINZA, tam: 8 });
 }
 var COR_NIVEL = { ALERTA: COR_SEMAFORO.VERMELHO, ATENCAO: "#B45309", POSITIVO: COR_SEMAFORO.VERDE };
@@ -341051,6 +341055,7 @@ var creditoRouter = router({
     const f4 = montarFiltrosListagem(input);
     const dobrado = sql`lower(translate(coalesce(r.razao_social, '') || ' ' || coalesce(r.municipio, ''), ${SQL_ACENTOS}, ${SQL_SEM_ACENTOS}))`;
     const conds = [sql`true`];
+    if (getProvedorCredito().nome !== "simulado") conds.push(sql`r.provedor <> 'simulado'`);
     for (const t5 of f4.termosTexto) conds.push(sql`position(${t5}::text in ${dobrado}) > 0`);
     if (f4.digitosBusca) conds.push(sql`position(${f4.digitosBusca}::text in r.documento) > 0`);
     if (f4.documento) conds.push(sql`r.documento = ${f4.documento}::text`);

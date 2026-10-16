@@ -438,6 +438,8 @@ export const creditoRouter = router({
       const f = montarFiltrosListagem(input);
       const dobrado = sql`lower(translate(coalesce(r.razao_social, '') || ' ' || coalesce(r.municipio, ''), ${SQL_ACENTOS}, ${SQL_SEM_ACENTOS}))`;
       const conds: SQL[] = [sql`true`];
+      // Com o provedor real ligado, relatórios de teste (simulados, dados fictícios) não aparecem no arquivo.
+      if (getProvedorCredito().nome !== 'simulado') conds.push(sql`r.provedor <> 'simulado'`);
       for (const t of f.termosTexto) conds.push(sql`position(${t}::text in ${dobrado}) > 0`);
       if (f.digitosBusca) conds.push(sql`position(${f.digitosBusca}::text in r.documento) > 0`);
       if (f.documento) conds.push(sql`r.documento = ${f.documento}::text`);
