@@ -9,7 +9,8 @@ import { trpc } from '../../lib/trpc';
 import { useAuth } from '../../_core/hooks/useAuth';
 import { formatBRL } from '../../lib/faturamento/calc';
 import { formatarDocumento, mascararDocumentoSocio } from '../../lib/credito/documento';
-import { dataBR, dataHoraBR, permissoesCredito } from '../../lib/credito/regras';
+import { frasePelaFonte } from '../../../../shared/creditoRotulos';
+import { mesAnoBR, dataBR, dataHoraBR, permissoesCredito } from '../../lib/credito/regras';
 import { naturezaJuridicaTexto } from '../../../../shared/creditoRotulos';
 import { analisarSinais, atenuacaoDoItem, ROTULO_VEREDITO, type GrupoAnotacao, type RelatorioCredito } from '../../../../shared/credito';
 import { CreditoSemaforo } from './CreditoSemaforo';
@@ -123,7 +124,7 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
                   Atenção: o score da fonte é alto, mas o relatório registra restrições. Para decidir, prevalecem as restrições, não o score.
                 </p>
               )}
-              {r.score.textoInterpretacao && <p className="line-clamp-2 text-xs text-slate-500" title={r.score.textoInterpretacao}>{r.score.textoInterpretacao}</p>}
+              {r.score.textoInterpretacao && <p className="line-clamp-2 text-xs text-slate-500" title={frasePelaFonte(r.score.textoInterpretacao)}>{frasePelaFonte(r.score.textoInterpretacao)}</p>}
             </Secao>
 
             {(() => {
@@ -249,7 +250,7 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
             {r.comportamento && (
               <Secao titulo="Comportamento comercial">
                 <Campos pares={([
-                  ['Última compra', r.comportamento.ultimaCompraEm ? dataBR(r.comportamento.ultimaCompraEm) : ''],
+                  ['Última compra', r.comportamento.ultimaCompraEm ? mesAnoBR(r.comportamento.ultimaCompraEm) : ''],
                   ['Pagamentos em dia', r.comportamento.pagamentoPontualPct !== null ? pct(r.comportamento.pagamentoPontualPct) : ''],
                   ['Relacionamento mais antigo', r.comportamento.relacionamentoMaisAntigoEm ? dataBR(r.comportamento.relacionamentoMaisAntigoEm) : ''],
                   ['Fornecedores que informaram', r.comportamento.fontesConsultadas !== null ? String(r.comportamento.fontesConsultadas) : ''],

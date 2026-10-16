@@ -177,3 +177,15 @@ describe('filtros do arquivo', () => {
     expect(totalPaginas(21)).toBe(2);
   });
 });
+
+import { dataBR as dataBRUi, mesAnoBR } from '../client/src/lib/credito/regras';
+describe('datas puras não voltam um dia (fuso)', () => {
+  it('2026-09-16 continua 16/09/2026 e meia-noite UTC também', () => {
+    expect(dataBRUi('2026-09-16')).toBe('16/09/2026');
+    expect(dataBRUi('2004-11-17T00:00:00.000Z')).toBe('17/11/2004');
+  });
+  it('mês/ano', () => {
+    expect(mesAnoBR('2026-09-01')).toBe('Set/2026');
+    expect(mesAnoBR(null)).toBe('--');
+  });
+});

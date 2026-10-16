@@ -77,6 +77,11 @@ export function dataHoraBR(valor: string | Date | null | undefined): string {
 
 export function dataBR(valor: string | Date | null | undefined): string {
   if (!valor) return '--';
+  // Data pura ("2026-09-16" ou meia-noite UTC): não converte fuso, senão aparece o dia anterior no Brasil.
+  if (typeof valor === 'string') {
+    const m = /^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.0+)?Z?)?$/.exec(valor.trim());
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  }
   const d = valor instanceof Date ? valor : new Date(valor);
   if (!Number.isFinite(d.getTime())) return '--';
   return d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
@@ -125,3 +130,11 @@ export function textoCustoConsulta(simulado: boolean): string {
 
 /** Aviso amarelo "Saldo baixo": saldo conhecido abaixo de SALDO_BAIXO_REAIS (saldo desconhecido não avisa). */
 export const saldoEstaBaixo = (saldo: number | null | undefined): boolean => saldo != null && saldo < SALDO_BAIXO_REAIS;
+
+/** Mês/ano ("Set/2026") de uma data ISO — para eventos que a fonte só informa por mês. */
+export function mesAnoBR(valor: string | null | undefined): string {
+  const m = /^(\d{4})-(\d{2})/.exec(valor ?? '');
+  if (!m) return '--';
+  const nomes = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  return `${nomes[Number(m[2]) - 1] ?? m[2]}/${m[1]}`;
+}

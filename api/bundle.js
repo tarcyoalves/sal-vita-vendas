@@ -338814,6 +338814,14 @@ function naturezaJuridicaTexto(v4) {
   if (resto) return resto;
   return NATUREZAS[m4[1] + m4[2]] ?? `${m4[1]}-${m4[2]}`;
 }
+var ACENTO_FRASE = { provavel: "prov\xE1vel", debitos: "d\xE9bitos", proximos: "pr\xF3ximos", ate: "at\xE9", nao: "n\xE3o", e: "\xE9" };
+function frasePelaFonte(t5) {
+  const s4 = (t5 ?? "").replace(/(\d)([A-Za-zÀ-ú])/g, "$1 $2").trim();
+  const letras = s4.replace(/[^A-Za-zÀ-ú]/g, "");
+  if (letras.length < 8 || letras !== letras.toUpperCase()) return s4;
+  const f4 = s4.toLowerCase().split(/(\s+)/).map((w2) => ACENTO_FRASE[w2] ?? w2).join("");
+  return f4.charAt(0).toUpperCase() + f4.slice(1);
+}
 
 // server/lib/credito/provedores/mapeadores.ts
 var CHAVES_SCORE = ["score", "pontuacao"];
@@ -340160,15 +340168,6 @@ var Pagina = class {
     return 0;
   }
 };
-var ACENTO_FRASE = { provavel: "prov\xE1vel", debitos: "d\xE9bitos", proximos: "pr\xF3ximos", ate: "at\xE9", nao: "n\xE3o", e: "\xE9" };
-function frasePelaFonte(t5) {
-  const s4 = (t5 ?? "").replace(/(\d)([A-Za-zÀ-ú])/g, "$1 $2").trim();
-  const letras = s4.replace(/[^A-Za-zÀ-ú]/g, "");
-  if (letras.length < 8 || letras !== letras.toUpperCase()) return s4;
-  const palavras = s4.toLowerCase().split(/(\s+)/).map((w2) => ACENTO_FRASE[w2] ?? w2);
-  const f4 = palavras.join("");
-  return f4.charAt(0).toUpperCase() + f4.slice(1);
-}
 function resumirTexto(t5, max2 = 130) {
   const s4 = limparTexto(t5).replace(/\s+/g, " ").trim();
   if (s4.length <= max2) return s4;

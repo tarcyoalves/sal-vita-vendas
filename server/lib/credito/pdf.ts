@@ -9,6 +9,8 @@
 // de propósito: o build "node" carrega as métricas das fontes padrão (Helvetica) em tempo de execução com
 // createRequire('#standard-fonts/...'), o que QUEBRA depois que o esbuild empacota api/bundle.js. O build "browser"
 // traz as fontes embutidas no próprio arquivo e funciona igual em Node, no teste e no bundle serverless.
+import { frasePelaFonte } from '../../../shared/creditoRotulos';
+export { frasePelaFonte };
 import type PDFDocumentCtor from 'pdfkit';
 import type { RelatorioCredito, Veredito } from '../../../shared/credito';
 import { ROTULO_VEREDITO, SEMAFORO, analisarSinais, atenuacaoDoItem, type NivelSinal } from '../../../shared/credito';
@@ -305,18 +307,6 @@ class Pagina {
     this.y += 8;
     return 0;
   }
-}
-
-const ACENTO_FRASE: Record<string, string> = { provavel: 'provável', debitos: 'débitos', proximos: 'próximos', ate: 'até', nao: 'não', e: 'é' };
-/** Texto todo em MAIÚSCULAS (como a fonte manda) vira frase normal: minúsculas, 1ª letra maiúscula, acentos comuns. */
-export function frasePelaFonte(t: string | null | undefined): string {
-  // A fonte às vezes cola o número na palavra seguinte ("QUE 13APRESENTEM"): separa dígito e letra.
-  const s = (t ?? '').replace(/(\d)([A-Za-zÀ-ú])/g, '$1 $2').trim();
-  const letras = s.replace(/[^A-Za-zÀ-ú]/g, '');
-  if (letras.length < 8 || letras !== letras.toUpperCase()) return s;
-  const palavras = s.toLowerCase().split(/(\s+)/).map((w) => ACENTO_FRASE[w] ?? w);
-  const f = palavras.join('');
-  return f.charAt(0).toUpperCase() + f.slice(1);
 }
 
 /** Resume o texto da fonte numa linha curta: espaços normalizados, corte na última frase/palavra, "..." no fim. */
