@@ -103,3 +103,26 @@ gasto do mês, tabela "O que cada consulta mostra" e, no arquivo de análises, o
 
 **Migração:** `SCHEMA_VERSION` = `2026-10-16a`; colunas aditivas `credit_queries.produto` e `credit_settings.teto_por_consulta_reais`
 (`ensureCreditColumns`, chamada por `ensureRecentSchema`).
+
+## PDF completo com anexo da resposta do provedor (16/10/2026)
+Pedido do dono: "todas as informações possíveis". O PDF (`credito.pdf`, só admin/gerente) agora recebe também o
+`payload_bruto` (3º parâmetro opcional de `gerarPdfCredito`; sem bruto, como o simulado, não há anexo).
+- **Corpo principal:** "Detalhamento das anotações" mostra TODAS as ocorrências (sem corte). Cada item do contrato ganhou
+  `extras?: Record<string,string>` com os demais campos não vazios da ocorrência (rótulo humanizado, CPF mascarado, URLs
+  omitidas); protesto/cheque/ação usam tipo/espécie na descrição ("Protesto — <espécie>") e "<cartório> — <cidade>/<UF>" no local.
+  Se a fonte diz M ocorrências e listou N < M: aviso "A fonte listou N de M ocorrências". Mesmos extras e aviso na tela
+  (`RelatorioCreditoDialog`). Consultas recentes: todas as que a fonte trouxer + tabela "Consultas por mês" (HIST_CONSULTAS.QUANTIDADES).
+- **Anexo "Dados completos da resposta do provedor"** (`server/lib/credito/pdfAnexo.ts` monta o modelo; `pdf.ts` desenha):
+  genérico, sem mapeador. Um bloco por chave de `dados.CREDCADASTRAL`/`VEICULAR`/outras, títulos em português
+  (`shared/creditoRotulos.ts`; chave desconhecida é humanizada; prefixos `xxx:` do Define Risco removidos; nenhum nome de bureau).
+  Objeto escalar -> tabela Campo|Valor; array de objetos -> tabela com TODAS as linhas e colunas = união das chaves não vazias
+  (máx. 7 por tabela; acima disso, fatias de colunas consecutivas repetindo a 1ª coluna); array de escalares -> lista.
+  Cabeçalho repetido a cada página, células com quebra de linha.
+- **Ruído:** `HEADER.DADOS_RETORNADOS` e `CONTROLE` não são impressos; vira "Blocos entregues pela fonte: A, B" (os "1"). `HEADER.PARAMETROS` -> "Parâmetros da consulta".
+- **LGPD:** CPF em qualquer padrão mascarado como no resto do PDF; telefone/e-mail de pessoa física (TIPO_PESSOA/TIPO_DOCUMENTO
+  físico, ou consulta de CPF) mascarados (últimos 4 dígitos / 2 letras + domínio); os de pessoa jurídica completos; URLs de imagem/arquivo nunca impressas.
+  Única URL: a linha final "PDF original do provedor: <aux.data>" (texto; o servidor não baixa nada).
+- **Limites:** teto de 80 páginas no PDF; o anexo para e imprime "Anexo truncado: N registros omitidos". Falha em um bloco -> "Bloco não renderizado"; falha do anexo inteiro nunca derruba o PDF principal.
+- **Tela:** botão "Baixar PDF (completo)" e, para admin, link "PDF original do provedor" via `credito.linkOriginal({id})` (devolve a URL ou null).
+- **Cabeçalho do PDF:** "Fonte dos dados: API Full/<produto do catálogo>" (provedor interno nunca aparece).
+- Teste: `tests/credito-pdf-anexo.test.ts` com `tests/fixtures/credito/apifull-boavista-volumoso.json` (29 protestos, 19 consultas, sintético).

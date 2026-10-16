@@ -98,11 +98,11 @@ describe('gerarPdfCredito', () => {
 
   it('não usa marca de bureau; o provedor só aparece em "Fonte dos dados"', async () => {
     for (const base of [exemploLimpo, exemploRestricao]) {
-      const r: RelatorioCredito = { ...base, fonte: { provedor: 'Boa Vista', produto: 'SCPC / Serasa (teste)', custoReais: null } };
+      const r: RelatorioCredito = { ...base, fonte: { provedor: 'boavista_apifull', produto: 'boavista', custoReais: null } };
       const { texto } = await gerar(r);
       const fora = texto.split('\n').filter((l) => !l.startsWith('Fonte dos dados:'));
       expect(fora.join('\n')).not.toMatch(/serasa|boa\s*vista/i);
-      expect(texto).toContain('Fonte dos dados: Boa Vista/SCPC / Serasa (teste)');
+      expect(texto).toContain('Fonte dos dados: API Full/Consulta simples');
       expect(texto).toContain('Relatório de Análise de Crédito — Sal Vita');
     }
   });

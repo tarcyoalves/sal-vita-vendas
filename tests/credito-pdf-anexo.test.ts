@@ -33,7 +33,7 @@ const paginas = (pdf: Buffer) => (pdf.toString('latin1').match(/\/Type \/Page\b(
 
 function relatorioDe(bruto: unknown): RelatorioCredito {
   const m = mapeadorBoaVista(bruto);
-  return { ...exemploLimpo, ...m, socios: exemploLimpo.socios, fonte: { provedor: 'apifull', produto: 'boavista', custoReais: 2.75 } };
+  return { ...exemploLimpo, ...m, socios: exemploLimpo.socios, fonte: { provedor: 'boavista_apifull', produto: 'boavista', custoReais: 2.75 } };
 }
 async function gerar(bruto: unknown) {
   const r = relatorioDe(bruto);
@@ -41,6 +41,7 @@ async function gerar(bruto: unknown) {
   const pdf = await gerarPdfCredito(r, { veredito, motivos, consultadoPor: 'Teste' }, bruto);
   return { pdf, texto: extrairTexto(pdf), r };
 }
+const compacto = (t: string) => t.replace(/\s+/g, '');
 const contar = (texto: string, re: RegExp) => (texto.match(re) ?? []).length;
 
 describe('mapeador: extras e local dos itens', () => {
@@ -115,16 +116,18 @@ describe('PDF com anexo', () => {
     const { pdf, texto } = await gerar(fx('apifull-boavista-volumoso'));
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
     // corpo principal + anexo: cada protesto/consulta aparece nas duas partes
-    for (let i = 1; i <= 29; i++) expect(contar(texto, new RegExp(`CREDOR FICTICIO ${String(i).padStart(2, '0')} LTDA`, 'g'))).toBeGreaterThanOrEqual(2);
-    for (let i = 1; i <= 19; i++) expect(contar(texto, new RegExp(`FORNECEDOR FICTICIO ${String(i).padStart(2, '0')} LTDA`, 'g'))).toBeGreaterThanOrEqual(2);
-    expect(texto).toContain('1o TABELIONATO DE PROTESTOS — CUIABA/MT');
-    expect(texto).toContain('Protesto — DUPLICATA MERCANTIL');
+    for (let i = 1; i <= 29; i++) expect(contar(compacto(texto), new RegExp(`CREDORFICTICIO${String(i).padStart(2, '0')}LTDA`, 'g'))).toBeGreaterThanOrEqual(2);
+    for (let i = 1; i <= 19; i++) expect(contar(compacto(texto), new RegExp(`FORNECEDORFICTICIO${String(i).padStart(2, '0')}LTDA`, 'g'))).toBeGreaterThanOrEqual(2);
+    expect(compacto(texto)).toContain(compacto('1o TABELIONATO DE PROTESTOS — CUIABA/MT'));
+    expect(compacto(texto)).toContain(compacto('Protesto — DUPLICATA MERCANTIL'));
     expect(texto).toContain('Consultas por mês');
     // anexo
     expect(texto).toContain('Anexo — Dados completos da resposta do provedor');
     for (const t of ['Protestos', 'Histórico de consultas', 'Scores', 'Quadro societário', 'Telefones fixos', 'E-mails', 'Parâmetros da consulta']) expect(texto).toContain(t);
     expect(texto).toContain('Blocos entregues pela fonte: Protestos, Scores');
     expect(texto).toContain('Status: CONSULTA CONCLUIDA COM SUCESSO'.replace('Status: ', '')); // linha Campo|Valor
+    expect(texto).not.toMatch(/serasa|boa\s*vista/i);
+    expect(texto).toContain('Fonte dos dados: API Full/Consulta simples');
     expect(texto).not.toContain('DADOS_RETORNADOS');
     expect(texto).not.toContain('BLOCO_001');
     expect(texto).not.toContain('ZZZ-123');
@@ -151,7 +154,7 @@ describe('PDF com anexo', () => {
     const pdf = await gerarPdfCredito(r, { veredito, motivos, consultadoPor: 'Teste' });
     const texto = extrairTexto(pdf);
     expect(texto).not.toContain('Anexo — Dados completos');
-    expect(texto).toContain('CREDOR FICTICIO 29 LTDA'); // todas as ocorrências, sem corte
+    expect(compacto(texto)).toContain('CREDORFICTICIO29LTDA'); // todas as ocorrências, sem corte
   });
 
   it('aviso "A fonte listou N de M" quando a lista vem menor que a quantidade', async () => {

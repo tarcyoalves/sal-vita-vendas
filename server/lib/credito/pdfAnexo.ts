@@ -68,7 +68,8 @@ const rotuloCampo = (k: string): string => {
 
 function pesoColuna(titulo: string, valores: string[]): number {
   const maior = valores.reduce((a, v) => Math.max(a, Math.min(v.length, 60)), 0);
-  return Math.min(150, Math.max(38, Math.max(titulo.length * 0.8, maior) * 5 + 10));
+  const maiorPalavra = titulo.split(' ').reduce((a, w) => Math.max(a, w.length), 0);
+  return Math.min(125, Math.max(44, Math.max(maiorPalavra * 5.6, maior * 5.2) + 16));
 }
 
 /** Array de objetos -> tabela(s) com TODAS as linhas; colunas = união das chaves não totalmente vazias. */

@@ -10,6 +10,7 @@ import type PDFDocumentCtor from 'pdfkit';
 import type { GrupoAnotacao, RelatorioCredito, Veredito } from '../../../shared/credito';
 import { ROTULO_VEREDITO, SEMAFORO, analisarSinais, atenuacaoDoItem, type NivelSinal } from '../../../shared/credito';
 import { ROTULO_NIVEL_SINAL, ordenarSinais } from '../../../shared/creditoSinais';
+import { nomeDoProduto } from '../../../shared/creditoCatalogo';
 import { consultasPorMes, montarAnexo, registrosDaParte, type Anexo } from './pdfAnexo';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -611,6 +612,12 @@ function secaoFinal(p: Pagina, consultadoPor: string | null) {
   p.y = y0 + h + 6;
 }
 
+/** Nome do provedor/produto para o cabeçalho: nunca expõe o nome interno do provedor nem marca de bureau. */
+function fonteDosDados(r: RelatorioCredito): string {
+  const provedor = r.fonte.provedor === 'boavista_apifull' ? 'API Full' : r.fonte.provedor === 'simulado' ? 'Simulado' : r.fonte.provedor;
+  return `${limparTexto(provedor)}/${limparTexto(nomeDoProduto(r.fonte.produto, r.fonte.provedor))}`;
+}
+
 function cabecalhoRodape(doc: Doc, r: RelatorioCredito, i: number, total: number) {
   // escreve dentro da margem inferior sem disparar quebra automática de página
   const margens = doc.page.margins;
@@ -620,7 +627,7 @@ function cabecalhoRodape(doc: Doc, r: RelatorioCredito, i: number, total: number
   doc.font('Helvetica-Bold').fontSize(13).fillColor('#FFFFFF')
     .text('Relatório de Análise de Crédito — Sal Vita', MX, 12, { width: 360, lineBreak: false });
   doc.font('Helvetica').fontSize(8).fillColor('#DCE6F7')
-    .text(`Fonte dos dados: ${limparTexto(r.fonte.provedor)}/${limparTexto(r.fonte.produto)}`, MX, 29, { width: 360, lineBreak: false });
+    .text(`Fonte dos dados: ${fonteDosDados(r)}`, MX, 29, { width: 360, lineBreak: false });
   doc.font('Helvetica').fontSize(8).fillColor('#FFFFFF')
     .text(`Consulta: ${dataHoraBR(r.consultadoEm)}`, W - MX - 170, 14, { width: 170, align: 'right', lineBreak: false });
   doc.text(`${r.tipo} ${formatarDocumento(r.documento, r.tipo)}`, W - MX - 170, 28, { width: 170, align: 'right', lineBreak: false });
