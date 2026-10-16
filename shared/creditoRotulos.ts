@@ -58,6 +58,7 @@ const ACENTOS: Record<string, string> = {
   fisica: 'física', economico: 'econômico', economica: 'econômica', prazo: 'prazo', saldo: 'saldo', agencia: 'agência',
   banco: 'banco', alinea: 'alínea', cheque: 'cheque', cheques: 'cheques', telefone: 'telefone', residencial: 'residencial',
   primario: 'primário', secundario: 'secundário', inscricao: 'inscrição', estadual: 'estadual', matriz: 'matriz',
+  socio: 'sócio', socios: 'sócios', societario: 'societário', funcionarios: 'funcionários', media: 'média', fatura: 'fatura',
   comerciais: 'comerciais', fornecedor: 'fornecedor', fornecedores: 'fornecedores', regiao: 'região', atuacao: 'atuação',
 };
 
@@ -131,4 +132,19 @@ export function valorSeguro(chave: string, valor: string, pessoaFisica = false):
   if (pessoaFisica && CHAVE_FONE.test(k)) return mascararTelefone(v);
   if (pessoaFisica && CHAVE_EMAIL.test(k)) return mascararEmail(v);
   return mascararCpfsEmTexto(v);
+}
+
+const NATUREZAS: Record<string, string> = {
+  '2062': 'Sociedade Empresária Limitada', '2135': 'Empresário Individual', '2305': 'EIRELI', '2240': 'Sociedade Simples Limitada',
+  '2054': 'Sociedade Anônima Fechada', '2046': 'Sociedade Anônima Aberta',
+};
+/** "2062-" / "206-2" / "206-2 - Sociedade ..." -> texto; código desconhecido fica como veio. */
+export function naturezaJuridicaTexto(v: string | null | undefined): string {
+  const t = (v ?? '').replace(/\s+/g, ' ').trim();
+  if (!t) return '';
+  const m = /^(\d{3})-?(\d)\s*(?:-\s*)?(.*)$/.exec(t);
+  if (!m) return t;
+  const resto = m[3].trim();
+  if (resto) return resto;
+  return NATUREZAS[m[1] + m[2]] ?? `${m[1]}-${m[2]}`;
 }

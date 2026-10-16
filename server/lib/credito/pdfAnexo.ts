@@ -1,10 +1,12 @@
 // Anexo do PDF de crédito: converte a RESPOSTA CRUA do provedor (credit_reports.payload_bruto) num modelo de
 // apresentação genérico (seções, tabelas, fichas, matrizes), sem depender de mapeador. Puro: o desenho fica em pdf.ts.
 //
-// Regras: vazio é omitido; HEADER.DADOS_RETORNADOS/CONTROLE são ruído (vira uma linha com os blocos "1");
-// CPF mascarado; telefone/e-mail de pessoa física mascarados; URLs de imagem/arquivo não são impressas.
+// Regras: SEM REDUNDÂNCIA. O corpo do PDF já mostra empresa, score, anotações, sócios, consultas e comportamento
+// comercial; o anexo traz SOMENTE o que o corpo não mostrou (blocos/campos desconhecidos). HEADER, telefones e
+// e-mails nunca são impressos; bloco vazio ou com "0 ocorrências" vira um nome na lista `semOcorrencias`; o status
+// da consulta só aparece (em `avisos`) quando o código não é 1. CPF mascarado; URLs de imagem/arquivo omitidas.
 // Legibilidade: meses sempre Jan→Dez; colunas idênticas são fundidas; texto longo ou muitas colunas viram
-// "ficha por registro"; séries {período, pontuação mensal} viram matriz; status da consulta vai para o título do bloco.
+// "ficha por registro"; séries {período, pontuação mensal} viram matriz.
 import { humanizarChave, rotuloBloco, semPrefixo, valorSeguro } from '../../../shared/creditoRotulos';
 
 export type Parte =
@@ -15,14 +17,18 @@ export type Parte =
   | { t: 'lista'; itens: string[] }
   | { t: 'aviso'; texto: string };
 
-/** Status da consulta do bloco: vira uma linha cinza no título; `destaque` só quando o código não é 1. */
+/** Status da consulta do bloco; `destaque` só quando o código existe e não é 1. */
 export interface StatusBloco { texto: string; destaque: boolean }
-export interface BlocoAnexo { titulo: string; partes: Parte[]; status?: StatusBloco }
+export interface BlocoAnexo { titulo: string; partes: Parte[] }
 export interface Anexo {
-  entregues: string[];
-  parametros: Array<[string, string]>;
+  /** Só o que o corpo do PDF não mostrou. Vazio = o PDF não tem anexo. */
   blocos: BlocoAnexo[];
-  linkOriginal: string | null;
+  /** Blocos cujo status da consulta não foi 1 ("Protestos: status 3 — falha na fonte"). */
+  avisos: string[];
+  /** Nomes dos blocos de restrição consultados e zerados ("Contumácia", "Cheques sem fundos (BACEN)"...). */
+  semOcorrencias: string[];
+  /** Alertas da fonte com conteúdo (INFORMACOES_ALERTAS_RESTRICOES), já em texto. */
+  alertas: string[];
 }
 
 type Obj = Record<string, unknown>;
@@ -318,18 +324,6 @@ function emPartes(valor: unknown, caminho: string[], ctx: Ctx, saida: Parte[], p
   }
 }
 
-/** Blocos "entregues": folhas com valor "1" dentro de HEADER.DADOS_RETORNADOS (o nome do bloco é a última chave). */
-function entreguesDe(header: Obj): string[] {
-  const nomes: string[] = [];
-  const andar = (v: unknown, k: string, prof: number): void => {
-    if (prof > 5) return;
-    if (ehObj(v)) { for (const [kk, x] of Object.entries(v)) andar(x, kk, prof + 1); return; }
-    if (ehEscalar(v) && String(v).trim() === '1' && k) nomes.push(rotuloBloco(k));
-  };
-  andar(header.DADOS_RETORNADOS, '', 0);
-  return [...new Set(nomes)];
-}
-
 // ---- status do bloco ----
 const ehChaveStatus = (k: string) => semPrefixo(k).toUpperCase() === 'STATUS_RETORNO';
 
@@ -374,70 +368,144 @@ function comoIndicador(resto: unknown): { pont: string; serie: Serie } | null {
   return serie ? { pont: pont || '-', serie } : null;
 }
 
-function blocoSeguro(titulo: string, fazer: () => Parte[], status?: StatusBloco): BlocoAnexo {
-  const base = status ? { titulo, status } : { titulo };
-  try { return { ...base, partes: fazer() }; } catch { return { ...base, partes: [{ t: 'aviso', texto: 'bloco não renderizado' }] }; }
+function blocoSeguro(titulo: string, fazer: () => Parte[]): BlocoAnexo {
+  try { return { titulo, partes: fazer() }; } catch { return { titulo, partes: [{ t: 'aviso', texto: 'bloco não renderizado' }] }; }
+}
+
+// ---- cobertura: o que o corpo do PDF já mostra (nada disto se repete no anexo) ----
+/** Blocos cujo conteúdo o corpo do PDF já apresenta por inteiro. */
+const BLOCOS_COBERTOS = new Set([
+  'SCORES', 'SCORE', 'HIST_CONSULTAS', 'PASSAGENS_COMERCIAIS', 'CONSULTAS', 'QUADRO_SOCIETARIO', 'FATURAMENTO_PRESUMIDO',
+  'VEICULOS_POR_DOCUMENTO', 'VEICULAR', 'EVENTOS_PESSOA_JURIDICA', 'PERIODO_RELACIONAMENTO_FORNECEDORES', 'CREDITO_OBTIDO',
+  'COMPROMISSOS', 'PAGAMENTO_PONTUAL', 'PAGAMENTO_ATRASADO', 'COMPROMETIMENTO_FUTURO',
+]);
+/** Blocos de restrição: com ocorrências o corpo os detalha; zerados viram um nome em "Sem ocorrências em". */
+const NOMES_RESTRICAO: Record<string, string> = {
+  PROTESTOS: 'Protestos', PROTESTO_SINTETICO: 'Protestos', PROTESTO_ANALITICO: 'Protestos',
+  PEND_FINANCEIRAS: 'Pendências financeiras', RESTRICOES_FINANCEIRAS: 'Restrições financeiras',
+  ACOES_CIVEIS: 'Ações cíveis', CONTUMACIA: 'Contumácia', INFORMACOES_ALERTAS_RESTRICOES: 'Alertas',
+};
+const ehCheque = (b: string) => b.startsWith('CH_SEM_FUNDOS');
+/** Cabeçalho da resposta e dados de contato: nunca impressos. */
+const ehDescartado = (b: string) => b === 'HEADER' || b === 'EMAILS' || b === 'EMAIL' || b.startsWith('TELEFONE');
+
+/** Campos de INFORMACOES_DA_EMPRESA que a seção "Dados da empresa" já mostra (ou que são contato). */
+const EMPRESA_CONHECIDOS = new Set([
+  'RAZAO_SOCIAL', 'NOME_FANTASIA', 'CNPJ', 'CPF', 'SITUACAO', 'DATA_SITUACAO', 'DATA_FUNDACAO', 'NATUREZA_JURIDICA', 'CNAE_PRIMARIO',
+  'RAMO_ATIVIDADE_PRIMARIO', 'INSCRICAO_ESTADUAL', 'CAPITAL_SOCIAL', 'ENDERECO', 'OPCAO_TRIBUTARIA',
+  'FAIXA_FUNCIONARIOS', 'NUMERO_FUNCIONARIOS', 'QUANTIDADE_FUNCIONARIOS', 'PORTE', 'PORTE_EMPRESA', 'PORTE_DA_EMPRESA',
+  'NUMERO_FILIAIS', 'QUANTIDADE_FILIAIS', 'QTD_FILIAIS', 'TELEFONE', 'EMAIL', 'DDD',
+]);
+
+const ZERO = /^0+(?:[.,]0+)?%?$/;
+/** Sem nada que valha imprimir: vazio, "" ou só zeros. */
+function semConteudo(v: unknown, prof = 0): boolean {
+  if (v === null || v === undefined) return true;
+  if (ehEscalar(v)) { const t = String(v).trim(); return t === '' || ZERO.test(t); }
+  if (prof > 8) return false;
+  if (Array.isArray(v)) return v.every((x) => semConteudo(x, prof + 1));
+  if (ehObj(v)) return Object.values(v).every((x) => semConteudo(x, prof + 1));
+  return true;
+}
+
+/** QUANTIDADE_OCORRENCIA(S) explícita do bloco, ou null. */
+function quantidadeDe(v: unknown): number | null {
+  if (!ehObj(v)) return null;
+  for (const [k, x] of Object.entries(v)) {
+    if (/^QUANTIDADE_OCORRENCIAS?$/.test(semPrefixo(k).toUpperCase()) && ehEscalar(x)) {
+      const n = Number(String(x).trim().replace(',', '.'));
+      return Number.isFinite(n) ? n : null;
+    }
+  }
+  return null;
+}
+
+const capitalizar = (t: string) => t.trim().toLowerCase().replace(/^./, (c) => c.toUpperCase());
+
+function omitirChaves(v: unknown, chaves: Set<string>): unknown {
+  if (!ehObj(v)) return v;
+  const out: Obj = {};
+  for (const [k, x] of Object.entries(v)) if (!chaves.has(semPrefixo(k).toUpperCase())) out[k] = x;
+  return out;
+}
+
+/** INFORMACOES_ALERTAS_RESTRICOES: alertas com conteúdo ("... QUANTIDADE TOTAL: 0" não é alerta). */
+function alertasDe(resto: unknown): string[] {
+  if (!ehObj(resto) || !Array.isArray(resto.OCORRENCIAS)) return [];
+  const out: string[] = [];
+  for (const o of resto.OCORRENCIAS) {
+    if (!ehObj(o)) continue;
+    const campos = Object.entries(o)
+      .map(([k, v]) => [semPrefixo(k).toUpperCase(), ehEscalar(v) ? (valorSeguro(k, String(v)) ?? '') : ''] as const)
+      .filter(([, v]) => v);
+    if (!campos.length) continue;
+    const obs = campos.find(([k]) => k.startsWith('OBS'))?.[1] ?? '';
+    if (/:\s*0+$/.test(obs)) continue;
+    out.push(capitalizar(campos.map(([, v]) => v).join(' — ')));
+  }
+  return out;
 }
 
 /** `pessoaFisica`: o documento consultado é CPF (todo contato da resposta é de pessoa física). */
 export function montarAnexo(bruto: unknown, opts: { pessoaFisica: boolean }): Anexo | null {
-  if (!ehObj(bruto)) return null;
-  const dados = ehObj(bruto.dados) ? bruto.dados : null;
-  const aux = ehObj(bruto.aux) ? bruto.aux : null;
-  const link = aux && typeof aux.data === 'string' && /^https?:\/\/\S+$/i.test(aux.data.trim()) ? aux.data.trim() : null;
-  if (!dados && !link) return null;
-
+  if (!ehObj(bruto) || !ehObj(bruto.dados)) return null;
+  const dados = bruto.dados;
   const ctx: Ctx = { pf: opts.pessoaFisica };
-  const anexo: Anexo = { entregues: [], parametros: [], blocos: [], linkOriginal: link };
-  if (!dados) return anexo;
+  const anexo: Anexo = { blocos: [], avisos: [], semOcorrencias: [], alertas: [] };
+  const zerados: string[] = [];
+  const comConteudo = new Set<string>();
+  const marcar = (nome: string, zero: boolean) => { if (zero) { if (!zerados.includes(nome)) zerados.push(nome); } else comConteudo.add(nome); };
 
   const indicadores: Array<{ rotulo: string; pont: string; serie: Serie }> = [];
   const ind = { bloco: null as BlocoAnexo | null };
 
   const adicionar = (chave: string, valor: unknown): void => {
+    const b = semPrefixo(chave).trim().toUpperCase();
+    if (ehDescartado(b)) return;
     const titulo = rotuloBloco(chave);
-    const cb: Ctx = { pf: ctx.pf, bloco: semPrefixo(chave).toUpperCase() };
+    const cb: Ctx = { pf: ctx.pf, bloco: b };
     let sep: { resto: unknown; status?: StatusBloco } = { resto: valor };
     try { sep = separarStatus(valor); } catch { /* segue sem status */ }
+    if (sep.status?.destaque) anexo.avisos.push(`${titulo}: ${sep.status.texto}`);
+    const nomeRestricao = ehCheque(b) ? titulo : NOMES_RESTRICAO[b];
     try {
+      if (b === 'INFORMACOES_DA_EMPRESA') {
+        const resto = omitirChaves(sep.resto, EMPRESA_CONHECIDOS);
+        if (semConteudo(resto)) return;
+        const bl = blocoSeguro('Informações da empresa (outros campos)', () => { const p: Parte[] = []; emPartes(resto, [], cb, p, 0, chave); return p; });
+        if (bl.partes.length) anexo.blocos.push(bl);
+        return;
+      }
+      if (b === 'INFORMACOES_ALERTAS_RESTRICOES') {
+        const a = alertasDe(sep.resto);
+        if (a.length) anexo.alertas.push(...a); else marcar('Alertas', true);
+        return;
+      }
+      if (nomeRestricao && b !== 'CONTUMACIA') {
+        marcar(nomeRestricao, quantidadeDe(sep.resto) === 0 || semConteudo(sep.resto));
+        return;
+      }
+      if (BLOCOS_COBERTOS.has(b)) return;
+
+      // bloco desconhecido (ou contumácia, que o corpo ainda não detalha)
+      const q = quantidadeDe(sep.resto);
+      if (q === 0 || semConteudo(sep.resto)) { if (q === 0 || b === 'CONTUMACIA') marcar(nomeRestricao ?? titulo, true); return; }
       const info = comoIndicador(sep.resto);
       if (info) {
         indicadores.push({ rotulo: titulo, ...info });
-        if (!ind.bloco) {
-          ind.bloco = { titulo: 'Indicadores de comportamento (12 meses)', partes: [] };
-          anexo.blocos.push(ind.bloco);
-        }
-        const b = ind.bloco; if (sep.status && (!b.status || (sep.status.destaque && !b.status.destaque))) b.status = sep.status;
+        if (!ind.bloco) { ind.bloco = { titulo: 'Indicadores de comportamento (12 meses)', partes: [] }; anexo.blocos.push(ind.bloco); }
         return;
       }
-    } catch { /* cai no caminho genérico */ }
-    anexo.blocos.push(blocoSeguro(titulo, () => {
-      const partes: Parte[] = [];
-      emPartes(sep.resto, [], cb, partes, 0, chave);
-      return partes;
-    }, sep.status));
+      const bl = blocoSeguro(titulo, () => { const p: Parte[] = []; emPartes(sep.resto, [], cb, p, 0, chave); return p; });
+      if (bl.partes.length) anexo.blocos.push(bl);
+    } catch {
+      anexo.blocos.push({ titulo, partes: [{ t: 'aviso', texto: 'bloco não renderizado' }] });
+    }
   };
 
+  // Contêineres (CREDCADASTRAL, define_risco_*): cada filho é um bloco.
   for (const [chave, valor] of Object.entries(dados)) {
-    if (chave === 'HEADER' && ehObj(valor)) {
-      try {
-        anexo.entregues = entreguesDe(valor);
-        if (ehObj(valor.PARAMETROS)) {
-          for (const [k, v] of Object.entries(valor.PARAMETROS)) {
-            const t = textoCelula(k, v, ctx); if (t) anexo.parametros.push([rotuloCampo(k, ctx, [t]), t]);
-          }
-        }
-        // demais chaves do cabeçalho (exceto o ruído) continuam visíveis
-        const resto: Obj = {};
-        for (const [k, v] of Object.entries(valor)) if (!['DADOS_RETORNADOS', 'CONTROLE', 'PARAMETROS'].includes(k.toUpperCase())) resto[k] = v;
-        const partes: Parte[] = [];
-        emPartes(resto, [], ctx, partes);
-        if (partes.length) anexo.blocos.push({ titulo: 'Cabeçalho da resposta', partes });
-      } catch { anexo.blocos.push({ titulo: 'Cabeçalho da resposta', partes: [{ t: 'aviso', texto: 'bloco não renderizado' }] }); }
-      continue;
-    }
-    // Contêineres (CREDCADASTRAL e afins): cada filho é um bloco. Chave de nível 1 com filhos objeto/array vira bloco próprio.
-    if (ehObj(valor) && chave.toUpperCase() === 'CREDCADASTRAL') {
+    if (ehObj(valor) && (chave.toUpperCase() === 'CREDCADASTRAL' || /^define_risco/i.test(chave))) {
       for (const [k, v] of Object.entries(valor)) adicionar(k, v);
       continue;
     }
@@ -450,7 +518,139 @@ export function montarAnexo(bruto: unknown, opts: { pessoaFisica: boolean }): An
       alvo.partes = matrizDe(['Indicador', 'Pontuação'], [90, 48], indicadores.map((i) => ({ fixos: [i.rotulo, i.pont], serie: i.serie })));
     } catch { alvo.partes = [{ t: 'aviso', texto: 'bloco não renderizado' }]; }
   }
+  anexo.semOcorrencias = zerados.filter((n) => !comConteudo.has(n));
   return anexo;
+}
+
+// ---- dados do bruto que o CORPO do PDF mostra (empresa e comportamento comercial) ----
+const credDe = (bruto: unknown): Obj | null => {
+  if (!ehObj(bruto) || !ehObj(bruto.dados)) return null;
+  return ehObj(bruto.dados.CREDCADASTRAL) ? bruto.dados.CREDCADASTRAL : null;
+};
+const achar = (o: Obj | null, chaves: string[]): string | null => {
+  if (!o) return null;
+  for (const [k, v] of Object.entries(o)) {
+    if (chaves.includes(semPrefixo(k).toUpperCase()) && ehEscalar(v) && String(v).trim()) return String(v).trim();
+  }
+  return null;
+};
+
+/** Campos da empresa que o relatório mapeado não carrega (faixa de funcionários, porte, filiais). */
+export function empresaExtrasDe(bruto: unknown): { funcionarios: string | null; porte: string | null; filiais: string | null } {
+  const emp = ehObj(credDe(bruto)?.INFORMACOES_DA_EMPRESA) ? (credDe(bruto)?.INFORMACOES_DA_EMPRESA as Obj) : null;
+  return {
+    funcionarios: achar(emp, ['FAIXA_FUNCIONARIOS', 'NUMERO_FUNCIONARIOS', 'QUANTIDADE_FUNCIONARIOS']),
+    porte: achar(emp, ['PORTE', 'PORTE_EMPRESA', 'PORTE_DA_EMPRESA']),
+    filiais: achar(emp, ['NUMERO_FILIAIS', 'QUANTIDADE_FILIAIS', 'QTD_FILIAIS']),
+  };
+}
+
+/** "SET/2026" -> "Set/2026"; data dd/mm/aaaa e o resto voltam como vieram. */
+function rotuloPeriodoCheio(s: string): string {
+  const p = periodo(s);
+  return p ? `${abrev(p.ord % 12)}/${Math.floor(p.ord / 12)}` : s.trim();
+}
+
+interface LinhaComp { rotulo: string; serie: Serie }
+
+/** Linhas (rótulo + série mensal) de um bloco de comportamento: indicador único, ou um item por OCORRENCIA com ITENS. */
+function linhasDe(resto: unknown, base: string, ctx: Ctx): LinhaComp[] {
+  if (!ehObj(resto)) return [];
+  const ind = comoIndicador(resto);
+  if (ind) return [{ rotulo: base || 'Indicador', serie: ind.serie }];
+  const out: LinhaComp[] = [];
+  const objs = Array.isArray(resto.OCORRENCIAS) ? resto.OCORRENCIAS.filter(ehObj) : [];
+  for (const o of objs) {
+    const rot: string[] = [];
+    const series: Array<[string, Serie]> = [];
+    for (const [k, v] of Object.entries(o)) {
+      if (ehEscalar(v)) { if (!ehChavePontuacao(k)) { const t = textoEscalar(k, v, ctx); if (t) rot.push(t); } }
+      else if (!vazio(v)) { const s = serieDe(v); if (s) series.push([k, s]); }
+    }
+    for (const [k, s] of series) out.push({ rotulo: [...rot, ...(series.length > 1 ? [humanizarChave(k)] : [])].join(' — ') || base, serie: s });
+  }
+  if (!out.length) {
+    for (const [k, v] of Object.entries(resto)) {
+      if (Array.isArray(v) && !vazio(v)) { const s = serieDe(v); if (s) out.push({ rotulo: base || humanizarChave(k), serie: s }); }
+    }
+  }
+  return out;
+}
+
+const linhaVazia = (l: LinhaComp) => [...l.serie.pontos.values()].every((v) => v === '-' || v === '');
+
+/** Mantém só os 12 meses mais recentes presentes nas linhas. */
+function ultimos12(linhas: LinhaComp[]): LinhaComp[] {
+  const ords = new Set<number>();
+  for (const l of linhas) for (const o of l.serie.rotulos.keys()) ords.add(o);
+  const manter = new Set([...ords].sort((a, b) => a - b).slice(-MAX_MESES_POR_MATRIZ));
+  const filtra = <T>(m: Map<number, T>) => new Map([...m].filter(([o]) => manter.has(o)));
+  return linhas.map((l) => ({ rotulo: l.rotulo, serie: { pontos: filtra(l.serie.pontos), rotulos: filtra(l.serie.rotulos) } }));
+}
+
+export interface ComportamentoBruto {
+  /** Eventos do mercado ("Última compra", "Maior fatura"...) já formatados: [rótulo, "Set/2026 — R$ ..."]. */
+  eventos: Array<[string, string]>;
+  /** UMA matriz "últimos 12 meses" (linhas vazias omitidas), mais o comprometimento futuro se houver. */
+  matriz: Parte[];
+  /** "Acima de 5 anos: R$ 12.000,00  |  ..." só com as faixas que têm valor; null se tudo zero. */
+  relacionamento: string | null;
+}
+
+export function comportamentoDe(bruto: unknown, pessoaFisica = false): ComportamentoBruto | null {
+  const cred = credDe(bruto);
+  if (!cred) return null;
+  const ctx: Ctx = { pf: pessoaFisica };
+  const resto = (chave: string): unknown => { const v = cred[chave]; if (v === undefined) return undefined; return separarStatus(v).resto; };
+
+  const eventos: Array<[string, string]> = [];
+  const ev = resto('EVENTOS_PESSOA_JURIDICA');
+  if (ehObj(ev) && Array.isArray(ev.OCORRENCIAS)) {
+    for (const o of ev.OCORRENCIAS) {
+      if (!ehObj(o)) continue;
+      const nome = achar(o, ['INDICADOR', 'EVENTO', 'DESCRICAO']);
+      const per = achar(o, ['PERIODO', 'MES_ANO', 'DATA']);
+      const val = achar(o, ['VALOR']) ?? achar(o, ['PONTUACAO']);
+      const texto = [per ? rotuloPeriodoCheio(per) : '', val ? moedaBR(val) : ''].filter(Boolean).join(' — ');
+      if (nome && texto) eventos.push([humanizarChave(nome.replace(/\s+/g, '_')), texto]);
+    }
+  }
+
+  const historico: LinhaComp[] = [];
+  for (const [chave, rotulo] of [['PAGAMENTO_PONTUAL', 'Pagamento pontual'], ['PAGAMENTO_ATRASADO', ''], ['COMPROMISSOS', 'Compromissos'], ['CREDITO_OBTIDO', 'Crédito obtido']] as const) {
+    for (const l of linhasDe(resto(chave), rotulo, ctx)) {
+      let r = l.rotulo.replace(/^./, (c) => c.toUpperCase());
+      if (chave === 'PAGAMENTO_ATRASADO' && !/m[eé]dia/i.test(r) && !/^atraso/i.test(r)) r = 'Atraso ' + r.replace(/^./, (c) => c.toLowerCase());
+      historico.push({ rotulo: r, serie: l.serie });
+    }
+  }
+  const futuro = linhasDe(resto('COMPROMETIMENTO_FUTURO'), 'Comprometimento futuro', ctx);
+
+  const matriz: Parte[] = [];
+  const hist = ultimos12(historico).filter((l) => !linhaVazia(l));
+  if (hist.length) matriz.push(...matrizDe(['Indicador'], [118], hist.map((l) => ({ fixos: [l.rotulo], serie: l.serie }))));
+  const fut = futuro.filter((l) => !linhaVazia(l));
+  if (fut.length) {
+    matriz.push({ t: 'sub', texto: 'Comprometimento futuro' });
+    matriz.push(...matrizDe(['Indicador'], [118], fut.map((l) => ({ fixos: [l.rotulo], serie: l.serie }))));
+  }
+
+  let relacionamento: string | null = null;
+  const rel = resto('PERIODO_RELACIONAMENTO_FORNECEDORES');
+  if (ehObj(rel) && Array.isArray(rel.OCORRENCIAS)) {
+    const faixas: string[] = [];
+    for (const o of rel.OCORRENCIAS) {
+      if (!ehObj(o)) continue;
+      const per = achar(o, ['PERIODO', 'FAIXA', 'DESCRICAO']);
+      const val = achar(o, ['VALOR']);
+      if (!per || !val || ZERO.test(val)) continue;
+      faixas.push(`${capitalizar(per)}: ${moedaBR(val)}`);
+    }
+    if (faixas.length) relacionamento = faixas.join('   |   ');
+  }
+
+  if (!eventos.length && !matriz.length && !relacionamento) return null;
+  return { eventos, matriz, relacionamento };
 }
 
 /** Nº de registros (linhas de tabela, pares, itens) de uma parte, para o aviso de truncamento. */

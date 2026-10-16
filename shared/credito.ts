@@ -148,7 +148,7 @@ export function analisarSinais(r: DadosSinais, agora: Date = new Date()): SinalC
   for (const [nome, g] of [['Protestos', r.anotacoes.protestos], ['Pendências financeiras', r.anotacoes.pendenciasFinanceiras]] as const) {
     if (!temAlgo(g)) continue;
     const at = g.itens.map((i) => atenuacaoDoItem(i, agora)).filter((x): x is string => !!x);
-    if (at.length) out.push({ codigo: 'RESTRICAO_ATENUADA', nivel: 'ATENCAO', titulo: `${nome}: estudar com calma`, detalhe: `${at.length} de ${g.quantidade} ocorrência(s) são ${[...new Set(at)].join(', ')} — pode ser problema antigo com o cliente operando normalmente.` });
+    if (at.length) out.push({ codigo: 'RESTRICAO_ATENUADA', nivel: 'ATENCAO', titulo: `${nome}: estudar com calma`, detalhe: `${at.length} de ${g.quantidade} ocorrência(s) são ${[...new Set(at.map((x) => x.replace(/ \(.*\)$/, '')))].join(', ')} — pode ser problema antigo com o cliente operando normalmente.` });
   }
   return out;
 }
