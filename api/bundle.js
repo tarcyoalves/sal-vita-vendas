@@ -112,7 +112,7 @@ var require_main = __commonJS({
     var version3 = packageJson2.version;
     var LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
     function parse4(src) {
-      const obj = {};
+      const obj2 = {};
       let lines = src.toString();
       lines = lines.replace(/\r\n?/mg, "\n");
       let match;
@@ -126,9 +126,9 @@ var require_main = __commonJS({
           value2 = value2.replace(/\\n/g, "\n");
           value2 = value2.replace(/\\r/g, "\r");
         }
-        obj[key] = value2;
+        obj2[key] = value2;
       }
-      return obj;
+      return obj2;
     }
     function _parseVault(options) {
       options = options || {};
@@ -503,8 +503,8 @@ var require_depd = __commonJS({
       }
       return false;
     }
-    function convertDataDescriptorToAccessor(obj, prop, message) {
-      var descriptor = Object.getOwnPropertyDescriptor(obj, prop);
+    function convertDataDescriptorToAccessor(obj2, prop, message) {
+      var descriptor = Object.getOwnPropertyDescriptor(obj2, prop);
       var value2 = descriptor.value;
       descriptor.get = function getter() {
         return value2;
@@ -516,7 +516,7 @@ var require_depd = __commonJS({
       }
       delete descriptor.value;
       delete descriptor.writable;
-      Object.defineProperty(obj, prop, descriptor);
+      Object.defineProperty(obj2, prop, descriptor);
       return descriptor;
     }
     function createArgumentsString(arity) {
@@ -685,17 +685,17 @@ var require_depd = __commonJS({
     }
     function getStack() {
       var limit = Error.stackTraceLimit;
-      var obj = {};
+      var obj2 = {};
       var prep = Error.prepareStackTrace;
       Error.prepareStackTrace = prepareObjectStackTrace;
       Error.stackTraceLimit = Math.max(10, limit);
-      Error.captureStackTrace(obj);
-      var stack = obj.stack.slice(1);
+      Error.captureStackTrace(obj2);
+      var stack = obj2.stack.slice(1);
       Error.prepareStackTrace = prep;
       Error.stackTraceLimit = limit;
       return stack;
     }
-    function prepareObjectStackTrace(obj, stack) {
+    function prepareObjectStackTrace(obj2, stack) {
       return stack;
     }
     function wrapfunction(fn, message) {
@@ -716,11 +716,11 @@ var require_depd = __commonJS({
       )(fn, log, this, message, site);
       return deprecatedfn;
     }
-    function wrapproperty(obj, prop, message) {
-      if (!obj || typeof obj !== "object" && typeof obj !== "function") {
+    function wrapproperty(obj2, prop, message) {
+      if (!obj2 || typeof obj2 !== "object" && typeof obj2 !== "function") {
         throw new TypeError("argument obj must be object");
       }
-      var descriptor = Object.getOwnPropertyDescriptor(obj, prop);
+      var descriptor = Object.getOwnPropertyDescriptor(obj2, prop);
       if (!descriptor) {
         throw new TypeError("must call property on owner object");
       }
@@ -732,7 +732,7 @@ var require_depd = __commonJS({
       var site = callSiteLocation(stack[1]);
       site.name = prop;
       if ("value" in descriptor) {
-        descriptor = convertDataDescriptorToAccessor(obj, prop, message);
+        descriptor = convertDataDescriptorToAccessor(obj2, prop, message);
       }
       var get = descriptor.get;
       var set = descriptor.set;
@@ -748,7 +748,7 @@ var require_depd = __commonJS({
           return set.apply(this, arguments);
         };
       }
-      Object.defineProperty(obj, prop, descriptor);
+      Object.defineProperty(obj2, prop, descriptor);
     }
     function DeprecationError(namespace, message, stack) {
       var error = new Error();
@@ -893,12 +893,12 @@ var require_content_type = __commonJS({
     var TYPE_REGEXP = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
     exports2.format = format;
     exports2.parse = parse4;
-    function format(obj) {
-      if (!obj || typeof obj !== "object") {
+    function format(obj2) {
+      if (!obj2 || typeof obj2 !== "object") {
         throw new TypeError("argument obj is required");
       }
-      var parameters = obj.parameters;
-      var type = obj.type;
+      var parameters = obj2.parameters;
+      var type = obj2.type;
       if (!type || !TYPE_REGEXP.test(type)) {
         throw new TypeError("invalid type");
       }
@@ -929,7 +929,7 @@ var require_content_type = __commonJS({
       if (!TYPE_REGEXP.test(type)) {
         throw new TypeError("invalid media type");
       }
-      var obj = new ContentType(type.toLowerCase());
+      var obj2 = new ContentType(type.toLowerCase());
       if (index2 !== -1) {
         var key;
         var match;
@@ -948,20 +948,20 @@ var require_content_type = __commonJS({
               value2 = value2.replace(QESC_REGEXP, "$1");
             }
           }
-          obj.parameters[key] = value2;
+          obj2.parameters[key] = value2;
         }
         if (index2 !== header.length) {
           throw new TypeError("invalid parameter format");
         }
       }
-      return obj;
+      return obj2;
     }
-    function getcontenttype(obj) {
+    function getcontenttype(obj2) {
       var header;
-      if (typeof obj.getHeader === "function") {
-        header = obj.getHeader("content-type");
-      } else if (typeof obj.headers === "object") {
-        header = obj.headers && obj.headers["content-type"];
+      if (typeof obj2.getHeader === "function") {
+        header = obj2.getHeader("content-type");
+      } else if (typeof obj2.headers === "object") {
+        header = obj2.headers && obj2.headers["content-type"];
       }
       if (typeof header !== "string") {
         throw new TypeError("content-type header is missing from object");
@@ -990,17 +990,17 @@ var require_setprototypeof = __commonJS({
   "node_modules/setprototypeof/index.js"(exports2, module2) {
     "use strict";
     module2.exports = Object.setPrototypeOf || ({ __proto__: [] } instanceof Array ? setProtoOf : mixinProperties);
-    function setProtoOf(obj, proto) {
-      obj.__proto__ = proto;
-      return obj;
+    function setProtoOf(obj2, proto) {
+      obj2.__proto__ = proto;
+      return obj2;
     }
-    function mixinProperties(obj, proto) {
+    function mixinProperties(obj2, proto) {
       for (var prop in proto) {
-        if (!Object.prototype.hasOwnProperty.call(obj, prop)) {
-          obj[prop] = proto[prop];
+        if (!Object.prototype.hasOwnProperty.call(obj2, prop)) {
+          obj2[prop] = proto[prop];
         }
       }
-      return obj;
+      return obj2;
     }
   }
 });
@@ -1678,7 +1678,7 @@ var require_node = __commonJS({
     exports2.colors = [6, 2, 3, 4, 5, 1];
     exports2.inspectOpts = Object.keys(process.env).filter(function(key) {
       return /^debug_/i.test(key);
-    }).reduce(function(obj, key) {
+    }).reduce(function(obj2, key) {
       var prop = key.substring(6).toLowerCase().replace(/_([a-z])/g, function(_2, k3) {
         return k3.toUpperCase();
       });
@@ -1687,8 +1687,8 @@ var require_node = __commonJS({
       else if (/^(no|off|false|disabled)$/i.test(val)) val = false;
       else if (val === "null") val = null;
       else val = Number(val);
-      obj[prop] = val;
-      return obj;
+      obj2[prop] = val;
+      return obj2;
     }, {});
     var fd = parseInt(process.env.DEBUG_FD, 10) || 2;
     if (1 !== fd && 2 !== fd) {
@@ -5836,14 +5836,14 @@ var require_media_typer = __commonJS({
     var typeRegExp = /^ *([A-Za-z0-9][A-Za-z0-9!#$&^_-]{0,126})\/([A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}) *$/;
     exports2.format = format;
     exports2.parse = parse4;
-    function format(obj) {
-      if (!obj || typeof obj !== "object") {
+    function format(obj2) {
+      if (!obj2 || typeof obj2 !== "object") {
         throw new TypeError("argument obj is required");
       }
-      var parameters = obj.parameters;
-      var subtype = obj.subtype;
-      var suffix = obj.suffix;
-      var type = obj.type;
+      var parameters = obj2.parameters;
+      var subtype = obj2.subtype;
+      var suffix = obj2.suffix;
+      var type = obj2.type;
       if (!type || !typeNameRegExp.test(type)) {
         throw new TypeError("invalid type");
       }
@@ -5884,7 +5884,7 @@ var require_media_typer = __commonJS({
       var type = index2 !== -1 ? string.substr(0, index2) : string;
       var key;
       var match;
-      var obj = splitType(type);
+      var obj2 = splitType(type);
       var params = {};
       var value2;
       paramRegExp.lastIndex = index2;
@@ -5903,15 +5903,15 @@ var require_media_typer = __commonJS({
       if (index2 !== -1 && index2 !== string.length) {
         throw new TypeError("invalid parameter format");
       }
-      obj.parameters = params;
-      return obj;
+      obj2.parameters = params;
+      return obj2;
     }
-    function getcontenttype(obj) {
-      if (typeof obj.getHeader === "function") {
-        return obj.getHeader("content-type");
+    function getcontenttype(obj2) {
+      if (typeof obj2.getHeader === "function") {
+        return obj2.getHeader("content-type");
       }
-      if (typeof obj.headers === "object") {
-        return obj.headers && obj.headers["content-type"];
+      if (typeof obj2.headers === "object") {
+        return obj2.headers && obj2.headers["content-type"];
       }
     }
     function qstring(val) {
@@ -5937,12 +5937,12 @@ var require_media_typer = __commonJS({
         suffix = subtype.substr(index2 + 1);
         subtype = subtype.substr(0, index2);
       }
-      var obj = {
+      var obj2 = {
         type,
         subtype,
         suffix
       };
-      return obj;
+      return obj2;
     }
   }
 });
@@ -14788,7 +14788,7 @@ var require_json = __commonJS({
         return void 0;
       }
     }
-    function normalizeJsonSyntaxError(error, obj) {
+    function normalizeJsonSyntaxError(error, obj2) {
       var keys = Object.getOwnPropertyNames(error);
       for (var i4 = 0; i4 < keys.length; i4++) {
         var key = keys[i4];
@@ -14796,8 +14796,8 @@ var require_json = __commonJS({
           delete error[key];
         }
       }
-      error.stack = obj.stack.replace(error.message, obj.message);
-      error.message = obj.message;
+      error.stack = obj2.stack.replace(error.message, obj2.message);
+      error.message = obj2.message;
       return error;
     }
     function typeChecker(type) {
@@ -15018,7 +15018,7 @@ var require_object_inspect = __commonJS({
       "double": /(["\\])/g,
       single: /(['\\])/g
     };
-    module2.exports = function inspect_(obj, options, depth, seen) {
+    module2.exports = function inspect_(obj2, options, depth, seen) {
       var opts2 = options || {};
       if (has(opts2, "quoteStyle") && !has(quotes, opts2.quoteStyle)) {
         throw new TypeError('option "quoteStyle" must be "single" or "double"');
@@ -15037,40 +15037,40 @@ var require_object_inspect = __commonJS({
         throw new TypeError('option "numericSeparator", if provided, must be `true` or `false`');
       }
       var numericSeparator = opts2.numericSeparator;
-      if (typeof obj === "undefined") {
+      if (typeof obj2 === "undefined") {
         return "undefined";
       }
-      if (obj === null) {
+      if (obj2 === null) {
         return "null";
       }
-      if (typeof obj === "boolean") {
-        return obj ? "true" : "false";
+      if (typeof obj2 === "boolean") {
+        return obj2 ? "true" : "false";
       }
-      if (typeof obj === "string") {
-        return inspectString(obj, opts2);
+      if (typeof obj2 === "string") {
+        return inspectString(obj2, opts2);
       }
-      if (typeof obj === "number") {
-        if (obj === 0) {
-          return Infinity / obj > 0 ? "0" : "-0";
+      if (typeof obj2 === "number") {
+        if (obj2 === 0) {
+          return Infinity / obj2 > 0 ? "0" : "-0";
         }
-        var str = String(obj);
-        return numericSeparator ? addNumericSeparator(obj, str) : str;
+        var str = String(obj2);
+        return numericSeparator ? addNumericSeparator(obj2, str) : str;
       }
-      if (typeof obj === "bigint") {
-        var bigIntStr = String(obj) + "n";
-        return numericSeparator ? addNumericSeparator(obj, bigIntStr) : bigIntStr;
+      if (typeof obj2 === "bigint") {
+        var bigIntStr = String(obj2) + "n";
+        return numericSeparator ? addNumericSeparator(obj2, bigIntStr) : bigIntStr;
       }
       var maxDepth = typeof opts2.depth === "undefined" ? 5 : opts2.depth;
       if (typeof depth === "undefined") {
         depth = 0;
       }
-      if (depth >= maxDepth && maxDepth > 0 && typeof obj === "object") {
-        return isArray3(obj) ? "[Array]" : "[Object]";
+      if (depth >= maxDepth && maxDepth > 0 && typeof obj2 === "object") {
+        return isArray3(obj2) ? "[Array]" : "[Object]";
       }
       var indent = getIndent(opts2, depth);
       if (typeof seen === "undefined") {
         seen = [];
-      } else if (indexOf(seen, obj) >= 0) {
+      } else if (indexOf(seen, obj2) >= 0) {
         return "[Circular]";
       }
       function inspect(value2, from, noIndent) {
@@ -15089,106 +15089,106 @@ var require_object_inspect = __commonJS({
         }
         return inspect_(value2, opts2, depth + 1, seen);
       }
-      if (typeof obj === "function" && !isRegExp2(obj)) {
-        var name = nameOf(obj);
-        var keys = arrObjKeys(obj, inspect);
+      if (typeof obj2 === "function" && !isRegExp2(obj2)) {
+        var name = nameOf(obj2);
+        var keys = arrObjKeys(obj2, inspect);
         return "[Function" + (name ? ": " + name : " (anonymous)") + "]" + (keys.length > 0 ? " { " + $join.call(keys, ", ") + " }" : "");
       }
-      if (isSymbol2(obj)) {
-        var symString = hasShammedSymbols ? $replace.call(String(obj), /^(Symbol\(.*\))_[^)]*$/, "$1") : symToString.call(obj);
-        return typeof obj === "object" && !hasShammedSymbols ? markBoxed(symString) : symString;
+      if (isSymbol2(obj2)) {
+        var symString = hasShammedSymbols ? $replace.call(String(obj2), /^(Symbol\(.*\))_[^)]*$/, "$1") : symToString.call(obj2);
+        return typeof obj2 === "object" && !hasShammedSymbols ? markBoxed(symString) : symString;
       }
-      if (isElement(obj)) {
-        var s4 = "<" + $toLowerCase.call(String(obj.nodeName));
-        var attrs = obj.attributes || [];
+      if (isElement(obj2)) {
+        var s4 = "<" + $toLowerCase.call(String(obj2.nodeName));
+        var attrs = obj2.attributes || [];
         for (var i4 = 0; i4 < attrs.length; i4++) {
           s4 += " " + attrs[i4].name + "=" + wrapQuotes(quote(attrs[i4].value), "double", opts2);
         }
         s4 += ">";
-        if (obj.childNodes && obj.childNodes.length) {
+        if (obj2.childNodes && obj2.childNodes.length) {
           s4 += "...";
         }
-        s4 += "</" + $toLowerCase.call(String(obj.nodeName)) + ">";
+        s4 += "</" + $toLowerCase.call(String(obj2.nodeName)) + ">";
         return s4;
       }
-      if (isArray3(obj)) {
-        if (obj.length === 0) {
+      if (isArray3(obj2)) {
+        if (obj2.length === 0) {
           return "[]";
         }
-        var xs2 = arrObjKeys(obj, inspect);
+        var xs2 = arrObjKeys(obj2, inspect);
         if (indent && !singleLineValues(xs2)) {
           return "[" + indentedJoin(xs2, indent) + "]";
         }
         return "[ " + $join.call(xs2, ", ") + " ]";
       }
-      if (isError2(obj)) {
-        var parts = arrObjKeys(obj, inspect);
-        if (!("cause" in Error.prototype) && "cause" in obj && !isEnumerable.call(obj, "cause")) {
-          return "{ [" + String(obj) + "] " + $join.call($concat.call("[cause]: " + inspect(obj.cause), parts), ", ") + " }";
+      if (isError2(obj2)) {
+        var parts = arrObjKeys(obj2, inspect);
+        if (!("cause" in Error.prototype) && "cause" in obj2 && !isEnumerable.call(obj2, "cause")) {
+          return "{ [" + String(obj2) + "] " + $join.call($concat.call("[cause]: " + inspect(obj2.cause), parts), ", ") + " }";
         }
         if (parts.length === 0) {
-          return "[" + String(obj) + "]";
+          return "[" + String(obj2) + "]";
         }
-        return "{ [" + String(obj) + "] " + $join.call(parts, ", ") + " }";
+        return "{ [" + String(obj2) + "] " + $join.call(parts, ", ") + " }";
       }
-      if (typeof obj === "object" && customInspect) {
-        if (inspectSymbol && typeof obj[inspectSymbol] === "function" && utilInspect) {
-          return utilInspect(obj, { depth: maxDepth - depth });
-        } else if (customInspect !== "symbol" && typeof obj.inspect === "function") {
-          return obj.inspect();
+      if (typeof obj2 === "object" && customInspect) {
+        if (inspectSymbol && typeof obj2[inspectSymbol] === "function" && utilInspect) {
+          return utilInspect(obj2, { depth: maxDepth - depth });
+        } else if (customInspect !== "symbol" && typeof obj2.inspect === "function") {
+          return obj2.inspect();
         }
       }
-      if (isMap2(obj)) {
+      if (isMap2(obj2)) {
         var mapParts = [];
         if (mapForEach) {
-          mapForEach.call(obj, function(value2, key) {
-            mapParts.push(inspect(key, obj, true) + " => " + inspect(value2, obj));
+          mapForEach.call(obj2, function(value2, key) {
+            mapParts.push(inspect(key, obj2, true) + " => " + inspect(value2, obj2));
           });
         }
-        return collectionOf("Map", mapSize.call(obj), mapParts, indent);
+        return collectionOf("Map", mapSize.call(obj2), mapParts, indent);
       }
-      if (isSet2(obj)) {
+      if (isSet2(obj2)) {
         var setParts = [];
         if (setForEach) {
-          setForEach.call(obj, function(value2) {
-            setParts.push(inspect(value2, obj));
+          setForEach.call(obj2, function(value2) {
+            setParts.push(inspect(value2, obj2));
           });
         }
-        return collectionOf("Set", setSize.call(obj), setParts, indent);
+        return collectionOf("Set", setSize.call(obj2), setParts, indent);
       }
-      if (isWeakMap(obj)) {
+      if (isWeakMap(obj2)) {
         return weakCollectionOf("WeakMap");
       }
-      if (isWeakSet(obj)) {
+      if (isWeakSet(obj2)) {
         return weakCollectionOf("WeakSet");
       }
-      if (isWeakRef(obj)) {
+      if (isWeakRef(obj2)) {
         return weakCollectionOf("WeakRef");
       }
-      if (isNumber5(obj)) {
-        return markBoxed(inspect(Number(obj)));
+      if (isNumber5(obj2)) {
+        return markBoxed(inspect(Number(obj2)));
       }
-      if (isBigInt(obj)) {
-        return markBoxed(inspect(bigIntValueOf.call(obj)));
+      if (isBigInt(obj2)) {
+        return markBoxed(inspect(bigIntValueOf.call(obj2)));
       }
-      if (isBoolean3(obj)) {
-        return markBoxed(booleanValueOf.call(obj));
+      if (isBoolean3(obj2)) {
+        return markBoxed(booleanValueOf.call(obj2));
       }
-      if (isString4(obj)) {
-        return markBoxed(inspect(String(obj)));
+      if (isString4(obj2)) {
+        return markBoxed(inspect(String(obj2)));
       }
-      if (typeof window !== "undefined" && obj === window) {
+      if (typeof window !== "undefined" && obj2 === window) {
         return "{ [object Window] }";
       }
-      if (typeof globalThis !== "undefined" && obj === globalThis || typeof global !== "undefined" && obj === global) {
+      if (typeof globalThis !== "undefined" && obj2 === globalThis || typeof global !== "undefined" && obj2 === global) {
         return "{ [object globalThis] }";
       }
-      if (!isDate2(obj) && !isRegExp2(obj)) {
-        var ys2 = arrObjKeys(obj, inspect);
-        var isPlainObject4 = gPO ? gPO(obj) === Object.prototype : obj instanceof Object || obj.constructor === Object;
-        var protoTag = obj instanceof Object ? "" : "null prototype";
-        var stringTag = !isPlainObject4 && toStringTag && Object(obj) === obj && toStringTag in obj ? $slice.call(toStr(obj), 8, -1) : protoTag ? "Object" : "";
-        var constructorTag = isPlainObject4 || typeof obj.constructor !== "function" ? "" : obj.constructor.name ? obj.constructor.name + " " : "";
+      if (!isDate2(obj2) && !isRegExp2(obj2)) {
+        var ys2 = arrObjKeys(obj2, inspect);
+        var isPlainObject4 = gPO ? gPO(obj2) === Object.prototype : obj2 instanceof Object || obj2.constructor === Object;
+        var protoTag = obj2 instanceof Object ? "" : "null prototype";
+        var stringTag = !isPlainObject4 && toStringTag && Object(obj2) === obj2 && toStringTag in obj2 ? $slice.call(toStr(obj2), 8, -1) : protoTag ? "Object" : "";
+        var constructorTag = isPlainObject4 || typeof obj2.constructor !== "function" ? "" : obj2.constructor.name ? obj2.constructor.name + " " : "";
         var tag = constructorTag + (stringTag || protoTag ? "[" + $join.call($concat.call([], stringTag || [], protoTag || []), ": ") + "] " : "");
         if (ys2.length === 0) {
           return tag + "{}";
@@ -15198,7 +15198,7 @@ var require_object_inspect = __commonJS({
         }
         return tag + "{ " + $join.call(ys2, ", ") + " }";
       }
-      return String(obj);
+      return String(obj2);
     };
     function wrapQuotes(s4, defaultStyle, opts2) {
       var style = opts2.quoteStyle || defaultStyle;
@@ -15208,53 +15208,53 @@ var require_object_inspect = __commonJS({
     function quote(s4) {
       return $replace.call(String(s4), /"/g, "&quot;");
     }
-    function canTrustToString(obj) {
-      return !toStringTag || !(typeof obj === "object" && (toStringTag in obj || typeof obj[toStringTag] !== "undefined"));
+    function canTrustToString(obj2) {
+      return !toStringTag || !(typeof obj2 === "object" && (toStringTag in obj2 || typeof obj2[toStringTag] !== "undefined"));
     }
-    function isArray3(obj) {
-      return toStr(obj) === "[object Array]" && canTrustToString(obj);
+    function isArray3(obj2) {
+      return toStr(obj2) === "[object Array]" && canTrustToString(obj2);
     }
-    function isDate2(obj) {
-      return toStr(obj) === "[object Date]" && canTrustToString(obj);
+    function isDate2(obj2) {
+      return toStr(obj2) === "[object Date]" && canTrustToString(obj2);
     }
-    function isRegExp2(obj) {
-      return toStr(obj) === "[object RegExp]" && canTrustToString(obj);
+    function isRegExp2(obj2) {
+      return toStr(obj2) === "[object RegExp]" && canTrustToString(obj2);
     }
-    function isError2(obj) {
-      return toStr(obj) === "[object Error]" && canTrustToString(obj);
+    function isError2(obj2) {
+      return toStr(obj2) === "[object Error]" && canTrustToString(obj2);
     }
-    function isString4(obj) {
-      return toStr(obj) === "[object String]" && canTrustToString(obj);
+    function isString4(obj2) {
+      return toStr(obj2) === "[object String]" && canTrustToString(obj2);
     }
-    function isNumber5(obj) {
-      return toStr(obj) === "[object Number]" && canTrustToString(obj);
+    function isNumber5(obj2) {
+      return toStr(obj2) === "[object Number]" && canTrustToString(obj2);
     }
-    function isBoolean3(obj) {
-      return toStr(obj) === "[object Boolean]" && canTrustToString(obj);
+    function isBoolean3(obj2) {
+      return toStr(obj2) === "[object Boolean]" && canTrustToString(obj2);
     }
-    function isSymbol2(obj) {
+    function isSymbol2(obj2) {
       if (hasShammedSymbols) {
-        return obj && typeof obj === "object" && obj instanceof Symbol;
+        return obj2 && typeof obj2 === "object" && obj2 instanceof Symbol;
       }
-      if (typeof obj === "symbol") {
+      if (typeof obj2 === "symbol") {
         return true;
       }
-      if (!obj || typeof obj !== "object" || !symToString) {
+      if (!obj2 || typeof obj2 !== "object" || !symToString) {
         return false;
       }
       try {
-        symToString.call(obj);
+        symToString.call(obj2);
         return true;
       } catch (e4) {
       }
       return false;
     }
-    function isBigInt(obj) {
-      if (!obj || typeof obj !== "object" || !bigIntValueOf) {
+    function isBigInt(obj2) {
+      if (!obj2 || typeof obj2 !== "object" || !bigIntValueOf) {
         return false;
       }
       try {
-        bigIntValueOf.call(obj);
+        bigIntValueOf.call(obj2);
         return true;
       } catch (e4) {
       }
@@ -15263,11 +15263,11 @@ var require_object_inspect = __commonJS({
     var hasOwn = Object.prototype.hasOwnProperty || function(key) {
       return key in this;
     };
-    function has(obj, key) {
-      return hasOwn.call(obj, key);
+    function has(obj2, key) {
+      return hasOwn.call(obj2, key);
     }
-    function toStr(obj) {
-      return objectToString.call(obj);
+    function toStr(obj2) {
+      return objectToString.call(obj2);
     }
     function nameOf(f4) {
       if (f4.name) {
@@ -15438,16 +15438,16 @@ var require_object_inspect = __commonJS({
       var lineJoiner = "\n" + indent.prev + indent.base;
       return lineJoiner + $join.call(xs2, "," + lineJoiner) + "\n" + indent.prev;
     }
-    function arrObjKeys(obj, inspect) {
-      var isArr = isArray3(obj);
+    function arrObjKeys(obj2, inspect) {
+      var isArr = isArray3(obj2);
       var xs2 = [];
       if (isArr) {
-        xs2.length = obj.length;
-        for (var i4 = 0; i4 < obj.length; i4++) {
-          xs2[i4] = has(obj, i4) ? inspect(obj[i4], obj) : "";
+        xs2.length = obj2.length;
+        for (var i4 = 0; i4 < obj2.length; i4++) {
+          xs2[i4] = has(obj2, i4) ? inspect(obj2[i4], obj2) : "";
         }
       }
-      var syms = typeof gOPS === "function" ? gOPS(obj) : [];
+      var syms = typeof gOPS === "function" ? gOPS(obj2) : [];
       var symMap;
       if (hasShammedSymbols) {
         symMap = {};
@@ -15455,25 +15455,25 @@ var require_object_inspect = __commonJS({
           symMap["$" + syms[k3]] = syms[k3];
         }
       }
-      for (var key in obj) {
-        if (!has(obj, key)) {
+      for (var key in obj2) {
+        if (!has(obj2, key)) {
           continue;
         }
-        if (isArr && String(Number(key)) === key && key < obj.length) {
+        if (isArr && String(Number(key)) === key && key < obj2.length) {
           continue;
         }
         if (hasShammedSymbols && symMap["$" + key] instanceof Symbol) {
           continue;
         } else if ($test.call(/[^\w$]/, key)) {
-          xs2.push(inspect(key, obj) + ": " + inspect(obj[key], obj));
+          xs2.push(inspect(key, obj2) + ": " + inspect(obj2[key], obj2));
         } else {
-          xs2.push(key + ": " + inspect(obj[key], obj));
+          xs2.push(key + ": " + inspect(obj2[key], obj2));
         }
       }
       if (typeof gOPS === "function") {
         for (var j = 0; j < syms.length; j++) {
-          if (isEnumerable.call(obj, syms[j])) {
-            xs2.push("[" + inspect(syms[j]) + "]: " + inspect(obj[syms[j]], obj));
+          if (isEnumerable.call(obj2, syms[j])) {
+            xs2.push("[" + inspect(syms[j]) + "]: " + inspect(obj2[syms[j]], obj2));
           }
         }
       }
@@ -15754,7 +15754,7 @@ var require_shams = __commonJS({
       if (typeof Symbol.iterator === "symbol") {
         return true;
       }
-      var obj = {};
+      var obj2 = {};
       var sym = Symbol("test");
       var symObj = Object(sym);
       if (typeof sym === "string") {
@@ -15767,27 +15767,27 @@ var require_shams = __commonJS({
         return false;
       }
       var symVal = 42;
-      obj[sym] = symVal;
-      for (var _2 in obj) {
+      obj2[sym] = symVal;
+      for (var _2 in obj2) {
         return false;
       }
-      if (typeof Object.keys === "function" && Object.keys(obj).length !== 0) {
+      if (typeof Object.keys === "function" && Object.keys(obj2).length !== 0) {
         return false;
       }
-      if (typeof Object.getOwnPropertyNames === "function" && Object.getOwnPropertyNames(obj).length !== 0) {
+      if (typeof Object.getOwnPropertyNames === "function" && Object.getOwnPropertyNames(obj2).length !== 0) {
         return false;
       }
-      var syms = Object.getOwnPropertySymbols(obj);
+      var syms = Object.getOwnPropertySymbols(obj2);
       if (syms.length !== 1 || syms[0] !== sym) {
         return false;
       }
-      if (!Object.prototype.propertyIsEnumerable.call(obj, sym)) {
+      if (!Object.prototype.propertyIsEnumerable.call(obj2, sym)) {
         return false;
       }
       if (typeof Object.getOwnPropertyDescriptor === "function") {
         var descriptor = (
           /** @type {PropertyDescriptor} */
-          Object.getOwnPropertyDescriptor(obj, sym)
+          Object.getOwnPropertyDescriptor(obj2, sym)
         );
         if (descriptor.value !== symVal || descriptor.enumerable !== true) {
           return false;
@@ -16598,29 +16598,29 @@ var require_utils = __commonJS({
     var has = Object.prototype.hasOwnProperty;
     var isArray3 = Array.isArray;
     var overflowChannel = getSideChannel();
-    var markOverflow = function markOverflow2(obj, maxIndex) {
-      overflowChannel.set(obj, maxIndex);
-      return obj;
+    var markOverflow = function markOverflow2(obj2, maxIndex) {
+      overflowChannel.set(obj2, maxIndex);
+      return obj2;
     };
-    var isOverflow = function isOverflow2(obj) {
-      return overflowChannel.has(obj);
+    var isOverflow = function isOverflow2(obj2) {
+      return overflowChannel.has(obj2);
     };
-    var getMaxIndex = function getMaxIndex2(obj) {
-      return overflowChannel.get(obj);
+    var getMaxIndex = function getMaxIndex2(obj2) {
+      return overflowChannel.get(obj2);
     };
-    var setMaxIndex = function setMaxIndex2(obj, maxIndex) {
-      overflowChannel.set(obj, maxIndex);
+    var setMaxIndex = function setMaxIndex2(obj2, maxIndex) {
+      overflowChannel.set(obj2, maxIndex);
     };
     var conflictChannel = getSideChannel();
-    var markConflict = function markConflict2(obj, maxIndex) {
-      conflictChannel.set(obj, maxIndex);
-      return obj;
+    var markConflict = function markConflict2(obj2, maxIndex) {
+      conflictChannel.set(obj2, maxIndex);
+      return obj2;
     };
-    var isConflict = function isConflict2(obj) {
-      return conflictChannel.has(obj);
+    var isConflict = function isConflict2(obj2) {
+      return conflictChannel.has(obj2);
     };
-    var getConflictIndex = function getConflictIndex2(obj) {
-      return conflictChannel.get(obj);
+    var getConflictIndex = function getConflictIndex2(obj2) {
+      return conflictChannel.get(obj2);
     };
     var hexTable = (function() {
       var array = [];
@@ -16632,12 +16632,12 @@ var require_utils = __commonJS({
     var compactQueue = function compactQueue2(queue) {
       while (queue.length > 1) {
         var item = queue.pop();
-        var obj = item.obj[item.prop];
-        if (isArray3(obj)) {
+        var obj2 = item.obj[item.prop];
+        if (isArray3(obj2)) {
           var compacted = [];
-          for (var j = 0; j < obj.length; ++j) {
-            if (typeof obj[j] !== "undefined") {
-              compacted[compacted.length] = obj[j];
+          for (var j = 0; j < obj2.length; ++j) {
+            if (typeof obj2[j] !== "undefined") {
+              compacted[compacted.length] = obj2[j];
             }
           }
           item.obj[item.prop] = compacted;
@@ -16645,29 +16645,29 @@ var require_utils = __commonJS({
       }
     };
     var arrayToObject = function arrayToObject2(source, options) {
-      var obj = options && options.plainObjects ? { __proto__: null } : {};
+      var obj2 = options && options.plainObjects ? { __proto__: null } : {};
       for (var i4 = 0; i4 < source.length; ++i4) {
         if (typeof source[i4] !== "undefined") {
-          obj[i4] = source[i4];
+          obj2[i4] = source[i4];
         }
       }
-      return obj;
+      return obj2;
     };
-    var setProperty = function setProperty2(obj, key, value2) {
+    var setProperty = function setProperty2(obj2, key, value2) {
       if (key === "__proto__" && defineProperty) {
-        defineProperty(obj, key, {
+        defineProperty(obj2, key, {
           configurable: true,
           enumerable: true,
           value: value2,
           writable: true
         });
       } else {
-        obj[key] = value2;
+        obj2[key] = value2;
       }
     };
-    var maxNumericIndex = function maxNumericIndex2(obj, min2) {
+    var maxNumericIndex = function maxNumericIndex2(obj2, min2) {
       var max2 = min2;
-      var keys = Object.keys(obj);
+      var keys = Object.keys(obj2);
       for (var i4 = 0; i4 < keys.length; ++i4) {
         var num = parseInt(keys[i4], 10);
         if (String(num) === keys[i4] && num > max2) {
@@ -16919,13 +16919,13 @@ var require_utils = __commonJS({
       var refs = getSideChannel();
       for (var i4 = 0; i4 < queue.length; ++i4) {
         var item = queue[i4];
-        var obj = item.obj[item.prop];
-        var keys = Object.keys(obj);
+        var obj2 = item.obj[item.prop];
+        var keys = Object.keys(obj2);
         for (var j = 0; j < keys.length; ++j) {
           var key = keys[j];
-          var val = obj[key];
+          var val = obj2[key];
           if (typeof val === "object" && val !== null && !refs.has(val)) {
-            queue[queue.length] = { obj, prop: key };
+            queue[queue.length] = { obj: obj2, prop: key };
             refs.set(val, true);
           }
         }
@@ -16933,14 +16933,14 @@ var require_utils = __commonJS({
       compactQueue(queue);
       return value2;
     };
-    var isRegExp2 = function isRegExp3(obj) {
-      return Object.prototype.toString.call(obj) === "[object RegExp]";
+    var isRegExp2 = function isRegExp3(obj2) {
+      return Object.prototype.toString.call(obj2) === "[object RegExp]";
     };
-    var isBuffer2 = function isBuffer3(obj) {
-      if (!obj || typeof obj !== "object") {
+    var isBuffer2 = function isBuffer3(obj2) {
+      if (!obj2 || typeof obj2 !== "object") {
         return false;
       }
-      return !!(obj.constructor && typeof obj.constructor.isBuffer === "function" && obj.constructor.isBuffer(obj));
+      return !!(obj2.constructor && typeof obj2.constructor.isBuffer === "function" && obj2.constructor.isBuffer(obj2));
     };
     var combine = function combine2(a5, b3, arrayLimit, plainObjects, throwOnLimitExceeded) {
       if (isOverflow(a5)) {
@@ -17050,7 +17050,7 @@ var require_stringify = __commonJS({
     };
     var sentinel = {};
     var stringify2 = function stringify3(object, prefix, generateArrayPrefix, commaRoundTrip, allowEmptyArrays, strictNullHandling, skipNulls, encodeDotInKeys, encoder, filter3, sort2, allowDots, serializeDate, format, formatter, encodeValuesOnly, charset, sideChannel, depth, currentDepth) {
-      var obj = object;
+      var obj2 = object;
       if (currentDepth > depth) {
         throw new RangeError("Input depth exceeded depth option of " + depth);
       }
@@ -17071,61 +17071,61 @@ var require_stringify = __commonJS({
           step = 0;
         }
       }
-      obj = typeof filter3 === "function" ? filter3(prefix, obj) : obj;
-      if (obj instanceof Date) {
-        obj = serializeDate(obj);
-      } else if (generateArrayPrefix === "comma" && isArray3(obj)) {
-        obj = utils.maybeMap(obj, function(value3) {
+      obj2 = typeof filter3 === "function" ? filter3(prefix, obj2) : obj2;
+      if (obj2 instanceof Date) {
+        obj2 = serializeDate(obj2);
+      } else if (generateArrayPrefix === "comma" && isArray3(obj2)) {
+        obj2 = utils.maybeMap(obj2, function(value3) {
           if (value3 instanceof Date) {
             return serializeDate(value3);
           }
           return value3;
         });
       }
-      if (obj === null) {
+      if (obj2 === null) {
         if (strictNullHandling) {
           return formatter(encoder && !encodeValuesOnly ? encoder(prefix, defaults.encoder, charset, "key", format) : prefix);
         }
-        obj = "";
+        obj2 = "";
       }
-      if (isNonNullishPrimitive(obj) || utils.isBuffer(obj)) {
+      if (isNonNullishPrimitive(obj2) || utils.isBuffer(obj2)) {
         if (encoder) {
           var keyValue = encodeValuesOnly ? prefix : encoder(prefix, defaults.encoder, charset, "key", format);
-          return [formatter(keyValue) + "=" + formatter(encoder(obj, defaults.encoder, charset, "value", format))];
+          return [formatter(keyValue) + "=" + formatter(encoder(obj2, defaults.encoder, charset, "value", format))];
         }
-        return [formatter(prefix) + "=" + formatter(String(obj))];
+        return [formatter(prefix) + "=" + formatter(String(obj2))];
       }
       var values = [];
-      if (typeof obj === "undefined") {
+      if (typeof obj2 === "undefined") {
         return values;
       }
       var objKeys;
-      if (generateArrayPrefix === "comma" && isArray3(obj)) {
+      if (generateArrayPrefix === "comma" && isArray3(obj2)) {
         if (encodeValuesOnly && encoder) {
-          obj = utils.maybeMap(obj, function(v4) {
+          obj2 = utils.maybeMap(obj2, function(v4) {
             return v4 == null ? v4 : encoder(v4, defaults.encoder, charset, "value", format);
           });
         }
-        objKeys = [{ value: obj.length > 0 ? utils.toCoercible(obj).join(",") || null : void 0 }];
+        objKeys = [{ value: obj2.length > 0 ? utils.toCoercible(obj2).join(",") || null : void 0 }];
       } else if (isArray3(filter3)) {
         objKeys = filter3;
       } else {
-        var keys = Object.keys(obj);
+        var keys = Object.keys(obj2);
         objKeys = sort2 ? keys.sort(sort2) : keys;
       }
       var encodedPrefix = String(prefix);
-      var adjustedPrefix = commaRoundTrip && isArray3(obj) && obj.length === 1 ? encodedPrefix + "[]" : encodedPrefix;
-      if (allowEmptyArrays && isArray3(obj) && obj.length === 0 && Object.keys(obj).length === 0) {
+      var adjustedPrefix = commaRoundTrip && isArray3(obj2) && obj2.length === 1 ? encodedPrefix + "[]" : encodedPrefix;
+      if (allowEmptyArrays && isArray3(obj2) && obj2.length === 0 && Object.keys(obj2).length === 0) {
         return adjustedPrefix + "[]";
       }
       for (var j = 0; j < objKeys.length; ++j) {
         var key = objKeys[j];
-        var value2 = typeof key === "object" && key && typeof key.value !== "undefined" ? key.value : obj[key];
+        var value2 = typeof key === "object" && key && typeof key.value !== "undefined" ? key.value : obj2[key];
         if (skipNulls && value2 === null) {
           continue;
         }
         var encodedKey = allowDots && encodeDotInKeys ? String(key).replace(/\./g, "%2E") : String(key);
-        var keyPrefix = isArray3(obj) ? typeof generateArrayPrefix === "function" ? generateArrayPrefix(adjustedPrefix, encodedKey) : adjustedPrefix : adjustedPrefix + (allowDots ? "." + encodedKey : "[" + encodedKey + "]");
+        var keyPrefix = isArray3(obj2) ? typeof generateArrayPrefix === "function" ? generateArrayPrefix(adjustedPrefix, encodedKey) : adjustedPrefix : adjustedPrefix + (allowDots ? "." + encodedKey : "[" + encodedKey + "]");
         sideChannel.set(object, step);
         var valueSideChannel = getSideChannel();
         valueSideChannel.set(sentinel, sideChannel);
@@ -17138,7 +17138,7 @@ var require_stringify = __commonJS({
           strictNullHandling,
           skipNulls,
           encodeDotInKeys,
-          generateArrayPrefix === "comma" && encodeValuesOnly && isArray3(obj) ? null : encoder,
+          generateArrayPrefix === "comma" && encodeValuesOnly && isArray3(obj2) ? null : encoder,
           filter3,
           sort2,
           allowDots,
@@ -17219,25 +17219,25 @@ var require_stringify = __commonJS({
       };
     };
     module2.exports = function(object, opts2) {
-      var obj = object;
+      var obj2 = object;
       var options = normalizeStringifyOptions(opts2);
       var objKeys;
       var filter3;
       if (typeof options.filter === "function") {
         filter3 = options.filter;
-        obj = filter3("", obj);
+        obj2 = filter3("", obj2);
       } else if (isArray3(options.filter)) {
         filter3 = options.filter;
         objKeys = filter3;
       }
       var keys = [];
-      if (typeof obj !== "object" || obj === null) {
+      if (typeof obj2 !== "object" || obj2 === null) {
         return "";
       }
       var generateArrayPrefix = arrayPrefixGenerators[options.arrayFormat];
       var commaRoundTrip = generateArrayPrefix === "comma" && options.commaRoundTrip;
       if (!objKeys) {
-        objKeys = Object.keys(obj);
+        objKeys = Object.keys(obj2);
       }
       if (options.sort) {
         objKeys.sort(options.sort);
@@ -17248,7 +17248,7 @@ var require_stringify = __commonJS({
         if (typeof key === "undefined" || key === null) {
           continue;
         }
-        var value2 = obj[key];
+        var value2 = obj2[key];
         if (options.skipNulls && value2 === null) {
           continue;
         }
@@ -17393,7 +17393,7 @@ var require_parse = __commonJS({
     var isoSentinel = "utf8=%26%2310003%3B";
     var charsetSentinel = "utf8=%E2%9C%93";
     var parseValues = function parseQueryStringValues(str, options) {
-      var obj = { __proto__: null };
+      var obj2 = { __proto__: null };
       var cleanStr = options.ignoreQueryPrefix ? str.replace(/^\?/, "") : str;
       cleanStr = cleanStr.replace(/%5B/gi, "[").replace(/%5D/gi, "]");
       var limit = options.parameterLimit === Infinity ? void 0 : options.parameterLimit;
@@ -17440,7 +17440,7 @@ var require_parse = __commonJS({
               parseArrayValue(
                 part.slice(pos + 1),
                 options,
-                isArray3(obj[key]) ? obj[key].length : 0
+                isArray3(obj2[key]) ? obj2[key].length : 0
               ),
               function(encodedVal) {
                 return options.decoder(encodedVal, defaults.decoder, charset, "value");
@@ -17458,21 +17458,21 @@ var require_parse = __commonJS({
           val = utils.combine([], val, options.arrayLimit, options.plainObjects, options.throwOnLimitExceeded);
         }
         if (key !== null) {
-          var existing = has.call(obj, key);
+          var existing = has.call(obj2, key);
           if (existing && (options.duplicates === "combine" || isEmptyBracketKey)) {
-            obj[key] = utils.combine(
-              obj[key],
+            obj2[key] = utils.combine(
+              obj2[key],
               val,
               options.arrayLimit,
               options.plainObjects,
               options.throwOnLimitExceeded
             );
           } else if (!existing || options.duplicates === "last") {
-            obj[key] = val;
+            obj2[key] = val;
           }
         }
       }
-      return obj;
+      return obj2;
     };
     var parseObject = function(chain, val, options, valuesParsed) {
       var currentArrayLength = 0;
@@ -17482,13 +17482,13 @@ var require_parse = __commonJS({
       }
       var leaf = valuesParsed ? val : parseArrayValue(val, options, currentArrayLength);
       for (var i4 = chain.length - 1; i4 >= 0; --i4) {
-        var obj;
+        var obj2;
         var root = chain[i4];
         if (root === "[]" && options.parseArrays) {
           if (utils.isOverflow(leaf)) {
-            obj = leaf;
+            obj2 = leaf;
           } else {
-            obj = options.allowEmptyArrays && (leaf === "" || options.strictNullHandling && leaf === null) ? [] : utils.combine(
+            obj2 = options.allowEmptyArrays && (leaf === "" || options.strictNullHandling && leaf === null) ? [] : utils.combine(
               [],
               leaf,
               options.arrayLimit,
@@ -17497,26 +17497,26 @@ var require_parse = __commonJS({
             );
           }
         } else {
-          obj = options.plainObjects ? { __proto__: null } : {};
+          obj2 = options.plainObjects ? { __proto__: null } : {};
           var cleanRoot = root.charAt(0) === "[" && root.charAt(root.length - 1) === "]" ? root.slice(1, -1) : root;
           var decodedRoot = options.decodeDotInKeys ? cleanRoot.replace(/%2E/g, ".") : cleanRoot;
           var index2 = parseInt(decodedRoot, 10);
           var isValidArrayIndex = !isNaN(index2) && root !== decodedRoot && String(index2) === decodedRoot && index2 >= 0 && options.parseArrays;
           if (!options.parseArrays && decodedRoot === "") {
-            obj = { 0: leaf };
+            obj2 = { 0: leaf };
           } else if (isValidArrayIndex && index2 < options.arrayLimit) {
-            obj = [];
-            obj[index2] = leaf;
+            obj2 = [];
+            obj2[index2] = leaf;
           } else if (isValidArrayIndex && options.throwOnLimitExceeded) {
             throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
           } else if (isValidArrayIndex) {
-            obj[index2] = leaf;
-            utils.markOverflow(obj, index2);
+            obj2[index2] = leaf;
+            utils.markOverflow(obj2, index2);
           } else if (decodedRoot !== "__proto__") {
-            obj[decodedRoot] = leaf;
+            obj2[decodedRoot] = leaf;
           }
         }
-        leaf = obj;
+        leaf = obj2;
       }
       return leaf;
     };
@@ -17675,17 +17675,17 @@ var require_parse = __commonJS({
         return options.plainObjects ? { __proto__: null } : {};
       }
       var tempObj = typeof str === "string" ? parseValues(str, options) : copyInput(str);
-      var obj = options.plainObjects ? { __proto__: null } : {};
+      var obj2 = options.plainObjects ? { __proto__: null } : {};
       var keys = Object.keys(tempObj);
       for (var i4 = 0; i4 < keys.length; ++i4) {
         var key = keys[i4];
         var newObj = parseKeys(key, tempObj[key], options, typeof str === "string");
-        obj = utils.merge(obj, newObj, options);
+        obj2 = utils.merge(obj2, newObj, options);
       }
       if (options.allowSparse === true) {
-        return obj;
+        return obj2;
       }
-      return utils.compact(obj);
+      return utils.compact(obj2);
     };
   }
 });
@@ -18294,7 +18294,7 @@ var require_node2 = __commonJS({
     exports2.colors = [6, 2, 3, 4, 5, 1];
     exports2.inspectOpts = Object.keys(process.env).filter(function(key) {
       return /^debug_/i.test(key);
-    }).reduce(function(obj, key) {
+    }).reduce(function(obj2, key) {
       var prop = key.substring(6).toLowerCase().replace(/_([a-z])/g, function(_2, k3) {
         return k3.toUpperCase();
       });
@@ -18303,8 +18303,8 @@ var require_node2 = __commonJS({
       else if (/^(no|off|false|disabled)$/i.test(val)) val = false;
       else if (val === "null") val = null;
       else val = Number(val);
-      obj[prop] = val;
-      return obj;
+      obj2[prop] = val;
+      return obj2;
     }, {});
     var fd = parseInt(process.env.DEBUG_FD, 10) || 2;
     if (1 !== fd && 2 !== fd) {
@@ -19013,7 +19013,7 @@ var require_node3 = __commonJS({
     exports2.colors = [6, 2, 3, 4, 5, 1];
     exports2.inspectOpts = Object.keys(process.env).filter(function(key) {
       return /^debug_/i.test(key);
-    }).reduce(function(obj, key) {
+    }).reduce(function(obj2, key) {
       var prop = key.substring(6).toLowerCase().replace(/_([a-z])/g, function(_2, k3) {
         return k3.toUpperCase();
       });
@@ -19022,8 +19022,8 @@ var require_node3 = __commonJS({
       else if (/^(no|off|false|disabled)$/i.test(val)) val = false;
       else if (val === "null") val = null;
       else val = Number(val);
-      obj[prop] = val;
-      return obj;
+      obj2[prop] = val;
+      return obj2;
     }, {});
     var fd = parseInt(process.env.DEBUG_FD, 10) || 2;
     if (1 !== fd && 2 !== fd) {
@@ -19848,12 +19848,12 @@ var require_router = __commonJS({
       var fqdnIndex = url3.slice(0, pathLength).indexOf("://");
       return fqdnIndex !== -1 ? url3.substring(0, url3.indexOf("/", 3 + fqdnIndex)) : void 0;
     }
-    function gettype(obj) {
-      var type = typeof obj;
+    function gettype(obj2) {
+      var type = typeof obj2;
       if (type !== "object") {
         return type;
       }
-      return toString.call(obj).replace(objectRegExp, "$1");
+      return toString.call(obj2).replace(objectRegExp, "$1");
     }
     function matchLayer(layer, path2) {
       try {
@@ -19866,9 +19866,9 @@ var require_router = __commonJS({
       if (typeof parent !== "object" || !parent) {
         return params;
       }
-      var obj = mixin2({}, parent);
+      var obj2 = mixin2({}, parent);
       if (!(0 in params) || !(0 in parent)) {
-        return mixin2(obj, params);
+        return mixin2(obj2, params);
       }
       var i4 = 0;
       var o4 = 0;
@@ -19884,18 +19884,18 @@ var require_router = __commonJS({
           delete params[i4];
         }
       }
-      return mixin2(obj, params);
+      return mixin2(obj2, params);
     }
-    function restore(fn, obj) {
+    function restore(fn, obj2) {
       var props = new Array(arguments.length - 2);
       var vals = new Array(arguments.length - 2);
       for (var i4 = 0; i4 < props.length; i4++) {
         props[i4] = arguments[i4 + 2];
-        vals[i4] = obj[props[i4]];
+        vals[i4] = obj2[props[i4]];
       }
       return function() {
         for (var i5 = 0; i5 < props.length; i5++) {
-          obj[props[i5]] = vals[i5];
+          obj2[props[i5]] = vals[i5];
         }
         return fn.apply(this, arguments);
       };
@@ -20162,9 +20162,9 @@ var require_content_disposition = __commonJS({
       }
       return params;
     }
-    function format(obj) {
-      var parameters = obj.parameters;
-      var type = obj.type;
+    function format(obj2) {
+      var parameters = obj2.parameters;
+      var type = obj2.type;
       if (!type || typeof type !== "string" || !TOKEN_REGEXP.test(type)) {
         throw new TypeError("invalid type");
       }
@@ -20579,7 +20579,7 @@ var require_node4 = __commonJS({
     exports2.colors = [6, 2, 3, 4, 5, 1];
     exports2.inspectOpts = Object.keys(process.env).filter(function(key) {
       return /^debug_/i.test(key);
-    }).reduce(function(obj, key) {
+    }).reduce(function(obj2, key) {
       var prop = key.substring(6).toLowerCase().replace(/_([a-z])/g, function(_2, k3) {
         return k3.toUpperCase();
       });
@@ -20588,8 +20588,8 @@ var require_node4 = __commonJS({
       else if (/^(no|off|false|disabled)$/i.test(val)) val = false;
       else if (val === "null") val = null;
       else val = Number(val);
-      obj[prop] = val;
-      return obj;
+      obj2[prop] = val;
+      return obj2;
     }, {});
     var fd = parseInt(process.env.DEBUG_FD, 10) || 2;
     if (1 !== fd && 2 !== fd) {
@@ -20723,11 +20723,11 @@ var require_etag = __commonJS({
       var tag = isStats ? stattag(entity) : entitytag(entity);
       return weak ? "W/" + tag : tag;
     }
-    function isstats(obj) {
-      if (typeof Stats === "function" && obj instanceof Stats) {
+    function isstats(obj2) {
+      if (typeof Stats === "function" && obj2 instanceof Stats) {
         return true;
       }
-      return obj && typeof obj === "object" && "ctime" in obj && toString.call(obj.ctime) === "[object Date]" && "mtime" in obj && toString.call(obj.mtime) === "[object Date]" && "ino" in obj && typeof obj.ino === "number" && "size" in obj && typeof obj.size === "number";
+      return obj2 && typeof obj2 === "object" && "ctime" in obj2 && toString.call(obj2.ctime) === "[object Date]" && "mtime" in obj2 && toString.call(obj2.mtime) === "[object Date]" && "ino" in obj2 && typeof obj2.ino === "number" && "size" in obj2 && typeof obj2.size === "number";
     }
     function stattag(stat) {
       var mtime = stat.mtime.getTime().toString(16);
@@ -23602,8 +23602,8 @@ var require_request = __commonJS({
       var val = this.get("X-Requested-With") || "";
       return val.toLowerCase() === "xmlhttprequest";
     });
-    function defineGetter(obj, name, getter) {
-      Object.defineProperty(obj, name, {
+    function defineGetter(obj2, name, getter) {
+      Object.defineProperty(obj2, name, {
         configurable: true,
         enumerable: true,
         get: getter
@@ -23649,9 +23649,9 @@ var require_cookie = __commonJS({
       if (typeof str !== "string") {
         throw new TypeError("argument str must be a string");
       }
-      var obj = {};
+      var obj2 = {};
       var len = str.length;
-      if (len < 2) return obj;
+      if (len < 2) return obj2;
       var dec = opt && opt.decode || decode2;
       var index2 = 0;
       var eqIdx = 0;
@@ -23669,7 +23669,7 @@ var require_cookie = __commonJS({
         var keyStartIdx = startIndex(str, index2, eqIdx);
         var keyEndIdx = endIndex(str, eqIdx, keyStartIdx);
         var key = str.slice(keyStartIdx, keyEndIdx);
-        if (!__hasOwnProperty.call(obj, key)) {
+        if (!__hasOwnProperty.call(obj2, key)) {
           var valStartIdx = startIndex(str, eqIdx + 1, endIdx);
           var valEndIdx = endIndex(str, endIdx, valStartIdx);
           if (str.charCodeAt(valStartIdx) === 34 && str.charCodeAt(valEndIdx - 1) === 34) {
@@ -23677,11 +23677,11 @@ var require_cookie = __commonJS({
             valEndIdx--;
           }
           var val = str.slice(valStartIdx, valEndIdx);
-          obj[key] = tryDecode(val, dec);
+          obj2[key] = tryDecode(val, dec);
         }
         index2 = endIdx + 1;
       } while (index2 < len);
-      return obj;
+      return obj2;
     }
     function startIndex(str, index2, max2) {
       do {
@@ -24007,8 +24007,8 @@ var require_response = __commonJS({
       }
       return this;
     };
-    res.json = function json4(obj) {
-      var val = obj;
+    res.json = function json4(obj2) {
+      var val = obj2;
       if (arguments.length === 2) {
         if (typeof arguments[1] === "number") {
           deprecate("res.json(obj, status): Use res.status(status).json(obj) instead");
@@ -24029,8 +24029,8 @@ var require_response = __commonJS({
       }
       return this.send(body);
     };
-    res.jsonp = function jsonp(obj) {
-      var val = obj;
+    res.jsonp = function jsonp(obj2) {
+      var val = obj2;
       if (arguments.length === 2) {
         if (typeof arguments[1] === "number") {
           deprecate("res.jsonp(obj, status): Use res.status(status).jsonp(obj) instead");
@@ -24162,19 +24162,19 @@ var require_response = __commonJS({
       var ct = type.indexOf("/") === -1 ? mime.lookup(type) : type;
       return this.set("Content-Type", ct);
     };
-    res.format = function(obj) {
+    res.format = function(obj2) {
       var req = this.req;
       var next = req.next;
-      var keys = Object.keys(obj).filter(function(v4) {
+      var keys = Object.keys(obj2).filter(function(v4) {
         return v4 !== "default";
       });
       var key = keys.length > 0 ? req.accepts(keys) : false;
       this.vary("Accept");
       if (key) {
         this.set("Content-Type", normalizeType(key).value);
-        obj[key](req, this, next);
-      } else if (obj.default) {
-        obj.default(req, this, next);
+        obj2[key](req, this, next);
+      } else if (obj2.default) {
+        obj2.default(req, this, next);
       } else {
         next(createError(406, {
           types: normalizeTypes(keys).map(function(o4) {
@@ -24382,11 +24382,11 @@ var require_response = __commonJS({
       onFinished(res2, onfinish);
       if (options.headers) {
         file.on("headers", function headers(res3) {
-          var obj = options.headers;
-          var keys = Object.keys(obj);
+          var obj2 = options.headers;
+          var keys = Object.keys(obj2);
           for (var i4 = 0; i4 < keys.length; i4++) {
             var k3 = keys[i4];
-            res3.setHeader(k3, obj[k3]);
+            res3.setHeader(k3, obj2[k3]);
           }
         });
       }
@@ -27785,7 +27785,7 @@ var require_node5 = __commonJS({
     }
     exports2.inspectOpts = Object.keys(process.env).filter((key) => {
       return /^debug_/i.test(key);
-    }).reduce((obj, key) => {
+    }).reduce((obj2, key) => {
       const prop = key.substring(6).toLowerCase().replace(/_([a-z])/g, (_2, k3) => {
         return k3.toUpperCase();
       });
@@ -27799,8 +27799,8 @@ var require_node5 = __commonJS({
       } else {
         val = Number(val);
       }
-      obj[prop] = val;
-      return obj;
+      obj2[prop] = val;
+      return obj2;
     }, {});
     function useColors() {
       return "colors" in exports2.inspectOpts ? Boolean(exports2.inspectOpts.colors) : tty.isatty(process.stderr.fd);
@@ -27882,26 +27882,26 @@ var init_util = __esm({
       }
       util2.assertNever = assertNever;
       util2.arrayToEnum = (items) => {
-        const obj = {};
+        const obj2 = {};
         for (const item of items) {
-          obj[item] = item;
+          obj2[item] = item;
         }
-        return obj;
+        return obj2;
       };
-      util2.getValidEnumValues = (obj) => {
-        const validKeys = util2.objectKeys(obj).filter((k3) => typeof obj[obj[k3]] !== "number");
+      util2.getValidEnumValues = (obj2) => {
+        const validKeys = util2.objectKeys(obj2).filter((k3) => typeof obj2[obj2[k3]] !== "number");
         const filtered = {};
         for (const k3 of validKeys) {
-          filtered[k3] = obj[k3];
+          filtered[k3] = obj2[k3];
         }
         return util2.objectValues(filtered);
       };
-      util2.objectValues = (obj) => {
-        return util2.objectKeys(obj).map(function(e4) {
-          return obj[e4];
+      util2.objectValues = (obj2) => {
+        return util2.objectKeys(obj2).map(function(e4) {
+          return obj2[e4];
         });
       };
-      util2.objectKeys = typeof Object.keys === "function" ? (obj) => Object.keys(obj) : (object) => {
+      util2.objectKeys = typeof Object.keys === "function" ? (obj2) => Object.keys(obj2) : (object) => {
         const keys = [];
         for (const key in object) {
           if (Object.prototype.hasOwnProperty.call(object, key)) {
@@ -28027,8 +28027,8 @@ var init_ZodError = __esm({
       "not_multiple_of",
       "not_finite"
     ]);
-    quotelessJson = (obj) => {
-      const json4 = JSON.stringify(obj, null, 2);
+    quotelessJson = (obj2) => {
+      const json4 = JSON.stringify(obj2, null, 2);
       return json4.replace(/"([^"]+)":/g, "$1:");
     };
     ZodError = class _ZodError extends Error {
@@ -32165,8 +32165,8 @@ var init_getErrorShape_vC8mUXJD = __esm({
     }) : target, mod));
     noop = () => {
     };
-    freezeIfAvailable = (obj) => {
-      if (Object.freeze) Object.freeze(obj);
+    freezeIfAvailable = (obj2) => {
+      if (Object.freeze) Object.freeze(obj2);
     };
     createRecursiveProxy = (callback) => createInnerProxy(callback, [], emptyObject());
     JSONRPC2_TO_HTTP_CODE = {
@@ -32504,12 +32504,12 @@ var init_tracked_DiE3uR1B = __esm({
     import_objectSpread2$1 = __toESM2(require_objectSpread2(), 1);
     defaultTransformer = {
       input: {
-        serialize: (obj) => obj,
-        deserialize: (obj) => obj
+        serialize: (obj2) => obj2,
+        deserialize: (obj2) => obj2
       },
       output: {
-        serialize: (obj) => obj,
-        deserialize: (obj) => obj
+        serialize: (obj2) => obj2,
+        deserialize: (obj2) => obj2
       }
     };
     import_objectSpread22 = __toESM2(require_objectSpread2(), 1);
@@ -33201,9 +33201,9 @@ var init_transformer = __esm({
       Float32Array,
       Float64Array,
       Uint8ClampedArray
-    ].reduce((obj, ctor) => {
-      obj[ctor.name] = ctor;
-      return obj;
+    ].reduce((obj2, ctor) => {
+      obj2[ctor.name] = ctor;
+      return obj2;
     }, {});
     typedArrayRule = compositeTransformation(isTypedArray, (v4) => ["typed-array", v4.constructor.name], (v4) => [...v4], (v4, a5) => {
       const ctor = constructorToName[a5[1]];
@@ -34089,8 +34089,8 @@ var require_jwa = __commonJS({
       var errMsg = util2.format.bind(util2, template).apply(null, args);
       return new TypeError(errMsg);
     }
-    function bufferOrString(obj) {
-      return Buffer4.isBuffer(obj) || typeof obj === "string";
+    function bufferOrString(obj2) {
+      return Buffer4.isBuffer(obj2) || typeof obj2 === "string";
     }
     function normalizeInput(thing) {
       if (!bufferOrString(thing))
@@ -34228,12 +34228,12 @@ var require_jwa = __commonJS({
 var require_tostring = __commonJS({
   "node_modules/jws/lib/tostring.js"(exports2, module2) {
     var Buffer4 = require("buffer").Buffer;
-    module2.exports = function toString(obj) {
-      if (typeof obj === "string")
-        return obj;
-      if (typeof obj === "number" || Buffer4.isBuffer(obj))
-        return obj.toString();
-      return JSON.stringify(obj);
+    module2.exports = function toString(obj2) {
+      if (typeof obj2 === "string")
+        return obj2;
+      if (typeof obj2 === "number" || Buffer4.isBuffer(obj2))
+        return obj2.toString();
+      return JSON.stringify(obj2);
     };
   }
 });
@@ -34409,8 +34409,8 @@ var require_verify_stream = __commonJS({
     VerifyStream.prototype.verify = function verify() {
       try {
         var valid = jwsVerify(this.signature.buffer, this.algorithm, this.key.buffer);
-        var obj = jwsDecode(this.signature.buffer, this.encoding);
-        this.emit("done", valid, obj);
+        var obj2 = jwsDecode(this.signature.buffer, this.encoding);
+        this.emit("done", valid, obj2);
         this.emit("data", valid);
         this.emit("end");
         this.readable = false;
@@ -34474,9 +34474,9 @@ var require_decode = __commonJS({
       var payload = decoded.payload;
       if (typeof payload === "string") {
         try {
-          var obj = JSON.parse(payload);
-          if (obj !== null && typeof obj === "object") {
-            payload = obj;
+          var obj2 = JSON.parse(payload);
+          if (obj2 !== null && typeof obj2 === "object") {
+            payload = obj2;
           }
         } catch (e4) {
         }
@@ -43669,8 +43669,8 @@ var init_common = __esm({
 });
 
 // node_modules/drizzle-orm/pg-core/columns/enum.js
-function isPgEnum(obj) {
-  return !!obj && typeof obj === "function" && isPgEnumSym in obj && obj[isPgEnumSym] === true;
+function isPgEnum(obj2) {
+  return !!obj2 && typeof obj2 === "function" && isPgEnumSym in obj2 && obj2[isPgEnumSym] === true;
 }
 function pgEnumWithSchema(enumName, values, schema) {
   const enumInstance = Object.assign(
@@ -46552,8 +46552,8 @@ var init_indexes = __esm({
         this.config.concurrently = true;
         return this;
       }
-      with(obj) {
-        this.config.with = obj;
+      with(obj2) {
+        this.config.with = obj2;
         return this;
       }
       where(condition) {
@@ -52309,6 +52309,8 @@ var init_schema2 = __esm({
       // EM_ANDAMENTO | OK | ERRO | REAPROVEITADO
       reportId: integer("report_id"),
       custoReais: doublePrecision("custo_reais"),
+      produto: text("produto"),
+      // chave do catálogo (shared/creditoCatalogo.ts); null nas linhas antigas
       erro: text("erro"),
       iniciadoEm: timestamp("iniciado_em").defaultNow().notNull(),
       finalizadoEm: timestamp("finalizado_em")
@@ -52317,6 +52319,7 @@ var init_schema2 = __esm({
       id: integer("id").primaryKey().default(1),
       bloqueioAtivo: boolean("bloqueio_ativo").notNull().default(false),
       limiteMensal: integer("limite_mensal").notNull().default(50),
+      tetoPorConsultaReais: doublePrecision("teto_por_consulta_reais").notNull().default(30),
       atualizadoPorUserId: integer("atualizado_por_user_id"),
       atualizadoPorNome: text("atualizado_por_nome"),
       atualizadoEm: timestamp("atualizado_em").defaultNow().notNull()
@@ -57814,9 +57817,9 @@ var require_node6 = __commonJS({
     var Stringifier = require_stringifier();
     var stringify2 = require_stringify2();
     var { isClean, my } = require_symbols();
-    function cloneNode2(obj, parent) {
-      let cloned = new obj.constructor();
-      let stack = [[obj, cloned, parent]];
+    function cloneNode2(obj2, parent) {
+      let cloned = new obj2.constructor();
+      let stack = [[obj2, cloned, parent]];
       while (stack.length > 0) {
         let [source, target, targetParent] = stack.pop();
         for (let i4 in source) {
@@ -59040,8 +59043,8 @@ var require_util = __commonJS({
     }
     exports2.relative = relative;
     var supportsNullProto = (function() {
-      var obj = /* @__PURE__ */ Object.create(null);
-      return !("__proto__" in obj);
+      var obj2 = /* @__PURE__ */ Object.create(null);
+      return !("__proto__" in obj2);
     })();
     function identity2(s4) {
       return s4;
@@ -62382,8 +62385,8 @@ var require_lazy_result = __commonJS({
       prepare: true
     };
     var CHILDREN = 0;
-    function isPromise2(obj) {
-      return typeof obj === "object" && typeof obj.then === "function";
+    function isPromise2(obj2) {
+      return typeof obj2 === "object" && typeof obj2.then === "function";
     }
     function getEvents(node) {
       let key = false;
@@ -63812,15 +63815,15 @@ var require_sanitize_html = __commonJS({
       }
       return logger;
     }
-    function each(obj, cb) {
-      if (obj) {
-        Object.keys(obj).forEach(function(key) {
-          cb(obj[key], key);
+    function each(obj2, cb) {
+      if (obj2) {
+        Object.keys(obj2).forEach(function(key) {
+          cb(obj2[key], key);
         });
       }
     }
-    function has(obj, key) {
-      return {}.hasOwnProperty.call(obj, key);
+    function has(obj2, key) {
+      return {}.hasOwnProperty.call(obj2, key);
     }
     function mergeClasses(specific, wildcard) {
       if (!Array.isArray(specific) || !Array.isArray(wildcard)) {
@@ -63846,9 +63849,9 @@ var require_sanitize_html = __commonJS({
       });
       return n5;
     }
-    function isEmptyObject2(obj) {
-      for (const key in obj) {
-        if (has(obj, key)) {
+    function isEmptyObject2(obj2) {
+      for (const key in obj2) {
+        if (has(obj2, key)) {
           return false;
         }
       }
@@ -63925,11 +63928,11 @@ var require_sanitize_html = __commonJS({
         each(options.allowedAttributes, function(attributes2, tag) {
           allowedAttributesMap[tag] = [];
           const globRegex = [];
-          attributes2.forEach(function(obj) {
-            if (typeof obj === "string" && obj.indexOf("*") >= 0) {
-              globRegex.push(escapeStringRegexp(obj).replace(/\\\*/g, ".*"));
+          attributes2.forEach(function(obj2) {
+            if (typeof obj2 === "string" && obj2.indexOf("*") >= 0) {
+              globRegex.push(escapeStringRegexp(obj2).replace(/\\\*/g, ".*"));
             } else {
-              allowedAttributesMap[tag].push(obj);
+              allowedAttributesMap[tag].push(obj2);
             }
           });
           if (globRegex.length) {
@@ -63952,13 +63955,13 @@ var require_sanitize_html = __commonJS({
           const globRegex = [];
           allowedClassesMap[tag] = [];
           allowedClassesRegexMap[tag] = [];
-          classes.forEach(function(obj) {
-            if (typeof obj === "string" && obj.indexOf("*") >= 0) {
-              globRegex.push(escapeStringRegexp(obj).replace(/\\\*/g, ".*"));
-            } else if (obj instanceof RegExp) {
-              allowedClassesRegexMap[tag].push(obj);
+          classes.forEach(function(obj2) {
+            if (typeof obj2 === "string" && obj2.indexOf("*") >= 0) {
+              globRegex.push(escapeStringRegexp(obj2).replace(/\\\*/g, ".*"));
+            } else if (obj2 instanceof RegExp) {
+              allowedClassesRegexMap[tag].push(obj2);
             } else {
-              allowedClassesMap[tag].push(obj);
+              allowedClassesMap[tag].push(obj2);
             }
           });
           if (globRegex.length) {
@@ -65700,8 +65703,8 @@ async function generateLabelForOrder(orderId) {
     } else {
       const cartRes = await fetch(`${ME_BASE2}/api/v2/me/cart`, { method: "POST", headers, body: JSON.stringify(cartBody), signal: AbortSignal.timeout(8e3) });
       if (!cartRes.ok) {
-        const txt2 = await cartRes.text();
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro cart ME: ${txt2}` });
+        const txt3 = await cartRes.text();
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro cart ME: ${txt3}` });
       }
       const cartData = await cartRes.json();
       meOrderId = cartData.id;
@@ -65713,8 +65716,8 @@ async function generateLabelForOrder(orderId) {
           body: JSON.stringify({ orders: [meOrderId] })
         });
         if (!checkRes.ok) {
-          const txt2 = await checkRes.text();
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro checkout ME: ${txt2}` });
+          const txt3 = await checkRes.text();
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro checkout ME: ${txt3}` });
         }
       } catch (err) {
         try {
@@ -65737,8 +65740,8 @@ async function generateLabelForOrder(orderId) {
       signal: AbortSignal.timeout(8e3)
     });
     if (!genRes.ok) {
-      const txt2 = await genRes.text();
-      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro gerar etiqueta ME: ${txt2}` });
+      const txt3 = await genRes.text();
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro gerar etiqueta ME: ${txt3}` });
     }
     const printRes = await fetch(`${ME_BASE2}/api/v2/me/shipment/print`, {
       method: "POST",
@@ -65747,8 +65750,8 @@ async function generateLabelForOrder(orderId) {
       signal: AbortSignal.timeout(8e3)
     });
     if (!printRes.ok) {
-      const txt2 = await printRes.text();
-      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro imprimir etiqueta ME: ${txt2}` });
+      const txt3 = await printRes.text();
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro imprimir etiqueta ME: ${txt3}` });
     }
     const printData = await printRes.json();
     const labelUrl = printData.url;
@@ -66559,8 +66562,8 @@ Seja direto e use emojis para facilitar leitura.`;
               signal: AbortSignal.timeout(8e3)
             });
             if (!mpRes.ok) {
-              const txt2 = await mpRes.text();
-              throw new TRPCError({ code: "BAD_GATEWAY", message: `Reembolso MP falhou (${mpRes.status}): ${txt2.slice(0, 100)}. Pedido N\xC3O cancelado.` });
+              const txt3 = await mpRes.text();
+              throw new TRPCError({ code: "BAD_GATEWAY", message: `Reembolso MP falhou (${mpRes.status}): ${txt3.slice(0, 100)}. Pedido N\xC3O cancelado.` });
             }
             results.push("Reembolso MP solicitado");
           } catch (err) {
@@ -66762,9 +66765,9 @@ Obrigado! \u{1F64F}`;
             } else {
               const cartRes = await fetch(`${ME_BASE2}/api/v2/me/cart`, { method: "POST", headers, body: JSON.stringify(cartBody) });
               if (!cartRes.ok) {
-                const txt2 = await cartRes.text();
+                const txt3 = await cartRes.text();
                 await releaseLabel(orderId);
-                results.push({ orderId, success: false, error: `Cart ME: ${txt2.slice(0, 80)}` });
+                results.push({ orderId, success: false, error: `Cart ME: ${txt3.slice(0, 80)}` });
                 continue;
               }
               const cartData = await cartRes.json();
@@ -66777,9 +66780,9 @@ Obrigado! \u{1F64F}`;
               if (!checkRes.ok) {
                 await fetch(`${ME_BASE2}/api/v2/me/cart/${meOrderId}`, { method: "DELETE", headers }).catch(() => {
                 });
-                const txt2 = await checkRes.text();
+                const txt3 = await checkRes.text();
                 await releaseLabel(orderId);
-                results.push({ orderId, success: false, error: `Checkout ME: ${txt2.slice(0, 80)}` });
+                results.push({ orderId, success: false, error: `Checkout ME: ${txt3.slice(0, 80)}` });
                 continue;
               }
               purchased = true;
@@ -68231,11 +68234,11 @@ var require_segments = __commonJS({
       const segs = numSegs.concat(alphaNumSegs, byteSegs, kanjiSegs);
       return segs.sort(function(s1, s22) {
         return s1.index - s22.index;
-      }).map(function(obj) {
+      }).map(function(obj2) {
         return {
-          data: obj.data,
-          mode: obj.mode,
-          length: obj.length
+          data: obj2.data,
+          mode: obj2.mode,
+          length: obj2.length
         };
       });
     }
@@ -72457,8 +72460,8 @@ var require_clone = __commonJS({
   "node_modules/clone/clone.js"(exports2, module2) {
     var clone = (function() {
       "use strict";
-      function _instanceof(obj, type) {
-        return type != null && obj instanceof type;
+      function _instanceof(obj2, type) {
+        return type != null && obj2 instanceof type;
       }
       var nativeMap;
       try {
@@ -198790,14 +198793,14 @@ var require_md5 = __commonJS({
       }
       var isArray3 = Array.isArray;
       if (root.JS_MD5_NO_NODE_JS || !isArray3) {
-        isArray3 = function(obj) {
-          return Object.prototype.toString.call(obj) === "[object Array]";
+        isArray3 = function(obj2) {
+          return Object.prototype.toString.call(obj2) === "[object Array]";
         };
       }
       var isView = ArrayBuffer.isView;
       if (ARRAY_BUFFER && (root.JS_MD5_NO_ARRAY_BUFFER_IS_VIEW || !isView)) {
-        isView = function(obj) {
-          return typeof obj === "object" && obj.buffer && obj.buffer.constructor === ArrayBuffer;
+        isView = function(obj2) {
+          return typeof obj2 === "object" && obj2.buffer && obj2.buffer.constructor === ArrayBuffer;
         };
       }
       var formatMessage = function(message) {
@@ -212605,11 +212608,11 @@ var require_main2 = __commonJS({
 var require_define_property = __commonJS({
   "node_modules/@swc/helpers/cjs/_define_property.cjs"(exports2) {
     "use strict";
-    function _define_property2(obj, key, value2) {
-      if (key in obj) {
-        Object.defineProperty(obj, key, { value: value2, enumerable: true, configurable: true, writable: true });
-      } else obj[key] = value2;
-      return obj;
+    function _define_property2(obj2, key, value2) {
+      if (key in obj2) {
+        Object.defineProperty(obj2, key, { value: value2, enumerable: true, configurable: true, writable: true });
+      } else obj2[key] = value2;
+      return obj2;
     }
     exports2._ = _define_property2;
   }
@@ -213603,9 +213606,9 @@ var require_main4 = __commonJS({
         if (language == null) language = record.platformID + "-" + record.languageID;
         let key = record.nameID >= 256 ? "fontFeatures" : $51a9f4feb3a3b2b1$var$NAMES[record.nameID] || record.nameID;
         if (records[key] == null) records[key] = {};
-        let obj = records[key];
-        if (record.nameID >= 256) obj = obj[record.nameID] || (obj[record.nameID] = {});
-        if (typeof record.string === "string" || typeof obj[language] !== "string") obj[language] = record.string;
+        let obj2 = records[key];
+        if (record.nameID >= 256) obj2 = obj2[record.nameID] || (obj2[record.nameID] = {});
+        if (typeof record.string === "string" || typeof obj2[language] !== "string") obj2[language] = record.string;
       }
       this.records = records;
     };
@@ -228434,10 +228437,10 @@ var require_pdfkit_browser = __commonJS({
         encDict.P = permissions;
         encDict.Perms = permsEntry;
       }
-      getEncryptFn(obj, gen) {
+      getEncryptFn(obj2, gen) {
         let digest;
         if (this.version < 5) {
-          const suffix = new Uint8Array([obj & 255, obj >> 8 & 255, obj >> 16 & 255, gen & 255, gen >> 8 & 255]);
+          const suffix = new Uint8Array([obj2 & 255, obj2 >> 8 & 255, obj2 >> 16 & 255, gen & 255, gen >> 8 & 255]);
           digest = utils.concatBytes(this.encryptionKey, suffix);
         }
         if (this.version === 1 || this.version === 2) {
@@ -231555,7 +231558,7 @@ end`);
         } = this;
         const hasAlphaChannel = image.hasAlphaChannel;
         const isInterlaced = image.interlaceMethod === 1;
-        const obj = this.obj = document2.ref({
+        const obj2 = this.obj = document2.ref({
           Type: "XObject",
           Subtype: "Image",
           BitsPerComponent: hasAlphaChannel ? 8 : image.bits,
@@ -231570,19 +231573,19 @@ end`);
             BitsPerComponent: image.bits,
             Columns: width
           });
-          obj.data["DecodeParms"] = params;
+          obj2.data["DecodeParms"] = params;
           params.end();
         }
         if (image.palette.length === 0) {
-          obj.data["ColorSpace"] = image.colorSpace;
+          obj2.data["ColorSpace"] = image.colorSpace;
         } else {
           const palette = document2.ref();
           palette.end(new Uint8Array(image.palette));
-          obj.data["ColorSpace"] = ["Indexed", "DeviceRGB", image.palette.length / 3 - 1, palette];
+          obj2.data["ColorSpace"] = ["Indexed", "DeviceRGB", image.palette.length / 3 - 1, palette];
         }
         if (image.transparency.grayscale != null) {
           const val = image.transparency.grayscale;
-          obj.data["Mask"] = [val, val];
+          obj2.data["Mask"] = [val, val];
         } else if (image.transparency.rgb) {
           const {
             rgb
@@ -231591,7 +231594,7 @@ end`);
           for (let x2 of rgb) {
             mask.push(x2, x2);
           }
-          obj.data["Mask"] = mask;
+          obj2.data["Mask"] = mask;
         } else if (image.transparency.indexed) {
           return this.loadIndexedAlphaChannel();
         } else if (hasAlphaChannel) {
@@ -233025,11 +233028,11 @@ end`);
       }
       return target;
     }
-    function deepClone2(obj) {
-      let result = obj;
-      if (obj && typeof obj == "object") {
-        result = Array.isArray(obj) ? [] : {};
-        for (const key in obj) result[key] = deepClone2(obj[key]);
+    function deepClone2(obj2) {
+      let result = obj2;
+      if (obj2 && typeof obj2 == "object") {
+        result = Array.isArray(obj2) ? [] : {};
+        for (const key in obj2) result[key] = deepClone2(obj2[key]);
       }
       return result;
     }
@@ -247835,11 +247838,11 @@ var VoidPointer = class {
 var import_fs = __toESM(require("fs"), 1);
 
 // node_modules/@swc/helpers/esm/_define_property.js
-function _define_property(obj, key, value2) {
-  if (key in obj) {
-    Object.defineProperty(obj, key, { value: value2, enumerable: true, configurable: true, writable: true });
-  } else obj[key] = value2;
-  return obj;
+function _define_property(obj2, key, value2) {
+  if (key in obj2) {
+    Object.defineProperty(obj2, key, { value: value2, enumerable: true, configurable: true, writable: true });
+  } else obj2[key] = value2;
+  return obj2;
 }
 
 // node_modules/@swc/helpers/esm/_ts_decorate.js
@@ -248780,9 +248783,9 @@ $2bcf221753ec8e32$var$NameTable.process = function(stream2) {
     if (language == null) language = record.platformID + "-" + record.languageID;
     let key = record.nameID >= 256 ? "fontFeatures" : $2bcf221753ec8e32$var$NAMES[record.nameID] || record.nameID;
     if (records[key] == null) records[key] = {};
-    let obj = records[key];
-    if (record.nameID >= 256) obj = obj[record.nameID] || (obj[record.nameID] = {});
-    if (typeof record.string === "string" || typeof obj[language] !== "string") obj[language] = record.string;
+    let obj2 = records[key];
+    if (record.nameID >= 256) obj2 = obj2[record.nameID] || (obj2[record.nameID] = {});
+    if (typeof record.string === "string" || typeof obj2[language] !== "string") obj2[language] = record.string;
   }
   this.records = records;
 };
@@ -263930,10 +263933,10 @@ var PDFSecurity = class _PDFSecurity {
     encDict.P = permissions;
     encDict.Perms = Buffer.from(permsEntry);
   }
-  getEncryptFn(obj, gen) {
+  getEncryptFn(obj2, gen) {
     let digest;
     if (this.version < 5) {
-      const suffix = new Uint8Array([obj & 255, obj >> 8 & 255, obj >> 16 & 255, gen & 255, gen >> 8 & 255]);
+      const suffix = new Uint8Array([obj2 & 255, obj2 >> 8 & 255, obj2 >> 16 & 255, gen & 255, gen >> 8 & 255]);
       digest = concatBytes2(this.encryptionKey, suffix);
     }
     if (this.version === 1 || this.version === 2) {
@@ -265549,7 +265552,7 @@ ocircumflex   otilde         odieresis      divide
 oslash        ugrave         uacute         ucircumflex
 udieresis     yacute         thorn          ydieresis`.split(/\s+/);
 function parse2(contents) {
-  const obj = {
+  const obj2 = {
     attributes: {},
     glyphWidths: {},
     kernPairs: {}
@@ -265570,13 +265573,13 @@ function parse2(contents) {
         match = line3.match(/(^\w+)\s+(.*)/);
         var key = match[1];
         var value2 = match[2];
-        if (a5 = obj.attributes[key]) {
+        if (a5 = obj2.attributes[key]) {
           if (!Array.isArray(a5)) {
-            a5 = obj.attributes[key] = [a5];
+            a5 = obj2.attributes[key] = [a5];
           }
           a5.push(value2);
         } else {
-          obj.attributes[key] = value2;
+          obj2.attributes[key] = value2;
         }
         break;
       case "CharMetrics":
@@ -265584,17 +265587,17 @@ function parse2(contents) {
           continue;
         }
         var name = line3.match(/\bN\s+(\.?\w+)\s*;/)[1];
-        obj.glyphWidths[name] = +line3.match(/\bWX\s+(\d+)\s*;/)[1];
+        obj2.glyphWidths[name] = +line3.match(/\bWX\s+(\d+)\s*;/)[1];
         break;
       case "KernPairs":
         match = line3.match(/^KPX\s+(\.?\w+)\s+(\.?\w+)\s+(-?\d+)/);
         if (match) {
-          obj.kernPairs[match[1] + match[2]] = parseInt(match[3]);
+          obj2.kernPairs[match[1] + match[2]] = parseInt(match[3]);
         }
         break;
     }
   }
-  return obj;
+  return obj2;
 }
 var AFMFont = class _AFMFont {
   static open(filename) {
@@ -302615,11 +302618,11 @@ function deepMerge(target) {
   }
   return target;
 }
-function deepClone(obj) {
-  let result = obj;
-  if (obj && typeof obj == "object") {
-    result = Array.isArray(obj) ? [] : {};
-    for (const key in obj) result[key] = deepClone(obj[key]);
+function deepClone(obj2) {
+  let result = obj2;
+  if (obj2 && typeof obj2 == "object") {
+    result = Array.isArray(obj2) ? [] : {};
+    for (const key in obj2) result[key] = deepClone(obj2[key]);
   }
   return result;
 }
@@ -311711,8 +311714,8 @@ var getFragments$1 = (fontStore2, instance) => {
   fontFamilies.push("Helvetica");
   const font = fontFamilies.map((fontFamilyName) => {
     const opts2 = { fontFamily: fontFamilyName, fontWeight, fontStyle };
-    const obj = fontStore2.getFont(opts2);
-    return obj?.data;
+    const obj2 = fontStore2.getFont(opts2);
+    return obj2?.data;
   });
   const attributes2 = {
     font,
@@ -312955,8 +312958,8 @@ var getFragments = (fontStore2, instance, parentLink = null, level = 0) => {
   fontFamilies.push("Helvetica");
   const font = fontFamilies.map((fontFamilyName) => {
     const opts2 = { fontFamily: fontFamilyName, fontWeight, fontStyle };
-    const obj = fontStore2.getFont(opts2);
-    return obj?.data;
+    const obj2 = fontStore2.getFont(opts2);
+    return obj2?.data;
   });
   const backgroundColor = level === 0 ? null : instance.style.backgroundColor;
   const attributes2 = {
@@ -335243,6 +335246,173 @@ init_drizzle_orm();
 init_db2();
 init_schema2();
 
+// shared/creditoCatalogo.ts
+var PRECOS_MEDIDOS_EM = "16/10/2026";
+var PRODUTO_PADRAO = "boavista";
+var MAX_PRODUTOS_POR_CONSULTA = 3;
+var TETO_POR_CONSULTA_PADRAO_REAIS = 30;
+var TEXTO_NAO_MEDIDO = "Custo ainda n\xE3o medido \u2014 rode a sonda";
+var CATALOGO_CREDITO = [
+  {
+    chave: "boavista",
+    endpoint: "scpc-boavista",
+    nome: "Boa Vista Essencial Positivo",
+    custoReais: 2.75,
+    recomendado: true,
+    mostra: {
+      confirmado: [
+        "Funda\xE7\xE3o e situa\xE7\xE3o cadastral",
+        "Score de risco (12 meses) com classe e probabilidade de inadimpl\xEAncia",
+        "Pend\xEAncias financeiras (credor, valor, vencimento)",
+        "Protestos",
+        "Cheques sem fundo (BACEN + varejo)",
+        "Hist\xF3rico de consultas (total em 12 meses e as \xFAltimas)",
+        "\xDAltima compra no mercado",
+        "Pontualidade de pagamento",
+        "Relacionamento com fornecedores"
+      ],
+      aConfirmar: []
+    },
+    quandoUsar: "N\xEDvel 1 e padr\xE3o: use em toda an\xE1lise de cliente novo ou pedido a prazo. N\xE3o traz s\xF3cios nem faturamento presumido."
+  },
+  {
+    chave: "serasa_premium",
+    endpoint: "serasa-premium",
+    nome: "Serasa Premium",
+    custoReais: 6.72,
+    mostra: {
+      confirmado: [
+        "Cadastro da empresa",
+        "Quadro societ\xE1rio (com cargo)",
+        "Ve\xEDculos da empresa",
+        "Faturamento presumido (faixa)",
+        "A\xE7\xF5es c\xEDveis",
+        "Protestos",
+        "Restri\xE7\xF5es financeiras",
+        "Passagens comerciais (consultas)",
+        'Score (pode vir "n\xE3o calculado")'
+      ],
+      aConfirmar: ["Data de entrada dos s\xF3cios (n\xE3o veio na resposta)"]
+    },
+    quandoUsar: "Quando precisar conferir quadro societ\xE1rio, ve\xEDculos ou faturamento presumido."
+  },
+  {
+    chave: "define_risco",
+    endpoint: "pj-define-risco",
+    nome: "Define Risco Positivo",
+    custoReais: 15.09,
+    mostra: {
+      confirmado: [
+        "Score, classe e probabilidade de inadimpl\xEAncia",
+        "Faixa de faturamento presumido",
+        "Decis\xE3o / recomenda\xE7\xE3o de an\xE1lise",
+        "Consultas",
+        "Pend\xEAncias"
+      ],
+      aConfirmar: []
+    },
+    quandoUsar: "S\xF3 em caso excepcional (R$ 15,09, a mais cara). N\xE3o traz s\xF3cios nem protestos detalhados."
+  },
+  // ── Ainda NÃO medidos (custoReais: null): nunca selecionáveis. As descrições são só "a confirmar". ──
+  {
+    chave: "serasa_basica",
+    endpoint: "serasa-basica",
+    nome: "Serasa B\xE1sica",
+    custoReais: null,
+    mostra: { confirmado: [], aConfirmar: ['Relat\xF3rio b\xE1sico da Serasa (o "Relato" que a Sal Vita j\xE1 usa)'] },
+    quandoUsar: "Depois de medir o custo com a sonda."
+  },
+  {
+    chave: "protesto_nacional",
+    endpoint: "protesto-nacional",
+    nome: "Protesto Nacional",
+    custoReais: null,
+    mostra: { confirmado: [], aConfirmar: ["Protestos em cart\xF3rios de todo o pa\xEDs"] },
+    quandoUsar: "Depois de medir o custo com a sonda."
+  },
+  {
+    chave: "cenprot",
+    endpoint: "e-cenprot",
+    nome: "CENPROT",
+    custoReais: null,
+    mostra: { confirmado: [], aConfirmar: ["Consulta \xE0 Central Nacional de Protestos"] },
+    quandoUsar: "Depois de medir o custo com a sonda."
+  },
+  {
+    chave: "cnpj_cadastro",
+    endpoint: "cnpj",
+    nome: "Cadastro do CNPJ",
+    custoReais: null,
+    mostra: { confirmado: [], aConfirmar: ["Dados cadastrais do CNPJ (situa\xE7\xE3o, atividade, endere\xE7o)"] },
+    quandoUsar: "Depois de medir o custo com a sonda."
+  },
+  {
+    chave: "cndt",
+    endpoint: "ic-cndt",
+    nome: "CNDT (certid\xE3o trabalhista)",
+    custoReais: null,
+    mostra: { confirmado: [], aConfirmar: ["Certid\xE3o Negativa de D\xE9bitos Trabalhistas"] },
+    quandoUsar: "Depois de medir o custo com a sonda."
+  }
+];
+var itemDoCatalogo = (chave) => CATALOGO_CREDITO.find((i4) => i4.chave === chave);
+var itemSelecionavel = (i4) => i4.custoReais !== null;
+function chaveDoProdutoGravado(produto, provedor) {
+  if (produto && itemDoCatalogo(produto)) return produto;
+  return provedor === "boavista_apifull" || provedor === "simulado" ? PRODUTO_PADRAO : produto ?? PRODUTO_PADRAO;
+}
+function nomeDoProduto(produto, provedor) {
+  const chave = chaveDoProdutoGravado(produto, provedor);
+  return itemDoCatalogo(chave)?.nome ?? (produto || "Produto desconhecido");
+}
+var centavos = (n5) => Math.round(n5 * 100);
+var arredondar = (n5) => centavos(n5) / 100;
+var brl2 = (n5) => n5.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+function validarProdutos(chaves) {
+  const lista2 = chaves === void 0 ? [PRODUTO_PADRAO] : [...chaves];
+  if (lista2.length < 1) return { ok: false, erro: "Escolha ao menos uma consulta" };
+  if (lista2.length > MAX_PRODUTOS_POR_CONSULTA) return { ok: false, erro: `Escolha no m\xE1ximo ${MAX_PRODUTOS_POR_CONSULTA} consultas por vez` };
+  if (new Set(lista2).size !== lista2.length) return { ok: false, erro: "Consulta repetida na sele\xE7\xE3o" };
+  const itens = [];
+  for (const chave of lista2) {
+    const item = itemDoCatalogo(chave);
+    if (!item) return { ok: false, erro: `Consulta desconhecida: ${chave}` };
+    if (!itemSelecionavel(item)) return { ok: false, erro: `${item.nome}: ${TEXTO_NAO_MEDIDO.toLowerCase()}` };
+    itens.push(item);
+  }
+  return { ok: true, itens };
+}
+function calcularCustos(itens, reaproveita, simulado) {
+  let total = 0;
+  let chamadas = 0;
+  let reaproveitados = 0;
+  for (const i4 of itens) {
+    if (reaproveita[i4.chave]) {
+      reaproveitados += 1;
+      continue;
+    }
+    chamadas += 1;
+    if (!simulado) total += i4.custoReais ?? 0;
+  }
+  return { totalReais: arredondar(total), chamadas, reaproveitados };
+}
+function verificarLimitesCusto(e4) {
+  if (e4.chamadas <= 0) return { ok: true };
+  if (centavos(e4.totalReais) > centavos(e4.tetoPorConsultaReais)) {
+    return { ok: false, codigo: "TETO", mensagem: `O total de ${brl2(e4.totalReais)} passa do teto por consulta (${brl2(e4.tetoPorConsultaReais)}). Tire uma consulta ou pe\xE7a ao administrador para ajustar o teto.` };
+  }
+  if (e4.saldo != null && centavos(e4.saldo) < centavos(e4.totalReais)) {
+    return { ok: false, codigo: "SALDO", mensagem: `Saldo insuficiente na conta API Full: ${brl2(e4.saldo)} para um total de ${brl2(e4.totalReais)}.` };
+  }
+  if (e4.usadasNoMes + e4.chamadas > e4.limiteMensal) {
+    return { ok: false, codigo: "LIMITE_MENSAL", mensagem: `Limite mensal de consultas pagas: j\xE1 foram ${e4.usadasNoMes} de ${e4.limiteMensal} e esta sele\xE7\xE3o usa mais ${e4.chamadas}.` };
+  }
+  return { ok: true };
+}
+function tetoPorConsultaValido(n5) {
+  return Number.isFinite(n5) && n5 > 0 && n5 <= 1e3 && Math.abs(n5 * 100 - Math.round(n5 * 100)) < 1e-6;
+}
+
 // shared/credito.ts
 var LIMITES_CREDITO = { scoreReprova: 400, scoreRestricao: 600, pendenciaReprovaReais: 5e3 };
 var CACHE_DIAS_CREDITO = 30;
@@ -335358,6 +335528,12 @@ function relatorioValido(consultadoEm, agora = /* @__PURE__ */ new Date()) {
   const t5 = new Date(consultadoEm).getTime();
   return Number.isFinite(t5) && agora.getTime() - t5 < CACHE_DIAS_CREDITO * 864e5;
 }
+var GRAVIDADE = { APROVADO: 0, COM_RESTRICAO: 1, REPROVADO_A_PRAZO: 2 };
+function piorVeredito(vereditos) {
+  let pior = null;
+  for (const v4 of vereditos) if (pior === null || GRAVIDADE[v4] > GRAVIDADE[pior]) pior = v4;
+  return pior;
+}
 
 // server/lib/credito/politica.ts
 var TRAVA_CONSULTA_MS = 2 * 6e4;
@@ -335386,10 +335562,93 @@ function decidirBloqueioCredito(e4, agora = /* @__PURE__ */ new Date()) {
   return { bloquear: true, motivo: "Cr\xE9dito reprovado a prazo \u2014 pe\xE7a libera\xE7\xE3o ao admin" };
 }
 
+// server/lib/credito/produtos.ts
+var comoVeredito = (s4) => s4 === "APROVADO" || s4 === "COM_RESTRICAO" ? s4 : "REPROVADO_A_PRAZO";
+function escolherEfetivo(linhas, agora = /* @__PURE__ */ new Date()) {
+  if (linhas.length === 0) return null;
+  const validas = linhas.filter((l4) => relatorioValido(l4.consultadoEm, agora));
+  if (validas.length === 0) return { principal: linhas[0], veredito: comoVeredito(linhas[0].veredito), valido: false };
+  const pior = piorVeredito(validas.map((l4) => comoVeredito(l4.veredito)));
+  const principal = validas.find((l4) => comoVeredito(l4.veredito) === pior) ?? validas[0];
+  return { principal, veredito: pior, valido: true };
+}
+function maisRecentePorProduto(linhas) {
+  const out = /* @__PURE__ */ new Map();
+  for (const l4 of linhas) {
+    const chave = chaveDoProdutoGravado(l4.produto, l4.provedor);
+    if (!out.has(chave)) out.set(chave, l4);
+  }
+  return out;
+}
+function chipsDosProdutos(linhas, agora = /* @__PURE__ */ new Date()) {
+  const mapa = maisRecentePorProduto(linhas);
+  const ordem = CATALOGO_CREDITO.map((i4) => i4.chave);
+  const chaves = [...mapa.keys()].sort((a5, b3) => {
+    const ia = ordem.indexOf(a5);
+    const ib = ordem.indexOf(b3);
+    return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+  });
+  return chaves.map((chave) => {
+    const l4 = mapa.get(chave);
+    return {
+      produto: chave,
+      nome: nomeDoProduto(chave, l4.provedor),
+      consultadoEm: l4.consultadoEm,
+      valido: relatorioValido(l4.consultadoEm, agora),
+      veredito: comoVeredito(l4.veredito),
+      custoReais: l4.custoReais
+    };
+  });
+}
+function resumoParaBloqueio(linhas, agora = /* @__PURE__ */ new Date()) {
+  const e4 = escolherEfetivo(linhas, agora);
+  if (!e4) return null;
+  if (!e4.valido) return { veredito: e4.veredito, consultadoEm: e4.principal.consultadoEm };
+  const maisNovaValida = linhas.find((l4) => relatorioValido(l4.consultadoEm, agora));
+  return { veredito: e4.veredito, consultadoEm: maisNovaValida.consultadoEm };
+}
+function planoDeCache(itens, linhas, opts2) {
+  const ultimo = maisRecentePorProduto(linhas);
+  const reaproveita = {};
+  for (const i4 of itens) {
+    const l4 = ultimo.get(i4.chave) ?? null;
+    reaproveita[i4.chave] = decidirCache(l4 ? { consultadoEm: l4.consultadoEm, provedor: l4.provedor } : null, opts2) === "REAPROVEITAR";
+  }
+  return { reaproveita, ultimo };
+}
+function resumirResultados(resultados) {
+  const falhas = resultados.filter((r5) => !r5.ok).length;
+  const custoCobradoReais = arredondar(resultados.reduce((s4, r5) => s4 + (r5.cobrado ? r5.custoReais : 0), 0));
+  const algumCobrado = resultados.some((r5) => r5.cobrado);
+  return {
+    custoCobradoReais,
+    falhas,
+    parcial: falhas > 0 && falhas < resultados.length || falhas > 0 && algumCobrado,
+    falhouSemCobranca: falhas === resultados.length && !algumCobrado
+  };
+}
+
 // server/lib/credito/repo.ts
 async function lerConfigCredito() {
   const [row] = await db.select().from(creditSettings).where(eq(creditSettings.id, 1));
-  return { bloqueioAtivo: row?.bloqueioAtivo ?? false, limiteMensal: row?.limiteMensal ?? LIMITE_MENSAL_PADRAO };
+  return {
+    bloqueioAtivo: row?.bloqueioAtivo ?? false,
+    limiteMensal: row?.limiteMensal ?? LIMITE_MENSAL_PADRAO,
+    tetoPorConsultaReais: row?.tetoPorConsultaReais ?? TETO_POR_CONSULTA_PADRAO_REAIS
+  };
+}
+async function gastoNoMesReais() {
+  const r5 = await db.execute(sql`
+    SELECT COALESCE(sum(custo_reais), 0)::float8 AS total FROM credit_queries
+    WHERE status = 'OK'
+      AND iniciado_em >= (date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo')`);
+  return Math.round(Number(r5.rows[0]?.total ?? 0) * 100) / 100;
+}
+var { payloadBruto: _bruto, ...COLUNAS_SEM_BRUTO } = getTableColumns(creditReports);
+async function relatoriosDoDocumento(documento, opts2 = {}) {
+  const conds = [eq(creditReports.documento, documento)];
+  if (opts2.semSimulado) conds.push(sql`${creditReports.provedor} <> 'simulado'`);
+  return db.select(COLUNAS_SEM_BRUTO).from(creditReports).where(and(...conds)).orderBy(desc(creditReports.consultadoEm), desc(creditReports.id)).limit(opts2.limite ?? 30);
 }
 async function usadasNoMes() {
   const r5 = await db.execute(sql`
@@ -335418,10 +335677,8 @@ async function desvincularRelatorioDoPedido(reportId, pedidoId) {
   return r5.rows.length;
 }
 async function relatorioParaBloqueio(documento) {
-  const conds = [eq(creditReports.documento, documento)];
-  if (process.env.NODE_ENV === "production") conds.push(sql`${creditReports.provedor} <> 'simulado'`);
-  const [row] = await db.select({ id: creditReports.id, veredito: creditReports.veredito, consultadoEm: creditReports.consultadoEm }).from(creditReports).where(and(...conds)).orderBy(desc(creditReports.consultadoEm), desc(creditReports.id)).limit(1);
-  return row ?? null;
+  const linhas = await relatoriosDoDocumento(documento, { semSimulado: process.env.NODE_ENV === "production" });
+  return resumoParaBloqueio(linhas);
 }
 async function decidirBloqueioDoPedido(pedido) {
   try {
@@ -335445,8 +335702,9 @@ async function vincularUltimoRelatorioNoEnvio(pedidoId, cnpj, userId) {
   try {
     const documento = cnpj.replace(/\D/g, "");
     if (!documento) return;
-    const ultimo = await ultimoRelatorioDoDocumento(documento);
-    if (ultimo) await vincularRelatorioAoPedido(ultimo.id, pedidoId, userId, "ENVIO_SMBI");
+    const linhas = await relatoriosDoDocumento(documento);
+    const vigentes = [...maisRecentePorProduto(linhas).values()].filter((l4) => relatorioValido(l4.consultadoEm));
+    for (const l4 of vigentes.length ? vigentes : linhas.slice(0, 1)) await vincularRelatorioAoPedido(l4.id, pedidoId, userId, "ENVIO_SMBI");
   } catch (e4) {
     console.error("[credito] v\xEDnculo no envio falhou (envio mantido):", e4 instanceof Error ? e4.message : "erro");
   }
@@ -337560,12 +337818,12 @@ async function contagemPorUfEmCache(release, now) {
 async function contarEmpresasPorTelefone(digitos) {
   const out = /* @__PURE__ */ new Map();
   if (digitos.length === 0) return out;
-  const lista = sql`ARRAY[${sql.join(digitos.map((d3) => sql`${d3}`), sql`, `)}]::text[]`;
+  const lista2 = sql`ARRAY[${sql.join(digitos.map((d3) => sql`${d3}`), sql`, `)}]::text[]`;
   const res = await db.execute(sql`
     SELECT tel, count(*)::int AS n FROM (
-      SELECT telefone1 AS tel FROM radar_establishments WHERE telefone1 = ANY(${lista})
+      SELECT telefone1 AS tel FROM radar_establishments WHERE telefone1 = ANY(${lista2})
       UNION ALL
-      SELECT telefone2 AS tel FROM radar_establishments WHERE telefone2 = ANY(${lista}) AND telefone2 IS DISTINCT FROM telefone1
+      SELECT telefone2 AS tel FROM radar_establishments WHERE telefone2 = ANY(${lista2}) AND telefone2 IS DISTINCT FROM telefone1
     ) x GROUP BY tel
   `);
   for (const r5 of res.rows) out.set(r5.tel, Number(r5.n));
@@ -337888,13 +338146,13 @@ var prospectingRadarRouter = router({
     }
     const pendentes = Object.entries(items).filter(([, e4]) => e4.status === "pendente").map(([c4]) => c4);
     if (pendentes.length > 0) {
-      const lista = sql`ARRAY[${sql.join(pendentes.map((c4) => sql`${c4}`), sql`, `)}]::text[]`;
+      const lista2 = sql`ARRAY[${sql.join(pendentes.map((c4) => sql`${c4}`), sql`, `)}]::text[]`;
       const [posRes, ritmoRes] = await Promise.all([
         db.execute(sql`
             SELECT cnpj, pos::int AS pos FROM (
               SELECT cnpj, row_number() OVER (ORDER BY priority DESC, requested_at ASC) - 1 AS pos
               FROM radar_enrichment WHERE status = 'pendente'
-            ) q WHERE cnpj = ANY(${lista})
+            ) q WHERE cnpj = ANY(${lista2})
           `),
         db.execute(sql`SELECT count(*)::int AS n FROM radar_enrichment WHERE finished_at > now() - interval '1 hour'`)
       ]);
@@ -338256,15 +338514,17 @@ function documentosVisiveis(documentos, quem) {
   return quem.staff ? [...documentos] : documentos.filter((d3) => quem.daCarteira.has(d3));
 }
 function montarSemaforos(linhas, agora = /* @__PURE__ */ new Date()) {
-  const out = {};
+  const porDocumento = /* @__PURE__ */ new Map();
   for (const l4 of linhas) {
-    if (out[l4.documento]) continue;
-    out[l4.documento] = {
-      veredito: l4.veredito,
-      semaforo: SEMAFORO[l4.veredito],
-      valido: relatorioValido(l4.consultadoEm, agora),
-      simulado: l4.provedor === "simulado"
-    };
+    const lista2 = porDocumento.get(l4.documento);
+    if (lista2) lista2.push(l4);
+    else porDocumento.set(l4.documento, [l4]);
+  }
+  const out = {};
+  for (const [documento, lista2] of porDocumento) {
+    const e4 = escolherEfetivo(lista2, agora);
+    if (!e4) continue;
+    out[documento] = { veredito: e4.veredito, semaforo: SEMAFORO[e4.veredito], valido: e4.valido, simulado: e4.principal.provedor === "simulado" };
   }
   return out;
 }
@@ -338359,28 +338619,11 @@ var ErroProvedorCredito = class extends Error {
   }
 };
 
-// server/lib/credito/provedores/boavistaApifull.ts
-var APIFULL_BASE_PADRAO = "https://api.apifull.com.br";
-var CUSTO_BOAVISTA_REAIS = 2.75;
-var TIMEOUT_CONSULTA_MS = 2e4;
-var TIMEOUT_SALDO_MS = 1e4;
-var STATUS_SUCESSO = ["sucesso", "success", "ok"];
+// server/lib/credito/provedores/mapeadores.ts
 var CHAVES_SCORE = ["score", "pontuacao"];
-function config() {
-  const token = process.env.APIFULL_API_TOKEN || process.env.CREDITO_API_TOKEN || "";
-  const base = (process.env.CREDITO_API_URL || APIFULL_BASE_PADRAO).replace(/\/+$/, "");
-  const endpointBruto = process.env.CREDITO_API_ENDPOINT || "scpc-boavista";
-  const endpoint = /^[a-z0-9-]+$/i.test(endpointBruto) ? endpointBruto : "scpc-boavista";
-  return { token, base, endpoint };
-}
-var normaliza = (s4) => s4.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
 var ehObjeto = (v4) => typeof v4 === "object" && v4 !== null && !Array.isArray(v4);
-var curto = (v4, max2 = 200) => typeof v4 === "string" ? v4.slice(0, max2) : v4 == null ? "" : String(v4).slice(0, max2);
-function statusIndicaSucesso(status) {
-  return typeof status === "string" && STATUS_SUCESSO.includes(normaliza(status));
-}
 var grupoNaoConsultado = () => ({ consultado: false, quantidade: 0, valorTotal: null, itens: [] });
-function mapearRespostaBoaVista(json4) {
+function mapeadorDefensivo(json4) {
   const dados = ehObjeto(json4) && ehObjeto(json4.dados) ? json4.dados : null;
   let valor2 = null;
   if (dados) {
@@ -338424,6 +338667,222 @@ function mapearRespostaBoaVista(json4) {
     }
   };
 }
+var obj = (v4) => ehObjeto(v4) ? v4 : null;
+var lista = (v4) => Array.isArray(v4) ? v4.filter(ehObjeto) : [];
+var txt = (v4) => typeof v4 === "string" || typeof v4 === "number" ? String(v4).trim() || null : null;
+function numeroPtBr(v4) {
+  if (typeof v4 === "number") return Number.isFinite(v4) ? v4 : null;
+  if (typeof v4 !== "string") return null;
+  let t5 = v4.replace(/R\$|%|\s/g, "");
+  if (t5 === "" || !/^-?[\d.,]+$/.test(t5)) return null;
+  if (t5.includes(",")) t5 = t5.replace(/\./g, "").replace(",", ".");
+  const n5 = Number(t5);
+  return Number.isFinite(n5) ? n5 : null;
+}
+function dataPtBr(v4) {
+  const t5 = txt(v4);
+  if (!t5) return null;
+  const m4 = t5.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m4) return `${m4[3]}-${m4[2]}-${m4[1]}`;
+  return /^\d{4}-\d{2}-\d{2}/.test(t5) ? t5.slice(0, 10) : null;
+}
+var MESES = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
+function periodoMes(v4) {
+  const m4 = (txt(v4) ?? "").toUpperCase().match(/^([A-Z]{3})\/(\d{4})$/);
+  const i4 = m4 ? MESES.indexOf(m4[1]) : -1;
+  return m4 && i4 >= 0 ? `${m4[2]}-${String(i4 + 1).padStart(2, "0")}-01` : null;
+}
+var somaValores = (itens) => {
+  const v4 = itens.map((i4) => i4.valor).filter((x2) => x2 !== null);
+  return v4.length ? Math.round(v4.reduce((a5, b3) => a5 + b3, 0) * 100) / 100 : null;
+};
+var itemPendencia = (o4) => ({
+  data: dataPtBr(o4.DATA_VENCIMENTO) ?? dataPtBr(o4.DATA_INCLUSAO),
+  descricao: txt(o4.CONTRATO) ? `Contrato ${txt(o4.CONTRATO)}` : txt(o4.MODALIDADE) ?? "Pend\xEAncia financeira",
+  valor: numeroPtBr(o4.VALOR),
+  local: txt(o4.ORIGEM),
+  credor: txt(o4.CREDOR)
+});
+var itemGenerico = (rotulo) => (o4) => ({
+  data: dataPtBr(o4.DATA) ?? dataPtBr(o4.DATA_PROTESTO) ?? dataPtBr(o4.DATA_VENCIMENTO) ?? dataPtBr(o4.DATA_INCLUSAO),
+  descricao: rotulo,
+  valor: numeroPtBr(o4.VALOR),
+  local: txt(o4.CARTORIO) ?? txt(o4.CIDADE) ?? txt(o4.ORIGEM),
+  credor: txt(o4.CREDOR)
+});
+function grupoDe(bloco, item) {
+  const b3 = obj(bloco);
+  if (!b3) return grupoNaoConsultado();
+  const itens = lista(b3.OCORRENCIAS).map(item);
+  const qtd2 = numeroPtBr(b3.QUANTIDADE_OCORRENCIA) ?? numeroPtBr(b3.QUANTIDADE_OCORRENCIAS);
+  if (qtd2 === null && itens.length === 0) return grupoNaoConsultado();
+  const quantidade = qtd2 ?? itens.length;
+  return { consultado: true, quantidade, valorTotal: numeroPtBr(b3.VALOR_TOTAL) ?? somaValores(itens) ?? (quantidade === 0 ? 0 : null), itens };
+}
+function juntarGrupos(a5, b3) {
+  if (!a5.consultado && !b3.consultado) return grupoNaoConsultado();
+  const itens = [...a5.itens, ...b3.itens];
+  const vt = a5.valorTotal === null && b3.valorTotal === null ? null : (a5.valorTotal ?? 0) + (b3.valorTotal ?? 0);
+  return { consultado: true, quantidade: a5.quantidade + b3.quantidade, valorTotal: vt, itens };
+}
+function cadastroDe(emp) {
+  const base = mapeadorDefensivo(null).cadastro;
+  if (!emp) return base;
+  const e4 = obj(emp.ENDERECO);
+  return {
+    ...base,
+    razaoSocial: txt(emp.RAZAO_SOCIAL),
+    nomeFantasia: txt(emp.NOME_FANTASIA),
+    situacao: txt(emp.SITUACAO),
+    situacaoEm: dataPtBr(emp.DATA_SITUACAO),
+    fundacao: dataPtBr(emp.DATA_FUNDACAO),
+    naturezaJuridica: txt(emp.NATUREZA_JURIDICA),
+    capitalSocial: numeroPtBr(emp.CAPITAL_SOCIAL),
+    cnaePrincipal: txt(emp.CNAE_PRIMARIO),
+    atividade: txt(emp.RAMO_ATIVIDADE_PRIMARIO),
+    inscricaoEstadual: txt(emp.INSCRICAO_ESTADUAL),
+    endereco: e4 ? [txt(e4.ENDERECO), txt(e4.BAIRRO), txt(e4.CEP)].filter(Boolean).join(", ") || null : null,
+    municipio: e4 ? txt(e4.CIDADE) : null,
+    uf: e4 ? txt(e4.UF) : null
+  };
+}
+function scoreDe(scores, exigirProbabilidade) {
+  const entradas = lista(obj(scores)?.OCORRENCIAS);
+  const valida = (o4) => {
+    const n5 = numeroPtBr(o4.SCORE);
+    return n5 !== null && n5 >= 0 && n5 <= 1e3;
+  };
+  const e4 = entradas.find((o4) => valida(o4) && numeroPtBr(o4.PROBABILIDADE_INADIMPLENCIA) !== null) ?? (exigirProbabilidade ? void 0 : entradas.find(valida));
+  if (!e4) return { valor: null, probabilidadeInadimplencia: null, faixa: null, textoInterpretacao: null };
+  return {
+    valor: numeroPtBr(e4.SCORE),
+    probabilidadeInadimplencia: numeroPtBr(e4.PROBABILIDADE_INADIMPLENCIA),
+    faixa: txt(e4.CLASSIF_ABC) ?? txt(e4.CLASSIF_NRO),
+    textoInterpretacao: txt(e4.TEXTO)
+  };
+}
+var credDe = (json4) => obj(obj(obj(json4)?.dados)?.CREDCADASTRAL);
+function mapeadorBoaVista(json4) {
+  const c4 = credDe(json4);
+  if (!c4) return mapeadorDefensivo(json4);
+  const hist = obj(c4.HIST_CONSULTAS);
+  const consultasRecentes = lista(hist?.DETALHES).map((d3) => ({ data: dataPtBr(d3.DATA) ?? "", consultante: txt(d3.RAZAO_SOCIAL) ?? "N\xE3o informado", quantidade: 1 })).filter((d3) => d3.data !== "");
+  const eventos = obj(c4.EVENTOS_PESSOA_JURIDICA);
+  const compra = lista(eventos?.OCORRENCIAS).find((o4) => (txt(o4.INDICADOR) ?? "").toUpperCase() === "ULTIMA COMPRA");
+  const pontual = obj(c4.PAGAMENTO_PONTUAL);
+  return {
+    score: scoreDe(obj(c4.SCORES), false),
+    cadastro: cadastroDe(obj(c4.INFORMACOES_DA_EMPRESA)),
+    socios: [],
+    consultasRecentes,
+    comportamento: eventos || pontual ? { ultimaCompraEm: compra ? periodoMes(compra.PERIODO) : null, relacionamentoMaisAntigoEm: null, fontesConsultadas: null, pagamentoPontualPct: numeroPtBr(pontual?.PONTUACAO) } : void 0,
+    complementos: hist ? { consultas12Meses: numeroPtBr(hist.QUANTIDADE_OCORRENCIAS) } : void 0,
+    anotacoes: {
+      protestos: grupoDe(c4.PROTESTOS, itemGenerico("Protesto")),
+      pendenciasFinanceiras: grupoDe(c4.PEND_FINANCEIRAS, itemPendencia),
+      chequesSemFundo: juntarGrupos(grupoDe(c4.CH_SEM_FUNDOS_BACEN, itemGenerico("Cheque sem fundo (BACEN)")), grupoDe(c4.CH_SEM_FUNDOS_VAREJO, itemGenerico("Cheque sem fundo (varejo)"))),
+      acoesJudiciais: grupoNaoConsultado(),
+      // o Boa Vista não cobre ações
+      falenciaRecuperacao: grupoNaoConsultado()
+    }
+  };
+}
+function mapeadorSerasaPremium(json4) {
+  const c4 = credDe(json4);
+  if (!c4) return mapeadorDefensivo(json4);
+  const dados = obj(obj(json4)?.dados);
+  const veiculosBloco = obj(c4.VEICULOS_POR_DOCUMENTO) ?? obj(dados?.VEICULAR);
+  const veiculos = lista(veiculosBloco?.OCORRENCIAS).map((v4) => ({ marcaModelo: txt(v4.MARCA_MODELO) ?? "N\xE3o informado", placa: txt(v4.PLACA) }));
+  const passagens = lista(obj(c4.PASSAGENS_COMERCIAIS)?.OCORRENCIAS).map((o4) => ({ data: dataPtBr(o4.DATA_CONSULTA) ?? "", consultante: txt(o4.CLIENTE_CONSULTA) ?? "N\xE3o informado", quantidade: 1 })).filter((o4) => o4.data !== "");
+  const protestos = obj(c4.PROTESTOS) ? c4.PROTESTOS : c4.PROTESTO_SINTETICO;
+  return {
+    score: scoreDe(obj(c4.SCORES), true),
+    cadastro: cadastroDe(obj(c4.INFORMACOES_DA_EMPRESA)),
+    socios: lista(obj(c4.QUADRO_SOCIETARIO)?.OCORRENCIAS).map((s4) => ({
+      documento: txt(s4.CPF_CNPJ),
+      nome: txt(s4.NOME) ?? "N\xE3o informado",
+      entrada: dataPtBr(s4.DATA_ENTRADA_SOCIEDADE),
+      participacao: numeroPtBr(s4.PERCENTUAL_PARTICIPACAO),
+      cargo: txt(s4.CARGO)
+    })),
+    consultasRecentes: passagens,
+    complementos: { faturamentoPresumidoFaixa: txt(obj(c4.FATURAMENTO_PRESUMIDO)?.FAIXA), veiculos },
+    anotacoes: {
+      protestos: grupoDe(protestos, itemGenerico("Protesto")),
+      pendenciasFinanceiras: grupoDe(c4.RESTRICOES_FINANCEIRAS, itemPendencia),
+      chequesSemFundo: grupoDe(c4.CH_SEM_FUNDOS_BACEN, itemGenerico("Cheque sem fundo (BACEN)")),
+      acoesJudiciais: grupoDe(c4.ACOES_CIVEIS, itemGenerico("A\xE7\xE3o c\xEDvel")),
+      falenciaRecuperacao: grupoNaoConsultado()
+    }
+  };
+}
+function acharChave(o4, termos, prof = 0) {
+  if (!ehObjeto(o4) || prof > 6) return void 0;
+  for (const [k3, v4] of Object.entries(o4)) {
+    const nome = k3.toLowerCase().split(":").pop() ?? "";
+    if (termos.some((t5) => nome.includes(t5)) && !ehObjeto(v4) && !Array.isArray(v4)) return v4;
+  }
+  for (const v4 of Object.values(o4)) {
+    const r5 = acharChave(v4, termos, prof + 1);
+    if (r5 !== void 0) return r5;
+  }
+  return void 0;
+}
+function mapeadorDefineRisco(json4) {
+  const raiz = obj(obj(obj(json4)?.dados)?.define_risco_positivo);
+  if (!raiz) return mapeadorDefensivo(json4);
+  const sc = obj(obj(raiz["scor:score"])?.["scor:score_pj"]) ?? obj(raiz["scor:score"]);
+  const valor2 = numeroPtBr(sc?.["scor:score"]);
+  const ok = valor2 !== null && valor2 >= 0 && valor2 <= 1e3;
+  return {
+    ...mapeadorDefensivo(null),
+    score: {
+      valor: ok ? valor2 : null,
+      probabilidadeInadimplencia: ok ? numeroPtBr(acharChave(raiz, ["probabilidade"])) : null,
+      faixa: ok ? txt(acharChave(raiz, ["classificacao", "classe"])) : null,
+      textoInterpretacao: txt(acharChave(raiz, ["decisao", "recomendacao"]))
+    },
+    complementos: {
+      faturamentoPresumidoFaixa: txt(acharChave(obj(raiz["fat:faturamento_presumido"]), ["faixa", "descricao"])),
+      consultas12Meses: numeroPtBr(acharChave(obj(raiz["con:consultas"]), ["total", "quantidade", "qtd"]))
+    }
+  };
+}
+var MAPEADORES = {
+  boavista: mapeadorBoaVista,
+  serasa_premium: mapeadorSerasaPremium,
+  define_risco: mapeadorDefineRisco,
+  serasa_basica: mapeadorDefensivo,
+  protesto_nacional: mapeadorDefensivo,
+  cenprot: mapeadorDefensivo,
+  cnpj_cadastro: mapeadorDefensivo,
+  cndt: mapeadorDefensivo
+};
+function mapeadorDoProduto(chave) {
+  return MAPEADORES[chave] ?? MAPEADORES[PRODUTO_PADRAO];
+}
+
+// server/lib/credito/provedores/boavistaApifull.ts
+var APIFULL_BASE_PADRAO = "https://api.apifull.com.br";
+var CUSTO_BOAVISTA_REAIS = itemDoCatalogo(PRODUTO_PADRAO)?.custoReais ?? 2.75;
+var TIMEOUT_CONSULTA_MS = 2e4;
+var TIMEOUT_SALDO_MS = 1e4;
+var STATUS_SUCESSO = ["sucesso", "success", "ok"];
+function config(produto) {
+  const token = process.env.APIFULL_API_TOKEN || process.env.CREDITO_API_TOKEN || "";
+  const base = (process.env.CREDITO_API_URL || APIFULL_BASE_PADRAO).replace(/\/+$/, "");
+  const padrao = produto?.endpoint ?? "scpc-boavista";
+  const override = produto === void 0 || produto.chave === PRODUTO_PADRAO ? process.env.CREDITO_API_ENDPOINT : void 0;
+  const endpointBruto = override || padrao;
+  const endpoint = /^[a-z0-9-]+$/i.test(endpointBruto) ? endpointBruto : padrao;
+  return { token, base, endpoint };
+}
+var normaliza = (s4) => s4.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+var ehObjeto2 = (v4) => typeof v4 === "object" && v4 !== null && !Array.isArray(v4);
+var curto = (v4, max2 = 200) => typeof v4 === "string" ? v4.slice(0, max2) : v4 == null ? "" : String(v4).slice(0, max2);
+function statusIndicaSucesso(status) {
+  return typeof status === "string" && STATUS_SUCESSO.includes(normaliza(status));
+}
 async function chamar(url3, init, timeoutMs) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -338455,8 +338914,8 @@ var provedorBoaVistaApifull = {
   nome: "boavista_apifull",
   produto: "Boa Vista SCPC (API Full)",
   custoReais: CUSTO_BOAVISTA_REAIS,
-  async consultar(documento, tipo) {
-    const { token, base, endpoint } = config();
+  async consultar(documento, tipo, produto = itemDoCatalogo(PRODUTO_PADRAO)) {
+    const { token, base, endpoint } = config(produto);
     if (!token) throw new ErroProvedorCredito("Provedor de cr\xE9dito n\xE3o configurado.", "APIFULL_API_TOKEN ausente");
     let resposta;
     try {
@@ -338470,8 +338929,8 @@ var provedorBoaVistaApifull = {
       throw erroDeRede(e4);
     }
     const corpo2 = resposta.corpo;
-    const status = ehObjeto(corpo2) ? corpo2.status : void 0;
-    const mensagem = ehObjeto(corpo2) ? curto(corpo2.message) : "";
+    const status = ehObjeto2(corpo2) ? corpo2.status : void 0;
+    const mensagem = ehObjeto2(corpo2) ? curto(corpo2.message) : "";
     if (resposta.http < 200 || resposta.http >= 300) {
       throw new ErroProvedorCredito(
         resposta.http === 401 || resposta.http === 403 ? "Credencial do provedor de cr\xE9dito recusada." : "O provedor de cr\xE9dito recusou a consulta.",
@@ -338484,12 +338943,12 @@ var provedorBoaVistaApifull = {
         `HTTP ${resposta.http} status=${curto(status, 60)} message=${mensagem}`
       );
     }
-    const conteudo = mapearRespostaBoaVista(corpo2);
+    const conteudo = mapeadorDoProduto(produto.chave)(corpo2);
     const relatorio = {
       documento,
       tipo,
       consultadoEm: (/* @__PURE__ */ new Date()).toISOString(),
-      fonte: { provedor: this.nome, produto: this.produto, custoReais: this.custoReais },
+      fonte: { provedor: this.nome, produto: produto.nome, custoReais: produto.custoReais },
       ...conteudo
     };
     return { relatorio, bruto: corpo2 };
@@ -338498,15 +338957,16 @@ var provedorBoaVistaApifull = {
 var CHAVES_SALDO = ["saldo", "balance", "credito", "creditos", "credits"];
 function extrairSaldo(json4) {
   const bruto = {};
-  if (ehObjeto(json4)) {
+  if (ehObjeto2(json4)) {
     for (const [k3, v4] of Object.entries(json4)) {
       if (["string", "number", "boolean"].includes(typeof v4) || v4 === null) bruto[k3] = typeof v4 === "string" ? v4.slice(0, 120) : v4;
     }
   }
-  const fontes = ehObjeto(json4) ? [json4, ...ehObjeto(json4.dados) ? [json4.dados] : []] : [];
+  const fontes = ehObjeto2(json4) ? [json4, ...ehObjeto2(json4.dados) ? [json4.dados] : []] : [];
   for (const fonte of fontes) {
     for (const k3 of CHAVES_SALDO) {
-      const v4 = fonte[k3];
+      const chave = Object.keys(fonte).find((x2) => x2.toLowerCase() === k3);
+      const v4 = chave === void 0 ? void 0 : fonte[chave];
       const n5 = typeof v4 === "number" ? v4 : typeof v4 === "string" && v4.trim() !== "" ? Number(v4.replace(",", ".")) : NaN;
       if (Number.isFinite(n5)) return { saldo: n5, bruto };
     }
@@ -338554,7 +339014,7 @@ function limparTexto(s4) {
   if (s4 === null || s4 === void 0) return "";
   return String(s4).normalize("NFC").replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/–/g, "-").replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, " ").replace(/[^\u0009\u000A -ÿ—•€]/g, "?");
 }
-var brl2 = (n5) => n5 === null || n5 === void 0 || !Number.isFinite(n5) ? "\u2014" : "R$ " + n5.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+var brl3 = (n5) => n5 === null || n5 === void 0 || !Number.isFinite(n5) ? "\u2014" : "R$ " + n5.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 var pct = (n5) => n5 === null || n5 === void 0 || !Number.isFinite(n5) ? "\u2014" : n5.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + "%";
 function partesData(d3) {
   const p4 = new Intl.DateTimeFormat("pt-BR", {
@@ -338602,7 +339062,7 @@ function mascararDocumento(doc) {
   if (d3.length === 14) return formatarDocumento(d3, "CNPJ");
   return "***";
 }
-var txt = (s4) => {
+var txt2 = (s4) => {
   const v4 = limparTexto(s4).trim();
   return v4 ? v4 : "\u2014";
 };
@@ -338706,7 +339166,7 @@ function secaoResumo(p4, r5, meta) {
   const { doc } = p4;
   const sem2 = SEMAFORO[meta.veredito];
   const cor = COR_SEMAFORO[sem2];
-  doc.font("Helvetica-Bold").fontSize(15).fillColor(TEXTO).text(txt(r5.cadastro.razaoSocial ?? r5.cadastro.nomeFantasia), MX, p4.y, { width: LARG });
+  doc.font("Helvetica-Bold").fontSize(15).fillColor(TEXTO).text(txt2(r5.cadastro.razaoSocial ?? r5.cadastro.nomeFantasia), MX, p4.y, { width: LARG });
   p4.y = doc.y + 2;
   doc.font("Helvetica").fontSize(10).fillColor(CINZA).text(`${r5.tipo}: ${formatarDocumento(r5.documento, r5.tipo)}   |   Consulta em ${dataHoraBR(r5.consultadoEm)}`, MX, p4.y, { width: LARG });
   p4.y = doc.y + 10;
@@ -338745,7 +339205,7 @@ function secaoResumo(p4, r5, meta) {
   doc.font("Helvetica").fontSize(8).fillColor(CINZA).text("SCORE (0 A 1000)", MX + 10, sy2 + 9, { width: 130, lineBreak: false });
   doc.font("Helvetica-Bold").fontSize(v4 === null ? 14 : 38).fillColor(AZUL).text(v4 === null ? "N\xE3o informado" : String(v4), MX + 10, sy2 + (v4 === null ? 30 : 22), { width: 130, lineBreak: false });
   if (r5.score.faixa) {
-    doc.font("Helvetica").fontSize(8.5).fillColor(TEXTO).text(`Faixa: ${txt(r5.score.faixa)}`, MX + 10, sy2 + 66, { width: 130, lineBreak: false });
+    doc.font("Helvetica").fontSize(8.5).fillColor(TEXTO).text(`Faixa: ${txt2(r5.score.faixa)}`, MX + 10, sy2 + 66, { width: 130, lineBreak: false });
   }
   const rx = MX + 170;
   const rw = LARG - 170;
@@ -338801,7 +339261,7 @@ function secaoAnotacoes(p4, r5, agora) {
       return [
         { texto: nome, negrito: true },
         { texto: g3.consultado ? String(g3.quantidade) : "\u2014" },
-        { texto: g3.consultado && g3.quantidade > 0 ? brl2(g3.valorTotal) : "\u2014" },
+        { texto: g3.consultado && g3.quantidade > 0 ? brl3(g3.valorTotal) : "\u2014" },
         situacao(g3)
       ];
     })
@@ -338811,7 +339271,7 @@ function secaoAnotacoes(p4, r5, agora) {
     p4.titulo("Detalhamento das anota\xE7\xF5es");
     for (const [k3, nome] of comItens) {
       const g3 = r5.anotacoes[k3];
-      p4.subtitulo(`${nome} - ${g3.quantidade} ocorr\xEAncia(s)${g3.valorTotal !== null ? ", total " + brl2(g3.valorTotal) : ""}`);
+      p4.subtitulo(`${nome} - ${g3.quantidade} ocorr\xEAncia(s)${g3.valorTotal !== null ? ", total " + brl3(g3.valorTotal) : ""}`);
       const comCredor = g3.itens.some((it) => !!it.credor);
       const obs = g3.itens.map((it) => atenuacaoDoItem(it, agora));
       const comObs = obs.some((o4) => !!o4);
@@ -338823,11 +339283,11 @@ function secaoAnotacoes(p4, r5, agora) {
       p4.tabela(
         colunas,
         g3.itens.map((it, i4) => {
-          const linha = [{ texto: dataBR(it.data) }, { texto: txt(it.descricao) }];
-          if (comCredor) linha.push({ texto: txt(it.credor) });
-          linha.push({ texto: txt(it.local) });
+          const linha = [{ texto: dataBR(it.data) }, { texto: txt2(it.descricao) }];
+          if (comCredor) linha.push({ texto: txt2(it.credor) });
+          linha.push({ texto: txt2(it.local) });
           if (comObs) linha.push({ texto: obs[i4] ? `Estudar com calma: ${obs[i4]}` : "\u2014", cor: obs[i4] ? COR_SEMAFORO.AMARELO : CINZA });
-          linha.push({ texto: brl2(it.valor) });
+          linha.push({ texto: brl3(it.valor) });
           return linha;
         })
       );
@@ -338865,26 +339325,40 @@ function secaoMovimentacao(p4, r5) {
     ].map(([k3, v4]) => [{ texto: k3, negrito: true, cor: CINZA }, { texto: v4 }])
   );
 }
+function secaoComplementos(p4, r5) {
+  const c4 = r5.complementos;
+  if (!c4) return;
+  p4.titulo("Complementos da fonte");
+  const veic = c4.veiculos?.length ? c4.veiculos.map((v4) => [v4.marcaModelo, v4.placa].filter(Boolean).join(" ")).join("; ") : "\u2014";
+  p4.tabela(
+    [{ titulo: "Campo", largura: 200 }, { titulo: "Informa\xE7\xE3o", largura: 315 }],
+    [
+      ["Faturamento presumido (faixa)", txt2(c4.faturamentoPresumidoFaixa)],
+      ["Consultas nos \xFAltimos 12 meses", c4.consultas12Meses == null ? "\u2014" : String(c4.consultas12Meses)],
+      ["Ve\xEDculos da empresa", veic]
+    ].map(([k3, v4]) => [{ texto: k3, negrito: true, cor: CINZA }, { texto: v4 }])
+  );
+}
 function secaoCadastro(p4, r5) {
   const c4 = r5.cadastro;
   p4.titulo("Dados cadastrais");
   const pares = [
-    ["Raz\xE3o social", txt(c4.razaoSocial)],
-    ["Nome fantasia", txt(c4.nomeFantasia)],
+    ["Raz\xE3o social", txt2(c4.razaoSocial)],
+    ["Nome fantasia", txt2(c4.nomeFantasia)],
     [r5.tipo, formatarDocumento(r5.documento, r5.tipo)],
-    ["Situa\xE7\xE3o cadastral", txt(c4.situacao)],
+    ["Situa\xE7\xE3o cadastral", txt2(c4.situacao)],
     ["Situa\xE7\xE3o em", dataBR(c4.situacaoEm)],
     ["Funda\xE7\xE3o", dataBR(c4.fundacao)],
-    ["Natureza jur\xEDdica", txt(c4.naturezaJuridica)],
-    ["Capital social", c4.capitalSocial === null ? "\u2014" : brl2(c4.capitalSocial)],
-    ["CNAE principal", txt(c4.cnaePrincipal)],
-    ["Atividade", txt(c4.atividade)],
-    ["Op\xE7\xE3o tribut\xE1ria", txt(c4.opcaoTributaria)],
-    ["Inscri\xE7\xE3o estadual", txt(c4.inscricaoEstadual)],
-    ["Endere\xE7o", txt(c4.endereco)],
-    ["Munic\xEDpio", txt(c4.municipio)],
-    ["UF", txt(c4.uf)],
-    ["Telefone", txt(c4.telefone)],
+    ["Natureza jur\xEDdica", txt2(c4.naturezaJuridica)],
+    ["Capital social", c4.capitalSocial === null ? "\u2014" : brl3(c4.capitalSocial)],
+    ["CNAE principal", txt2(c4.cnaePrincipal)],
+    ["Atividade", txt2(c4.atividade)],
+    ["Op\xE7\xE3o tribut\xE1ria", txt2(c4.opcaoTributaria)],
+    ["Inscri\xE7\xE3o estadual", txt2(c4.inscricaoEstadual)],
+    ["Endere\xE7o", txt2(c4.endereco)],
+    ["Munic\xEDpio", txt2(c4.municipio)],
+    ["UF", txt2(c4.uf)],
+    ["Telefone", txt2(c4.telefone)],
     ["N\xFAmero de filiais", c4.numeroFiliais === null ? "\u2014" : String(c4.numeroFiliais)]
   ];
   p4.tabela(
@@ -338907,9 +339381,9 @@ function secaoSocios(p4, r5) {
       { titulo: "Particip.", largura: 55, alinhar: "right" }
     ],
     r5.socios.map((s4) => [
-      { texto: txt(s4.nome) },
+      { texto: txt2(s4.nome) },
       { texto: mascararDocumento(s4.documento) },
-      { texto: txt(s4.cargo) },
+      { texto: txt2(s4.cargo) },
       { texto: dataBR(s4.entrada) },
       { texto: pct(s4.participacao) }
     ])
@@ -338927,7 +339401,7 @@ function secaoConsultas(p4, r5) {
       { titulo: "Consultante", largura: 345 },
       { titulo: "Quantidade", largura: 90, alinhar: "right" }
     ],
-    r5.consultasRecentes.map((c4) => [{ texto: dataBR(c4.data) }, { texto: txt(c4.consultante) }, { texto: String(c4.quantidade) }])
+    r5.consultasRecentes.map((c4) => [{ texto: dataBR(c4.data) }, { texto: txt2(c4.consultante) }, { texto: String(c4.quantidade) }])
   );
 }
 function secaoFinal(p4, consultadoPor) {
@@ -338990,6 +339464,7 @@ async function gerarPdfCredito(relatorio, meta) {
     secaoAnotacoes(p4, relatorio, agora);
     secaoCadastro(p4, relatorio);
     secaoMovimentacao(p4, relatorio);
+    secaoComplementos(p4, relatorio);
     secaoSocios(p4, relatorio);
     secaoConsultas(p4, relatorio);
     secaoFinal(p4, meta.consultadoPor);
@@ -339008,7 +339483,6 @@ async function gerarPdfCredito(relatorio, meta) {
 }
 
 // server/routers/credito.ts
-var comoVeredito = (s4) => s4 === "APROVADO" || s4 === "COM_RESTRICAO" ? s4 : "REPROVADO_A_PRAZO";
 var ehStaff = (role) => role === "admin" || role === "manager";
 var qtd = (g3) => g3.consultado ? g3.quantidade : null;
 function resumoAnotacoes(r5) {
@@ -339035,18 +339509,17 @@ async function atendentePodeVerDocumento(user, documento) {
     SELECT 1 FROM fat_orders WHERE seller_id = ${sid}::integer AND regexp_replace(cnpj, '\\D', '', 'g') = ${documento} LIMIT 1`);
   return r5.rows.length > 0;
 }
-function cartaoDoRelatorio(row) {
-  const veredito = comoVeredito(row.veredito);
+function cartaoDoRelatorio(row, efetivo) {
   return {
     id: row.id,
     consultadoEm: row.consultadoEm,
-    veredito,
+    veredito: efetivo.veredito,
     motivos: row.motivos,
-    semaforo: SEMAFORO[veredito],
+    semaforo: SEMAFORO[efetivo.veredito],
     score: row.relatorio.score.valor,
     probabilidadeInadimplencia: row.relatorio.score.probabilidadeInadimplencia,
     resumo: resumoAnotacoes(row.relatorio),
-    valido: relatorioValido(row.consultadoEm),
+    valido: efetivo.valido,
     razaoSocial: row.relatorio.cadastro.razaoSocial ?? row.razaoSocial,
     provedor: row.provedor,
     simulado: row.provedor === "simulado",
@@ -339062,10 +339535,10 @@ async function documentosDaCarteira(user, documentos) {
   for (const t5 of deTarefas) if (t5.cnpj) out.add(t5.cnpj);
   const sid = await sellerIdDoUsuario(user.id);
   if (sid !== null) {
-    const lista = sql.join(documentos.map((d3) => sql`${d3}::text`), sql`, `);
+    const lista2 = sql.join(documentos.map((d3) => sql`${d3}::text`), sql`, `);
     const r5 = await db.execute(sql`
       SELECT DISTINCT regexp_replace(cnpj, '\\D', '', 'g') AS doc FROM fat_orders
-      WHERE seller_id = ${sid}::integer AND regexp_replace(cnpj, '\\D', '', 'g') IN (${lista})`);
+      WHERE seller_id = ${sid}::integer AND regexp_replace(cnpj, '\\D', '', 'g') IN (${lista2})`);
     for (const row of r5.rows) out.add(row.doc);
   }
   return out;
@@ -339079,34 +339552,60 @@ function erroDocumento(documento, tipo) {
 var creditoRouter = router({
   status: protectedProcedure.query(async () => {
     const provedor = getProvedorCredito();
-    const [cfg, usadas] = await Promise.all([lerConfigCredito(), usadasNoMes()]);
+    const [cfg, usadas, gasto] = await Promise.all([lerConfigCredito(), usadasNoMes(), gastoNoMesReais()]);
     return {
       provedor: provedor.nome,
       simulado: provedor.nome === "simulado",
       limiteMensal: cfg.limiteMensal,
       usadasNoMes: usadas,
-      bloqueioAtivo: cfg.bloqueioAtivo
+      bloqueioAtivo: cfg.bloqueioAtivo,
+      tetoPorConsultaReais: cfg.tetoPorConsultaReais,
+      gastoNoMesReais: gasto
     };
   }),
+  /** Veredito EFETIVO do documento (pior entre os relatórios válidos de qualquer produto) + um chip por produto. */
   ultimo: protectedProcedure.input(external_exports.object({ documento: documentoInput })).query(async ({ ctx, input }) => {
     const documento = input.documento.replace(/\D/g, "");
     if (!ehStaff(ctx.user.role) && !await atendentePodeVerDocumento(ctx.user, documento)) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Documento fora da sua carteira" });
     }
-    const row = await ultimoRelatorioDoDocumento(documento);
-    return row ? cartaoDoRelatorio(row) : null;
+    const linhas = await relatoriosDoDocumento(documento);
+    const efetivo = escolherEfetivo(linhas);
+    if (!efetivo) return null;
+    return { ...cartaoDoRelatorio(efetivo.principal, efetivo), produtos: chipsDosProdutos(linhas) };
   }),
-  /** Semáforo do relatório mais recente de cada CNPJ da lista (uma consulta só). Sem relatório ou fora da carteira: não aparece. */
+  /** Catálogo de consultas com preço. Com `documento`, traz a última consulta de cada produto (mesmas regras de acesso de `ultimo`). */
+  catalogo: protectedProcedure.input(external_exports.object({ documento: documentoInput.optional() })).query(async ({ ctx, input }) => {
+    const cfg = await lerConfigCredito();
+    let ultimoPorProduto = null;
+    const documento = input.documento?.replace(/\D/g, "");
+    if (documento) {
+      if (!ehStaff(ctx.user.role) && !await atendentePodeVerDocumento(ctx.user, documento)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Documento fora da sua carteira" });
+      }
+      ultimoPorProduto = {};
+      for (const [chave, l4] of maisRecentePorProduto(await relatoriosDoDocumento(documento))) {
+        ultimoPorProduto[chave] = { id: l4.id, consultadoEm: l4.consultadoEm, valido: relatorioValido(l4.consultadoEm), provedor: l4.provedor };
+      }
+    }
+    return { itens: CATALOGO_CREDITO, precosMedidosEm: PRECOS_MEDIDOS_EM, tetoPorConsultaReais: cfg.tetoPorConsultaReais, ultimoPorProduto };
+  }),
+  /** Semáforo EFETIVO (pior veredito vigente entre os produtos) de cada CNPJ da lista (uma consulta só). Sem relatório ou fora da carteira: não aparece. */
   semaforos: protectedProcedure.input(external_exports.object({ documentos: external_exports.array(external_exports.string().max(30)).max(SEMAFOROS_MAX_DOCUMENTOS) })).query(async ({ ctx, input }) => {
     const staff = ehStaff(ctx.user.role);
     const pedidos = normalizarDocumentosSemaforo(input.documentos);
     const carteira = staff || pedidos.length === 0 ? /* @__PURE__ */ new Set() : await documentosDaCarteira(ctx.user, pedidos);
     const docs = documentosVisiveis(pedidos, { staff, daCarteira: carteira });
     if (docs.length === 0) return {};
-    const lista = sql.join(docs.map((d3) => sql`${d3}::text`), sql`, `);
+    const lista2 = sql.join(docs.map((d3) => sql`${d3}::text`), sql`, `);
     const r5 = await db.execute(sql`
-        SELECT DISTINCT ON (documento) documento, veredito, consultado_em, provedor
-        FROM credit_reports WHERE documento IN (${lista})
+        WITH ult AS (
+          SELECT DISTINCT ON (documento) id FROM credit_reports WHERE documento IN (${lista2})
+          ORDER BY documento, consultado_em DESC, id DESC
+        )
+        SELECT documento, veredito, consultado_em, provedor FROM credit_reports
+        WHERE documento IN (${lista2})
+          AND (consultado_em > now() - interval '30 days' OR id IN (SELECT id FROM ult))
         ORDER BY documento, consultado_em DESC, id DESC`);
     return montarSemaforos(r5.rows.map((l4) => ({
       documento: l4.documento,
@@ -339140,108 +339639,164 @@ var creditoRouter = router({
     motivo: external_exports.string().trim().min(5).max(300),
     forcarNova: external_exports.boolean().optional(),
     taskId: external_exports.number().int().optional(),
-    pedidoId: external_exports.string().min(1).max(100).optional()
+    pedidoId: external_exports.string().min(1).max(100).optional(),
+    /** Chaves do catálogo (1 a 3, sem repetição, só com custo medido). Ausente = ['boavista'] (compatibilidade). */
+    produtos: external_exports.array(external_exports.string().max(60)).max(10).optional()
   })).mutation(async ({ ctx, input }) => {
     const { documento, tipo } = erroDocumento(input.documento, input.tipo);
+    const escolha = validarProdutos(input.produtos);
+    if (!escolha.ok) throw new TRPCError({ code: "BAD_REQUEST", message: escolha.erro });
+    const itens = escolha.itens;
     const provedor = getProvedorCredito();
+    const simulado = provedor.nome === "simulado";
     let pedido = null;
     if (input.pedidoId) {
       const [p4] = await db.select({ razaoSocial: fatOrders.razaoSocial, cidade: fatOrders.cidade, uf: fatOrders.uf }).from(fatOrders).where(eq(fatOrders.id, input.pedidoId));
       if (!p4) throw new TRPCError({ code: "NOT_FOUND", message: "Pedido n\xE3o encontrado" });
       pedido = p4;
     }
-    const entrega = (row, reaproveitado) => {
-      const veredito2 = comoVeredito(row.veredito);
-      return {
-        reaproveitado,
-        id: row.id,
-        consultadoEm: row.consultadoEm,
-        veredito: veredito2,
-        motivos: row.motivos,
-        semaforo: SEMAFORO[veredito2],
-        relatorio: row.relatorio
-      };
-    };
-    const ultimo = await ultimoRelatorioDoDocumento(documento);
-    if (ultimo && decidirCache(ultimo, { forcarNova: input.forcarNova, provedorAtual: provedor.nome }) === "REAPROVEITAR") {
+    const linhas = await relatoriosDoDocumento(documento, { limite: 60 });
+    const { reaproveita, ultimo } = planoDeCache(itens, linhas, { forcarNova: input.forcarNova, provedorAtual: provedor.nome });
+    const aConsultar = itens.filter((i4) => !reaproveita[i4.chave]);
+    const custos = calcularCustos(itens, reaproveita, simulado);
+    const queryIds = /* @__PURE__ */ new Map();
+    if (aConsultar.length > 0) {
+      const cfg = await lerConfigCredito();
+      let saldo = null;
+      if (!simulado && custos.totalReais > 0) {
+        try {
+          saldo = (await consultarSaldoApiFull()).saldo;
+        } catch (e4) {
+          console.error("[credito] saldo indispon\xEDvel, seguindo sem a checagem de saldo:", e4 instanceof ErroProvedorCredito ? e4.detalhe : "erro");
+        }
+      }
+      const bloqueio = verificarLimitesCusto({
+        totalReais: custos.totalReais,
+        chamadas: custos.chamadas,
+        saldo,
+        tetoPorConsultaReais: cfg.tetoPorConsultaReais,
+        usadasNoMes: await usadasNoMes(),
+        limiteMensal: cfg.limiteMensal
+      });
+      if (!bloqueio.ok) {
+        const code = bloqueio.codigo === "TETO" ? "BAD_REQUEST" : bloqueio.codigo === "SALDO" ? "PRECONDITION_FAILED" : "FORBIDDEN";
+        throw new TRPCError({ code, message: bloqueio.mensagem });
+      }
+      const valores = sql.join(aConsultar.map((i4) => sql`(${i4.chave}::text)`), sql`, `);
+      const travou = await db.execute(sql`
+          INSERT INTO credit_queries (documento, user_id, status, produto)
+          SELECT ${documento}::text, ${ctx.user.id}::integer, 'EM_ANDAMENTO', v.produto
+          FROM (VALUES ${valores}) AS v(produto)
+          WHERE NOT EXISTS (
+            SELECT 1 FROM credit_queries
+            WHERE documento = ${documento}::text AND status = 'EM_ANDAMENTO' AND iniciado_em > now() - interval '2 minutes'
+          )
+          AND (
+            SELECT count(*) FROM credit_queries
+            WHERE iniciado_em >= (date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo')
+              AND (status = 'OK' OR (status = 'EM_ANDAMENTO' AND iniciado_em > now() - interval '2 minutes'))
+          ) + ${aConsultar.length}::integer <= COALESCE((SELECT limite_mensal FROM credit_settings WHERE id = 1), ${LIMITE_MENSAL_PADRAO}::integer)
+          RETURNING id, produto`);
+      for (const row of travou.rows) queryIds.set(row.produto, row.id);
+      if (queryIds.size !== aConsultar.length) {
+        const emAndamento = await db.execute(sql`
+            SELECT 1 FROM credit_queries
+            WHERE documento = ${documento}::text AND status = 'EM_ANDAMENTO' AND iniciado_em > now() - interval '2 minutes' LIMIT 1`);
+        if (emAndamento.rows.length > 0) throw new TRPCError({ code: "CONFLICT", message: "Consulta j\xE1 em andamento" });
+        throw new TRPCError({ code: "FORBIDDEN", message: "Limite mensal de consultas pagas atingido. Ajuste o limite ou aguarde o pr\xF3ximo m\xEAs." });
+      }
+    }
+    const resultadoDe = /* @__PURE__ */ new Map();
+    for (const item of itens.filter((i4) => reaproveita[i4.chave])) {
+      const linha = ultimo.get(item.chave);
+      if (!linha) continue;
       await db.insert(creditQueries).values({
         documento,
         userId: ctx.user.id,
         status: "REAPROVEITADO",
-        reportId: ultimo.id,
+        reportId: linha.id,
         custoReais: 0,
+        produto: item.chave,
         finalizadoEm: /* @__PURE__ */ new Date()
       });
-      if (input.pedidoId) await vincularRelatorioAoPedido(ultimo.id, input.pedidoId, ctx.user.id, "CONSULTA_NO_PEDIDO");
-      return entrega(ultimo, true);
+      if (input.pedidoId) await vincularRelatorioAoPedido(linha.id, input.pedidoId, ctx.user.id, "CONSULTA_NO_PEDIDO");
+      resultadoDe.set(item.chave, {
+        produto: item.chave,
+        ok: true,
+        reaproveitado: true,
+        cobrado: false,
+        custoReais: 0,
+        id: linha.id,
+        consultadoEm: linha.consultadoEm,
+        veredito: comoVeredito(linha.veredito)
+      });
     }
-    const travou = await db.execute(sql`
-        INSERT INTO credit_queries (documento, user_id, status)
-        SELECT ${documento}::text, ${ctx.user.id}::integer, 'EM_ANDAMENTO'
-        WHERE NOT EXISTS (
-          SELECT 1 FROM credit_queries
-          WHERE documento = ${documento}::text AND status = 'EM_ANDAMENTO' AND iniciado_em > now() - interval '2 minutes'
-        )
-        AND (
-          SELECT count(*) FROM credit_queries
-          WHERE iniciado_em >= (date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo')
-            AND (status = 'OK' OR (status = 'EM_ANDAMENTO' AND iniciado_em > now() - interval '2 minutes'))
-        ) < COALESCE((SELECT limite_mensal FROM credit_settings WHERE id = 1), ${LIMITE_MENSAL_PADRAO}::integer)
-        RETURNING id`);
-    const queryId = travou.rows[0]?.id;
-    if (queryId === void 0) {
-      const emAndamento = await db.execute(sql`
-          SELECT 1 FROM credit_queries
-          WHERE documento = ${documento}::text AND status = 'EM_ANDAMENTO' AND iniciado_em > now() - interval '2 minutes' LIMIT 1`);
-      if (emAndamento.rows.length > 0) throw new TRPCError({ code: "CONFLICT", message: "Consulta j\xE1 em andamento" });
-      throw new TRPCError({ code: "FORBIDDEN", message: "Limite mensal de consultas pagas atingido. Ajuste o limite ou aguarde o pr\xF3ximo m\xEAs." });
-    }
-    let resultado;
-    try {
-      resultado = await provedor.consultar(documento, tipo);
-    } catch (e4) {
-      const seguro = e4 instanceof ErroProvedorCredito ? e4.mensagemSegura : "Falha ao consultar o provedor de cr\xE9dito.";
-      const detalhe = (e4 instanceof ErroProvedorCredito ? e4.detalhe : e4 instanceof Error ? e4.name : "erro").slice(0, 500);
-      console.error(`[credito] consulta falhou provedor=${provedor.nome} query=${queryId}: ${detalhe}`);
-      await db.update(creditQueries).set({ status: "ERRO", erro: detalhe, finalizadoEm: /* @__PURE__ */ new Date() }).where(eq(creditQueries.id, queryId));
-      throw new TRPCError({ code: "BAD_GATEWAY", message: seguro });
-    }
-    const { relatorio, bruto } = resultado;
-    const { veredito, motivos } = calcularVeredito(relatorio);
-    const custo = relatorio.fonte.custoReais ?? provedor.custoReais;
     let tarefaTitulo = null;
-    if (input.taskId && !relatorio.cadastro.razaoSocial) {
+    if (aConsultar.length > 0 && input.taskId) {
       const [t5] = await db.select({ title: tasks.title }).from(tasks).where(eq(tasks.id, input.taskId));
       tarefaTitulo = t5?.title ?? null;
     }
-    try {
-      const [row] = await db.insert(creditReports).values({
-        documento,
-        tipo,
-        taskId: input.taskId ?? null,
-        razaoSocial: relatorio.cadastro.razaoSocial ?? pedido?.razaoSocial ?? tarefaTitulo ?? null,
-        municipio: relatorio.cadastro.municipio ?? pedido?.cidade ?? null,
-        uf: relatorio.cadastro.uf ?? pedido?.uf ?? null,
-        provedor: provedor.nome,
-        produto: provedor.produto,
-        consultadoEm: new Date(relatorio.consultadoEm),
-        relatorio,
-        payloadBruto: bruto ?? null,
-        veredito,
-        motivos,
-        score: relatorio.score.valor,
-        custoReais: custo,
-        consultadoPorUserId: ctx.user.id,
-        motivo: input.motivo
-      }).returning();
-      await db.update(creditQueries).set({ status: "OK", reportId: row.id, custoReais: custo, finalizadoEm: /* @__PURE__ */ new Date() }).where(eq(creditQueries.id, queryId));
-      if (input.pedidoId) await vincularRelatorioAoPedido(row.id, input.pedidoId, ctx.user.id, "CONSULTA_NO_PEDIDO");
-      return entrega(row, false);
-    } catch (e4) {
-      console.error(`[credito] relat\xF3rio pago N\xC3O gravado query=${queryId}:`, e4 instanceof Error ? e4.name : "erro");
-      await db.update(creditQueries).set({ status: "ERRO", custoReais: custo, erro: "Consulta feita, mas o relat\xF3rio n\xE3o foi gravado", finalizadoEm: /* @__PURE__ */ new Date() }).where(eq(creditQueries.id, queryId)).catch(() => void 0);
-      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "A consulta foi feita, mas n\xE3o foi poss\xEDvel gravar o relat\xF3rio. Avise o suporte antes de repetir." });
+    const feitos = await Promise.all(aConsultar.map(async (item) => {
+      const queryId = queryIds.get(item.chave);
+      const base = { produto: item.chave, reaproveitado: false };
+      let resultado;
+      try {
+        resultado = await provedor.consultar(documento, tipo, item);
+      } catch (e4) {
+        const seguro = e4 instanceof ErroProvedorCredito ? e4.mensagemSegura : "Falha ao consultar o provedor de cr\xE9dito.";
+        const detalhe = (e4 instanceof ErroProvedorCredito ? e4.detalhe : e4 instanceof Error ? e4.name : "erro").slice(0, 500);
+        console.error(`[credito] consulta falhou provedor=${provedor.nome} produto=${item.chave} query=${queryId}: ${detalhe}`);
+        await db.update(creditQueries).set({ status: "ERRO", erro: detalhe, finalizadoEm: /* @__PURE__ */ new Date() }).where(eq(creditQueries.id, queryId));
+        return { ...base, ok: false, cobrado: false, custoReais: 0, erro: seguro };
+      }
+      const { relatorio, bruto } = resultado;
+      const { veredito, motivos } = calcularVeredito(relatorio);
+      const custo = simulado ? 0 : item.custoReais ?? 0;
+      try {
+        const [row] = await db.insert(creditReports).values({
+          documento,
+          tipo,
+          taskId: input.taskId ?? null,
+          razaoSocial: relatorio.cadastro.razaoSocial ?? pedido?.razaoSocial ?? tarefaTitulo ?? null,
+          municipio: relatorio.cadastro.municipio ?? pedido?.cidade ?? null,
+          uf: relatorio.cadastro.uf ?? pedido?.uf ?? null,
+          provedor: provedor.nome,
+          produto: item.chave,
+          consultadoEm: new Date(relatorio.consultadoEm),
+          relatorio,
+          payloadBruto: bruto ?? null,
+          veredito,
+          motivos,
+          score: relatorio.score.valor,
+          custoReais: custo,
+          consultadoPorUserId: ctx.user.id,
+          motivo: input.motivo
+        }).returning();
+        await db.update(creditQueries).set({ status: "OK", reportId: row.id, custoReais: custo, finalizadoEm: /* @__PURE__ */ new Date() }).where(eq(creditQueries.id, queryId));
+        if (input.pedidoId) await vincularRelatorioAoPedido(row.id, input.pedidoId, ctx.user.id, "CONSULTA_NO_PEDIDO");
+        return { ...base, ok: true, cobrado: true, custoReais: custo, id: row.id, consultadoEm: row.consultadoEm, veredito: comoVeredito(row.veredito) };
+      } catch (e4) {
+        console.error(`[credito] relat\xF3rio pago N\xC3O gravado produto=${item.chave} query=${queryId}:`, e4 instanceof Error ? e4.name : "erro");
+        await db.update(creditQueries).set({ status: "ERRO", custoReais: custo, erro: "Consulta feita, mas o relat\xF3rio n\xE3o foi gravado", finalizadoEm: /* @__PURE__ */ new Date() }).where(eq(creditQueries.id, queryId)).catch(() => void 0);
+        return { ...base, ok: false, cobrado: true, custoReais: custo, erro: "A consulta foi feita e cobrada, mas n\xE3o foi poss\xEDvel gravar o relat\xF3rio. Avise o suporte antes de repetir." };
+      }
+    }));
+    for (const f4 of feitos) resultadoDe.set(f4.produto, f4);
+    const resultados = itens.flatMap((i4) => resultadoDe.get(i4.chave) ?? []);
+    const resumo = resumirResultados(resultados);
+    if (resumo.falhouSemCobranca) {
+      throw new TRPCError({ code: "BAD_GATEWAY", message: resultados.map((r5) => `${nomeDoProduto(r5.produto)}: ${r5.erro ?? "falhou"}`).join(" | ") });
     }
+    const oks = resultados.filter((r5) => r5.ok);
+    return {
+      resultados,
+      custoCobradoReais: resumo.custoCobradoReais,
+      parcial: resumo.parcial,
+      veredito: piorVeredito(oks.flatMap((r5) => r5.veredito ?? [])),
+      // Compatibilidade com o contrato antigo (um relatório só): id do primeiro relatório obtido.
+      id: oks[0]?.id ?? null,
+      reaproveitado: oks.length > 0 && oks.every((r5) => r5.reaproveitado)
+    };
   }),
   historico: staffProcedure.input(external_exports.object({ documento: documentoInput })).query(async ({ input }) => {
     const documento = input.documento.replace(/\D/g, "");
@@ -339281,7 +339836,7 @@ var creditoRouter = router({
     const where = sql.join(conds, sql` AND `);
     const [itens, total] = await Promise.all([
       db.execute(sql`
-          SELECT r.id, r.documento, r.razao_social, r.municipio, r.uf, r.score, r.veredito, r.consultado_em, r.custo_reais,
+          SELECT r.id, r.documento, r.razao_social, r.municipio, r.uf, r.score, r.veredito, r.consultado_em, r.custo_reais, r.produto, r.provedor,
                  u.name AS consultado_por,
                  (SELECT count(*)::int FROM credit_report_links l WHERE l.report_id = r.id) AS pedidos_vinculados
           FROM credit_reports r LEFT JOIN users u ON u.id = r.consultado_por_user_id
@@ -339303,7 +339858,9 @@ var creditoRouter = router({
         consultadoEm: new Date(l4.consultado_em),
         consultadoPor: l4.consultado_por,
         custoReais: l4.custo_reais,
-        pedidosVinculados: l4.pedidos_vinculados
+        pedidosVinculados: l4.pedidos_vinculados,
+        produto: chaveDoProdutoGravado(l4.produto, l4.provedor),
+        produtoNome: nomeDoProduto(l4.produto, l4.provedor)
       }))
     };
   }),
@@ -339318,7 +339875,7 @@ var creditoRouter = router({
         SELECT r.id, r.consultado_em, r.veredito, r.score, l.origem
         FROM credit_report_links l JOIN credit_reports r ON r.id = l.report_id
         WHERE l.pedido_id = ${input.pedidoId}::text ORDER BY r.consultado_em DESC, r.id DESC`);
-    const lista = vinculados.rows.map((l4) => ({
+    const lista2 = vinculados.rows.map((l4) => ({
       id: l4.id,
       consultadoEm: new Date(l4.consultado_em),
       veredito: comoVeredito(l4.veredito),
@@ -339328,8 +339885,8 @@ var creditoRouter = router({
     }));
     const doc = pedido.cnpj.replace(/\D/g, "");
     const ultimo = doc ? await ultimoRelatorioDoDocumento(doc) : null;
-    const semVinculo = ultimo && !lista.some((l4) => l4.id === ultimo.id) ? { id: ultimo.id, consultadoEm: ultimo.consultadoEm, veredito: comoVeredito(ultimo.veredito), score: ultimo.score, origem: null, vinculado: false } : null;
-    return { vinculados: lista, ultimoDoCnpj: semVinculo };
+    const semVinculo = ultimo && !lista2.some((l4) => l4.id === ultimo.id) ? { id: ultimo.id, consultadoEm: ultimo.consultadoEm, veredito: comoVeredito(ultimo.veredito), score: ultimo.score, origem: null, vinculado: false } : null;
+    return { vinculados: lista2, ultimoDoCnpj: semVinculo };
   }),
   vincular: adminProcedure.input(external_exports.object({ reportId: external_exports.number().int(), pedidoId: external_exports.string().min(1).max(100) })).mutation(async ({ ctx, input }) => {
     const [r5] = await db.select({ id: creditReports.id }).from(creditReports).where(eq(creditReports.id, input.reportId));
@@ -339356,6 +339913,26 @@ var creditoRouter = router({
     await db.insert(creditSettings).values({ id: 1, limiteMensal: input.limite, ...auditoria }).onConflictDoUpdate({ target: creditSettings.id, set: { limiteMensal: input.limite, ...auditoria } });
     console.log(`[credito] limite_mensal=${input.limite} por=user#${ctx.user.id}`);
     return { ok: true, limiteMensal: input.limite };
+  }),
+  /** Limites de gasto: contagem mensal de consultas e teto em reais por consulta. Informe ao menos um. */
+  setLimites: adminProcedure.input(external_exports.object({ limiteMensal: external_exports.number().int().optional(), tetoPorConsultaReais: external_exports.number().optional() })).mutation(async ({ ctx, input }) => {
+    if (input.limiteMensal === void 0 && input.tetoPorConsultaReais === void 0) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o limite mensal e/ou o teto por consulta" });
+    }
+    if (input.limiteMensal !== void 0 && !limiteMensalValido(input.limiteMensal)) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Limite mensal deve ser um inteiro entre 0 e 10000" });
+    }
+    if (input.tetoPorConsultaReais !== void 0 && !tetoPorConsultaValido(input.tetoPorConsultaReais)) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "O teto por consulta deve ser maior que zero e no m\xE1ximo R$ 1.000,00" });
+    }
+    const campos = {
+      ...input.limiteMensal !== void 0 ? { limiteMensal: input.limiteMensal } : {},
+      ...input.tetoPorConsultaReais !== void 0 ? { tetoPorConsultaReais: input.tetoPorConsultaReais } : {}
+    };
+    const auditoria = { atualizadoPorUserId: ctx.user.id, atualizadoPorNome: ctx.user.name, atualizadoEm: /* @__PURE__ */ new Date() };
+    await db.insert(creditSettings).values({ id: 1, ...campos, ...auditoria }).onConflictDoUpdate({ target: creditSettings.id, set: { ...campos, ...auditoria } });
+    console.log(`[credito] limites ${JSON.stringify(campos)} por=user#${ctx.user.id}`);
+    return { ok: true, ...await lerConfigCredito() };
   }),
   liberarPedido: adminProcedure.input(external_exports.object({ pedidoId: external_exports.string().min(1).max(100), motivo: external_exports.string().trim().min(5).max(300) })).mutation(async ({ ctx, input }) => {
     const [row] = await db.update(fatOrders).set({
@@ -339644,6 +340221,7 @@ async function ensureCreditTables() {
       status        TEXT NOT NULL,
       report_id     INTEGER,
       custo_reais   DOUBLE PRECISION,
+      produto       TEXT,
       erro          TEXT,
       iniciado_em   TIMESTAMP NOT NULL DEFAULT now(),
       finalizado_em TIMESTAMP
@@ -339656,11 +340234,16 @@ async function ensureCreditTables() {
       id                     INTEGER PRIMARY KEY DEFAULT 1,
       bloqueio_ativo         BOOLEAN NOT NULL DEFAULT FALSE,
       limite_mensal          INTEGER NOT NULL DEFAULT 50,
+      teto_por_consulta_reais DOUBLE PRECISION NOT NULL DEFAULT 30,
       atualizado_por_user_id INTEGER,
       atualizado_por_nome    TEXT,
       atualizado_em          TIMESTAMP NOT NULL DEFAULT now()
     )
   `;
+}
+async function ensureCreditColumns() {
+  await sql4`ALTER TABLE credit_queries ADD COLUMN IF NOT EXISTS produto TEXT`;
+  await sql4`ALTER TABLE credit_settings ADD COLUMN IF NOT EXISTS teto_por_consulta_reais DOUBLE PRECISION NOT NULL DEFAULT 30`;
 }
 async function ensureRecentSchema() {
   const [cols, reg, robotCols] = await Promise.all([
@@ -339679,7 +340262,10 @@ async function ensureRecentSchema() {
           to_regclass('public.credit_reports') IS NOT NULL
           AND to_regclass('public.credit_queries') IS NOT NULL
           AND to_regclass('public.credit_settings') IS NOT NULL
-          AND to_regclass('public.credit_report_links') IS NOT NULL AS credito_ok`,
+          AND to_regclass('public.credit_report_links') IS NOT NULL AS credito_ok,
+          (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public'
+             AND ((table_name = 'credit_queries' AND column_name = 'produto')
+               OR (table_name = 'credit_settings' AND column_name = 'teto_por_consulta_reais'))) = 2 AS credito_cols_ok`,
     sql4`SELECT column_name FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'smbi_robot_state'`
   ]);
@@ -339722,6 +340308,8 @@ async function ensureRecentSchema() {
   }
   const creditoOk = reg[0]?.credito_ok === true;
   if (!creditoOk) await ensureCreditTables();
+  const creditoColsOk = reg[0]?.credito_cols_ok === true;
+  if (!creditoColsOk) await ensureCreditColumns();
   await ensureDeletionLogSnapshot();
   const smbiOk = reg[0]?.smbi_ok === true;
   if (!smbiOk) {
@@ -339829,7 +340417,7 @@ async function ensureRecentSchema() {
   const radarOk = reg[0]?.radar_ok === true;
   if (!radarOk) await ensureRadarTables();
 }
-var SCHEMA_VERSION = "2026-10-15a";
+var SCHEMA_VERSION = "2026-10-16a";
 async function ensureTablesExist() {
   try {
     await ensureRecentSchema();
@@ -340398,6 +340986,7 @@ async function ensureTablesExist() {
   await sql4`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS credito_liberado_em TEXT`;
   await sql4`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS credito_liberado_motivo TEXT`;
   await ensureCreditTables();
+  await ensureCreditColumns();
   await sql4`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitado_em TEXT`;
   await sql4`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitado_por TEXT`;
   await sql4`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_estado TEXT`;
