@@ -47,7 +47,7 @@ O OpenAPI da API Full não traz preços. Candidatos para CNPJ (todos `POST /api/
 A sonda roda até 6 endpoints num CNPJ real, mede o **custo real pela diferença de saldo** (`get-balance`), guarda a resposta **sanitizada** e imprime o quadro (custo, status, nº de campos). Só executa com `--confirmar`; token só no ambiente. Depois da sonda escolhe-se o endpoint e ajusta-se `mapearRespostaBoaVista` (ou um mapeador por endpoint) com a resposta real.
 
 ## Custos reais medidos na API Full (extrato oficial, 16/10/2026, CNPJ 86.628.401/0001-06)
-- Boa Vista Essencial Positivo (`scpc-boavista`): **R$ 2,75** — 673 campos; score, restrições detalhadas, protestos, cheques.
+- Consulta simples = Boa Vista Essencial Positivo (`scpc-boavista`): **R$ 2,75** — 673 campos; score, restrições detalhadas, protestos, cheques.
 - Serasa Premium (`serasa-premium`): **R$ 6,72** — 950 campos; score, sócios, veículos, protestos, consultas.
 - Define Risco Positivo (`pj-define-risco`): **R$ 15,09** — 484 campos; score, faturamento presumido, recomendação.
 - Total da sonda R$ 24,56 (média R$ 8,19). Saldo após: R$ 25,44.

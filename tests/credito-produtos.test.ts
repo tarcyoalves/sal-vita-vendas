@@ -96,7 +96,7 @@ describe('chips por produto', () => {
       L('boavista', 'REPROVADO_A_PRAZO', '2026-08-01T00:00:00Z'), // mais antigo do mesmo produto: ignorado
     ], AGORA);
     expect(chips.map((c) => c.produto)).toEqual(['boavista', 'serasa_premium']);
-    expect(chips[0]).toMatchObject({ nome: 'Boa Vista Essencial Positivo', valido: true, veredito: 'APROVADO', custoReais: 2.75 });
+    expect(chips[0]).toMatchObject({ nome: 'Consulta simples', valido: true, veredito: 'APROVADO', custoReais: 2.75 });
   });
 });
 

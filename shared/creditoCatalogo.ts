@@ -13,7 +13,7 @@ export const PRODUTO_PADRAO = 'boavista';
 export const MAX_PRODUTOS_POR_CONSULTA = 3;
 export const TETO_POR_CONSULTA_PADRAO_REAIS = 30;
 /** Orientação do dono (16/10/2026), exibida no seletor e no painel. */
-export const TEXTO_RECOMENDACAO = 'Recomendado: Boa Vista (R$ 2,75) cobre quase tudo; use Serasa Premium (R$ 6,72) só para sócios, veículos e faturamento.';
+export const TEXTO_RECOMENDACAO = 'Recomendado: Consulta simples (R$ 2,75) cobre quase tudo; use Serasa Premium (R$ 6,72) só para sócios, veículos e faturamento.';
 export const TEXTO_NAO_MEDIDO = 'Custo ainda não medido — rode a sonda';
 
 export interface ItemCatalogoCredito {
@@ -30,7 +30,7 @@ export interface ItemCatalogoCredito {
 
 export const CATALOGO_CREDITO: readonly ItemCatalogoCredito[] = [
   {
-    chave: 'boavista', endpoint: 'scpc-boavista', nome: 'Boa Vista Essencial Positivo', custoReais: 2.75, recomendado: true,
+    chave: 'boavista', endpoint: 'scpc-boavista', nome: 'Consulta simples', custoReais: 2.75, recomendado: true,
     mostra: {
       confirmado: [
         'Fundação e situação cadastral',

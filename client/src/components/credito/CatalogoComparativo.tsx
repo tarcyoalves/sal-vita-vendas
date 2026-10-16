@@ -1,4 +1,5 @@
-import { Loader2 } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, Loader2 } from 'lucide-react';
 import { Panel, PanelHeader } from '../layout/Page';
 import { QueryError } from '../QueryError';
 import { StatusBadge } from '../StatusBadge';
@@ -14,15 +15,26 @@ const Preco = ({ item }: { item: ItemCatalogoCredito }) =>
 
 /** "O que cada consulta mostra": a referência de preços e conteúdo do dono, em tabela (PC) ou cartões (celular). */
 export function CatalogoComparativo() {
-  const q = trpc.credito.catalogo.useQuery({}, { retry: false, staleTime: 5 * 60_000 });
+  const [aberto, setAberto] = useState(false);
+  const q = trpc.credito.catalogo.useQuery({}, { retry: false, staleTime: 5 * 60_000, enabled: aberto });
   const itens = q.data?.itens ?? CATALOGO_CREDITO;
   return (
     <Panel>
-      <PanelHeader
-        title="O que cada consulta mostra"
-        description={`Preço medido em ${q.data?.precosMedidosEm ?? PRECOS_MEDIDOS_EM} (pode mudar). Em verde, o que já foi visto nas respostas reais; em cinza, a confirmar.`}
-      />
-      <p className="border-b border-slate-200 px-4 py-2 text-xs font-medium text-slate-700">{TEXTO_RECOMENDACAO}</p>
+      <button
+        type="button"
+        aria-expanded={aberto}
+        onClick={() => setAberto((v) => !v)}
+        className="flex min-h-12 w-full items-center justify-between gap-3 px-4 py-3 text-left"
+      >
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold text-slate-900">O que cada consulta mostra</span>
+          <span className="block text-xs text-slate-500">{TEXTO_RECOMENDACAO}</span>
+        </span>
+        <ChevronDown aria-hidden className={`size-4 shrink-0 text-slate-500 transition-transform ${aberto ? 'rotate-180' : ''}`} />
+      </button>
+      {aberto && (
+        <>
+      <p className="border-y border-slate-200 px-4 py-2 text-xs text-slate-500">{`Preço medido em ${q.data?.precosMedidosEm ?? PRECOS_MEDIDOS_EM} (pode mudar). Em verde, o que já foi visto nas respostas reais; em cinza, a confirmar.`}</p>
       {q.error ? (
         <div className="p-4"><QueryError message={q.error.message} onRetry={() => void q.refetch()} retrying={q.isFetching} /></div>
       ) : q.isLoading ? (
@@ -68,6 +80,8 @@ export function CatalogoComparativo() {
               </tbody>
             </table>
           </div>
+        </>
+      )}
         </>
       )}
     </Panel>

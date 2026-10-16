@@ -51,7 +51,7 @@ describe('produto gravado (legado e chave)', () => {
     expect(chaveDoProdutoGravado('Boa Vista SCPC (API Full)', 'boavista_apifull')).toBe('boavista');
     expect(chaveDoProdutoGravado('Simulação (sem consulta real)', 'simulado')).toBe('boavista');
     expect(nomeDoProduto('define_risco')).toBe('Define Risco Positivo');
-    expect(nomeDoProduto('Boa Vista SCPC (API Full)', 'boavista_apifull')).toBe('Boa Vista Essencial Positivo');
+    expect(nomeDoProduto('Boa Vista SCPC (API Full)', 'boavista_apifull')).toBe('Consulta simples');
   });
 });
 

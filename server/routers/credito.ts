@@ -109,6 +109,10 @@ function erroDocumento(documento: string, tipo?: 'CNPJ' | 'CPF') {
   return v;
 }
 
+function semSimuladosSeReal<T extends { provedor: string }>(linhas: T[]): T[] {
+  return getProvedorCredito().nome === 'simulado' ? linhas : linhas.filter((l) => l.provedor !== 'simulado');
+}
+
 export const creditoRouter = router({
   status: protectedProcedure.query(async () => {
     const provedor = getProvedorCredito();
@@ -128,7 +132,8 @@ export const creditoRouter = router({
       if (!ehStaff(ctx.user.role) && !(await atendentePodeVerDocumento(ctx.user, documento))) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Documento fora da sua carteira' });
       }
-      const linhas = await relatoriosDoDocumento(documento);
+      // Com o provedor REAL ligado, relatórios de teste (simulados) não aparecem: eram dados fictícios.
+      const linhas = semSimuladosSeReal(await relatoriosDoDocumento(documento));
       const efetivo = escolherEfetivo(linhas);
       if (!efetivo) return null;
       return { ...cartaoDoRelatorio(efetivo.principal, efetivo), produtos: chipsDosProdutos(linhas) };
@@ -146,7 +151,7 @@ export const creditoRouter = router({
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Documento fora da sua carteira' });
         }
         ultimoPorProduto = {};
-        for (const [chave, l] of maisRecentePorProduto(await relatoriosDoDocumento(documento))) {
+        for (const [chave, l] of maisRecentePorProduto(semSimuladosSeReal(await relatoriosDoDocumento(documento)))) {
           ultimoPorProduto[chave] = { id: l.id, consultadoEm: l.consultadoEm, valido: relatorioValido(l.consultadoEm), provedor: l.provedor };
         }
       }
