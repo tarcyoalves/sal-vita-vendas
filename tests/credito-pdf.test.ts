@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { calcularVeredito, ROTULO_VEREDITO } from '../shared/credito';
 import type { RelatorioCredito } from '../shared/credito';
-import { formatarDocumento, gerarPdfCredito, limparTexto, mascararDocumento } from '../server/lib/credito/pdf';
+import { formatarDocumento, gerarPdfCredito, limparTexto, mascararDocumento, naturezaJuridicaTexto, resumirTexto } from '../server/lib/credito/pdf';
 import { exemploLimpo } from './fixtures/credito/exemplo-limpo';
 import { exemploRestricao } from './fixtures/credito/exemplo-restricao';
 
@@ -36,7 +36,7 @@ describe('gerarPdfCredito', () => {
   beforeAll(() => { process.env.CREDITO_PDF_SEM_COMPRESSAO = '1'; });
   afterAll(() => { delete process.env.CREDITO_PDF_SEM_COMPRESSAO; });
 
-  it('relatório limpo: PDF válido, veredito, score, "Nada consta" e CPF mascarado', async () => {
+  it('relatório limpo: PDF válido, veredito, score, "Sem ocorrências em" e CPF mascarado', async () => {
     const { pdf, texto, veredito } = await gerar(exemploLimpo);
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
     expect(pdf.length).toBeGreaterThan(3_000);
@@ -46,11 +46,11 @@ describe('gerarPdfCredito', () => {
     expect(texto).toContain('620');
     expect(texto).toContain('Comercial Exemplo Ltda');
     expect(texto).toContain('11.222.333/0001-81');
-    expect(texto).toContain('Fonte dos dados: Provedor Fictício/Relatório Empresarial (exemplo)');
-    expect(texto).toContain('Nada consta');
-    expect(texto).not.toMatch(/\bConsta\b/);
-    // acentos preservados (Helvetica/WinAnsi)
-    expect(texto).toContain('Relatório de Análise de Crédito — Sal Vita');
+    expect(texto).toContain('Fonte: Provedor Fictício/Relatório Empresarial (exemplo)');
+    expect(texto).toContain('Sem ocorrências em: Protestos, Pendências financeiras, Cheques sem fundo, Ações judiciais, Falência / Recuperação judicial.');
+    expect(texto).not.toMatch(/\bConsta\b|Nada consta/);
+    // acentos preservados (Helvetica/WinAnsi); o título aparece UMA vez (1ª página), sem cabeçalho por página
+    expect(texto.match(/Relatório de Análise de Crédito — Sal Vita/g)).toHaveLength(1);
     expect(texto).toContain('Situação');
     expect(texto).toContain('***.468.126-**'); // 111.468.126-12
     expect(texto).toContain('***.357.914-**');
@@ -61,25 +61,31 @@ describe('gerarPdfCredito', () => {
     expect(texto).toContain('Confidencial — uso interno da Sal Vita para decisão de crédito');
     expect(texto).toContain('15/10/2026 11:32'); // 14:32Z em America/Sao_Paulo
     expect(texto).toContain('R$ 250.000,00');
+    // sem redundância: razão social e CNPJ UMA vez só (nada no rodapé nem em cabeçalho de página)
+    expect(texto.match(/Comercial Exemplo Ltda/g)).toHaveLength(1);
+    expect(texto.match(/11\.222\.333\/0001-81/g)).toHaveLength(1);
+    // telefone e e-mail não ajudam na decisão de crédito
+    expect(texto).not.toContain('(84) 3000-0000');
+    expect(texto).not.toMatch(/Telefone/);
   });
 
-  it('relatório com restrição: Consta, valores, itens e "Não informado pela fonte"', async () => {
+  it('relatório com restrição: resumo, valores, itens e "Não informado pela fonte"', async () => {
     const { pdf, texto, veredito } = await gerar(exemploRestricao);
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
     expect(veredito).toBe('REPROVADO_A_PRAZO');
     expect(texto).toContain(ROTULO_VEREDITO.REPROVADO_A_PRAZO);
     expect(texto).toContain('320');
-    expect(texto).toContain('Consta');
     expect(texto).toContain('R$ 7.850,40');
-    expect(texto).toContain('Protesto de duplicata mercantil');
+    expect(texto).toContain('Duplicata mercantil'); // o "Protesto de" já está no subtítulo do grupo: não repete
+    expect(texto).not.toContain('Protesto de duplicata mercantil');
     expect(texto).toContain('12/08/2026');
-    expect(texto).toContain('Nada consta'); // cheques / falência consultados com 0
-    expect(texto).toContain('Não informado pela fonte'); // ações judiciais: consultado=false
+    expect(texto).toContain('Sem ocorrências em: Cheques sem fundo, Falência / Recuperação judicial.'); // consultados com 0
+    expect(texto).toContain('Não informado pela fonte: Ações judiciais.'); // consultado=false
     expect(texto).toContain('***.219.876-**');
     expect(texto).toContain('41,75%');
   });
 
-  it('"Nada consta" só quando consultado=true e quantidade 0', async () => {
+  it('"Sem ocorrências" só quando consultado=true e quantidade 0', async () => {
     const r: RelatorioCredito = {
       ...exemploLimpo,
       anotacoes: {
@@ -92,18 +98,20 @@ describe('gerarPdfCredito', () => {
       },
     };
     const { texto } = await gerar(r);
+    expect(texto).not.toContain('Sem ocorrências');
     expect(texto).not.toContain('Nada consta');
-    expect(texto.match(/Não informado pela fonte/g)?.length).toBe(5);
+    expect(texto.match(/Não informado pela fonte/g)).toHaveLength(1);
+    expect(texto).toContain('Não informado pela fonte: Protestos, Pendências financeiras, Cheques sem fundo, Ações judiciais, Falência / Recuperação judicial.');
   });
 
-  it('não usa marca de bureau; o provedor só aparece em "Fonte dos dados"', async () => {
+  it('não usa marca de bureau; o provedor só aparece na linha "Fonte:" do topo', async () => {
     for (const base of [exemploLimpo, exemploRestricao]) {
       const r: RelatorioCredito = { ...base, fonte: { provedor: 'boavista_apifull', produto: 'boavista', custoReais: null } };
       const { texto } = await gerar(r);
-      const fora = texto.split('\n').filter((l) => !l.startsWith('Fonte dos dados:'));
-      expect(fora.join('\n')).not.toMatch(/serasa|boa\s*vista/i);
-      expect(texto).toContain('Fonte dos dados: API Full/Consulta simples');
-      expect(texto).toContain('Relatório de Análise de Crédito — Sal Vita');
+      expect(texto).not.toMatch(/serasa|boa\s*vista/i);
+      expect(texto).toContain('Fonte: API Full/Consulta simples');
+      expect(texto.match(/Fonte:/g)).toHaveLength(1);
+      expect(texto.match(/Relatório de Análise de Crédito — Sal Vita/g)).toHaveLength(1); // só na 1ª página
     }
   });
 
@@ -123,7 +131,7 @@ describe('gerarPdfCredito', () => {
     expect((texto.match(/^Descrição$/gm) ?? []).length).toBeGreaterThan(1); // cabeçalho repetido
   });
 
-  it('campos nulos viram "—" e listas vazias não quebram', async () => {
+  it('campos nulos somem (sem "—") e listas vazias não quebram', async () => {
     const r: RelatorioCredito = {
       ...exemploLimpo,
       tipo: 'CPF',
@@ -132,12 +140,14 @@ describe('gerarPdfCredito', () => {
       cadastro: Object.fromEntries(Object.keys(exemploLimpo.cadastro).map((k) => [k, null])) as unknown as RelatorioCredito['cadastro'],
       socios: [],
       consultasRecentes: [],
+      comportamento: undefined,
     };
     const { texto } = await gerar(r);
     expect(texto).toContain('Não informado');
     expect(texto).toContain('111.468.126-12'); // documento consultado aparece inteiro; só sócios são mascarados
-    expect(texto).toContain('Nenhum sócio ou administrador informado pela fonte.');
-    expect(texto).toContain('—');
+    // sem dado, sem seção: nada de "Nenhum sócio..." nem de linhas só com "—"
+    expect(texto).not.toMatch(/SÓCIOS|DADOS DA EMPRESA|CONSULTAS AO DOCUMENTO|COMPORTAMENTO COMERCIAL/);
+    expect(texto).not.toContain('—\n');
   });
 
   it('compressão ligada por padrão (PDF menor e ainda válido)', async () => {
@@ -151,6 +161,29 @@ describe('gerarPdfCredito', () => {
 });
 
 describe('helpers do PDF', () => {
+  it('traduz o código da natureza jurídica; desconhecido fica como veio', () => {
+    expect(naturezaJuridicaTexto('2062-')).toBe('Sociedade Empresária Limitada');
+    expect(naturezaJuridicaTexto('206-2')).toBe('Sociedade Empresária Limitada');
+    expect(naturezaJuridicaTexto('2135')).toBe('Empresário Individual');
+    expect(naturezaJuridicaTexto('2305-')).toBe('EIRELI');
+    expect(naturezaJuridicaTexto('2240')).toBe('Sociedade Simples Limitada');
+    expect(naturezaJuridicaTexto('2054-')).toBe('Sociedade Anônima Fechada');
+    expect(naturezaJuridicaTexto('2046-')).toBe('Sociedade Anônima Aberta');
+    expect(naturezaJuridicaTexto('9999-')).toBe('999-9');
+    expect(naturezaJuridicaTexto('206-2 - Sociedade Empresária Limitada')).toBe('Sociedade Empresária Limitada');
+    expect(naturezaJuridicaTexto('SOCIEDADE EMPRESARIA LIMITADA')).toBe('SOCIEDADE EMPRESARIA LIMITADA');
+    expect(naturezaJuridicaTexto(null)).toBe('');
+  });
+  it('resumirTexto: uma linha curta, corte em frase ou palavra', () => {
+    expect(resumirTexto('  curto   e simples ')).toBe('curto e simples');
+    const longo = 'Primeira frase completa sobre o risco. ' + 'palavra '.repeat(40);
+    expect(resumirTexto(longo, 130)).toBe('Primeira frase completa sobre o risco.');
+    const sem = 'palavra '.repeat(40);
+    const r = resumirTexto(sem, 50);
+    expect(r.length).toBeLessThanOrEqual(53);
+    expect(r.endsWith('...')).toBe(true);
+    expect(resumirTexto(null)).toBe('');
+  });
   it('formata e mascara documentos', () => {
     expect(formatarDocumento('11222333000181', 'CNPJ')).toBe('11.222.333/0001-81');
     expect(formatarDocumento('11146812612', 'CPF')).toBe('111.468.126-12');

@@ -51,27 +51,28 @@ describe('PDF: pontos de atenção, observação, credor e movimentação', () =
     const texto = await gerar(exemploRestricao);
     expect(texto).toContain('Credor');
     expect(texto).toContain('ANTT - Ag');
-    expect(texto).toContain('Observação');
-    expect(texto).toContain('Estudar com calma: órgão público');
+    expect(texto).toContain('Estudar com calma'); // título da coluna (não repete o prefixo em cada linha)
+    expect(texto).toContain('órgão público');
     expect(texto).toContain('R$ 7.850,40'); // total inalterado (item da ANTT sem valor)
   });
 
-  it('limpo: empresa consolidada e compra recente (POSITIVO) + Movimentação comercial', async () => {
+  it('limpo: empresa consolidada e compra recente (POSITIVO) + Comportamento comercial', async () => {
     const texto = await gerar(exemploLimpo);
     expect(texto).toContain('Empresa consolidada');
     expect(texto).toContain('Comprando normalmente no mercado');
     expect(texto).toContain('POSITIVO');
     expect(texto).not.toContain('ALERTA');
-    expect(texto).toContain('MOVIMENTAÇÃO COMERCIAL');
-    expect(texto).toContain('28/09/2026');
-    expect(texto).toContain('96,5%');
-    expect(texto).not.toContain('Observação'); // sem atenuação, sem coluna
+    expect(texto).toContain('COMPORTAMENTO COMERCIAL');
+    expect(texto).toContain('Última compra: 28/09/2026');
+    expect(texto).toContain('Pagamentos em dia: 96,5%');
+    expect(texto).toContain('Relacionamento mais antigo: 12/05/2003');
+    expect(texto).not.toContain('Estudar com calma'); // sem atenuação, sem coluna
   });
 
-  it('sem comportamento: não há seção de movimentação', async () => {
+  it('sem comportamento: não há a seção', async () => {
     const { comportamento: _c, ...semComportamento } = exemploLimpo;
     const texto = await gerar(semComportamento);
-    expect(texto).not.toContain('MOVIMENTAÇÃO COMERCIAL');
+    expect(texto).not.toContain('COMPORTAMENTO COMERCIAL');
   });
 });
 
