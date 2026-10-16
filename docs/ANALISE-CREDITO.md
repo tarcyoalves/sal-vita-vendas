@@ -40,3 +40,8 @@ Só CRM Lembretes (banco `DATABASE_URL`). A loja Premium não é tocada.
   `GET /api/get-balance`; Bearer; erro pode vir com HTTP 200 (ler `status`). `dados` sem schema: suposições S1 (status de
   sucesso) e S2 (score em `dados.score|pontuacao`) a validar na 1ª resposta real.
 - A spec do Hermes de 15/10 (coordenacao/ativo) está superada por este documento.
+
+## Escolha do endpoint (custo-benefício) — sonda `scripts/credito/sonda-apifull.mjs`
+O OpenAPI da API Full não traz preços. Candidatos para CNPJ (todos `POST /api/<endpoint>` com `{link, document}`; os `pj-*` também aceitam `cnpj`):
+`serasa-premium`, `serasa-premium-v2`, `serasa-basica` (o relatório que a Sal Vita já usa, o "Relato" da Serasa), `scpc-boavista`, `pj-define-risco`, `pj-define-limite`, `pj-define-negocio`, `pj-quod-consulta`, `protesto-nacional`, `e-cenprot`, `cnpj` (cadastro), `ic-cndt`.
+A sonda roda até 6 endpoints num CNPJ real, mede o **custo real pela diferença de saldo** (`get-balance`), guarda a resposta **sanitizada** e imprime o quadro (custo, status, nº de campos). Só executa com `--confirmar`; token só no ambiente. Depois da sonda escolhe-se o endpoint e ajusta-se `mapearRespostaBoaVista` (ou um mapeador por endpoint) com a resposta real.
