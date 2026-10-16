@@ -126,3 +126,37 @@ Pedido do dono: "todas as informações possíveis". O PDF (`credito.pdf`, só a
 - **Tela:** botão "Baixar PDF (completo)" e, para admin, link "PDF original do provedor" via `credito.linkOriginal({id})` (devolve a URL ou null).
 - **Cabeçalho do PDF:** "Fonte dos dados: API Full/<produto do catálogo>" (provedor interno nunca aparece).
 - Teste: `tests/credito-pdf-anexo.test.ts` com `tests/fixtures/credito/apifull-boavista-volumoso.json` (29 protestos, 19 consultas, sintético).
+
+## Relatório consolidado do documento (16/10/2026)
+Motivo: o dono consultou um CNPJ com DUAS consultas marcadas (Consulta simples + Serasa Premium) e "o Serasa não puxou". Cada produto
+já gravava seu relatório (e o Serasa foi cobrado), mas o diálogo abria só o relatório do 1º produto (`id` = o primeiro obtido) e o
+arquivo mostra uma linha por produto. Agora há UM relatório do CNPJ com as fontes combinadas, sem inventar nada.
+
+**`consolidarRelatorios(itens, agora?)`** (`shared/credito.ts`, puro, testado em `tests/credito-consolidado.test.ts`):
+- Entram o mais recente VÁLIDO (<30 dias) de cada produto; simulados saem se houver real; se nada vale, o mais recente de cada produto com `valido:false`.
+- `scores`: um por fonte (`produtoNome, valor, probabilidadeInadimplencia, faixa, texto, calculado`). **Nunca fundidos** (modelos diferentes).
+  Fonte sem score = `calculado:false` ("Serasa Premium: score não calculado"); o `fundido.score` (só para as regras) é o PIOR score calculado.
+- Cadastro por campo: primeiro não nulo em [serasa_premium, boavista, define_risco]; sócios da 1ª fonte que os tiver; faturamento/veículos de quem tiver;
+  consultas: união por (data + consultante), total em 12 meses = o maior; comportamento: merge por campo não nulo.
+- Anotações por grupo: quantidade = a MAIOR entre as fontes que consultaram (nunca a soma; se a união listar mais ocorrências distintas, vale a lista);
+  `valorTotal` = o da fonte de maior quantidade; itens = união deduplicada ENTRE fontes (mesma data, mesmo valor, credor/local compatíveis) com
+  `fonte?: string` (campo aditivo do item; "A + B" quando as duas trouxeram). Quantidades diferentes viram `divergenciaPorGrupo`
+  ("Consulta simples: 0 · Serasa Premium: 10"); ocorrência que só uma fonte cobre e scores a 200+ pontos de distância entram em `divergencias`.
+- Veredito = o PIOR entre o de cada relatório (mesma regra de `ultimo`/`semaforos`) e o do relatório fundido. O motivo genérico "Score não informado
+  pela fonte" vira "<fonte>: score não calculado". Consequência já existente e mantida: um Serasa sem score continua deixando o semáforo no mínimo amarelo.
+- Seleção no servidor: `selecionarParaConsolidado` (`server/lib/credito/produtos.ts`, pura).
+
+**Procedures (staff; atendente não):**
+- `credito.relatorioDocumento({ documento })` -> `{ documento, consolidado, ids, veredito, motivos, semaforo, sinais }` (NOT_FOUND sem relatório).
+- `credito.pdfDocumento({ documento })` -> `{ nomeArquivo: analise-credito-<doc>-<AAAAMMDD>.pdf, base64 }`.
+- `credito.consultar` devolve também `documento` (e continua devolvendo `id`/`resultados`); `credito.listar` devolve `fontes` (produtos distintos do documento nos últimos 30 dias).
+- `relatorio({id})` e `pdf({id})` seguem por relatório individual.
+
+**PDF consolidado** (`gerarPdfCreditoConsolidado`, mesmo desenho do individual): topo uma vez com "Fontes: Consulta simples (16/10 15:02) + Serasa Premium (16/10 15:03)";
+veredito/motivos; "Score por fonte" (uma linha por fonte + aviso de que cada score vem da fonte); pontos de atenção; anotações com a linha
+"Divergência entre fontes — ..." e a coluna "Fonte" nos itens; empresa (mescla), sócios, consultas, comportamento. O anexo "Outras informações da
+fonte" existe só no PDF individual (para não repetir dados entre fontes).
+
+**Telas:** depois de uma consulta com 2+ produtos sem falha, o diálogo abre o relatório consolidado (`RelatorioCreditoDialog documento=...`). Se algum produto
+falha, o diálogo FICA aberto com o resultado por produto (verde/cinza/vermelho, a mensagem do provedor e "Não foi cobrado"/"FOI cobrada"); erro total também fica
+na tela, além do toast. `CreditoCard` e o arquivo ganharam "Relatório do CNPJ" e, no arquivo, o selo "N fontes" (tabela continua fina).
