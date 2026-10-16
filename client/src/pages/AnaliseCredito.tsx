@@ -190,6 +190,25 @@ function Arquivo({ administrar }: { administrar: boolean }) {
     </div>
   );
 
+  const iconeCls = 'h-8 w-8 p-0';
+  const acoesCompactas = (id: number) => (
+    <div className="flex items-center justify-end gap-1">
+      <Button variant="outline" className={iconeCls} title="Ver relatório" aria-label="Ver relatório" onClick={() => setRelatorioId(id)}><FileText aria-hidden /></Button>
+      <Button variant="outline" className={iconeCls} title="Baixar PDF" aria-label="Baixar PDF" onClick={() => void baixar(id)} disabled={baixandoId !== null}>
+        {baixandoId === id ? <Loader2 className="animate-spin" aria-hidden /> : <Download aria-hidden />}
+      </Button>
+      {administrar && (
+        <Button
+          variant="outline" className={iconeCls} title="Reprocessar: refaz a análise com a resposta já paga, sem nova cobrança" aria-label="Reprocessar (sem custo)"
+          onClick={() => reprocessar.mutate({ id })} disabled={reprocessar.isPending}
+        >
+          {reprocessar.isPending && reprocessar.variables?.id === id ? <Loader2 className="animate-spin" aria-hidden /> : <RefreshCw aria-hidden />}
+        </Button>
+      )}
+    </div>
+  );
+  const vereditoCurto = { APROVADO: 'Aprovado', COM_RESTRICAO: 'Com restrição', REPROVADO_A_PRAZO: 'Só à vista' } as const;
+
   return (
     <Panel>
       <PanelHeader title="Arquivo de análises" description="Todas as consultas já feitas, da mais recente para a mais antiga." />
@@ -269,38 +288,36 @@ function Arquivo({ administrar }: { administrar: boolean }) {
               </li>
             ))}
           </ul>
-          {/* PC: tabela */}
+          {/* PC: tabela compacta, uma linha por análise */}
           <div className="hidden overflow-x-auto md:block">
-            <table className="w-full text-sm tabular-nums">
-              <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+            <table className="w-full text-[13px] tabular-nums">
+              <thead className="border-b border-slate-200 bg-slate-50 text-left text-[11px] font-medium uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="px-3 py-2.5"><span className="sr-only">Semáforo</span></th>
-                  <th className="px-3 py-2.5">Razão social</th>
-                  <th className="px-3 py-2.5">CNPJ</th>
-                  <th className="px-3 py-2.5">Cidade/UF</th>
-                  <th className="px-3 py-2.5 text-right">Score</th>
-                  <th className="px-3 py-2.5">Consulta</th>
-                  <th className="px-3 py-2.5">Data</th>
-                  <th className="px-3 py-2.5">Consultado por</th>
-                  <th className="px-3 py-2.5 text-right">Custo</th>
-                  <th className="px-3 py-2.5 text-right">Pedidos</th>
-                  <th className="px-3 py-2.5"><span className="sr-only">Ações</span></th>
+                  <th className="w-8 py-2 pl-3"><span className="sr-only">Semáforo</span></th>
+                  <th className="px-2 py-2">Empresa</th>
+                  <th className="px-2 py-2">CNPJ</th>
+                  <th className="px-2 py-2">Cidade/UF</th>
+                  <th className="px-2 py-2 text-right">Score</th>
+                  <th className="px-2 py-2">Veredito</th>
+                  <th className="px-2 py-2">Consulta</th>
+                  <th className="px-2 py-2">Data</th>
+                  <th className="px-2 py-2 text-right">Custo</th>
+                  <th className="py-2 pl-2 pr-3"><span className="sr-only">Ações</span></th>
                 </tr>
               </thead>
               <tbody>
                 {itens.map((i) => (
-                  <tr key={i.id} className="border-b border-slate-100 align-top">
-                    <td className="px-3 py-3"><CreditoSemaforo relatorio={{ veredito: i.veredito, valido: true }} size="md" /></td>
-                    <td className="max-w-[240px] break-words px-3 py-3 font-medium text-slate-900">{i.razaoSocial || '—'}<span className="block text-xs font-normal text-slate-500">{ROTULO_VEREDITO[i.veredito]}</span></td>
-                    <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-700">{formatarDocumento(i.documento)}</td>
-                    <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-700">{[i.municipio, i.uf].filter(Boolean).join('/') || '—'}</td>
-                    <td className="px-3 py-3 text-right">{i.score ?? '—'}</td>
-                    <td className="max-w-[160px] break-words px-3 py-3 text-xs text-slate-700">{i.produtoNome}</td>
-                    <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-700">{dataHoraBR(i.consultadoEm)}</td>
-                    <td className="px-3 py-3 text-xs text-slate-700">{i.consultadoPor ?? '—'}</td>
-                    <td className="whitespace-nowrap px-3 py-3 text-right text-xs">{i.custoReais != null ? formatBRL(i.custoReais) : '—'}</td>
-                    <td className="px-3 py-3 text-right">{i.pedidosVinculados}</td>
-                    <td className="px-3 py-3">{acoes(i.id)}</td>
+                  <tr key={i.id} className="border-b border-slate-100 hover:bg-slate-50">
+                    <td className="py-1.5 pl-3"><CreditoSemaforo relatorio={{ veredito: i.veredito, valido: true }} size="md" /></td>
+                    <td className="max-w-[260px] truncate px-2 py-1.5 font-medium text-slate-900" title={i.razaoSocial || undefined}>{i.razaoSocial || '—'}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5 text-slate-700">{formatarDocumento(i.documento)}</td>
+                    <td className="max-w-[170px] truncate px-2 py-1.5 text-slate-700" title={[i.municipio, i.uf].filter(Boolean).join('/') || undefined}>{[i.municipio, i.uf].filter(Boolean).join('/') || '—'}</td>
+                    <td className="px-2 py-1.5 text-right font-semibold">{i.score ?? '—'}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5 text-slate-700">{vereditoCurto[i.veredito]}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5 text-slate-600">{i.produtoNome}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5 text-slate-600" title={`Consultado por ${i.consultadoPor ?? 'sem autor'} · ${i.pedidosVinculados} pedido(s) vinculado(s)`}>{dataHoraBR(i.consultadoEm)}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5 text-right text-slate-600">{i.custoReais != null ? formatBRL(i.custoReais) : '—'}</td>
+                    <td className="py-1.5 pl-2 pr-3">{acoesCompactas(i.id)}</td>
                   </tr>
                 ))}
               </tbody>
