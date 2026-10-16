@@ -339830,8 +339830,9 @@ function comportamentoDe(bruto, pessoaFisica = false) {
       if (!ehObj(o4)) continue;
       const nome = achar(o4, ["INDICADOR", "EVENTO", "DESCRICAO"]);
       const per = achar(o4, ["PERIODO", "MES_ANO", "DATA"]);
-      const val = achar(o4, ["VALOR"]) ?? achar(o4, ["PONTUACAO"]);
-      const texto2 = [per ? rotuloPeriodoCheio(per) : "", val ? moedaBR(val) : ""].filter(Boolean).join(" \u2014 ");
+      const valor2 = achar(o4, ["VALOR"]);
+      const pontos = achar(o4, ["PONTUACAO"]);
+      const texto2 = [per ? rotuloPeriodoCheio(per) : "", valor2 ? moedaBR(valor2) : pontos ? `pontua\xE7\xE3o ${pontos}` : ""].filter(Boolean).join(" \u2014 ");
       if (nome && texto2) eventos.push([humanizarChave(nome.replace(/\s+/g, "_")), texto2]);
     }
   }
@@ -339839,7 +339840,11 @@ function comportamentoDe(bruto, pessoaFisica = false) {
   for (const [chave, rotulo] of [["PAGAMENTO_PONTUAL", "Pagamento pontual"], ["PAGAMENTO_ATRASADO", ""], ["COMPROMISSOS", "Compromissos"], ["CREDITO_OBTIDO", "Cr\xE9dito obtido"]]) {
     for (const l4 of linhasDe(resto(chave), rotulo, ctx)) {
       let r5 = l4.rotulo.replace(/^./, (c4) => c4.toUpperCase());
-      if (chave === "PAGAMENTO_ATRASADO" && !/m[eé]dia/i.test(r5) && !/^atraso/i.test(r5)) r5 = "Atraso " + r5.replace(/^./, (c4) => c4.toLowerCase());
+      if (chave === "PAGAMENTO_ATRASADO") {
+        const m4 = /^pagto\s+atrasado\s*-\s*(.+)$/i.exec(r5.trim());
+        const resto2 = (m4 ? m4[1] : r5).trim().toLowerCase();
+        r5 = /m[eé]dia/.test(resto2) ? "Atraso m\xE9dio (dias)" : `Atraso ${resto2}`;
+      }
       historico.push({ rotulo: r5, serie: l4.serie });
     }
   }
