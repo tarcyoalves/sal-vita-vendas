@@ -1,16 +1,45 @@
 // Acesso ao banco do módulo de crédito (CRM Lembretes). Sem transações interativas (neon-http): tudo é
 // UPDATE/INSERT condicional ou consulta simples.
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { creditReports, creditSettings } from '../../db/schema';
+import { TETO_POR_CONSULTA_PADRAO_REAIS } from '../../../shared/creditoCatalogo';
+import { relatorioValido } from '../../../shared/credito';
 import { LIMITE_MENSAL_PADRAO } from './politica';
 import { decidirBloqueioCredito, type DecisaoBloqueioCredito } from './bloqueioSmbi';
+import { maisRecentePorProduto, resumoParaBloqueio } from './produtos';
 
 export type OrigemVinculo = 'CONSULTA_NO_PEDIDO' | 'ENVIO_SMBI' | 'MANUAL';
 
-export async function lerConfigCredito(): Promise<{ bloqueioAtivo: boolean; limiteMensal: number }> {
+export async function lerConfigCredito(): Promise<{ bloqueioAtivo: boolean; limiteMensal: number; tetoPorConsultaReais: number }> {
   const [row] = await db.select().from(creditSettings).where(eq(creditSettings.id, 1));
-  return { bloqueioAtivo: row?.bloqueioAtivo ?? false, limiteMensal: row?.limiteMensal ?? LIMITE_MENSAL_PADRAO };
+  return {
+    bloqueioAtivo: row?.bloqueioAtivo ?? false,
+    limiteMensal: row?.limiteMensal ?? LIMITE_MENSAL_PADRAO,
+    tetoPorConsultaReais: row?.tetoPorConsultaReais ?? TETO_POR_CONSULTA_PADRAO_REAIS,
+  };
+}
+
+/** Gasto em reais do mês corrente (fuso de São Paulo): soma do custo das consultas concluídas (status OK). */
+export async function gastoNoMesReais(): Promise<number> {
+  const r = await db.execute(sql`
+    SELECT COALESCE(sum(custo_reais), 0)::float8 AS total FROM credit_queries
+    WHERE status = 'OK'
+      AND iniciado_em >= (date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo')`);
+  return Math.round(Number((r.rows[0] as { total?: number } | undefined)?.total ?? 0) * 100) / 100;
+}
+
+const { payloadBruto: _bruto, ...COLUNAS_SEM_BRUTO } = getTableColumns(creditReports);
+
+/**
+ * Relatórios recentes do documento (mais novo primeiro), SEM o payload bruto (pesado). `semSimulado` espelha a regra
+ * de produção: o simulado nunca vale para decisão real.
+ */
+export async function relatoriosDoDocumento(documento: string, opts: { semSimulado?: boolean; limite?: number } = {}) {
+  const conds = [eq(creditReports.documento, documento)];
+  if (opts.semSimulado) conds.push(sql`${creditReports.provedor} <> 'simulado'`);
+  return db.select(COLUNAS_SEM_BRUTO).from(creditReports).where(and(...conds))
+    .orderBy(desc(creditReports.consultadoEm), desc(creditReports.id)).limit(opts.limite ?? 30);
 }
 
 /** Consultas pagas concluídas (status OK) no mês corrente, fuso de São Paulo. */
@@ -47,14 +76,10 @@ export async function desvincularRelatorioDoPedido(reportId: number, pedidoId: s
   return r.rows.length;
 }
 
-/** Relatório mais recente do documento que vale para decisões reais (em produção, nunca o simulado). */
+/** Veredito EFETIVO do documento para decisões reais (em produção, nunca o simulado): o pior entre os válidos. */
 export async function relatorioParaBloqueio(documento: string) {
-  const conds = [eq(creditReports.documento, documento)];
-  if (process.env.NODE_ENV === 'production') conds.push(sql`${creditReports.provedor} <> 'simulado'`);
-  const [row] = await db.select({ id: creditReports.id, veredito: creditReports.veredito, consultadoEm: creditReports.consultadoEm })
-    .from(creditReports).where(and(...conds))
-    .orderBy(desc(creditReports.consultadoEm), desc(creditReports.id)).limit(1);
-  return row ?? null;
+  const linhas = await relatoriosDoDocumento(documento, { semSimulado: process.env.NODE_ENV === 'production' });
+  return resumoParaBloqueio(linhas);
 }
 
 /**
@@ -79,13 +104,17 @@ export async function decidirBloqueioDoPedido(pedido: {
   }
 }
 
-/** Vincula o relatório mais recente do CNPJ ao pedido enviado (origem ENVIO_SMBI). Fail-open. */
+/**
+ * Vincula ao pedido enviado (origem ENVIO_SMBI) o relatório vigente mais recente de cada produto; sem nenhum
+ * vigente, o mais recente. Fail-open.
+ */
 export async function vincularUltimoRelatorioNoEnvio(pedidoId: string, cnpj: string, userId: number): Promise<void> {
   try {
     const documento = cnpj.replace(/\D/g, '');
     if (!documento) return;
-    const ultimo = await ultimoRelatorioDoDocumento(documento);
-    if (ultimo) await vincularRelatorioAoPedido(ultimo.id, pedidoId, userId, 'ENVIO_SMBI');
+    const linhas = await relatoriosDoDocumento(documento);
+    const vigentes = [...maisRecentePorProduto(linhas).values()].filter((l) => relatorioValido(l.consultadoEm));
+    for (const l of vigentes.length ? vigentes : linhas.slice(0, 1)) await vincularRelatorioAoPedido(l.id, pedidoId, userId, 'ENVIO_SMBI');
   } catch (e) {
     console.error('[credito] vínculo no envio falhou (envio mantido):', e instanceof Error ? e.message : 'erro');
   }

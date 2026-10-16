@@ -18,25 +18,31 @@
 // fonte", nunca "Nada consta"), e o bruto completo fica em credit_reports.payload_bruto para o mapeamento futuro.
 //
 // O token nunca é logado nem incluído em mensagem de erro.
-import type { GrupoAnotacao, RelatorioCredito, TipoDocumento } from '../../../../shared/credito';
+import type { RelatorioCredito, TipoDocumento } from '../../../../shared/credito';
+import { PRODUTO_PADRAO, itemDoCatalogo, type ItemCatalogoCredito } from '../../../../shared/creditoCatalogo';
 import { ErroProvedorCredito, type ProvedorCredito } from './tipos';
+import { CHAVES_SCORE, mapeadorDefensivo, mapeadorDoProduto, type ConteudoMapeado } from './mapeadores';
+
+export { CHAVES_SCORE, type ConteudoMapeado };
+/** Mantido por compatibilidade (testes e quem importava daqui): é o mapeador defensivo do catálogo. */
+export const mapearRespostaBoaVista = mapeadorDefensivo;
 
 export const APIFULL_BASE_PADRAO = 'https://api.apifull.com.br';
-export const CUSTO_BOAVISTA_REAIS = 2.75; // preço informado pelo dono (spec 15/10/2026)
+export const CUSTO_BOAVISTA_REAIS = itemDoCatalogo(PRODUTO_PADRAO)?.custoReais ?? 2.75; // catálogo (medido 16/10/2026)
 const TIMEOUT_CONSULTA_MS = 20_000;
 const TIMEOUT_SALDO_MS = 10_000;
 
 // S1 — valores de `status` aceitos como sucesso (a documentação não os lista; ajustar com a 1ª resposta real).
 export const STATUS_SUCESSO = ['sucesso', 'success', 'ok'];
-// S2 — chaves candidatas do score em `dados`.
-export const CHAVES_SCORE = ['score', 'pontuacao'];
-
-function config() {
+function config(produto?: ItemCatalogoCredito) {
   const token = process.env.APIFULL_API_TOKEN || process.env.CREDITO_API_TOKEN || '';
   const base = (process.env.CREDITO_API_URL || APIFULL_BASE_PADRAO).replace(/\/+$/, '');
-  // Nome do endpoint configurável (fallback de CPF de produtor rural: 'e-boavista'). Só letras, dígitos e hífen.
-  const endpointBruto = process.env.CREDITO_API_ENDPOINT || 'scpc-boavista';
-  const endpoint = /^[a-z0-9-]+$/i.test(endpointBruto) ? endpointBruto : 'scpc-boavista';
+  // Endpoint vem do catálogo. Só o produto padrão (Boa Vista) aceita o override CREDITO_API_ENDPOINT (fallback de CPF
+  // de produtor rural: 'e-boavista'). Só letras, dígitos e hífen.
+  const padrao = produto?.endpoint ?? 'scpc-boavista';
+  const override = produto === undefined || produto.chave === PRODUTO_PADRAO ? process.env.CREDITO_API_ENDPOINT : undefined;
+  const endpointBruto = override || padrao;
+  const endpoint = /^[a-z0-9-]+$/i.test(endpointBruto) ? endpointBruto : padrao;
   return { token, base, endpoint };
 }
 
@@ -46,40 +52,6 @@ const curto = (v: unknown, max = 200) => (typeof v === 'string' ? v.slice(0, max
 
 export function statusIndicaSucesso(status: unknown): boolean {
   return typeof status === 'string' && STATUS_SUCESSO.includes(normaliza(status));
-}
-
-const grupoNaoConsultado = (): GrupoAnotacao => ({ consultado: false, quantidade: 0, valorTotal: null, itens: [] });
-
-export type ConteudoMapeado = Pick<RelatorioCredito, 'score' | 'cadastro' | 'socios' | 'consultasRecentes' | 'anotacoes'>;
-
-/**
- * Converte o corpo da API Full em conteúdo do relatório. DEFENSIVO: estrutura desconhecida → nulls e
- * `consultado:false`. Hoje só reconhece o score (suposição S2); ver TODO no topo do arquivo.
- */
-export function mapearRespostaBoaVista(json: unknown): ConteudoMapeado {
-  const dados = ehObjeto(json) && ehObjeto(json.dados) ? json.dados : null;
-  let valor: number | null = null;
-  if (dados) {
-    for (const chave of CHAVES_SCORE) {
-      const v = dados[chave];
-      const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
-      if (Number.isFinite(n) && n >= 0 && n <= 1000) { valor = n; break; }
-    }
-  }
-  return {
-    score: { valor, probabilidadeInadimplencia: null, faixa: null, textoInterpretacao: null },
-    cadastro: {
-      razaoSocial: null, nomeFantasia: null, situacao: null, situacaoEm: null, fundacao: null, naturezaJuridica: null,
-      capitalSocial: null, cnaePrincipal: null, atividade: null, opcaoTributaria: null, inscricaoEstadual: null,
-      endereco: null, municipio: null, uf: null, telefone: null, numeroFiliais: null,
-    },
-    socios: [],
-    consultasRecentes: [],
-    anotacoes: {
-      protestos: grupoNaoConsultado(), pendenciasFinanceiras: grupoNaoConsultado(), chequesSemFundo: grupoNaoConsultado(),
-      acoesJudiciais: grupoNaoConsultado(), falenciaRecuperacao: grupoNaoConsultado(),
-    },
-  };
 }
 
 async function chamar(url: string, init: RequestInit, timeoutMs: number): Promise<{ http: number; corpo: unknown }> {
@@ -113,8 +85,8 @@ export const provedorBoaVistaApifull: ProvedorCredito = {
   nome: 'boavista_apifull',
   produto: 'Boa Vista SCPC (API Full)',
   custoReais: CUSTO_BOAVISTA_REAIS,
-  async consultar(documento: string, tipo: TipoDocumento) {
-    const { token, base, endpoint } = config();
+  async consultar(documento: string, tipo: TipoDocumento, produto: ItemCatalogoCredito = itemDoCatalogo(PRODUTO_PADRAO) as ItemCatalogoCredito) {
+    const { token, base, endpoint } = config(produto);
     if (!token) throw new ErroProvedorCredito('Provedor de crédito não configurado.', 'APIFULL_API_TOKEN ausente');
     let resposta: { http: number; corpo: unknown };
     try {
@@ -143,10 +115,10 @@ export const provedorBoaVistaApifull: ProvedorCredito = {
         `HTTP ${resposta.http} status=${curto(status, 60)} message=${mensagem}`,
       );
     }
-    const conteudo = mapearRespostaBoaVista(corpo);
+    const conteudo = mapeadorDoProduto(produto.chave)(corpo);
     const relatorio: RelatorioCredito = {
       documento, tipo, consultadoEm: new Date().toISOString(),
-      fonte: { provedor: this.nome, produto: this.produto, custoReais: this.custoReais },
+      fonte: { provedor: this.nome, produto: produto.nome, custoReais: produto.custoReais },
       ...conteudo,
     };
     return { relatorio, bruto: corpo };

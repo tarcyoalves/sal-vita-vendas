@@ -8,23 +8,30 @@ import { db } from '../db';
 import { creditQueries, creditReports, creditSettings, fatOrders, sellers, tasks, users } from '../db/schema';
 import { userTaskFilter } from './tasks';
 import {
-  SEMAFORO, analisarSinais, calcularVeredito, relatorioValido, type GrupoAnotacao, type RelatorioCredito, type Veredito,
+  SEMAFORO, analisarSinais, calcularVeredito, piorVeredito, relatorioValido, type GrupoAnotacao, type RelatorioCredito, type Veredito,
 } from '../../shared/credito';
+import {
+  CATALOGO_CREDITO, PRECOS_MEDIDOS_EM, calcularCustos, chaveDoProdutoGravado, nomeDoProduto, verificarLimitesCusto,
+} from '../../shared/creditoCatalogo';
 import { ordenarSinais } from '../../shared/creditoSinais';
 import { SQL_ACENTOS, SQL_SEM_ACENTOS } from '../../shared/searchText';
 import { validarDocumento } from '../lib/credito/documento';
-import { decidirCache, LIMITE_MENSAL_PADRAO, limiteMensalValido } from '../lib/credito/politica';
+import { LIMITE_MENSAL_PADRAO, limiteMensalValido, tetoPorConsultaValido } from '../lib/credito/politica';
+import {
+  chipsDosProdutos, comoVeredito, escolherEfetivo, maisRecentePorProduto, planoDeCache, resumirResultados, validarProdutos,
+  type ResultadoProduto,
+} from '../lib/credito/produtos';
 import { montarFiltrosListagem, POR_PAGINA_MAX } from '../lib/credito/listagem';
 import { documentosVisiveis, montarSemaforos, normalizarDocumentosSemaforo, SEMAFOROS_MAX_DOCUMENTOS } from '../lib/credito/semaforos';
 import {
-  desvincularRelatorioDoPedido, lerConfigCredito, ultimoRelatorioDoDocumento, usadasNoMes, vincularRelatorioAoPedido,
+  desvincularRelatorioDoPedido, gastoNoMesReais, lerConfigCredito, relatoriosDoDocumento, ultimoRelatorioDoDocumento, usadasNoMes,
+  vincularRelatorioAoPedido,
 } from '../lib/credito/repo';
 import { getProvedorCredito } from '../lib/credito/provedores';
 import { ErroProvedorCredito } from '../lib/credito/provedores/tipos';
 import { consultarSaldoApiFull } from '../lib/credito/provedores/boavistaApifull';
 import { gerarPdfCredito } from '../lib/credito/pdf';
 
-const comoVeredito = (s: string): Veredito => (s === 'APROVADO' || s === 'COM_RESTRICAO' ? s : 'REPROVADO_A_PRAZO');
 const ehStaff = (role: string) => role === 'admin' || role === 'manager';
 const qtd = (g: GrupoAnotacao) => (g.consultado ? g.quantidade : null);
 
@@ -53,18 +60,20 @@ async function atendentePodeVerDocumento(user: { id: number; name: string }, doc
   return r.rows.length > 0;
 }
 
-function cartaoDoRelatorio(row: typeof creditReports.$inferSelect) {
-  const veredito = comoVeredito(row.veredito);
+type LinhaSemBruto = Omit<typeof creditReports.$inferSelect, 'payloadBruto'>;
+
+/** Cartão do documento: o veredito/validade são os EFETIVOS (pior entre os relatórios válidos); o resto vem do principal. */
+function cartaoDoRelatorio(row: LinhaSemBruto, efetivo: { veredito: Veredito; valido: boolean }) {
   return {
     id: row.id,
     consultadoEm: row.consultadoEm,
-    veredito,
+    veredito: efetivo.veredito,
     motivos: row.motivos,
-    semaforo: SEMAFORO[veredito],
+    semaforo: SEMAFORO[efetivo.veredito],
     score: row.relatorio.score.valor,
     probabilidadeInadimplencia: row.relatorio.score.probabilidadeInadimplencia,
     resumo: resumoAnotacoes(row.relatorio),
-    valido: relatorioValido(row.consultadoEm),
+    valido: efetivo.valido,
     razaoSocial: row.relatorio.cadastro.razaoSocial ?? row.razaoSocial,
     provedor: row.provedor,
     simulado: row.provedor === 'simulado',
@@ -102,13 +111,15 @@ function erroDocumento(documento: string, tipo?: 'CNPJ' | 'CPF') {
 export const creditoRouter = router({
   status: protectedProcedure.query(async () => {
     const provedor = getProvedorCredito();
-    const [cfg, usadas] = await Promise.all([lerConfigCredito(), usadasNoMes()]);
+    const [cfg, usadas, gasto] = await Promise.all([lerConfigCredito(), usadasNoMes(), gastoNoMesReais()]);
     return {
       provedor: provedor.nome, simulado: provedor.nome === 'simulado',
       limiteMensal: cfg.limiteMensal, usadasNoMes: usadas, bloqueioAtivo: cfg.bloqueioAtivo,
+      tetoPorConsultaReais: cfg.tetoPorConsultaReais, gastoNoMesReais: gasto,
     };
   }),
 
+  /** Veredito EFETIVO do documento (pior entre os relatórios válidos de qualquer produto) + um chip por produto. */
   ultimo: protectedProcedure
     .input(z.object({ documento: documentoInput }))
     .query(async ({ ctx, input }) => {
@@ -116,11 +127,32 @@ export const creditoRouter = router({
       if (!ehStaff(ctx.user.role) && !(await atendentePodeVerDocumento(ctx.user, documento))) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Documento fora da sua carteira' });
       }
-      const row = await ultimoRelatorioDoDocumento(documento);
-      return row ? cartaoDoRelatorio(row) : null;
+      const linhas = await relatoriosDoDocumento(documento);
+      const efetivo = escolherEfetivo(linhas);
+      if (!efetivo) return null;
+      return { ...cartaoDoRelatorio(efetivo.principal, efetivo), produtos: chipsDosProdutos(linhas) };
     }),
 
-  /** Semáforo do relatório mais recente de cada CNPJ da lista (uma consulta só). Sem relatório ou fora da carteira: não aparece. */
+  /** Catálogo de consultas com preço. Com `documento`, traz a última consulta de cada produto (mesmas regras de acesso de `ultimo`). */
+  catalogo: protectedProcedure
+    .input(z.object({ documento: documentoInput.optional() }))
+    .query(async ({ ctx, input }) => {
+      const cfg = await lerConfigCredito();
+      let ultimoPorProduto: Record<string, { id: number; consultadoEm: Date; valido: boolean; provedor: string }> | null = null;
+      const documento = input.documento?.replace(/\D/g, '');
+      if (documento) {
+        if (!ehStaff(ctx.user.role) && !(await atendentePodeVerDocumento(ctx.user, documento))) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Documento fora da sua carteira' });
+        }
+        ultimoPorProduto = {};
+        for (const [chave, l] of maisRecentePorProduto(await relatoriosDoDocumento(documento))) {
+          ultimoPorProduto[chave] = { id: l.id, consultadoEm: l.consultadoEm, valido: relatorioValido(l.consultadoEm), provedor: l.provedor };
+        }
+      }
+      return { itens: CATALOGO_CREDITO, precosMedidosEm: PRECOS_MEDIDOS_EM, tetoPorConsultaReais: cfg.tetoPorConsultaReais, ultimoPorProduto };
+    }),
+
+  /** Semáforo EFETIVO (pior veredito vigente entre os produtos) de cada CNPJ da lista (uma consulta só). Sem relatório ou fora da carteira: não aparece. */
   semaforos: protectedProcedure
     .input(z.object({ documentos: z.array(z.string().max(30)).max(SEMAFOROS_MAX_DOCUMENTOS) }))
     .query(async ({ ctx, input }) => {
@@ -130,9 +162,15 @@ export const creditoRouter = router({
       const docs = documentosVisiveis(pedidos, { staff, daCarteira: carteira });
       if (docs.length === 0) return {};
       const lista = sql.join(docs.map((d) => sql`${d}::text`), sql`, `);
+      // Todos os relatórios vigentes (<30 dias) de cada documento, mais o mais recente de cada um (para o "vencido").
       const r = await db.execute(sql`
-        SELECT DISTINCT ON (documento) documento, veredito, consultado_em, provedor
-        FROM credit_reports WHERE documento IN (${lista})
+        WITH ult AS (
+          SELECT DISTINCT ON (documento) id FROM credit_reports WHERE documento IN (${lista})
+          ORDER BY documento, consultado_em DESC, id DESC
+        )
+        SELECT documento, veredito, consultado_em, provedor FROM credit_reports
+        WHERE documento IN (${lista})
+          AND (consultado_em > now() - interval '30 days' OR id IN (SELECT id FROM ult))
         ORDER BY documento, consultado_em DESC, id DESC`);
       type L = { documento: string; veredito: string; consultado_em: Date | string; provedor: string };
       return montarSemaforos((r.rows as unknown as L[]).map((l) => ({
@@ -161,10 +199,16 @@ export const creditoRouter = router({
       forcarNova: z.boolean().optional(),
       taskId: z.number().int().optional(),
       pedidoId: z.string().min(1).max(100).optional(),
+      /** Chaves do catálogo (1 a 3, sem repetição, só com custo medido). Ausente = ['boavista'] (compatibilidade). */
+      produtos: z.array(z.string().max(60)).max(10).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const { documento, tipo } = erroDocumento(input.documento, input.tipo);
+      const escolha = validarProdutos(input.produtos);
+      if (!escolha.ok) throw new TRPCError({ code: 'BAD_REQUEST', message: escolha.erro });
+      const itens = escolha.itens;
       const provedor = getProvedorCredito();
+      const simulado = provedor.nome === 'simulado';
 
       let pedido: { razaoSocial: string; cidade: string; uf: string } | null = null;
       if (input.pedidoId) {
@@ -173,89 +217,136 @@ export const creditoRouter = router({
         if (!p) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' });
         pedido = p;
       }
-      const entrega = (row: typeof creditReports.$inferSelect, reaproveitado: boolean) => {
-        const veredito = comoVeredito(row.veredito);
-        return {
-          reaproveitado, id: row.id, consultadoEm: row.consultadoEm, veredito, motivos: row.motivos,
-          semaforo: SEMAFORO[veredito], relatorio: row.relatorio,
-        };
-      };
 
-      // 1) Cache: relatório válido (<30 dias) do mesmo provedor é devolvido sem custo.
-      const ultimo = await ultimoRelatorioDoDocumento(documento);
-      if (ultimo && decidirCache(ultimo, { forcarNova: input.forcarNova, provedorAtual: provedor.nome }) === 'REAPROVEITAR') {
-        await db.insert(creditQueries).values({
-          documento, userId: ctx.user.id, status: 'REAPROVEITADO', reportId: ultimo.id, custoReais: 0, finalizadoEm: new Date(),
+      // 1) Cache por (documento, produto): relatório válido (<30 dias) do mesmo provedor é reaproveitado, sem custo.
+      const linhas = await relatoriosDoDocumento(documento, { limite: 60 });
+      const { reaproveita, ultimo } = planoDeCache(itens, linhas, { forcarNova: input.forcarNova, provedorAtual: provedor.nome });
+      const aConsultar = itens.filter((i) => !reaproveita[i.chave]);
+      const custos = calcularCustos(itens, reaproveita, simulado);
+
+      // 2) Antes de gastar: teto por consulta, saldo conhecido da API (fail-open se indisponível) e limite mensal.
+      const queryIds = new Map<string, number>();
+      if (aConsultar.length > 0) {
+        const cfg = await lerConfigCredito();
+        let saldo: number | null = null;
+        if (!simulado && custos.totalReais > 0) {
+          try { saldo = (await consultarSaldoApiFull()).saldo; } catch (e) {
+            console.error('[credito] saldo indisponível, seguindo sem a checagem de saldo:', e instanceof ErroProvedorCredito ? e.detalhe : 'erro');
+          }
+        }
+        const bloqueio = verificarLimitesCusto({
+          totalReais: custos.totalReais, chamadas: custos.chamadas, saldo, tetoPorConsultaReais: cfg.tetoPorConsultaReais,
+          usadasNoMes: await usadasNoMes(), limiteMensal: cfg.limiteMensal,
         });
-        if (input.pedidoId) await vincularRelatorioAoPedido(ultimo.id, input.pedidoId, ctx.user.id, 'CONSULTA_NO_PEDIDO');
-        return entrega(ultimo, true);
+        if (!bloqueio.ok) {
+          const code = bloqueio.codigo === 'TETO' ? 'BAD_REQUEST' : bloqueio.codigo === 'SALDO' ? 'PRECONDITION_FAILED' : 'FORBIDDEN';
+          throw new TRPCError({ code, message: bloqueio.mensagem });
+        }
+
+        // 3) Trava atômica: uma linha EM_ANDAMENTO por produto, TODAS ou NENHUMA, no mesmo INSERT — só se não houver
+        // outra consulta viva do mesmo documento e se o teto mensal comportar todas (1 por produto).
+        const valores = sql.join(aConsultar.map((i) => sql`(${i.chave}::text)`), sql`, `);
+        const travou = await db.execute(sql`
+          INSERT INTO credit_queries (documento, user_id, status, produto)
+          SELECT ${documento}::text, ${ctx.user.id}::integer, 'EM_ANDAMENTO', v.produto
+          FROM (VALUES ${valores}) AS v(produto)
+          WHERE NOT EXISTS (
+            SELECT 1 FROM credit_queries
+            WHERE documento = ${documento}::text AND status = 'EM_ANDAMENTO' AND iniciado_em > now() - interval '2 minutes'
+          )
+          AND (
+            SELECT count(*) FROM credit_queries
+            WHERE iniciado_em >= (date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo')
+              AND (status = 'OK' OR (status = 'EM_ANDAMENTO' AND iniciado_em > now() - interval '2 minutes'))
+          ) + ${aConsultar.length}::integer <= COALESCE((SELECT limite_mensal FROM credit_settings WHERE id = 1), ${LIMITE_MENSAL_PADRAO}::integer)
+          RETURNING id, produto`);
+        for (const row of travou.rows as Array<{ id: number; produto: string }>) queryIds.set(row.produto, row.id);
+        if (queryIds.size !== aConsultar.length) {
+          const emAndamento = await db.execute(sql`
+            SELECT 1 FROM credit_queries
+            WHERE documento = ${documento}::text AND status = 'EM_ANDAMENTO' AND iniciado_em > now() - interval '2 minutes' LIMIT 1`);
+          if (emAndamento.rows.length > 0) throw new TRPCError({ code: 'CONFLICT', message: 'Consulta já em andamento' });
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Limite mensal de consultas pagas atingido. Ajuste o limite ou aguarde o próximo mês.' });
+        }
       }
 
-      // 2) Trava atômica: uma única linha EM_ANDAMENTO viva por documento + teto mensal, no mesmo INSERT.
-      const travou = await db.execute(sql`
-        INSERT INTO credit_queries (documento, user_id, status)
-        SELECT ${documento}::text, ${ctx.user.id}::integer, 'EM_ANDAMENTO'
-        WHERE NOT EXISTS (
-          SELECT 1 FROM credit_queries
-          WHERE documento = ${documento}::text AND status = 'EM_ANDAMENTO' AND iniciado_em > now() - interval '2 minutes'
-        )
-        AND (
-          SELECT count(*) FROM credit_queries
-          WHERE iniciado_em >= (date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo')
-            AND (status = 'OK' OR (status = 'EM_ANDAMENTO' AND iniciado_em > now() - interval '2 minutes'))
-        ) < COALESCE((SELECT limite_mensal FROM credit_settings WHERE id = 1), ${LIMITE_MENSAL_PADRAO}::integer)
-        RETURNING id`);
-      const queryId = (travou.rows[0] as { id?: number } | undefined)?.id;
-      if (queryId === undefined) {
-        const emAndamento = await db.execute(sql`
-          SELECT 1 FROM credit_queries
-          WHERE documento = ${documento}::text AND status = 'EM_ANDAMENTO' AND iniciado_em > now() - interval '2 minutes' LIMIT 1`);
-        if (emAndamento.rows.length > 0) throw new TRPCError({ code: 'CONFLICT', message: 'Consulta já em andamento' });
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Limite mensal de consultas pagas atingido. Ajuste o limite ou aguarde o próximo mês.' });
+      // 4) Reaproveitados: uma linha REAPROVEITADO no razão por produto (custo 0).
+      const resultadoDe = new Map<string, ResultadoProduto>();
+      for (const item of itens.filter((i) => reaproveita[i.chave])) {
+        const linha = ultimo.get(item.chave);
+        if (!linha) continue; // inalcançável: reaproveita[chave] só é true com linha
+        await db.insert(creditQueries).values({
+          documento, userId: ctx.user.id, status: 'REAPROVEITADO', reportId: linha.id, custoReais: 0, produto: item.chave, finalizadoEm: new Date(),
+        });
+        if (input.pedidoId) await vincularRelatorioAoPedido(linha.id, input.pedidoId, ctx.user.id, 'CONSULTA_NO_PEDIDO');
+        resultadoDe.set(item.chave, {
+          produto: item.chave, ok: true, reaproveitado: true, cobrado: false, custoReais: 0,
+          id: linha.id, consultadoEm: linha.consultadoEm, veredito: comoVeredito(linha.veredito),
+        });
       }
 
-      // 3) Chamada ao provedor. Erro: mensagem segura ao cliente, detalhe só no log/razão.
-      let resultado: Awaited<ReturnType<typeof provedor.consultar>>;
-      try {
-        resultado = await provedor.consultar(documento, tipo);
-      } catch (e) {
-        const seguro = e instanceof ErroProvedorCredito ? e.mensagemSegura : 'Falha ao consultar o provedor de crédito.';
-        const detalhe = (e instanceof ErroProvedorCredito ? e.detalhe : e instanceof Error ? e.name : 'erro').slice(0, 500);
-        console.error(`[credito] consulta falhou provedor=${provedor.nome} query=${queryId}: ${detalhe}`);
-        await db.update(creditQueries).set({ status: 'ERRO', erro: detalhe, finalizadoEm: new Date() }).where(eq(creditQueries.id, queryId));
-        throw new TRPCError({ code: 'BAD_GATEWAY', message: seguro });
-      }
-
-      // 4) Grava o relatório e fecha o razão. Se a gravação falhar, o razão registra o custo e o erro.
-      const { relatorio, bruto } = resultado;
-      const { veredito, motivos } = calcularVeredito(relatorio);
-      const custo = relatorio.fonte.custoReais ?? provedor.custoReais;
+      // 5) Chamadas pagas (em paralelo, independentes). Cada uma grava UM relatório e fecha SUA linha do razão.
       let tarefaTitulo: string | null = null;
-      if (input.taskId && !relatorio.cadastro.razaoSocial) {
+      if (aConsultar.length > 0 && input.taskId) {
         const [t] = await db.select({ title: tasks.title }).from(tasks).where(eq(tasks.id, input.taskId));
         tarefaTitulo = t?.title ?? null;
       }
-      try {
-        const [row] = await db.insert(creditReports).values({
-          documento, tipo, taskId: input.taskId ?? null,
-          razaoSocial: relatorio.cadastro.razaoSocial ?? pedido?.razaoSocial ?? tarefaTitulo ?? null,
-          municipio: relatorio.cadastro.municipio ?? pedido?.cidade ?? null,
-          uf: relatorio.cadastro.uf ?? pedido?.uf ?? null,
-          provedor: provedor.nome, produto: provedor.produto,
-          consultadoEm: new Date(relatorio.consultadoEm),
-          relatorio, payloadBruto: bruto ?? null, veredito, motivos, score: relatorio.score.valor,
-          custoReais: custo, consultadoPorUserId: ctx.user.id, motivo: input.motivo,
-        }).returning();
-        await db.update(creditQueries).set({ status: 'OK', reportId: row.id, custoReais: custo, finalizadoEm: new Date() })
-          .where(eq(creditQueries.id, queryId));
-        if (input.pedidoId) await vincularRelatorioAoPedido(row.id, input.pedidoId, ctx.user.id, 'CONSULTA_NO_PEDIDO');
-        return entrega(row, false);
-      } catch (e) {
-        console.error(`[credito] relatório pago NÃO gravado query=${queryId}:`, e instanceof Error ? e.name : 'erro');
-        await db.update(creditQueries).set({ status: 'ERRO', custoReais: custo, erro: 'Consulta feita, mas o relatório não foi gravado', finalizadoEm: new Date() })
-          .where(eq(creditQueries.id, queryId)).catch(() => undefined);
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'A consulta foi feita, mas não foi possível gravar o relatório. Avise o suporte antes de repetir.' });
+      const feitos = await Promise.all(aConsultar.map(async (item): Promise<ResultadoProduto> => {
+        const queryId = queryIds.get(item.chave) as number;
+        const base = { produto: item.chave, reaproveitado: false };
+        let resultado: Awaited<ReturnType<typeof provedor.consultar>>;
+        try {
+          resultado = await provedor.consultar(documento, tipo, item);
+        } catch (e) {
+          const seguro = e instanceof ErroProvedorCredito ? e.mensagemSegura : 'Falha ao consultar o provedor de crédito.';
+          const detalhe = (e instanceof ErroProvedorCredito ? e.detalhe : e instanceof Error ? e.name : 'erro').slice(0, 500);
+          console.error(`[credito] consulta falhou provedor=${provedor.nome} produto=${item.chave} query=${queryId}: ${detalhe}`);
+          await db.update(creditQueries).set({ status: 'ERRO', erro: detalhe, finalizadoEm: new Date() }).where(eq(creditQueries.id, queryId));
+          return { ...base, ok: false, cobrado: false, custoReais: 0, erro: seguro };
+        }
+        const { relatorio, bruto } = resultado;
+        const { veredito, motivos } = calcularVeredito(relatorio);
+        const custo = simulado ? 0 : (item.custoReais ?? 0);
+        try {
+          const [row] = await db.insert(creditReports).values({
+            documento, tipo, taskId: input.taskId ?? null,
+            razaoSocial: relatorio.cadastro.razaoSocial ?? pedido?.razaoSocial ?? tarefaTitulo ?? null,
+            municipio: relatorio.cadastro.municipio ?? pedido?.cidade ?? null,
+            uf: relatorio.cadastro.uf ?? pedido?.uf ?? null,
+            provedor: provedor.nome, produto: item.chave,
+            consultadoEm: new Date(relatorio.consultadoEm),
+            relatorio, payloadBruto: bruto ?? null, veredito, motivos, score: relatorio.score.valor,
+            custoReais: custo, consultadoPorUserId: ctx.user.id, motivo: input.motivo,
+          }).returning();
+          await db.update(creditQueries).set({ status: 'OK', reportId: row.id, custoReais: custo, finalizadoEm: new Date() })
+            .where(eq(creditQueries.id, queryId));
+          if (input.pedidoId) await vincularRelatorioAoPedido(row.id, input.pedidoId, ctx.user.id, 'CONSULTA_NO_PEDIDO');
+          return { ...base, ok: true, cobrado: true, custoReais: custo, id: row.id, consultadoEm: row.consultadoEm, veredito: comoVeredito(row.veredito) };
+        } catch (e) {
+          console.error(`[credito] relatório pago NÃO gravado produto=${item.chave} query=${queryId}:`, e instanceof Error ? e.name : 'erro');
+          await db.update(creditQueries).set({ status: 'ERRO', custoReais: custo, erro: 'Consulta feita, mas o relatório não foi gravado', finalizadoEm: new Date() })
+            .where(eq(creditQueries.id, queryId)).catch(() => undefined);
+          return { ...base, ok: false, cobrado: true, custoReais: custo, erro: 'A consulta foi feita e cobrada, mas não foi possível gravar o relatório. Avise o suporte antes de repetir.' };
+        }
+      }));
+      for (const f of feitos) resultadoDe.set(f.produto, f);
+
+      // 6) Resultado parcial CLARO: nunca esconde uma cobrança que ocorreu.
+      const resultados = itens.flatMap((i) => resultadoDe.get(i.chave) ?? []);
+      const resumo = resumirResultados(resultados);
+      if (resumo.falhouSemCobranca) {
+        throw new TRPCError({ code: 'BAD_GATEWAY', message: resultados.map((r) => `${nomeDoProduto(r.produto)}: ${r.erro ?? 'falhou'}`).join(' | ') });
       }
+      const oks = resultados.filter((r) => r.ok);
+      return {
+        resultados,
+        custoCobradoReais: resumo.custoCobradoReais,
+        parcial: resumo.parcial,
+        veredito: piorVeredito(oks.flatMap((r) => r.veredito ?? [])),
+        // Compatibilidade com o contrato antigo (um relatório só): id do primeiro relatório obtido.
+        id: oks[0]?.id ?? null,
+        reaproveitado: oks.length > 0 && oks.every((r) => r.reaproveitado),
+      };
     }),
 
   historico: staffProcedure
@@ -292,7 +383,7 @@ export const creditoRouter = router({
       const where = sql.join(conds, sql` AND `);
       const [itens, total] = await Promise.all([
         db.execute(sql`
-          SELECT r.id, r.documento, r.razao_social, r.municipio, r.uf, r.score, r.veredito, r.consultado_em, r.custo_reais,
+          SELECT r.id, r.documento, r.razao_social, r.municipio, r.uf, r.score, r.veredito, r.consultado_em, r.custo_reais, r.produto, r.provedor,
                  u.name AS consultado_por,
                  (SELECT count(*)::int FROM credit_report_links l WHERE l.report_id = r.id) AS pedidos_vinculados
           FROM credit_reports r LEFT JOIN users u ON u.id = r.consultado_por_user_id
@@ -304,7 +395,7 @@ export const creditoRouter = router({
       type Linha = {
         id: number; documento: string; razao_social: string | null; municipio: string | null; uf: string | null;
         score: number | null; veredito: string; consultado_em: Date | string; custo_reais: number | null;
-        consultado_por: string | null; pedidos_vinculados: number;
+        consultado_por: string | null; pedidos_vinculados: number; produto: string | null; provedor: string;
       };
       return {
         total: Number((total.rows[0] as { n?: number } | undefined)?.n ?? 0),
@@ -312,6 +403,7 @@ export const creditoRouter = router({
           id: l.id, documento: l.documento, razaoSocial: l.razao_social, municipio: l.municipio, uf: l.uf, score: l.score,
           veredito: comoVeredito(l.veredito), consultadoEm: new Date(l.consultado_em), consultadoPor: l.consultado_por,
           custoReais: l.custo_reais, pedidosVinculados: l.pedidos_vinculados,
+          produto: chaveDoProdutoGravado(l.produto, l.provedor), produtoNome: nomeDoProduto(l.produto, l.provedor),
         })),
       };
     }),
@@ -380,6 +472,30 @@ export const creditoRouter = router({
         .onConflictDoUpdate({ target: creditSettings.id, set: { limiteMensal: input.limite, ...auditoria } });
       console.log(`[credito] limite_mensal=${input.limite} por=user#${ctx.user.id}`);
       return { ok: true, limiteMensal: input.limite };
+    }),
+
+  /** Limites de gasto: contagem mensal de consultas e teto em reais por consulta. Informe ao menos um. */
+  setLimites: adminProcedure
+    .input(z.object({ limiteMensal: z.number().int().optional(), tetoPorConsultaReais: z.number().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.limiteMensal === undefined && input.tetoPorConsultaReais === undefined) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Informe o limite mensal e/ou o teto por consulta' });
+      }
+      if (input.limiteMensal !== undefined && !limiteMensalValido(input.limiteMensal)) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Limite mensal deve ser um inteiro entre 0 e 10000' });
+      }
+      if (input.tetoPorConsultaReais !== undefined && !tetoPorConsultaValido(input.tetoPorConsultaReais)) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'O teto por consulta deve ser maior que zero e no máximo R$ 1.000,00' });
+      }
+      const campos = {
+        ...(input.limiteMensal !== undefined ? { limiteMensal: input.limiteMensal } : {}),
+        ...(input.tetoPorConsultaReais !== undefined ? { tetoPorConsultaReais: input.tetoPorConsultaReais } : {}),
+      };
+      const auditoria = { atualizadoPorUserId: ctx.user.id, atualizadoPorNome: ctx.user.name, atualizadoEm: new Date() };
+      await db.insert(creditSettings).values({ id: 1, ...campos, ...auditoria })
+        .onConflictDoUpdate({ target: creditSettings.id, set: { ...campos, ...auditoria } });
+      console.log(`[credito] limites ${JSON.stringify(campos)} por=user#${ctx.user.id}`);
+      return { ok: true, ...(await lerConfigCredito()) };
     }),
 
   liberarPedido: adminProcedure

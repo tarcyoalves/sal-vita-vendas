@@ -1027,6 +1027,7 @@ export const creditQueries = pgTable('credit_queries', {
   status: text('status').notNull(), // EM_ANDAMENTO | OK | ERRO | REAPROVEITADO
   reportId: integer('report_id'),
   custoReais: doublePrecision('custo_reais'),
+  produto: text('produto'), // chave do catálogo (shared/creditoCatalogo.ts); null nas linhas antigas
   erro: text('erro'),
   iniciadoEm: timestamp('iniciado_em').defaultNow().notNull(),
   finalizadoEm: timestamp('finalizado_em'),
@@ -1037,6 +1038,7 @@ export const creditSettings = pgTable('credit_settings', {
   id: integer('id').primaryKey().default(1),
   bloqueioAtivo: boolean('bloqueio_ativo').notNull().default(false),
   limiteMensal: integer('limite_mensal').notNull().default(50),
+  tetoPorConsultaReais: doublePrecision('teto_por_consulta_reais').notNull().default(30),
   atualizadoPorUserId: integer('atualizado_por_user_id'),
   atualizadoPorNome: text('atualizado_por_nome'),
   atualizadoEm: timestamp('atualizado_em').defaultNow().notNull(),

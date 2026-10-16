@@ -42,6 +42,12 @@ export interface RelatorioCredito {
     fontesConsultadas: number | null;       // fornecedores que informaram
     pagamentoPontualPct: number | null;     // % de pagamentos em dia
   };
+  /** Extras que só algumas fontes trazem (Serasa Premium, Define Risco, Boa Vista). Opcional e aditivo. */
+  complementos?: {
+    faturamentoPresumidoFaixa?: string | null;
+    veiculos?: Array<{ marcaModelo: string; placa?: string | null }>;
+    consultas12Meses?: number | null;
+  };
   anotacoes: {
     protestos: GrupoAnotacao;
     pendenciasFinanceiras: GrupoAnotacao; // PEFIN/REFIN/débitos comerciais
@@ -53,6 +59,8 @@ export interface RelatorioCredito {
 
 export const LIMITES_CREDITO = { scoreReprova: 400, scoreRestricao: 600, pendenciaReprovaReais: 5000 } as const;
 export const CACHE_DIAS_CREDITO = 30;
+/** Saldo da conta API Full abaixo disto acende o aviso amarelo "Saldo baixo" no painel (16/10/2026). */
+export const SALDO_BAIXO_REAIS = 15;
 
 const temAlgo = (g: GrupoAnotacao) => g.consultado && g.quantidade > 0;
 
@@ -182,4 +190,13 @@ export const ROTULO_VEREDITO: Record<Veredito, string> = {
 export function relatorioValido(consultadoEm: string | Date, agora: Date = new Date()): boolean {
   const t = new Date(consultadoEm).getTime();
   return Number.isFinite(t) && agora.getTime() - t < CACHE_DIAS_CREDITO * 86_400_000;
+}
+
+const GRAVIDADE: Record<Veredito, number> = { APROVADO: 0, COM_RESTRICAO: 1, REPROVADO_A_PRAZO: 2 };
+
+/** O PIOR veredito da lista (REPROVADO_A_PRAZO > COM_RESTRICAO > APROVADO); null se vazia. */
+export function piorVeredito(vereditos: readonly Veredito[]): Veredito | null {
+  let pior: Veredito | null = null;
+  for (const v of vereditos) if (pior === null || GRAVIDADE[v] > GRAVIDADE[pior]) pior = v;
+  return pior;
 }

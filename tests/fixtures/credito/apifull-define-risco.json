@@ -1,0 +1,20 @@
+{
+  "status": "sucesso",
+  "API Full": "pj-define-risco",
+  "dados": {
+    "define_risco_positivo": {
+      "scor:score": {
+        "scor:score_pj": {
+          "scor:score": "740",
+          "scor:classificacao": "B",
+          "scor:probabilidade_inadimplencia": "4,2%",
+          "scor:decisao": "APROVAR COM LIMITE MODERADO"
+        }
+      },
+      "fat:faturamento_presumido": { "fat:faixa": "180.001 A 360 MIL" },
+      "con:consultas": { "con:total": "3" },
+      "soc:socios": [{ "soc:nome": "NAO MAPEAR" }]
+    }
+  },
+  "aux": { "type": "link", "data": "https://exemplo.invalid/relatorio.pdf" }
+}

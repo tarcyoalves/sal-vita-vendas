@@ -398,6 +398,21 @@ function secaoMovimentacao(p: Pagina, r: RelatorioCredito) {
   );
 }
 
+function secaoComplementos(p: Pagina, r: RelatorioCredito) {
+  const c = r.complementos;
+  if (!c) return;
+  p.titulo('Complementos da fonte');
+  const veic = c.veiculos?.length ? c.veiculos.map((v) => [v.marcaModelo, v.placa].filter(Boolean).join(' ')).join('; ') : '—';
+  p.tabela(
+    [{ titulo: 'Campo', largura: 200 }, { titulo: 'Informação', largura: 315 }],
+    ([
+      ['Faturamento presumido (faixa)', txt(c.faturamentoPresumidoFaixa)],
+      ['Consultas nos últimos 12 meses', c.consultas12Meses == null ? '—' : String(c.consultas12Meses)],
+      ['Veículos da empresa', veic],
+    ] as Array<[string, string]>).map(([k, v]) => [{ texto: k, negrito: true, cor: CINZA }, { texto: v }]),
+  );
+}
+
 function secaoCadastro(p: Pagina, r: RelatorioCredito) {
   const c = r.cadastro;
   p.titulo('Dados cadastrais');
@@ -543,6 +558,7 @@ export async function gerarPdfCredito(
     secaoAnotacoes(p, relatorio, agora);
     secaoCadastro(p, relatorio);
     secaoMovimentacao(p, relatorio);
+    secaoComplementos(p, relatorio);
     secaoSocios(p, relatorio);
     secaoConsultas(p, relatorio);
     secaoFinal(p, meta.consultadoPor);

@@ -212,6 +212,7 @@ async function ensureCreditTables() {
       status        TEXT NOT NULL,
       report_id     INTEGER,
       custo_reais   DOUBLE PRECISION,
+      produto       TEXT,
       erro          TEXT,
       iniciado_em   TIMESTAMP NOT NULL DEFAULT now(),
       finalizado_em TIMESTAMP
@@ -224,11 +225,18 @@ async function ensureCreditTables() {
       id                     INTEGER PRIMARY KEY DEFAULT 1,
       bloqueio_ativo         BOOLEAN NOT NULL DEFAULT FALSE,
       limite_mensal          INTEGER NOT NULL DEFAULT 50,
+      teto_por_consulta_reais DOUBLE PRECISION NOT NULL DEFAULT 30,
       atualizado_por_user_id INTEGER,
       atualizado_por_nome    TEXT,
       atualizado_em          TIMESTAMP NOT NULL DEFAULT now()
     )
   `;
+}
+
+/** Seletor de consultas (16/10/2026): colunas aditivas em tabelas de crédito que já existem em produção. */
+async function ensureCreditColumns() {
+  await sql`ALTER TABLE credit_queries ADD COLUMN IF NOT EXISTS produto TEXT`;
+  await sql`ALTER TABLE credit_settings ADD COLUMN IF NOT EXISTS teto_por_consulta_reais DOUBLE PRECISION NOT NULL DEFAULT 30`;
 }
 
 async function ensureRecentSchema() {
@@ -248,7 +256,10 @@ async function ensureRecentSchema() {
           to_regclass('public.credit_reports') IS NOT NULL
           AND to_regclass('public.credit_queries') IS NOT NULL
           AND to_regclass('public.credit_settings') IS NOT NULL
-          AND to_regclass('public.credit_report_links') IS NOT NULL AS credito_ok`,
+          AND to_regclass('public.credit_report_links') IS NOT NULL AS credito_ok,
+          (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public'
+             AND ((table_name = 'credit_queries' AND column_name = 'produto')
+               OR (table_name = 'credit_settings' AND column_name = 'teto_por_consulta_reais'))) = 2 AS credito_cols_ok`,
     sql`SELECT column_name FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'smbi_robot_state'`,
   ]);
@@ -294,6 +305,8 @@ async function ensureRecentSchema() {
   }
   const creditoOk = (reg as unknown as Array<{ credito_ok: boolean }>)[0]?.credito_ok === true;
   if (!creditoOk) await ensureCreditTables();
+  const creditoColsOk = (reg as unknown as Array<{ credito_cols_ok: boolean }>)[0]?.credito_cols_ok === true;
+  if (!creditoColsOk) await ensureCreditColumns();
   await ensureDeletionLogSnapshot();
   // Linha do tempo e chave/batimento do robô do SMBI: sem estas tabelas a rota do robô e o painel
   // do faturamento falham. Só cria se faltar (senão seriam 4 idas ao Neon a cada cold start).
@@ -414,7 +427,7 @@ async function ensureRecentSchema() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-10-15a';
+const SCHEMA_VERSION = '2026-10-16a';
 
 export async function ensureTablesExist() {
   // Antes de tudo (e antes do caminho rápido): garante o que foi criado por último.
@@ -1094,6 +1107,7 @@ export async function ensureTablesExist() {
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS credito_liberado_em TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS credito_liberado_motivo TEXT`;
   await ensureCreditTables();
+  await ensureCreditColumns();
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitado_em TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_solicitado_por TEXT`;
   await sql`ALTER TABLE fat_orders ADD COLUMN IF NOT EXISTS smbi_estado TEXT`;

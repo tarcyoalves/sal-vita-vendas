@@ -1,10 +1,12 @@
 import type { RelatorioCredito, TipoDocumento } from '../../../../shared/credito';
+import type { ItemCatalogoCredito } from '../../../../shared/creditoCatalogo';
 
 export interface ProvedorCredito {
   nome: string; // gravado em credit_reports.provedor
   produto: string;
   custoReais: number;
-  consultar(documento: string, tipo: TipoDocumento): Promise<{ relatorio: RelatorioCredito; bruto: unknown }>;
+  /** `produto` é o item do catálogo (endpoint e custo). O simulado o ignora. */
+  consultar(documento: string, tipo: TipoDocumento, produto?: ItemCatalogoCredito): Promise<{ relatorio: RelatorioCredito; bruto: unknown }>;
 }
 
 /**

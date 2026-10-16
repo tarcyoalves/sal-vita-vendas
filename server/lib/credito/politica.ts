@@ -31,3 +31,5 @@ export function consultaEmAndamentoViva(iniciadoEm: Date | string, agora: Date =
 export function limiteMensalValido(n: number): boolean {
   return Number.isInteger(n) && n >= 0 && n <= 10_000;
 }
+
+export { tetoPorConsultaValido } from '../../../shared/creditoCatalogo';
