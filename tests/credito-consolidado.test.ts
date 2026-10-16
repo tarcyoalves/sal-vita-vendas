@@ -238,22 +238,24 @@ describe('gerarPdfCreditoConsolidado', () => {
   beforeAll(() => { process.env.CREDITO_PDF_SEM_COMPRESSAO = '1'; });
   afterAll(() => { delete process.env.CREDITO_PDF_SEM_COMPRESSAO; });
 
-  it('um relatório só: as duas fontes, score por fonte, divergência, coluna Fonte; razão social e CNPJ uma vez', async () => {
+  it('um relatório só: as duas fontes, cartão de score por fonte, matriz com "Divergem", coluna Fonte; razão social e CNPJ uma vez', async () => {
     const c = consolidarRelatorios([itemBoaVista(), itemSerasa()], AGORA);
     const pdf = await gerarPdfCreditoConsolidado(c, { consultadoPor: 'Usuário de Teste' });
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
     const texto = extrairTexto(pdf);
     // topo: as duas fontes, com data e hora (15:02 e 15:03 no fuso de São Paulo)
-    expect(texto).toContain('Fontes: Consulta simples (16/10 15:02) + Serasa Premium (16/10 15:03)');
+    expect(texto).toContain('Fontes: Consulta simples (16/10 15:02) · Serasa Premium (16/10 15:03)');
     expect(texto).toContain('Reprovado a prazo');
     // score por fonte
-    expect(texto).toContain('SCORE POR FONTE');
+    expect(texto).toContain('SCORES INFORMADOS PELAS FONTES');
     expect(texto).toContain('540');
     expect(texto).toContain('710');
-    expect(texto).toContain('Cada score vem da própria fonte');
+    expect(texto).toContain('não são somados nem combinados');
     expect(texto).not.toContain('SCORE (0 A 1000)'); // não há um score único
-    // divergência de quantidade e coluna Fonte
-    expect(texto).toContain('Divergência entre fontes — Consulta simples: 0 · Serasa Premium: 10');
+    // divergência de quantidade (matriz de comparação, coluna "Leitura") e coluna Fonte no detalhamento
+    expect(texto).toContain('COMPARAÇÃO ENTRE AS FONTES');
+    expect(texto).toContain('Divergem');
+    expect(texto).toContain('(0 × 10)');
     expect(texto).toContain('Fonte');
     expect(texto).toMatch(/Consulta\s+simples\s*\+\s*Serasa\s+Premium/); // item visto pelas duas fontes (a célula pode quebrar linha)
     // cadastro mesclado e sócios (CPF mascarado)
