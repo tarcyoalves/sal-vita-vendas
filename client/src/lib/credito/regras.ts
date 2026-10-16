@@ -1,10 +1,12 @@
 // Regras PURAS de tela da análise de crédito (sem DOM, sem React): quem vê o quê, quando avisar, textos.
 // O servidor é quem manda (consultar é adminProcedure; PDF/relatório/listar são staffProcedure): estas regras só
 // escondem o que o papel não pode usar, para o botão não aparecer e dar erro.
-import { CACHE_DIAS_CREDITO, SEMAFORO, type Semaforo, type Veredito } from '../../../../shared/credito';
+import { CACHE_DIAS_CREDITO, SALDO_BAIXO_REAIS, SEMAFORO, type Semaforo, type Veredito } from '../../../../shared/credito';
+import { PRODUTO_PADRAO, itemDoCatalogo } from '../../../../shared/creditoCatalogo';
 import { normalizarPrazo } from '../../../../shared/smbiCondicoes';
 
-export const CUSTO_CONSULTA_REAIS = 2.75;
+/** Custo do produto padrão (Boa Vista), vindo do catálogo único (medido em 16/10/2026). */
+export const CUSTO_CONSULTA_REAIS = itemDoCatalogo(PRODUTO_PADRAO)?.custoReais ?? 2.75;
 
 export type PapelCredito = 'admin' | 'manager' | 'user';
 
@@ -120,3 +122,6 @@ export function textoCustoConsulta(simulado: boolean): string {
     ? 'Provedor simulado: sem custo, dados fictícios.'
     : `Esta consulta custa ${CUSTO_CONSULTA_REAIS.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} e é cobrada da conta API Full.`;
 }
+
+/** Aviso amarelo "Saldo baixo": saldo conhecido abaixo de SALDO_BAIXO_REAIS (saldo desconhecido não avisa). */
+export const saldoEstaBaixo = (saldo: number | null | undefined): boolean => saldo != null && saldo < SALDO_BAIXO_REAIS;

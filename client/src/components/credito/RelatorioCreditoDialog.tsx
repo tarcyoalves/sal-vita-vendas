@@ -191,6 +191,16 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
               </Secao>
             )}
 
+            {r.complementos && (
+              <Secao titulo="Complementos da fonte">
+                <Campos pares={[
+                  ['Faturamento presumido (faixa)', txt(r.complementos.faturamentoPresumidoFaixa)],
+                  ['Consultas nos últimos 12 meses', txt(r.complementos.consultas12Meses)],
+                  ['Veículos da empresa', r.complementos.veiculos?.length ? r.complementos.veiculos.map((v) => [v.marcaModelo, v.placa].filter(Boolean).join(' ')).join('; ') : '—'],
+                ]} />
+              </Secao>
+            )}
+
             <Secao titulo="Quadro societário e administradores">
               {r.socios.length === 0 ? (
                 <p className="text-sm text-slate-500">Nenhum sócio ou administrador informado pela fonte.</p>

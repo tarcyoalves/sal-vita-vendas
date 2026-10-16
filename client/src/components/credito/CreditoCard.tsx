@@ -7,7 +7,7 @@ import { trpc } from '../../lib/trpc';
 import { useAuth } from '../../_core/hooks/useAuth';
 import { ROTULO_VEREDITO } from '../../../../shared/credito';
 import { formatarDocumento, soDigitos, validarDocumentoLocal } from '../../lib/credito/documento';
-import { dataHoraBR, permissoesCredito } from '../../lib/credito/regras';
+import { dataBR, dataHoraBR, permissoesCredito } from '../../lib/credito/regras';
 import { cn } from '../../lib/utils';
 import { CreditoSemaforo } from './CreditoSemaforo';
 import { PontosDeAtencao } from './PontosDeAtencao';
@@ -107,6 +107,18 @@ export function CreditoCard({ documento, pedidoId, taskId, razaoSocial, compacto
           )}
           {compacto && c.motivos.length > 0 && (
             <p className="break-words text-xs text-slate-600">{c.motivos.slice(0, 2).join(' · ')}{c.motivos.length > 2 ? ` (+${c.motivos.length - 2})` : ''}</p>
+          )}
+
+          {c.produtos.length > 0 && (
+            <ul className="flex flex-wrap gap-1.5" aria-label="Consultas feitas">
+              {c.produtos.map((p) => (
+                <li key={p.produto}>
+                  <StatusBadge tone={!p.valido ? 'neutral' : p.veredito === 'APROVADO' ? 'success' : p.veredito === 'COM_RESTRICAO' ? 'warning' : 'danger'}>
+                    {p.nome} · {dataBR(p.consultadoEm)}{p.valido ? '' : ' (vencida)'}
+                  </StatusBadge>
+                </li>
+              ))}
+            </ul>
           )}
 
           <PontosDeAtencao sinais={compacto ? c.sinais.filter((s) => s.nivel !== 'POSITIVO') : c.sinais} />

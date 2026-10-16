@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Download, FileText, Loader2, Search, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, Download, FileText, Loader2, Search, ShieldCheck, X } from 'lucide-react';
 import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { Page, PageHeader, Panel, PanelHeader, Stat, StatStrip, EmptyState, AccessDenied } from '../components/layout/Page';
@@ -14,15 +14,17 @@ import { CreditoCard } from '../components/credito/CreditoCard';
 import { CreditoSemaforo } from '../components/credito/CreditoSemaforo';
 import { useLiberarScrollTravado } from '../lib/credito/scrollTravado';
 import { ConsultarCreditoDialog } from '../components/credito/ConsultarCreditoDialog';
+import { CatalogoComparativo } from '../components/credito/CatalogoComparativo';
 import { RelatorioCreditoDialog } from '../components/credito/RelatorioCreditoDialog';
 import { useBaixarPdfCredito } from '../components/credito/useBaixarPdfCredito';
 import { formatBRL } from '../lib/faturamento/calc';
 import { formatarDocumento, mascararDocumentoDigitando, soDigitos, validarDocumentoLocal } from '../lib/credito/documento';
-import { dataHoraBR, permissoesCredito } from '../lib/credito/regras';
+import { dataHoraBR, permissoesCredito, saldoEstaBaixo } from '../lib/credito/regras';
 import {
   FILTROS_VAZIOS, POR_PAGINA_ARQUIVO, entradaListar, filtrosAtivos, periodoInvertido, totalPaginas, type FiltrosArquivo,
 } from '../lib/credito/filtros';
-import { ROTULO_VEREDITO, type Veredito } from '../../../shared/credito';
+import { ROTULO_VEREDITO, SALDO_BAIXO_REAIS, type Veredito } from '../../../shared/credito';
+import { tetoPorConsultaValido } from '../../../shared/creditoCatalogo';
 
 const UFS = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'];
 const CAMPO = 'h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm';
@@ -32,19 +34,24 @@ function ControlesAdmin() {
   const status = trpc.credito.status.useQuery();
   const [confirmarBloqueio, setConfirmarBloqueio] = useState<boolean | null>(null);
   const [limite, setLimite] = useState('');
+  const [teto, setTeto] = useState('');
   useEffect(() => { if (status.data) setLimite(String(status.data.limiteMensal)); }, [status.data?.limiteMensal]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (status.data) setTeto(String(status.data.tetoPorConsultaReais).replace('.', ',')); }, [status.data?.tetoPorConsultaReais]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setBloqueio = trpc.credito.setBloqueioAtivo.useMutation({
     onSuccess: (r) => { toast.success(r.bloqueioAtivo ? 'Bloqueio de crédito ligado' : 'Bloqueio de crédito desligado'); void utils.credito.status.invalidate(); },
     onError: (e) => toast.error(e.message),
   });
-  const setLimiteMut = trpc.credito.setLimiteMensal.useMutation({
-    onSuccess: (r) => { toast.success(`Limite mensal: ${r.limiteMensal} consultas`); void utils.credito.status.invalidate(); },
+  const setLimiteMut = trpc.credito.setLimites.useMutation({
+    onSuccess: (r) => { toast.success(`Limites salvos: ${r.limiteMensal} consultas/mês, teto de ${formatBRL(r.tetoPorConsultaReais)} por consulta`); void utils.credito.status.invalidate(); },
     onError: (e) => toast.error(e.message),
   });
   if (!status.data) return null;
   const n = Number(limite);
   const limiteOk = limite.trim() !== '' && Number.isInteger(n) && n >= 0 && n <= 10_000;
+  const tetoNum = Number(teto.replace(',', '.'));
+  const tetoOk = teto.trim() !== '' && tetoPorConsultaValido(tetoNum);
+  const mudou = n !== status.data.limiteMensal || tetoNum !== status.data.tetoPorConsultaReais;
 
   return (
     <Panel>
@@ -64,13 +71,17 @@ function ControlesAdmin() {
         </div>
         <form
           className="flex flex-wrap items-end gap-2"
-          onSubmit={(e) => { e.preventDefault(); if (limiteOk && !setLimiteMut.isPending) setLimiteMut.mutate({ limite: n }); }}
+          onSubmit={(e) => { e.preventDefault(); if (limiteOk && tetoOk && !setLimiteMut.isPending) setLimiteMut.mutate({ limiteMensal: n, tetoPorConsultaReais: tetoNum }); }}
         >
-          <label className="grid min-w-0 flex-1 gap-1 text-sm font-medium text-slate-700">
-            Limite mensal de consultas pagas
+          <label className="grid min-w-0 flex-1 basis-32 gap-1 text-sm font-medium text-slate-700">
+            Limite mensal (nº de consultas pagas)
             <Input inputMode="numeric" value={limite} onChange={(e) => setLimite(e.target.value.replace(/\D/g, ''))} className="h-10" />
           </label>
-          <Button type="submit" size="lg" disabled={!limiteOk || n === status.data.limiteMensal || setLimiteMut.isPending}>
+          <label className="grid min-w-0 flex-1 basis-32 gap-1 text-sm font-medium text-slate-700">
+            Teto por consulta (R$)
+            <Input inputMode="decimal" value={teto} onChange={(e) => setTeto(e.target.value.replace(/[^\d.,]/g, ''))} className="h-10" aria-invalid={!tetoOk} />
+          </label>
+          <Button type="submit" size="lg" disabled={!limiteOk || !tetoOk || !mudou || setLimiteMut.isPending}>
             {setLimiteMut.isPending && <Loader2 className="animate-spin" aria-hidden />}Salvar
           </Button>
         </form>
@@ -236,7 +247,7 @@ function Arquivo() {
                   {ROTULO_VEREDITO[i.veredito]} · Score {i.score ?? 'n/i'} · {[i.municipio, i.uf].filter(Boolean).join('/') || 'sem cidade'}
                 </p>
                 <p className="text-xs text-slate-500">
-                  {dataHoraBR(i.consultadoEm)} · {i.consultadoPor ?? 'sem autor'} · {i.custoReais != null ? formatBRL(i.custoReais) : 'sem custo informado'} · {i.pedidosVinculados} pedido(s)
+                  {i.produtoNome} · {dataHoraBR(i.consultadoEm)} · {i.consultadoPor ?? 'sem autor'} · {i.custoReais != null ? formatBRL(i.custoReais) : 'sem custo informado'} · {i.pedidosVinculados} pedido(s)
                 </p>
                 {acoes(i.id)}
               </li>
@@ -252,6 +263,7 @@ function Arquivo() {
                   <th className="px-3 py-2.5">CNPJ</th>
                   <th className="px-3 py-2.5">Cidade/UF</th>
                   <th className="px-3 py-2.5 text-right">Score</th>
+                  <th className="px-3 py-2.5">Consulta</th>
                   <th className="px-3 py-2.5">Data</th>
                   <th className="px-3 py-2.5">Consultado por</th>
                   <th className="px-3 py-2.5 text-right">Custo</th>
@@ -267,6 +279,7 @@ function Arquivo() {
                     <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-700">{formatarDocumento(i.documento)}</td>
                     <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-700">{[i.municipio, i.uf].filter(Boolean).join('/') || '—'}</td>
                     <td className="px-3 py-3 text-right">{i.score ?? '—'}</td>
+                    <td className="max-w-[160px] break-words px-3 py-3 text-xs text-slate-700">{i.produtoNome}</td>
                     <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-700">{dataHoraBR(i.consultadoEm)}</td>
                     <td className="px-3 py-3 text-xs text-slate-700">{i.consultadoPor ?? '—'}</td>
                     <td className="whitespace-nowrap px-3 py-3 text-right text-xs">{i.custoReais != null ? formatBRL(i.custoReais) : '—'}</td>
@@ -301,6 +314,8 @@ export default function AnaliseCredito() {
   if (!perm.verPagina) return <AccessDenied area="Análise de crédito" />;
 
   const s = status.data;
+  const saldoValor = s?.simulado ? null : saldo.data?.saldo ?? null;
+  const baixo = !s?.simulado && saldoEstaBaixo(saldoValor);
   return (
     <Page>
       <PageHeader title="Análise de crédito" description="Consulte o crédito de clientes, veja o arquivo de análises e baixe os relatórios em PDF." />
@@ -314,25 +329,45 @@ export default function AnaliseCredito() {
       {status.error ? (
         <QueryError message={status.error.message} onRetry={() => void status.refetch()} retrying={status.isFetching} />
       ) : (
-        <StatStrip>
-          <Stat
-            label="Provedor"
-            value={s ? (s.simulado ? <StatusBadge tone="danger">SIMULADO</StatusBadge> : <span className="break-words text-base">{s.provedor}</span>) : '--'}
-          />
+        <>
           {perm.administrar && (
-            <Stat
-              label="Saldo (API Full)"
-              value={s?.simulado ? '—' : saldo.isLoading ? '…' : saldo.data?.saldo != null ? formatBRL(saldo.data.saldo) : 'Indisponível'}
-              hint={s?.simulado ? 'Não se aplica ao simulado' : undefined}
-            />
+            <Panel>
+              <div className="grid gap-4 p-4 sm:grid-cols-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-slate-500">Saldo na conta API Full</p>
+                  <p className={`mt-1 break-words text-3xl font-bold tabular-nums ${baixo ? 'text-amber-700' : 'text-slate-900'}`}>
+                    {s?.simulado ? '—' : saldo.isLoading ? '…' : saldoValor != null ? formatBRL(saldoValor) : 'Indisponível'}
+                  </p>
+                  {s?.simulado && <p className="text-xs text-slate-500">Não se aplica ao provedor simulado</p>}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-slate-500">Gasto no mês</p>
+                  <p className="mt-1 break-words text-3xl font-bold tabular-nums text-slate-900">{s ? formatBRL(s.gastoNoMesReais) : '--'}</p>
+                  <p className="text-xs text-slate-500">Soma das consultas pagas concluídas neste mês</p>
+                </div>
+              </div>
+              {baixo && (
+                <div role="alert" className="flex items-start gap-2 border-t border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+                  <span><strong>Saldo baixo.</strong> Restam {formatBRL(saldoValor ?? 0)} (aviso abaixo de {formatBRL(SALDO_BAIXO_REAIS)}). Recarregue a conta API Full antes de consultar.</span>
+                </div>
+              )}
+            </Panel>
           )}
-          <Stat label="Consultas no mês" value={s ? `${s.usadasNoMes}/${s.limiteMensal}` : '--'} tone={s && s.usadasNoMes >= s.limiteMensal ? 'danger' : 'default'} />
-          <Stat label="Bloqueio no SMBI" value={s ? (s.bloqueioAtivo ? 'Ligado' : 'Desligado') : '--'} tone={s?.bloqueioAtivo ? 'warning' : 'default'} />
-        </StatStrip>
+          <StatStrip>
+            <Stat
+              label="Provedor"
+              value={s ? (s.simulado ? <StatusBadge tone="danger">SIMULADO</StatusBadge> : <span className="break-words text-base">{s.provedor}</span>) : '--'}
+            />
+            <Stat label="Consultas no mês" value={s ? `${s.usadasNoMes}/${s.limiteMensal}` : '--'} tone={s && s.usadasNoMes >= s.limiteMensal ? 'danger' : 'default'} />
+            <Stat label="Bloqueio no SMBI" value={s ? (s.bloqueioAtivo ? 'Ligado' : 'Desligado') : '--'} tone={s?.bloqueioAtivo ? 'warning' : 'default'} />
+          </StatStrip>
+        </>
       )}
 
       {perm.administrar && <ControlesAdmin />}
       <ConsultaAvulsa podeConsultar={perm.consultar} />
+      <CatalogoComparativo />
       <Arquivo />
     </Page>
   );
