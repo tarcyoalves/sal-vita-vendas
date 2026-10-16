@@ -335357,6 +335357,7 @@ var CATALOGO_CREDITO = [
 ];
 var itemDoCatalogo = (chave) => CATALOGO_CREDITO.find((i4) => i4.chave === chave);
 var itemSelecionavel = (i4) => i4.custoReais !== null;
+var CONSULTA_COMPLETA = ["boavista", "serasa_premium"];
 function chaveDoProdutoGravado(produto, provedor) {
   if (produto && itemDoCatalogo(produto)) return produto;
   return provedor === "boavista_apifull" || provedor === "simulado" ? PRODUTO_PADRAO : produto ?? PRODUTO_PADRAO;
@@ -335450,7 +335451,36 @@ function atenuacaoDoItem(item, agora = /* @__PURE__ */ new Date()) {
 function grupoTodoAtenuado(g3, agora) {
   return g3.itens.length > 0 && g3.itens.length >= g3.quantidade && g3.itens.every((i4) => atenuacaoDoItem(i4, agora) !== null);
 }
-function analisarSinais(r5, agora = /* @__PURE__ */ new Date()) {
+function entradasDeScore(s4) {
+  return [
+    { valor: s4.valor, probabilidadeInadimplencia: s4.probabilidadeInadimplencia, faixa: s4.faixa, texto: s4.textoInterpretacao, rotulo: s4.rotulo ?? null },
+    ...(s4.outros ?? []).map((o4) => ({ valor: o4.valor, probabilidadeInadimplencia: o4.probabilidadeInadimplencia, faixa: o4.faixa, texto: o4.texto, rotulo: o4.rotulo }))
+  ];
+}
+var MES_ABREV = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+function anoMesSP(d3) {
+  const p4 = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", year: "numeric", month: "numeric" }).formatToParts(d3);
+  return { ano: Number(p4.find((x2) => x2.type === "year")?.value), mes: Number(p4.find((x2) => x2.type === "month")?.value) - 1 };
+}
+function contagemConsultas30(r5, agora, fonte) {
+  const quem = fonte ?? "a fonte";
+  const janela = r5.complementos?.consultasJanelas?.ate30;
+  if (typeof janela === "number") return { n: janela, origem: "janela", janela: "30 dias", texto: `segundo ${quem}: ${janela} em 30 dias` };
+  const { ano, mes } = anoMesSP(agora);
+  const linha = r5.complementos?.consultasPorMes?.find((l4) => l4.ano === ano);
+  const doMes = linha?.meses[mes];
+  if (typeof doMes === "number") return { n: doMes, origem: "mes", janela: `${MES_ABREV[mes]}/${ano} (m\xEAs corrente)`, texto: `segundo ${quem}: ${doMes} em ${MES_ABREV[mes]}/${ano} (m\xEAs corrente)` };
+  if (r5.consultasRecentes?.length) {
+    const n5 = r5.consultasRecentes.filter((c4) => {
+      const m4 = mesesEntre(c4.data, agora);
+      return m4 !== null && m4 >= 0 && m4 * 30.44 <= LIMITES_SINAIS.consultasJanelaDias;
+    }).reduce((sum, c4) => sum + (c4.quantidade || 1), 0);
+    return { n: n5, origem: "lista", janela: "30 dias (lista parcial)", texto: `lista parcial${fonte ? ` de ${fonte}` : " da fonte"}: ${n5} em 30 dias (pode haver mais)` };
+  }
+  return null;
+}
+var maiuscula1 = (t5) => t5.replace(/^./, (c4) => c4.toUpperCase());
+function analisarSinais(r5, agora = /* @__PURE__ */ new Date(), contagens) {
   const L = LIMITES_SINAIS;
   const out = [];
   const idade = mesesEntre(r5.cadastro?.fundacao, agora);
@@ -335460,13 +335490,14 @@ function analisarSinais(r5, agora = /* @__PURE__ */ new Date()) {
     else if (idade < L.empresaNovaAtencaoMeses) out.push({ codigo: "EMPRESA_JOVEM", nivel: "ATENCAO", titulo: "Empresa com menos de 3 anos", detalhe: `Fundada h\xE1 ${anos} ano(s).` });
     else if (anos >= L.empresaConsolidadaAnos) out.push({ codigo: "EMPRESA_CONSOLIDADA", nivel: "POSITIVO", titulo: "Empresa consolidada", detalhe: `${anos} anos de exist\xEAncia.` });
   }
-  if (r5.consultasRecentes) {
-    const n5 = r5.consultasRecentes.filter((c5) => {
-      const m4 = mesesEntre(c5.data, agora);
-      return m4 !== null && m4 * 30.44 <= L.consultasJanelaDias;
-    }).reduce((s4, c5) => s4 + (c5.quantidade || 1), 0);
-    if (n5 >= L.consultasAlerta) out.push({ codigo: "MUITAS_CONSULTAS", nivel: "ALERTA", titulo: "Muitas consultas recentes", detalhe: `${n5} consulta(s) nos \xFAltimos ${L.consultasJanelaDias} dias \u2014 pode estar buscando cr\xE9dito acima do normal.` });
-    else if (n5 >= L.consultasAtencao) out.push({ codigo: "CONSULTAS_ACIMA", nivel: "ATENCAO", titulo: "Consultas recentes acima do comum", detalhe: `${n5} consulta(s) nos \xFAltimos ${L.consultasJanelaDias} dias.` });
+  const todas = contagens ?? [contagemConsultas30(r5, agora, null)].filter((c5) => c5 !== null);
+  const oficiais = todas.filter((c5) => c5.origem !== "lista");
+  const base = oficiais.length ? oficiais : todas;
+  if (base.length) {
+    const n5 = Math.max(...base.map((c5) => c5.n));
+    const origem = maiuscula1(base.map((c5) => c5.texto).join("; "));
+    if (n5 >= L.consultasAlerta) out.push({ codigo: "MUITAS_CONSULTAS", nivel: "ALERTA", titulo: "Muitas consultas recentes", detalhe: `${origem} \u2014 pode estar buscando cr\xE9dito acima do normal.` });
+    else if (n5 >= L.consultasAtencao) out.push({ codigo: "CONSULTAS_ACIMA", nivel: "ATENCAO", titulo: "Consultas recentes acima do comum", detalhe: `${origem}.` });
   }
   if (r5.socios?.length) {
     const recentes = r5.socios.map((s4) => ({ s: s4, m: mesesEntre(s4.entrada, agora) })).filter((x2) => x2.m !== null && x2.m < L.socioRecenteAtencaoMeses);
@@ -335493,12 +335524,15 @@ function analisarSinais(r5, agora = /* @__PURE__ */ new Date()) {
   }
   return out;
 }
-function calcularVeredito(r5, agora = /* @__PURE__ */ new Date()) {
+function calcularVeredito(r5, agora = /* @__PURE__ */ new Date(), contagens) {
+  const calculados = entradasDeScore(r5.score).filter((e4) => e4.valor !== null);
+  const piorScore = calculados.length ? calculados.reduce((a6, b3) => b3.valor < a6.valor ? b3 : a6) : null;
   const a5 = r5.anotacoes;
-  const s4 = r5.score.valor;
+  const s4 = piorScore ? piorScore.valor : null;
   const motivos = [];
   const atencao = [];
-  if (s4 !== null && s4 < LIMITES_CREDITO.scoreReprova) motivos.push(`Score ${s4} abaixo de ${LIMITES_CREDITO.scoreReprova}`);
+  const ondeScore = piorScore && calculados.length > 1 && piorScore.rotulo ? ` (${piorScore.rotulo})` : "";
+  if (s4 !== null && s4 < LIMITES_CREDITO.scoreReprova) motivos.push(`Score ${s4}${ondeScore} abaixo de ${LIMITES_CREDITO.scoreReprova}`);
   if (temAlgo(a5.protestos)) {
     if (grupoTodoAtenuado(a5.protestos, agora)) atencao.push(`${a5.protestos.quantidade} protesto(s) pequeno(s)/antigo(s)/de \xF3rg\xE3o p\xFAblico \u2014 estudar com calma`);
     else motivos.push(`${a5.protestos.quantidade} protesto(s)`);
@@ -335512,10 +335546,10 @@ function calcularVeredito(r5, agora = /* @__PURE__ */ new Date()) {
   if (motivos.length) return { veredito: "REPROVADO_A_PRAZO", motivos };
   motivos.push(...atencao);
   if (s4 === null) motivos.push("Score n\xE3o informado pela fonte");
-  else if (s4 < LIMITES_CREDITO.scoreRestricao) motivos.push(`Score ${s4} abaixo de ${LIMITES_CREDITO.scoreRestricao}`);
+  else if (s4 < LIMITES_CREDITO.scoreRestricao) motivos.push(`Score ${s4}${ondeScore} abaixo de ${LIMITES_CREDITO.scoreRestricao}`);
   if (temAlgo(pend)) motivos.push(`${pend.quantidade} pend\xEAncia(s) financeira(s)${grupoTodoAtenuado(pend, agora) ? " \u2014 pequenas/antigas/de \xF3rg\xE3o p\xFAblico" : ""}`);
   if (temAlgo(a5.acoesJudiciais)) motivos.push(`${a5.acoesJudiciais.quantidade} a\xE7\xE3o(\xF5es) judicial(is)`);
-  for (const sinal of analisarSinais(r5, agora)) if (sinal.nivel === "ALERTA") motivos.push(`${sinal.titulo} \u2014 an\xE1lise manual`);
+  for (const sinal of analisarSinais(r5, agora, contagens)) if (sinal.nivel === "ALERTA") motivos.push(`${sinal.titulo} \u2014 an\xE1lise manual`);
   return motivos.length ? { veredito: "COM_RESTRICAO", motivos } : { veredito: "APROVADO", motivos: [] };
 }
 var SEMAFORO = { APROVADO: "VERDE", COM_RESTRICAO: "AMARELO", REPROVADO_A_PRAZO: "VERMELHO" };
@@ -335550,8 +335584,8 @@ var ordemPreferencia = (produto) => {
 };
 var tempo = (iso) => new Date(iso).getTime();
 function escolherParaConsolidar(itens, agora = /* @__PURE__ */ new Date()) {
-  const reais = itens.filter((i4) => i4.relatorio.fonte.provedor !== "simulado");
-  const base = reais.length ? reais : itens;
+  const reais2 = itens.filter((i4) => i4.relatorio.fonte.provedor !== "simulado");
+  const base = reais2.length ? reais2 : itens;
   const maisRecente = /* @__PURE__ */ new Map();
   for (const i4 of base) {
     const atual = maisRecente.get(i4.produto);
@@ -335596,21 +335630,43 @@ var primeiro = (valores) => {
   for (const v4 of valores) if (v4 !== null && v4 !== void 0) return v4;
   return null;
 };
+var ORDEM_EXIBICAO = ["boavista", "serasa_premium", "define_risco"];
+var ordemExibicao = (produto) => {
+  const i4 = ORDEM_EXIBICAO.indexOf(produto);
+  return i4 === -1 ? 99 : i4;
+};
+var nomeDoScore = (s4) => s4.rotulo ? `${s4.produtoNome} (${s4.rotulo})` : s4.produtoNome;
+function leituraDoGrupo(celulas) {
+  const consultaram = celulas.filter((c4) => c4.consultado);
+  if (!consultaram.length) return { leitura: "nao_consultado", textoLeitura: "Nenhuma fonte consulta" };
+  if (celulas.length === 1) return { leitura: "unica", textoLeitura: "S\xF3 uma fonte" };
+  if (consultaram.length === 1) return { leitura: "so_uma", textoLeitura: `S\xF3 ${consultaram[0].produtoNome} cobre` };
+  const qtds = consultaram.map((c4) => c4.quantidade);
+  const difereQtd = new Set(qtds).size > 1;
+  const valores = consultaram.filter((c4) => c4.quantidade > 0 && c4.valorTotal !== null).map((c4) => c4.valorTotal);
+  const difereValor = !difereQtd && valores.length > 1 && Math.max(...valores) - Math.min(...valores) > 5e-3;
+  if (difereQtd) return { leitura: "divergem", textoLeitura: `Divergem (${qtds.join(" \xD7 ")})` };
+  if (difereValor) return { leitura: "divergem", textoLeitura: "Divergem (valores diferentes)" };
+  if (qtds[0] === 0) return { leitura: "nada_consta", textoLeitura: "Nada consta nas fontes" };
+  return { leitura: "coincidem", textoLeitura: "Coincidem" };
+}
 function consolidarRelatorios(entrada, agora = /* @__PURE__ */ new Date()) {
-  const { itens: escolhidos, valido } = escolherParaConsolidar(entrada, agora);
-  if (!escolhidos.length) throw new Error("Sem relat\xF3rios para consolidar");
+  const { itens: escolhidosBase, valido } = escolherParaConsolidar(entrada, agora);
+  if (!escolhidosBase.length) throw new Error("Sem relat\xF3rios para consolidar");
+  const escolhidos = escolhidosBase.map((i4, k3) => ({ i: i4, k: k3 })).sort((a5, b3) => ordemExibicao(a5.i.produto) - ordemExibicao(b3.i.produto) || a5.k - b3.k).map((x2) => x2.i);
   const ordem = [...escolhidos].sort((a5, b3) => ordemPreferencia(a5.produto) - ordemPreferencia(b3.produto) || tempo(b3.consultadoEm) - tempo(a5.consultadoEm));
   const maisRecente = [...escolhidos].sort((a5, b3) => tempo(b3.consultadoEm) - tempo(a5.consultadoEm))[0];
   const rel = ordem.map((i4) => i4.relatorio);
-  const scores = escolhidos.map((i4) => ({
+  const scores = escolhidos.flatMap((i4) => entradasDeScore(i4.relatorio.score).map((e4) => ({
     produto: i4.produto,
     produtoNome: i4.produtoNome,
-    valor: i4.relatorio.score.valor,
-    probabilidadeInadimplencia: i4.relatorio.score.probabilidadeInadimplencia,
-    faixa: i4.relatorio.score.faixa,
-    texto: i4.relatorio.score.textoInterpretacao,
-    calculado: i4.relatorio.score.valor !== null
-  }));
+    rotulo: e4.rotulo,
+    valor: e4.valor,
+    probabilidadeInadimplencia: e4.probabilidadeInadimplencia,
+    faixa: e4.faixa,
+    texto: e4.texto,
+    calculado: e4.valor !== null
+  })));
   const fontes = escolhidos.map((i4) => ({
     produto: i4.produto,
     produtoNome: i4.produtoNome,
@@ -335644,13 +335700,35 @@ function consolidarRelatorios(entrada, agora = /* @__PURE__ */ new Date()) {
   if (veiculos) complementos.veiculos = veiculos;
   const totais = rel.map((r5) => r5.complementos?.consultas12Meses).filter((n5) => typeof n5 === "number");
   if (totais.length) complementos.consultas12Meses = Math.max(...totais);
+  const janelas = rel.find((r5) => r5.complementos?.consultasJanelas)?.complementos?.consultasJanelas;
+  if (janelas) complementos.consultasJanelas = janelas;
+  const segmentos = rel.find((r5) => r5.complementos?.consultasPorSegmento?.length)?.complementos?.consultasPorSegmento;
+  if (segmentos) complementos.consultasPorSegmento = segmentos;
+  const porMes = rel.find((r5) => r5.complementos?.consultasPorMes?.length)?.complementos?.consultasPorMes;
+  if (porMes) complementos.consultasPorMes = porMes;
+  const func = primeiro(rel.map((r5) => r5.complementos?.funcionariosFaixa));
+  if (func !== null) complementos.funcionariosFaixa = func;
+  const cnaes = rel.find((r5) => r5.complementos?.cnaesSecundarios?.length)?.complementos?.cnaesSecundarios;
+  if (cnaes) complementos.cnaesSecundarios = cnaes;
+  const atuacao = primeiro(rel.map((r5) => r5.complementos?.tempoAtuacao));
+  if (atuacao !== null) complementos.tempoAtuacao = atuacao;
+  const mf = primeiro(rel.map((r5) => r5.complementos?.matrizFilial));
+  if (mf !== null) complementos.matrizFilial = mf;
+  const repr = primeiro(rel.map((r5) => r5.complementos?.representante));
+  if (repr !== null) complementos.representante = repr;
   const chaves = Object.keys(ROTULO_GRUPO);
   const anotacoes = {};
   const divergenciaPorGrupo = {};
   const divergencias = [];
+  const matriz = [];
   for (const k3 of chaves) {
     const { grupo: grupo2, porFonte } = juntarGrupo(ordem.map((i4) => ({ nome: i4.produtoNome, grupo: i4.relatorio.anotacoes[k3] })), escolhidos.map((i4) => i4.produtoNome));
     anotacoes[k3] = grupo2;
+    const celulas = escolhidos.map((i4) => {
+      const g3 = i4.relatorio.anotacoes[k3];
+      return { produto: i4.produto, produtoNome: i4.produtoNome, consultado: g3.consultado, quantidade: g3.consultado ? qtdEfetiva(g3) : 0, valorTotal: g3.consultado ? g3.valorTotal : null };
+    });
+    matriz.push({ chave: k3, rotulo: ROTULO_GRUPO[k3], celulas, ...leituraDoGrupo(celulas) });
     const consultaram = porFonte.filter((f4) => f4.consultado);
     if (consultaram.length > 1 && new Set(consultaram.map((f4) => f4.quantidade)).size > 1) {
       const texto2 = consultaram.map((f4) => `${f4.nome}: ${f4.quantidade}`).join(" \xB7 ");
@@ -335668,10 +335746,12 @@ function consolidarRelatorios(entrada, agora = /* @__PURE__ */ new Date()) {
   if (calculados.length > 1) {
     const vs = calculados.map((s4) => s4.valor);
     if (Math.max(...vs) - Math.min(...vs) >= LIMITE_DIVERGENCIA_SCORE) {
-      divergenciaScore = `Scores muito distantes entre as fontes (${calculados.map((s4) => `${s4.produtoNome}: ${s4.valor}`).join(" \xB7 ")}); cada fonte usa um modelo pr\xF3prio.`;
+      divergenciaScore = `Scores muito distantes (${calculados.map((s4) => `${nomeDoScore(s4)}: ${s4.valor}`).join(" \xB7 ")}); cada um \xE9 um modelo pr\xF3prio da fonte.`;
       divergencias.unshift(divergenciaScore);
     }
   }
+  const temRestricao = ["protestos", "pendenciasFinanceiras", "chequesSemFundo", "acoesJudiciais", "falenciaRecuperacao"].some((k3) => temAlgo(anotacoes[k3]));
+  const scoreAltoComRestricao = temRestricao && calculados.some((s4) => s4.valor >= LIMITES_CREDITO.scoreRestricao);
   const simulado = escolhidos.every((i4) => i4.relatorio.fonte.provedor === "simulado");
   const custos = fontes.map((f4) => f4.custoReais);
   const pior = calculados.length ? calculados.reduce((a5, b3) => b3.valor < a5.valor ? b3 : a5) : null;
@@ -335693,15 +335773,28 @@ function consolidarRelatorios(entrada, agora = /* @__PURE__ */ new Date()) {
     anotacoes
   };
   const dataRef = new Date(maisRecente.consultadoEm);
+  const consultasPorFonte = escolhidos.map((i4) => ({
+    produto: i4.produto,
+    produtoNome: i4.produtoNome,
+    c30: contagemConsultas30(i4.relatorio, new Date(i4.consultadoEm), i4.produtoNome),
+    total12: typeof i4.relatorio.complementos?.consultas12Meses === "number" ? i4.relatorio.complementos.consultas12Meses : null
+  }));
+  const contagens = consultasPorFonte.map((c4) => c4.c30).filter((c4) => c4 !== null);
+  const t12 = consultasPorFonte.map((c4) => c4.total12).filter((n5) => n5 !== null);
+  const consultas12Divergem = t12.length > 1 && new Set(t12).size > 1;
   const individuais = escolhidos.map((i4) => calcularVeredito(i4.relatorio, new Date(i4.consultadoEm)));
-  const doFundido = calcularVeredito(fundido, dataRef);
+  const doFundido = calcularVeredito(fundido, dataRef, contagens);
   const veredito = piorVeredito([...individuais.map((v4) => v4.veredito), doFundido.veredito]);
   const motivos = [];
   const individuaisMaisGraves = individuais.filter((v4) => v4.veredito === veredito && veredito !== doFundido.veredito);
-  for (const m4 of [...doFundido.motivos, ...individuaisMaisGraves.flatMap((v4) => v4.motivos)]) {
+  const origemPior = pior ? ` (${pior.produtoNome}${pior.rotulo ? `, ${pior.rotulo}` : ""})` : "";
+  for (const bruto of [...doFundido.motivos, ...individuaisMaisGraves.flatMap((v4) => v4.motivos)]) {
+    const m4 = pior && bruto.startsWith(`Score ${pior.valor} abaixo`) ? bruto.replace(`Score ${pior.valor} `, `Score ${pior.valor}${origemPior} `) : bruto;
     if (m4 !== "Score n\xE3o informado pela fonte" && !motivos.includes(m4)) motivos.push(m4);
   }
-  for (const s4 of scores) if (!s4.calculado) motivos.push(`${s4.produtoNome}: score n\xE3o calculado`);
+  for (const i4 of escolhidos) {
+    if (!calculados.some((s4) => s4.produto === i4.produto)) motivos.push(`${i4.produtoNome}: score n\xE3o calculado`);
+  }
   return {
     documento: fundido.documento,
     tipo: fundido.tipo,
@@ -335713,10 +335806,14 @@ function consolidarRelatorios(entrada, agora = /* @__PURE__ */ new Date()) {
     fundido,
     divergenciaPorGrupo,
     divergenciaScore,
+    scoreAltoComRestricao,
     divergencias,
+    matriz,
+    consultasPorFonte,
+    consultas12Divergem,
     veredito,
     motivos,
-    sinais: analisarSinais(fundido, dataRef)
+    sinais: analisarSinais(fundido, dataRef, contagens)
   };
 }
 
@@ -339164,14 +339261,49 @@ var itemGenerico = (rotulo) => (o4) => {
     extras: extrasDe(o4, usados)
   };
 };
+var itemAcao = (o4) => {
+  const dt = ["DISTRIBUICAO", "DATA_DISTRIBUICAO", "DATA"].map((k3) => ({ k: k3, v: dataPtBr(o4[k3]) })).find((x2) => x2.v);
+  const usados = /* @__PURE__ */ new Set(["VALOR"]);
+  if (dt) usados.add(dt.k);
+  const acao = primeiro2(o4, ["ACAO", "TIPO_ACAO", "NATUREZA", "ASSUNTO"]);
+  if (acao) usados.add(acao.chave);
+  const foro = primeiro2(o4, ["FORO", "COMARCA", "CIDADE", "MUNICIPIO"]);
+  const uf = primeiro2(o4, ["UF", "ESTADO"]);
+  const vara = primeiro2(o4, ["VARA", "JUIZO"]);
+  for (const x2 of [foro, uf, vara]) if (x2) usados.add(x2.chave);
+  const foroUf = foro && uf ? `${foro.valor}/${uf.valor}` : foro?.valor ?? uf?.valor ?? null;
+  const proc = primeiro2(o4, ["PROCESSO", "NUMERO_PROCESSO", "NUM_PROCESSO"]);
+  if (proc) usados.add(proc.chave);
+  return {
+    data: dt?.v ?? null,
+    descricao: acao?.valor ?? "A\xE7\xE3o c\xEDvel",
+    valor: numeroPtBr(o4.VALOR),
+    local: [foroUf, vara?.valor].filter((x2) => !!x2).join(" \u2014 ") || null,
+    processo: proc?.valor ?? null,
+    credor: null,
+    extras: extrasDe(o4, usados)
+  };
+};
+var CHAVES_QTD = ["QUANTIDADE_OCORRENCIA", "QUANTIDADE_OCORRENCIAS", "TOTAL_ACOES", "TOTAL_DE_ACOES", "QUANTIDADE_ACOES"];
+var CHAVES_VALOR_TOTAL = ["VALOR_TOTAL", "TOTAL_VALOR", "VALOR_TOTAL_ACOES"];
+function numeroDe(b3, chaves) {
+  for (const alvo of [b3, obj(b3.RESUMO), obj(b3.TOTAIS)]) {
+    if (!alvo) continue;
+    for (const k3 of chaves) {
+      const n5 = numeroPtBr(alvo[k3]);
+      if (n5 !== null) return n5;
+    }
+  }
+  return null;
+}
 function grupoDe(bloco, item) {
   const b3 = obj(bloco);
   if (!b3) return grupoNaoConsultado();
   const itens = lista(b3.OCORRENCIAS).map(item);
-  const qtd2 = numeroPtBr(b3.QUANTIDADE_OCORRENCIA) ?? numeroPtBr(b3.QUANTIDADE_OCORRENCIAS);
+  const qtd2 = numeroDe(b3, CHAVES_QTD);
   if (qtd2 === null && itens.length === 0) return grupoNaoConsultado();
   const quantidade = qtd2 ?? itens.length;
-  return { consultado: true, quantidade, valorTotal: numeroPtBr(b3.VALOR_TOTAL) ?? somaValores(itens) ?? (quantidade === 0 ? 0 : null), itens };
+  return { consultado: true, quantidade, valorTotal: numeroDe(b3, CHAVES_VALOR_TOTAL) ?? somaValores(itens) ?? (quantidade === 0 ? 0 : null), itens };
 }
 function juntarGrupos(a5, b3) {
   if (!a5.consultado && !b3.consultado) return grupoNaoConsultado();
@@ -339200,20 +339332,129 @@ function cadastroDe(emp) {
     uf: e4 ? txt(e4.UF) : null
   };
 }
+var faixaDe = (e4) => txt(e4.CLASSIF_ABC) ?? txt(e4.FAIXA_SCORE) ?? txt(e4.FAIXA) ?? txt(e4.DESCR_FAIXA) ?? txt(e4.CLASSIF_NRO);
 function scoreDe(scores, exigirProbabilidade) {
   const entradas = lista(obj(scores)?.OCORRENCIAS);
-  const valida = (o4) => {
+  const lido = entradas.map((o4, i4) => {
     const n5 = numeroPtBr(o4.SCORE);
-    return n5 !== null && n5 >= 0 && n5 <= 1e3;
+    const prob = numeroPtBr(o4.PROBABILIDADE_INADIMPLENCIA);
+    const faixaValida = n5 !== null && n5 >= 0 && n5 <= 1e3;
+    const calculado = faixaValida && (!exigirProbabilidade || prob !== null);
+    return { o: o4, i: i4, calculado, n: calculado ? n5 : null, prob: calculado ? prob : null };
+  });
+  const descr = entradas.map((o4) => txt(o4.DESCR_SCORE) ?? txt(o4.TIPO_SCORE) ?? txt(o4.LAYOUT));
+  const usarDescr = entradas.length > 1 && descr.every((d3) => d3 !== null) && new Set(descr.map((d3) => semAcento2(d3))).size === descr.length;
+  const rotulo = (i4) => usarDescr ? descr[i4] : `Score ${i4 + 1}`;
+  const principal = lido.find((x2) => x2.calculado && x2.prob !== null) ?? (exigirProbabilidade ? void 0 : lido.find((x2) => x2.calculado));
+  if (!principal) return { valor: null, probabilidadeInadimplencia: null, faixa: null, textoInterpretacao: null };
+  const base = {
+    valor: principal.n,
+    probabilidadeInadimplencia: principal.prob,
+    faixa: faixaDe(principal.o),
+    textoInterpretacao: txt(principal.o.TEXTO)
   };
-  const e4 = entradas.find((o4) => valida(o4) && numeroPtBr(o4.PROBABILIDADE_INADIMPLENCIA) !== null) ?? (exigirProbabilidade ? void 0 : entradas.find(valida));
-  if (!e4) return { valor: null, probabilidadeInadimplencia: null, faixa: null, textoInterpretacao: null };
-  return {
-    valor: numeroPtBr(e4.SCORE),
-    probabilidadeInadimplencia: numeroPtBr(e4.PROBABILIDADE_INADIMPLENCIA),
-    faixa: txt(e4.CLASSIF_ABC) ?? txt(e4.CLASSIF_NRO),
-    textoInterpretacao: txt(e4.TEXTO)
-  };
+  if (lido.length < 2) return base;
+  const outros = lido.filter((x2) => x2 !== principal).map((x2) => ({
+    valor: x2.n,
+    probabilidadeInadimplencia: x2.prob,
+    faixa: x2.calculado ? faixaDe(x2.o) : null,
+    texto: txt(x2.o.TEXTO),
+    rotulo: rotulo(x2.i)
+  }));
+  return { ...base, rotulo: rotulo(principal.i), outros };
+}
+var semAcento2 = (t5) => t5.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+function consultasDoAlertas(c4) {
+  const out = {};
+  const janelas = { ate30: null, de31a60: null, de61a90: null, mais90: null };
+  let achouJanela = false;
+  const segmentos = [];
+  for (const o4 of lista(obj(c4.INFORMACOES_ALERTAS_RESTRICOES)?.OCORRENCIAS)) {
+    const titulo = semAcento2(txt(o4.TITULO) ?? "");
+    const bruto = o4.OBSERVACOES;
+    const obs = Array.isArray(bruto) ? bruto.filter((x2) => typeof x2 === "string").join(" ") : txt(bruto) ?? "";
+    if (/ULTIMAS?\s+CONSULTAS/.test(titulo)) {
+      for (const m4 of obs.matchAll(/DATA:\s*(?:(?:\d{1,2})?\/)?(\d{1,2})\/(\d{4})\s*\/\s*QUANTIDADE:\s*(\d+)\s*\/\s*SEGMENTO:\s*(.+?)\s*(?=DATA:|$)/gi)) {
+        const mes = Number(m4[1]);
+        segmentos.push({ mes: mes >= 1 && mes <= 12 ? `${m4[2]}-${String(mes).padStart(2, "0")}` : null, quantidade: Number(m4[3]), segmento: m4[4].trim().replace(/[\s;|,]+$/, "") });
+      }
+      continue;
+    }
+    if (!/CONSULTAS?/.test(titulo)) continue;
+    const q = obs.match(/QUANTIDADE\s+TOTAL\s*:\s*(\d+)/i);
+    const n5 = q ? Number(q[1]) : null;
+    if (n5 === null) continue;
+    if (/31\s*A\s*60/.test(titulo)) {
+      janelas.de31a60 = n5;
+      achouJanela = true;
+    } else if (/61\s*A\s*90/.test(titulo)) {
+      janelas.de61a90 = n5;
+      achouJanela = true;
+    } else if (/90\s*\+|MAIS\s+DE\s+90|ACIMA\s+DE\s+90/.test(titulo)) {
+      janelas.mais90 = n5;
+      achouJanela = true;
+    } else if (/\b30\s+DIAS/.test(titulo)) {
+      janelas.ate30 = n5;
+      achouJanela = true;
+    }
+  }
+  if (achouJanela) out.consultasJanelas = janelas;
+  if (segmentos.length) out.consultasPorSegmento = segmentos;
+  return out;
+}
+var MESES_NOMES = ["JANEIRO", "FEVEREIRO", "MARCO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
+function consultasPorMesDe(hist) {
+  const out = [];
+  for (const o4 of lista(hist?.QUANTIDADES)) {
+    const ano = numeroPtBr(o4.ANO);
+    if (ano === null) continue;
+    const meses = new Array(12).fill(null);
+    for (const [k3, v4] of Object.entries(o4)) {
+      const nome = semAcento2(k3).trim();
+      const i4 = MESES_NOMES.indexOf(nome) >= 0 ? MESES_NOMES.indexOf(nome) : MESES.indexOf(nome);
+      if (i4 >= 0) meses[i4] = numeroPtBr(v4);
+    }
+    if (meses.some((m4) => m4 !== null)) out.push({ ano, meses });
+  }
+  return out.length ? out.sort((a5, b3) => b3.ano - a5.ano) : void 0;
+}
+var textoDe = (o4, chaves) => primeiro2(o4, chaves)?.valor ?? null;
+function empresaComplementos(emp) {
+  if (!emp) return {};
+  const out = {};
+  const func = txt(emp.FAIXA_FUNCIONARIOS);
+  if (func) out.funcionariosFaixa = func;
+  const chaveCnae = Object.keys(emp).find((k3) => /^CNAES?_?SECUND/.test(semAcento2(k3)));
+  if (chaveCnae) {
+    const v4 = emp[chaveCnae];
+    const itens = Array.isArray(v4) ? v4 : typeof v4 === "string" ? v4.split(/[;|]/) : [];
+    const cnaes = itens.map((x2) => {
+      if (ehObjeto(x2)) return [textoDe(x2, ["CNAE", "CODIGO"]), textoDe(x2, ["DESCRICAO", "ATIVIDADE"])].filter(Boolean).join("-");
+      return typeof x2 === "string" || typeof x2 === "number" ? String(x2).trim() : "";
+    }).filter(Boolean);
+    const unicos2 = [...new Set(cnaes)];
+    if (unicos2.length) out.cnaesSecundarios = unicos2;
+  }
+  const atuacao = Object.keys(emp).find((k3) => /^TEMPO.*ATUA/.test(semAcento2(k3)));
+  if (atuacao && txt(emp[atuacao])) out.tempoAtuacao = txt(emp[atuacao]);
+  const chaveMF = Object.keys(emp).find((k3) => /^(MATRIZ|FILIAL|TIPO_ESTABELECIMENTO)/.test(semAcento2(k3)) && txt(emp[k3]));
+  if (chaveMF) {
+    const v4 = (txt(emp[chaveMF]) ?? "").toUpperCase();
+    if (/^MATRIZ/.test(semAcento2(chaveMF)) && !/MATRIZ|FILIAL/.test(v4)) out.matrizFilial = /^(S|SIM|1|TRUE)$/.test(v4) ? "Matriz" : /^(N|NAO|0|FALSE)$/.test(v4) ? "Filial" : v4;
+    else out.matrizFilial = txt(emp[chaveMF]);
+  }
+  const rep = emp.REPRESENTANTE;
+  if (ehObjeto(rep)) {
+    const nome = textoDe(rep, ["NOME", "NOME_REPRESENTANTE", "RAZAO_SOCIAL"]);
+    const doc = textoDe(rep, ["CPF", "CPF_CNPJ", "DOCUMENTO"]);
+    if (nome || doc) out.representante = { nome, documento: doc };
+  } else if (txt(rep)) {
+    out.representante = { nome: txt(rep), documento: textoDe(emp, ["REPRESENTANTE_CPF", "CPF_REPRESENTANTE"]) };
+  } else {
+    const nome = textoDe(emp, ["REPRESENTANTE_NOME", "NOME_REPRESENTANTE"]);
+    if (nome) out.representante = { nome, documento: textoDe(emp, ["REPRESENTANTE_CPF", "CPF_REPRESENTANTE"]) };
+  }
+  return out;
 }
 var credDe = (json4) => obj(obj(obj(json4)?.dados)?.CREDCADASTRAL);
 function mapeadorBoaVista(json4) {
@@ -339230,7 +339471,15 @@ function mapeadorBoaVista(json4) {
     socios: [],
     consultasRecentes,
     comportamento: eventos || pontual ? { ultimaCompraEm: compra ? periodoMes(compra.PERIODO) : null, relacionamentoMaisAntigoEm: null, fontesConsultadas: null, pagamentoPontualPct: numeroPtBr(pontual?.PONTUACAO) } : void 0,
-    complementos: hist ? { consultas12Meses: numeroPtBr(hist.QUANTIDADE_OCORRENCIAS) } : void 0,
+    complementos: (() => {
+      const porMes = consultasPorMesDe(hist);
+      const comp = {
+        ...hist ? { consultas12Meses: numeroPtBr(hist.QUANTIDADE_OCORRENCIAS) } : {},
+        ...porMes ? { consultasPorMes: porMes } : {},
+        ...empresaComplementos(obj(c4.INFORMACOES_DA_EMPRESA))
+      };
+      return Object.keys(comp).length ? comp : void 0;
+    })(),
     anotacoes: {
       protestos: grupoDe(c4.PROTESTOS, itemGenerico("Protesto")),
       pendenciasFinanceiras: grupoDe(c4.PEND_FINANCEIRAS, itemPendencia),
@@ -339260,12 +339509,17 @@ function mapeadorSerasaPremium(json4) {
       cargo: txt(s4.CARGO)
     })),
     consultasRecentes: passagens,
-    complementos: { faturamentoPresumidoFaixa: txt(obj(c4.FATURAMENTO_PRESUMIDO)?.FAIXA), veiculos },
+    complementos: {
+      faturamentoPresumidoFaixa: txt(obj(c4.FATURAMENTO_PRESUMIDO)?.FAIXA),
+      veiculos,
+      ...consultasDoAlertas(c4),
+      ...empresaComplementos(obj(c4.INFORMACOES_DA_EMPRESA))
+    },
     anotacoes: {
       protestos: grupoDe(protestos, itemGenerico("Protesto")),
       pendenciasFinanceiras: grupoDe(c4.RESTRICOES_FINANCEIRAS, itemPendencia),
       chequesSemFundo: grupoDe(c4.CH_SEM_FUNDOS_BACEN, itemGenerico("Cheque sem fundo (BACEN)")),
-      acoesJudiciais: grupoDe(c4.ACOES_CIVEIS, itemGenerico("A\xE7\xE3o c\xEDvel")),
+      acoesJudiciais: grupoDe(c4.ACOES_CIVEIS, itemAcao),
       falenciaRecuperacao: grupoNaoConsultado()
     }
   };
@@ -339514,10 +339768,10 @@ var rotuloCampo = (k3, ctx, valores = []) => {
 };
 var MESES3 = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
 var MESES_COMPLETOS = ["JANEIRO", "FEVEREIRO", "MARCO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
-var semAcento2 = (s4) => s4.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+var semAcento3 = (s4) => s4.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
 var abrev = (i4) => MESES3[i4].charAt(0) + MESES3[i4].slice(1).toLowerCase();
 function indiceMes(nome) {
-  const n5 = semAcento2(nome).trim();
+  const n5 = semAcento3(nome).trim();
   const i4 = MESES_COMPLETOS.indexOf(n5);
   return i4 >= 0 ? i4 : MESES3.indexOf(n5);
 }
@@ -339530,7 +339784,7 @@ function linhasPorMes(q) {
     let ano = "";
     for (const [k3, v4] of Object.entries(o4)) {
       if (!ehEscalar(v4)) continue;
-      if (semAcento2(k3).trim() === "ANO") {
+      if (semAcento3(k3).trim() === "ANO") {
         ano = String(v4).trim();
         continue;
       }
@@ -339657,14 +339911,14 @@ function tabelaDe(linhasBrutas, ctx) {
   const tituloDe = (j) => rotuloCampo(chaves[j], ctx, colunaDe(j));
   const mesmoConteudo = (a5, b3) => celulas.every((l4) => l4[a5] === l4[b3]);
   const maisDescritiva = (novo, atual) => {
-    const g3 = (j) => GENERICOS.has(semAcento2(semPrefixo(chaves[j])));
+    const g3 = (j) => GENERICOS.has(semAcento3(semPrefixo(chaves[j])));
     if (g3(atual) !== g3(novo)) return g3(atual);
     return tituloDe(novo).length > tituloDe(atual).length;
   };
   let usadas = [];
   for (let j = 0; j < chaves.length; j++) {
     if (!celulas.some((l4) => l4[j] !== "")) continue;
-    if (semAcento2(semPrefixo(chaves[j])) === "moeda") continue;
+    if (semAcento3(semPrefixo(chaves[j])) === "moeda") continue;
     const dup = usadas.findIndex((u4) => mesmoConteudo(u4, j));
     if (dup < 0) usadas.push(j);
     else if (maisDescritiva(j, usadas[dup])) usadas = usadas.map((u4, i4) => i4 === dup ? j : u4);
@@ -339737,7 +339991,7 @@ function separarStatus(valor2) {
   else if (ehObj(s4)) {
     for (const [k3, v4] of Object.entries(s4)) {
       if (!ehEscalar(v4)) continue;
-      const b3 = semAcento2(semPrefixo(k3));
+      const b3 = semAcento3(semPrefixo(k3));
       if (b3.startsWith("COD")) codigo = String(v4).trim();
       else if (b3.startsWith("DESC") || b3 === "MENSAGEM" || b3 === "TEXTO") desc2 = String(v4);
     }
@@ -340118,7 +340372,7 @@ function consultasPorMes(bruto) {
   return { colunas: COLUNAS_MESES, linhas };
 }
 
-// server/lib/credito/pdf.ts
+// server/lib/credito/pdfBase.ts
 var PDFDocument2 = require_pdfkit_browser();
 var AZUL = "#0C3680";
 var AZUL_CLARO = "#E8EEF8";
@@ -340191,6 +340445,7 @@ function formatarDocumento(doc, tipo) {
 }
 function mascararDocumento(doc) {
   if (!doc) return "\u2014";
+  if (doc.includes("*")) return limparTexto(doc).trim() || "***";
   const d3 = doc.replace(/\D/g, "");
   if (d3.length === 11) return `***.${d3.slice(3, 6)}.${d3.slice(6, 9)}-**`;
   if (d3.length === 14) return formatarDocumento(d3, "CNPJ");
@@ -340388,112 +340643,10 @@ function resumirTexto(t5, max2 = 130) {
   return corte.slice(0, palavra > max2 * 0.5 ? palavra : max2).replace(/[\s,;:.-]+$/, "") + "...";
 }
 var ok = (v4) => !!v4 && v4.trim() !== "" && v4.trim() !== "\u2014";
-function secaoResumo(p4, r5, meta, consol) {
-  const { doc } = p4;
-  const sem2 = SEMAFORO[meta.veredito];
-  const cor = COR_SEMAFORO[sem2];
-  doc.font("Helvetica").fontSize(8).fillColor(CINZA).text("Relat\xF3rio de An\xE1lise de Cr\xE9dito \u2014 Sal Vita", MX, p4.y, { width: LARG, lineBreak: false });
-  p4.y += 12;
-  const nome = limparTexto(r5.cadastro.razaoSocial ?? r5.cadastro.nomeFantasia).trim();
-  const documento = `${r5.tipo} ${formatarDocumento(r5.documento, r5.tipo)}`;
-  doc.font("Helvetica-Bold").fontSize(16).fillColor(TEXTO).text(nome || documento, MX, p4.y, { width: LARG });
-  p4.y = doc.y + 2;
-  const linha = (consol ? [nome ? documento : "", `Fontes: ${consol.fontes.map((f4) => `${limparTexto(f4.produtoNome)} (${dataHoraCurta(f4.consultadoEm)})`).join(" + ")}`] : [nome ? documento : "", `Consulta em ${dataHoraBR(r5.consultadoEm)}`, `Fonte: ${fonteDosDados(r5)}`]).filter(Boolean).join("   |   ");
-  doc.font("Helvetica").fontSize(9).fillColor(CINZA).text(linha, MX, p4.y, { width: LARG });
-  p4.y = doc.y + 8;
-  const motivos = meta.motivos.length ? meta.motivos : ["Nenhum fator de restri\xE7\xE3o encontrado nas regras da Sal Vita."];
-  doc.font("Helvetica").fontSize(9);
-  const larguraTexto = LARG - 100;
-  const alturaMotivos = motivos.reduce((a5, m4) => a5 + doc.heightOfString("\u2022  " + limparTexto(m4), { width: larguraTexto }) + 2, 0);
-  const alturaPainel = Math.max(78, 42 + alturaMotivos + 8);
-  p4.garantir(alturaPainel + 10);
-  const y0 = p4.y;
-  doc.roundedRect(MX, y0, LARG, alturaPainel, 6).fill(FUNDO_SEMAFORO[sem2]);
-  doc.roundedRect(MX, y0, 5, alturaPainel, 2).fill(cor);
-  const cx2 = MX + 38;
-  const luzes = [["VERMELHO", 0], ["AMARELO", 1], ["VERDE", 2]];
-  const alturaCaixa = 62;
-  const topoCaixa = y0 + (alturaPainel - alturaCaixa) / 2;
-  doc.roundedRect(cx2 - 13, topoCaixa, 26, alturaCaixa, 8).fill("#374151");
-  for (const [nomeLuz, i4] of luzes) {
-    doc.circle(cx2, topoCaixa + 11 + i4 * 20, 7.5).fill(nomeLuz === sem2 ? COR_SEMAFORO[nomeLuz] : "#6B7280");
-  }
-  const tx = MX + 76;
-  doc.font("Helvetica").fontSize(8).fillColor(CINZA).text("VEREDITO DE CR\xC9DITO", tx, y0 + 10, { width: larguraTexto, lineBreak: false });
-  doc.font("Helvetica-Bold").fontSize(19).fillColor(cor).text(limparTexto(ROTULO_VEREDITO[meta.veredito]), tx, y0 + 21, { width: larguraTexto, lineBreak: false });
-  let ym = y0 + 47;
-  doc.font("Helvetica").fontSize(9).fillColor(TEXTO);
-  for (const m4 of motivos) {
-    const t5 = "\u2022  " + limparTexto(m4);
-    doc.text(t5, tx, ym, { width: larguraTexto });
-    ym += doc.heightOfString(t5, { width: larguraTexto }) + 2;
-  }
-  p4.y = y0 + alturaPainel + 10;
-  if (consol) return;
-  p4.garantir(100);
-  const sy2 = p4.y;
-  const v4 = r5.score.valor;
-  doc.roundedRect(MX, sy2, 150, 76, 6).fill(AZUL_CLARO);
-  doc.font("Helvetica").fontSize(8).fillColor(CINZA).text("SCORE (0 A 1000)", MX + 10, sy2 + 8, { width: 130, lineBreak: false });
-  doc.font("Helvetica-Bold").fontSize(v4 === null ? 14 : 34).fillColor(AZUL).text(v4 === null ? "N\xE3o informado" : String(v4), MX + 10, sy2 + (v4 === null ? 28 : 20), { width: 130, lineBreak: false });
-  if (r5.score.faixa) {
-    doc.font("Helvetica").fontSize(8.5).fillColor(TEXTO).text(`Faixa: ${txt2(r5.score.faixa)}`, MX + 10, sy2 + 60, { width: 130, lineBreak: false });
-  }
-  const rx = MX + 170;
-  const rw = LARG - 170;
-  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(TEXTO).text("Probabilidade de inadimpl\xEAncia", rx, sy2 + 2, { width: rw, lineBreak: false });
-  const prob = r5.score.probabilidadeInadimplencia;
-  doc.font("Helvetica-Bold").fontSize(prob === null ? 10 : 14).fillColor(AZUL).text(prob === null ? "N\xE3o informada" : pct(prob), rx, sy2 + (prob === null ? 17 : 14), { width: rw, lineBreak: false });
-  const by = sy2 + 46;
-  const bh = 12;
-  const x2 = (n5) => rx + n5 / 1e3 * rw;
-  doc.rect(x2(0), by, x2(400) - x2(0), bh).fill(COR_SEMAFORO.VERMELHO);
-  doc.rect(x2(400), by, x2(600) - x2(400), bh).fill(COR_SEMAFORO.AMARELO);
-  doc.rect(x2(600), by, x2(1e3) - x2(600), bh).fill(COR_SEMAFORO.VERDE);
-  doc.font("Helvetica").fontSize(7).fillColor(CINZA);
-  for (const t5 of [0, 400, 600, 1e3]) {
-    const lx = Math.min(Math.max(x2(t5) - 10, rx - 4), rx + rw - 16);
-    doc.text(String(t5), lx, by + bh + 3, { width: 20, align: "center", lineBreak: false });
-  }
-  doc.text("Alto risco", x2(0) + 2, by - 10, { width: x2(400) - x2(0), lineBreak: false });
-  doc.text("Aten\xE7\xE3o", x2(400) + 2, by - 10, { width: x2(600) - x2(400), lineBreak: false });
-  doc.text("Baixo risco", x2(600) + 2, by - 10, { width: x2(1e3) - x2(600), lineBreak: false });
-  if (v4 !== null) {
-    const mx = x2(Math.min(1e3, Math.max(0, v4)));
-    doc.moveTo(mx, by - 2).lineTo(mx, by + bh + 2).lineWidth(2).strokeColor("#111827").stroke();
-    doc.polygon([mx - 5, by - 7], [mx + 5, by - 7], [mx, by - 1]).fill("#111827");
-  }
-  p4.y = sy2 + 84;
-  const leitura = resumirTexto(frasePelaFonte(r5.score.textoInterpretacao));
-  p4.paragrafo("Score e probabilidade informados pela fonte; n\xE3o s\xE3o calculados pela Sal Vita.", { cor: CINZA, tam: 8 });
-  if (meta.veredito === "REPROVADO_A_PRAZO" && (r5.score.valor ?? 0) >= 600) {
-    p4.paragrafo("Aten\xE7\xE3o: o score da fonte \xE9 alto, mas o relat\xF3rio registra restri\xE7\xF5es. Para decidir, prevalecem as restri\xE7\xF5es, n\xE3o o score.", { cor: "#B45309", tam: 8.5 });
-  }
-  if (leitura) p4.paragrafo(leitura, { cor: CINZA, tam: 8 });
-}
-function secaoScorePorFonte(p4, c4, veredito) {
-  p4.titulo("Score por fonte");
-  p4.tabela(
-    [{ titulo: "Fonte", largura: 90 }, { titulo: "Score", largura: 55, alinhar: "right" }, { titulo: "Faixa", largura: 55 }, { titulo: "Prob. inadimpl.", largura: 62, alinhar: "right" }, { titulo: "Leitura da fonte", largura: 253 }],
-    c4.scores.map((s4) => [
-      { texto: s4.produtoNome, negrito: true },
-      s4.calculado ? { texto: String(s4.valor), negrito: true, cor: AZUL } : { texto: "n\xE3o calculado", cor: CINZA },
-      { texto: s4.calculado ? txt2(s4.faixa) : "" },
-      { texto: s4.calculado ? pct(s4.probabilidadeInadimplencia) : "" },
-      { texto: s4.calculado ? resumirTexto(frasePelaFonte(s4.texto), 110) : "Score n\xE3o calculado pela fonte; usamos o que ela trouxe." }
-    ])
-  );
-  p4.paragrafo("Cada score vem da pr\xF3pria fonte (modelos diferentes) e n\xE3o \xE9 calculado pela Sal Vita nem combinado num n\xFAmero \xFAnico.", { cor: CINZA, tam: 8 });
-  const altoComRestricao = veredito === "REPROVADO_A_PRAZO" && c4.scores.some((s4) => (s4.valor ?? 0) >= 600);
-  if (altoComRestricao) {
-    p4.paragrafo("Aten\xE7\xE3o: o score de alguma fonte \xE9 alto, mas o relat\xF3rio registra restri\xE7\xF5es. Para decidir, prevalecem as restri\xE7\xF5es, n\xE3o o score.", { cor: "#B45309", tam: 8.5 });
-  }
-  if (c4.divergenciaScore) p4.paragrafo(`Diverg\xEAncia entre fontes \u2014 ${c4.divergenciaScore}`, { cor: "#B45309", tam: 8.5, negrito: true });
-}
 var COR_NIVEL = { ALERTA: COR_SEMAFORO.VERMELHO, ATENCAO: "#B45309", POSITIVO: COR_SEMAFORO.VERDE };
-function secaoPontosDeAtencao(p4, r5, agora, avisos) {
-  const sinais = ordenarSinais(analisarSinais(r5, agora));
-  p4.titulo("Pontos de aten\xE7\xE3o");
+function secaoPontosDeAtencao(p4, r5, agora, avisos, prontos, titulo = "Pontos de aten\xE7\xE3o") {
+  const sinais = ordenarSinais(prontos ?? analisarSinais(r5, agora));
+  p4.titulo(titulo);
   if (!sinais.length) p4.paragrafo("Nenhum ponto de aten\xE7\xE3o identificado pelas regras da Sal Vita.", { cor: CINZA });
   else {
     p4.tabela(
@@ -340507,108 +340660,14 @@ function secaoPontosDeAtencao(p4, r5, agora, avisos) {
   }
   for (const a5 of avisos) p4.paragrafo(`Aten\xE7\xE3o: consulta da fonte sem sucesso em ${a5}`, { cor: COR_SEMAFORO.VERMELHO, tam: 8.5, negrito: true });
 }
-var GRUPOS = [
-  // [chave, nome, remoção do substantivo na descrição, blocos do bruto que representam o grupo]
-  ["protestos", "Protestos", /^Protesto(?:\s+d[eao]s?)?\s*(?:—|-|:)?\s*/i, /^Protestos/],
-  ["pendenciasFinanceiras", "Pend\xEAncias financeiras (PEFIN/REFIN)", null, /^(?:Pend[êe]ncias|Restri[çc][õo]es)/],
-  ["chequesSemFundo", "Cheques sem fundo", /^Cheque sem fundo\s*(?:—|-|:)?\s*/i, /^Cheques/],
-  ["acoesJudiciais", "A\xE7\xF5es judiciais", /^A[çc][ãa]o c[íi]vel\s*(?:—|-|:)?\s*/i, /^A[çc][õo]es/],
-  ["falenciaRecuperacao", "Fal\xEAncia / Recupera\xE7\xE3o judicial", null, null]
-];
-var maiuscula1 = (t5) => t5.replace(/^./, (c4) => c4.toUpperCase());
+var maiuscula12 = (t5) => t5.replace(/^./, (c4) => c4.toUpperCase());
 function descricaoLimpa(d3, remover) {
   let s4 = limparTexto(d3).trim();
   if (remover) s4 = s4.replace(remover, "").trim();
   s4 = s4.replace(/^\((.*)\)$/, "$1").trim();
-  return s4 ? maiuscula1(s4) : "";
+  return s4 ? maiuscula12(s4) : "";
 }
 var norm2 = (t5) => limparTexto(t5).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
-function secaoAnotacoes(p4, r5, agora, anexo, consol) {
-  p4.titulo("Anota\xE7\xF5es negativas");
-  const comOcorrencia = GRUPOS.filter(([k3]) => r5.anotacoes[k3].consultado && (r5.anotacoes[k3].quantidade > 0 || r5.anotacoes[k3].itens.length > 0));
-  const zerados = [];
-  const bruto = anexo?.semOcorrencias ?? [];
-  for (const [k3, nome, , rep] of GRUPOS) {
-    const g3 = r5.anotacoes[k3];
-    if (!g3.consultado || g3.quantidade > 0 || g3.itens.length > 0) continue;
-    const dele = rep ? bruto.filter((n5) => rep.test(n5)) : [];
-    if (dele.length) zerados.push(...dele);
-    else zerados.push(nome.replace(/ \(.*\)$/, ""));
-  }
-  for (const n5 of bruto) {
-    const g3 = GRUPOS.find(([, , , rep]) => rep?.test(n5));
-    if (!g3 || comOcorrencia.includes(g3)) zerados.push(n5);
-  }
-  const naoInformados = GRUPOS.filter(([k3]) => !r5.anotacoes[k3].consultado).map(([, nome]) => nome.replace(/ \(.*\)$/, ""));
-  if (comOcorrencia.length) {
-    p4.tabela(
-      [{ titulo: "Item", largura: 270 }, { titulo: "Quantidade", largura: 90, alinhar: "right" }, { titulo: "Valor total", largura: 155, alinhar: "right" }],
-      comOcorrencia.map(([k3, nome]) => {
-        const g3 = r5.anotacoes[k3];
-        return [{ texto: nome, negrito: true, cor: COR_SEMAFORO.VERMELHO }, { texto: String(Math.max(g3.quantidade, g3.itens.length)) }, { texto: g3.valorTotal !== null ? brl3(g3.valorTotal) : "\u2014" }];
-      })
-    );
-  }
-  if (zerados.length) p4.paragrafo("Sem ocorr\xEAncias em: " + [...new Set(zerados)].join(", ") + ".", { cor: COR_SEMAFORO.VERDE, tam: 8.5, negrito: true });
-  if (naoInformados.length) p4.paragrafo("N\xE3o informado pela fonte: " + naoInformados.join(", ") + ".", { cor: CINZA, tam: 8.5 });
-  for (const a5 of anexo?.alertas ?? []) p4.paragrafo("Alerta da fonte: " + a5, { cor: "#B45309", tam: 8.5, negrito: true });
-  for (const [k3, nome, remover] of comOcorrencia) {
-    const g3 = r5.anotacoes[k3];
-    p4.y += 3;
-    p4.subtitulo(nome.replace(/ \(.*\)$/, ""));
-    const diverge = consol?.divergenciaPorGrupo[k3];
-    if (diverge) p4.paragrafo(`Diverg\xEAncia entre fontes \u2014 ${diverge}`, { cor: "#B45309", tam: 8.5, negrito: true });
-    if (g3.itens.length < g3.quantidade) {
-      p4.paragrafo(`A fonte listou ${g3.itens.length} de ${g3.quantidade} ocorr\xEAncias${g3.itens.length === 0 ? " (sem detalhamento)" : ""}.`, { cor: "#B45309", tam: 8.5, negrito: true });
-    }
-    if (!g3.itens.length) continue;
-    const linhas = g3.itens.map((it) => ({
-      data: it.data ? dataBR(it.data) : "",
-      desc: descricaoLimpa(it.descricao, remover),
-      credor: limparTexto(it.credor).trim(),
-      local: limparTexto(it.local).trim(),
-      obs: atenuacaoDoItem(it, agora) ?? "",
-      fonte: limparTexto(it.fonte).trim(),
-      valor: it.valor !== null ? brl3(it.valor) : "",
-      extras: Object.entries(it.extras ?? {}).filter(([ch]) => !/^moeda$/i.test(ch))
-    }));
-    linhas.forEach((l4, i4) => {
-      const visto = new Set([l4.data, l4.desc, l4.credor, l4.local, l4.valor, descricaoLimpa(g3.itens[i4].descricao, null)].filter(Boolean).map(norm2));
-      const valorNum = g3.itens[i4].valor;
-      l4.extras = l4.extras.filter(([, v4]) => {
-        const n5 = norm2(v4);
-        if (!n5 || visto.has(n5)) return false;
-        const num = Number(String(v4).replace(/\./g, "").replace(",", "."));
-        if (valorNum !== null && Number.isFinite(num) && Math.abs(num - valorNum) < 5e-3) return false;
-        visto.add(n5);
-        return true;
-      });
-    });
-    const comuns = [];
-    if (linhas.length > 1) {
-      for (const [ch, v4] of linhas[0].extras) {
-        if (linhas.every((l4) => l4.extras.some(([c22, v22]) => c22 === ch && v22 === v4))) comuns.push([ch, v4]);
-      }
-      for (const l4 of linhas) l4.extras = l4.extras.filter(([ch, v4]) => !comuns.some(([c22, v22]) => c22 === ch && v22 === v4));
-    }
-    if (comuns.length) p4.paragrafo("Em todas as ocorr\xEAncias \u2014 " + comuns.map(([ch, v4]) => `${ch}: ${v4}`).join("   |   "), { cor: CINZA, tam: 7.5 });
-    const tem = (f4) => linhas.some((l4) => f4(l4) !== "");
-    const colunas = [];
-    if (tem((l4) => l4.data)) colunas.push({ titulo: "Data", largura: 54, cel: (l4) => ({ texto: l4.data }) });
-    if (tem((l4) => l4.desc)) colunas.push({ titulo: "Descri\xE7\xE3o", largura: 140, cel: (l4) => ({ texto: l4.desc }) });
-    if (tem((l4) => l4.credor)) colunas.push({ titulo: "Credor", largura: 110, cel: (l4) => ({ texto: l4.credor }) });
-    if (tem((l4) => l4.local)) colunas.push({ titulo: "Origem / local", largura: 125, cel: (l4) => ({ texto: l4.local }) });
-    if (tem((l4) => l4.obs)) colunas.push({ titulo: "Estudar com calma", largura: 70, cel: (l4) => ({ texto: l4.obs, cor: l4.obs ? "#B45309" : CINZA }) });
-    if (tem((l4) => l4.fonte)) colunas.push({ titulo: "Fonte", largura: 78, cel: (l4) => ({ texto: l4.fonte }) });
-    if (tem((l4) => l4.valor)) colunas.push({ titulo: "Valor", largura: 70, alinhar: "right", cel: (l4) => ({ texto: l4.valor }) });
-    if (!colunas.length) continue;
-    p4.tabela(
-      colunas.map(({ titulo, largura, alinhar }) => ({ titulo, largura, alinhar })),
-      linhas.map((l4) => colunas.map((c4) => c4.cel(l4))),
-      { detalhes: linhas.map((l4) => l4.extras.length ? l4.extras.map(([ch, v4]) => `${ch}: ${v4}`).join("   |   ") : void 0) }
-    );
-  }
-}
 function idadeDe(de, ate) {
   if (!de) return "";
   const d3 = new Date(de);
@@ -340635,18 +340694,25 @@ function secaoEmpresa(p4, r5, bruto, agora, extrasPronto) {
   add2("Funda\xE7\xE3o", c4.fundacao ? dataBR(c4.fundacao) + (idade ? ` (${idade})` : "") : "");
   add2("Natureza jur\xEDdica", naturezaJuridicaTexto(c4.naturezaJuridica));
   add2("Capital social", c4.capitalSocial === null ? "" : brl3(c4.capitalSocial));
+  const funcionarios = r5.complementos?.funcionariosFaixa ?? extras.funcionarios;
+  add2("Porte / funcion\xE1rios", [extras.porte, funcionarios ? `${funcionarios} funcion\xE1rios` : ""].filter(Boolean).join(" \u2014 "));
+  add2("Faturamento presumido", r5.complementos?.faturamentoPresumidoFaixa);
+  add2("Tempo de atua\xE7\xE3o", r5.complementos?.tempoAtuacao);
+  add2("Matriz / filial", r5.complementos?.matrizFilial);
   add2("Inscri\xE7\xE3o estadual (IE)", c4.inscricaoEstadual);
   add2("Op\xE7\xE3o tribut\xE1ria", c4.opcaoTributaria);
-  add2("Porte / funcion\xE1rios", [extras.porte, extras.funcionarios ? `${extras.funcionarios} funcion\xE1rios` : ""].filter(Boolean).join(" \u2014 "));
-  add2("Faturamento presumido", r5.complementos?.faturamentoPresumidoFaixa);
   add2("N\xBA de filiais", c4.numeroFiliais !== null ? String(c4.numeroFiliais) : extras.filiais);
   const cnae = limparTexto(c4.cnaePrincipal).trim();
   const atividade = limparTexto(c4.atividade).trim();
   const atividadeRepetida = cnae && atividade && (norm2(cnae).includes(norm2(atividade)) || norm2(atividade).includes(norm2(cnae)));
   add2("CNAE e atividade", [cnae, atividadeRepetida ? "" : atividade].filter(Boolean).join(" \u2014 "), true);
+  const sec = (r5.complementos?.cnaesSecundarios ?? []).map((x2) => limparTexto(x2).trim()).filter((x2) => x2 && norm2(x2) !== norm2(cnae));
+  if (sec.length) add2("CNAEs secund\xE1rios", sec.slice(0, 5).map((x2) => resumirTexto(x2, 70)).join("; ") + (sec.length > 5 ? `; +${sec.length - 5}` : ""), true);
   const municipio = [c4.municipio, c4.uf].filter(Boolean).join("/");
   const end2 = limparTexto(c4.endereco).trim();
   add2("Endere\xE7o", [end2, municipio && !norm2(end2).includes(norm2(c4.municipio ?? "#")) ? municipio : ""].filter(Boolean).join(" \u2014 ") || municipio, true);
+  const rep = r5.complementos?.representante;
+  if (rep && (rep.nome || rep.documento)) add2("Representante", [rep.nome, rep.documento ? mascararDocumento(rep.documento) : ""].filter(Boolean).join(" \u2014 "), true);
   const veic = /* @__PURE__ */ new Map();
   for (const v4 of r5.complementos?.veiculos ?? []) {
     const m4 = limparTexto(v4.marcaModelo).trim();
@@ -340672,32 +340738,8 @@ function secaoSocios(p4, r5) {
   if (tem((s4) => s4.participacao !== null)) colunas.push({ titulo: "Particip.", largura: 55, alinhar: "right", cel: (s4) => ({ texto: s4.participacao !== null ? pct(s4.participacao) : "" }) });
   p4.tabela(colunas.map(({ titulo, largura, alinhar }) => ({ titulo, largura, alinhar })), r5.socios.map((s4) => colunas.map((c4) => c4.cel(s4))));
 }
-function secaoConsultas(p4, r5, bruto) {
-  const mensal = consultasPorMes(bruto);
-  const total = r5.complementos?.consultas12Meses;
-  if (!r5.consultasRecentes.length && !mensal && (total === null || total === void 0)) return;
-  p4.titulo("Consultas ao documento");
-  if (typeof total === "number") {
-    const listadas = r5.consultasRecentes.length;
-    p4.paragrafo(`Total em 12 meses: ${total}` + (listadas > 0 && listadas < total ? ` (a fonte listou ${listadas} de ${total})` : ""), { negrito: true, tam: 8.5 });
-  }
-  if (r5.consultasRecentes.length) {
-    const comQtd = r5.consultasRecentes.some((c4) => c4.quantidade > 1);
-    const colunas = [{ titulo: "Data", largura: 70 }, { titulo: "Consultante", largura: comQtd ? 360 : 445 }];
-    if (comQtd) colunas.push({ titulo: "Quantidade", largura: 85, alinhar: "right" });
-    p4.tabela(colunas, r5.consultasRecentes.map((c4) => [{ texto: dataBR(c4.data) }, { texto: txt2(c4.consultante) }, ...comQtd ? [{ texto: String(c4.quantidade) }] : []]));
-  }
-  if (mensal) {
-    p4.subtitulo("Consultas por m\xEAs");
-    p4.tabela(
-      mensal.colunas.map((titulo, i4) => ({ titulo, largura: i4 === 0 ? 44 : 38, alinhar: i4 === 0 ? "left" : "right" })),
-      mensal.linhas.map((l4) => l4.map((texto2, i4) => ({ texto: texto2, negrito: i4 === 0 }))),
-      { compacta: true }
-    );
-  }
-}
 var PRIORIDADE_EVENTO = (k3) => /ltima compra/i.test(k3) ? 0 : /maior fatura/i.test(k3) ? 1 : /maior cr[ée]dito/i.test(k3) ? 2 : 3;
-function secaoComportamento(p4, r5, bruto, desenhar) {
+function secaoComportamento(p4, r5, bruto, desenhar, titulo = "Comportamento comercial") {
   const c4 = r5.comportamento;
   const comp = comportamentoDe(bruto, r5.tipo === "CPF");
   const eventos = [...comp?.eventos ?? []].sort((a5, b3) => PRIORIDADE_EVENTO(a5[0]) - PRIORIDADE_EVENTO(b3[0]));
@@ -340710,7 +340752,7 @@ function secaoComportamento(p4, r5, bruto, desenhar) {
   pares.push(...eventos.filter(([k3]) => PRIORIDADE_EVENTO(k3) === 3));
   const validos = pares.filter(([, v4]) => ok(v4));
   if (!validos.length && !comp?.matriz.length && !comp?.relacionamento) return;
-  p4.titulo("Comportamento comercial");
+  p4.titulo(titulo);
   if (validos.length) p4.paragrafo(validos.map(([k3, v4]) => `${k3}: ${v4}`).join("   |   "), { tam: 8.5 });
   if (comp?.matriz.length) {
     p4.subtitulo("\xDAltimos 12 meses");
@@ -340775,6 +340817,571 @@ function desenharParte(p4, parte, ctr) {
       break;
   }
 }
+function cabecalhoRodape(doc, r5, i4, total, rodapeCurto = false) {
+  const margens = doc.page.margins;
+  doc.page.margins = { top: 0, bottom: 0, left: 0, right: 0 };
+  if (r5.fonte.provedor === "simulado") {
+    doc.rect(0, 0, W, 24).fill(COR_SEMAFORO.VERMELHO);
+    doc.font("Helvetica-Bold").fontSize(10).fillColor("#FFFFFF").text(FAIXA_SIMULACAO, MX, 7, { width: LARG, align: "center", lineBreak: false });
+  }
+  const fy = H - 36;
+  doc.moveTo(MX, fy).lineTo(W - MX, fy).lineWidth(0.5).strokeColor(LINHA).stroke();
+  if (!rodapeCurto) {
+    doc.font("Helvetica").fontSize(7.5).fillColor(CINZA).text("Confidencial \u2014 uso interno da Sal Vita para decis\xE3o de cr\xE9dito", MX, fy + 6, { width: 380, lineBreak: false });
+  }
+  doc.font("Helvetica").fontSize(7.5).fillColor(CINZA);
+  doc.text(`P\xE1gina ${i4 + 1} de ${total}`, W - MX - 100, fy + 6, { width: 100, align: "right", lineBreak: false });
+  doc.page.margins = margens;
+}
+async function renderizar(relatorio, titulo, corpo2, opts2 = {}) {
+  const doc = new PDFDocument2({
+    size: "A4",
+    margins: { top: TOPO, bottom: BASE, left: MX, right: MX },
+    bufferPages: true,
+    // Só os testes desligam a compressão, para conferir o texto do PDF sem decodificar.
+    compress: process.env.CREDITO_PDF_SEM_COMPRESSAO !== "1",
+    info: {
+      Title: "Relat\xF3rio de An\xE1lise de Cr\xE9dito \u2014 Sal Vita",
+      Author: "Sal Vita",
+      Subject: titulo.subject,
+      Keywords: "confidencial"
+    }
+  });
+  const partes = [];
+  const pronto = new Promise((resolve3, reject) => {
+    doc.on("data", (c4) => partes.push(c4));
+    doc.on("end", () => resolve3(Buffer.concat(partes)));
+    doc.on("error", reject);
+  });
+  try {
+    const p4 = new Pagina(doc);
+    const dataConsulta = new Date(relatorio.consultadoEm);
+    corpo2(p4, Number.isFinite(dataConsulta.getTime()) ? dataConsulta : /* @__PURE__ */ new Date());
+    const { start: start2, count: count2 } = doc.bufferedPageRange();
+    for (let i4 = 0; i4 < count2; i4++) {
+      doc.switchToPage(start2 + i4);
+      cabecalhoRodape(doc, relatorio, i4, count2, opts2.rodapeCurto);
+    }
+    doc.end();
+  } catch (e4) {
+    doc.end();
+    await pronto.catch(() => void 0);
+    throw e4;
+  }
+  return pronto;
+}
+function detalhesDoGrupo(p4, g3, nome, remover, agora, opts2 = {}) {
+  p4.y += 3;
+  p4.subtitulo(nome);
+  if (g3.itens.length < g3.quantidade) {
+    p4.paragrafo(`A fonte listou ${g3.itens.length} de ${g3.quantidade} ocorr\xEAncias${g3.itens.length === 0 ? " (sem detalhamento)" : ""}.`, { cor: "#B45309", tam: 8.5, negrito: true });
+  }
+  if (!g3.itens.length) return;
+  const linhas = g3.itens.map((it) => ({
+    data: it.data ? dataBR(it.data) : "",
+    desc: descricaoLimpa(it.descricao, remover),
+    credor: limparTexto(it.credor).trim(),
+    local: limparTexto(it.local).trim(),
+    processo: limparTexto(it.processo).trim(),
+    obs: atenuacaoDoItem(it, agora) ?? "",
+    fonte: limparTexto(it.fonte).trim(),
+    valor: it.valor !== null ? brl3(it.valor) : "",
+    extras: Object.entries(it.extras ?? {}).filter(([ch]) => !/^moeda$/i.test(ch))
+  }));
+  linhas.forEach((l4, i4) => {
+    const visto = new Set([l4.data, l4.desc, l4.credor, l4.local, l4.processo, l4.valor, descricaoLimpa(g3.itens[i4].descricao, null), ...opts2.ocultar ?? []].filter(Boolean).map((x2) => norm2(x2)));
+    const valorNum = g3.itens[i4].valor;
+    l4.extras = l4.extras.filter(([, v4]) => {
+      const n5 = norm2(v4);
+      if (!n5 || visto.has(n5)) return false;
+      const num = Number(String(v4).replace(/\./g, "").replace(",", "."));
+      if (valorNum !== null && Number.isFinite(num) && Math.abs(num - valorNum) < 5e-3) return false;
+      visto.add(n5);
+      return true;
+    });
+  });
+  const comuns = [];
+  if (linhas.length > 1) {
+    for (const [ch, v4] of linhas[0].extras) {
+      if (linhas.every((l4) => l4.extras.some(([c22, v22]) => c22 === ch && v22 === v4))) comuns.push([ch, v4]);
+    }
+    for (const l4 of linhas) l4.extras = l4.extras.filter(([ch, v4]) => !comuns.some(([c22, v22]) => c22 === ch && v22 === v4));
+  }
+  if (comuns.length) p4.paragrafo("Em todas as ocorr\xEAncias \u2014 " + comuns.map(([ch, v4]) => `${ch}: ${v4}`).join("   |   "), { cor: CINZA, tam: 7.5 });
+  const tem = (f4) => linhas.some((l4) => f4(l4) !== "");
+  const temProcesso = tem((l4) => l4.processo);
+  const colunas = [];
+  if (tem((l4) => l4.data)) colunas.push({ titulo: "Data", largura: 54, cel: (l4) => ({ texto: l4.data }) });
+  if (tem((l4) => l4.desc)) colunas.push({ titulo: opts2.tituloDescricao ?? "Descri\xE7\xE3o", largura: temProcesso ? 120 : 140, cel: (l4) => ({ texto: l4.desc }) });
+  if (tem((l4) => l4.credor)) colunas.push({ titulo: "Credor", largura: 110, cel: (l4) => ({ texto: l4.credor }) });
+  if (tem((l4) => l4.local)) colunas.push({ titulo: opts2.tituloLocal ?? "Origem / local", largura: temProcesso ? 115 : 125, cel: (l4) => ({ texto: l4.local }) });
+  if (tem((l4) => l4.processo)) colunas.push({
+    titulo: "Processo",
+    largura: 140,
+    // o número do processo não pode quebrar no meio
+    cel: (l4) => ({ texto: l4.processo })
+  });
+  if (tem((l4) => l4.obs)) colunas.push({ titulo: "Estudar com calma", largura: 70, cel: (l4) => ({ texto: l4.obs, cor: l4.obs ? "#B45309" : CINZA }) });
+  if (tem((l4) => l4.fonte)) colunas.push({ titulo: "Fonte", largura: 78, cel: (l4) => ({ texto: l4.fonte }) });
+  if (tem((l4) => l4.valor)) colunas.push({ titulo: "Valor", largura: 70, alinhar: "right", cel: (l4) => ({ texto: l4.valor }) });
+  if (!colunas.length) return;
+  p4.tabela(
+    colunas.map(({ titulo, largura, alinhar }) => ({ titulo, largura, alinhar })),
+    linhas.map((l4) => colunas.map((c4) => c4.cel(l4))),
+    { detalhes: linhas.map((l4) => l4.extras.length ? l4.extras.map(([ch, v4]) => `${ch}: ${v4}`).join("   |   ") : void 0) }
+  );
+}
+function painelVeredito(p4, veredito, motivosEntrada) {
+  const { doc } = p4;
+  const sem2 = SEMAFORO[veredito];
+  const cor = COR_SEMAFORO[sem2];
+  const meta = { veredito, motivos: motivosEntrada };
+  const motivos = meta.motivos.length ? meta.motivos : ["Nenhum fator de restri\xE7\xE3o encontrado nas regras da Sal Vita."];
+  doc.font("Helvetica").fontSize(9);
+  const larguraTexto = LARG - 100;
+  const alturaMotivos = motivos.reduce((a5, m4) => a5 + doc.heightOfString("\u2022  " + limparTexto(m4), { width: larguraTexto }) + 2, 0);
+  const alturaPainel = Math.max(78, 42 + alturaMotivos + 8);
+  p4.garantir(alturaPainel + 10);
+  const y0 = p4.y;
+  doc.roundedRect(MX, y0, LARG, alturaPainel, 6).fill(FUNDO_SEMAFORO[sem2]);
+  doc.roundedRect(MX, y0, 5, alturaPainel, 2).fill(cor);
+  const cx2 = MX + 38;
+  const luzes = [["VERMELHO", 0], ["AMARELO", 1], ["VERDE", 2]];
+  const alturaCaixa = 62;
+  const topoCaixa = y0 + (alturaPainel - alturaCaixa) / 2;
+  doc.roundedRect(cx2 - 13, topoCaixa, 26, alturaCaixa, 8).fill("#374151");
+  for (const [nomeLuz, i4] of luzes) {
+    doc.circle(cx2, topoCaixa + 11 + i4 * 20, 7.5).fill(nomeLuz === sem2 ? COR_SEMAFORO[nomeLuz] : "#6B7280");
+  }
+  const tx = MX + 76;
+  doc.font("Helvetica").fontSize(8).fillColor(CINZA).text("VEREDITO DE CR\xC9DITO \u2014 REGRAS DA SAL VITA", tx, y0 + 10, { width: larguraTexto, lineBreak: false });
+  doc.font("Helvetica-Bold").fontSize(19).fillColor(cor).text(limparTexto(ROTULO_VEREDITO[meta.veredito]), tx, y0 + 21, { width: larguraTexto, lineBreak: false });
+  let ym = y0 + 47;
+  doc.font("Helvetica").fontSize(9).fillColor(TEXTO);
+  for (const m4 of motivos) {
+    const t5 = "\u2022  " + limparTexto(m4);
+    doc.text(t5, tx, ym, { width: larguraTexto });
+    ym += doc.heightOfString(t5, { width: larguraTexto }) + 2;
+  }
+  p4.y = y0 + alturaPainel + 10;
+}
+var GRUPOS = [
+  // [chave, nome, remoção do substantivo na descrição, blocos do bruto que representam o grupo]
+  ["protestos", "Protestos", /^Protesto(?:\s+d[eao]s?)?\s*(?:—|-|:)?\s*/i, /^Protestos/],
+  ["pendenciasFinanceiras", "Pend\xEAncias financeiras (PEFIN/REFIN)", null, /^(?:Pend[êe]ncias|Restri[çc][õo]es)/],
+  ["chequesSemFundo", "Cheques sem fundo", /^Cheque sem fundo\s*(?:—|-|:)?\s*/i, /^Cheques/],
+  ["acoesJudiciais", "A\xE7\xF5es judiciais", /^A[çc][ãa]o c[íi]vel\s*(?:—|-|:)?\s*/i, /^A[çc][õo]es/],
+  ["falenciaRecuperacao", "Fal\xEAncia / Recupera\xE7\xE3o judicial", null, null]
+];
+
+// shared/creditoMatriz.ts
+var reais = (n5) => `R$ ${n5.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function visualDaCelula(g3) {
+  if (!g3.consultado) return { tom: "cinza", fundo: true, principal: "N\xE3o consultado", sub: "a fonte n\xE3o cobre este item" };
+  if (g3.quantidade === 0) return { tom: "verde", fundo: true, principal: "Nada consta", sub: null };
+  return {
+    tom: "vermelho",
+    fundo: true,
+    principal: `${g3.quantidade} ocorr\xEAncia${g3.quantidade === 1 ? "" : "s"}`,
+    sub: g3.valorTotal !== null && g3.valorTotal !== void 0 ? `Total ${reais(g3.valorTotal)}` : null
+  };
+}
+function visualDaLeitura(l4) {
+  const m4 = /^(.*?)\s*\((.*)\)$/.exec(l4.textoLeitura);
+  const principal = m4 ? m4[1] : l4.textoLeitura;
+  const sub = m4 ? `(${m4[2]})` : null;
+  switch (l4.leitura) {
+    case "divergem":
+      return { tom: "ambar", fundo: true, principal, sub };
+    case "coincidem":
+      return { tom: "texto", fundo: false, principal, sub };
+    case "nada_consta":
+      return { tom: "verde", fundo: false, principal: "Nada consta", sub: "em nenhuma fonte" };
+    default:
+      return { tom: "cinza", fundo: false, principal, sub };
+  }
+}
+function visualDeConsultas(c4) {
+  const celulas = c4.consultasPorFonte.map((f4) => ({
+    tom: f4.c30 || f4.total12 !== null ? "neutro" : "cinza",
+    fundo: true,
+    principal: f4.c30 ? `${f4.c30.janela}: ${f4.c30.n}` : "30 dias: n\xE3o informado",
+    sub: `12 meses: ${f4.total12 === null ? "n\xE3o informado" : f4.total12}`
+  }));
+  const totais = c4.consultasPorFonte.filter((f4) => f4.total12 !== null);
+  let leitura;
+  if (c4.consultas12Divergem) leitura = { tom: "ambar", fundo: true, principal: "Divergem", sub: `(12 meses: ${totais.map((f4) => f4.total12).join(" \xD7 ")})` };
+  else if (totais.length > 1) leitura = { tom: "texto", fundo: false, principal: "Coincidem", sub: "(12 meses)" };
+  else if (c4.fontes.length > 1) leitura = { tom: "cinza", fundo: false, principal: "Janelas diferentes", sub: "n\xE3o compar\xE1vel" };
+  else leitura = { tom: "cinza", fundo: false, principal: "S\xF3 uma fonte", sub: null };
+  return { celulas, leitura };
+}
+function linhasDaMatriz(c4) {
+  const consultas = visualDeConsultas(c4);
+  return [
+    ...c4.matriz.map((l4) => ({ rotulo: l4.rotulo, celulas: l4.celulas.map(visualDaCelula), leitura: visualDaLeitura(l4) })),
+    { rotulo: "Consultas ao documento", celulas: consultas.celulas, leitura: consultas.leitura }
+  ];
+}
+
+// server/lib/credito/pdfConsolidado.ts
+var ALERTA_TEXTO = "#B45309";
+var VERDE = { fg: "#1E8E3E", bg: "#E6F4EA" };
+var VERMELHO = { fg: "#C62828", bg: "#FDE8E8" };
+var CINZA_CEL = { fg: "#6B7280", bg: "#F3F4F6" };
+var ALERTA_CEL = { fg: ALERTA_TEXTO, bg: "#FFF6DB" };
+var NEUTRO_CEL = { fg: TEXTO, bg: "#EEF2FA" };
+function topo(p4, c4) {
+  const { doc } = p4;
+  const r5 = c4.fundido;
+  doc.font("Helvetica").fontSize(8).fillColor(CINZA).text("Relat\xF3rio de An\xE1lise de Cr\xE9dito \u2014 Sal Vita", MX, p4.y, { width: LARG, lineBreak: false });
+  p4.y += 12;
+  const nome = limparTexto(r5.cadastro.razaoSocial ?? r5.cadastro.nomeFantasia).trim();
+  const documento = `${r5.tipo} ${formatarDocumento(r5.documento, r5.tipo)}`;
+  doc.font("Helvetica-Bold").fontSize(16).fillColor(TEXTO).text(nome || documento, MX, p4.y, { width: LARG });
+  p4.y = doc.y + 2;
+  if (nome) {
+    doc.font("Helvetica-Bold").fontSize(9.5).fillColor(TEXTO).text(documento, MX, p4.y, { width: LARG, lineBreak: false });
+    p4.y += 13;
+  }
+  const fontes = c4.fontes.map((f4) => `${limparTexto(f4.produtoNome)} (${dataHoraCurta(f4.consultadoEm)})`).join(" \xB7 ");
+  doc.font("Helvetica").fontSize(9).fillColor(CINZA).text(`Fontes: ${fontes}`, MX, p4.y, { width: LARG });
+  p4.y = doc.y + 2;
+  if (!c4.valido) {
+    doc.font("Helvetica-Bold").fontSize(8.5).fillColor(COR_SEMAFORO.VERMELHO).text("Vencido: nenhuma das consultas tem menos de 30 dias.", MX, p4.y, { width: LARG });
+    p4.y = doc.y + 2;
+  }
+  const faltam = CONSULTA_COMPLETA.filter((k3) => !c4.fontes.some((f4) => f4.produto === k3));
+  if (c4.fontes.length < 2 && faltam.length) {
+    doc.font("Helvetica-Bold").fontSize(8.5).fillColor(ALERTA_TEXTO).text(`S\xF3 uma fonte consultada: faltam os dados da outra (${faltam.map((k3) => nomeDoProduto(k3)).join(", ")}).`, MX, p4.y, { width: LARG });
+    p4.y = doc.y + 2;
+  }
+  p4.y += 6;
+}
+var ALTURA_CARTAO = 122;
+function cartaoDeScore(p4, s4, x2, y4, w2) {
+  const { doc } = p4;
+  const calc = s4.calculado && s4.valor !== null;
+  doc.roundedRect(x2, y4, w2, ALTURA_CARTAO, 6).fill(calc ? AZUL_CLARO : "#F3F4F6");
+  const ix = x2 + 8;
+  const iw = w2 - 16;
+  doc.font("Helvetica-Bold").fontSize(7.5).fillColor(CINZA).text(limparTexto(s4.produtoNome).toUpperCase(), ix, y4 + 7, { width: iw, lineBreak: false, ellipsis: true });
+  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(TEXTO).text(limparTexto(s4.rotulo ?? "Score (0 a 1000)"), ix, y4 + 18, { width: iw, lineBreak: false, ellipsis: true });
+  if (!calc) {
+    doc.font("Helvetica-Bold").fontSize(13).fillColor(CINZA).text("n\xE3o calculado", ix, y4 + 38, { width: iw, lineBreak: false });
+    doc.font("Helvetica").fontSize(7.5).fillColor(CINZA).text("A fonte n\xE3o calculou este score.", ix, y4 + 58, { width: iw, height: 20 });
+    return;
+  }
+  doc.font("Helvetica-Bold").fontSize(26).fillColor(AZUL).text(String(s4.valor), ix, y4 + 30, { width: iw, lineBreak: false });
+  doc.font("Helvetica").fontSize(8).fillColor(TEXTO).text(`Inadimpl\xEAncia: `, ix, y4 + 63, { continued: true, width: iw, lineBreak: false }).font("Helvetica-Bold").text(s4.probabilidadeInadimplencia === null ? "n\xE3o informada" : pct(s4.probabilidadeInadimplencia));
+  if (s4.faixa) doc.font("Helvetica").fontSize(8).fillColor(TEXTO).text(`Faixa: ${limparTexto(s4.faixa)}`, ix, y4 + 74, { width: iw, lineBreak: false, ellipsis: true });
+  const by = y4 + 90;
+  const bh = 5;
+  const px2 = (n5) => ix + n5 / 1e3 * iw;
+  doc.rect(px2(0), by, px2(400) - px2(0), bh).fill(COR_SEMAFORO.VERMELHO);
+  doc.rect(px2(400), by, px2(600) - px2(400), bh).fill(COR_SEMAFORO.AMARELO);
+  doc.rect(px2(600), by, px2(1e3) - px2(600), bh).fill(COR_SEMAFORO.VERDE);
+  const mx = px2(Math.min(1e3, Math.max(0, s4.valor)));
+  doc.moveTo(mx, by - 2).lineTo(mx, by + bh + 2).lineWidth(1.6).strokeColor("#111827").stroke();
+  doc.font("Helvetica").fontSize(6).fillColor(CINZA);
+  for (const t5 of [0, 400, 600, 1e3]) {
+    doc.text(String(t5), Math.min(Math.max(px2(t5) - 8, ix - 2), ix + iw - 14), by + bh + 3, { width: 16, align: "center", lineBreak: false });
+  }
+  const leitura = resumirTexto(frasePelaFonte(s4.texto), 90);
+  if (leitura) doc.font("Helvetica").fontSize(6.5).fillColor(CINZA).text(leitura, ix, y4 + 105, { width: iw, height: 16, ellipsis: true });
+}
+function painelDeDecisao(p4, c4) {
+  painelVeredito(p4, c4.veredito, c4.motivos);
+  const n5 = c4.scores.length;
+  const colunas = n5 <= 3 ? n5 : 2;
+  const gap = 8;
+  const w2 = (LARG - gap * (colunas - 1)) / colunas;
+  p4.garantir(ALTURA_CARTAO + 70);
+  p4.titulo("Scores informados pelas fontes");
+  for (let i4 = 0; i4 < n5; i4 += colunas) {
+    p4.garantir(ALTURA_CARTAO + 6);
+    c4.scores.slice(i4, i4 + colunas).forEach((s4, j) => cartaoDeScore(p4, s4, MX + j * (w2 + gap), p4.y, w2));
+    p4.y += ALTURA_CARTAO + 6;
+  }
+  p4.paragrafo("Scores informados pelas fontes; n\xE3o calculados pela Sal Vita. Cada fonte usa um modelo diferente: n\xE3o s\xE3o somados nem combinados.", { cor: CINZA, tam: 7.5 });
+  if (c4.divergenciaScore) p4.paragrafo(`Diverg\xEAncia: ${c4.divergenciaScore.replace(/^S/, "s")}`, { cor: ALERTA_TEXTO, tam: 8.5, negrito: true });
+  if (c4.scoreAltoComRestricao) {
+    p4.paragrafo("Aten\xE7\xE3o: algum score \xE9 alto, mas h\xE1 restri\xE7\xF5es registradas. Para decidir, prevalecem as restri\xE7\xF5es, n\xE3o o score.", { cor: ALERTA_TEXTO, tam: 8.5, negrito: true });
+  }
+}
+var CORES = {
+  verde: VERDE,
+  vermelho: VERMELHO,
+  cinza: CINZA_CEL,
+  ambar: ALERTA_CEL,
+  neutro: NEUTRO_CEL,
+  texto: { fg: TEXTO, bg: "#FFFFFF" }
+};
+var comoCelula = (v4) => ({ principal: v4.principal, sub: v4.sub ?? void 0, fg: CORES[v4.tom].fg, bg: v4.fundo ? CORES[v4.tom].bg : null });
+function matrizDeComparacao(p4, c4) {
+  const { doc } = p4;
+  const nf = c4.fontes.length;
+  const wItem = 100;
+  const wLeit = nf > 2 ? 100 : 118;
+  const wF = (LARG - wItem - wLeit) / nf;
+  const PAD = 4;
+  const linhas = linhasDaMatriz(c4).map((l4) => ({ rotulo: l4.rotulo, cels: l4.celulas.map(comoCelula), leitura: comoCelula(l4.leitura) }));
+  const alturaTexto = (cel, larg) => {
+    doc.font("Helvetica-Bold").fontSize(8.5);
+    let h3 = doc.heightOfString(limparTexto(cel.principal), { width: larg - PAD * 2 });
+    if (cel.sub) {
+      doc.font("Helvetica").fontSize(7.5);
+      h3 += 1 + doc.heightOfString(limparTexto(cel.sub), { width: larg - PAD * 2 });
+    }
+    return h3;
+  };
+  const alturas = linhas.map((l4) => {
+    doc.font("Helvetica-Bold").fontSize(8.5);
+    const hItem = doc.heightOfString(limparTexto(l4.rotulo), { width: wItem - PAD * 2 });
+    return Math.max(hItem, ...l4.cels.map((x2) => alturaTexto(x2, wF)), alturaTexto(l4.leitura, wLeit)) + PAD * 2;
+  });
+  const hCab = 16;
+  p4.garantir(hCab + alturas.reduce((a5, b3) => a5 + b3, 0) + 48);
+  p4.titulo("Compara\xE7\xE3o entre as fontes");
+  doc.rect(MX, p4.y, LARG, hCab).fill(AZUL);
+  doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#FFFFFF");
+  doc.text("Item", MX + PAD, p4.y + 4.5, { width: wItem - PAD * 2, lineBreak: false });
+  c4.fontes.forEach((f4, j) => doc.text(limparTexto(f4.produtoNome), MX + wItem + j * wF + PAD, p4.y + 4.5, { width: wF - PAD * 2, lineBreak: false, ellipsis: true }));
+  doc.text("Leitura", MX + wItem + nf * wF + PAD, p4.y + 4.5, { width: wLeit - PAD * 2, lineBreak: false });
+  p4.y += hCab;
+  linhas.forEach((l4, i4) => {
+    const h3 = alturas[i4];
+    const y0 = p4.y;
+    doc.font("Helvetica-Bold").fontSize(8.5).fillColor(TEXTO).text(limparTexto(l4.rotulo), MX + PAD, y0 + PAD, { width: wItem - PAD * 2 });
+    const desenhar = (cel, x2, w2) => {
+      if (cel.bg) doc.rect(x2 + 1.5, y0 + 1.5, w2 - 3, h3 - 3).fill(cel.bg);
+      doc.font("Helvetica-Bold").fontSize(8.5).fillColor(cel.fg).text(limparTexto(cel.principal), x2 + PAD, y0 + PAD, { width: w2 - PAD * 2 });
+      if (cel.sub) doc.font("Helvetica").fontSize(7.5).fillColor(cel.fg).text(limparTexto(cel.sub), x2 + PAD, doc.y + 1, { width: w2 - PAD * 2 });
+    };
+    l4.cels.forEach((cel, j) => desenhar(cel, MX + wItem + j * wF, wF));
+    desenhar(l4.leitura, MX + wItem + nf * wF, wLeit);
+    doc.moveTo(MX, y0 + h3).lineTo(MX + LARG, y0 + h3).lineWidth(0.5).strokeColor(LINHA).stroke();
+    p4.y = y0 + h3;
+  });
+  p4.y += 3;
+  p4.paragrafo('Verde: a fonte consultou e nada consta. Vermelho: h\xE1 ocorr\xEAncias. Cinza: a fonte n\xE3o consulta este item. "Divergem" = as fontes discordam; os n\xFAmeros n\xE3o s\xE3o fundidos.', { cor: CINZA, tam: 7 });
+}
+function detalhamento(p4, c4, agora) {
+  const r5 = c4.fundido;
+  const comOcorrencia = GRUPOS.filter(([k3]) => r5.anotacoes[k3].consultado && (r5.anotacoes[k3].quantidade > 0 || r5.anotacoes[k3].itens.length > 0));
+  if (!comOcorrencia.length) return;
+  p4.titulo("Detalhamento das ocorr\xEAncias");
+  for (const [k3, nome, remover] of comOcorrencia) {
+    const ocultar = [r5.cadastro.razaoSocial, r5.cadastro.nomeFantasia, r5.documento, formatarDocumento(r5.documento, r5.tipo)];
+    detalhesDoGrupo(p4, r5.anotacoes[k3], nome.replace(/ \(.*\)$/, ""), remover, agora, {
+      ocultar,
+      ...k3 === "acoesJudiciais" ? { tituloDescricao: "A\xE7\xE3o", tituloLocal: "Foro / vara" } : {}
+    });
+  }
+}
+var mesAno = (aaaamm) => {
+  const m4 = aaaamm ? /^(\d{4})-(\d{2})/.exec(aaaamm) : null;
+  return m4 ? `${m4[2]}/${m4[1]}` : "\u2014";
+};
+function secaoConsultasDoDocumento(p4, c4) {
+  const r5 = c4.fundido;
+  const comp = r5.complementos;
+  const janelas = comp?.consultasJanelas;
+  const mensal = comp?.consultasPorMes ?? [];
+  const segmentos = comp?.consultasPorSegmento ?? [];
+  const totais = c4.consultasPorFonte.filter((f4) => f4.total12 !== null);
+  if (!janelas && !r5.consultasRecentes.length && !mensal.length && !segmentos.length && !totais.length) return;
+  p4.titulo("Consultas ao documento");
+  if (janelas) {
+    const quem = c4.consultasPorFonte.find((f4) => f4.c30?.origem === "janela")?.produtoNome;
+    const n5 = (v4) => v4 === null ? "n\xE3o informado" : String(v4);
+    p4.garantir(70);
+    p4.subtitulo(`Contagem oficial por janela${quem ? ` (${limparTexto(quem)})` : ""}`);
+    p4.tabela(
+      [{ titulo: "At\xE9 30 dias", largura: 1, alinhar: "center" }, { titulo: "31 a 60 dias", largura: 1, alinhar: "center" }, { titulo: "61 a 90 dias", largura: 1, alinhar: "center" }, { titulo: "Mais de 90 dias", largura: 1, alinhar: "center" }],
+      [[janelas.ate30, janelas.de31a60, janelas.de61a90, janelas.mais90].map((v4) => ({ texto: n5(v4), negrito: true }))]
+    );
+  }
+  if (totais.length) {
+    p4.paragrafo("Total em 12 meses: " + totais.map((f4) => `${limparTexto(f4.produtoNome)}: ${f4.total12}`).join("   |   "), { negrito: true, tam: 8.5 });
+  }
+  if (r5.consultasRecentes.length) {
+    const maior = Math.max(0, ...totais.map((f4) => f4.total12 ?? 0));
+    p4.garantir(40 + Math.min(r5.consultasRecentes.length, 12) * 15);
+    p4.subtitulo("\xDAltimas consultas" + (maior > r5.consultasRecentes.length ? ` (a fonte listou ${r5.consultasRecentes.length} de ${maior} no per\xEDodo)` : ""));
+    const comQtd = r5.consultasRecentes.some((x2) => x2.quantidade > 1);
+    p4.tabela(
+      [{ titulo: "Data", largura: 70 }, { titulo: "Consultante", largura: comQtd ? 360 : 445 }, ...comQtd ? [{ titulo: "Quantidade", largura: 85, alinhar: "right" }] : []],
+      r5.consultasRecentes.map((x2) => [{ texto: dataBR(x2.data) }, { texto: x2.consultante }, ...comQtd ? [{ texto: String(x2.quantidade) }] : []])
+    );
+  }
+  if (mensal.length) {
+    p4.garantir(48 + mensal.length * 15);
+    p4.subtitulo("Consultas por m\xEAs");
+    const MES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    p4.tabela(
+      [{ titulo: "Ano", largura: 44 }, ...MES.map((m4) => ({ titulo: m4, largura: 38, alinhar: "right" }))],
+      mensal.map((l4) => [{ texto: String(l4.ano), negrito: true }, ...l4.meses.map((v4) => ({ texto: v4 === null ? "-" : String(v4) }))]),
+      { compacta: true }
+    );
+  }
+  if (segmentos.length) {
+    p4.garantir(40 + segmentos.length * 15);
+    p4.subtitulo("Consultas por segmento (m\xEAs, quantidade e atividade do consultante)");
+    p4.tabela(
+      [{ titulo: "M\xEAs", largura: 60 }, { titulo: "Segmento", largura: 385 }, { titulo: "Quantidade", largura: 70, alinhar: "right" }],
+      segmentos.map((s4) => [{ texto: mesAno(s4.mes) }, { texto: s4.segmento }, { texto: s4.quantidade === null ? "\u2014" : String(s4.quantidade) }])
+    );
+  }
+}
+async function gerarPdfCreditoConsolidado(c4, meta, brutos = []) {
+  const r5 = c4.fundido;
+  return renderizar(r5, { subject: `An\xE1lise de cr\xE9dito ${formatarDocumento(r5.documento, r5.tipo)} (consolidado)` }, (p4, agora) => {
+    const pf = r5.tipo === "CPF";
+    const seguro = (f4) => {
+      try {
+        return f4();
+      } catch {
+        return null;
+      }
+    };
+    const doComport = brutos.find((b3) => seguro(() => comportamentoDe(b3.bruto, pf)));
+    const todosExtras = brutos.map((b3) => seguro(() => empresaExtrasDe(b3.bruto)));
+    const extras = {
+      funcionarios: todosExtras.map((e4) => e4?.funcionarios ?? null).find(Boolean) ?? null,
+      porte: todosExtras.map((e4) => e4?.porte ?? null).find(Boolean) ?? null,
+      filiais: todosExtras.map((e4) => e4?.filiais ?? null).find(Boolean) ?? null
+    };
+    const ctr = { omitidos: 0 };
+    topo(p4, c4);
+    painelDeDecisao(p4, c4);
+    matrizDeComparacao(p4, c4);
+    secaoPontosDeAtencao(p4, r5, agora, [], c4.sinais, "Pontos de aten\xE7\xE3o (regras da Sal Vita)");
+    detalhamento(p4, c4, agora);
+    secaoEmpresa(p4, r5, null, agora, extras);
+    secaoSocios(p4, r5);
+    secaoConsultasDoDocumento(p4, c4);
+    const nomeComport = doComport ? c4.fontes.find((f4) => f4.produto === doComport.produto)?.produtoNome : c4.fontes.find((f4) => f4.produto === "boavista")?.produtoNome;
+    secaoComportamento(p4, r5, doComport?.bruto ?? null, (parte) => desenharParte(p4, parte, ctr), nomeComport ? `Comportamento comercial (${limparTexto(nomeComport)})` : "Comportamento comercial");
+    secaoFinal(p4, meta.consultadoPor);
+  }, { rodapeCurto: true });
+}
+
+// server/lib/credito/pdf.ts
+function secaoResumo(p4, r5, meta) {
+  const { doc } = p4;
+  doc.font("Helvetica").fontSize(8).fillColor(CINZA).text("Relat\xF3rio de An\xE1lise de Cr\xE9dito \u2014 Sal Vita", MX, p4.y, { width: LARG, lineBreak: false });
+  p4.y += 12;
+  const nome = limparTexto(r5.cadastro.razaoSocial ?? r5.cadastro.nomeFantasia).trim();
+  const documento = `${r5.tipo} ${formatarDocumento(r5.documento, r5.tipo)}`;
+  doc.font("Helvetica-Bold").fontSize(16).fillColor(TEXTO).text(nome || documento, MX, p4.y, { width: LARG });
+  p4.y = doc.y + 2;
+  const linha = [nome ? documento : "", `Consulta em ${dataHoraBR(r5.consultadoEm)}`, `Fonte: ${fonteDosDados(r5)}`].filter(Boolean).join("   |   ");
+  doc.font("Helvetica").fontSize(9).fillColor(CINZA).text(linha, MX, p4.y, { width: LARG });
+  p4.y = doc.y + 8;
+  painelVeredito(p4, meta.veredito, meta.motivos);
+  p4.garantir(100);
+  const sy2 = p4.y;
+  const v4 = r5.score.valor;
+  doc.roundedRect(MX, sy2, 150, 76, 6).fill(AZUL_CLARO);
+  doc.font("Helvetica").fontSize(8).fillColor(CINZA).text("SCORE (0 A 1000)", MX + 10, sy2 + 8, { width: 130, lineBreak: false });
+  doc.font("Helvetica-Bold").fontSize(v4 === null ? 14 : 34).fillColor(AZUL).text(v4 === null ? "N\xE3o informado" : String(v4), MX + 10, sy2 + (v4 === null ? 28 : 20), { width: 130, lineBreak: false });
+  if (r5.score.faixa) {
+    doc.font("Helvetica").fontSize(8.5).fillColor(TEXTO).text(`Faixa: ${txt2(r5.score.faixa)}`, MX + 10, sy2 + 60, { width: 130, lineBreak: false });
+  }
+  const rx = MX + 170;
+  const rw = LARG - 170;
+  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(TEXTO).text("Probabilidade de inadimpl\xEAncia", rx, sy2 + 2, { width: rw, lineBreak: false });
+  const prob = r5.score.probabilidadeInadimplencia;
+  doc.font("Helvetica-Bold").fontSize(prob === null ? 10 : 14).fillColor(AZUL).text(prob === null ? "N\xE3o informada" : pct(prob), rx, sy2 + (prob === null ? 17 : 14), { width: rw, lineBreak: false });
+  const by = sy2 + 46;
+  const bh = 12;
+  const x2 = (n5) => rx + n5 / 1e3 * rw;
+  doc.rect(x2(0), by, x2(400) - x2(0), bh).fill(COR_SEMAFORO.VERMELHO);
+  doc.rect(x2(400), by, x2(600) - x2(400), bh).fill(COR_SEMAFORO.AMARELO);
+  doc.rect(x2(600), by, x2(1e3) - x2(600), bh).fill(COR_SEMAFORO.VERDE);
+  doc.font("Helvetica").fontSize(7).fillColor(CINZA);
+  for (const t5 of [0, 400, 600, 1e3]) {
+    const lx = Math.min(Math.max(x2(t5) - 10, rx - 4), rx + rw - 16);
+    doc.text(String(t5), lx, by + bh + 3, { width: 20, align: "center", lineBreak: false });
+  }
+  doc.text("Alto risco", x2(0) + 2, by - 10, { width: x2(400) - x2(0), lineBreak: false });
+  doc.text("Aten\xE7\xE3o", x2(400) + 2, by - 10, { width: x2(600) - x2(400), lineBreak: false });
+  doc.text("Baixo risco", x2(600) + 2, by - 10, { width: x2(1e3) - x2(600), lineBreak: false });
+  if (v4 !== null) {
+    const mx = x2(Math.min(1e3, Math.max(0, v4)));
+    doc.moveTo(mx, by - 2).lineTo(mx, by + bh + 2).lineWidth(2).strokeColor("#111827").stroke();
+    doc.polygon([mx - 5, by - 7], [mx + 5, by - 7], [mx, by - 1]).fill("#111827");
+  }
+  p4.y = sy2 + 84;
+  const leitura = resumirTexto(frasePelaFonte(r5.score.textoInterpretacao));
+  p4.paragrafo("Score e probabilidade informados pela fonte; n\xE3o s\xE3o calculados pela Sal Vita.", { cor: CINZA, tam: 8 });
+  if (meta.veredito === "REPROVADO_A_PRAZO" && (r5.score.valor ?? 0) >= 600) {
+    p4.paragrafo("Aten\xE7\xE3o: o score da fonte \xE9 alto, mas o relat\xF3rio registra restri\xE7\xF5es. Para decidir, prevalecem as restri\xE7\xF5es, n\xE3o o score.", { cor: "#B45309", tam: 8.5 });
+  }
+  if (leitura) p4.paragrafo(leitura, { cor: CINZA, tam: 8 });
+  for (const o4 of entradasDeScore(r5.score).slice(1)) {
+    const detalhe = o4.valor === null ? "n\xE3o calculado" : `${o4.valor} \xB7 probabilidade ${pct(o4.probabilidadeInadimplencia)}${o4.faixa ? ` \xB7 faixa ${txt2(o4.faixa)}` : ""}`;
+    p4.paragrafo(`Outro score da mesma fonte${o4.rotulo ? ` (${o4.rotulo})` : ""}: ${detalhe}.`, { cor: TEXTO, tam: 8.5, negrito: true });
+  }
+}
+function secaoAnotacoes(p4, r5, agora, anexo) {
+  p4.titulo("Anota\xE7\xF5es negativas");
+  const comOcorrencia = GRUPOS.filter(([k3]) => r5.anotacoes[k3].consultado && (r5.anotacoes[k3].quantidade > 0 || r5.anotacoes[k3].itens.length > 0));
+  const zerados = [];
+  const bruto = anexo?.semOcorrencias ?? [];
+  for (const [k3, nome, , rep] of GRUPOS) {
+    const g3 = r5.anotacoes[k3];
+    if (!g3.consultado || g3.quantidade > 0 || g3.itens.length > 0) continue;
+    const dele = rep ? bruto.filter((n5) => rep.test(n5)) : [];
+    if (dele.length) zerados.push(...dele);
+    else zerados.push(nome.replace(/ \(.*\)$/, ""));
+  }
+  for (const n5 of bruto) {
+    const g3 = GRUPOS.find(([, , , rep]) => rep?.test(n5));
+    if (!g3 || comOcorrencia.includes(g3)) zerados.push(n5);
+  }
+  const naoInformados = GRUPOS.filter(([k3]) => !r5.anotacoes[k3].consultado).map(([, nome]) => nome.replace(/ \(.*\)$/, ""));
+  if (comOcorrencia.length) {
+    p4.tabela(
+      [{ titulo: "Item", largura: 270 }, { titulo: "Quantidade", largura: 90, alinhar: "right" }, { titulo: "Valor total", largura: 155, alinhar: "right" }],
+      comOcorrencia.map(([k3, nome]) => {
+        const g3 = r5.anotacoes[k3];
+        return [{ texto: nome, negrito: true, cor: COR_SEMAFORO.VERMELHO }, { texto: String(Math.max(g3.quantidade, g3.itens.length)) }, { texto: g3.valorTotal !== null ? brl3(g3.valorTotal) : "\u2014" }];
+      })
+    );
+  }
+  if (zerados.length) p4.paragrafo("Sem ocorr\xEAncias em: " + [...new Set(zerados)].join(", ") + ".", { cor: COR_SEMAFORO.VERDE, tam: 8.5, negrito: true });
+  if (naoInformados.length) p4.paragrafo("N\xE3o informado pela fonte: " + naoInformados.join(", ") + ".", { cor: CINZA, tam: 8.5 });
+  for (const a5 of anexo?.alertas ?? []) p4.paragrafo("Alerta da fonte: " + a5, { cor: "#B45309", tam: 8.5, negrito: true });
+  for (const [k3, nome, remover] of comOcorrencia) {
+    detalhesDoGrupo(p4, r5.anotacoes[k3], nome.replace(/ \(.*\)$/, ""), remover, agora, { tituloDescricao: k3 === "acoesJudiciais" ? "A\xE7\xE3o" : "Descri\xE7\xE3o" });
+  }
+}
+function secaoConsultas(p4, r5, bruto) {
+  const mensal = consultasPorMes(bruto);
+  const total = r5.complementos?.consultas12Meses;
+  if (!r5.consultasRecentes.length && !mensal && (total === null || total === void 0)) return;
+  p4.titulo("Consultas ao documento");
+  if (typeof total === "number") {
+    const listadas = r5.consultasRecentes.length;
+    p4.paragrafo(`Total em 12 meses: ${total}` + (listadas > 0 && listadas < total ? ` (a fonte listou ${listadas} de ${total})` : ""), { negrito: true, tam: 8.5 });
+  }
+  if (r5.consultasRecentes.length) {
+    const comQtd = r5.consultasRecentes.some((c4) => c4.quantidade > 1);
+    const colunas = [{ titulo: "Data", largura: 70 }, { titulo: "Consultante", largura: comQtd ? 360 : 445 }];
+    if (comQtd) colunas.push({ titulo: "Quantidade", largura: 85, alinhar: "right" });
+    p4.tabela(colunas, r5.consultasRecentes.map((c4) => [{ texto: dataBR(c4.data) }, { texto: txt2(c4.consultante) }, ...comQtd ? [{ texto: String(c4.quantidade) }] : []]));
+  }
+  if (mensal) {
+    p4.subtitulo("Consultas por m\xEAs");
+    p4.tabela(
+      mensal.colunas.map((titulo, i4) => ({ titulo, largura: i4 === 0 ? 44 : 38, alinhar: i4 === 0 ? "left" : "right" })),
+      mensal.linhas.map((l4) => l4.map((texto2, i4) => ({ texto: texto2, negrito: i4 === 0 }))),
+      { compacta: true }
+    );
+  }
+}
 function secaoAnexo(p4, anexo) {
   p4.titulo("Outras informa\xE7\xF5es da fonte", false);
   p4.paragrafo("Dados da resposta da fonte que n\xE3o aparecem nas se\xE7\xF5es anteriores. Campos vazios omitidos; CPF mascarado.", { cor: CINZA, tam: 8 });
@@ -340805,56 +341412,6 @@ function fonteDosDados(r5) {
   const provedor = r5.fonte.provedor === "boavista_apifull" ? "API Full" : r5.fonte.provedor === "simulado" ? "Simulado" : r5.fonte.provedor;
   return `${limparTexto(provedor)}/${limparTexto(nomeDoProduto(r5.fonte.produto, r5.fonte.provedor))}`;
 }
-function cabecalhoRodape(doc, r5, i4, total) {
-  const margens = doc.page.margins;
-  doc.page.margins = { top: 0, bottom: 0, left: 0, right: 0 };
-  if (r5.fonte.provedor === "simulado") {
-    doc.rect(0, 0, W, 24).fill(COR_SEMAFORO.VERMELHO);
-    doc.font("Helvetica-Bold").fontSize(10).fillColor("#FFFFFF").text(FAIXA_SIMULACAO, MX, 7, { width: LARG, align: "center", lineBreak: false });
-  }
-  const fy = H - 36;
-  doc.moveTo(MX, fy).lineTo(W - MX, fy).lineWidth(0.5).strokeColor(LINHA).stroke();
-  doc.font("Helvetica").fontSize(7.5).fillColor(CINZA).text("Confidencial \u2014 uso interno da Sal Vita para decis\xE3o de cr\xE9dito", MX, fy + 6, { width: 380, lineBreak: false });
-  doc.text(`P\xE1gina ${i4 + 1} de ${total}`, W - MX - 100, fy + 6, { width: 100, align: "right", lineBreak: false });
-  doc.page.margins = margens;
-}
-async function renderizar(relatorio, titulo, corpo2) {
-  const doc = new PDFDocument2({
-    size: "A4",
-    margins: { top: TOPO, bottom: BASE, left: MX, right: MX },
-    bufferPages: true,
-    // Só os testes desligam a compressão, para conferir o texto do PDF sem decodificar.
-    compress: process.env.CREDITO_PDF_SEM_COMPRESSAO !== "1",
-    info: {
-      Title: "Relat\xF3rio de An\xE1lise de Cr\xE9dito \u2014 Sal Vita",
-      Author: "Sal Vita",
-      Subject: titulo.subject,
-      Keywords: "confidencial"
-    }
-  });
-  const partes = [];
-  const pronto = new Promise((resolve3, reject) => {
-    doc.on("data", (c4) => partes.push(c4));
-    doc.on("end", () => resolve3(Buffer.concat(partes)));
-    doc.on("error", reject);
-  });
-  try {
-    const p4 = new Pagina(doc);
-    const dataConsulta = new Date(relatorio.consultadoEm);
-    corpo2(p4, Number.isFinite(dataConsulta.getTime()) ? dataConsulta : /* @__PURE__ */ new Date());
-    const { start: start2, count: count2 } = doc.bufferedPageRange();
-    for (let i4 = 0; i4 < count2; i4++) {
-      doc.switchToPage(start2 + i4);
-      cabecalhoRodape(doc, relatorio, i4, count2);
-    }
-    doc.end();
-  } catch (e4) {
-    doc.end();
-    await pronto.catch(() => void 0);
-    throw e4;
-  }
-  return pronto;
-}
 async function gerarPdfCredito(relatorio, meta, bruto) {
   return renderizar(relatorio, { subject: `An\xE1lise de cr\xE9dito ${formatarDocumento(relatorio.documento, relatorio.tipo)}` }, (p4, agora) => {
     let anexo = null;
@@ -340881,46 +341438,50 @@ async function gerarPdfCredito(relatorio, meta, bruto) {
     }
   });
 }
-var totalMensal = (m4) => m4.linhas.reduce((s4, l4) => s4 + l4.slice(1).reduce((a5, c4) => a5 + (Number(c4) || 0), 0), 0);
-async function gerarPdfCreditoConsolidado(c4, meta, brutos = []) {
-  const r5 = c4.fundido;
-  return renderizar(r5, { subject: `An\xE1lise de cr\xE9dito ${formatarDocumento(r5.documento, r5.tipo)} (consolidado)` }, (p4, agora) => {
-    const pf = r5.tipo === "CPF";
-    const seguro = (f4) => {
-      try {
-        return f4();
-      } catch {
-        return null;
-      }
-    };
-    let brutoConsultas = null;
-    let melhor = -1;
-    for (const b3 of brutos) {
-      const m4 = seguro(() => consultasPorMes(b3.bruto));
-      if (m4 && totalMensal(m4) > melhor) {
-        melhor = totalMensal(m4);
-        brutoConsultas = b3.bruto;
+
+// server/lib/credito/consolidadoTela.ts
+var dataCurta = (iso) => {
+  const m4 = iso ? /^(\d{4})-(\d{2})-(\d{2})/.exec(iso) : null;
+  return m4 ? `${m4[3]}/${m4[2]}/${m4[1]}` : "";
+};
+var prioridade = (k3) => /ltima compra/i.test(k3) ? 0 : /maior fatura/i.test(k3) ? 1 : /maior cr[ée]dito/i.test(k3) ? 2 : 3;
+function comportamentoParaTela(r5, brutos) {
+  const pf = r5.tipo === "CPF";
+  for (const b3 of brutos) {
+    let comp = null;
+    try {
+      comp = comportamentoDe(b3.bruto, pf);
+    } catch {
+      comp = null;
+    }
+    if (!comp) continue;
+    const eventos = [...comp.eventos].sort((a5, c5) => prioridade(a5[0]) - prioridade(c5[0]));
+    const c4 = r5.comportamento;
+    const resumo = [];
+    if (!eventos.some(([k3]) => prioridade(k3) === 0) && c4?.ultimaCompraEm) resumo.push(["\xDAltima compra", dataCurta(c4.ultimaCompraEm)]);
+    resumo.push(...eventos.filter(([k3]) => prioridade(k3) < 3));
+    if (c4?.pagamentoPontualPct != null) resumo.push(["Pagamentos em dia", `${c4.pagamentoPontualPct.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`]);
+    resumo.push(...eventos.filter(([k3]) => prioridade(k3) === 3));
+    const tabelas = [];
+    let titulo = null;
+    for (const parte of comp.matriz) {
+      if (parte.t === "sub") titulo = parte.texto;
+      else if (parte.t === "tabela") {
+        tabelas.push({ titulo, colunas: parte.colunas, linhas: parte.linhas });
+        titulo = null;
       }
     }
-    const brutoComport = brutos.find((b3) => seguro(() => comportamentoDe(b3.bruto, pf)))?.bruto ?? null;
-    const todosExtras = brutos.map((b3) => seguro(() => empresaExtrasDe(b3.bruto)));
-    const extras = {
-      funcionarios: todosExtras.map((e4) => e4?.funcionarios ?? null).find(Boolean) ?? null,
-      porte: todosExtras.map((e4) => e4?.porte ?? null).find(Boolean) ?? null,
-      filiais: todosExtras.map((e4) => e4?.filiais ?? null).find(Boolean) ?? null
-    };
-    const ctr = { omitidos: 0 };
-    const resumo = { veredito: c4.veredito, motivos: c4.motivos };
-    secaoResumo(p4, r5, resumo, c4);
-    secaoScorePorFonte(p4, c4, c4.veredito);
-    secaoPontosDeAtencao(p4, r5, agora, []);
-    secaoAnotacoes(p4, r5, agora, null, c4);
-    secaoEmpresa(p4, r5, null, agora, extras);
-    secaoSocios(p4, r5);
-    secaoConsultas(p4, r5, brutoConsultas);
-    secaoComportamento(p4, r5, brutoComport, (parte) => desenharParte(p4, parte, ctr));
-    secaoFinal(p4, meta.consultadoPor);
-  });
+    return { fonte: b3.produtoNome, resumo: resumo.filter(([, v4]) => v4.trim() !== ""), tabelas, relacionamento: comp.relacionamento };
+  }
+  return null;
+}
+function relatorioAtualizado(gravado, chave, bruto) {
+  if (bruto == null) return gravado;
+  try {
+    return { ...gravado, ...mapeadorDoProduto(chave)(bruto) };
+  } catch {
+    return gravado;
+  }
 }
 
 // server/routers/credito.ts
@@ -340997,13 +341558,21 @@ async function consolidadoDoDocumento(documento) {
   const linhas = await relatoriosDoDocumento(documento, { limite: 60 });
   const sel = selecionarParaConsolidado(linhas, { provedorReal: getProvedorCredito().nome !== "simulado" });
   if (sel.linhas.length === 0) return null;
-  const consolidado = consolidarRelatorios(sel.linhas.map((l4) => ({
-    relatorio: { ...l4.relatorio, fonte: { ...l4.relatorio.fonte, provedor: l4.provedor, custoReais: l4.custoReais ?? l4.relatorio.fonte.custoReais } },
-    produto: chaveDoProdutoGravado(l4.produto, l4.provedor),
-    produtoNome: nomeDoProduto(l4.produto, l4.provedor),
+  const ids = sel.linhas.map((l4) => l4.id);
+  const rows = await db.select({ id: creditReports.id, bruto: creditReports.payloadBruto }).from(creditReports).where(inArray(creditReports.id, ids));
+  const fontes = sel.linhas.map((l4) => {
+    const chave = chaveDoProdutoGravado(l4.produto, l4.provedor);
+    const bruto = rows.find((x2) => x2.id === l4.id)?.bruto ?? null;
+    return { l: l4, chave, nome: nomeDoProduto(l4.produto, l4.provedor), bruto, relatorio: relatorioAtualizado(l4.relatorio, chave, bruto) };
+  });
+  const consolidado = consolidarRelatorios(fontes.map(({ l: l4, chave, nome, relatorio }) => ({
+    relatorio: { ...relatorio, fonte: { ...relatorio.fonte, provedor: l4.provedor, custoReais: l4.custoReais ?? relatorio.fonte.custoReais } },
+    produto: chave,
+    produtoNome: nome,
     consultadoEm: l4.consultadoEm.toISOString()
   })));
-  return { consolidado, linhas: sel.linhas };
+  const brutos = fontes.flatMap((f4) => f4.bruto == null ? [] : [{ id: f4.l.id, produto: f4.chave, produtoNome: f4.nome, bruto: f4.bruto }]);
+  return { consolidado, linhas: sel.linhas, brutos };
 }
 var creditoRouter = router({
   status: protectedProcedure.query(async () => {
@@ -341105,7 +341674,9 @@ var creditoRouter = router({
       veredito: consolidado.veredito,
       motivos: consolidado.motivos,
       semaforo: SEMAFORO[consolidado.veredito],
-      sinais: ordenarSinais(consolidado.sinais)
+      sinais: ordenarSinais(consolidado.sinais),
+      // matriz dos últimos 12 meses e eventos da fonte (vêm da resposta crua; não cabem no contrato do relatório)
+      comportamento: comportamentoParaTela(consolidado.fundido, c4.brutos)
     };
   }),
   /** Diagnóstico (admin): só a ESTRUTURA da resposta guardada (caminhos e tipo; valores de texto só como tamanho). */
@@ -341527,21 +342098,10 @@ var creditoRouter = router({
     const documento = input.documento.replace(/\D/g, "");
     const c4 = await consolidadoDoDocumento(documento);
     if (!c4) throw new TRPCError({ code: "NOT_FOUND", message: "Este documento ainda n\xE3o tem relat\xF3rio de cr\xE9dito" });
-    const ids = c4.linhas.map((l4) => l4.id);
     try {
-      const [brutos, autores] = await Promise.all([
-        db.select({ id: creditReports.id, bruto: creditReports.payloadBruto }).from(creditReports).where(inArray(creditReports.id, ids)),
-        db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, c4.linhas.map((l4) => l4.consultadoPorUserId)))
-      ]);
+      const autores = await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, c4.linhas.map((l4) => l4.consultadoPorUserId)));
       const nomes = [...new Set(autores.map((a5) => a5.name).filter(Boolean))].join(", ") || null;
-      const buf = await gerarPdfCreditoConsolidado(
-        c4.consolidado,
-        { consultadoPor: nomes },
-        c4.linhas.flatMap((l4) => {
-          const b3 = brutos.find((x2) => x2.id === l4.id)?.bruto;
-          return b3 == null ? [] : [{ produto: chaveDoProdutoGravado(l4.produto, l4.provedor), bruto: b3 }];
-        })
-      );
+      const buf = await gerarPdfCreditoConsolidado(c4.consolidado, { consultadoPor: nomes }, c4.brutos.map((b3) => ({ produto: b3.produto, bruto: b3.bruto })));
       const dia = c4.consolidado.consultadoEm.slice(0, 10).replace(/-/g, "");
       return { nomeArquivo: `analise-credito-${documento}-${dia}.pdf`, base64: buf.toString("base64") };
     } catch (e4) {
