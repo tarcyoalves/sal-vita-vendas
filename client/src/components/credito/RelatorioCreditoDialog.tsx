@@ -4,13 +4,13 @@ import { useMemo } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Button } from '../ui/button';
-import { StatusBadge } from '../StatusBadge';
 import { QueryError } from '../QueryError';
 import { trpc } from '../../lib/trpc';
 import { useAuth } from '../../_core/hooks/useAuth';
 import { formatBRL } from '../../lib/faturamento/calc';
 import { formatarDocumento, mascararDocumentoSocio } from '../../lib/credito/documento';
 import { dataBR, dataHoraBR, permissoesCredito } from '../../lib/credito/regras';
+import { naturezaJuridicaTexto } from '../../../../shared/creditoRotulos';
 import { analisarSinais, atenuacaoDoItem, ROTULO_VEREDITO, type GrupoAnotacao, type RelatorioCredito } from '../../../../shared/credito';
 import { CreditoSemaforo } from './CreditoSemaforo';
 import { PontosDeAtencao } from './PontosDeAtencao';
@@ -36,12 +36,6 @@ function Secao({ titulo, children }: { titulo: string; children: React.ReactNode
       {children}
     </section>
   );
-}
-
-function Situacao({ g }: { g: GrupoAnotacao }) {
-  if (!g.consultado) return <StatusBadge tone="neutral">Não informado pela fonte</StatusBadge>;
-  if (g.quantidade > 0) return <StatusBadge tone="danger">Consta</StatusBadge>;
-  return <StatusBadge tone="success">Nada consta</StatusBadge>;
 }
 
 function Campos({ pares }: { pares: Array<[string, string]> }) {
@@ -85,7 +79,7 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
         <DialogHeader>
           <DialogTitle className="text-base">Relatório de análise de crédito</DialogTitle>
           <DialogDescription>
-            {r ? `${r.tipo} ${formatarDocumento(r.documento)} · consulta em ${dataHoraBR(d?.consultadoEm)}` : 'Carregando…'}
+            {r ? `${r.tipo} ${formatarDocumento(r.documento)} · consulta em ${dataHoraBR(d?.consultadoEm)} · Fonte: ${r.fonte.provedor} / ${r.fonte.produto}` : 'Carregando…'}
           </DialogDescription>
         </DialogHeader>
 
@@ -123,135 +117,142 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
                 </div>
                 {r.score.faixa && <div><p className="text-xs text-slate-500">Faixa</p><p className="text-sm text-slate-900">{r.score.faixa}</p></div>}
               </div>
-              {r.score.textoInterpretacao && <p className="text-xs text-slate-500">Interpretação da fonte: {r.score.textoInterpretacao}</p>}
+              {r.score.textoInterpretacao && <p className="line-clamp-2 text-xs text-slate-500" title={r.score.textoInterpretacao}>{r.score.textoInterpretacao}</p>}
             </Secao>
 
-            <Secao titulo="Anotações negativas">
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
-                <table className="w-full min-w-[480px] text-sm tabular-nums">
-                  <thead className="bg-slate-50 text-left text-xs font-medium text-slate-500">
-                    <tr><th className="px-3 py-2">Item</th><th className="px-3 py-2 text-right">Qtd</th><th className="px-3 py-2 text-right">Valor total</th><th className="px-3 py-2">Situação</th></tr>
-                  </thead>
-                  <tbody>
-                    {GRUPOS.map(([k, nome]) => {
-                      const g = r.anotacoes[k];
-                      return (
-                        <tr key={k} className="border-t border-slate-100">
-                          <td className="px-3 py-2 font-medium text-slate-900">{nome}</td>
-                          <td className="px-3 py-2 text-right">{g.consultado ? g.quantidade : '—'}</td>
-                          <td className="px-3 py-2 text-right">{g.consultado && g.quantidade > 0 ? brl(g.valorTotal) : '—'}</td>
-                          <td className="px-3 py-2"><Situacao g={g} /></td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {GRUPOS.filter(([k]) => r.anotacoes[k].consultado && (r.anotacoes[k].itens.length > 0 || r.anotacoes[k].quantidade > 0)).map(([k, nome]) => {
-                const g = r.anotacoes[k];
-                return (
-                  <div key={k} className="space-y-1">
-                    <p className="text-sm font-semibold text-slate-800">{nome} — {g.quantidade} ocorrência(s){g.valorTotal !== null ? `, total ${brl(g.valorTotal)}` : ''}</p>
-                    {g.itens.length < g.quantidade && (
-                      <p className="text-xs font-medium text-amber-800">A fonte listou {g.itens.length} de {g.quantidade} ocorrências.</p>
-                    )}
-                    {g.itens.length > 0 && (
-                    <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 text-sm">
-                      {g.itens.map((it, i) => {
-                        const obs = atenuacaoDoItem(it, new Date(d.consultadoEm));
-                        return (
-                          <li key={`${i}-${it.descricao}`} className="grid gap-0.5 px-3 py-2 sm:grid-cols-[6rem_1fr_auto] sm:gap-3">
-                            <span className="text-xs text-slate-500">{dataBR(it.data)}</span>
-                            <span className="min-w-0 break-words text-slate-800">
-                              {it.descricao}
-                              {it.credor && <span className="block text-xs text-slate-500">Credor: {it.credor}</span>}
-                              {it.local && <span className="block text-xs text-slate-500">{it.local}</span>}
-                              {it.extras && Object.entries(it.extras).length > 0 && (
-                                <span className="mt-0.5 block text-xs text-slate-500">
-                                  {Object.entries(it.extras).map(([ch, v]) => `${ch}: ${v}`).join(' · ')}
-                                </span>
-                              )}
-                              {obs && <span className="mt-0.5 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-900">Estudar com calma: {obs}</span>}
-                            </span>
-                            <span className="text-right font-medium tabular-nums">{brl(it.valor)}</span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                    )}
-                  </div>
-                );
-              })}
-            </Secao>
+            {(() => {
+              const com = GRUPOS.filter(([k]) => r.anotacoes[k].consultado && (r.anotacoes[k].itens.length > 0 || r.anotacoes[k].quantidade > 0));
+              const zerados = GRUPOS.filter(([k]) => r.anotacoes[k].consultado && !com.some(([c]) => c === k)).map(([, n]) => n.replace(/ \(.*\)$/, ''));
+              const nao = GRUPOS.filter(([k]) => !r.anotacoes[k].consultado).map(([, n]) => n.replace(/ \(.*\)$/, ''));
+              return (
+                <Secao titulo="Anotações negativas">
+                  {com.length > 0 && (
+                    <div className="overflow-x-auto rounded-lg border border-slate-200">
+                      <table className="w-full min-w-[360px] text-sm tabular-nums">
+                        <thead className="bg-slate-50 text-left text-xs font-medium text-slate-500">
+                          <tr><th className="px-3 py-2">Item</th><th className="px-3 py-2 text-right">Quantidade</th><th className="px-3 py-2 text-right">Valor total</th></tr>
+                        </thead>
+                        <tbody>
+                          {com.map(([k, nome]) => {
+                            const g = r.anotacoes[k];
+                            return (
+                              <tr key={k} className="border-t border-slate-100">
+                                <td className="px-3 py-2 font-medium text-red-700">{nome}</td>
+                                <td className="px-3 py-2 text-right">{Math.max(g.quantidade, g.itens.length)}</td>
+                                <td className="px-3 py-2 text-right">{g.valorTotal !== null ? brl(g.valorTotal) : '—'}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {zerados.length > 0 && <p className="text-sm font-medium text-green-700">Sem ocorrências em: {zerados.join(', ')}.</p>}
+                  {nao.length > 0 && <p className="text-xs text-slate-500">Não informado pela fonte: {nao.join(', ')}.</p>}
+                  {com.map(([k, nome]) => {
+                    const g = r.anotacoes[k];
+                    return (
+                      <div key={k} className="space-y-1">
+                        <p className="text-sm font-semibold text-slate-800">{nome.replace(/ \(.*\)$/, '')}</p>
+                        {g.itens.length < g.quantidade && (
+                          <p className="text-xs font-medium text-amber-800">A fonte listou {g.itens.length} de {g.quantidade} ocorrências.</p>
+                        )}
+                        {g.itens.length > 0 && (
+                          <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 text-sm">
+                            {g.itens.map((it, i) => {
+                              const obs = atenuacaoDoItem(it, new Date(d.consultadoEm));
+                              return (
+                                <li key={`${i}-${it.descricao}`} className="grid gap-0.5 px-3 py-2 sm:grid-cols-[6rem_1fr_auto] sm:gap-3">
+                                  <span className="text-xs text-slate-500">{it.data ? dataBR(it.data) : ''}</span>
+                                  <span className="min-w-0 break-words text-slate-800">
+                                    {it.descricao}
+                                    {it.credor && <span className="block text-xs text-slate-500">Credor: {it.credor}</span>}
+                                    {it.local && <span className="block text-xs text-slate-500">{it.local}</span>}
+                                    {it.extras && Object.entries(it.extras).length > 0 && (
+                                      <span className="mt-0.5 block text-xs text-slate-500">
+                                        {Object.entries(it.extras).map(([ch, v]) => `${ch}: ${v}`).join(' · ')}
+                                      </span>
+                                    )}
+                                    {obs && <span className="mt-0.5 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-900">Estudar com calma: {obs}</span>}
+                                  </span>
+                                  <span className="text-right font-medium tabular-nums">{it.valor !== null ? brl(it.valor) : ''}</span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                    );
+                  })}
+                </Secao>
+              );
+            })()}
 
-            <Secao titulo="Dados cadastrais">
-              <Campos pares={[
-                ['Razão social', txt(r.cadastro.razaoSocial)], ['Nome fantasia', txt(r.cadastro.nomeFantasia)],
-                [r.tipo, formatarDocumento(r.documento)], ['Situação cadastral', txt(r.cadastro.situacao)],
-                ['Situação em', dataBR(r.cadastro.situacaoEm)], ['Fundação', dataBR(r.cadastro.fundacao)],
-                ['Natureza jurídica', txt(r.cadastro.naturezaJuridica)], ['Capital social', brl(r.cadastro.capitalSocial)],
-                ['CNAE principal', txt(r.cadastro.cnaePrincipal)], ['Atividade', txt(r.cadastro.atividade)],
-                ['Opção tributária', txt(r.cadastro.opcaoTributaria)], ['Inscrição estadual', txt(r.cadastro.inscricaoEstadual)],
-                ['Endereço', txt(r.cadastro.endereco)], ['Município / UF', [r.cadastro.municipio, r.cadastro.uf].filter(Boolean).join(' / ') || '—'],
-                ['Telefone', txt(r.cadastro.telefone)], ['Número de filiais', txt(r.cadastro.numeroFiliais)],
-              ]} />
-            </Secao>
+            {(() => {
+              const c = r.cadastro;
+              const fant = c.nomeFantasia && c.nomeFantasia !== c.razaoSocial ? c.nomeFantasia : '';
+              const ender = [c.endereco, [c.municipio, c.uf].filter(Boolean).join('/')].filter(Boolean).join(' — ');
+              const pares = ([
+                ['Nome fantasia', fant],
+                ['Situação', c.situacao ? c.situacao + (c.situacaoEm && c.situacaoEm !== c.fundacao ? ` (desde ${dataBR(c.situacaoEm)})` : '') : ''],
+                ['Fundação', c.fundacao ? dataBR(c.fundacao) : ''],
+                ['Natureza jurídica', naturezaJuridicaTexto(c.naturezaJuridica)],
+                ['Capital social', c.capitalSocial === null ? '' : brl(c.capitalSocial)],
+                ['CNAE e atividade', [c.cnaePrincipal, c.atividade].filter(Boolean).join(' — ')],
+                ['Opção tributária', c.opcaoTributaria ?? ''],
+                ['Inscrição estadual (IE)', c.inscricaoEstadual ?? ''],
+                ['Endereço', ender],
+                ['Nº de filiais', c.numeroFiliais === null ? '' : String(c.numeroFiliais)],
+                ['Faturamento presumido', r.complementos?.faturamentoPresumidoFaixa ?? ''],
+                ['Veículos da empresa', r.complementos?.veiculos?.length ? r.complementos.veiculos.map((v) => v.marcaModelo).join('; ') : ''],
+              ] as Array<[string, string]>).filter(([, v]) => v !== '');
+              return pares.length ? <Secao titulo="Dados da empresa"><Campos pares={pares} /></Secao> : null;
+            })()}
 
-            {r.comportamento && (
-              <Secao titulo="Movimentação comercial">
-                <Campos pares={[
-                  ['Última compra no mercado', dataBR(r.comportamento.ultimaCompraEm)],
-                  ['Relacionamento comercial mais antigo', dataBR(r.comportamento.relacionamentoMaisAntigoEm)],
-                  ['Fornecedores que informaram', txt(r.comportamento.fontesConsultadas)],
-                  ['Pagamentos em dia', pct(r.comportamento.pagamentoPontualPct)],
-                ]} />
-              </Secao>
-            )}
-
-            {r.complementos && (
-              <Secao titulo="Complementos da fonte">
-                <Campos pares={[
-                  ['Faturamento presumido (faixa)', txt(r.complementos.faturamentoPresumidoFaixa)],
-                  ['Consultas nos últimos 12 meses', txt(r.complementos.consultas12Meses)],
-                  ['Veículos da empresa', r.complementos.veiculos?.length ? r.complementos.veiculos.map((v) => [v.marcaModelo, v.placa].filter(Boolean).join(' ')).join('; ') : '—'],
-                ]} />
-              </Secao>
-            )}
-
-            <Secao titulo="Quadro societário e administradores">
-              {r.socios.length === 0 ? (
-                <p className="text-sm text-slate-500">Nenhum sócio ou administrador informado pela fonte.</p>
-              ) : (
+            {r.socios.length > 0 && (
+              <Secao titulo="Sócios e administradores">
                 <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 text-sm">
                   {r.socios.map((s, i) => (
                     <li key={`${i}-${s.nome}`} className="grid gap-0.5 px-3 py-2 sm:grid-cols-[1fr_9rem_9rem_5rem] sm:gap-3">
-                      <span className="min-w-0 break-words font-medium text-slate-900">{s.nome}<span className="block text-xs font-normal text-slate-500">{txt(s.cargo)}</span></span>
+                      <span className="min-w-0 break-words font-medium text-slate-900">{s.nome}{s.cargo && <span className="block text-xs font-normal text-slate-500">{s.cargo}</span>}</span>
                       <span className="tabular-nums text-slate-700">{mascararDocumentoSocio(s.documento)}</span>
-                      <span className="text-slate-700">Entrada {dataBR(s.entrada)}</span>
-                      <span className="tabular-nums text-slate-700 sm:text-right">{pct(s.participacao)}</span>
+                      <span className="text-slate-700">{s.entrada ? `Entrada ${dataBR(s.entrada)}` : ''}</span>
+                      <span className="tabular-nums text-slate-700 sm:text-right">{s.participacao !== null ? pct(s.participacao) : ''}</span>
                     </li>
                   ))}
                 </ul>
-              )}
-            </Secao>
+              </Secao>
+            )}
 
-            <Secao titulo="Consultas recentes ao documento">
-              {r.consultasRecentes.length === 0 ? (
-                <p className="text-sm text-slate-500">Nenhuma consulta recente informada pela fonte.</p>
-              ) : (
-                <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 text-sm">
-                  {r.consultasRecentes.map((c, i) => (
-                    <li key={`${i}-${c.data}`} className="flex items-center justify-between gap-3 px-3 py-2">
-                      <span className="min-w-0 break-words"><span className="mr-2 text-xs text-slate-500">{dataBR(c.data)}</span>{c.consultante}</span>
-                      <span className="shrink-0 tabular-nums text-slate-700">{c.quantidade}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Secao>
+            {(r.consultasRecentes.length > 0 || r.complementos?.consultas12Meses != null) && (
+              <Secao titulo="Consultas ao documento">
+                {r.complementos?.consultas12Meses != null && <p className="text-sm font-medium text-slate-800">Total em 12 meses: {r.complementos.consultas12Meses}</p>}
+                {r.consultasRecentes.length > 0 && (
+                  <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 text-sm">
+                    {r.consultasRecentes.map((c, i) => (
+                      <li key={`${i}-${c.data}`} className="flex items-center justify-between gap-3 px-3 py-2">
+                        <span className="min-w-0 break-words"><span className="mr-2 text-xs text-slate-500">{dataBR(c.data)}</span>{c.consultante}</span>
+                        {c.quantidade > 1 && <span className="shrink-0 tabular-nums text-slate-700">{c.quantidade}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Secao>
+            )}
+
+            {r.comportamento && (
+              <Secao titulo="Comportamento comercial">
+                <Campos pares={([
+                  ['Última compra', r.comportamento.ultimaCompraEm ? dataBR(r.comportamento.ultimaCompraEm) : ''],
+                  ['Pagamentos em dia', r.comportamento.pagamentoPontualPct !== null ? pct(r.comportamento.pagamentoPontualPct) : ''],
+                  ['Relacionamento mais antigo', r.comportamento.relacionamentoMaisAntigoEm ? dataBR(r.comportamento.relacionamentoMaisAntigoEm) : ''],
+                  ['Fornecedores que informaram', r.comportamento.fontesConsultadas !== null ? String(r.comportamento.fontesConsultadas) : ''],
+                ] as Array<[string, string]>).filter(([, v]) => v !== '')} />
+              </Secao>
+            )}
 
             <p className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">
-              Fonte dos dados: {r.fonte.provedor} / {r.fonte.produto}. Documento confidencial, de uso interno da Sal Vita, destinado à análise de concessão de crédito (LGPD).
+              Documento confidencial, de uso interno da Sal Vita, destinado à análise de concessão de crédito (LGPD).
               {d.motivo ? ` Motivo da consulta: ${d.motivo}.` : ''}
             </p>
           </div>
