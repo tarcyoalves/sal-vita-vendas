@@ -565,7 +565,9 @@ export default function AppShell({ children }: AppShellProps) {
         {/* Page content — bottom padding on mobile to avoid bottom nav overlap */}
         {/* Atendente tem dois botões flutuantes (timer e e-mail marketing) acima da barra
             inferior: o espaço extra deixa o fim das listas rolar para fora deles. */}
-        <main className={`flex-1 overflow-y-auto md:pb-0 ${role === "user"
+        {/* `relative` é obrigatório: sem ancestral posicionado, filho `absolute` (ex.: `sr-only` de tabelas)
+            usa a janela como referência, escapa do overflow daqui e estica o DOCUMENTO (rolagem dupla). */}
+        <main className={`relative flex-1 overflow-y-auto md:pb-0 ${role === "user"
           ? "pb-[calc(9.5rem_+_env(safe-area-inset-bottom))]"
           : "pb-[calc(5rem_+_env(safe-area-inset-bottom))]"}`}>
           {children}
