@@ -46,7 +46,7 @@ export const ROTULOS_BLOCOS: Record<string, string> = {
 const ACENTOS: Record<string, string> = {
   inclusao: 'inclusão', situacao: 'situação', descricao: 'descrição', ocorrencia: 'ocorrência', ocorrencias: 'ocorrências',
   numero: 'número', codigo: 'código', endereco: 'endereço', razao: 'razão', juridica: 'jurídica', juridico: 'jurídico',
-  cartorio: 'cartório', especie: 'espécie', pontuacao: 'pontuação', classificacao: 'classificação',
+  cartorio: 'cartório', concluida: 'concluída', especie: 'espécie', pontuacao: 'pontuação', classificacao: 'classificação',
   inadimplencia: 'inadimplência', periodo: 'período', participacao: 'participação', informacoes: 'informações',
   restricoes: 'restrições', pendencias: 'pendências', acoes: 'ações', civeis: 'cíveis', veiculos: 'veículos', veiculo: 'veículo',
   fundacao: 'fundação', orgao: 'órgão', municipio: 'município', tipo: 'tipo', data: 'data', quantidade: 'quantidade',

@@ -172,11 +172,18 @@ class Pagina {
   }
 
   /** Título de bloco do anexo (mantém a capitalização portuguesa, ao contrário de `titulo`). */
-  bloco(t: string) {
+  bloco(t: string, status?: { texto: string; destaque: boolean }) {
     this.garantir(80);
     const { doc } = this;
     this.y += 6;
-    doc.font('Helvetica-Bold').fontSize(10).fillColor(AZUL).text(limparTexto(t), MX, this.y, { width: LARG, lineBreak: false });
+    const titulo = limparTexto(t);
+    doc.font('Helvetica-Bold').fontSize(10).fillColor(AZUL).text(titulo, MX, this.y, { width: LARG, lineBreak: false });
+    if (status) {
+      // status da consulta: linha pequena e cinza no título (vermelha só quando o código não é 1)
+      const x = MX + doc.widthOfString(titulo) + 6;
+      doc.font(status.destaque ? 'Helvetica-Bold' : 'Helvetica').fontSize(8).fillColor(status.destaque ? COR_SEMAFORO.VERMELHO : CINZA)
+        .text('— ' + limparTexto(status.texto), x, this.y + 2, { width: Math.max(60, MX + LARG - x), lineBreak: false });
+    }
     this.y += 14;
     doc.moveTo(MX, this.y).lineTo(MX + LARG, this.y).lineWidth(0.6).strokeColor(AZUL).stroke();
     this.y += 6;
@@ -189,23 +196,24 @@ class Pagina {
    * Desenha a tabela. `detalhes[i]` é uma linha de texto menor sob a linha i (campos extras da fonte).
    * Com `limitar`, para ao atingir o teto de páginas e devolve quantas linhas deixou de desenhar.
    */
-  tabela(colunas: Coluna[], linhas: Celula[][], opts: { detalhes?: Array<string | undefined>; limitar?: boolean } = {}): number {
+  tabela(colunas: Coluna[], linhas: Celula[][], opts: { detalhes?: Array<string | undefined>; limitar?: boolean; semCabecalho?: boolean; compacta?: boolean } = {}): number {
     const { doc } = this;
-    const PAD = 4;
-    const tam = 8.5;
+    const PAD = opts.compacta ? 2 : 4; // matriz mensal: 12 colunas estreitas
+    const tam = opts.compacta ? 8 : 8.5;
+    const tamCab = opts.compacta ? 7 : 8;
     const total = colunas.reduce((a, c) => a + c.largura, 0);
     const escala = LARG / total;
     const cols = colunas.map((c) => ({ ...c, largura: c.largura * escala }));
 
     const cabecalho = () => {
-      doc.font('Helvetica-Bold').fontSize(8);
+      doc.font('Helvetica-Bold').fontSize(tamCab);
       const titulos = cols.map((c) => quebrarLongas(doc, limparTexto(c.titulo), c.largura - PAD * 2));
       const hTexto = Math.max(...titulos.map((t, j) => doc.heightOfString(t, { width: cols[j].largura - PAD * 2 })));
       const h = Math.max(18, hTexto + 9);
       this.garantir(h + 22);
       doc.rect(MX, this.y, LARG, h).fill(AZUL);
       let x = MX;
-      doc.font('Helvetica-Bold').fontSize(8).fillColor('#FFFFFF');
+      doc.font('Helvetica-Bold').fontSize(tamCab).fillColor('#FFFFFF');
       cols.forEach((c, j) => {
         doc.text(titulos[j], x + PAD, this.y + 5, { width: c.largura - PAD * 2, align: c.alinhar ?? 'left' });
         x += c.largura;
@@ -213,7 +221,7 @@ class Pagina {
       this.y += h;
     };
 
-    cabecalho();
+    if (!opts.semCabecalho) cabecalho();
     for (let i = 0; i < linhas.length; i++) {
       const linha = linhas[i];
       // mede cada célula já com as palavras longas quebradas
@@ -236,7 +244,7 @@ class Pagina {
       if (this.y + alturaLinha > LIMITE_Y) {
         if (opts.limitar && this.estourou()) return linhas.length - i;
         this.nova();
-        cabecalho();
+        if (!opts.semCabecalho) cabecalho();
       }
       if (i % 2 === 1) doc.rect(MX, this.y, LARG, alturaLinha).fill(ZEBRA);
       let x = MX;
@@ -558,7 +566,7 @@ function secaoAnexo(p: Pagina, anexo: Anexo) {
   for (const bloco of anexo.blocos) {
     if (p.estourou()) { omitidos += bloco.partes.reduce((a, parte) => a + registrosDaParte(parte), 0); continue; }
     try {
-      p.bloco(bloco.titulo);
+      p.bloco(bloco.titulo, bloco.status);
       if (!bloco.partes.length) { p.paragrafo('Bloco sem informações preenchidas.', { cor: CINZA, tam: 8.5 }); continue; }
       for (const parte of bloco.partes) {
         if (p.estourou()) { omitidos += registrosDaParte(parte); continue; }
@@ -572,10 +580,19 @@ function secaoAnexo(p: Pagina, anexo: Anexo) {
           case 'tabela': {
             if (parte.continuacao) p.paragrafo('(continuação: demais colunas dos mesmos registros)', { cor: CINZA, tam: 7.5 });
             const falt = p.tabela(parte.colunas.map((titulo, i) => ({ titulo, largura: parte.pesos[i] })),
-              parte.linhas.map((l) => l.map((texto, i) => ({ texto, negrito: i === 0 && parte.colunas.length > 2 }))), { limitar: true });
+              parte.linhas.map((l) => l.map((texto, i) => ({ texto, negrito: i === 0 && parte.colunas.length > 2 }))), { limitar: true, compacta: parte.compacta });
             if (!parte.continuacao) omitidos += falt;
             break;
           }
+          case 'ficha':
+            for (let i = 0; i < parte.registros.length; i++) {
+              if (p.estourou()) { omitidos += parte.registros.length - i; break; }
+              p.garantir(60);
+              if (parte.registros.length > 1) p.paragrafo(`Registro ${i + 1} de ${parte.registros.length}`, { cor: CINZA, tam: 8, negrito: true });
+              p.tabela([{ titulo: 'Campo', largura: 150 }, { titulo: 'Valor', largura: 365 }],
+                parte.registros[i].map(([k, v]) => [{ texto: k, negrito: true, cor: CINZA }, { texto: v }]), { semCabecalho: true });
+            }
+            break;
           case 'lista':
             for (let i = 0; i < parte.itens.length; i++) {
               if (p.estourou()) { omitidos += parte.itens.length - i; break; }

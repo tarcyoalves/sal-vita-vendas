@@ -89,11 +89,9 @@ describe('montarAnexo', () => {
     expect(a?.parametros).toEqual([['Documento', '11222333000181'], ['Tipo consulta', 'COMPLETA']]);
     expect(JSON.stringify(a)).not.toMatch(/DADOS_RETORNADOS|BLOCO_001|ZZZ-123|imagem-protesto/);
     const prot = a?.blocos.find((b) => b.titulo === 'Protestos');
-    const tabelas = prot?.partes.filter((p) => p.t === 'tabela') ?? [];
-    expect(tabelas.length).toBeGreaterThan(1); // muitas colunas -> fatias
-    for (const t of tabelas) {
-      if (t.t === 'tabela') { expect(t.linhas).toHaveLength(29); expect(t.colunas.length).toBeLessThanOrEqual(7); }
-    }
+    const fichas = prot?.partes.filter((p) => p.t === 'ficha') ?? [];
+    expect(fichas).toHaveLength(1); // muitas colunas -> uma ficha por registro, nenhum cortado
+    for (const f of fichas) if (f.t === 'ficha') expect(f.registros).toHaveLength(29);
     expect(a?.linkOriginal).toBe('https://exemplo.invalid/relatorio-volumoso.pdf');
   });
   it('dado estranho nunca lança', () => {
@@ -125,7 +123,7 @@ describe('PDF com anexo', () => {
     expect(texto).toContain('Anexo — Dados completos da resposta do provedor');
     for (const t of ['Protestos', 'Histórico de consultas', 'Scores', 'Quadro societário', 'Telefones fixos', 'E-mails', 'Parâmetros da consulta']) expect(texto).toContain(t);
     expect(texto).toContain('Blocos entregues pela fonte: Protestos, Scores');
-    expect(texto).toContain('Status: CONSULTA CONCLUIDA COM SUCESSO'.replace('Status: ', '')); // linha Campo|Valor
+    expect(compacto(texto)).toContain(compacto('consulta concluída com sucesso')); // status no título do bloco
     expect(texto).not.toMatch(/serasa|boa\s*vista/i);
     expect(texto).toContain('Fonte dos dados: API Full/Consulta simples');
     expect(texto).not.toContain('DADOS_RETORNADOS');
@@ -175,4 +173,130 @@ describe('PDF com anexo', () => {
     // o corpo principal (3000 itens) não é cortado; o anexo para no teto
     expect(paginas(pdf)).toBeGreaterThan(80);
   }, 120_000);
+});
+
+// ---------- legibilidade do anexo ----------
+const MESES_API = ['JANEIRO', 'FEVEREIRO', 'MARCO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
+const PERIODOS = ['OUT/2025', 'NOV/2025', 'DEZ/2025', 'JAN/2026', 'FEV/2026', 'MAR/2026', 'ABR/2026', 'MAI/2026', 'JUN/2026', 'JUL/2026', 'AGO/2026', 'SET/2026'];
+const itens = (seed: number) => [...PERIODOS].reverse().map((p, i) => ({ PERIODO: p, PONTUACAO_MENSAL: i % 3 === 0 ? '-' : String(seed + i) }));
+const OK = { CODIGO: '1', DESCRICAO: 'CONSULTA CONCLUIDA COM SUCESSO' };
+const TEXTO_LONGO = 'Probabilidade baixa de inadimplencia no horizonte de doze meses, conforme modelo estatistico do provedor';
+
+function brutoLegivel(): Record<string, unknown> {
+  // chaves de meses fora de ordem, de propósito (como a API devolve)
+  const embaralhado = (ano: string) => ({ ANO: ano, MAIO: '1', ABRIL: '2', JULHO: '4', JUNHO: '0', MARCO: '3', AGOSTO: '2', JANEIRO: '7', FEVEREIRO: '8', SETEMBRO: '1', OUTUBRO: '2', NOVEMBRO: '3', DEZEMBRO: '4' });
+  return {
+    dados: {
+      CREDCADASTRAL: {
+        SCORES: { STATUS_RETORNO: OK, OCORRENCIAS: [{ SCORE: '745', RISCO: TEXTO_LONGO, TEXTO: TEXTO_LONGO, TIPO_SCORE: '12 MESES' }] },
+        PROTESTOS: {
+          STATUS_RETORNO: OK,
+          QUANTIDADE_OCORRENCIA: '1', VALOR_TOTAL: '5500,00',
+          OCORRENCIAS: [{ DATA_PROTESTO: '01/01/2020', VALOR: '5500,00', CARTORIO: '2', CIDADE: 'CUIABA', UF: 'MT' }],
+        },
+        HIST_CONSULTAS: {
+          STATUS_RETORNO: { CODIGO: '3', DESCRICAO: 'FALHA NA FONTE' },
+          QUANTIDADES: [{ ...embaralhado('2025'), JANEIRO: '' }, embaralhado('2026')],
+          DETALHES: [{ DATA: '01/10/2026', RAZAO_SOCIAL: 'FORNECEDOR X LTDA', CNPJ: '00000000000001' }],
+        },
+        PAGAMENTO_ATRASADO: {
+          STATUS_RETORNO: OK,
+          OCORRENCIAS: [
+            { DESCRICAO: '6 a 15 dias', ITENS: itens(1) },
+            { DESCRICAO: 'Mais de 60 dias', ITENS: itens(20) },
+          ],
+        },
+        COMPROMISSOS: { STATUS_RETORNO: OK, PONTUACAO: '88', ITENS: itens(5) },
+        CREDITO_OBTIDO: { STATUS_RETORNO: OK, PONTUACAO: '70', ITENS: itens(9) },
+        PAGAMENTO_PONTUAL: { STATUS_RETORNO: OK, PONTUACAO: '100', ITENS: itens(2) },
+        COMPROMETIMENTO_FUTURO: { STATUS_RETORNO: OK, PONTUACAO: '12', ITENS: itens(3) },
+      },
+    },
+  };
+}
+
+describe('anexo legível', () => {
+  const a = montarAnexo(brutoLegivel(), { pessoaFisica: false });
+  const bloco = (t: string) => a?.blocos.find((b) => b.titulo === t);
+
+  it('meses sempre Jan→Dez e ano mais recente primeiro', () => {
+    const t = bloco('Histórico de consultas')?.partes.find((p) => p.t === 'tabela' && p.colunas[0] === 'Ano');
+    expect(t?.t === 'tabela' && t.colunas).toEqual(['Ano', 'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']);
+    expect(t?.t === 'tabela' && t.linhas.map((l) => l[0])).toEqual(['2026', '2025']);
+    expect(t?.t === 'tabela' && t.linhas[0].slice(1)).toEqual(['7', '8', '3', '2', '1', '0', '4', '2', '1', '2', '3', '4']); // MARCO sem acento = Mar
+    expect(t?.t === 'tabela' && t.linhas[1][1]).toBe('-');
+    const c = consultasPorMes(brutoLegivel());
+    expect(c?.linhas.map((l) => l[0])).toEqual(['2026', '2025']);
+    expect(MESES_API).toHaveLength(12);
+  });
+
+  it('colunas idênticas fundidas; texto longo vira ficha', () => {
+    const partes = bloco('Scores')?.partes ?? [];
+    expect(partes.some((p) => p.t === 'tabela')).toBe(false);
+    const f = partes.find((p) => p.t === 'ficha');
+    expect(f?.t === 'ficha' && f.registros[0].map(([k]) => k)).toEqual(['Score', 'Risco', 'Tipo score']);
+    expect(JSON.stringify(f).split(TEXTO_LONGO).length - 1).toBe(1);
+  });
+
+  it('mais de 6 colunas vira ficha', () => {
+    const b = { dados: { CREDCADASTRAL: { X: { OCORRENCIAS: [{ A: '1', B: '2', C: '3', D: '4', E: '5', F: '6', G: '7' }] } } } };
+    const p = (montarAnexo(b, { pessoaFisica: false })?.blocos[0].partes ?? []).filter((x) => x.t !== 'sub');
+    expect(p.map((x) => x.t)).toEqual(['ficha']);
+    const c6 = { dados: { CREDCADASTRAL: { X: { OCORRENCIAS: [{ A: '1', B: '2', C: '3', D: '4', E: '5', F: '6' }] } } } };
+    expect(montarAnexo(c6, { pessoaFisica: false })?.blocos[0].partes.filter((x) => x.t !== 'sub').map((x) => x.t)).toEqual(['tabela']);
+  });
+
+  it('pagamento atrasado: matriz faixa × período cronológico', () => {
+    const t = bloco('Pagamento atrasado')?.partes.find((x) => x.t === 'tabela');
+    expect(t?.t).toBe('tabela');
+    if (t?.t !== 'tabela') return;
+    expect(t.colunas).toEqual(['Descrição', 'Out/25', 'Nov/25', 'Dez/25', 'Jan/26', 'Fev/26', 'Mar/26', 'Abr/26', 'Mai/26', 'Jun/26', 'Jul/26', 'Ago/26', 'Set/26']);
+    expect(t.linhas.map((l) => l[0])).toEqual(['6 a 15 dias', 'Mais de 60 dias']);
+    expect(t.linhas[0]).toHaveLength(13);
+    expect(t.linhas[0].slice(1, 3)).toEqual(['12', '11']); // itens vinham invertidos: a série sai OUT→SET
+    expect(t.linhas[0][12]).toBe('-'); // "-" mantido
+  });
+
+  it('indicadores de comportamento numa matriz só, com Pontuação', () => {
+    const ind = a?.blocos.filter((b) => b.titulo.startsWith('Indicadores de comportamento')) ?? [];
+    expect(ind).toHaveLength(1);
+    expect(a?.blocos.map((b) => b.titulo)).not.toContain('Compromissos');
+    const t = ind[0].partes[0];
+    expect(t.t === 'tabela' && t.colunas.slice(0, 3)).toEqual(['Indicador', 'Pontuação', 'Out/25']);
+    expect(t.t === 'tabela' && t.linhas.map((l) => [l[0], l[1]])).toEqual([
+      ['Compromissos', '88'], ['Crédito obtido', '70'], ['Pagamento pontual', '100'], ['Comprometimento futuro', '12'],
+    ]);
+    expect(t.t === 'tabela' && t.colunas).toHaveLength(14);
+  });
+
+  it('status vai para o título; destaque só se código != 1', () => {
+    expect(bloco('Protestos')?.status).toEqual({ texto: 'consulta concluída com sucesso', destaque: false });
+    expect(bloco('Histórico de consultas')?.status).toEqual({ texto: 'status 3 — falha na fonte', destaque: true });
+    for (const b of a?.blocos ?? []) expect(JSON.stringify(b.partes)).not.toMatch(/Status|CONSULTA CONCLUIDA/);
+  });
+
+  it('rótulos novos e R$', () => {
+    const prot = JSON.stringify(bloco('Protestos')?.partes);
+    expect(prot).toContain('Nº do cartório');
+    expect(prot).toContain('Quantidade de ocorrências');
+    expect(prot).toContain('R$ 5.500,00');
+    expect(prot).not.toContain('5500,00"');
+    expect(JSON.stringify(bloco('Histórico de consultas')?.partes)).toContain('CNPJ do consultante');
+    const h = montarAnexo({ dados: { HEADER: { PARAMETROS: { CPFCNPJ: '11222333000181' } } } }, { pessoaFisica: false });
+    expect(h?.parametros).toEqual([['CPF/CNPJ consultado', '11222333000181']]);
+    // cartório com nome por extenso continua "Cartório"
+    const n = montarAnexo({ dados: { CREDCADASTRAL: { P: { OCORRENCIAS: [{ CARTORIO: '1o TABELIONATO', UF: 'MT' }] } } } }, { pessoaFisica: false });
+    expect(JSON.stringify(n?.blocos[0].partes)).toContain('Cartório');
+  });
+
+  it('PDF: sem bureau, com título de status e R$', async () => {
+    process.env.CREDITO_PDF_SEM_COMPRESSAO = '1';
+    try {
+      const { texto } = await gerar(brutoLegivel());
+      expect(texto).toContain('Indicadores de comportamento (12 meses)');
+      expect(compacto(texto)).toContain(compacto('consulta concluída com sucesso'));
+      expect(texto).toContain('R$ 5.500,00');
+      expect(texto).not.toMatch(/serasa|boa\s*vista/i);
+    } finally { delete process.env.CREDITO_PDF_SEM_COMPRESSAO; }
+  });
 });
