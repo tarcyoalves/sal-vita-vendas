@@ -192,6 +192,25 @@ export const creditoRouter = router({
       };
     }),
 
+  /** Diagnóstico (admin): só a ESTRUTURA da resposta guardada (caminhos e tipo; valores de texto só como tamanho). */
+  estruturaBruta: adminProcedure
+    .input(z.object({ id: z.number().int() }))
+    .query(async ({ input }) => {
+      const [row] = await db.select({ bruto: creditReports.payloadBruto }).from(creditReports).where(eq(creditReports.id, input.id));
+      if (!row) throw new TRPCError({ code: 'NOT_FOUND', message: 'Relatório não encontrado' });
+      if (row.bruto == null) return { guardado: false, linhas: [] as string[], total: 0 };
+      const linhas: string[] = [];
+      const andar = (v: unknown, caminho: string): void => {
+        if (linhas.length >= 400) return;
+        if (Array.isArray(v)) { linhas.push(`${caminho} [lista × ${v.length}]`); if (v.length) andar(v[0], `${caminho}[0]`); return; }
+        if (v && typeof v === 'object') { for (const [k, x] of Object.entries(v as Record<string, unknown>)) andar(x, caminho ? `${caminho}.${k}` : k); return; }
+        if (typeof v === 'string') linhas.push(`${caminho} = texto(${v.length}${v.length === 0 ? ', vazio' : ''})`);
+        else linhas.push(`${caminho} = ${v === null ? 'null' : typeof v === 'number' ? String(v) : typeof v}`);
+      };
+      andar(row.bruto, '');
+      return { guardado: true, linhas, total: linhas.length };
+    }),
+
   /**
    * Refaz o relatório a partir da RESPOSTA JÁ PAGA (payload_bruto), sem chamar a API nem cobrar: serve para
    * relatórios gravados por uma versão antiga do leitor de campos. Recalcula veredito, score e metadados.

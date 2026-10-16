@@ -339633,6 +339633,29 @@ var creditoRouter = router({
       taskId: row.taskId
     };
   }),
+  /** Diagnóstico (admin): só a ESTRUTURA da resposta guardada (caminhos e tipo; valores de texto só como tamanho). */
+  estruturaBruta: adminProcedure.input(external_exports.object({ id: external_exports.number().int() })).query(async ({ input }) => {
+    const [row] = await db.select({ bruto: creditReports.payloadBruto }).from(creditReports).where(eq(creditReports.id, input.id));
+    if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Relat\xF3rio n\xE3o encontrado" });
+    if (row.bruto == null) return { guardado: false, linhas: [], total: 0 };
+    const linhas = [];
+    const andar = (v4, caminho) => {
+      if (linhas.length >= 400) return;
+      if (Array.isArray(v4)) {
+        linhas.push(`${caminho} [lista \xD7 ${v4.length}]`);
+        if (v4.length) andar(v4[0], `${caminho}[0]`);
+        return;
+      }
+      if (v4 && typeof v4 === "object") {
+        for (const [k3, x2] of Object.entries(v4)) andar(x2, caminho ? `${caminho}.${k3}` : k3);
+        return;
+      }
+      if (typeof v4 === "string") linhas.push(`${caminho} = texto(${v4.length}${v4.length === 0 ? ", vazio" : ""})`);
+      else linhas.push(`${caminho} = ${v4 === null ? "null" : typeof v4 === "number" ? String(v4) : typeof v4}`);
+    };
+    andar(row.bruto, "");
+    return { guardado: true, linhas, total: linhas.length };
+  }),
   /**
    * Refaz o relatório a partir da RESPOSTA JÁ PAGA (payload_bruto), sem chamar a API nem cobrar: serve para
    * relatórios gravados por uma versão antiga do leitor de campos. Recalcula veredito, score e metadados.

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { useMemo } from 'react';
 import { Download, Loader2 } from 'lucide-react';
@@ -70,6 +71,8 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
   const { baixar, baixandoId } = useBaixarPdfCredito();
   const utils = trpc.useUtils();
   const reprocessar = trpc.credito.reprocessar.useMutation();
+  const [verEstrutura, setVerEstrutura] = useState(false);
+  const estrutura = trpc.credito.estruturaBruta.useQuery({ id: reportId ?? 0 }, { enabled: open && reportId !== null && perm.administrar && verEstrutura, retry: false });
   const d = q.data;
   const r = d?.relatorio;
   const sinais = useMemo(() => (r && d ? analisarSinais(r, new Date(d.consultadoEm)) : []), [r, d]);
@@ -241,6 +244,17 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
               {d.motivo ? ` Motivo da consulta: ${d.motivo}.` : ''}
             </p>
           </div>
+        )}
+
+        {perm.administrar && d && (
+          <details className="rounded-md border border-slate-200 p-3 text-xs text-slate-600" onToggle={(e) => setVerEstrutura((e.currentTarget as HTMLDetailsElement).open)}>
+            <summary className="cursor-pointer font-medium text-slate-700">Diagnóstico da resposta do provedor (só admin)</summary>
+            {estrutura.isLoading ? <p className="mt-2">Carregando…</p> : estrutura.data && !estrutura.data.guardado ? (
+              <p className="mt-2">A resposta original não foi guardada.</p>
+            ) : estrutura.data ? (
+              <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-50 p-2">{estrutura.data.linhas.join('\n')}</pre>
+            ) : null}
+          </details>
         )}
 
         <DialogFooter className="gap-2">
