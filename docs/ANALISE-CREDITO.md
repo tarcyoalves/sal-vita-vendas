@@ -210,3 +210,21 @@ Os avisos do quadro ("AÇÕES CÍVEIS / RESTRIÇÕES FINANCEIRAS / CHEQUES SEM F
 **Testes e exemplo:** fixtures SINTÉTICAS `tests/fixtures/credito/apifull-serasa-completo.json` e `apifull-boavista-completo.json` (mesmo CNPJ fictício 12.345.678/0001-95), `consolidado-completo.ts`;
 `tests/credito-consolidado-completo.test.ts`, `tests/credito-consolidado-ui.test.ts`, `tests/credito-mapeadores.test.ts`. Exemplo: `docs/exemplos/relatorio-credito-consolidado.pdf`
 (`npx tsx scripts/credito/gerar-exemplos.ts`). Dados reais de clientes nunca entram no repositório.
+
+## Correções do PDF individual do Serasa Premium real (16/10/2026)
+O dono baixou o PDF individual de uma consulta SÓ do Serasa Premium e apareceram estes defeitos (todos corrigidos no PDF individual, no consolidado e na tela;
+teste: `tests/credito-serasa-defeitos.test.ts`, fixture sintética `tests/fixtures/credito/apifull-serasa-alertas.json`):
+- **Rótulo da fonte:** `relatorio.fonte.produto` guarda o NOME ("Serasa Premium"), e `chaveDoProdutoGravado` só casava por CHAVE (caía no legado "Consulta simples"). Agora
+  `chaveDoProdutoGravado`/`nomeDoProduto` reconhecem chave, nome do catálogo (sem acento/caixa) e o legado; o PDF individual e a tela usam a coluna `produto` do registro quando existe
+  (`gerarPdfCredito(..., meta.produto)`, `credito.pdf`/`credito.relatorio`).
+- **"Alerta da fonte":** só alerta/restrição de verdade (`alertasDe` em `pdfAnexo.ts`), uma linha por alerta distinto, sem nível ("— 1 — informacao"). Nunca viram alerta os títulos
+  CONSULTAS 30/31 A 60/61 A 90/90+ DIAS, ULTIMAS CONSULTAS, MATRIZ/FILIAL, TEMPO DE ATUACAO, CNAES SECUNDARIOS, REPRESENTANTE, AERONAVES, IMOVEIS nem "NENHUM REGISTRO ENCONTRADO".
+  O mapeador do Serasa lê MATRIZ/FILIAL, TEMPO DE ATUACAO, CNAES SECUNDARIOS ("cod-DESC /cod-DESC") e REPRESENTANTE desse bloco para `complementos` (INFORMACOES_DA_EMPRESA tem prioridade).
+- **Consultas:** linha "Consultas por janela" (até 30 / 31 a 60 / 61 a 90 / mais de 90 dias) e tabela "Consultas por mês e segmento" (mês/ano, quantidade, segmento humanizado; o segmento que a fonte
+  corta em ~30 caracteres perde a palavra solta e ganha reticências). A lista COM consultante continua vindo só de PASSAGENS_COMERCIAIS.
+- **Faixa "NULO":** `faixaExibivel` (NULO/NULL/NAO CALCULADO/"-" = sem faixa, omitida; o mapeador tenta as outras chaves de faixa antes de desistir). `frasePelaFonte`: o "E" só vira "é" diante de
+  "PROVAVEL"/"DE" e nunca entre números ("entre 501 e 600").
+- **Dados da empresa:** "20 a 99 colaboradores" (sem repetir a palavra); situação "ATIVA (informada em dd/mm/aaaa)" no Serasa e "(em dd/mm/aaaa)" nas demais fontes, nunca "desde"; CNAEs secundários em lista
+  "código — descrição" (até 6 e "+N"); o endereço do Serasa vem de `SOMENTE_ENDERECO.DADOS[0]` (ou `ENDERECOS`) e preenche endereço/município/UF (CEP formatado).
+- **Anexo "Outras informações da fonte":** blocos de endereço (SOMENTE_ENDERECO/ENDERECOS), flags "registro localizado", códigos de identificação e tipo de pessoa nunca são impressos; se sobrar só ruído o anexo não sai.
+- **NÃO visto:** os nomes exatos dos campos de nível/tipo dentro de INFORMACOES_ALERTAS_RESTRICOES e o formato exato das observações de REPRESENTANTE (lidos de forma defensiva); `SOMENTE_ENDERECO.DADOS` segue a descrição do dono.
