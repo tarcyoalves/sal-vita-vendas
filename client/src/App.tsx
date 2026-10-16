@@ -1,3 +1,4 @@
+import { ehErroDeChunk, recuperarDeVersaoAntiga } from "./lib/versaoNova";
 import { Toaster } from './components/ui/sonner';
 import { TooltipProvider } from './components/ui/tooltip';
 import NotFound from './pages/NotFound';
@@ -46,14 +47,10 @@ const CrmFallback = () => <div style={{ minHeight: '100vh', background: '#f8fafc
 // Deploy novo apaga os chunks antigos: se o import() falhar, recarrega. Guarda o horário do último
 // reload (não uma flag eterna) para permitir outro depois de 60 s, sem entrar em loop de reload.
 if (typeof window !== 'undefined') {
-  window.addEventListener('vite:preloadError', () => {
-    try {
-      const last = Number(sessionStorage.getItem('chunk-reload') ?? 0);
-      if (Number.isFinite(last) && Date.now() - last < 60_000) return;
-      sessionStorage.setItem('chunk-reload', String(Date.now()));
-    } catch { /* sem sessionStorage: recarrega mesmo assim (uma vez por carregamento) */ }
-    window.location.reload();
-  });
+  const recuperar = () => { void recuperarDeVersaoAntiga(); };
+  window.addEventListener('vite:preloadError', recuperar);
+  // import() de página que não passa pelo helper de preload do Vite rejeita sem disparar o evento acima.
+  window.addEventListener('unhandledrejection', (e) => { if (ehErroDeChunk(e.reason)) recuperar(); });
 }
 
 function Router() {

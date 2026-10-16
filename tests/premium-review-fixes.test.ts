@@ -63,7 +63,9 @@ describe('review fix 3-7 (cliente)', () => {
 
 describe('review fix 8-9', () => {
   it('preloadError usa timestamp (>60s) em vez de flag eterna', () => {
-    expect(app).toMatch(/60_000/);
+    // O limite de 60 s agora vive em lib/versaoNova (recuperação sem loop); o App só delega a ela.
+    expect(readFileSync('client/src/lib/versaoNova.ts', 'utf8')).toMatch(/60_000/);
+    expect(app).toMatch(/recuperarDeVersaoAntiga/);
   });
   it('TrackOrder: erro inline e aviso de recarregar após o teto do poll', () => {
     expect(track).toMatch(/recarregue/i);
