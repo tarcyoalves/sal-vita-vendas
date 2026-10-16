@@ -73,6 +73,7 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
   const reprocessar = trpc.credito.reprocessar.useMutation();
   const [verEstrutura, setVerEstrutura] = useState(false);
   const estrutura = trpc.credito.estruturaBruta.useQuery({ id: reportId ?? 0 }, { enabled: open && reportId !== null && perm.administrar && verEstrutura, retry: false });
+  const link = trpc.credito.linkOriginal.useQuery({ id: reportId ?? 0 }, { enabled: open && reportId !== null && perm.administrar, retry: false });
   const d = q.data;
   const r = d?.relatorio;
   const sinais = useMemo(() => (r && d ? analisarSinais(r, new Date(d.consultadoEm)) : []), [r, d]);
@@ -146,11 +147,15 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
                   </tbody>
                 </table>
               </div>
-              {GRUPOS.filter(([k]) => r.anotacoes[k].consultado && r.anotacoes[k].itens.length > 0).map(([k, nome]) => {
+              {GRUPOS.filter(([k]) => r.anotacoes[k].consultado && (r.anotacoes[k].itens.length > 0 || r.anotacoes[k].quantidade > 0)).map(([k, nome]) => {
                 const g = r.anotacoes[k];
                 return (
                   <div key={k} className="space-y-1">
                     <p className="text-sm font-semibold text-slate-800">{nome} — {g.quantidade} ocorrência(s){g.valorTotal !== null ? `, total ${brl(g.valorTotal)}` : ''}</p>
+                    {g.itens.length < g.quantidade && (
+                      <p className="text-xs font-medium text-amber-800">A fonte listou {g.itens.length} de {g.quantidade} ocorrências.</p>
+                    )}
+                    {g.itens.length > 0 && (
                     <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 text-sm">
                       {g.itens.map((it, i) => {
                         const obs = atenuacaoDoItem(it, new Date(d.consultadoEm));
@@ -161,6 +166,11 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
                               {it.descricao}
                               {it.credor && <span className="block text-xs text-slate-500">Credor: {it.credor}</span>}
                               {it.local && <span className="block text-xs text-slate-500">{it.local}</span>}
+                              {it.extras && Object.entries(it.extras).length > 0 && (
+                                <span className="mt-0.5 block text-xs text-slate-500">
+                                  {Object.entries(it.extras).map(([ch, v]) => `${ch}: ${v}`).join(' · ')}
+                                </span>
+                              )}
                               {obs && <span className="mt-0.5 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-900">Estudar com calma: {obs}</span>}
                             </span>
                             <span className="text-right font-medium tabular-nums">{brl(it.valor)}</span>
@@ -168,6 +178,7 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
                         );
                       })}
                     </ul>
+                    )}
                   </div>
                 );
               })}
@@ -271,8 +282,14 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
           {perm.baixarPdf && d && (
             <Button size="lg" onClick={() => void baixar(d.id)} disabled={baixandoId !== null}>
               {baixandoId === d.id ? <Loader2 className="animate-spin" aria-hidden /> : <Download aria-hidden />}
-              Baixar PDF
+              Baixar PDF (completo)
             </Button>
+          )}
+          {perm.administrar && link.data?.url && (
+            <a href={link.data.url} target="_blank" rel="noopener noreferrer"
+              className="inline-flex h-11 items-center justify-center rounded-md border border-slate-300 px-4 text-sm font-medium text-slate-800 hover:bg-slate-50">
+              PDF original do provedor
+            </a>
           )}
         </DialogFooter>
       </DialogContent>

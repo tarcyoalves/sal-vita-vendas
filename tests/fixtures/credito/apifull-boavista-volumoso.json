@@ -1,0 +1,802 @@
+{
+ "status": "sucesso",
+ "API Full": "scpc-boavista",
+ "dados": {
+  "HEADER": {
+   "DADOS_RETORNADOS": {
+    "CREDCADASTRAL": {
+     "BLOCO_000": "0",
+     "BLOCO_001": "0",
+     "BLOCO_002": "0",
+     "BLOCO_003": "0",
+     "BLOCO_004": "0",
+     "BLOCO_005": "0",
+     "BLOCO_006": "0",
+     "BLOCO_007": "0",
+     "BLOCO_008": "0",
+     "BLOCO_009": "0",
+     "BLOCO_010": "0",
+     "BLOCO_011": "0",
+     "BLOCO_012": "0",
+     "BLOCO_013": "0",
+     "BLOCO_014": "0",
+     "BLOCO_015": "0",
+     "BLOCO_016": "0",
+     "BLOCO_017": "0",
+     "BLOCO_018": "0",
+     "BLOCO_019": "0",
+     "BLOCO_020": "0",
+     "BLOCO_021": "0",
+     "BLOCO_022": "0",
+     "BLOCO_023": "0",
+     "BLOCO_024": "0",
+     "BLOCO_025": "0",
+     "BLOCO_026": "0",
+     "BLOCO_027": "0",
+     "BLOCO_028": "0",
+     "BLOCO_029": "0",
+     "BLOCO_030": "0",
+     "BLOCO_031": "0",
+     "BLOCO_032": "0",
+     "BLOCO_033": "0",
+     "BLOCO_034": "0",
+     "BLOCO_035": "0",
+     "BLOCO_036": "0",
+     "BLOCO_037": "0",
+     "BLOCO_038": "0",
+     "BLOCO_039": "0",
+     "BLOCO_040": "0",
+     "BLOCO_041": "0",
+     "BLOCO_042": "0",
+     "BLOCO_043": "0",
+     "BLOCO_044": "0",
+     "BLOCO_045": "0",
+     "BLOCO_046": "0",
+     "BLOCO_047": "0",
+     "BLOCO_048": "0",
+     "BLOCO_049": "0",
+     "BLOCO_050": "0",
+     "BLOCO_051": "0",
+     "BLOCO_052": "0",
+     "BLOCO_053": "0",
+     "BLOCO_054": "0",
+     "BLOCO_055": "0",
+     "BLOCO_056": "0",
+     "BLOCO_057": "0",
+     "BLOCO_058": "0",
+     "BLOCO_059": "0",
+     "BLOCO_060": "0",
+     "BLOCO_061": "0",
+     "BLOCO_062": "0",
+     "BLOCO_063": "0",
+     "BLOCO_064": "0",
+     "BLOCO_065": "0",
+     "BLOCO_066": "0",
+     "BLOCO_067": "0",
+     "BLOCO_068": "0",
+     "BLOCO_069": "0",
+     "BLOCO_070": "0",
+     "BLOCO_071": "0",
+     "BLOCO_072": "0",
+     "BLOCO_073": "0",
+     "BLOCO_074": "0",
+     "BLOCO_075": "0",
+     "BLOCO_076": "0",
+     "BLOCO_077": "0",
+     "BLOCO_078": "0",
+     "BLOCO_079": "0",
+     "BLOCO_080": "0",
+     "BLOCO_081": "0",
+     "BLOCO_082": "0",
+     "BLOCO_083": "0",
+     "BLOCO_084": "0",
+     "BLOCO_085": "0",
+     "BLOCO_086": "0",
+     "BLOCO_087": "0",
+     "BLOCO_088": "0",
+     "BLOCO_089": "0",
+     "BLOCO_090": "0",
+     "BLOCO_091": "0",
+     "BLOCO_092": "0",
+     "BLOCO_093": "0",
+     "BLOCO_094": "0",
+     "BLOCO_095": "0",
+     "BLOCO_096": "0",
+     "BLOCO_097": "0",
+     "BLOCO_098": "0",
+     "BLOCO_099": "0",
+     "BLOCO_100": "0",
+     "BLOCO_101": "0",
+     "BLOCO_102": "0",
+     "BLOCO_103": "0",
+     "BLOCO_104": "0",
+     "BLOCO_105": "0",
+     "BLOCO_106": "0",
+     "BLOCO_107": "0",
+     "BLOCO_108": "0",
+     "BLOCO_109": "0",
+     "BLOCO_110": "0",
+     "BLOCO_111": "0",
+     "BLOCO_112": "0",
+     "BLOCO_113": "0",
+     "BLOCO_114": "0",
+     "BLOCO_115": "0",
+     "BLOCO_116": "0",
+     "BLOCO_117": "0",
+     "BLOCO_118": "0",
+     "BLOCO_119": "0",
+     "BLOCO_120": "0",
+     "BLOCO_121": "0",
+     "BLOCO_122": "0",
+     "BLOCO_123": "0",
+     "BLOCO_124": "0",
+     "BLOCO_125": "0",
+     "BLOCO_126": "0",
+     "BLOCO_127": "0",
+     "BLOCO_128": "0",
+     "BLOCO_129": "0",
+     "BLOCO_130": "0",
+     "BLOCO_131": "0",
+     "BLOCO_132": "0",
+     "BLOCO_133": "0",
+     "BLOCO_134": "0",
+     "BLOCO_135": "0",
+     "BLOCO_136": "0",
+     "BLOCO_137": "0",
+     "BLOCO_138": "0",
+     "BLOCO_139": "0",
+     "BLOCO_140": "0",
+     "BLOCO_141": "0",
+     "BLOCO_142": "0",
+     "BLOCO_143": "0",
+     "BLOCO_144": "0",
+     "BLOCO_145": "0",
+     "BLOCO_146": "0",
+     "BLOCO_147": "0",
+     "BLOCO_148": "0",
+     "BLOCO_149": "0",
+     "PROTESTOS": "1",
+     "SCORES": "1"
+    }
+   },
+   "CONTROLE": {
+    "CHAVE_INTERNA": "ZZZ-123"
+   },
+   "PARAMETROS": {
+    "DOCUMENTO": "11222333000181",
+    "TIPO_CONSULTA": "COMPLETA"
+   }
+  },
+  "CREDCADASTRAL": {
+   "INFORMACOES_DA_EMPRESA": {
+    "RAZAO_SOCIAL": "COMERCIAL EXEMPLO FICTICIA LTDA",
+    "NOME_FANTASIA": "EXEMPLO ATACADO",
+    "SITUACAO": "ATIVA",
+    "DATA_SITUACAO": "03/11/2005",
+    "DATA_FUNDACAO": "03/11/2005",
+    "NATUREZA_JURIDICA": "SOCIEDADE EMPRESARIA LIMITADA",
+    "CNAE_PRIMARIO": "4639-7/01",
+    "RAMO_ATIVIDADE_PRIMARIO": "COMERCIO ATACADISTA DE PRODUTOS ALIMENTICIOS",
+    "INSCRICAO_ESTADUAL": "123456789",
+    "CAPITAL_SOCIAL": "150.000,00",
+    "ENDERECO": {
+     "ENDERECO": "RUA DAS FLORES, 100",
+     "BAIRRO": "CENTRO",
+     "CIDADE": "CUIABA",
+     "UF": "MT",
+     "CEP": "78000000"
+    }
+   },
+   "SCORES": {
+    "OCORRENCIAS": [
+     {
+      "SCORE": "745",
+      "TIPO_SCORE": "12 MESES",
+      "CLASSIF_ABC": "B",
+      "CLASSIF_NRO": "2",
+      "PROBABILIDADE_INADIMPLENCIA": "3,0%",
+      "TEXTO": "Probabilidade baixa de inadimplencia"
+     }
+    ],
+    "STATUS_RETORNO": "CONSULTA CONCLUIDA COM SUCESSO"
+   },
+   "PEND_FINANCEIRAS": {
+    "QUANTIDADE_OCORRENCIA": "1",
+    "VALOR_TOTAL": "9451,05",
+    "OCORRENCIAS": [
+     {
+      "DATA_VENCIMENTO": "10/03/2021",
+      "DATA_INCLUSAO": "20/04/2021",
+      "CREDOR": "PGE-MT PROCURADORIA GERAL DO ESTADO DE MATO GROSSO",
+      "VALOR": "9451,05",
+      "CONTRATO": "CDA 2021/0042",
+      "ORIGEM": "DIVIDA ATIVA",
+      "MODALIDADE": "TRIBUTO"
+     }
+    ]
+   },
+   "PROTESTOS": {
+    "QUANTIDADE_OCORRENCIA": "29",
+    "VALOR_TOTAL": "84825,00",
+    "OCORRENCIAS": [
+     {
+      "DATA_PROTESTO": "01/01/2020",
+      "VALOR": "1000,00",
+      "CARTORIO": "1o TABELIONATO DE PROTESTOS",
+      "CIDADE": "CUIABA",
+      "UF": "MT",
+      "ESPECIE": "DUPLICATA MERCANTIL",
+      "CREDOR": "CREDOR FICTICIO 01 LTDA",
+      "NUMERO_TITULO": "TIT-1000",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "111.468.126-12",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "02/02/2021",
+      "VALOR": "1137,50",
+      "CARTORIO": "2o OFICIO DE NOTAS E PROTESTOS",
+      "CIDADE": "VARZEA GRANDE",
+      "UF": "MT",
+      "ESPECIE": "CHEQUE",
+      "CREDOR": "CREDOR FICTICIO 02 LTDA",
+      "NUMERO_TITULO": "TIT-1001",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "03/03/2022",
+      "VALOR": "1275,00",
+      "CARTORIO": "CARTORIO DISTRIBUIDOR",
+      "CIDADE": "RONDONOPOLIS",
+      "UF": "MT",
+      "ESPECIE": "DUPLICATA MERCANTIL",
+      "CREDOR": "CREDOR FICTICIO 03 LTDA",
+      "NUMERO_TITULO": "TIT-1002",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "04/04/2023",
+      "VALOR": "1412,50",
+      "CARTORIO": "1o TABELIONATO DE PROTESTOS",
+      "CIDADE": "CUIABA",
+      "UF": "MT",
+      "ESPECIE": "CHEQUE",
+      "CREDOR": "CREDOR FICTICIO 04 LTDA",
+      "NUMERO_TITULO": "TIT-1003",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "05/05/2024",
+      "VALOR": "1550,00",
+      "CARTORIO": "2o OFICIO DE NOTAS E PROTESTOS",
+      "CIDADE": "VARZEA GRANDE",
+      "UF": "MT",
+      "ESPECIE": "DUPLICATA MERCANTIL",
+      "CREDOR": "CREDOR FICTICIO 05 LTDA",
+      "NUMERO_TITULO": "TIT-1004",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "06/06/2020",
+      "VALOR": "1687,50",
+      "CARTORIO": "CARTORIO DISTRIBUIDOR",
+      "CIDADE": "RONDONOPOLIS",
+      "UF": "MT",
+      "ESPECIE": "CHEQUE",
+      "CREDOR": "CREDOR FICTICIO 06 LTDA",
+      "NUMERO_TITULO": "TIT-1005",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "07/07/2021",
+      "VALOR": "1825,00",
+      "CARTORIO": "1o TABELIONATO DE PROTESTOS",
+      "CIDADE": "CUIABA",
+      "UF": "MT",
+      "ESPECIE": "DUPLICATA MERCANTIL",
+      "CREDOR": "CREDOR FICTICIO 07 LTDA",
+      "NUMERO_TITULO": "TIT-1006",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "08/08/2022",
+      "VALOR": "1962,50",
+      "CARTORIO": "2o OFICIO DE NOTAS E PROTESTOS",
+      "CIDADE": "VARZEA GRANDE",
+      "UF": "MT",
+      "ESPECIE": "CHEQUE",
+      "CREDOR": "CREDOR FICTICIO 08 LTDA",
+      "NUMERO_TITULO": "TIT-1007",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "09/09/2023",
+      "VALOR": "2100,00",
+      "CARTORIO": "CARTORIO DISTRIBUIDOR",
+      "CIDADE": "RONDONOPOLIS",
+      "UF": "MT",
+      "ESPECIE": "DUPLICATA MERCANTIL",
+      "CREDOR": "CREDOR FICTICIO 09 LTDA",
+      "NUMERO_TITULO": "TIT-1008",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "10/10/2024",
+      "VALOR": "2237,50",
+      "CARTORIO": "1o TABELIONATO DE PROTESTOS",
+      "CIDADE": "CUIABA",
+      "UF": "MT",
+      "ESPECIE": "CHEQUE",
+      "CREDOR": "CREDOR FICTICIO 10 LTDA",
+      "NUMERO_TITULO": "TIT-1009",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "11/11/2020",
+      "VALOR": "2375,00",
+      "CARTORIO": "2o OFICIO DE NOTAS E PROTESTOS",
+      "CIDADE": "VARZEA GRANDE",
+      "UF": "MT",
+      "ESPECIE": "DUPLICATA MERCANTIL",
+      "CREDOR": "CREDOR FICTICIO 11 LTDA",
+      "NUMERO_TITULO": "TIT-1010",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "12/12/2021",
+      "VALOR": "2512,50",
+      "CARTORIO": "CARTORIO DISTRIBUIDOR",
+      "CIDADE": "RONDONOPOLIS",
+      "UF": "MT",
+      "ESPECIE": "CHEQUE",
+      "CREDOR": "CREDOR FICTICIO 12 LTDA",
+      "NUMERO_TITULO": "TIT-1011",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "13/01/2022",
+      "VALOR": "2650,00",
+      "CARTORIO": "1o TABELIONATO DE PROTESTOS",
+      "CIDADE": "CUIABA",
+      "UF": "MT",
+      "ESPECIE": "DUPLICATA MERCANTIL",
+      "CREDOR": "CREDOR FICTICIO 13 LTDA",
+      "NUMERO_TITULO": "TIT-1012",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "14/02/2023",
+      "VALOR": "2787,50",
+      "CARTORIO": "2o OFICIO DE NOTAS E PROTESTOS",
+      "CIDADE": "VARZEA GRANDE",
+      "UF": "MT",
+      "ESPECIE": "CHEQUE",
+      "CREDOR": "CREDOR FICTICIO 14 LTDA",
+      "NUMERO_TITULO": "TIT-1013",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "15/03/2024",
+      "VALOR": "2925,00",
+      "CARTORIO": "CARTORIO DISTRIBUIDOR",
+      "CIDADE": "RONDONOPOLIS",
+      "UF": "MT",
+      "ESPECIE": "DUPLICATA MERCANTIL",
+      "CREDOR": "CREDOR FICTICIO 15 LTDA",
+      "NUMERO_TITULO": "TIT-1014",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "16/04/2020",
+      "VALOR": "3062,50",
+      "CARTORIO": "1o TABELIONATO DE PROTESTOS",
+      "CIDADE": "CUIABA",
+      "UF": "MT",
+      "ESPECIE": "CHEQUE",
+      "CREDOR": "CREDOR FICTICIO 16 LTDA",
+      "NUMERO_TITULO": "TIT-1015",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "17/05/2021",
+      "VALOR": "3200,00",
+      "CARTORIO": "2o OFICIO DE NOTAS E PROTESTOS",
+      "CIDADE": "VARZEA GRANDE",
+      "UF": "MT",
+      "ESPECIE": "DUPLICATA MERCANTIL",
+      "CREDOR": "CREDOR FICTICIO 17 LTDA",
+      "NUMERO_TITULO": "TIT-1016",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "18/06/2022",
+      "VALOR": "3337,50",
+      "CARTORIO": "CARTORIO DISTRIBUIDOR",
+      "CIDADE": "RONDONOPOLIS",
+      "UF": "MT",
+      "ESPECIE": "CHEQUE",
+      "CREDOR": "CREDOR FICTICIO 18 LTDA",
+      "NUMERO_TITULO": "TIT-1017",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "19/07/2023",
+      "VALOR": "3475,00",
+      "CARTORIO": "1o TABELIONATO DE PROTESTOS",
+      "CIDADE": "CUIABA",
+      "UF": "MT",
+      "ESPECIE": "DUPLICATA MERCANTIL",
+      "CREDOR": "CREDOR FICTICIO 19 LTDA",
+      "NUMERO_TITULO": "TIT-1018",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "20/08/2024",
+      "VALOR": "3612,50",
+      "CARTORIO": "2o OFICIO DE NOTAS E PROTESTOS",
+      "CIDADE": "VARZEA GRANDE",
+      "UF": "MT",
+      "ESPECIE": "CHEQUE",
+      "CREDOR": "CREDOR FICTICIO 20 LTDA",
+      "NUMERO_TITULO": "TIT-1019",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "21/09/2020",
+      "VALOR": "3750,00",
+      "CARTORIO": "CARTORIO DISTRIBUIDOR",
+      "CIDADE": "RONDONOPOLIS",
+      "UF": "MT",
+      "ESPECIE": "DUPLICATA MERCANTIL",
+      "CREDOR": "CREDOR FICTICIO 21 LTDA",
+      "NUMERO_TITULO": "TIT-1020",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "22/10/2021",
+      "VALOR": "3887,50",
+      "CARTORIO": "1o TABELIONATO DE PROTESTOS",
+      "CIDADE": "CUIABA",
+      "UF": "MT",
+      "ESPECIE": "CHEQUE",
+      "CREDOR": "CREDOR FICTICIO 22 LTDA",
+      "NUMERO_TITULO": "TIT-1021",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "23/11/2022",
+      "VALOR": "4025,00",
+      "CARTORIO": "2o OFICIO DE NOTAS E PROTESTOS",
+      "CIDADE": "VARZEA GRANDE",
+      "UF": "MT",
+      "ESPECIE": "DUPLICATA MERCANTIL",
+      "CREDOR": "CREDOR FICTICIO 23 LTDA",
+      "NUMERO_TITULO": "TIT-1022",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "24/12/2023",
+      "VALOR": "4162,50",
+      "CARTORIO": "CARTORIO DISTRIBUIDOR",
+      "CIDADE": "RONDONOPOLIS",
+      "UF": "MT",
+      "ESPECIE": "CHEQUE",
+      "CREDOR": "CREDOR FICTICIO 24 LTDA",
+      "NUMERO_TITULO": "TIT-1023",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "25/01/2024",
+      "VALOR": "4300,00",
+      "CARTORIO": "1o TABELIONATO DE PROTESTOS",
+      "CIDADE": "CUIABA",
+      "UF": "MT",
+      "ESPECIE": "DUPLICATA MERCANTIL",
+      "CREDOR": "CREDOR FICTICIO 25 LTDA",
+      "NUMERO_TITULO": "TIT-1024",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "26/02/2020",
+      "VALOR": "4437,50",
+      "CARTORIO": "2o OFICIO DE NOTAS E PROTESTOS",
+      "CIDADE": "VARZEA GRANDE",
+      "UF": "MT",
+      "ESPECIE": "CHEQUE",
+      "CREDOR": "CREDOR FICTICIO 26 LTDA",
+      "NUMERO_TITULO": "TIT-1025",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "27/03/2021",
+      "VALOR": "4575,00",
+      "CARTORIO": "CARTORIO DISTRIBUIDOR",
+      "CIDADE": "RONDONOPOLIS",
+      "UF": "MT",
+      "ESPECIE": "DUPLICATA MERCANTIL",
+      "CREDOR": "CREDOR FICTICIO 27 LTDA",
+      "NUMERO_TITULO": "TIT-1026",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "28/04/2022",
+      "VALOR": "4712,50",
+      "CARTORIO": "1o TABELIONATO DE PROTESTOS",
+      "CIDADE": "CUIABA",
+      "UF": "MT",
+      "ESPECIE": "CHEQUE",
+      "CREDOR": "CREDOR FICTICIO 28 LTDA",
+      "NUMERO_TITULO": "TIT-1027",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     },
+     {
+      "DATA_PROTESTO": "01/05/2023",
+      "VALOR": "4850,00",
+      "CARTORIO": "2o OFICIO DE NOTAS E PROTESTOS",
+      "CIDADE": "VARZEA GRANDE",
+      "UF": "MT",
+      "ESPECIE": "DUPLICATA MERCANTIL",
+      "CREDOR": "CREDOR FICTICIO 29 LTDA",
+      "NUMERO_TITULO": "TIT-1028",
+      "QUANTIDADE": "1",
+      "DEVEDOR_CPF": "",
+      "LINK_IMAGEM": "https://exemplo.invalid/imagem-protesto.png"
+     }
+    ]
+   },
+   "CH_SEM_FUNDOS_BACEN": {
+    "QUANTIDADE_OCORRENCIA": "0",
+    "OCORRENCIAS": []
+   },
+   "CH_SEM_FUNDOS_VAREJO": {
+    "QUANTIDADE_OCORRENCIA": "0",
+    "OCORRENCIAS": []
+   },
+   "HIST_CONSULTAS": {
+    "QUANTIDADE_OCORRENCIAS": "19",
+    "DATA_INICIAL": "01/11/2025",
+    "DATA_FINAL": "16/10/2026",
+    "QUANTIDADES": [
+     {
+      "ANO": "2026",
+      "JANEIRO": "1",
+      "FEVEREIRO": "0",
+      "MARCO": "3",
+      "ABRIL": "2",
+      "MAIO": "1",
+      "JUNHO": "0",
+      "JULHO": "4",
+      "AGOSTO": "2",
+      "SETEMBRO": "3",
+      "OUTUBRO": "3",
+      "NOVEMBRO": "",
+      "DEZEMBRO": ""
+     },
+     {
+      "ANO": "2025",
+      "JANEIRO": "",
+      "NOVEMBRO": "1",
+      "DEZEMBRO": "0"
+     }
+    ],
+    "DETALHES": [
+     {
+      "DATA": "01/10/2026",
+      "RAZAO_SOCIAL": "FORNECEDOR FICTICIO 01 LTDA",
+      "CNPJ": "00000000000001"
+     },
+     {
+      "DATA": "02/10/2026",
+      "RAZAO_SOCIAL": "FORNECEDOR FICTICIO 02 LTDA",
+      "CNPJ": "00000000000002"
+     },
+     {
+      "DATA": "03/10/2026",
+      "RAZAO_SOCIAL": "FORNECEDOR FICTICIO 03 LTDA",
+      "CNPJ": "00000000000003"
+     },
+     {
+      "DATA": "04/10/2026",
+      "RAZAO_SOCIAL": "FORNECEDOR FICTICIO 04 LTDA",
+      "CNPJ": "00000000000004"
+     },
+     {
+      "DATA": "05/10/2026",
+      "RAZAO_SOCIAL": "FORNECEDOR FICTICIO 05 LTDA",
+      "CNPJ": "00000000000005"
+     },
+     {
+      "DATA": "06/10/2026",
+      "RAZAO_SOCIAL": "FORNECEDOR FICTICIO 06 LTDA",
+      "CNPJ": "00000000000006"
+     },
+     {
+      "DATA": "07/10/2026",
+      "RAZAO_SOCIAL": "FORNECEDOR FICTICIO 07 LTDA",
+      "CNPJ": "00000000000007"
+     },
+     {
+      "DATA": "08/10/2026",
+      "RAZAO_SOCIAL": "FORNECEDOR FICTICIO 08 LTDA",
+      "CNPJ": "00000000000008"
+     },
+     {
+      "DATA": "09/10/2026",
+      "RAZAO_SOCIAL": "FORNECEDOR FICTICIO 09 LTDA",
+      "CNPJ": "00000000000009"
+     },
+     {
+      "DATA": "10/10/2026",
+      "RAZAO_SOCIAL": "FORNECEDOR FICTICIO 10 LTDA",
+      "CNPJ": "00000000000010"
+     },
+     {
+      "DATA": "11/10/2026",
+      "RAZAO_SOCIAL": "FORNECEDOR FICTICIO 11 LTDA",
+      "CNPJ": "00000000000011"
+     },
+     {
+      "DATA": "12/10/2026",
+      "RAZAO_SOCIAL": "FORNECEDOR FICTICIO 12 LTDA",
+      "CNPJ": "00000000000012"
+     },
+     {
+      "DATA": "13/10/2026",
+      "RAZAO_SOCIAL": "FORNECEDOR FICTICIO 13 LTDA",
+      "CNPJ": "00000000000013"
+     },
+     {
+      "DATA": "14/10/2026",
+      "RAZAO_SOCIAL": "FORNECEDOR FICTICIO 14 LTDA",
+      "CNPJ": "00000000000014"
+     },
+     {
+      "DATA": "15/10/2026",
+      "RAZAO_SOCIAL": "FORNECEDOR FICTICIO 15 LTDA",
+      "CNPJ": "00000000000015"
+     },
+     {
+      "DATA": "16/10/2026",
+      "RAZAO_SOCIAL": "FORNECEDOR FICTICIO 16 LTDA",
+      "CNPJ": "00000000000016"
+     },
+     {
+      "DATA": "17/10/2026",
+      "RAZAO_SOCIAL": "FORNECEDOR FICTICIO 17 LTDA",
+      "CNPJ": "00000000000017"
+     },
+     {
+      "DATA": "18/10/2026",
+      "RAZAO_SOCIAL": "FORNECEDOR FICTICIO 18 LTDA",
+      "CNPJ": "00000000000018"
+     },
+     {
+      "DATA": "19/10/2026",
+      "RAZAO_SOCIAL": "FORNECEDOR FICTICIO 19 LTDA",
+      "CNPJ": "00000000000019"
+     }
+    ]
+   },
+   "EVENTOS_PESSOA_JURIDICA": {
+    "OCORRENCIAS": [
+     {
+      "INDICADOR": "ULTIMA COMPRA",
+      "PERIODO": "SET/2026",
+      "PONTUACAO": ""
+     }
+    ]
+   },
+   "PAGAMENTO_PONTUAL": {
+    "PONTUACAO": "100"
+   },
+   "PAGAMENTO_ATRASADO": {},
+   "COMPROMISSOS": {},
+   "CREDITO_OBTIDO": {},
+   "PERIODO_RELACIONAMENTO_FORNECEDORES": {
+    "OCORRENCIAS": [
+     {
+      "PERIODO": "ACIMA DE 5 ANOS",
+      "VALOR": "12000,00"
+     }
+    ]
+   },
+   "TELEFONE_FIXO": {
+    "OCORRENCIAS": [
+     {
+      "NOME": "EMPRESA EXEMPLO",
+      "TIPO_PESSOA": "JURIDICA",
+      "DDD": "65",
+      "TELEFONE": "33334444"
+     },
+     {
+      "NOME": "JOAO FICTICIO DA SILVA",
+      "TIPO_PESSOA": "FISICA",
+      "DDD": "65",
+      "TELEFONE": "999887766"
+     }
+    ]
+   },
+   "EMAILS": {
+    "OCORRENCIAS": [
+     {
+      "EMAIL": "contato@exemplo.invalid",
+      "TIPO_PESSOA": "JURIDICA"
+     },
+     {
+      "EMAIL": "joao.silva@exemplo.invalid",
+      "TIPO_PESSOA": "FISICA"
+     }
+    ]
+   },
+   "QUADRO_SOCIETARIO": {
+    "OCORRENCIAS": [
+     {
+      "NOME": "SOCIO FICTICIO UM",
+      "CPF_CNPJ": "11146812612",
+      "TIPO_DOCUMENTO": "CPF",
+      "CARGO": "SOCIO-ADMINISTRADOR",
+      "PERCENTUAL_PARTICIPACAO": "60,00"
+     }
+    ]
+   }
+  }
+ },
+ "aux": {
+  "type": "link",
+  "data": "https://exemplo.invalid/relatorio-volumoso.pdf"
+ }
+}

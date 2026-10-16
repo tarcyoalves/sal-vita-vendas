@@ -211,6 +211,17 @@ export const creditoRouter = router({
       return { guardado: true, linhas, total: linhas.length };
     }),
 
+  /** Link do PDF original do provedor (aux.data da resposta guardada) ou null. Só admin; o servidor não busca a URL. */
+  linkOriginal: adminProcedure
+    .input(z.object({ id: z.number().int() }))
+    .query(async ({ input }) => {
+      const [row] = await db.select({ bruto: creditReports.payloadBruto }).from(creditReports).where(eq(creditReports.id, input.id));
+      if (!row) throw new TRPCError({ code: 'NOT_FOUND', message: 'Relatório não encontrado' });
+      const aux = (row.bruto as { aux?: { data?: unknown } } | null)?.aux;
+      const url = typeof aux?.data === 'string' ? aux.data.trim() : '';
+      return { url: /^https?:\/\/\S+$/i.test(url) ? url : null };
+    }),
+
   /**
    * Refaz o relatório a partir da RESPOSTA JÁ PAGA (payload_bruto), sem chamar a API nem cobrar: serve para
    * relatórios gravados por uma versão antiga do leitor de campos. Recalcula veredito, score e metadados.
@@ -584,7 +595,7 @@ export const creditoRouter = router({
         // Sempre regenerado a partir do relatório gravado (determinístico); nada de binário no banco.
         const buf = await gerarPdfCredito(row.relatorio, {
           veredito: comoVeredito(row.veredito), motivos: row.motivos, consultadoPor: autor?.name ?? null,
-        });
+        }, row.payloadBruto);
         const dia = row.consultadoEm.toISOString().slice(0, 10).replace(/-/g, '');
         return { nomeArquivo: `analise-credito-${row.documento}-${dia}.pdf`, base64: buf.toString('base64') };
       } catch (e) {

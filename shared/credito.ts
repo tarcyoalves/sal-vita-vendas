@@ -12,7 +12,11 @@ export interface GrupoAnotacao {
   consultado: boolean;
   quantidade: number;
   valorTotal: number | null;
-  itens: Array<{ data: string | null; descricao: string; valor: number | null; local: string | null; credor?: string | null }>;
+  itens: Array<{
+    data: string | null; descricao: string; valor: number | null; local: string | null; credor?: string | null;
+    /** Demais campos não vazios da ocorrência na fonte (rótulo legível -> valor), para o detalhe sob o item. */
+    extras?: Record<string, string>;
+  }>;
 }
 
 export interface RelatorioCredito {

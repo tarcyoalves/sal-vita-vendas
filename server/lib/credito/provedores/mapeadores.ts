@@ -8,6 +8,7 @@
 // O bruto completo continua em credit_reports.payload_bruto.
 import type { GrupoAnotacao, RelatorioCredito } from '../../../../shared/credito';
 import { PRODUTO_PADRAO } from '../../../../shared/creditoCatalogo';
+import { humanizarChave, valorSeguro } from '../../../../shared/creditoRotulos';
 
 export type ConteudoMapeado = Pick<RelatorioCredito, 'score' | 'cadastro' | 'socios' | 'consultasRecentes' | 'anotacoes'>
   & Partial<Pick<RelatorioCredito, 'comportamento' | 'complementos'>>;
@@ -86,16 +87,64 @@ const somaValores = (itens: GrupoAnotacao['itens']): number | null => {
 };
 
 type ItemDe = (o: Obj) => GrupoAnotacao['itens'][number];
-const itemPendencia: ItemDe = (o) => ({
-  data: dataPtBr(o.DATA_VENCIMENTO) ?? dataPtBr(o.DATA_INCLUSAO),
-  descricao: txt(o.CONTRATO) ? `Contrato ${txt(o.CONTRATO)}` : (txt(o.MODALIDADE) ?? 'Pendência financeira'),
-  valor: numeroPtBr(o.VALOR), local: txt(o.ORIGEM), credor: txt(o.CREDOR),
-});
-// Campos dos itens de protesto/cheque/ação NÃO foram vistos: leitura defensiva.
-const itemGenerico = (rotulo: string): ItemDe => (o) => ({
-  data: dataPtBr(o.DATA) ?? dataPtBr(o.DATA_PROTESTO) ?? dataPtBr(o.DATA_VENCIMENTO) ?? dataPtBr(o.DATA_INCLUSAO),
-  descricao: rotulo, valor: numeroPtBr(o.VALOR), local: txt(o.CARTORIO) ?? txt(o.CIDADE) ?? txt(o.ORIGEM), credor: txt(o.CREDOR),
-});
+
+const primeiro = (o: Obj, chaves: string[]): { chave: string; valor: string } | null => {
+  for (const chave of chaves) { const v = txt(o[chave]); if (v) return { chave, valor: v }; }
+  return null;
+};
+
+/** Copia para `extras` todo campo escalar não vazio que ainda não virou data/descrição/valor/local/credor. */
+function extrasDe(o: Obj, usados: Set<string>): Record<string, string> | undefined {
+  const extras: Record<string, string> = {};
+  for (const [k, v] of Object.entries(o)) {
+    if (usados.has(k)) continue;
+    const bruto = typeof v === 'string' || typeof v === 'number' ? String(v)
+      : Array.isArray(v) ? v.filter((x) => typeof x === 'string' || typeof x === 'number').join(', ') : '';
+    const seguro = valorSeguro(k, bruto);
+    if (!seguro) continue;
+    extras[humanizarChave(k)] = seguro.length > 300 ? seguro.slice(0, 297) + '...' : seguro;
+  }
+  return Object.keys(extras).length ? extras : undefined;
+}
+
+const itemPendencia: ItemDe = (o) => {
+  const dv = dataPtBr(o.DATA_VENCIMENTO);
+  const contrato = txt(o.CONTRATO);
+  const usados = new Set(['VALOR', 'CREDOR', 'ORIGEM', dv ? 'DATA_VENCIMENTO' : 'DATA_INCLUSAO']);
+  if (contrato) usados.add('CONTRATO'); else if (txt(o.MODALIDADE)) usados.add('MODALIDADE');
+  return {
+    data: dv ?? dataPtBr(o.DATA_INCLUSAO),
+    descricao: contrato ? `Contrato ${contrato}` : (txt(o.MODALIDADE) ?? 'Pendência financeira'),
+    valor: numeroPtBr(o.VALOR), local: txt(o.ORIGEM), credor: txt(o.CREDOR), extras: extrasDe(o, usados),
+  };
+};
+
+// Protestos/cheques/ações: leitura defensiva (campos reais variam). Tipo/espécie entra na descrição; cartório e
+// cidade/UF no local; o resto vai para `extras`.
+const CHAVES_DATA = ['DATA', 'DATA_PROTESTO', 'DATA_VENCIMENTO', 'DATA_INCLUSAO'];
+const itemGenerico = (rotulo: string): ItemDe => (o) => {
+  const dt = CHAVES_DATA.map((k) => ({ k, v: dataPtBr(o[k]) })).find((x) => x.v);
+  const usados = new Set(['VALOR', 'CREDOR']);
+  if (dt) usados.add(dt.k);
+  const tipo = primeiro(o, ['ESPECIE', 'TIPO', 'TIPO_TITULO', 'NATUREZA', 'TIPO_OCORRENCIA', 'MODALIDADE']);
+  if (tipo) usados.add(tipo.chave);
+  const qtd = primeiro(o, ['QUANTIDADE', 'QTD']);
+  if (qtd) usados.add(qtd.chave);
+  const cart = primeiro(o, ['CARTORIO', 'NOME_CARTORIO']);
+  const cidade = primeiro(o, ['CIDADE', 'MUNICIPIO']);
+  const uf = primeiro(o, ['UF', 'ESTADO']);
+  const cidadeUf = cidade && uf ? `${cidade.valor}/${uf.valor}` : (cidade?.valor ?? uf?.valor ?? null);
+  const partes = [cart?.valor, cidadeUf].filter((x): x is string => !!x);
+  let local: string | null = null;
+  if (partes.length) { local = partes.join(' — '); for (const x of [cart, cidade, uf]) if (x) usados.add(x.chave); }
+  else { const alt = primeiro(o, ['ORIGEM', 'COMARCA', 'VARA']); if (alt) { local = alt.valor; usados.add(alt.chave); } }
+  const qn = qtd ? numeroPtBr(qtd.valor) : null;
+  return {
+    data: dt?.v ?? null,
+    descricao: rotulo + (tipo ? ` — ${tipo.valor}` : '') + (qn !== null && qn > 1 ? ` (${qtd?.valor} títulos)` : ''),
+    valor: numeroPtBr(o.VALOR), local, credor: txt(o.CREDOR), extras: extrasDe(o, usados),
+  };
+};
 
 /** Bloco ausente => consultado:false. Presente com quantidade (mesmo "0") ou itens => consultado:true. */
 function grupoDe(bloco: unknown, item: ItemDe): GrupoAnotacao {

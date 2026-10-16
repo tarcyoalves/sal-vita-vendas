@@ -10,6 +10,7 @@ import type PDFDocumentCtor from 'pdfkit';
 import type { GrupoAnotacao, RelatorioCredito, Veredito } from '../../../shared/credito';
 import { ROTULO_VEREDITO, SEMAFORO, analisarSinais, atenuacaoDoItem, type NivelSinal } from '../../../shared/credito';
 import { ROTULO_NIVEL_SINAL, ordenarSinais } from '../../../shared/creditoSinais';
+import { consultasPorMes, montarAnexo, registrosDaParte, type Anexo } from './pdfAnexo';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const PDFDocument: typeof PDFDocumentCtor = require('../../../node_modules/pdfkit/js/pdfkit.browser.js');
@@ -32,6 +33,8 @@ const TOPO = 72; // abaixo do cabeçalho
 const BASE = 56; // reserva do rodapé
 const LARG = W - MX * 2;
 const LIMITE_Y = H - BASE;
+/** Teto de páginas do PDF inteiro: o anexo é cortado (com aviso) ao atingi-lo. */
+export const MAX_PAGINAS_PDF = 80;
 
 export const FAIXA_SIMULACAO = 'SIMULAÇÃO — DADOS FICTÍCIOS, NÃO USAR PARA DECISÃO';
 
@@ -140,11 +143,11 @@ class Pagina {
   nova() { this.doc.addPage(); this.y = TOPO; }
   garantir(h: number) { if (this.y + h > LIMITE_Y) this.nova(); }
 
-  titulo(t: string) {
+  titulo(t: string, maiusculas = true) {
     this.garantir(110); // título + cabeçalho + algumas linhas: nunca um título/tabela órfã no fim da página
     const { doc } = this;
     this.y += 8;
-    doc.font('Helvetica-Bold').fontSize(11).fillColor(AZUL).text(limparTexto(t).toUpperCase(), MX, this.y, { width: LARG, lineBreak: false });
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(AZUL).text(maiusculas ? limparTexto(t).toUpperCase() : limparTexto(t), MX, this.y, { width: LARG, lineBreak: false });
     this.y += 16;
     doc.moveTo(MX, this.y).lineTo(MX + LARG, this.y).lineWidth(1.2).strokeColor(AZUL).stroke();
     this.y += 8;
@@ -167,7 +170,25 @@ class Pagina {
     this.y += h + 6;
   }
 
-  tabela(colunas: Coluna[], linhas: Celula[][]) {
+  /** Título de bloco do anexo (mantém a capitalização portuguesa, ao contrário de `titulo`). */
+  bloco(t: string) {
+    this.garantir(80);
+    const { doc } = this;
+    this.y += 6;
+    doc.font('Helvetica-Bold').fontSize(10).fillColor(AZUL).text(limparTexto(t), MX, this.y, { width: LARG, lineBreak: false });
+    this.y += 14;
+    doc.moveTo(MX, this.y).lineTo(MX + LARG, this.y).lineWidth(0.6).strokeColor(AZUL).stroke();
+    this.y += 6;
+  }
+
+  /** O PDF já tem o máximo de páginas? (só o anexo consulta isto) */
+  estourou(): boolean { return this.doc.bufferedPageRange().count >= MAX_PAGINAS_PDF; }
+
+  /**
+   * Desenha a tabela. `detalhes[i]` é uma linha de texto menor sob a linha i (campos extras da fonte).
+   * Com `limitar`, para ao atingir o teto de páginas e devolve quantas linhas deixou de desenhar.
+   */
+  tabela(colunas: Coluna[], linhas: Celula[][], opts: { detalhes?: Array<string | undefined>; limitar?: boolean } = {}): number {
     const { doc } = this;
     const PAD = 4;
     const tam = 8.5;
@@ -176,20 +197,24 @@ class Pagina {
     const cols = colunas.map((c) => ({ ...c, largura: c.largura * escala }));
 
     const cabecalho = () => {
-      const h = 18;
+      doc.font('Helvetica-Bold').fontSize(8);
+      const titulos = cols.map((c) => quebrarLongas(doc, limparTexto(c.titulo), c.largura - PAD * 2));
+      const hTexto = Math.max(...titulos.map((t, j) => doc.heightOfString(t, { width: cols[j].largura - PAD * 2 })));
+      const h = Math.max(18, hTexto + 9);
       this.garantir(h + 22);
       doc.rect(MX, this.y, LARG, h).fill(AZUL);
       let x = MX;
       doc.font('Helvetica-Bold').fontSize(8).fillColor('#FFFFFF');
-      for (const c of cols) {
-        doc.text(limparTexto(c.titulo), x + PAD, this.y + 5, { width: c.largura - PAD * 2, align: c.alinhar ?? 'left', lineBreak: false });
+      cols.forEach((c, j) => {
+        doc.text(titulos[j], x + PAD, this.y + 5, { width: c.largura - PAD * 2, align: c.alinhar ?? 'left' });
         x += c.largura;
-      }
+      });
       this.y += h;
     };
 
     cabecalho();
-    linhas.forEach((linha, i) => {
+    for (let i = 0; i < linhas.length; i++) {
+      const linha = linhas[i];
       // mede cada célula já com as palavras longas quebradas
       const prep = linha.map((cel, j) => {
         const c = cols[j];
@@ -199,8 +224,19 @@ class Pagina {
         const h = doc.heightOfString(s, { width: c.largura - PAD * 2 });
         return { s, h, cel, c };
       });
-      const alturaLinha = Math.max(...prep.map((p) => p.h)) + PAD * 2;
-      if (this.y + alturaLinha > LIMITE_Y) { this.nova(); cabecalho(); }
+      let det = opts.detalhes?.[i] ? limparTexto(opts.detalhes[i]) : '';
+      let alturaDet = 0;
+      if (det) {
+        doc.font('Helvetica').fontSize(7.5);
+        det = quebrarLongas(doc, det.length > 900 ? det.slice(0, 897) + '...' : det, LARG - PAD * 2 - 8);
+        alturaDet = doc.heightOfString(det, { width: LARG - PAD * 2 - 8 }) + 3;
+      }
+      const alturaLinha = Math.max(...prep.map((p) => p.h)) + PAD * 2 + alturaDet;
+      if (this.y + alturaLinha > LIMITE_Y) {
+        if (opts.limitar && this.estourou()) return linhas.length - i;
+        this.nova();
+        cabecalho();
+      }
       if (i % 2 === 1) doc.rect(MX, this.y, LARG, alturaLinha).fill(ZEBRA);
       let x = MX;
       for (const p of prep) {
@@ -208,10 +244,15 @@ class Pagina {
           .text(p.s, x + PAD, this.y + PAD, { width: p.c.largura - PAD * 2, align: p.c.alinhar ?? 'left' });
         x += p.c.largura;
       }
+      if (det) {
+        doc.font('Helvetica').fontSize(7.5).fillColor(CINZA)
+          .text(det, MX + PAD + 8, this.y + alturaLinha - alturaDet - PAD + 3, { width: LARG - PAD * 2 - 8 });
+      }
       doc.moveTo(MX, this.y + alturaLinha).lineTo(MX + LARG, this.y + alturaLinha).lineWidth(0.5).strokeColor(LINHA).stroke();
       this.y += alturaLinha;
-    });
+    }
     this.y += 10;
+    return 0;
   }
 }
 
@@ -338,12 +379,16 @@ function secaoAnotacoes(p: Pagina, r: RelatorioCredito, agora: Date) {
     }),
   );
 
-  const comItens = GRUPOS.filter(([k]) => r.anotacoes[k].consultado && r.anotacoes[k].itens.length > 0);
+  const comItens = GRUPOS.filter(([k]) => r.anotacoes[k].consultado && (r.anotacoes[k].itens.length > 0 || r.anotacoes[k].quantidade > 0));
   if (comItens.length) {
     p.titulo('Detalhamento das anotações');
     for (const [k, nome] of comItens) {
       const g = r.anotacoes[k];
       p.subtitulo(`${nome} - ${g.quantidade} ocorrência(s)${g.valorTotal !== null ? ', total ' + brl(g.valorTotal) : ''}`);
+      if (g.itens.length < g.quantidade) {
+        p.paragrafo(`A fonte listou ${g.itens.length} de ${g.quantidade} ocorrências.`, { cor: '#B45309', tam: 8.5, negrito: true });
+      }
+      if (!g.itens.length) continue;
       const comCredor = g.itens.some((it) => !!it.credor);
       const obs = g.itens.map((it) => atenuacaoDoItem(it, agora));
       const comObs = obs.some((o) => !!o);
@@ -362,6 +407,10 @@ function secaoAnotacoes(p: Pagina, r: RelatorioCredito, agora: Date) {
           linha.push({ texto: brl(it.valor) });
           return linha;
         }),
+        {
+          detalhes: g.itens.map((it) => it.extras && Object.keys(it.extras).length
+            ? Object.entries(it.extras).map(([ch, v]) => `${ch}: ${v}`).join('   |   ') : undefined),
+        },
       );
     }
   }
@@ -462,17 +511,86 @@ function secaoSocios(p: Pagina, r: RelatorioCredito) {
   );
 }
 
-function secaoConsultas(p: Pagina, r: RelatorioCredito) {
+function secaoConsultas(p: Pagina, r: RelatorioCredito, bruto: unknown) {
   p.titulo('Consultas recentes ao documento');
-  if (!r.consultasRecentes.length) { p.paragrafo('Nenhuma consulta recente informada pela fonte.', { cor: CINZA }); return; }
-  p.tabela(
-    [
-      { titulo: 'Data', largura: 80 },
-      { titulo: 'Consultante', largura: 345 },
-      { titulo: 'Quantidade', largura: 90, alinhar: 'right' },
-    ],
-    r.consultasRecentes.map((c) => [{ texto: dataBR(c.data) }, { texto: txt(c.consultante) }, { texto: String(c.quantidade) }]),
+  if (!r.consultasRecentes.length) p.paragrafo('Nenhuma consulta recente informada pela fonte.', { cor: CINZA });
+  else {
+    const total = r.complementos?.consultas12Meses;
+    if (typeof total === 'number' && total > r.consultasRecentes.length) {
+      p.paragrafo(`A fonte listou ${r.consultasRecentes.length} de ${total} consultas.`, { cor: '#B45309', tam: 8.5, negrito: true });
+    }
+    p.tabela(
+      [
+        { titulo: 'Data', largura: 80 },
+        { titulo: 'Consultante', largura: 345 },
+        { titulo: 'Quantidade', largura: 90, alinhar: 'right' },
+      ],
+      r.consultasRecentes.map((c) => [{ texto: dataBR(c.data) }, { texto: txt(c.consultante) }, { texto: String(c.quantidade) }]),
+    );
+  }
+  const mensal = consultasPorMes(bruto);
+  if (mensal) {
+    p.subtitulo('Consultas por mês');
+    p.tabela(
+      mensal.colunas.map((titulo, i) => ({ titulo, largura: i === 0 ? 44 : 38, alinhar: i === 0 ? 'left' as const : 'right' as const })),
+      mensal.linhas.map((l) => l.map((texto, i) => ({ texto, negrito: i === 0 }))),
+    );
+  }
+}
+
+// ---------- anexo: resposta completa do provedor ----------
+function secaoAnexo(p: Pagina, anexo: Anexo) {
+  p.nova();
+  p.titulo('Anexo — Dados completos da resposta do provedor', false);
+  p.paragrafo(
+    'Reprodução automática de tudo o que o provedor devolveu nesta consulta, bloco a bloco. Campos vazios são omitidos, ' +
+    'CPF aparece mascarado e telefone/e-mail de pessoa física, parcialmente. As seções anteriores resumem apenas parte destes dados.',
+    { cor: CINZA, tam: 8.5 },
   );
+  if (anexo.entregues.length) p.paragrafo('Blocos entregues pela fonte: ' + anexo.entregues.join(', '), { tam: 8.5 });
+  if (anexo.parametros.length) {
+    p.subtitulo('Parâmetros da consulta');
+    p.tabela([{ titulo: 'Campo', largura: 150 }, { titulo: 'Valor', largura: 365 }], anexo.parametros.map(([k, v]) => [{ texto: k, negrito: true, cor: CINZA }, { texto: v }]));
+  }
+
+  let omitidos = 0;
+  for (const bloco of anexo.blocos) {
+    if (p.estourou()) { omitidos += bloco.partes.reduce((a, parte) => a + registrosDaParte(parte), 0); continue; }
+    try {
+      p.bloco(bloco.titulo);
+      if (!bloco.partes.length) { p.paragrafo('Bloco sem informações preenchidas.', { cor: CINZA, tam: 8.5 }); continue; }
+      for (const parte of bloco.partes) {
+        if (p.estourou()) { omitidos += registrosDaParte(parte); continue; }
+        switch (parte.t) {
+          case 'sub': p.subtitulo(parte.texto); break;
+          case 'aviso': p.paragrafo(parte.texto, { cor: COR_SEMAFORO.VERMELHO, tam: 8.5 }); break;
+          case 'campos':
+            omitidos += p.tabela([{ titulo: 'Campo', largura: 150 }, { titulo: 'Valor', largura: 365 }],
+              parte.pares.map(([k, v]) => [{ texto: k, negrito: true, cor: CINZA }, { texto: v }]), { limitar: true });
+            break;
+          case 'tabela': {
+            if (parte.continuacao) p.paragrafo('(continuação: demais colunas dos mesmos registros)', { cor: CINZA, tam: 7.5 });
+            const falt = p.tabela(parte.colunas.map((titulo, i) => ({ titulo, largura: parte.pesos[i] })),
+              parte.linhas.map((l) => l.map((texto, i) => ({ texto, negrito: i === 0 && parte.colunas.length > 2 }))), { limitar: true });
+            if (!parte.continuacao) omitidos += falt;
+            break;
+          }
+          case 'lista':
+            for (let i = 0; i < parte.itens.length; i++) {
+              if (p.estourou()) { omitidos += parte.itens.length - i; break; }
+              p.paragrafo('•  ' + parte.itens[i], { tam: 8.5 });
+            }
+            break;
+        }
+      }
+    } catch {
+      p.paragrafo('Bloco não renderizado.', { cor: COR_SEMAFORO.VERMELHO, tam: 8.5 });
+    }
+  }
+  if (omitidos > 0) {
+    p.paragrafo(`Anexo truncado: ${omitidos} registros omitidos (limite de ${MAX_PAGINAS_PDF} páginas no PDF).`, { cor: COR_SEMAFORO.VERMELHO, negrito: true, tam: 9 });
+  }
+  if (anexo.linkOriginal) p.paragrafo('PDF original do provedor: ' + anexo.linkOriginal, { tam: 8.5 });
 }
 
 function secaoFinal(p: Pagina, consultadoPor: string | null) {
@@ -527,6 +645,8 @@ function cabecalhoRodape(doc: Doc, r: RelatorioCredito, i: number, total: number
 export async function gerarPdfCredito(
   relatorio: RelatorioCredito,
   meta: { veredito: Veredito; motivos: string[]; consultadoPor: string | null },
+  /** Resposta crua do provedor (credit_reports.payload_bruto). Sem ela (ex.: simulado) não há anexo. */
+  bruto?: unknown,
 ): Promise<Buffer> {
   const doc = new PDFDocument({
     size: 'A4',
@@ -560,8 +680,15 @@ export async function gerarPdfCredito(
     secaoMovimentacao(p, relatorio);
     secaoComplementos(p, relatorio);
     secaoSocios(p, relatorio);
-    secaoConsultas(p, relatorio);
+    secaoConsultas(p, relatorio, bruto);
     secaoFinal(p, meta.consultadoPor);
+    try {
+      const anexo = montarAnexo(bruto, { pessoaFisica: relatorio.tipo === 'CPF' });
+      if (anexo) secaoAnexo(p, anexo);
+    } catch (e) {
+      // o anexo é complementar: nunca derruba o PDF principal
+      console.error('[credito] anexo do pdf falhou:', e instanceof Error ? e.message : 'erro');
+    }
 
     const { start, count } = doc.bufferedPageRange();
     for (let i = 0; i < count; i++) {
