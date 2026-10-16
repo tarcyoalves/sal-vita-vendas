@@ -10,7 +10,7 @@
 // createRequire('#standard-fonts/...'), o que QUEBRA depois que o esbuild empacota api/bundle.js. O build "browser"
 // traz as fontes embutidas no próprio arquivo e funciona igual em Node, no teste e no bundle serverless.
 import type { RelatorioCredito, Veredito } from '../../../shared/credito';
-import { ROTULO_VEREDITO, SEMAFORO, atenuacaoDoItem, entradasDeScore } from '../../../shared/credito';
+import { entradasDeScore } from '../../../shared/credito';
 import { nomeDoProduto } from '../../../shared/creditoCatalogo';
 import { consultasPorMes, montarAnexo, registrosDaParte, type Anexo } from './pdfAnexo';
 import {
@@ -29,8 +29,6 @@ export { gerarPdfCreditoConsolidado } from './pdfConsolidado';
 /** 1 (topo da 1ª página, uma vez só) e 2 (veredito, motivos, score com régua). */
 function secaoResumo(p: Pagina, r: RelatorioCredito, meta: { veredito: Veredito; motivos: string[] }) {
   const { doc } = p;
-  const sem = SEMAFORO[meta.veredito];
-  const cor = COR_SEMAFORO[sem];
 
   // identificação: título pequeno, razão social grande e uma linha com documento, data/hora e fonte
   doc.font('Helvetica').fontSize(8).fillColor(CINZA).text('Relatório de Análise de Crédito — Sal Vita', MX, p.y, { width: LARG, lineBreak: false });

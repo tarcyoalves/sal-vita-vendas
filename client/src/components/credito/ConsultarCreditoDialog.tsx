@@ -11,7 +11,8 @@ import { formatBRL } from '../../lib/faturamento/calc';
 import { formatarDocumento, soDigitos } from '../../lib/credito/documento';
 import { permissoesCredito } from '../../lib/credito/regras';
 import {
-  alternarProduto, estadoDaConsulta, limiteDeSelecaoAtingido, planoDaSelecao, selecaoInicial, textoReaproveita,
+  alternarProduto, ehSelecaoCompleta, estadoDaConsulta, limiteDeSelecaoAtingido, planoDaSelecao, selecaoCompleta, selecaoInicial, textoPresetCompleto,
+  textoReaproveita,
 } from '../../lib/credito/selecao';
 import { CATALOGO_CREDITO, MAX_PRODUTOS_POR_CONSULTA, PRECOS_MEDIDOS_EM, TEXTO_RECOMENDACAO, nomeDoProduto } from '../../../../shared/creditoCatalogo';
 import { deveAbrirConsolidado, produtosComFalha, produtosComRelatorio, type ResultadoDoProduto } from '../../lib/credito/resultado';
@@ -105,6 +106,8 @@ export function ConsultarCreditoDialog({ open, onOpenChange, documento, razaoSoc
   };
 
   const reaproveitados = plano.linhas.filter((l) => l.reaproveitado);
+  const presetCompleto = selecaoCompleta(itens);
+  const textoPreset = textoPresetCompleto(itens);
   const consolidado = <RelatorioCreditoDialog documento={doc} open={consolidadoAberto} onOpenChange={setConsolidadoAberto} />;
 
   // Consulta parcial: mostra o resultado de CADA produto (nada de erro engolido) e deixa abrir o relatório do CNPJ.
@@ -164,6 +167,19 @@ export function ConsultarCreditoDialog({ open, onOpenChange, documento, razaoSoc
           )}
 
           <p className="rounded-md bg-brand-50/60 px-3 py-2 text-xs text-slate-700">{TEXTO_RECOMENDACAO}</p>
+
+          {presetCompleto && textoPreset && (
+            <Button
+              type="button" variant="outline" size="lg" aria-pressed={ehSelecaoCompleta(selecionados)} disabled={consultar.isPending}
+              className={`h-auto min-h-11 w-full justify-start whitespace-normal py-2 text-left ${ehSelecaoCompleta(selecionados) ? 'border-brand-600 bg-brand-50 text-brand-800' : ''}`}
+              onClick={() => setSelecionados(presetCompleto)}
+            >
+              <span className="min-w-0 break-words">
+                {textoPreset}
+                <span className="block text-xs font-normal text-slate-600">Marca as duas fontes de uma vez; ao terminar abre o relatório consolidado do CNPJ.</span>
+              </span>
+            </Button>
+          )}
 
           <fieldset className="grid min-w-0 gap-2" disabled={consultar.isPending}>
             <legend className="sr-only">Consultas disponíveis</legend>

@@ -9,11 +9,11 @@ const ESTILO: Record<NivelSinal, { cls: string; Icone: typeof AlertTriangle; rot
 };
 
 /** Bloco "Pontos de atenção": ALERTA, ATENÇÃO, POSITIVO, cada um com ícone, cor, título e detalhe. */
-export function PontosDeAtencao({ sinais }: { sinais: readonly SinalCredito[] | undefined }) {
+export function PontosDeAtencao({ sinais, titulo = 'Pontos de atenção' }: { sinais: readonly SinalCredito[] | undefined; /** null = sem título (a seção já tem o dela) */ titulo?: string | null }) {
   const lista = ordenarSinais(sinais ?? []);
   return (
     <div>
-      <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Pontos de atenção</h4>
+      {titulo && <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">{titulo}</h4>}
       {lista.length === 0 ? (
         <p className="text-sm text-slate-500">Nenhum ponto de atenção identificado.</p>
       ) : (

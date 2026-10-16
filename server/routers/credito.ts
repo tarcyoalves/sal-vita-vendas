@@ -33,6 +33,7 @@ import { ErroProvedorCredito } from '../lib/credito/provedores/tipos';
 import { mapeadorDoProduto } from '../lib/credito/provedores/mapeadores';
 import { consultarSaldoApiFull } from '../lib/credito/provedores/boavistaApifull';
 import { gerarPdfCredito, gerarPdfCreditoConsolidado } from '../lib/credito/pdf';
+import { comportamentoParaTela, relatorioAtualizado } from '../lib/credito/consolidadoTela';
 
 const ehStaff = (role: string) => role === 'admin' || role === 'manager';
 const qtd = (g: GrupoAnotacao) => (g.consultado ? g.quantidade : null);
@@ -119,13 +120,21 @@ async function consolidadoDoDocumento(documento: string) {
   const linhas = await relatoriosDoDocumento(documento, { limite: 60 });
   const sel = selecionarParaConsolidado(linhas, { provedorReal: getProvedorCredito().nome !== 'simulado' });
   if (sel.linhas.length === 0) return null;
-  const consolidado = consolidarRelatorios(sel.linhas.map((l) => ({
-    relatorio: { ...l.relatorio, fonte: { ...l.relatorio.fonte, provedor: l.provedor, custoReais: l.custoReais ?? l.relatorio.fonte.custoReais } },
-    produto: chaveDoProdutoGravado(l.produto, l.provedor),
-    produtoNome: nomeDoProduto(l.produto, l.provedor),
+  const ids = sel.linhas.map((l) => l.id);
+  const rows = await db.select({ id: creditReports.id, bruto: creditReports.payloadBruto }).from(creditReports).where(inArray(creditReports.id, ids));
+  const fontes = sel.linhas.map((l) => {
+    const chave = chaveDoProdutoGravado(l.produto, l.provedor);
+    const bruto = rows.find((x) => x.id === l.id)?.bruto ?? null;
+    return { l, chave, nome: nomeDoProduto(l.produto, l.provedor), bruto, relatorio: relatorioAtualizado(l.relatorio, chave, bruto) };
+  });
+  const consolidado = consolidarRelatorios(fontes.map(({ l, chave, nome, relatorio }) => ({
+    relatorio: { ...relatorio, fonte: { ...relatorio.fonte, provedor: l.provedor, custoReais: l.custoReais ?? relatorio.fonte.custoReais } },
+    produto: chave,
+    produtoNome: nome,
     consultadoEm: l.consultadoEm.toISOString(),
   })));
-  return { consolidado, linhas: sel.linhas };
+  const brutos = fontes.flatMap((f) => (f.bruto == null ? [] : [{ id: f.l.id, produto: f.chave, produtoNome: f.nome, bruto: f.bruto }]));
+  return { consolidado, linhas: sel.linhas, brutos };
 }
 
 export const creditoRouter = router({
@@ -227,6 +236,8 @@ export const creditoRouter = router({
         documento, consolidado, ids: c.linhas.map((l) => l.id),
         veredito: consolidado.veredito, motivos: consolidado.motivos, semaforo: SEMAFORO[consolidado.veredito],
         sinais: ordenarSinais(consolidado.sinais),
+        // matriz dos últimos 12 meses e eventos da fonte (vêm da resposta crua; não cabem no contrato do relatório)
+        comportamento: comportamentoParaTela(consolidado.fundido, c.brutos),
       };
     }),
 
@@ -658,20 +669,10 @@ export const creditoRouter = router({
       const documento = input.documento.replace(/\D/g, '');
       const c = await consolidadoDoDocumento(documento);
       if (!c) throw new TRPCError({ code: 'NOT_FOUND', message: 'Este documento ainda não tem relatório de crédito' });
-      const ids = c.linhas.map((l) => l.id);
       try {
-        const [brutos, autores] = await Promise.all([
-          db.select({ id: creditReports.id, bruto: creditReports.payloadBruto }).from(creditReports).where(inArray(creditReports.id, ids)),
-          db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, c.linhas.map((l) => l.consultadoPorUserId))),
-        ]);
+        const autores = await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, c.linhas.map((l) => l.consultadoPorUserId)));
         const nomes = [...new Set(autores.map((a) => a.name).filter(Boolean))].join(', ') || null;
-        const buf = await gerarPdfCreditoConsolidado(
-          c.consolidado, { consultadoPor: nomes },
-          c.linhas.flatMap((l) => {
-            const b = brutos.find((x) => x.id === l.id)?.bruto;
-            return b == null ? [] : [{ produto: chaveDoProdutoGravado(l.produto, l.provedor), bruto: b }];
-          }),
-        );
+        const buf = await gerarPdfCreditoConsolidado(c.consolidado, { consultadoPor: nomes }, c.brutos.map((b) => ({ produto: b.produto, bruto: b.bruto })));
         const dia = c.consolidado.consultadoEm.slice(0, 10).replace(/-/g, '');
         return { nomeArquivo: `analise-credito-${documento}-${dia}.pdf`, base64: buf.toString('base64') };
       } catch (e) {

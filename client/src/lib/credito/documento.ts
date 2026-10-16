@@ -40,6 +40,7 @@ export function documentosParaSemaforos(documentos: ReadonlyArray<string | null 
 /** CPF de sócio -> ***.468.126-** (LGPD, igual ao PDF); CNPJ de sócio PJ sai formatado; resto vira "***". */
 export function mascararDocumentoSocio(doc: string | null | undefined): string {
   if (!doc) return '—';
+  if (doc.includes('*')) return doc.trim() || '***'; // a fonte já mascarou: impresso como veio
   const d = soDigitos(doc);
   if (d.length === 11) return `***.${d.slice(3, 6)}.${d.slice(6, 9)}-**`;
   if (d.length === 14) return formatarDocumento(d);

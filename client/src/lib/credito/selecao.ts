@@ -2,8 +2,8 @@
 // As regras de custo/limite vêm de shared/creditoCatalogo.ts: o servidor usa as MESMAS funções, então a tela nunca
 // promete uma consulta que o servidor vai recusar (nem o contrário).
 import {
-  CATALOGO_CREDITO, MAX_PRODUTOS_POR_CONSULTA, PRODUTO_PADRAO, calcularCustos, itemSelecionavel, saldoApos, verificarLimitesCusto,
-  type ItemCatalogoCredito,
+  CATALOGO_CREDITO, CONSULTA_COMPLETA, MAX_PRODUTOS_POR_CONSULTA, PRODUTO_PADRAO, brl, calcularCustos, custoConsultaCompleta, itemSelecionavel,
+  saldoApos, verificarLimitesCusto, type ItemCatalogoCredito,
 } from '../../../../shared/creditoCatalogo';
 import { motivoConsultaValido, vaiReaproveitar } from './regras';
 
@@ -22,6 +22,25 @@ export function alternarProduto(
   const novos = [...selecionados, chave];
   return itens.map((i) => i.chave).filter((c) => novos.includes(c));
 }
+
+/** Preset de um clique "Consulta completa": as duas fontes (Consulta simples + Serasa Premium). null se alguma não for consultável. */
+export function selecaoCompleta(itens: readonly ItemCatalogoCredito[] = CATALOGO_CREDITO): string[] | null {
+  const escolhidos = CONSULTA_COMPLETA.map((c) => itens.find((i) => i.chave === c));
+  if (escolhidos.some((i) => !i || !itemSelecionavel(i))) return null;
+  return itens.map((i) => i.chave).filter((c) => (CONSULTA_COMPLETA as readonly string[]).includes(c));
+}
+
+/** "Consulta completa (Consulta simples + Serasa Premium) — R$ 9,47" (os nomes e o preço vêm do catálogo). */
+export function textoPresetCompleto(itens: readonly ItemCatalogoCredito[] = CATALOGO_CREDITO): string | null {
+  const custo = custoConsultaCompleta(itens);
+  if (custo === null) return null;
+  const nomes = CONSULTA_COMPLETA.map((c) => itens.find((i) => i.chave === c)?.nome ?? c);
+  return `Consulta completa (${nomes.join(' + ')}) — ${brl(custo).replace(/\u00a0/g, ' ')}`;
+}
+
+/** A seleção atual é exatamente a consulta completa? */
+export const ehSelecaoCompleta = (selecionados: readonly string[]): boolean =>
+  selecionados.length === CONSULTA_COMPLETA.length && CONSULTA_COMPLETA.every((c) => selecionados.includes(c));
 
 /** Itens que não podem mais ser marcados agora (limite de 3 atingido), para desabilitar a caixa. */
 export const limiteDeSelecaoAtingido = (selecionados: readonly string[]): boolean => selecionados.length >= MAX_PRODUTOS_POR_CONSULTA;

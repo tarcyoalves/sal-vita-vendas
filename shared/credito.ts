@@ -622,3 +622,14 @@ export function consolidarRelatorios(entrada: readonly ItemParaConsolidar[], ago
     veredito, motivos, sinais: analisarSinais(fundido, dataRef, contagens),
   };
 }
+
+/** Tabela simples (colunas + linhas já formatadas) para a tela. */
+export interface TabelaTela { titulo: string | null; colunas: string[]; linhas: string[][] }
+/** Comportamento comercial do consolidado como a tela mostra (vem da resposta crua da fonte). */
+export interface ComportamentoTela {
+  /** Nome da fonte que trouxe o comportamento (ex.: "Consulta simples"). */
+  fonte: string | null;
+  resumo: Array<[string, string]>;
+  tabelas: TabelaTela[];
+  relacionamento: string | null;
+}

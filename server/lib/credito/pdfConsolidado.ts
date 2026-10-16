@@ -9,11 +9,12 @@
 //   f) dados da empresa  g) sócios  h) consultas ao documento  i) comportamento comercial  j) texto final (LGPD)
 // Rodapé: só "Página X de Y" (a confidencialidade sai uma vez, no texto final). Sem cabeçalho por página.
 // Zero invenção: todo número vem da fonte ou é rotulado "regra Sal Vita". Contatos (telefone/e-mail) nunca são impressos.
-import type { CelulaMatriz, LinhaMatriz, RelatorioConsolidado, ScoreDaFonte } from '../../../shared/credito';
+import type { RelatorioConsolidado, ScoreDaFonte } from '../../../shared/credito';
+import { linhasDaMatriz, type TomMatriz, type VisualMatriz } from '../../../shared/creditoMatriz';
 import { CONSULTA_COMPLETA, nomeDoProduto } from '../../../shared/creditoCatalogo';
 import { comportamentoDe, empresaExtrasDe } from './pdfAnexo';
 import {
-  AZUL, AZUL_CLARO, CINZA, COR_SEMAFORO, GRUPOS, LARG, LINHA, MX, TEXTO, brl, dataHoraCurta, detalhesDoGrupo, desenharParte,
+  AZUL, AZUL_CLARO, CINZA, COR_SEMAFORO, GRUPOS, LARG, LINHA, MX, TEXTO, dataHoraCurta, detalhesDoGrupo, desenharParte,
   formatarDocumento, frasePelaFonte, limparTexto, painelVeredito, pct, renderizar, resumirTexto, secaoComportamento, secaoEmpresa,
   secaoFinal, secaoPontosDeAtencao, secaoSocios, dataBR, type Celula, type Pagina,
 } from './pdfBase';
@@ -118,39 +119,10 @@ function painelDeDecisao(p: Pagina, c: RelatorioConsolidado) {
 // ---------- c) matriz de comparação ----------
 interface CelMatriz { principal: string; sub?: string; fg: string; bg: string | null }
 
-function celulaDoGrupo(g: CelulaMatriz): CelMatriz {
-  if (!g.consultado) return { principal: 'Não consultado', sub: 'a fonte não cobre este item', ...CINZA_CEL };
-  if (g.quantidade === 0) return { principal: 'Nada consta', ...VERDE };
-  return {
-    principal: `${g.quantidade} ocorrência${g.quantidade === 1 ? '' : 's'}`,
-    sub: g.valorTotal !== null ? `Total ${brl(g.valorTotal)}` : undefined, ...VERMELHO,
-  };
-}
-
-function leituraDaLinha(l: LinhaMatriz): CelMatriz {
-  switch (l.leitura) {
-    case 'divergem': return { principal: l.textoLeitura.split(' (')[0], sub: l.textoLeitura.includes('(') ? `(${l.textoLeitura.split(' (').slice(1).join(' (')}` : undefined, ...ALERTA_CEL };
-    case 'coincidem': return { principal: 'Coincidem', fg: TEXTO, bg: null };
-    case 'nada_consta': return { principal: 'Nada consta', sub: 'em nenhuma fonte', fg: VERDE.fg, bg: null };
-    case 'so_uma': return { principal: l.textoLeitura, fg: CINZA, bg: null };
-    default: return { principal: l.textoLeitura, fg: CINZA, bg: null };
-  }
-}
-
-function celulasDeConsultas(c: RelatorioConsolidado): { cels: CelMatriz[]; leitura: CelMatriz } {
-  const cels = c.consultasPorFonte.map((f): CelMatriz => {
-    const principal = f.c30 ? `${f.c30.janela}: ${f.c30.n}` : '30 dias: não informado';
-    const sub = `12 meses: ${f.total12 === null ? 'não informado' : f.total12}`;
-    return { principal, sub, ...(f.c30 || f.total12 !== null ? NEUTRO_CEL : CINZA_CEL) };
-  });
-  const totais = c.consultasPorFonte.filter((f) => f.total12 !== null);
-  let leitura: CelMatriz;
-  if (c.consultas12Divergem) leitura = { principal: 'Divergem', sub: `(12 meses: ${totais.map((f) => f.total12).join(' × ')})`, ...ALERTA_CEL };
-  else if (totais.length > 1) leitura = { principal: 'Coincidem', sub: '(12 meses)', fg: TEXTO, bg: null };
-  else if (c.fontes.length > 1) leitura = { principal: 'Janelas diferentes', sub: 'não comparável', fg: CINZA, bg: null };
-  else leitura = { principal: 'Só uma fonte', fg: CINZA, bg: null };
-  return { cels, leitura };
-}
+const CORES: Record<TomMatriz, { fg: string; bg: string }> = {
+  verde: VERDE, vermelho: VERMELHO, cinza: CINZA_CEL, ambar: ALERTA_CEL, neutro: NEUTRO_CEL, texto: { fg: TEXTO, bg: '#FFFFFF' },
+};
+const comoCelula = (v: VisualMatriz): CelMatriz => ({ principal: v.principal, sub: v.sub ?? undefined, fg: CORES[v.tom].fg, bg: v.fundo ? CORES[v.tom].bg : null });
 
 function matrizDeComparacao(p: Pagina, c: RelatorioConsolidado) {
   const { doc } = p;
@@ -159,11 +131,7 @@ function matrizDeComparacao(p: Pagina, c: RelatorioConsolidado) {
   const wLeit = nf > 2 ? 100 : 118;
   const wF = (LARG - wItem - wLeit) / nf;
   const PAD = 4;
-  const consultas = celulasDeConsultas(c);
-  const linhas: Array<{ rotulo: string; cels: CelMatriz[]; leitura: CelMatriz }> = [
-    ...c.matriz.map((l) => ({ rotulo: l.rotulo, cels: l.celulas.map(celulaDoGrupo), leitura: leituraDaLinha(l) })),
-    { rotulo: 'Consultas ao documento', cels: consultas.cels, leitura: consultas.leitura },
-  ];
+  const linhas = linhasDaMatriz(c).map((l) => ({ rotulo: l.rotulo, cels: l.celulas.map(comoCelula), leitura: comoCelula(l.leitura) }));
   const alturaTexto = (cel: CelMatriz, larg: number): number => {
     doc.font('Helvetica-Bold').fontSize(8.5);
     let h = doc.heightOfString(limparTexto(cel.principal), { width: larg - PAD * 2 });
