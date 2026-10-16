@@ -152,11 +152,61 @@ arquivo mostra uma linha por produto. Agora há UM relatório do CNPJ com as fon
 - `credito.consultar` devolve também `documento` (e continua devolvendo `id`/`resultados`); `credito.listar` devolve `fontes` (produtos distintos do documento nos últimos 30 dias).
 - `relatorio({id})` e `pdf({id})` seguem por relatório individual.
 
-**PDF consolidado** (`gerarPdfCreditoConsolidado`, mesmo desenho do individual): topo uma vez com "Fontes: Consulta simples (16/10 15:02) + Serasa Premium (16/10 15:03)";
-veredito/motivos; "Score por fonte" (uma linha por fonte + aviso de que cada score vem da fonte); pontos de atenção; anotações com a linha
-"Divergência entre fontes — ..." e a coluna "Fonte" nos itens; empresa (mescla), sócios, consultas, comportamento. O anexo "Outras informações da
-fonte" existe só no PDF individual (para não repetir dados entre fontes).
+**PDF consolidado:** reprojetado para decisão em 16/10/2026 (ver a seção "Consolidado para decisão" abaixo). O anexo "Outras informações da fonte" existe só no PDF individual (para não repetir dados entre fontes).
 
 **Telas:** depois de uma consulta com 2+ produtos sem falha, o diálogo abre o relatório consolidado (`RelatorioCreditoDialog documento=...`). Se algum produto
 falha, o diálogo FICA aberto com o resultado por produto (verde/cinza/vermelho, a mensagem do provedor e "Não foi cobrado"/"FOI cobrada"); erro total também fica
 na tela, além do toast. `CreditoCard` e o arquivo ganharam "Relatório do CNPJ" e, no arquivo, o selo "N fontes" (tabela continua fina).
+
+## Consolidado para decisão: dois scores do Serasa, matriz de comparação e PDF sem redundância (16/10/2026)
+Pedido do dono: "consolidado os dois relatórios, bem alinhados e estruturados visualmente, para tomada de decisão... PDF bem completo e sem
+redundâncias... dados totalmente verídicos". As fontes DISCORDAM (ex.: Consulta simples 625/B x Serasa 695 e 265; Boa Vista "sem pendências" x Serasa
+com pendências): o relatório existe para o dono DECIDIR, então a divergência fica visível e **nunca** é resolvida por média.
+
+**Contrato novo (tudo opcional e aditivo, `shared/credito.ts`):**
+- `score.rotulo?` e `score.outros?: ScoreExtra[]` (`{valor, probabilidadeInadimplencia, faixa, texto, rotulo}`): TODOS os scores de uma fonte. O Serasa Premium traz
+  dois (`SCORES.OCORRENCIAS`). O principal (`score.valor`) segue sendo a 1ª entrada calculada (compatível com o que já existia); as demais ficam em `outros`
+  ("NAO CALCULADO" vira `valor: null`, mostrado como "não calculado"). Rótulo "Score 1"/"Score 2", ou o `DESCR_SCORE`/`TIPO_SCORE`/`LAYOUT` da fonte quando todos
+  vêm preenchidos e diferentes. `entradasDeScore(score)` devolve a lista completa.
+- `complementos.consultasJanelas {ate30, de31a60, de61a90, mais90}` (contagens OFICIAIS do Serasa: `INFORMACOES_ALERTAS_RESTRICOES` "CONSULTAS 30 DIAS" etc. +
+  "QUANTIDADE TOTAL: N"), `consultasPorSegmento [{mes 'AAAA-MM', quantidade, segmento}]` (de "ULTIMAS CONSULTAS": `DATA:/10/2025/QUANTIDADE:2/SEGMENTO:...`, sem consultante),
+  `consultasPorMes [{ano, meses[12]}]` (matriz Jan-Dez do Boa Vista), `funcionariosFaixa`, `cnaesSecundarios`, `tempoAtuacao`, `matrizFilial`, `representante {nome, documento}`.
+- Itens de anotação ganham `processo?`. Ações cíveis: `descricao` = ação, `local` = "foro/UF — vara", `data` = distribuição, mais `valor`; o requerido vai em `extras`.
+- `RelatorioConsolidado`: `scores[]` agora tem UM item por score de cada fonte (com `rotulo`); novos `matriz: LinhaMatriz[]` (por grupo e por fonte: quantidade, valor, `leitura`
+  = divergem/coincidem/nada_consta/so_uma/nao_consultado/unica), `consultasPorFonte`, `consultas12Divergem`, `scoreAltoComRestricao`; `divergenciaScore` agora também pega
+  scores distantes DENTRO da mesma fonte (688 x 281). Textos/cores da matriz vivem em `shared/creditoMatriz.ts` (tela e PDF usam os mesmos).
+- Veredito: com mais de um score numa fonte vale o PIOR calculado (regra conservadora Sal Vita; o motivo diz de qual fonte e qual score: "Score 281 (Serasa Premium, Score 2) abaixo de 400").
+  **Efeito prático:** um Serasa com um score < 400 reprova a prazo mesmo que o outro seja alto. Mude em `calcularVeredito` se o dono preferir outra regra.
+
+**Sinal "Muitas consultas" (`analisarSinais`/`contagemConsultas30`):** usa PRIMEIRO a contagem oficial (janela "30 dias" do Serasa; ou a linha do mês corrente da matriz do
+Boa Vista) e só em último caso a lista parcial (que subestima: o Boa Vista lista só as 5 últimas). Com as duas fontes usa o maior número oficial e cita a origem no
+detalhe ("Segundo Serasa Premium: 7 em 30 dias; segundo Consulta simples: 3 em out/2026 (mês corrente)"). Contagem oficial 0 vence a lista. A janela do Boa Vista é o mês
+calendário, não 30 dias corridos (a matriz só tem meses); por isso a matriz mostra "Janelas diferentes: não comparável" e só compara os totais de 12 meses.
+
+**Relatórios já pagos:** `relatorioDocumento`/`pdfDocumento` refazem o conteúdo de cada fonte a partir do `payload_bruto` com o mapeador atual (`relatorioAtualizado`,
+`server/lib/credito/consolidadoTela.ts`), sem nova consulta e sem custo: o Serasa gravado antes desta mudança já aparece com os dois scores. Sem bruto, vale o gravado.
+
+**PDF consolidado (`pdfConsolidado.ts`; primitivas e seções comuns em `pdfBase.ts`; o individual segue em `pdf.ts`):** topo (título, razão social, CNPJ, "Fontes: A (dd/mm hh:mm) · B (...)";
+aviso "Só uma fonte consultada" quando falta uma das duas) > painel de decisão (veredito com semáforo e motivos "regras da Sal Vita" + um CARTÃO por score de cada fonte: valor, probabilidade,
+faixa, régua 0-1000 com marcador, texto da fonte; nota "scores informados pelas fontes; não calculados pela Sal Vita"; avisos âmbar de divergência e de score alto com restrições) > matriz de
+comparação (Protestos, Pendências/restrições, Cheques, Ações, Falência, Consultas x Consulta simples | Serasa Premium | Leitura, cor verde/vermelho/cinza, "Divergem") > pontos de atenção
+> detalhamento das ocorrências (uma tabela por tipo, coluna Fonte; ações com ação, foro/vara, processo, data, valor) > dados da empresa (grade de 2 colunas, sem campo vazio, sem repetir
+razão social/CNPJ) > sócios (CPF mascarado; se a fonte já mascarou, impresso como veio) > consultas (janelas oficiais, total em 12 meses, últimas, tabela Jan-Dez, segmentos) > comportamento comercial
+> texto final (LGPD, uma vez). Rodapé só "Página X de Y"; sem cabeçalho por página. Nenhum telefone/e-mail é impresso. Fixture completa: 3 páginas; só Serasa: 2.
+
+**Tela (`RelatorioCreditoDialog`, modo documento):** a mesma ordem, em componentes (`ScoresDasFontes`, `MatrizComparacao`, `RelatorioSecoes`). Em tela estreita (< 640px) a matriz vira cartões empilhados
+(um por item, uma linha por fonte). Com uma só fonte aparece "Só uma fonte consultada: faltam os dados da outra" e o botão "Consultar a outra fonte" (só admin): abre uma confirmação que diz que a
+consulta é PAGA, mostra o valor e exige o motivo (`ConsultarOutraFonte`); ao concluir o relatório se refaz sozinho.
+
+**Fluxo de consulta:** o `ConsultarCreditoDialog` tem o botão de um clique "Consulta completa (Consulta simples + Serasa Premium) — R$ 9,47" (nomes e preço do catálogo; some se algum preço não estiver medido).
+Depois de uma consulta com sucesso das duas, abre o consolidado (já existia).
+
+**NÃO visto ainda (suposições a validar com a resposta real do Serasa):** os nomes exatos das chaves do JSON real das listas novas. Foram lidos de forma defensiva a partir do que o PDF do provedor mostra:
+`ACOES_CIVEIS.OCORRENCIAS[]` (`REQUERIDO, ACAO, FORO, UF, VARA, PROCESSO, DISTRIBUICAO, VALOR`), a faixa do score (`CLASSIF_ABC` > `FAIXA_SCORE` > `FAIXA` > `DESCR_FAIXA` > `CLASSIF_NRO`), o descritor do score
+(`DESCR_SCORE`/`TIPO_SCORE`/`LAYOUT`), CNAEs secundários (`CNAE_SECUNDARIOS`...), `TEMPO_ATUACAO`, `MATRIZ_FILIAL`, `REPRESENTANTE` e o formato de "ULTIMAS CONSULTAS". Campo não encontrado fica vazio (nada é inventado).
+Se a primeira resposta real trouxer outro nome, é um ajuste de uma linha em `mapeadores.ts`; "Reprocessar (sem custo)" ou abrir o consolidado refaz a partir do bruto já pago.
+Os avisos do quadro ("AÇÕES CÍVEIS / RESTRIÇÕES FINANCEIRAS / CHEQUES SEM FUNDOS BACEN / TÍTULOS PROTESTADOS: NADA CONSTA / N OCORRÊNCIAS") não são usados: repetem os blocos já mapeados.
+
+**Testes e exemplo:** fixtures SINTÉTICAS `tests/fixtures/credito/apifull-serasa-completo.json` e `apifull-boavista-completo.json` (mesmo CNPJ fictício 12.345.678/0001-95), `consolidado-completo.ts`;
+`tests/credito-consolidado-completo.test.ts`, `tests/credito-consolidado-ui.test.ts`, `tests/credito-mapeadores.test.ts`. Exemplo: `docs/exemplos/relatorio-credito-consolidado.pdf`
+(`npx tsx scripts/credito/gerar-exemplos.ts`). Dados reais de clientes nunca entram no repositório.
