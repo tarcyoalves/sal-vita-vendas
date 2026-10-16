@@ -339549,6 +339549,9 @@ function erroDocumento(documento, tipo) {
   if (!v4.ok) throw new TRPCError({ code: "BAD_REQUEST", message: v4.erro });
   return v4;
 }
+function semSimuladosSeReal(linhas) {
+  return getProvedorCredito().nome === "simulado" ? linhas : linhas.filter((l4) => l4.provedor !== "simulado");
+}
 var creditoRouter = router({
   status: protectedProcedure.query(async () => {
     const provedor = getProvedorCredito();
@@ -339569,7 +339572,7 @@ var creditoRouter = router({
     if (!ehStaff(ctx.user.role) && !await atendentePodeVerDocumento(ctx.user, documento)) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Documento fora da sua carteira" });
     }
-    const linhas = await relatoriosDoDocumento(documento);
+    const linhas = semSimuladosSeReal(await relatoriosDoDocumento(documento));
     const efetivo = escolherEfetivo(linhas);
     if (!efetivo) return null;
     return { ...cartaoDoRelatorio(efetivo.principal, efetivo), produtos: chipsDosProdutos(linhas) };
@@ -339584,7 +339587,7 @@ var creditoRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Documento fora da sua carteira" });
       }
       ultimoPorProduto = {};
-      for (const [chave, l4] of maisRecentePorProduto(await relatoriosDoDocumento(documento))) {
+      for (const [chave, l4] of maisRecentePorProduto(semSimuladosSeReal(await relatoriosDoDocumento(documento)))) {
         ultimoPorProduto[chave] = { id: l4.id, consultadoEm: l4.consultadoEm, valido: relatorioValido(l4.consultadoEm), provedor: l4.provedor };
       }
     }
