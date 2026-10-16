@@ -338619,6 +338619,172 @@ var ErroProvedorCredito = class extends Error {
   }
 };
 
+// shared/creditoRotulos.ts
+var ROTULOS_BLOCOS = {
+  HEADER: "Cabe\xE7alho da resposta",
+  CREDCADASTRAL: "Cr\xE9dito e cadastro",
+  VEICULAR: "Ve\xEDculos",
+  PEND_FINANCEIRAS: "Pend\xEAncias financeiras",
+  RESTRICOES_FINANCEIRAS: "Restri\xE7\xF5es financeiras",
+  PROTESTOS: "Protestos",
+  PROTESTO_SINTETICO: "Protestos (sint\xE9tico)",
+  CH_SEM_FUNDOS_BACEN: "Cheques sem fundos (BACEN)",
+  CH_SEM_FUNDOS_VAREJO: "Cheques sem fundos (Varejo)",
+  SCORES: "Scores",
+  HIST_CONSULTAS: "Hist\xF3rico de consultas",
+  PASSAGENS_COMERCIAIS: "Passagens comerciais (consultas)",
+  EVENTOS_PESSOA_JURIDICA: "Eventos da pessoa jur\xEDdica",
+  CREDITO_OBTIDO: "Cr\xE9dito obtido",
+  COMPROMISSOS: "Compromissos",
+  PAGAMENTO_PONTUAL: "Pagamento pontual",
+  PAGAMENTO_ATRASADO: "Pagamento atrasado",
+  COMPROMETIMENTO_FUTURO: "Comprometimento futuro",
+  PERIODO_RELACIONAMENTO_FORNECEDORES: "Relacionamento com fornecedores",
+  QUADRO_SOCIETARIO: "Quadro societ\xE1rio",
+  FATURAMENTO_PRESUMIDO: "Faturamento presumido",
+  ACOES_CIVEIS: "A\xE7\xF5es c\xEDveis",
+  VEICULOS_POR_DOCUMENTO: "Ve\xEDculos por documento",
+  INFORMACOES_DA_EMPRESA: "Informa\xE7\xF5es da empresa",
+  INFORMACOES_ALERTAS_RESTRICOES: "Alertas e restri\xE7\xF5es",
+  CONTUMACIA: "Contum\xE1cia",
+  EMAILS: "E-mails",
+  SOMENTE_ENDERECO: "Endere\xE7os",
+  TELEFONE_FIXO: "Telefones fixos",
+  TELEFONE_CELULAR: "Telefones celulares",
+  OCORRENCIAS: "Ocorr\xEAncias",
+  DETALHES: "Detalhes",
+  QUANTIDADES: "Quantidades por m\xEAs",
+  PARAMETROS: "Par\xE2metros da consulta",
+  STATUS_RETORNO: "Status",
+  QUANTIDADE_OCORRENCIA: "Quantidade de ocorr\xEAncias",
+  QUANTIDADE_OCORRENCIAS: "Quantidade de ocorr\xEAncias"
+};
+var ACENTOS = {
+  inclusao: "inclus\xE3o",
+  situacao: "situa\xE7\xE3o",
+  descricao: "descri\xE7\xE3o",
+  ocorrencia: "ocorr\xEAncia",
+  ocorrencias: "ocorr\xEAncias",
+  numero: "n\xFAmero",
+  codigo: "c\xF3digo",
+  endereco: "endere\xE7o",
+  razao: "raz\xE3o",
+  juridica: "jur\xEDdica",
+  juridico: "jur\xEDdico",
+  cartorio: "cart\xF3rio",
+  especie: "esp\xE9cie",
+  pontuacao: "pontua\xE7\xE3o",
+  classificacao: "classifica\xE7\xE3o",
+  inadimplencia: "inadimpl\xEAncia",
+  periodo: "per\xEDodo",
+  participacao: "participa\xE7\xE3o",
+  informacoes: "informa\xE7\xF5es",
+  restricoes: "restri\xE7\xF5es",
+  pendencias: "pend\xEAncias",
+  acoes: "a\xE7\xF5es",
+  civeis: "c\xEDveis",
+  veiculos: "ve\xEDculos",
+  veiculo: "ve\xEDculo",
+  fundacao: "funda\xE7\xE3o",
+  orgao: "\xF3rg\xE3o",
+  municipio: "munic\xEDpio",
+  tipo: "tipo",
+  data: "data",
+  quantidade: "quantidade",
+  ultimo: "\xFAltimo",
+  ultima: "\xFAltima",
+  obrigacao: "obriga\xE7\xE3o",
+  operacao: "opera\xE7\xE3o",
+  negocio: "neg\xF3cio",
+  consulta: "consulta",
+  nacionalidade: "nacionalidade",
+  ano: "ano",
+  mes: "m\xEAs",
+  area: "\xE1rea",
+  comercio: "com\xE9rcio",
+  atencao: "aten\xE7\xE3o",
+  analise: "an\xE1lise",
+  indice: "\xEDndice",
+  historico: "hist\xF3rico",
+  saude: "sa\xFAde",
+  credito: "cr\xE9dito",
+  debito: "d\xE9bito",
+  titulo: "t\xEDtulo",
+  titulos: "t\xEDtulos",
+  protesto: "protesto",
+  apresentacao: "apresenta\xE7\xE3o",
+  emissao: "emiss\xE3o",
+  vencimento: "vencimento",
+  judicial: "judicial",
+  distribuicao: "distribui\xE7\xE3o",
+  natureza: "natureza",
+  fisica: "f\xEDsica",
+  economico: "econ\xF4mico",
+  economica: "econ\xF4mica",
+  prazo: "prazo",
+  saldo: "saldo",
+  agencia: "ag\xEAncia",
+  banco: "banco",
+  alinea: "al\xEDnea",
+  cheque: "cheque",
+  cheques: "cheques",
+  telefone: "telefone",
+  residencial: "residencial",
+  comerciais: "comerciais",
+  fornecedor: "fornecedor",
+  fornecedores: "fornecedores",
+  regiao: "regi\xE3o",
+  atuacao: "atua\xE7\xE3o"
+};
+var semPrefixo = (k3) => {
+  const i4 = k3.lastIndexOf(":");
+  return i4 >= 0 ? k3.slice(i4 + 1) : k3;
+};
+function humanizarChave(chave) {
+  const base = semPrefixo(chave).trim();
+  const palavras = base.replace(/[_\s]+/g, " ").trim().toLowerCase().split(" ").filter(Boolean);
+  if (!palavras.length) return chave;
+  const f4 = palavras.map((p4) => ACENTOS[p4] ?? p4).join(" ");
+  return f4.charAt(0).toUpperCase() + f4.slice(1);
+}
+function rotuloBloco(chave) {
+  const base = semPrefixo(chave).trim();
+  const conhecido = ROTULOS_BLOCOS[base.toUpperCase()];
+  if (conhecido) return conhecido;
+  const tel = /^TELEFONE_(.+)$/i.exec(base);
+  if (tel) return `Telefone ${humanizarChave(tel[1]).toLowerCase()}`;
+  return humanizarChave(base);
+}
+function mascararCpfsEmTexto(s4) {
+  return s4.replace(/\b(\d{3})\.(\d{3})\.(\d{3})-(\d{2})\b/g, (_m, _a, b3, c4) => `***.${b3}.${c4}-**`);
+}
+function mascararCpfSoDigitos(s4) {
+  const d3 = s4.trim();
+  return /^\d{11}$/.test(d3) ? `***.${d3.slice(3, 6)}.${d3.slice(6, 9)}-**` : s4;
+}
+function mascararTelefone(s4) {
+  const digitos = s4.replace(/\D/g, "");
+  if (digitos.length <= 4) return s4;
+  return "*".repeat(digitos.length - 4) + digitos.slice(-4);
+}
+function mascararEmail(s4) {
+  const m4 = /^([^@\s]+)@(.+)$/.exec(s4.trim());
+  return m4 ? `${m4[1].slice(0, 2)}***@${m4[2]}` : s4;
+}
+var CHAVE_DOC = /(^|_)(cpf|cnpj|doc|documento|cpf_cnpj)(_|$)/i;
+var CHAVE_FONE = /(telefone|fone|celular|whatsapp)/i;
+var CHAVE_EMAIL = /(e_?mail)/i;
+var ehUrlOuBlob = (s4) => /^(https?:)?\/\/\S+$/i.test(s4.trim()) || /^data:/i.test(s4.trim()) || s4.length > 1500 && !/\s/.test(s4);
+function valorSeguro(chave, valor2, pessoaFisica = false) {
+  const v4 = valor2.trim();
+  if (!v4 || ehUrlOuBlob(v4)) return null;
+  const k3 = semPrefixo(chave);
+  if (CHAVE_DOC.test(k3) && /^\d{11}$/.test(v4)) return mascararCpfSoDigitos(v4);
+  if (pessoaFisica && CHAVE_FONE.test(k3)) return mascararTelefone(v4);
+  if (pessoaFisica && CHAVE_EMAIL.test(k3)) return mascararEmail(v4);
+  return mascararCpfsEmTexto(v4);
+}
+
 // server/lib/credito/provedores/mapeadores.ts
 var CHAVES_SCORE = ["score", "pontuacao"];
 var ehObjeto = (v4) => typeof v4 === "object" && v4 !== null && !Array.isArray(v4);
@@ -338696,20 +338862,74 @@ var somaValores = (itens) => {
   const v4 = itens.map((i4) => i4.valor).filter((x2) => x2 !== null);
   return v4.length ? Math.round(v4.reduce((a5, b3) => a5 + b3, 0) * 100) / 100 : null;
 };
-var itemPendencia = (o4) => ({
-  data: dataPtBr(o4.DATA_VENCIMENTO) ?? dataPtBr(o4.DATA_INCLUSAO),
-  descricao: txt(o4.CONTRATO) ? `Contrato ${txt(o4.CONTRATO)}` : txt(o4.MODALIDADE) ?? "Pend\xEAncia financeira",
-  valor: numeroPtBr(o4.VALOR),
-  local: txt(o4.ORIGEM),
-  credor: txt(o4.CREDOR)
-});
-var itemGenerico = (rotulo) => (o4) => ({
-  data: dataPtBr(o4.DATA) ?? dataPtBr(o4.DATA_PROTESTO) ?? dataPtBr(o4.DATA_VENCIMENTO) ?? dataPtBr(o4.DATA_INCLUSAO),
-  descricao: rotulo,
-  valor: numeroPtBr(o4.VALOR),
-  local: txt(o4.CARTORIO) ?? txt(o4.CIDADE) ?? txt(o4.ORIGEM),
-  credor: txt(o4.CREDOR)
-});
+var primeiro = (o4, chaves) => {
+  for (const chave of chaves) {
+    const v4 = txt(o4[chave]);
+    if (v4) return { chave, valor: v4 };
+  }
+  return null;
+};
+function extrasDe(o4, usados) {
+  const extras = {};
+  for (const [k3, v4] of Object.entries(o4)) {
+    if (usados.has(k3)) continue;
+    const bruto = typeof v4 === "string" || typeof v4 === "number" ? String(v4) : Array.isArray(v4) ? v4.filter((x2) => typeof x2 === "string" || typeof x2 === "number").join(", ") : "";
+    const seguro = valorSeguro(k3, bruto);
+    if (!seguro) continue;
+    extras[humanizarChave(k3)] = seguro.length > 300 ? seguro.slice(0, 297) + "..." : seguro;
+  }
+  return Object.keys(extras).length ? extras : void 0;
+}
+var itemPendencia = (o4) => {
+  const dv = dataPtBr(o4.DATA_VENCIMENTO);
+  const contrato = txt(o4.CONTRATO);
+  const usados = /* @__PURE__ */ new Set(["VALOR", "CREDOR", "ORIGEM", dv ? "DATA_VENCIMENTO" : "DATA_INCLUSAO"]);
+  if (contrato) usados.add("CONTRATO");
+  else if (txt(o4.MODALIDADE)) usados.add("MODALIDADE");
+  return {
+    data: dv ?? dataPtBr(o4.DATA_INCLUSAO),
+    descricao: contrato ? `Contrato ${contrato}` : txt(o4.MODALIDADE) ?? "Pend\xEAncia financeira",
+    valor: numeroPtBr(o4.VALOR),
+    local: txt(o4.ORIGEM),
+    credor: txt(o4.CREDOR),
+    extras: extrasDe(o4, usados)
+  };
+};
+var CHAVES_DATA = ["DATA", "DATA_PROTESTO", "DATA_VENCIMENTO", "DATA_INCLUSAO"];
+var itemGenerico = (rotulo) => (o4) => {
+  const dt = CHAVES_DATA.map((k3) => ({ k: k3, v: dataPtBr(o4[k3]) })).find((x2) => x2.v);
+  const usados = /* @__PURE__ */ new Set(["VALOR", "CREDOR"]);
+  if (dt) usados.add(dt.k);
+  const tipo = primeiro(o4, ["ESPECIE", "TIPO", "TIPO_TITULO", "NATUREZA", "TIPO_OCORRENCIA", "MODALIDADE"]);
+  if (tipo) usados.add(tipo.chave);
+  const qtd2 = primeiro(o4, ["QUANTIDADE", "QTD"]);
+  if (qtd2) usados.add(qtd2.chave);
+  const cart = primeiro(o4, ["CARTORIO", "NOME_CARTORIO"]);
+  const cidade = primeiro(o4, ["CIDADE", "MUNICIPIO"]);
+  const uf = primeiro(o4, ["UF", "ESTADO"]);
+  const cidadeUf = cidade && uf ? `${cidade.valor}/${uf.valor}` : cidade?.valor ?? uf?.valor ?? null;
+  const partes = [cart?.valor, cidadeUf].filter((x2) => !!x2);
+  let local = null;
+  if (partes.length) {
+    local = partes.join(" \u2014 ");
+    for (const x2 of [cart, cidade, uf]) if (x2) usados.add(x2.chave);
+  } else {
+    const alt = primeiro(o4, ["ORIGEM", "COMARCA", "VARA"]);
+    if (alt) {
+      local = alt.valor;
+      usados.add(alt.chave);
+    }
+  }
+  const qn = qtd2 ? numeroPtBr(qtd2.valor) : null;
+  return {
+    data: dt?.v ?? null,
+    descricao: rotulo + (tipo ? ` \u2014 ${tipo.valor}` : "") + (qn !== null && qn > 1 ? ` (${qtd2?.valor} t\xEDtulos)` : ""),
+    valor: numeroPtBr(o4.VALOR),
+    local,
+    credor: txt(o4.CREDOR),
+    extras: extrasDe(o4, usados)
+  };
+};
 function grupoDe(bloco, item) {
   const b3 = obj(bloco);
   if (!b3) return grupoNaoConsultado();
@@ -338991,6 +339211,217 @@ function getProvedorCredito() {
   return process.env.CREDITO_PROVEDOR === "boavista_apifull" ? provedorBoaVistaApifull : provedorSimulado;
 }
 
+// server/lib/credito/pdfAnexo.ts
+var ehObj = (v4) => typeof v4 === "object" && v4 !== null && !Array.isArray(v4);
+var ehEscalar = (v4) => typeof v4 === "string" || typeof v4 === "number" || typeof v4 === "boolean";
+var MAX_COLUNAS_POR_TABELA = 7;
+var MAX_PROFUNDIDADE = 6;
+var MAX_CELULA = 600;
+var ehPessoaFisicaMarcada = (o4) => {
+  for (const k3 of ["TIPO_PESSOA", "TIPO_DOCUMENTO"]) {
+    const v4 = o4[k3];
+    if (typeof v4 === "string" && /^(fisica|física|pf|cpf)$/i.test(v4.normalize("NFD").replace(/[̀-ͯ]/g, "").trim())) return true;
+  }
+  return false;
+};
+function textoEscalar(chave, v4, ctx) {
+  if (!ehEscalar(v4)) return "";
+  const s4 = valorSeguro(chave, String(v4), ctx.pf);
+  if (!s4) return "";
+  return s4.length > MAX_CELULA ? s4.slice(0, MAX_CELULA - 3) + "..." : s4;
+}
+function textoCelula(chave, v4, ctx, prof = 0) {
+  if (ehEscalar(v4)) return textoEscalar(chave, v4, ctx);
+  if (prof > 3) return "";
+  if (Array.isArray(v4)) return v4.map((x2) => textoCelula(chave, x2, ctx, prof + 1)).filter(Boolean).join(", ");
+  if (ehObj(v4)) {
+    const sub = { pf: ctx.pf || ehPessoaFisicaMarcada(v4) };
+    return Object.entries(v4).map(([k3, x2]) => {
+      const t5 = textoCelula(k3, x2, sub, prof + 1);
+      return t5 ? `${humanizarChave(k3)}: ${t5}` : "";
+    }).filter(Boolean).join("; ");
+  }
+  return "";
+}
+var rotuloCampo = (k3) => {
+  const b3 = semPrefixo(k3).toUpperCase();
+  if (b3 === "STATUS_RETORNO") return "Status";
+  return humanizarChave(k3);
+};
+function pesoColuna(titulo, valores) {
+  const maior = valores.reduce((a5, v4) => Math.max(a5, Math.min(v4.length, 60)), 0);
+  const maiorPalavra = titulo.split(" ").reduce((a5, w2) => Math.max(a5, w2.length), 0);
+  return Math.min(125, Math.max(44, Math.max(maiorPalavra * 5.6, maior * 5.2) + 16));
+}
+function tabelaDe(linhasBrutas, ctx) {
+  const chaves = [];
+  for (const o4 of linhasBrutas) for (const k3 of Object.keys(o4)) if (!chaves.includes(k3)) chaves.push(k3);
+  const celulas = linhasBrutas.map((o4) => {
+    const c4 = { pf: ctx.pf || ehPessoaFisicaMarcada(o4) };
+    return chaves.map((k3) => textoCelula(k3, o4[k3], c4));
+  });
+  const usadas = chaves.map((_2, j) => j).filter((j) => celulas.some((l4) => l4[j] !== ""));
+  if (!usadas.length) return [];
+  const linhas = celulas.map((l4) => usadas.map((j) => l4[j]));
+  const titulos = usadas.map((j) => rotuloCampo(chaves[j]));
+  const pesos = usadas.map((_2, i4) => pesoColuna(titulos[i4], linhas.map((l4) => l4[i4])));
+  if (usadas.length <= MAX_COLUNAS_POR_TABELA) return [{ t: "tabela", colunas: titulos, pesos, linhas, continuacao: false }];
+  const porFatia = MAX_COLUNAS_POR_TABELA - 1;
+  const partes = [];
+  for (let ini = 1, n5 = 0; ini < usadas.length; ini += porFatia, n5++) {
+    const idx = [0, ...Array.from({ length: Math.min(porFatia, usadas.length - ini) }, (_2, i4) => ini + i4)];
+    partes.push({
+      t: "tabela",
+      continuacao: n5 > 0,
+      colunas: idx.map((i4) => titulos[i4]),
+      pesos: idx.map((i4) => pesos[i4]),
+      linhas: linhas.map((l4) => idx.map((i4) => l4[i4]))
+    });
+  }
+  return partes;
+}
+function emPartes(valor2, caminho, ctx, saida, prof = 0, chave = "") {
+  if (prof > MAX_PROFUNDIDADE) return;
+  if (ehEscalar(valor2)) {
+    const t5 = textoEscalar(chave, valor2, ctx);
+    if (t5) saida.push({ t: "campos", pares: [[chave ? rotuloCampo(chave) : "Valor", t5]] });
+    return;
+  }
+  if (Array.isArray(valor2)) {
+    const objs = valor2.filter(ehObj);
+    const escalares = valor2.filter(ehEscalar);
+    if (objs.length) saida.push(...tabelaDe(objs, ctx));
+    const itens = escalares.map((x2) => textoEscalar(chave, x2, ctx)).filter(Boolean);
+    if (itens.length) saida.push({ t: "lista", itens });
+    for (const sub of valor2) if (Array.isArray(sub)) emPartes(sub, caminho, ctx, saida, prof + 1, chave);
+    return;
+  }
+  if (!ehObj(valor2)) return;
+  const c4 = { pf: ctx.pf || ehPessoaFisicaMarcada(valor2) };
+  const pares = [];
+  const filhos = [];
+  for (const [k3, v4] of Object.entries(valor2)) {
+    if (ehEscalar(v4)) {
+      const t5 = textoEscalar(k3, v4, c4);
+      if (t5) pares.push([rotuloCampo(k3), t5]);
+    } else if (v4 !== null && v4 !== void 0) filhos.push([k3, v4]);
+  }
+  if (pares.length) saida.push({ t: "campos", pares });
+  for (const [k3, v4] of filhos) {
+    const parcial = [];
+    emPartes(v4, [...caminho, k3], c4, parcial, prof + 1, k3);
+    if (!parcial.length) continue;
+    saida.push({ t: "sub", texto: [...caminho, k3].map(rotuloBloco).join(" \u203A ") });
+    saida.push(...parcial);
+  }
+}
+function entreguesDe(header) {
+  const nomes = [];
+  const andar = (v4, k3, prof) => {
+    if (prof > 5) return;
+    if (ehObj(v4)) {
+      for (const [kk, x2] of Object.entries(v4)) andar(x2, kk, prof + 1);
+      return;
+    }
+    if (ehEscalar(v4) && String(v4).trim() === "1" && k3) nomes.push(rotuloBloco(k3));
+  };
+  andar(header.DADOS_RETORNADOS, "", 0);
+  return [...new Set(nomes)];
+}
+function blocoSeguro(titulo, fazer) {
+  try {
+    return { titulo, partes: fazer() };
+  } catch {
+    return { titulo, partes: [{ t: "aviso", texto: "bloco n\xE3o renderizado" }] };
+  }
+}
+function montarAnexo(bruto, opts2) {
+  if (!ehObj(bruto)) return null;
+  const dados = ehObj(bruto.dados) ? bruto.dados : null;
+  const aux = ehObj(bruto.aux) ? bruto.aux : null;
+  const link = aux && typeof aux.data === "string" && /^https?:\/\/\S+$/i.test(aux.data.trim()) ? aux.data.trim() : null;
+  if (!dados && !link) return null;
+  const ctx = { pf: opts2.pessoaFisica };
+  const anexo = { entregues: [], parametros: [], blocos: [], linkOriginal: link };
+  if (!dados) return anexo;
+  for (const [chave, valor2] of Object.entries(dados)) {
+    if (chave === "HEADER" && ehObj(valor2)) {
+      try {
+        anexo.entregues = entreguesDe(valor2);
+        if (ehObj(valor2.PARAMETROS)) {
+          for (const [k3, v4] of Object.entries(valor2.PARAMETROS)) {
+            const t5 = textoCelula(k3, v4, ctx);
+            if (t5) anexo.parametros.push([rotuloCampo(k3), t5]);
+          }
+        }
+        const resto = {};
+        for (const [k3, v4] of Object.entries(valor2)) if (!["DADOS_RETORNADOS", "CONTROLE", "PARAMETROS"].includes(k3.toUpperCase())) resto[k3] = v4;
+        const partes = [];
+        emPartes(resto, [], ctx, partes);
+        if (partes.length) anexo.blocos.push({ titulo: "Cabe\xE7alho da resposta", partes });
+      } catch {
+        anexo.blocos.push({ titulo: "Cabe\xE7alho da resposta", partes: [{ t: "aviso", texto: "bloco n\xE3o renderizado" }] });
+      }
+      continue;
+    }
+    if (ehObj(valor2) && chave.toUpperCase() === "CREDCADASTRAL") {
+      for (const [k3, v4] of Object.entries(valor2)) {
+        anexo.blocos.push(blocoSeguro(rotuloBloco(k3), () => {
+          const partes = [];
+          emPartes(v4, [], { pf: ctx.pf }, partes, 0, k3);
+          return partes;
+        }));
+      }
+      continue;
+    }
+    anexo.blocos.push(blocoSeguro(rotuloBloco(chave), () => {
+      const partes = [];
+      emPartes(valor2, [], ctx, partes, 0, chave);
+      return partes;
+    }));
+  }
+  return anexo;
+}
+function registrosDaParte(p4) {
+  switch (p4.t) {
+    case "tabela":
+      return p4.continuacao ? 0 : p4.linhas.length;
+    case "campos":
+      return p4.pares.length;
+    case "lista":
+      return p4.itens.length;
+    default:
+      return 0;
+  }
+}
+var MESES3 = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
+var semAcento2 = (s4) => s4.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+function consultasPorMes(bruto) {
+  if (!ehObj(bruto) || !ehObj(bruto.dados)) return null;
+  const cred = ehObj(bruto.dados.CREDCADASTRAL) ? bruto.dados.CREDCADASTRAL : null;
+  const hist = cred && ehObj(cred.HIST_CONSULTAS) ? cred.HIST_CONSULTAS : null;
+  const q = hist?.QUANTIDADES;
+  if (!Array.isArray(q)) return null;
+  const linhas = [];
+  for (const o4 of q.filter(ehObj)) {
+    const porMes = new Array(12).fill("");
+    let ano = "";
+    for (const [k3, v4] of Object.entries(o4)) {
+      if (!ehEscalar(v4)) continue;
+      const nome = semAcento2(k3).trim();
+      if (nome === "ANO") {
+        ano = String(v4).trim();
+        continue;
+      }
+      const i4 = MESES3.indexOf(nome.slice(0, 3));
+      if (i4 >= 0) porMes[i4] = String(v4).trim();
+    }
+    if (ano || porMes.some(Boolean)) linhas.push([ano || "\u2014", ...porMes.map((m4) => m4 || "-")]);
+  }
+  if (!linhas.length) return null;
+  return { colunas: ["Ano", ...MESES3.map((m4) => m4.charAt(0) + m4.slice(1).toLowerCase())], linhas };
+}
+
 // server/lib/credito/pdf.ts
 var PDFDocument2 = require_pdfkit_browser();
 var AZUL = "#0C3680";
@@ -339008,6 +339439,7 @@ var TOPO = 72;
 var BASE = 56;
 var LARG = W - MX * 2;
 var LIMITE_Y = H - BASE;
+var MAX_PAGINAS_PDF = 80;
 var FAIXA_SIMULACAO = "SIMULA\xC7\xC3O \u2014 DADOS FICT\xCDCIOS, N\xC3O USAR PARA DECIS\xC3O";
 var FUSO = "America/Sao_Paulo";
 function limparTexto(s4) {
@@ -339092,11 +339524,11 @@ var Pagina = class {
   garantir(h3) {
     if (this.y + h3 > LIMITE_Y) this.nova();
   }
-  titulo(t5) {
+  titulo(t5, maiusculas = true) {
     this.garantir(110);
     const { doc } = this;
     this.y += 8;
-    doc.font("Helvetica-Bold").fontSize(11).fillColor(AZUL).text(limparTexto(t5).toUpperCase(), MX, this.y, { width: LARG, lineBreak: false });
+    doc.font("Helvetica-Bold").fontSize(11).fillColor(AZUL).text(maiusculas ? limparTexto(t5).toUpperCase() : limparTexto(t5), MX, this.y, { width: LARG, lineBreak: false });
     this.y += 16;
     doc.moveTo(MX, this.y).lineTo(MX + LARG, this.y).lineWidth(1.2).strokeColor(AZUL).stroke();
     this.y += 8;
@@ -339116,7 +339548,25 @@ var Pagina = class {
     doc.fillColor(opts2.cor ?? TEXTO).text(s4, MX, this.y, { width: LARG });
     this.y += h3 + 6;
   }
-  tabela(colunas, linhas) {
+  /** Título de bloco do anexo (mantém a capitalização portuguesa, ao contrário de `titulo`). */
+  bloco(t5) {
+    this.garantir(80);
+    const { doc } = this;
+    this.y += 6;
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(AZUL).text(limparTexto(t5), MX, this.y, { width: LARG, lineBreak: false });
+    this.y += 14;
+    doc.moveTo(MX, this.y).lineTo(MX + LARG, this.y).lineWidth(0.6).strokeColor(AZUL).stroke();
+    this.y += 6;
+  }
+  /** O PDF já tem o máximo de páginas? (só o anexo consulta isto) */
+  estourou() {
+    return this.doc.bufferedPageRange().count >= MAX_PAGINAS_PDF;
+  }
+  /**
+   * Desenha a tabela. `detalhes[i]` é uma linha de texto menor sob a linha i (campos extras da fonte).
+   * Com `limitar`, para ao atingir o teto de páginas e devolve quantas linhas deixou de desenhar.
+   */
+  tabela(colunas, linhas, opts2 = {}) {
     const { doc } = this;
     const PAD = 4;
     const tam = 8.5;
@@ -339124,19 +339574,23 @@ var Pagina = class {
     const escala = LARG / total;
     const cols = colunas.map((c4) => ({ ...c4, largura: c4.largura * escala }));
     const cabecalho = () => {
-      const h3 = 18;
+      doc.font("Helvetica-Bold").fontSize(8);
+      const titulos = cols.map((c4) => quebrarLongas(doc, limparTexto(c4.titulo), c4.largura - PAD * 2));
+      const hTexto = Math.max(...titulos.map((t5, j) => doc.heightOfString(t5, { width: cols[j].largura - PAD * 2 })));
+      const h3 = Math.max(18, hTexto + 9);
       this.garantir(h3 + 22);
       doc.rect(MX, this.y, LARG, h3).fill(AZUL);
       let x2 = MX;
       doc.font("Helvetica-Bold").fontSize(8).fillColor("#FFFFFF");
-      for (const c4 of cols) {
-        doc.text(limparTexto(c4.titulo), x2 + PAD, this.y + 5, { width: c4.largura - PAD * 2, align: c4.alinhar ?? "left", lineBreak: false });
+      cols.forEach((c4, j) => {
+        doc.text(titulos[j], x2 + PAD, this.y + 5, { width: c4.largura - PAD * 2, align: c4.alinhar ?? "left" });
         x2 += c4.largura;
-      }
+      });
       this.y += h3;
     };
     cabecalho();
-    linhas.forEach((linha, i4) => {
+    for (let i4 = 0; i4 < linhas.length; i4++) {
+      const linha = linhas[i4];
       const prep = linha.map((cel, j) => {
         const c4 = cols[j];
         doc.font(cel.negrito ? "Helvetica-Bold" : "Helvetica").fontSize(tam);
@@ -339145,8 +339599,16 @@ var Pagina = class {
         const h3 = doc.heightOfString(s4, { width: c4.largura - PAD * 2 });
         return { s: s4, h: h3, cel, c: c4 };
       });
-      const alturaLinha = Math.max(...prep.map((p4) => p4.h)) + PAD * 2;
+      let det = opts2.detalhes?.[i4] ? limparTexto(opts2.detalhes[i4]) : "";
+      let alturaDet = 0;
+      if (det) {
+        doc.font("Helvetica").fontSize(7.5);
+        det = quebrarLongas(doc, det.length > 900 ? det.slice(0, 897) + "..." : det, LARG - PAD * 2 - 8);
+        alturaDet = doc.heightOfString(det, { width: LARG - PAD * 2 - 8 }) + 3;
+      }
+      const alturaLinha = Math.max(...prep.map((p4) => p4.h)) + PAD * 2 + alturaDet;
       if (this.y + alturaLinha > LIMITE_Y) {
+        if (opts2.limitar && this.estourou()) return linhas.length - i4;
         this.nova();
         cabecalho();
       }
@@ -339156,10 +339618,14 @@ var Pagina = class {
         doc.font(p4.cel.negrito ? "Helvetica-Bold" : "Helvetica").fontSize(tam).fillColor(p4.cel.cor ?? TEXTO).text(p4.s, x2 + PAD, this.y + PAD, { width: p4.c.largura - PAD * 2, align: p4.c.alinhar ?? "left" });
         x2 += p4.c.largura;
       }
+      if (det) {
+        doc.font("Helvetica").fontSize(7.5).fillColor(CINZA).text(det, MX + PAD + 8, this.y + alturaLinha - alturaDet - PAD + 3, { width: LARG - PAD * 2 - 8 });
+      }
       doc.moveTo(MX, this.y + alturaLinha).lineTo(MX + LARG, this.y + alturaLinha).lineWidth(0.5).strokeColor(LINHA).stroke();
       this.y += alturaLinha;
-    });
+    }
     this.y += 10;
+    return 0;
   }
 };
 function secaoResumo(p4, r5, meta) {
@@ -339266,12 +339732,16 @@ function secaoAnotacoes(p4, r5, agora) {
       ];
     })
   );
-  const comItens = GRUPOS.filter(([k3]) => r5.anotacoes[k3].consultado && r5.anotacoes[k3].itens.length > 0);
+  const comItens = GRUPOS.filter(([k3]) => r5.anotacoes[k3].consultado && (r5.anotacoes[k3].itens.length > 0 || r5.anotacoes[k3].quantidade > 0));
   if (comItens.length) {
     p4.titulo("Detalhamento das anota\xE7\xF5es");
     for (const [k3, nome] of comItens) {
       const g3 = r5.anotacoes[k3];
       p4.subtitulo(`${nome} - ${g3.quantidade} ocorr\xEAncia(s)${g3.valorTotal !== null ? ", total " + brl3(g3.valorTotal) : ""}`);
+      if (g3.itens.length < g3.quantidade) {
+        p4.paragrafo(`A fonte listou ${g3.itens.length} de ${g3.quantidade} ocorr\xEAncias.`, { cor: "#B45309", tam: 8.5, negrito: true });
+      }
+      if (!g3.itens.length) continue;
       const comCredor = g3.itens.some((it) => !!it.credor);
       const obs = g3.itens.map((it) => atenuacaoDoItem(it, agora));
       const comObs = obs.some((o4) => !!o4);
@@ -339289,7 +339759,10 @@ function secaoAnotacoes(p4, r5, agora) {
           if (comObs) linha.push({ texto: obs[i4] ? `Estudar com calma: ${obs[i4]}` : "\u2014", cor: obs[i4] ? COR_SEMAFORO.AMARELO : CINZA });
           linha.push({ texto: brl3(it.valor) });
           return linha;
-        })
+        }),
+        {
+          detalhes: g3.itens.map((it) => it.extras && Object.keys(it.extras).length ? Object.entries(it.extras).map(([ch, v4]) => `${ch}: ${v4}`).join("   |   ") : void 0)
+        }
       );
     }
   }
@@ -339389,20 +339862,104 @@ function secaoSocios(p4, r5) {
     ])
   );
 }
-function secaoConsultas(p4, r5) {
+function secaoConsultas(p4, r5, bruto) {
   p4.titulo("Consultas recentes ao documento");
-  if (!r5.consultasRecentes.length) {
-    p4.paragrafo("Nenhuma consulta recente informada pela fonte.", { cor: CINZA });
-    return;
+  if (!r5.consultasRecentes.length) p4.paragrafo("Nenhuma consulta recente informada pela fonte.", { cor: CINZA });
+  else {
+    const total = r5.complementos?.consultas12Meses;
+    if (typeof total === "number" && total > r5.consultasRecentes.length) {
+      p4.paragrafo(`A fonte listou ${r5.consultasRecentes.length} de ${total} consultas.`, { cor: "#B45309", tam: 8.5, negrito: true });
+    }
+    p4.tabela(
+      [
+        { titulo: "Data", largura: 80 },
+        { titulo: "Consultante", largura: 345 },
+        { titulo: "Quantidade", largura: 90, alinhar: "right" }
+      ],
+      r5.consultasRecentes.map((c4) => [{ texto: dataBR(c4.data) }, { texto: txt2(c4.consultante) }, { texto: String(c4.quantidade) }])
+    );
   }
-  p4.tabela(
-    [
-      { titulo: "Data", largura: 80 },
-      { titulo: "Consultante", largura: 345 },
-      { titulo: "Quantidade", largura: 90, alinhar: "right" }
-    ],
-    r5.consultasRecentes.map((c4) => [{ texto: dataBR(c4.data) }, { texto: txt2(c4.consultante) }, { texto: String(c4.quantidade) }])
+  const mensal = consultasPorMes(bruto);
+  if (mensal) {
+    p4.subtitulo("Consultas por m\xEAs");
+    p4.tabela(
+      mensal.colunas.map((titulo, i4) => ({ titulo, largura: i4 === 0 ? 44 : 38, alinhar: i4 === 0 ? "left" : "right" })),
+      mensal.linhas.map((l4) => l4.map((texto2, i4) => ({ texto: texto2, negrito: i4 === 0 })))
+    );
+  }
+}
+function secaoAnexo(p4, anexo) {
+  p4.nova();
+  p4.titulo("Anexo \u2014 Dados completos da resposta do provedor", false);
+  p4.paragrafo(
+    "Reprodu\xE7\xE3o autom\xE1tica de tudo o que o provedor devolveu nesta consulta, bloco a bloco. Campos vazios s\xE3o omitidos, CPF aparece mascarado e telefone/e-mail de pessoa f\xEDsica, parcialmente. As se\xE7\xF5es anteriores resumem apenas parte destes dados.",
+    { cor: CINZA, tam: 8.5 }
   );
+  if (anexo.entregues.length) p4.paragrafo("Blocos entregues pela fonte: " + anexo.entregues.join(", "), { tam: 8.5 });
+  if (anexo.parametros.length) {
+    p4.subtitulo("Par\xE2metros da consulta");
+    p4.tabela([{ titulo: "Campo", largura: 150 }, { titulo: "Valor", largura: 365 }], anexo.parametros.map(([k3, v4]) => [{ texto: k3, negrito: true, cor: CINZA }, { texto: v4 }]));
+  }
+  let omitidos = 0;
+  for (const bloco of anexo.blocos) {
+    if (p4.estourou()) {
+      omitidos += bloco.partes.reduce((a5, parte) => a5 + registrosDaParte(parte), 0);
+      continue;
+    }
+    try {
+      p4.bloco(bloco.titulo);
+      if (!bloco.partes.length) {
+        p4.paragrafo("Bloco sem informa\xE7\xF5es preenchidas.", { cor: CINZA, tam: 8.5 });
+        continue;
+      }
+      for (const parte of bloco.partes) {
+        if (p4.estourou()) {
+          omitidos += registrosDaParte(parte);
+          continue;
+        }
+        switch (parte.t) {
+          case "sub":
+            p4.subtitulo(parte.texto);
+            break;
+          case "aviso":
+            p4.paragrafo(parte.texto, { cor: COR_SEMAFORO.VERMELHO, tam: 8.5 });
+            break;
+          case "campos":
+            omitidos += p4.tabela(
+              [{ titulo: "Campo", largura: 150 }, { titulo: "Valor", largura: 365 }],
+              parte.pares.map(([k3, v4]) => [{ texto: k3, negrito: true, cor: CINZA }, { texto: v4 }]),
+              { limitar: true }
+            );
+            break;
+          case "tabela": {
+            if (parte.continuacao) p4.paragrafo("(continua\xE7\xE3o: demais colunas dos mesmos registros)", { cor: CINZA, tam: 7.5 });
+            const falt = p4.tabela(
+              parte.colunas.map((titulo, i4) => ({ titulo, largura: parte.pesos[i4] })),
+              parte.linhas.map((l4) => l4.map((texto2, i4) => ({ texto: texto2, negrito: i4 === 0 && parte.colunas.length > 2 }))),
+              { limitar: true }
+            );
+            if (!parte.continuacao) omitidos += falt;
+            break;
+          }
+          case "lista":
+            for (let i4 = 0; i4 < parte.itens.length; i4++) {
+              if (p4.estourou()) {
+                omitidos += parte.itens.length - i4;
+                break;
+              }
+              p4.paragrafo("\u2022  " + parte.itens[i4], { tam: 8.5 });
+            }
+            break;
+        }
+      }
+    } catch {
+      p4.paragrafo("Bloco n\xE3o renderizado.", { cor: COR_SEMAFORO.VERMELHO, tam: 8.5 });
+    }
+  }
+  if (omitidos > 0) {
+    p4.paragrafo(`Anexo truncado: ${omitidos} registros omitidos (limite de ${MAX_PAGINAS_PDF} p\xE1ginas no PDF).`, { cor: COR_SEMAFORO.VERMELHO, negrito: true, tam: 9 });
+  }
+  if (anexo.linkOriginal) p4.paragrafo("PDF original do provedor: " + anexo.linkOriginal, { tam: 8.5 });
 }
 function secaoFinal(p4, consultadoPor) {
   const { doc } = p4;
@@ -339416,12 +339973,16 @@ function secaoFinal(p4, consultadoPor) {
   doc.font("Helvetica-Bold").fontSize(9).fillColor(AZUL).text(`Consultado por ${limparTexto(consultadoPor) || "usu\xE1rio n\xE3o identificado"}`, MX + 10, y0 + h3 - 22, { width: LARG - 20, lineBreak: false });
   p4.y = y0 + h3 + 6;
 }
+function fonteDosDados(r5) {
+  const provedor = r5.fonte.provedor === "boavista_apifull" ? "API Full" : r5.fonte.provedor === "simulado" ? "Simulado" : r5.fonte.provedor;
+  return `${limparTexto(provedor)}/${limparTexto(nomeDoProduto(r5.fonte.produto, r5.fonte.provedor))}`;
+}
 function cabecalhoRodape(doc, r5, i4, total) {
   const margens = doc.page.margins;
   doc.page.margins = { top: 0, bottom: 0, left: 0, right: 0 };
   doc.rect(0, 0, W, 44).fill(AZUL);
   doc.font("Helvetica-Bold").fontSize(13).fillColor("#FFFFFF").text("Relat\xF3rio de An\xE1lise de Cr\xE9dito \u2014 Sal Vita", MX, 12, { width: 360, lineBreak: false });
-  doc.font("Helvetica").fontSize(8).fillColor("#DCE6F7").text(`Fonte dos dados: ${limparTexto(r5.fonte.provedor)}/${limparTexto(r5.fonte.produto)}`, MX, 29, { width: 360, lineBreak: false });
+  doc.font("Helvetica").fontSize(8).fillColor("#DCE6F7").text(`Fonte dos dados: ${fonteDosDados(r5)}`, MX, 29, { width: 360, lineBreak: false });
   doc.font("Helvetica").fontSize(8).fillColor("#FFFFFF").text(`Consulta: ${dataHoraBR(r5.consultadoEm)}`, W - MX - 170, 14, { width: 170, align: "right", lineBreak: false });
   doc.text(`${r5.tipo} ${formatarDocumento(r5.documento, r5.tipo)}`, W - MX - 170, 28, { width: 170, align: "right", lineBreak: false });
   if (r5.fonte.provedor === "simulado") {
@@ -339435,7 +339996,7 @@ function cabecalhoRodape(doc, r5, i4, total) {
   doc.text(`Consulta em ${dataHoraBR(r5.consultadoEm)}`, MX, fy + 17, { width: 380, lineBreak: false });
   doc.page.margins = margens;
 }
-async function gerarPdfCredito(relatorio, meta) {
+async function gerarPdfCredito(relatorio, meta, bruto) {
   const doc = new PDFDocument2({
     size: "A4",
     margins: { top: TOPO, bottom: BASE, left: MX, right: MX },
@@ -339466,8 +340027,14 @@ async function gerarPdfCredito(relatorio, meta) {
     secaoMovimentacao(p4, relatorio);
     secaoComplementos(p4, relatorio);
     secaoSocios(p4, relatorio);
-    secaoConsultas(p4, relatorio);
+    secaoConsultas(p4, relatorio, bruto);
     secaoFinal(p4, meta.consultadoPor);
+    try {
+      const anexo = montarAnexo(bruto, { pessoaFisica: relatorio.tipo === "CPF" });
+      if (anexo) secaoAnexo(p4, anexo);
+    } catch (e4) {
+      console.error("[credito] anexo do pdf falhou:", e4 instanceof Error ? e4.message : "erro");
+    }
     const { start: start2, count: count2 } = doc.bufferedPageRange();
     for (let i4 = 0; i4 < count2; i4++) {
       doc.switchToPage(start2 + i4);
@@ -339658,6 +340225,14 @@ var creditoRouter = router({
     };
     andar(row.bruto, "");
     return { guardado: true, linhas, total: linhas.length };
+  }),
+  /** Link do PDF original do provedor (aux.data da resposta guardada) ou null. Só admin; o servidor não busca a URL. */
+  linkOriginal: adminProcedure.input(external_exports.object({ id: external_exports.number().int() })).query(async ({ input }) => {
+    const [row] = await db.select({ bruto: creditReports.payloadBruto }).from(creditReports).where(eq(creditReports.id, input.id));
+    if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Relat\xF3rio n\xE3o encontrado" });
+    const aux = row.bruto?.aux;
+    const url3 = typeof aux?.data === "string" ? aux.data.trim() : "";
+    return { url: /^https?:\/\/\S+$/i.test(url3) ? url3 : null };
   }),
   /**
    * Refaz o relatório a partir da RESPOSTA JÁ PAGA (payload_bruto), sem chamar a API nem cobrar: serve para
@@ -340026,7 +340601,7 @@ var creditoRouter = router({
         veredito: comoVeredito(row.veredito),
         motivos: row.motivos,
         consultadoPor: autor?.name ?? null
-      });
+      }, row.payloadBruto);
       const dia = row.consultadoEm.toISOString().slice(0, 10).replace(/-/g, "");
       return { nomeArquivo: `analise-credito-${row.documento}-${dia}.pdf`, base64: buf.toString("base64") };
     } catch (e4) {
