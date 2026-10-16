@@ -53,3 +53,53 @@ A sonda roda até 6 endpoints num CNPJ real, mede o **custo real pela diferença
 - Total da sonda R$ 24,56 (média R$ 8,19). Saldo após: R$ 25,44.
 - Decisão pendente de cobertura de campos (tempo de empresa, sócios com data de entrada, consultas recentes, última compra):
   depende da estrutura das respostas (`scripts/credito/estrutura-resposta.mjs`).
+
+## Seletor de consultas com preço (16/10/2026)
+O diálogo "Consultar crédito" virou um **seletor**: o admin marca o que quer, vê o total somando na hora e só então gasta.
+
+**Catálogo único** — `shared/creditoCatalogo.ts` (servidor e tela leem o mesmo). Cada item: `chave`, `endpoint`, `nome`,
+`custoReais` (`null` = ainda não medido), `recomendado`, `mostra {confirmado, aConfirmar}`, `quandoUsar`.
+Preços **medidos em 16/10/2026** (podem mudar; refaça a sonda): `boavista` R$ 2,75 (padrão, recomendado),
+`serasa_premium` R$ 6,72, `define_risco` R$ 15,09. Sem preço medido (aparecem desabilitados e o servidor recusa com
+BAD_REQUEST): `serasa_basica`, `protesto_nacional`, `cenprot`, `cnpj_cadastro`, `cndt`. Para medir, rode a sonda e troque o `null`.
+As descrições dos não medidos são só "a confirmar" (texto curto nosso, não copiado do OpenAPI).
+
+**`credito.consultar`** recebe `produtos: string[]` (1 a 3 chaves, sem repetição, só com custo medido). Sem `produtos` = `['boavista']`.
+- Cache de 30 dias **por (documento, produto)**; `forcarNova` vale para todos os marcados. Provedor simulado cobra R$ 0.
+- Antes de gastar, sobre os itens NÃO reaproveitáveis: teto por consulta (`credit_settings.teto_por_consulta_reais`, padrão R$ 30;
+  `BAD_REQUEST`), saldo da API Full (`PRECONDITION_FAILED`; fail-open se o saldo estiver indisponível) e limite mensal por contagem,
+  1 por produto (`FORBIDDEN`). A mesma função (`verificarLimitesCusto`) roda na tela e no servidor.
+- Trava atômica por documento: um único INSERT cria uma linha `EM_ANDAMENTO` por produto (todas ou nenhuma) em `credit_queries`
+  (coluna nova `produto`). Cada produto OK grava UMA linha em `credit_reports` (`produto` = chave, `custo_reais` = catálogo) e fecha a sua linha do razão.
+- Retorno: `{ resultados: [{ produto, ok, reaproveitado, cobrado, custoReais, id?, veredito?, erro? }], custoCobradoReais, parcial, veredito, id, reaproveitado }`.
+  Se um produto falha e outro já cobrou, volta o resultado **parcial** (`cobrado` explícito); se tudo falha sem cobrança, erro BAD_GATEWAY.
+- Linhas antigas guardavam o nome do provedor em `credit_reports.produto`; `chaveDoProdutoGravado` as trata como `boavista`.
+
+**Veredito efetivo** = o PIOR veredito entre os relatórios válidos (<30 dias) de qualquer produto
+(REPROVADO_A_PRAZO > COM_RESTRICAO > APROVADO). Vale para `ultimo`, `semaforos` e o bloqueio no SMBI. `ultimo` devolve também
+`produtos: [{ produto, nome, consultadoEm, valido, veredito, custoReais }]` (chips no card). **Atenção:** uma consulta cujo score não seja
+reconhecido (ex.: Serasa com "score não calculado") vira COM_RESTRICAO ("Score não informado") e, pela regra do pior, pode rebaixar o
+semáforo do documento.
+
+**Mapeamento por produto** — `server/lib/credito/provedores/mapeadores.ts`. Estrutura real vista em 16/10/2026 (CNPJ de teste):
+`{status:'sucesso', dados:{HEADER, CREDCADASTRAL, VEICULAR}, aux}`; números em string com vírgula ("9451,05"), percentuais "3,0%",
+datas dd/mm/aaaa, vazio = "". Mapeadores REAIS: `boavista` e `serasa_premium` (cadastro, score, pendências, protestos, cheques
+BACEN+varejo, consultas, comportamento no Boa Vista; sócios, veículos, faturamento presumido, ações cíveis, passagens comerciais
+no Serasa) e o mínimo do `define_risco` (score, classe, probabilidade, decisão, faixa de faturamento, total de consultas; as chaves
+de classe/probabilidade/decisão/consultas são buscadas por nome porque só parte delas foi vista). Os demais seguem no defensivo.
+- No Serasa a entrada de score "NÃO CALCULADO" é ignorada (vale a que tem probabilidade); sem nenhuma, score = null.
+- Bloco ausente = `consultado:false` ("Não informado pela fonte"); "Nada consta" só quando o bloco veio com quantidade 0.
+- Contatos (telefone/e-mail) NÃO são mapeados (dado pessoal). Campos de itens de protesto/cheque/ação ainda não vistos: leitura defensiva.
+- Contrato: `RelatorioCredito.complementos?` (aditivo) = `faturamentoPresumidoFaixa`, `veiculos`, `consultas12Meses`; aparece no relatório e no PDF.
+- Fixtures SINTÉTICAS em `tests/fixtures/credito/apifull-*.json` e testes em `tests/credito-mapeadores.test.ts`.
+- **Ponto de atenção não avaliável com estas fontes:** a data de entrada de sócio NÃO vem pela API (veio vazia no Serasa), então o
+  sinal `SOCIO_RECENTE` só dispara se houver data; hoje não é avaliável. O Boa Vista não traz sócios nem faturamento presumido.
+
+**Outras procedures:** `credito.catalogo` (protegida; com `documento` traz `ultimoPorProduto`, mesmas regras de acesso de `ultimo`),
+`credito.setLimites` (admin: `limiteMensal` e/ou `tetoPorConsultaReais`), `credito.status` ganhou `gastoNoMesReais` e `tetoPorConsultaReais`.
+
+**Painel** (`/analise-credito`): saldo grande, aviso amarelo "Saldo baixo" abaixo de `SALDO_BAIXO_REAIS` (R$ 15, `shared/credito.ts`),
+gasto do mês, tabela "O que cada consulta mostra" e, no arquivo de análises, o produto e o custo de cada relatório.
+
+**Migração:** `SCHEMA_VERSION` = `2026-10-16a`; colunas aditivas `credit_queries.produto` e `credit_settings.teto_por_consulta_reais`
+(`ensureCreditColumns`, chamada por `ensureRecentSchema`).
