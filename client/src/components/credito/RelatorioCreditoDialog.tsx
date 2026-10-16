@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { useMemo } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
@@ -67,6 +68,8 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
   const perm = permissoesCredito(user?.role);
   const q = trpc.credito.relatorio.useQuery({ id: reportId ?? 0 }, { enabled: open && reportId !== null && perm.verRelatorio, retry: false });
   const { baixar, baixandoId } = useBaixarPdfCredito();
+  const utils = trpc.useUtils();
+  const reprocessar = trpc.credito.reprocessar.useMutation();
   const d = q.data;
   const r = d?.relatorio;
   const sinais = useMemo(() => (r && d ? analisarSinais(r, new Date(d.consultadoEm)) : []), [r, d]);
@@ -242,6 +245,15 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
 
         <DialogFooter className="gap-2">
           <Button variant="outline" size="lg" onClick={() => onOpenChange(false)}>Fechar</Button>
+          {perm.administrar && d && (
+            <Button variant="outline" size="lg" disabled={reprocessar.isPending} onClick={() => reprocessar.mutate({ id: d.id }, {
+              onSuccess: () => { toast.success('Relatório refeito a partir da resposta já paga (sem custo).'); void utils.credito.invalidate(); },
+              onError: (e) => toast.error(e.message),
+            })}>
+              {reprocessar.isPending ? <Loader2 className="animate-spin" aria-hidden /> : null}
+              Reprocessar (sem custo)
+            </Button>
+          )}
           {perm.baixarPdf && d && (
             <Button size="lg" onClick={() => void baixar(d.id)} disabled={baixandoId !== null}>
               {baixandoId === d.id ? <Loader2 className="animate-spin" aria-hidden /> : <Download aria-hidden />}

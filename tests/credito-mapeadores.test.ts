@@ -112,3 +112,14 @@ describe('mapeador Define Risco (mínimo)', () => {
     expect(Object.values(m.anotacoes).every((g) => !g.consultado)).toBe(true);
   });
 });
+
+import { readFileSync } from 'node:fs';
+import { mapeadorBoaVista as mapBV } from '../server/lib/credito/provedores/mapeadores';
+describe('reprocessar relatório antigo a partir do bruto', () => {
+  it('o mesmo bruto que o leitor antigo deixava vazio agora rende dados', () => {
+    const bruto = JSON.parse(readFileSync('tests/fixtures/credito/apifull-boavista.json', 'utf8'));
+    const c = mapBV(bruto);
+    expect(c.score.valor).not.toBeNull();
+    expect(c.cadastro.fundacao).not.toBeNull();
+  });
+});

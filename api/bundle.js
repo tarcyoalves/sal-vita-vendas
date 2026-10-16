@@ -339633,6 +339633,39 @@ var creditoRouter = router({
       taskId: row.taskId
     };
   }),
+  /**
+   * Refaz o relatório a partir da RESPOSTA JÁ PAGA (payload_bruto), sem chamar a API nem cobrar: serve para
+   * relatórios gravados por uma versão antiga do leitor de campos. Recalcula veredito, score e metadados.
+   */
+  reprocessar: adminProcedure.input(external_exports.object({ id: external_exports.number().int() })).mutation(async ({ input, ctx }) => {
+    const [row] = await db.select().from(creditReports).where(eq(creditReports.id, input.id));
+    if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Relat\xF3rio n\xE3o encontrado" });
+    if (row.payloadBruto == null) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Este relat\xF3rio n\xE3o guardou a resposta original; n\xE3o d\xE1 para reprocessar sem nova consulta." });
+    const chave = chaveDoProdutoGravado(row.produto, row.provedor);
+    const item = CATALOGO_CREDITO.find((c4) => c4.chave === chave);
+    const conteudo = mapeadorDoProduto(chave)(row.payloadBruto);
+    const antigo = row.relatorio;
+    const relatorio = {
+      documento: row.documento,
+      tipo: antigo.tipo,
+      consultadoEm: antigo.consultadoEm,
+      fonte: { provedor: row.provedor, produto: item?.nome ?? antigo.fonte.produto, custoReais: row.custoReais ?? antigo.fonte.custoReais },
+      ...conteudo
+    };
+    const { veredito, motivos } = calcularVeredito(relatorio);
+    await db.update(creditReports).set({
+      relatorio,
+      veredito,
+      motivos,
+      score: relatorio.score.valor,
+      produto: chave,
+      razaoSocial: relatorio.cadastro.razaoSocial ?? row.razaoSocial,
+      municipio: relatorio.cadastro.municipio ?? row.municipio,
+      uf: relatorio.cadastro.uf ?? row.uf
+    }).where(eq(creditReports.id, input.id));
+    console.log(`[credito] relat\xF3rio ${input.id} reprocessado sem custo por user#${ctx.user.id}`);
+    return { id: input.id, veredito, motivos, score: relatorio.score.valor };
+  }),
   consultar: adminProcedure.input(external_exports.object({
     documento: documentoInput,
     tipo: external_exports.enum(["CNPJ", "CPF"]).optional(),

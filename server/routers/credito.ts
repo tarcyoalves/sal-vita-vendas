@@ -29,6 +29,7 @@ import {
 } from '../lib/credito/repo';
 import { getProvedorCredito } from '../lib/credito/provedores';
 import { ErroProvedorCredito } from '../lib/credito/provedores/tipos';
+import { mapeadorDoProduto } from '../lib/credito/provedores/mapeadores';
 import { consultarSaldoApiFull } from '../lib/credito/provedores/boavistaApifull';
 import { gerarPdfCredito } from '../lib/credito/pdf';
 
@@ -189,6 +190,36 @@ export const creditoRouter = router({
         consultadoEm: row.consultadoEm, provedor: row.provedor, produto: row.produto, custoReais: row.custoReais,
         consultadoPorUserId: row.consultadoPorUserId, motivo: row.motivo, taskId: row.taskId,
       };
+    }),
+
+  /**
+   * Refaz o relatório a partir da RESPOSTA JÁ PAGA (payload_bruto), sem chamar a API nem cobrar: serve para
+   * relatórios gravados por uma versão antiga do leitor de campos. Recalcula veredito, score e metadados.
+   */
+  reprocessar: adminProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input, ctx }) => {
+      const [row] = await db.select().from(creditReports).where(eq(creditReports.id, input.id));
+      if (!row) throw new TRPCError({ code: 'NOT_FOUND', message: 'Relatório não encontrado' });
+      if (row.payloadBruto == null) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Este relatório não guardou a resposta original; não dá para reprocessar sem nova consulta.' });
+      const chave = chaveDoProdutoGravado(row.produto, row.provedor);
+      const item = CATALOGO_CREDITO.find((c) => c.chave === chave);
+      const conteudo = mapeadorDoProduto(chave)(row.payloadBruto);
+      const antigo = row.relatorio as RelatorioCredito;
+      const relatorio: RelatorioCredito = {
+        documento: row.documento, tipo: antigo.tipo, consultadoEm: antigo.consultadoEm,
+        fonte: { provedor: row.provedor, produto: item?.nome ?? antigo.fonte.produto, custoReais: row.custoReais ?? antigo.fonte.custoReais },
+        ...conteudo,
+      };
+      const { veredito, motivos } = calcularVeredito(relatorio);
+      await db.update(creditReports).set({
+        relatorio, veredito, motivos, score: relatorio.score.valor, produto: chave,
+        razaoSocial: relatorio.cadastro.razaoSocial ?? row.razaoSocial,
+        municipio: relatorio.cadastro.municipio ?? row.municipio,
+        uf: relatorio.cadastro.uf ?? row.uf,
+      }).where(eq(creditReports.id, input.id));
+      console.log(`[credito] relatório ${input.id} reprocessado sem custo por user#${ctx.user.id}`);
+      return { id: input.id, veredito, motivos, score: relatorio.score.valor };
     }),
 
   consultar: adminProcedure
