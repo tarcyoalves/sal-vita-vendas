@@ -335256,7 +335256,7 @@ var CATALOGO_CREDITO = [
   {
     chave: "boavista",
     endpoint: "scpc-boavista",
-    nome: "Boa Vista Essencial Positivo",
+    nome: "Consulta simples",
     custoReais: 2.75,
     recomendado: true,
     mostra: {
@@ -338912,7 +338912,7 @@ function erroDeRede(e4) {
 }
 var provedorBoaVistaApifull = {
   nome: "boavista_apifull",
-  produto: "Boa Vista SCPC (API Full)",
+  produto: "Consulta simples",
   custoReais: CUSTO_BOAVISTA_REAIS,
   async consultar(documento, tipo, produto = itemDoCatalogo(PRODUTO_PADRAO)) {
     const { token, base, endpoint } = config(produto);

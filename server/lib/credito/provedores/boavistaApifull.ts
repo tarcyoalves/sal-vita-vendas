@@ -83,7 +83,7 @@ function erroDeRede(e: unknown): ErroProvedorCredito {
 
 export const provedorBoaVistaApifull: ProvedorCredito = {
   nome: 'boavista_apifull',
-  produto: 'Boa Vista SCPC (API Full)',
+  produto: 'Consulta simples',
   custoReais: CUSTO_BOAVISTA_REAIS,
   async consultar(documento: string, tipo: TipoDocumento, produto: ItemCatalogoCredito = itemDoCatalogo(PRODUTO_PADRAO) as ItemCatalogoCredito) {
     const { token, base, endpoint } = config(produto);
