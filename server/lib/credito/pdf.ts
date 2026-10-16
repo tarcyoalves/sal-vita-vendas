@@ -307,6 +307,17 @@ class Pagina {
   }
 }
 
+const ACENTO_FRASE: Record<string, string> = { provavel: 'provável', debitos: 'débitos', proximos: 'próximos', ate: 'até', nao: 'não', e: 'é' };
+/** Texto todo em MAIÚSCULAS (como a fonte manda) vira frase normal: minúsculas, 1ª letra maiúscula, acentos comuns. */
+export function frasePelaFonte(t: string | null | undefined): string {
+  const s = (t ?? '').trim();
+  const letras = s.replace(/[^A-Za-zÀ-ú]/g, '');
+  if (letras.length < 8 || letras !== letras.toUpperCase()) return s;
+  const palavras = s.toLowerCase().split(/(\s+)/).map((w) => ACENTO_FRASE[w] ?? w);
+  const f = palavras.join('');
+  return f.charAt(0).toUpperCase() + f.slice(1);
+}
+
 /** Resume o texto da fonte numa linha curta: espaços normalizados, corte na última frase/palavra, "..." no fim. */
 export function resumirTexto(t: string | null | undefined, max = 130): string {
   const s = limparTexto(t).replace(/\s+/g, ' ').trim();
@@ -410,7 +421,7 @@ function secaoResumo(p: Pagina, r: RelatorioCredito, meta: { veredito: Veredito;
   }
   p.y = sy + 84;
 
-  const leitura = resumirTexto(r.score.textoInterpretacao);
+  const leitura = resumirTexto(frasePelaFonte(r.score.textoInterpretacao));
   if (leitura) p.paragrafo(leitura, { cor: CINZA, tam: 8 });
 }
 

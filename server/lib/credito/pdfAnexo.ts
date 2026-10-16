@@ -395,6 +395,8 @@ const EMPRESA_CONHECIDOS = new Set([
   'RAMO_ATIVIDADE_PRIMARIO', 'INSCRICAO_ESTADUAL', 'CAPITAL_SOCIAL', 'ENDERECO', 'OPCAO_TRIBUTARIA',
   'FAIXA_FUNCIONARIOS', 'NUMERO_FUNCIONARIOS', 'QUANTIDADE_FUNCIONARIOS', 'PORTE', 'PORTE_EMPRESA', 'PORTE_DA_EMPRESA',
   'NUMERO_FILIAIS', 'QUANTIDADE_FILIAIS', 'QTD_FILIAIS', 'TELEFONE', 'EMAIL', 'DDD',
+  // Metadados de cadastro sem valor para a decisão de crédito (registro na junta, data em que a fonte atualizou, UF da IE).
+  'NIRE', 'NIRE_UF', 'DATA_CONSULTA', 'INSCRICAO_ESTADUAL_UF', 'CNAE_SECUNDARIO', 'RAMO_ATIVIDADE_SECUNDARIO', 'RAZAO_SOCIAL_ANTERIOR',
 ]);
 
 const ZERO = /^0+(?:[.,]0+)?%?$/;
@@ -613,13 +615,14 @@ export function comportamentoDe(bruto: unknown, pessoaFisica = false): Comportam
       // VALOR é dinheiro; PONTUACAO é pontuação do bureau (NÃO é R$).
       const valor = achar(o, ['VALOR']);
       const pontos = achar(o, ['PONTUACAO']);
-      const texto = [per ? rotuloPeriodoCheio(per) : '', valor ? moedaBR(valor) : pontos ? `pontuação ${pontos}` : ''].filter(Boolean).join(' — ');
-      if (nome && texto) eventos.push([humanizarChave(nome.replace(/\s+/g, '_')), texto]);
+      const texto = [per ? rotuloPeriodoCheio(per) : '', valor ? moedaBR(valor) : ''].filter(Boolean).join(' — ');
+      // Evento só com pontuação do bureau (sem valor em R$): mostra só o período.
+      if (nome && (texto || per)) eventos.push([humanizarChave(nome.replace(/\s+/g, '_')), texto]);
     }
   }
 
   const historico: LinhaComp[] = [];
-  for (const [chave, rotulo] of [['PAGAMENTO_PONTUAL', 'Pagamento pontual'], ['PAGAMENTO_ATRASADO', ''], ['COMPROMISSOS', 'Compromissos'], ['CREDITO_OBTIDO', 'Crédito obtido']] as const) {
+  for (const [chave, rotulo] of [['PAGAMENTO_PONTUAL', 'Pagamento pontual'], ['PAGAMENTO_ATRASADO', '']] as const) {
     for (const l of linhasDe(resto(chave), rotulo, ctx)) {
       let r = l.rotulo.replace(/^./, (c) => c.toUpperCase());
       if (chave === 'PAGAMENTO_ATRASADO') {

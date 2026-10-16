@@ -339616,7 +339616,15 @@ var EMPRESA_CONHECIDOS = /* @__PURE__ */ new Set([
   "QTD_FILIAIS",
   "TELEFONE",
   "EMAIL",
-  "DDD"
+  "DDD",
+  // Metadados de cadastro sem valor para a decisão de crédito (registro na junta, data em que a fonte atualizou, UF da IE).
+  "NIRE",
+  "NIRE_UF",
+  "DATA_CONSULTA",
+  "INSCRICAO_ESTADUAL_UF",
+  "CNAE_SECUNDARIO",
+  "RAMO_ATIVIDADE_SECUNDARIO",
+  "RAZAO_SOCIAL_ANTERIOR"
 ]);
 var ZERO2 = /^0+(?:[.,]0+)?%?$/;
 function semConteudo(v4, prof = 0) {
@@ -339832,12 +339840,12 @@ function comportamentoDe(bruto, pessoaFisica = false) {
       const per = achar(o4, ["PERIODO", "MES_ANO", "DATA"]);
       const valor2 = achar(o4, ["VALOR"]);
       const pontos = achar(o4, ["PONTUACAO"]);
-      const texto2 = [per ? rotuloPeriodoCheio(per) : "", valor2 ? moedaBR(valor2) : pontos ? `pontua\xE7\xE3o ${pontos}` : ""].filter(Boolean).join(" \u2014 ");
-      if (nome && texto2) eventos.push([humanizarChave(nome.replace(/\s+/g, "_")), texto2]);
+      const texto2 = [per ? rotuloPeriodoCheio(per) : "", valor2 ? moedaBR(valor2) : ""].filter(Boolean).join(" \u2014 ");
+      if (nome && (texto2 || per)) eventos.push([humanizarChave(nome.replace(/\s+/g, "_")), texto2]);
     }
   }
   const historico = [];
-  for (const [chave, rotulo] of [["PAGAMENTO_PONTUAL", "Pagamento pontual"], ["PAGAMENTO_ATRASADO", ""], ["COMPROMISSOS", "Compromissos"], ["CREDITO_OBTIDO", "Cr\xE9dito obtido"]]) {
+  for (const [chave, rotulo] of [["PAGAMENTO_PONTUAL", "Pagamento pontual"], ["PAGAMENTO_ATRASADO", ""]]) {
     for (const l4 of linhasDe(resto(chave), rotulo, ctx)) {
       let r5 = l4.rotulo.replace(/^./, (c4) => c4.toUpperCase());
       if (chave === "PAGAMENTO_ATRASADO") {
@@ -340152,6 +340160,15 @@ var Pagina = class {
     return 0;
   }
 };
+var ACENTO_FRASE = { provavel: "prov\xE1vel", debitos: "d\xE9bitos", proximos: "pr\xF3ximos", ate: "at\xE9", nao: "n\xE3o", e: "\xE9" };
+function frasePelaFonte(t5) {
+  const s4 = (t5 ?? "").trim();
+  const letras = s4.replace(/[^A-Za-zÀ-ú]/g, "");
+  if (letras.length < 8 || letras !== letras.toUpperCase()) return s4;
+  const palavras = s4.toLowerCase().split(/(\s+)/).map((w2) => ACENTO_FRASE[w2] ?? w2);
+  const f4 = palavras.join("");
+  return f4.charAt(0).toUpperCase() + f4.slice(1);
+}
 function resumirTexto(t5, max2 = 130) {
   const s4 = limparTexto(t5).replace(/\s+/g, " ").trim();
   if (s4.length <= max2) return s4;
@@ -340237,7 +340254,7 @@ function secaoResumo(p4, r5, meta) {
     doc.polygon([mx - 5, by - 7], [mx + 5, by - 7], [mx, by - 1]).fill("#111827");
   }
   p4.y = sy2 + 84;
-  const leitura = resumirTexto(r5.score.textoInterpretacao);
+  const leitura = resumirTexto(frasePelaFonte(r5.score.textoInterpretacao));
   if (leitura) p4.paragrafo(leitura, { cor: CINZA, tam: 8 });
 }
 var COR_NIVEL = { ALERTA: COR_SEMAFORO.VERMELHO, ATENCAO: "#B45309", POSITIVO: COR_SEMAFORO.VERDE };

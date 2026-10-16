@@ -263,7 +263,7 @@ describe('comportamentoDe', () => {
   it('UMA matriz de 12 meses sem linhas vazias, mais o comprometimento futuro à parte', () => {
     const t = c?.matriz.find((x) => x.t === 'tabela');
     expect(t?.t === 'tabela' && t.colunas).toEqual(['Indicador', 'Out/25', 'Nov/25', 'Dez/25', 'Jan/26', 'Fev/26', 'Mar/26', 'Abr/26', 'Mai/26', 'Jun/26', 'Jul/26', 'Ago/26', 'Set/26']);
-    expect(t?.t === 'tabela' && t.linhas.map((l) => l[0])).toEqual(['Pagamento pontual', 'Atraso 6 a 15 dias', 'Atraso mais de 60 dias', 'Compromissos']);
+    expect(t?.t === 'tabela' && t.linhas.map((l) => l[0])).toEqual(['Pagamento pontual', 'Atraso 6 a 15 dias', 'Atraso mais de 60 dias']); // Compromissos/Crédito obtido saíram: pontuações opacas do bureau
     expect(c?.matriz.filter((x) => x.t === 'tabela')).toHaveLength(2); // histórico + futuro
     expect(c?.matriz.some((x) => x.t === 'sub' && x.texto === 'Comprometimento futuro')).toBe(true);
     expect(JSON.stringify(c?.matriz)).not.toMatch(/Cr[ée]dito obtido|16 a 30/); // linhas só com "-" são omitidas
@@ -343,7 +343,7 @@ describe('PDF sem redundância', () => {
     expect(contar(texto, /COMPORTAMENTO COMERCIAL/g)).toBe(1);
     expect(contar(texto, /Últimos 12 meses/g)).toBe(1);
     expect(contar(texto, /^Pagamento pontual$/gm)).toBe(1);
-    expect(contar(texto, /^Compromissos$/gm)).toBe(1);
+    expect(contar(texto, /^Compromissos$/gm)).toBe(0); // índice opaco do bureau: fora do PDF
     expect(texto).toContain('Maior fatura: Mar/2026 — R$ 1.500,00');
     expect(texto).toContain('Tempo de relacionamento com fornecedores — Acima de 5 anos: R$ 12.000,00');
     expect(texto).not.toContain('Indicadores de comportamento');
