@@ -14,7 +14,8 @@ export interface ProvedorCredito {
  * (credit_queries.erro) — nunca token nem payload.
  */
 export class ErroProvedorCredito extends Error {
-  constructor(public readonly mensagemSegura: string, public readonly detalhe: string) {
+  /** true = a requisição já tinha sido enviada quando falhou (tempo esgotado/queda de rede): o provedor PODE ter cobrado. */
+  constructor(public readonly mensagemSegura: string, public readonly detalhe: string, public readonly cobrancaIncerta: boolean = false) {
     super(mensagemSegura);
     this.name = 'ErroProvedorCredito';
   }

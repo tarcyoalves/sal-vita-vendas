@@ -4,7 +4,7 @@ import { nomeDoProduto } from '../../../../shared/creditoCatalogo';
 import { formatBRL } from '../faturamento/calc';
 
 export interface ResultadoDoProduto {
-  produto: string; ok: boolean; reaproveitado: boolean; cobrado: boolean; custoReais: number; erro?: string;
+  produto: string; ok: boolean; reaproveitado: boolean; cobrado: boolean; cobrancaIncerta?: boolean; custoReais: number; erro?: string;
 }
 
 export type TomResultado = 'ok' | 'reaproveitado' | 'erro';
@@ -17,7 +17,7 @@ export function linhasDoResultado(resultados: readonly ResultadoDoProduto[]): Li
     if (!r.ok) {
       return {
         chave: r.produto, nome, tom: 'erro' as const, titulo: `${nome}: NÃO foi possível puxar`,
-        detalhe: `${r.erro ?? 'Falha ao consultar.'} ${r.cobrado ? `ATENÇÃO: esta consulta FOI cobrada (${formatBRL(r.custoReais)}).` : 'Não foi cobrado.'}`,
+        detalhe: `${r.erro ?? 'Falha ao consultar.'} ${r.cobrado ? `ATENÇÃO: esta consulta FOI cobrada (${formatBRL(r.custoReais)}).` : r.cobrancaIncerta ? 'ATENÇÃO: pode ter sido cobrada. Confira o extrato da API Full antes de repetir.' : 'Não foi cobrado.'}`,
       };
     }
     if (r.reaproveitado) {

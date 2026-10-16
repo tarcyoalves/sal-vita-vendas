@@ -400,8 +400,9 @@ export const creditoRouter = router({
           const seguro = e instanceof ErroProvedorCredito ? e.mensagemSegura : 'Falha ao consultar o provedor de crédito.';
           const detalhe = (e instanceof ErroProvedorCredito ? e.detalhe : e instanceof Error ? e.name : 'erro').slice(0, 500);
           console.error(`[credito] consulta falhou provedor=${provedor.nome} produto=${item.chave} query=${queryId}: ${detalhe}`);
-          await db.update(creditQueries).set({ status: 'ERRO', erro: detalhe, finalizadoEm: new Date() }).where(eq(creditQueries.id, queryId));
-          return { ...base, ok: false, cobrado: false, custoReais: 0, erro: seguro };
+          await db.update(creditQueries).set({ status: 'ERRO', erro: e instanceof ErroProvedorCredito && e.cobrancaIncerta ? `${detalhe} (PODE TER SIDO COBRADA: conferir extrato)` : detalhe, finalizadoEm: new Date() }).where(eq(creditQueries.id, queryId));
+          const incerta = e instanceof ErroProvedorCredito && e.cobrancaIncerta;
+          return { ...base, ok: false, cobrado: false, cobrancaIncerta: incerta, custoReais: 0, erro: seguro };
         }
         const { relatorio, bruto } = resultado;
         const { veredito, motivos } = calcularVeredito(relatorio);

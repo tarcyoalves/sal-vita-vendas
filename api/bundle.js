@@ -338805,10 +338805,12 @@ var provedorSimulado = {
 
 // server/lib/credito/provedores/tipos.ts
 var ErroProvedorCredito = class extends Error {
-  constructor(mensagemSegura, detalhe) {
+  /** true = a requisição já tinha sido enviada quando falhou (tempo esgotado/queda de rede): o provedor PODE ter cobrado. */
+  constructor(mensagemSegura, detalhe, cobrancaIncerta = false) {
     super(mensagemSegura);
     this.mensagemSegura = mensagemSegura;
     this.detalhe = detalhe;
+    this.cobrancaIncerta = cobrancaIncerta;
     this.name = "ErroProvedorCredito";
   }
 };
@@ -339317,7 +339319,7 @@ function mapeadorDoProduto(chave) {
 // server/lib/credito/provedores/boavistaApifull.ts
 var APIFULL_BASE_PADRAO = "https://api.apifull.com.br";
 var CUSTO_BOAVISTA_REAIS = itemDoCatalogo(PRODUTO_PADRAO)?.custoReais ?? 2.75;
-var TIMEOUT_CONSULTA_MS = 2e4;
+var TIMEOUT_CONSULTA_MS = 52e3;
 var TIMEOUT_SALDO_MS = 1e4;
 var STATUS_SUCESSO = ["sucesso", "success", "ok"];
 function config(produto) {
@@ -339358,8 +339360,10 @@ function cabecalhos(token, json4) {
 function erroDeRede(e4) {
   const nome = e4 instanceof Error ? e4.name : "Erro";
   return new ErroProvedorCredito(
-    nome === "AbortError" ? "O provedor de cr\xE9dito demorou demais para responder. Tente novamente." : "N\xE3o foi poss\xEDvel contatar o provedor de cr\xE9dito.",
-    `falha de rede: ${nome}`
+    nome === "AbortError" ? "O provedor demorou demais para responder. A consulta PODE ter sido cobrada na API Full: confira o extrato antes de repetir." : "N\xE3o foi poss\xEDvel contatar o provedor de cr\xE9dito.",
+    `falha de rede: ${nome}`,
+    // Só a consulta (não o saldo) pode ter sido cobrada; quem chama decide. Aqui marcamos qualquer queda depois do envio.
+    nome === "AbortError"
   );
 }
 var provedorBoaVistaApifull = {
@@ -339395,7 +339399,13 @@ var provedorBoaVistaApifull = {
         `HTTP ${resposta.http} status=${curto(status, 60)} message=${mensagem}`
       );
     }
-    const conteudo = mapeadorDoProduto(produto.chave)(corpo2);
+    let conteudo;
+    try {
+      conteudo = mapeadorDoProduto(produto.chave)(corpo2);
+    } catch (e4) {
+      console.error(`[credito] leitor do produto ${produto.chave} falhou (${e4 instanceof Error ? e4.name : "erro"}); usando leitor defensivo`);
+      conteudo = mapeadorDefensivo(corpo2);
+    }
     const relatorio = {
       documento,
       tipo,
@@ -341275,8 +341285,9 @@ var creditoRouter = router({
         const seguro = e4 instanceof ErroProvedorCredito ? e4.mensagemSegura : "Falha ao consultar o provedor de cr\xE9dito.";
         const detalhe = (e4 instanceof ErroProvedorCredito ? e4.detalhe : e4 instanceof Error ? e4.name : "erro").slice(0, 500);
         console.error(`[credito] consulta falhou provedor=${provedor.nome} produto=${item.chave} query=${queryId}: ${detalhe}`);
-        await db.update(creditQueries).set({ status: "ERRO", erro: detalhe, finalizadoEm: /* @__PURE__ */ new Date() }).where(eq(creditQueries.id, queryId));
-        return { ...base, ok: false, cobrado: false, custoReais: 0, erro: seguro };
+        await db.update(creditQueries).set({ status: "ERRO", erro: e4 instanceof ErroProvedorCredito && e4.cobrancaIncerta ? `${detalhe} (PODE TER SIDO COBRADA: conferir extrato)` : detalhe, finalizadoEm: /* @__PURE__ */ new Date() }).where(eq(creditQueries.id, queryId));
+        const incerta = e4 instanceof ErroProvedorCredito && e4.cobrancaIncerta;
+        return { ...base, ok: false, cobrado: false, cobrancaIncerta: incerta, custoReais: 0, erro: seguro };
       }
       const { relatorio, bruto } = resultado;
       const { veredito, motivos } = calcularVeredito(relatorio);

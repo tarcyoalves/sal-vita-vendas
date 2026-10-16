@@ -117,6 +117,8 @@ export interface ResultadoProduto {
   reaproveitado: boolean;
   /** true = o provedor já cobrou esta consulta (mesmo que o relatório não tenha sido gravado). */
   cobrado: boolean;
+  /** true = sem resposta (tempo esgotado): o provedor PODE ter cobrado. Conferir o extrato da API Full. */
+  cobrancaIncerta?: boolean;
   custoReais: number;
   id?: number;
   consultadoEm?: Date;

@@ -29,7 +29,8 @@ export const mapearRespostaBoaVista = mapeadorDefensivo;
 
 export const APIFULL_BASE_PADRAO = 'https://api.apifull.com.br';
 export const CUSTO_BOAVISTA_REAIS = itemDoCatalogo(PRODUTO_PADRAO)?.custoReais ?? 2.75; // catálogo (medido 16/10/2026)
-const TIMEOUT_CONSULTA_MS = 20_000;
+// A função da Vercel tem 60 s (vercel.json). O Serasa Premium chegou a passar de 20 s, e o provedor COBRA mesmo se a resposta for perdida.
+const TIMEOUT_CONSULTA_MS = 52_000;
 const TIMEOUT_SALDO_MS = 10_000;
 
 // S1 — valores de `status` aceitos como sucesso (a documentação não os lista; ajustar com a 1ª resposta real).
@@ -76,8 +77,12 @@ function cabecalhos(token: string, json: boolean): Record<string, string> {
 function erroDeRede(e: unknown): ErroProvedorCredito {
   const nome = e instanceof Error ? e.name : 'Erro';
   return new ErroProvedorCredito(
-    nome === 'AbortError' ? 'O provedor de crédito demorou demais para responder. Tente novamente.' : 'Não foi possível contatar o provedor de crédito.',
+    nome === 'AbortError'
+      ? 'O provedor demorou demais para responder. A consulta PODE ter sido cobrada na API Full: confira o extrato antes de repetir.'
+      : 'Não foi possível contatar o provedor de crédito.',
     `falha de rede: ${nome}`,
+    // Só a consulta (não o saldo) pode ter sido cobrada; quem chama decide. Aqui marcamos qualquer queda depois do envio.
+    nome === 'AbortError',
   );
 }
 
@@ -115,7 +120,15 @@ export const provedorBoaVistaApifull: ProvedorCredito = {
         `HTTP ${resposta.http} status=${curto(status, 60)} message=${mensagem}`,
       );
     }
-    const conteudo = mapeadorDoProduto(produto.chave)(corpo);
+    // Se o leitor específico falhar com uma resposta paga, não perde a consulta: cai no leitor defensivo (a resposta bruta é gravada
+    // de qualquer jeito e dá para "Reprocessar" depois sem novo custo).
+    let conteudo: ConteudoMapeado;
+    try {
+      conteudo = mapeadorDoProduto(produto.chave)(corpo);
+    } catch (e) {
+      console.error(`[credito] leitor do produto ${produto.chave} falhou (${e instanceof Error ? e.name : 'erro'}); usando leitor defensivo`);
+      conteudo = mapeadorDefensivo(corpo);
+    }
     const relatorio: RelatorioCredito = {
       documento, tipo, consultadoEm: new Date().toISOString(),
       fonte: { provedor: this.nome, produto: produto.nome, custoReais: produto.custoReais },
