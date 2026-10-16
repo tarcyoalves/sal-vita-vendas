@@ -3,6 +3,8 @@
 // `RelatorioCredito`. Nenhum campo aqui é inventado: campo que o provedor não trouxer fica null / lista vazia,
 // e a tela/PDF mostram "Não informado pela fonte" (nunca "Nada consta" sem a fonte ter dito isso).
 
+import { faixaExibivel } from './creditoRotulos';
+
 export type TipoDocumento = 'CNPJ' | 'CPF';
 export type Veredito = 'APROVADO' | 'COM_RESTRICAO' | 'REPROVADO_A_PRAZO';
 export type Semaforo = 'VERDE' | 'AMARELO' | 'VERMELHO';
@@ -139,8 +141,8 @@ export interface ScoreEntrada { valor: number | null; probabilidadeInadimplencia
 /** Todos os scores que UMA fonte trouxe, na ordem: o principal primeiro, depois `outros`. Nunca fundidos. */
 export function entradasDeScore(s: RelatorioCredito['score']): ScoreEntrada[] {
   return [
-    { valor: s.valor, probabilidadeInadimplencia: s.probabilidadeInadimplencia, faixa: s.faixa, texto: s.textoInterpretacao, rotulo: s.rotulo ?? null },
-    ...(s.outros ?? []).map((o) => ({ valor: o.valor, probabilidadeInadimplencia: o.probabilidadeInadimplencia, faixa: o.faixa, texto: o.texto, rotulo: o.rotulo })),
+    { valor: s.valor, probabilidadeInadimplencia: s.probabilidadeInadimplencia, faixa: faixaExibivel(s.faixa), texto: s.textoInterpretacao, rotulo: s.rotulo ?? null },
+    ...(s.outros ?? []).map((o) => ({ valor: o.valor, probabilidadeInadimplencia: o.probabilidadeInadimplencia, faixa: faixaExibivel(o.faixa), texto: o.texto, rotulo: o.rotulo })),
   ];
 }
 

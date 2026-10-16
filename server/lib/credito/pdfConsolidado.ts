@@ -12,6 +12,7 @@
 import type { RelatorioConsolidado, ScoreDaFonte } from '../../../shared/credito';
 import { linhasDaMatriz, type TomMatriz, type VisualMatriz } from '../../../shared/creditoMatriz';
 import { CONSULTA_COMPLETA, nomeDoProduto } from '../../../shared/creditoCatalogo';
+import { consultasPorJanelaTexto, faixaExibivel, segmentoLegivel } from '../../../shared/creditoRotulos';
 import { comportamentoDe, empresaExtrasDe } from './pdfAnexo';
 import {
   AZUL, AZUL_CLARO, CINZA, COR_SEMAFORO, GRUPOS, LARG, LINHA, MX, TEXTO, dataHoraCurta, detalhesDoGrupo, desenharParte,
@@ -77,7 +78,8 @@ function cartaoDeScore(p: Pagina, s: ScoreDaFonte, x: number, y: number, w: numb
   doc.font('Helvetica').fontSize(8).fillColor(TEXTO)
     .text(`Inadimplência: `, ix, y + 63, { continued: true, width: iw, lineBreak: false })
     .font('Helvetica-Bold').text(s.probabilidadeInadimplencia === null ? 'não informada' : pct(s.probabilidadeInadimplencia));
-  if (s.faixa) doc.font('Helvetica').fontSize(8).fillColor(TEXTO).text(`Faixa: ${limparTexto(s.faixa)}`, ix, y + 74, { width: iw, lineBreak: false, ellipsis: true });
+  const faixa = faixaExibivel(s.faixa);
+  if (faixa) doc.font('Helvetica').fontSize(8).fillColor(TEXTO).text(`Faixa: ${limparTexto(faixa)}`, ix, y + 74, { width: iw, lineBreak: false, ellipsis: true });
   // régua 0-1000 compacta com marcador
   const by = y + 90;
   const bh = 5;
@@ -205,13 +207,7 @@ function secaoConsultasDoDocumento(p: Pagina, c: RelatorioConsolidado) {
 
   if (janelas) {
     const quem = c.consultasPorFonte.find((f) => f.c30?.origem === 'janela')?.produtoNome;
-    const n = (v: number | null) => (v === null ? 'não informado' : String(v));
-    p.garantir(70);
-    p.subtitulo(`Contagem oficial por janela${quem ? ` (${limparTexto(quem)})` : ''}`);
-    p.tabela(
-      [{ titulo: 'Até 30 dias', largura: 1, alinhar: 'center' }, { titulo: '31 a 60 dias', largura: 1, alinhar: 'center' }, { titulo: '61 a 90 dias', largura: 1, alinhar: 'center' }, { titulo: 'Mais de 90 dias', largura: 1, alinhar: 'center' }],
-      [[janelas.ate30, janelas.de31a60, janelas.de61a90, janelas.mais90].map((v): Celula => ({ texto: n(v), negrito: true }))],
-    );
+    p.paragrafo(`Consultas por janela${quem ? ` (${limparTexto(quem)})` : ''}: ${consultasPorJanelaTexto(janelas)}`, { negrito: true, tam: 8.5 });
   }
   if (totais.length) {
     p.paragrafo('Total em 12 meses: ' + totais.map((f) => `${limparTexto(f.produtoNome)}: ${f.total12}`).join('   |   '), { negrito: true, tam: 8.5 });
@@ -238,10 +234,10 @@ function secaoConsultasDoDocumento(p: Pagina, c: RelatorioConsolidado) {
   }
   if (segmentos.length) {
     p.garantir(40 + segmentos.length * 15);
-    p.subtitulo('Consultas por segmento (mês, quantidade e atividade do consultante)');
+    p.subtitulo('Consultas por mês e segmento');
     p.tabela(
-      [{ titulo: 'Mês', largura: 60 }, { titulo: 'Segmento', largura: 385 }, { titulo: 'Quantidade', largura: 70, alinhar: 'right' }],
-      segmentos.map((s) => [{ texto: mesAno(s.mes) }, { texto: s.segmento }, { texto: s.quantidade === null ? '—' : String(s.quantidade) }]),
+      [{ titulo: 'Mês/ano', largura: 60 }, { titulo: 'Quantidade', largura: 70, alinhar: 'right' }, { titulo: 'Segmento do consultante', largura: 385 }],
+      segmentos.map((s) => [{ texto: mesAno(s.mes) }, { texto: s.quantidade === null ? '—' : String(s.quantidade) }, { texto: segmentoLegivel(s.segmento) }]),
     );
   }
 }

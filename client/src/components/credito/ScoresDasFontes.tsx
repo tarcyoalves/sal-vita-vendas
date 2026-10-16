@@ -1,5 +1,5 @@
 import type { RelatorioConsolidado, ScoreDaFonte } from '../../../../shared/credito';
-import { frasePelaFonte } from '../../../../shared/creditoRotulos';
+import { faixaExibivel, frasePelaFonte } from '../../../../shared/creditoRotulos';
 
 const pct = (n: number | null) => (n === null ? 'não informada' : `${n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })}%`);
 
@@ -36,7 +36,7 @@ function Cartao({ s }: { s: ScoreDaFonte }) {
         <>
           <p className="text-3xl font-bold tabular-nums text-brand-700">{s.valor}</p>
           <p className="text-xs text-slate-700">Inadimplência <strong className="tabular-nums">{pct(s.probabilidadeInadimplencia)}</strong></p>
-          {s.faixa && <p className="break-words text-xs text-slate-700">Faixa: {s.faixa}</p>}
+          {faixaExibivel(s.faixa) && <p className="break-words text-xs text-slate-700">Faixa: {faixaExibivel(s.faixa)}</p>}
           <ReguaScore valor={s.valor as number} />
           {s.texto && <p className="line-clamp-2 text-[11px] text-slate-500" title={frasePelaFonte(s.texto)}>{frasePelaFonte(s.texto)}</p>}
         </>

@@ -128,17 +128,33 @@ export function custoConsultaCompleta(itens: readonly ItemCatalogoCredito[] = CA
 /** Das fontes da consulta completa, as que NÃO estão entre os produtos já consultados (chaves). */
 export const fontesFaltantes = (consultados: readonly string[]): string[] => CONSULTA_COMPLETA.filter((c) => !consultados.includes(c));
 
-/** Valor gravado em credit_reports.produto: a chave do catálogo; linhas antigas guardavam o nome do provedor. */
+const semMarcas = (t: string): string => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+/**
+ * Valor gravado em credit_reports.produto: a chave do catálogo; linhas antigas guardavam o nome do provedor.
+ * Também reconhece o NOME exibido do catálogo ("Serasa Premium", "Consulta simples"), sem diferenciar acento/caixa:
+ * é o que `relatorio.fonte.produto` carrega.
+ */
 export function chaveDoProdutoGravado(produto: string | null | undefined, provedor: string | null | undefined): string {
   if (produto && itemDoCatalogo(produto)) return produto;
+  if (produto) {
+    const alvo = semMarcas(produto);
+    const porNome = CATALOGO_CREDITO.find((i) => semMarcas(i.nome) === alvo || semMarcas(i.chave) === alvo);
+    if (porNome) return porNome.chave;
+  }
   // Legado (antes do seletor): havia um único produto, o Boa Vista (real ou simulado).
   return provedor === 'boavista_apifull' || provedor === 'simulado' ? PRODUTO_PADRAO : (produto ?? PRODUTO_PADRAO);
 }
 
+/** Nome exibido do produto. `produto` pode ser a chave, o nome do catálogo ou o valor legado; a coluna do registro tem prioridade (passe-a primeiro). */
 export function nomeDoProduto(produto: string | null | undefined, provedor?: string | null): string {
   const chave = chaveDoProdutoGravado(produto, provedor);
   return itemDoCatalogo(chave)?.nome ?? (produto || 'Produto desconhecido');
 }
+
+/** A data da situação cadastral NUNCA é "desde": no Serasa é a data em que a situação foi informada/atualizada. */
+export const rotuloDataSituacao = (produto: string | null | undefined, provedor?: string | null): string =>
+  chaveDoProdutoGravado(produto, provedor) === 'serasa_premium' ? 'informada em' : 'em';
 
 const centavos = (n: number) => Math.round(n * 100);
 export const arredondar = (n: number): number => centavos(n) / 100;

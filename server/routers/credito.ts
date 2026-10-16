@@ -652,7 +652,7 @@ export const creditoRouter = router({
       try {
         // Sempre regenerado a partir do relatório gravado (determinístico); nada de binário no banco.
         const buf = await gerarPdfCredito(row.relatorio, {
-          veredito: comoVeredito(row.veredito), motivos: row.motivos, consultadoPor: autor?.name ?? null,
+          veredito: comoVeredito(row.veredito), motivos: row.motivos, consultadoPor: autor?.name ?? null, produto: row.produto,
         }, row.payloadBruto);
         const dia = row.consultadoEm.toISOString().slice(0, 10).replace(/-/g, '');
         return { nomeArquivo: `analise-credito-${row.documento}-${dia}.pdf`, base64: buf.toString('base64') };

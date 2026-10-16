@@ -7,10 +7,10 @@ import { QueryError } from '../QueryError';
 import { trpc } from '../../lib/trpc';
 import { useAuth } from '../../_core/hooks/useAuth';
 import { formatarDocumento } from '../../lib/credito/documento';
-import { frasePelaFonte } from '../../../../shared/creditoRotulos';
+import { faixaExibivel, frasePelaFonte } from '../../../../shared/creditoRotulos';
 import { dataHoraBR, permissoesCredito } from '../../lib/credito/regras';
 import { analisarSinais, entradasDeScore, ROTULO_VEREDITO, type RelatorioCredito, type Veredito } from '../../../../shared/credito';
-import { fontesFaltantes } from '../../../../shared/creditoCatalogo';
+import { fontesFaltantes, nomeDoProduto } from '../../../../shared/creditoCatalogo';
 import { StatusBadge } from '../StatusBadge';
 import { ConsultarOutraFonte } from './ConsultarOutraFonte';
 import { CreditoSemaforo } from './CreditoSemaforo';
@@ -75,7 +75,7 @@ export function RelatorioCreditoDialog({ reportId = null, documento = null, open
             {r && d
               ? consolidado
                 ? `${r.tipo} ${formatarDocumento(r.documento)} · Fontes: ${consolidado.fontes.map((f) => `${f.produtoNome} (${dataHoraBR(f.consultadoEm)})`).join(' + ')}`
-                : `${r.tipo} ${formatarDocumento(r.documento)} · consulta em ${dataHoraBR(d.consultadoEm)} · Fonte: ${r.fonte.provedor === 'boavista_apifull' ? 'API Full' : r.fonte.provedor === 'simulado' ? 'Simulado' : r.fonte.provedor} / ${r.fonte.produto}`
+                : `${r.tipo} ${formatarDocumento(r.documento)} · consulta em ${dataHoraBR(d.consultadoEm)} · Fonte: ${r.fonte.provedor === 'boavista_apifull' ? 'API Full' : r.fonte.provedor === 'simulado' ? 'Simulado' : r.fonte.provedor} / ${nomeDoProduto(q.data?.produto ?? r.fonte.produto, r.fonte.provedor)}`
               : 'Carregando…'}
           </DialogDescription>
         </DialogHeader>
@@ -134,7 +134,7 @@ export function RelatorioCreditoDialog({ reportId = null, documento = null, open
                     <p className="text-xs text-slate-500">Probabilidade de inadimplência</p>
                     <p className="text-lg font-semibold tabular-nums text-slate-900">{pct(r.score.probabilidadeInadimplencia)}</p>
                   </div>
-                  {r.score.faixa && <div><p className="text-xs text-slate-500">Faixa</p><p className="text-sm text-slate-900">{r.score.faixa}</p></div>}
+                  {faixaExibivel(r.score.faixa) && <div><p className="text-xs text-slate-500">Faixa</p><p className="text-sm text-slate-900">{faixaExibivel(r.score.faixa)}</p></div>}
                 </div>
                 {entradasDeScore(r.score).slice(1).map((o) => (
                   <p key={o.rotulo ?? 'outro'} className="text-sm text-slate-800">

@@ -244,7 +244,7 @@ function pesoColuna(titulo: string, valores: string[]): number {
  */
 function tabelaDe(linhasBrutas: Obj[], ctx: Ctx): Parte[] {
   const chaves: string[] = [];
-  for (const o of linhasBrutas) for (const k of Object.keys(o)) if (!chaves.includes(k)) chaves.push(k);
+  for (const o of linhasBrutas) for (const k of Object.keys(o)) if (!chaves.includes(k) && !ehRuido(k)) chaves.push(k);
   const celulas = linhasBrutas.map((o) => {
     const c: Ctx = { ...ctx, pf: ctx.pf || ehPessoaFisicaMarcada(o) };
     return chaves.map((k) => textoCelula(k, o[k], c));
@@ -309,6 +309,7 @@ function emPartes(valor: unknown, caminho: string[], ctx: Ctx, saida: Parte[], p
   const pares: Array<[string, string]> = [];
   const filhos: Array<[string, unknown]> = [];
   for (const [k, v] of Object.entries(valor)) {
+    if (ehRuido(k)) continue;
     if (ehEscalar(v)) {
       const t = textoEscalar(k, v, c);
       if (t) pares.push([rotuloCampo(k, c, [t]), t]);
@@ -378,7 +379,12 @@ const BLOCOS_COBERTOS = new Set([
   'SCORES', 'SCORE', 'HIST_CONSULTAS', 'PASSAGENS_COMERCIAIS', 'CONSULTAS', 'QUADRO_SOCIETARIO', 'FATURAMENTO_PRESUMIDO',
   'VEICULOS_POR_DOCUMENTO', 'VEICULAR', 'EVENTOS_PESSOA_JURIDICA', 'PERIODO_RELACIONAMENTO_FORNECEDORES', 'CREDITO_OBTIDO',
   'COMPROMISSOS', 'PAGAMENTO_PONTUAL', 'PAGAMENTO_ATRASADO', 'COMPROMETIMENTO_FUTURO',
+  // Endereço: vai para "Dados da empresa" (cadastro.endereco), nunca para o anexo.
+  'SOMENTE_ENDERECO', 'ENDERECOS', 'ENDERECO',
 ]);
+/** Campos de controle da fonte (flags e códigos internos): sem valor para a decisão, nunca impressos no anexo. */
+const RUIDO_CAMPO = /^(REGISTRO_LOCALIZADO|REGISTRO_ENCONTRADO|ENCONTRADO|COD(IGO)?_IDENTIFICACAO(_\w+)?|ID_ENDERECO|COD_ENDERECO|TIPO_PESSOA|TIPO_DOCUMENTO|SEQUENCIAL|SEQ)$/;
+const ehRuido = (k: string): boolean => RUIDO_CAMPO.test(semAcento(semPrefixo(k)));
 /** Blocos de restrição: com ocorrências o corpo os detalha; zerados viram um nome em "Sem ocorrências em". */
 const NOMES_RESTRICAO: Record<string, string> = {
   PROTESTOS: 'Protestos', PROTESTO_SINTETICO: 'Protestos', PROTESTO_ANALITICO: 'Protestos',
@@ -397,6 +403,9 @@ const EMPRESA_CONHECIDOS = new Set([
   'NUMERO_FILIAIS', 'QUANTIDADE_FILIAIS', 'QTD_FILIAIS', 'TELEFONE', 'EMAIL', 'DDD',
   // Metadados de cadastro sem valor para a decisão de crédito (registro na junta, data em que a fonte atualizou, UF da IE).
   'NIRE', 'NIRE_UF', 'DATA_CONSULTA', 'INSCRICAO_ESTADUAL_UF', 'CNAE_SECUNDARIO', 'RAMO_ATIVIDADE_SECUNDARIO', 'RAZAO_SOCIAL_ANTERIOR',
+  // Já lidos pelo mapeador (complementos) e mostrados em "Dados da empresa".
+  'CNAE_SECUNDARIOS', 'CNAES_SECUNDARIOS', 'TEMPO_ATUACAO', 'TEMPO_DE_ATUACAO', 'MATRIZ_FILIAL', 'MATRIZ', 'FILIAL', 'REPRESENTANTE',
+  'TIPO_ESTABELECIMENTO',
 ]);
 
 const ZERO = /^0+(?:[.,]0+)?%?$/;
@@ -431,21 +440,48 @@ function omitirChaves(v: unknown, chaves: Set<string>): unknown {
   return out;
 }
 
-/** INFORMACOES_ALERTAS_RESTRICOES: alertas com conteúdo ("... QUANTIDADE TOTAL: 0" não é alerta). */
+// Títulos de INFORMACOES_ALERTAS_RESTRICOES que NUNCA viram "Alerta da fonte": o mapeador já os consome (consultas por janela e
+// por mês/segmento, matriz/filial, tempo de atuação, CNAEs secundários, representante) ou são ruído informativo.
+const TITULO_NAO_ALERTA = /^(CONSULTAS?\b|ULTIMAS?\s+CONSULTAS|MATRIZ\s*\/?\s*FILIAL|TEMPO\s+DE\s+ATUACAO|CNAES?\s+SECUNDARI|REPRESENTANTE|AERONAVES?|IMOVEIS|IMOVEL)/;
+const SEM_REGISTRO = /NENHUM(A)?\s+(REGISTRO|OCORRENCIA)|NAO\s+(HA|CONSTA|FORAM\s+ENCONTRAD)|SEM\s+(REGISTRO|OCORRENCIA)/;
+const NIVEL_INFORMACAO = /^(INFORMACAO|INFORMATIVO|INFO|INFORMATIVA)$/;
+const NIVEL_CONHECIDO = /^(INFORMACAO|INFORMATIVO|INFORMATIVA|INFO|AVISO|ALERTA|ATENCAO|RESTRICAO|CRITICO|CRITICA|ALTO|ALTA|MEDIO|MEDIA|BAIXO|BAIXA|GRAVE)$/;
+
+/**
+ * INFORMACOES_ALERTAS_RESTRICOES: só alertas/restrições de verdade, uma linha por alerta distinto, sem o nível ("— 1 — informacao").
+ * Fora: títulos já consumidos pelo mapeador, "nenhum registro encontrado", "quantidade total: 0" e informação sem conteúdo.
+ */
 function alertasDe(resto: unknown): string[] {
   if (!ehObj(resto) || !Array.isArray(resto.OCORRENCIAS)) return [];
-  const out: string[] = [];
+  const out = new Map<string, string>();
   for (const o of resto.OCORRENCIAS) {
     if (!ehObj(o)) continue;
-    const campos = Object.entries(o)
-      .map(([k, v]) => [semPrefixo(k).toUpperCase(), ehEscalar(v) ? (valorSeguro(k, String(v)) ?? '') : ''] as const)
-      .filter(([, v]) => v);
-    if (!campos.length) continue;
-    const obs = campos.find(([k]) => k.startsWith('OBS'))?.[1] ?? '';
-    if (/:\s*0+$/.test(obs)) continue;
-    out.push(capitalizar(campos.map(([, v]) => v).join(' — ')));
+    let titulo = '';
+    let obs = '';
+    let nivel = '';
+    const outros: string[] = [];
+    for (const [k, v] of Object.entries(o)) {
+      const chave = semPrefixo(k).toUpperCase();
+      const lista = Array.isArray(v) ? v.filter(ehEscalar) : [v];
+      const t = lista.filter(ehEscalar).map((x) => valorSeguro(k, String(x)) ?? '').filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+      if (!t) continue;
+      if (chave.startsWith('TITULO') || chave === 'TITLE') titulo = t;
+      else if (chave.startsWith('OBS')) obs = t;
+      else if (NIVEL_CONHECIDO.test(semAcento(t).trim())) nivel = semAcento(t).trim();
+      else if (!/^\d+$/.test(t) && !ehRuido(k)) outros.push(t);
+    }
+    const tituloNorm = semAcento(titulo).replace(/\s+/g, ' ').trim();
+    const obsNorm = semAcento(obs);
+    if (TITULO_NAO_ALERTA.test(tituloNorm)) continue;
+    if (SEM_REGISTRO.test(obsNorm) || /:\s*0+$/.test(obs)) continue;
+    const conteudo = [obs, ...outros].filter(Boolean).join(' — ');
+    if (!titulo && !conteudo) continue;
+    // informação (ou nível desconhecido) sem conteúdo próprio não é alerta
+    if ((!nivel || NIVEL_INFORMACAO.test(nivel)) && !conteudo) continue;
+    const texto = capitalizar([titulo, conteudo].filter(Boolean).join(' — '));
+    out.set(semAcento(texto), texto);
   }
-  return out;
+  return [...out.values()];
 }
 
 /** `pessoaFisica`: o documento consultado é CPF (todo contato da resposta é de pessoa física). */

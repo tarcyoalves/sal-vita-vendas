@@ -3,7 +3,8 @@
 import { formatBRL } from '../../lib/faturamento/calc';
 import { mascararDocumentoSocio } from '../../lib/credito/documento';
 import { dataBR, mesAnoBR } from '../../lib/credito/regras';
-import { naturezaJuridicaTexto } from '../../../../shared/creditoRotulos';
+import { cnaesCompactos, funcionariosTexto, naturezaJuridicaTexto, segmentoLegivel, situacaoComData } from '../../../../shared/creditoRotulos';
+import { rotuloDataSituacao } from '../../../../shared/creditoCatalogo';
 import { atenuacaoDoItem, type ComportamentoTela, type RelatorioConsolidado, type RelatorioCredito, type TabelaTela } from '../../../../shared/credito';
 
 export const GRUPOS: Array<[keyof RelatorioCredito['anotacoes'], string]> = [
@@ -33,7 +34,7 @@ export function Campos({ pares }: { pares: Array<[string, string]> }) {
       {pares.map(([k, v]) => (
         <div key={k} className="min-w-0">
           <dt className="text-xs text-slate-500">{k}</dt>
-          <dd className="break-words text-slate-900">{v}</dd>
+          <dd className="whitespace-pre-line break-words text-slate-900">{v}</dd>
         </div>
       ))}
     </dl>
@@ -145,15 +146,15 @@ export function DadosDaEmpresa({ r }: { r: RelatorioCredito }) {
   const comp = r.complementos;
   const fant = c.nomeFantasia && c.nomeFantasia !== c.razaoSocial ? c.nomeFantasia : '';
   const ender = [c.endereco, [c.municipio, c.uf].filter(Boolean).join('/')].filter(Boolean).join(' — ');
-  const sec = (comp?.cnaesSecundarios ?? []).filter((x) => x !== c.cnaePrincipal);
+  const sec = cnaesCompactos(comp?.cnaesSecundarios, c.cnaePrincipal);
   const rep = comp?.representante;
   const pares = ([
     ['Nome fantasia', fant],
-    ['Situação', c.situacao ? c.situacao + (c.situacaoEm && c.situacaoEm !== c.fundacao ? ` (desde ${dataBR(c.situacaoEm)})` : '') : ''],
+    ['Situação', situacaoComData(c.situacao, c.situacaoEm, c.fundacao, dataBR, rotuloDataSituacao(r.fonte.produto, r.fonte.provedor))],
     ['Fundação', c.fundacao ? dataBR(c.fundacao) : ''],
     ['Natureza jurídica', naturezaJuridicaTexto(c.naturezaJuridica)],
     ['Capital social', c.capitalSocial === null ? '' : brl(c.capitalSocial)],
-    ['Porte / funcionários', comp?.funcionariosFaixa ? `${comp.funcionariosFaixa} funcionários` : ''],
+    ['Porte / funcionários', funcionariosTexto(comp?.funcionariosFaixa)],
     ['Faturamento presumido', comp?.faturamentoPresumidoFaixa ?? ''],
     ['Tempo de atuação', comp?.tempoAtuacao ?? ''],
     ['Matriz / filial', comp?.matrizFilial ?? ''],
@@ -161,7 +162,7 @@ export function DadosDaEmpresa({ r }: { r: RelatorioCredito }) {
     ['Opção tributária', c.opcaoTributaria ?? ''],
     ['Nº de filiais', c.numeroFiliais === null ? '' : String(c.numeroFiliais)],
     ['CNAE e atividade', [c.cnaePrincipal, c.atividade].filter(Boolean).join(' — ')],
-    ['CNAEs secundários', sec.slice(0, 5).join('; ') + (sec.length > 5 ? `; +${sec.length - 5}` : '')],
+    ['CNAEs secundários', [...sec.itens, ...(sec.restantes ? [`+${sec.restantes}`] : [])].join('\n')],
     ['Endereço', ender],
     ['Representante', rep && (rep.nome || rep.documento) ? [rep.nome, rep.documento ? mascararDocumentoSocio(rep.documento) : ''].filter(Boolean).join(' — ') : ''],
     ['Veículos da empresa', comp?.veiculos?.length ? comp.veiculos.map((v) => v.marcaModelo).join('; ') : ''],
@@ -208,7 +209,7 @@ export function ConsultasDoDocumento({ r, consolidado }: { r: RelatorioCredito; 
     <Secao titulo="Consultas ao documento">
       {janelas && (
         <div className="space-y-1">
-          <p className="text-xs font-semibold text-slate-700">Contagem oficial por janela{quem ? ` (${quem})` : ''}</p>
+          <p className="text-xs font-semibold text-slate-700">Consultas por janela{quem ? ` (${quem})` : ''}</p>
           <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {([['Até 30 dias', janelas.ate30], ['31 a 60 dias', janelas.de31a60], ['61 a 90 dias', janelas.de61a90], ['Mais de 90 dias', janelas.mais90]] as const).map(([k, v]) => (
               <div key={k} className="rounded-lg border border-slate-200 px-3 py-2 text-center">
@@ -243,12 +244,12 @@ export function ConsultasDoDocumento({ r, consolidado }: { r: RelatorioCredito; 
       )}
       {segmentos.length > 0 && (
         <div className="space-y-1">
-          <p className="text-xs font-semibold text-slate-700">Consultas por segmento (mês, quantidade e atividade do consultante)</p>
+          <p className="text-xs font-semibold text-slate-700">Consultas por mês e segmento</p>
           <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 text-sm">
             {segmentos.map((s, i) => (
               <li key={i} className="grid grid-cols-[4.5rem_1fr_auto] items-baseline gap-3 px-3 py-1.5">
                 <span className="text-xs tabular-nums text-slate-500">{mesAno(s.mes)}</span>
-                <span className="min-w-0 break-words">{s.segmento}</span>
+                <span className="min-w-0 break-words">{segmentoLegivel(s.segmento)}</span>
                 <span className="tabular-nums font-medium">{s.quantidade ?? '—'}</span>
               </li>
             ))}

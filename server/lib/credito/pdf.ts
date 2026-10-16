@@ -11,6 +11,7 @@
 // traz as fontes embutidas no próprio arquivo e funciona igual em Node, no teste e no bundle serverless.
 import type { RelatorioCredito, Veredito } from '../../../shared/credito';
 import { entradasDeScore } from '../../../shared/credito';
+import { consultasPorJanelaTexto, faixaExibivel, segmentoLegivel } from '../../../shared/creditoRotulos';
 import { nomeDoProduto } from '../../../shared/creditoCatalogo';
 import { consultasPorMes, montarAnexo, registrosDaParte, type Anexo } from './pdfAnexo';
 import {
@@ -51,8 +52,9 @@ function secaoResumo(p: Pagina, r: RelatorioCredito, meta: { veredito: Veredito;
   doc.font('Helvetica').fontSize(8).fillColor(CINZA).text('SCORE (0 A 1000)', MX + 10, sy + 8, { width: 130, lineBreak: false });
   doc.font('Helvetica-Bold').fontSize(v === null ? 14 : 34).fillColor(AZUL)
     .text(v === null ? 'Não informado' : String(v), MX + 10, sy + (v === null ? 28 : 20), { width: 130, lineBreak: false });
-  if (r.score.faixa) {
-    doc.font('Helvetica').fontSize(8.5).fillColor(TEXTO).text(`Faixa: ${txt(r.score.faixa)}`, MX + 10, sy + 60, { width: 130, lineBreak: false });
+  const faixa = faixaExibivel(r.score.faixa);
+  if (faixa) {
+    doc.font('Helvetica').fontSize(8.5).fillColor(TEXTO).text(`Faixa: ${txt(faixa)}`, MX + 10, sy + 60, { width: 130, lineBreak: false });
   }
 
   const rx = MX + 170;
@@ -132,11 +134,19 @@ function secaoAnotacoes(p: Pagina, r: RelatorioCredito, agora: Date, anexo: Anex
 }
 
 // ---------- 6. consultas ao documento ----------
+const mesAnoDe = (aaaamm: string | null): string => {
+  const m = aaaamm ? /^(\d{4})-(\d{2})/.exec(aaaamm) : null;
+  return m ? `${m[2]}/${m[1]}` : '—';
+};
+
 function secaoConsultas(p: Pagina, r: RelatorioCredito, bruto: unknown) {
   const mensal = consultasPorMes(bruto);
   const total = r.complementos?.consultas12Meses;
-  if (!r.consultasRecentes.length && !mensal && (total === null || total === undefined)) return;
+  const janelas = r.complementos?.consultasJanelas;
+  const segmentos = r.complementos?.consultasPorSegmento ?? [];
+  if (!r.consultasRecentes.length && !mensal && !janelas && !segmentos.length && (total === null || total === undefined)) return;
   p.titulo('Consultas ao documento');
+  if (janelas) p.paragrafo('Consultas por janela (contagem da fonte): ' + consultasPorJanelaTexto(janelas), { negrito: true, tam: 8.5 });
   if (typeof total === 'number') {
     const listadas = r.consultasRecentes.length;
     p.paragrafo(`Total em 12 meses: ${total}` + (listadas > 0 && listadas < total ? ` (a fonte listou ${listadas} de ${total})` : ''), { negrito: true, tam: 8.5 });
@@ -146,6 +156,14 @@ function secaoConsultas(p: Pagina, r: RelatorioCredito, bruto: unknown) {
     const colunas: Coluna[] = [{ titulo: 'Data', largura: 70 }, { titulo: 'Consultante', largura: comQtd ? 360 : 445 }];
     if (comQtd) colunas.push({ titulo: 'Quantidade', largura: 85, alinhar: 'right' });
     p.tabela(colunas, r.consultasRecentes.map((c) => [{ texto: dataBR(c.data) }, { texto: txt(c.consultante) }, ...(comQtd ? [{ texto: String(c.quantidade) }] : [])]));
+  }
+  if (segmentos.length) {
+    p.garantir(40 + segmentos.length * 15);
+    p.subtitulo('Consultas por mês e segmento');
+    p.tabela(
+      [{ titulo: 'Mês/ano', largura: 60 }, { titulo: 'Quantidade', largura: 70, alinhar: 'right' }, { titulo: 'Segmento do consultante', largura: 385 }],
+      segmentos.map((x) => [{ texto: mesAnoDe(x.mes) }, { texto: x.quantidade === null ? '—' : String(x.quantidade) }, { texto: segmentoLegivel(x.segmento) }]),
+    );
   }
   if (mensal) {
     p.subtitulo('Consultas por mês');
@@ -185,11 +203,15 @@ function fonteDosDados(r: RelatorioCredito): string {
   return `${limparTexto(provedor)}/${limparTexto(nomeDoProduto(r.fonte.produto, r.fonte.provedor))}`;
 }
 export async function gerarPdfCredito(
-  relatorio: RelatorioCredito,
-  meta: { veredito: Veredito; motivos: string[]; consultadoPor: string | null },
+  relatorioGravado: RelatorioCredito,
+  meta: { veredito: Veredito; motivos: string[]; consultadoPor: string | null; /** coluna `produto` do registro (chave do catálogo): tem prioridade sobre fonte.produto */ produto?: string | null },
   /** Resposta crua do provedor (credit_reports.payload_bruto). Sem ela (ex.: simulado) não há anexo. */
   bruto?: unknown,
 ): Promise<Buffer> {
+  // A coluna `produto` do registro manda; sem ela vale o nome gravado no relatório ("Serasa Premium" ou chave).
+  const relatorio: RelatorioCredito = meta.produto
+    ? { ...relatorioGravado, fonte: { ...relatorioGravado.fonte, produto: nomeDoProduto(meta.produto, relatorioGravado.fonte.provedor) } }
+    : relatorioGravado;
   return renderizar(relatorio, { subject: `Análise de crédito ${formatarDocumento(relatorio.documento, relatorio.tipo)}` }, (p, agora) => {
     // o anexo é complementar: nunca derruba o PDF principal
     let anexo: Anexo | null = null;

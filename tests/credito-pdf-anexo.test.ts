@@ -132,9 +132,12 @@ describe('montarAnexo: só o que o corpo do PDF não mostrou', () => {
     const zero = montarAnexo(cred({ INFORMACOES_ALERTAS_RESTRICOES: { OCORRENCIAS: [{ TITULO: 'CONSULTAS 30 DIAS', OBSERVACOES: 'QUANTIDADE TOTAL: 0' }] } }), { pessoaFisica: false });
     expect(zero?.alertas).toEqual([]);
     expect(zero?.semOcorrencias).toEqual(['Alertas']);
+    // consultas por janela já são mostradas na seção Consultas: nunca viram "Alerta da fonte"
     const com = montarAnexo(cred({ INFORMACOES_ALERTAS_RESTRICOES: { OCORRENCIAS: [{ TITULO: 'CONSULTAS 30 DIAS', OBSERVACOES: 'QUANTIDADE TOTAL: 7' }] } }), { pessoaFisica: false });
-    expect(com?.alertas).toEqual(['Consultas 30 dias — quantidade total: 7']);
-    expect(com?.semOcorrencias).toEqual([]);
+    expect(com?.alertas).toEqual([]);
+    const real = montarAnexo(cred({ INFORMACOES_ALERTAS_RESTRICOES: { OCORRENCIAS: [{ TITULO: 'SOCIO COM RESTRICAO', OBSERVACOES: 'SOCIO FICTICIO CONSTA EM CADASTRO DE INADIMPLENTES', NIVEL: 'ALERTA' }] } }), { pessoaFisica: false });
+    expect(real?.alertas).toEqual(['Socio com restricao — socio ficticio consta em cadastro de inadimplentes']);
+    expect(real?.semOcorrencias).toEqual([]);
   });
 
   it('o mesmo nome com ocorrência em outro bloco não vira "sem ocorrências"', () => {
@@ -332,7 +335,7 @@ describe('PDF sem redundância', () => {
     const texto = extrairTexto(await gerarPdfCredito(r, { veredito, motivos, consultadoPor: 'Teste' }, b));
     expect(texto).toContain('Sociedade Empresária Limitada');
     expect(texto).toContain('03/11/2005 (20 anos)');
-    expect(texto).toContain('10 A 19 funcionários');
+    expect(texto).toContain('10 a 19 funcionários');
     expect(texto).not.toContain('2062-');
     expect(texto).not.toMatch(/Telefone|6500000000/);
     expect(texto).not.toContain('—\n');

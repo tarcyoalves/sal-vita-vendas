@@ -8,7 +8,7 @@
 // O bruto completo continua em credit_reports.payload_bruto.
 import type { GrupoAnotacao, RelatorioCredito, ScoreExtra } from '../../../../shared/credito';
 import { PRODUTO_PADRAO } from '../../../../shared/creditoCatalogo';
-import { humanizarChave, valorSeguro } from '../../../../shared/creditoRotulos';
+import { dividirCnaes, faixaExibivel, humanizarChave, valorSeguro } from '../../../../shared/creditoRotulos';
 
 export type ConteudoMapeado = Pick<RelatorioCredito, 'score' | 'cadastro' | 'socios' | 'consultasRecentes' | 'anotacoes'>
   & Partial<Pick<RelatorioCredito, 'comportamento' | 'complementos'>>;
@@ -200,23 +200,56 @@ function juntarGrupos(a: GrupoAnotacao, b: GrupoAnotacao): GrupoAnotacao {
   return { consultado: true, quantidade: a.quantidade + b.quantidade, valorTotal: vt, itens };
 }
 
-function cadastroDe(emp: Obj | null): ConteudoMapeado['cadastro'] {
+/** Número/complemento só entram se o logradouro ainda não os traz ("AVENIDA X, 1200" + número 1200 não duplica). */
+function enderecoTexto(e: Obj): string | null {
+  const logr = txt(e.ENDERECO) ?? txt(e.LOGRADOURO);
+  const numero = txt(e.NUMERO);
+  const compl = txt(e.COMPLEMENTO);
+  const rua = [logr, numero && !(logr ?? '').includes(numero) ? numero : null].filter(Boolean).join(', ') + (compl ? ` ${compl}` : '');
+  const cep = txt(e.CEP)?.replace(/^(\d{5})-?(\d{3})$/, '$1-$2') ?? null;
+  return [rua.trim() || null, txt(e.BAIRRO), cep].filter(Boolean).join(', ') || null;
+}
+
+/**
+ * Endereço da empresa. O Serasa não preenche ENDERECO em INFORMACOES_DA_EMPRESA: o endereço vem num bloco próprio
+ * (SOMENTE_ENDERECO.DADOS[0] ou ENDERECOS), com ENDERECO, NUMERO, COMPLEMENTO, BAIRRO, CIDADE, UF e CEP.
+ */
+function enderecoPrincipal(c: Obj | null, emp: Obj | null): Obj | null {
+  const direto = obj(emp?.ENDERECO);
+  if (direto) return direto;
+  if (!c) return null;
+  for (const chave of ['SOMENTE_ENDERECO', 'ENDERECOS', 'ENDERECO']) {
+    const b = c[chave];
+    const candidatos = Array.isArray(b) ? b : ehObjeto(b) ? [b, ...['DADOS', 'OCORRENCIAS', 'ENDERECOS'].flatMap((k) => (Array.isArray(b[k]) ? (b[k] as unknown[]) : []))] : [];
+    const achado = candidatos.filter(ehObjeto).find((o) => txt(o.ENDERECO) ?? txt(o.LOGRADOURO) ?? txt(o.CIDADE));
+    if (achado) return achado;
+  }
+  return null;
+}
+
+function cadastroDe(emp: Obj | null, c: Obj | null = null): ConteudoMapeado['cadastro'] {
   const base = mapeadorDefensivo(null).cadastro;
   if (!emp) return base;
-  const e = obj(emp.ENDERECO);
+  const e = enderecoPrincipal(c, emp);
   return {
     ...base,
     razaoSocial: txt(emp.RAZAO_SOCIAL), nomeFantasia: txt(emp.NOME_FANTASIA), situacao: txt(emp.SITUACAO),
     situacaoEm: dataPtBr(emp.DATA_SITUACAO), fundacao: dataPtBr(emp.DATA_FUNDACAO), naturezaJuridica: txt(emp.NATUREZA_JURIDICA),
     capitalSocial: numeroPtBr(emp.CAPITAL_SOCIAL), cnaePrincipal: txt(emp.CNAE_PRIMARIO), atividade: txt(emp.RAMO_ATIVIDADE_PRIMARIO),
     inscricaoEstadual: txt(emp.INSCRICAO_ESTADUAL),
-    endereco: e ? [txt(e.ENDERECO), txt(e.BAIRRO), txt(e.CEP)].filter(Boolean).join(', ') || null : null,
-    municipio: e ? txt(e.CIDADE) : null, uf: e ? txt(e.UF) : null,
+    endereco: e ? enderecoTexto(e) : null,
+    municipio: e ? (txt(e.CIDADE) ?? txt(e.MUNICIPIO)) : null, uf: e ? txt(e.UF) : null,
   };
 }
 
-const faixaDe = (e: Obj): string | null =>
-  txt(e.CLASSIF_ABC) ?? txt(e.FAIXA_SCORE) ?? txt(e.FAIXA) ?? txt(e.DESCR_FAIXA) ?? txt(e.CLASSIF_NRO);
+/** Primeira faixa que seja de verdade: "NULO"/"NULL"/"NAO CALCULADO" não são faixa (e não bloqueiam as alternativas). */
+const faixaDe = (e: Obj): string | null => {
+  for (const k of ['CLASSIF_ABC', 'FAIXA_SCORE', 'FAIXA', 'DESCR_FAIXA', 'CLASSIF_NRO']) {
+    const f = faixaExibivel(txt(e[k]));
+    if (f) return f;
+  }
+  return null;
+};
 
 /**
  * Lê TODAS as entradas de score da fonte. O principal (o que as regras e o card individual usam) é a primeira entrada
@@ -287,6 +320,37 @@ function consultasDoAlertas(c: Obj): Pick<Complementos, 'consultasJanelas' | 'co
   return out;
 }
 
+/** Texto das observações de uma ocorrência de alerta (a fonte manda string ou lista de strings). */
+function observacaoDe(o: Obj): string {
+  const bruto = o.OBSERVACOES ?? o.OBSERVACAO ?? o.OBS;
+  return (Array.isArray(bruto) ? bruto.filter((x) => typeof x === 'string' || typeof x === 'number').join(' ') : (txt(bruto) ?? '')).replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * INFORMACOES_ALERTAS_RESTRICOES também carrega dados cadastrais como "alertas" informativos: MATRIZ/FILIAL, TEMPO DE ATUACAO,
+ * CNAES SECUNDARIOS (separados por "/") e REPRESENTANTE. Aqui eles viram complementos (e NÃO são impressos como alerta).
+ * Quando INFORMACOES_DA_EMPRESA traz o mesmo campo, ele tem prioridade (o spread é feito por quem chama).
+ */
+function complementosDoAlertas(c: Obj): Partial<Complementos> {
+  const out: Partial<Complementos> = {};
+  for (const o of lista(obj(c.INFORMACOES_ALERTAS_RESTRICOES)?.OCORRENCIAS)) {
+    const titulo = semAcento(txt(o.TITULO) ?? '').replace(/\s+/g, ' ').trim();
+    const obs = observacaoDe(o);
+    if (!obs || /NENHUM\s+REGISTRO/i.test(semAcento(obs))) continue;
+    if (/^MATRIZ\s*\/?\s*FILIAL/.test(titulo)) out.matrizFilial = obs.replace(/^(MATRIZ\s*\/?\s*FILIAL)\s*:\s*/i, '');
+    else if (/^TEMPO\s+DE\s+ATUACAO/.test(titulo)) out.tempoAtuacao = obs.replace(/^TEMPO\s+DE\s+ATUA[CÇ][AÃ]O\s*:\s*/i, '');
+    else if (/^CNAES?\s+SECUNDARI/.test(titulo)) {
+      const cnaes = [...new Set(dividirCnaes(obs.replace(/^CNAES?\s+SECUNDARI[OA]S?\s*:\s*/i, '')))];
+      if (cnaes.length) out.cnaesSecundarios = cnaes;
+    } else if (/^REPRESENTANTE/.test(titulo)) {
+      const doc = /(?:CPF\s*\/\s*CNPJ|CPF|CNPJ|DOCUMENTO)\s*:\s*([\d.\-/*]+)/i.exec(obs)?.[1] ?? null;
+      const nome = /NOME\s*:\s*(.+?)(?=\s+(?:CPF|CNPJ|DOCUMENTO|CARGO|VINCULO)\b|$)/i.exec(obs)?.[1]?.trim() ?? null;
+      if (nome || doc) out.representante = { nome, documento: doc };
+    }
+  }
+  return out;
+}
+
 const MESES_NOMES = ['JANEIRO', 'FEVEREIRO', 'MARCO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
 /** HIST_CONSULTAS.QUANTIDADES: [{ANO, JANEIRO, FEVEREIRO...}] -> um item por ano, 12 meses (null = sem dado). */
 function consultasPorMesDe(hist: Obj | null): Complementos['consultasPorMes'] {
@@ -316,7 +380,7 @@ function empresaComplementos(emp: Obj | null): Partial<Complementos> {
   const chaveCnae = Object.keys(emp).find((k) => /^CNAES?_?SECUND/.test(semAcento(k)));
   if (chaveCnae) {
     const v = emp[chaveCnae];
-    const itens = Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[;|]/) : [];
+    const itens = Array.isArray(v) ? v : typeof v === 'string' ? dividirCnaes(v) : [];
     const cnaes = itens.map((x) => {
       if (ehObjeto(x)) return [textoDe(x, ['CNAE', 'CODIGO']), textoDe(x, ['DESCRICAO', 'ATIVIDADE'])].filter(Boolean).join('-');
       return typeof x === 'string' || typeof x === 'number' ? String(x).trim() : '';
@@ -361,7 +425,7 @@ export function mapeadorBoaVista(json: unknown): ConteudoMapeado {
   const pontual = obj(c.PAGAMENTO_PONTUAL);
   return {
     score: scoreDe(obj(c.SCORES), false),
-    cadastro: cadastroDe(obj(c.INFORMACOES_DA_EMPRESA)),
+    cadastro: cadastroDe(obj(c.INFORMACOES_DA_EMPRESA), c),
     socios: [],
     consultasRecentes,
     comportamento: eventos || pontual
@@ -399,7 +463,7 @@ export function mapeadorSerasaPremium(json: unknown): ConteudoMapeado {
   const protestos = obj(c.PROTESTOS) ? c.PROTESTOS : c.PROTESTO_SINTETICO;
   return {
     score: scoreDe(obj(c.SCORES), true),
-    cadastro: cadastroDe(obj(c.INFORMACOES_DA_EMPRESA)),
+    cadastro: cadastroDe(obj(c.INFORMACOES_DA_EMPRESA), c),
     socios: lista(obj(c.QUADRO_SOCIETARIO)?.OCORRENCIAS).map((s) => ({
       documento: txt(s.CPF_CNPJ), nome: txt(s.NOME) ?? 'Não informado', entrada: dataPtBr(s.DATA_ENTRADA_SOCIEDADE),
       participacao: numeroPtBr(s.PERCENTUAL_PARTICIPACAO), cargo: txt(s.CARGO),
@@ -407,7 +471,7 @@ export function mapeadorSerasaPremium(json: unknown): ConteudoMapeado {
     consultasRecentes: passagens,
     complementos: {
       faturamentoPresumidoFaixa: txt(obj(c.FATURAMENTO_PRESUMIDO)?.FAIXA), veiculos,
-      ...consultasDoAlertas(c), ...empresaComplementos(obj(c.INFORMACOES_DA_EMPRESA)),
+      ...consultasDoAlertas(c), ...complementosDoAlertas(c), ...empresaComplementos(obj(c.INFORMACOES_DA_EMPRESA)),
     },
     anotacoes: {
       protestos: grupoDe(protestos, itemGenerico('Protesto')),

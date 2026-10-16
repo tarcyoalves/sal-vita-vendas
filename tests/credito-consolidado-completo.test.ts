@@ -167,15 +167,15 @@ describe('PDF consolidado completo (estrutura de decisão)', () => {
     expect(plano).toContain('0000000-00.2026.8.06.0001');
     expect(plano).toContain('14/05/2026');
     expect(plano).toContain('R$ 42.350,90');
-    expect(plano).toContain('Contagem oficial por janela (Serasa Premium)');
-    expect(plano).toMatch(/Até 30 dias.*31 a 60 dias.*61 a 90 dias.*Mais de 90 dias/);
-    expect(plano).toContain('COMERCIO ATACADISTA DE ALIMENTOS');
+    expect(plano).toContain('Consultas por janela (Serasa Premium)');
+    expect(plano).toMatch(/até 30 dias: 7.*31 a 60 dias: 2.*61 a 90 dias: 3.*mais de 90 dias: 11/);
+    expect(plano).toContain('Comercio Atacadista de Alimentos');
     expect(plano).toContain('CNAEs secundários');
     expect(plano).toContain('R$ 850.000,00');
     expect(plano).toContain('ATE 180 MIL');
     expect(plano).toContain('21 A 30 ANOS');
     expect(plano).toContain('MATRIZ');
-    expect(plano).toContain('20 A 49 funcionários');
+    expect(plano).toContain('20 a 49 funcionários');
     expect(plano).toContain('Consultas por mês'); // matriz Jan-Dez da Consulta simples
   });
 

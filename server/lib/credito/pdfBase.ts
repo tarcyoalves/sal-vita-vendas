@@ -5,13 +5,14 @@
 // de propósito: o build "node" carrega as métricas das fontes padrão (Helvetica) em tempo de execução com
 // createRequire('#standard-fonts/...'), o que QUEBRA depois que o esbuild empacota api/bundle.js. O build "browser"
 // traz as fontes embutidas no próprio arquivo e funciona igual em Node, no teste e no bundle serverless.
-import { frasePelaFonte } from '../../../shared/creditoRotulos';
+import { cnaesCompactos, faixaExibivel, frasePelaFonte, funcionariosTexto, situacaoComData } from '../../../shared/creditoRotulos';
 export { frasePelaFonte };
 import type PDFDocumentCtor from 'pdfkit';
 import type { GrupoAnotacao, RelatorioCredito, SinalCredito, Veredito } from '../../../shared/credito';
 import { ROTULO_VEREDITO, SEMAFORO, analisarSinais, atenuacaoDoItem, type NivelSinal } from '../../../shared/credito';
 import { ROTULO_NIVEL_SINAL, ordenarSinais } from '../../../shared/creditoSinais';
 import { naturezaJuridicaTexto } from '../../../shared/creditoRotulos';
+import { rotuloDataSituacao } from '../../../shared/creditoCatalogo';
 import { comportamentoDe, empresaExtrasDe, type Parte } from './pdfAnexo';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -380,14 +381,13 @@ export function secaoEmpresa(p: Pagina, r: RelatorioCredito, bruto: unknown, ago
 
   const razao = limparTexto(c.razaoSocial).trim();
   if (c.nomeFantasia && norm(c.nomeFantasia) !== norm(razao)) add('Nome fantasia', c.nomeFantasia);
-  const desde = c.situacaoEm && c.situacaoEm !== c.fundacao ? ` (desde ${dataBR(c.situacaoEm)})` : '';
-  add('Situação', c.situacao ? txt(c.situacao) + desde : '');
+  add('Situação', situacaoComData(c.situacao ? txt(c.situacao) : '', c.situacaoEm, c.fundacao, dataBR, rotuloDataSituacao(r.fonte.produto, r.fonte.provedor)));
   const idade = idadeDe(c.fundacao, agora);
   add('Fundação', c.fundacao ? dataBR(c.fundacao) + (idade ? ` (${idade})` : '') : '');
   add('Natureza jurídica', naturezaJuridicaTexto(c.naturezaJuridica));
   add('Capital social', c.capitalSocial === null ? '' : brl(c.capitalSocial));
   const funcionarios = r.complementos?.funcionariosFaixa ?? extras.funcionarios;
-  add('Porte / funcionários', [extras.porte, funcionarios ? `${funcionarios} funcionários` : ''].filter(Boolean).join(' — '));
+  add('Porte / funcionários', [extras.porte, funcionariosTexto(funcionarios)].filter(Boolean).join(' — '));
   add('Faturamento presumido', r.complementos?.faturamentoPresumidoFaixa);
   add('Tempo de atuação', r.complementos?.tempoAtuacao);
   add('Matriz / filial', r.complementos?.matrizFilial);
@@ -399,9 +399,9 @@ export function secaoEmpresa(p: Pagina, r: RelatorioCredito, bruto: unknown, ago
   const atividade = limparTexto(c.atividade).trim();
   const atividadeRepetida = cnae && atividade && (norm(cnae).includes(norm(atividade)) || norm(atividade).includes(norm(cnae)));
   add('CNAE e atividade', [cnae, atividadeRepetida ? '' : atividade].filter(Boolean).join(' — '), true);
-  // secundários compactos: só os que não repetem o principal; até 5 (o resto vira "+N")
-  const sec = (r.complementos?.cnaesSecundarios ?? []).map((x) => limparTexto(x).trim()).filter((x) => x && norm(x) !== norm(cnae));
-  if (sec.length) add('CNAEs secundários', sec.slice(0, 5).map((x) => resumirTexto(x, 70)).join('; ') + (sec.length > 5 ? `; +${sec.length - 5}` : ''), true);
+  // secundários: lista "código — descrição", até 6 (o resto vira "+N"); o principal não se repete
+  const sec = cnaesCompactos(r.complementos?.cnaesSecundarios, cnae);
+  if (sec.itens.length) add('CNAEs secundários', [...sec.itens.map((x) => resumirTexto(x, 95)), ...(sec.restantes ? [`+${sec.restantes}`] : [])].join('\n'), true);
 
   const municipio = [c.municipio, c.uf].filter(Boolean).join('/');
   const end = limparTexto(c.endereco).trim();
